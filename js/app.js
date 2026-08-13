@@ -11,7 +11,10 @@ var OG = {
   currency: 'SYP',
   pending: null,                                        // action to run after a view renders
   prod: { type: '', health: '', q: '', sort: 'name', dir: 1 },
-  wh:   { tab: 'add', type: 'sneakers', sizes: {}, name: '', img: null },
+  /* img = a colour block, imgSrc = a real photo as a data URL. Only one is
+     ever set; imgSrc wins wherever both are checked. */
+  wh:   { tab: 'add', type: 'sneakers', sizes: {}, name: '', img: null, imgSrc: null },
+  dir:  null,                                           // page-transition direction
   rep:  { tab: 'sales' },
   print:{ partner: false },
   store:{ screen: 'grid', productId: null, size: null, cart: [] },
@@ -75,6 +78,16 @@ var I18N = {
     warehouse_title: 'Warehouse', warehouse_sub: 'Nothing moves without a trace',
     tab_add: 'Add product', tab_moves: 'Stock movements',
     image: 'Image', upload_hint: 'Click to upload', product_name: 'Product name',
+    /* Product photo intake. Three ways in, so the hint names all three. */
+    nav_more: 'More', language: 'Language',
+    up_pick: 'Add a photo', up_hint: 'click · drag · paste',
+    up_swap: 'Change photo', up_colour: 'Use a colour instead',
+    up_ok: 'Photo added',
+    up_err_none: 'No file was selected',
+    up_err_type: 'That is not an image file',
+    up_err_size: 'That photo is too large — 12 MB is the limit',
+    up_err_read: 'The file could not be read',
+    up_err_decode: 'That image is damaged or in a format the browser cannot open',
     cost_price: 'Cost price', selling_price: 'Selling price', shelf_box: 'Shelf / box',
     size_matrix: 'Quantity per size', matrix_hint: 'Enter a quantity — a barcode is generated for each size',
     print_labels: 'Print barcode labels', save_product: 'Save product to warehouse',
@@ -189,6 +202,15 @@ var I18N = {
     warehouse_title: 'المستودع', warehouse_sub: 'لا تتحرك قطعة دون أثر',
     tab_add: 'إضافة منتج', tab_moves: 'حركات المخزون',
     image: 'الصورة', upload_hint: 'اضغط للرفع', product_name: 'اسم المنتج',
+    nav_more: 'المزيد', language: 'اللغة',
+    up_pick: 'أضف صورة', up_hint: 'اضغط · اسحب · الصق',
+    up_swap: 'تغيير الصورة', up_colour: 'استخدم لوناً بدلاً منها',
+    up_ok: 'تمت إضافة الصورة',
+    up_err_none: 'لم يتم اختيار أي ملف',
+    up_err_type: 'هذا الملف ليس صورة',
+    up_err_size: 'الصورة كبيرة جداً — الحد ١٢ ميغابايت',
+    up_err_read: 'تعذّرت قراءة الملف',
+    up_err_decode: 'الصورة تالفة أو بصيغة لا يدعمها المتصفح',
     cost_price: 'سعر التكلفة', selling_price: 'سعر البيع', shelf_box: 'الرف / الصندوق',
     size_matrix: 'الكمية لكل قياس', matrix_hint: 'أدخل الكمية — يتم توليد باركود لكل قياس',
     print_labels: 'طباعة ملصقات الباركود', save_product: 'حفظ المنتج في المستودع',
@@ -330,8 +352,89 @@ function deltaTag(now, before, suffix) {
    so isolate them with <bdi dir="ltr">. */
 function tel(s) { return '<bdi dir="ltr">' + esc(s) + '</bdi>'; }
 
+/* A product shows a real photo when it has one and its colour block when it
+   does not. `image.src` is a data URL held in memory — the original brief said
+   no stock photo URLs, and this is not one: it is the shop's own picture, and
+   it never leaves the browser. */
 function thumb(p, cls) {
+  if (p.image && p.image.src) {
+    return '<span class="thumb ' + (cls || '') + ' has-img">' +
+           '<img src="' + p.image.src + '" alt="' + esc(p.name) + '"></span>';
+  }
   return '<span class="thumb ' + (cls || '') + '" style="background:' + p.image.bg + '">' + p.image.initials + '</span>';
+}
+
+/* Big square version, for the storefront and the product drawer. */
+function thumbBox(p, cls) {
+  if (p.image && p.image.src) {
+    return '<div class="thumb-box ' + (cls || '') + ' has-img">' +
+           '<img src="' + p.image.src + '" alt="' + esc(p.name) + '"></div>';
+  }
+  return '<div class="thumb-box ' + (cls || '') + '" style="background:' + p.image.bg + '">' +
+         p.image.initials + '</div>';
+}
+
+/* ------------------------------------------------------------ IMAGE INTAKE
+   Reads a picture off the user's machine and turns it into a small data URL.
+
+   The downscale is not cosmetic. A phone photo is 3–6 MB; held raw as a data
+   URL it would sit in memory base64-encoded (a third bigger again) and would
+   be embedded whole into any export. 420px is more than the largest place the
+   image is ever displayed.
+
+   WebP first because it keeps transparency AND compresses well; canvas falls
+   back to PNG on its own if the browser will not encode WebP, which we detect
+   from the returned prefix rather than assuming. */
+var IMG_MAX_PX = 420;
+var IMG_MAX_BYTES = 12 * 1024 * 1024;
+
+function readImageFile(file, done) {
+  if (!file) { done(null, 'none'); return; }
+  if (String(file.type).indexOf('image/') !== 0) { done(null, 'type'); return; }
+  if (file.size > IMG_MAX_BYTES) { done(null, 'size'); return; }
+
+  var fr = new FileReader();
+  fr.onerror = function () { done(null, 'read'); };
+  fr.onload = function () {
+    var im = new Image();
+    im.onerror = function () { done(null, 'decode'); };
+    im.onload = function () {
+      var scale = Math.min(1, IMG_MAX_PX / Math.max(im.width, im.height));
+      var w = Math.max(1, Math.round(im.width * scale));
+      var h = Math.max(1, Math.round(im.height * scale));
+      var cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      var cx = cv.getContext('2d');
+      cx.imageSmoothingEnabled = true;
+      cx.imageSmoothingQuality = 'high';
+      cx.drawImage(im, 0, 0, w, h);
+      var out;
+      try { out = cv.toDataURL('image/webp', 0.85); } catch (e) { out = null; }
+      if (!out || out.indexOf('data:image/webp') !== 0) {
+        try { out = cv.toDataURL('image/png'); } catch (e2) { out = null; }
+      }
+      /* If the canvas refused entirely, hand back the original rather than
+         losing the user's picture — it is bigger, but it is theirs. */
+      done(out || fr.result, null);
+    };
+    im.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+
+/* Everything that can hand us a picture funnels through here, so the toast,
+   the validation and the repaint are written once. */
+function takeProductImage(file) {
+  readImageFile(file, function (src, err) {
+    if (err) {
+      toast(t('image'), t('up_err_' + err), 'err', 4000);
+      return;
+    }
+    OG.wh.imgSrc = src;
+    OG.wh.img = null;
+    render();
+    toast(t('image'), t('up_ok'), 'ok', 2000);
+  });
 }
 
 function healthBadge(qty) {
@@ -419,12 +522,15 @@ function toast(title, msg, kind, ms, action) {
   }, ms || 3000);
 }
 
+/* `sheet: true` makes it rise from the bottom edge instead of sitting in the
+   middle — the phone idiom, and thumb-reachable. Everything else is identical,
+   so no caller has to know which shape it will take. */
 function openModal(o) {
   closeModal();
   var root = document.getElementById('modal-root');
   root.innerHTML =
-    '<div class="modal-backdrop" data-act="modal-backdrop">' +
-      '<div class="modal ' + (o.size || '') + '">' +
+    '<div class="modal-backdrop' + (o.sheet ? ' as-sheet' : '') + '" data-act="modal-backdrop">' +
+      '<div class="modal ' + (o.size || '') + (o.sheet ? ' sheet' : '') + '">' +
         (o.title ? '<div class="modal-head"><h3>' + o.title + '</h3>' +
           '<button class="x" data-act="modal-close" aria-label="Close">&times;</button></div>' : '') +
         '<div class="modal-body">' + o.body + '</div>' +
@@ -706,6 +812,19 @@ function handleDeepLink(hash) {
     case 'job':
       go('print', function () { openJobDrawer(id); });
       return true;
+    /* A partner invoice only exists inside the Yalla Wear portal, so the link
+       has to switch portals before it can open anything. Scanning a printed
+       bill therefore lands the reader in the right app, not just the right
+       screen. */
+    case 'ywinvoice':
+      if (!DB.invoice(id)) { toast(t('yi_invoice'), id, 'err'); return true; }
+      if (!OG.print.partner) {
+        OG.print.partner = true;
+        YALLA.reset();
+        renderSidebar(); renderTopbar();
+      }
+      YALLA.go('invoices', id);
+      return true;
     case 'report':
       if (['sales', 'profit', 'inventory', 'employees', 'suppliers'].indexOf(id) > -1) OG.rep.tab = id;
       go('reports');
@@ -787,6 +906,38 @@ function posExportSpec() {
 }
 
 /* Who is allowed to do what — printable, for pinning on the wall. */
+/* OG's side of the partner ledger: what it owes Yalla Wear, per invoice. */
+function partnerInvoicesExportSpec() {
+  var live = DB.partnerInvoices.filter(function (i) { return DB.invoiceStatus(i) !== 'draft'; });
+  var total = 0, paid = 0;
+  var rows = live.slice().sort(function (a, b) { return (b.issued || 0) - (a.issued || 0); })
+    .map(function (inv) {
+      total += DB.invoiceTotal(inv);
+      paid += DB.invoicePaid(inv);
+      return [inv.id, fmtDate(inv.issued), fmtDate(inv.due), DB.invoicePieces(inv),
+              exMoney(DB.invoiceTotal(inv)), exMoney(DB.invoicePaid(inv)),
+              exMoney(DB.invoiceBalance(inv)),
+              t('yi_st_' + DB.invoiceStatus(inv)) + (DB.invoiceOverdue(inv) ? ' · ' + t('overdue') : '')];
+    });
+
+  return {
+    name: 'partner-invoices', sheet: 'Partner invoices',
+    title: t('og_partner_inv'),
+    subtitle: CONFIG.PRINT_PARTNER + ' · ' + fmtDate(TODAY),
+    columns: [{ label: t('yi_invoice') }, { label: t('yi_issued') }, { label: t('yi_due') },
+              { label: t('pieces'), num: true }, { label: exCol(t('total')), num: true },
+              { label: exCol(t('yi_paid')), num: true }, { label: exCol(t('yi_balance')), num: true },
+              { label: t('status') }],
+    rows: rows,
+    totals: [t('total'), null, null,
+             live.reduce(function (a, i) { return a + DB.invoicePieces(i); }, 0),
+             exMoney(total), exMoney(paid), exMoney(DB.outstandingTotal()), null],
+    kpis: [{ label: t('og_owed_to'), value: money(DB.outstandingTotal()) },
+           { label: t('yi_paid'), value: money(paid) },
+           { label: t('invoices'), value: String(live.length) }]
+  };
+}
+
 function settingsExportSpec() {
   var roles = [t('role_admin'), t('role_manager'), t('role_cashier'), t('role_warehouse')];
   var rows = PERMISSIONS.map(function (p) {
@@ -889,7 +1040,11 @@ function currentExportSpec() {
     case 'products':   return productsExportSpec();
     case 'customers':  return customersExportSpec();
     case 'warehouse':  return warehouseExportSpec();
-    case 'print':      return printJobsExportSpec();
+    /* The Print screen has two tabs now, and each has to export itself — the
+       same tab-blindness that once made every Warehouse tab export the same
+       movement log. */
+    case 'print':      return (OG.pr && OG.pr.tab === 'invoices')
+                              ? partnerInvoicesExportSpec() : printJobsExportSpec();
     case 'storefront': return ordersExportSpec();
     default:           return salesExportSpec();
   }
@@ -908,6 +1063,12 @@ var NAV = [
   { id: 'storefront', key: 'nav_storefront',group: 'ops',  icon: 'M4 8h16l-1 12H5zM9 8V6a3 3 0 0 1 6 0v2' },
   { id: 'settings',   key: 'nav_settings',  group: 'ops',  icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L6 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z' }
 ];
+
+/* The sidebar order IS the depth axis: moving down the list reads as going
+   deeper, so that is what the page transition animates against. */
+if (typeof Motion !== 'undefined') {
+  Motion.setOrder(NAV.map(function (n) { return n.id; }));
+}
 
 function navBadge(id) {
   if (id === 'print') { var n = DB.printJobs.filter(function (j) { return DB.isOverdue(j); }).length; return n ? n : 0; }
@@ -942,6 +1103,83 @@ function renderSidebar() {
 
   html += '</nav><div class="sidebar-foot">' + t('live') + ' · <b>v1.0</b></div>';
   document.getElementById('sidebar').innerHTML = html;
+  /* The sliding indicator is positioned from the active item's own offset, so
+     it has to be placed after the nav exists in the DOM. */
+  if (typeof Motion !== 'undefined') {
+    try { Motion.navIndicator(); Motion.dock(); } catch (e) {}
+  }
+  renderTabbar();
+}
+
+/* ------------------------------------------------------------ BOTTOM TABS
+   The phone navigation. Rendered into a permanent #tabbar element and hidden
+   by CSS above 720px, so there is no JS breakpoint to keep in sync and a
+   resize needs no re-render.
+
+   Five is the ceiling — a sixth tab makes each one too narrow for a thumb, so
+   the rest live behind More. */
+var TABS = ['dashboard', 'pos', 'products', 'print'];
+var MORE_ITEMS = ['warehouse', 'customers', 'reports', 'storefront', 'settings'];
+
+function renderTabbar() {
+  var host = document.getElementById('tabbar');
+  if (!host) return;
+
+  /* The partner portal brings its own four screens; it has no More. */
+  if (OG.print.partner) {
+    host.innerHTML = YALLA.tabs ? YALLA.tabs() : '';
+    return;
+  }
+
+  var h = '';
+  TABS.forEach(function (id) {
+    var n = NAV.filter(function (x) { return x.id === id; })[0];
+    if (!n) return;
+    var b = navBadge(id);
+    h += '<button class="tabbtn' + (OG.view === id ? ' on' : '') + '" data-act="nav" data-view="' + id + '">' +
+      '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg>' +
+        (b ? '<i class="tb-dot"></i>' : '') + '</span>' +
+      '<span class="tb-txt">' + t(n.key) + '</span></button>';
+  });
+
+  var inMore = MORE_ITEMS.indexOf(OG.view) > -1;
+  h += '<button class="tabbtn' + (inMore ? ' on' : '') + '" data-act="more-sheet">' +
+    '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square">' +
+      '<path d="M4 7h16M4 12h16M4 17h16"/></svg></span>' +
+    '<span class="tb-txt">' + t('nav_more') + '</span></button>';
+
+  host.innerHTML = h;
+}
+
+/* Everything that did not fit in five tabs, plus the two shell switches that
+   were dropped from the collapsed topbar. */
+function openMoreSheet() {
+  var h = '<div class="more-grid">';
+  MORE_ITEMS.forEach(function (id) {
+    var n = NAV.filter(function (x) { return x.id === id; })[0];
+    if (!n) return;
+    var b = navBadge(id);
+    h += '<button class="more-item' + (OG.view === id ? ' on' : '') + '" data-act="more-go" data-view="' + id + '">' +
+      '<span class="mi-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg></span>' +
+      '<span>' + t(n.key) + '</span>' +
+      (b ? '<span class="nav-badge">' + b + '</span>' : '') + '</button>';
+  });
+  h += '</div>';
+
+  h += '<div class="more-rows">' +
+    '<div class="more-row"><span>' + t('language') + '</span><div class="seg">' +
+      '<button data-act="lang" data-val="en" class="' + (OG.lang === 'en' ? 'on' : '') + '">EN</button>' +
+      '<button data-act="lang" data-val="ar" class="' + (OG.lang === 'ar' ? 'on' : '') + '">ع</button>' +
+    '</div></div>' +
+    '<div class="more-row"><span>' + t('currency') + '</span><div class="seg">' +
+      '<button data-act="curr" data-val="SYP" class="' + (OG.currency === 'SYP' ? 'on' : '') + '">SYP</button>' +
+      '<button data-act="curr" data-val="USD" class="' + (OG.currency === 'USD' ? 'on' : '') + '">USD</button>' +
+    '</div></div>' +
+    '<div class="more-row"><span>' + t('partner_view') + '</span>' +
+      '<button class="btn btn-sm btn-dark" data-act="partner-view">' + CONFIG.PRINT_PARTNER + ' →</button></div>' +
+  '</div>';
+
+  openModal({ title: t('nav_more'), size: 'narrow', body: h, sheet: true });
 }
 
 function renderTopbar() {
@@ -962,6 +1200,9 @@ function renderTopbar() {
       '<button data-act="curr" data-val="SYP" class="' + (OG.currency === 'SYP' ? 'on' : '') + '">SYP</button>' +
       '<button data-act="curr" data-val="USD" class="' + (OG.currency === 'USD' ? 'on' : '') + '">USD</button>' +
     '</div>' +
+    /* Partner messages sit beside the alert bell, not inside it. One is the
+       shop talking to itself; the other is another company talking to us. */
+    (typeof Notify !== 'undefined' ? Notify.bell() : '') +
     '<button class="icon-btn" data-act="bell" title="' + t('notifications') + '">' +
       '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M18 16V10a6 6 0 1 0-12 0v6l-2 3h16zM10 21h4"/></svg>' +
       '<span class="bell-badge">' + DB.notifications.length + '</span>' +
@@ -1427,13 +1668,30 @@ function whAddTab() {
   h += '<div class="card"><div class="card-head"><h3>' + t('tab_add') + '</h3>' +
     '<div class="card-actions muted small">' + t('matrix_hint') + '</div></div><div class="card-body">';
 
-  h += '<div class="grid" style="grid-template-columns:130px minmax(0,1fr);gap:16px;align-items:start">';
+  h += '<div class="grid" style="grid-template-columns:150px minmax(0,1fr);gap:16px;align-items:start">';
+
+  /* Three ways in, because people reach for different ones: click to browse,
+     drag a file onto the square, or just paste a screenshot. The hidden file
+     input is the real control — the box is its label. */
   h += '<div><span class="lbl">' + t('image') + '</span>' +
-    '<div class="upload-box" data-act="wh-image">' +
-      (OG.wh.img
-        ? '<span class="up-preview" style="background:' + OG.wh.img + '">' + (OG.wh.name.slice(0, 2).toUpperCase() || 'OG') + '</span>'
-        : '<span>+<br><small>' + t('upload_hint') + '</small></span>') +
-    '</div></div>';
+    '<div class="upload-box' + (OG.wh.imgSrc ? ' has-img' : '') + '" id="whDrop" data-act="wh-image">' +
+      (OG.wh.imgSrc
+        ? '<img class="up-img" src="' + OG.wh.imgSrc + '" alt="">' +
+          '<span class="up-swap">' + t('up_swap') + '</span>' +
+          '<button class="up-x" data-act="wh-image-clear" title="' + esc(t('remove')) + '">✕</button>'
+        : OG.wh.img
+          ? '<span class="up-preview" style="background:' + OG.wh.img + '">' +
+              (OG.wh.name.slice(0, 2).toUpperCase() || 'OG') + '</span>' +
+            '<button class="up-x" data-act="wh-image-clear" title="' + esc(t('remove')) + '">✕</button>'
+          : '<span class="up-empty">' +
+              '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
+                '<path d="M3 16l5-5 4 4 3-3 6 6M3 5h18v14H3zM8.5 9.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></svg>' +
+              '<b>' + t('up_pick') + '</b><small>' + t('up_hint') + '</small></span>') +
+    '</div>' +
+    '<input type="file" id="whFile" accept="image/*" hidden>' +
+    '<button class="btn btn-sm btn-ghost btn-block mt-xs" data-act="wh-image-colour">' +
+      t('up_colour') + '</button>' +
+  '</div>';
 
   h += '<div>' +
     '<label class="field"><span>' + t('product_name') + '</span>' +
@@ -1912,12 +2170,35 @@ function viewPrint() {
   var revenue = jobs.reduce(function (a, j) { return a + j.price; }, 0);
   var paid = jobs.reduce(function (a, j) { return a + j.cost; }, 0);
 
+  OG.pr = OG.pr || { tab: 'board' };
+  var owed = DB.outstandingTotal();
+  var unreadPartner = DB.unreadFor('og').length;
+
   var h = '<div class="page-head"><div><h1>' + t('print_title') + '</h1>' +
     '<div class="sub">' + t('print_sub') + ' · ' + t('drag_hint') + '</div></div>' +
     '<div class="head-actions">' +
       exportButtons() +
       '<button class="btn btn-dark" data-act="partner-view">' + t('partner_view') + '</button>' +
     '</div></div>';
+
+  /* Two halves of the same relationship: the work, and the bill for it. */
+  h += '<div class="tabs mb">' +
+    '<button class="tab' + (OG.pr.tab === 'board' ? ' on' : '') + '" data-act="pr-tab" data-tab="board">' +
+      t('print_title') + '</button>' +
+    '<button class="tab' + (OG.pr.tab === 'invoices' ? ' on' : '') + '" data-act="pr-tab" data-tab="invoices">' +
+      t('og_partner_inv') +
+      (owed ? '<span class="tab-dot"></span>' : '') + '</button>' +
+  '</div>';
+
+  if (OG.pr.tab === 'invoices') return h + viewPartnerInvoices();
+
+  if (unreadPartner) {
+    h += '<div class="yl-block mb">' +
+      '<span class="yb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square">' +
+        '<path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.4-4.2A8 8 0 1 1 21 12z"/></svg></span>' +
+      '<span class="yb-txt"><b>' + unreadPartner + ' ' + t('og_unread_head') + '</b>' +
+        '<small>' + t('og_unread_sub') + '</small></span></div>';
+  }
 
   h += '<div class="grid mb" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
     '<div class="stat"><span class="eyebrow">' + t('jobs_month') + '</span><div class="val">' + thisMonth + '</div>' +
@@ -1961,6 +2242,62 @@ function viewPrint() {
   return h;
 }
 
+/* What OG owes Yalla Wear. Reads the same partnerInvoices array the partner
+   portal writes to — that shared array IS the integration. */
+function viewPartnerInvoices() {
+  var owed = DB.outstandingTotal();
+  var overdue = DB.partnerInvoices.filter(function (i) { return DB.invoiceOverdue(i); });
+  var paidTotal = DB.partnerInvoices.reduce(function (a, i) { return a + DB.invoicePaid(i); }, 0);
+
+  var h = '<div class="grid mb" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
+    '<div class="stat"><span class="eyebrow">' + t('og_owed_to') + '</span>' +
+      '<div class="val' + (owed ? ' warn' : '') + '">' + moneyStat(owed) + '</div>' +
+      '<div class="foot">' + (overdue.length
+        ? '<span style="color:var(--destructive);font-weight:700">' + overdue.length + ' ' + t('overdue').toLowerCase() + '</span>'
+        : CONFIG.PRINT_PARTNER) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('yi_paid') + '</span>' +
+      '<div class="val">' + moneyStat(paidTotal) + '</div>' +
+      '<div class="foot">' + DB.partnerInvoices.length + ' ' + t('invoices').toLowerCase() + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('paid_partner') + '</span>' +
+      '<div class="val">' + moneyStat(DB.printJobs.reduce(function (a, j) { return a + j.cost; }, 0)) + '</div>' +
+      '<div class="foot">' + t('yl_lifetime').toLowerCase() + '</div></div>' +
+  '</div>';
+
+  h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
+    '<th>' + t('yi_invoice') + '</th><th>' + t('yi_issued') + '</th><th>' + t('yi_due') + '</th>' +
+    '<th class="num">' + t('pieces') + '</th><th class="num">' + t('total') + '</th>' +
+    '<th class="num">' + t('yi_balance') + '</th><th>' + t('status') + '</th><th></th>' +
+  '</tr></thead><tbody>';
+
+  DB.partnerInvoices.slice().sort(function (a, b) {
+    return (b.issued || 0) - (a.issued || 0);
+  }).forEach(function (inv) {
+    var bal = DB.invoiceBalance(inv);
+    var st = DB.invoiceStatus(inv);
+    /* A draft is the partner's private working copy — OG should not see a
+       bill that has not been sent to them. */
+    if (st === 'draft') return;
+    var cls = st === 'paid' ? 'healthy' : st === 'part' ? 'low' : 'accent';
+    if (DB.invoiceOverdue(inv)) cls = 'critical';
+    h += '<tr class="clickable' + (DB.invoiceOverdue(inv) ? ' row-late' : '') +
+           '" data-act="og-open-inv" data-id="' + inv.id + '">' +
+      '<td><b>' + inv.id + '</b></td>' +
+      '<td class="muted">' + fmtDate(inv.issued) + '</td>' +
+      '<td class="muted">' + fmtDate(inv.due) + '</td>' +
+      '<td class="num">' + nf(DB.invoicePieces(inv)) + '</td>' +
+      '<td class="num"><b>' + money(DB.invoiceTotal(inv)) + '</b></td>' +
+      '<td class="num">' + (bal ? '<b style="color:var(--warning)">' + money(bal) + '</b>' : '—') + '</td>' +
+      '<td><span class="badge ' + cls + '">' + t('yi_st_' + st) +
+        (DB.invoiceOverdue(inv) ? ' · ' + DB.daysSince(inv.due) + 'd' : '') + '</span></td>' +
+      '<td onclick="event.stopPropagation()">' + (bal
+        ? '<button class="btn btn-sm btn-primary" data-act="og-pay-inv" data-id="' + inv.id + '">' +
+            t('og_pay_now') + '</button>'
+        : '') + '</td></tr>';
+  });
+
+  return h + '</tbody></table></div>';
+}
+
 /* Admin-side job detail. Unlike the partner drawer this shows the full
    commercial picture: who ordered it, what OG charges, what the margin is. */
 function openJobDrawer(id) {
@@ -1985,12 +2322,54 @@ function openJobDrawer(id) {
   body += '<div class="card mb"><div class="card-head"><h3>' + t('design_note') + '</h3></div>' +
     '<div class="card-body"><p style="margin:0;font-size:14px;line-height:1.6">' + esc(j.design) + '</p></div></div>';
 
-  body += '<div class="card mb"><div class="card-head"><h3>' + t('yl_size_breakdown') + '</h3>' +
-    '<div class="card-actions"><span class="badge accent">' + j.qty + '</span></div></div>' +
-    '<div class="card-body"><div class="yl-sizes lg">' +
-      Object.keys(j.sizes || {}).map(function (k) {
-        return '<span class="yl-size"><b>' + k + '</b>' + j.sizes[k] + '</span>';
-      }).join('') + '</div></div></div>';
+  /* A kit job shows its print list, editable. This is OG's half of the
+     confirmation loop — the only place a missing name can be filled in,
+     because OG is the one holding the customer's phone number. */
+  if (j.kind === 'kit' && j.lines) {
+    var tbc = DB.tbcCount(j);
+    body += '<div class="card mb"><div class="card-head"><h3>' + t('og_kit_lines') + '</h3>' +
+      '<div class="card-actions">' +
+        (tbc ? '<span class="badge tbc">' + tbc + ' ' + t('yl_tbc') + '</span> ' : '') +
+        '<span class="badge accent">' + j.qty + ' ' + t('pieces') + '</span></div></div>';
+
+    if (tbc) {
+      body += '<div class="yl-block" style="margin:0 16px 12px">' +
+        '<span class="yb-txt"><b>' + tbc + ' ' + t('og_tbc_warn') + '</b></span></div>';
+    }
+
+    body += '<div class="table-wrap"><table class="tbl yl-kits og-kits"><thead><tr>' +
+        '<th class="num">#</th><th>' + t('yl_kit') + '</th><th>' + t('yl_print') + '</th>' +
+        '<th class="num">' + t('yi_number') + '</th><th>' + t('size') + '</th><th class="num">' + t('qty') + '</th>' +
+      '</tr></thead><tbody>';
+    j.lines.forEach(function (l, i) {
+      body += '<tr' + (l.print ? '' : ' class="is-tbc"') + '>' +
+        '<td class="num muted">' + pad(i + 1, 2) + '</td>' +
+        '<td><b>' + esc(l.club) + '</b><small class="ar">' + esc(l.clubAr) + '</small></td>' +
+        '<td><input class="inp" type="text" value="' + esc(l.print || '') +
+          '" placeholder="' + esc(t('yl_to_confirm')) + '" ' +
+          'data-og-line="print" data-jid="' + j.id + '" data-lid="' + l.id + '"></td>' +
+        '<td><input class="inp num" type="number" min="0" max="99" style="width:62px" value="' +
+          esc(l.number === null ? '' : l.number) + '" placeholder="—" ' +
+          'data-og-line="number" data-jid="' + j.id + '" data-lid="' + l.id + '"></td>' +
+        '<td><span class="yl-size"><b>' + esc(l.size) + '</b></span></td>' +
+        '<td class="num">×' + l.qty + '</td></tr>';
+    });
+    body += '</tbody></table></div>';
+
+    if (tbc) {
+      body += '<div class="card-body" style="padding-top:0">' +
+        '<button class="btn btn-primary btn-block" data-act="og-confirm-names" data-id="' + j.id + '">' +
+          t('og_confirm_names') + '</button></div>';
+    }
+    body += '</div>';
+  } else {
+    body += '<div class="card mb"><div class="card-head"><h3>' + t('yl_size_breakdown') + '</h3>' +
+      '<div class="card-actions"><span class="badge accent">' + j.qty + '</span></div></div>' +
+      '<div class="card-body"><div class="yl-sizes lg">' +
+        Object.keys(j.sizes || {}).map(function (k) {
+          return '<span class="yl-size"><b>' + k + '</b>' + j.sizes[k] + '</span>';
+        }).join('') + '</div></div></div>';
+  }
 
   body += '<div class="grid mb" style="grid-template-columns:repeat(3,1fr)">' +
     '<div class="stat"><span class="eyebrow">' + t('yl_charged') + '</span><div class="val">' + moneyStat(j.price) + '</div></div>' +
@@ -1999,11 +2378,35 @@ function openJobDrawer(id) {
       '<div class="foot">' + pct(margin / j.price * 100, 0) + '</div></div>' +
   '</div>';
 
-  body += '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+  /* The conversation, rendered by the same function the partner portal uses,
+     so both sides read an identical thread. */
+  if (typeof YALLA !== 'undefined' && YALLA.thread) body += YALLA.thread(j.id, 'og');
+  DB.markRead('og', { jobId: j.id });
+
+  body += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
+    '<button class="btn btn-ghost" data-act="og-nudge" data-id="' + j.id + '">' + t('og_nudge') + '</button>' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="job" data-kind="pdf" data-id="' + j.id + '">' + t('yl_work_order') + '</button>' +
     '<button class="btn btn-dark" style="flex:1" data-act="partner-view">' + t('partner_view') + '</button></div>';
 
   openDrawer({ head: head, body: body });
+}
+
+/* OG's view of a partner invoice — their bill to pay, so it lives in OG,
+   not inside the partner portal. Same document, same numbers. */
+function openPartnerInvoice(id) {
+  var inv = DB.invoice(id);
+  if (!inv || typeof YLINV === 'undefined') return;
+  var bal = DB.invoiceBalance(inv);
+  DB.markRead('og', { invoiceId: id });
+
+  var foot = '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
+    '<button class="btn" data-act="print-now">' + t('print') + '</button>';
+  if (bal > 0 && inv.issued) {
+    foot += '<button class="btn btn-primary" data-act="og-pay-inv" data-id="' + id + '">' +
+      t('og_pay_now') + ' · ' + money(bal) + '</button>';
+  }
+  openModal({ title: inv.id + ' · ' + CONFIG.PRINT_PARTNER, size: 'wide',
+              body: YLINV.sheet(inv, false), foot: foot });
 }
 
 /* --------------------------------------------------------------- 12. REPORTS */
@@ -2247,7 +2650,7 @@ function storeScreen() {
     var h = '<div class="st-hero"><div class="brand-mark"><img src="assets/logo.svg" alt="OG"></div><h2>OG STORE</h2><p>' + t('tagline') + '</p></div>' + bar + '<div class="st-grid">';
     storeVisible().forEach(function (p) {
       h += '<div class="st-card" data-act="st-open" data-id="' + p.id + '">' +
-        '<div class="thumb-box" style="background:' + p.image.bg + '">' + p.image.initials + '</div>' +
+        thumbBox(p) +
         '<div class="info"><b>' + esc(p.name) + '</b><span>' + money(p.sellingPrice) + '</span></div></div>';
     });
     return h + '</div>';
@@ -2258,7 +2661,7 @@ function storeScreen() {
     var vs = DB.variantsOf(p.id);
     var picked = vs.filter(function (v) { return v.size === s.size; })[0];
     var h2 = bar + '<div class="st-pd">' +
-      '<div class="thumb-box" style="background:' + p.image.bg + '">' + p.image.initials + '</div>' +
+      thumbBox(p) +
       '<span class="eyebrow">' + esc(p.brand) + ' · ' + DB.typeLabels[p.type] + '</span>' +
       '<h3 style="font-size:16px;margin:4px 0 6px">' + esc(p.name) + '</h3>' +
       '<div class="strong-num" style="font-size:20px">' + money(p.sellingPrice) + '</div>' +
@@ -2629,19 +3032,76 @@ var AFTER = {
   dashboard: afterDashboard,
   pos: function () { POS.after(); },
   reports: afterReports,
-  print: bindKanban
+  print: bindKanban,
+  warehouse: bindWarehouse
 };
+
+/* Wires the three ways a picture gets in. Re-run on every warehouse render
+   because the box is rebuilt each time; the listeners go on the fresh nodes,
+   so there is nothing to tear down. */
+function bindWarehouse() {
+  if (OG.wh.tab !== 'add') return;
+  var box = document.getElementById('whDrop');
+  var input = document.getElementById('whFile');
+  if (!box || !input) return;
+
+  input.addEventListener('change', function () {
+    takeProductImage(input.files && input.files[0]);
+    /* Cleared so picking the SAME file twice still fires a change event. */
+    input.value = '';
+  });
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    box.addEventListener(ev, function (e) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      box.classList.add('drop');
+    });
+  });
+  ['dragleave', 'dragend'].forEach(function (ev) {
+    box.addEventListener(ev, function () { box.classList.remove('drop'); });
+  });
+  box.addEventListener('drop', function (e) {
+    e.preventDefault();
+    box.classList.remove('drop');
+    var dt = e.dataTransfer;
+    takeProductImage(dt && dt.files && dt.files[0]);
+  });
+}
+
+/* Paste, bound once at the document. Scoped tightly: it must never swallow a
+   Ctrl+V that was meant for a text field. */
+document.addEventListener('paste', function (e) {
+  if (OG.print.partner || OG.view !== 'warehouse' || OG.wh.tab !== 'add') return;
+  var tag = (e.target && e.target.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  var items = (e.clipboardData && e.clipboardData.items) || [];
+  for (var i = 0; i < items.length; i++) {
+    if (String(items[i].type).indexOf('image/') === 0) {
+      takeProductImage(items[i].getAsFile());
+      e.preventDefault();
+      return;
+    }
+  }
+});
 
 function render() {
   Charts.destroyAll();
   var host = document.getElementById('view');
   var partner = OG.print.partner;
 
+  /* Claimed exactly once per view change. Every other repaint — a keystroke
+     in the search box, a filter chip, a sort click — renders silently, so
+     the entrance animation and the counting numbers do not replay while the
+     user is typing. This is the difference between polish and a twitch. */
+  var entering = (typeof Motion !== 'undefined') && Motion.claim();
+
   document.body.setAttribute('data-view', partner ? 'yalla' : OG.view);
   if (partner) document.body.setAttribute('data-portal', 'yalla');
   else document.body.removeAttribute('data-portal');
 
-  host.className = 'view fade-in' + (!partner && OG.view === 'pos' ? ' pos-view' : '');
+  host.className = 'view' + (entering ? '' : ' fade-in') +
+                   (!partner && OG.view === 'pos' ? ' pos-view' : '');
   host.innerHTML = partner ? YALLA.view() : (VIEWS[OG.view] || viewDashboard)();
   host.scrollTop = 0;
 
@@ -2650,11 +3110,25 @@ function render() {
 
   try { Bulk.paint(); } catch (e) { console.warn('bulk paint', e); }
 
+  if (entering) {
+    try {
+      Motion.enter(host, OG.dir);
+      Motion.countAll(host);
+      Motion.navIndicator();
+    } catch (e) { console.warn('motion', e); }
+  }
+  OG.dir = null;
+
   if (OG.pending) { var p = OG.pending; OG.pending = null; try { p(); } catch (e) {} }
 }
 
 function go(view, pending) {
   if (!VIEWS[view]) view = 'dashboard';
+  /* Work out the travel direction before OG.view moves on. */
+  if (typeof Motion !== 'undefined') {
+    OG.dir = Motion.direction(OG.view, view);
+    Motion.mark();
+  }
   OG.view = view;
   OG.pending = pending || null;
   /* location.hash, not history.pushState — pushState throws on file:// origins. */
@@ -2673,6 +3147,9 @@ function applyLang() {
 }
 
 function refreshAll() {
+  /* Language and currency switches redraw the whole shell, so they get the
+     entrance too — otherwise flipping to Arabic looks like a hard cut. */
+  if (typeof Motion !== 'undefined') Motion.mark();
   renderSidebar();
   renderTopbar();
   render();
@@ -2723,6 +3200,206 @@ I18N.en.invoices = 'Invoices';
 I18N.ar.invoices = 'الفواتير';
 
 /* ---- Yalla Wear portal, tracker and Label Studio strings ---------------- */
+/* ---- Yalla Wear v3: kits, board, radar, money, messages ------------------
+   Every key here exists in EXTRA_AR too. A missing key does not throw — t()
+   quietly returns the slug — so the demo would render "yl_outstanding" in
+   Arabic and nobody would notice until the meeting. The suite asserts the two
+   objects have identical key sets for exactly that reason. */
+var EXTRA_V3_EN = {
+  /* nav + modes */
+  yl_invoices: 'Invoices', yl_board: 'Board', yl_list: 'List',
+  yl_col_empty: 'nothing here',
+
+  /* radar + heatmap */
+  yl_radar: 'Deadline radar', yl_radar_sub: 'next 14 days · tap a day to filter',
+  yl_late: 'LATE', yl_heat: 'Capacity', yl_per_day: 'pieces a day',
+  yl_heat_key: 'quiet → overbooked',
+
+  /* activity */
+  yl_activity: 'Activity', yl_activity_sub: 'messages, moves and warnings',
+  yl_no_activity: 'All quiet', yl_no_activity_sub: 'Nothing has happened today',
+  yl_you: 'You', yl_just_now: 'just now', yl_m: 'm', yl_h: 'h', yl_d: 'd',
+  yl_past_deadline: 'Past deadline',
+
+  /* money */
+  yl_money: 'Money', yl_outstanding: 'Outstanding', yl_from_og: 'owed by OG System',
+  yl_invoiced_month: 'Paid this month', yl_avg_pay: 'Average time to pay',
+  yl_avg_pay_sub: 'from issue to settled', yl_days: 'days',
+  yl_unbilled: 'Not invoiced yet', yl_unbilled_sub: 'delivered work',
+  yl_view_invoices: 'Invoices', yl_ageing: 'How old',
+
+  /* kits + TBC */
+  yl_kit_lines: 'Print list', yl_kit: 'Kit', yl_print: 'Print',
+  yl_to_confirm: 'TO BE CONFIRMED', yl_tbc: 'TBC', yl_tbc_pieces: 'shirts have no name yet',
+  yl_tbc_filter: 'Waiting on names',
+  yl_blocked_head: 'shirts cannot be printed',
+  yl_blocked_sub: 'the customer has not chosen a name yet, so only OG can clear these',
+  yl_blocked_toast: 'shirts still have no name — OG has to confirm them first',
+  yl_blocked_tip: 'Blocked: names still missing',
+  yl_request_names: 'Ask OG for the names',
+  yl_names_requested: 'OG has been asked for the missing names',
+  yl_nothing_pending: 'every name is already confirmed',
+  yl_need_names: 'Names still needed on', yl_lines: 'lines',
+
+  /* messages */
+  yl_thread: 'Messages', yl_messages: 'messages', yl_no_messages: 'No messages',
+  yl_no_messages_sub: 'Nothing has been said about this job yet',
+  yl_add_note: 'Tell OG something', yl_reason: 'Reason', yl_message: 'Message',
+  yl_note_ph: 'What should OG know?',
+  yl_note_hint: 'This lands in OG System straight away — they see it on the job.',
+  yl_note_empty: 'Write something first', yl_note_sent: 'sent to OG System',
+  yl_msg_nudge: 'Nudge', yl_msg_delay: 'Delay', yl_msg_note: 'Note',
+  yl_msg_name_request: 'Names needed', yl_msg_invoice: 'Invoice',
+  yl_msg_reminder: 'Reminder', yl_msg_reply: 'Reply',
+  yl_reason_fabric_late: 'Fabric delivery late', yl_reason_printer_down: 'Printer / heat press down',
+  yl_reason_awaiting_names: 'Waiting on name confirmation',
+  yl_reason_quality_recheck: 'Quality re-check', yl_reason_other: 'Other',
+  yl_recent: 'recent',
+
+  /* invoices + finance */
+  yi_sub: 'What OG System owes you, and how long it has been owed',
+  yi_new: 'New invoice', yi_from_work: 'From delivered work',
+  yi_mode_blank: 'Blank invoice', yi_mode_work: 'Pick delivered kits',
+  yi_invoice: 'Invoice', yi_issued: 'Issued', yi_due: 'Due',
+  yi_lines: 'Lines', yi_lines_ready: 'lines ready to bill',
+  yi_paid: 'Paid', yi_balance: 'Still owed',
+  yi_st_draft: 'Draft', yi_st_sent: 'Sent', yi_st_part: 'Part paid', yi_st_paid: 'Paid',
+  yi_ageing_sub: 'unpaid balance by age since issue',
+  yi_add_line: 'Add a shirt', yi_rows: 'rows', yi_price: 'Price', yi_number: 'No.',
+  yi_pick_club: 'Choose a kit…', yi_other_club: 'Something else…', yi_club_name: 'Type the kit name',
+  yi_name_ph: 'Name on the back — leave blank for TBC',
+  yi_empty: 'Nothing on this invoice yet', yi_empty_sub: 'Add a shirt to get started',
+  yi_nothing_ready: 'Nothing to bill', yi_nothing_ready_sub: 'Every delivered kit is already invoiced',
+  yi_note: 'Notes', yi_default_note: 'All kits printed · payment on delivery.',
+  yi_per_kit: 'per kit, printing included', yi_terms: 'payment on delivery',
+  yi_total_due: 'TOTAL DUE', yi_received: 'RECEIVED',
+  yi_save_draft: 'Save as draft', yi_issue: 'Issue invoice',
+  yi_draft_saved: 'saved as a draft', yi_issued_toast: 'issued and sent to OG System',
+  yi_draft_deleted: 'draft deleted', yi_need_a_line: 'Add at least one shirt first',
+  yi_record_payment: 'Record a payment', yi_amount: 'Amount received',
+  yi_half: 'Half', yi_full: 'Full balance',
+  yi_payment_saved: 'payment recorded', yi_bad_amount: 'That is more than the balance',
+  yi_paper: 'Paper version', yi_brand_mode: 'Branded version',
+  yi_msg_issued: 'Invoice issued —', yi_due_in: 'due in',
+
+  /* OG side */
+  og_partner_inv: 'Partner invoices', og_pay_now: 'Pay this invoice',
+  og_owed_to: 'Owed to Yalla Wear', og_nudge: 'Nudge the partner',
+  og_nudge_sent: 'sent to Yalla Wear', og_confirm_names: 'Confirm the names',
+  og_names_saved: 'names confirmed — Yalla Wear can print now',
+  og_kit_lines: 'Kit lines', og_tbc_warn: 'shirts have no name yet — Yalla Wear cannot print them',
+  og_paid_toast: 'marked as paid',
+  og_unread_head: 'new messages from Yalla Wear',
+  og_unread_sub: 'open the speech bubble in the top bar, or the job itself',
+  og_nudge_default: 'The customer is asking about this one — can it move up the queue?',
+  og_nudge_hint: 'This lands in Yalla Wear straight away — they see it on the job.',
+  og_nothing_changed: 'nothing changed',
+  og_names_msg: 'Names confirmed:', og_all_confirmed: 'all names confirmed, you can print',
+  og_paid_msg: 'Payment sent:',
+
+  /* notifications */
+  nt_title: 'Partner messages', nt_new: 'new', nt_read_all: 'Mark all read',
+  nt_you: 'You', nt_empty: 'Nothing yet',
+  nt_empty_sub: 'Messages between OG System and Yalla Wear show up here',
+
+  yl_scorecard: 'Your record', yl_scorecard_sub: 'from the stamped history',
+  yl_on_time: 'Delivered on time', yl_on_time_sub: 'of finished jobs hit their deadline',
+  yl_turnaround: 'Average turnaround', yl_turnaround_sub: 'order taken to delivered'
+};
+
+var EXTRA_V3_AR = {
+  yl_invoices: 'الفواتير', yl_board: 'لوحة', yl_list: 'قائمة',
+  yl_col_empty: 'لا شيء هنا',
+
+  yl_radar: 'رادار المواعيد', yl_radar_sub: '١٤ يوماً القادمة · اضغط يوماً للتصفية',
+  yl_late: 'متأخر', yl_heat: 'الطاقة الإنتاجية', yl_per_day: 'قطعة يومياً',
+  yl_heat_key: 'هادئ ← محمّل زيادة',
+
+  yl_activity: 'النشاط', yl_activity_sub: 'رسائل وتحديثات وتنبيهات',
+  yl_no_activity: 'كل شيء هادئ', yl_no_activity_sub: 'لم يحدث شيء اليوم',
+  yl_you: 'أنت', yl_just_now: 'الآن', yl_m: ' د', yl_h: ' س', yl_d: ' ي',
+  yl_past_deadline: 'تجاوز الموعد',
+
+  yl_money: 'المال', yl_outstanding: 'مستحق لك', yl_from_og: 'على OG System',
+  yl_invoiced_month: 'المقبوض هذا الشهر', yl_avg_pay: 'متوسط مدة السداد',
+  yl_avg_pay_sub: 'من الإصدار حتى التحصيل', yl_days: 'يوم',
+  yl_unbilled: 'لم تُفوتر بعد', yl_unbilled_sub: 'أعمال مسلّمة',
+  yl_view_invoices: 'الفواتير', yl_ageing: 'حسب العمر',
+
+  yl_kit_lines: 'قائمة الطباعة', yl_kit: 'القميص', yl_print: 'الطباعة',
+  yl_to_confirm: 'بانتظار التأكيد', yl_tbc: 'غير مؤكد', yl_tbc_pieces: 'قميصاً بلا اسم بعد',
+  yl_tbc_filter: 'بانتظار الأسماء',
+  yl_blocked_head: 'قميصاً لا يمكن طباعته',
+  yl_blocked_sub: 'الزبون لم يختر الاسم بعد، وOG وحده يستطيع تأكيده',
+  yl_blocked_toast: 'قميصاً بلا اسم — على OG تأكيدها أولاً',
+  yl_blocked_tip: 'موقوف: الأسماء ناقصة',
+  yl_request_names: 'اطلب الأسماء من OG',
+  yl_names_requested: 'تم إرسال طلب الأسماء إلى OG',
+  yl_nothing_pending: 'كل الأسماء مؤكدة',
+  yl_need_names: 'أسماء ناقصة على', yl_lines: 'سطر',
+
+  yl_thread: 'الرسائل', yl_messages: 'رسالة', yl_no_messages: 'لا رسائل',
+  yl_no_messages_sub: 'لم يُكتب شيء عن هذا الطلب بعد',
+  yl_add_note: 'أبلغ OG', yl_reason: 'السبب', yl_message: 'الرسالة',
+  yl_note_ph: 'ما الذي يجب أن يعرفه OG؟',
+  yl_note_hint: 'تصل إلى OG System فوراً وتظهر لهم على الطلب.',
+  yl_note_empty: 'اكتب شيئاً أولاً', yl_note_sent: 'أُرسلت إلى OG System',
+  yl_msg_nudge: 'استعجال', yl_msg_delay: 'تأخير', yl_msg_note: 'ملاحظة',
+  yl_msg_name_request: 'أسماء مطلوبة', yl_msg_invoice: 'فاتورة',
+  yl_msg_reminder: 'تذكير', yl_msg_reply: 'رد',
+  yl_reason_fabric_late: 'تأخر توريد القماش', yl_reason_printer_down: 'عطل في المكبس/الطابعة',
+  yl_reason_awaiting_names: 'بانتظار تأكيد الأسماء',
+  yl_reason_quality_recheck: 'إعادة فحص الجودة', yl_reason_other: 'أخرى',
+  yl_recent: 'الأخيرة',
+
+  yi_sub: 'ما له عليك من OG System، ومنذ متى',
+  yi_new: 'فاتورة جديدة', yi_from_work: 'من الأعمال المسلّمة',
+  yi_mode_blank: 'فاتورة فارغة', yi_mode_work: 'اختر قمصاناً مسلّمة',
+  yi_invoice: 'فاتورة', yi_issued: 'تاريخ الإصدار', yi_due: 'الاستحقاق',
+  yi_lines: 'البنود', yi_lines_ready: 'بنداً جاهزاً للفوترة',
+  yi_paid: 'المدفوع', yi_balance: 'المتبقي',
+  yi_st_draft: 'مسودة', yi_st_sent: 'مُرسلة', yi_st_part: 'مدفوعة جزئياً', yi_st_paid: 'مدفوعة',
+  yi_ageing_sub: 'الرصيد غير المدفوع حسب عمره منذ الإصدار',
+  yi_add_line: 'أضف قميصاً', yi_rows: 'أسطر', yi_price: 'السعر', yi_number: 'الرقم',
+  yi_pick_club: 'اختر القميص…', yi_other_club: 'شيء آخر…', yi_club_name: 'اكتب اسم القميص',
+  yi_name_ph: 'الاسم على الظهر — اتركه فارغاً إن لم يُحدَّد',
+  yi_empty: 'لا شيء في هذه الفاتورة بعد', yi_empty_sub: 'أضف قميصاً للبدء',
+  yi_nothing_ready: 'لا شيء للفوترة', yi_nothing_ready_sub: 'كل الأعمال المسلّمة مفوترة',
+  yi_note: 'ملاحظات', yi_default_note: 'جميع القمصان مطبوعة · الدفع عند الاستلام.',
+  yi_per_kit: 'للقميص، الطباعة مشمولة', yi_terms: 'الدفع عند الاستلام',
+  yi_total_due: 'المبلغ المستحق', yi_received: 'الاستلام',
+  yi_save_draft: 'حفظ كمسودة', yi_issue: 'إصدار الفاتورة',
+  yi_draft_saved: 'حُفظت كمسودة', yi_issued_toast: 'صدرت وأُرسلت إلى OG System',
+  yi_draft_deleted: 'حُذفت المسودة', yi_need_a_line: 'أضف قميصاً واحداً على الأقل',
+  yi_record_payment: 'تسجيل دفعة', yi_amount: 'المبلغ المقبوض',
+  yi_half: 'النصف', yi_full: 'كامل المتبقي',
+  yi_payment_saved: 'سُجّلت الدفعة', yi_bad_amount: 'المبلغ أكبر من المتبقي',
+  yi_paper: 'نسخة ورقية', yi_brand_mode: 'النسخة المُعلَّمة',
+  yi_msg_issued: 'صدرت الفاتورة —', yi_due_in: 'تستحق خلال',
+
+  og_partner_inv: 'فواتير الشريك', og_pay_now: 'سدّد هذه الفاتورة',
+  og_owed_to: 'مستحق لـ Yalla Wear', og_nudge: 'استعجل الشريك',
+  og_nudge_sent: 'أُرسلت إلى Yalla Wear', og_confirm_names: 'تأكيد الأسماء',
+  og_names_saved: 'تم تأكيد الأسماء — يستطيع Yalla Wear الطباعة الآن',
+  og_kit_lines: 'بنود القمصان', og_tbc_warn: 'قميصاً بلا اسم — لا يستطيع Yalla Wear طباعتها',
+  og_paid_toast: 'وُسمت كمدفوعة',
+  og_unread_head: 'رسالة جديدة من Yalla Wear',
+  og_unread_sub: 'افتح أيقونة الرسائل في الشريط العلوي، أو الطلب نفسه',
+  og_nudge_default: 'الزبون يسأل عن هذا الطلب — هل يمكن تقديمه في الدور؟',
+  og_nudge_hint: 'تصل إلى Yalla Wear فوراً وتظهر لهم على الطلب.',
+  og_nothing_changed: 'لم يتغيّر شيء',
+  og_names_msg: 'تم تأكيد الأسماء:', og_all_confirmed: 'كل الأسماء مؤكدة، يمكنكم الطباعة',
+  og_paid_msg: 'تم إرسال دفعة:',
+
+  nt_title: 'رسائل الشريك', nt_new: 'جديدة', nt_read_all: 'تعليم الكل كمقروء',
+  nt_you: 'أنت', nt_empty: 'لا شيء بعد',
+  nt_empty_sub: 'الرسائل بين OG System وYalla Wear تظهر هنا',
+
+  yl_scorecard: 'سجلّك', yl_scorecard_sub: 'من سجل المراحل الموثّق',
+  yl_on_time: 'التسليم في الموعد', yl_on_time_sub: 'من الطلبات المنجزة سُلّمت بموعدها',
+  yl_turnaround: 'متوسط مدة الإنجاز', yl_turnaround_sub: 'من استلام الطلب حتى التسليم'
+};
+
 var EXTRA_EN = {
   yl_tagline: 'Style That Moves You!', yl_operator: 'Production',
   yl_today: 'Today', yl_today_sub: 'What has to be printed, and by when',
@@ -2840,6 +3517,8 @@ var EXTRA_AR = {
 
 Object.keys(EXTRA_EN).forEach(function (k) { I18N.en[k] = EXTRA_EN[k]; });
 Object.keys(EXTRA_AR).forEach(function (k) { I18N.ar[k] = EXTRA_AR[k]; });
+Object.keys(EXTRA_V3_EN).forEach(function (k) { I18N.en[k] = EXTRA_V3_EN[k]; });
+Object.keys(EXTRA_V3_AR).forEach(function (k) { I18N.ar[k] = EXTRA_V3_AR[k]; });
 
 /* -------------------------------------------------------------- 19. ACTIONS */
 
@@ -2973,27 +3652,155 @@ var ACTIONS = {
   'lb-toggle': function (el) { var k = el.getAttribute('data-k'); OG.lb[k] = !OG.lb[k]; repaintLabels(); },
 
   'wh-tab': function (el) { OG.wh.tab = el.getAttribute('data-tab'); render(); },
+  /* Opens the real file picker. This used to pick a random colour from a
+     palette and toast "Image uploaded", which is why choosing a picture
+     appeared to fail — nothing was ever read from disk. */
   'wh-image': function () {
+    var input = document.getElementById('whFile');
+    if (input) input.click();
+  },
+
+  'wh-image-clear': function () {
+    OG.wh.imgSrc = null;
+    OG.wh.img = null;
+    render();
+  },
+
+  /* The colour block is still offered — it is genuinely the faster choice
+     when he is entering thirty items and has no photos. */
+  'wh-image-colour': function () {
     var palette = ['#4A4A52', '#3E5C8A', '#8E3B3B', '#B5822F', '#6B5B45', '#6455A0', '#3A5478', '#2F5744'];
+    OG.wh.imgSrc = null;
     OG.wh.img = palette[Math.floor(Math.random() * palette.length)];
     render();
-    toast(t('image'), OG.lang === 'ar' ? 'تم رفع الصورة' : 'Image uploaded', 'ok', 1800);
   },
   'wh-labels': function () { openLabelSheet(null); },
+  /* Actually creates the product now. It used to toast and throw the form
+     away, which meant a picture the user had just chosen vanished with it —
+     the same frustration as the upload not working. */
   'wh-save': function () {
     var name = (document.getElementById('whName') || {}).value || OG.wh.name;
     var pieces = Object.keys(OG.wh.sizes).reduce(function (a, k) { return a + (Number(OG.wh.sizes[k]) || 0); }, 0);
     if (!name) { toast(t('product_name'), OG.lang === 'ar' ? 'اكتب اسم المنتج' : 'Enter a product name', 'err'); return; }
     if (!pieces) { toast(t('size_matrix'), OG.lang === 'ar' ? 'أدخل الكميات' : 'Enter quantities per size', 'err'); return; }
-    toast(t('save_product'), name + ' · ' + pieces + ' pcs · ' + Object.keys(OG.wh.sizes).filter(function (k) { return OG.wh.sizes[k]; }).length + ' SKU', 'ok');
-    OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null;
+
+    var p = DB.newProduct({
+      name: name,
+      type: OG.wh.type,
+      cost: Number((document.getElementById('whCost') || {}).value) || 0,
+      price: Number((document.getElementById('whPrice') || {}).value) || 0,
+      sizes: OG.wh.sizes,
+      imgSrc: OG.wh.imgSrc,
+      bg: OG.wh.img
+    });
+
+    var skus = Object.keys(OG.wh.sizes).filter(function (k) { return OG.wh.sizes[k]; }).length;
+    OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null; OG.wh.imgSrc = null;
     render();
+
+    /* Take him to the thing he just made — a toast alone leaves you wondering
+       whether it worked. */
+    toast(t('save_product'), name + ' · ' + pieces + ' pcs · ' + skus + ' SKU', 'ok', 5000, {
+      label: t('view_all'),
+      attrs: 'data-act="open-new-product" data-id="' + p.id + '"'
+    });
+  },
+
+  'open-new-product': function (el) {
+    var id = +el.getAttribute('data-id');
+    go('products', function () { openProductDrawer(id); });
   },
 
   'rep-tab': function (el) { OG.rep.tab = el.getAttribute('data-tab'); render(); },
 
+  'more-sheet': function () { openMoreSheet(); },
+  'more-go': function (el) { closeModal(); go(el.getAttribute('data-view')); },
+
+  'pr-tab': function (el) {
+    OG.pr = OG.pr || {};
+    OG.pr.tab = el.getAttribute('data-tab');
+    render();
+  },
+
+  'og-open-inv': function (el) { openPartnerInvoice(el.getAttribute('data-id')); },
+
+  /* OG settles the bill. This writes into the same invoice object the partner
+     portal renders, so switching portals shows it already paid — no sync. */
+  'og-pay-inv': function (el) {
+    var inv = DB.invoice(el.getAttribute('data-id'));
+    if (!inv) return;
+    var bal = DB.invoiceBalance(inv);
+    if (bal <= 0) return;
+    DB.payInvoice(inv, bal, 'cash');
+    DB.postMessage({ invoiceId: inv.id, from: 'og', kind: 'invoice',
+      text: t('og_paid_msg') + ' ' + money(bal) + ' — ' + inv.id });
+    closeModal();
+    toast(inv.id, money(bal) + ' · ' + t('og_paid_toast'), 'ok', 3200);
+    render();
+    if (typeof Notify !== 'undefined') Notify.refresh();
+  },
+
+  /* Fill in the names Yalla Wear is waiting on. Reads the inputs already in
+     the drawer rather than opening a second form on top of the first. */
+  'og-confirm-names': function (el) {
+    var id = el.getAttribute('data-id');
+    var job = DB.job(id);
+    if (!job) return;
+    var before = DB.tbcCount(job);
+
+    document.querySelectorAll('[data-og-line][data-jid="' + id + '"]').forEach(function (inp) {
+      var l = DB.line(id, inp.getAttribute('data-lid'));
+      if (!l) return;
+      var f = inp.getAttribute('data-og-line');
+      if (f === 'print') l.print = (inp.value || '').toUpperCase().trim() || null;
+      if (f === 'number') l.number = inp.value === '' ? null : +inp.value;
+    });
+
+    var after = DB.tbcCount(job);
+    if (after === before) { toast(id, t('og_nothing_changed'), 'warn'); return; }
+
+    DB.postMessage({ jobId: id, from: 'og', kind: 'reply',
+      text: t('og_names_msg') + ' ' + (before - after) + ' — ' +
+            (after ? after + ' ' + t('yl_tbc_pieces') : t('og_all_confirmed')) });
+
+    closeDrawer();
+    toast(id, after ? (after + ' ' + t('yl_tbc') + ' ' + t('yl_lines')) : t('og_names_saved'),
+          after ? 'warn' : 'ok', 3600);
+    render();
+    if (typeof Notify !== 'undefined') Notify.refresh();
+  },
+
+  'og-nudge': function (el) {
+    var id = el.getAttribute('data-id');
+    if (!DB.job(id)) return;
+    openModal({
+      title: t('og_nudge') + ' · ' + id,
+      body: '<label class="field"><span>' + t('yl_message') + '</span>' +
+              '<textarea class="inp" id="ogNudgeText" rows="3">' +
+                esc(t('og_nudge_default')) + '</textarea></label>' +
+            '<div class="partner-note mt">' + t('og_nudge_hint') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+            '<button class="btn btn-primary" data-act="og-nudge-send" data-id="' + id + '">' + t('send') + '</button>'
+    });
+  },
+
+  'og-nudge-send': function (el) {
+    var id = el.getAttribute('data-id');
+    var text = ((document.getElementById('ogNudgeText') || {}).value || '').trim();
+    if (!text) { toast(t('og_nudge'), t('yl_note_empty'), 'warn'); return; }
+    DB.postMessage({ jobId: id, from: 'og', kind: 'nudge', text: text });
+    closeModal();
+    closeDrawer();
+    toast(id, t('og_nudge_sent'), 'ok', 3200);
+    render();
+    if (typeof Notify !== 'undefined') Notify.refresh();
+  },
+
   'partner-view': function () {
     OG.print.partner = !OG.print.partner;
+    /* A portal switch is the biggest context change in the app — it earns a
+       full entrance, and it always reads as going forward. */
+    if (typeof Motion !== 'undefined') { OG.dir = 'fwd'; Motion.mark(); }
     if (OG.print.partner) YALLA.reset();
     closeDrawer();
     renderSidebar();
@@ -3178,6 +3985,9 @@ function boot() {
   var raw = window.location.hash;
   var v = raw.replace('#', '');
   OG.view = (v && VIEWS[v]) ? v : 'dashboard';
+  /* First paint gets the full entrance — this is the moment he first sees
+     the app, and it is the one time the animation is unambiguously worth it. */
+  if (typeof Motion !== 'undefined') Motion.mark();
   renderSidebar();
   render();
   bindGlobal();

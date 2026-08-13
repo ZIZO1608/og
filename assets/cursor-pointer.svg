@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+<!-- The interactive variant: same arrow, plus a lime ring that says "this
+     responds". Used on buttons and links in place of the native hand.
+     Hotspot is 3,3 — identical to cursor.svg, so the tip does not jump as the
+     pointer crosses onto a button. -->
+<circle cx="17.5" cy="17.5" r="8.2" fill="none" stroke="#0A0A0B" stroke-width="3.4" opacity=".85"/>
+<circle cx="17.5" cy="17.5" r="8.2" fill="none" stroke="#C6FF00" stroke-width="1.6"/>
+<path d="M3 2.4 L3 18.2 L7.05 14.6 L9.7 20.6 L12.5 19.4 L9.9 13.5 L15.3 13.1 Z"
+      fill="#0A0A0B" stroke="#0A0A0B" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M3 2.4 L3 18.2 L7.05 14.6 L9.7 20.6 L12.5 19.4 L9.9 13.5 L15.3 13.1 Z"
+      fill="#C6FF00"/>
+</svg>

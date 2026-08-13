@@ -33,11 +33,31 @@ var Charts = (function () {
   var MUTED = '#A1A1AA';      /* tick labels */
   var SURFACE = '#141417';    /* card background, used for donut segment gaps */
 
+  /* Charts draw themselves in rather than appearing finished: bars grow in
+     sequence, lines sweep left to right. The per-point delay is what makes it
+     read as drawing rather than fading.
+
+     Honoured only when motion is allowed — under prefers-reduced-motion the
+     chart snaps to its final state like everything else. */
+  function anim(perPoint) {
+    if (typeof Motion !== 'undefined' && Motion.reduced()) return { duration: 0 };
+    return {
+      duration: 620,
+      easing: 'easeOutQuart',
+      delay: function (ctx) {
+        /* `active` fires on hover; delaying those would make tooltips feel
+           broken, so the stagger applies to the initial draw only. */
+        if (ctx.type !== 'data' || ctx.mode !== 'default') return 0;
+        return ctx.dataIndex * (perPoint || 18);
+      }
+    };
+  }
+
   function baseOpts(extra) {
     var o = {
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: 420 },
+      animation: anim(18),
       plugins: {
         legend: { display: false },
         tooltip: {

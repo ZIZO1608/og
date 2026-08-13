@@ -74,6 +74,8 @@ var POS = (function () {
     S.flashSku = v.sku;
     if (!silent) toast(p.name, t('size') + ' ' + v.size + ' · ' + money(p.sellingPrice), 'ok', 1600);
     paintCart();
+    pulseScan(true);
+    countTotal();
     return true;
   }
 
@@ -82,7 +84,10 @@ var POS = (function () {
     if (!code) return false;
     var v = DB.variantByBarcode(code);
     if (!v) {
-      if (!silent) toast(t('scan_btn'), (OG.lang === 'ar' ? 'باركود غير معروف: ' : 'Unknown barcode: ') + code, 'err');
+      if (!silent) {
+        toast(t('scan_btn'), (OG.lang === 'ar' ? 'باركود غير معروف: ' : 'Unknown barcode: ') + code, 'err');
+        pulseScan(false);
+      }
       return false;
     }
     return addVariant(v, silent);
@@ -321,6 +326,27 @@ var POS = (function () {
       S.flashSku = null;
     }
     paintGrid();
+  }
+
+  /* Confirms the scan landed, before the eye reaches the cart. At a till the
+     feedback loop matters more than the animation: he needs to know it took
+     without looking away from the next item in his hand. */
+  function pulseScan(good) {
+    var inp = document.getElementById('posScan');
+    if (!inp || (typeof Motion !== 'undefined' && Motion.reduced())) return;
+    var cls = good ? 'hit' : 'miss';
+    inp.classList.remove('hit', 'miss');
+    void inp.offsetWidth;                 // restart the animation on a repeat scan
+    inp.classList.add(cls);
+    setTimeout(function () { inp.classList.remove(cls); }, good ? 420 : 520);
+  }
+
+  /* The grand total re-counts to its new value rather than swapping. Reuses
+     the same count-up the dashboard KPIs use, so the easing matches. */
+  function countTotal() {
+    if (typeof Motion === 'undefined') return;
+    var el = document.querySelector('#cartTotals .tr.grand span:last-child');
+    if (el) Motion.count(el);
   }
 
   function paintFoot() {

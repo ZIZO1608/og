@@ -8,10 +8,11 @@
      2. CATALOGUE       — 24 products + their per-size variants (stock lives here)
      3. PEOPLE          — 40 customers, 7 employees, 6 suppliers
      4. SALES           — 120 invoices across the last 6 months
-     5. PRINT JOBS      — 12 t-shirt printing jobs with Yalla Wear
+     5. PRINT JOBS      — printing jobs with Yalla Wear, bulk and per-kit
      6. MOVEMENTS       — warehouse stock movement log
      7. MISC            — storefront orders, notifications
-     8. HELPERS         — lookup functions used by the rest of the app
+     8. PARTNER FINANCE — Yalla Wear invoices to OG, and the message thread
+     9. HELPERS         — lookup functions used by the rest of the app
    ========================================================================== */
 
 /* ---------------------------------------------------------------- 1. CONFIG */
@@ -48,6 +49,16 @@ var CONFIG = {
      scanned by a customer's phone on mobile data. Empty falls back to the
      current location, which is right for a laptop-only demo. */
   PUBLIC_URL: 'https://zizo1608.github.io/og/',
+
+  /* What OG pays Yalla Wear to print one football kit — name, number, badges.
+     Bulk jobs (school shirts, cafe staff) are priced per job instead, because
+     those include the garment. Change this one number and every kit line,
+     every job payout and every partner invoice re-prices instantly. */
+  KIT_PRINT_PRICE: 18000,
+
+  /* How long Yalla Wear gives OG to settle an invoice. Drives the ageing
+     buckets on the partner finance page. */
+  INVOICE_TERMS_DAYS: 30,
 
   SHOP_NAME: 'OG System',
   SHOP_TAGLINE: 'Sneakers & Streetwear',
@@ -343,19 +354,127 @@ var PRINT_STAGE_LABELS = {
   design: 'Design', sent: 'Sent to print', printing: 'Printing', delivery: 'Delivery', done: 'Done'
 };
 
+/* ---- football kits ---------------------------------------------------------
+   Yalla Wear's real trade. A kit job is billed per shirt, not per job: club,
+   the name printed on the back, the squad number, the size.
+
+   A line with no `print` is a kit the customer ordered before deciding on a
+   name. It shows as TO BE CONFIRMED and it is the reason the whole
+   confirmation loop exists — Yalla cannot print it, and only OG can resolve
+   it, because only OG is talking to the customer. There is deliberately NO
+   separate `tbc` flag: an empty name IS the state, so the two can never
+   drift apart. */
+
+var CLUBS = {
+  rma:  ['Real Madrid',                     'ريال مدريد'],
+  rmal: ['Real Madrid · Limited Edition',   'ريال مدريد · إصدار محدود'],
+  bay:  ['Bayern Munich',                   'بايرن ميونخ'],
+  bar:  ['Barcelona 26/27 · Fan Edition',   'برشلونة · نسخة الجماهير'],
+  int:  ['Inter Milan',                     'إنتر ميلان'],
+  fra:  ['France',                          'فرنسا'],
+  syr:  ['Syria',                           'سوريا'],
+  syrg: ['Syria · Green',                   'سوريا · الأخضر'],
+  syrw: ['Syria · White',                   'سوريا · الأبيض']
+};
+
+var _lineSeq = 0;
+function kl(clubKey, print, number, size, qty) {
+  var c = CLUBS[clubKey];
+  return {
+    id: 'L' + pad(++_lineSeq, 3),
+    club: c[0], clubAr: c[1],
+    print: print || null,                  // null === TO BE CONFIRMED
+    number: number || null,
+    size: size, qty: qty || 1,
+    price: CONFIG.KIT_PRINT_PRICE
+  };
+}
+
+/* P-1043 is one whole team — eighteen Syria shirts, numbers 1 to 18. Five
+   squad places were still open when the order was taken, so five lines have
+   no name. That is why this job sits at "Sent to print" while overdue: it
+   physically cannot advance. It is the best single story in the demo. */
+var SYRIA_SQUAD = [
+  ['SHAMOUN', 1, 'L'], ['MATER', 2, 'M'],   ['C. ADIB', 3, 'L'],  ['KHRIBIN', 4, 'XL'],
+  ['AL SOMA', 5, 'L'], ['MAWAS', 6, 'M'],   ['AL SALIH', 7, 'M'], [null, 8, 'L'],
+  ['KOURBIS', 9, 'XL'],['OMARI', 10, 'M'],  ['AL DALI', 11, 'L'], [null, 12, 'M'],
+  ['KALFA', 13, 'S'],  [null, 14, 'L'],     ['JENYAT', 15, 'XL'], [null, 16, 'M'],
+  ['AL MIDANI', 17, 'L'], [null, 18, 'S']
+];
+
+var KIT_LINES = {
+  /* Delivered and fully invoiced — the history the finance page needs.
+     Every name is filled in, and it has to be: a shirt cannot reach "done"
+     with no name on it, and DB.setStage enforces exactly that. The paper
+     invoice you supplied shows TBC lines because it was raised before
+     production; here, TBC lives on jobs still in flight (P-1043, P-1047). */
+  'P-1030': [
+    kl('fra',  'MBAPPE',       10, 'L', 2), kl('bay', 'KANE',        9, 'M', 1),
+    kl('rma',  'VINICIUS',      7, 'L', 1), kl('syr', 'KHRIBIN',     9, 'M', 1),
+    kl('rma',  'ARDA GÜLER',   15, 'M', 1), kl('bay', 'MUSIALA',    42, 'L', 2),
+    kl('int',  'MAKDISI',      10, 'XL',1), kl('rma', 'ZIDANE',      5, 'L', 1),
+    kl('rma',  'ABDO',         22, 'M', 1), kl('rmal','ROUNI',        7, 'S', 1),
+    kl('bar',  'AREES',        10, 'L', 1), kl('syrg','C. ADIB',     10, 'M', 1),
+    kl('syrg', 'MATER',         7, 'L', 1), kl('syrw','SHAMOUN',     11, 'M', 1)
+  ],
+  'P-1032': [
+    kl('bay', 'MUSIALA',      42, 'M', 2), kl('bay', 'KANE',        9, 'XL',1),
+    kl('rma', 'VINICIUS',      7, 'L', 2), kl('rma', 'BELLINGHAM',  5, 'M', 1),
+    kl('bar', 'YAMAL',        19, 'S', 2), kl('bar', 'PEDRI',       8, 'M', 1),
+    kl('int', 'LAUTARO',      10, 'L', 1), kl('fra', 'MBAPPE',     10, 'M', 2),
+    kl('fra', 'GRIEZMANN',     7, 'L', 1), kl('syrg','KHRIBIN',     9, 'XL',1)
+  ],
+  'P-1034': [
+    kl('syrw','AL SOMA',      10, 'L', 2), kl('syrg','MAWAS',      11, 'M', 1),
+    kl('rma', 'MODRIC',       10, 'S', 1), kl('int', 'BARELLA',    23, 'M', 1),
+    kl('bay', 'DAVIES',       19, 'L', 1), kl('bar', 'GAVI',        6, 'M', 1)
+  ],
+  /* delivered, NOT yet invoiced — what the invoice builder opens onto */
+  'P-1036': [
+    kl('rma', 'ZIDANE',        5, 'L', 1), kl('rma', 'ABDO',     null, 'M', 1),
+    kl('bay', 'MUSIALA',      42, 'M', 2), kl('bar', 'AREES',      10, 'L', 1),
+    kl('int', 'MAKDISI',    null, 'XL',1), kl('fra', 'MBAPPE',     10, 'M', 2),
+    kl('syrg','MATER',         7, 'L', 1), kl('syrw','SHAMOUN',    11, 'M', 1),
+    kl('rmal','ROUNI',         7, 'S', 1), kl('bay', 'KANE',        9, 'XL',1)
+  ],
+  'P-1038': [
+    kl('rma', 'ARDA GÜLER', null, 'M', 1), kl('rma', 'VINICIUS',    7, 'L', 1),
+    kl('syrg','C. ADIB',      10, 'M', 2), kl('int', 'LAUTARO',    10, 'L', 1),
+    kl('fra', 'GRIEZMANN',     7, 'M', 1)
+  ],
+  /* in production, all names confirmed — so it was allowed past "Sent" */
+  'P-1040': [
+    kl('bay', 'OLISE',         7, 'M', 1), kl('rma', 'BELLINGHAM',  5, 'L', 1),
+    kl('syrg','AL SALIH',     14, 'M', 1), kl('bar', 'YAMAL',      19, 'S', 1)
+  ],
+  /* blocked: five names missing, and already two days late */
+  'P-1043': SYRIA_SQUAD.map(function (s) { return kl('syrg', s[0], s[1], s[2], 1); }),
+  /* just taken at the till, still being designed */
+  'P-1047': [
+    kl('rmal','ROUNI',         7, 'M', 1), kl('bar', null,       null, 'L', 1),
+    kl('syrw','SHAMOUN',      11, 'S', 1), kl('fra', null,       null, 'M', 2)
+  ]
+};
+
+/* `qty`, `sizes` and `cost` are DERIVED for kit jobs in buildJobDetail below,
+   so a line can never disagree with its job's totals. Only `price` — what OG
+   charges the customer — is authored here, because that is OG's margin call. */
 var printJobs = [
-  { id: 'P-1036', customer: 'Rana Mansour',   phone: '+963 933 447 210', design: 'Back print — "TEAM RANA" + est. 2019', qty: 12, priority: 'normal', deadline: daysAgo(6),  stage: 'done',     price: 1080000, cost: 540000, created: daysAgo(20) },
-  { id: 'P-1037', customer: 'Al-Nour School', phone: '+963 944 118 663', design: 'Graduation shirts, white on navy',      qty: 45, priority: 'normal', deadline: daysAgo(3),  stage: 'done',     price: 3825000, cost: 1912500, created: daysAgo(24) },
-  { id: 'P-1038', customer: 'Karim Deeb',     phone: '+963 991 220 574', design: 'Front chest logo, single colour',       qty:  6, priority: 'normal', deadline: daysAgo(1),  stage: 'done',     price:  540000, cost: 264000, created: daysAgo(15) },
-  { id: 'P-1039', customer: 'Fadi Barakat',   phone: '+963 955 761 038', design: 'Full back — Damascus skyline, 3 colour', qty: 20, priority: 'normal', deadline: daysAhead(4), stage: 'delivery', price: 2100000, cost: 1050000, created: daysAgo(12) },
-  { id: 'P-1040', customer: 'Sara Kurdi',     phone: '+963 932 604 917', design: 'Small left-chest "SK" monogram',        qty:  4, priority: 'normal', deadline: daysAhead(6), stage: 'printing', price:  380000, cost: 176000, created: daysAgo(9)  },
-  { id: 'P-1041', customer: 'Bilal Ammar',    phone: '+963 987 335 402', design: 'Sleeve print both arms, gold foil',     qty: 15, priority: 'urgent', deadline: daysAhead(2), stage: 'printing', price: 1875000, cost:  900000, created: daysAgo(7)  },
-  { id: 'P-1042', customer: 'Maya Shaheen',   phone: '+963 941 552 286', design: 'Oversized front — "NO SLEEP" arabic',   qty:  8, priority: 'normal', deadline: daysAhead(9), stage: 'sent',     price:  760000, cost:  368000, created: daysAgo(5)  },
-  { id: 'P-1043', customer: 'Ahmad Al-Khatib',phone: '+963 933 118 204', design: 'Team kit numbers 1–18, back print',     qty: 18, priority: 'urgent', deadline: daysAgo(2),  stage: 'printing', price: 1980000, cost:  918000, created: daysAgo(16) },
-  { id: 'P-1044', customer: 'Ziad Sabbagh',   phone: '+963 966 810 447', design: 'Cafe staff shirts, embroidered',        qty: 10, priority: 'normal', deadline: daysAgo(1),  stage: 'sent',     price: 1250000, cost:  620000, created: daysAgo(13) },
-  { id: 'P-1045', customer: 'Yara Malki',     phone: '+963 944 273 159', design: 'Couple set, front text arabic script',  qty:  2, priority: 'normal', deadline: daysAhead(5), stage: 'design',   price:  210000, cost:   96000, created: daysAgo(2)  },
-  { id: 'P-1046', customer: 'Tarek Jaber',    phone: '+963 955 336 720', design: 'Gym brand — 2 designs, 3 sizes',        qty: 30, priority: 'urgent', deadline: daysAhead(3), stage: 'design',   price: 3300000, cost: 1620000, created: daysAgo(1)  },
-  { id: 'P-1047', customer: 'Nada Sultan',    phone: '+963 932 447 881', design: 'Birthday shirts, photo transfer',       qty:  5, priority: 'normal', deadline: daysAhead(8), stage: 'design',   price:  575000, cost:  270000, created: TODAY       }
+  { id: 'P-1030', customer: 'Ligue Sport Club',phone: '+963 933 552 001', design: 'Kit batch — 16 shirts, mixed clubs',   kind: 'kit',  qty: 16, priority: 'normal', deadline: daysAgo(90), stage: 'done',     price:  640000, created: daysAgo(96) },
+  { id: 'P-1032', customer: 'Malki Sports',    phone: '+963 944 330 812', design: 'Kit batch — 14 shirts, mixed clubs',   kind: 'kit',  qty: 14, priority: 'normal', deadline: daysAgo(68), stage: 'done',     price:  560000, created: daysAgo(74) },
+  { id: 'P-1034', customer: 'Hamra Fan Store', phone: '+963 991 774 265', design: 'Kit batch — 7 shirts, mixed clubs',    kind: 'kit',  qty:  7, priority: 'normal', deadline: daysAgo(56), stage: 'done',     price:  280000, created: daysAgo(62) },
+  { id: 'P-1036', customer: 'Rana Mansour',   phone: '+963 933 447 210', design: 'Kit batch — 12 shirts, mixed clubs',   kind: 'kit',  qty: 12, priority: 'normal', deadline: daysAgo(6),  stage: 'done',     price:  480000, created: daysAgo(20) },
+  { id: 'P-1037', customer: 'Al-Nour School', phone: '+963 944 118 663', design: 'Graduation shirts, white on navy',                   qty: 45, priority: 'normal', deadline: daysAgo(3),  stage: 'done',     price: 3825000, cost: 1912500, created: daysAgo(24) },
+  { id: 'P-1038', customer: 'Karim Deeb',     phone: '+963 991 220 574', design: 'Kit batch — 6 shirts, Real / Syria / Inter', kind: 'kit', qty: 6, priority: 'normal', deadline: daysAgo(1), stage: 'done',  price:  245000, created: daysAgo(15) },
+  { id: 'P-1039', customer: 'Fadi Barakat',   phone: '+963 955 761 038', design: 'Full back — Damascus skyline, 3 colour',            qty: 20, priority: 'normal', deadline: daysAhead(4), stage: 'delivery', price: 2100000, cost: 1050000, created: daysAgo(12) },
+  { id: 'P-1040', customer: 'Sara Kurdi',     phone: '+963 932 604 917', design: 'Kit batch — 4 shirts, names confirmed', kind: 'kit', qty: 4, priority: 'normal', deadline: daysAhead(6), stage: 'printing', price:  165000, created: daysAgo(9)  },
+  { id: 'P-1041', customer: 'Bilal Ammar',    phone: '+963 987 335 402', design: 'Sleeve print both arms, gold foil',                 qty: 15, priority: 'urgent', deadline: daysAhead(2), stage: 'printing', price: 1875000, cost:  900000, created: daysAgo(7)  },
+  { id: 'P-1042', customer: 'Maya Shaheen',   phone: '+963 941 552 286', design: 'Oversized front — "NO SLEEP" arabic',               qty:  8, priority: 'normal', deadline: daysAhead(9), stage: 'sent',     price:  760000, cost:  368000, created: daysAgo(5)  },
+  { id: 'P-1043', customer: 'Ahmad Al-Khatib',phone: '+963 933 118 204', design: 'Syria team kit — numbers 1 to 18',     kind: 'kit',  qty: 18, priority: 'urgent', deadline: daysAgo(2),  stage: 'sent',     price:  760000, created: daysAgo(16) },
+  { id: 'P-1044', customer: 'Ziad Sabbagh',   phone: '+963 966 810 447', design: 'Cafe staff shirts, embroidered',                    qty: 10, priority: 'normal', deadline: daysAgo(1),  stage: 'sent',     price: 1250000, cost:  620000, created: daysAgo(13) },
+  { id: 'P-1045', customer: 'Yara Malki',     phone: '+963 944 273 159', design: 'Couple set, front text arabic script',              qty:  2, priority: 'normal', deadline: daysAhead(5), stage: 'design',   price:  210000, cost:   96000, created: daysAgo(2)  },
+  { id: 'P-1046', customer: 'Tarek Jaber',    phone: '+963 955 336 720', design: 'Gym brand — 2 designs, 3 sizes',                    qty: 30, priority: 'urgent', deadline: daysAhead(3), stage: 'design',   price: 3300000, cost: 1620000, created: daysAgo(1)  },
+  { id: 'P-1047', customer: 'Nada Sultan',    phone: '+963 932 447 881', design: 'Kit batch — 5 shirts, 2 names pending', kind: 'kit', qty: 5, priority: 'normal', deadline: daysAhead(8), stage: 'design',  price:  215000, created: TODAY       }
 ];
 
 /* Split an order across tee sizes on a realistic curve. Shared by the seed
@@ -378,17 +497,50 @@ function splitSizes(qty) {
 
 /* Each job carries a size breakdown and a stamped stage history, so the
    delivery tracker can show *when* every step happened rather than just
-   where the job sits now. */
+   where the job sits now. Kit jobs additionally derive qty, cost and the
+   size breakdown FROM their lines — never the other way round, so a line
+   and its job total can never disagree. */
 (function buildJobDetail() {
   printJobs.forEach(function (j) {
-    j.sizes = splitSizes(j.qty);
+    j.kind = j.kind || 'bulk';
+    j.lines = KIT_LINES[j.id] || null;
+    if (!j.lines) j.kind = 'bulk';
 
-    /* Spread the completed stages evenly between created and today. */
+    if (j.kind === 'kit') {
+      j.qty = j.lines.reduce(function (a, l) { return a + l.qty; }, 0);
+      j.cost = j.lines.reduce(function (a, l) { return a + l.qty * l.price; }, 0);
+      j.sizes = {};
+      /* Walk TEE_SIZES rather than the lines, so the chips always read
+         S · M · L · XL in that order however the order was taken. */
+      TEE_SIZES.forEach(function (sz) {
+        var n = j.lines.reduce(function (a, l) { return a + (l.size === sz ? l.qty : 0); }, 0);
+        if (n) j.sizes[sz] = n;
+      });
+    } else {
+      j.sizes = splitSizes(j.qty);
+    }
+
+    /* Spread the completed stages evenly between created and the point the
+       job actually stopped moving.
+
+       For work still in flight that point is today. For a FINISHED job it is
+       its deadline — not today. Stamping every completed job as finishing
+       today made the last stage land after every past deadline, so the
+       on-time rate computed from this history came out at a flat 0%. Two
+       jobs are deliberately stamped two days late so the figure reads like a
+       real workshop rather than a suspicious 100%. */
     var idx = PRINT_STAGES.indexOf(j.stage);
-    var span = Math.max(1, Math.round((TODAY - j.created) / 86400000));
+    var lateBy = (parseInt(j.id.split('-')[1], 10) % 4 === 0) ? 2 : 0;
+    var startBack = Math.round((TODAY - j.created) / 86400000);
+    var endBack = (j.stage === 'done')
+      ? Math.max(0, Math.round((TODAY - j.deadline) / 86400000) - lateBy)
+      : 0;
+    if (endBack > startBack) endBack = 0;
+    var span = Math.max(1, startBack - endBack);
+
     j.history = [];
     for (var i = 0; i <= idx; i++) {
-      var back = idx === 0 ? span : Math.round(span - (span * i / idx));
+      var back = idx === 0 ? startBack : Math.round(startBack - (span * i / idx));
       j.history.push({ stage: PRINT_STAGES[i], at: daysAgo(Math.max(0, back)) });
     }
   });
@@ -453,7 +605,98 @@ var notifications = [
   { icon: 'P', tone: 'grey',  text: 'Payroll for 6 employees runs in 6 days',         view: 'reports' }
 ];
 
-/* -------------------------------------------------------------- 8. HELPERS */
+/* ----------------------------------------------------- 8. PARTNER FINANCE */
+
+/* Yalla Wear bills OG. Money flows one way here, which is why the language is
+   "outstanding" rather than "debt" — this is the partner's receivable.
+
+   An invoice references KIT LINES, not whole jobs:
+       refs: [ { jobId: 'P-1030', lineId: 'L001' }, ... ]
+   because one bill covers shirts drawn from several different customer
+   orders — exactly what the paper invoice shows. A bulk job cannot be split,
+   so it is referenced as a whole with `lineId: null`.
+
+   `status` is DERIVED from the payments (see DB.invoiceStatus). Nothing sets
+   it by hand, so a part-paid invoice can never be sitting there labelled
+   "paid" because two screens disagreed. */
+
+var INVOICE_TERMS = CONFIG.INVOICE_TERMS_DAYS;
+
+function refsFor(jobId) {
+  var ls = KIT_LINES[jobId];
+  if (!ls) return [{ jobId: jobId, lineId: null }];
+  return ls.map(function (l) { return { jobId: jobId, lineId: l.id }; });
+}
+
+var partnerInvoices = [
+  { id: 'YW-2026-011', issued: daysAgo(88), due: daysAgo(58), refs: refsFor('P-1030'),
+    note: 'All kits printed · payment on delivery.',
+    payments: [{ at: daysAgo(76), amount: 288000, method: 'cash' }] },
+
+  { id: 'YW-2026-012', issued: daysAgo(66), due: daysAgo(36), refs: refsFor('P-1032'),
+    note: 'All kits printed · names confirmed before production.',
+    payments: [{ at: daysAgo(55), amount: 252000, method: 'sham' }] },
+
+  /* Left unpaid on purpose and long past its terms — the partner finance page
+     needs something genuinely overdue or the ageing table is decoration. */
+  { id: 'YW-2026-013', issued: daysAgo(45), due: daysAgo(15), refs: refsFor('P-1034'),
+    note: 'Kit batch — 7 shirts.', payments: [] },
+
+  { id: 'YW-2026-014', issued: daysAgo(6), due: daysAhead(24), refs: refsFor('P-1037'),
+    note: 'Graduation order, 45 shirts · part payment received.',
+    payments: [{ at: daysAgo(5), amount: 1000000, method: 'cash' }] }
+];
+
+/* ---- the two-way line between OG and Yalla Wear ---------------------------
+   One array, read from both portals. That is the whole mechanism: there is no
+   syncing, no copy, no second source — OG and Yalla are looking at the same
+   objects, which is why a message posted on one side is simply *there* on the
+   other. `readOg` / `readYl` are tracked separately so reading a thread in one
+   portal never silently clears the other side's badge. A sender has, by
+   definition, already read their own message. */
+
+var MSG_REASONS = {
+  'fabric-late':     'Fabric delivery late',
+  'printer-down':    'Printer / heat press down',
+  'awaiting-names':  'Waiting on name confirmation',
+  'quality-recheck': 'Quality re-check',
+  'other':           'Other'
+};
+
+function hoursAgo(n) { return new Date(Date.now() - n * 3600000); }
+
+var _msgSeq = 0;
+var jobMessages = [
+  { id: 'M' + (++_msgSeq), jobId: 'P-1043', from: 'yalla', kind: 'name-request',
+    text: 'Cannot start printing — 5 shirts still have no name. Numbers 8, 12, 14, 16 and 18.',
+    at: hoursAgo(52), readOg: false, readYl: true },
+
+  { id: 'M' + (++_msgSeq), jobId: 'P-1043', from: 'og', kind: 'nudge',
+    text: 'Customer is calling every day about this one. The moment the names land, please push it to the front.',
+    at: hoursAgo(29), readOg: true, readYl: true },
+
+  { id: 'M' + (++_msgSeq), jobId: 'P-1041', from: 'yalla', kind: 'delay', reason: 'printer-down',
+    text: 'Heat press went down yesterday evening. Engineer is booked for Tuesday morning.',
+    at: hoursAgo(7), readOg: false, readYl: true },
+
+  { id: 'M' + (++_msgSeq), jobId: 'P-1046', from: 'og', kind: 'nudge',
+    text: 'Gym brand order — the customer moved the opening to Thursday. Can we pull it forward a day?',
+    at: hoursAgo(3), readOg: true, readYl: false },
+
+  { id: 'M' + (++_msgSeq), jobId: 'P-1039', from: 'yalla', kind: 'note',
+    text: 'Packed and going out with the afternoon run.',
+    at: hoursAgo(26), readOg: true, readYl: true },
+
+  { id: 'M' + (++_msgSeq), invoiceId: 'YW-2026-014', from: 'yalla', kind: 'invoice',
+    text: 'Invoice YW-2026-014 issued — 1,912,500 SYP, 45 shirts, due in 24 days.',
+    at: hoursAgo(140), readOg: false, readYl: true },
+
+  { id: 'M' + (++_msgSeq), invoiceId: 'YW-2026-013', from: 'yalla', kind: 'reminder',
+    text: 'YW-2026-013 is now 15 days past its terms. 126,000 SYP still outstanding.',
+    at: hoursAgo(50), readOg: false, readYl: true }
+];
+
+/* -------------------------------------------------------------- 9. HELPERS */
 
 var DB = {
   config: CONFIG,
@@ -474,6 +717,10 @@ var DB = {
   printStages: PRINT_STAGES,
   printStageLabels: PRINT_STAGE_LABELS,
   movementTypes: MOVEMENT_TYPES,
+  partnerInvoices: partnerInvoices,
+  jobMessages: jobMessages,
+  msgReasons: MSG_REASONS,
+  clubs: CLUBS,
 
   product: function (id) { return products.filter(function (p) { return p.id === id; })[0]; },
   customer: function (id) { return customers.filter(function (c) { return c.id === id; })[0]; },
@@ -516,10 +763,17 @@ var DB = {
   stageIndex: function (job) { return PRINT_STAGES.indexOf(job.stage); },
 
   /* Single place a job's stage can change, so the history always stays in
-     step with the tracker — used by the OG kanban and the Yalla portal. */
+     step with the tracker — used by the OG kanban and the Yalla portal.
+
+     The TBC gate lives here rather than in the two UIs that call it. A shirt
+     with no name on it cannot be printed, so no screen — partner board, OG
+     kanban, bulk stage-advance — should be able to push the job past
+     "Sent to print". Enforcing it at the data layer means that is true by
+     construction instead of by three separate people remembering. */
   setStage: function (job, stage) {
     var to = PRINT_STAGES.indexOf(stage);
     if (to < 0 || job.stage === stage) return false;
+    if (to > PRINT_STAGES.indexOf('sent') && DB.tbcCount(job) > 0) return false;
     job.stage = stage;
     job.history = (job.history || []).filter(function (h) {
       return PRINT_STAGES.indexOf(h.stage) < to;
@@ -533,6 +787,307 @@ var DB = {
     return hit ? hit.at : null;
   },
 
+  /* ---- kits --------------------------------------------------------------
+     A "TBC" line is simply one with no printed name. There is no flag to keep
+     in sync, so the two can never disagree. */
+
+  job: function (id) { return printJobs.filter(function (j) { return j.id === id; })[0]; },
+
+  kitLines: function (job) { return (job && job.lines) || []; },
+
+  line: function (jobId, lineId) {
+    return DB.kitLines(DB.job(jobId)).filter(function (l) { return l.id === lineId; })[0];
+  },
+
+  tbcLines: function (job) {
+    return DB.kitLines(job).filter(function (l) { return !l.print; });
+  },
+
+  /* Counted in PIECES, not lines — a TBC line for two shirts is two shirts
+     nobody can print. */
+  tbcCount: function (job) {
+    return DB.tbcLines(job).reduce(function (a, l) { return a + l.qty; }, 0);
+  },
+
+  jobKitTotal: function (job) {
+    return DB.kitLines(job).reduce(function (a, l) { return a + l.qty * l.price; }, 0);
+  },
+
+  /* What a stage change would do, without doing it — so a UI can grey out a
+     drop target instead of letting the user try and get a toast. */
+  blockedBy: function (job, stage) {
+    if (PRINT_STAGES.indexOf(stage) > PRINT_STAGES.indexOf('sent') && DB.tbcCount(job) > 0) return 'tbc';
+    return null;
+  },
+
+  confirmName: function (jobId, lineId, name, number) {
+    var l = DB.line(jobId, lineId);
+    if (!l) return false;
+    l.print = (name || '').toUpperCase().trim() || null;
+    if (number !== undefined) l.number = number || null;
+    return !!l.print;
+  },
+
+  /* ---- partner invoices --------------------------------------------------
+     Everything below derives from `refs` and `payments`. Nothing stores a
+     total or a status, so nothing can go stale. */
+
+  invoice: function (id) { return partnerInvoices.filter(function (i) { return i.id === id; })[0]; },
+
+  /* Resolve one ref to { label, sub, qty, amount }. lineId null = whole bulk
+     job; otherwise a single kit line. Returns null if the ref has gone stale,
+     so a deleted job cannot take the finance page down with it. */
+  refDetail: function (ref) {
+    var j = DB.job(ref.jobId);
+    if (!j) return null;
+    if (!ref.lineId) {
+      return { jobId: j.id, lineId: null, label: j.design, sub: '', number: null,
+               size: null, qty: j.qty, price: j.cost, amount: j.cost };
+    }
+    var l = DB.line(ref.jobId, ref.lineId);
+    if (!l) return null;
+    return { jobId: j.id, lineId: l.id, label: l.club, sub: l.clubAr, print: l.print,
+             number: l.number, size: l.size, qty: l.qty, price: l.price,
+             amount: l.qty * l.price };
+  },
+
+  /* Two kinds of line on one invoice:
+       refs[]  — pulled from delivered work, so billing stays tied to jobs
+       lines[] — typed by hand on a blank invoice, tied to nothing
+     Both resolve to the same shape, so every total, export and print path
+     below treats them identically and neither is a special case. */
+  invoiceLines: function (inv) {
+    var fromJobs = (inv.refs || []).map(DB.refDetail).filter(Boolean);
+    var freehand = (inv.lines || []).map(function (l) {
+      return { jobId: null, lineId: l.id, label: l.club, sub: l.clubAr, print: l.print,
+               number: l.number, size: l.size, qty: l.qty, price: l.price,
+               amount: l.qty * l.price };
+    });
+    return fromJobs.concat(freehand);
+  },
+
+  invoiceTotal: function (inv) {
+    return DB.invoiceLines(inv).reduce(function (a, d) { return a + d.amount; }, 0);
+  },
+
+  invoicePieces: function (inv) {
+    return DB.invoiceLines(inv).reduce(function (a, d) { return a + d.qty; }, 0);
+  },
+
+  invoicePaid: function (inv) {
+    return (inv.payments || []).reduce(function (a, p) { return a + p.amount; }, 0);
+  },
+
+  invoiceBalance: function (inv) {
+    return Math.max(0, DB.invoiceTotal(inv) - DB.invoicePaid(inv));
+  },
+
+  /* draft (never issued) · paid · part · sent. Overdue is a separate question
+     from status, because an invoice can be part-paid AND late. */
+  invoiceStatus: function (inv) {
+    if (!inv.issued) return 'draft';
+    var paid = DB.invoicePaid(inv), total = DB.invoiceTotal(inv);
+    if (total > 0 && paid >= total) return 'paid';
+    if (paid > 0) return 'part';
+    return 'sent';
+  },
+
+  invoiceOverdue: function (inv) {
+    return DB.invoiceStatus(inv) !== 'paid' && !!inv.issued && !!inv.due && DB.daysSince(inv.due) > 0;
+  },
+
+  /* Delivered work that is not on any invoice yet — the pool the builder
+     opens onto, and the "unbilled" figure on the dashboard. */
+  billedRefKeys: function (exceptId) {
+    var seen = {};
+    partnerInvoices.forEach(function (inv) {
+      if (exceptId && inv.id === exceptId) return;
+      (inv.refs || []).forEach(function (r) { seen[r.jobId + '|' + (r.lineId || '')] = true; });
+    });
+    return seen;
+  },
+
+  unbilledRefs: function (exceptId) {
+    var seen = DB.billedRefKeys(exceptId), out = [];
+    printJobs.forEach(function (j) {
+      if (j.stage !== 'done') return;              // only delivered work is billable
+      var refs = j.kind === 'kit'
+        ? j.lines.map(function (l) { return { jobId: j.id, lineId: l.id }; })
+        : [{ jobId: j.id, lineId: null }];
+      refs.forEach(function (r) {
+        if (!seen[r.jobId + '|' + (r.lineId || '')]) out.push(r);
+      });
+    });
+    return out;
+  },
+
+  unbilledTotal: function () {
+    return DB.unbilledRefs().reduce(function (a, r) {
+      var d = DB.refDetail(r); return a + (d ? d.amount : 0);
+    }, 0);
+  },
+
+  /* Deliberately NOT nextInvoiceId — that name is already taken further down
+     by the sales-invoice counter (INV-2224). Two keys with the same name in
+     one object literal is legal JavaScript and the second silently wins, so
+     this would have quietly handed out INV- numbers to partner invoices. */
+  nextPartnerInvoiceId: function () {
+    var year = TODAY.getFullYear(), max = 0;
+    partnerInvoices.forEach(function (i) {
+      var p = i.id.split('-');
+      if (+p[1] === year) { var n = parseInt(p[2], 10); if (n > max) max = n; }
+    });
+    return 'YW-' + year + '-' + pad(max + 1, 3);
+  },
+
+  newInvoice: function (refs, note, lines) {
+    var inv = { id: DB.nextPartnerInvoiceId(), issued: null, due: null,
+                refs: (refs || []).slice(), lines: (lines || []).slice(),
+                note: note || '', payments: [] };
+    partnerInvoices.unshift(inv);
+    return inv;
+  },
+
+  /* Drop an invoice that was never issued. A sent invoice is a document that
+     exists in the world and someone may be holding a copy — that one gets
+     voided in the UI, never deleted here. */
+  deleteDraft: function (inv) {
+    if (inv.issued) return false;
+    var i = partnerInvoices.indexOf(inv);
+    if (i < 0) return false;
+    partnerInvoices.splice(i, 1);
+    return true;
+  },
+
+  issueInvoice: function (inv, when) {
+    if (inv.issued) return false;
+    inv.issued = when || new Date();
+    inv.due = new Date(inv.issued.getTime() + INVOICE_TERMS * 86400000);
+    return true;
+  },
+
+  /* Refuses overpayment rather than quietly recording a negative balance —
+     if the number is wrong the user needs to see that, not have it absorbed. */
+  payInvoice: function (inv, amount, method, when) {
+    var bal = DB.invoiceBalance(inv);
+    if (!(amount > 0) || amount > bal) return false;
+    inv.payments.push({ at: when || new Date(), amount: amount, method: method || 'cash' });
+    return true;
+  },
+
+  outstandingTotal: function () {
+    return partnerInvoices.reduce(function (a, i) {
+      return i.issued ? a + DB.invoiceBalance(i) : a;
+    }, 0);
+  },
+
+  paidInMonth: function (monthsBack) {
+    var d = new Date(TODAY.getFullYear(), TODAY.getMonth() - (monthsBack || 0), 1);
+    var e = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    return partnerInvoices.reduce(function (a, i) {
+      return a + (i.payments || []).reduce(function (b, p) {
+        return (p.at >= d && p.at < e) ? b + p.amount : b;
+      }, 0);
+    }, 0);
+  },
+
+  /* Averaged over invoices that actually settled, in days from issue to the
+     final payment. An unpaid invoice has no answer yet and is excluded — the
+     alternative silently flatters the number. */
+  avgDaysToPay: function () {
+    var spans = [];
+    partnerInvoices.forEach(function (i) {
+      if (!i.issued || DB.invoiceStatus(i) !== 'paid') return;
+      var last = i.payments.reduce(function (m, p) { return p.at > m ? p.at : m; }, i.issued);
+      spans.push(DB.daysBetween(i.issued, last));
+    });
+    if (!spans.length) return null;
+    return Math.round(spans.reduce(function (a, b) { return a + b; }, 0) / spans.length);
+  },
+
+  /* Buckets are by AGE SINCE ISSUE, and they sum exactly to outstandingTotal. */
+  invoiceAgeing: function () {
+    var b = [{ key: '0-7', max: 7, value: 0 }, { key: '8-30', max: 30, value: 0 },
+             { key: '31-60', max: 60, value: 0 }, { key: '60+', max: Infinity, value: 0 }];
+    partnerInvoices.forEach(function (i) {
+      if (!i.issued) return;
+      var bal = DB.invoiceBalance(i);
+      if (bal <= 0) return;
+      var age = DB.daysSince(i.issued);
+      for (var k = 0; k < b.length; k++) { if (age <= b[k].max) { b[k].value += bal; return; } }
+    });
+    return b;
+  },
+
+  /* ---- messages ----------------------------------------------------------
+     One array, both portals. `from` is the author; a sender has by definition
+     already read their own message. */
+
+  messagesFor: function (opts) {
+    return jobMessages.filter(function (m) {
+      if (opts.jobId) return m.jobId === opts.jobId;
+      if (opts.invoiceId) return m.invoiceId === opts.invoiceId;
+      return true;
+    }).sort(function (a, b) { return a.at - b.at; });
+  },
+
+  postMessage: function (m) {
+    var msg = {
+      id: 'M' + (++_msgSeq),
+      jobId: m.jobId || null, invoiceId: m.invoiceId || null,
+      from: m.from, kind: m.kind || 'note', reason: m.reason || null,
+      text: m.text || '', at: new Date(),
+      readOg: m.from === 'og', readYl: m.from === 'yalla'
+    };
+    jobMessages.push(msg);
+    return msg;
+  },
+
+  unreadFor: function (side) {
+    var f = side === 'og' ? 'readOg' : 'readYl';
+    return jobMessages.filter(function (m) { return !m[f]; });
+  },
+
+  markRead: function (side, filter) {
+    var f = side === 'og' ? 'readOg' : 'readYl', n = 0;
+    jobMessages.forEach(function (m) {
+      if (m[f]) return;
+      if (filter && filter.jobId && m.jobId !== filter.jobId) return;
+      if (filter && filter.invoiceId && m.invoiceId !== filter.invoiceId) return;
+      m[f] = true; n++;
+    });
+    return n;
+  },
+
+  unreadOnJob: function (side, jobId) {
+    var f = side === 'og' ? 'readOg' : 'readYl';
+    return jobMessages.filter(function (m) { return m.jobId === jobId && !m[f]; }).length;
+  },
+
+  /* ---- partner scorecard -------------------------------------------------
+     Both computed from the stamped stage history, so they cost nothing to
+     keep and cannot be fudged. */
+
+  onTimeRate: function () {
+    var done = printJobs.filter(function (j) { return j.stage === 'done'; });
+    if (!done.length) return null;
+    var hit = done.filter(function (j) {
+      var at = DB.stageAt(j, 'done');
+      return at && new Date(at).setHours(0, 0, 0, 0) <= new Date(j.deadline).setHours(0, 0, 0, 0);
+    }).length;
+    return Math.round(hit / done.length * 100);
+  },
+
+  avgTurnaround: function () {
+    var spans = [];
+    printJobs.forEach(function (j) {
+      var at = DB.stageAt(j, 'done');
+      if (at) spans.push(Math.max(0, DB.daysBetween(j.created, new Date(at))));
+    });
+    if (!spans.length) return null;
+    return Math.round(spans.reduce(function (a, b) { return a + b; }, 0) / spans.length);
+  },
+
   /* ---- partner access control -------------------------------------------
      Yalla Wear renders ONLY from this object. The customer's name, phone and
      the price OG charges them are not omitted from a template — they never
@@ -541,6 +1096,12 @@ var DB = {
     return {
       id: job.id,
       design: job.design,
+      kind: job.kind,
+      /* Kit lines DO cross the boundary — the name is going on the shirt, so
+         the person printing it has to know. What still never crosses is who
+         ordered it, their phone number, and what OG charged them. */
+      lines: job.lines || null,
+      tbc: DB.tbcCount(job),
       qty: job.qty,
       sizes: job.sizes,
       priority: job.priority,
@@ -654,15 +1215,84 @@ var DB = {
     return 'INV-' + (max + 1);
   },
 
+  /* The one way a product is created at the till, so a live-entered item is
+     indistinguishable from a seeded one: real variants, real EAN-13 check
+     digits, a real shelf, and a movement logged for the opening stock.
+
+     `imgSrc` is a data URL the shop photographed itself. When it is absent
+     the product falls back to the colour block the rest of the catalogue
+     uses, so a product is never left without a visual. */
+  newProduct: function (f) {
+    var id = products.reduce(function (m, p) { return Math.max(m, p.id); }, 0) + 1;
+    var words = String(f.name).replace(/[^A-Za-z0-9 ]/g, ' ').trim().split(/\s+/);
+    var initials = ((words[0] || 'O')[0] + ((words[1] || words[0] || 'G')[1] || 'G')).toUpperCase();
+    var palette = ['#4A4A52', '#3E5C8A', '#8E3B3B', '#B5822F', '#6B5B45', '#6455A0'];
+
+    var p = {
+      id: id,
+      name: f.name,
+      type: f.type || 'tshirts',
+      brand: f.brand || 'OG',
+      madeIn: f.madeIn || 'Syria',
+      image: { bg: f.bg || palette[id % palette.length], initials: initials, src: f.imgSrc || null },
+      colorway: f.colorway || 'Custom',
+      costPrice: f.cost || 0,
+      sellingPrice: f.price || 0,
+      shelfZone: f.shelf || 'D',
+      hidden: false,
+      lastSoldDaysAgo: 0
+    };
+    products.push(p);
+
+    var now = new Date();
+    Object.keys(f.sizes || {}).forEach(function (size, idx) {
+      var qty = Number(f.sizes[size]) || 0;
+      if (!qty) return;
+      var body = '621' + pad(id, 3) + pad(idx, 2) + pad(ri(0, 9999), 4);
+      var v = {
+        productId: id, size: size, qty: qty,
+        sku: 'OG-' + pad(id, 3) + '-' + size,
+        barcode: body + Codes.ean13Check(body),
+        shelf: p.shelfZone + '-' + pad(ri(1, 24), 2)
+      };
+      variants.push(v);
+      /* Field names must match the seeded movements exactly or the warehouse
+         log renders blank cells for anything created live. */
+      DB.logMovement({
+        date: now, sku: v.sku, productId: id, size: size,
+        type: 'received', delta: qty, balance: qty,
+        note: 'Opening stock — new product', user: 'Maher Odeh'
+      });
+    });
+
+    return p;
+  },
+
+  /* A blank kit line, for the OG-side line editor. Shares the same counter as
+     the seed data so no two lines can ever collide on id. */
+  newKitLine: function (f) {
+    f = f || {};
+    return { id: 'L' + pad(++_lineSeq, 3),
+             club: f.club || '', clubAr: f.clubAr || '',
+             print: f.print || null, number: f.number || null,
+             size: f.size || 'L', qty: f.qty || 1,
+             price: f.price || CONFIG.KIT_PRINT_PRICE };
+  },
+
   /* The one way a print job is created, so every job — seeded or made live
-     at the till — has a size breakdown and a stamped history. */
+     at the till — has a size breakdown and a stamped history. Pass `lines`
+     and it becomes a kit job whose qty, cost and sizes derive from them,
+     exactly like the seeded kit jobs. */
   newPrintJob: function (f) {
     var now = new Date();
+    var lines = f.lines && f.lines.length ? f.lines : null;
     var job = {
       id: DB.nextPrintId(),
       customer: f.customer,
       phone: f.phone,
       design: f.design,
+      kind: lines ? 'kit' : 'bulk',
+      lines: lines,
       qty: f.qty,
       priority: f.priority || 'normal',
       deadline: f.deadline,
@@ -673,8 +1303,22 @@ var DB = {
       sizes: f.sizes || splitSizes(f.qty),
       history: [{ stage: 'design', at: now }]
     };
+    if (lines) DB.resyncKit(job);
     printJobs.push(job);
     return job;
+  },
+
+  /* Re-derive a kit job's totals from its lines. Called after any line edit,
+     so the job header can never drift away from the lines beneath it. */
+  resyncKit: function (job) {
+    if (job.kind !== 'kit' || !job.lines) return;
+    job.qty = job.lines.reduce(function (a, l) { return a + l.qty; }, 0);
+    job.cost = job.lines.reduce(function (a, l) { return a + l.qty * l.price; }, 0);
+    job.sizes = {};
+    TEE_SIZES.forEach(function (sz) {
+      var n = job.lines.reduce(function (a, l) { return a + (l.size === sz ? l.qty : 0); }, 0);
+      if (n) job.sizes[sz] = n;
+    });
   },
 
   nextPrintId: function () {
