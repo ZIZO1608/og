@@ -74,12 +74,20 @@ jobs:
             # animation frames instead of waiting on the wall clock, then dump
             # the DOM once the page has gone quiet. Without it --dump-dom can
             # capture the page before the last assertion has written its line.
+            # --blink-settings claims a mouse. A CI runner has no pointing
+            # device, so `(pointer: fine)` and `(hover: hover)` are both false,
+            # and any code that checks them takes its touch-device branch —
+            # Motion.dock() bails out entirely, which failed a test here that
+            # passes on every real machine. The values are Blink's enums:
+            # pointer fine = 4, hover = 2. Without this the runner is testing
+            # hardware nobody in the shop is using.
             google-chrome \
               --headless=new \
               --disable-gpu \
               --no-sandbox \
               --hide-scrollbars \
               --window-size="$width" \
+              --blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2 \
               --virtual-time-budget=20000 \
               --dump-dom "http://127.0.0.1:8080/$name.html" > "$out" 2>/dev/null
 
@@ -106,7 +114,14 @@ jobs:
               echo "::error title=$name::$line"
               printf '  %-12s %s\n' "$name" "$line"
               # Print the failing assertions, not the whole 500-line dump.
-              grep -o 'FAIL [^<]*' "$out" | head -25 | sed 's/^/      /'
+              #
+              # Anchored to the start of the line and only from the summary
+              # marker onward. A bare `grep FAIL` also matches the harness's own
+              # source further up the dump -- `(c ? 'PASS ' : 'FAIL ')` is in
+              # every one of these files -- which buried the one real failure
+              # among three phantoms.
+              awk '/=== [0-9]+\/[0-9]+ passed/{f=1} f' "$out" \
+                | grep '^FAIL ' | head -25 | sed 's/^/      /'
             fi
           }
 

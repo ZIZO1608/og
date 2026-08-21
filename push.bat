@@ -127,7 +127,7 @@ echo   ============================================
 echo     Sent.  commit !SHA!
 echo   ============================================
 echo.
-echo   GitHub is now running the 825 tests. If they all pass,
+echo   GitHub is now running the 858 tests. If they all pass,
 echo   the live site updates by itself in about a minute:
 echo.
 echo     live site : https://zizo1608.github.io/og/

@@ -28,7 +28,7 @@ There is nothing to install. No `npm install`, no build step, no toolchain.
 **Double-click `push.bat`.** It describes what you changed, asks for a one-line
 summary, pulls in your partner's work, and pushes.
 
-From there GitHub takes over: it runs all 825 tests, and only if every one
+From there GitHub takes over: it runs all 858 tests, and only if every one
 passes does it rebuild the site and publish it. About a minute end to end.
 Watch it at [the Actions tab](https://github.com/ZIZO1608/og/actions).
 
@@ -131,7 +131,7 @@ has to run on the shop's actual hardware.
 
 ## Tests
 
-825 assertions across six harnesses. They are plain HTML pages — open one in a
+858 assertions across six harnesses. They are plain HTML pages — open one in a
 browser and it runs immediately and prints `=== n/n passed ===` at the top.
 
 | File | Assertions | Covers |
