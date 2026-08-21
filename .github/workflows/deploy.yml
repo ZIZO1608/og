@@ -1,0 +1,202 @@
+# =============================================================================
+#  OG SYSTEM — test every push, publish the ones that pass
+# -----------------------------------------------------------------------------
+#  Two jobs. `deploy` needs `test`, so a push that breaks a suite updates
+#  nothing on the live site. That is the entire point: before this file existed
+#  the site was updated by dragging files into a web page, and it drifted eleven
+#  versions behind without anyone noticing.
+#
+#  IMPORTANT, one-time repo setting:
+#    Settings -> Pages -> Build and deployment -> Source -> "GitHub Actions"
+#  Until that is switched from "Deploy from a branch", this workflow will go
+#  green and publish nothing at all. It fails silently, which is why it is
+#  written at the top of the file and again in the README.
+# =============================================================================
+
+name: test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:        # lets you re-run it by hand from the Actions tab
+
+# Needed by actions/deploy-pages. `contents: read` is the default minimum.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# If two pushes land close together, let the newer one win rather than racing
+# two deploys at the same URL. `cancel-in-progress: false` so a deploy already
+# uploading is allowed to finish cleanly instead of leaving Pages half-written.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # ===========================================================================
+  #  1. Run all six harnesses in a real browser
+  # ===========================================================================
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the Chrome we are testing against
+        run: google-chrome --version
+
+      - name: Serve the folder
+        # The harnesses load js/*.js with <script src>, which the file://
+        # protocol blocks. They need a real HTTP origin, so: a static server on
+        # a port, backgrounded, and waited for. `python3` is on the runner
+        # already — no install step, matching the project's no-dependency rule.
+        run: |
+          python3 -m http.server 8080 --bind 127.0.0.1 &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8080/index.html >/dev/null && break
+            sleep 0.25
+          done
+          curl -sf http://127.0.0.1:8080/index.html >/dev/null
+
+      - name: Run the suites
+        run: |
+          set -uo pipefail
+          mkdir -p /tmp/suites
+          total=0; failed=0; missing=0
+
+          run_suite () {
+            name="$1"; width="$2"
+            out="/tmp/suites/$name.html"
+
+            # --virtual-time-budget makes Chrome fast-forward timers and
+            # animation frames instead of waiting on the wall clock, then dump
+            # the DOM once the page has gone quiet. Without it --dump-dom can
+            # capture the page before the last assertion has written its line.
+            google-chrome \
+              --headless=new \
+              --disable-gpu \
+              --no-sandbox \
+              --hide-scrollbars \
+              --window-size="$width" \
+              --virtual-time-budget=20000 \
+              --dump-dom "http://127.0.0.1:8080/$name.html" > "$out" 2>/dev/null
+
+            # The summary line every harness writes is "=== n/n passed ==="
+            # (_mobile appends "@390px", hence the loose tail of the pattern).
+            line=$(grep -o '=== [0-9]*/[0-9]* passed[^=]*===' "$out" | head -1)
+
+            if [ -z "$line" ]; then
+              echo "::error title=$name::no summary line — the page threw before it finished"
+              echo "  --- last 40 lines of the dump ---"
+              tail -40 "$out" | sed 's/^/  /'
+              missing=$((missing + 1))
+              return
+            fi
+
+            pass=$(echo "$line" | sed 's|=== \([0-9]*\)/.*|\1|')
+            of=$(echo "$line"  | sed 's|.*/\([0-9]*\) passed.*|\1|')
+            total=$((total + of))
+
+            if [ "$pass" = "$of" ]; then
+              printf '  %-12s %s\n' "$name" "$line"
+            else
+              failed=$((failed + of - pass))
+              echo "::error title=$name::$line"
+              printf '  %-12s %s\n' "$name" "$line"
+              # Print the failing assertions, not the whole 500-line dump.
+              grep -o 'FAIL [^<]*' "$out" | head -25 | sed 's/^/      /'
+            fi
+          }
+
+          echo "suite results:"
+          run_suite _selftest 1440,1000
+          run_suite _codes    1440,1000
+          run_suite _yalla    1440,1000
+          run_suite _connect  1440,1000
+          run_suite _stagea   1440,1000
+
+          # 560, not 390. Headless Chrome refuses to go much below ~500px wide,
+          # so asking for 390 silently gives you ~500 and every "does it fit on
+          # a phone" assertion measures the wrong number. The harness pins the
+          # app shell to 390 itself, so the window only has to be big enough to
+          # contain it. This cost a full debugging cycle once already.
+          run_suite _mobile   560,1000
+
+          echo ""
+          echo "  total assertions: $total"
+          echo "  failed:           $failed"
+          echo "  suites with no result: $missing"
+
+          if [ "$failed" -gt 0 ] || [ "$missing" -gt 0 ]; then
+            echo ""
+            echo "Not deploying. Fix the failures above, or run the suite locally:"
+            echo "  .\\serve.ps1   then open _selftest.html"
+            exit 1
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### All $total assertions passed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check the shipping files are all present
+        # The three files a hand-upload kept forgetting. Cheap to assert, and it
+        # catches a rename that would otherwise produce a blank live site.
+        run: |
+          missing=0
+          for f in index.html sw.js manifest.webmanifest robots.txt .nojekyll; do
+            if [ ! -f "$f" ]; then echo "::error::missing $f"; missing=1; fi
+          done
+          exit $missing
+
+  # ===========================================================================
+  #  2. Build dist/ and publish it
+  # ===========================================================================
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dist/
+        # The same copy list as make-deploy.ps1: five root files plus three
+        # folders, then strip anything underscore-prefixed. Kept in step with
+        # that script by hand — if you add a folder to one, add it to the other.
+        run: |
+          set -euo pipefail
+          rm -rf dist && mkdir -p dist
+
+          for f in index.html manifest.webmanifest sw.js robots.txt .nojekyll; do
+            [ -f "$f" ] && cp "$f" dist/ && echo "  + $f"
+          done
+
+          for d in css js assets; do
+            [ -d "$d" ] && cp -r "$d" dist/ && echo "  + $d/"
+          done
+
+          # Safety net, mirrored from make-deploy.ps1: no test harness, no
+          # screenshot rig, nothing underscore-prefixed ever reaches the site.
+          find dist -name '_*' -type f -print -delete | sed 's/^/  - stripped /'
+
+          echo ""
+          echo "  files: $(find dist -type f | wc -l)   size: $(du -sh dist | cut -f1)"
+
+      - name: Report the service-worker cache name
+        # A forgotten cache bump is the single most common reason an update
+        # looks like it did not work on a phone. Surfacing it here means the
+        # version that went live is recorded in the run, not guessed at later.
+        run: |
+          cache=$(grep -o "CACHE *= *'[^']*'" dist/sw.js | head -1 | sed "s/.*'\(.*\)'/\1/")
+          echo "service worker cache: $cache"
+          echo "### Published \`$cache\`" >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

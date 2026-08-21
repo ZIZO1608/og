@@ -1,119 +1,217 @@
-# OG System — publishing to GitHub Pages
+# OG System
 
-Live site: **https://zizo1608.github.io/og/** · Repo: `ZIZO1608/og` · Passcode: `OG2026`
+Retail operations for a sneaker and streetwear shop in Aleppo — point of sale,
+stock across two warehouses, customers, money, barcode scanning and label
+printing, plus a separate portal for **Yalla Wear**, the print partner.
+
+**Live:** https://zizo1608.github.io/og/ · **Passcode:** `OG2026` (see
+[Security](#security-read-this-once) — it is a curtain, not a lock)
 
 ---
 
-## One-time setup (about 5 minutes)
+## Run it
 
-### 1. Install GitHub Desktop
+Three ways, in increasing order of fidelity:
 
-Download from **https://desktop.github.com** and sign in with your GitHub account.
+| | How | What you get |
+|---|---|---|
+| Quickest | Double-click `index.html` | Everything except camera, offline mode and install-to-phone |
+| Proper | `.\serve.ps1` then open http://localhost:8080 | The full app, including the service worker |
+| Live | https://zizo1608.github.io/og/ | Whatever was last pushed and passed its tests |
 
-### 2. Clone the repo
+There is nothing to install. No `npm install`, no build step, no toolchain.
 
-In GitHub Desktop: **File → Clone repository → GitHub.com**, pick **`ZIZO1608/og`**, click
-**Clone**. It will suggest a folder like `C:\Users\ZIZO\Documents\GitHub\og`.
+---
 
-### 3. Tell the build script where that folder is
+## Publish a change
 
-Open **`make-push.bat`** in Notepad. The fourth-from-top line reads:
+**Double-click `push.bat`.** It describes what you changed, asks for a one-line
+summary, pulls in your partner's work, and pushes.
+
+From there GitHub takes over: it runs all 825 tests, and only if every one
+passes does it rebuild the site and publish it. About a minute end to end.
+Watch it at [the Actions tab](https://github.com/ZIZO1608/og/actions).
+
+**A failing test leaves the live site untouched.** That is deliberate. Before
+this existed, updates were made by dragging files into a web page, and the live
+site silently drifted eleven versions behind.
+
+### If the site looks unchanged afterwards
+
+Almost always the **service-worker cache**. The app is cache-first so it works
+offline, which means a browser that has visited before keeps serving the files
+it already has, no matter what you publish.
+
+The fix is to bump `CACHE` in `sw.js` — `og-system-v13` → `v14`. Do this
+whenever you change anything under `css/`, `js/` or `index.html`. The Action
+prints the cache name it published on every run, so you can check what actually
+went out.
+
+To unstick a device: `Ctrl+Shift+R` on desktop, or close the tab entirely and
+reopen it on a phone.
+
+---
+
+## The rules this codebase is built on
+
+These are constraints, not preferences. Breaking one means rewriting a lot.
+
+- **Vanilla HTML, CSS and JavaScript.** No React, no framework, no bundler, no
+  npm, no build step. The only third-party file in the repo is
+  `js/vendor/chart.umd.min.js`, committed directly.
+- **No backend, no database, no login, no `fetch`, no `localStorage`.** All
+  state lives in one JavaScript object in memory. Reloading the page resets
+  everything to the same rehearsed demo — which is a feature during a client
+  meeting, not a limitation.
+- **It must work by double-clicking `index.html`, fully offline.** Anything
+  that only works over `http://` breaks the fastest way to look at the app.
+- **Dark mode only. Montserrat. English and Arabic, with real RTL** — not a
+  mirrored stylesheet; the layouts are built for both.
+- **No placeholder content.** No "Lorem ipsum", no "Coming soon", no stock
+  photo URLs. Product images are CSS colour blocks. If a screen exists, it
+  works.
+
+---
+
+## How it fits together
 
 ```
-set CLONE=C:\Users\ZIZO\Documents\GitHub\og
+index.html          the whole shell — one page, no router
+css/style.css       ~2,900 lines, all of it
+js/
+  data.js    2023   the seeded dataset and every query over it (DB.*)
+  app.js     5345   rendering, routing, modals, labels, settings
+  yalla.js   1184   the print partner's portal
+  pos.js      713   till
+  codes.js    695   EAN-13 and Code 128, encoders and decoders
+  ylinvoice.js 600  partner invoicing
+  money.js    453   expenses, debts, cash
+  bulk.js     426   multi-select actions
+  scan.js     378   camera scanning
+  motion.js   366   animation, and the switch that disables it
+  export.js   342   CSV and PDF
+  stock.js    341   stock counts
+  charts.js   258   Chart.js wrappers
+  palette.js  201   Ctrl+K command palette
+  notify.js   181   notifications
+  wedge.js    160   hardware barcode scanners
+  whatsapp.js 154   message composition
+  gate.js      70   the passcode screen
+  vendor/chart.umd.min.js
 ```
 
-If GitHub Desktop cloned somewhere else, change that path. To find it:
-**Repository → Show in Explorer**, then copy the path from the address bar.
+### Conventions worth knowing before you write any of it
 
-Save and close. That is the setup done — you never touch it again.
+**Events are delegated, never bound per-element.** One listener per namespace,
+dispatching on a `data-*` attribute: `data-act`, `data-pos`, `data-yl`,
+`data-nt`, `data-mo`, `data-sc`, `data-st`, `data-bk`, `data-wa`,
+`data-change`. Adding a button means adding a `data-act="thing"` and a case —
+not an `addEventListener`.
 
----
+**The demo data is generated by a seeded random number generator**, so every
+launch tells the identical story. The generator is a plain LCG:
 
-## Every update after that (about 30 seconds)
-
-1. **Double-click `make-push.bat`.** It rebuilds the app straight into your clone and opens
-   GitHub Desktop.
-2. GitHub Desktop lists **every file that changed** down the left. You do not have to know
-   which ones — that is the whole point of using it.
-3. Type a short summary in the bottom-left box, e.g. `mobile tab bar`.
-4. Click **Commit to main**.
-5. Click **Push origin** at the top.
-6. Wait about a minute, then open the site and press **Ctrl+Shift+R** to hard-refresh.
-
----
-
-## The two things that actually go wrong
-
-### The site looks unchanged after pushing
-
-Almost always the **service worker cache**. The app is cache-first so it can work offline, which
-means a phone or browser that has visited before keeps serving the files it already has —
-regardless of what you upload.
-
-The fix is to change `CACHE` in `sw.js` (`og-system-v5` → `v6`). **I bump this automatically**
-whenever the shipped files change, so normally you do not have to think about it. `make-push.bat`
-prints the current cache name after every build so you can see it went up.
-
-To force a refresh on a device that is already stuck: Ctrl+Shift+R on desktop, or on a phone
-close the tab completely and reopen it.
-
-### Half the app is missing
-
-This happened twice with the old drag-and-drop method: the `assets`, `css` and `js` folders went
-up but the loose root files — `index.html`, `sw.js`, `manifest.webmanifest` — did not. The site
-then runs at about half strength with no errors, because the new code is all behind safety
-checks. GitHub Desktop makes this impossible, since it diffs the whole folder for you.
-
-If you ever suspect it, ask me — I can read the live files straight from GitHub and tell you
-exactly which ones are stale.
-
----
-
-## What the build does
-
-`make-push.bat` runs `make-deploy.ps1`, which copies only the real application:
-
-```
-index.html  manifest.webmanifest  sw.js  robots.txt  .nojekyll
-css\  js\  assets\
+```js
+seed = (seed * 1664525 + 1013904223) % 4294967296
 ```
 
-Anything whose name starts with `_` is stripped, so the test harnesses
-(`_selftest.html`, `_mobile.html`, `_shot.html`, `_connect.html`, `_stagea.html`) can never
-reach the live site.
+**Call order is load-bearing.** Inserting one extra `rand()` call shifts every
+value drawn after it, which rewrites unrelated parts of the dataset and breaks
+tests that had nothing to do with your change. If you need new random values,
+add a separate generator with its own seed — that is what the warehouse code
+does.
 
-**It will never delete your `.git` folder.** The script only removes the specific files it
-publishes, and refuses to run at all if the target folder contains anything it does not
-recognise — because deleting the wrong directory is not recoverable.
+**Each module is an IIFE** exposing one global (`DB`, `POS`, `Codes`, `YALLA`,
+`Wedge`, …). Loading order in `index.html` matters.
 
-`.nojekyll` matters: without it GitHub runs Jekyll, which silently deletes files beginning with
-an underscore. Windows hides dotfiles in Explorer, but GitHub Desktop shows them.
-
----
-
-## Building without pushing
-
-`.\make-deploy.ps1` on its own still builds into `dist\` exactly as before, if you want to
-inspect the output or upload by hand.
-
-Double-clicking `index.html` also still works for a quick look. You lose only the camera,
-install-to-phone and offline mode — everything else is identical.
+**The code deliberately avoids `:has()`** and other very recent CSS, because it
+has to run on the shop's actual hardware.
 
 ---
 
-## Changing the passcode
+## Tests
 
-`js/gate.js`:
+825 assertions across six harnesses. They are plain HTML pages — open one in a
+browser and it runs immediately and prints `=== n/n passed ===` at the top.
+
+| File | Assertions | Covers |
+|---|---|---|
+| `_selftest.html` | 495 | the app end to end |
+| `_yalla.html` | 101 | the partner portal |
+| `_connect.html` | 90 | the OG ↔ Yalla Wear handshake loops |
+| `_stagea.html` | 74 | print jobs and kit lines |
+| `_mobile.html` | 71 | every screen at 390px, both languages |
+| `_codes.html` | 27 | barcode encode/decode round trips |
+
+None of them load `gate.js`, so no passcode prompt gets in the way.
+
+**Run them before pushing.** `push.bat` does not run them for you — GitHub
+does, but finding out here is faster than finding out in a failed Action.
+
+Anything whose filename starts with `_` is a test harness and is stripped from
+the published site by both `make-deploy.ps1` and the Action. `.nojekyll` is
+what stops GitHub deleting those files' underscore-named siblings on its own.
+
+---
+
+## What is in the repo, and what is not
+
+Tracked: the app, the tests, the build scripts, and `docs/proposal-ar.html`
+plus `docs/proposal.css` (the Arabic client proposal, as source).
+
+**Not tracked**, and deliberately:
+
+- **`dist/`** — build output. It exists in exactly one place now: the Action
+  builds it fresh on every push. Committing it is what let the live site drift.
+- **`flutter_app/`** — a Flutter port of the app, ~350 KB of Dart. Kept out
+  until it compiles cleanly end to end; the Android build currently fails on an
+  NDK/`sdkmanager` crash. Remove the line from `.gitignore` to bring it in.
+- **`docs/img/`, `docs/fonts/`, `docs/*.pdf`** — all regenerated by
+  `make-proposal.ps1`, and the Cairo fonts are Google's to distribute, not ours.
+
+---
+
+## Scripts
+
+| | |
+|---|---|
+| `push.bat` | commit + pull + push. The only one you need day to day. |
+| `serve.ps1` | local web server on :8080 |
+| `make-deploy.ps1` | build `dist/` locally — the Action does the same thing in bash |
+| `make-proposal.ps1` | regenerate the Arabic client PDF from the live app |
+| `start-og-system.bat` | serve and open a browser in one click |
+
+---
+
+## One-time repo setting
+
+**Settings → Pages → Build and deployment → Source → "GitHub Actions"**
+
+Until that is switched away from "Deploy from a branch", the workflow goes green
+and publishes nothing. It fails silently, which is the only reason it is called
+out this loudly.
+
+---
+
+## Security, read this once
+
+`js/gate.js` contains:
 
 ```js
 var PASSCODE = 'OG2026';
 ```
 
-Then rebuild and push.
+in plain text, in a public repository, in a file the browser downloads.
 
-**Be clear-eyed about what this is.** Everything runs in the browser, so the passcode is
-readable by anyone who opens developer tools, and on a free account the repo is public anyway.
-It keeps casual visitors and search engines out of an unreleased demo. It is not security, and it
-must not be treated as such once real customer data is involved — that needs a real backend with
-a real login, and this gate deleted.
+**This is a curtain, not a lock.** It keeps a casual visitor and a search engine
+crawler out of an unreleased client demo. It cannot do more than that, and no
+amount of obfuscation would change it: a static site has no server, so there is
+nothing to check a password against.
+
+That is fine for what this currently is — a demo over generated data, with no
+real customer records in it. It stops being fine the moment real names, phone
+numbers or money go in. At that point this needs a real backend with a real
+login, and this gate deleted rather than improved.
+
+If the passcode itself matters before then, the options are to change it, or to
+make the repository private.
