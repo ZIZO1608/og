@@ -1,0 +1,51 @@
+# =============================================================================
+#  Line endings, decided here rather than by whoever cloned the repo
+# -----------------------------------------------------------------------------
+#  Without this file the result depends on each person's `core.autocrlf`, and
+#  two people with different settings produce diffs where every single line
+#  looks changed. Two specific cases actually break rather than just look bad:
+#
+#    *.bat  needs CRLF. cmd.exe can lose its place inside a `goto` label in an
+#           LF-only batch file, so push.bat would fail in a way that reads like
+#           a git problem.
+#    *.yml  needs LF. The workflow embeds bash; with CRLF the Linux runner sees
+#           a trailing \r on every line and reports `$'\r': command not found`.
+# =============================================================================
+
+# Normalise to LF in the repository, let git decide the working copy.
+* text=auto
+
+# Windows scripts: CRLF on disk, always.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Things Linux runs: LF on disk, always.
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.sh   text eol=lf
+
+# Web sources: LF everywhere. They are read by browsers, not shells.
+*.html text eol=lf
+*.css  text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+
+# Binary — never touch, never diff.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.otf  binary
+
+# Minified vendor code: real, but not ours to review.
+js/vendor/* linguist-vendored
+
+# Test harnesses are not the project's headline language stat.
+_*.html linguist-documentation
