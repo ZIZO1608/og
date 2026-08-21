@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>نظام OG — عرض المشروع | Trinode</title>
+<link rel="stylesheet" href="proposal.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════ 1 · الغلاف ═══════ -->
+<section id="p1" class="page cover">
+  <div class="cover-inner">
+
+    <div class="cover-marks">
+      <div class="og-plate"><img src="../assets/logo.svg" alt="OG System"></div>
+      <div class="sep"></div>
+      <!-- TRINODE MARK
+           Recreated from the supplied artwork: the wordmark plus the copper
+           line that terminates in a three-way node split. To use the real
+           file instead, drop it at assets/trinode.svg and replace this whole
+           <div class="tri-mark"> block with:
+             <div class="tri-mark"><img src="../assets/trinode.svg" alt="Trinode"></div> -->
+      <div class="tri-mark">
+        <div class="tri-word">TRINODE</div>
+        <svg class="tri-rule" width="150" height="26" viewBox="0 0 150 26" fill="none"
+             stroke="#C08552" stroke-width="1.4" aria-hidden="true">
+          <circle cx="4" cy="13" r="3.2"/>
+          <path d="M7.5 13 H108"/>
+          <path d="M108 13 L126 3"/>
+          <path d="M108 13 H130"/>
+          <path d="M108 13 L126 23"/>
+          <circle cx="130.5" cy="2" r="3.2"/>
+          <circle cx="134" cy="13" r="3.2"/>
+          <circle cx="130.5" cy="24" r="3.2"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="cover-title">
+      <div class="eyebrow">عـرض مـشـروع</div>
+      <h1>نظام <span class="lat">OG</span><br>لإدارة المحل والمستودع</h1>
+      <div class="cover-accent"></div>
+      <p class="sub">
+        من الدفتر الورقي إلى نظام بيعرف كل قطعة وين هي،
+        وكل ليرة وين راحت، وكل طلب طباعة وين وصل.
+      </p>
+    </div>
+
+    <div class="cover-meta">
+      <div><span>مُعَدّ لـ</span><b>صاحب محل <span class="lat">OG</span> — دمشق</b></div>
+      <div><span>إعداد</span><b class="lat" style="direction:ltr;display:inline-block">Trinode</b></div>
+      <div><span>نسخة المستند</span><b class="lat" style="direction:ltr;display:inline-block">v1.0</b></div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════ 2 · ملخّص تنفيذي ═══════ -->
+<section id="p2" class="page">
+  <div class="pg-head">
+    <span class="kicker">ملخّص تنفيذي</span><span class="kicker-rule"></span>
+  </div>
+
+  <h2>الخلاصة بصفحة وحدة</h2>
+  <p class="lede">
+    محلّك اليوم شغّال على الورق والذاكرة. هالطريقة بتمشّي الحال، بس بتخبّي عنك
+    ثلاث أشياء بتكلّفك مصاري كل شهر: مقاسات بتخلص وما حدا بينتبه،
+    صندوق ما بينعدّ، وبضاعة نايمة بالمستودع من شهور.
+  </p>
+
+  <div class="cols" style="margin-bottom:7mm">
+    <div class="card warm stat">
+      <span class="n">142</span>
+      <span class="lbl">صنف ومقاس بينتتبّع لحظياً — كل واحد إله رصيد ومكان ورمز</span>
+    </div>
+    <div class="card warm stat">
+      <span class="n lime">39</span>
+      <span class="lbl">مقاس فاضي بالمحل هلق، وأغلبه موجود بالمستودع ما حدا طلّعه</span>
+    </div>
+    <div class="card warm stat">
+      <span class="n">2</span>
+      <span class="lbl">واجهة: وحدة إلك ووحدة لشريك الطباعة، وكل وحدة بتشوف شغلها بس</span>
+    </div>
+  </div>
+
+  <div class="pair">
+    <div class="before">الدفتر بيقول عندك 40 قطعة من الحذاء، فبتطمّن.</div>
+    <div class="after">النظام بيقول: عندك 40 قطعة، بس مقاس 42 و43 صفر — وهدول يلي بينطلبوا.</div>
+  </div>
+
+  <div class="pair">
+    <div class="before">آخر النهار بتعدّ الصندوق وبتقارن بالذاكرة.</div>
+    <div class="after">النظام بيحسبلك شو لازم يكون بالصندوق بالضبط، وبيفرّق بين النقد وشام كاش.</div>
+  </div>
+
+  <div class="pair">
+    <div class="before">شو باقي عليك لشريك الطباعة؟ سؤال بدّه مكالمة.</div>
+    <div class="after">صار رقم على الشاشة، وكل طلب إله مسار موثّق من الإرسال للتسليم.</div>
+  </div>
+
+  <div class="pair">
+    <div class="before">بضاعة قاعدة بالمستودع من شهور وما حدا واخد باله.</div>
+    <div class="after">النظام بيسمّيها بالاسم: هالمنتج ما انباع من 74 يوم، وفيه مصاري نايمة.</div>
+  </div>
+
+  <div class="pair">
+    <div class="before">الربح؟ تقدير بالراس آخر الشهر.</div>
+    <div class="after">مبيعات ناقص تكلفة البضاعة ناقص المصاريف — رقم محسوب، مو إحساس.</div>
+  </div>
+
+  <div class="callout" style="margin-top:7mm">
+    <b>الفكرة بجملة</b>
+    ما منضيف شغل عليك — مننقل الشغل يلي عم تعمله أصلاً على ورق، لمكان
+    بيتذكّر بدالك وبيحكيلك لما يصير في مشكلة.
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">2</span>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════ 3 · المشكلة ═══════ -->
+<section id="p3" class="page">
+  <div class="pg-head">
+    <span class="kicker">الوضع الحالي</span><span class="kicker-rule"></span>
+    <span class="step">01 / المشكلة</span>
+  </div>
+
+  <h2>شو بيضيع بين الورقة والذاكرة</h2>
+  <p class="lede">
+    هالنقاط مو انتقاد للطريقة — هي حدود الورق نفسه. أي محل بهالحجم
+    بيوصل لنفس الأربع مشاكل.
+  </p>
+
+  <div class="stack">
+    <div class="card">
+      <h3>فجوة المقاسات — المشكلة الأغلى</h3>
+      <p class="small muted">
+        الورقة بتعطيك مجموع. المجموع بيكون منيح، فما حدا بيسأل. بس الزبون
+        ما بيشتري «مجموع» — بيشتري مقاس 42. لما يخلص المقاس المطلوب
+        وباقي المقاسات معبّاية، بتضلّ تبيع أقل وإنت شايف مخزونك تمام،
+        وما بتعرف السبب.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>الصندوق ما بينعدّ عدّة صحيحة</h3>
+      <p class="small muted">
+        اليوم بيجي فيه نقد، وشام كاش، وفؤاد، وبطاقة، ودفع عند الاستلام، ودين.
+        بس النقد والدفع عند الاستلام هنّي يلي بيدخلوا عالصندوق — الباقي
+        بيروح على حساب. لما بتخلط بينهم بالحساب، الصندوق بيطلع ناقص وما
+        بتعرف إذا في خطأ أو هيك المفروض.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>الربح مو هو الإيراد</h3>
+      <p class="small muted">
+        الأجار، المولّدة، الرواتب، النقل، التغليف — هدول بينزلوا من الربح
+        وما إلهم مكان بالدفتر. فالرقم يلي بتحسبه ربح، هو بالحقيقة مبيعات.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>الدين وشغل الطباعة بالذاكرة</h3>
+      <p class="small muted">
+        مين آخد بالدين ومن إيمتى؟ وطلب الطباعة وين صار؟ وشو باقي عليك
+        للمطبعة؟ كل سؤال من هدول بدّه مكالمة أو تفتيش بالدفتر، وكل مرة
+        بتاخد وقت وبتعطي جواب تقريبي.
+      </p>
+    </div>
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">3</span>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════ 4 · الحل ═══════ -->
+<section id="p4" class="page">
+  <div class="pg-head">
+    <span class="kicker">الحل</span><span class="kicker-rule"></span>
+    <span class="step">02 / النظام</span>
+  </div>
+
+  <h2>شاشة وحدة بتقول شو صاير بالمحل</h2>
+  <p class="lede">
+    أول شي بتشوفه لما تفتح النظام: مبيعات اليوم، شو ناقص، وشو بدّه انتباهك
+    هلق. مو تقارير لازم تدوّر عليها — الأشياء المهمة بتطلعلك.
+  </p>
+
+  <figure class="dark shot-tall" style="margin-bottom:5mm">
+    <img src="img/dashboard.png" alt="لوحة التحكم">
+    <figcaption>لوحة التحكم — لقطة فعلية من النظام، بالعربي وباتجاه من اليمين لليسار.</figcaption>
+  </figure>
+
+  <div class="cols">
+    <div>
+      <h3>بيعرف يحكي</h3>
+      <p class="small muted">
+        النظام ما بيستنّى تسأله. لما مقاس يوصل لحدّ الخطر، أو طلب طباعة
+        يتأخّر، أو بضاعة تنام 74 يوم بلا حركة — بيطلعلك تنبيه بالاسم
+        والرقم، مو رقم عام بتقرير آخر الشهر.
+      </p>
+    </div>
+    <div>
+      <h3>كل شي مربوط ببعضه</h3>
+      <p class="small muted">
+        لما تبيع قطعة، المخزون بينقص، والحركة بتنكتب باسم الكاشير والوقت،
+        والصندوق بيتحدّث، ونقاط الزبون بتزيد — بضغطة وحدة. ما في شي
+        لازم تكتبه مرتين.
+      </p>
+    </div>
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">4</span>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════ 5 · يومك مع النظام ═══════ -->
+<section id="p5" class="page">
+  <div class="pg-head">
+    <span class="kicker">كيف بيشتغل</span><span class="kicker-rule"></span>
+    <span class="step">03 / يومك</span>
+  </div>
+
+  <h2>يوم شغل كامل، من الصبح للسكّرة</h2>
+  <p class="lede">
+    هيدا مو تعداد ميزات — هيدا اليوم نفسه يلي عم تعيشه، بس النظام
+    عم يمشي معك فيه.
+  </p>
+
+  <ol class="steps">
+    <li>
+      <b>الصبح — بتفتح الوردية</b>
+      <span class="small muted">بتدخّل رصيد الافتتاح يلي بالصندوق. من هون ورايح، كل قرش داخل وطالع مربوط بهالوردية.</span>
+    </li>
+    <li>
+      <b>بتشوف شو لازم يطلع من المستودع</b>
+      <span class="small muted">النظام بيعطيك لستة: هالمقاسات صفر بالمحل وموجودة بالمستودع. بضغطة بتنقلها، وبتنكتب الحركة.</span>
+    </li>
+    <li>
+      <b>النهار — بتبيع</b>
+      <span class="small muted">بتمسح الباركود أو بتضغط على المنتج، بتختار المقاس وطريقة الدفع، وخلص. أقل من عشر ثوانٍ للفاتورة.</span>
+    </li>
+    <li>
+      <b>إجا طلب طباعة</b>
+      <span class="small muted">بتعمل الطلب وبتبعته لشريك الطباعة من داخل النظام. بيوصله تنبيه، وبيقبل أو بيعتذر، وإنت بتشوف الجواب.</span>
+    </li>
+    <li>
+      <b>طلع مصروف</b>
+      <span class="small muted">مازوت المولّدة، أجرة توصيل — بتسجّله وقتها. إذا كان نقدي بينزل من الصندوق، وإذا حوالة لأ.</span>
+    </li>
+    <li>
+      <b>المسا — بتسكّر الوردية</b>
+      <span class="small muted">النظام بيقلّك شو المفروض يكون بالصندوق، بتعدّ، وبتدخّل الرقم. الفرق بيطلع قدامك رقم واضح.</span>
+    </li>
+  </ol>
+
+  <div class="callout copper" style="margin-top:6mm">
+    <b>وشو بيصير بآخر الشهر؟</b>
+    ما بتقعد تحسب. الأرقام صارت مجموعة أصلاً: المبيعات، تكلفة البضاعة،
+    المصاريف — والربح الحقيقي بينحسب لحاله.
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">5</span>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════ 6 · ليش هالنظام إلك ═══════ -->
+<section id="p6" class="page">
+  <div class="pg-head">
+    <span class="kicker">ليش هالنظام بالذات</span><span class="kicker-rule"></span>
+    <span class="step">04 / يناسبك</span>
+  </div>
+
+  <h2>مبني لمحلّك، مو مترجَم إله</h2>
+
+  <div class="cols">
+    <div class="stack" style="flex:1.25">
+      <div class="card">
+        <h3>عربي من الأساس</h3>
+        <p class="small muted">
+          كل شاشة وكل زر وكل تنبيه بالعربي، والاتجاه من اليمين لليسار زي
+          ما لازم — مو ترجمة مركّبة على برنامج أجنبي. وفي إنكليزي بضغطة
+          إذا حبيت.
+        </p>
+      </div>
+      <div class="card">
+        <h3>بيشتغل بدون إنترنت</h3>
+        <p class="small muted">
+          انقطع النت أو الكهرباء رجعت والراوتر ما اشتغل — النظام بيضلّ
+          شغّال عالجهاز. ما في شي بيوقف لأنو السيرفر بعيد.
+        </p>
+      </div>
+      <div class="card">
+        <h3>طرق الدفع يلي بتستعملها فعلاً</h3>
+        <p class="small muted">
+          نقد، شام كاش، فؤاد، الهرم، بطاقة، دفع عند الاستلام، ودين —
+          وكل وحدة النظام بيعرف إذا بتدخل عالصندوق ولا لأ.
+        </p>
+      </div>
+      <div class="card">
+        <h3>باركود حقيقي بيمسح</h3>
+        <p class="small muted">
+          كل مقاس إله رمز <span class="lat">EAN-13</span> صحيح بيمسح
+          بأي قارئ، وبتقدر تطبع الملصقات من النظام.
+        </p>
+      </div>
+    </div>
+
+    <div style="flex:.75">
+      <figure class="dark shot-phone" style="margin-inline-start:0">
+        <img src="img/phone.png" alt="النظام على الموبايل">
+        <figcaption>نفس النظام على الموبايل — لأنك بالمحل واقف، مو قاعد عالكمبيوتر.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top:6mm">
+    <b>على الموبايل قبل كل شي</b>
+    الشاشات كلها مصمّمة تشتغل بإيد وحدة عالموبايل: أزرار كبيرة، شريط
+    تنقّل تحت بمتناول الإبهام، وجداول بتتحوّل لبطاقات على الشاشة الصغيرة.
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">6</span>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════ 7 · نقطة البيع ═══════ -->
+<section id="p7" class="page">
+  <div class="pg-head">
+    <span class="kicker">دليل الأقسام</span><span class="kicker-rule"></span>
+    <span class="step">01 / نقطة البيع</span>
+  </div>
+
+  <h2>نقطة البيع</h2>
+  <p class="lede">امسح، اختار المقاس، خلصت — بأقل من عشر ثوانٍ.</p>
+
+  <figure class="dark shot-tall" style="margin-bottom:5mm">
+    <img src="img/pos.png" alt="نقطة البيع">
+    <figcaption>شاشة البيع — البضاعة عاليمين والسلة عاليسار، وكل شي بضغطة وحدة.</figcaption>
+  </figure>
+
+  <div class="cols">
+    <div>
+      <ul class="ticks small">
+        <li>مسح الباركود بالقارئ أو بكاميرا الموبايل</li>
+        <li>ما بيخلّيك تبيع قطعة مو موجودة — بيوقفك وبيقلّك وين هي</li>
+        <li>خصم بمبلغ أو بنسبة، وكود خصم</li>
+        <li>نقاط ولاء بتنحسب وبتنصرف من نفس الشاشة</li>
+      </ul>
+    </div>
+    <div>
+      <ul class="ticks small">
+        <li>بتختار من وين بتنزل البضاعة: المحل ولا المستودع</li>
+        <li>بتقدر تضيف طلب طباعة على نفس الفاتورة</li>
+        <li>فاتورة بتنطبع أو بتنبعت <span class="lat">PDF</span></li>
+        <li>المخزون والصندوق والنقاط بينحدثوا مع البيعة</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">7</span>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════ 8 · المخزون والمستودعات ═══ -->
+<section id="p8" class="page">
+  <div class="pg-head">
+    <span class="kicker">دليل الأقسام</span><span class="kicker-rule"></span>
+    <span class="step">02 / المخزون</span>
+  </div>
+
+  <h2>المخزون حسب المكان</h2>
+  <p class="lede">
+    البضاعة مو بمكان واحد — في يلي عالرفوف بالمحل، وفي يلي بالمستودع.
+    النظام بيعرف الفرق، وهون بتطلع أهم معلومة بالنظام كلّه.
+  </p>
+
+  <figure class="dark shot-tall" style="margin-bottom:5mm">
+    <img src="img/warehouse.png" alt="المخزون حسب المكان">
+    <figcaption>بتختار المكان، وبتشوف كل منتج وكم قطعة منه — وكل مقاس لحاله.</figcaption>
+  </figure>
+
+  <div class="callout">
+    <b>«صفر بالمحل، موجود بالمستودع»</b>
+    هالحالة الورق ما بيشوفها أبداً: المجموع منيح فما حدا بينتبه، بس المقاس
+    مفقود من عالرفّ. النظام بيلوّنه ويطلّعه بلستة جاهزة، وبضغطة «انقل»
+    بتطلّعه من المستودع وبتنكتب الحركة بالسجلّ.
+  </div>
+
+  <div class="cols" style="margin-top:6mm">
+    <div>
+      <h3>ما بتتحرّك قطعة بلا أثر</h3>
+      <p class="small muted">
+        كل حركة — وارد، مبيع، تالف، مرتجع، نقل — مسجّلة بالتاريخ والمستخدم
+        والمكان والرصيد بعدها. ما في سطر بينحذف، بس بينتصحّح بحركة جديدة.
+      </p>
+    </div>
+    <div>
+      <h3>جرد على مكان واحد</h3>
+      <p class="small muted">
+        بتعدّ المحل لحاله والمستودع لحاله — لأنو ما فيك تعدّ غرفتين بنفس
+        الوقت. والمقاس يلي ما عدّيته بيضلّ متل ما هو، ما بينحسب صفر.
+      </p>
+    </div>
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">8</span>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════ 9 · المال ═══════ -->
+<section id="p9" class="page">
+  <div class="pg-head">
+    <span class="kicker">دليل الأقسام</span><span class="kicker-rule"></span>
+    <span class="step">03 / المال</span>
+  </div>
+
+  <h2>الصندوق، المصاريف، ومين له عليك</h2>
+
+  <figure class="dark" style="margin-bottom:5mm">
+    <img src="img/money.png" alt="المال">
+    <figcaption>إغلاق الوردية — الحساب مفصّل قدامك سطر سطر، مو رقم واحد لازم تصدّقه.</figcaption>
+  </figure>
+
+  <div class="stack">
+    <div class="card">
+      <h3>إغلاق الوردية</h3>
+      <p class="small muted">
+        رصيد الافتتاح + المبيعات النقدية + الديون المحصّلة − المدفوعات النقدية
+        = المتوقّع بالصندوق. بتعدّ وبتدخّل الرقم، والفرق بيبيّن.
+        <b>شام كاش وفؤاد والبطاقة مو محسوبين هون</b> — لأنهم إيراد بس
+        مو بالصندوق، ولو انحسبوا كان الصندوق طلع ناقص وإنت ما عملت شي غلط.
+      </p>
+    </div>
+    <div class="card">
+      <h3>المصاريف</h3>
+      <p class="small muted">
+        أجار، مولّدة، رواتب، نقل، تغليف، دفعات للموردين. المصروف النقدي
+        بينزل من الوردية المفتوحة، والحوالة لأ. من هون بيصير عندك
+        <b>ربح حقيقي</b> = المبيعات − تكلفة البضاعة − المصاريف.
+      </p>
+    </div>
+    <div class="card">
+      <h3>دفتر الدين</h3>
+      <p class="small muted">
+        الدين طريقة دفع متل غيرها عالكاشير، بس هو الوحيد يلي بيعمل ذمّة
+        بدل مصاري. بتشوف مين له عليك وكم صار عمر الدين، وبتسدّد جزئي،
+        وبتذكّر الزبون عالواتساب بضغطة.
+      </p>
+    </div>
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">9</span>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════ 10 · الطباعة ويلا وير ═══════ -->
+<section id="p10" class="page">
+  <div class="pg-head">
+    <span class="kicker">دليل الأقسام</span><span class="kicker-rule"></span>
+    <span class="step">04 / الطباعة</span>
+  </div>
+
+  <h2>أعمال الطباعة مع الشريك</h2>
+  <p class="lede">
+    شريك الطباعة إله واجهة خاصة فيه — بيشوف الشغل يلي بعتلّه إياه بس،
+    وما بيشوف اسم الزبون ولا رقمه ولا بكم بعتلّه إياه.
+  </p>
+
+  <div class="cols" style="margin-bottom:5mm">
+    <figure class="dark">
+      <img src="img/print.png" alt="أعمال الطباعة عند OG">
+      <figcaption>عندك: لوح بمراحل، من التصميم للتسليم.</figcaption>
+    </figure>
+    <figure class="dark">
+      <img src="img/yalla.png" alt="واجهة شريك الطباعة">
+      <figcaption>عند الشريك: طلبات جديدة، بيقبل أو بيعتذر.</figcaption>
+    </figure>
+  </div>
+
+  <h3 style="margin-bottom:2.5mm">الطلب إله مسار، مو مكالمة</h3>
+  <table class="t">
+    <tr><td class="k">1 · بتبعت الطلب</td><td class="small muted">بتشوف بالضبط شو رح يوصله قبل ما يوصل، وبتقدر تبعتله إياه عالواتساب كمان.</td></tr>
+    <tr><td class="k">2 · بيوصله تنبيه</td><td class="small muted">بيطلعله الطلب بصندوق «طلبات جديدة» مع العدد والمقاسات والموعد والمستحق.</td></tr>
+    <tr><td class="k">3 · بيقبل أو بيعتذر</td><td class="small muted">إذا قبل، بيحدّد تاريخ بيتعهّد فيه — وعليه بينقاس التزامه، مو عالتاريخ يلي إنت طلبته.</td></tr>
+    <tr><td class="k">4 · بيوصلك الجواب</td><td class="small muted">تنبيه عندك فوراً. وإذا اعتذر، بيكتبلك السبب والطلب بيرجعلك تعدّله وتبعته من جديد.</td></tr>
+    <tr><td class="k">5 · بيبلّش وبيسلّم</td><td class="small muted">كل مرحلة بتوصلك: صار عالمكبس، طلع للتوصيل، تسلّم. مع الوقت والتاريخ.</td></tr>
+  </table>
+
+  <div class="callout copper" style="margin-top:5mm">
+    <b>وقفة أمان</b>
+    ما بتقدر تبعت طلب قمصان في أسامي لسا ما تأكّدت — لأنو المطبعة
+    ما بتقدر تطبع ظهر فاضي. النظام بيوقفك وبيقلّك ليش.
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">10</span>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════ 11 · الزبائن والتقارير ═══════ -->
+<section id="p11" class="page">
+  <div class="pg-head">
+    <span class="kicker">دليل الأقسام</span><span class="kicker-rule"></span>
+    <span class="step">05 / الزبائن والتقارير</span>
+  </div>
+
+  <h2>مين بيشتري، وشو بيربح</h2>
+
+  <figure class="dark" style="margin-bottom:5mm">
+    <img src="img/reports.png" alt="التقارير">
+    <figcaption>التقارير — الأرقام يلي وراء الشهر، جاهزة بلا ما تحسب.</figcaption>
+  </figure>
+
+  <div class="cols">
+    <div class="stack">
+      <div class="card">
+        <h3>الزبائن</h3>
+        <p class="small muted">
+          كل زبون إله سجلّ: شو اشترى، كم صرف، وإيمتى آخر مرة. النظام
+          بيطلعلك مين «معرّض للفقدان» — زبون كان بيجي وصار له فترة ما مرّ —
+          وبتبعتله رسالة واتساب جاهزة بضغطة.
+        </p>
+      </div>
+      <div class="card">
+        <h3>نقاط الولاء</h3>
+        <p class="small muted">
+          بتنحسب لحالها مع كل فاتورة، وبتنصرف عالكاشير. وفي مستويات
+          برونزي وفضي وذهبي حسب الصرف.
+        </p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <h3>التقارير</h3>
+        <p class="small muted">
+          الأكثر مبيعاً، البضاعة الراكدة، المبيعات حسب طريقة الدفع وحسب
+          الكاشير، وحركة ستة أشهر. وكلها بتتصدّر
+          <span class="lat">Excel</span> أو <span class="lat">PDF</span>.
+        </p>
+      </div>
+      <div class="card">
+        <h3>المتجر الإلكتروني</h3>
+        <p class="small muted">
+          صفحة بتعرض بضاعتك مع الأسعار، والطلبات بتوصلك بالنظام نفسه.
+          بتقدر تخبّي أي منتج ما بدّك ياه يبيّن.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">11</span>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════ 12 · شو رح تاخد ═══════ -->
+<section id="p12" class="page">
+  <div class="pg-head">
+    <span class="kicker">الاتفاق</span><span class="kicker-rule"></span>
+    <span class="step">05 / شو رح تاخد</span>
+  </div>
+
+  <h2>شو بيشمل المشروع</h2>
+  <p class="lede">
+    مو بس البرنامج — التسليم بيشمل إنو النظام يصير شغّال ببضاعتك إنت،
+    وطاقمك يعرف يستعمله.
+  </p>
+
+  <div class="stack" style="margin-bottom:7mm">
+    <div class="card warm">
+      <h3>تدريب إلك ولطاقمك</h3>
+      <p class="small muted">
+        جلسات بالمحل: الكاشير على البيع والمرتجعات، وموظف المستودع على
+        الجرد والنقل، وإنت على التقارير والمال. لحتى ما يضلّ حدا خايف
+        من الشاشة.
+      </p>
+    </div>
+    <div class="card warm">
+      <h3>إدخال بضاعتك الحالية</h3>
+      <p class="small muted">
+        منحطّلك منتجاتك ومقاساتك وكمياتك وأسعارك بالنظام، ومنطبعلك
+        الملصقات — لحتى تبلّش بنظام معبّى، مو فاضي بدّك تعبّيه بنفسك.
+      </p>
+    </div>
+    <div class="card warm">
+      <h3>فترة دعم بعد التسليم</h3>
+      <p class="small muted">
+        بعد ما يصير شغّال، منضلّ معك: أي مشكلة أو سؤال أو تعديل صغير
+        مغطّى ضمن فترة الدعم المتّفق عليها.
+      </p>
+    </div>
+    <div class="card warm">
+      <h3>الاستضافة والنطاق والتحديثات</h3>
+      <p class="small muted">
+        منأمّنلك الرابط والاستضافة ومنحدّثلك النظام. ومع هيك بيضلّ شغّال
+        عالجهاز حتى لو انقطع النت.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top:2mm">
+    <b>مو تسليم برنامج وبس</b>
+    الفرق بين نظام بينشتغل عليه ونظام بيوقف بالدرج، هو التدريب وإدخال
+    البضاعة. هدول جزء من المشروع، مو إضافة.
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">12</span>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════ 13 · الجدول الزمني ═══════ -->
+<section id="p13" class="page">
+  <div class="pg-head">
+    <span class="kicker">الاتفاق</span><span class="kicker-rule"></span>
+    <span class="step">06 / الجدول الزمني</span>
+  </div>
+
+  <h2>من شهر لشهرين، على أربع مراحل</h2>
+  <p class="lede">
+    ما منوقّف شغلك بيوم وحدة. النظام والدفتر بيمشوا مع بعض فترة، لحتى
+    تطمّن عالأرقام قبل ما تسكّر الدفتر.
+  </p>
+
+  <div class="tl">
+    <div class="tl-item">
+      <span class="when">الأسبوع 1 – 2</span>
+      <b class="small">تجهيز وإعداد</b>
+      <div class="small muted">تركيب النظام على بياناتك: الأصناف، الأسعار، طرق الدفع، المستودعات.</div>
+    </div>
+    <div class="tl-item">
+      <span class="when">الأسبوع 3 – 4</span>
+      <b class="small">إدخال البضاعة والملصقات</b>
+      <div class="small muted">إدخال المخزون الحالي بالمقاسات والكميات، وطباعة ملصقات الباركود.</div>
+    </div>
+    <div class="tl-item">
+      <span class="when">الأسبوع 5 – 6</span>
+      <b class="small">تدريب وتشغيل تجريبي</b>
+      <div class="small muted">الطاقم بيشتغل على النظام والدفتر مع بعض، لحتى تطمّن عالأرقام.</div>
+    </div>
+    <div class="tl-item">
+      <span class="when">الأسبوع 7 – 8</span>
+      <b class="small">التشغيل الفعلي</b>
+      <div class="small muted">النظام بيصير المرجع، والدفتر بينحطّ جانباً. وفترة الدعم بتبلّش.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:7mm">
+    <h3>قيمة المشروع</h3>
+    <p class="small muted">
+      منناقش القيمة وطريقة الدفع بالاجتماع، على أساس النطاق يلي منتّفق
+      عليه — وبعدها منبعتلك عرض سعر مكتوب ومفصّل، ما فيه مفاجآت.
+    </p>
+  </div>
+
+  <div class="pg-foot">
+    <span class="fmark"><b>TRINODE</b></span>
+    <span>نظام OG — عرض المشروع</span>
+    <span class="fnum">13</span>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════ 13 · الخطوة الجاية ═══════ -->
+<section id="p14" class="page closing">
+  <div class="closing-inner">
+    <div class="pg-head">
+      <span class="kicker" style="color:#6E7278">الخطوة الجاية</span>
+      <span class="kicker-rule" style="background:#2A2A2E"></span>
+    </div>
+
+    <h2 style="font-size:22pt">جرّبه قبل ما تقرّر</h2>
+    <div class="rule"></div>
+
+    <p class="lede" style="max-width:135mm">
+      النظام موجود وشغّال هلق — مو فكرة على ورق. بالاجتماع منفتحه قدامك
+      وبتجرّبه بإيدك: امسح باركود، بيع قطعة، سكّر الوردية، وابعت طلب طباعة.
+      عشر دقايق بتكفي تعرف إذا هالشي بيمشي بمحلّك ولا لأ.
+    </p>
+
+    <div class="stack" style="max-width:135mm; margin-top:2mm">
+      <div style="display:flex; gap:5mm; align-items:baseline">
+        <b class="lat" style="color:#C6FF00; font-size:11pt">01</b>
+        <div class="small" style="color:#D5D7DB">تجربة حيّة بالمحل — منجيب النظام ومنشغّله على بضاعتك.</div>
+      </div>
+      <div style="display:flex; gap:5mm; align-items:baseline">
+        <b class="lat" style="color:#C6FF00; font-size:11pt">02</b>
+        <div class="small" style="color:#D5D7DB">منتّفق على النطاق والجدول، ومنبعتلك عرض سعر مكتوب.</div>
+      </div>
+      <div style="display:flex; gap:5mm; align-items:baseline">
+        <b class="lat" style="color:#C6FF00; font-size:11pt">03</b>
+        <div class="small" style="color:#D5D7DB">منبلّش الإعداد، وبعد شهر لشهرين بتكون شغّال عليه.</div>
+      </div>
+    </div>
+
+    <!-- Bookends the cover: the same two marks, closing the document. -->
+    <div class="closing-marks">
+      <div class="og-plate on-dark"><img src="../assets/logo.svg" alt="OG System"></div>
+      <div class="sep"></div>
+      <div class="tri-mark">
+        <div class="tri-word" style="color:#F5F5F5">TRINODE</div>
+        <svg width="150" height="26" viewBox="0 0 150 26" fill="none"
+             stroke="#C08552" stroke-width="1.4" aria-hidden="true">
+          <circle cx="4" cy="13" r="3.2"/>
+          <path d="M7.5 13 H108"/>
+          <path d="M108 13 L126 3"/>
+          <path d="M108 13 H130"/>
+          <path d="M108 13 L126 23"/>
+          <circle cx="130.5" cy="2" r="3.2"/>
+          <circle cx="134" cy="13" r="3.2"/>
+          <circle cx="130.5" cy="24" r="3.2"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="contact">
+      <div><span>الشركة</span><b class="lat" style="direction:ltr;display:inline-block">Trinode</b></div>
+      <div><span>المشروع</span><b style="white-space:nowrap">نظام <span class="lat">OG</span></b></div>
+      <div><span>للتواصل</span><b class="faint" style="color:#6E7278">— يُملأ —</b></div>
+    </div>
+
+    <div class="pg-foot">
+      <span class="fmark"><b>TRINODE</b></span>
+      <span>نظام OG — عرض المشروع</span>
+      <span class="fnum">14</span>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

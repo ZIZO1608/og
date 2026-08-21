@@ -1,0 +1,45 @@
+# =============================================================================
+#  What does NOT belong in the repository
+# -----------------------------------------------------------------------------
+#  Rule of thumb: if a script can regenerate it, it is not source.
+#
+#  This matters more than usual here. `dist/` was previously hand-uploaded to
+#  GitHub, which is how the live site ended up serving og-system-v2 while local
+#  was on v13 — a stale build silently shipped the wrong version for weeks.
+#  There is now exactly one place the site is built: the GitHub Action.
+# =============================================================================
+
+# ---- build output -----------------------------------------------------------
+# Rebuilt by make-deploy.ps1 locally and by .github/workflows/deploy.yml on
+# every push. Committing it invites the two copies to disagree.
+dist/
+
+# ---- the Flutter port -------------------------------------------------------
+# Kept out for now: it has never compiled cleanly end to end, and the web app
+# is what gets demoed. Delete this line to bring it in — its own
+# flutter_app/.gitignore already excludes the 49 MB build/ and 14 MB
+# .widget_preview/, so the real source is only ~350 KB.
+flutter_app/
+
+# ---- generated document assets ----------------------------------------------
+# make-proposal.ps1 regenerates all of these from the live app.
+docs/img/
+docs/fonts/
+docs/proof/
+docs/*.pdf
+docs/_*.html
+
+# ---- tooling and OS junk ----------------------------------------------------
+.claude/
+.vscode/
+.idea/
+*.iml
+
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ---- local scratch ----------------------------------------------------------
+*.log
+*.tmp
+.setup_backup/

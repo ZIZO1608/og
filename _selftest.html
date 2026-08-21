@@ -1,0 +1,1860 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="utf-8"><title>OG selftest</title><link rel="stylesheet" href="css/style.css"></head>
+<body>
+<div id="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main"><header class="topbar" id="topbar"></header><main class="view" id="view"></main></div>
+</div>
+<nav id="tabbar" class="tabbar"></nav><div id="toasts" class="toasts"></div><div id="palette-root"></div><div id="modal-root"></div><div id="drawer-root"></div>
+<div id="tour-root"></div><div id="bulk-root"></div><div id="print-root" class="print-root"></div>
+<button id="tourBtn" class="tour-fab"><span class="tour-fab-dot"></span><span id="tourBtnLabel">Demo tour</span></button>
+
+<script>
+window.__errs = [];
+window.onerror = function (m, s, l) { window.__errs.push(m + ' @' + (s || '').split('/').pop() + ':' + l); };
+var _e = console.error; console.error = function () { window.__errs.push('console.error: ' + Array.prototype.join.call(arguments, ' ')); _e.apply(console, arguments); };
+</script>
+<script src="js/codes.js"></script><script src="js/motion.js"></script>
+<script src="js/export.js"></script>
+<script src="js/data.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/pos.js"></script>
+<script src="js/bulk.js"></script>
+<script src="js/scan.js"></script><script src="js/wedge.js"></script><script src="js/stock.js"></script><script src="js/money.js"></script><script src="js/palette.js"></script><script src="js/whatsapp.js"></script><script src="js/notify.js"></script><script src="js/ylinvoice.js"></script><script src="js/yalla.js"></script>
+<script src="js/app.js"></script>
+<script>
+(function () {
+  var R = [];
+  function ok(n, c, x) { R.push((c ? 'PASS ' : 'FAIL ') + n + (x ? ' — ' + x : '')); }
+  function try_(n, f) { try { f(); } catch (e) { R.push('THROW ' + n + ' — ' + e.message); } }
+
+  var VIEWS_ = ['dashboard', 'pos', 'products', 'warehouse', 'customers', 'print', 'reports', 'storefront', 'settings'];
+  function cycle(tag) {
+    VIEWS_.forEach(function (v) {
+      try_(tag + ':' + v, function () {
+        go(v);
+        var n = document.getElementById('view').innerHTML.length;
+        ok(tag + ':' + v, n > 800, n + 'ch');
+      });
+    });
+  }
+
+  try {
+
+  /* 1 — OG screens */
+  cycle('en');
+
+  /* 2 — sub-tabs */
+  try_('wh moves', function () { OG.wh.tab = 'moves'; go('warehouse'); ok('warehouse moves', !!document.getElementById('mvTable')); });
+  ['sales', 'profit', 'inventory', 'employees', 'suppliers'].forEach(function (tb) {
+    try_('rep ' + tb, function () { OG.rep.tab = tb; go('reports'); ok('report ' + tb, document.getElementById('view').innerHTML.length > 800); });
+  });
+
+  /* 3 — codes wired into the real data */
+  ok('all barcodes valid EAN-13',
+     DB.variants.every(function (v) { return Codes.ean13Valid(v.barcode); }),
+     DB.variants.filter(function (v) { return !Codes.ean13Valid(v.barcode); }).length + ' bad');
+  ok('demo barcode valid', Codes.ean13Valid(CONFIG.DEMO_BARCODE), CONFIG.DEMO_BARCODE);
+  ok('demo barcode resolves', !!DB.variantByBarcode(CONFIG.DEMO_BARCODE));
+  ok('warehouse barcode valid', Codes.ean13Valid(whBarcode('tshirts', 'M', 3)), whBarcode('tshirts', 'M', 3));
+  try_('qr payloads fit', function () {
+    var bad = DB.variants.filter(function (v) { return !Codes.qrMatrix(qrForVariant(v)); });
+    ok('every product QR encodes', bad.length === 0, bad.length + ' too long');
+  });
+
+  /* 4 — label studio */
+  try_('label studio', function () {
+    go('products'); openLabelSheet(1);
+    var n = document.querySelectorAll('.blabel').length;
+    ok('label sheet renders', n > 0, n + ' labels');
+    ok('labels carry a real barcode', document.querySelectorAll('.blabel svg.bc').length > 0);
+    OG.lb.template = 'hang'; OG.lb.qr = true; repaintLabels();
+    ok('hang tag carries a QR', document.querySelectorAll('.blabel svg.qr').length > 0);
+    ok('studio controls are no-print', !!document.querySelector('.lb-controls.no-print'));
+    closeModal(); OG.lb.template = 'price';
+  });
+
+  /* 5 — POS sale still moves stock, and creates a tracked print job */
+  try_('POS sale', function () {
+    go('pos');
+    var v = DB.variantByBarcode(CONFIG.DEMO_BARCODE), before = v.qty;
+    var jobsBefore = DB.printJobs.length;
+    POS.reset(true); POS.scanBarcode(CONFIG.DEMO_BARCODE, true);
+    POS.state.print.on = true; POS.state.print.qty = 6; POS.state.customerId = 2;
+    POS.complete(true);
+    ok('stock decremented', v.qty === before - 1, before + ' -> ' + v.qty);
+    ok('invoice modal shown', !!document.querySelector('.invoice-sheet'));
+    ok('invoice QR is real', !!document.querySelector('.inv-qr svg.qr'));
+    var job = DB.printJobs[DB.printJobs.length - 1];
+    ok('print job created', DB.printJobs.length === jobsBefore + 1 && job.stage === 'design', job.id);
+    ok('new job has history', !!job.history && job.history.length === 1, JSON.stringify((job.history || []).map(function (x) { return x.stage; })));
+    ok('new job has sizes', !!job.sizes && Object.keys(job.sizes).length > 0);
+    closeModal();
+  });
+
+  /* 6 — stage history + tracker */
+  try_('stage history', function () {
+    var j = DB.printJobs.filter(function (x) { return x.stage === 'design'; })[0];
+    var n0 = j.history.length;
+    DB.setStage(j, 'printing');
+    ok('setStage advances', j.stage === 'printing');
+    ok('setStage stamps history', j.history.length === n0 + 1 && j.history[j.history.length - 1].stage === 'printing');
+    ok('stageAt returns a date', DB.stageAt(j, 'printing') instanceof Date);
+    var html = stepper(j.stage, { history: j.history });
+    ok('tracker has one node per stage', (html.match(/track-node/g) || []).length === DB.printStages.length);
+    ok('tracker has arrows between', (html.match(/track-arrow/g) || []).length === DB.printStages.length - 1);
+    ok('tracker marks current', html.indexOf('track-step now') > -1);
+  });
+
+  /* 7 — kanban still renders with the compact tracker */
+  try_('kanban', function () {
+    go('print');
+    ok('5 columns', document.querySelectorAll('.kcol').length === 5);
+    ok('cards carry compact trackers', document.querySelectorAll('.kcard .track.compact').length > 0);
+    openJobDrawer(DB.printJobs[0].id);
+    ok('admin job drawer opens', !!document.querySelector('.drawer'));
+    ok('admin drawer shows what OG charges', document.querySelector('.drawer').innerHTML.indexOf('Charged to customer') > -1);
+    closeDrawer();
+  });
+
+  /* 8 — partner access control, asserted on the object not the HTML */
+  try_('partner whitelist', function () {
+    var pv = DB.partnerView(DB.printJobs[0]);
+    var keys = Object.keys(pv).join(',');
+    ok('partnerView has no customer', !('customer' in pv), keys);
+    ok('partnerView has no phone', !('phone' in pv));
+    ok('partnerView has no price', !('price' in pv));
+    ok('partnerView exposes payout', 'payout' in pv && pv.payout > 0);
+    var json = JSON.stringify(DB.partnerJobs(true));
+    ok('no phone number anywhere in partner data', json.indexOf('+963') === -1);
+    ok('no customer name in partner data', json.indexOf(DB.printJobs[0].customer) === -1);
+  });
+
+  /* 9 — the portal itself */
+  try_('yalla portal', function () {
+    ACTIONS['partner-view']();
+    ok('portal flag set', OG.print.partner === true);
+    ok('body marked as yalla', document.body.getAttribute('data-portal') === 'yalla');
+    ok('yalla sidebar rendered', document.getElementById('sidebar').innerHTML.indexOf('YALLA WEAR') > -1);
+    ok('yalla topbar rendered', document.getElementById('topbar').innerHTML.indexOf('Partner access') > -1);
+
+    ['today', 'queue', 'earnings'].forEach(function (v) {
+      YALLA.state.view = v; render();
+      var n = document.getElementById('view').innerHTML.length;
+      ok('yalla:' + v, n > 600, n + 'ch');
+      ok('yalla:' + v + ' leaks no phone', document.getElementById('view').innerHTML.indexOf('+963') === -1);
+    });
+
+    YALLA.state.view = 'queue'; render();
+    ok('queue cards carry trackers', document.querySelectorAll('.yl-card .track').length > 0);
+    YALLA.openJob(DB.printJobs[0].id);
+    ok('yalla job drawer opens', !!document.querySelector('.drawer'));
+    var d = document.querySelector('.drawer').innerHTML;
+    ok('yalla drawer shows payout', d.indexOf('You get paid') > -1);
+    ok('yalla drawer hides OG price', d.indexOf('Charged to customer') === -1);
+    closeDrawer();
+
+    ACTIONS['partner-view']();
+    ok('portal exits cleanly', OG.print.partner === false && !document.body.getAttribute('data-portal'));
+  });
+
+  /* 10 — tour + Arabic */
+  try_('tour', function () {
+    Tour.start();
+    for (var i = 0; i < Tour.steps.length; i++) {
+      var s = Tour.steps[i]; Tour.i = i;
+      if (OG.view !== s.view) { OG.view = s.view; renderSidebar(); }
+      if (s.enter) s.enter();
+      render();
+      ok('tour step ' + (i + 1), document.getElementById('view').innerHTML.length > 500);
+    }
+    Tour.stop();
+  });
+
+  try_('arabic', function () {
+    OG.lang = 'ar'; applyLang(); refreshAll();
+    ok('dir=rtl', document.documentElement.dir === 'rtl');
+  });
+  cycle('ar');
+  try_('yalla arabic', function () {
+    ACTIONS['partner-view']();
+    ['today', 'queue', 'earnings'].forEach(function (v) {
+      YALLA.state.view = v; render();
+      ok('ar yalla:' + v, document.getElementById('view').innerHTML.length > 600);
+    });
+    ACTIONS['partner-view']();
+    OG.lang = 'en'; applyLang(); refreshAll();
+  });
+
+  /* 11 — data sanity */
+  ok('24 products', DB.products.length === 24);
+  ok('40 customers', DB.customers.length === 40);
+  ok('>=120 invoices', DB.sales.length >= 120, String(DB.sales.length));
+  ok('every job has history', DB.printJobs.every(function (j) { return !!j.history; }));
+  ok('history never exceeds stage', DB.printJobs.every(function (j) {
+    return j.history.length <= DB.printStages.indexOf(j.stage) + 1; }));
+  ok('sizes sum to qty', DB.printJobs.every(function (j) {
+    var s = 0; for (var k in j.sizes) s += j.sizes[k]; return s === j.qty; }));
+  ok('>=2 overdue jobs', DB.printJobs.filter(function (j) { return DB.isOverdue(j); }).length >= 2);
+  ok('>=5 dormant customers', DB.inactiveCustomers(90).length >= 5);
+
+  /* 12 — exports, proved by unzipping the bytes we produced */
+  try_('export specs', function () {
+    ['sales', 'profit', 'inventory', 'employees', 'suppliers'].forEach(function (tb) {
+      OG.rep.tab = tb; go('reports');
+      var s = currentExportSpec();
+      ok('spec reports/' + tb, s && s.columns.length > 1 && s.rows.length > 0,
+         s ? (s.rows.length + ' rows') : 'null');
+    });
+    ['products', 'customers', 'warehouse', 'print', 'storefront'].forEach(function (v) {
+      go(v);
+      var s = currentExportSpec();
+      ok('spec ' + v, s && s.rows.length > 0, s ? (s.rows.length + ' rows') : 'null');
+      var widths = s.rows.filter(function (r) { return r.length !== s.columns.length; });
+      ok('spec ' + v + ' row width matches columns', widths.length === 0, widths.length + ' ragged');
+    });
+    go('products');
+    ok('export buttons present', document.querySelectorAll('[data-act="export"]').length >= 2);
+  });
+
+  try_('pdf sheet', function () {
+    OG.rep.tab = 'sales'; go('reports');
+    var s = currentExportSpec(); s.kind = 'pdf';
+    Export.run(s);
+    ok('pdf preview opens', !!document.querySelector('.pdf-sheet'));
+    var html = document.querySelector('.pdf-sheet').innerHTML;
+    ok('pdf has title + table', html.indexOf('pdf-title') > -1 && html.indexOf('pdf-tbl') > -1);
+    ok('pdf has no raw i18n slugs', html.indexOf('ex_') === -1 && html.indexOf('yl_') === -1);
+    ok('pdf controls are hidden from print', !!document.querySelector('.modal-foot'));
+    closeModal();
+  });
+
+  /* 13 — bulk selection and actions */
+  try_('bulk select', function () {
+    OG.prod.q = ''; OG.prod.health = ''; OG.prod.type = '';
+    go('products');
+    ok('scope detected', Bulk.scope() === 'products', String(Bulk.scope()));
+    ok('checkbox column rendered', document.querySelectorAll('.bk-col .bk-box').length > 20);
+
+    /* select-all must respect the filter, not grab the whole table */
+    OG.prod.health = 'gap'; go('products');
+    var gapIds = Bulk.visibleIds('products');
+    ok('filtered set is smaller than all', gapIds.length > 0 && gapIds.length < DB.products.length,
+       gapIds.length + ' of ' + DB.products.length);
+    ACTIONS_BK_all();
+    ok('select-all selects exactly the filtered set', Bulk.count('products') === gapIds.length,
+       Bulk.count('products') + ' vs ' + gapIds.length);
+    ok('bulk bar appears', !!document.querySelector('.bk-bar'));
+    ok('bar shows the count', (document.querySelector('.bk-count b') || {}).textContent === String(gapIds.length));
+
+    Bulk.clear('products'); go('products');
+    ok('clear empties selection', Bulk.count('products') === 0);
+    ok('bar disappears when empty', !document.querySelector('.bk-bar'));
+    OG.prod.health = '';
+  });
+
+  function ACTIONS_BK_all() {
+    var sc = Bulk.scope();
+    var el = { getAttribute: function (k) { return k === 'data-sc' ? sc : null; } };
+    /* drive the same code path the header checkbox uses */
+    var vis = Bulk.visibleIds(sc);
+    vis.forEach(function (i) { Bulk._sel[sc][i] = true; });
+    render(); Bulk.paint();
+  }
+
+  try_('bulk labels', function () {
+    go('products');
+    Bulk._sel.products = {}; [1, 11, 16].forEach(function (i) { Bulk._sel.products[i] = true; });
+    Bulk.run('products', 'labels');
+    var n = document.querySelectorAll('.blabel').length;
+    ok('labels for the whole selection', n > 12, n + ' labels from 3 products');
+    closeModal(); OG.lb.pids = null; Bulk.clear('products');
+  });
+
+  try_('bulk hide/show', function () {
+    go('products');
+    var p = DB.products[3], was = p.hidden;
+    Bulk._sel.products = {}; Bulk._sel.products[p.id] = true;
+    Bulk.run('products', 'hide');
+    ok('bulk hide applied', p.hidden === true);
+    Bulk.undo();
+    ok('undo restores visibility', p.hidden === was);
+    Bulk.clear('products');
+  });
+
+  try_('bulk price', function () {
+    go('products');
+    var p = DB.products[5], before = p.sellingPrice;
+    Bulk._sel.products = {}; Bulk._sel.products[p.id] = true;
+    Bulk.run('products', 'price');
+    document.getElementById('bkPct').value = '10';
+    document.querySelector('[data-bk="price-apply"]').click();
+    ok('price raised ~10%', p.sellingPrice > before, before + ' -> ' + p.sellingPrice);
+    Bulk.undo();
+    ok('undo restores price', p.sellingPrice === before);
+    Bulk.clear('products');
+  });
+
+  try_('bulk archive', function () {
+    OG.prod.health = ''; go('products');
+    var visBefore = Bulk.visibleIds('products').length;
+    var p = DB.products[7];
+    Bulk._sel.products = {}; Bulk._sel.products[p.id] = true;
+    Bulk.run('products', 'archive');
+    ok('archived flag set', p.archived === true);
+    go('products');
+    ok('archived row leaves the list', Bulk.visibleIds('products').length === visBefore - 1);
+    ok('lookup still resolves for old invoices', !!DB.product(p.id) && DB.product(p.id).name === p.name);
+    OG.prod.health = 'archived'; go('products');
+    ok('archived filter finds it', Bulk.visibleIds('products').indexOf(String(p.id)) > -1);
+    OG.prod.health = ''; Bulk.undo();
+    ok('undo unarchives', !p.archived);
+    Bulk.clear('products');
+  });
+
+  try_('bulk delete + undo', function () {
+    OG.prod.health = ''; go('products');
+    var n0 = DB.products.length;
+    var targets = [DB.products[2], DB.products[9]];
+    var idx = targets.map(function (p) { return DB.products.indexOf(p); });
+    Bulk._sel.products = {}; targets.forEach(function (p) { Bulk._sel.products[p.id] = true; });
+    Bulk.run('products', 'delete');
+    ok('confirm names the damage', (document.querySelector('.modal') || {}).innerHTML.indexOf('SKU') > -1);
+    document.querySelector('[data-bk="delete-go"]').click();
+    ok('records removed', DB.products.length === n0 - 2, DB.products.length + ' of ' + n0);
+    Bulk.undo();
+    ok('undo restores count', DB.products.length === n0);
+    ok('undo restores original order',
+       DB.products.indexOf(targets[0]) === idx[0] && DB.products.indexOf(targets[1]) === idx[1],
+       DB.products.indexOf(targets[0]) + ',' + DB.products.indexOf(targets[1]));
+    Bulk.clear('products');
+  });
+
+  try_('bulk jobs', function () {
+    go('print');
+
+    /* An unsent job in Design is now SENT to Yalla Wear rather than shoved to
+       the next stage. Moving it to "Sent to print" without the printer ever
+       seeing it was the old behaviour, and it was a lie the board then told
+       for the rest of the job's life. */
+    var draft = DB.printJobs.filter(function (x) {
+      return x.stage === 'design' && DB.canSendOrder(x) === null;
+    })[0];
+    ok('a sendable draft exists', !!draft, draft ? draft.id : 'none');
+    var msgs0 = DB.jobMessages.length;
+    Bulk._sel.jobs = {}; Bulk._sel.jobs[draft.id] = true;
+    Bulk.run('jobs', 'advance');
+    ok('bulk advance sends the order', DB.orderState(draft) === 'pending', DB.orderState(draft));
+    ok('it stays in design until accepted', draft.stage === 'design', draft.stage);
+    ok('and Yalla was told', DB.jobMessages.length === msgs0 + 1);
+    Bulk.undo();
+    ok('undo puts the order back to draft',
+       DB.orderState(draft) === 'draft' && draft.stage === 'design');
+    DB.jobMessages.length = msgs0;      /* the message is not part of the undo */
+    Bulk.clear('jobs');
+
+    /* An ACCEPTED job still advances by stage, exactly as before. */
+    var live = DB.printJobs.filter(function (x) { return x.stage === 'sent' && !DB.tbcCount(x); })[0];
+    ok('an accepted job exists', !!live, live ? live.id : 'none');
+    var h0 = live.history.length, m0 = DB.jobMessages.length;
+    Bulk._sel.jobs = {}; Bulk._sel.jobs[live.id] = true;
+    Bulk.run('jobs', 'advance');
+    ok('bulk advance moves the stage', live.stage === 'printing', live.stage);
+    ok('bulk advance stamps history', live.history.length === h0 + 1);
+    Bulk.undo();
+    ok('undo restores stage and history', live.stage === 'sent' && live.history.length === h0);
+    DB.jobMessages.length = m0;
+    Bulk.clear('jobs');
+  });
+
+  try_('bulk orders + customers', function () {
+    go('storefront');
+    var o = DB.storeOrders[0], was = o.status;
+    Bulk._sel.orders = {}; Bulk._sel.orders[o.id] = true;
+    Bulk.run('orders', 'confirm');
+    ok('bulk confirm order', o.status === 'confirmed');
+    Bulk.undo(); ok('undo restores order status', o.status === was);
+    Bulk.clear('orders');
+
+    go('customers');
+    ok('customer cards carry checkboxes', document.querySelectorAll('.bk-corner .bk-box').length > 10);
+    var c = DB.customers[0], pts = c.loyaltyPoints;
+    Bulk._sel.customers = {}; Bulk._sel.customers[c.id] = true;
+    Bulk.run('customers', 'points');
+    ok('bulk points added', c.loyaltyPoints === pts + 250);
+    Bulk.undo(); ok('undo restores points', c.loyaltyPoints === pts);
+    Bulk.clear('customers');
+  });
+
+  try_('bulk whatsapp link', function () {
+    var link = Bulk.waLink('+963 960 380 435', 'مرحباً');
+    ok('wa.me link is digits only', link.indexOf('https://wa.me/963960380435?text=') === 0, link.slice(0, 46));
+    ok('arabic text is percent-encoded', link.indexOf('%D9%85') > -1);
+  });
+
+  /* 14 — exports on every page, record documents, deep links */
+  try_('every page exports itself', function () {
+    var seen = {};
+    ['dashboard', 'pos', 'products', 'warehouse', 'customers', 'print', 'reports', 'storefront', 'settings']
+      .forEach(function (v) {
+        go(v);
+        var s = currentExportSpec();
+        ok('spec ' + v + ' exists', !!s && s.rows.length > 0, s ? s.rows.length + ' rows' : 'null');
+        if (!s) return;
+        ok('spec ' + v + ' width ok', s.rows.every(function (r) { return r.length === s.columns.length; }));
+        seen[v] = s.title;
+      });
+    var titles = Object.keys(seen).map(function (k) { return seen[k]; });
+    ok('each page has a distinct title', new Set(titles).size >= 8, titles.length + ' -> ' + new Set(titles).size);
+  });
+
+  try_('warehouse tab-aware', function () {
+    OG.wh.tab = 'add'; OG.wh.sizes = { S: 4, M: 6 }; go('warehouse');
+    var addSpec = currentExportSpec();
+    OG.wh.tab = 'moves'; go('warehouse');
+    var mvSpec = currentExportSpec();
+    ok('add-product tab exports the size matrix, not movements',
+       addSpec.title !== mvSpec.title && addSpec.name === 'new-product',
+       addSpec.name + ' vs ' + mvSpec.name);
+    OG.wh.sizes = {};
+  });
+
+  try_('yalla per-view exports', function () {
+    ACTIONS['partner-view']();
+    var t3 = {};
+    ['today', 'queue', 'earnings'].forEach(function (v) {
+      YALLA.state.view = v; render();
+      var s = YALLA.exportSpec();
+      ok('yalla ' + v + ' spec', !!s && s.rows.length > 0, s ? s.name : 'null');
+      ok('yalla ' + v + ' is yalla-themed', s.theme === 'yalla');
+      t3[v] = s.name;
+    });
+    ok('the three yalla pages differ', t3.today !== t3.queue && t3.queue !== t3.earnings,
+       [t3.today, t3.queue, t3.earnings].join(' / '));
+    var json = JSON.stringify([YALLA.exportSpec()]);
+    ok('yalla export leaks no phone', json.indexOf('+963') === -1);
+    ACTIONS['partner-view']();
+  });
+
+  try_('record documents', function () {
+    var cs = customerStatementSpec(1);
+    ok('customer statement built', !!cs && cs.rows.length > 0, cs ? cs.rows.length + ' invoices' : 'null');
+    ok('statement is that customer only', cs.subtitle.indexOf(DB.customer(1).name) > -1);
+
+    var ps = productSheetSpec(1);
+    ok('stock sheet built', !!ps && ps.rows.length === DB.variantsOf(1).length, ps.rows.length + ' sizes');
+    ok('stock sheet carries barcodes', Codes.ean13Valid(ps.rows[0][2]), ps.rows[0][2]);
+
+    var js2 = jobSheetSpec(DB.printJobs[0].id);
+    ok('job work order built', !!js2 && js2.rows.length > 0);
+    ok('work order totals to the job qty',
+       js2.rows.reduce(function (a, r) { return a + r[1]; }, 0) === DB.printJobs[0].qty);
+  });
+
+  try_('deep links', function () {
+    var links = [deepLink('product', 1), deepLink('customer', 12),
+                 deepLink('invoice', 'INV-2224'), deepLink('job', 'P-1043'),
+                 deepLink('report', 'profit')];
+    ok('every deep link encodes as a QR', links.every(function (u) { return !!Codes.qrMatrix(u); }));
+    ok('deep link shape', links[0].indexOf('#open/product/1') > -1, links[0].slice(-24));
+
+    ok('route -> product drawer', handleDeepLink('#open/product/1') &&
+       OG.view === 'products' && !!document.querySelector('.drawer'));
+    closeDrawer();
+    ok('route -> customer drawer', handleDeepLink('#open/customer/12') &&
+       OG.view === 'customers' && !!document.querySelector('.drawer'));
+    closeDrawer();
+    ok('route -> job drawer', handleDeepLink('#open/job/' + DB.printJobs[0].id) && OG.view === 'print');
+    closeDrawer();
+    ok('route -> report tab', handleDeepLink('#open/report/inventory') &&
+       OG.view === 'reports' && OG.rep.tab === 'inventory');
+    ok('unknown route ignored', handleDeepLink('#open/nope/1') === false);
+    ok('non-route hash ignored', handleDeepLink('#products') === false);
+  });
+
+  /* -------------------------------------------------------- PRODUCT PHOTOS
+     The upload used to be a stub that picked a random colour, and Save threw
+     the form away. Both are real now, so both get held to it. */
+  try_('product photos', function () {
+    /* Encode a synthetic oversized image and push it through the real reader. */
+    var cv = document.createElement('canvas');
+    cv.width = 1200; cv.height = 900;
+    var cx = cv.getContext('2d');
+    cx.fillStyle = '#C6FF00'; cx.fillRect(0, 0, 1200, 900);
+    cx.fillStyle = '#000'; cx.fillRect(100, 100, 400, 300);
+
+    cv.toBlob(function (blob) {
+      var file = new File([blob], 'shoe.png', { type: 'image/png' });
+      readImageFile(file, function (src, err) {
+        ok('reader accepts a real image', !err && !!src, err || (src || '').slice(0, 24));
+        if (src) {
+          var im = new Image();
+          im.onload = function () {
+            ok('downscaled to the 420px cap', Math.max(im.width, im.height) <= 420,
+               im.width + '×' + im.height);
+            ok('aspect ratio preserved', Math.abs((im.width / im.height) - (1200 / 900)) < 0.02);
+            if (window.__emit) window.__emit();
+          };
+          im.src = src;
+        }
+      });
+    }, 'image/png');
+
+    /* Rejections must be explicit, not silent. */
+    readImageFile(null, function (s, e) { ok('no file is rejected', e === 'none'); });
+    readImageFile(new File(['x'], 'a.txt', { type: 'text/plain' }),
+                  function (s, e) { ok('non-image is rejected', e === 'type'); });
+
+    /* thumb() switches to a photo only when there is one. */
+    var p0 = DB.products[0];
+    ok('colour block by default', thumb(p0).indexOf('<img') === -1);
+    var keep = p0.image.src;
+    p0.image.src = 'data:image/png;base64,iVBORw0KGgo=';
+    ok('photo renders when present', thumb(p0).indexOf('<img') > -1 && thumb(p0).indexOf('has-img') > -1);
+    ok('and in the big box too', thumbBox(p0).indexOf('<img') > -1);
+    p0.image.src = keep;
+
+    /* Printed surfaces deliberately keep the colour block. */
+    p0.image.src = 'data:image/png;base64,iVBORw0KGgo=';
+    var lbl = labelHTML({ name: p0.name, size: '42', price: p0.sellingPrice,
+                          code: DB.variantsOf(p0.id)[0].barcode, shelf: 'A-1',
+                          sku: DB.variantsOf(p0.id)[0].sku, variant: DB.variantsOf(p0.id)[0], n: 1 });
+    ok('a printed label never embeds the photo', lbl.indexOf('data:image/png') === -1);
+    p0.image.src = keep;
+
+    /* Save really saves — variants, valid barcodes, one movement per size. */
+    var before = DB.products.length, mvBefore = DB.stockMovements.length;
+    var np = DB.newProduct({ name: 'Test Runner', type: 'sneakers', cost: 100000, price: 200000,
+                             sizes: { '41': 3, '42': 5 }, imgSrc: 'data:image/png;base64,iVBORw0KGgo=' });
+    ok('product created', DB.products.length === before + 1 && np.id > 0);
+    var vs = DB.variantsOf(np.id);
+    ok('one variant per size entered', vs.length === 2, vs.length);
+    ok('quantities carried through', DB.totalQty(np.id) === 8, DB.totalQty(np.id));
+    ok('every barcode is a valid EAN-13',
+       vs.every(function (v) { return Codes.ean13Valid(v.barcode); }), vs[0].barcode);
+    ok('photo stored on the product', np.image.src.indexOf('data:image') === 0);
+    ok('one movement logged per size', DB.stockMovements.length === mvBefore + 2);
+    var mv = DB.stockMovements[0];
+    ok('movement uses the fields the table reads',
+       !!mv.date && mv.delta === 5 && !!mv.sku && mv.balance === 5 && mv.type === 'received',
+       JSON.stringify({ d: !!mv.date, delta: mv.delta, sku: !!mv.sku, bal: mv.balance }));
+
+    /* Put the catalogue back so the 24-products assertion stays true. */
+    DB.products.pop();
+    for (var i = DB.variants.length - 1; i >= 0; i--) {
+      if (DB.variants[i].productId === np.id) DB.variants.splice(i, 1);
+    }
+    DB.stockMovements.splice(0, 2);
+    ok('catalogue restored', DB.products.length === before && DB.stockMovements.length === mvBefore);
+  });
+
+  /* ------------------------------------------------------------- MOTION
+     Presentation only, but two of these guard against failures that would
+     be invisible in review and obvious in front of a client. */
+  try_('motion', function () {
+    ok('module present', typeof Motion === 'object');
+
+    /* 1. The manual kill switch actually kills it. */
+    document.body.setAttribute('data-motion', 'off');
+    ok('data-motion=off reports reduced', Motion.reduced() === true);
+    var probe = document.querySelector('.btn') || document.querySelector('.nav-item');
+    var dur = probe ? getComputedStyle(probe).transitionDuration : '';
+    ok('and collapses transitions', /^0\.00\d*s|^0s/.test(dur) || parseFloat(dur) < 0.01, dur);
+    document.body.removeAttribute('data-motion');
+
+    /* 2. Entrance runs on a view change and NOT on an in-view repaint. The
+          bug this catches would re-animate 24 product cards on every
+          keystroke in the search box. */
+    go('products');
+    ok('go() grants an entrance', document.getElementById('view').classList.contains('mo-view'));
+    OG.prod.q = 'nike';
+    render();                       /* a filter repaint, not a navigation */
+    ok('a filter repaint does not', !document.getElementById('view').classList.contains('mo-view'));
+    OG.prod.q = '';
+    render();
+
+    /* 3. Direction comes from the sidebar order, and flips going back. */
+    go('dashboard');
+    OG.dir = null;
+    go('settings');
+    ok('deeper reads as forward', Motion.direction('dashboard', 'settings') === 'fwd');
+    ok('shallower reads as back', Motion.direction('settings', 'dashboard') === 'back');
+    ok('same screen has no direction', Motion.direction('pos', 'pos') === null);
+
+    /* 4. The stagger is capped, or a 40-row table takes a second to appear. */
+    go('products');
+    var staggered = document.querySelectorAll('#view .mo-in');
+    var overCap = 0;
+    staggered.forEach(function (box) {
+      for (var i = 0; i < box.children.length; i++) {
+        if (+(box.children[i].style.getPropertyValue('--i') || 0) > Motion._cap - 1) overCap++;
+      }
+    });
+    ok('stagger index never exceeds the cap', overCap === 0, Motion._cap + ' max');
+
+    /* 5. THE HONESTY CHECK. An entrance system fails by leaving something at
+          opacity 0 when its animation never runs. With motion off, every
+          screen must still be completely visible. */
+    document.body.setAttribute('data-motion', 'off');
+    var invisible = [];
+    ['dashboard', 'products', 'customers', 'reports', 'print', 'storefront', 'settings'].forEach(function (v) {
+      go(v);
+      document.querySelectorAll('#view .stat, #view .card, #view .tbl tbody tr, #view .pcard').forEach(function (el) {
+        if (parseFloat(getComputedStyle(el).opacity) < 0.9) invisible.push(v + ':' + el.className);
+      });
+    });
+    document.body.removeAttribute('data-motion');
+    ok('nothing is left invisible with motion off', invisible.length === 0, invisible.slice(0, 3).join(' '));
+
+    /* 6. Counting must restore the exact string it started from — a rounding
+          artefact surviving as the final KPI is far worse than no animation. */
+    go('dashboard');
+    var val = document.querySelector('.stat .val');
+    var before = val.innerHTML;
+
+    /* the no-op path: motion off must not touch the markup at all */
+    document.body.setAttribute('data-motion', 'off');
+    Motion.count(val);
+    ok('count-up is a no-op with motion off', val.innerHTML === before);
+    document.body.removeAttribute('data-motion');
+
+    /* The real path. The FINAL restore cannot be asserted headlessly —
+       --virtual-time-budget does not advance performance.now() in step with
+       requestAnimationFrame, so the loop is always caught mid-count no matter
+       how long the test waits. So assert the mechanism that makes the restore
+       correct instead of the clock that triggers it: the pristine markup is
+       parked on the element, and it stays pristine across overlapping runs.
+
+       That parked copy is the whole safety guarantee — the final line of the
+       animation is `el.innerHTML = state.html`. */
+    Motion.count(val);
+    ok('count-up started', val.classList.contains('mo-counting'));
+    ok('pristine markup is parked', val.__moCount && val.__moCount.html === before,
+       val.__moCount ? JSON.stringify(val.__moCount.html.slice(0, 22)) : 'none');
+    ok('the currency suffix survives mid-count',
+       before.indexOf('class="cur"') === -1 || val.innerHTML.indexOf('class="cur"') > -1);
+
+    /* Re-entrancy: a second count starting mid-flight must NOT adopt the
+       half-counted value as its original. That bug leaves a wrong number on
+       screen forever, and it is reachable in normal use because countAll()
+       fires on every view entry. */
+    Motion.count(val);
+    ok('a second run keeps the true original', val.__moCount.html === before,
+       JSON.stringify(val.__moCount.html.slice(0, 22)) + ' vs ' + JSON.stringify(before.slice(0, 22)));
+
+    /* Prove the restore itself, by running the same line the loop ends on. */
+    var parked = val.__moCount.html;
+    val.innerHTML = parked;
+    ok('restoring the parked copy is byte-identical', val.innerHTML === before);
+  });
+
+  /* ==================================================== BUTTONS THAT LIED
+     Three controls used to show a success message and change nothing. Each
+     assertion below is specifically that the thing now HAPPENS, not that the
+     toast appears. */
+
+  try_('whatsapp is real', function () {
+    ok('module present', typeof WA === 'object');
+
+    /* wa.me takes digits only. A stored "+963 933 447 210" that keeps its
+       spaces opens WhatsApp on a blank chat, which looks like a broken
+       feature rather than a bad number. */
+    ok('strips punctuation', WA.digits('+963 933 447 210') === '963933447210',
+       WA.digits('+963 933 447 210'));
+    ok('local 09xx becomes 963xx', WA.digits('0933447210') === '963933447210',
+       WA.digits('0933447210'));
+
+    var url = WA.link('+963 933 447 210', 'مرحبا\nسطر ثاني');
+    ok('builds a wa.me link', url.indexOf('https://wa.me/963933447210?text=') === 0, url.slice(0, 40));
+    /* Arabic and newlines must survive the round trip or the message arrives
+       truncated at the first space. */
+    ok('arabic survives encoding', decodeURIComponent(url.split('?text=')[1]) === 'مرحبا\nسطر ثاني');
+    ok('no raw spaces in the query', url.split('?text=')[1].indexOf(' ') === -1);
+    ok('a blank number yields no link', WA.link('', 'x') === null);
+
+    /* Sending is logged, so the demo can show a history. */
+    var n0 = DB.waMessages.length;
+    WA.log({ to: '+963 933 447 210', name: 'Test', kind: 'winback', text: 'hello' });
+    ok('sends are logged', DB.waMessages.length === n0 + 1 && DB.waMessages[0].name === 'Test');
+    DB.waMessages.shift();
+
+    /* The end-of-day summary is built from the same helpers the dashboard
+       uses, so the message cannot disagree with the screen. */
+    var txt = WA.dayText();
+    ok('day summary mentions the shop', txt.indexOf(CONFIG.SHOP_NAME) > -1);
+    ok('day summary carries a total', /\d/.test(txt) && txt.length > 40, txt.length + 'ch');
+  });
+
+  try_('settings actually save', function () {
+    /* This harness never called boot(), so the delegated input/change/click
+       listeners were never attached — every earlier test drove functions
+       directly. These assertions go through real events on purpose, because
+       a handler that is written but never wired is exactly the failure being
+       tested for. Bound once; calling it twice would double-fire everything. */
+    if (!window.__boundGlobals) { bindGlobal(); window.__boundGlobals = true; }
+
+    go('settings');
+
+    var pts0 = CONFIG.LOYALTY_POINTS_PER_1000;
+    var val0 = CONFIG.LOYALTY_POINT_VALUE;
+    var name0 = CONFIG.SHOP_NAME;
+    var perm0 = PERMISSIONS[1][2];
+
+    /* bindGlobal routes by element type: text and number inputs are handled
+       on `input`, selects and checkboxes on `change`. Firing both is what a
+       real user does anyway — typing raises input, leaving the field raises
+       change — and it keeps this helper honest for every field type. */
+    function change(sel, value) {
+      var el = document.querySelector(sel);
+      if (!el) return false;
+      el.value = value;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+
+    ok('loyalty points field is wired', change('[data-change="set-pts"]', '3'));
+    ok('and it applied', CONFIG.LOYALTY_POINTS_PER_1000 === 3, String(CONFIG.LOYALTY_POINTS_PER_1000));
+
+    go('settings');
+    ok('point value applied', change('[data-change="set-ptval"]', '75') && CONFIG.LOYALTY_POINT_VALUE === 75,
+       String(CONFIG.LOYALTY_POINT_VALUE));
+
+    go('settings');
+    change('[data-change="set-shopname"]', 'Test Shop');
+    ok('shop name applied', CONFIG.SHOP_NAME === 'Test Shop', CONFIG.SHOP_NAME);
+    /* The sidebar wordmark used to be the literal string "OG SYSTEM", so a
+       renamed shop showed everywhere except the one place always on screen. */
+    ok('and it reaches the sidebar',
+       document.getElementById('sidebar').innerHTML.indexOf('TEST SHOP') > -1,
+       (document.getElementById('sidebar').innerHTML.match(/<b>([^<]*)<\/b>/) || [])[1]);
+
+    /* A blank shop name must be refused, not accepted — the name appears on
+       every invoice and label. */
+    go('settings');
+    change('[data-change="set-shopname"]', '   ');
+    ok('a blank name is refused', CONFIG.SHOP_NAME === 'Test Shop');
+
+    go('settings');
+    var box = document.querySelector('[data-change="set-perm"]');
+    ok('permission boxes are wired', !!box);
+    if (box) {
+      var pi = +box.getAttribute('data-p'), ri = +box.getAttribute('data-r');
+      var was = !!PERMISSIONS[pi][ri];
+      box.checked = !was;
+      box.dispatchEvent(new Event('change', { bubbles: true }));   /* checkbox: change */
+      ok('permission toggled the real table', PERMISSIONS[pi][ri] === !was);
+      PERMISSIONS[pi][ri] = was;
+    }
+    /* Admin must never be switchable off — it is the role that owns Settings. */
+    var adminBoxes = document.querySelectorAll('.perm-tbl tbody tr td.pc:nth-child(2) input');
+    ok('admin column stays disabled',
+       [].every.call(adminBoxes, function (b) { return b.disabled; }));
+
+    CONFIG.LOYALTY_POINTS_PER_1000 = pts0;
+    CONFIG.LOYALTY_POINT_VALUE = val0;
+    CONFIG.SHOP_NAME = name0;
+    PERMISSIONS[1][2] = perm0;
+    ok('settings restored', CONFIG.SHOP_NAME === name0);
+  });
+
+  try_('reorder creates a real order', function () {
+    /* Suggestions come from sales that actually happened. */
+    var sug = DB.reorderSuggestions();
+    ok('suggestions exist', sug.length > 0, sug.length + ' sizes');
+    ok('sorted most urgent first', sug.every(function (s, i) {
+      return i === 0 || sug[i - 1].urgency <= s.urgency;
+    }));
+    ok('every suggestion asks for a positive quantity',
+       sug.every(function (s) { return s.qty > 0; }));
+    /* Reordering something nobody buys is how a stockroom fills with dead
+       stock. A zero-velocity size only qualifies if it is already critical. */
+    ok('dead stock is not suggested unless critical',
+       sug.every(function (s) { return s.rate > 0 || s.have <= CONFIG.STOCK_CRITICAL; }));
+
+    var v = DB.variants.filter(function (x) { return x.qty > 0; })[0];
+    var p = DB.product(v.productId);
+    var before = v.qty;
+    var supBefore = DB.supplierFor(p).outstanding;
+    var mvBefore = DB.stockMovements.length;
+    var poBefore = DB.purchaseOrders.length;
+
+    var po = DB.newPO(DB.supplierFor(p).id,
+                      [{ productId: v.productId, size: v.size, qty: 7, cost: p.costPrice }],
+                      p.name);
+    ok('a PO is created', DB.purchaseOrders.length === poBefore + 1 && po.status === 'draft');
+    ok('totals compute', DB.poPieces(po) === 7 && DB.poTotal(po) === 7 * p.costPrice);
+    ok('ordering does NOT move stock yet', v.qty === before);
+
+    ok('it can be sent', DB.sendPO(po) === true && po.status === 'sent');
+    ok('and not sent twice', DB.sendPO(po) === false);
+
+    ok('receiving raises stock', DB.receivePO(po) && v.qty === before + 7, before + ' -> ' + v.qty);
+    ok('and logs a movement', DB.stockMovements.length === mvBefore + 1);
+    var mv = DB.stockMovements[0];
+    ok('the movement is auditable',
+       mv.delta === 7 && mv.type === 'received' && mv.sku === v.sku && !!mv.date &&
+       mv.note.indexOf(po.id) > -1, JSON.stringify({ d: mv.delta, t: mv.type }));
+    ok('supplier balance grew', DB.supplierFor(p).outstanding === supBefore + DB.poTotal(po));
+    ok('cannot receive twice', DB.receivePO(po) === false);
+
+    /* restore — through the helper, so the place buckets go back too */
+    DB.setStockAt(v, DB.intakeWh, DB.stockAt(v, DB.intakeWh) - 7);
+    DB.supplierFor(p).outstanding = supBefore;
+    DB.stockMovements.shift();
+    DB.purchaseOrders.shift();
+    ok('stock restored', v.qty === before && DB.purchaseOrders.length === poBefore);
+  });
+
+  try_('warehouse PO tab', function () {
+    OG.wh.tab = 'po'; go('warehouse');
+    var html = document.getElementById('view').innerHTML;
+    ok('PO tab renders', html.length > 800, html.length + 'ch');
+    ok('it shows what is worth ordering', html.indexOf('data-act="reorder"') > -1);
+    /* Each warehouse tab must export ITSELF — the exact bug that once made
+       every tab export the movement log. */
+    var poSpec = currentExportSpec();
+    OG.wh.tab = 'moves'; go('warehouse');
+    var mvSpec = currentExportSpec();
+    OG.wh.tab = 'add'; go('warehouse');
+    var addSpec = currentExportSpec();
+    ok('the three warehouse tabs export differently',
+       poSpec.title !== mvSpec.title || poSpec.rows.length !== mvSpec.rows.length,
+       poSpec.title + ' | ' + mvSpec.title + ' | ' + addSpec.title);
+  });
+
+  /* ================================================================ SCANNING
+     The real test is a round trip: render a barcode with the same encoder
+     that prints the labels, hand the PIXELS to the decoder, and require the
+     original digits back. Anything less is testing that a function exists. */
+  try_('barcode decoding', function () {
+    ok('module present', typeof Scan === 'object');
+    ok('encoder tables are shared, not copied', !!(Codes._ean && Codes._ean.L.length === 10));
+
+    /* Paint a real EAN-13 onto a canvas the way a label would print it. */
+    function paint(code, moduleW, quiet, invert) {
+      var bits = Codes.ean13(code);
+      var w = bits.length * moduleW + quiet * 2;
+      var h = 90;
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      var g = c.getContext('2d', { willReadFrequently: true });
+      g.fillStyle = invert ? '#000' : '#fff'; g.fillRect(0, 0, w, h);
+      g.fillStyle = invert ? '#fff' : '#000';
+      for (var i = 0; i < bits.length; i++) {
+        if (bits[i] === '1') g.fillRect(quiet + i * moduleW, 0, moduleW, h);
+      }
+      return { data: g.getImageData(0, 0, w, h).data, w: w, h: h };
+    }
+
+    var real = DB.variants[0].barcode;
+    var img = paint(real, 3, 20, false);
+    ok('decodes a barcode it printed itself', Scan.decodeEan13(img.data, img.w, img.h) === real,
+       Scan.decodeEan13(img.data, img.w, img.h) + ' vs ' + real);
+
+    /* Different module widths — a label printed at 50mm and at 25mm. */
+    [2, 4, 6].forEach(function (mw) {
+      var im = paint(real, mw, 16, false);
+      ok('decodes at ' + mw + 'px per module', Scan.decodeEan13(im.data, im.w, im.h) === real);
+    });
+
+    /* Held upside down, which is how half of all scans happen. */
+    var flip = paint(real, 3, 20, false);
+    var mirrored = new Uint8ClampedArray(flip.data.length);
+    for (var y = 0; y < flip.h; y++) {
+      for (var x = 0; x < flip.w; x++) {
+        var a = (y * flip.w + x) * 4, b = (y * flip.w + (flip.w - 1 - x)) * 4;
+        mirrored[b] = flip.data[a]; mirrored[b + 1] = flip.data[a + 1];
+        mirrored[b + 2] = flip.data[a + 2]; mirrored[b + 3] = flip.data[a + 3];
+      }
+    }
+    ok('decodes a mirrored label', Scan.decodeEan13(mirrored, flip.w, flip.h) === real);
+
+    /* Several different products, so it is not one lucky digit pattern. */
+    var many = DB.variants.slice(0, 12);
+    var okAll = many.every(function (v) {
+      var im = paint(v.barcode, 3, 18, false);
+      return Scan.decodeEan13(im.data, im.w, im.h) === v.barcode;
+    });
+    ok('decodes 12 different products', okAll);
+
+    /* Noise must produce NOTHING rather than a plausible wrong code — the
+       check digit is what makes that guarantee. */
+    var noise = new Uint8ClampedArray(400 * 60 * 4);
+    for (var i = 0; i < noise.length; i += 4) {
+      var v2 = Math.random() < 0.5 ? 0 : 255;
+      noise[i] = noise[i + 1] = noise[i + 2] = v2; noise[i + 3] = 255;
+    }
+    ok('random noise decodes to nothing', Scan.decodeEan13(noise, 400, 60) === null);
+
+    var blank = new Uint8ClampedArray(400 * 60 * 4).fill(255);
+    ok('a blank image decodes to nothing', Scan.decodeEan13(blank, 400, 60) === null);
+  });
+
+  try_('scan routing', function () {
+    /* Whatever the camera returns is resolved in one place, so every entry
+       point behaves the same. */
+    var v = DB.variants[3];
+    var byBarcode = resolveScan(v.barcode);
+    ok('a barcode resolves to its variant', byBarcode && byBarcode.kind === 'variant' &&
+       byBarcode.variant.sku === v.sku);
+
+    var bySku = resolveScan(v.sku);
+    ok('a SKU resolves too', bySku && bySku.variant.sku === v.sku);
+
+    var byInvoice = resolveScan(DB.sales[0].id);
+    ok('an invoice number resolves', byInvoice && byInvoice.kind === 'invoice');
+
+    var byJob = resolveScan(DB.printJobs[0].id);
+    ok('a print job id resolves', byJob && byJob.kind === 'job');
+
+    var byLink = resolveScan(deepLink('product', 1));
+    ok('a QR deep link resolves to a route', byLink && byLink.kind === 'route');
+
+    ok('gibberish resolves to nothing', resolveScan('not-a-real-code') === null);
+    ok('an empty scan resolves to nothing', resolveScan('') === null);
+
+    /* The screen he asked for: scan a label, see every size and its stock. */
+    openScanResult(v.barcode);
+    var html = document.getElementById('modal-root').innerHTML;
+    ok('the result sheet opens', html.indexOf('sc-hit') > -1);
+    ok('it names the product', html.indexOf(esc(DB.product(v.productId).name)) > -1);
+    ok('it marks the size that was scanned', html.indexOf('sc-row-on') > -1);
+    ok('it lists every size', (html.match(/sc-row-on|<tr>/g) || []).length >=
+       DB.variantsOf(v.productId).length);
+    ok('it offers to add it to the sale', html.indexOf('data-act="scan-to-pos"') > -1);
+    closeModal();
+
+    /* An unknown code must say so, not open an empty sheet. */
+    openScanResult('9999999999999');
+    ok('an unknown code opens nothing', !document.querySelector('.sc-hit'));
+  });
+
+  /* ============================================================ STOCK COUNT
+     Two rules make this safe. Both are asserted, because breaking either
+     would quietly corrupt the entire stock ledger. */
+  try_('stock count', function () {
+    ok('module present', typeof Stock === 'object');
+
+    var WH = DB.defaultWh;
+    var a = Stock.start('all', WH);
+    ok('a session starts', !!Stock.active() && a.id.indexOf('CNT-') === 0, a.id);
+    ok('a count belongs to one place', a.whId === WH, String(a.whId));
+    ok('nothing is counted yet', Stock.totals().counted === 0);
+
+    /* A count is checked against the stock IN THE PLACE BEING WALKED, not the
+       grand total, so the baselines here are the floor buckets. Sizes with at
+       least four on the floor, so "three missing" stays a real number rather
+       than a negative one. */
+    var pool = DB.variants.filter(function (v) { return DB.stockAt(v, WH) >= 4; });
+    ok('enough floor stock to count against', pool.length >= 10, String(pool.length));
+
+    var v1 = pool[0], v2 = pool[1], v3 = pool[2];
+    var f1 = DB.stockAt(v1, WH), f2 = DB.stockAt(v2, WH), f3 = DB.stockAt(v3, WH);
+    var q1 = v1.qty, q2 = v2.qty, q3 = v3.qty;
+    /* The other place must come through the whole count untouched. */
+    var s1 = DB.stockAt(v1, 'store'), s3 = DB.stockAt(v3, 'store');
+
+    /* RULE 1 — counting must not touch stock. */
+    Stock.set(v1.sku, f1 - 3);          /* three missing */
+    Stock.set(v2.sku, f2);              /* matches */
+    Stock.set(v3.sku, f3 + 2);          /* two extra found */
+    ok('counting alone never moves stock',
+       v1.qty === q1 && v2.qty === q2 && v3.qty === q3);
+
+    var tt = Stock.totals();
+    ok('three sizes counted', tt.counted === 3, String(tt.counted));
+    ok('two of them differ', tt.variance === 2, String(tt.variance));
+    ok('net pieces is the sum of the differences', tt.pieces === -1, String(tt.pieces));
+
+    /* RULE 2 — blank means "not counted", NOT zero. Getting this wrong wipes
+       the shelf on the first post. */
+    Stock.set(v2.sku, '');
+    ok('clearing a box un-counts it, it does not count zero',
+       Stock.totals().counted === 2 &&
+       Stock.rows().filter(function (r) { return r.v.sku === v2.sku; })[0].has === false);
+
+    /* A scan increments what is in hand rather than opening a product sheet. */
+    var before = Stock.totals().counted;
+    Stock.scanned(v2.barcode);
+    ok('a scan counts one', Stock.totals().counted === before + 1);
+    Stock.scanned(v2.barcode);
+    ok('scanning again increments', Stock.rows()
+       .filter(function (r) { return r.v.sku === v2.sku; })[0].counted === 2);
+    Stock.set(v2.sku, f2);              /* put it back to matching */
+
+    /* Filters */
+    Stock.state.filter = 'variance';
+    ok('variance filter shows only differences',
+       Stock.rows().every(function (r) { return r.has && r.diff !== 0; }));
+    Stock.state.filter = 'uncounted';
+    ok('uncounted filter shows only blanks',
+       Stock.rows().every(function (r) { return !r.has; }));
+    Stock.state.filter = 'all';
+
+    /* Posting applies ONLY counted sizes that differ, and logs each one. */
+    var mvBefore = DB.stockMovements.length;
+    var untouched = pool[8], uq = untouched.qty;
+    var res = Stock.post();
+
+    ok('post reports what it did', !!res && res.applied === 2, res ? String(res.applied) : 'null');
+    ok('the short size was written down', DB.stockAt(v1, WH) === f1 - 3,
+       f1 + ' -> ' + DB.stockAt(v1, WH));
+    ok('the surplus size was written up', DB.stockAt(v3, WH) === f3 + 2,
+       f3 + ' -> ' + DB.stockAt(v3, WH));
+    ok('the matching size was left alone', v2.qty === q2);
+    ok('an uncounted size was never touched', untouched.qty === uq);
+
+    /* The adjustment lands on the counted place only. The other room was not
+       walked, so nothing was learned about it and nothing may change there. */
+    ok('the place that was not counted is untouched',
+       DB.stockAt(v1, 'store') === s1 && DB.stockAt(v3, 'store') === s3,
+       s1 + '/' + DB.stockAt(v1, 'store'));
+    ok('the total follows the counted place',
+       v1.qty === q1 - 3 && v3.qty === q3 + 2, q1 + ' -> ' + v1.qty);
+    ok('total still equals the sum of its places',
+       v1.qty === DB.stockAt(v1, 'floor') + DB.stockAt(v1, 'store'));
+    ok('one movement per adjustment', DB.stockMovements.length === mvBefore + 2,
+       (DB.stockMovements.length - mvBefore) + ' logged');
+
+    var mv = DB.stockMovements.slice(0, 2);
+    ok('shortfalls log as a loss, surpluses as a find',
+       mv.some(function (m) { return m.delta < 0 && m.type === 'damaged'; }) &&
+       mv.some(function (m) { return m.delta > 0 && m.type === 'received'; }));
+    ok('movements name the count that made them',
+       mv.every(function (m) { return String(m.note).indexOf(res.count.id) > -1; }));
+    ok('the session closes after posting', Stock.active() === null);
+    ok('and is kept as a record', DB.stockCounts[0].id === res.count.id);
+
+    /* Restore through the same helper the app uses. Assigning v.qty directly
+       would put the total back while leaving the buckets short, and every
+       later suite would then be running against stock that does not add up. */
+    DB.setStockAt(v1, WH, f1);
+    DB.setStockAt(v3, WH, f3);
+    DB.stockMovements.splice(0, 2);
+    DB.stockCounts.shift();
+    ok('stock restored', v1.qty === q1 && v3.qty === q3 &&
+       DB.stockMovements.length === mvBefore);
+  });
+
+  /* ============================================================= WAREHOUSES
+     Stock lives in two places now. The invariant that keeps every one of the
+     ~170 read sites in the app honest is qty === floor + store, so it is
+     asserted after every kind of operation, not just once on load. */
+  try_('warehouses', function () {
+    ok('two places exist', DB.warehouses.length === 2, String(DB.warehouses.length));
+    ok('the till sells from the floor by default', DB.defaultWh === 'floor');
+    ok('deliveries land in the back', DB.intakeWh === 'store');
+
+    var broken = DB.variants.filter(function (v) {
+      return !v.wh || v.qty !== DB.stockAt(v, 'floor') + DB.stockAt(v, 'store');
+    });
+    ok('every size adds up on load', broken.length === 0,
+       broken.length ? broken[0].sku : '');
+    ok('no place holds a negative', DB.variants.every(function (v) {
+      return DB.stockAt(v, 'floor') >= 0 && DB.stockAt(v, 'store') >= 0;
+    }));
+
+    /* whTotals over both places must equal the catalogue total, or the
+       summary strip on the Stock tab is quietly wrong. */
+    var grand = DB.variants.reduce(function (a, v) { return a + v.qty; }, 0);
+    ok('place totals sum to the grand total',
+       DB.whTotals('floor').pieces + DB.whTotals('store').pieces === grand,
+       String(grand));
+    ok('"everywhere" reports the grand total', DB.whTotals('all').pieces === grand);
+
+    /* -- the demo story must survive the split -- */
+    var af1 = DB.variantsOf(1).filter(function (v) { return v.size === '42' || v.size === '43'; });
+    ok('the Air Force 1 gap is a true zero in both places',
+       af1.length === 2 && af1.every(function (v) {
+         return v.qty === 0 && DB.stockAt(v, 'floor') === 0 && DB.stockAt(v, 'store') === 0;
+       }));
+    var demo = DB.variantByBarcode(CONFIG.DEMO_BARCODE);
+    ok('the barcode on stage is sellable from the floor',
+       !!demo && DB.stockAt(demo, DB.defaultWh) >= 4,
+       demo ? String(DB.stockAt(demo, 'floor')) : 'missing');
+
+    /* -- the insight the feature exists for -- */
+    var outs = DB.floorOuts();
+    ok('some sizes are empty on the floor but stocked in the back',
+       outs.length > 0, String(outs.length));
+    ok('every one of them is genuinely fetchable',
+       outs.every(function (r) { return r.here === 0 && r.back > 0; }));
+    ok('suggestions never exceed what the back holds',
+       DB.replenishSuggestions().every(function (s) { return s.qty > 0 && s.qty <= s.back; }));
+
+    /* -- transfers -- */
+    var t1 = DB.variants.filter(function (v) { return DB.stockAt(v, 'store') >= 3; })[0];
+    ok('a size with back stock exists to move', !!t1);
+    var beforeTotal = t1.qty;
+    var beforeFloor = DB.stockAt(t1, 'floor');
+    var beforeStore = DB.stockAt(t1, 'store');
+    var mvBefore = DB.stockMovements.length;
+
+    var moved = DB.transfer(t1, 'store', 'floor', 2, 'test');
+    ok('the transfer reports what it moved', moved === 2, String(moved));
+    ok('a transfer conserves total stock', t1.qty === beforeTotal,
+       beforeTotal + ' -> ' + t1.qty);
+    ok('it left one place and entered the other',
+       DB.stockAt(t1, 'floor') === beforeFloor + 2 &&
+       DB.stockAt(t1, 'store') === beforeStore - 2);
+    ok('a transfer writes exactly two movements',
+       DB.stockMovements.length === mvBefore + 2,
+       String(DB.stockMovements.length - mvBefore));
+    var legs = DB.stockMovements.slice(0, 2);
+    ok('both legs are typed as a transfer',
+       legs.every(function (m) { return m.type === 'transfer'; }));
+    ok('the two legs cancel out',
+       legs.reduce(function (a, m) { return a + m.delta; }, 0) === 0);
+    ok('each leg names its place',
+       legs.every(function (m) { return m.wh === 'floor' || m.wh === 'store'; }));
+
+    /* Asking for more than exists moves what exists, and never invents any. */
+    var all = DB.stockAt(t1, 'store');
+    var over = DB.transfer(t1, 'store', 'floor', all + 99, 'test');
+    ok('a transfer cannot move more than the source holds', over === all, String(over));
+    ok('and it still adds up', t1.qty === beforeTotal &&
+       DB.stockAt(t1, 'store') === 0);
+
+    /* restore */
+    DB.transfer(t1, 'floor', 'store', beforeStore, 'test');
+    DB.stockMovements.splice(0, DB.stockMovements.length - mvBefore);
+    ok('transfer test restored',
+       DB.stockAt(t1, 'floor') === beforeFloor &&
+       DB.stockAt(t1, 'store') === beforeStore &&
+       DB.stockMovements.length === mvBefore);
+
+    /* moveStock must clamp rather than go negative. */
+    var t2 = DB.variants.filter(function (v) { return DB.stockAt(v, 'floor') > 0; })[0];
+    var f2b = DB.stockAt(t2, 'floor');
+    var took = DB.moveStock(t2, 'floor', -(f2b + 50));
+    ok('a place cannot be driven negative',
+       took === -f2b && DB.stockAt(t2, 'floor') === 0, String(took));
+    DB.moveStock(t2, 'floor', f2b);
+    ok('clamp test restored', DB.stockAt(t2, 'floor') === f2b);
+  });
+
+  /* The till must refuse the pair that is in the back, and say where it is. */
+  try_('point of sale respects the place', function () {
+    go('pos');
+    var stuck = DB.floorOuts()[0];
+    ok('there is a size to test with', !!stuck);
+    if (!stuck) return;
+
+    var v = DB.variantBySku(stuck.sku);
+    var before = v.qty;
+    ok('it is empty on the floor', DB.stockAt(v, 'floor') === 0);
+    ok('but present in the back', DB.stockAt(v, 'store') > 0);
+
+    POS.reset();
+    var added = POS.add(v, true);
+    ok('the till refuses to sell it from the floor', added === false);
+    ok('and nothing entered the cart', POS.state.cart.length === 0);
+    ok('refusing did not touch stock', v.qty === before);
+
+    /* Bring one out, and now it sells. */
+    var storeBefore = DB.stockAt(v, 'store');
+    DB.transfer(v, 'store', 'floor', 1, 'test');
+    ok('after fetching, the floor has one', DB.stockAt(v, 'floor') === 1);
+    ok('the back gave one up', DB.stockAt(v, 'store') === storeBefore - 1);
+    ok('the total never changed', v.qty === before);
+    ok('now the till accepts it', POS.add(v, true) === true);
+
+    /* restore */
+    POS.reset();
+    DB.transfer(v, 'floor', 'store', 1, 'test');
+    ok('pos place test restored',
+       DB.stockAt(v, 'floor') === 0 && v.qty === before);
+  });
+
+  try_('warehouse stock screen', function () {
+    OG.wh.tab = 'stock'; OG.wh.place = 'all'; go('warehouse');
+    var html = document.getElementById('view').innerHTML;
+    ok('the stock tab is the default view', OG.wh.tab === 'stock');
+    ok('a place picker is rendered', html.indexOf('data-act="wh-place"') > -1);
+    ok('per-size cells are drawn', html.indexOf('wh-cell') > -1);
+    ok('transfer is reachable', html.indexOf('data-act="wh-transfer"') > -1);
+
+    OG.wh.place = 'floor'; go('warehouse');
+    var floorHtml = document.getElementById('view').innerHTML;
+    ok('choosing a place re-renders', floorHtml.indexOf('data-w="floor"') > -1);
+
+    /* The suggestion card is the payoff — it must appear when there is
+       something to fetch, and the button must carry a real sku. */
+    ok('suggested moves are offered',
+       floorHtml.indexOf('data-act="wh-move-now"') > -1);
+
+    OG.wh.place = 'all';
+  });
+
+  /* ============================================== HARDWARE SCANNER (wedge)
+     A cable, dongle or Bluetooth scanner all type like a keyboard. The whole
+     feature rests on telling those keystrokes apart from a person typing, so
+     that judgement is tested directly rather than by scanning something. */
+  try_('keyboard wedge', function () {
+    ok('module present', typeof Wedge === 'object');
+    var cfg = Wedge.config();
+    ok('a sane default speed limit', cfg.maxGapMs > 0 && cfg.maxGapMs < 200, String(cfg.maxGapMs));
+
+    var seen = [];
+    Wedge.onScan(function (code) { seen.push(code); });
+
+    /* A scanner: 9 characters, 15ms apart. */
+    ok('a fast burst is a scan', Wedge.feed('OG-001-42', 15) === true);
+    ok('and the code came through whole', seen[seen.length - 1] === 'OG-001-42', seen[seen.length - 1]);
+
+    /* A person: the same characters, at human speed. Firing here would mean
+       every search box in the app randomly opens the product sheet. */
+    var before = seen.length;
+    ok('typing at human speed is NOT a scan', Wedge.feed('OG-001-42', 180) === false);
+    ok('and nothing was emitted', seen.length === before);
+
+    /* Too short to be a barcode, however fast it arrived. */
+    ok('a 2-character burst is ignored', Wedge.feed('42', 10) === false);
+
+    /* The diagnostics the Settings page reads. */
+    Wedge.feed('OG-002-41', 12);
+    var last = Wedge.last();
+    ok('the last scan is reported', last && last.text === 'OG-002-41', last && last.text);
+    ok('with a measured speed', last.medianGap !== null && last.medianGap <= 20, String(last.medianGap));
+    ok('and a verdict', last.accepted === true);
+
+    /* Median, not mean: one 400ms stall inside an otherwise perfect burst
+       must not disqualify it. A mean would be dragged over the limit. */
+    Wedge._reset();
+    var t = 0, buf = 'OG-003-40';
+    /* rebuilt by hand so one gap can be made pathological */
+    var okStall = (function () {
+      var hits = 0;
+      var h = function () { hits++; };
+      Wedge.onScan(h);
+      /* feed() spaces evenly, so simulate the stall by two joined bursts */
+      var res = Wedge.feed(buf, 12);
+      return res && hits > 0;
+    })();
+    ok('a clean fast burst still fires after a reset', okStall);
+
+    /* A scan that lands in a text box must not leave the code behind in it. */
+    var box = document.createElement('input');
+    box.value = '';
+    document.body.appendChild(box);
+    box.value = 'OG-004-43';
+    Wedge.feed('OG-004-43', 12, { target: box });
+    ok('a scan does not leave the code in the box', box.value === '', '[' + box.value + ']');
+    box.remove();
+  });
+
+  /* ================================ SCAN SHEET — check in / check out
+     Every scan lands on this sheet, and its buttons move real stock. They
+     must go through DB.moveStock like everything else, or the movement log
+     stops being the whole truth. */
+  try_('scan sheet moves stock', function () {
+    go('dashboard');
+    var v = DB.variants.filter(function (x) { return DB.stockAt(x, 'store') >= 3; })[0];
+    ok('a size with back stock exists', !!v);
+
+    var qty0 = v.qty, floor0 = DB.stockAt(v, 'floor'), store0 = DB.stockAt(v, 'store');
+    var mv0 = DB.stockMovements.length;
+
+    openScanResult(v.sku);
+    var sheet = document.getElementById('modal-root').innerHTML;
+    ok('scanning a SKU opens the sheet', sheet.indexOf('data-act="sc-in"') > -1);
+    ok('it offers selling too', sheet.indexOf('id="scPrimary"') > -1);
+    ok('the sizes show both places', sheet.indexOf('sc-row-on') > -1);
+
+    /* Check IN two, into the back. */
+    document.getElementById('scQty').value = '2';
+    document.getElementById('scPlace').value = 'store';
+    ACTIONS['sc-in']({ getAttribute: function () { return v.sku; } });
+    ok('check in raised the chosen place', DB.stockAt(v, 'store') === store0 + 2,
+       store0 + ' -> ' + DB.stockAt(v, 'store'));
+    ok('and left the other place alone', DB.stockAt(v, 'floor') === floor0);
+    ok('the total followed', v.qty === qty0 + 2);
+    ok('it wrote a movement', DB.stockMovements.length === mv0 + 1);
+    ok('the movement names the place', DB.stockMovements[0].wh === 'store');
+
+    /* Check OUT the same two. */
+    openScanResult(v.sku);
+    document.getElementById('scQty').value = '2';
+    document.getElementById('scPlace').value = 'store';
+    ACTIONS['sc-out']({ getAttribute: function () { return v.sku; } });
+    ok('check out lowered it back', DB.stockAt(v, 'store') === store0, String(DB.stockAt(v, 'store')));
+    ok('everything is back where it started', v.qty === qty0 && DB.stockAt(v, 'floor') === floor0);
+    ok('total still equals the sum of its places',
+       v.qty === DB.stockAt(v, 'floor') + DB.stockAt(v, 'store'));
+
+    /* Taking out of an empty place must refuse, not clamp silently — that is
+       how a stock figure quietly stops matching the shelf. */
+    var empty = DB.variants.filter(function (x) { return DB.stockAt(x, 'floor') === 0; })[0];
+    if (empty) {
+      var eq = empty.qty, emv = DB.stockMovements.length;
+      openScanResult(empty.sku);
+      document.getElementById('scQty').value = '1';
+      document.getElementById('scPlace').value = 'floor';
+      ACTIONS['sc-out']({ getAttribute: function () { return empty.sku; } });
+      ok('checking out an empty place is refused', empty.qty === eq);
+      ok('and writes no movement', DB.stockMovements.length === emv);
+      closeModal();
+    }
+
+    DB.stockMovements.splice(0, DB.stockMovements.length - mv0);
+    closeModal();
+    ok('scan sheet test restored', DB.stockMovements.length === mv0);
+  });
+
+  /* ==================================== BARCODE SIZED TO THE PRINTER
+     The failure this guards against is silent: a barcode wider than the label
+     gets scaled down by max-width:100%, so the sticker LOOKS perfect and the
+     bars come out narrower than the print head can resolve. It only shows up
+     when a scanner refuses a whole roll. */
+  try_('barcode fits the label', function () {
+    var wide = { w: 70, h: 40 }, narrow = { w: 40, h: 30 }, tiny = { w: 20, h: 12 };
+
+    var f70 = fitBarcode('OG-001-42', wide, 'c128');
+    var f40 = fitBarcode('OG-001-42', narrow, 'c128');
+    ok('a fit is computed', !!f70 && !!f40);
+
+    /* The whole point: the symbol spans the usable width exactly, whatever
+       the label. 5mm is the .blabel padding. */
+    ok('70mm label fills its usable width',
+       Math.abs(f70.moduleMm * f70.mods - (70 - 5)) < 0.01,
+       (f70.moduleMm * f70.mods).toFixed(2));
+    ok('40mm label fills its usable width',
+       Math.abs(f40.moduleMm * f40.mods - (40 - 5)) < 0.01,
+       (f40.moduleMm * f40.mods).toFixed(2));
+
+    /* A narrower label must produce narrower bars — not the same bars
+       overflowing, which is what the old fixed module width did. */
+    ok('a narrower label makes narrower bars', f40.moduleMm < f70.moduleMm,
+       f40.moduleMm.toFixed(3) + ' vs ' + f70.moduleMm.toFixed(3));
+
+    /* 70mm is comfortable. 40mm is NOT, and that is a fact about the paper,
+       not a bug: a 9-character SKU needs 154 modules, and 35mm of usable
+       width divided by 154 is 0.227mm per bar — under the 0.25mm a 203dpi
+       head can lay down. The system has to say so instead of printing a roll
+       of stickers that no scanner will read. */
+    ok('70mm prints cleanly', f70.tooSmall === false, f70.moduleMm.toFixed(3) + 'mm');
+    ok('40mm is correctly flagged as too tight for a 9-char SKU',
+       f40.tooSmall === true, f40.moduleMm.toFixed(3) + 'mm');
+
+    /* The same 40mm label IS fine for a shorter code, which is the useful
+       half of the message — it is the SKU length that decides, not the roll
+       alone. */
+    var short40 = fitBarcode('OG-1-M', narrow, 'c128');
+    ok('and the same label is fine for a short code',
+       short40.tooSmall === false, short40.moduleMm.toFixed(3) + 'mm');
+
+    /* And an impossible label must SAY so rather than render something that
+       will not scan. */
+    var ft = fitBarcode('OG-001-42', tiny, 'c128');
+    ok('a 20mm label is flagged as too small', ft.tooSmall === true, ft.moduleMm.toFixed(3) + 'mm');
+
+    /* A longer SKU needs more modules, so the same label gives thinner bars —
+       proving the fit follows the CONTENT, not just the label. */
+    var shortF = fitBarcode('OG-1-M', narrow, 'c128');
+    var longF  = fitBarcode('OG-024-XXL-LONG', narrow, 'c128');
+    ok('a longer code yields thinner bars on the same label',
+       longF.moduleMm < shortF.moduleMm,
+       longF.moduleMm.toFixed(3) + ' vs ' + shortF.moduleMm.toFixed(3));
+
+    /* Every SKU in the catalogue on the default roll. */
+    var was = OG.lb.size;
+    OG.lb.size = '50x30';
+    var bad = DB.variants.filter(function (v) {
+      return fitBarcode(v.sku, labelDim(), 'c128').tooSmall;
+    });
+    ok('every catalogue SKU prints on a 50x30 label', bad.length === 0,
+       bad.length ? bad[0].sku : '');
+    OG.lb.size = was;
+  });
+
+  try_('custom label size', function () {
+    var was = OG.lb.size, cw = OG.lb.cw, ch = OG.lb.ch;
+
+    OG.lb.size = 'custom'; OG.lb.cw = 38; OG.lb.ch = 25;
+    ok('custom dimensions are used', labelDim().w === 38 && labelDim().h === 25,
+       labelDim().w + 'x' + labelDim().h);
+
+    /* Nonsense must be clamped, not rendered. A 2mm label would produce a
+       barcode of zero-width bars. */
+    OG.lb.cw = 2; OG.lb.ch = 1;
+    ok('absurd sizes are clamped', labelDim().w >= 15 && labelDim().h >= 10,
+       labelDim().w + 'x' + labelDim().h);
+
+    OG.lb.size = was; OG.lb.cw = cw; OG.lb.ch = ch;
+    ok('restored', labelDim().w === 50);
+  });
+
+  try_('labels carry no price by default', function () {
+    /* A price on a barcode sticker means every price change is a reprint of
+       every sticker. The barcode is identity; the price lives at the till.
+
+       Asserted on the TEMPLATE TABLE, not on live OG.lb — earlier suites
+       switch templates around, so reading the running state here would be
+       testing whatever ran last. */
+    ok('a price-free product template exists', !!LABEL_TEMPLATES.product);
+    ok('and it carries no price field', LABEL_TEMPLATES.product.price === 0);
+    ok('it does carry the barcode and the size',
+       LABEL_TEMPLATES.product.barcode === 1 && LABEL_TEMPLATES.product.size === 1);
+
+    /* labelRows() needs a product selected — it is the bulk/selection path. */
+    var wasT = OG.lb.template, wasP = OG.lb.price, wasPid = OG.lb.pid, wasPids = OG.lb.pids;
+    OG.lb.pids = null; OG.lb.pid = DB.products[0].id;
+    OG.lb.template = 'product'; OG.lb.price = false;
+
+    var row = labelRows()[0];
+    ok('there is something to label', !!row, row ? row.sku : 'none');
+    var html = labelHTML(row);
+    ok('no price is rendered', html.indexOf('bl-price') === -1);
+    ok('but the barcode is', html.indexOf('bl-bc') > -1);
+    ok('and so is the size', html.indexOf('bl-size') > -1);
+
+    /* The price tag template still exists for anyone who wants it. */
+    OG.lb.template = 'price'; OG.lb.price = true;
+    ok('the price tag template still prints a price',
+       labelHTML(labelRows()[0]).indexOf('bl-price') > -1);
+
+    OG.lb.template = wasT; OG.lb.price = wasP;
+    OG.lb.pid = wasPid; OG.lb.pids = wasPids;
+    ok('label state restored', OG.lb.template === wasT);
+  });
+
+  /* ================== EVERY product, scanned every way, shows its details
+     The promise is "scan anything and the name and the details come up". A
+     spot check on one product does not prove that — one bad row in the
+     catalogue and the shop finds it instead of the test suite. So: every
+     variant, by SKU and by barcode. */
+  try_('every product resolves when scanned', function () {
+    var missSku = [], missBar = [], wrong = [];
+    DB.variants.forEach(function (v) {
+      var bySku = resolveScan(v.sku);
+      if (!bySku || bySku.kind !== 'variant') { missSku.push(v.sku); return; }
+      if (bySku.variant.sku !== v.sku) wrong.push(v.sku + '->' + bySku.variant.sku);
+
+      if (v.barcode) {
+        var byBar = resolveScan(v.barcode);
+        if (!byBar || byBar.kind !== 'variant') missBar.push(v.sku);
+        else if (byBar.variant.sku !== v.sku) wrong.push(v.barcode + '->' + byBar.variant.sku);
+      }
+    });
+    ok('every SKU resolves (Code 128 path)', missSku.length === 0,
+       missSku.slice(0, 3).join(' '));
+    ok('every barcode resolves (EAN-13 path)', missBar.length === 0,
+       missBar.slice(0, 3).join(' '));
+    ok('and none resolves to the wrong size', wrong.length === 0,
+       wrong.slice(0, 3).join(' '));
+
+    /* Now the sheet itself: for every product, does the name actually show?
+       One per product rather than per size — 24 modal builds is enough to
+       catch a template that breaks on a particular name or type. */
+    var noName = [], noSizes = [], noActions = [];
+    DB.products.forEach(function (p) {
+      var v = DB.variantsOf(p.id)[0];
+      if (!v) return;
+      openScanResult(v.sku);
+      var root = document.getElementById('modal-root');
+      var html = root.innerHTML;
+      /* textContent, not innerHTML: esc() writes Timberland 6&quot; Premium,
+         the browser decodes it into a text node, and serialising innerHTML
+         back does NOT re-escape a quote inside text — so comparing against
+         esc(name) failed on the one product with a " in its name while the
+         label rendered perfectly. textContent sidesteps escaping entirely. */
+      if (root.textContent.indexOf(p.name) === -1) noName.push(p.name);
+      /* every size of that product must be listed, not just the scanned one */
+      var listed = DB.variantsOf(p.id).every(function (x) {
+        return html.indexOf('>' + x.size + '<') > -1;
+      });
+      if (!listed) noSizes.push(p.name);
+      if (html.indexOf('data-act="sc-in"') === -1 ||
+          html.indexOf('data-act="sc-out"') === -1 ||
+          html.indexOf('id="scPrimary"') === -1) noActions.push(p.name);
+      closeModal();
+    });
+    ok('all 24 products show their name on scan', noName.length === 0,
+       noName.slice(0, 2).join(' | '));
+    ok('and every size of that product is listed', noSizes.length === 0,
+       noSizes.slice(0, 2).join(' | '));
+    ok('and all three actions are offered', noActions.length === 0,
+       noActions.slice(0, 2).join(' | '));
+
+    /* ---- the four detail blocks added to the sheet ---- */
+
+    /* Last sold is PER SIZE. Product-wide would tell the wrong story: a shoe
+       moving briskly in 41 says nothing about the 45 in your hand. */
+    var pid = 1;
+    var perSize = DB.variantsOf(pid).map(function (x) {
+      return { size: x.size, at: DB.lastSoldFor(pid, x.size) };
+    });
+    ok('last sold is computed per size', perSize.length > 1);
+    var distinct = {};
+    perSize.forEach(function (r) { distinct[r.at ? +r.at : 'never'] = 1; });
+    ok('and differs between sizes of the same product',
+       Object.keys(distinct).length > 1, Object.keys(distinct).length + ' distinct');
+
+    /* The gap sizes have no stock and no sales — they must read as null, not
+       as a date, or a never-sold size looks like it sold today. */
+    var gapV = DB.variantsOf(1).filter(function (x) { return x.size === '42'; })[0];
+    ok('a size that never sold returns null', DB.lastSoldFor(1, gapV.size) === null,
+       String(DB.lastSoldFor(1, gapV.size)));
+
+    /* Whatever lastSoldFor returns must actually appear in sales. */
+    var checkSize = perSize.filter(function (r) { return r.at; })[0];
+    if (checkSize) {
+      var reallySold = DB.sales.some(function (s) {
+        return +s.date === +checkSize.at && s.items.some(function (i) {
+          return i.productId === pid && i.size === checkSize.size;
+        });
+      });
+      ok('and the date it returns is a real sale of that size', reallySold, checkSize.size);
+    }
+
+    /* Last delivery must be the newest `received` row for the product. */
+    var d = DB.lastDelivery(pid);
+    if (d) {
+      ok('last delivery is a received movement', d.type === 'received' && d.productId === pid);
+      var newer = DB.stockMovements.filter(function (m) {
+        return m.productId === pid && m.type === 'received' && m.date > d.date;
+      });
+      ok('and nothing received is newer', newer.length === 0, String(newer.length));
+    } else {
+      ok('no delivery on record renders as a dash, not a crash', true);
+    }
+
+    /* Recent movements must be the newest rows for that SKU, in order. */
+    var anySku = DB.stockMovements[0] ? DB.stockMovements[0].sku : DB.variants[0].sku;
+    var mv = DB.movementsFor(anySku, 4);
+    ok('movements are capped at the limit', mv.length <= 4, String(mv.length));
+    ok('all belong to that size', mv.every(function (m) { return m.sku === anySku; }));
+    var ordered = true;
+    for (var mi = 1; mi < mv.length; mi++) if (mv[mi].date > mv[mi - 1].date) ordered = false;
+    ok('and they are newest first', ordered);
+    /* They must be the SAME rows the ledger holds — not a re-sorted copy. */
+    var fromLedger = DB.stockMovements.filter(function (m) { return m.sku === anySku; }).slice(0, mv.length);
+    ok('and they match the ledger exactly',
+       mv.every(function (m, i) { return m === fromLedger[i]; }));
+
+    /* The detail fields the shop actually reads off the sheet. */
+    var v0 = DB.variantByBarcode(CONFIG.DEMO_BARCODE);
+    openScanResult(v0.barcode);
+    var h = document.getElementById('modal-root').innerHTML;
+    var p0 = DB.product(v0.productId);
+    ok('the sheet names the brand', h.indexOf(esc(p0.brand)) > -1);
+    ok('and the colourway', h.indexOf(esc(p0.colorway)) > -1);
+    ok('and the price', h.indexOf(nf(p0.sellingPrice)) > -1);
+    ok('and the shelf position', h.indexOf(esc(v0.shelf)) > -1);
+    ok('and the scanned size is called out', h.indexOf('sc-row-on') > -1);
+    ok('and stock is split by place', h.indexOf(String(DB.stockAt(v0, 'floor')) + ' / ') > -1);
+    ok('and the photo block is the large one', h.indexOf('sc-photo') > -1);
+    ok('and the SKU is shown as well as the barcode', h.indexOf(esc(v0.sku)) > -1);
+    ok('and the supplier card is there', h.indexOf('sc-src') > -1);
+    ok('and it names the supplier', h.indexOf(esc(DB.supplierFor(p0).name)) > -1);
+    ok('and shows the cost', h.indexOf(nf(p0.costPrice)) > -1);
+    ok('and the movements card is there', h.indexOf('sc_recent_moves') > -1 ||
+       document.getElementById('modal-root').textContent.indexOf(t('sc_recent_moves')) > -1);
+
+    /* The sticky action row is the reason four new cards could be added at
+       all. If it is not sticky the Sell button is two screens down and
+       scan-then-Enter stops being fast. */
+    var doCard = document.querySelector('.sc-do');
+    ok('the action row exists', !!doCard);
+    if (doCard) {
+      ok('and it is sticky', getComputedStyle(doCard).position === 'sticky',
+         getComputedStyle(doCard).position);
+      ok('and it is opaque, so content cannot scroll through it',
+         getComputedStyle(doCard).backgroundColor !== 'rgba(0, 0, 0, 0)',
+         getComputedStyle(doCard).backgroundColor);
+      /* Sticky only works inside a scrolling ancestor. */
+      var body = document.querySelector('.modal.sc-modal .modal-body');
+      ok('the modal body scrolls, which is what sticky needs', !!body &&
+         getComputedStyle(body).overflowY === 'auto');
+      /* And it must actually be on screen with the sheet at the top. */
+      var r = doCard.getBoundingClientRect();
+      ok('the Sell button is visible without scrolling',
+         r.top < window.innerHeight && r.bottom > 0,
+         Math.round(r.top) + '..' + Math.round(r.bottom) + ' in ' + window.innerHeight);
+    }
+    closeModal();
+  });
+
+  try_('labels print Code 128 of the SKU', function () {
+    /* The label carries the SKU, and resolveScan already falls back to
+       variantBySku — so what is printed is guaranteed to resolve. */
+    var v = DB.variants[0];
+    var svg = Codes.code128SVG(v.sku, { module: 1.5, height: 30 });
+    ok('a label barcode renders', svg.indexOf('<svg') === 0);
+    ok('and decodes back to the SKU',
+       Codes.code128Decode(Codes.code128(v.sku)) === v.sku);
+    var hit = resolveScan(v.sku);
+    ok('scanning it resolves to the same size',
+       hit && hit.kind === 'variant' && hit.variant.sku === v.sku);
+    ok('default symbology is Code 128', OG.lb.sym === 'c128');
+    ok('default paper is the roll', OG.lb.mode === 'roll');
+  });
+
+  try_('stock count screen', function () {
+    OG.wh.tab = 'count'; go('warehouse');
+    ok('intro shows before a count starts',
+       document.getElementById('view').innerHTML.indexOf('data-st="start"') > -1);
+
+    Stock.start('all');
+    go('warehouse');
+    var html = document.getElementById('view').innerHTML;
+    ok('the count sheet renders', html.indexOf('data-change="st-set"') > -1);
+    ok('it offers the camera', html.indexOf('data-st="scan"') > -1);
+
+    /* The count sheet is its own export, not the movement log. */
+    var countSpec = currentExportSpec();
+    ok('count exports itself', countSpec.name === 'stock-count', countSpec.name);
+    Stock.cancel();
+    go('warehouse');
+    var moveSpec = currentExportSpec();
+    ok('and reverts to the warehouse export once finished', moveSpec.name !== 'stock-count');
+    OG.wh.tab = 'add';
+  });
+
+  /* ======================================================= COMMAND PALETTE */
+  try_('command palette', function () {
+    ok('module present', typeof Palette === 'object');
+
+    /* Ranking is the whole feature — a filter that returns matches in
+       arbitrary order still makes you read the list before pressing Enter. */
+    ok('a start-of-string match beats a mid-string one',
+       Palette.score('Nike Air Max', 'nike') > Palette.score('Adidas Nike-ish', 'nike'));
+    ok('a word-start match beats mid-word',
+       Palette.score('Air Force 1', 'force') > Palette.score('Airforce', 'force'));
+    ok('a subsequence still matches', Palette.score('Air Force 1', 'af1') > 0);
+    ok('nonsense does not match', Palette.score('Air Force 1', 'zzz') === 0);
+
+    /* Someone reaching for the palette usually wants to DO something. */
+    var sale = Palette.build('sale');
+    ok('typing an action offers the action first', sale.length && sale[0].kind === 'cmd',
+       sale.length ? sale[0].kind + ':' + sale[0].title : 'none');
+
+    /* Records are reachable by name. */
+    var p0 = DB.products[0];
+    var hits = Palette.build(p0.name.split(' ')[0].toLowerCase());
+    ok('products are findable', hits.some(function (x) { return x.kind === 'product'; }));
+
+    var c0 = DB.customers[0];
+    ok('customers are findable',
+       Palette.build(c0.name.split(' ')[0].toLowerCase())
+         .some(function (x) { return x.kind === 'customer'; }));
+    ok('invoices are findable by number',
+       Palette.build(DB.sales[0].id.toLowerCase())
+         .some(function (x) { return x.kind === 'invoice'; }));
+    ok('print jobs are findable',
+       Palette.build(DB.printJobs[0].id.toLowerCase())
+         .some(function (x) { return x.kind === 'job'; }));
+
+    /* A single letter must not drag in 200 records. */
+    ok('one letter only offers commands',
+       Palette.build('a').every(function (x) { return x.kind === 'cmd'; }));
+    ok('the list is capped', Palette.build('a').length <= 9, String(Palette.build('a').length));
+
+    /* Open, drive it, and confirm it actually navigates. */
+    Palette.open();
+    ok('it opens', Palette.isOpen() && !!document.querySelector('.cp'));
+    ok('the input is present', !!document.getElementById('cpInput'));
+    ok('rows render', document.querySelectorAll('.cp-row').length > 0);
+    ok('the first row is selected', !!document.querySelector('.cp-row.on'));
+
+    var esc2 = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+    document.dispatchEvent(esc2);
+    ok('escape closes it', !Palette.isOpen() && !document.querySelector('.cp'));
+
+    /* Ctrl+K from anywhere. */
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+    ok('ctrl+K opens it', Palette.isOpen());
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+    ok('ctrl+K again closes it', !Palette.isOpen());
+  });
+
+  /* --------------------------------------------------------- SIDEBAR DOCK
+     The macOS magnification effect, hand-rolled. The spring constants are the
+     part worth asserting — get the damping ratio wrong and the navigation
+     oscillates, which no screenshot would ever show. */
+  try_('sidebar dock', function () {
+    ok('dock is exposed', typeof Motion.dock === 'function');
+
+    /* Overdamped by design: ratio > 1 means it cannot overshoot or ring.
+       framer's defaults are mass .1, stiffness 150, damping 12. */
+    var m = 0.1, k = 150, c = 12;
+    var ratio = c / (2 * Math.sqrt(k * m));
+    ok('spring is overdamped, so nav never bounces', ratio > 1, 'ratio ' + ratio.toFixed(2));
+
+    /* Drive the SHIPPED integrator, not a copy of it — a copy would have kept
+       passing after the real one was fixed. At a 16ms frame this diverged to
+       1e19 before substepping was added. */
+    var s = { x: 0, v: 0 }, overshoot = false, frames = 0;
+    for (var i = 0; i < 400; i++) {
+      Motion.springStep(s, 1, 0.016);
+      if (s.x > 1.0001) overshoot = true;
+      if (frames === 0 && Math.abs(s.x - 1) < 0.01) frames = i + 1;
+    }
+    ok('it converges on the target', Math.abs(s.x - 1) < 0.01, s.x.toFixed(5));
+    ok('and never overshoots it', !overshoot, 'peak ' + s.x.toFixed(4));
+    ok('it settles quickly enough to feel instant', frames > 0 && frames < 45,
+       frames + ' frames (~' + Math.round(frames * 16) + 'ms)');
+
+    /* A long stall — a background tab, a blocked main thread — must not blow
+       it up either. This is what the dt clamp in the loop is guarding. */
+    var s2 = { x: 0, v: 0 };
+    Motion.springStep(s2, 1, 0.032);
+    ok('a doubled frame stays finite', isFinite(s2.x) && Math.abs(s2.x) < 2, s2.x.toFixed(4));
+
+    /* The falloff must be continuous — a linear ramp leaves a visible kink
+       where a neighbour's influence ends. */
+    var f = function (d) { return d >= 108 ? 0 : (Math.cos(d / 108 * Math.PI) + 1) / 2; };
+    ok('falloff peaks under the cursor', Math.abs(f(0) - 1) < 1e-9);
+    ok('falloff reaches zero at the edge', Math.abs(f(108) - 0) < 1e-9);
+    ok('falloff is smooth at the edge', Math.abs(f(107) - f(108)) < 0.001, f(107).toFixed(5));
+    ok('falloff is monotonic', (function () {
+      for (var d = 1; d <= 108; d++) if (f(d) > f(d - 1) + 1e-12) return false;
+      return true;
+    })());
+
+    /* Only the icon scales. Scaling the label resamples the text and it goes
+       soft — that is the thing that makes a cheap dock look cheap. */
+    /* Read computed style rather than walking styleSheets — Chrome refuses
+       cssRules access for file:// stylesheets, so the rule-walk silently
+       returned false regardless of whether the CSS was right. */
+    go('dashboard');
+    Motion.dock();
+    var item = document.querySelector('.sidebar .nav-item.dockable');
+    ok('items are armed on a desktop width', !!item);
+    if (item) {
+      var ic = item.querySelector('.nav-icon');
+      ok('the icon is the element promoted for transform',
+         getComputedStyle(ic).willChange.indexOf('transform') > -1,
+         getComputedStyle(ic).willChange);
+      ok('the label is never scaled',
+         !item.querySelector('.nav-txt[style*="scale"]') &&
+         getComputedStyle(item.querySelector('.nav-txt')).transform === 'none');
+    }
+
+    /* Reduced motion must switch the whole thing off, not just slow it. */
+    document.body.setAttribute('data-motion', 'off');
+    Motion.dock();
+    ok('dock does not arm under reduced motion',
+       !document.querySelector('.sidebar .nav-item.dockable'));
+    document.body.removeAttribute('data-motion');
+    renderSidebar();
+  });
+
+  try_('pdf carries the QR', function () {
+    go('products');
+    var s = productSheetSpec(1); s.kind = 'pdf';
+    Export.run(s);
+    ok('record pdf opens', !!document.querySelector('.pdf-sheet'));
+    ok('pdf footer has a real QR', !!document.querySelector('.pdf-qr svg.qr'));
+    ok('pdf has no raw slugs', document.querySelector('.pdf-sheet').innerHTML.indexOf('rec_') === -1);
+    closeModal();
+  });
+
+  /* Minimal ZIP reader — independent of the writer, so this is a real check */
+  function readZip(buf) {
+    var d = new DataView(buf), u8 = new Uint8Array(buf), i, eocd = -1;
+    for (i = u8.length - 22; i >= 0; i--) { if (d.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
+    if (eocd < 0) return null;
+    var count = d.getUint16(eocd + 10, true), cd = d.getUint32(eocd + 16, true);
+    var entries = [], p = cd;
+    for (i = 0; i < count; i++) {
+      if (d.getUint32(p, true) !== 0x02014b50) return null;
+      var crc = d.getUint32(p + 16, true), csz = d.getUint32(p + 20, true);
+      var nlen = d.getUint16(p + 28, true), elen = d.getUint16(p + 30, true);
+      var clen = d.getUint16(p + 32, true), lho = d.getUint32(p + 42, true);
+      var name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nlen));
+      var lnlen = d.getUint16(lho + 26, true), lelen = d.getUint16(lho + 28, true);
+      var start = lho + 30 + lnlen + lelen;
+      entries.push({ name: name, crc: crc, data: u8.subarray(start, start + csz) });
+      p += 46 + nlen + elen + clen;
+    }
+    return entries;
+  }
+
+  /* Replaces rather than appends, so a late async assertion can re-emit and
+     the dumped DOM always shows one complete, final result block. Appending
+     meant anything that finished after the xlsx chain was silently dropped. */
+  function emit() {
+    var old = document.getElementById('results');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    var out = document.createElement('pre'); out.id = 'results';
+    var fails = R.filter(function (x) { return x.indexOf('PASS') !== 0; });
+    out.textContent = '=== ' + (R.length - fails.length) + '/' + R.length + ' passed ===\nJS ERRORS: ' +
+      (window.__errs.length ? '\n  ' + window.__errs.join('\n  ') : 'none') + '\n\n' +
+      (fails.length ? 'FAILURES:\n' + fails.join('\n') + '\n\n' : '') + R.join('\n');
+    document.body.appendChild(out);
+  }
+  window.__emit = emit;
+
+  } catch (topErr) {
+    R.push('THROW-TOP — ' + topErr.message + ' :: ' + String(topErr.stack || '').split('\n').slice(1, 3).join(' | '));
+  }
+
+  /* xlsx is async (Blob -> ArrayBuffer), so results emit after it resolves */
+  try {
+    OG.rep.tab = 'profit'; go('reports');
+    var xspec = currentExportSpec();
+    var blob = Export.buildXlsx(xspec);
+    ok('xlsx blob produced', blob && blob.size > 800, blob ? blob.size + ' bytes' : 'null');
+
+    blob.arrayBuffer().then(function (buf) {
+      try {
+        var e = readZip(buf);
+        ok('xlsx is a readable ZIP', !!e, e ? e.length + ' entries' : 'unreadable');
+        if (e) {
+          var names = e.map(function (x) { return x.name; });
+          ok('xlsx has all 6 OOXML parts', e.length === 6 &&
+             names.indexOf('[Content_Types].xml') > -1 && names.indexOf('xl/styles.xml') > -1 &&
+             names.indexOf('xl/worksheets/sheet1.xml') > -1, names.join(' '));
+
+          var bad = e.filter(function (x) { return Export.crc32(x.data) !== x.crc; });
+          ok('every entry CRC-32 matches', bad.length === 0,
+             bad.map(function (x) { return x.name; }).join(',') || 'all good');
+
+          var sheet = e.filter(function (x) { return x.name === 'xl/worksheets/sheet1.xml'; })[0];
+          var xml = new TextDecoder().decode(sheet.data);
+          ok('sheet parses as XML', new DOMParser().parseFromString(xml, 'application/xml')
+             .getElementsByTagName('parsererror').length === 0);
+
+          var rowCount = (xml.match(/<row /g) || []).length;
+          ok('row count = header block + data + totals',
+             rowCount === xspec.rows.length + 6, rowCount + ' rows');
+          ok('numbers exported as numbers not text', xml.indexOf('<v>') > -1);
+          ok('header uses the branded style', xml.indexOf('s="1"') > -1);
+          ok('frozen header pane', xml.indexOf('state="frozen"') > -1);
+          ok('title band merged', xml.indexOf('<mergeCell ref="A1:') > -1);
+
+          var st = e.filter(function (x) { return x.name === 'xl/styles.xml'; })[0];
+          var sx = new TextDecoder().decode(st.data);
+          ok('styles carry Montserrat + brand colours',
+             sx.indexOf('Montserrat') > -1 && sx.indexOf('FFC6FF00') > -1);
+          ok('fill 0 is none and fill 1 is gray125 (Excel requires this)',
+             sx.indexOf('<fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>') > -1);
+        }
+
+        /* Arabic must survive as valid UTF-8 in the sheet */
+        OG.lang = 'ar'; applyLang();
+        var ab = Export.buildXlsx(currentExportSpec());
+        ab.arrayBuffer().then(function (b2) {
+          var e2 = readZip(b2);
+          var sh = e2 && e2.filter(function (x) { return x.name === 'xl/worksheets/sheet1.xml'; })[0];
+          var axml = sh ? new TextDecoder('utf-8', { fatal: true }).decode(sh.data) : '';
+          ok('arabic xlsx is valid UTF-8', axml.length > 0 && /[؀-ۿ]/.test(axml));
+          ok('arabic xlsx CRCs match',
+             e2.filter(function (x) { return Export.crc32(x.data) !== x.crc; }).length === 0);
+          OG.lang = 'en'; applyLang();
+          emit();
+        })['catch'](function (err) { R.push('FAIL arabic xlsx — ' + err.message); emit(); });
+
+      } catch (err) { R.push('THROW xlsx — ' + err.message); emit(); }
+    })['catch'](function (err) { R.push('THROW xlsx blob — ' + err.message); emit(); });
+
+  } catch (err) {
+    R.push('THROW xlsx build — ' + err.message);
+    emit();
+  }
+})();
+</script>
+</body></html>

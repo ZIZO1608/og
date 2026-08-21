@@ -1,0 +1,43 @@
+<!doctype html><html lang="en" dir="ltr"><head><meta charset="utf-8"><title>shot</title>
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<link rel="stylesheet" href="css/style.css"></head><body>
+<div id="app"><aside class="sidebar" id="sidebar"></aside><div class="main"><header class="topbar" id="topbar"></header><main class="view" id="view"></main></div></div>
+<nav id="tabbar" class="tabbar"></nav><div id="toasts" class="toasts"></div><div id="palette-root"></div><div id="modal-root"></div><div id="drawer-root"></div><div id="tour-root"></div><div id="bulk-root"></div><div id="print-root" class="print-root"></div>
+<button id="tourBtn" class="tour-fab"><span class="tour-fab-dot"></span><span id="tourBtnLabel">Demo tour</span></button>
+<script src="js/vendor/chart.umd.min.js"></script>
+<script src="js/codes.js"></script><script src="js/motion.js"></script><script src="js/export.js"></script><script src="js/data.js"></script><script src="js/charts.js"></script>
+<script src="js/pos.js"></script><script src="js/bulk.js"></script><script src="js/scan.js"></script><script src="js/wedge.js"></script><script src="js/stock.js"></script><script src="js/money.js"></script><script src="js/palette.js"></script><script src="js/whatsapp.js"></script><script src="js/notify.js"></script><script src="js/ylinvoice.js"></script><script src="js/yalla.js"></script><script src="js/app.js"></script>
+<script>
+(function(){var q={};location.search.replace(/^\?/,'').split('&').forEach(function(p){if(!p)return;var kv=p.split('=');q[kv[0]]=decodeURIComponent(kv[1]||'');});
+document.getElementById('toasts').style.display='none';
+/* clean=1 strips demo-only furniture. The tour button is a prompt for someone
+   sitting at the app; in a client document it is just clutter over the UI. */
+if(q.clean==='1'){var tb=document.getElementById('tourBtn');if(tb)tb.style.display='none';}
+/* Screenshots must capture the FINAL state. Headless virtual time does not
+   drive CSS animation timelines reliably, so without this every shot catches
+   the entrance half-finished and elements read as missing. */
+if(q.mo!=='1')document.body.setAttribute('data-motion','off');
+if(q.lang==='ar'){OG.lang='ar';applyLang();}
+refreshAll();
+if(q.portal){ACTIONS['partner-view']();if(q.yv)YALLA.state.view=q.yv;if(q.ym)YALLA.state.mode=q.ym;if(q.yf)YALLA.state.filter=q.yf;renderSidebar();render();}
+else if(q.v)go(q.v);
+if(q.lbsize){OG.lb.size=q.lbsize;}
+if(q.labels){openLabelSheet(1);if(q.tpl){OG.lb.template=q.tpl;OG.lb.qr=(q.tpl==='hang');repaintLabels();}}
+if(q.job)YALLA.openJob(q.job);
+if(q.ogjob){go('print');openJobDrawer(q.ogjob);}
+if(q.ylaccept){var ab=document.querySelector('[data-yl="accept"][data-id="'+q.ylaccept+'"]');if(ab)ab.click();}
+if(q.whplace)OG.wh.place=q.whplace;
+if(q.whtab){OG.wh.tab=q.whtab;if(q.whtab==='count'&&q.counting){var W=DB.defaultWh;Stock.start('all',W);
+  /* Counts are per-place now, so seed the variances against the floor bucket
+     or every line reads as a huge discrepancy. */
+  var vs=DB.variants.filter(function(v){return DB.stockAt(v,W)>=4;});
+  Stock.set(vs[0].sku,DB.stockAt(vs[0],W)-3);Stock.set(vs[1].sku,DB.stockAt(vs[1],W));
+  Stock.set(vs[2].sku,DB.stockAt(vs[2],W)+2);Stock.set(vs[4].sku,DB.stockAt(vs[4],W)-1);}go('warehouse');}
+if(q.scanres){openScanResult(DB.variants[+q.scanres||0].barcode);if(q.scscroll){var mb=document.querySelector('.modal-body');if(mb)mb.scrollTop=parseInt(q.scscroll,10)||9999;}}
+if(q.inv)YLINV.open(q.inv);
+if(q.invp){YLINV.open(q.invp);document.querySelector('[data-yi="paper"]').click();}
+if(q.build){var b=document.createElement('button');b.setAttribute('data-yi','new-'+q.build);document.body.appendChild(b);b.click();b.remove();}
+if(q.pdf){var s=(q.pdf==='stock')?productSheetSpec(1):(q.pdf==='statement')?customerStatementSpec(1):currentExportSpec();s.kind='pdf';Export.run(s);}
+if(q.sel){var n=+q.sel,sc=Bulk.scope();Bulk.visibleIds(sc).slice(0,n).forEach(function(i){Bulk._sel[sc][i]=true;});render();Bulk.paint();}
+})();
+</script></body></html>

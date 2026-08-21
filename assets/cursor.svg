@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<!-- OG pointer. Lime fill with a near-black outline so it stays visible on the
+     black sidebar AND on the white invoice sheet — a single-colour cursor
+     disappears against one or the other. Hotspot is 3,3 (the tip). -->
+<path d="M3 2.4 L3 18.2 L7.05 14.6 L9.7 20.6 L12.5 19.4 L9.9 13.5 L15.3 13.1 Z"
+      fill="#0A0A0B" stroke="#0A0A0B" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M3 2.4 L3 18.2 L7.05 14.6 L9.7 20.6 L12.5 19.4 L9.9 13.5 L15.3 13.1 Z"
+      fill="#C6FF00"/>
+</svg>

@@ -1,0 +1,3 @@
+GitHub Pages runs Jekyll by default, which silently drops files and folders
+whose names begin with an underscore. This empty marker turns Jekyll off and
+serves the folder exactly as uploaded.

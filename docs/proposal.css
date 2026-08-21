@@ -1,0 +1,373 @@
+/* ==========================================================================
+   OG SYSTEM × TRINODE — client proposal, print stylesheet
+   --------------------------------------------------------------------------
+   Built for paper, not for a screen. Sizes are in mm and pt, page breaks are
+   explicit, and nothing depends on a viewport width.
+
+   The palette is lifted from the product's own tokens so the document and the
+   software look like they came from the same company: near-black text, warm
+   white stock, and OG's electric lime used only as a rule or a marker — never
+   as a fill behind text, because lime on white is unreadable at body size.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Cairo';
+  src: url('fonts/Cairo-400.ttf') format('truetype');
+  font-weight: 400; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Cairo';
+  src: url('fonts/Cairo-600.ttf') format('truetype');
+  font-weight: 600; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Cairo';
+  src: url('fonts/Cairo-700.ttf') format('truetype');
+  font-weight: 700; font-style: normal; font-display: block;
+}
+
+:root {
+  --ink:        #0F1012;   /* body text — not pure black, easier on paper */
+  --ink-soft:   #4A4D52;
+  --ink-faint:  #8A8E95;
+  --rule:       #D9DBDE;
+  --rule-soft:  #ECEDEF;
+  --paper:      #FFFFFF;
+  --paper-warm: #FAF9F6;   /* the cream from the Trinode mark */
+
+  --lime:       #C6FF00;   /* OG accent — rules and markers only */
+  --lime-deep:  #7A9E00;   /* the readable version, for text on white */
+  --copper:     #C08552;   /* Trinode's mark colour */
+  --black:      #0A0A0B;   /* OG's plate */
+
+  --ar: 'Cairo', 'Sakkal Majalla', 'Segoe UI', Tahoma, sans-serif;
+  --lat: 'Cairo', 'Segoe UI', Arial, sans-serif;
+}
+
+/* --- page ---------------------------------------------------------------
+   A4 with generous outer margins. The running footer is drawn into each
+   .page rather than using @page margin boxes, because Chrome's headless
+   print does not give those boxes reliable Arabic text.                   */
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--ar);
+  font-size: 10.5pt;
+  line-height: 1.75;
+  direction: rtl;
+  text-align: right;
+}
+
+.page {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  padding: 20mm 18mm 22mm 18mm;
+  background: var(--paper);
+  overflow: hidden;
+  page-break-after: always;
+  break-after: page;
+}
+.page:last-child { page-break-after: auto; break-after: auto; }
+
+/* --- running furniture --------------------------------------------------- */
+
+.pg-foot {
+  position: absolute;
+  bottom: 11mm; right: 18mm; left: 18mm;
+  display: flex; align-items: center; gap: 8px;
+  border-top: 0.6pt solid var(--rule);
+  padding-top: 3mm;
+  font-size: 7.5pt;
+  color: var(--ink-faint);
+  letter-spacing: .02em;
+}
+.pg-foot .fnum {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.pg-foot .fmark { display: inline-flex; align-items: center; gap: 5px; }
+.pg-foot .fmark b { font-size: 8pt; font-weight: 700; letter-spacing: .16em; color: var(--ink-soft); }
+
+/* The eyebrow that names the section, top of every interior page. */
+.pg-head {
+  display: flex; align-items: baseline; gap: 10px;
+  margin-bottom: 9mm;
+}
+.pg-head .kicker {
+  font-size: 7.5pt; font-weight: 700; letter-spacing: .18em;
+  color: var(--ink-faint);
+}
+.pg-head .kicker-rule {
+  flex: 1; height: 0.6pt; background: var(--rule);
+}
+.pg-head .step {
+  font-size: 7.5pt; font-weight: 700; color: var(--lime-deep);
+  letter-spacing: .12em;
+}
+
+/* --- type ---------------------------------------------------------------- */
+
+h1, h2, h3, h4 { margin: 0; font-weight: 700; line-height: 1.3; }
+
+h1 { font-size: 26pt; letter-spacing: -.01em; }
+h2 { font-size: 17pt; margin-bottom: 4mm; letter-spacing: -.005em; }
+h3 { font-size: 11.5pt; margin-bottom: 2mm; }
+
+p { margin: 0 0 3.4mm; }
+.lede { font-size: 12pt; line-height: 1.7; color: var(--ink-soft); margin-bottom: 6mm; }
+.muted { color: var(--ink-soft); }
+.faint { color: var(--ink-faint); }
+.small { font-size: 9pt; line-height: 1.65; }
+
+/* Latin runs inside Arabic sentences — product names, sizes, SKUs. Without
+   this the bidi algorithm still gets it right, but the face wobbles. */
+.lat { font-family: var(--lat); direction: ltr; unicode-bidi: isolate; font-weight: 600; }
+
+strong, b { font-weight: 700; }
+.hl { font-weight: 700; box-shadow: inset 0 -0.35em 0 rgba(198,255,0,.42); }
+
+/* --- cover --------------------------------------------------------------- */
+
+.cover { background: var(--paper-warm); padding: 0; }
+.cover-inner {
+  height: 100%;
+  padding: 22mm 18mm 22mm 18mm;
+  display: flex; flex-direction: column;
+}
+.cover-marks { display: flex; align-items: center; gap: 10mm; }
+.cover-marks .sep { width: 0.8pt; height: 16mm; background: var(--rule); }
+
+.og-plate {
+  width: 22mm; height: 22mm; border-radius: 4mm;
+  background: var(--black);
+  display: grid; place-items: center;
+  overflow: hidden;
+}
+.og-plate img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.tri-mark { display: flex; flex-direction: column; gap: 2mm; }
+.tri-word {
+  font-family: var(--lat); direction: ltr;
+  font-size: 15pt; font-weight: 700; letter-spacing: .34em;
+  color: var(--ink);
+}
+.tri-mark img { height: 13mm; width: auto; display: block; }
+.tri-rule { display: block; }
+
+.cover-title { margin-top: auto; }
+.cover-title .eyebrow {
+  font-size: 8.5pt; font-weight: 700; letter-spacing: .2em;
+  color: var(--copper); margin-bottom: 5mm;
+}
+.cover-title h1 { font-size: 34pt; line-height: 1.22; margin-bottom: 5mm; }
+.cover-title .sub { font-size: 13pt; color: var(--ink-soft); line-height: 1.6; max-width: 130mm; }
+
+.cover-accent { width: 34mm; height: 2.4pt; background: var(--lime); margin: 8mm 0; }
+
+.cover-meta {
+  margin-top: 10mm; padding-top: 5mm;
+  border-top: 0.6pt solid var(--rule);
+  display: flex; gap: 14mm;
+  font-size: 9pt;
+}
+/* `> span` and not `span`: the value can itself contain a <span class="lat">
+   for a Latin word, and styling that as a block label is what broke
+   "صاحب محل OG — دمشق" across three lines. */
+.cover-meta div > span { display: block; color: var(--ink-faint); font-size: 7.5pt; letter-spacing: .1em; font-weight: 700; margin-bottom: 1mm; }
+.cover-meta div b { font-weight: 600; }
+
+/* --- layout helpers ------------------------------------------------------ */
+
+.cols { display: flex; gap: 8mm; }
+.cols > * { flex: 1; min-width: 0; }
+
+.stack { display: flex; flex-direction: column; gap: 4mm; }
+
+/* --- cards --------------------------------------------------------------- */
+
+.card {
+  border: 0.6pt solid var(--rule);
+  border-radius: 2.5mm;
+  padding: 5mm 5.5mm;
+  background: var(--paper);
+}
+.card.warm { background: var(--paper-warm); border-color: #E4E2DC; }
+.card h3 { margin-bottom: 1.5mm; }
+.card p:last-child { margin-bottom: 0; }
+
+/* A number that carries a page. */
+.stat { }
+.stat .n {
+  font-family: var(--lat); direction: ltr;
+  font-size: 25pt; font-weight: 700; line-height: 1.05;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  display: block; margin-bottom: 1.5mm;
+}
+.stat .n.lime { color: var(--lime-deep); }
+.stat .lbl { font-size: 8.5pt; color: var(--ink-soft); line-height: 1.5; display: block; }
+
+/* --- the problem / solution pairing -------------------------------------- */
+
+.pair { border-top: 0.6pt solid var(--rule); padding-top: 3.5mm; margin-bottom: 4.5mm; }
+.pair:last-child { margin-bottom: 0; }
+.pair .before {
+  font-size: 9.5pt; color: var(--ink-soft); margin-bottom: 1.5mm;
+  display: flex; gap: 3mm;
+}
+.pair .before::before {
+  content: '—'; color: var(--ink-faint); flex: none;
+}
+.pair .after { font-size: 10pt; font-weight: 600; display: flex; gap: 3mm; }
+.pair .after::before {
+  content: '→'; color: var(--lime-deep); flex: none; font-weight: 700;
+  transform: scaleX(-1);   /* the arrow has to point the way the text reads */
+}
+
+/* --- lists --------------------------------------------------------------- */
+
+ul.ticks { list-style: none; margin: 0; padding: 0; }
+ul.ticks li {
+  position: relative;
+  padding-inline-start: 7mm;
+  margin-bottom: 2.6mm;
+  line-height: 1.65;
+}
+ul.ticks li::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0; top: 2.2mm;
+  width: 3mm; height: 3mm; border-radius: 50%;
+  background: var(--lime);
+  border: 0.5pt solid var(--lime-deep);
+}
+ul.ticks.plain li::before { background: var(--rule); border-color: var(--rule); }
+
+/* Numbered steps, for the day-in-the-life page. */
+ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+ol.steps li {
+  counter-increment: s;
+  position: relative;
+  padding-inline-start: 11mm;
+  margin-bottom: 4.5mm;
+  min-height: 8mm;
+}
+ol.steps li::before {
+  content: counter(s);
+  position: absolute; inset-inline-start: 0; top: 0;
+  width: 7.5mm; height: 7.5mm; border-radius: 50%;
+  background: var(--black); color: #fff;
+  font-family: var(--lat);
+  font-size: 9pt; font-weight: 700;
+  display: grid; place-items: center;
+}
+ol.steps li b { display: block; margin-bottom: 0.8mm; }
+
+/* --- screenshots --------------------------------------------------------- */
+
+figure { margin: 0; }
+figure img {
+  display: block; width: 100%; height: auto;
+  border: 0.6pt solid var(--rule);
+  border-radius: 2mm;
+}
+figure.dark img { border-color: #2A2A2E; }
+figcaption {
+  margin-top: 2.5mm;
+  font-size: 8pt; color: var(--ink-faint); line-height: 1.55;
+}
+.shot-tall img { max-height: 132mm; object-fit: cover; object-position: top right; }
+.shot-phone { width: 52mm; margin-inline-start: auto; }
+.shot-phone img { max-height: 118mm; object-fit: cover; object-position: top; }
+
+/* --- callout ------------------------------------------------------------- */
+
+.callout {
+  border-inline-start: 2.4pt solid var(--lime);
+  background: var(--paper-warm);
+  padding: 4mm 5mm;
+  border-radius: 0 2mm 2mm 0;
+  font-size: 10pt;
+}
+.callout.copper { border-inline-start-color: var(--copper); }
+.callout b { display: block; margin-bottom: 1mm; }
+
+/* --- table --------------------------------------------------------------- */
+
+table.t { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+table.t th {
+  text-align: right; font-size: 7.5pt; letter-spacing: .12em;
+  color: var(--ink-faint); font-weight: 700;
+  padding: 0 0 2mm; border-bottom: 0.6pt solid var(--rule);
+}
+table.t td { padding: 2.6mm 0; border-bottom: 0.5pt solid var(--rule-soft); vertical-align: top; }
+table.t tr:last-child td { border-bottom: 0; }
+table.t td.k { font-weight: 600; width: 34%; }
+
+/* --- timeline ------------------------------------------------------------ */
+
+.tl { position: relative; padding-inline-start: 6mm; }
+.tl::before {
+  content: ''; position: absolute;
+  inset-inline-start: 1.5mm; top: 2mm; bottom: 2mm;
+  width: 0.8pt; background: var(--rule);
+}
+.tl-item { position: relative; margin-bottom: 5mm; }
+.tl-item:last-child { margin-bottom: 0; }
+.tl-item::before {
+  content: ''; position: absolute;
+  inset-inline-start: -5.4mm; top: 1.8mm;
+  width: 3.4mm; height: 3.4mm; border-radius: 50%;
+  background: var(--paper); border: 1pt solid var(--copper);
+}
+.tl-item .when {
+  font-size: 7.5pt; font-weight: 700; letter-spacing: .1em;
+  color: var(--copper); display: block; margin-bottom: 0.6mm;
+}
+
+/* --- closing page -------------------------------------------------------- */
+
+.closing { background: var(--black); color: #F5F5F5; }
+.closing .pg-foot { border-top-color: #2A2A2E; color: #6E7278; }
+.closing .pg-foot .fnum, .closing .pg-foot .fmark b { color: #9A9EA5; }
+.closing h1, .closing h2 { color: #FFFFFF; }
+.closing .lede { color: #B9BCC2; }
+.closing .rule { height: 2.4pt; width: 34mm; background: var(--lime); margin: 7mm 0; }
+.closing a { color: var(--lime); text-decoration: none; }
+/* The same lockup as the cover, closing the document. `margin-top:auto` pushes
+   this and the contact row to the foot of the page, so the two marks bookend
+   the whole thing instead of leaving half a page of black. */
+.closing-marks {
+  margin-top: auto;
+  display: flex; align-items: center; gap: 10mm;
+  padding-bottom: 8mm;
+}
+.closing-marks .sep { width: 0.8pt; height: 16mm; background: #2A2A2E; }
+.og-plate.on-dark { background: #FFFFFF; }
+/* The mark is white-on-black artwork, so on a black page it needs its own
+   white plate or it disappears into the background entirely. */
+.og-plate.on-dark img { filter: invert(1); }
+
+.closing .contact {
+  border-top: 0.6pt solid #2A2A2E;
+  padding-top: 5mm;
+  display: flex; gap: 12mm; font-size: 9.5pt;
+}
+.closing .contact div b { white-space: nowrap; }
+
+/* Cover meta: "صاحب محل OG — دمشق" was breaking across three lines. */
+.cover-meta div b { white-space: nowrap; }
+.closing .contact div > span { display: block; color: #6E7278; font-size: 7.5pt; letter-spacing: .1em; font-weight: 700; margin-bottom: 1mm; }
+.closing-inner { height: 100%; display: flex; flex-direction: column; }

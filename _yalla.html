@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en" dir="ltr"><head><meta charset="utf-8"><title>Yalla render</title>
+<link rel="stylesheet" href="css/style.css"></head>
+<body>
+<div id="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main"><header class="topbar" id="topbar"></header><main class="view" id="view"></main></div>
+</div>
+<nav id="tabbar" class="tabbar"></nav><div id="toasts" class="toasts"></div>
+<div id="palette-root"></div><div id="modal-root"></div><div id="drawer-root"></div>
+<div id="tour-root"></div><div id="bulk-root"></div>
+<div id="print-root" class="print-root"></div>
+<button id="tourBtn" class="tour-fab" type="button">
+  <span class="tour-fab-dot"></span><span id="tourBtnLabel">Demo tour</span>
+</button>
+<pre id="r" style="position:fixed;inset:0;z-index:9999;background:#000;color:#0f0;font:11px/1.45 monospace;padding:14px;overflow:auto;margin:0">running</pre>
+
+<script src="js/vendor/chart.umd.min.js"></script>
+<script src="js/codes.js"></script><script src="js/motion.js"></script>
+<script src="js/export.js"></script>
+<script src="js/data.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/pos.js"></script>
+<script src="js/bulk.js"></script>
+<script src="js/scan.js"></script><script src="js/wedge.js"></script><script src="js/stock.js"></script><script src="js/money.js"></script><script src="js/palette.js"></script><script src="js/whatsapp.js"></script><script src="js/notify.js"></script><script src="js/ylinvoice.js"></script><script src="js/yalla.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var R = [], errs = [];
+  window.addEventListener('error', function (e) { errs.push(e.message); });
+  var warn = console.warn, cerr = console.error;
+  console.warn = function () { errs.push('warn: ' + [].join.call(arguments, ' ')); warn.apply(console, arguments); };
+  console.error = function () { errs.push('error: ' + [].join.call(arguments, ' ')); cerr.apply(console, arguments); };
+
+  function ok(n, c, x) { R.push((c ? 'PASS ' : 'FAIL ') + n + (x !== undefined && x !== null ? ' — ' + x : '')); }
+
+  function enterPartner() {
+    OG.print.partner = true; YALLA.reset();
+    renderSidebar(); renderTopbar(); render();
+  }
+
+  try {
+    boot();
+    enterPartner();
+
+    /* ------------------------------------------------ every view, both langs */
+    ['en', 'ar'].forEach(function (lang) {
+      OG.lang = lang;
+      document.body.classList.toggle('rtl', lang === 'ar');
+      ['today', 'queue', 'invoices', 'earnings'].forEach(function (v) {
+        YALLA.state.view = v;
+        renderSidebar(); renderTopbar(); render();
+        var html = document.getElementById('view').innerHTML;
+        ok(lang + ':' + v + ' renders', html.length > 1200, html.length + 'ch');
+        /* A missing i18n key does not throw — it renders as the raw slug. */
+        var slugs = html.match(/\b(yl|yi|og)_[a-z_]+/g);
+        ok(lang + ':' + v + ' no raw slugs', !slugs, slugs ? slugs.slice(0, 4).join(',') : '');
+      });
+    });
+    OG.lang = 'en'; document.body.classList.remove('rtl');
+
+    /* -------------------------------------------------------- today widgets */
+    YALLA.state.view = 'today'; render();
+    var td = document.getElementById('view').innerHTML;
+    ok('radar present', /class="yl-radar"/.test(td));
+    ok('radar has 14 days + late', (td.match(/class="yl-rd/g) || []).length === 15,
+       (td.match(/class="yl-rd/g) || []).length);
+    ok('heatmap has 7 cells', (td.match(/class="yl-hc/g) || []).length === 7);
+    ok('activity feed present', /class="yl-feed"/.test(td));
+    ok('money card present', /yl-age|yl_money|Outstanding/.test(td));
+    ok('ageing bar rendered', /class="yl-age/.test(td));
+    ok('blocked banner shown', /class="yl-block"/.test(td));
+    ok('stage icons on the line', (td.match(/yl-line-ico/g) || []).length === 5);
+
+    /* ------------------------------------------------------------- the board */
+    YALLA.state.view = 'queue'; YALLA.state.mode = 'board'; render();
+    var bd = document.getElementById('view').innerHTML;
+    /* Four, not five. Design is OG's stage: a job only reaches the partner's
+       board once it has been accepted, and accepting puts it straight onto
+       "Sent to print", so a Design column here could never hold anything. */
+    ok('board has 4 columns, design excluded',
+       (bd.match(/class="yl-col /g) || []).length === 4,
+       (bd.match(/class="yl-col /g) || []).length);
+    ok('and none of them is design', bd.indexOf('yl-col s-design') === -1);
+    ok('cards are draggable', /draggable="true"/.test(bd));
+    ok('blocked card marked', /yl-card[^"]*blocked/.test(bd));
+    ok('blocked advance is locked', /is-blocked/.test(bd));
+    ok('drag handlers bound', !!document.querySelector('.yl-card.drag'));
+
+    YALLA.state.mode = 'list'; render();
+    ok('list mode renders cards', /class="yl-grid"/.test(document.getElementById('view').innerHTML));
+    YALLA.state.mode = 'board';
+
+    /* ------------------------------------------------------- radar day filter */
+    YALLA.state.view = 'queue'; YALLA.state.day = 'late'; YALLA.state.filter = 'open'; render();
+    var lateHtml = document.getElementById('view').innerHTML;
+    ok('day chip shown', /chip-x/.test(lateHtml));
+    var lateIds = (lateHtml.match(/data-id="P-\d+"/g) || []);
+    ok('late filter narrows the board', lateIds.length > 0 && lateIds.length < 12, lateIds.length + ' cards');
+    ok('export follows the filter',
+       YALLA.exportSpec().rows.every(function (r) { return DB.isOverdue(DB.job(r[0])); }));
+    YALLA.state.day = null;
+
+    /* ------------------------------------------------------------ TBC filter */
+    YALLA.state.filter = 'tbc'; render();
+    ok('tbc filter only blocked jobs',
+       YALLA.exportSpec().rows.every(function (r) { return DB.tbcCount(DB.job(r[0])) > 0; }));
+    YALLA.state.filter = 'open';
+
+    /* ------------------------------------------------------------ invoices */
+    YALLA.state.view = 'invoices'; render();
+    var iv = document.getElementById('view').innerHTML;
+    ok('invoice table lists 4', (iv.match(/data-yi="open"/g) || []).length === 4,
+       (iv.match(/data-yi="open"/g) || []).length);
+    ok('ageing shown on the page', /class="yl-age"/.test(iv));
+    ok('overdue row flagged', /row-late/.test(iv));
+
+    /* the branded document */
+    YLINV.open('YW-2026-011');
+    var sh = document.getElementById('modal-root').innerHTML;
+    ok('navy sheet renders', /yw-sheet/.test(sh) && !/yw-sheet paper/.test(sh));
+    ok('sheet lists all 14 lines', (sh.match(/class="yw-n"/g) || []).length === 14,
+       (sh.match(/class="yw-n"/g) || []).length);
+    ok('squad numbers on the sheet', /yw-no/.test(sh));
+    ok('bilingual club names', /yw-ar/.test(sh));
+    ok('total due panel', /yw-total/.test(sh));
+    ok('signature lines', (sh.match(/yw-sign/g) || []).length >= 1);
+    ok('QR on the document', /<svg/.test(sh) && /yw-qr/.test(sh));
+    ok('paid invoice offers no payment button', !/data-yi="pay"/.test(sh));
+
+    /* paper mode */
+    var pbtn = document.createElement('button');
+    pbtn.setAttribute('data-yi', 'paper'); pbtn.setAttribute('data-id', 'YW-2026-011');
+    document.body.appendChild(pbtn); pbtn.click(); pbtn.remove();
+    ok('paper mode renders', /yw-sheet paper/.test(document.getElementById('modal-root').innerHTML));
+    closeModal();
+
+    /* a draft invoice built from blank, exactly as the user would */
+    var invCountBefore = DB.partnerInvoices.length;
+    var nb = document.createElement('button');
+    nb.setAttribute('data-yi', 'new-blank');
+    document.body.appendChild(nb); nb.click(); nb.remove();
+    var bh = document.getElementById('modal-root').innerHTML;
+    ok('blank builder opens with rows', (bh.match(/data-yi-in="club"/g) || []).length === 3);
+    ok('club dropdown carries every club',
+       Object.keys(DB.clubs).every(function (k) { return bh.indexOf('<option value="' + k + '"') > -1; }),
+       Object.keys(DB.clubs).length + ' clubs');
+    ok('price is a dropdown', /data-yi-in="price"/.test(bh) && /<select[^>]*data-yi-in="price"/.test(bh));
+    ok('running total shown', /yi-sum/.test(bh));
+
+    /* fill a row the way the UI does, then issue */
+    function setField(sel, val) {
+      var el = document.querySelector(sel);
+      el.value = val;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    setField('[data-yi-in="club"][data-i="0"]', 'rma');
+    setField('[data-yi-in="print"][data-i="0"]', 'bellingham');
+    setField('[data-yi-in="number"][data-i="0"]', '5');
+    setField('[data-yi-in="qty"][data-i="0"]', '3');
+    /* The live total must count only rows that will survive the save. Blank
+       scaffolding rows previously inflated it to 90,000 for a 54,000 invoice. */
+    var sumTxt = document.querySelector('.yi-sum').textContent;
+    ok('running total ignores blank rows', /54,000/.test(sumTxt) && /^3 /.test(sumTxt), sumTxt);
+
+    var ib = document.createElement('button');
+    ib.setAttribute('data-yi', 'issue-now');
+    document.body.appendChild(ib); ib.click(); ib.remove();
+    ok('invoice created', DB.partnerInvoices.length === invCountBefore + 1);
+    var made = DB.partnerInvoices[0];
+    ok('id is YW-2026-015', made.id === 'YW-2026-015', made.id);
+    ok('empty rows dropped', DB.invoiceLines(made).length === 1, DB.invoiceLines(made).length);
+    ok('name upper-cased', made.lines[0].print === 'BELLINGHAM', made.lines[0].print);
+    ok('total = 3 x 18000', DB.invoiceTotal(made) === 54000, DB.invoiceTotal(made));
+    ok('issued, so it is sent', DB.invoiceStatus(made) === 'sent');
+    ok('issuing posted a message to OG',
+       DB.messagesFor({ invoiceId: made.id }).length === 1);
+    ok('it is unread on the OG side',
+       DB.messagesFor({ invoiceId: made.id })[0].readOg === false);
+    ok('it lifted outstanding', DB.outstandingTotal() === 1038500 + 54000, DB.outstandingTotal());
+
+    /* pay it, in two parts */
+    ok('part payment', DB.payInvoice(made, 20000, 'cash') && DB.invoiceStatus(made) === 'part');
+    ok('overpay refused', DB.payInvoice(made, 999999, 'cash') === false);
+    ok('settle', DB.payInvoice(made, 34000, 'sham') && DB.invoiceStatus(made) === 'paid');
+    ok('balance clear', DB.invoiceBalance(made) === 0);
+
+    /* the deep link a scanned invoice lands on */
+    OG.print.partner = false;
+    ok('ywinvoice route works', handleDeepLink('#open/ywinvoice/' + made.id) === true);
+    ok('it entered the partner portal', OG.print.partner === true);
+    ok('on the invoices page', YALLA.state.view === 'invoices');
+    ok('with that invoice open', /yw-sheet/.test(document.getElementById('modal-root').innerHTML));
+    closeModal();
+    ok('a bad id does not crash', handleDeepLink('#open/ywinvoice/NOPE') === true);
+
+    /* Restore in place. Reassigning DB.jobMessages would leave data.js's own
+       `jobMessages` binding pointing at the old array, and every later
+       postMessage would push into an array nobody reads. */
+    DB.partnerInvoices.shift();
+    for (var mi = DB.jobMessages.length - 1; mi >= 0; mi--) {
+      if (DB.jobMessages[mi].invoiceId === 'YW-2026-015') DB.jobMessages.splice(mi, 1);
+    }
+    ok('demo data restored',
+       DB.partnerInvoices.length === 4 && DB.jobMessages.length === 7,
+       DB.partnerInvoices.length + ' inv / ' + DB.jobMessages.length + ' msg');
+
+    /* --------------------------------------------------------- export specs */
+    var specs = {};
+    ['today', 'queue', 'invoices', 'earnings'].forEach(function (v) {
+      YALLA.state.view = v; render();
+      var s = YALLA.exportSpec();
+      specs[v] = s;
+      ok(v + ' spec has rows', s.rows.length > 0, s.rows.length);
+      ok(v + ' row width matches columns',
+         s.rows.every(function (r) { return r.length === s.columns.length; }));
+      ok(v + ' theme is yalla', s.theme === 'yalla');
+    });
+    /* Each page must export ITS page. This is the exact bug that shipped once
+       already, where every Yalla screen exported the earnings sheet. */
+    var titles = ['today', 'queue', 'invoices', 'earnings'].map(function (v) { return specs[v].title; });
+    ok('every page exports a different sheet',
+       titles.filter(function (x, i) { return titles.indexOf(x) === i; }).length === 4,
+       titles.join(' | '));
+
+    /* -------------------------------------------------------- the job drawer */
+    YALLA.state.view = 'queue'; render();
+    YALLA.openJob('P-1043');
+    var dr = document.getElementById('drawer-root').innerHTML;
+    ok('drawer opens', dr.length > 800, dr.length + 'ch');
+    ok('kit print list shown', /yl-kits/.test(dr));
+    ok('18 kit rows', (dr.match(/<tr/g) || []).length >= 19, (dr.match(/<tr/g) || []).length);
+    ok('TBC rows flagged', (dr.match(/is-tbc/g) || []).length === 5, (dr.match(/is-tbc/g) || []).length);
+    ok('squad numbers boxed', /kit-no/.test(dr));
+    ok('message thread shown', /yl-thread/.test(dr));
+    ok('request-names button', /data-yl="ask-names"/.test(dr));
+    ok('advance is locked', /is-blocked/.test(dr));
+    ok('opening the job marks it read', DB.unreadOnJob('yalla', 'P-1043') === 0);
+
+    YALLA.openJob('P-1039');
+    var dr2 = document.getElementById('drawer-root').innerHTML;
+    ok('bulk job shows sizes, not a print list', !/yl-kits/.test(dr2) && /yl-sizes lg/.test(dr2));
+    closeDrawer();
+
+    /* ------------------------------------------------- the TBC gate, via UI */
+    var before = DB.job('P-1043').stage;
+    document.querySelector('[data-yl="advance"][data-id="P-1043"]');
+    YALLA.state.view = 'queue'; render();
+    ok('P-1043 still at sent', DB.job('P-1043').stage === before && before === 'sent');
+
+    /* ---------------------------------------------- ask-names posts for real */
+    var msgsBefore = DB.jobMessages.length;
+    var ogBefore = DB.unreadFor('og').length;
+    var btn = document.createElement('button');
+    btn.setAttribute('data-yl', 'ask-names'); btn.setAttribute('data-id', 'P-1043');
+    document.body.appendChild(btn); btn.click(); btn.remove();
+    ok('ask-names posts a message', DB.jobMessages.length === msgsBefore + 1);
+    ok('it lands in OG unread', DB.unreadFor('og').length === ogBefore + 1);
+    ok('it is on the right job', DB.jobMessages[DB.jobMessages.length - 1].jobId === 'P-1043');
+    DB.jobMessages.pop();
+
+    /* ----------------------------------------------------- back to OG intact */
+    OG.print.partner = false;
+    renderSidebar(); renderTopbar(); render();
+    ok('OG side still renders', document.getElementById('view').innerHTML.length > 2000);
+    OG.view = 'print'; render();
+    var og = document.getElementById('view').innerHTML;
+    ok('OG print board renders with kit jobs', og.length > 2000, og.length + 'ch');
+
+    ok('no console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } catch (e) {
+    R.push('THROW — ' + e.message + '\n' + (e.stack || '').split('\n').slice(1, 4).join('\n'));
+  }
+
+  var fails = R.filter(function (x) { return x.indexOf('PASS') !== 0; });
+  document.getElementById('r').textContent =
+    '=== ' + (R.length - fails.length) + '/' + R.length + ' passed ===\n\n' +
+    (fails.length ? fails.join('\n') + '\n\n---\n' : '') + R.join('\n');
+});
+</script>
+</body></html>

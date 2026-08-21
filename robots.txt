@@ -1,0 +1,5 @@
+# Unreleased client demo — please stay out.
+# GitHub Pages cannot send X-Robots-Tag headers, so index.html also carries
+# <meta name="robots" content="noindex, nofollow, noarchive">.
+User-agent: *
+Disallow: /

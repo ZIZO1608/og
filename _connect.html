@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en" dir="ltr"><head><meta charset="utf-8"><title>OG &lt;-&gt; Yalla connection audit</title>
+<link rel="stylesheet" href="css/style.css"></head>
+<body>
+<div id="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main"><header class="topbar" id="topbar"></header><main class="view" id="view"></main></div>
+</div>
+<nav id="tabbar" class="tabbar"></nav><div id="toasts" class="toasts"></div>
+<div id="palette-root"></div><div id="modal-root"></div><div id="drawer-root"></div>
+<div id="tour-root"></div><div id="bulk-root"></div>
+<div id="print-root" class="print-root"></div>
+<button id="tourBtn" class="tour-fab" type="button">
+  <span class="tour-fab-dot"></span><span id="tourBtnLabel">Demo tour</span>
+</button>
+<pre id="r" style="position:fixed;inset:0;z-index:9999;background:#000;color:#0f0;font:11px/1.45 monospace;padding:14px;overflow:auto;margin:0">running</pre>
+
+<script src="js/vendor/chart.umd.min.js"></script>
+<script src="js/codes.js"></script><script src="js/motion.js"></script>
+<script src="js/export.js"></script>
+<script src="js/data.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/pos.js"></script>
+<script src="js/bulk.js"></script>
+<script src="js/scan.js"></script><script src="js/wedge.js"></script><script src="js/stock.js"></script><script src="js/money.js"></script><script src="js/palette.js"></script><script src="js/whatsapp.js"></script><script src="js/notify.js"></script>
+<script src="js/ylinvoice.js"></script>
+<script src="js/yalla.js"></script>
+<script src="js/app.js"></script>
+<script>
+/* Every loop between the two portals, driven end to end. The rule for each
+   test: DO the thing on one side, then SWITCH SIDES and assert the other side
+   observed it. A test that only checks the side that acted proves nothing. */
+document.addEventListener('DOMContentLoaded', function () {
+  var R = [], errs = [];
+  window.addEventListener('error', function (e) { errs.push(e.message); });
+  var warn = console.warn, cerr = console.error;
+  console.warn = function () { errs.push('warn: ' + [].join.call(arguments, ' ')); warn.apply(console, arguments); };
+  console.error = function () { errs.push('error: ' + [].join.call(arguments, ' ')); cerr.apply(console, arguments); };
+
+  function ok(n, c, x) { R.push((c ? 'PASS ' : 'FAIL ') + n + (x !== undefined && x !== null ? ' — ' + x : '')); }
+  function click(attr, val, extra) {
+    var b = document.createElement('button');
+    b.setAttribute(attr, val);
+    if (extra) Object.keys(extra).forEach(function (k) { b.setAttribute(k, extra[k]); });
+    document.body.appendChild(b); b.click(); b.remove();
+  }
+  function toOG()    { OG.print.partner = false; renderSidebar(); renderTopbar(); render(); }
+  function toYalla() { OG.print.partner = true;  renderSidebar(); renderTopbar(); render(); }
+
+  try {
+    boot();
+
+    /* ============================================ LOOP 1 — kit lines exist
+       on both sides, but the customer's identity only on OG's. */
+    toOG();
+    OG.view = 'print'; OG.pr = { tab: 'board' }; render();
+    openJobDrawer('P-1043');
+    var ogDrawer = document.getElementById('drawer-root').innerHTML;
+    ok('1 · OG job drawer shows an editable print list',
+       /og-kits/.test(ogDrawer) && /data-og-line="print"/.test(ogDrawer));
+    ok('1 · OG sees the customer', ogDrawer.indexOf('Ahmad Al-Khatib') > -1);
+    ok('1 · OG sees the margin', /yl_charged|Charged|profit|Profit/.test(ogDrawer));
+    closeDrawer();
+
+    toYalla();
+    YALLA.openJob('P-1043');
+    var ylDrawer = document.getElementById('drawer-root').innerHTML;
+    ok('1 · partner sees the same 18 lines',
+       (ylDrawer.match(/is-tbc|kit-name/g) || []).length >= 18);
+    ok('1 · partner never sees the customer', ylDrawer.indexOf('Ahmad Al-Khatib') === -1);
+    ok('1 · partner never sees the phone', ylDrawer.indexOf('933 118 204') === -1);
+    ok('1 · partner never sees what OG charged', ylDrawer.indexOf(nf(DB.job('P-1043').price)) === -1);
+    closeDrawer();
+
+    /* ================================== LOOP 2 — the TBC confirmation loop */
+    var job = DB.job('P-1043');
+    var snapshot = DB.tbcLines(job).map(function (l) { return { id: l.id, print: l.print, number: l.number }; });
+
+    ok('2 · partner is blocked', DB.tbcCount(job) === 5 && DB.setStage(job, 'printing') === false);
+
+    /* partner asks OG for the names */
+    toYalla();
+    var ogUnreadBefore = DB.unreadFor('og').length;
+    click('data-yl', 'ask-names', { 'data-id': 'P-1043' });
+    toOG();
+    ok('2 · the request reached OG', DB.unreadFor('og').length === ogUnreadBefore + 1);
+    ok('2 · OG bell shows it', /nt-count/.test(document.getElementById('topbar').innerHTML));
+
+    /* OG fills the names in, through the real drawer inputs */
+    OG.view = 'print'; render();
+    openJobDrawer('P-1043');
+    document.querySelectorAll('[data-og-line="print"][data-jid="P-1043"]').forEach(function (inp) {
+      if (!inp.value) inp.value = 'confirmed ' + inp.getAttribute('data-lid');
+    });
+    click('data-act', 'og-confirm-names', { 'data-id': 'P-1043' });
+    ok('2 · TBC cleared', DB.tbcCount(job) === 0);
+    ok('2 · OG posted the confirmation',
+       DB.messagesFor({ jobId: 'P-1043' }).slice(-1)[0].from === 'og');
+
+    /* partner is unblocked and can now move it */
+    toYalla();
+    ok('2 · partner is no longer blocked', DB.blockedBy(job, 'printing') === null);
+    ok('2 · and it now advances', DB.setStage(job, 'printing') === true);
+    ok('2 · the move stamped history', !!DB.stageAt(job, 'printing'));
+    ok('2 · OG sees the same stage', DB.job('P-1043').stage === 'printing');
+
+    /* restore */
+    DB.setStage(job, 'sent');
+    snapshot.forEach(function (s) {
+      var l = DB.line('P-1043', s.id); l.print = s.print; l.number = s.number;
+    });
+    job.history = job.history.filter(function (h) { return h.stage !== 'printing'; });
+    ok('2 · demo state restored', DB.tbcCount(job) === 5 && job.stage === 'sent');
+
+    /* ======================================= LOOP 3 — nudge, OG -> partner */
+    toOG();
+    var ylUnreadBefore = DB.unreadFor('yalla').length;
+    click('data-act', 'og-nudge', { 'data-id': 'P-1041' });
+    document.getElementById('ogNudgeText').value = 'test nudge';
+    click('data-act', 'og-nudge-send', { 'data-id': 'P-1041' });
+    ok('3 · nudge posted', DB.messagesFor({ jobId: 'P-1041' }).slice(-1)[0].text === 'test nudge');
+    ok('3 · OG did not raise its own badge', DB.unreadFor('og').indexOf(
+       DB.messagesFor({ jobId: 'P-1041' }).slice(-1)[0]) === -1);
+
+    toYalla();
+    ok('3 · partner unread went up by one', DB.unreadFor('yalla').length === ylUnreadBefore + 1);
+    ok('3 · partner bell shows it', /nt-count/.test(document.getElementById('topbar').innerHTML));
+    YALLA.openJob('P-1041');
+    ok('3 · it is in the partner thread',
+       document.getElementById('drawer-root').innerHTML.indexOf('test nudge') > -1);
+    ok('3 · reading it cleared only the partner side',
+       DB.unreadOnJob('yalla', 'P-1041') === 0 && DB.unreadFor('og').length > 0);
+    closeDrawer();
+    DB.jobMessages.pop();
+
+    /* ============================ LOOP 4 — partner delay note -> OG's job */
+    toYalla();
+    var ogUnread4 = DB.unreadFor('og').length;
+    YALLA.openJob('P-1046');
+    click('data-yl', 'note', { 'data-id': 'P-1046' });
+    document.getElementById('ylNoteReason').value = 'printer-down';
+    document.getElementById('ylNoteText').value = 'press is down';
+    click('data-yl', 'note-send', { 'data-id': 'P-1046' });
+    var posted = DB.messagesFor({ jobId: 'P-1046' }).slice(-1)[0];
+    ok('4 · note carries a reason code', posted.reason === 'printer-down');
+
+    toOG();
+    ok('4 · it reached OG unread', DB.unreadFor('og').length === ogUnread4 + 1);
+    OG.view = 'print'; render();
+    ok('4 · OG print page flags the unread', /og_unread_head|new messages/.test(
+       document.getElementById('view').innerHTML) || DB.unreadFor('og').length > 0);
+    openJobDrawer('P-1046');
+    var d4 = document.getElementById('drawer-root').innerHTML;
+    ok('4 · OG sees the note and the reason',
+       d4.indexOf('press is down') > -1 && /Printer|heat press/i.test(d4));
+    closeDrawer();
+    DB.jobMessages.pop();
+
+    /* ================================= LOOP 5 — invoice: partner -> OG -> paid */
+    toYalla();
+    var invBefore = DB.partnerInvoices.length;
+    var unbilled = DB.unbilledRefs();
+    var inv = DB.newInvoice(unbilled, 'connection audit');
+    DB.issueInvoice(inv);
+    var invTotal = DB.invoiceTotal(inv);
+    ok('5 · invoice built from unbilled work', invTotal === 324000, invTotal);
+    ok('5 · those lines are no longer billable', DB.unbilledRefs().length === 0);
+
+    toOG();
+    OG.pr.tab = 'invoices'; OG.view = 'print'; render();
+    var ogInv = document.getElementById('view').innerHTML;
+    ok('5 · OG sees the invoice', ogInv.indexOf(inv.id) > -1);
+    ok('5 · OG sees what it owes', ogInv.indexOf(nf(DB.outstandingTotal())) > -1);
+    ok('5 · OG can pay it', ogInv.indexOf('data-act="og-pay-inv"') > -1);
+
+    openPartnerInvoice(inv.id);
+    ok('5 · OG opens the partner-branded sheet',
+       /yw-sheet/.test(document.getElementById('modal-root').innerHTML));
+
+    click('data-act', 'og-pay-inv', { 'data-id': inv.id });
+    ok('5 · OG payment cleared the balance', DB.invoiceBalance(inv) === 0);
+    ok('5 · status derived, not set', DB.invoiceStatus(inv) === 'paid');
+
+    toYalla();
+    YALLA.state.view = 'invoices'; render();
+    ok('5 · partner sees it as paid, no sync needed',
+       /YW-2026-015[\s\S]{0,900}yi_st_paid|Paid/.test(document.getElementById('view').innerHTML));
+    ok('5 · partner outstanding dropped', DB.outstandingTotal() === 1038500, DB.outstandingTotal());
+
+    DB.partnerInvoices.shift();
+    for (var i = DB.jobMessages.length - 1; i >= 0; i--) {
+      if (DB.jobMessages[i].invoiceId === inv.id) DB.jobMessages.splice(i, 1);
+    }
+    ok('5 · restored', DB.partnerInvoices.length === invBefore && DB.unbilledRefs().length === 15);
+
+    /* ================================== LOOP 6 — stage moves, either side */
+    toOG();
+    var j39 = DB.job('P-1039');
+    var stageBefore = j39.stage;
+    DB.setStage(j39, 'done');
+    toYalla();
+    ok('6 · partner sees the OG stage change', DB.partnerView(j39).stage === 'done');
+    DB.setStage(j39, stageBefore);
+    ok('6 · restored', DB.job('P-1039').stage === stageBefore);
+
+    /* ============================ LOOP 6b — the order handshake, end to end
+       The whole point of this feature: OG offers work, Yalla answers, and
+       only an acceptance can put a job on the press. Run as one continuous
+       round trip because each step is only meaningful given the last. */
+
+    toOG();
+    var ord = DB.job('P-1045');
+    ok('6b · it starts unsent', DB.orderState(ord) === 'draft', DB.orderState(ord));
+    ok('6b · Yalla cannot see an unsent job',
+       DB.partnerJobs(true).every(function (p) { return p.id !== 'P-1045'; }));
+
+    /* The gate, before anything is sent. */
+    ok('6b · an unsent job cannot reach the press',
+       DB.setStage(ord, 'sent') === false && ord.stage === 'design');
+
+    var ylBefore = DB.unreadFor('yalla').length;
+    var ogBefore = DB.unreadFor('og').length;
+    ok('6b · OG sends it', DB.sendOrder(ord) === true);
+    ok('6b · it is now pending', DB.orderState(ord) === 'pending');
+    ok('6b · it is still in design', ord.stage === 'design');
+    ok('6b · Yalla was told', DB.unreadFor('yalla').length === ylBefore + 1);
+    ok('6b · OG did not notify itself', DB.unreadFor('og').length === ogBefore);
+    ok('6b · sending twice is refused', DB.sendOrder(ord) === false);
+    ok('6b · still blocked while pending',
+       DB.setStage(ord, 'sent') === false && ord.stage === 'design');
+
+    /* It reaches the partner as an offer, NOT as a job on their board. */
+    toYalla();
+    ok('6b · it lands in the partner inbox',
+       DB.partnerInbox().some(function (p) { return p.id === 'P-1045'; }));
+    ok('6b · but not on the partner board',
+       DB.partnerJobs(true).every(function (p) { return p.id !== 'P-1045'; }));
+    /* Say which screen we are looking at — an earlier loop leaves the portal
+       on Invoices, which has no inbox and never should have. */
+    YALLA.state.view = 'queue'; render();
+    ok('6b · the inbox is on the queue',
+       document.getElementById('view').innerHTML.indexOf('data-yl="accept"') > -1);
+    YALLA.state.view = 'today'; render();
+    ok('6b · and on today',
+       document.getElementById('view').innerHTML.indexOf('data-yl="accept"') > -1);
+
+    /* Accepting commits to a date and opens the gate. */
+    var promise = new Date(new Date(ord.deadline).getTime() + 2 * 86400000);
+    var ogBefore2 = DB.unreadFor('og').length;
+    ok('6b · Yalla accepts', DB.acceptOrder(ord, promise) === true);
+    ok('6b · accepting put it on the press', ord.stage === 'sent', ord.stage);
+    ok('6b · the promised date is recorded',
+       new Date(DB.promisedDate(ord)).toDateString() === promise.toDateString());
+    ok('6b · the promise beats the request',
+       +DB.promisedDate(ord) !== +ord.deadline);
+    ok('6b · OG was told', DB.unreadFor('og').length === ogBefore2 + 1);
+    ok('6b · it left the inbox',
+       DB.partnerInbox().every(function (p) { return p.id !== 'P-1045'; }));
+    ok('6b · and joined the board',
+       DB.partnerJobs(true).some(function (p) { return p.id === 'P-1045'; }));
+    ok('6b · accepting twice is refused', DB.acceptOrder(ord, promise) === false);
+
+    /* Going to the press notifies OG — the thing that used to be a phone call. */
+    var ogBefore3 = DB.unreadFor('og').length;
+    ok('6b · Yalla starts printing', DB.setStage(ord, 'printing', 'yalla') === true);
+    ok('6b · OG hears about it', DB.unreadFor('og').length === ogBefore3 + 1);
+    var lastMsg = DB.messagesFor({ jobId: 'P-1045' }).slice(-1)[0];
+    ok('6b · the notification is typed as in-print', lastMsg.kind === 'in-print', lastMsg.kind);
+    ok('6b · and it came from Yalla', lastMsg.from === 'yalla');
+    ok('6b · a silent move notifies nobody', (function () {
+      var n = DB.jobMessages.length;
+      DB.setStage(ord, 'delivery');
+      return DB.jobMessages.length === n;
+    })());
+
+    /* The refusal path. */
+    var dec = DB.job('P-1046');
+    ok('6b · P-1046 was seeded pending', DB.orderState(dec) === 'pending');
+    var ogBefore4 = DB.unreadFor('og').length;
+    ok('6b · Yalla turns it down', DB.declineOrder(dec, 'press booked till Sunday') === true);
+    ok('6b · a declined job stays in design', dec.stage === 'design');
+    ok('6b · the reason is kept', dec.order.note === 'press booked till Sunday');
+    ok('6b · OG was told why', DB.unreadFor('og').length === ogBefore4 + 1);
+    ok('6b · a declined job can be sent again', DB.canSendOrder(dec) === null);
+
+    /* An order nobody can print must not be sendable in the first place. */
+    var kit = DB.job('P-1047');
+    var msgsBefore = DB.jobMessages.length;
+    ok('6b · a kit with no names refuses to send', DB.canSendOrder(kit) === 'tbc',
+       String(DB.canSendOrder(kit)));
+    ok('6b · and sending it does nothing', DB.sendOrder(kit) === false);
+    ok('6b · no message was posted', DB.jobMessages.length === msgsBefore);
+    ok('6b · it is still a draft', DB.orderState(kit) === 'draft');
+
+    /* The envelope crosses the boundary without carrying anything private. */
+    var pv45 = DB.partnerView(DB.job('P-1045'));
+    ok('6b · the partner sees the order state', !!pv45.order && pv45.order.state === 'accepted');
+    ok('6b · the envelope carries nothing private',
+       JSON.stringify(pv45.order).indexOf('Yara') === -1 &&
+       JSON.stringify(pv45.order).indexOf(String(DB.job('P-1045').price)) === -1);
+
+    /* Restore everything this loop touched, so the suites after it — and the
+       demo itself — open on the state they expect. */
+    toOG();
+    ord.stage = 'design';
+    ord.history = ord.history.filter(function (hh) { return hh.stage === 'design'; });
+    ord.order = { state: 'draft', sentAt: null, respondedAt: null, promisedAt: null, note: '' };
+    dec.order = { state: 'pending', sentAt: new Date(Date.now() - 5 * 3600000),
+                  respondedAt: null, promisedAt: null, note: '' };
+    /* Spliced IN PLACE, never reassigned. data.js closes over the module-level
+       `jobMessages`; pointing DB.jobMessages at a new array would leave every
+       DB function writing to the old one while the UI read the new one, and
+       nothing would look wrong until much later. */
+    for (var mi = DB.jobMessages.length - 1; mi >= 0; mi--) {
+      var mm = DB.jobMessages[mi];
+      if (mm.jobId === 'P-1045' || (mm.jobId === 'P-1046' && mm.kind === 'declined')) {
+        DB.jobMessages.splice(mi, 1);
+      }
+    }
+    ok('6b · the loop left no messages behind',
+       DB.messagesFor({ jobId: 'P-1045' }).length === 0);
+    /* Proves the splice kept the ONE array: a fresh post has to be visible
+       through DB's own reader, which closes over the module-level variable. */
+    var probe = DB.postMessage({ jobId: 'P-1045', from: 'og', kind: 'note', text: 'probe' });
+    ok('6b · DB and the UI still share one array',
+       DB.messagesFor({ jobId: 'P-1045' }).indexOf(probe) > -1 &&
+       DB.jobMessages.indexOf(probe) > -1);
+    DB.jobMessages.splice(DB.jobMessages.indexOf(probe), 1);
+    ok('6b · demo state restored',
+       DB.orderState(DB.job('P-1045')) === 'draft' &&
+       DB.job('P-1045').stage === 'design' &&
+       DB.orderState(DB.job('P-1046')) === 'pending');
+
+    /* ================================ LOOP 7 — one array, never two copies */
+    ok('7 · partnerView reads live lines',
+       DB.partnerView(DB.job('P-1047')).lines === DB.job('P-1047').lines);
+    ok('7 · both sides read one message array',
+       DB.messagesFor({ jobId: 'P-1043' }).every(function (m) {
+         return DB.jobMessages.indexOf(m) > -1;
+       }));
+
+    /* =========================== LOOP 8 — exports per tab, on both sides */
+    toOG();
+    OG.view = 'print'; OG.pr.tab = 'board'; render();
+    var boardSpec = currentExportSpec();
+    OG.pr.tab = 'invoices'; render();
+    var invSpec = currentExportSpec();
+    ok('8 · each Print tab exports itself', boardSpec.title !== invSpec.title,
+       boardSpec.title + ' vs ' + invSpec.title);
+    ok('8 · invoice export has rows', invSpec.rows.length > 0);
+    ok('8 · invoice export width matches',
+       invSpec.rows.every(function (r) { return r.length === invSpec.columns.length; }));
+    OG.pr.tab = 'board';
+
+    /* ==================================== the access boundary, once more */
+    /* A kit line legitimately carries `price` — that is KIT_PRINT_PRICE, the
+       rate OG pays Yalla, which is the partner's own money and already
+       crosses as `payout`. What must never cross is the job's `price`: what
+       OG charged the customer. So the test is on the VALUE, not the key. */
+    var leak = [];
+    DB.printJobs.forEach(function (j) {
+      var s = JSON.stringify(DB.partnerView(j));
+      if (j.customer && s.indexOf(j.customer) > -1) leak.push(j.id + ':name');
+      if (j.phone && s.indexOf(j.phone) > -1) leak.push(j.id + ':phone');
+      if (s.indexOf('"price":' + j.price) > -1) leak.push(j.id + ':sellingPrice');
+      if (s.indexOf('"customer"') > -1 || s.indexOf('"phone"') > -1) leak.push(j.id + ':field');
+    });
+    ok('9 · boundary holds across all jobs', leak.length === 0, leak.join(' '));
+    ok('9 · kit line price is the partner rate, not OG\'s',
+       DB.kitLines(DB.job('P-1043')).every(function (l) { return l.price === CONFIG.KIT_PRINT_PRICE; }));
+
+    ok('no console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } catch (e) {
+    R.push('THROW — ' + e.message + '\n' + (e.stack || '').split('\n').slice(1, 4).join('\n'));
+  }
+
+  var fails = R.filter(function (x) { return x.indexOf('PASS') !== 0; });
+  document.getElementById('r').textContent =
+    '=== ' + (R.length - fails.length) + '/' + R.length + ' passed ===\n\n' +
+    (fails.length ? fails.join('\n') + '\n\n---\n' : '') + R.join('\n');
+});
+</script>
+</body></html>
