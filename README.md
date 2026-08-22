@@ -23,6 +23,29 @@ There is nothing to install. No `npm install`, no build step, no toolchain.
 
 ---
 
+## First time on a new machine
+
+For a second person joining, or for setting the project up on another computer.
+
+1. **Accept the invite.** GitHub emails it. If you miss the email, open
+   https://github.com/ZIZO1608/og while signed in and accept it there.
+2. **Install GitHub Desktop** from https://desktop.github.com and sign in. You
+   do not have to use it day to day — install it because it performs the
+   GitHub sign-in that `push.bat` relies on afterwards.
+3. **File → Clone repository → GitHub.com → `ZIZO1608/og` → Clone.**
+4. Open the folder it created and double-click `index.html`. If the app opens,
+   you are done setting up.
+
+From then on the whole loop is: **edit files, double-click `push.bat`.**
+
+The very first `push.bat` may pop up a GitHub sign-in window once. That is
+expected, it happens once, and it is not an error.
+
+> Work in the folder GitHub Desktop cloned — not in a copy of it, and not in a
+> zip someone sent you. Only the clone knows where to push.
+
+---
+
 ## Publish a change
 
 **Double-click `push.bat`.** It describes what you changed, asks for a one-line
