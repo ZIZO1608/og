@@ -138,5 +138,7 @@ if ((Test-Path (Join-Path $dest '.git')) -or (Test-Path (Join-Path $dest '.githu
   Write-Host '    Root files are easy to miss - index.html, sw.js, manifest.webmanifest'
 }
 Write-Host ''
-Write-Host '  Passcode is OG2026 - change it in js\gate.js before sharing.' -ForegroundColor Cyan
+Write-Host '  Note: this build is the FRONTEND only. Served on its own it runs on' -ForegroundColor Cyan
+Write-Host '  demo data with no login and saves nothing. The real system needs the' -ForegroundColor Cyan
+Write-Host '  server:  cd server  then  npm start' -ForegroundColor Cyan
 Write-Host ''

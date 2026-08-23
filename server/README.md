@@ -89,7 +89,8 @@ edit, so the trail stays honest.
 ## Security
 
 Real, this time. `js/gate.js` was a passcode inside a file the browser
-downloads; it said so in its own comment. Checking now happens somewhere the
+downloads; it said so in its own comment. It has been deleted, replaced by
+`js/auth.js` talking to the endpoints below. Checking now happens somewhere the
 browser cannot edit.
 
 - **Passwords**: scrypt (`N=32768, r=8`) — memory-hard, ~100ms per attempt.

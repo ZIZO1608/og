@@ -10,9 +10,11 @@
    Bump CACHE when shipping a new build; old caches are dropped on activate.
    ========================================================================== */
 
-/* Bumped for the Yalla Wear v3 build. Bump this on EVERY upload or phones
-   that already have the app will keep serving the old cached copy. */
-var CACHE = 'og-system-v13';
+/* Bumped for the real-login build: gate.js is gone, api.js and auth.js are new.
+   Bump this on EVERY upload or phones that already have the app will keep
+   serving the old cached copy — including, here, a copy that still expects a
+   passcode screen that no longer exists. */
+var CACHE = 'og-system-v14';
 
 var SHELL = [
   './',
@@ -28,7 +30,8 @@ var SHELL = [
   'assets/icon-192.png',
   'assets/icon-512.png',
   'js/vendor/chart.umd.min.js',
-  'js/gate.js',
+  'js/api.js',
+  'js/auth.js',
   'js/codes.js',
   'js/export.js',
   'js/data.js',

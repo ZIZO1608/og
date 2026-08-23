@@ -127,7 +127,8 @@ js/
   notify.js   181   notifications
   wedge.js    160   hardware barcode scanners
   whatsapp.js 154   message composition
-  gate.js      70   the passcode screen
+  auth.js     190   the login screen, and who is signed in
+  api.js      130   the only file that talks to the server
   vendor/chart.umd.min.js
 ```
 
@@ -235,23 +236,27 @@ out this loudly.
 
 ## Security, read this once
 
-`js/gate.js` contains:
+**The passcode is gone.** `js/gate.js` held `PASSCODE = 'OG2026'` in plain text
+in a file the browser downloads — a curtain, not a lock, and it said so itself.
+It has been deleted, not improved.
 
-```js
-var PASSCODE = 'OG2026';
-```
+In its place: real accounts, checked by the server. Each person signs in with
+their own username and password; the password is stored as a scrypt hash;
+sessions are `HttpOnly` cookies the page's JavaScript cannot read. See
+[server/README.md](server/README.md#security) for the details.
 
-in plain text, in a public repository, in a file the browser downloads.
+**Hiding a button is a courtesy, not a boundary.** `Auth.can()` in the browser
+decides what to *draw*. Every permission is checked again on the server,
+because anyone can edit what runs in their own browser. If you add a screen
+that shows cost or profit, guard it in **both** places — and treat the server
+one as the real guard.
 
-**This is a curtain, not a lock.** It keeps a casual visitor and a search engine
-crawler out of an unreleased client demo. It cannot do more than that, and no
-amount of obfuscation would change it: a static site has no server, so there is
-nothing to check a password against.
+### Two modes, on purpose
 
-That is fine for what this currently is — a demo over generated data, with no
-real customer records in it. It stops being fine the moment real names, phone
-numbers or money go in. At that point this needs a real backend with a real
-login, and this gate deleted rather than improved.
+Opened from a file (`file://`), there is no server to ask, so there is no
+login: the app runs on generated demo data and saves nothing. That is what
+makes "double-click index.html" still the fastest way to show someone the
+system. Served over http(s), it is the real thing.
 
-If the passcode itself matters before then, the options are to change it, or to
-make the repository private.
+Nothing about the demo mode weakens the real one — they are different origins
+with different data, and demo mode has no access to the database at all.

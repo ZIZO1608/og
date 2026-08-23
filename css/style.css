@@ -2456,6 +2456,43 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
 .gate-card small { display: block; min-height: 16px; margin-top: 11px; color: var(--destructive); font-size: 12px; font-weight: 600; }
 .gate-note { display: block; margin-top: 14px; color: #52525B; font-size: 11px; }
 
+/* ---- sign-in ---------------------------------------------------------------
+   The gate above was one passcode box beside one button, so its form is a
+   row. A real login is username over password over a full-width button, so
+   the layout is restacked here rather than duplicating the card styling. */
+.gate-card form { flex-direction: column; gap: 10px; }
+
+/* The wide letter-spacing suited a passcode being read off a note. It makes a
+   typed username look wrong, and an email address unreadable. */
+.gate-card input { letter-spacing: normal; font-size: 14.5px; }
+
+.gate-card button[type="submit"] { width: 100%; padding: 0; margin-top: 2px; }
+
+/* Signing in takes about a tenth of a second of deliberate hashing on the
+   server. Show that the click landed, or people press it again. */
+.gate-card button[disabled] {
+  opacity: .6; cursor: default; background: var(--brand);
+}
+
+/* "Forgotten your password?" is a quiet third option, not a second action
+   competing with Sign in — so it sheds the button styling entirely. */
+.gate-card .gate-link {
+  width: auto; height: auto; margin-top: 10px; padding: 2px 4px;
+  background: none; border: 0; color: var(--dim);
+  font-size: 11.5px; font-weight: 600; text-decoration: underline;
+  text-underline-offset: 2px; cursor: pointer;
+  transition: color var(--t);
+}
+.gate-card .gate-link:hover { background: none; color: var(--foreground); }
+
+/* A returned hint is information, not a failure — it must not be red, or it
+   reads as another rejected attempt. */
+.gate-card small.lg-ok { color: var(--dim); font-weight: 600; }
+
+/* The server being unreachable is worth saying before someone types a correct
+   password and is told it is wrong. */
+.gate-note.gate-warn { color: var(--warning); font-weight: 600; }
+
 /* ------------------------------------------------------------------ MISC */
 
 .sparkline { display: flex; align-items: flex-end; gap: 3px; height: 54px; }

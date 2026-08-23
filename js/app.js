@@ -5947,10 +5947,11 @@ function boot() {
   }, 700);
 }
 
-/* The passcode gate holds boot() back on http(s); on file:// it releases
-   immediately, so double-clicking index.html behaves exactly as before. */
+/* The login holds boot() back on http(s) until someone is signed in; on
+   file:// there is no server to ask, so it releases immediately and the app
+   runs on demo data. Double-clicking index.html behaves exactly as before. */
 function start() {
-  if (typeof Gate !== 'undefined') Gate.guard(boot);
+  if (typeof Auth !== 'undefined') Auth.guard(boot);
   else boot();
 }
 
