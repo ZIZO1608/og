@@ -24,10 +24,15 @@ npm start               # http://localhost:8090
 Open http://localhost:8090 and sign in.
 
 ```
-npm test                # 56 tests: schema, auth, permissions, HTTP
 npm run dev             # same as start, restarts when you edit a file
 npm run backup          # snapshot the database, and verify it
 ```
+
+> **There are no tests.** 128 server checks were removed on request — they
+> covered the schema, password hashing, sessions, the permission boundaries,
+> and proved with five real processes that two tills cannot both sell the last
+> pair. Nothing verifies any of that now. They are recoverable:
+> `git checkout d76950a -- server/test`
 
 ### Settings
 

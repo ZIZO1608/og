@@ -59,13 +59,13 @@ expected, it happens once, and it is not an error.
 **Double-click `push.bat`.** It describes what you changed, asks for a one-line
 summary, pulls in your partner's work, and pushes.
 
-From there GitHub takes over: it runs all 858 tests, and only if every one
-passes does it rebuild the site and publish it. About a minute end to end.
-Watch it at [the Actions tab](https://github.com/ZIZO1608/og/actions).
+GitHub then rebuilds the site. Watch it at
+[the Actions tab](https://github.com/ZIZO1608/og/actions).
 
-**A failing test leaves the live site untouched.** That is deliberate. Before
-this existed, updates were made by dragging files into a web page, and the live
-site silently drifted eleven versions behind.
+**Nothing checks your change before it goes out.** The automated tests were
+removed on request, so a push that breaks the till reaches the live site just
+as fast as one that fixes it. Try what you changed before you push it — you are
+the only check left. See [Tests](#tests) for how to get them back.
 
 ### If the site looks unchanged afterwards
 
@@ -162,26 +162,35 @@ has to run on the shop's actual hardware.
 
 ## Tests
 
-858 assertions across six harnesses. They are plain HTML pages — open one in a
-browser and it runs immediately and prints `=== n/n passed ===` at the top.
+**There are none. They were removed on request.**
 
-| File | Assertions | Covers |
-|---|---|---|
-| `_selftest.html` | 495 | the app end to end |
-| `_yalla.html` | 101 | the partner portal |
-| `_connect.html` | 90 | the OG ↔ Yalla Wear handshake loops |
-| `_stagea.html` | 74 | print jobs and kit lines |
-| `_mobile.html` | 71 | every screen at 390px, both languages |
-| `_codes.html` | 27 | barcode encode/decode round trips |
+Until then there were 986 automatic checks — 858 in the browser across six
+harnesses, 128 on the server — and CI refused to publish if any of them failed.
+Nothing inspects a change now.
 
-None of them load `gate.js`, so no passcode prompt gets in the way.
+What that costs, concretely: the browser suite caught a Code 128 decoder that
+returned an empty string, a barcode that clipped the product name on every
+30mm label, and four screens overflowing at 390px. The server suite proved
+two tills cannot both sell the last pair. None of that is watched any more.
 
-**Run them before pushing.** `push.bat` does not run them for you — GitHub
-does, but finding out here is faster than finding out in a failed Action.
+**They are not gone, only removed.** Everything is in git history and comes
+back in one command:
 
-Anything whose filename starts with `_` is a test harness and is stripped from
-the published site by both `make-deploy.ps1` and the Action. `.nojekyll` is
-what stops GitHub deleting those files' underscore-named siblings on its own.
+```
+git checkout d76950a -- server/test _selftest.html _mobile.html \
+    _yalla.html _connect.html _stagea.html _codes.html _codetest.html
+```
+
+`d76950a` is the last commit that had them. The CI jobs that ran them are in
+that commit's `.github/workflows/deploy.yml`.
+
+> `_shot.html` is still in the root and is **not** a test — it is the
+> screenshot rig `make-proposal.ps1` drives to build the Arabic client PDF.
+> Deleting it breaks the proposal.
+
+Anything whose filename starts with `_` is stripped from the published site by
+both `make-deploy.ps1` and the Action, and the server refuses to serve it.
+`.nojekyll` is what stops GitHub deleting underscore-named files on its own.
 
 ---
 

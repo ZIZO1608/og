@@ -1,19 +1,27 @@
 # =============================================================================
-#  OG SYSTEM — test every push, publish the ones that pass
+#  OG SYSTEM — build and publish
 # -----------------------------------------------------------------------------
-#  Two jobs. `deploy` needs `test`, so a push that breaks a suite updates
-#  nothing on the live site. That is the entire point: before this file existed
-#  the site was updated by dragging files into a web page, and it drifted eleven
-#  versions behind without anyone noticing.
+#  One job: build dist/ and publish it to GitHub Pages.
 #
-#  IMPORTANT, one-time repo setting:
-#    Settings -> Pages -> Build and deployment -> Source -> "GitHub Actions"
-#  Until that is switched from "Deploy from a branch", this workflow will go
-#  green and publish nothing at all. It fails silently, which is why it is
-#  written at the top of the file and again in the README.
+#  There are no automated tests any more. They were removed on request; the
+#  earlier version of this file ran 986 checks and refused to deploy if any of
+#  them failed. Nothing now inspects a push before it goes out, so a change
+#  that breaks the till reaches the live site exactly as fast as one that
+#  fixes it. If you want that safety back, the suites are recoverable from git
+#  history:
+#
+#      git show d76950a --stat            # the last commit that had them
+#      git checkout d76950a -- server/test _selftest.html
+#
+#  PAGES IS CURRENTLY OFF. The repository is private, and a free GitHub plan
+#  does not serve Pages from a private repository. This workflow notices and
+#  skips publishing rather than failing. Make the repo public again, or upgrade
+#  the plan, and it resumes on the next push with no edit here.
+#
+#  The app is served by server/ now: `cd server && npm start`.
 # =============================================================================
 
-name: test and deploy
+name: build and deploy
 
 on:
   push:
@@ -36,170 +44,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ===========================================================================
-  #  1. Server tests — schema, auth, permissions, the API over real HTTP
-  # ===========================================================================
-  server:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          # node:sqlite needs 22.5+. Pinned to the major rather than 'latest'
-          # so a Node release cannot break the shop's build overnight.
-          node-version: '22'
-
-      # No `npm ci` step, and that is not an omission: the server has zero
-      # dependencies on purpose. Nothing to install means nothing to audit and
-      # nothing to break between here and the real server.
-      - name: Confirm the server really has no dependencies
-        working-directory: server
-        run: |
-          if [ -f package-lock.json ] || [ -d node_modules ]; then
-            echo "::error::the server picked up dependencies — that was meant to stay empty"
-            exit 1
-          fi
-          echo "  zero dependencies, as designed"
-
-      - name: Run the server suite
-        working-directory: server
-        run: node --test "test/**/*.test.mjs"
-
-  # ===========================================================================
-  #  2. Run all six browser harnesses in a real browser
-  # ===========================================================================
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Show the Chrome we are testing against
-        run: google-chrome --version
-
-      - name: Serve the folder
-        # The harnesses load js/*.js with <script src>, which the file://
-        # protocol blocks. They need a real HTTP origin, so: a static server on
-        # a port, backgrounded, and waited for. `python3` is on the runner
-        # already — no install step, matching the project's no-dependency rule.
-        run: |
-          python3 -m http.server 8080 --bind 127.0.0.1 &
-          for i in $(seq 1 40); do
-            curl -sf http://127.0.0.1:8080/index.html >/dev/null && break
-            sleep 0.25
-          done
-          curl -sf http://127.0.0.1:8080/index.html >/dev/null
-
-      - name: Run the suites
-        run: |
-          set -uo pipefail
-          mkdir -p /tmp/suites
-          total=0; failed=0; missing=0
-
-          run_suite () {
-            name="$1"; width="$2"
-            out="/tmp/suites/$name.html"
-
-            # --virtual-time-budget makes Chrome fast-forward timers and
-            # animation frames instead of waiting on the wall clock, then dump
-            # the DOM once the page has gone quiet. Without it --dump-dom can
-            # capture the page before the last assertion has written its line.
-            # --blink-settings claims a mouse. A CI runner has no pointing
-            # device, so `(pointer: fine)` and `(hover: hover)` are both false,
-            # and any code that checks them takes its touch-device branch —
-            # Motion.dock() bails out entirely, which failed a test here that
-            # passes on every real machine. The values are Blink's enums:
-            # pointer fine = 4, hover = 2. Without this the runner is testing
-            # hardware nobody in the shop is using.
-            google-chrome \
-              --headless=new \
-              --disable-gpu \
-              --no-sandbox \
-              --hide-scrollbars \
-              --window-size="$width" \
-              --blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2 \
-              --virtual-time-budget=20000 \
-              --dump-dom "http://127.0.0.1:8080/$name.html" > "$out" 2>/dev/null
-
-            # The summary line every harness writes is "=== n/n passed ==="
-            # (_mobile appends "@390px", hence the loose tail of the pattern).
-            line=$(grep -o '=== [0-9]*/[0-9]* passed[^=]*===' "$out" | head -1)
-
-            if [ -z "$line" ]; then
-              echo "::error title=$name::no summary line — the page threw before it finished"
-              echo "  --- last 40 lines of the dump ---"
-              tail -40 "$out" | sed 's/^/  /'
-              missing=$((missing + 1))
-              return
-            fi
-
-            pass=$(echo "$line" | sed 's|=== \([0-9]*\)/.*|\1|')
-            of=$(echo "$line"  | sed 's|.*/\([0-9]*\) passed.*|\1|')
-            total=$((total + of))
-
-            if [ "$pass" = "$of" ]; then
-              printf '  %-12s %s\n' "$name" "$line"
-            else
-              failed=$((failed + of - pass))
-              echo "::error title=$name::$line"
-              printf '  %-12s %s\n' "$name" "$line"
-              # Print the failing assertions, not the whole 500-line dump.
-              #
-              # Anchored to the start of the line and only from the summary
-              # marker onward. A bare `grep FAIL` also matches the harness's own
-              # source further up the dump -- `(c ? 'PASS ' : 'FAIL ')` is in
-              # every one of these files -- which buried the one real failure
-              # among three phantoms.
-              awk '/=== [0-9]+\/[0-9]+ passed/{f=1} f' "$out" \
-                | grep '^FAIL ' | head -25 | sed 's/^/      /'
-            fi
-          }
-
-          echo "suite results:"
-          run_suite _selftest 1440,1000
-          run_suite _codes    1440,1000
-          run_suite _yalla    1440,1000
-          run_suite _connect  1440,1000
-          run_suite _stagea   1440,1000
-
-          # 560, not 390. Headless Chrome refuses to go much below ~500px wide,
-          # so asking for 390 silently gives you ~500 and every "does it fit on
-          # a phone" assertion measures the wrong number. The harness pins the
-          # app shell to 390 itself, so the window only has to be big enough to
-          # contain it. This cost a full debugging cycle once already.
-          run_suite _mobile   560,1000
-
-          echo ""
-          echo "  total assertions: $total"
-          echo "  failed:           $failed"
-          echo "  suites with no result: $missing"
-
-          if [ "$failed" -gt 0 ] || [ "$missing" -gt 0 ]; then
-            echo ""
-            echo "Not deploying. Fix the failures above, or run the suite locally:"
-            echo "  .\\serve.ps1   then open _selftest.html"
-            exit 1
-          fi
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### All $total assertions passed" >> $GITHUB_STEP_SUMMARY
-
-      - name: Check the shipping files are all present
-        # The three files a hand-upload kept forgetting. Cheap to assert, and it
-        # catches a rename that would otherwise produce a blank live site.
-        run: |
-          missing=0
-          for f in index.html sw.js manifest.webmanifest robots.txt .nojekyll; do
-            if [ ! -f "$f" ]; then echo "::error::missing $f"; missing=1; fi
-          done
-          exit $missing
-
-  # ===========================================================================
-  #  2. Build dist/ and publish it
-  # ===========================================================================
   deploy:
-    # Both suites, so a broken server cannot ship alongside a working frontend.
-    needs: [test, server]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
@@ -207,6 +52,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check the shipping files are all present
+        # The three files a hand-upload kept forgetting. Cheap to assert, and it
+        # catches a rename that would otherwise produce a blank live site.
+        # With the test suites gone this is the only check left before publish.
+        run: |
+          missing=0
+          for f in index.html sw.js manifest.webmanifest robots.txt .nojekyll; do
+            if [ ! -f "$f" ]; then echo "::error::missing $f"; missing=1; fi
+          done
+          exit $missing
 
       - name: Build dist/
         # The same copy list as make-deploy.ps1: five root files plus three
@@ -224,8 +80,9 @@ jobs:
             [ -d "$d" ] && cp -r "$d" dist/ && echo "  + $d/"
           done
 
-          # Safety net, mirrored from make-deploy.ps1: no test harness, no
-          # screenshot rig, nothing underscore-prefixed ever reaches the site.
+          # Safety net, mirrored from make-deploy.ps1. _shot.html still lives in
+          # the root — it is the screenshot rig make-proposal.ps1 drives to build
+          # the Arabic client PDF, not a test — and it must never reach the site.
           find dist -name '_*' -type f -print -delete | sed 's/^/  - stripped /'
 
           echo ""
@@ -249,8 +106,7 @@ jobs:
       #
       #  Failing the build over that would be wrong: nothing is broken, a
       #  deliberate decision was taken. So check first, and skip cleanly with an
-      #  explanation. If the repo goes public again, or the account is upgraded,
-      #  publishing resumes on the next push with no edit here.
+      #  explanation.
       - name: Check whether Pages is enabled
         id: pages_check
         env:
@@ -269,13 +125,13 @@ jobs:
             echo "  Pages is not enabled for this repository (HTTP $code)."
             echo ""
             echo "  Expected if the repository is private: GitHub Pages needs a"
-            echo "  public repository, or a paid plan. The build and the tests"
-            echo "  all passed; only publishing was skipped."
+            echo "  public repository, or a paid plan. The build succeeded; only"
+            echo "  publishing was skipped."
             {
               echo "### Built, but not published"
               echo ""
               echo "Pages is off (HTTP \`$code\`) — normal for a private repo on a free plan."
-              echo "Tests all passed. Serve the app from \`server/\` instead: \`npm start\`."
+              echo "Serve the app from \`server/\` instead: \`npm start\`."
             } >> $GITHUB_STEP_SUMMARY
           fi
 

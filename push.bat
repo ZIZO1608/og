@@ -127,10 +127,12 @@ echo   ============================================
 echo     Sent.  commit !SHA!
 echo   ============================================
 echo.
-echo   GitHub is now running the tests - 858 in the browser plus
-echo   56 on the server. Watch them here:
+echo   Sent. GitHub is rebuilding:
 echo.
 echo     https://github.com/ZIZO1608/og/actions
+echo.
+echo   Nothing tests your change before it goes out - the automated
+echo   checks were removed, so please try it yourself first.
 echo.
 echo   The repository is private, so the old github.io demo link no
 echo   longer publishes. Run the app yourself instead:
