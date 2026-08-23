@@ -240,9 +240,51 @@ jobs:
           echo "service worker cache: $cache"
           echo "### Published \`$cache\`" >> $GITHUB_STEP_SUMMARY
 
+      # ---------------------------------------------------------------------
+      #  Is Pages actually available?
+      # ---------------------------------------------------------------------
+      #  The repository was made private, which is the right call before real
+      #  customer data exists — but on a free plan GitHub Pages does not serve
+      #  private repositories, so the site is switched off at GitHub's end.
+      #
+      #  Failing the build over that would be wrong: nothing is broken, a
+      #  deliberate decision was taken. So check first, and skip cleanly with an
+      #  explanation. If the repo goes public again, or the account is upgraded,
+      #  publishing resumes on the next push with no edit here.
+      - name: Check whether Pages is enabled
+        id: pages_check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          code=$(curl -s -o /tmp/pages.json -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages")
+
+          if [ "$code" = "200" ]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+            echo "  Pages is enabled — publishing."
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "  Pages is not enabled for this repository (HTTP $code)."
+            echo ""
+            echo "  Expected if the repository is private: GitHub Pages needs a"
+            echo "  public repository, or a paid plan. The build and the tests"
+            echo "  all passed; only publishing was skipped."
+            {
+              echo "### Built, but not published"
+              echo ""
+              echo "Pages is off (HTTP \`$code\`) — normal for a private repo on a free plan."
+              echo "Tests all passed. Serve the app from \`server/\` instead: \`npm start\`."
+            } >> $GITHUB_STEP_SUMMARY
+          fi
+
       - uses: actions/configure-pages@v5
+        if: steps.pages_check.outputs.enabled == 'true'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.pages_check.outputs.enabled == 'true'
         with:
           path: dist
       - id: deployment
+        if: steps.pages_check.outputs.enabled == 'true'
         uses: actions/deploy-pages@v4
