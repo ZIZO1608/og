@@ -40,9 +40,15 @@ var Auth = (function () {
 
   function is(role) { return !!user && user.role === role; }
 
-  /* Demo mode: no server, so no accounts. Everything is permitted because
-     nothing is real and nothing is saved. */
-  function demoMode() { return !API.live; }
+  /* Demo mode: no server answered, so there are no accounts. Everything is
+     permitted because nothing is real and nothing is saved.
+
+     Set by guard() rather than derived from the protocol alone. A page served
+     over http from a plain static host — GitHub Pages, serve.ps1 — is not
+     file://, but has no server behind it either, and showing a login nobody
+     can complete makes the app unusable. */
+  var demo = false;
+  function demoMode() { return demo; }
 
   /* ----------------------------------------------------------------- screen */
 
@@ -214,24 +220,58 @@ var Auth = (function () {
     releaseApp = release;
     API.onLostSession(lostSession);
 
-    /* No server: demo data, no login, nothing saved. */
-    if (demoMode()) {
-      started = true;
-      release();
-      return;
-    }
+    /* Opened from disk. There is no server to ask, and never will be. */
+    if (!API.live) return enterDemo(release);
 
-    /* Ask whether the cookie is still good. A reload should not make a cashier
-       type their password again. */
-    API.get('/api/auth/me')
-      .then(function (data) {
-        user = data.user;
-        started = true;
-        release();
-      })
-      .catch(function () {
-        mount();
-      });
+    /* Served over http — but that alone does not mean a backend exists. A
+       static host answers for index.html and 404s every /api call, so ask
+       before deciding which world we are in. */
+    API.ping().then(function (up) {
+      if (!up) return enterDemo(release);
+
+      /* Real deployment. Is the cookie still good? A reload should not make a
+         cashier type their password again mid-queue. */
+      API.get('/api/auth/me')
+        .then(function (data) {
+          user = data.user;
+          started = true;
+          release();
+        })
+        .catch(function () { mount(); });
+    });
+  }
+
+  /* Straight into the app on generated data. */
+  function enterDemo(release) {
+    demo = true;
+    started = true;
+    release();
+    /* Only worth saying out loud when a server might have been expected.
+       On file:// it is obvious and the banner would just be clutter. */
+    if (API.live) showDemoBanner();
+  }
+
+  /* A permanent, unmissable label.
+
+     This is the safety on falling back automatically. The dangerous case is
+     not GitHub Pages — it is the shop's real server being down for ten
+     minutes while a cashier keeps ringing sales into data that evaporates.
+     They must be able to see that at a glance, without reading anything. */
+  function showDemoBanner() {
+    if (document.getElementById('demoBanner')) return;
+    var b = document.createElement('div');
+    b.id = 'demoBanner';
+    b.className = 'demo-banner';
+    b.innerHTML =
+      '<strong>DEMO</strong>' +
+      '<span>No server connected — nothing you do here is saved.</span>' +
+      '<button type="button" id="demoRetry">Retry</button>';
+    document.body.appendChild(b);
+    document.documentElement.classList.add('has-demo-banner');
+
+    b.querySelector('#demoRetry').addEventListener('click', function () {
+      API.ping().then(function (up) { if (up) location.reload(); });
+    });
   }
 
   return {

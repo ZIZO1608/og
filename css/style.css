@@ -2493,6 +2493,38 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
    password and is told it is wrong. */
 .gate-note.gate-warn { color: var(--warning); font-weight: 600; }
 
+/* ---- demo banner -----------------------------------------------------------
+   Shown when the app is served over http but no server answered — a static
+   host, or the shop's own server being down. Deliberately hard to ignore: the
+   risk it guards against is a cashier ringing real sales into data that
+   evaporates, and they must see that without reading anything. */
+.demo-banner {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 9px 16px;
+  background: var(--warning-soft); border-top: 1px solid var(--warning);
+  color: var(--warning); font-size: 12.5px; font-weight: 600;
+}
+.demo-banner strong {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--warning); color: #1A1206;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .08em;
+}
+.demo-banner span { color: var(--foreground); font-weight: 500; }
+.demo-banner button {
+  padding: 4px 12px; border: 1px solid var(--warning); border-radius: var(--radius);
+  background: none; color: var(--warning); font-size: 11.5px; font-weight: 700;
+  cursor: pointer; transition: background var(--t), color var(--t);
+}
+.demo-banner button:hover { background: var(--warning); color: #1A1206; }
+
+/* Keep the banner off the last row of any scrolling list, and clear of the
+   phone tab bar, which is also fixed to the bottom. */
+html.has-demo-banner .view { padding-bottom: 52px; }
+@media (max-width: 900px) {
+  .demo-banner { bottom: var(--tabbar-h); }
+}
+
 /* ------------------------------------------------------------------ MISC */
 
 .sparkline { display: flex; align-items: flex-end; gap: 3px; height: 54px; }
