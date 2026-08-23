@@ -4,8 +4,14 @@ Retail operations for a sneaker and streetwear shop in Aleppo — point of sale,
 stock across two warehouses, customers, money, barcode scanning and label
 printing, plus a separate portal for **Yalla Wear**, the print partner.
 
-**Live:** https://zizo1608.github.io/og/ · **Passcode:** `OG2026` (see
-[Security](#security-read-this-once) — it is a curtain, not a lock)
+Run it with `cd server && npm start`, then open http://localhost:8090.
+
+> **The old `zizo1608.github.io/og/` demo link no longer works.** The repository
+> was made private — the right call before real customer data goes in — and on
+> a free GitHub plan Pages does not serve private repositories. The app is
+> served by [`server/`](server/) now, which is where it was heading anyway.
+> To bring the public demo back, either make the repo public again or upgrade
+> the account; CI resumes publishing on the next push with no changes needed.
 
 ---
 
@@ -15,11 +21,13 @@ Three ways, in increasing order of fidelity:
 
 | | How | What you get |
 |---|---|---|
-| Quickest | Double-click `index.html` | Everything except camera, offline mode and install-to-phone |
-| Proper | `.\serve.ps1` then open http://localhost:8080 | The full app, including the service worker |
-| Live | https://zizo1608.github.io/og/ | Whatever was last pushed and passed its tests |
+| Quickest | Double-click `index.html` | The demo on seeded data. No camera, no offline mode, nothing saved. |
+| Frontend only | `.\serve.ps1` → http://localhost:8080 | Same, plus the service worker. Still saves nothing. |
+| **The real thing** | `cd server && npm start` → http://localhost:8090 | Login, accounts, permissions, and data that is **still there tomorrow** |
 
-There is nothing to install. No `npm install`, no build step, no toolchain.
+The first two need nothing installed — no npm, no build step, that rule still
+holds for the frontend. The third needs **Node 22.5 or newer**, and the server
+itself has zero dependencies, so there is still no `npm install` to run.
 
 ---
 

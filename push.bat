@@ -127,13 +127,15 @@ echo   ============================================
 echo     Sent.  commit !SHA!
 echo   ============================================
 echo.
-echo   GitHub is now running the 858 tests. If they all pass,
-echo   the live site updates by itself in about a minute:
+echo   GitHub is now running the tests - 858 in the browser plus
+echo   56 on the server. Watch them here:
 echo.
-echo     live site : https://zizo1608.github.io/og/
-echo     progress  : https://github.com/ZIZO1608/og/actions
+echo     https://github.com/ZIZO1608/og/actions
 echo.
-echo   If a test fails the site is left alone on purpose, and the
-echo   Actions page above will show which one.
+echo   The repository is private, so the old github.io demo link no
+echo   longer publishes. Run the app yourself instead:
+echo.
+echo     cd server
+echo     npm start          then open http://localhost:8090
 echo.
 pause
