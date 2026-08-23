@@ -45,7 +45,13 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Publish on a push to main, and on a manual run from the Actions tab.
+    # workflow_dispatch was in the triggers but not here, so "re-run it by hand"
+    # went green and published nothing — which is the exact silent failure this
+    # file warns about at the top. A pull request still builds without publishing.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
