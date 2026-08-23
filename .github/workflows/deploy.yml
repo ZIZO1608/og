@@ -37,7 +37,37 @@ concurrency:
 
 jobs:
   # ===========================================================================
-  #  1. Run all six harnesses in a real browser
+  #  1. Server tests — schema, auth, permissions, the API over real HTTP
+  # ===========================================================================
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # node:sqlite needs 22.5+. Pinned to the major rather than 'latest'
+          # so a Node release cannot break the shop's build overnight.
+          node-version: '22'
+
+      # No `npm ci` step, and that is not an omission: the server has zero
+      # dependencies on purpose. Nothing to install means nothing to audit and
+      # nothing to break between here and the real server.
+      - name: Confirm the server really has no dependencies
+        working-directory: server
+        run: |
+          if [ -f package-lock.json ] || [ -d node_modules ]; then
+            echo "::error::the server picked up dependencies — that was meant to stay empty"
+            exit 1
+          fi
+          echo "  zero dependencies, as designed"
+
+      - name: Run the server suite
+        working-directory: server
+        run: node --test "test/**/*.test.mjs"
+
+  # ===========================================================================
+  #  2. Run all six browser harnesses in a real browser
   # ===========================================================================
   test:
     runs-on: ubuntu-latest
@@ -168,7 +198,8 @@ jobs:
   #  2. Build dist/ and publish it
   # ===========================================================================
   deploy:
-    needs: test
+    # Both suites, so a broken server cannot ship alongside a working frontend.
+    needs: [test, server]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:

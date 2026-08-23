@@ -1,0 +1,40 @@
+# =============================================================================
+#  Never commit these. The repository is public.
+# -----------------------------------------------------------------------------
+#  Two categories, and both are unrecoverable mistakes:
+#
+#    - the database holds real customer names, phone numbers and takings
+#    - the secrets file holds credentials that would let anyone in
+#
+#  Committing either once is enough. Git keeps history, so deleting the file in
+#  a later commit does not remove it -- the only real fix is rewriting history
+#  and rotating every secret involved.
+# =============================================================================
+
+# ---- the database -----------------------------------------------------------
+# -wal and -shm are SQLite's write-ahead log and shared-memory index. They sit
+# next to the database and contain the same data, so they matter just as much.
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ---- secrets ------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+secrets.json
+*.pem
+*.key
+
+# ---- backups ------------------------------------------------------------------
+# Same content as the database, same rules.
+backups/
+*.bak
+
+# ---- runtime --------------------------------------------------------------------
+node_modules/
+*.log
+logs/
