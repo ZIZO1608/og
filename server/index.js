@@ -22,6 +22,7 @@ import * as DB from './lib/db.js';
 import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
 import * as Stock from './lib/stock.js';
+import * as Sales from './lib/sales.js';
 import {
   readJson, sendOk, sendError, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
@@ -311,6 +312,69 @@ router.add('GET /api/stock', requirePerm('stock.read', (ctx) => {
   const wh = ctx.url.searchParams.get('wh') || 'floor';
   const below = Number(ctx.url.searchParams.get('below')) || 10;
   sendOk(ctx.res, { low: Stock.lowStock(wh, below) });
+}));
+
+/* --- sales ------------------------------------------------------------------ */
+
+router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
+  const b = await readJson(ctx.req);
+
+  /* Note what is NOT taken from the body: prices. The client sends what was
+     scanned and how many, and the server prices it from the product table. A
+     till that can name its own price is a till that can sell a 450,000 pair
+     for 1,000 and leave a receipt that looks perfectly ordinary. */
+  try {
+    const sale = Sales.record({
+      lines: Array.isArray(b.lines) ? b.lines : [],
+      whId: b.whId,
+      customerId: b.customerId ? Number(b.customerId) : null,
+      payment: b.payment,
+      discount: Number(b.discount) || 0,
+      currency: b.currency,
+      note: b.note,
+      userId: ctx.user.id,
+      /* The till generates this. On a retry after a dropped connection the
+         same id comes back and returns the original invoice rather than
+         selling everything a second time. */
+      opId: typeof b.opId === 'string' ? b.opId : null
+    });
+    sendOk(ctx.res, { sale: scrubCost(sale, ctx.user) });
+  } catch (e) {
+    if (e.code === 'insufficient_stock') {
+      return sendError(ctx.res, 409, 'insufficient_stock',
+        `Only ${e.available} of ${e.sku} left — the other till may have just sold it.`,
+        {});
+    }
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+router.add('GET /api/sales', requirePerm('sell', (ctx) => {
+  const limit = Math.min(200, Number(ctx.url.searchParams.get('limit')) || 50);
+  sendOk(ctx.res, {
+    sales: Sales.recent(limit).map(s => scrubCost(s, ctx.user))
+  });
+}));
+
+router.add('GET /api/sales/:id', requirePerm('sell', (ctx) => {
+  const s = Sales.byId(ctx.params.id);
+  if (!s) return sendError(ctx.res, 404, 'not_found', 'No such invoice.');
+  s.items = s.items.map(i => scrubCost(i, ctx.user));
+  sendOk(ctx.res, { sale: scrubCost(s, ctx.user) });
+}));
+
+/* Voiding is a manager's job, not a cashier's. A cashier who can void their
+   own sale can take the cash and leave no trace, which is the commonest way
+   money walks out of a shop. */
+router.add('POST /api/sales/:id/void', requirePerm('void', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      result: Sales.voidSale(ctx.params.id, { reason: b.reason, userId: ctx.user.id })
+    });
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
 }));
 
 /* --------------------------------------------------------------- middleware */

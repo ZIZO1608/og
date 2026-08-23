@@ -448,19 +448,84 @@ var POS = (function () {
 
   /* ----------------------------------------------------------- checkout */
 
+  /* Checkout has two paths, and which one runs is the whole difference between
+     a demo and a shop.
+
+       demo    — no server exists. Ring it up locally, exactly as before.
+       real    — ASK THE SERVER FIRST, and only touch anything locally once it
+                 has said yes.
+
+     The order matters. This browser's idea of the stock is a guess several
+     seconds old, taken before the other till rang up the same last pair. If
+     the sale were applied here first and posted afterwards, a refusal would
+     leave a receipt printed, a cart cleared and stock decremented for a sale
+     the shop does not have — and no obvious way back. */
   function complete(silent) {
     if (!S.cart.length) {
       if (!silent) toast(t('cart'), t('empty_cart'), 'err');
       return;
     }
 
+    if (typeof Auth === 'undefined' || Auth.demoMode()) return completeLocal(silent, null);
+
+    /* Disable while the server decides. It is about a fifth of a second, which
+       is exactly long enough for an impatient second click — and two clicks
+       would be two sales. The opId below makes that harmless, but not showing
+       the wait at all is how people learn to double-click a till. */
+    var btn = document.querySelector('[data-pos="complete"]');
+    var wasLabel = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.textContent = t('complete_sale') + '…'; }
+
+    /* One id for this attempt, reused on every retry. If the wifi drops after
+       the server committed but before the reply arrived, sending the same id
+       returns the original invoice instead of selling the shoes twice. */
+    var opId = S.opId || (S.opId = 'op-' + Date.now() + '-' +
+                                   Math.random().toString(36).slice(2, 10));
+
+    /* Only what was scanned and how many. Prices come from the product table
+       on the server — a till that names its own price is a till that can sell
+       a 450,000 pair for 1,000 and leave an ordinary-looking receipt. */
+    API.post('/api/sales', {
+      lines: S.cart.map(function (l) { return { sku: l.sku, qty: l.qty }; }),
+      whId: S.warehouse,
+      customerId: S.customerId || null,
+      payment: S.payment,
+      discount: totals().discount,
+      opId: opId
+    })
+      .then(function (data) {
+        S.opId = null;
+        completeLocal(silent, data.sale);
+      })
+      .catch(function (err) {
+        if (btn) { btn.disabled = false; btn.innerHTML = wasLabel; }
+
+        /* Someone else got there first. Say which item and how many are
+           actually left, then reload the real numbers so the cashier is not
+           looking at a screen the shop has moved on from. */
+        if (err.code === 'insufficient_stock') {
+          toast(t('cart'), err.message, 'err', 6000);
+          if (typeof refreshAll === 'function') refreshAll();
+          return;
+        }
+
+        /* Everything else — offline, timeout, signed out. The cart is left
+           exactly as it was so the sale can be retried without re-scanning. */
+        toast(t('cart'), API.friendly(err), 'err', 6000);
+      });
+  }
+
+  function completeLocal(silent, server) {
     var x = totals();
     var cust = S.customerId ? DB.customer(S.customerId) : null;
     var cashier = 'Lubna Kayali';
 
     var sale = {
-      id: DB.nextInvoiceId(),
-      date: new Date(),
+      /* The server's invoice number when it wrote one, so the printed receipt
+         and the database agree. Two sources of numbering would eventually
+         collide and print the same invoice id twice. */
+      id: server ? server.id : DB.nextInvoiceId(),
+      date: server ? new Date(server.at) : new Date(),
       customerId: cust ? cust.id : null,
       customerName: cust ? cust.name : t('walk_in'),
       items: S.cart.map(function (l) {
