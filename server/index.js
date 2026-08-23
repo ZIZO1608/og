@@ -20,6 +20,8 @@ import { fileURLToPath } from 'node:url';
 
 import * as DB from './lib/db.js';
 import * as Auth from './lib/auth.js';
+import * as Cat from './lib/catalogue.js';
+import * as Stock from './lib/stock.js';
 import {
   readJson, sendOk, sendError, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
@@ -179,7 +181,176 @@ router.add('POST /api/users/:id/active', requirePerm('staff.write', async (ctx) 
   sendOk(ctx.res, { user: Auth.publicUser(Auth.findById(id)) });
 }));
 
+/* --- reference data -------------------------------------------------------- */
+
+router.add('GET /api/config', (ctx) => {
+  /* Everything the app needs before it can draw anything: the two warehouses,
+     the currencies and their minor-unit exponents, the live rate, and the
+     settings that used to be constants in js/data.js. */
+  const d = DB.get();
+  const config = {};
+  for (const r of d.prepare('SELECT key, value FROM config').all()) {
+    config[r.key] = r.value;
+  }
+
+  sendOk(ctx.res, {
+    warehouses: d.prepare('SELECT * FROM warehouses ORDER BY sort').all(),
+    currencies: Cat.currencies(),
+    rate: Cat.currentRate('USD', 'SYP'),
+    config
+  });
+});
+
+router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Cat.setRate({
+      base: b.base ?? 'USD', quote: b.quote ?? 'SYP',
+      rate: Number(b.rate), userId: ctx.user.id
+    }));
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+/* --- catalogue ------------------------------------------------------------- */
+
+/* The whole catalogue in one call. This is what the browser loads on sign-in
+   to fill its in-memory cache, which is what keeps DB.* synchronous and the
+   858 frontend tests intact. A shop's catalogue is a few hundred KB. */
+router.add('GET /api/catalogue', requirePerm('product.read', (ctx) => {
+  const products = Cat.list({ includeHidden: Auth.can(ctx.user, 'product.write') });
+  sendOk(ctx.res, { products: products.map(p => scrubCost(p, ctx.user)) });
+}));
+
+router.add('GET /api/scan/:code', requirePerm('product.read', (ctx) => {
+  const hit = Cat.byBarcode(ctx.params.code);
+  if (!hit) return sendError(ctx.res, 404, 'unknown_code', 'Nothing matches that code.');
+  sendOk(ctx.res, {
+    variant: scrubCost(hit, ctx.user),
+    stock: Stock.placesFor(hit.sku)
+  });
+}));
+
+router.add('POST /api/products', requirePerm('product.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Cat.createWithVariants({ ...b, userId: ctx.user.id }));
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+router.add('PATCH /api/products/:id', requirePerm('product.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { product: Cat.update(Number(ctx.params.id), b, ctx.user.id) });
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+router.add('POST /api/products/:id/variants', requirePerm('product.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Cat.addVariant({
+      productId: Number(ctx.params.id), size: b.size,
+      barcode: b.barcode, shelf: b.shelf, userId: ctx.user.id
+    }));
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+/* --- stock ------------------------------------------------------------------ */
+
+router.add('GET /api/stock/:sku', requirePerm('stock.read', (ctx) => {
+  sendOk(ctx.res, {
+    sku: ctx.params.sku,
+    places: Stock.placesFor(ctx.params.sku),
+    total: Stock.totalFor(ctx.params.sku)
+  });
+}));
+
+router.add('GET /api/stock/:sku/movements', requirePerm('stock.read', (ctx) => {
+  const limit = Math.min(Number(ctx.url.searchParams.get('limit')) || 50, 500);
+  sendOk(ctx.res, { movements: Stock.movementsFor(ctx.params.sku, limit) });
+}));
+
+router.add('POST /api/stock/receive', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  await stockOp(ctx, () => Stock.receive({
+    sku: b.sku, whId: b.whId, qty: Number(b.qty), note: b.note, userId: ctx.user.id
+  }));
+}));
+
+router.add('POST /api/stock/transfer', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  await stockOp(ctx, () => Stock.transfer({
+    sku: b.sku, from: b.from, to: b.to, qty: Number(b.qty),
+    note: b.note, userId: ctx.user.id
+  }));
+}));
+
+router.add('POST /api/stock/writeoff', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  await stockOp(ctx, () => Stock.writeOff({
+    sku: b.sku, whId: b.whId, qty: Number(b.qty), note: b.note, userId: ctx.user.id
+  }));
+}));
+
+router.add('POST /api/stock/count', requirePerm('stock.count', async (ctx) => {
+  const b = await readJson(ctx.req);
+  await stockOp(ctx, () => Stock.reconcile({
+    sku: b.sku, whId: b.whId, counted: Number(b.counted),
+    note: b.note, userId: ctx.user.id
+  }));
+}));
+
+router.add('GET /api/stock', requirePerm('stock.read', (ctx) => {
+  const wh = ctx.url.searchParams.get('wh') || 'floor';
+  const below = Number(ctx.url.searchParams.get('below')) || 10;
+  sendOk(ctx.res, { low: Stock.lowStock(wh, below) });
+}));
+
 /* --------------------------------------------------------------- middleware */
+
+/* Run a stock change, turning "not enough" into a 409 with the real numbers so
+   the till can say "only 2 left" instead of "operation failed". */
+async function stockOp(ctx, fn) {
+  try {
+    sendOk(ctx.res, { result: fn() });
+  } catch (e) {
+    if (e.code === 'insufficient_stock') {
+      return sendError(ctx.res, 409, 'insufficient_stock',
+        `Only ${e.available} left${e.whId ? ` at ${e.whId}` : ''}.`);
+    }
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}
+
+/* Remove cost and margin for anyone without `cost.read`.
+
+   The permission table already says a cashier cannot see cost. That promise is
+   only real if the numbers never leave the server — hiding a column in the UI
+   is not a boundary when the browser can read the response. */
+function scrubCost(row, user) {
+  if (Auth.can(user, 'cost.read')) return row;
+
+  const out = { ...row };
+  delete out.cost_price;
+  delete out.costPrice;
+
+  if (Array.isArray(out.variants)) {
+    out.variants = out.variants.map(v => {
+      const c = { ...v };
+      delete c.cost_price;
+      delete c.costPrice;
+      return c;
+    });
+  }
+  return out;
+}
 
 function requirePerm(perm, handler) {
   return (ctx) => {
