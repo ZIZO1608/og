@@ -1,9 +1,10 @@
 # =============================================================================
 #  OG SYSTEM — build the publishable copy of the app
 # -----------------------------------------------------------------------------
-#  Copies only the real application, leaving behind the test harnesses
-#  (_selftest.html, _mobile.html, _shot.html) and anything else starting with
-#  an underscore.
+#  Copies only the real application, leaving behind anything whose name starts
+#  with an underscore. The test harnesses that used to live there are gone, but
+#  _shot.html remains -- it is the screenshot rig make-proposal.ps1 drives to
+#  build the Arabic client PDF, and it must not reach the live site either.
 #
 #  Usage:
 #    .\make-deploy.ps1                      build into .\dist   (default)
