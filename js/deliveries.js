@@ -242,6 +242,10 @@ var Deliveries = (function () {
      it is now rather than as it was when he last looked. */
   function after() {
     if (typeof Auth !== 'undefined' && Auth.demoMode()) return;
+    /* Don't ask for a board this account cannot read. The server answers 403
+       correctly, but the browser logs every refusal as a failed request, and
+       a console full of expected failures is a console nobody reads. */
+    if (typeof Auth !== 'undefined' && !Auth.can('delivery.read')) return;
     load();
   }
 

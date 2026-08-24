@@ -114,8 +114,8 @@ var Auth = (function () {
 
     /* Say up front if the server cannot be reached, rather than letting
        someone type a correct password and be told it is wrong. */
-    API.ping().then(function (up) {
-      if (!up) {
+    API.ping().then(function (verdict) {
+      if (verdict !== 'up') {
         note.textContent = 'Cannot reach the server';
         note.className = 'gate-note gate-warn';
       }
@@ -237,19 +237,69 @@ var Auth = (function () {
     /* Served over http — but that alone does not mean a backend exists. A
        static host answers for index.html and 404s every /api call, so ask
        before deciding which world we are in. */
-    API.ping().then(function (up) {
-      if (!up) return enterDemo(release);
+    API.ping().then(function (verdict) {
+      if (verdict === 'up') {
+        rememberBackend(true);
 
-      /* Real deployment. Is the cookie still good? A reload should not make a
-         cashier type their password again mid-queue. */
-      API.get('/api/auth/me')
-        .then(function (data) {
-          user = data.user;
-          started = true;
-          release();
-        })
-        .catch(function () { mount(); });
+        /* Real deployment. Is the cookie still good? A reload should not make
+           a cashier type their password again mid-queue. */
+        return API.get('/api/auth/me')
+          .then(function (data) {
+            user = data.user;
+            started = true;
+            release();
+          })
+          .catch(function () { mount(); });
+      }
+
+      /* Something served this page but has no API: a static host. Safe to
+         show the demo, and the banner says so. */
+      if (verdict === 'none') { rememberBackend(false); return enterDemo(release); }
+
+      /* Nothing answered at all.
+
+         This is the case the DEMO banner was never really enough for. If this
+         origin has served a working server before, then a server is supposed
+         to be here and is not — the shop's machine is off, or the wifi went.
+         Falling back to generated data would hand a cashier a till that looks
+         completely normal and throws every sale away.
+
+         If we have NEVER seen a backend here, this is the offline demo — the
+         GitHub Pages copy opened with no signal — and it should just work. */
+      if (backendExpected()) return stop(release);
+      enterDemo(release);
     });
+  }
+
+  /* Has a real server ever answered on this origin?
+
+     Per-origin by nature: localStorage is scoped to the origin, so the shop's
+     LAN address remembering a backend cannot make the public demo refuse to
+     open. Wrapped because a browser with site data blocked throws on the
+     accessor itself rather than returning null. */
+  function rememberBackend(yes) {
+    try {
+      if (yes) localStorage.setItem('og.backend', '1');
+      else localStorage.removeItem('og.backend');
+    } catch (e) { /* private window, or storage blocked */ }
+  }
+
+  function backendExpected() {
+    try { return localStorage.getItem('og.backend') === '1'; }
+    catch (e) { return false; }
+  }
+
+  /* No app at all. shop.js draws the reason and how to fix it; if it somehow
+     is not loaded, fall back to the demo with its banner rather than a blank
+     page — a labelled demo beats nothing on screen. */
+  function stop(release) {
+    if (typeof Shop !== 'undefined' && Shop.fail) {
+      var e = new Error('The shop server is not answering.');
+      e.code = 'offline';
+      Shop.fail(e);
+      return;
+    }
+    enterDemo(release);
   }
 
   /* Straight into the app on generated data. */
@@ -281,7 +331,7 @@ var Auth = (function () {
     document.documentElement.classList.add('has-demo-banner');
 
     b.querySelector('#demoRetry').addEventListener('click', function () {
-      API.ping().then(function (up) { if (up) location.reload(); });
+      API.ping().then(function (verdict) { if (verdict === 'up') location.reload(); });
     });
   }
 

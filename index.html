@@ -56,6 +56,10 @@
 <script src="js/motion.js"></script>
 <script src="js/export.js"></script>
 <script src="js/data.js"></script>
+<!-- shop.js turns server payloads into the shapes data.js defines, so it must
+     come after it. Nothing it does runs at load time: app.js calls Shop.load()
+     once, after sign-in, before the first paint. -->
+<script src="js/shop.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/pos.js"></script>
 <script src="js/bulk.js"></script>

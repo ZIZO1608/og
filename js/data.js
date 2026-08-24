@@ -46,6 +46,14 @@ var CONFIG = {
   STOCK_CRITICAL: 3,           // <= this many pieces = Critical
   STOCK_LOW: 10,               // <= this many pieces = Low
 
+  /* The most a cashier may take off without a manager. Lives here rather than
+     in pos.js so that DB.hydrate can overwrite it from the server's
+     `sale.max_discount_pct` — two copies of a limit is one copy that is wrong,
+     and the one the cashier sees would be the wrong one. The server enforces
+     it regardless; this only decides whether she is warned before the customer
+     is standing there. */
+  MAX_DISCOUNT_PCT: 10,
+
   /* Valid EAN-13: 622103301284 checksums to 4. The old ...845 looked fine but
      would not scan. */
   DEMO_BARCODE: '6221033012844',
@@ -88,10 +96,37 @@ var CONFIG = {
      with a regex on that dash — which breaks the first time somebody types an
      address containing one. The receipt needs them on their own lines anyway. */
   SHOP_ADDRESS: 'Aleppo, Syria',
+  /* Prefilled when adding a customer at the till. Most people who walk in are
+     from the city the shop is in, and a field that is right nine times out of
+     ten is one less thing to type with someone waiting. */
+  SHOP_CITY: 'Aleppo',
   SHOP_ADDRESS_AR: 'حلب، سوريا',
   SHOP_PHONE: '0956 442 118',
   SHOP_MAP: 'https://maps.app.goo.gl/vjYnWGFQFWXBm7r7A',
-  PRINT_PARTNER: 'Yalla Wear'
+  PRINT_PARTNER: 'Yalla Wear',
+
+  /* Which branch printed this — blank until a manager names the till in
+     Settings. A single-branch shop leaves it blank and the receipt header
+     just shows the shop name, no code change either way. */
+  SHOP_BRANCH: '',
+
+  /* The 80mm thermal receipt. Demo-mode defaults only — a real server
+     overwrites every one of these from config.receipt.* in DB.hydrate, and
+     the printer host is deliberately blank here: there is no LAN to reach
+     from a laptop in a meeting. */
+  RECEIPT_PRINTER_HOST: '',
+  RECEIPT_PRINTER_PORT: 9100,
+  RECEIPT_WIDTH_DOTS: 576,
+  RECEIPT_FOOTER_AR: 'شكراً لتسوقكم معنا',
+  RECEIPT_FOOTER_EN: 'Thank you for shopping with us',
+  RECEIPT_POLICY_AR: 'يمكن استبدال القطعة خلال 7 أيام من تاريخ الفاتورة بشرط إبراز هذه الفاتورة وعدم استخدام المنتج.',
+  RECEIPT_POLICY_EN: 'Exchange within 7 days of purchase with this receipt. Item must be unworn.',
+  RECEIPT_SHOW_QR: true,
+  RECEIPT_SHOW_BARCODE: true,
+  RECEIPT_SHOW_LOYALTY: true,
+  RECEIPT_AUTO_PRINT: true,
+  RECEIPT_COPIES: 2,
+  RECEIPT_CUT_MODE: 'partial'
 };
 
 /* Deterministic pseudo-random so the demo looks identical every time it opens. */
@@ -716,6 +751,13 @@ var MOVEMENT_TYPES = {
 };
 
 var stockMovements = [];
+
+/* Highest movement number issued so far. A counter rather than
+   `stockMovements.length` because hydration replaces the whole log with the
+   server's, whose ids start wherever that database happens to be — carrying on
+   from the length would hand out numbers that already exist. */
+var mvSeq = 0;
+
 (function buildMovements() {
   var users = ['Maher Odeh', 'Sirine Bakri', 'Lubna Kayali', 'Rawad Sheikh', 'Hussam Fattal'];
   var picked = [];
@@ -2169,10 +2211,14 @@ var DB = {
      logMovement so the arrival shows up in the warehouse trail like every
      other change. The supplier's balance grows by what was actually received,
      not by what was ordered. */
-  receivePO: function (po) {
+  /* `stockAlreadyBooked` is set by the caller in live mode, where the pieces
+     went to the server through the same receive endpoint a scan uses and have
+     already been read back. Raising them again here would double the arrival:
+     the boxes counted once on the shelf and twice in the system. */
+  receivePO: function (po, stockAlreadyBooked) {
     if (po.status === 'received') return false;
     var now = new Date();
-    po.lines.forEach(function (l) {
+    if (!stockAlreadyBooked) po.lines.forEach(function (l) {
       var v = variants.filter(function (x) {
         return x.productId === l.productId && x.size === l.size;
       })[0];
@@ -2325,7 +2371,265 @@ var DB = {
   },
 
   logMovement: function (m) {
-    m.id = 'MV-' + pad(stockMovements.length + 1, 4);
+    m.id = 'MV-' + pad(++mvSeq, 4);
     stockMovements.unshift(m);
+  },
+
+  /* ==================================================== HYDRATION ==========
+
+     Replace the seeded story with what the server actually holds.
+
+     THE PROBLEM THIS SOLVES. The till used to draw its catalogue from the
+     generator above while the server priced and recorded sales from its own
+     `products` table. Nothing kept the two in step, because nothing connected
+     them. Charging a basket died on `unknown item`, and the one SKU that
+     happened to exist on both sides sold at the wrong price under the wrong
+     name and printed an ordinary-looking receipt. Two catalogues is one
+     catalogue that is wrong, and you cannot tell which.
+
+     So: in live mode the app shows the server's data, in demo mode it shows
+     the seeded story, and never a mix. A mix is what caused the bug.
+
+     WHY IT MUTATES THE ARRAYS RATHER THAN REASSIGNING THEM. `products`,
+     `variants`, `customers`, `sales` and `stockMovements` are closed over by
+     roughly a hundred and seventy read sites, and handed out by reference as
+     DB.products and friends. Assigning a new array here would leave every one
+     of them pointing at the old one. Emptying and refilling keeps every
+     existing caller correct without touching any of them.
+
+     Anything the server has no table for — print jobs, suppliers, employees,
+     shifts, expenses, debts, the Yalla Wear side — is deliberately left alone.
+     Those subsystems have no server half yet, and silently blanking them would
+     replace working screens with empty ones. */
+  live: false,
+
+  hydrate: function (payload) {
+    var rate = Number(payload.rate) || CONFIG.EXCHANGE_RATE;
+    var cfg = payload.config || {};
+
+    /* ---- settings ------------------------------------------------------
+       The server's config table wins over the constants at the top of this
+       file. Two copies of the stock threshold is one copy that is wrong, and
+       the wrong one is always the one on screen. */
+    function num(key, fallback) {
+      var v = Number(cfg[key]);
+      return isFinite(v) && cfg[key] !== undefined && cfg[key] !== null ? v : fallback;
+    }
+
+    CONFIG.EXCHANGE_RATE           = rate;
+    CONFIG.STOCK_LOW               = num('stock.low', CONFIG.STOCK_LOW);
+    CONFIG.STOCK_CRITICAL          = num('stock.critical', CONFIG.STOCK_CRITICAL);
+    CONFIG.LOYALTY_POINTS_PER_1000 = num('loyalty.points_per_1000', CONFIG.LOYALTY_POINTS_PER_1000);
+    CONFIG.LOYALTY_POINT_VALUE     = num('loyalty.point_value', CONFIG.LOYALTY_POINT_VALUE);
+    CONFIG.TIER_SILVER             = num('loyalty.tier_silver', CONFIG.TIER_SILVER);
+    CONFIG.TIER_GOLD               = num('loyalty.tier_gold', CONFIG.TIER_GOLD);
+    CONFIG.MAX_DISCOUNT_PCT        = num('sale.max_discount_pct', CONFIG.MAX_DISCOUNT_PCT);
+    if (cfg['shop.name']) CONFIG.SHOP_NAME = cfg['shop.name'];
+    if (cfg['shop.address']) CONFIG.SHOP_ADDRESS = cfg['shop.address'];
+    if (cfg['shop.city']) CONFIG.SHOP_CITY = cfg['shop.city'];
+    if (cfg['shop.branch_name']) CONFIG.SHOP_BRANCH = cfg['shop.branch_name'];
+    if (cfg['shop.phone']) CONFIG.SHOP_PHONE = cfg['shop.phone'];
+
+    /* ---- the 80mm receipt ------------------------------------------------ */
+    function bool(key, fallback) {
+      return cfg[key] === undefined ? fallback : cfg[key] === '1';
+    }
+    if (cfg['receipt.printer_host'] !== undefined) CONFIG.RECEIPT_PRINTER_HOST = cfg['receipt.printer_host'];
+    CONFIG.RECEIPT_PRINTER_PORT = num('receipt.printer_port', CONFIG.RECEIPT_PRINTER_PORT);
+    CONFIG.RECEIPT_WIDTH_DOTS   = num('receipt.width_dots', CONFIG.RECEIPT_WIDTH_DOTS);
+    if (cfg['receipt.footer_ar'] !== undefined) CONFIG.RECEIPT_FOOTER_AR = cfg['receipt.footer_ar'];
+    if (cfg['receipt.footer_en'] !== undefined) CONFIG.RECEIPT_FOOTER_EN = cfg['receipt.footer_en'];
+    if (cfg['receipt.policy_ar'] !== undefined) CONFIG.RECEIPT_POLICY_AR = cfg['receipt.policy_ar'];
+    if (cfg['receipt.policy_en'] !== undefined) CONFIG.RECEIPT_POLICY_EN = cfg['receipt.policy_en'];
+    CONFIG.RECEIPT_SHOW_QR      = bool('receipt.show_qr', CONFIG.RECEIPT_SHOW_QR);
+    CONFIG.RECEIPT_SHOW_BARCODE = bool('receipt.show_barcode', CONFIG.RECEIPT_SHOW_BARCODE);
+    CONFIG.RECEIPT_SHOW_LOYALTY = bool('receipt.show_loyalty', CONFIG.RECEIPT_SHOW_LOYALTY);
+    CONFIG.RECEIPT_AUTO_PRINT   = bool('receipt.auto_print', CONFIG.RECEIPT_AUTO_PRINT);
+    CONFIG.RECEIPT_COPIES       = num('receipt.copies', CONFIG.RECEIPT_COPIES);
+    if (cfg['receipt.cut_mode'] !== undefined) CONFIG.RECEIPT_CUT_MODE = cfg['receipt.cut_mode'];
+
+    /* ---- the two places -------------------------------------------------- */
+    if (payload.warehouses && payload.warehouses.length) {
+      WAREHOUSES.length = 0;
+      payload.warehouses.forEach(function (w) {
+        WAREHOUSES.push({ id: w.id, name: w.name, nameAr: w.name_ar, kind: w.kind });
+      });
+      /* Both the var and the property: DB.defaultWh was copied by value when
+         this object was built, so moving the var alone would leave every
+         caller reading the old one. */
+      if (cfg['shop.default_wh']) DEFAULT_WH = DB.defaultWh = cfg['shop.default_wh'];
+      if (cfg['shop.intake_wh'])  INTAKE_WH  = DB.intakeWh  = cfg['shop.intake_wh'];
+    }
+
+    /* Prices are stored in the currency the goods are actually priced in —
+       the shop genuinely buys some things in dollars — but every screen here
+       reads one number in the base currency. Converted at the SAME rate the
+       server would use, so the figure on the shelf edge and the figure on the
+       receipt cannot drift apart. The source is kept so the price editor can
+       hand back what it was given rather than a round-tripped approximation. */
+    function toBase(minor, cur) {
+      if (!cur || cur === CONFIG.BASE_CURRENCY) return minor;
+      if (cur === 'USD') return Math.round(minor / 100 * rate);
+      return minor;
+    }
+
+    /* ---- products and their sizes ---------------------------------------- */
+    products.length = 0;
+    variants.length = 0;
+
+    (payload.products || []).forEach(function (p) {
+      products.push({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        brand: p.brand || '',
+        madeIn: p.made_in || '',
+        image: { bg: p.image_bg || '#4A4A52', initials: p.image_initials || '??', src: null },
+        colorway: p.colorway || '',
+        costPrice: toBase(p.cost_price, p.currency),
+        sellingPrice: toBase(p.selling_price, p.currency),
+        /* Kept beside the converted figures rather than instead of them: a
+           dollar-priced shoe edited in Settings must save back as dollars, or
+           one round trip through the editor silently repegs it to today's
+           rate. */
+        srcCurrency: p.currency,
+        srcCostPrice: p.cost_price,
+        srcSellingPrice: p.selling_price,
+        shelfZone: p.shelf_zone || '',
+        hidden: !!p.hidden,
+        /* One flag, not two. The app grew `hidden` and `archived` meaning the
+           same thing in different screens; the server has one column, and it
+           is right. Mapped to both so the products screen's "Archived" filter
+           shows exactly what the shop has taken off sale — leaving `archived`
+           false would put discontinued goods back in the main list. */
+        archived: !!p.hidden,
+        demo: !!p.demo,
+        /* Never sold falls back to how long the shop has had it, which is the
+           honest reading of "nothing has moved" and keeps the dead-stock
+           alert pointing at a real row instead of at nothing. */
+        lastSoldDaysAgo: DB.daysSince(p.last_sold_at || p.created_at)
+      });
+
+      (p.variants || []).forEach(function (v) {
+        var wh = {};
+        WAREHOUSES.forEach(function (w) {
+          /* Every location gets a key even when it holds nothing. moveStock
+             sums across all of them, and one missing key makes the total
+             NaN — which renders as an empty cell rather than an error. */
+          wh[w.id] = Number((v.wh || {})[w.id]) || 0;
+        });
+
+        variants.push({
+          sku: v.sku,
+          productId: v.product_id,
+          size: v.size,
+          color: v.color || '',
+          barcode: v.barcode || '',
+          qty: Number(v.total) || 0,
+          shelf: v.shelf || '',
+          wh: wh
+        });
+      });
+    });
+
+    /* ---- customers -------------------------------------------------------
+       totalSpent and lastPurchaseDate come from the server, where they are
+       derived from the sales table rather than stored. A stored total is a
+       second source of truth for money, and the first void makes it wrong. */
+    customers.length = 0;
+    (payload.customers || []).forEach(function (c) {
+      customers.push({
+        id: c.id,
+        name: c.name,
+        phone: c.phone || '',
+        city: c.city || '',
+        source: c.source || 'in-store',
+        address: c.address || '',
+        note: c.note || '',
+        loyaltyPoints: Number(c.loyalty_points) || 0,
+        totalSpent: Number(c.total_spent) || 0,
+        lastPurchaseDate: c.last_purchase_at ? new Date(c.last_purchase_at) : null,
+        archived: !!c.archived,
+        demo: !!c.demo,
+        history: []
+      });
+    });
+
+    var custById = {};
+    customers.forEach(function (c) { custById[c.id] = c; });
+
+    /* ---- sales ------------------------------------------------------------
+       Hydrated even though the reported bug was about the catalogue, because
+       leaving them seeded is not an option: every seeded invoice references
+       product ids and SKUs that now mean something else entirely. The
+       dashboard would show invented revenue itemised against real goods. */
+    sales.length = 0;
+    (payload.sales || []).forEach(function (s) {
+      var sale = {
+        id: s.id,
+        date: new Date(s.at),
+        customerId: s.customer_id,
+        customerName: s.customer_name || t('walk_in'),
+        items: (s.items || []).map(function (it) {
+          return {
+            sku: it.sku, productId: it.product_id, name: it.name,
+            type: (DB.product(it.product_id) || {}).type || '',
+            size: it.size, qty: it.qty,
+            unitPrice: it.unit_price,
+            /* Absent for anyone without cost.read — the server strips it from
+               the nested items, not just the header. Left undefined rather
+               than zeroed, so a profit figure computed from it comes out
+               obviously broken instead of quietly flattering. */
+            unitCost: it.unit_cost
+          };
+        }),
+        subtotal: s.subtotal,
+        discount: s.discount,
+        pointsUsed: Number(s.points_used) || 0,
+        couponCode: null,
+        total: s.total,
+        payment: s.payment,
+        warehouseId: s.wh_id,
+        cashier: s.cashier_name || '',
+        shiftId: null,
+        publicToken: s.public_token || null,
+        fxRate: s.fx_rate || rate
+      };
+      sales.push(sale);
+      if (custById[sale.customerId]) custById[sale.customerId].history.push(sale.id);
+    });
+
+    /* ---- the movement log -------------------------------------------------
+       Same reasoning as sales: the seeded log is a trail for SKUs that no
+       longer exist. */
+    stockMovements.length = 0;
+    mvSeq = 0;
+    (payload.movements || []).forEach(function (m) {
+      if (m.id > mvSeq) mvSeq = m.id;
+      stockMovements.push({
+        id: 'MV-' + pad(m.id, 4),
+        date: new Date(m.at),
+        sku: m.sku,
+        productId: m.product_id,
+        size: m.size || '',
+        wh: m.wh_id,
+        type: m.type,
+        delta: m.delta,
+        balance: m.balance,
+        note: m.note || '',
+        user: m.user_name || t('admin')
+      });
+    });
+
+    /* Who sold what. Recomputed rather than left at the seeded figures, which
+       were rolled up from invoices that no longer exist. */
+    employees.forEach(function (e) { e.sales = 0; });
+    sales.forEach(function (s) {
+      var e = employees.filter(function (x) { return x.name === s.cashier; })[0];
+      if (e) e.sales += s.total;
+    });
+
+    DB.live = true;
+    return DB;
   }
 };

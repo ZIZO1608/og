@@ -57,6 +57,7 @@ export const ALL_PERMISSIONS = [
   { perm: 'sell',            group: 'till',      label: 'Sell at the till' },
   { perm: 'refund',          group: 'till',      label: 'Give a refund' },
   { perm: 'void',            group: 'till',      label: 'Cancel a completed sale' },
+  { perm: 'sale.reprint',    group: 'till',      label: 'Reprint a past receipt' },
 
   { perm: 'stock.read',      group: 'stock',     label: 'See stock levels' },
   { perm: 'stock.move',      group: 'stock',     label: 'Receive and move stock' },
@@ -114,7 +115,10 @@ const FORBIDDEN = {
     p === 'customer.read' || p === 'customer.write' ||
     p === 'cost.read' || p === 'profit.read' ||
     p.startsWith('money.') || p.startsWith('staff.') ||
-    p.startsWith('delivery.') || p === 'discount.unlimited'
+    p.startsWith('delivery.') || p === 'discount.unlimited' ||
+    /* A receipt payload carries the customer's name and phone number, so
+       this follows customer.* rather than sitting on its own. */
+    p === 'sale.reprint'
 };
 
 export function isPinned(role, perm) {

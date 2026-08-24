@@ -66,7 +66,12 @@ var POS = (function () {
      offered a discount to. Finding out it was refused AFTER pressing Charge
      makes her look like she does not know her own shop's rules. */
 
-  var MAX_DISCOUNT_PCT = 10;      /* mirrors config sale.max_discount_pct */
+  /* Read through a function, not captured into a var at load time. The value
+     arrives from the server in DB.hydrate, which runs after this file has
+     already been evaluated — a snapshot taken here would be the hardcoded 10
+     forever, and would silently disagree with the ceiling the server actually
+     enforces the moment a manager changed it in Settings. */
+  function maxDiscountPct() { return CONFIG.MAX_DISCOUNT_PCT; }
 
   function discountCapped() {
     /* Demo mode has no accounts, so nothing is capped — the demo exists to
@@ -80,7 +85,7 @@ var POS = (function () {
      one lira over the line is over the line — the same comparison the server
      makes, or the two would disagree at the boundary. */
   function discountCeiling() {
-    return Math.floor(totals().subtotal * MAX_DISCOUNT_PCT / 100);
+    return Math.floor(totals().subtotal * maxDiscountPct() / 100);
   }
 
   function overCap() {
@@ -374,7 +379,7 @@ var POS = (function () {
     if (!discountCapped() || !S.discount.value) return '';
     var line = t('disc_max').replace('{v}', money(discountCeiling()));
     return overCap()
-      ? t('disc_capped').replace('{p}', MAX_DISCOUNT_PCT) + ' · ' + line
+      ? t('disc_capped').replace('{p}', maxDiscountPct()) + ' · ' + line
       : line;
   }
 
@@ -596,7 +601,7 @@ var POS = (function () {
        not have to press Charge to discover she is not allowed. */
     if (overCap()) {
       toast(t('cart'),
-            t('disc_capped').replace('{p}', MAX_DISCOUNT_PCT) + ' · ' +
+            t('disc_capped').replace('{p}', maxDiscountPct()) + ' · ' +
             t('disc_max').replace('{v}', money(discountCeiling())),
             'err', 6000);
       return;
@@ -624,7 +629,16 @@ var POS = (function () {
       whId: S.warehouse,
       customerId: S.customerId || null,
       payment: S.payment,
+      /* Manual discount and coupon only — totals() keeps the points out of
+         this figure deliberately. */
       discount: totals().discount,
+      /* A COUNT of points, not what they are worth. The server holds the
+         balance, values them from its own config and deducts them inside the
+         sale's transaction. Sending an amount would let the till decide what
+         a point is worth, and until now it did: the value was folded into the
+         discount and nothing ever came off anyone's balance, so the same 500
+         points bought something on every visit. */
+      pointsUsed: S.pointsUsed,
       opId: opId
     })
       .then(function (data) {
@@ -654,6 +668,30 @@ var POS = (function () {
         if (err.code === 'discount_too_big') {
           toast(t('cart'), err.message, 'err', 7000);
           paintFoot();
+          return;
+        }
+
+        /* The points are gone, or were never there. Someone spent them at the
+           other till, or a manager corrected the balance. Drop the redemption
+           and reload — leaving it selected would make every retry fail the
+           same way, with the customer still standing there. */
+        if (err.code === 'not_enough_points' || err.code === 'points_exceed_total') {
+          S.pointsUsed = 0;
+          toast(t('loyalty'), err.message, 'err', 7000);
+          if (typeof Shop !== 'undefined' && Shop.live()) Shop.reload();
+          else paintFoot();
+          return;
+        }
+
+        /* The attached customer does not exist on the server. This used to be
+           swallowed silently: the sale recorded with no customer, no points
+           earned, and nothing anywhere said so. */
+        if (err.code === 'unknown_customer') {
+          S.customerId = null;
+          S.pointsUsed = 0;
+          toast(t('customer'), err.message, 'err', 7000);
+          if (typeof Shop !== 'undefined' && Shop.live()) Shop.reload();
+          else paintFoot();
           return;
         }
 
@@ -770,10 +808,18 @@ var POS = (function () {
 
     DB.sales.unshift(sale);
 
-    var earned = Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
+    /* The server's own figures when there is one. It already earned and spent
+       these points inside the sale's transaction against the stored balance;
+       recomputing them here from the browser's copy of the rules would give a
+       second answer, and the second answer is the one on screen. */
+    var earned = server
+      ? (server.pointsEarned || 0)
+      : Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
+    var spent = server ? (server.pointsUsed || 0) : S.pointsUsed;
+
     if (cust) {
       cust.totalSpent += sale.total;
-      cust.loyaltyPoints = Math.max(0, cust.loyaltyPoints - S.pointsUsed + earned);
+      cust.loyaltyPoints = Math.max(0, cust.loyaltyPoints - spent + earned);
       cust.lastPurchaseDate = sale.date;
       cust.history.unshift(sale.id);
     }
@@ -913,6 +959,16 @@ var POS = (function () {
       toast(t('customer'), c.name + ' · ' + nf(c.loyaltyPoints) + ' ' + t('points'), 'ok', 2000);
     },
 
+    /* Add them and attach them to this basket in one move. Without the
+       callback she would create the customer, watch the modal close, and have
+       to search for the person she just typed in. */
+    'cust-new': function (el) {
+      openNewCustomer(el.getAttribute('data-q') || '', function (c) {
+        S.customerId = c.id;
+        paintFoot();
+      });
+    },
+
     redeem: function () {
       var c = DB.customer(S.customerId);
       S.pointsUsed = Math.min(500, c.loyaltyPoints);
@@ -993,14 +1049,26 @@ var POS = (function () {
       return (digits.length >= 3 && phone.indexOf(digits) > -1) || c.name.toLowerCase().indexOf(q) > -1;
     }).slice(0, 6);
 
-    if (!hits.length) { box.innerHTML = '<div class="cust-drop"><div class="muted">' + t('no_results') + '</div></div>'; return; }
+    /* "Nobody by that name" is exactly the moment to offer to add them — she
+       has the customer in front of her and has already typed what she knows.
+       Carrying the query into the form means she does not type it twice. */
+    var add = (typeof allow === 'function' && allow('customer.write'))
+      ? '<div class="cust-add" data-pos="cust-new" data-q="' + esc(q) + '">+ ' +
+          t('cu_new') + (q ? ' · ' + esc(q) : '') + '</div>'
+      : '';
+
+    if (!hits.length) {
+      box.innerHTML = '<div class="cust-drop"><div class="muted">' + t('no_results') + '</div>' +
+                      add + '</div>';
+      return;
+    }
     var h = '<div class="cust-drop">';
     hits.forEach(function (c) {
       h += '<div data-pos="cust-pick" data-id="' + c.id + '"><b>' + esc(c.name) + '</b> ' +
         '<span class="muted num">' + tel(c.phone) + '</span>' +
         '<small>' + nf(c.loyaltyPoints) + ' ' + t('points') + '</small></div>';
     });
-    box.innerHTML = h + '</div>';
+    box.innerHTML = h + add + '</div>';
   }
 
   /* Called by app.js after the POS view is inserted into the DOM. */

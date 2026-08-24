@@ -145,8 +145,19 @@ export function nextBarcode(d, productId) {
 /* ---------------------------------------------------------------- products */
 
 export function list({ includeHidden = false } = {}) {
+  /* last_sold_at rides along because the dashboard's dead-stock alert needs
+     it for every product at once. Computing it in the browser would mean
+     shipping the entire sales history to answer one question about each
+     shoe. Voided sales are excluded — a sale that was reversed is not
+     evidence that anybody wanted the thing. */
   const rows = get().prepare(
-    `SELECT * FROM products ${includeHidden ? '' : 'WHERE hidden = 0'} ORDER BY name`
+    `SELECT p.*,
+            (SELECT MAX(s.at)
+               FROM sale_items i JOIN sales s ON s.id = i.sale_id
+              WHERE i.product_id = p.id AND s.voided = 0) AS last_sold_at
+       FROM products p
+      ${includeHidden ? '' : 'WHERE p.hidden = 0'}
+      ORDER BY p.name`
   ).all();
 
   const variants = get().prepare(
@@ -206,7 +217,11 @@ export function byBarcode(code) {
 export function createWithVariants({
   name, type, brand, madeIn, colorway, imageBg, imageInitials,
   currency, costPrice, sellingPrice, shelfZone,
-  sizes = [], whId = 'store', userId
+  sizes = [], whId = 'store', userId,
+  /* Set only by scripts/demo-catalogue.js. Defaults to false so anything a
+     person creates through the app is real, and a bug here leaves demo rows
+     behind rather than marking the shop's catalogue for deletion. */
+  demo = false
 }) {
   if (!name || !String(name).trim()) throw new Error('name is required');
   if (!type) throw new Error('type is required');
@@ -231,13 +246,14 @@ export function createWithVariants({
     const info = d.prepare(
       `INSERT INTO products
          (name, type, brand, made_in, colorway, image_bg, image_initials,
-          currency, cost_price, selling_price, shelf_zone, hidden,
+          currency, cost_price, selling_price, shelf_zone, hidden, demo,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
     ).run(
       String(name).trim(), type, brand ?? null, madeIn ?? null, colorway ?? null,
       imageBg ?? null, imageInitials ?? initialsFor(name),
-      currency, costPrice ?? 0, sellingPrice ?? 0, shelfZone ?? null, at, at
+      currency, costPrice ?? 0, sellingPrice ?? 0, shelfZone ?? null,
+      demo ? 1 : 0, at, at
     );
 
     const productId = Number(info.lastInsertRowid);

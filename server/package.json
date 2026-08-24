@@ -12,6 +12,7 @@
     "dev": "node --watch index.js",
     "createuser": "node scripts/createuser.js",
     "demo-users": "node scripts/demo-users.js",
+    "demo-catalogue": "node scripts/demo-catalogue.js",
     "backup": "node scripts/backup.js"
   },
   "dependencies": {},

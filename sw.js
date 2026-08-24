@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v16';
+var CACHE = 'og-system-v22';
 
 var SHELL = [
   './',
@@ -35,6 +35,7 @@ var SHELL = [
   'js/codes.js',
   'js/export.js',
   'js/data.js',
+  'js/shop.js',
   'js/charts.js',
   'js/pos.js',
   'js/bulk.js',
@@ -86,6 +87,24 @@ self.addEventListener('fetch', function (e) {
 
   var url = new URL(req.url);
   if (url.origin !== location.origin) return;      // never touch third parties
+
+  /* THE SERVER IS NEVER CACHED.
+     ------------------------------------------------------------------------
+     This worker is cache-first with ignoreSearch, which is right for an app
+     shell and catastrophic for an API. Two ways it went wrong before this
+     line existed:
+
+       - ignoreSearch means /api/sales?limit=3 is served the cached response
+         to /api/sales?limit=200. Different question, previous answer.
+       - cache-first means the SECOND load of the catalogue returns the first
+         one. Every stock move, every new product and every sale would be
+         written to the server correctly and then vanish from the screen on
+         the next read, forever, with no way for the user to clear it.
+
+     A till showing stale stock is worse than a till showing none. `/i/` is
+     the public receipt: one customer's invoice must never be handed to the
+     next person who scans a code on the same device. */
+  if (url.pathname.indexOf('/api/') === 0 || url.pathname.indexOf('/i/') === 0) return;
 
   e.respondWith(
     caches.match(req, { ignoreSearch: true }).then(function (hit) {

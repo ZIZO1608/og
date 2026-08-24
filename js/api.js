@@ -123,24 +123,46 @@ var API = (function () {
   return {
     live: LIVE,
 
-    get:  function (path) { return request('GET', path); },
-    post: function (path, body) { return request('POST', path, body || {}); },
-    put:  function (path, body) { return request('PUT', path, body || {}); },
-    del:  function (path) { return request('DELETE', path); },
+    get:   function (path) { return request('GET', path); },
+    post:  function (path, body) { return request('POST', path, body || {}); },
+    put:   function (path, body) { return request('PUT', path, body || {}); },
+    /* Editing one field of a product or a customer is a partial update, and
+       the routes are written as PATCH because that is what they do. A PUT
+       here would say "replace the whole row", which is the request that
+       blanks a phone number by leaving it out. */
+    patch: function (path, body) { return request('PATCH', path, body || {}); },
+    del:   function (path) { return request('DELETE', path); },
 
     friendly: friendly,
 
     onLostSession: function (fn) { onLostSession = fn; },
 
-    /* Is the server actually reachable right now? Used before showing the
-       login, so "server is down" reads differently from "wrong password".
-       Resolves to a boolean and never rejects — a probe that throws is just
-       another thing for the caller to wrap. */
+    /* What kind of world is this? Three answers, not two — and the third one
+       is the whole point.
+
+         'up'    the server answered. A real deployment.
+         'none'  something answered, but not a backend. A static host: the
+                 GitHub Pages demo, or serve.ps1. There is no server here and
+                 there never was.
+         'down'  nothing carried the request at all. Either the wifi went, or
+                 the shop's server is off.
+
+       'none' and 'down' used to be the same boolean, and collapsing them is
+       how a cashier ends up ringing sales into a demo. A static host is safe
+       to fall back on; a server that has stopped answering is not, because
+       the shop believes it is selling. Telling them apart is the difference
+       between a banner and a full stop.
+
+       Never rejects — a probe that throws is one more thing to wrap. */
     ping: function () {
-      if (!LIVE) return Promise.resolve(false);
+      if (!LIVE) return Promise.resolve('none');
       return request('GET', '/api/health')
-        .then(function () { return true; })
-        .catch(function () { return false; });
+        .then(function () { return 'up'; })
+        .catch(function (err) {
+          /* An HTTP status means SOMETHING is serving this origin and it has
+             no /api. Status 0 means the request never arrived anywhere. */
+          return (err && err.status > 0) ? 'none' : 'down';
+        });
     }
   };
 })();

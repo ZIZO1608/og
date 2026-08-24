@@ -977,6 +977,13 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 .cust-drop div:hover { background: var(--accent); }
 .cust-drop small { color: var(--dim); float: right; font-variant-numeric: tabular-nums; }
 body.rtl .cust-drop small { float: left; }
+/* "Add this person" sits under the matches, separated, so it cannot be hit by
+   someone aiming for the last name in the list. */
+.cust-drop .cust-add {
+  margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  color: var(--brand); font-weight: 600;
+}
+.cust-drop .cust-add:hover { background: var(--brand-soft); }
 .cust-picked { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 10px 12px; }
 .cust-picked b { font-size: 13px; font-weight: 700; }
 .cust-picked small { color: var(--dim); font-size: 11.5px; display: block; }
@@ -2615,6 +2622,36 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
 /* Keep the banner off the last row of any scrolling list, and clear of the
    phone tab bar, which is also fixed to the bottom. */
 html.has-demo-banner .view { padding-bottom: 52px; }
+
+/* ---- the shop would not load ------------------------------------------------
+   The counterpart to the demo banner, and the harsher one. The banner says
+   "this is not real"; this says "there is nothing here at all". It replaces
+   the whole page on purpose. A cashier must not be able to reach a cart, a
+   product or a Charge button when the server is unreachable — a till that
+   keeps working offline and forgets everything on reload is the single worst
+   failure this system can have, because nobody finds out until the money is
+   counted. */
+.boot-fail {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--background); color: var(--foreground);
+}
+.boot-fail-card {
+  max-width: 460px; width: 100%;
+  padding: 28px 30px; border: 1px solid var(--destructive-border);
+  border-radius: var(--radius-lg); background: var(--card);
+}
+.boot-fail-card h1 {
+  margin: 0 0 12px; font-size: 19px; font-weight: 700; color: var(--destructive);
+}
+.boot-fail-card p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.6; }
+.boot-fail-why {
+  padding: 9px 12px; border-radius: var(--radius);
+  background: var(--destructive-soft); color: var(--destructive); font-weight: 600;
+}
+.boot-fail-card ol {
+  margin: 0 0 20px; padding-inline-start: 20px;
+  font-size: 13px; line-height: 1.9; color: var(--muted-foreground);
+}
 @media (max-width: 900px) {
   .demo-banner { bottom: var(--tabbar-h); }
 }

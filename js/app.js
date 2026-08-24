@@ -378,6 +378,10 @@ var I18N = {
     total_pieces: 'Total pieces', total_cost: 'Total cost', expected_revenue: 'Expected revenue',
 
     customers_title: 'Customers', customers_sub: 'Who buys, what they buy, when they stopped',
+    cu_new: 'New customer', cu_name_ph: 'Full name',
+    cu_new_note: 'Three fields is all it takes. Points start at zero and build from the first sale.',
+    cu_exists: 'Already in the list',
+    no_access: 'Your account does not have access to this',
     tier: 'Tier', total_spent: 'Total spent', last_purchase: 'Last purchase',
     at_risk: 'At risk', send_whatsapp: 'Send WhatsApp', purchase_history: 'Purchase history',
     points_timeline: 'Loyalty timeline', preferred_sizes: 'Preferred sizes',
@@ -747,6 +751,10 @@ var I18N = {
     total_pieces: 'إجمالي القطع', total_cost: 'إجمالي التكلفة', expected_revenue: 'الإيراد المتوقع',
 
     customers_title: 'الزبائن', customers_sub: 'من يشتري وماذا يشتري ومتى توقّف',
+    cu_new: 'زبون جديد', cu_name_ph: 'الاسم الكامل',
+    cu_new_note: 'ثلاث خانات وبس. النقاط تبدأ من صفر وتزيد من أول عملية بيع.',
+    cu_exists: 'موجود في القائمة',
+    no_access: 'حسابك ما عندو صلاحية لهالشي',
     tier: 'الفئة', total_spent: 'إجمالي الإنفاق', last_purchase: 'آخر شراء',
     at_risk: 'معرّض للفقدان', send_whatsapp: 'إرسال واتساب', purchase_history: 'سجل المشتريات',
     points_timeline: 'سجل نقاط الولاء', preferred_sizes: 'القياسات المفضلة',
@@ -840,7 +848,13 @@ function fmtDate(d) {
 function fmtDateTime(d) {
   d = new Date(d);
   var hh = d.getHours(), mm = String(d.getMinutes()).padStart(2, '0');
-  var ap = hh >= 12 ? 'PM' : 'AM'; var h12 = hh % 12 || 12;
+  /* ص / م, not AM / PM. Two Latin letters in the middle of an Arabic line
+     read as a missing translation, and this one is printed on the receipt a
+     customer walks out holding. */
+  var ap = OG.lang === 'ar'
+    ? (hh >= 12 ? 'م' : 'ص')
+    : (hh >= 12 ? 'PM' : 'AM');
+  var h12 = hh % 12 || 12;
   return fmtDate(d) + ' · ' + h12 + ':' + mm + ' ' + ap;
 }
 
@@ -2874,6 +2888,51 @@ function whStockTab() {
 
 /* Move stock between places. Every size is listed with what each place holds,
    so the choice is made against real numbers rather than from memory. */
+/* ---- a person the shop has not met before ---------------------------------
+   The customer list was read-only, which was survivable while it was forty
+   seeded names and nothing was saved. It stopped being survivable the moment
+   customers became real: the receipt prints a name and a points balance, and
+   a list nobody can add to means the loyalty scheme only ever works for people
+   who were already in the database.
+
+   Deliberately three fields. This is filled in at a till with somebody waiting;
+   a form asking for an address and a note is a form that gets skipped, and a
+   skipped form is a walk-in sale with no customer on it. */
+function openNewCustomer(prefill, onCreated) {
+  if (!allow('customer.write')) { toast(t('customer'), t('no_access'), 'err'); return; }
+
+  var name = '', phone = '';
+  /* Whatever was typed into the search that found nobody. Digits are a phone
+     number, anything else is a name — she has already typed it once. */
+  var seed = String(prefill || '').trim();
+  if (/^[\d+\s()-]+$/.test(seed) && seed.replace(/\D/g, '').length >= 3) phone = seed;
+  else name = seed;
+
+  openModal({
+    title: t('cu_new'), size: 'narrow',
+    body:
+      '<label class="field"><span>' + t('name') + '</span>' +
+        '<input class="inp" id="cuName" type="text" value="' + esc(name) + '" ' +
+        'placeholder="' + esc(t('cu_name_ph')) + '"></label>' +
+      '<label class="field mt"><span>' + t('phone') + '</span>' +
+        '<input class="inp" id="cuPhone" type="tel" inputmode="tel" value="' + esc(phone) + '" ' +
+        'placeholder="+963 9__ ___ ___"></label>' +
+      '<label class="field mt"><span>' + t('city') + '</span>' +
+        '<input class="inp" id="cuCity" type="text" value="' + esc(CONFIG.SHOP_CITY || 'Aleppo') + '"></label>' +
+      '<div class="partner-note mt">' + t('cu_new_note') + '</div>',
+    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+          '<button class="btn btn-primary" data-act="cu-save">' + t('save') + '</button>'
+  });
+
+  /* Handed to the action rather than read back out of the DOM, because the
+     modal is gone by the time the server answers. */
+  OG.cuOnCreated = onCreated || null;
+  setTimeout(function () {
+    var el = document.getElementById(name ? 'cuPhone' : 'cuName');
+    if (el) el.focus();
+  }, 60);
+}
+
 function openTransfer(pid) {
   var p = DB.product(pid);
   if (!p) return;
@@ -3551,6 +3610,9 @@ function viewCustomers() {
     '<div class="sub">' + t('customers_sub') + '</div></div>' +
     '<div class="head-actions">' +
       '<span class="badge critical">' + risk + ' ' + t('at_risk') + '</span>' +
+      (allow('customer.write')
+        ? '<button class="btn btn-primary btn-sm" data-act="cu-new">+ ' + t('cu_new') + '</button>'
+        : '') +
       exportButtons() +
     '</div></div>';
 
@@ -6368,9 +6430,36 @@ var ACTIONS = {
 
   'po-receive': function (el) {
     var po = DB.po(el.getAttribute('data-id'));
-    if (!po || !DB.receivePO(po)) return;
-    render();
-    toast(po.id, DB.poPieces(po) + ' ' + t('pieces') + ' · ' + t('po_received_toast'), 'ok', 4000);
+    if (!po || po.status === 'received') return;
+
+    /* Purchase orders themselves have no server table yet — they live in this
+       browser. The STOCK they raise does not: an arrival that only exists here
+       would be gone on the next reload while the boxes are on the floor. So
+       the pieces go through the same receive endpoint a scan uses, and the
+       order's own paperwork is updated afterwards. */
+    var lines = po.lines.map(function (l) {
+      var v = DB.variants.filter(function (x) {
+        return x.productId === l.productId && x.size === l.size;
+      })[0];
+      return v ? { sku: v.sku, qty: l.qty } : null;
+    }).filter(Boolean);
+
+    Shop.write(
+      function () {
+        return Promise.all(lines.map(function (l) {
+          return Shop.receive(l.sku, DB.intakeWh, l.qty, 'Received on ' + po.id);
+        }));
+      },
+      function () { DB.receivePO(po); },
+      function () {
+        /* In live mode the stock is already booked and re-read, so only the
+           order's own state is left to move — passing `true` stops it raising
+           the same pieces a second time. */
+        if (Shop.live()) DB.receivePO(po, true);
+        render();
+        toast(po.id, DB.poPieces(po) + ' ' + t('pieces') + ' · ' + t('po_received_toast'), 'ok', 4000);
+      }
+    );
   },
   'labels-for': function (el) { openLabelSheet(+el.getAttribute('data-id')); },
   'open-job': function (el) { openJobDrawer(el.getAttribute('data-jid')); },
@@ -6497,13 +6586,24 @@ var ACTIONS = {
     var v = DB.variantBySku(el.getAttribute('data-sku'));
     var n = parseInt(el.getAttribute('data-n'), 10) || 1;
     if (!v) return;
-    var moved = DB.transfer(v, DB.intakeWh, DB.defaultWh, n, t('admin'));
-    if (!moved) { toast(t('wh_none_here'), '', 'err'); return; }
+
+    /* Refused here rather than sent and refused there, so the message names
+       the place instead of quoting a server error at a warehouse worker. */
+    var have = DB.stockAt(v, DB.intakeWh);
+    if (have <= 0) { toast(t('wh_none_here'), '', 'err'); return; }
+    var want = Math.min(n, have);
+
     var p = DB.product(v.productId);
-    toast(t('wh_move_done'),
-          p.name + ' · ' + t('size') + ' ' + v.size + ' — ' + moved + ' ' + t('pieces'),
-          'ok');
-    render();
+    Shop.write(
+      function () { return Shop.transfer(v.sku, DB.intakeWh, DB.defaultWh, want, t('wh_move_done')); },
+      function () { DB.transfer(v, DB.intakeWh, DB.defaultWh, want, t('admin')); },
+      function () {
+        toast(t('wh_move_done'),
+              p.name + ' · ' + t('size') + ' ' + v.size + ' — ' + want + ' ' + t('pieces'),
+              'ok');
+        render();
+      }
+    );
   },
 
   /* Per-product transfer: choose a size, a direction and a quantity. */
@@ -6520,16 +6620,23 @@ var ACTIONS = {
     var v = DB.variantBySku(sku.value);
     if (!v) return;
 
-    var moved = DB.transfer(v, from.value, to.value, parseInt(qty.value, 10) || 0, t('admin'));
-    if (!moved) { toast(t('wh_transfer'), t('out_of_stock'), 'err'); return; }
+    var f = from.value, tgt = to.value;
+    var want = Math.min(parseInt(qty.value, 10) || 0, DB.stockAt(v, f));
+    if (want <= 0) { toast(t('wh_transfer'), t('out_of_stock'), 'err'); return; }
 
     var p = DB.product(v.productId);
-    closeModal();
-    toast(t('wh_move_done'),
-          p.name + ' · ' + t('size') + ' ' + v.size + ' — ' + moved + ' ' + t('pieces') + ' · ' +
-            DB.whName(from.value, OG.lang === 'ar') + ' → ' + DB.whName(to.value, OG.lang === 'ar'),
-          'ok');
-    render();
+    Shop.write(
+      function () { return Shop.transfer(v.sku, f, tgt, want, t('wh_transfer')); },
+      function () { DB.transfer(v, f, tgt, want, t('admin')); },
+      function () {
+        closeModal();
+        toast(t('wh_move_done'),
+              p.name + ' · ' + t('size') + ' ' + v.size + ' — ' + want + ' ' + t('pieces') + ' · ' +
+                DB.whName(f, OG.lang === 'ar') + ' → ' + DB.whName(tgt, OG.lang === 'ar'),
+              'ok');
+        render();
+      }
+    );
   },
   /* Opens the real file picker. This used to pick a random colour from a
      palette and toast "Image uploaded", which is why choosing a picture
@@ -6554,6 +6661,70 @@ var ACTIONS = {
     render();
   },
   'wh-labels': function () { openLabelSheet(null); },
+
+  'cu-new': function (el) {
+    openNewCustomer(el.getAttribute('data-q') || '', null);
+  },
+
+  'cu-save': function () {
+    var name = ((document.getElementById('cuName') || {}).value || '').trim();
+    var phone = ((document.getElementById('cuPhone') || {}).value || '').trim();
+    var city = ((document.getElementById('cuCity') || {}).value || '').trim();
+
+    if (!name) {
+      toast(t('cu_new'), OG.lang === 'ar' ? 'اكتب الاسم' : 'Enter a name', 'err');
+      return;
+    }
+
+    /* Same name AND same phone is a duplicate; same name alone is two people
+       called Ahmad, which in Aleppo is most of them. */
+    var dupe = DB.customers.filter(function (c) {
+      return c.name.toLowerCase() === name.toLowerCase() &&
+             (!phone || c.phone.replace(/\D/g, '') === phone.replace(/\D/g, ''));
+    })[0];
+    if (dupe) {
+      closeModal();
+      toast(t('cu_new'), t('cu_exists') + ' · ' + esc(dupe.name), 'warn', 5000);
+      if (OG.cuOnCreated) OG.cuOnCreated(dupe);
+      OG.cuOnCreated = null;
+      return;
+    }
+
+    var after = OG.cuOnCreated;
+    OG.cuOnCreated = null;
+
+    Shop.write(
+      function () {
+        return Shop.newCustomer({ name: name, phone: phone, city: city, source: 'in-store' });
+      },
+      function () {
+        /* Demo mode only. Nothing is saved, so the id just has to be unique
+           within this page's lifetime. */
+        var c = {
+          id: DB.customers.reduce(function (m, x) { return Math.max(m, x.id); }, 0) + 1,
+          name: name, phone: phone, city: city, source: 'in-store', address: '', note: '',
+          loyaltyPoints: 0, totalSpent: 0, lastPurchaseDate: null,
+          archived: false, history: []
+        };
+        DB.customers.push(c);
+        return { customer: c };
+      },
+      function (res) {
+        closeModal();
+        /* Re-found by id after the reload rather than kept from the response:
+           in live mode the object in DB.customers is a fresh one, and handing
+           the caller the stale copy is how a till ends up holding a customer
+           the rest of the app cannot see. */
+        var made = res && res.customer;
+        var c = made ? (DB.customer(made.id) || made) : null;
+        render();
+        if (c) {
+          toast(t('cu_new'), c.name + (c.phone ? ' · ' + c.phone : ''), 'ok', 3500);
+          if (after) after(c);
+        }
+      }
+    );
+  },
   /* Actually creates the product now. It used to toast and throw the form
      away, which meant a picture the user had just chosen vanished with it —
      the same frustration as the upload not working. */
@@ -6569,26 +6740,62 @@ var ACTIONS = {
     if (dupes.length && !OG.wh.dupeOk) { openDuplicateGuard(name, dupes); return; }
     OG.wh.dupeOk = false;
 
-    var p = DB.newProduct({
-      name: name,
-      type: OG.wh.type,
-      cost: Number((document.getElementById('whCost') || {}).value) || 0,
-      price: Number((document.getElementById('whPrice') || {}).value) || 0,
-      sizes: OG.wh.sizes,
-      imgSrc: OG.wh.imgSrc,
-      bg: OG.wh.img
-    });
+    var cost = Number((document.getElementById('whCost') || {}).value) || 0;
+    var price = Number((document.getElementById('whPrice') || {}).value) || 0;
+    var sizes = OG.wh.sizes;
+    var skus = Object.keys(sizes).filter(function (k) { return sizes[k]; }).length;
+    var imgSrc = OG.wh.imgSrc, bg = OG.wh.img;
 
-    var skus = Object.keys(OG.wh.sizes).filter(function (k) { return OG.wh.sizes[k]; }).length;
-    OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null; OG.wh.imgSrc = null;
-    render();
+    /* A photo has nowhere to go on the server yet — the products table stores
+       a colour block, which is what every screen draws. Said out loud rather
+       than dropped, because he just chose the file and would otherwise watch
+       it disappear with no explanation. */
+    if (imgSrc && Shop.live()) {
+      toast(t('save_product'),
+            OG.lang === 'ar'
+              ? 'الصورة لا تُحفظ بعد على الخادم — سيُستخدم المربّع اللوني.'
+              : 'Photos are not stored on the server yet — the colour block is used.',
+            'warn', 6000);
+    }
 
-    /* Take him to the thing he just made — a toast alone leaves you wondering
-       whether it worked. */
-    toast(t('save_product'), name + ' · ' + pieces + ' pcs · ' + skus + ' SKU', 'ok', 5000, {
-      label: t('view_all'),
-      attrs: 'data-act="open-new-product" data-id="' + p.id + '"'
-    });
+    Shop.write(
+      function () {
+        return Shop.newProduct({
+          name: name,
+          type: OG.wh.type,
+          /* Entered in the shop's base currency. Whole units for SYP, which
+             is what minor_exp 0 means — the number typed is the number
+             stored. */
+          currency: CONFIG.BASE_CURRENCY,
+          costPrice: cost,
+          sellingPrice: price,
+          imageBg: bg || undefined,
+          sizes: Object.keys(sizes)
+            .filter(function (s) { return Number(sizes[s]) > 0; })
+            .map(function (s) { return { size: s, qty: Number(sizes[s]) }; }),
+          /* Opening stock arrives at the back door, like any delivery. */
+          whId: DB.intakeWh
+        });
+      },
+      function () {
+        return DB.newProduct({
+          name: name, type: OG.wh.type, cost: cost, price: price,
+          sizes: sizes, imgSrc: imgSrc, bg: bg
+        });
+      },
+      function (res) {
+        var id = res && (res.productId !== undefined ? res.productId : res.id);
+
+        OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null; OG.wh.imgSrc = null;
+        render();
+
+        /* Take him to the thing he just made — a toast alone leaves you
+           wondering whether it worked. */
+        toast(t('save_product'), name + ' · ' + pieces + ' pcs · ' + skus + ' SKU', 'ok', 5000,
+              id ? { label: t('view_all'),
+                     attrs: 'data-act="open-new-product" data-id="' + id + '"' } : null);
+      }
+    );
   },
 
   /* "It really is a different product" — remembered for exactly one save, so
@@ -6642,15 +6849,23 @@ var ACTIONS = {
     var v = DB.variantBySku(el.getAttribute('data-sku'));
     if (!v) return;
     var n = scanQty(), wh = scanPlace();
-    DB.moveStock(v, wh, n, {
-      type: 'received', note: t('sc_in_note'), user: t('admin')
-    });
     var p = DB.product(v.productId);
-    closeModal();
-    toast(t('sc_checked_in'),
-          p.name + ' · ' + v.size + ' · +' + n + ' → ' + DB.whName(wh, OG.lang === 'ar'),
-          'ok');
-    render();
+
+    Shop.write(
+      function () { return Shop.receive(v.sku, wh, n, t('sc_in_note')); },
+      function () {
+        DB.moveStock(v, wh, n, {
+          type: 'received', note: t('sc_in_note'), user: t('admin')
+        });
+      },
+      function () {
+        closeModal();
+        toast(t('sc_checked_in'),
+              p.name + ' · ' + v.size + ' · +' + n + ' → ' + DB.whName(wh, OG.lang === 'ar'),
+              'ok');
+        render();
+      }
+    );
   },
 
   'sc-out': function (el) {
@@ -6664,17 +6879,30 @@ var ACTIONS = {
       toast(t('sc_cannot_out'), t('wh_none_here') + ' · ' + DB.whName(wh, OG.lang === 'ar'), 'err');
       return;
     }
-    var moved = -DB.moveStock(v, wh, -n, {
-      type: 'transfer', note: t('sc_out_note'), user: t('admin')
-    });
+    var moved = Math.min(n, have);
     var p = DB.product(v.productId);
-    closeModal();
-    toast(t('sc_checked_out'),
-          p.name + ' · ' + v.size + ' · −' + moved + ' ' + t('wh_from') + ' ' +
-            DB.whName(wh, OG.lang === 'ar') +
-            (moved < n ? ' (' + t('sc_only_had') + ' ' + moved + ')' : ''),
-          'ok');
-    render();
+
+    Shop.write(
+      /* A removal that is not a sale. writeOff is the server's name for it —
+         stock leaving without an invoice — and it lands in the same movement
+         log, which is the point: anything that changes a count has to be
+         explainable afterwards. */
+      function () { return Shop.writeOff(v.sku, wh, moved, t('sc_out_note')); },
+      function () {
+        DB.moveStock(v, wh, -moved, {
+          type: 'transfer', note: t('sc_out_note'), user: t('admin')
+        });
+      },
+      function () {
+        closeModal();
+        toast(t('sc_checked_out'),
+              p.name + ' · ' + v.size + ' · −' + moved + ' ' + t('wh_from') + ' ' +
+                DB.whName(wh, OG.lang === 'ar') +
+                (moved < n ? ' (' + t('sc_only_had') + ' ' + moved + ')' : ''),
+              'ok');
+        render();
+      }
+    );
   },
 
   'more-sheet': function () { openMoreSheet(); },
@@ -7179,10 +7407,21 @@ function boot() {
 
 /* The login holds boot() back on http(s) until someone is signed in; on
    file:// there is no server to ask, so it releases immediately and the app
-   runs on demo data. Double-clicking index.html behaves exactly as before. */
+   runs on demo data. Double-clicking index.html behaves exactly as before.
+
+   In live mode the shop's real data is loaded BEFORE the first paint. Drawing
+   the seeded catalogue first and swapping it underneath would put invented
+   prices on screen for a moment, and a cashier who scanned in that moment
+   would be looking at a product the server does not have. */
 function start() {
-  if (typeof Auth !== 'undefined') Auth.guard(boot);
-  else boot();
+  if (typeof Auth === 'undefined') return boot();
+
+  Auth.guard(function () {
+    if (Auth.demoMode() || typeof Shop === 'undefined') return boot();
+    /* No fallback to demo data on failure. A till that boots anyway is a till
+       that takes real money into memory nobody keeps. */
+    Shop.load().then(boot, Shop.fail);
+  });
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

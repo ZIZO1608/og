@@ -93,6 +93,10 @@ export function nextInvoiceId() {
    pair for nothing. */
 export function record({
   lines, whId, customerId, payment, discount = 0,
+  /* Points the customer is spending on this sale. Sent as a COUNT, never as
+     an amount — the till does not get to decide what a point is worth any
+     more than it gets to decide what a shoe costs. */
+  pointsUsed = 0,
   currency, userId, opId, note,
   /* Set by the route from the caller's permissions. Passed in rather than
      looked up here so this module stays free of the auth tables — but it
@@ -124,6 +128,33 @@ export function record({
     const rate = currentRate(base, settle);
     if (rate === null) {
       throw new Error(`no exchange rate for ${base}/${settle} — set one in Settings`);
+    }
+
+    /* ---- who is buying ----------------------------------------------------
+       Read here, before anything is priced, for two reasons. Points can pay
+       for part of this sale, so the balance has to be known before the total
+       is. And an id that matches nobody has to STOP the sale.
+
+       It used to be looked up after the fact and quietly ignored when it
+       missed: the cashier attached a customer, the sale recorded without one,
+       the points were never earned, and nothing anywhere said so. A sale that
+       refuses is a sale someone can fix. */
+    let cust = null;
+    if (customerId !== null && customerId !== undefined && customerId !== '') {
+      cust = d.prepare(
+        'SELECT id, name, loyalty_points, archived FROM customers WHERE id = ?'
+      ).get(customerId);
+
+      if (!cust) {
+        const e = new Error(`No customer with id ${customerId}.`);
+        e.code = 'unknown_customer';
+        throw e;
+      }
+      if (cust.archived) {
+        const e = new Error(`${cust.name} is archived. Restore them first.`);
+        e.code = 'unknown_customer';
+        throw e;
+      }
     }
 
     /* ---- price the basket ------------------------------------------------ */
@@ -162,6 +193,38 @@ export function record({
     const disc = Math.max(0, Math.round(Number(discount) || 0));
     if (disc > subtotal) throw new Error('the discount is larger than the sale');
 
+    /* ---- points spent -----------------------------------------------------
+       This used to happen entirely in the browser: pos.js multiplied the
+       points by their value, folded the result into `discount`, and nothing
+       ever came off anyone's balance. The same 500 points bought something on
+       every visit, forever. Points are money the shop already owes, so they
+       are counted here, against the stored balance, inside this transaction.
+
+       Valued as the exact inverse of how they are earned below — per whole
+       unit of the settle currency — so redeeming what a purchase earned is
+       worth what it was worth. */
+    const wantPoints = Math.max(0, Math.round(Number(pointsUsed) || 0));
+    let pointsValue = 0;
+
+    if (wantPoints > 0) {
+      if (!cust) throw new Error('points can only be redeemed against a customer');
+
+      if (wantPoints > cust.loyalty_points) {
+        const e = new Error(
+          `${cust.name} has ${cust.loyalty_points} points, not ${wantPoints}.`);
+        e.code = 'not_enough_points';
+        e.available = cust.loyalty_points;
+        throw e;
+      }
+
+      const pointValue = Number(d.prepare(
+        "SELECT value FROM config WHERE key = 'loyalty.point_value'"
+      ).get()?.value ?? 0);
+
+      pointsValue = Math.round(
+        wantPoints * pointValue * Math.pow(10, minorExp(settle)));
+    }
+
     /* ---- the ceiling ------------------------------------------------------
        Checked here, not only at the till. A cap that lives in the browser is
        a suggestion: the request can be sent by hand, and the whole reason
@@ -186,7 +249,22 @@ export function record({
       }
     }
 
-    const total = subtotal - disc;
+    /* The cap above governs the DISCOUNT — margin a cashier is giving away.
+       Redeemed points are not that: they are a debt the shop took on when it
+       issued them, and paying a debt is not a favour that needs a manager. So
+       the points ride on top of the ceiling, and only the one limit that is
+       arithmetic rather than policy applies to the pair. */
+    if (disc + pointsValue > subtotal) {
+      const room = subtotal - disc;
+      const e = new Error(
+        `Those points are worth more than what is left to pay. ` +
+        `The most that can come off this sale is ${room}.`);
+      e.code = 'points_exceed_total';
+      e.room = room;
+      throw e;
+    }
+
+    const total = subtotal - disc - pointsValue;
 
     /* ---- take the stock -------------------------------------------------- */
     /* Before writing the invoice: if this throws InsufficientStock the whole
@@ -194,21 +272,30 @@ export function record({
     Stock.sellLines(d, { lines, whId, userId, saleId });
 
     /* ---- write the invoice ----------------------------------------------- */
-    const cust = customerId
-      ? d.prepare('SELECT id, name FROM customers WHERE id = ?').get(customerId)
-      : null;
-
     const token = publicToken();
+
+    /* Points earned have to be known before the row is written — the INSERT
+       below needs the number, and it is computed from `cust` further down.
+       Priced here so both the row and the response agree with each other. */
+    let earnedForRow = 0;
+    if (cust) {
+      const per1000ForRow = Number(d.prepare(
+        "SELECT value FROM config WHERE key = 'loyalty.points_per_1000'"
+      ).get().value);
+      const wholeForRow = total / Math.pow(10, minorExp(settle));
+      earnedForRow = Math.round(wholeForRow / 1000 * per1000ForRow);
+    }
 
     d.prepare(
       `INSERT INTO sales
          (id, at, customer_id, customer_name, cashier_id, wh_id, payment,
           currency, subtotal, discount, total, fx_rate, fx_base, created_at,
-          public_token)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          public_token, points_used, points_earned)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(saleId, at, cust ? cust.id : null, cust ? cust.name : null,
           userId ?? null, whId, payment || 'cash',
-          settle, subtotal, disc, total, rate, base, at, token);
+          settle, subtotal, disc, total, rate, base, at, token, wantPoints,
+          earnedForRow);
 
     const insLine = d.prepare(
       `INSERT INTO sale_items
@@ -221,23 +308,21 @@ export function record({
                   p.unitPrice, p.unitCost, p.srcCurrency, p.srcUnitPrice);
     }
 
-    /* ---- loyalty ---------------------------------------------------------- */
-    let earned = 0;
+    /* ---- loyalty ----------------------------------------------------------
+       Earned is `earnedForRow`, computed above so it could be written into
+       the invoice itself; reused here rather than recomputed so the row and
+       the customer's balance can never disagree about what this sale paid
+       out. */
+    const earned = earnedForRow;
     if (cust) {
-      const per1000 = Number(d.prepare(
-        "SELECT value FROM config WHERE key = 'loyalty.points_per_1000'"
-      ).get().value);
-
-      /* Points are earned on the settled total, in whole units of the
-         currency — not on minor units, or a dollar sale would earn a
-         hundredth of what a lira sale does. */
-      const whole = total / Math.pow(10, minorExp(settle));
-      earned = Math.round(whole / 1000 * per1000);
-
+      /* Spend and earn in one statement, in the same transaction as the
+         invoice that caused both. Two updates could interleave with another
+         till serving the same customer and lose one of them. */
       d.prepare(
-        `UPDATE customers SET loyalty_points = loyalty_points + ?, updated_at = ?
+        `UPDATE customers
+            SET loyalty_points = loyalty_points - ? + ?, updated_at = ?
           WHERE id = ?`
-      ).run(earned, at, cust.id);
+      ).run(wantPoints, earned, at, cust.id);
       logChange('customers', cust.id, 'update', userId, null);
     }
 
@@ -250,6 +335,11 @@ export function record({
       customerName: cust ? cust.name : null,
       payment: payment || 'cash',
       pointsEarned: earned,
+      pointsUsed: wantPoints,
+      /* What the redeemed points were actually worth, so the receipt can print
+         the line without re-deriving it from a point value that may have been
+         changed in Settings since. */
+      pointsValue: pointsValue,
       items: priced,
       note: note ?? null,
       /* The till needs this to draw the QR on the receipt it is about to
@@ -281,13 +371,34 @@ export function byId(id) {
   return s;
 }
 
+/* Recent invoices WITH their lines.
+
+   Two queries rather than one join, then stitched: a join repeats every header
+   column once per line, and the app wants nested objects anyway. Two hundred
+   invoices is a few hundred item rows — small enough that fetching them
+   separately per sale, which is what the screens would otherwise do, is the
+   only genuinely slow option here. */
 export function recent(limit = 50) {
-  return get().prepare(
+  const sales = get().prepare(
     `SELECT s.*, u.name AS cashier_name
        FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
       WHERE s.voided = 0
       ORDER BY s.at DESC LIMIT ?`
   ).all(limit);
+
+  if (!sales.length) return sales;
+
+  const byId = new Map(sales.map(s => [s.id, s]));
+  for (const s of sales) s.items = [];
+
+  const marks = sales.map(() => '?').join(',');
+  const items = get().prepare(
+    `SELECT * FROM sale_items WHERE sale_id IN (${marks}) ORDER BY id`
+  ).all(...sales.map(s => s.id));
+
+  for (const it of items) byId.get(it.sale_id)?.items.push(it);
+
+  return sales;
 }
 
 /* Void a sale and put the stock back.

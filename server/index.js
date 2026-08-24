@@ -24,8 +24,10 @@ import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
 import * as Stock from './lib/stock.js';
 import * as Sales from './lib/sales.js';
+import * as Customers from './lib/customers.js';
 import * as Deliveries from './lib/deliveries.js';
 import * as Receipt from './lib/receipt.js';
+import * as Printing from './lib/printing.js';
 import {
   readJson, sendOk, sendError, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
@@ -244,6 +246,39 @@ router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
   }
 }));
 
+/* Everything under receipt.* (printer address, paper toggles, the printed
+   policy text) plus the two shop.* identity fields the receipt header reads
+   that shop.* itself doesn't already have a writer for. Restricted to that
+   allowlist rather than any config key — this route exists for the receipt
+   Settings card, not as a general "edit the config table" backdoor. */
+const CONFIG_WRITABLE = /^receipt\.|^shop\.(branch_name|phone)$/;
+
+router.add('PUT /api/config', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  const updates = b.updates && typeof b.updates === 'object' ? b.updates : {};
+  const keys = Object.keys(updates);
+  if (!keys.length) return sendError(ctx.res, 400, 'invalid', 'Nothing to save.');
+
+  for (const k of keys) {
+    if (!CONFIG_WRITABLE.test(k)) {
+      return sendError(ctx.res, 400, 'invalid', `${k} cannot be changed here.`);
+    }
+  }
+
+  const at = DB.nowIso();
+  DB.tx((d) => {
+    const stmt = d.prepare(
+      `INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    );
+    for (const k of keys) stmt.run(k, String(updates[k]), at);
+  });
+
+  const config = {};
+  for (const r of DB.get().prepare('SELECT key, value FROM config').all()) config[r.key] = r.value;
+  sendOk(ctx.res, { config });
+}));
+
 /* --- catalogue ------------------------------------------------------------- */
 
 /* The whole catalogue in one call. This is what the browser loads on sign-in
@@ -344,6 +379,67 @@ router.add('GET /api/stock', requirePerm('stock.read', (ctx) => {
   sendOk(ctx.res, { low: Stock.lowStock(wh, below) });
 }));
 
+/* The whole shop's movement log. `movements/:sku` above is the trail for one
+   size; this is the warehouse's Moves tab, which shows everything. */
+router.add('GET /api/movements', requirePerm('stock.read', (ctx) => {
+  const limit = Math.min(Number(ctx.url.searchParams.get('limit')) || 200, 1000);
+  sendOk(ctx.res, { movements: Stock.recent(limit) });
+}));
+
+/* --- customers --------------------------------------------------------------
+   `customer.*` is in FORBIDDEN for the partner role in lib/auth.js, so Yalla
+   Wear cannot be granted these however the tick boxes are set. They are a
+   different company; the shop's customer list is not theirs to hold. */
+
+router.add('GET /api/customers', requirePerm('customer.read', (ctx) => {
+  sendOk(ctx.res, {
+    customers: Customers.list({
+      includeArchived: Auth.can(ctx.user, 'customer.write')
+    })
+  });
+}));
+
+router.add('GET /api/customers/:id/history', requirePerm('customer.read', (ctx) => {
+  const c = Customers.byId(Number(ctx.params.id));
+  if (!c) return sendError(ctx.res, 404, 'not_found', 'No such customer.');
+  sendOk(ctx.res, { sales: Customers.historyFor(c.id).map(s => scrubCost(s, ctx.user)) });
+}));
+
+router.add('POST /api/customers', requirePerm('customer.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { customer: Customers.create(b, ctx.user.id) });
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+router.add('PATCH /api/customers/:id', requirePerm('customer.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { customer: Customers.update(Number(ctx.params.id), b, ctx.user.id) });
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+/* A deliberate correction to a balance, by hand. Selling and redeeming move
+   points through the sale, never through here — that is why this needs
+   `customer.write` and says who did it in the change log. */
+router.add('POST /api/customers/:id/points', requirePerm('customer.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Customers.adjustPoints(Number(ctx.params.id), b.delta, {
+      reason: b.reason, userId: ctx.user.id
+    }));
+  } catch (e) {
+    if (e.code === 'not_enough_points') {
+      return sendError(ctx.res, 409, 'not_enough_points', e.message);
+    }
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
 /* --- sales ------------------------------------------------------------------ */
 
 router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
@@ -360,6 +456,10 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
       customerId: b.customerId ? Number(b.customerId) : null,
       payment: b.payment,
       discount: Number(b.discount) || 0,
+      /* A count of points, not an amount. The server values them from the
+         config table — the till knowing what a point is worth is a display
+         detail, not an authority. */
+      pointsUsed: Number(b.pointsUsed) || 0,
       currency: b.currency,
       note: b.note,
       userId: ctx.user.id,
@@ -383,6 +483,21 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
     if (e.code === 'discount_too_big') {
       return sendError(ctx.res, 403, 'discount_too_big', e.message,
         { maxPct: e.maxPct, ceiling: e.ceiling });
+    }
+    /* 409, not 400: the basket is fine and so is the request. The world
+       moved — someone spent those points, or the balance was corrected —
+       which is the same shape of answer as insufficient_stock and wants the
+       same response at the till: reload and try again. */
+    if (e.code === 'not_enough_points') {
+      return sendError(ctx.res, 409, 'not_enough_points', e.message,
+        { available: e.available });
+    }
+    if (e.code === 'points_exceed_total') {
+      return sendError(ctx.res, 409, 'points_exceed_total', e.message,
+        { room: e.room });
+    }
+    if (e.code === 'unknown_customer') {
+      return sendError(ctx.res, 409, 'unknown_customer', e.message);
     }
     sendError(ctx.res, 400, 'invalid', e.message);
   }
@@ -412,6 +527,56 @@ router.add('POST /api/sales/:id/void', requirePerm('void', async (ctx) => {
       result: Sales.voidSale(ctx.params.id, { reason: b.reason, userId: ctx.user.id })
     });
   } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+/* --- the 80mm thermal receipt -----------------------------------------------
+   Both routes need `sale.reprint`, not `sell` — printing the receipt for the
+   sale you are actively completing is part of selling, but reading or
+   re-sending the bytes for ANY invoice by id is the fraud-relevant action the
+   task called out, so it gets its own permission rather than riding on `sell`.
+   `sale.reprint` is FORBIDDEN for `partner` in lib/auth.js, and Yalla Wear
+   never has `sell` either — a payload carrying a customer's name and phone
+   number has no business reaching that role twice over. */
+
+router.add('GET /api/sales/:id/receipt', requirePerm('sale.reprint', (ctx) => {
+  const s = Printing.data(ctx.params.id);
+  if (!s) return sendError(ctx.res, 404, 'not_found', 'No such invoice.');
+  sendOk(ctx.res, { receipt: scrubCost(s, ctx.user) });
+}));
+
+router.add('POST /api/print', requirePerm('sale.reprint', async (ctx) => {
+  const b = await readJson(ctx.req);
+  if (typeof b.bytes !== 'string' || !b.bytes) {
+    return sendError(ctx.res, 400, 'invalid', 'No print data was sent.');
+  }
+  let bytes;
+  try {
+    bytes = Buffer.from(b.bytes, 'base64');
+  } catch {
+    return sendError(ctx.res, 400, 'invalid', 'The print data was not valid base64.');
+  }
+
+  try {
+    const result = await Printing.send({
+      saleId: b.saleId,
+      userId: ctx.user.id,
+      bytes,
+      copies: Number(b.copies) || 1,
+      opId: typeof b.opId === 'string' ? b.opId : null
+    });
+    sendOk(ctx.res, result);
+  } catch (e) {
+    /* A printer that is off, out of paper, or unreachable is not the same
+       kind of failure as a bad request — the sale already happened, and the
+       till needs to know "try again", not "something is wrong with what you
+       sent". 502: the server did its job, the device on the other end did
+       not answer. */
+    if (e.code === 'no_printer' || e.code === 'printer_unreachable' ||
+        e.code === 'printer_timeout' || e.code === 'printer_write_failed') {
+      return sendError(ctx.res, 502, e.code, e.message);
+    }
     sendError(ctx.res, 400, 'invalid', e.message);
   }
 }));
@@ -727,6 +892,22 @@ if (runDirectly) {
       console.log(`    ${SECURE ? '*** WARNING ***  ' : ''}TEST ACCOUNTS ARE ACTIVE: ${demo.join(', ')}`);
       console.log('    Their password is published in scripts/demo-users.js.');
       console.log('    Remove before real use:  npm run demo-users -- --remove');
+    }
+
+    /* Same reasoning, and the more expensive one to miss: a seeded price is a
+       price a cashier can charge a real customer. Counted rather than assumed,
+       so the line disappears the moment the rows actually go. */
+    const seeded = DB.get().prepare(
+      `SELECT (SELECT COUNT(*) FROM products  WHERE demo = 1) AS p,
+              (SELECT COUNT(*) FROM customers WHERE demo = 1) AS c`
+    ).get();
+
+    if (seeded.p || seeded.c) {
+      console.log('');
+      console.log(`    ${SECURE ? '*** WARNING ***  ' : ''}DEMO CATALOGUE IS LOADED: ` +
+                  `${seeded.p} product(s), ${seeded.c} customer(s).`);
+      console.log('    Invented goods at invented prices — the till will sell them.');
+      console.log('    Remove before real use:  npm run demo-catalogue -- --remove');
     }
 
     if (!SECURE) {

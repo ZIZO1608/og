@@ -219,6 +219,24 @@ export function movementsFor(sku, limit = 50) {
   ).all(sku, limit);
 }
 
+/* The whole shop's movement log, newest first — what the warehouse "Moves"
+   tab shows. Joined out to the product here rather than looked up per row in
+   the browser: the app renders the product name, the size and who did it on
+   every line, and forty round trips to build one table is how a list that
+   should be instant becomes a spinner. */
+export function recent(limit = 200) {
+  return get().prepare(
+    `SELECT m.*, v.size, v.product_id, p.name AS product_name,
+            u.name AS user_name
+       FROM stock_movements m
+       LEFT JOIN variants v ON v.sku = m.sku
+       LEFT JOIN products p ON p.id = v.product_id
+       LEFT JOIN users    u ON u.id = m.user_id
+      ORDER BY m.at DESC, m.id DESC
+      LIMIT ?`
+  ).all(limit);
+}
+
 /* Everything at or below a threshold, worst first. Drives the reorder list. */
 export function lowStock(whId, threshold) {
   return get().prepare(

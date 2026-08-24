@@ -125,12 +125,18 @@ var Stock = (function () {
 
   /* Writes the count into stock. Only sizes that were actually counted AND
      differ are touched; everything else is left exactly as it was. */
-  function post() {
-    if (!S.active || S.active.posted) return null;
+  /* `then` is called with the summary once the count is genuinely posted —
+      after the server has taken every adjustment, in live mode. A count is the
+      one write here that is many writes, so it cannot go through Shop.write's
+      one-at-a-time gate line by line: they are sent together and the data is
+      re-read once at the end. */
+  function post(then) {
+    if (!S.active || S.active.posted) return;
     var now = new Date();
     var applied = 0, pieces = 0;
-
     var whId = S.active.whId;
+    var adjust = [];
+
     Object.keys(S.active.counted).forEach(function (sku) {
       var v = DB.variantBySku(sku);
       if (!v) return;
@@ -140,27 +146,52 @@ var Stock = (function () {
 
       applied++;
       pieces += diff;
-      /* Adjusts only the counted location. The other one is untouched — it was
-         not walked, so nothing about it was learned. A shortfall is a loss and
-         a surplus is a find; using the existing movement types keeps this in
-         the same audit trail as everything else. */
-      DB.setStockAt(v, whId, c, {
-        date: now,
-        type: diff < 0 ? 'damaged' : 'received',
-        note: t('st_adjust_note') + ' ' + S.active.id,
-        user: 'Maher Odeh'
-      });
+      adjust.push({ v: v, counted: c, diff: diff });
     });
 
-    S.active.posted = true;
-    S.active.finished = now;
-    S.active.applied = applied;
-    S.active.pieces = pieces;
-    DB.stockCounts.unshift(S.active);
+    var note = t('st_adjust_note') + ' ' + S.active.id;
 
-    var done = S.active;
-    S.active = null;
-    return { count: done, applied: applied, pieces: pieces };
+    /* Adjusts only the counted location. The other one is untouched — it was
+       not walked, so nothing about it was learned. A shortfall is a loss and a
+       surplus is a find; using the existing movement types keeps this in the
+       same audit trail as everything else. */
+    function mirror() {
+      adjust.forEach(function (a) {
+        DB.setStockAt(a.v, whId, a.counted, {
+          date: now,
+          type: a.diff < 0 ? 'damaged' : 'received',
+          note: note,
+          user: 'Maher Odeh'
+        });
+      });
+    }
+
+    function finish() {
+      S.active.posted = true;
+      S.active.finished = now;
+      S.active.applied = applied;
+      S.active.pieces = pieces;
+      DB.stockCounts.unshift(S.active);
+
+      var done = S.active;
+      S.active = null;
+      if (then) then({ count: done, applied: applied, pieces: pieces });
+    }
+
+    if (!adjust.length) { mirror(); finish(); return; }
+
+    Shop.write(
+      function () {
+        /* Every adjustment, then one re-read. The server records each as the
+           DIFFERENCE it found rather than the number sent, so a shortfall in
+           March is still explainable in June. */
+        return Promise.all(adjust.map(function (a) {
+          return Shop.count(a.v.sku, whId, a.counted, note);
+        }));
+      },
+      mirror,
+      finish
+    );
   }
 
   function cancel() { S.active = null; }
@@ -327,13 +358,13 @@ var Stock = (function () {
       });
     },
     'post-yes': function () {
-      var res = post();
       closeModal();
-      render();
-      if (!res) return;
-      toast(res.count.id, t('st_posted')
-        .replace('{n}', res.applied)
-        .replace('{p}', (res.pieces > 0 ? '+' : '') + res.pieces), 'ok', 5000);
+      post(function (res) {
+        render();
+        toast(res.count.id, t('st_posted')
+          .replace('{n}', res.applied)
+          .replace('{p}', (res.pieces > 0 ? '+' : '') + res.pieces), 'ok', 5000);
+      });
     }
   };
 
