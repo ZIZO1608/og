@@ -3172,3 +3172,109 @@ html.has-demo-banner .view { padding-bottom: 52px; }
 }
 .deliver-add .field { margin-top: 10px; }
 .deliver-add .partner-note { margin-top: 8px; }
+
+/* ============================================================== RECEIPT
+   80mm thermal roll, 5mm clear each side, 70mm of content, height
+   continuous. The @page size itself is injected at print time from the
+   chosen paper — @page cannot read a CSS variable — see
+   setReceiptPageSize() in js/app.js.
+
+   EVERYTHING BELOW IS FOR A 203dpi THERMAL HEAD, WHICH PRINTS ONE BIT PER
+   DOT. There is no grey. The A4 invoice's #71717A labels, soft borders and
+   background fills either vanish or dither into speckle, so none of them
+   appear here: hierarchy is weight and size, and every colour is pure black.
+   ---------------------------------------------------------------------- */
+
+.receipt {
+  /* A fallback only. The real width is injected by
+     setReceiptPageSize() from the paper chosen in Settings, for screen and
+     print alike, because @page cannot read a CSS variable. */
+  width: 70mm;
+  margin: 0 auto;
+  background: #FFFFFF;
+  color: #000000;
+  /* A grotesque with open counters survives a thermal head far better than
+     anything with fine strokes. Montserrat for the shop name only. */
+  font: 400 9.5pt/1.35 "Helvetica Neue", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  padding: 4mm 0;
+}
+.receipt * { color: #000000 !important; }
+
+/* ---- head ---- */
+.rc-head { text-align: center; }
+.rc-mark { margin-bottom: 1.5mm; }
+/* The logo prints as a solid black mark. Any alpha or gradient would come out
+   as a grey rectangle, so it is forced to pure black by filter rather than
+   trusted to be binary already. */
+.rc-mark img {
+  width: 14mm; height: 14mm; object-fit: contain;
+  filter: grayscale(1) contrast(1000%) brightness(0);
+}
+.rc-shop {
+  font-family: var(--font-head), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800; font-size: 15pt; line-height: 1.1; letter-spacing: .06em;
+}
+.rc-tag { font-size: 8pt; line-height: 1.3; }
+
+/* ---- separators ----
+   A dashed rule at a real millimetre weight. A 1px border at 203dpi is either
+   dropped entirely or smeared across two dots. */
+.rc-rule { border-top: .3mm dashed #000; margin: 2.5mm 0; }
+
+/* ---- meta ---- */
+.rc-meta { font-size: 8.5pt; }
+.rc-meta div { display: flex; justify-content: space-between; gap: 3mm; padding: .3mm 0; }
+.rc-meta b { font-weight: 700; text-align: end; }
+
+/* ---- items ----
+   Two lines each: the name gets the full width, then size, quantity and money
+   underneath. One cramped row at 70mm leaves a product name about four
+   characters of room. */
+.rc-items { width: 100%; border-collapse: collapse; }
+.rc-items td { padding: 0; vertical-align: top; }
+.rc-name td { font-weight: 700; font-size: 9.5pt; padding-top: 1.6mm; line-height: 1.25; }
+.rc-line td { font-size: 8.5pt; padding-bottom: .6mm; }
+.rc-amt { text-align: end; white-space: nowrap; font-weight: 700; }
+
+/* ---- totals ---- */
+.rc-tot { display: flex; justify-content: space-between; gap: 3mm; font-size: 9pt; padding: .4mm 0; }
+.rc-grand {
+  display: flex; justify-content: space-between; gap: 3mm; align-items: baseline;
+  font-family: var(--font-head), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800; font-size: 15pt;
+  border-top: .5mm solid #000; margin-top: 1.5mm; padding-top: 1.5mm;
+}
+.rc-usd { text-align: end; font-size: 8pt; padding-top: .5mm; }
+
+/* ---- QR ----
+   crispEdges is not cosmetic. Anti-aliased module edges land on half-dots,
+   the head fires or does not fire on a coin toss, and the code stops
+   scanning — with nothing on screen to suggest why. */
+.rc-qr { text-align: center; margin: 3.5mm 0 2mm; }
+.rc-qr svg { shape-rendering: crispEdges; width: 22mm; height: 22mm; }
+.rc-qr-cap { font-size: 7.5pt; margin-top: .8mm; }
+
+/* ---- foot ---- */
+.rc-foot { text-align: center; font-size: 8pt; line-height: 1.4; }
+.rc-policy { font-weight: 700; margin-bottom: 1mm; }
+
+/* On screen the receipt is previewed on a dark page, so it needs a physical
+   edge to read as paper. It gets one here and NOT in print. */
+.modal-body .receipt {
+  border-radius: 3px;
+  box-shadow: 0 2px 14px rgb(0 0 0 / .5);
+  padding: 5mm 3mm;
+}
+
+@media print {
+  /* Nothing but the receipt. No modal chrome, no shadow, no rounding — and
+     no page margin, because the 5mm clear edge is the .receipt margin the
+     injected @page rule sets, measured from the paper edge. */
+  body.printing-receipt .receipt {
+    box-shadow: none; border-radius: 0; padding: 3mm 0;
+  }
+  /* A long receipt runs onto a second length of roll; an item must not be
+     torn in half across the cut. */
+  .rc-name, .rc-line, .rc-grand, .rc-qr { break-inside: avoid; }
+}

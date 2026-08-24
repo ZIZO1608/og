@@ -83,8 +83,13 @@ var CONFIG = {
   /* PLACEHOLDER — the shop is in Aleppo (36.2119287, 37.1550757), but the
      street line below has not been confirmed by the owner yet. Do not print
      receipts for customers until this is the real address. */
-  SHOP_ADDRESS: 'Aleppo, Syria — 0956 442 118',
-  SHOP_ADDRESS_AR: 'حلب، سوريا — 0956 442 118',
+  /* Address and phone are SEPARATE fields. They used to be one string with an
+     em dash in the middle, and the WhatsApp code pulled the number back out
+     with a regex on that dash — which breaks the first time somebody types an
+     address containing one. The receipt needs them on their own lines anyway. */
+  SHOP_ADDRESS: 'Aleppo, Syria',
+  SHOP_ADDRESS_AR: 'حلب، سوريا',
+  SHOP_PHONE: '0956 442 118',
   SHOP_MAP: 'https://maps.app.goo.gl/vjYnWGFQFWXBm7r7A',
   PRINT_PARTNER: 'Yalla Wear'
 };

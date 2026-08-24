@@ -31,6 +31,9 @@ var OG = {
   lb:   { pid: null, template: 'product', size: '50x30', cw: 50, ch: 30, max: 4,
           sym: 'c128', mode: 'roll',
           barcode: true, qr: true, price: false, size2: true, shelf: true, logo: true },
+  /* Receipt paper. 80mm is the shop standard; 58mm rolls are common enough
+     and cheap enough that the client may turn up with one. */
+  rc:   { width: '80' },
   /* Hardware settings — scanner tuning and printer paper. */
   set:  { captureScans: false }
 };
@@ -95,6 +98,13 @@ var I18N = {
     dl_marked: 'Marked', dl_sent: 'Out for delivery',
     dl_no_address: 'Type an address first', dl_pick_driver: 'Pick a driver',
     retry: 'Try again', loading: 'Loading…',
+
+    /* --- the printed receipt --- */
+    rc_title: 'Receipt', rc_full_page: 'Full page invoice',
+    rc_scan: 'Scan for your copy',
+    rc_policy: 'Exchange within 7 days with this receipt',
+    rc_paper: 'Receipt paper', rc_80: '80 mm', rc_58: '58 mm',
+    rc_paper_hint: 'The roll your printer takes. 80 mm is standard.',
 
     /* --- discounts --- */
     disc_capped: 'Discounts above {p}% need a manager',
@@ -478,6 +488,13 @@ var I18N = {
     dl_marked: 'تم التحديث', dl_sent: 'خرجت للتوصيل',
     dl_no_address: 'اكتب العنوان أولاً', dl_pick_driver: 'اختر السائق',
     retry: 'حاول مرة أخرى', loading: 'جارٍ التحميل…',
+
+    /* --- الفاتورة المطبوعة --- */
+    rc_title: 'الفاتورة', rc_full_page: 'فاتورة بحجم كامل',
+    rc_scan: 'امسح الرمز لنسختك',
+    rc_policy: 'الاستبدال خلال ٧ أيام مع هذه الفاتورة',
+    rc_paper: 'ورق الفاتورة', rc_80: '٨٠ مم', rc_58: '٥٨ مم',
+    rc_paper_hint: 'قياس الرول في طابعتك. ٨٠ مم هو القياس المعتاد.',
 
     /* --- الحسومات --- */
     disc_capped: 'الحسم فوق {p}٪ يحتاج موافقة المدير',
@@ -1048,9 +1065,21 @@ function openModal(o) {
       '</div>' +
     '</div>';
   if (o.onOpen) o.onOpen(root);
+  /* Held on the module, not on the DOM, because closeModal() wipes innerHTML
+     and there are four ways out of a modal — the ×, the backdrop, Escape, and
+     another modal opening on top. A teardown that only runs on one of them is
+     a teardown that does not run. */
+  modalOnClose = o.onClose || null;
 }
 
-function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+var modalOnClose = null;
+
+function closeModal() {
+  var fn = modalOnClose;
+  modalOnClose = null;
+  if (fn) { try { fn(); } catch (e) { console.warn('modal onClose', e); } }
+  document.getElementById('modal-root').innerHTML = '';
+}
 function modalOpen() { return !!document.getElementById('modal-root').firstChild; }
 
 function openDrawer(o) {
@@ -4041,7 +4070,7 @@ function openDaySummary() {
   var d = WA.dayStats();
   WA.compose({
     title: t('wa_day_title'),
-    to: CONFIG.SHOP_ADDRESS.replace(/^.*—\s*/, ''),
+    to: CONFIG.SHOP_PHONE,
     name: CONFIG.SHOP_NAME,
     kind: 'daily',
     text: WA.dayText(),
@@ -4957,6 +4986,18 @@ function hardwareCard() {
 
   h += '<div class="partner-note mt">' + t('hw_sym_note') + '</div>';
 
+  /* -- receipt paper --
+     Separate from the label roll above: they are two different printers in
+     most shops, and even where they are one machine, a 30mm label and an 80mm
+     receipt are different stock. */
+  h += '<div class="hw-sep"></div>' +
+    '<h4 class="hw-h">' + t('rc_paper') + '</h4>' +
+    '<p class="small muted">' + t('rc_paper_hint') + '</p>' +
+    '<div class="chip-row mt">' +
+      '<button class="chip ' + (OG.rc.width === '80' ? 'on' : '') + '" data-act="rc-width" data-k="80">' + t('rc_80') + '</button>' +
+      '<button class="chip ' + (OG.rc.width === '58' ? 'on' : '') + '" data-act="rc-width" data-k="58">' + t('rc_58') + '</button>' +
+    '</div>';
+
   return h + '</div></div>';
 }
 
@@ -5050,7 +5091,7 @@ function invoiceHtml(sale) {
       '<div><div class="lbl">' + t('bill_to') + '</div><b>' + esc(cust ? cust.name : t('walk_in')) + '</b>' +
         (cust ? '<br><span class="num">' + esc(cust.phone) + '</span><br>' + esc(cust.city) : '') + '</div>' +
       '<div style="text-align:end"><div class="lbl">' + t('served_by') + '</div><b>' + esc(sale.cashier) + '</b><br>' +
-        tel(CONFIG.SHOP_ADDRESS) + '</div>' +
+        esc(CONFIG.SHOP_ADDRESS) + '<br>' + tel(CONFIG.SHOP_PHONE) + '</div>' +
     '</div>' +
 
     '<table class="inv-tbl"><thead><tr><th>' + t('product') + '</th><th>' + t('size') + '</th>' +
@@ -5084,9 +5125,202 @@ function invoiceHtml(sale) {
   h += '<div class="inv-loyalty"><span>' + t('points_earned') + '</span><b>+' + nf(earned) + ' ' + t('points') +
     (cust ? ' &nbsp;·&nbsp; <span style="font-weight:400;font-size:11px">' + t('total') + ' ' + nf(cust.loyaltyPoints) + '</span>' : '') + '</b></div>';
 
-  h += '<div class="inv-foot">' + t('thank_you') + ' · ' + CONFIG.SHOP_NAME + ' · ' + tel(CONFIG.SHOP_ADDRESS) + '</div>';
+  h += '<div class="inv-foot">' + t('thank_you') + ' · ' + CONFIG.SHOP_NAME + ' · ' + esc(CONFIG.SHOP_ADDRESS) + ' · ' + tel(CONFIG.SHOP_PHONE) + '</div>';
   h += '</div>';
   return h;
+}
+
+/* ==========================================================================
+   THE THERMAL RECEIPT
+   --------------------------------------------------------------------------
+   80mm roll, 5mm clear each side, 70mm of content, height continuous. This is
+   what the customer actually walks out holding, so it is designed for the
+   machine that prints it rather than for the screen it is composed on.
+
+   A 203dpi thermal head prints ONE BIT PER DOT. There is no grey. Everything
+   the A4 invoice does with #71717A, soft borders and background fills either
+   disappears or dithers into speckle. So:
+
+     * hierarchy comes from WEIGHT AND SIZE only, and every colour is #000;
+     * separators are dashed rules at a real millimetre weight, never 1px;
+     * nothing smaller than 8pt — below that the head fills in the counters of
+       the letters and the line turns to mush;
+     * money is tabular so the column lines up down the whole receipt;
+     * the QR gets 22mm and crispEdges, or its modules land on half-dots and
+       a phone stops reading it.
+
+   Reuses `Codes.qrSVG` (already ECC level H — 30% recovery, which is the
+   headroom a smudged thermal print needs) and the app's own `money()`, `t()`
+   and `esc()`. */
+
+var RECEIPT_WIDTHS = { '80': { paper: 80, pad: 5 }, '58': { paper: 58, pad: 4 } };
+
+function receiptDim() {
+  return RECEIPT_WIDTHS[OG.rc && OG.rc.width] || RECEIPT_WIDTHS['80'];
+}
+
+/* @page cannot read a CSS variable, so the paper size is injected as a real
+   stylesheet at print time — the same trick setRollPageSize() uses for labels. */
+function setReceiptPageSize() {
+  var id = 'receiptPageRule';
+  var old = document.getElementById(id);
+  if (old) old.parentNode.removeChild(old);
+
+  var d = receiptDim();
+  var content = d.paper - d.pad * 2;
+  var st = document.createElement('style');
+  st.id = id;
+  /* The width is set for the SCREEN as well as for print. A preview that is
+     always 70mm wide while the printer is loaded with a 58mm roll is not a
+     preview — the cashier would approve a layout on screen and get a
+     different one out of the machine, with the money column shaved off the
+     edge. Same number, both places, from one source. */
+  st.textContent =
+    '.receipt{width:' + content + 'mm}' +
+    '@media print{@page{size:' + d.paper + 'mm auto;margin:0}' +
+    '.receipt{width:' + content + 'mm;margin:0 ' + d.pad + 'mm}}';
+  document.head.appendChild(st);
+}
+
+/* What the QR carries.
+
+   A LAN address is NEVER printed as a link. `http://10.10.99.9:8090` is dead
+   the second the customer leaves the shop, and worse, may one day resolve to a
+   stranger's router on their own home network. So a link is only promised when
+   there is a real public address to promise — otherwise the QR falls back to
+   readable text, which needs no internet and cannot rot. */
+function receiptLink(sale) {
+  var base = String(CONFIG.PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  var token = sale.publicToken || sale.public_token;
+  if (!token || !/^https:\/\//i.test(base)) return null;
+  /* The GitHub Pages demo is a static host with no /i/ route — pointing a
+     customer's receipt at it would open the demo app and show them a
+     fabricated invoice with the same number. Worse than no link. */
+  if (/github\.io/i.test(base)) return null;
+  return base + '/i/' + token;
+}
+
+function receiptQr(sale) {
+  var link = receiptLink(sale);
+  var d = receiptDim();
+  /* Modules must land on whole printer dots. 22mm at 80mm, a little less on
+     58mm paper where there is not room for it. */
+  var px = d.paper >= 80 ? 132 : 108;
+  var payload = link || (CONFIG.SHOP_NAME.toUpperCase() + ' | ' + sale.id + '\n' +
+    money(sale.total) + '\n' + fmtDateTime(sale.date));
+  return {
+    svg: qrSafe(payload, sale.id, { size: px, quiet: 2, style: 'square', dark: '#000000' }),
+    link: link
+  };
+}
+
+function receiptHtml(sale) {
+  var cust = sale.customerId ? DB.customer(sale.customerId) : null;
+  var earned = Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
+  var ar = OG.lang === 'ar';
+  var qr = receiptQr(sale);
+
+  var addr = ar ? (CONFIG.SHOP_ADDRESS_AR || CONFIG.SHOP_ADDRESS) : CONFIG.SHOP_ADDRESS;
+
+  var h = '<div class="receipt" dir="' + (ar ? 'rtl' : 'ltr') + '">';
+
+  /* ---- head ---- */
+  h += '<div class="rc-head">' +
+    '<div class="rc-mark"><img src="assets/logo.svg" alt=""></div>' +
+    '<div class="rc-shop">' + esc(CONFIG.SHOP_NAME.toUpperCase()) + '</div>' +
+    '<div class="rc-tag">' + esc(CONFIG.SHOP_TAGLINE) + '</div>' +
+    '<div class="rc-tag">' + esc(addr) + '</div>' +
+  '</div>';
+
+  h += '<div class="rc-rule"></div>';
+
+  /* ---- who, when ---- */
+  h += '<div class="rc-meta">' +
+    '<div><span>' + t('invoice') + '</span><b>' + esc(sale.id) + '</b></div>' +
+    '<div><span>' + t('date') + '</span><b>' + fmtDateTime(sale.date) + '</b></div>' +
+    '<div><span>' + t('served_by') + '</span><b>' + esc(String(sale.cashier || '').split(' ')[0]) + '</b></div>' +
+    (cust ? '<div><span>' + t('customer') + '</span><b>' + esc(cust.name) + '</b></div>' : '') +
+  '</div>';
+
+  h += '<div class="rc-rule"></div>';
+
+  /* ---- the goods ----
+     Name on its own line, then size / qty / money on the next. Two lines per
+     item rather than one cramped row: at 70mm a product name and three
+     numbers on the same line means the name gets four characters. */
+  h += '<table class="rc-items">';
+  sale.items.forEach(function (it) {
+    h += '<tr class="rc-name"><td colspan="2">' + esc(it.name) + '</td></tr>' +
+      '<tr class="rc-line">' +
+        '<td>' + (it.size ? t('size') + ' ' + esc(it.size) + '  ' : '') +
+          it.qty + ' × ' + money(it.unitPrice) + '</td>' +
+        '<td class="rc-amt">' + money(it.qty * it.unitPrice) + '</td>' +
+      '</tr>';
+  });
+  h += '</table>';
+
+  h += '<div class="rc-rule"></div>';
+
+  /* ---- the money ---- */
+  h += '<div class="rc-tot"><span>' + t('subtotal') + '</span><span>' + money(sale.subtotal) + '</span></div>';
+  if (sale.discount) {
+    h += '<div class="rc-tot"><span>' + t('discount') + '</span><span>− ' + money(sale.discount) + '</span></div>';
+  }
+  if (sale.pointsUsed) {
+    h += '<div class="rc-tot"><span>' + t('loyalty') + '</span><span>− ' +
+         money(sale.pointsUsed * CONFIG.LOYALTY_POINT_VALUE) + '</span></div>';
+  }
+  h += '<div class="rc-tot"><span>' + t('payment_method') + '</span><span>' +
+       DB.paymentLabels[sale.payment] + '</span></div>';
+
+  h += '<div class="rc-grand"><span>' + t('total') + '</span><span>' + money(sale.total) + '</span></div>';
+
+  /* The dollar value at the rate of THIS sale. A receipt has to say the same
+     thing in a year as it did on the day. */
+  var rate = sale.fxRate || CONFIG.EXCHANGE_RATE;
+  h += '<div class="rc-usd">≈ $' + nf(sale.total / rate) + '  ·  1 $ = ' + nf(rate) + '</div>';
+
+  if (cust) {
+    h += '<div class="rc-rule"></div>' +
+      '<div class="rc-tot"><span>' + t('points_earned') + '</span><span>+' + nf(earned) + '</span></div>' +
+      '<div class="rc-tot"><span>' + t('total') + ' ' + t('points') + '</span><span>' +
+        nf(cust.loyaltyPoints) + '</span></div>';
+  }
+
+  /* ---- the QR ---- */
+  h += '<div class="rc-qr">' + qr.svg +
+    (qr.link ? '<div class="rc-qr-cap">' + t('rc_scan') + '</div>' : '') +
+  '</div>';
+
+  h += '<div class="rc-foot">' +
+    '<div class="rc-policy">' + t('rc_policy') + '</div>' +
+    '<div>' + t('thank_you') + ' · ' + esc(CONFIG.SHOP_NAME) + '</div>' +
+    '<div class="rc-tag">' + tel(CONFIG.SHOP_PHONE || '') + '</div>' +
+  '</div>';
+
+  return h + '</div>';
+}
+
+/* The receipt goes in the same modal shell the invoice uses, so print, PDF and
+   the close button all keep working with no new plumbing. */
+function openReceipt(sale, opts) {
+  opts = opts || {};
+  setReceiptPageSize();
+  document.body.classList.add('printing-receipt');
+  openModal({
+    title: t('rc_title') + ' ' + sale.id,
+    body: receiptHtml(sale),
+    foot: '<button class="btn btn-ghost" data-act="rc-invoice" data-id="' + esc(sale.id) + '">' +
+            t('rc_full_page') + '</button>' +
+          '<button class="btn" data-act="print-now">' + t('print') + '</button>' +
+          (opts.newSale
+            ? '<button class="btn btn-primary" data-act="new-sale">' + t('new_sale') + '</button>'
+            : '<button class="btn btn-primary" data-act="modal-close">' + t('close') + '</button>'),
+    /* The body class drives the @page swap, so it has to come off however the
+       modal is dismissed — otherwise the next thing anyone prints, from any
+       screen, comes out 80mm wide. */
+    onClose: function () { document.body.classList.remove('printing-receipt'); }
+  });
 }
 
 function openInvoice(sale, opts) {
@@ -5991,6 +6225,14 @@ var ACTIONS = {
     Auth.logout();
   },
 
+  /* The A4 invoice is still there for anyone who wants a full page — a
+     wholesale customer, or a copy for the file. */
+  'rc-invoice': function (el) {
+    var s = DB.sale(el.getAttribute('data-id'));
+    closeModal();
+    if (s) openInvoice(s);
+  },
+
   'modal-close': closeModal,
   'modal-backdrop': function (el, e) { if (e.target === el) closeModal(); },
   'drawer-close': closeDrawer,
@@ -6121,6 +6363,16 @@ var ACTIONS = {
     repaintLabels();
   },
   'lb-size': function (el) { OG.lb.size = el.getAttribute('data-k'); repaintLabels(); },
+
+  'rc-width': function (el) {
+    OG.rc.width = el.getAttribute('data-k');
+    /* Re-inject immediately rather than at the next print. If the rule only
+       updated when a receipt was opened, a cashier could change the paper
+       here, print from a screen still holding the old @page, and get an 80mm
+       layout on a 58mm roll with the right-hand column shaved off. */
+    setReceiptPageSize();
+    if (OG.view === 'settings') render();
+  },
   'lb-mode': function (el) {
     OG.lb.mode = el.getAttribute('data-k');
     if (OG.view === 'settings') { render(); } else { repaintLabels(); }

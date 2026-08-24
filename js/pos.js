@@ -742,7 +742,18 @@ var POS = (function () {
       cashier: cashier,
       /* Stamped with the open shift, not matched by time later. A sale rung
          up before the shift opened must never drift into its drawer count. */
-      shiftId: (DB.currentShift() || {}).id || null
+      shiftId: (DB.currentShift() || {}).id || null,
+
+      /* Both come from the server and only exist on a real sale.
+
+         publicToken is the address the receipt's QR points at. fxRate is the
+         rate this sale was actually settled at — the receipt has to print
+         that, not today's, or a customer comparing two receipts a month apart
+         finds the same purchase quoted at two different dollar values. In
+         demo mode there is no server, so the current rate is the honest
+         answer and nothing is saved anyway. */
+      publicToken: server ? server.publicToken : null,
+      fxRate: server ? server.fxRate : CONFIG.EXCHANGE_RATE
     };
 
     /* --- the moment that sells the product: stock actually moves --- */
@@ -798,7 +809,11 @@ var POS = (function () {
     var lines = document.getElementById('cartLines');
     if (lines) { paintCart(); }
 
-    openInvoice(sale, { newSale: true });
+    /* The thermal receipt, not the A4 invoice. This is the moment the paper
+       comes off the roll and goes into a customer's hand, so what is on screen
+       has to be what the printer will produce. The full page is one click away
+       for anyone who wants it. */
+    openReceipt(sale, { newSale: true });
 
     if (!silent) {
       toast(t('sale_complete'), sale.id + ' · ' + money(sale.total), 'ok');
