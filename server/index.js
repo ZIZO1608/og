@@ -15,6 +15,7 @@
    ========================================================================== */
 
 import { createServer } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -530,6 +531,30 @@ export function createApp() {
   });
 }
 
+/* Every address on this machine another device could reach it by.
+
+   Virtual adapters — VPN clients, WSL, Hyper-V — hand out addresses that look
+   exactly like a home network but are not the one the phone is on, and typing
+   one of those is a "the system is broken" phone call. They go last, named, so
+   the obvious candidate is the first line printed. */
+function lanAddresses() {
+  const VIRTUAL = /vpn|virtual|vethernet|hyper-v|wsl|tap|tun|loopback|docker/i;
+  const real = [];
+  const other = [];
+
+  for (const [name, addrs] of Object.entries(networkInterfaces())) {
+    for (const a of addrs || []) {
+      if (a.family !== 'IPv4' || a.internal) continue;
+      /* 169.254.x is what Windows invents when DHCP failed. Nothing can
+         reach it, so offering it would only waste someone's time. */
+      if (a.address.startsWith('169.254.')) continue;
+      if (VIRTUAL.test(name)) other.push({ address: a.address, note: `${name} — probably not this one` });
+      else real.push({ address: a.address, note: '' });
+    }
+  }
+  return real.concat(other);
+}
+
 /* Only start listening when run directly, so the tests can import createApp
    without a stray server binding a port. */
 const runDirectly = process.argv[1] &&
@@ -550,6 +575,15 @@ if (runDirectly) {
     console.log('');
     console.log('  OG SYSTEM server');
     console.log(`    listening : http://localhost:${PORT}`);
+
+    /* The address a phone or a second laptop must type. Printed rather than
+       left for someone to dig out of ipconfig, because "open it on your
+       phone" is how this gets tested every single day. */
+    for (const net of lanAddresses()) {
+      console.log(`    on wifi   : http://${net.address}:${PORT}` +
+                  (net.note ? `   (${net.note})` : ''));
+    }
+
     console.log(`    database  : ${DB_FILE}`);
     console.log(`    app files : ${STATIC}`);
     console.log(`    accounts  : ${n}`);
