@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v14';
+var CACHE = 'og-system-v15';
 
 var SHELL = [
   './',
@@ -48,6 +48,7 @@ var SHELL = [
   'js/notify.js',
   'js/ylinvoice.js',
   'js/yalla.js',
+  'js/deliveries.js',
   'js/app.js'
 ];
 

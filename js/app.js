@@ -2693,7 +2693,11 @@ function viewWarehouse() {
   var tabs = [
     { id: 'stock', label: t('wh_stock'), dot: !!floorGaps },
     { id: 'add',   label: t('tab_add'),  need: 'product.write' },
-    { id: 'moves', label: t('tab_moves') },
+    /* The movement log is the audit trail for receiving, transferring and
+       counting. You get the history of the thing you can do — for a cashier
+       looking up whether a 42 is in the back, it is a wall of somebody else's
+       paperwork. */
+    { id: 'moves', label: t('tab_moves'), need: 'stock.move' },
     { id: 'po',    label: t('po_title'), dot: !!openPOs, need: 'stock.move' },
     { id: 'count', label: t('st_count'), dot: !!Stock.active(), need: 'stock.count' }
   ].filter(function (x) { return !x.need || allow(x.need); });
@@ -6871,6 +6875,16 @@ function boot() {
   var raw = window.location.hash;
   var v = raw.replace('#', '');
   OG.view = (v && VIEWS[v]) ? v : 'dashboard';
+
+  /* The same guard go() applies, because the case go()'s comment names — a
+     bookmarked #settings — arrives HERE, not there. Landing straight on a
+     screen from the address bar skipped the check entirely: a cashier with
+     #settings saved would have rendered the roles grid, half-filled from data
+     the server then refuses. */
+  if (!navAllowed(OG.view)) {
+    var firstAllowed = allowedNav()[0];
+    OG.view = firstAllowed ? firstAllowed.id : 'dashboard';
+  }
   /* First paint gets the full entrance — this is the moment he first sees
      the app, and it is the one time the animation is unambiguously worth it. */
   if (typeof Motion !== 'undefined') Motion.mark();
