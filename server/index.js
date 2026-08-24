@@ -531,6 +531,22 @@ if (runDirectly) {
       console.log('    No accounts yet. Create the first manager with:');
       console.log('      npm run createuser');
     }
+
+    /* Test accounts have their passwords printed in a public file. Say so on
+       every single startup while they exist — the failure this guards against
+       is nobody remembering they are there on the day the shop goes live. */
+    const demo = DB.get().prepare(
+      `SELECT username FROM users
+        WHERE username IN ('hussam','lubna','maher','talal','yalla')`
+    ).all().map(r => r.username);
+
+    if (demo.length) {
+      console.log('');
+      console.log(`    ${SECURE ? '*** WARNING ***  ' : ''}TEST ACCOUNTS ARE ACTIVE: ${demo.join(', ')}`);
+      console.log('    Their password is published in scripts/demo-users.js.');
+      console.log('    Remove before real use:  npm run demo-users -- --remove');
+    }
+
     if (!SECURE) {
       console.log('');
       console.log('    OG_SECURE is not set — cookies are being sent without');
