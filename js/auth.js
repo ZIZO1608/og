@@ -40,6 +40,17 @@ var Auth = (function () {
 
   function is(role) { return !!user && user.role === role; }
 
+  /* Re-read the signed-in user, so a permission change takes effect without
+     making anyone sign out and back in. Never rejects — a failed refresh
+     should leave the app working on what it already knew, not break the
+     screen that asked. */
+  function refresh() {
+    if (demo || !API.live) return Promise.resolve(user);
+    return API.get('/api/auth/me')
+      .then(function (d) { user = d.user; return user; })
+      .catch(function () { return user; });
+  }
+
   /* Demo mode: no server answered, so there are no accounts. Everything is
      permitted because nothing is real and nothing is saved.
 
@@ -279,6 +290,7 @@ var Auth = (function () {
     user: current,
     can: can,
     is: is,
+    refresh: refresh,
     demoMode: demoMode,
     logout: logout
   };

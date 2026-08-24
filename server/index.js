@@ -182,6 +182,33 @@ router.add('POST /api/users/:id/active', requirePerm('staff.write', async (ctx) 
   sendOk(ctx.res, { user: Auth.publicUser(Auth.findById(id)) });
 }));
 
+/* --- roles ------------------------------------------------------------------ */
+
+/* Readable by anyone signed in: the app draws its own menu from this, and a
+   cashier needs to know what a cashier may do. It exposes no data, only rules. */
+router.add('GET /api/roles', (ctx) => {
+  sendOk(ctx.res, Auth.permissionMatrix());
+});
+
+router.add('PUT /api/roles/:role', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const out = Auth.setRolePermissions(
+      ctx.params.role,
+      Array.isArray(b.granted) ? b.granted : [],
+      ctx.user.id
+    );
+
+    /* `refused` is the honest part. The request may have asked for something
+       that cannot be granted — or to drop something a manager must keep — and
+       the screen should say so rather than silently showing a tick that did
+       not stick. */
+    sendOk(ctx.res, { ...out, matrix: Auth.permissionMatrix() });
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
 /* --- reference data -------------------------------------------------------- */
 
 router.add('GET /api/config', (ctx) => {

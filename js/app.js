@@ -48,6 +48,22 @@ var I18N = {
     search_ph: 'Search products, customers, invoices…', admin: 'Admin',
     notifications: 'Notifications', view_all: 'View all', no_results: 'Nothing matched that search',
 
+    /* --- account --- */
+    signed_in_as: 'Signed in as', sign_out: 'Sign out', signing_out: 'Signing out…',
+    change_pw: 'Change password', my_account: 'My account',
+    pw_current: 'Current password', pw_new: 'New password', pw_again: 'Type it again',
+    pw_changed: 'Password changed', pw_reauth: 'Sign in again with your new password',
+    pw_mismatch: 'The two new passwords do not match',
+    pw_must_change: 'Your password was reset — please change it',
+    demo_account: 'Demo', demo_no_account: 'No server — demo data, nothing is saved',
+    role_delivery: 'Delivery', role_partner: 'Print partner',
+    /* --- roles grid --- */
+    roles_editable: 'Tick what each role may do. Saved straight away.',
+    perm_locked: 'Locked', perm_saved: 'Role updated', perm_refused: 'Some changes were refused',
+    pg_till: 'Till', pg_stock: 'Stock', pg_products: 'Products',
+    pg_customers: 'Customers', pg_money: 'Money', pg_print: 'Printing',
+    pg_admin: 'Management', pg_partner: 'Yalla Wear',
+
     dash_title: 'Dashboard', dash_sub: 'Everything about the shop, on one screen',
     st_today: 'Sales today', st_month: 'Sales this month', st_products: 'Products',
     st_critical: 'SKUs in critical stock', st_customers: 'Active customers', st_print: 'Pending print jobs',
@@ -377,6 +393,22 @@ var I18N = {
 
     search_ph: 'ابحث عن منتج أو زبون أو فاتورة…', admin: 'المدير',
     notifications: 'التنبيهات', view_all: 'عرض الكل', no_results: 'لا توجد نتائج مطابقة',
+
+    /* --- الحساب --- */
+    signed_in_as: 'مسجّل الدخول باسم', sign_out: 'تسجيل الخروج', signing_out: 'جارٍ الخروج…',
+    change_pw: 'تغيير كلمة المرور', my_account: 'حسابي',
+    pw_current: 'كلمة المرور الحالية', pw_new: 'كلمة المرور الجديدة', pw_again: 'أعد كتابتها',
+    pw_changed: 'تم تغيير كلمة المرور', pw_reauth: 'سجّل الدخول من جديد بكلمة المرور الجديدة',
+    pw_mismatch: 'كلمتا المرور غير متطابقتين',
+    pw_must_change: 'تمت إعادة تعيين كلمة مرورك — يرجى تغييرها',
+    demo_account: 'عرض تجريبي', demo_no_account: 'بدون خادم — بيانات تجريبية ولا يُحفظ شيء',
+    role_delivery: 'التوصيل', role_partner: 'شريك الطباعة',
+    /* --- جدول الصلاحيات --- */
+    roles_editable: 'حدّد ما يستطيع كل دور فعله. يُحفظ فوراً.',
+    perm_locked: 'مقفل', perm_saved: 'تم تحديث الدور', perm_refused: 'رُفضت بعض التغييرات',
+    pg_till: 'الكاشير', pg_stock: 'المخزون', pg_products: 'المنتجات',
+    pg_customers: 'الزبائن', pg_money: 'المال', pg_print: 'الطباعة',
+    pg_admin: 'الإدارة', pg_partner: 'يلا وير',
 
     dash_title: 'لوحة التحكم', dash_sub: 'كل شيء عن المحل في شاشة واحدة',
     st_today: 'مبيعات اليوم', st_month: 'مبيعات هذا الشهر', st_products: 'المنتجات',
@@ -1474,6 +1506,48 @@ var NAV = [
   { id: 'settings',   key: 'nav_settings',  group: 'ops',  icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L6 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z' }
 ];
 
+/* Which permission each screen needs.
+
+   A screen missing from this map is open to anyone signed in — `dashboard` is
+   the only one, deliberately, so no role can ever end up with an empty shell
+   and nowhere to land.
+
+   This hides menu items; it is not the security boundary. The server refuses
+   the data regardless. What this fixes is a cashier staring at a Money screen
+   that loads empty and looks broken, when the real answer is "not your job". */
+var NAV_PERM = {
+  pos:        'sell',
+  products:   'product.read',
+  warehouse:  'stock.read',
+  money:      'money.read',
+  customers:  'customer.read',
+  print:      'print.read',
+  reports:    'report.read',
+  storefront: 'product.read',
+  settings:   'config.write'
+};
+
+/* In demo mode every screen shows — the demo is meant to display the whole
+   system — and with no Auth at all (_shot.html) nothing is filtered either. */
+function navAllowed(id) {
+  if (typeof Auth === 'undefined' || Auth.demoMode()) return true;
+  var need = NAV_PERM[id];
+  return !need || Auth.can(need);
+}
+
+function allowedNav() {
+  return NAV.filter(function (n) { return navAllowed(n.id); });
+}
+
+/* Wrap any in-page shortcut to another screen — a "View all" on a dashboard
+   card, a "+ Add" that jumps to the warehouse. Hiding the sidebar entry is not
+   enough on its own: these buttons live inside screens the role CAN see, and
+   go() would quietly bounce them somewhere else. A button that visibly does
+   the wrong thing is worse than one that is not there. */
+function ifNav(view, html) {
+  return navAllowed(view) ? html : '';
+}
+
 /* The sidebar order IS the depth axis: moving down the list reads as going
    deeper, so that is what the page transition animates against. */
 if (typeof Motion !== 'undefined') {
@@ -1503,8 +1577,12 @@ function renderSidebar() {
     '</div><nav class="nav">';
 
   ['main', 'ops'].forEach(function (g) {
+    var items = NAV.filter(function (n) { return n.group === g && navAllowed(n.id); });
+    /* A role with nothing in a group must not get a bare heading floating
+       above no buttons — delivery has an empty "Operations" otherwise. */
+    if (!items.length) return;
     html += '<div class="nav-label">' + t(g === 'main' ? 'nav_main' : 'nav_ops') + '</div>';
-    NAV.filter(function (n) { return n.group === g; }).forEach(function (n) {
+    items.forEach(function (n) {
       var b = navBadge(n.id);
       html +=
         '<button class="nav-item' + (OG.view === n.id ? ' active' : '') + '" data-act="nav" data-view="' + n.id + '">' +
@@ -1548,7 +1626,7 @@ function renderTabbar() {
   var h = '';
   TABS.forEach(function (id) {
     var n = NAV.filter(function (x) { return x.id === id; })[0];
-    if (!n) return;
+    if (!n || !navAllowed(id)) return;
     var b = navBadge(id);
     h += '<button class="tabbtn' + (OG.view === id ? ' on' : '') + '" data-act="nav" data-view="' + id + '">' +
       '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg>' +
@@ -1556,6 +1634,8 @@ function renderTabbar() {
       '<span class="tb-txt">' + t(n.key) + '</span></button>';
   });
 
+  /* More always shows: even a role with no extra screens reaches sign out
+     through it, and on a phone there is nowhere else to put that. */
   var inMore = MORE_ITEMS.indexOf(OG.view) > -1;
   h += '<button class="tabbtn' + (inMore ? ' on' : '') + '" data-act="more-sheet">' +
     '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square">' +
@@ -1571,7 +1651,7 @@ function openMoreSheet() {
   var h = '<div class="more-grid">';
   MORE_ITEMS.forEach(function (id) {
     var n = NAV.filter(function (x) { return x.id === id; })[0];
-    if (!n) return;
+    if (!n || !navAllowed(id)) return;
     var b = navBadge(id);
     h += '<button class="more-item' + (OG.view === id ? ' on' : '') + '" data-act="more-go" data-view="' + id + '">' +
       '<span class="mi-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg></span>' +
@@ -1592,6 +1672,24 @@ function openMoreSheet() {
     '<div class="more-row"><span>' + t('partner_view') + '</span>' +
       '<button class="btn btn-sm btn-dark" data-act="partner-view">' + CONFIG.PRINT_PARTNER + ' →</button></div>' +
   '</div>';
+
+  /* The account block lives here too, and this is not a duplicate for
+     convenience. `.user-chip` is display:none below 900px, so on the phones
+     used on the shop floor this sheet is the ONLY way to reach sign out. */
+  var u = acct();
+  if (u) {
+    h += '<div class="more-acct">' +
+      '<div class="ma-who">' +
+        '<span class="user-avatar">' + esc(initialsOf(u.name)) + '</span>' +
+        '<div><b>' + esc(u.name) + '</b>' +
+          '<span class="acct-role">' + esc(roleLabel(u.role)) + '</span></div>' +
+      '</div>' +
+      '<div class="ma-btns">' +
+        '<button class="btn btn-sm" data-act="acct-pw">' + t('change_pw') + '</button>' +
+        '<button class="btn btn-sm btn-danger" data-act="acct-out">' + t('sign_out') + '</button>' +
+      '</div>' +
+    '</div>';
+  }
 
   openModal({ title: t('nav_more'), size: 'narrow', body: h, sheet: true });
 }
@@ -1626,7 +1724,101 @@ function renderTopbar() {
       '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M18 16V10a6 6 0 1 0-12 0v6l-2 3h16zM10 21h4"/></svg>' +
       '<span class="bell-badge">' + DB.notifications.length + '</span>' +
     '</button>' +
-    '<div class="user-chip"><span class="user-avatar">A</span><span>' + t('admin') + '</span></div>';
+    accountChip();
+}
+
+/* ------------------------------------------------------------- 5b. ACCOUNT */
+
+/* Who is signed in. Three shapes, because there are three ways to be here:
+
+     no Auth at all  — _shot.html, which loads neither api.js nor auth.js.
+                       Falls back to the old static chip so the Arabic
+                       proposal screenshots keep looking like a real app.
+     demo mode       — file:// or a static host. Nobody to sign out.
+     signed in       — the real thing.  */
+function acct() {
+  return (typeof Auth !== 'undefined' && !Auth.demoMode()) ? Auth.user() : null;
+}
+
+function initialsOf(name) {
+  var w = String(name || '').trim().split(/\s+/);
+  return ((w[0] || '?')[0] + (w[1] ? w[1][0] : (w[0] || '')[1] || '')).toUpperCase();
+}
+
+function roleLabel(role) {
+  var k = { manager: 'role_manager', cashier: 'role_cashier', warehouse: 'role_warehouse',
+            delivery: 'role_delivery', partner: 'role_partner' }[role];
+  return k ? t(k) : role;
+}
+
+function accountChip() {
+  if (typeof Auth === 'undefined') {
+    return '<div class="user-chip"><span class="user-avatar">A</span>' +
+           '<span>' + t('admin') + '</span></div>';
+  }
+
+  if (Auth.demoMode()) {
+    return '<div class="user-chip is-demo" title="' + esc(t('demo_no_account')) + '">' +
+      '<span class="user-avatar demo">D</span><span>' + t('demo_account') + '</span></div>';
+  }
+
+  var u = Auth.user();
+  if (!u) return '';
+
+  return '<button class="user-chip is-btn' + (u.mustChange ? ' needs-pw' : '') + '" ' +
+      'data-act="acct" aria-haspopup="menu" title="' + esc(t('my_account')) + '">' +
+    '<span class="user-avatar">' + esc(initialsOf(u.name)) + '</span>' +
+    '<span class="uc-name">' + esc(u.name) + '</span>' +
+    '<svg class="uc-caret" viewBox="0 0 24 24" stroke-linecap="square"><path d="M6 9l6 6 6-6"/></svg>' +
+  '</button>';
+}
+
+/* The popover. Same pattern as the notifications bell: appended to the topbar,
+   closed by the global click handler. */
+function accountPopHtml(u) {
+  return '<div class="acct-head">' +
+      '<span class="user-avatar lg">' + esc(initialsOf(u.name)) + '</span>' +
+      '<div><b>' + esc(u.name) + '</b>' +
+        '<span class="acct-role">' + esc(roleLabel(u.role)) + '</span></div>' +
+    '</div>' +
+    (u.mustChange
+      ? '<div class="acct-warn">' + t('pw_must_change') + '</div>' : '') +
+    '<div class="acct-sep"></div>' +
+    '<button class="acct-item" data-act="acct-pw">' +
+      '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
+        '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>' +
+      t('change_pw') + '</button>' +
+    '<button class="acct-item danger" data-act="acct-out">' +
+      '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
+        '<path d="M15 17l5-5-5-5M20 12H9M12 3H5v18h7"/></svg>' +
+      t('sign_out') + '</button>';
+}
+
+/* The change-password dialog.
+
+   The server drops every session on success — including this one — so the
+   message says "sign in again" rather than letting it look like a fault. */
+function openChangePassword() {
+  openModal({
+    title: t('change_pw'),
+    size: 'narrow',
+    body:
+      '<div class="pw-form">' +
+        '<label class="field"><span>' + t('pw_current') + '</span>' +
+          '<input class="inp" id="pwCur" type="password" autocomplete="current-password"></label>' +
+        '<label class="field"><span>' + t('pw_new') + '</span>' +
+          '<input class="inp" id="pwNew" type="password" autocomplete="new-password"></label>' +
+        '<label class="field"><span>' + t('pw_again') + '</span>' +
+          '<input class="inp" id="pwNew2" type="password" autocomplete="new-password"></label>' +
+        '<div class="pw-err" id="pwErr"></div>' +
+      '</div>',
+    foot: '<button class="btn" data-act="modal-close">' + t('cancel') + '</button>' +
+          '<button class="btn btn-primary" data-act="acct-pw-save">' + t('change_pw') + '</button>',
+    onOpen: function (root) {
+      var f = root.querySelector('#pwCur');
+      if (f) setTimeout(function () { f.focus(); }, 60);
+    }
+  });
 }
 
 /* --------------------------------------------------------- 6. GLOBAL SEARCH */
@@ -1779,7 +1971,7 @@ function viewDashboard() {
     '<div class="head-actions">' +
       exportButtons() +
       '<button class="btn btn-ghost" data-act="day-summary">' + t('wa_send_day') + '</button>' +
-      '<button class="btn btn-primary" data-act="nav" data-view="pos">' + t('nav_pos') + '</button>' +
+      ifNav('pos', '<button class="btn btn-primary" data-act="nav" data-view="pos">' + t('nav_pos') + '</button>') +
     '</div></div>';
 
   h += '<div class="grid stat-row" id="dashStats">';
@@ -1804,7 +1996,9 @@ function viewDashboard() {
       '</div>' +
 
       '<div class="card mt"><div class="card-head"><h3>' + t('recent_sales') + '</h3>' +
-        '<div class="card-actions"><button class="btn btn-ghost btn-sm" data-act="nav" data-view="reports">' + t('view_all') + '</button></div></div>' +
+        '<div class="card-actions">' + ifNav('reports',
+          '<button class="btn btn-ghost btn-sm" data-act="nav" data-view="reports">' + t('view_all') + '</button>') +
+        '</div></div>' +
         '<div class="table-wrap"><table class="tbl"><thead><tr>' +
           '<th>' + t('invoice') + '</th><th>' + t('customer') + '</th><th>' + t('items') + '</th>' +
           '<th>' + t('payment') + '</th><th>' + t('date') + '</th><th class="num">' + t('total') + '</th>' +
@@ -1918,7 +2112,8 @@ function viewProducts() {
     '<div class="sub">' + t('products_sub') + '</div></div>' +
     '<div class="head-actions">' +
       exportButtons() +
-      '<button class="btn btn-primary" data-act="nav" data-view="warehouse">+ ' + t('tab_add') + '</button>' +
+      ifNav('warehouse',
+        '<button class="btn btn-primary" data-act="nav" data-view="warehouse">+ ' + t('tab_add') + '</button>') +
     '</div></div>';
 
   h += '<div class="filters">' +
@@ -4060,21 +4255,164 @@ function renderStore() {
 
 /* -------------------------------------------------------------- 14. SETTINGS */
 
-var PERMISSIONS = [
-  ['View dashboard',        1, 1, 1, 0],
-  ['Use point of sale',     1, 1, 1, 0],
-  ['Give discounts',        1, 1, 0, 0],
-  ['View cost prices',      1, 1, 0, 1],
-  ['Edit products',         1, 1, 0, 1],
-  ['Receive stock',         1, 1, 0, 1],
-  ['Write off damaged',     1, 1, 0, 0],
-  ['View customer data',    1, 1, 1, 0],
-  ['Manage print jobs',     1, 1, 0, 0],
-  ['View profit reports',   1, 1, 0, 0],
-  ['Pay suppliers',         1, 0, 0, 0],
-  ['Manage employees',      1, 0, 0, 0],
-  ['Change settings',       1, 0, 0, 0]
+/* ------------------------------------------------------------ ROLES & ACCESS
+
+   This used to be a hardcoded array of thirteen rows with tick boxes wired to
+   nothing — it edited a variable in the browser and the server never saw it.
+   It looked exactly like the control panel for permissions and controlled
+   nothing at all.
+
+   The real matrix now comes from GET /api/roles and saves back with PUT. Held
+   here after the first fetch so a re-render does not blank the table. */
+var ROLE_MATRIX = null;
+var ROLE_SAVE_T = null;
+
+/* Fallback for demo mode and for _shot.html, where there is no server to ask.
+   Shows the shipped defaults, read-only, so the screen still says something
+   true rather than rendering an empty card in a client screenshot. */
+var DEMO_MATRIX_ROLES = ['manager', 'cashier', 'warehouse', 'delivery', 'partner'];
+var DEMO_MATRIX = [
+  ['sell',           'till',      'Sell at the till',            [1, 1, 0, 0, 0]],
+  ['refund',         'till',      'Give a refund',               [1, 1, 0, 0, 0]],
+  ['void',           'till',      'Cancel a completed sale',     [1, 0, 0, 0, 0]],
+  ['stock.read',     'stock',     'See stock levels',            [1, 1, 1, 1, 0]],
+  ['stock.move',     'stock',     'Receive and move stock',      [1, 0, 1, 0, 0]],
+  ['stock.count',    'stock',     'Do a stock count',            [1, 0, 1, 0, 0]],
+  ['product.read',   'products',  'See products',                [1, 1, 1, 1, 0]],
+  ['product.write',  'products',  'Add and edit products',       [1, 0, 1, 0, 0]],
+  ['customer.read',  'customers', 'See customers',               [1, 1, 0, 1, 0]],
+  ['customer.write', 'customers', 'Add and edit customers',      [1, 1, 0, 0, 0]],
+  ['cost.read',      'money',     'See what things cost',        [1, 0, 0, 0, 0]],
+  ['profit.read',    'money',     'See profit',                  [1, 0, 0, 0, 0]],
+  ['money.read',     'money',     'See the money screen',        [1, 0, 0, 0, 0]],
+  ['money.write',    'money',     'Record expenses and debts',   [1, 0, 0, 0, 0]],
+  ['print.read',     'print',     'See print jobs',              [1, 1, 1, 1, 0]],
+  ['print.write',    'print',     'Create and change print jobs',[1, 0, 0, 0, 0]],
+  ['partner.read',   'print',     'See the partner portal',      [1, 0, 0, 0, 0]],
+  ['partner.write',  'print',     'Act on partner orders',       [1, 0, 0, 0, 0]],
+  ['staff.read',     'admin',     'See staff accounts',          [1, 0, 0, 0, 0]],
+  ['staff.write',    'admin',     'Add and edit staff',          [1, 0, 0, 0, 0]],
+  ['report.read',    'admin',     'See reports',                 [1, 0, 0, 0, 0]],
+  ['config.write',   'admin',     'Change settings',             [1, 0, 0, 0, 0]],
+  ['partner.jobs',   'partner',   'Yalla Wear: own jobs',        [0, 0, 0, 0, 1]],
+  ['partner.respond','partner',   'Yalla Wear: accept or decline',[0, 0, 0, 0, 1]],
+  ['partner.invoice','partner',   'Yalla Wear: own invoices',    [0, 0, 0, 0, 1]]
 ];
+
+function demoMatrix() {
+  return {
+    roles: DEMO_MATRIX_ROLES,
+    permissions: DEMO_MATRIX.map(function (r) {
+      var roles = {};
+      DEMO_MATRIX_ROLES.forEach(function (name, i) {
+        roles[name] = { allowed: !!r[3][i], locked: true, why: null };
+      });
+      return { perm: r[0], group: r[1], label: r[2], roles: roles };
+    })
+  };
+}
+
+function rolesCard() {
+  var m = ROLE_MATRIX || (typeof Auth === 'undefined' || Auth.demoMode() ? demoMatrix() : null);
+
+  /* Still loading. Draw the frame rather than nothing, so the card does not
+     pop into existence and shove the rest of the page down. */
+  if (!m) {
+    return '<div class="card mb"><div class="card-head"><h3>' + t('roles_perms') + '</h3></div>' +
+      '<div class="card-body muted small">…</div></div>';
+  }
+
+  /* Only a manager may change these. Everyone else sees the same grid,
+     read-only — knowing the rules is not a privilege, changing them is. */
+  var editable = typeof Auth !== 'undefined' && !Auth.demoMode() && Auth.can('config.write');
+
+  var h = '<div class="card mb"><div class="card-head"><h3>' + t('roles_perms') + '</h3>' +
+    '<div class="card-actions muted small">' +
+      m.roles.length + ' ' + t('role').toLowerCase() + 's · ' +
+      m.permissions.length + ' ' + t('permission').toLowerCase() + 's</div></div>';
+
+  if (editable) h += '<div class="perm-hint">' + t('roles_editable') + '</div>';
+
+  h += '<div class="table-wrap"><table class="tbl perm-tbl"><thead><tr>' +
+    '<th>' + t('permission') + '</th>';
+  m.roles.forEach(function (r) {
+    h += '<th class="pc">' + esc(roleLabel(r)) + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  var lastGroup = null;
+  m.permissions.forEach(function (p) {
+    /* A group heading row. Twenty-five ticked boxes in a column is unreadable;
+       broken into "Till", "Stock", "Money" it reads as a description of a job. */
+    if (p.group !== lastGroup) {
+      lastGroup = p.group;
+      h += '<tr class="perm-group"><td colspan="' + (m.roles.length + 1) + '">' +
+        t('pg_' + p.group) + '</td></tr>';
+    }
+
+    h += '<tr><td class="perm-name">' + esc(p.label) + '</td>';
+    m.roles.forEach(function (r) {
+      var cell = p.roles[r] || { allowed: false, locked: true };
+      var locked = cell.locked || !editable;
+      h += '<td class="pc' + (cell.locked ? ' is-locked' : '') + '"' +
+        (cell.why ? ' title="' + esc(cell.why) + '"' : '') + '>' +
+        '<input type="checkbox"' + (cell.allowed ? ' checked' : '') +
+        (locked ? ' disabled' : ' data-change="set-perm" data-role="' + r +
+                                '" data-perm="' + esc(p.perm) + '"') + '>' +
+        (cell.locked ? '<span class="lock-i" aria-hidden="true">🔒</span>' : '') +
+        '</td>';
+    });
+    h += '</tr>';
+  });
+
+  h += '</tbody></table></div></div>';
+  return h;
+}
+
+/* Pull the live matrix, then repaint Settings once. Called from afterSettings
+   so it only runs when the screen is actually open. */
+function loadRoleMatrix() {
+  if (typeof Auth === 'undefined' || Auth.demoMode()) return;
+  if (ROLE_MATRIX) return;
+
+  API.get('/api/roles')
+    .then(function (m) {
+      ROLE_MATRIX = { roles: m.roles, permissions: m.permissions };
+      if (OG.view === 'settings') render();
+    })
+    .catch(function () { /* the card keeps its placeholder; nothing else breaks */ });
+}
+
+/* Save one role. Sends the whole granted list rather than a diff, so the
+   server never has to reconcile a partial view of the truth. */
+function saveRolePermissions(role) {
+  if (!ROLE_MATRIX) return;
+
+  var granted = ROLE_MATRIX.permissions
+    .filter(function (p) { return p.roles[role] && p.roles[role].allowed; })
+    .map(function (p) { return p.perm; });
+
+  API.put('/api/roles/' + encodeURIComponent(role), { granted: granted })
+    .then(function (res) {
+      ROLE_MATRIX = { roles: res.matrix.roles, permissions: res.matrix.permissions };
+
+      /* The server may have refused part of it — a pinned manager permission,
+         or something the partner may never have. Say so plainly and redraw
+         from what actually saved, rather than leaving a tick that did not
+         stick. */
+      if (res.refused && res.refused.length) {
+        toast(t('perm_refused'), res.refused.join(', '), 'err', 5000);
+      } else {
+        toast(t('perm_saved'), roleLabel(role), 'ok', 1800);
+      }
+
+      /* Your own role may have just changed — repaint the menu, not just the
+         table. */
+      if (typeof Auth !== 'undefined') Auth.refresh().then(function () { refreshAll(); });
+      else render();
+    })
+    .catch(function (e) { toast(t('roles_perms'), API.friendly(e), 'err', 5000); });
+}
 
 var REMINDER_RULES = [
   ['Low stock alert', 'Warn when any SKU drops to 3 pieces or fewer', 1],
@@ -4152,26 +4490,7 @@ function viewSettings() {
 
   h += hardwareCard();
 
-  h += '<div class="card mb"><div class="card-head"><h3>' + t('roles_perms') + '</h3>' +
-    '<div class="card-actions muted small">4 ' + t('role').toLowerCase() + 's · ' + PERMISSIONS.length + ' ' + t('permission').toLowerCase() + 's</div></div>' +
-    '<div class="table-wrap"><table class="tbl perm-tbl"><thead><tr><th>' + t('permission') + '</th>' +
-      '<th class="pc" style="text-align:center">' + t('role_admin') + '</th>' +
-      '<th class="pc" style="text-align:center">' + t('role_manager') + '</th>' +
-      '<th class="pc" style="text-align:center">' + t('role_cashier') + '</th>' +
-      '<th class="pc" style="text-align:center">' + t('role_warehouse') + '</th></tr></thead><tbody>';
-  PERMISSIONS.forEach(function (p, pi) {
-    h += '<tr><td>' + p[0] + '</td>';
-    for (var i = 1; i <= 4; i++) {
-      /* data-change wires each box to the real PERMISSIONS table. Admin stays
-         disabled — a role that can lock itself out of its own settings screen
-         is a support call waiting to happen. */
-      h += '<td class="pc"><input type="checkbox"' + (p[i] ? ' checked' : '') +
-           (i === 1 ? ' disabled' : ' data-change="set-perm" data-p="' + pi + '" data-r="' + i + '"') +
-           '></td>';
-    }
-    h += '</tr>';
-  });
-  h += '</tbody></table></div></div>';
+  h += rolesCard();
 
   h += '<div class="set-grid">';
 
@@ -4457,6 +4776,10 @@ var AFTER = {
    of opening the product sheet — otherwise every test scan would fire the
    sheet over the page you are trying to configure. */
 function afterSettings() {
+  /* Before the early return below — the roles grid must still load on a
+     machine with no scanner support, which is most of them. */
+  loadRoleMatrix();
+
   var probeBox = document.getElementById('hwProbe');
   var read = document.getElementById('hwRead');
   if (!probeBox || !read || typeof Wedge === 'undefined') return;
@@ -4626,6 +4949,15 @@ function render() {
 
 function go(view, pending) {
   if (!VIEWS[view]) view = 'dashboard';
+
+  /* Hiding a menu item does not stop something else asking for that screen —
+     a bookmarked #settings, a stale URL hash, a deep link out of a toast. A
+     cashier would land on a page they should not see, half-rendered from data
+     the server is refusing. Bounce to somewhere they are allowed instead. */
+  if (!navAllowed(view)) {
+    var first = allowedNav()[0];
+    view = first ? first.id : 'dashboard';
+  }
   /* Work out the travel direction before OG.view moves on. */
   if (typeof Motion !== 'undefined') {
     OG.dir = Motion.direction(OG.view, view);
@@ -5089,6 +5421,67 @@ var ACTIONS = {
     var n = DB.notifications[+el.getAttribute('data-i')];
     var pop = document.getElementById('notifPop'); if (pop) pop.remove();
     go(n.view);
+  },
+
+  /* --- account ------------------------------------------------------------ */
+
+  acct: function (el, e) {
+    e.stopPropagation();
+    var existing = document.getElementById('acctPop');
+    if (existing) { existing.remove(); return; }
+
+    var u = acct();
+    if (!u) return;
+
+    var pop = document.createElement('div');
+    pop.id = 'acctPop';
+    pop.className = 'acct-pop';
+    pop.innerHTML = accountPopHtml(u);
+    document.getElementById('topbar').appendChild(pop);
+  },
+
+  'acct-pw': function () {
+    var pop = document.getElementById('acctPop'); if (pop) pop.remove();
+    closeModal();
+    openChangePassword();
+  },
+
+  'acct-pw-save': function (el) {
+    var cur = document.getElementById('pwCur');
+    var a = document.getElementById('pwNew');
+    var b = document.getElementById('pwNew2');
+    var err = document.getElementById('pwErr');
+    if (!cur || !a || !b) return;
+
+    var show = function (m) { if (err) err.textContent = m; };
+
+    /* Catch the mismatch here rather than after a round trip — the server
+       cannot check it, since it only ever receives one new password. */
+    if (a.value !== b.value) { show(t('pw_mismatch')); b.select(); return; }
+    if (!cur.value || !a.value) { show(t('pw_mismatch')); return; }
+
+    el.disabled = true;
+    show('');
+
+    API.post('/api/auth/password', { current: cur.value, next: a.value })
+      .then(function () {
+        closeModal();
+        toast(t('pw_changed'), t('pw_reauth'), 'ok', 5000);
+        /* Every session died, this one included. Give the toast a moment to
+           be read, then let the login screen come back. */
+        setTimeout(function () { location.reload(); }, 1800);
+      })
+      .catch(function (e2) {
+        el.disabled = false;
+        show(API.friendly(e2));
+      });
+  },
+
+  'acct-out': function () {
+    var pop = document.getElementById('acctPop'); if (pop) pop.remove();
+    closeModal();
+    toast(t('sign_out'), t('signing_out'), 'ok', 1500);
+    Auth.logout();
   },
 
   'modal-close': closeModal,
@@ -5739,9 +6132,20 @@ var CHANGES = {
     toast(t('mo_title'), t(el.checked ? 'mo_on' : 'mo_off'), 'ok', 2200);
   },
 
+  /* One tick box in the roles grid. Updates the local matrix, then saves that
+     whole role — so a fast series of clicks settles on the last state rather
+     than racing several half-descriptions of it. */
   'set-perm': function (el) {
-    var p = PERMISSIONS[+el.getAttribute('data-p')];
-    if (p) p[+el.getAttribute('data-r')] = el.checked;
+    if (!ROLE_MATRIX) return;
+    var role = el.getAttribute('data-role');
+    var perm = el.getAttribute('data-perm');
+
+    var row = ROLE_MATRIX.permissions.filter(function (p) { return p.perm === perm; })[0];
+    if (!row || !row.roles[role]) return;
+    row.roles[role].allowed = el.checked;
+
+    clearTimeout(ROLE_SAVE_T);
+    ROLE_SAVE_T = setTimeout(function () { saveRolePermissions(role); }, 350);
   },
 
   /* Stock count inputs. Typing a number counts that size; clearing the box
@@ -5801,6 +6205,11 @@ function bindGlobal() {
     /* close the notification popover when clicking elsewhere */
     var pop = document.getElementById('notifPop');
     if (pop && !pop.contains(e.target) && (!el || el.getAttribute('data-act') !== 'bell')) pop.remove();
+
+    /* same for the account menu. Clicks INSIDE it must survive, or the item
+       being clicked is removed before its own handler runs. */
+    var ap = document.getElementById('acctPop');
+    if (ap && !ap.contains(e.target) && (!el || el.getAttribute('data-act') !== 'acct')) ap.remove();
 
     /* close the global search dropdown */
     var sr = document.getElementById('searchResults');

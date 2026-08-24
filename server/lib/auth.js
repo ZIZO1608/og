@@ -49,53 +49,181 @@ export const ROLES = ['manager', 'cashier', 'warehouse', 'delivery', 'partner'];
    They handle customers and they handle cash, and margin is not theirs to
    know. `partner` is Yalla Wear — remote, outside the company, and must never
    reach a customer name, a phone number, or what OG charged for the job. */
-const PERMISSIONS = {
-  manager: [
-    'sell', 'refund', 'void',
-    'stock.read', 'stock.move', 'stock.count',
-    'product.read', 'product.write',
-    'customer.read', 'customer.write',
-    'cost.read', 'profit.read',
-    'money.read', 'money.write',
-    'staff.read', 'staff.write',
-    'print.read', 'print.write',
-    'partner.read', 'partner.write',
-    'config.write', 'report.read'
-  ],
-  cashier: [
-    'sell', 'refund',
-    'stock.read',
-    'product.read',
-    'customer.read', 'customer.write',
-    'print.read'
-    /* deliberately absent: cost.read, profit.read, money.*, staff.* */
-  ],
-  warehouse: [
-    'stock.read', 'stock.move', 'stock.count',
-    'product.read', 'product.write',
-    'print.read'
-  ],
-  delivery: [
-    'stock.read',
-    'product.read',
-    'customer.read',
-    'print.read'
-  ],
-  partner: [
-    /* Yalla Wear. Their own jobs, nothing else. Enforced here on the server;
-       DB.partnerView in the browser is a convenience, not a boundary. */
-    'partner.jobs', 'partner.respond', 'partner.invoice'
-  ]
+/* Every permission the system knows about, in the order the Settings grid
+   shows them. Grouped so the screen reads as a sentence about a job rather
+   than an alphabetical dump. The label is what a shop owner sees — nobody
+   should have to work out what `stock.count` means. */
+export const ALL_PERMISSIONS = [
+  { perm: 'sell',            group: 'till',      label: 'Sell at the till' },
+  { perm: 'refund',          group: 'till',      label: 'Give a refund' },
+  { perm: 'void',            group: 'till',      label: 'Cancel a completed sale' },
+
+  { perm: 'stock.read',      group: 'stock',     label: 'See stock levels' },
+  { perm: 'stock.move',      group: 'stock',     label: 'Receive and move stock' },
+  { perm: 'stock.count',     group: 'stock',     label: 'Do a stock count' },
+
+  { perm: 'product.read',    group: 'products',  label: 'See products' },
+  { perm: 'product.write',   group: 'products',  label: 'Add and edit products' },
+
+  { perm: 'customer.read',   group: 'customers', label: 'See customers' },
+  { perm: 'customer.write',  group: 'customers', label: 'Add and edit customers' },
+
+  { perm: 'cost.read',       group: 'money',     label: 'See what things cost' },
+  { perm: 'profit.read',     group: 'money',     label: 'See profit' },
+  { perm: 'money.read',      group: 'money',     label: 'See the money screen' },
+  { perm: 'money.write',     group: 'money',     label: 'Record expenses and debts' },
+
+  { perm: 'print.read',      group: 'print',     label: 'See print jobs' },
+  { perm: 'print.write',     group: 'print',     label: 'Create and change print jobs' },
+  { perm: 'partner.read',    group: 'print',     label: 'See the partner portal' },
+  { perm: 'partner.write',   group: 'print',     label: 'Act on partner orders' },
+
+  { perm: 'staff.read',      group: 'admin',     label: 'See staff accounts' },
+  { perm: 'staff.write',     group: 'admin',     label: 'Add and edit staff' },
+  { perm: 'report.read',     group: 'admin',     label: 'See reports' },
+  { perm: 'config.write',    group: 'admin',     label: 'Change settings' },
+
+  { perm: 'partner.jobs',    group: 'partner',   label: 'Yalla Wear: own jobs' },
+  { perm: 'partner.respond', group: 'partner',   label: 'Yalla Wear: accept or decline' },
+  { perm: 'partner.invoice', group: 'partner',   label: 'Yalla Wear: own invoices' }
+];
+
+const PERM_SET = new Set(ALL_PERMISSIONS.map(p => p.perm));
+
+/* --------------------------------------------------- the two hard rules
+   Both are enforced here rather than in the Settings screen, because a
+   disabled tick box is a suggestion — anyone can send the request by hand. */
+
+/* A manager who removes their own access to Settings or Staff leaves nobody
+   able to put it back without opening the database file. */
+const PINNED = { manager: ['config.write', 'staff.write'] };
+
+/* Yalla Wear is a different company. These can never be granted to them, no
+   matter what the grid says. One mis-clicked box should not be able to hand a
+   supplier your customer list and your margins. */
+const FORBIDDEN = {
+  partner: (p) =>
+    p === 'customer.read' || p === 'customer.write' ||
+    p === 'cost.read' || p === 'profit.read' ||
+    p.startsWith('money.') || p.startsWith('staff.')
 };
+
+export function isPinned(role, perm) {
+  return (PINNED[role] || []).includes(perm);
+}
+
+export function isForbidden(role, perm) {
+  const rule = FORBIDDEN[role];
+  return typeof rule === 'function' && rule(perm);
+}
+
+/* ------------------------------------------------------------------- cache
+   can() runs on nearly every request, often several times. A query per check
+   would be silly. A stale cache would be a security bug, so every write path
+   clears it — that is the whole contract of this variable. */
+let permCache = null;
+
+export function invalidatePermissions() { permCache = null; }
+
+function permissions() {
+  if (permCache) return permCache;
+
+  permCache = {};
+  for (const r of ROLES) permCache[r] = new Set();
+
+  for (const row of get().prepare(
+    'SELECT role, perm FROM role_permissions WHERE allowed = 1'
+  ).all()) {
+    if (permCache[row.role]) permCache[row.role].add(row.perm);
+  }
+
+  /* Belt and braces. If a row somehow says a partner may read customers —
+     hand-edited database, a migration written in a hurry — it is dropped here
+     rather than honoured. The boundary should not depend on the data being
+     right. */
+  for (const role of Object.keys(permCache)) {
+    for (const p of [...permCache[role]]) {
+      if (isForbidden(role, p)) permCache[role].delete(p);
+    }
+    for (const p of (PINNED[role] || [])) permCache[role].add(p);
+  }
+
+  return permCache;
+}
 
 export function can(user, perm) {
   if (!user || !user.active) return false;
-  const list = PERMISSIONS[user.role];
-  return Array.isArray(list) && list.includes(perm);
+  const set = permissions()[user.role];
+  return !!set && set.has(perm);
 }
 
 export function permissionsFor(role) {
-  return (PERMISSIONS[role] || []).slice();
+  const set = permissions()[role];
+  return set ? [...set] : [];
+}
+
+/* The full grid for the Settings screen: every permission, every role, with
+   whether it is on and whether it can be changed. */
+export function permissionMatrix() {
+  const live = permissions();
+  return {
+    roles: ROLES,
+    permissions: ALL_PERMISSIONS.map(p => ({
+      ...p,
+      roles: Object.fromEntries(ROLES.map(r => [r, {
+        allowed: live[r].has(p.perm),
+        locked: isPinned(r, p.perm) || isForbidden(r, p.perm),
+        why: isPinned(r, p.perm)
+          ? 'A manager must keep this, or nobody can undo the change.'
+          : isForbidden(r, p.perm)
+            ? 'Yalla Wear is a separate company and can never be given this.'
+            : null
+      }]))
+    }))
+  };
+}
+
+/* Save one role's permissions. `granted` is the list that should be on;
+   anything else for that role is turned off.
+
+   Returns what was actually applied, which may differ from what was asked —
+   the caller should show that rather than assume it took. */
+export function setRolePermissions(role, granted, byUserId) {
+  if (!ROLES.includes(role)) throw new Error(`unknown role: ${role}`);
+
+  const want = new Set(
+    (Array.isArray(granted) ? granted : []).filter(p => PERM_SET.has(p))
+  );
+
+  const refused = [];
+  for (const p of [...want]) {
+    if (isForbidden(role, p)) { want.delete(p); refused.push(p); }
+  }
+  for (const p of (PINNED[role] || [])) {
+    if (!want.has(p)) { want.add(p); refused.push(p); }
+  }
+
+  const at = nowIso();
+  const stmt = get().prepare(
+    `INSERT INTO role_permissions (role, perm, allowed, updated_at, updated_by)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (role, perm) DO UPDATE SET
+       allowed = excluded.allowed,
+       updated_at = excluded.updated_at,
+       updated_by = excluded.updated_by`
+  );
+
+  for (const { perm } of ALL_PERMISSIONS) {
+    stmt.run(role, perm, want.has(perm) ? 1 : 0, at, byUserId ?? null);
+  }
+
+  invalidatePermissions();
+
+  /* Sessions are not dropped. The permission set is read fresh on every
+     request, so someone mid-shift simply gains or loses the screen on their
+     next click — which is what you want when correcting a mistake, rather
+     than throwing the whole shop back to the login page. */
+  return { role, granted: [...want].sort(), refused: [...new Set(refused)] };
 }
 
 /* ------------------------------------------------------------------ hashing */

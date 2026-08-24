@@ -460,6 +460,69 @@ body.rtl .user-chip { padding: 0 5px 0 13px; }
 .notif-dot.amber { background: var(--warning-solid); }
 .notif-dot.grey { background: #3F3F46; color: var(--foreground); }
 
+/* ---- account chip and menu -------------------------------------------------
+   The chip was a static "A / Admin" left over from the demo. It is now a real
+   button, so it needs the affordances of one. */
+.user-chip.is-btn { cursor: pointer; font: inherit; transition: border-color var(--t), background var(--t); }
+.user-chip.is-btn:hover { border-color: var(--ring); background: var(--accent); }
+.uc-name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uc-caret { width: 13px; height: 13px; stroke: var(--muted-foreground); fill: none; stroke-width: 2; flex: none; }
+.user-avatar.demo { background: var(--warning); color: #1A1206; }
+.user-chip.is-demo { border-style: dashed; }
+
+/* A password waiting to be changed after a manager reset. A dot rather than a
+   banner: it must be noticeable without blocking someone mid-queue. */
+.user-chip.needs-pw { position: relative; }
+.user-chip.needs-pw::after {
+  content: ''; position: absolute; top: -3px; inset-inline-end: -3px;
+  width: 9px; height: 9px; border-radius: var(--radius-full);
+  background: var(--warning); border: 2px solid var(--background);
+}
+
+.acct-pop {
+  position: absolute; top: 54px; inset-inline-end: 20px; width: 252px;
+  background: var(--popover); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg); z-index: 70; padding: 6px;
+}
+.acct-head { display: flex; align-items: center; gap: 11px; padding: 9px 10px 11px; }
+.acct-head b { display: block; font-size: 13.5px; font-weight: 700; }
+.user-avatar.lg { width: 36px; height: 36px; font-size: 13px; }
+.acct-role { font-size: 11.5px; color: var(--muted-foreground); }
+.acct-sep { height: 1px; background: var(--border); margin: 2px 0 5px; }
+.acct-warn {
+  margin: 0 4px 6px; padding: 7px 9px; border-radius: var(--radius-sm);
+  background: var(--warning-soft); color: var(--warning);
+  font-size: 11.5px; font-weight: 600; line-height: 1.4;
+}
+.acct-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: var(--radius-sm);
+  background: none; color: var(--foreground);
+  font-size: 12.5px; font-weight: 600; text-align: start;
+  cursor: pointer; transition: background var(--t), color var(--t);
+}
+.acct-item svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; }
+.acct-item:hover { background: var(--accent); }
+.acct-item.danger { color: var(--destructive); }
+.acct-item.danger:hover { background: var(--destructive-soft); }
+
+/* The same block inside the More sheet. Not a duplicate for convenience —
+   .user-chip is display:none below 900px, so on a phone this is the only
+   route to sign out. */
+.more-acct { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.ma-who { display: flex; align-items: center; gap: 11px; margin-bottom: 11px; }
+.ma-who b { display: block; font-size: 13.5px; }
+.ma-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ---- change password -------------------------------------------------------- */
+.pw-form { display: grid; gap: 12px; }
+.pw-err:empty { display: none; }
+.pw-err {
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--destructive-soft); color: var(--destructive);
+  font-size: 12px; font-weight: 600;
+}
+
 /* ------------------------------------------------------------------- VIEW */
 
 .view { flex: 1; overflow-y: auto; padding: var(--s-5) 26px 76px; }
@@ -1211,8 +1274,39 @@ table.inv-tbl td.num, table.inv-tbl th.num { text-align: end; }
 
 /* --------------------------------------------------------------- SETTINGS */
 
-.perm-tbl td.pc { text-align: center; }
+.perm-tbl td.pc, .perm-tbl th.pc { text-align: center; }
 .perm-tbl input { width: 17px; height: 17px; accent-color: var(--brand); }
+.perm-tbl .perm-name { font-weight: 500; }
+
+.perm-hint {
+  padding: 0 18px 12px; margin-top: -4px;
+  font-size: 12px; color: var(--muted-foreground);
+}
+
+/* Group headings. Twenty-five rows of tick boxes is unreadable; broken into
+   Till / Stock / Money it reads as a description of a job. */
+.perm-tbl tr.perm-group td {
+  padding: 13px 18px 6px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted-foreground); background: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+/* A cell that cannot be changed, and why it looks different from merely
+   unticked: a manager keeping their own Settings access, or the partner being
+   a separate company. Hovering gives the reason. */
+.perm-tbl td.pc.is-locked { position: relative; }
+.perm-tbl td.pc.is-locked input { opacity: .45; cursor: not-allowed; }
+.perm-tbl .lock-i {
+  position: absolute; top: 50%; inset-inline-end: 7px; transform: translateY(-50%);
+  font-size: 9px; opacity: .5; pointer-events: none;
+}
+
+/* The grid grows a column per role, so on a phone it scrolls sideways inside
+   .table-wrap rather than crushing every column to nothing. */
+@media (max-width: 900px) {
+  .perm-tbl { min-width: 560px; }
+}
 .set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(370px, 1fr)); gap: 14px; align-items: start; }
 .rule-row { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .rule-row:last-child { border-bottom: 0; }
