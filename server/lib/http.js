@@ -136,6 +136,33 @@ const TYPES = {
 /* Serve a file from `root`, or return false if there is nothing to serve.
    Returning false rather than 404-ing lets the caller fall through to the API
    router and decide what a miss means. */
+/* ---------------------------------------------------- what may be served
+
+   OG_STATIC is the PROJECT ROOT, because that is where index.html lives — and
+   `server/`, `.git/`, `docs/` and every build script live inside it too.
+   Serving that directory wholesale meant `GET /server/data/og.db` handed the
+   entire database — password hashes, live session tokens, every customer's
+   name and phone number — to anyone who asked, with no login. `/.git/config`
+   gave up the whole repository alongside it.
+
+   The traversal guard below was never the problem: nothing had to escape the
+   root, because everything worth stealing was already inside it.
+
+   So this is an allow-list, not a block-list. A block-list needs updating
+   every time somebody adds a folder, and the day it is forgotten is the day
+   the database is public again. Deny by default is the same rule the API
+   router already follows for endpoints. */
+const ALLOW_DIRS = new Set(['css', 'js', 'assets']);
+const ALLOW_FILES = new Set([
+  'index.html', 'sw.js', 'manifest.webmanifest', 'robots.txt', 'favicon.ico'
+]);
+
+function servable(rel) {
+  const parts = rel.split('/').filter(Boolean);
+  if (!parts.length) return false;
+  return parts.length === 1 ? ALLOW_FILES.has(parts[0]) : ALLOW_DIRS.has(parts[0]);
+}
+
 export function serveStatic(req, res, root, urlPath) {
   /* Path traversal guard. Decode first -- %2e%2e%2f is the same attack
      wearing a hat -- then normalise and confirm the result is still inside
@@ -151,6 +178,10 @@ export function serveStatic(req, res, root, urlPath) {
 
   const full = normalize(join(root, rel));
   if (full !== root && !full.startsWith(root + sep)) return false;
+
+  /* Checked on the NORMALISED path, not the raw request, so `/js/../server/…`
+     is judged by where it actually lands rather than by how it was spelled. */
+  if (!servable(full.slice(root.length).split(sep).join('/'))) return false;
 
   /* Test harnesses and the screenshot rig must never be reachable on a real
      server, the same rule the deploy build enforces. */

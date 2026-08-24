@@ -17,16 +17,29 @@
 
 /* ---------------------------------------------------------------- 1. CONFIG */
 
+/* MONEY IN THIS FILE IS THE NEW SYRIAN POUND.
+   The redenomination took two zeros off: 1 new pound = 100 old lira. Every
+   amount below, and every price in PRODUCT_SEED, was divided by 100 when the
+   shop moved over. A pair of Air Force 1s is 12,500 — if you ever find a
+   four-digit shoe reading 1,250,000, something has been pasted in from the
+   old currency and the whole report it lands in is wrong by 100x. */
 var CONFIG = {
-  EXCHANGE_RATE: 13000,        // 1 USD = 13,000 SYP   <-- edit this live
+  EXCHANGE_RATE: 130,        // 1 USD = 130 new pounds   <-- edit this live
   BASE_CURRENCY: 'SYP',
 
-  LOYALTY_POINTS_PER_1000: 1,  // 1 point for every 1,000 SYP spent
-  LOYALTY_POINT_VALUE: 50,     // 1 point redeems for 50 SYP (500 pts = 25,000)
+  /* Loyalty is deliberately expressed so the redenomination did NOT change
+     what a customer earns or what a point is worth. Before: 1 point per 1,000
+     old lira, each point worth 50 old lira. Now: 100 points per 1,000 new
+     pounds, each worth 0.5 — the same 5% back on the same real spend, and the
+     tiers below did not have to move. Change one of these two and you have
+     quietly repriced the loyalty scheme. */
+  LOYALTY_POINTS_PER_1000: 100,  // 100 points per 1,000 new pounds spent
+  LOYALTY_POINT_VALUE: 0.5,      // 1 point redeems for 0.5 (500 pts = 250)
 
-  /* Tier cut-offs, in points. Lifetime spend here runs 2M–20M SYP, which is
-     2,000–20,000 points, so the thresholds have to sit in that range or every
-     customer ends up Gold. */
+  /* Tier cut-offs, in POINTS, not money — which is why they survived the
+     redenomination untouched. Lifetime spend runs 20k–200k new pounds, and at
+     the rate above that is 2,000–20,000 points, so the thresholds still sit
+     in the right band. */
   TIER_SILVER: 6000,
   TIER_GOLD: 12000,
 
@@ -54,15 +67,25 @@ var CONFIG = {
      Bulk jobs (school shirts, cafe staff) are priced per job instead, because
      those include the garment. Change this one number and every kit line,
      every job payout and every partner invoice re-prices instantly. */
-  KIT_PRINT_PRICE: 18000,
+  KIT_PRINT_PRICE: 180,
 
   /* How long Yalla Wear gives OG to settle an invoice. Drives the ageing
      buckets on the partner finance page. */
   INVOICE_TERMS_DAYS: 30,
 
-  SHOP_NAME: 'OG System',
+  /* What gets printed on a receipt a customer walks out with, so it has to be
+     the name on the door — "Og Sports" on the Google listing — not the name of
+     the software. SHOP_SYSTEM stays for the app's own chrome. */
+  SHOP_NAME: 'OG Sports',
+  SHOP_SYSTEM: 'OG System',
   SHOP_TAGLINE: 'Sneakers & Streetwear',
-  SHOP_ADDRESS: 'Al-Hamra St, Damascus — 0956 442 118',
+
+  /* PLACEHOLDER — the shop is in Aleppo (36.2119287, 37.1550757), but the
+     street line below has not been confirmed by the owner yet. Do not print
+     receipts for customers until this is the real address. */
+  SHOP_ADDRESS: 'Aleppo, Syria — 0956 442 118',
+  SHOP_ADDRESS_AR: 'حلب، سوريا — 0956 442 118',
+  SHOP_MAP: 'https://maps.app.goo.gl/vjYnWGFQFWXBm7r7A',
   PRINT_PARTNER: 'Yalla Wear'
 };
 
@@ -107,30 +130,30 @@ var TYPE_LABELS = {
 
 /* name, type, brand, madeIn, colour block, colourway, cost, price, shelf zone, hidden */
 var PRODUCT_SEED = [
-  ["Nike Air Force 1 '07",      'sneakers', 'Nike',        'Vietnam',   '#5B5B66', 'Triple White',   780000,  1250000, 'A', false],
-  ['Nike Air Max 90',           'sneakers', 'Nike',        'Vietnam',   '#3E5C8A', 'Infrared',       860000,  1390000, 'A', false],
-  ['Nike Dunk Low Panda',       'sneakers', 'Nike',        'China',     '#4A4A52', 'Black / White',  910000,  1490000, 'A', false],
-  ['Adidas Samba OG',           'sneakers', 'Adidas',      'Indonesia', '#6B5B45', 'Core Black',     720000,  1180000, 'A', false],
-  ['Adidas Campus 00s',         'sneakers', 'Adidas',      'Indonesia', '#6455A0', 'Dark Green',     690000,  1120000, 'A', false],
-  ['New Balance 550',           'sneakers', 'New Balance', 'Vietnam',   '#7E8B99', 'White / Green',  830000,  1340000, 'B', false],
-  ['Converse Chuck 70 Hi',      'sneakers', 'Converse',    'Vietnam',   '#8E3B3B', 'Egret',          540000,   890000, 'B', false],
-  ['Timberland 6" Premium',     'boots',    'Timberland',  'Dominican', '#B5822F', 'Wheat Nubuck',  1320000,  2050000, 'C', false],
-  ['Dr. Martens 1460',          'boots',    'Dr. Martens', 'Thailand',  '#7A2B28', 'Cherry Red',    1180000,  1850000, 'C', false],
-  ['CAT Colorado Boot',         'boots',    'Caterpillar', 'Vietnam',   '#8A6E3A', 'Honey Reset',    940000,  1480000, 'C', false],
-  ['OG Heavyweight Tee',        'tshirts',  'OG',          'Syria',     '#4A4A52', 'Washed Black',   105000,   225000, 'D', false],
-  ['OG Box Logo Tee',           'tshirts',  'OG',          'Syria',     '#A8946E', 'Sand',           112000,   245000, 'D', false],
-  ['Stussy Basic Tee',          'tshirts',  'Stussy',      'Turkey',    '#3A5478', 'Navy',           148000,   295000, 'D', false],
-  ['Carhartt WIP Pocket Tee',   'tshirts',  'Carhartt',    'Turkey',    '#8A7658', 'Hamilton Brown', 160000,   320000, 'D', false],
-  ['Nike Sportswear Club Tee',  'tshirts',  'Nike',        'Egypt',     '#A33636', 'University Red',  95000,   198000, 'D', true ],
-  ["Levi's 501 Original",       'jeans',    "Levi's",      'Egypt',     '#4A6A8F', 'Mid Stone',      340000,   620000, 'E', false],
-  ["Levi's 511 Slim",           'jeans',    "Levi's",      'Egypt',     '#35496B', 'Rinse Dark',     325000,   595000, 'E', false],
-  ['OG Baggy Denim',            'jeans',    'OG',          'Syria',     '#6E8299', 'Light Wash',     235000,   445000, 'E', false],
-  ['Real Madrid Home 24/25',    'jerseys',  'Adidas',      'Thailand',  '#9CA3AF', 'White / Gold',   215000,   420000, 'F', false],
-  ['Barcelona Away 24/25',      'jerseys',  'Nike',        'Thailand',  '#C9A227', 'Yellow',         205000,   405000, 'F', false],
-  ['Al-Ittihad Home 24/25',     'jerseys',  'Nike',        'Thailand',  '#2F5744', 'Black / Yellow', 168000,   345000, 'F', true ],
-  ['Crocs Classic Clog',        'crocs',    'Crocs',       'China',     '#3E7A9E', 'Bijou Blue',     245000,   430000, 'G', false],
-  ['OG Oxford Shirt',           'shirts',   'OG',          'Syria',     '#7E92A3', 'Powder Blue',    186000,   349000, 'H', true ],
-  ['OG Denim Jacket',           'jackets',  'OG',          'Syria',     '#5A748C', 'Stone Wash',     418000,   785000, 'B', false]
+  ["Nike Air Force 1 '07",      'sneakers', 'Nike',        'Vietnam',   '#5B5B66', 'Triple White',   7800,  12500, 'A', false],
+  ['Nike Air Max 90',           'sneakers', 'Nike',        'Vietnam',   '#3E5C8A', 'Infrared',       8600,  13900, 'A', false],
+  ['Nike Dunk Low Panda',       'sneakers', 'Nike',        'China',     '#4A4A52', 'Black / White',  9100,  14900, 'A', false],
+  ['Adidas Samba OG',           'sneakers', 'Adidas',      'Indonesia', '#6B5B45', 'Core Black',     7200,  11800, 'A', false],
+  ['Adidas Campus 00s',         'sneakers', 'Adidas',      'Indonesia', '#6455A0', 'Dark Green',     6900,  11200, 'A', false],
+  ['New Balance 550',           'sneakers', 'New Balance', 'Vietnam',   '#7E8B99', 'White / Green',  8300,  13400, 'B', false],
+  ['Converse Chuck 70 Hi',      'sneakers', 'Converse',    'Vietnam',   '#8E3B3B', 'Egret',          5400,   8900, 'B', false],
+  ['Timberland 6" Premium',     'boots',    'Timberland',  'Dominican', '#B5822F', 'Wheat Nubuck',  13200,  20500, 'C', false],
+  ['Dr. Martens 1460',          'boots',    'Dr. Martens', 'Thailand',  '#7A2B28', 'Cherry Red',    11800,  18500, 'C', false],
+  ['CAT Colorado Boot',         'boots',    'Caterpillar', 'Vietnam',   '#8A6E3A', 'Honey Reset',    9400,  14800, 'C', false],
+  ['OG Heavyweight Tee',        'tshirts',  'OG',          'Syria',     '#4A4A52', 'Washed Black',   1050,   2250, 'D', false],
+  ['OG Box Logo Tee',           'tshirts',  'OG',          'Syria',     '#A8946E', 'Sand',           1120,   2450, 'D', false],
+  ['Stussy Basic Tee',          'tshirts',  'Stussy',      'Turkey',    '#3A5478', 'Navy',           1480,   2950, 'D', false],
+  ['Carhartt WIP Pocket Tee',   'tshirts',  'Carhartt',    'Turkey',    '#8A7658', 'Hamilton Brown', 1600,   3200, 'D', false],
+  ['Nike Sportswear Club Tee',  'tshirts',  'Nike',        'Egypt',     '#A33636', 'University Red',  950,   1980, 'D', true ],
+  ["Levi's 501 Original",       'jeans',    "Levi's",      'Egypt',     '#4A6A8F', 'Mid Stone',      3400,   6200, 'E', false],
+  ["Levi's 511 Slim",           'jeans',    "Levi's",      'Egypt',     '#35496B', 'Rinse Dark',     3250,   5950, 'E', false],
+  ['OG Baggy Denim',            'jeans',    'OG',          'Syria',     '#6E8299', 'Light Wash',     2350,   4450, 'E', false],
+  ['Real Madrid Home 24/25',    'jerseys',  'Adidas',      'Thailand',  '#9CA3AF', 'White / Gold',   2150,   4200, 'F', false],
+  ['Barcelona Away 24/25',      'jerseys',  'Nike',        'Thailand',  '#C9A227', 'Yellow',         2050,   4050, 'F', false],
+  ['Al-Ittihad Home 24/25',     'jerseys',  'Nike',        'Thailand',  '#2F5744', 'Black / Yellow', 1680,   3450, 'F', true ],
+  ['Crocs Classic Clog',        'crocs',    'Crocs',       'China',     '#3E7A9E', 'Bijou Blue',     2450,   4300, 'G', false],
+  ['OG Oxford Shirt',           'shirts',   'OG',          'Syria',     '#7E92A3', 'Powder Blue',    1860,   3490, 'H', true ],
+  ['OG Denim Jacket',           'jackets',  'OG',          'Syria',     '#5A748C', 'Stone Wash',     4180,   7850, 'B', false]
 ];
 
 var products = PRODUCT_SEED.map(function (p, i) {
@@ -298,22 +321,22 @@ var customers = CUSTOMER_SEED.map(function (c, i) {
 });
 
 var suppliers = [
-  { id: 1, name: 'Karam Trading',      contact: '+963 944 210 337', category: 'Sneakers import', outstanding: 41500000, dueDate: daysAhead(3),  lastPayment: daysAgo(26), totalPurchased: 318000000 },
-  { id: 2, name: 'Yalla Wear',         contact: '+963 932 887 190', category: 'Printing partner', outstanding:  6250000, dueDate: daysAhead(11), lastPayment: daysAgo(9),  totalPurchased:  38400000 },
-  { id: 3, name: 'Al-Sham Textiles',   contact: '+963 955 104 662', category: 'T-shirts & blanks', outstanding: 12800000, dueDate: daysAhead(18), lastPayment: daysAgo(14), totalPurchased:  96700000 },
-  { id: 4, name: 'Damascus Denim Co.', contact: '+963 988 512 043', category: 'Jeans',            outstanding:        0, dueDate: daysAhead(30), lastPayment: daysAgo(4),  totalPurchased:  74200000 },
-  { id: 5, name: 'Sport Line Import',  contact: '+963 941 663 528', category: 'Jerseys',          outstanding:  9400000, dueDate: daysAgo(2),   lastPayment: daysAgo(41), totalPurchased:  52900000 },
-  { id: 6, name: 'Nour Leather',       contact: '+963 966 337 815', category: 'Boots',            outstanding: 23100000, dueDate: daysAhead(7),  lastPayment: daysAgo(19), totalPurchased: 141500000 }
+  { id: 1, name: 'Karam Trading',      contact: '+963 944 210 337', category: 'Sneakers import', outstanding: 415000, dueDate: daysAhead(3),  lastPayment: daysAgo(26), totalPurchased: 3180000 },
+  { id: 2, name: 'Yalla Wear',         contact: '+963 932 887 190', category: 'Printing partner', outstanding:  62500, dueDate: daysAhead(11), lastPayment: daysAgo(9),  totalPurchased:  384000 },
+  { id: 3, name: 'Al-Sham Textiles',   contact: '+963 955 104 662', category: 'T-shirts & blanks', outstanding: 128000, dueDate: daysAhead(18), lastPayment: daysAgo(14), totalPurchased:  967000 },
+  { id: 4, name: 'Damascus Denim Co.', contact: '+963 988 512 043', category: 'Jeans',            outstanding:        0, dueDate: daysAhead(30), lastPayment: daysAgo(4),  totalPurchased:  742000 },
+  { id: 5, name: 'Sport Line Import',  contact: '+963 941 663 528', category: 'Jerseys',          outstanding:  94000, dueDate: daysAgo(2),   lastPayment: daysAgo(41), totalPurchased:  529000 },
+  { id: 6, name: 'Nour Leather',       contact: '+963 966 337 815', category: 'Boots',            outstanding: 231000, dueDate: daysAhead(7),  lastPayment: daysAgo(19), totalPurchased: 1415000 }
 ];
 
 var employees = [
-  { id: 1, name: 'Hussam Fattal',  role: 'Manager',        salary: 9500000, nextPayment: daysAhead(6),  since: '2021-03-01', sales: 0, phone: '+963 933 118 204' },
-  { id: 2, name: 'Lubna Kayali',   role: 'Cashier',        salary: 5200000, nextPayment: daysAhead(6),  since: '2022-08-15', sales: 0, phone: '+963 991 447 610' },
-  { id: 3, name: 'Rawad Sheikh',   role: 'Cashier',        salary: 4900000, nextPayment: daysAhead(6),  since: '2023-01-09', sales: 0, phone: '+963 944 902 155' },
-  { id: 4, name: 'Maher Odeh',     role: 'Warehouse',      salary: 5600000, nextPayment: daysAhead(6),  since: '2020-11-20', sales: 0, phone: '+963 955 613 728' },
-  { id: 5, name: 'Sirine Bakri',   role: 'Warehouse',      salary: 5100000, nextPayment: daysAhead(6),  since: '2023-06-02', sales: 0, phone: '+963 932 550 461' },
-  { id: 6, name: 'Talal Mroue',    role: 'Delivery',       salary: 4400000, nextPayment: daysAhead(13), since: '2024-02-11', sales: 0, phone: '+963 987 226 903' },
-  { id: 7, name: 'Ghaith Sallum',  role: 'Social / Online', salary: 6100000, nextPayment: daysAhead(6), since: '2022-04-27', sales: 0, phone: '+963 941 809 372' }
+  { id: 1, name: 'Hussam Fattal',  role: 'Manager',        salary: 95000, nextPayment: daysAhead(6),  since: '2021-03-01', sales: 0, phone: '+963 933 118 204' },
+  { id: 2, name: 'Lubna Kayali',   role: 'Cashier',        salary: 52000, nextPayment: daysAhead(6),  since: '2022-08-15', sales: 0, phone: '+963 991 447 610' },
+  { id: 3, name: 'Rawad Sheikh',   role: 'Cashier',        salary: 49000, nextPayment: daysAhead(6),  since: '2023-01-09', sales: 0, phone: '+963 944 902 155' },
+  { id: 4, name: 'Maher Odeh',     role: 'Warehouse',      salary: 56000, nextPayment: daysAhead(6),  since: '2020-11-20', sales: 0, phone: '+963 955 613 728' },
+  { id: 5, name: 'Sirine Bakri',   role: 'Warehouse',      salary: 51000, nextPayment: daysAhead(6),  since: '2023-06-02', sales: 0, phone: '+963 932 550 461' },
+  { id: 6, name: 'Talal Mroue',    role: 'Delivery',       salary: 44000, nextPayment: daysAhead(13), since: '2024-02-11', sales: 0, phone: '+963 987 226 903' },
+  { id: 7, name: 'Ghaith Sallum',  role: 'Social / Online', salary: 61000, nextPayment: daysAhead(6), since: '2022-04-27', sales: 0, phone: '+963 941 809 372' }
 ];
 
 var CASHIERS = ['Lubna Kayali', 'Rawad Sheikh', 'Hussam Fattal'];
@@ -540,21 +563,21 @@ var KIT_LINES = {
    so a line can never disagree with its job's totals. Only `price` — what OG
    charges the customer — is authored here, because that is OG's margin call. */
 var printJobs = [
-  { id: 'P-1030', customer: 'Ligue Sport Club',phone: '+963 933 552 001', design: 'Kit batch — 16 shirts, mixed clubs',   kind: 'kit',  qty: 16, priority: 'normal', deadline: daysAgo(90), stage: 'done',     price:  640000, created: daysAgo(96) },
-  { id: 'P-1032', customer: 'Malki Sports',    phone: '+963 944 330 812', design: 'Kit batch — 14 shirts, mixed clubs',   kind: 'kit',  qty: 14, priority: 'normal', deadline: daysAgo(68), stage: 'done',     price:  560000, created: daysAgo(74) },
-  { id: 'P-1034', customer: 'Hamra Fan Store', phone: '+963 991 774 265', design: 'Kit batch — 7 shirts, mixed clubs',    kind: 'kit',  qty:  7, priority: 'normal', deadline: daysAgo(56), stage: 'done',     price:  280000, created: daysAgo(62) },
-  { id: 'P-1036', customer: 'Rana Mansour',   phone: '+963 933 447 210', design: 'Kit batch — 12 shirts, mixed clubs',   kind: 'kit',  qty: 12, priority: 'normal', deadline: daysAgo(6),  stage: 'done',     price:  480000, created: daysAgo(20) },
-  { id: 'P-1037', customer: 'Al-Nour School', phone: '+963 944 118 663', design: 'Graduation shirts, white on navy',                   qty: 45, priority: 'normal', deadline: daysAgo(3),  stage: 'done',     price: 3825000, cost: 1912500, created: daysAgo(24) },
-  { id: 'P-1038', customer: 'Karim Deeb',     phone: '+963 991 220 574', design: 'Kit batch — 6 shirts, Real / Syria / Inter', kind: 'kit', qty: 6, priority: 'normal', deadline: daysAgo(1), stage: 'done',  price:  245000, created: daysAgo(15) },
-  { id: 'P-1039', customer: 'Fadi Barakat',   phone: '+963 955 761 038', design: 'Full back — Damascus skyline, 3 colour',            qty: 20, priority: 'normal', deadline: daysAhead(4), stage: 'delivery', price: 2100000, cost: 1050000, created: daysAgo(12) },
-  { id: 'P-1040', customer: 'Sara Kurdi',     phone: '+963 932 604 917', design: 'Kit batch — 4 shirts, names confirmed', kind: 'kit', qty: 4, priority: 'normal', deadline: daysAhead(6), stage: 'printing', price:  165000, created: daysAgo(9)  },
-  { id: 'P-1041', customer: 'Bilal Ammar',    phone: '+963 987 335 402', design: 'Sleeve print both arms, gold foil',                 qty: 15, priority: 'urgent', deadline: daysAhead(2), stage: 'printing', price: 1875000, cost:  900000, created: daysAgo(7)  },
-  { id: 'P-1042', customer: 'Maya Shaheen',   phone: '+963 941 552 286', design: 'Oversized front — "NO SLEEP" arabic',               qty:  8, priority: 'normal', deadline: daysAhead(9), stage: 'sent',     price:  760000, cost:  368000, created: daysAgo(5)  },
-  { id: 'P-1043', customer: 'Ahmad Al-Khatib',phone: '+963 933 118 204', design: 'Syria team kit — numbers 1 to 18',     kind: 'kit',  qty: 18, priority: 'urgent', deadline: daysAgo(2),  stage: 'sent',     price:  760000, created: daysAgo(16) },
-  { id: 'P-1044', customer: 'Ziad Sabbagh',   phone: '+963 966 810 447', design: 'Cafe staff shirts, embroidered',                    qty: 10, priority: 'normal', deadline: daysAgo(1),  stage: 'sent',     price: 1250000, cost:  620000, created: daysAgo(13) },
-  { id: 'P-1045', customer: 'Yara Malki',     phone: '+963 944 273 159', design: 'Couple set, front text arabic script',              qty:  2, priority: 'normal', deadline: daysAhead(5), stage: 'design',   price:  210000, cost:   96000, created: daysAgo(2)  },
-  { id: 'P-1046', customer: 'Tarek Jaber',    phone: '+963 955 336 720', design: 'Gym brand — 2 designs, 3 sizes',                    qty: 30, priority: 'urgent', deadline: daysAhead(3), stage: 'design',   price: 3300000, cost: 1620000, created: daysAgo(1)  },
-  { id: 'P-1047', customer: 'Nada Sultan',    phone: '+963 932 447 881', design: 'Kit batch — 5 shirts, 2 names pending', kind: 'kit', qty: 5, priority: 'normal', deadline: daysAhead(8), stage: 'design',  price:  215000, created: TODAY       }
+  { id: 'P-1030', customer: 'Ligue Sport Club',phone: '+963 933 552 001', design: 'Kit batch — 16 shirts, mixed clubs',   kind: 'kit',  qty: 16, priority: 'normal', deadline: daysAgo(90), stage: 'done',     price:  6400, created: daysAgo(96) },
+  { id: 'P-1032', customer: 'Malki Sports',    phone: '+963 944 330 812', design: 'Kit batch — 14 shirts, mixed clubs',   kind: 'kit',  qty: 14, priority: 'normal', deadline: daysAgo(68), stage: 'done',     price:  5600, created: daysAgo(74) },
+  { id: 'P-1034', customer: 'Hamra Fan Store', phone: '+963 991 774 265', design: 'Kit batch — 7 shirts, mixed clubs',    kind: 'kit',  qty:  7, priority: 'normal', deadline: daysAgo(56), stage: 'done',     price:  2800, created: daysAgo(62) },
+  { id: 'P-1036', customer: 'Rana Mansour',   phone: '+963 933 447 210', design: 'Kit batch — 12 shirts, mixed clubs',   kind: 'kit',  qty: 12, priority: 'normal', deadline: daysAgo(6),  stage: 'done',     price:  4800, created: daysAgo(20) },
+  { id: 'P-1037', customer: 'Al-Nour School', phone: '+963 944 118 663', design: 'Graduation shirts, white on navy',                   qty: 45, priority: 'normal', deadline: daysAgo(3),  stage: 'done',     price: 38250, cost: 19125, created: daysAgo(24) },
+  { id: 'P-1038', customer: 'Karim Deeb',     phone: '+963 991 220 574', design: 'Kit batch — 6 shirts, Real / Syria / Inter', kind: 'kit', qty: 6, priority: 'normal', deadline: daysAgo(1), stage: 'done',  price:  2450, created: daysAgo(15) },
+  { id: 'P-1039', customer: 'Fadi Barakat',   phone: '+963 955 761 038', design: 'Full back — Damascus skyline, 3 colour',            qty: 20, priority: 'normal', deadline: daysAhead(4), stage: 'delivery', price: 21000, cost: 10500, created: daysAgo(12) },
+  { id: 'P-1040', customer: 'Sara Kurdi',     phone: '+963 932 604 917', design: 'Kit batch — 4 shirts, names confirmed', kind: 'kit', qty: 4, priority: 'normal', deadline: daysAhead(6), stage: 'printing', price:  1650, created: daysAgo(9)  },
+  { id: 'P-1041', customer: 'Bilal Ammar',    phone: '+963 987 335 402', design: 'Sleeve print both arms, gold foil',                 qty: 15, priority: 'urgent', deadline: daysAhead(2), stage: 'printing', price: 18750, cost:  9000, created: daysAgo(7)  },
+  { id: 'P-1042', customer: 'Maya Shaheen',   phone: '+963 941 552 286', design: 'Oversized front — "NO SLEEP" arabic',               qty:  8, priority: 'normal', deadline: daysAhead(9), stage: 'sent',     price:  7600, cost:  3680, created: daysAgo(5)  },
+  { id: 'P-1043', customer: 'Ahmad Al-Khatib',phone: '+963 933 118 204', design: 'Syria team kit — numbers 1 to 18',     kind: 'kit',  qty: 18, priority: 'urgent', deadline: daysAgo(2),  stage: 'sent',     price:  7600, created: daysAgo(16) },
+  { id: 'P-1044', customer: 'Ziad Sabbagh',   phone: '+963 966 810 447', design: 'Cafe staff shirts, embroidered',                    qty: 10, priority: 'normal', deadline: daysAgo(1),  stage: 'sent',     price: 12500, cost:  6200, created: daysAgo(13) },
+  { id: 'P-1045', customer: 'Yara Malki',     phone: '+963 944 273 159', design: 'Couple set, front text arabic script',              qty:  2, priority: 'normal', deadline: daysAhead(5), stage: 'design',   price:  2100, cost:   960, created: daysAgo(2)  },
+  { id: 'P-1046', customer: 'Tarek Jaber',    phone: '+963 955 336 720', design: 'Gym brand — 2 designs, 3 sizes',                    qty: 30, priority: 'urgent', deadline: daysAhead(3), stage: 'design',   price: 33000, cost: 16200, created: daysAgo(1)  },
+  { id: 'P-1047', customer: 'Nada Sultan',    phone: '+963 932 447 881', design: 'Kit batch — 5 shirts, 2 names pending', kind: 'kit', qty: 5, priority: 'normal', deadline: daysAhead(8), stage: 'design',  price:  2150, created: TODAY       }
 ];
 
 /* Split an order across tee sizes on a realistic curve. Shared by the seed
@@ -718,8 +741,8 @@ var stockMovements = [];
 /* ----------------------------------------------------------------- 7. MISC */
 
 var storeOrders = [
-  { id: 'ORD-4412', name: 'Joud Attar',   phone: '+963 933 662 108', city: 'Damascus', items: 'OG Heavyweight Tee — L ×1', total: 225000,  payment: 'cod',  status: 'pending', date: daysAgo(0) },
-  { id: 'ORD-4411', name: 'Rami Daoud',   phone: '+963 944 771 355', city: 'Aleppo',   items: 'Adidas Samba OG — 43 ×1',   total: 1180000, payment: 'sham', status: 'confirmed', date: daysAgo(1) }
+  { id: 'ORD-4412', name: 'Joud Attar',   phone: '+963 933 662 108', city: 'Damascus', items: 'OG Heavyweight Tee — L ×1', total: 2250,  payment: 'cod',  status: 'pending', date: daysAgo(0) },
+  { id: 'ORD-4411', name: 'Rami Daoud',   phone: '+963 944 771 355', city: 'Aleppo',   items: 'Adidas Samba OG — 43 ×1',   total: 11800, payment: 'sham', status: 'confirmed', date: daysAgo(1) }
 ];
 
 /* Every WhatsApp message the shop has sent, newest first. wa.me hands off to
@@ -763,13 +786,13 @@ var debtPayments = [];
      screen, and one deliberately short — a perfect till is not a demo. */
   shifts.push({
     id: 'SH-0001', user: 'Lubna Kayali',
-    openedAt: daysAgo(2), closedAt: daysAgo(2), float: 200000,
-    counted: 3965000, expected: 3980000, diff: -15000, closed: true
+    openedAt: daysAgo(2), closedAt: daysAgo(2), float: 2000,
+    counted: 39650, expected: 39800, diff: -150, closed: true
   });
   shifts.push({
     id: 'SH-0002', user: 'Rawad Sheikh',
-    openedAt: daysAgo(1), closedAt: daysAgo(1), float: 200000,
-    counted: 2870000, expected: 2870000, diff: 0, closed: true
+    openedAt: daysAgo(1), closedAt: daysAgo(1), float: 2000,
+    counted: 28700, expected: 28700, diff: 0, closed: true
   });
 
   var notes = {
@@ -777,8 +800,8 @@ var debtPayments = [];
     transport: 'Delivery to Aleppo', packaging: 'Bags and boxes',
     supplier: 'Part payment to Karam Trading', other: 'Cleaning'
   };
-  var amounts = { rent: 3200000, generator: 480000, salaries: 900000,
-                  transport: 260000, packaging: 175000, supplier: 4100000, other: 90000 };
+  var amounts = { rent: 32000, generator: 4800, salaries: 9000,
+                  transport: 2600, packaging: 1750, supplier: 41000, other: 900 };
 
   EXPENSE_CATEGORIES.forEach(function (cat, i) {
     expenses.push({
@@ -789,9 +812,9 @@ var debtPayments = [];
   });
   /* A couple more inside the current month so the profit figure has teeth. */
   expenses.push({ id: 'EX-0008', at: daysAgo(4), category: 'generator',
-                  amount: 520000, method: 'cash', note: 'Generator diesel', shiftId: null });
+                  amount: 5200, method: 'cash', note: 'Generator diesel', shiftId: null });
   expenses.push({ id: 'EX-0009', at: daysAgo(6), category: 'transport',
-                  amount: 190000, method: 'cash', note: 'Courier', shiftId: null });
+                  amount: 1900, method: 'cash', note: 'Courier', shiftId: null });
 
   /* Turn a handful of recent sales into debts, so the debt book is populated
      and ageing is visible on day one. */
@@ -849,11 +872,11 @@ function refsFor(jobId) {
 var partnerInvoices = [
   { id: 'YW-2026-011', issued: daysAgo(88), due: daysAgo(58), refs: refsFor('P-1030'),
     note: 'All kits printed · payment on delivery.',
-    payments: [{ at: daysAgo(76), amount: 288000, method: 'cash' }] },
+    payments: [{ at: daysAgo(76), amount: 2880, method: 'cash' }] },
 
   { id: 'YW-2026-012', issued: daysAgo(66), due: daysAgo(36), refs: refsFor('P-1032'),
     note: 'All kits printed · names confirmed before production.',
-    payments: [{ at: daysAgo(55), amount: 252000, method: 'sham' }] },
+    payments: [{ at: daysAgo(55), amount: 2520, method: 'sham' }] },
 
   /* Left unpaid on purpose and long past its terms — the partner finance page
      needs something genuinely overdue or the ageing table is decoration. */
@@ -862,7 +885,7 @@ var partnerInvoices = [
 
   { id: 'YW-2026-014', issued: daysAgo(6), due: daysAhead(24), refs: refsFor('P-1037'),
     note: 'Graduation order, 45 shirts · part payment received.',
-    payments: [{ at: daysAgo(5), amount: 1000000, method: 'cash' }] }
+    payments: [{ at: daysAgo(5), amount: 10000, method: 'cash' }] }
 ];
 
 /* ---- the two-way line between OG and Yalla Wear ---------------------------

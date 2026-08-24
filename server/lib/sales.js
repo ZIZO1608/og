@@ -25,8 +25,18 @@
    original invoice back instead of selling the shoe twice.
    ========================================================================== */
 
+import { randomBytes } from 'node:crypto';
 import { get, nowIso, tx, logChange } from './db.js';
 import * as Stock from './stock.js';
+
+/* The address the printed QR points at.
+
+   128 bits from the OS CSPRNG, and deliberately NOT derived from the invoice
+   number — anything computable from `INV-2101` is `INV-2101` with extra steps,
+   and lets one scanned receipt unlock every other one. */
+function publicToken() {
+  return randomBytes(16).toString('hex');
+}
 
 /* ------------------------------------------------------------------- money */
 
@@ -188,14 +198,17 @@ export function record({
       ? d.prepare('SELECT id, name FROM customers WHERE id = ?').get(customerId)
       : null;
 
+    const token = publicToken();
+
     d.prepare(
       `INSERT INTO sales
          (id, at, customer_id, customer_name, cashier_id, wh_id, payment,
-          currency, subtotal, discount, total, fx_rate, fx_base, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          currency, subtotal, discount, total, fx_rate, fx_base, created_at,
+          public_token)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(saleId, at, cust ? cust.id : null, cust ? cust.name : null,
           userId ?? null, whId, payment || 'cash',
-          settle, subtotal, disc, total, rate, base, at);
+          settle, subtotal, disc, total, rate, base, at, token);
 
     const insLine = d.prepare(
       `INSERT INTO sale_items
@@ -238,7 +251,10 @@ export function record({
       payment: payment || 'cash',
       pointsEarned: earned,
       items: priced,
-      note: note ?? null
+      note: note ?? null,
+      /* The till needs this to draw the QR on the receipt it is about to
+         print. It is not a secret from the person who just made the sale. */
+      publicToken: token
     };
 
     if (opId) {

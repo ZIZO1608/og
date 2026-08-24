@@ -28,8 +28,8 @@ var POS = (function () {
     print: { on: false, text: '', qty: 1, priority: 'normal', deadline: null }
   };
 
-  var PRINT_UNIT_PRICE = 95000;   // charged to the customer, per piece
-  var PRINT_UNIT_COST  = 46000;   // paid to Yalla Wear, per piece
+  var PRINT_UNIT_PRICE = 950;     // charged to the customer, per piece (new pound)
+  var PRINT_UNIT_COST  = 460;     // paid to Yalla Wear, per piece (new pound)
 
   function isoAhead(n) {
     var d = daysAhead(n);

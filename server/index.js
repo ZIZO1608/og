@@ -25,6 +25,7 @@ import * as Cat from './lib/catalogue.js';
 import * as Stock from './lib/stock.js';
 import * as Sales from './lib/sales.js';
 import * as Deliveries from './lib/deliveries.js';
+import * as Receipt from './lib/receipt.js';
 import {
   readJson, sendOk, sendError, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
@@ -588,6 +589,39 @@ export function createApp() {
         }
 
         return await hit.handler({ req, res, url, params: hit.params, user, token });
+      }
+
+      /* --- a customer's own receipt ---------------------------------------
+         Deliberately not under /api/ and deliberately not behind the session
+         check: this is the QR on a paper receipt, opened by a stranger on a
+         phone, possibly years later. It returns HTML, not JSON, and it has to
+         be intercepted here — the static fallback below hands index.html to
+         any extensionless path, so /i/<token> would otherwise silently serve
+         the whole signed-in app to the public.
+
+         The token is the only credential, so it is the only thing checked:
+         32 hex characters, matched exactly, no lookup by invoice number.
+
+         The whole /i/ prefix is claimed, not just well-formed tokens. A
+         mistyped code has to answer "receipt not found" — if only the valid
+         shape were caught, /i/INV-2101 would fall through to the static
+         handler below and hand a customer the shop's login screen. */
+      if (path.startsWith('/i/') && (req.method === 'GET' || req.method === 'HEAD')) {
+        const inv = /^\/i\/([0-9a-f]{32})$/.exec(path);
+        const sale = inv ? Receipt.byToken(inv[1]) : null;
+        const body = sale ? Receipt.render(sale) : Receipt.notFound();
+        res.writeHead(sale ? 200 : 404, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Length': Buffer.byteLength(body),
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
+          'Referrer-Policy': 'no-referrer',
+          /* A receipt is personal and must not sit in a shared cache, and it
+             is not something a search engine should keep a copy of. */
+          'Cache-Control': 'private, no-store',
+          'X-Robots-Tag': 'noindex, nofollow'
+        });
+        return res.end(req.method === 'HEAD' ? undefined : body);
       }
 
       /* --- the app itself -------------------------------------------------- */

@@ -3060,9 +3060,9 @@ function whAddTab() {
          price is worse than a missing one: it quietly poisons every margin
          and profit figure the manager reads afterwards. */
       (seesCost()
-        ? '<label class="field"><span>' + t('cost_price') + '</span><input class="inp num" id="whCost" type="number" value="105000" data-change="wh-recalc"></label>'
+        ? '<label class="field"><span>' + t('cost_price') + '</span><input class="inp num" id="whCost" type="number" value="1050" data-change="wh-recalc"></label>'
         : '') +
-      '<label class="field"><span>' + t('selling_price') + '</span><input class="inp num" id="whPrice" type="number" value="225000" data-change="wh-recalc"></label>' +
+      '<label class="field"><span>' + t('selling_price') + '</span><input class="inp num" id="whPrice" type="number" value="2250" data-change="wh-recalc"></label>' +
     '</div>' +
     (seesCost() ? '' :
       '<div class="partner-note">' + t('wh_cost_later') + '</div>') +
@@ -3089,8 +3089,8 @@ function whAddTab() {
 
   /* -- live preview -- */
   var priceEl = document.getElementById('whPrice');
-  var price = Number(priceEl && priceEl.value) || 225000;
-  cost = cost || 105000;
+  var price = Number(priceEl && priceEl.value) || 2250;
+  cost = cost || 1050;
   totalCost = totalPieces * cost;
   totalRev = totalPieces * price;
 
@@ -3284,7 +3284,7 @@ function labelRows() {
     var nameEl = document.getElementById('whName');
     var priceEl = document.getElementById('whPrice');
     var nm = (nameEl && nameEl.value) || OG.wh.name || 'OG Heavyweight Tee';
-    var pr = Number(priceEl && priceEl.value) || 225000;
+    var pr = Number(priceEl && priceEl.value) || 2250;
     sizes.forEach(function (s, i) {
       var q = Number(OG.wh.sizes[s] || 0);
       if (!q) return;
