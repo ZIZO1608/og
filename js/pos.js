@@ -285,7 +285,7 @@ var POS = (function () {
   function payGridHtml() {
     var h = '<span class="lbl">' + t('payment_method') + '</span><div class="pay-grid" id="payGrid">';
     DB.paymentMethods.forEach(function (m) {
-      h += '<button class="' + (S.payment === m ? 'on' : '') + '" data-pos="pay" data-m="' + m + '">' + DB.paymentLabels[m] + '</button>';
+      h += '<button class="' + (S.payment === m ? 'on' : '') + '" data-pos="pay" data-m="' + m + '">' + DB.payLabel(m) + '</button>';
     });
     return h + '</div>' + deliveryBoxHtml();
   }

@@ -1314,7 +1314,7 @@ function ordersExportSpec() {
               { label: t('city') }, { label: t('items'), width: 34 }, { label: t('payment') },
               { label: t('status') }, { label: exCol(t('total')), num: true }],
     rows: DB.storeOrders.map(function (o) {
-      return [o.id, o.name, o.phone, o.city, o.items, DB.paymentLabels[o.payment], t(o.status), exMoney(o.total)];
+      return [o.id, o.name, o.phone, o.city, o.items, DB.payLabel(o.payment), t(o.status), exMoney(o.total)];
     }),
     totals: [t('total'), null, null, null, null, null, null,
              exMoney(DB.storeOrders.reduce(function (a, o) { return a + o.total; }, 0))]
@@ -1332,7 +1332,7 @@ function salesExportSpec() {
     rows: sales.map(function (s) {
       return [s.id, fmtDate(s.date), s.customerName,
               s.items.reduce(function (a, i) { return a + i.qty; }, 0),
-              DB.paymentLabels[s.payment], exMoney(s.total)];
+              DB.payLabel(s.payment), exMoney(s.total)];
     }),
     totals: [t('total'), null, null, null, null,
              exMoney(sales.reduce(function (a, s) { return a + s.total; }, 0))]
@@ -1440,11 +1440,11 @@ function posExportSpec() {
   today.forEach(function (s) { byPay[s.payment] = (byPay[s.payment] || 0) + s.total; });
 
   var rows = today.map(function (s) {
-    return [s.id, fmtDateTime(s.date), s.customerName, DB.paymentLabels[s.payment],
+    return [s.id, fmtDateTime(s.date), s.customerName, DB.payLabel(s.payment),
             s.items.reduce(function (a, i) { return a + i.qty; }, 0), exMoney(s.total)];
   });
   Object.keys(byPay).forEach(function (k) {
-    rows.push(['— ' + t('payment'), DB.paymentLabels[k], '', '', null, exMoney(byPay[k])]);
+    rows.push(['— ' + t('payment'), DB.payLabel(k), '', '', null, exMoney(byPay[k])]);
   });
 
   var total = today.reduce(function (a, s) { return a + s.total; }, 0);
@@ -1537,7 +1537,7 @@ function customerStatementSpec(cid) {
               { label: t('points'), num: true }],
     rows: invoices.map(function (s) {
       return [s.id, fmtDate(s.date), s.items.reduce(function (a, i) { return a + i.qty; }, 0),
-              DB.paymentLabels[s.payment], exMoney(s.total),
+              DB.payLabel(s.payment), exMoney(s.total),
               Math.round(s.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000)];
     }),
     totals: [t('total'), null, null, null, exMoney(c.totalSpent), c.loyaltyPoints],
@@ -2205,7 +2205,7 @@ function viewDashboard() {
       '<td><b>' + s.id + '</b></td>' +
       '<td>' + esc(s.customerName) + '</td>' +
       '<td class="muted">' + s.items.length + ' × ' + esc(s.items[0].name.slice(0, 22)) + (s.items.length > 1 ? '…' : '') + '</td>' +
-      '<td><span class="badge neutral">' + DB.paymentLabels[s.payment] + '</span></td>' +
+      '<td><span class="badge neutral">' + DB.payLabel(s.payment) + '</span></td>' +
       '<td class="num muted">' + fmtDate(s.date) + '</td>' +
       '<td class="num"><b>' + money(s.total) + '</b></td></tr>';
   });
@@ -4662,7 +4662,7 @@ function ordersList() {
       '<span class="cc-av" style="width:30px;height:30px;font-size:11px">' + esc(o.name[0]) + '</span>' +
       '<div style="flex:1;min-width:0"><b>' + esc(o.name) + ' <span class="muted num">· ' + o.id + '</span></b>' +
         '<small>' + esc(o.items) + '</small>' +
-        '<small>' + esc(o.city) + ' · ' + DB.paymentLabels[o.payment] + ' · ' + relDate(o.date) + '</small></div>' +
+        '<small>' + esc(o.city) + ' · ' + DB.payLabel(o.payment) + ' · ' + relDate(o.date) + '</small></div>' +
       '<div class="money">' + money(o.total) +
         '<div>' + (o.status === 'pending'
           ? '<button class="btn btn-sm btn-primary" data-act="order-confirm" data-i="' + i + '">' + t('confirm') + '</button>'
@@ -4745,7 +4745,7 @@ function storeScreen() {
       '</select></label>' +
     '</div>' +
     '<label class="field"><span>' + t('payment_method') + '</span><select class="inp" id="stPay">' +
-      DB.paymentMethods.map(function (m) { return '<option value="' + m + '">' + DB.paymentLabels[m] + '</option>'; }).join('') +
+      DB.paymentMethods.map(function (m) { return '<option value="' + m + '">' + DB.payLabel(m) + '</option>'; }).join('') +
     '</select></label>' +
     '<div class="st-line" style="border:0;font-size:15px"><b>' + t('total') + '</b>' +
       '<span class="money strong-num" style="font-size:17px">' + money(cartTotal) + '</span></div>' +
@@ -5085,7 +5085,7 @@ function invoiceHtml(sale) {
     '<div class="inv-top"><div class="inv-logo"><div class="brand-mark"><img src="assets/logo.svg" alt="OG"></div>' +
       '<div><b>OG SYSTEM</b><small>' + CONFIG.SHOP_TAGLINE + '</small></div></div>' +
       '<div class="inv-meta"><b>' + sale.id + '</b><br>' + fmtDateTime(sale.date) + '<br>' +
-      DB.paymentLabels[sale.payment] + '</div></div>' +
+      DB.payLabel(sale.payment) + '</div></div>' +
 
     '<div class="inv-parties">' +
       '<div><div class="lbl">' + t('bill_to') + '</div><b>' + esc(cust ? cust.name : t('walk_in')) + '</b>' +
@@ -5115,7 +5115,7 @@ function invoiceHtml(sale) {
         '</span><span>− ' + money(sale.discount) + '</span></div>' : '') +
       (sale.pointsUsed ? '<div class="tr"><span>' + t('loyalty') + ' (' + sale.pointsUsed + ' ' + t('points') + ')</span>' +
         '<span>− ' + money(sale.pointsUsed * CONFIG.LOYALTY_POINT_VALUE) + '</span></div>' : '') +
-      '<div class="tr"><span>' + t('payment_method') + '</span><span>' + DB.paymentLabels[sale.payment] + '</span></div>' +
+      '<div class="tr"><span>' + t('payment_method') + '</span><span>' + DB.payLabel(sale.payment) + '</span></div>' +
       '<div class="tr grand"><span>' + t('total') + '</span><span>' + money(sale.total) + '</span></div>' +
       (OG.currency === 'SYP' ? '<div class="tr" style="color:#666;font-size:11px"><span></span><span>≈ $' +
         nf(sale.total / CONFIG.EXCHANGE_RATE) + '</span></div>' : '') +
@@ -5214,6 +5214,20 @@ function receiptQr(sale) {
   };
 }
 
+/* A money figure with no currency suffix.
+
+   70mm does not fit "Size 42  1 × 12,500 SYP" and "12,500 SYP" on one line —
+   they collide, and the collision only shows up on the longest item in the
+   basket, which is exactly the one nobody tests with. Every receipt in every
+   shop solves this the same way: bare numbers down the item list, the currency
+   named once on the total. The dollar sign stays because it is one character
+   and it sits in front, where its absence would change the meaning. */
+function moneyBare(v) {
+  return OG.currency === 'USD'
+    ? '$' + nf((Number(v) || 0) / CONFIG.EXCHANGE_RATE)
+    : nf(v);
+}
+
 function receiptHtml(sale) {
   var cust = sale.customerId ? DB.customer(sale.customerId) : null;
   var earned = Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
@@ -5225,77 +5239,85 @@ function receiptHtml(sale) {
   var h = '<div class="receipt" dir="' + (ar ? 'rtl' : 'ltr') + '">';
 
   /* ---- head ---- */
-  h += '<div class="rc-head">' +
-    '<div class="rc-mark"><img src="assets/logo.svg" alt=""></div>' +
-    '<div class="rc-shop">' + esc(CONFIG.SHOP_NAME.toUpperCase()) + '</div>' +
-    '<div class="rc-tag">' + esc(CONFIG.SHOP_TAGLINE) + '</div>' +
-    '<div class="rc-tag">' + esc(addr) + '</div>' +
+  h += '<div class="rcp-head">' +
+    '<div class="rcp-mark"><img src="assets/logo.svg" alt=""></div>' +
+    '<div class="rcp-shop">' + esc(CONFIG.SHOP_NAME.toUpperCase()) + '</div>' +
+    '<div class="rcp-tag">' + esc(CONFIG.SHOP_TAGLINE) + '</div>' +
+    '<div class="rcp-tag">' + esc(addr) + '</div>' +
   '</div>';
 
-  h += '<div class="rc-rule"></div>';
+  h += '<div class="rcp-rule"></div>';
 
   /* ---- who, when ---- */
-  h += '<div class="rc-meta">' +
+  h += '<div class="rcp-meta">' +
     '<div><span>' + t('invoice') + '</span><b>' + esc(sale.id) + '</b></div>' +
     '<div><span>' + t('date') + '</span><b>' + fmtDateTime(sale.date) + '</b></div>' +
     '<div><span>' + t('served_by') + '</span><b>' + esc(String(sale.cashier || '').split(' ')[0]) + '</b></div>' +
     (cust ? '<div><span>' + t('customer') + '</span><b>' + esc(cust.name) + '</b></div>' : '') +
   '</div>';
 
-  h += '<div class="rc-rule"></div>';
+  h += '<div class="rcp-rule"></div>';
 
   /* ---- the goods ----
      Name on its own line, then size / qty / money on the next. Two lines per
      item rather than one cramped row: at 70mm a product name and three
      numbers on the same line means the name gets four characters. */
-  h += '<table class="rc-items">';
-  sale.items.forEach(function (it) {
-    h += '<tr class="rc-name"><td colspan="2">' + esc(it.name) + '</td></tr>' +
-      '<tr class="rc-line">' +
-        '<td>' + (it.size ? t('size') + ' ' + esc(it.size) + '  ' : '') +
-          it.qty + ' × ' + money(it.unitPrice) + '</td>' +
-        '<td class="rc-amt">' + money(it.qty * it.unitPrice) + '</td>' +
-      '</tr>';
-  });
-  h += '</table>';
+  /* Flex rows, not a table.
 
-  h += '<div class="rc-rule"></div>';
+     A table looked right and measured wrong: the full-width `colspan="2"`
+     product-name row feeds its width back into BOTH columns, so the money
+     column kept a share of the name's length and the amounts floated 37mm
+     short of the paper edge. Every total on this receipt is already a flex
+     row and every one of them lands exactly on the edge, so the items use the
+     same thing rather than a second mechanism that has to be argued with. */
+  h += '<div class="rcp-items">';
+  sale.items.forEach(function (it) {
+    h += '<div class="rcp-name">' + esc(it.name) + '</div>' +
+      '<div class="rcp-line">' +
+        '<span>' + (it.size ? esc(it.size) + '  ·  ' : '') +
+          it.qty + ' × ' + moneyBare(it.unitPrice) + '</span>' +
+        '<span class="rcp-amt">' + moneyBare(it.qty * it.unitPrice) + '</span>' +
+      '</div>';
+  });
+  h += '</div>';
+
+  h += '<div class="rcp-rule"></div>';
 
   /* ---- the money ---- */
-  h += '<div class="rc-tot"><span>' + t('subtotal') + '</span><span>' + money(sale.subtotal) + '</span></div>';
+  h += '<div class="rcp-tot"><span>' + t('subtotal') + '</span><span>' + moneyBare(sale.subtotal) + '</span></div>';
   if (sale.discount) {
-    h += '<div class="rc-tot"><span>' + t('discount') + '</span><span>− ' + money(sale.discount) + '</span></div>';
+    h += '<div class="rcp-tot"><span>' + t('discount') + '</span><span>− ' + moneyBare(sale.discount) + '</span></div>';
   }
   if (sale.pointsUsed) {
-    h += '<div class="rc-tot"><span>' + t('loyalty') + '</span><span>− ' +
-         money(sale.pointsUsed * CONFIG.LOYALTY_POINT_VALUE) + '</span></div>';
+    h += '<div class="rcp-tot"><span>' + t('loyalty') + '</span><span>− ' +
+         moneyBare(sale.pointsUsed * CONFIG.LOYALTY_POINT_VALUE) + '</span></div>';
   }
-  h += '<div class="rc-tot"><span>' + t('payment_method') + '</span><span>' +
-       DB.paymentLabels[sale.payment] + '</span></div>';
+  h += '<div class="rcp-tot"><span>' + t('payment_method') + '</span><span>' +
+       DB.payLabel(sale.payment) + '</span></div>';
 
-  h += '<div class="rc-grand"><span>' + t('total') + '</span><span>' + money(sale.total) + '</span></div>';
+  h += '<div class="rcp-grand"><span>' + t('total') + '</span><span>' + money(sale.total) + '</span></div>';
 
   /* The dollar value at the rate of THIS sale. A receipt has to say the same
      thing in a year as it did on the day. */
   var rate = sale.fxRate || CONFIG.EXCHANGE_RATE;
-  h += '<div class="rc-usd">≈ $' + nf(sale.total / rate) + '  ·  1 $ = ' + nf(rate) + '</div>';
+  h += '<div class="rcp-usd">≈ $' + nf(sale.total / rate) + '  ·  1 $ = ' + nf(rate) + '</div>';
 
   if (cust) {
-    h += '<div class="rc-rule"></div>' +
-      '<div class="rc-tot"><span>' + t('points_earned') + '</span><span>+' + nf(earned) + '</span></div>' +
-      '<div class="rc-tot"><span>' + t('total') + ' ' + t('points') + '</span><span>' +
+    h += '<div class="rcp-rule"></div>' +
+      '<div class="rcp-tot"><span>' + t('points_earned') + '</span><span>+' + nf(earned) + '</span></div>' +
+      '<div class="rcp-tot"><span>' + t('total') + ' ' + t('points') + '</span><span>' +
         nf(cust.loyaltyPoints) + '</span></div>';
   }
 
   /* ---- the QR ---- */
-  h += '<div class="rc-qr">' + qr.svg +
-    (qr.link ? '<div class="rc-qr-cap">' + t('rc_scan') + '</div>' : '') +
+  h += '<div class="rcp-qr">' + qr.svg +
+    (qr.link ? '<div class="rcp-qr-cap">' + t('rc_scan') + '</div>' : '') +
   '</div>';
 
-  h += '<div class="rc-foot">' +
-    '<div class="rc-policy">' + t('rc_policy') + '</div>' +
+  h += '<div class="rcp-foot">' +
+    '<div class="rcp-policy">' + t('rc_policy') + '</div>' +
     '<div>' + t('thank_you') + ' · ' + esc(CONFIG.SHOP_NAME) + '</div>' +
-    '<div class="rc-tag">' + tel(CONFIG.SHOP_PHONE || '') + '</div>' +
+    '<div class="rcp-tag">' + tel(CONFIG.SHOP_PHONE || '') + '</div>' +
   '</div>';
 
   return h + '</div>';

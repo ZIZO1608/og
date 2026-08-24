@@ -107,7 +107,7 @@ var WA = (function () {
     lines.push('المبيعات: ' + money(d.total) + ' · ' + d.count + ' فاتورة · ' + d.pieces + ' قطعة');
 
     Object.keys(d.byPay).forEach(function (k) {
-      lines.push('• ' + (DB.paymentLabels[k] || k) + ': ' + money(d.byPay[k]));
+      lines.push('• ' + (DB.payLabel(k)) + ': ' + money(d.byPay[k]));
     });
 
     if (d.best) lines.push('\nالأكثر مبيعاً: ' + d.best + ' (' + d.bestQty + ')');

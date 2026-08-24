@@ -354,6 +354,16 @@ var PAYMENT_LABELS = {
   cod: 'Cash on delivery', credit: 'On credit'
 };
 
+/* These print on the customer's receipt, so they cannot stay English-only:
+   an Arabic receipt reading "طريقة الدفع … Cash" is the one word on the page
+   that says nobody finished the job. The transfer services keep their own
+   names — Sham Cash and Al-Haram are brands, and that is what the sign in
+   their window says. */
+var PAYMENT_LABELS_AR = {
+  cash: 'نقداً', sham: 'شام كاش', fuad: 'فؤاد', haram: 'الهرم', card: 'بطاقة',
+  cod: 'الدفع عند الاستلام', credit: 'على الحساب'
+};
+
 /* WHICH METHODS PUT PAPER IN THE DRAWER.
    This single list is the reason a shift close is worth anything. Sham Cash,
    Fuad and card all settle into an account, not the box under the counter —
@@ -959,6 +969,11 @@ var DB = {
   sizeSets: SIZE_SETS,
   typeLabels: TYPE_LABELS,
   paymentLabels: PAYMENT_LABELS,
+  paymentLabelsAr: PAYMENT_LABELS_AR,
+  /* One call site instead of every screen remembering to check the language. */
+  payLabel: function (k) {
+    return (OG.lang === 'ar' ? PAYMENT_LABELS_AR[k] : null) || PAYMENT_LABELS[k] || k;
+  },
   paymentMethods: PAYMENT_METHODS,
   printStages: PRINT_STAGES,
   printStageLabels: PRINT_STAGE_LABELS,

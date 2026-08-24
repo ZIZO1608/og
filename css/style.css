@@ -3202,62 +3202,71 @@ html.has-demo-banner .view { padding-bottom: 52px; }
 .receipt * { color: #000000 !important; }
 
 /* ---- head ---- */
-.rc-head { text-align: center; }
-.rc-mark { margin-bottom: 1.5mm; }
-/* The logo prints as a solid black mark. Any alpha or gradient would come out
-   as a grey rectangle, so it is forced to pure black by filter rather than
-   trusted to be binary already. */
-.rc-mark img {
-  width: 14mm; height: 14mm; object-fit: contain;
-  filter: grayscale(1) contrast(1000%) brightness(0);
+.rcp-head { text-align: center; }
+.rcp-mark { margin-bottom: 1.5mm; }
+/* The mark is a black square with white letters, so it is ALREADY the two
+   values a thermal head can print. It only needs forcing binary in case the
+   file ever gains an anti-aliased edge or a tint: grayscale collapses any
+   colour, and the extreme contrast pushes every mid-tone to one end.
+
+   brightness(0) was here and was wrong — it drove the white letters to black
+   too and printed a 14mm solid slab, which is both unreadable and a lot of
+   heat for a thermal head to put down on every single receipt. */
+.rcp-mark img {
+  width: 13mm; height: 13mm; object-fit: contain;
+  filter: grayscale(1) contrast(1000%);
 }
-.rc-shop {
+.rcp-shop {
   font-family: var(--font-head), "Helvetica Neue", Arial, sans-serif;
   font-weight: 800; font-size: 15pt; line-height: 1.1; letter-spacing: .06em;
 }
-.rc-tag { font-size: 8pt; line-height: 1.3; }
+.rcp-tag { font-size: 8pt; line-height: 1.3; }
 
 /* ---- separators ----
    A dashed rule at a real millimetre weight. A 1px border at 203dpi is either
    dropped entirely or smeared across two dots. */
-.rc-rule { border-top: .3mm dashed #000; margin: 2.5mm 0; }
+.rcp-rule { border-top: .3mm dashed #000; margin: 2.5mm 0; }
 
 /* ---- meta ---- */
-.rc-meta { font-size: 8.5pt; }
-.rc-meta div { display: flex; justify-content: space-between; gap: 3mm; padding: .3mm 0; }
-.rc-meta b { font-weight: 700; text-align: end; }
+.rcp-meta { font-size: 8.5pt; }
+.rcp-meta div { display: flex; justify-content: space-between; gap: 3mm; padding: .3mm 0; }
+.rcp-meta b { font-weight: 700; text-align: end; }
 
 /* ---- items ----
    Two lines each: the name gets the full width, then size, quantity and money
    underneath. One cramped row at 70mm leaves a product name about four
    characters of room. */
-.rc-items { width: 100%; border-collapse: collapse; }
-.rc-items td { padding: 0; vertical-align: top; }
-.rc-name td { font-weight: 700; font-size: 9.5pt; padding-top: 1.6mm; line-height: 1.25; }
-.rc-line td { font-size: 8.5pt; padding-bottom: .6mm; }
-.rc-amt { text-align: end; white-space: nowrap; font-weight: 700; }
+.rcp-items { width: 100%; }
+.rcp-name { font-weight: 700; font-size: 9.5pt; padding-top: 1.6mm; line-height: 1.25; }
+/* space-between pins the amount to the paper edge with no width arithmetic —
+   the same thing every totals row on this receipt already does. */
+.rcp-line {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 3mm; font-size: 8.5pt; padding-bottom: .6mm;
+}
+.rcp-amt { text-align: end; white-space: nowrap; font-weight: 700; }
 
 /* ---- totals ---- */
-.rc-tot { display: flex; justify-content: space-between; gap: 3mm; font-size: 9pt; padding: .4mm 0; }
-.rc-grand {
+.rcp-tot { display: flex; justify-content: space-between; gap: 3mm; font-size: 9pt; padding: .4mm 0; }
+.rcp-grand {
   display: flex; justify-content: space-between; gap: 3mm; align-items: baseline;
   font-family: var(--font-head), "Helvetica Neue", Arial, sans-serif;
   font-weight: 800; font-size: 15pt;
   border-top: .5mm solid #000; margin-top: 1.5mm; padding-top: 1.5mm;
 }
-.rc-usd { text-align: end; font-size: 8pt; padding-top: .5mm; }
+.rcp-usd { text-align: end; font-size: 8pt; padding-top: .5mm; }
 
 /* ---- QR ----
    crispEdges is not cosmetic. Anti-aliased module edges land on half-dots,
    the head fires or does not fire on a coin toss, and the code stops
    scanning — with nothing on screen to suggest why. */
-.rc-qr { text-align: center; margin: 3.5mm 0 2mm; }
-.rc-qr svg { shape-rendering: crispEdges; width: 22mm; height: 22mm; }
-.rc-qr-cap { font-size: 7.5pt; margin-top: .8mm; }
+.rcp-qr { text-align: center; margin: 3.5mm 0 2mm; }
+.rcp-qr svg { shape-rendering: crispEdges; width: 22mm; height: 22mm; }
+.rcp-qr-cap { font-size: 7.5pt; margin-top: .8mm; }
 
 /* ---- foot ---- */
-.rc-foot { text-align: center; font-size: 8pt; line-height: 1.4; }
-.rc-policy { font-weight: 700; margin-bottom: 1mm; }
+.rcp-foot { text-align: center; font-size: 8pt; line-height: 1.4; }
+.rcp-policy { font-weight: 700; margin-bottom: 1mm; }
 
 /* On screen the receipt is previewed on a dark page, so it needs a physical
    edge to read as paper. It gets one here and NOT in print. */
@@ -3276,5 +3285,5 @@ html.has-demo-banner .view { padding-bottom: 52px; }
   }
   /* A long receipt runs onto a second length of roll; an item must not be
      torn in half across the cut. */
-  .rc-name, .rc-line, .rc-grand, .rc-qr { break-inside: avoid; }
+  .rcp-name, .rcp-line, .rcp-grand, .rcp-qr { break-inside: avoid; }
 }

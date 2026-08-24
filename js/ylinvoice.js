@@ -541,7 +541,7 @@ var YLINV = (function () {
           '<label class="field mt"><span>' + t('payment_method') + '</span>' +
             '<select class="inp" id="yiPayMethod">' +
               Object.keys(DB.paymentLabels).map(function (k) {
-                return '<option value="' + k + '">' + esc(DB.paymentLabels[k]) + '</option>';
+                return '<option value="' + k + '">' + esc(DB.payLabel(k)) + '</option>';
               }).join('') + '</select></label>' +
           '<div style="display:flex;gap:8px;margin-top:10px">' +
             '<button class="btn btn-sm btn-ghost" data-yi="pay-part" data-id="' + inv.id +

@@ -93,7 +93,7 @@ var Money = (function () {
         var inDrawer = DB.drawerMethods.indexOf(m) > -1;
         h += '<div class="mn-method">' +
           '<span class="mm-dot' + (inDrawer ? ' in' : m === 'credit' ? ' owed' : '') + '"></span>' +
-          '<span class="mm-name">' + esc(DB.paymentLabels[m] || m) + '</span>' +
+          '<span class="mm-name">' + esc(DB.payLabel(m)) + '</span>' +
           '<span class="mm-tag">' + t(inDrawer ? 'mn_in_box' : m === 'credit' ? 'mn_owed' : 'mn_to_account') + '</span>' +
           '<span class="mm-amt">' + money(sum.byMethod[m]) + '</span>' +
         '</div>';
@@ -191,7 +191,7 @@ var Money = (function () {
       h += '<tr><td class="num muted">' + fmtDate(e.at) + '</td>' +
         '<td><span class="badge neutral">' + t('mn_c_' + e.category) + '</span></td>' +
         '<td class="muted">' + esc(e.note) + '</td>' +
-        '<td class="muted">' + esc(DB.paymentLabels[e.method] || e.method) + '</td>' +
+        '<td class="muted">' + esc(DB.payLabel(e.method)) + '</td>' +
         '<td class="num"><b>' + money(e.amount) + '</b></td></tr>';
     });
     h += '</tbody></table></div></div>';
@@ -352,7 +352,7 @@ var Money = (function () {
               '<label class="field mt"><span>' + t('payment') + '</span>' +
                 '<select class="inp" id="mnMethod">' +
                   ['cash', 'sham', 'fuad', 'card'].map(function (m) {
-                    return '<option value="' + m + '">' + esc(DB.paymentLabels[m]) + '</option>';
+                    return '<option value="' + m + '">' + esc(DB.payLabel(m)) + '</option>';
                   }).join('') + '</select></label>' +
               '<label class="field mt"><span>' + t('note') + '</span>' +
                 '<input class="inp" id="mnNote" type="text"></label>' +
@@ -394,7 +394,7 @@ var Money = (function () {
               '<label class="field mt"><span>' + t('payment') + '</span>' +
                 '<select class="inp" id="mnPayMethod">' +
                   ['cash', 'sham', 'fuad', 'card'].map(function (m) {
-                    return '<option value="' + m + '">' + esc(DB.paymentLabels[m]) + '</option>';
+                    return '<option value="' + m + '">' + esc(DB.payLabel(m)) + '</option>';
                   }).join('') + '</select></label>' +
               '<div class="partner-note mt">' + t('mn_settle_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
@@ -473,7 +473,7 @@ var Money = (function () {
                   { label: t('payment') }, { label: exCol(t('mn_amount')), num: true }],
         rows: DB.expenses.map(function (e) {
           return [fmtDate(e.at), t('mn_c_' + e.category), e.note,
-                  DB.paymentLabels[e.method] || e.method, exMoney(e.amount)];
+                  DB.payLabel(e.method), exMoney(e.amount)];
         }),
         totals: [t('total'), null, null, null,
                  exMoney(DB.expenses.reduce(function (a, e) { return a + e.amount; }, 0))],
