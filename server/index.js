@@ -24,6 +24,7 @@ import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
 import * as Stock from './lib/stock.js';
 import * as Sales from './lib/sales.js';
+import * as Deliveries from './lib/deliveries.js';
 import {
   readJson, sendOk, sendError, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
@@ -361,6 +362,8 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
       currency: b.currency,
       note: b.note,
       userId: ctx.user.id,
+      /* Read from the caller's role, never from the request. */
+      unlimitedDiscount: Auth.can(ctx.user, 'discount.unlimited'),
       /* The till generates this. On a retry after a dropped connection the
          same id comes back and returns the original invoice rather than
          selling everything a second time. */
@@ -372,6 +375,13 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
       return sendError(ctx.res, 409, 'insufficient_stock',
         `Only ${e.available} of ${e.sku} left — the other till may have just sold it.`,
         {});
+    }
+    /* 403, not 400: the sale is well-formed, the person is not allowed to
+       make it. The till tells them to fetch a manager rather than showing
+       them a validation error about their own basket. */
+    if (e.code === 'discount_too_big') {
+      return sendError(ctx.res, 403, 'discount_too_big', e.message,
+        { maxPct: e.maxPct, ceiling: e.ceiling });
     }
     sendError(ctx.res, 400, 'invalid', e.message);
   }
@@ -405,6 +415,69 @@ router.add('POST /api/sales/:id/void', requirePerm('void', async (ctx) => {
   }
 }));
 
+/* --- deliveries -------------------------------------------------------------
+   A driver is scoped to his own runs inside lib/deliveries.js, by role, not by
+   what the request asks for. These routes never take a driver id from the
+   caller for reading — there is no query parameter that widens the view. */
+
+router.add('GET /api/deliveries', requirePerm('delivery.read', (ctx) => {
+  sendOk(ctx.res, {
+    deliveries: Deliveries.list(ctx.user, {
+      status: ctx.url.searchParams.get('status') || null,
+      limit: Number(ctx.url.searchParams.get('limit')) || 100
+    }),
+    /* His own day when he is a driver, so the phone can show a running
+       count without a second request. */
+    day: ctx.user.role === 'delivery' ? Deliveries.driverDay(ctx.user.id) : null
+  });
+}));
+
+router.add('GET /api/deliveries/:id', requirePerm('delivery.read', (ctx) => {
+  const d = Deliveries.byId(Number(ctx.params.id), ctx.user);
+  /* Someone else's delivery answers exactly like one that does not exist. A
+     driver must not be able to learn that a delivery to that address happened
+     by telling a 403 from a 404. */
+  if (!d) return sendError(ctx.res, 404, 'not_found', 'No such delivery.');
+  sendOk(ctx.res, { delivery: d });
+}));
+
+router.add('POST /api/deliveries', requirePerm('delivery.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      delivery: Deliveries.assign({
+        saleId: b.saleId,
+        driverId: b.driverId ? Number(b.driverId) : null,
+        address: b.address,
+        phone: b.phone,
+        note: b.note,
+        byUserId: ctx.user.id,
+        opId: typeof b.opId === 'string' ? b.opId : null
+      })
+    });
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+router.add('PATCH /api/deliveries/:id', requirePerm('delivery.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      delivery: Deliveries.update(Number(ctx.params.id), {
+        status: b.status,
+        collected: b.collected,
+        reason: b.reason,
+        driverId: b.driverId === undefined ? undefined : (b.driverId ? Number(b.driverId) : null),
+        address: b.address,
+        phone: b.phone
+      }, ctx.user)
+    });
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
 /* --------------------------------------------------------------- middleware */
 
 /* Run a stock change, turning "not enough" into a 409 with the real numbers so
@@ -426,21 +499,35 @@ async function stockOp(ctx, fn) {
    The permission table already says a cashier cannot see cost. That promise is
    only real if the numbers never leave the server — hiding a column in the UI
    is not a boundary when the browser can read the response. */
+/* Every key that says what something cost us or what we made on it.
+
+   Listed by name rather than matched on a pattern, because a pattern that
+   catches `cost_price` also catches `costume` one day and silently deletes a
+   product field. The trade is that a NEW cost column has to be added here —
+   which is why the list is short, obvious, and sits next to the function that
+   uses it rather than three files away. */
+const COST_KEYS = [
+  'cost_price', 'costPrice',
+  'unit_cost', 'unitCost',
+  'profit', 'margin'
+];
+
+function stripCost(row) {
+  const out = { ...row };
+  for (const k of COST_KEYS) delete out[k];
+  return out;
+}
+
 function scrubCost(row, user) {
   if (Auth.can(user, 'cost.read')) return row;
 
-  const out = { ...row };
-  delete out.cost_price;
-  delete out.costPrice;
+  const out = stripCost(row);
 
-  if (Array.isArray(out.variants)) {
-    out.variants = out.variants.map(v => {
-      const c = { ...v };
-      delete c.cost_price;
-      delete c.costPrice;
-      return c;
-    });
-  }
+  /* A sale carries its cost in the lines, not the header, so scrubbing only
+     the top level would hand a cashier every unit_cost in the basket. */
+  if (Array.isArray(out.variants)) out.variants = out.variants.map(stripCost);
+  if (Array.isArray(out.items))    out.items    = out.items.map(stripCost);
+
   return out;
 }
 

@@ -68,10 +68,14 @@ export const ALL_PERMISSIONS = [
   { perm: 'customer.read',   group: 'customers', label: 'See customers' },
   { perm: 'customer.write',  group: 'customers', label: 'Add and edit customers' },
 
+  { perm: 'delivery.read',   group: 'delivery',  label: 'See deliveries' },
+  { perm: 'delivery.write',  group: 'delivery',  label: 'Send out and mark delivered' },
+
   { perm: 'cost.read',       group: 'money',     label: 'See what things cost' },
   { perm: 'profit.read',     group: 'money',     label: 'See profit' },
   { perm: 'money.read',      group: 'money',     label: 'See the money screen' },
   { perm: 'money.write',     group: 'money',     label: 'Record expenses and debts' },
+  { perm: 'discount.unlimited', group: 'money',  label: 'Discount past the limit' },
 
   { perm: 'print.read',      group: 'print',     label: 'See print jobs' },
   { perm: 'print.write',     group: 'print',     label: 'Create and change print jobs' },
@@ -100,12 +104,17 @@ const PINNED = { manager: ['config.write', 'staff.write'] };
 
 /* Yalla Wear is a different company. These can never be granted to them, no
    matter what the grid says. One mis-clicked box should not be able to hand a
-   supplier your customer list and your margins. */
+   supplier your customer list and your margins.
+
+   `delivery.*` is on the list for the same reason as `customer.*`, and it is
+   easy to miss why: a delivery row carries a customer's name, phone number and
+   home address. It is the most personal data in the system. */
 const FORBIDDEN = {
   partner: (p) =>
     p === 'customer.read' || p === 'customer.write' ||
     p === 'cost.read' || p === 'profit.read' ||
-    p.startsWith('money.') || p.startsWith('staff.')
+    p.startsWith('money.') || p.startsWith('staff.') ||
+    p.startsWith('delivery.') || p === 'discount.unlimited'
 };
 
 export function isPinned(role, perm) {

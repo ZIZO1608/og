@@ -65,6 +65,10 @@
 <script src="js/palette.js"></script><script src="js/whatsapp.js"></script><script src="js/notify.js"></script>
 <script src="js/ylinvoice.js"></script>
 <script src="js/yalla.js"></script>
+<!-- deliveries.js reads roleOf(), t() and toast() from app.js, but only ever
+     inside a function app.js calls — so it may load before it, and must,
+     because VIEWS in app.js names Deliveries at definition time. -->
+<script src="js/deliveries.js"></script>
 <script src="js/app.js"></script>
 <script>
 /* Service worker: only registers over http(s). On file:// this is a no-op,

@@ -62,7 +62,44 @@ var I18N = {
     perm_locked: 'Locked', perm_saved: 'Role updated', perm_refused: 'Some changes were refused',
     pg_till: 'Till', pg_stock: 'Stock', pg_products: 'Products',
     pg_customers: 'Customers', pg_money: 'Money', pg_print: 'Printing',
-    pg_admin: 'Management', pg_partner: 'Yalla Wear',
+    pg_admin: 'Management', pg_partner: 'Yalla Wear', pg_delivery: 'Deliveries',
+
+    /* --- the role home screens --- */
+    hi_morning: 'Good morning', hi_afternoon: 'Good afternoon', hi_evening: 'Good evening',
+    my_sales_today: 'My sales today', my_invoices: 'My invoices',
+    my_last_sales: 'My last sales', open_till: 'Open the till',
+    nothing_sold_yet: 'Nothing rung up yet today', first_sale_hint: 'Scan something to start',
+    low_on_shelf: 'Running out on the shelf', low_on_shelf_sub: 'ask the back for more',
+    shelf_all_good: 'The shelf is well stocked',
+    back_title: 'The back room', back_sub: 'What came in, what needs moving',
+    arrived_today: 'Arrived today', to_move_out: 'Waiting to go to the floor',
+    empty_on_floor: 'Empty sizes on the floor', open_orders: 'Orders on the way',
+    back_receive: 'Book something in', back_count: 'Start a count',
+    back_nothing: 'Nothing waiting', back_nothing_sub: 'the floor is stocked from the back',
+
+    /* --- deliveries --- */
+    nav_deliveries: 'Deliveries',
+    dl_title: 'Deliveries', dl_sub: 'What is going out and what came back',
+    dl_my_runs: 'My runs today', dl_my_runs_sub: 'tap a card when it is done',
+    dl_waiting: 'To take out', dl_out: 'On the road', dl_delivered: 'Delivered',
+    dl_failed: 'Not delivered', dl_to_collect: 'Collect', dl_collected: 'Collected',
+    dl_nothing_owed: 'Already paid', dl_call: 'Call', dl_map: 'Map',
+    dl_take: 'Take it out', dl_done: 'Delivered', dl_fail: 'Could not deliver',
+    dl_why: 'What happened?', dl_why_ph: 'nobody home, wrong address, refused…',
+    dl_none: 'Nothing to take out', dl_none_sub: 'you are all caught up',
+    dl_none_board: 'No deliveries yet',
+    dl_none_board_sub: 'send one out from a sale on the Till or Reports screen',
+    dl_driver: 'Driver', dl_unassigned: 'Nobody yet', dl_assign: 'Send out for delivery',
+    dl_address: 'Address', dl_address_ph: 'street, building, flat — enough to find the door',
+    dl_phone: 'Phone', dl_runs: 'Runs', dl_owed: 'To collect today',
+    dl_marked: 'Marked', dl_sent: 'Out for delivery',
+    dl_no_address: 'Type an address first', dl_pick_driver: 'Pick a driver',
+    retry: 'Try again', loading: 'Loading…',
+
+    /* --- discounts --- */
+    disc_capped: 'Discounts above {p}% need a manager',
+    disc_max: 'most you can take off: {v}',
+    wh_cost_later: 'A manager adds the cost price. Enter what the shop sells it for.',
 
     dash_title: 'Dashboard', dash_sub: 'Everything about the shop, on one screen',
     st_today: 'Sales today', st_month: 'Sales this month', st_products: 'Products',
@@ -408,7 +445,44 @@ var I18N = {
     perm_locked: 'مقفل', perm_saved: 'تم تحديث الدور', perm_refused: 'رُفضت بعض التغييرات',
     pg_till: 'الكاشير', pg_stock: 'المخزون', pg_products: 'المنتجات',
     pg_customers: 'الزبائن', pg_money: 'المال', pg_print: 'الطباعة',
-    pg_admin: 'الإدارة', pg_partner: 'يلا وير',
+    pg_admin: 'الإدارة', pg_partner: 'يلا وير', pg_delivery: 'التوصيل',
+
+    /* --- الشاشات الرئيسية حسب الدور --- */
+    hi_morning: 'صباح الخير', hi_afternoon: 'مساء الخير', hi_evening: 'مساء الخير',
+    my_sales_today: 'مبيعاتي اليوم', my_invoices: 'فواتيري',
+    my_last_sales: 'آخر مبيعاتي', open_till: 'افتح الكاشير',
+    nothing_sold_yet: 'لم تُسجَّل أي فاتورة اليوم', first_sale_hint: 'امسح باركود لتبدأ',
+    low_on_shelf: 'قارب على النفاد في المعرض', low_on_shelf_sub: 'اطلب من المستودع',
+    shelf_all_good: 'المعرض مجهّز بشكل جيد',
+    back_title: 'المستودع', back_sub: 'ما وصل وما يحتاج نقلاً',
+    arrived_today: 'وصل اليوم', to_move_out: 'بانتظار النقل إلى المعرض',
+    empty_on_floor: 'مقاسات فارغة في المعرض', open_orders: 'طلبيات في الطريق',
+    back_receive: 'إدخال بضاعة', back_count: 'ابدأ جرداً',
+    back_nothing: 'لا شيء بالانتظار', back_nothing_sub: 'المعرض مجهّز من المستودع',
+
+    /* --- التوصيل --- */
+    nav_deliveries: 'التوصيل',
+    dl_title: 'التوصيل', dl_sub: 'ما يخرج وما يعود',
+    dl_my_runs: 'توصيلاتي اليوم', dl_my_runs_sub: 'اضغط على البطاقة عند الانتهاء',
+    dl_waiting: 'للخروج', dl_out: 'في الطريق', dl_delivered: 'تم التسليم',
+    dl_failed: 'لم يُسلَّم', dl_to_collect: 'يُحصَّل', dl_collected: 'حُصِّل',
+    dl_nothing_owed: 'مدفوع مسبقاً', dl_call: 'اتصال', dl_map: 'الخريطة',
+    dl_take: 'خذها معك', dl_done: 'سُلِّمت', dl_fail: 'تعذّر التسليم',
+    dl_why: 'ماذا حصل؟', dl_why_ph: 'لا أحد في البيت، عنوان خاطئ، رفض الاستلام…',
+    dl_none: 'لا يوجد ما يُخرج', dl_none_sub: 'أنهيت كل شيء',
+    dl_none_board: 'لا توجد توصيلات بعد',
+    dl_none_board_sub: 'أرسل واحدة من فاتورة في الكاشير أو التقارير',
+    dl_driver: 'السائق', dl_unassigned: 'لم يُحدَّد', dl_assign: 'إرسال للتوصيل',
+    dl_address: 'العنوان', dl_address_ph: 'الشارع والبناء والطابق — ما يكفي للوصول للباب',
+    dl_phone: 'الهاتف', dl_runs: 'الرحلات', dl_owed: 'للتحصيل اليوم',
+    dl_marked: 'تم التحديث', dl_sent: 'خرجت للتوصيل',
+    dl_no_address: 'اكتب العنوان أولاً', dl_pick_driver: 'اختر السائق',
+    retry: 'حاول مرة أخرى', loading: 'جارٍ التحميل…',
+
+    /* --- الحسومات --- */
+    disc_capped: 'الحسم فوق {p}٪ يحتاج موافقة المدير',
+    disc_max: 'أقصى حسم ممكن: {v}',
+    wh_cost_later: 'المدير يضيف سعر التكلفة. اكتب سعر البيع فقط.',
 
     dash_title: 'لوحة التحكم', dash_sub: 'كل شيء عن المحل في شاشة واحدة',
     st_today: 'مبيعات اليوم', st_month: 'مبيعات هذا الشهر', st_products: 'المنتجات',
@@ -1081,24 +1155,44 @@ function reportExportSpec() {
   return s;
 }
 
+/* An export is the same data with a different lid on it. A column hidden on
+   screen and present in the spreadsheet is not protected — it is protected
+   from being glanced at, which is not a thing anyone needs. Both cost and
+   margin are gated here on exactly the permissions the table uses. */
 function productsExportSpec() {
   var rows = productRows();
+  var cost = seesCost(), profit = seesProfit();
+
+  var columns = [{ label: t('product'), width: 32 }, { label: t('brand') }, { label: t('type') },
+                 { label: t('stock'), num: true }];
+  if (cost) columns.push({ label: exCol(t('cost')), num: true });
+  columns.push({ label: exCol(t('price')), num: true });
+  if (profit) columns.push({ label: t('margin') });
+  columns.push({ label: t('health') }, { label: t('visible') });
+
+  var pieces = rows.reduce(function (a, r) { return a + r.qty; }, 0);
+
   return {
     name: 'products', sheet: 'Products', title: t('products_title'),
     docUrl: deepLink('report', 'inventory'),
     subtitle: rows.length + ' / ' + DB.products.length + ' · ' + fmtDate(TODAY),
-    columns: [{ label: t('product'), width: 32 }, { label: t('brand') }, { label: t('type') },
-              { label: t('stock'), num: true }, { label: exCol(t('cost')), num: true },
-              { label: exCol(t('price')), num: true }, { label: t('margin') },
-              { label: t('health') }, { label: t('visible') }],
+    columns: columns,
     rows: rows.map(function (r) {
-      return [r.p.name, r.p.brand, DB.typeLabels[r.type], r.qty, exMoney(r.cost), exMoney(r.price),
-              pct(r.margin, 0), t(r.health) + (DB.sizeGaps(r.p.id).length ? ' · ' + t('size_gap') : ''),
-              r.p.hidden ? t('no') : t('yes')];
+      var out = [r.p.name, r.p.brand, DB.typeLabels[r.type], r.qty];
+      if (cost) out.push(exMoney(r.cost));
+      out.push(exMoney(r.price));
+      if (profit) out.push(pct(r.margin, 0));
+      out.push(t(r.health) + (DB.sizeGaps(r.p.id).length ? ' · ' + t('size_gap') : ''),
+               r.p.hidden ? t('no') : t('yes'));
+      return out;
     }),
-    totals: [t('total'), null, null, rows.reduce(function (a, r) { return a + r.qty; }, 0), null, null, null, null, null],
+    /* One entry per column, or the totals row slides out of alignment with
+       its own header the moment a column is dropped. */
+    totals: columns.map(function (c, i) {
+      return i === 0 ? t('total') : (i === 3 ? pieces : null);
+    }),
     kpis: [{ label: t('st_products'), value: nf(DB.products.length) },
-           { label: t('total_pieces'), value: nf(rows.reduce(function (a, r) { return a + r.qty; }, 0)) },
+           { label: t('total_pieces'), value: nf(pieces) },
            { label: t('st_critical'), value: nf(DB.criticalVariants().length) }]
   };
 }
@@ -1469,7 +1563,11 @@ function jobSheetSpec(jid) {
 function currentExportSpec() {
   if (OG.print.partner) return YALLA.exportSpec();
   switch (OG.view) {
-    case 'dashboard':  return dashboardExportSpec();
+    /* The dashboard export is the whole shop on one sheet — six months of
+       revenue, best sellers, the lot. On a role home it would be a back door
+       to figures that screen deliberately does not show, so it is tied to the
+       same permission as the Reports screen it summarises. */
+    case 'dashboard':  return allow('report.read') ? dashboardExportSpec() : null;
     case 'money':      return Money.exportSpec();
     case 'pos':        return posExportSpec();
     case 'settings':   return settingsExportSpec();
@@ -1493,12 +1591,57 @@ function currentExportSpec() {
 
 /* -------------------------------------------------------------- 5. SHELL */
 
+/* ------------------------------------------------------------- 5a. WHO, WHAT
+
+   Three ways this app runs, and every permission question has to answer for
+   all of them:
+
+     signed in   — a real account with a real role. Ask the server's answer,
+                   which Auth cached at sign-in.
+     demo mode   — file://, GitHub Pages, serve.ps1. Nobody is signed in and
+                   nothing is saved. The demo exists to SHOW the whole system,
+                   so everything is permitted and no screen is trimmed.
+     no Auth     — _shot.html, which loads neither api.js nor auth.js and
+                   drives the Arabic proposal screenshots. Same answer as demo.
+
+   Getting this backwards is how the proposal PDF ends up full of empty
+   screens, so both fallbacks say yes rather than no. That is safe precisely
+   because neither case has any real data behind it. */
+
+function roleOf() {
+  if (typeof Auth === 'undefined' || Auth.demoMode()) return null;
+  var u = Auth.user();
+  return u ? u.role : null;
+}
+
+function allow(perm) {
+  if (typeof Auth === 'undefined' || Auth.demoMode()) return true;
+  return Auth.can(perm);
+}
+
+/* What things cost us, and what we make on them. Two separate permissions
+   because they are two separate secrets: a manager may reasonably want a
+   senior person to see margin without seeing supplier prices.
+
+   These exist as named functions rather than `allow('cost.read')` sprinkled
+   through the file because the failure mode is missing ONE call site, and a
+   named thing is greppable. */
+function seesCost()   { return allow('cost.read'); }
+function seesProfit() { return allow('profit.read'); }
+
+/* Yalla Wear does not get the shop. They get their portal and nothing else —
+   no sidebar, no search, no dashboard, no way to type their way out. Checked
+   against the role rather than a permission, because this is not a thing a
+   manager should be able to switch on by ticking a box. */
+function isPartnerAccount() { return roleOf() === 'partner'; }
+
 var NAV = [
   { id: 'dashboard',  key: 'nav_dashboard', group: 'main', icon: 'M3 12h4l2 6 4-13 2 7h6' },
   { id: 'pos',        key: 'nav_pos',       group: 'main', icon: 'M3 4h3l2 10h9l2-7H7M9 19a1 1 0 1 0 2 0 1 1 0 1 0-2 0m7 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0' },
   { id: 'products',   key: 'nav_products',  group: 'main', icon: 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10' },
   { id: 'warehouse',  key: 'nav_warehouse', group: 'main', icon: 'M3 20V9l9-5 9 5v11M7 20v-7h10v7' },
   { id: 'money',      key: 'nav_money',     group: 'main', icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4' },
+  { id: 'deliveries', key: 'nav_deliveries',group: 'ops',  icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
   { id: 'customers',  key: 'nav_customers', group: 'ops',  icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' },
   { id: 'print',      key: 'nav_print',     group: 'ops',  icon: 'M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z' },
   { id: 'reports',    key: 'nav_reports',   group: 'ops',  icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
@@ -1520,6 +1663,7 @@ var NAV_PERM = {
   products:   'product.read',
   warehouse:  'stock.read',
   money:      'money.read',
+  deliveries: 'delivery.read',
   customers:  'customer.read',
   print:      'print.read',
   reports:    'report.read',
@@ -1530,9 +1674,16 @@ var NAV_PERM = {
 /* In demo mode every screen shows — the demo is meant to display the whole
    system — and with no Auth at all (_shot.html) nothing is filtered either. */
 function navAllowed(id) {
-  if (typeof Auth === 'undefined' || Auth.demoMode()) return true;
+  /* The partner has no shop nav at all, including the dashboard that is
+     otherwise open to everyone. Their whole app is the portal. */
+  if (isPartnerAccount()) return false;
+
+  /* A driver's home screen already IS his runs, so a second menu entry to the
+     same list is just a way of making him wonder which one is the real one. */
+  if (id === 'deliveries' && roleOf() === 'delivery') return false;
+
   var need = NAV_PERM[id];
-  return !need || Auth.can(need);
+  return !need || allow(need);
 }
 
 function allowedNav() {
@@ -1611,7 +1762,7 @@ function renderSidebar() {
    Five is the ceiling — a sixth tab makes each one too narrow for a thumb, so
    the rest live behind More. */
 var TABS = ['dashboard', 'pos', 'products', 'print'];
-var MORE_ITEMS = ['warehouse', 'customers', 'reports', 'storefront', 'settings'];
+var MORE_ITEMS = ['warehouse', 'deliveries', 'customers', 'reports', 'storefront', 'settings'];
 
 function renderTabbar() {
   var host = document.getElementById('tabbar');
@@ -1669,8 +1820,13 @@ function openMoreSheet() {
       '<button data-act="curr" data-val="SYP" class="' + (OG.currency === 'SYP' ? 'on' : '') + '">SYP</button>' +
       '<button data-act="curr" data-val="USD" class="' + (OG.currency === 'USD' ? 'on' : '') + '">USD</button>' +
     '</div></div>' +
-    '<div class="more-row"><span>' + t('partner_view') + '</span>' +
-      '<button class="btn btn-sm btn-dark" data-act="partner-view">' + CONFIG.PRINT_PARTNER + ' →</button></div>' +
+    /* Previewing the partner's portal is a manager's tool for checking what
+       the other company can see. Anyone without partner.read has no business
+       in there, and Yalla Wear are already in it. */
+    (allow('partner.read')
+      ? '<div class="more-row"><span>' + t('partner_view') + '</span>' +
+        '<button class="btn btn-sm btn-dark" data-act="partner-view">' + CONFIG.PRINT_PARTNER + ' →</button></div>'
+      : '') +
   '</div>';
 
   /* The account block lives here too, and this is not a duplicate for
@@ -1829,13 +1985,24 @@ function runSearch(q) {
   q = (q || '').trim().toLowerCase();
   if (q.length < 2) { box.innerHTML = ''; return; }
 
-  var prods = DB.products.filter(function (p) {
+  /* One search box that reaches three tables, so it needs all three
+     permissions asked separately. This is the easiest place in the app to
+     leak a customer's phone number to someone who cannot open the Customers
+     screen — the box is on every page and it does not look like a screen. */
+  var prods = !allow('product.read') ? [] : DB.products.filter(function (p) {
     return p.name.toLowerCase().indexOf(q) > -1 || p.brand.toLowerCase().indexOf(q) > -1;
   }).slice(0, 5);
-  var custs = DB.customers.filter(function (c) {
+
+  var custs = !allow('customer.read') ? [] : DB.customers.filter(function (c) {
     return c.name.toLowerCase().indexOf(q) > -1 || c.phone.replace(/\s/g, '').indexOf(q) > -1;
   }).slice(0, 4);
-  var invs = DB.sales.filter(function (s) { return s.id.toLowerCase().indexOf(q) > -1; }).slice(0, 3);
+
+  /* `sell` and not `report.read`: a cashier has to be able to pull up the
+     invoice she wrote ten minutes ago to take a refund against it. Gating
+     this on Reports would break the refund she is allowed to give. */
+  var invs = !(allow('sell') || allow('report.read')) ? [] : DB.sales.filter(function (s) {
+    return s.id.toLowerCase().indexOf(q) > -1;
+  }).slice(0, 3);
 
   var h = '';
   if (prods.length) {
@@ -2059,18 +2226,225 @@ function afterDashboard() {
     { horizontal: true, highlight: 0, fmt: function (v) { return nf(v); } });
 }
 
+/* ------------------------------------------------------- 7b. HOME, PER ROLE
+
+   The dashboard above is a manager's dashboard: today's takings, six months of
+   revenue, best sellers, margin. It was the landing screen for all five roles,
+   which meant a cashier signed in to the shop's money and a driver signed in
+   to a bar chart he cannot act on.
+
+   Each of these is the first thing one person sees in the morning, and each is
+   built around the first thing that person actually does. They are deliberately
+   short: a home screen you have to read is a home screen you stop reading.
+
+   All three use the markup the rest of the app already uses — `stat`, `card`,
+   `alert-row`, `tbl` — so they inherit spacing, dark mode, RTL and the
+   entrance animation without a single new rule. */
+
+function greeting() {
+  var hr = new Date().getHours();
+  return hr < 12 ? t('hi_morning') : hr < 17 ? t('hi_afternoon') : t('hi_evening');
+}
+
+/* The same day boundary the dashboard's "Sales today" uses, via the same
+   daysAgo() the seeded data is built around. Rolling our own midnight here
+   would give two screens two different answers for the same word. */
+function isToday(d) {
+  var x = new Date(d);
+  return x >= daysAgo(0) && x < daysAgo(-1);
+}
+
+/* First name only. "Good morning, Hussam" reads like a person talking;
+   "Good morning, Hussam Fattal" reads like a bank letter. */
+function firstName() {
+  var u = (typeof Auth !== 'undefined') ? Auth.user() : null;
+  return u && u.name ? String(u.name).trim().split(/\s+/)[0] : '';
+}
+
+function roleHomeHead(title, sub) {
+  var who = firstName();
+  return '<div class="page-head"><div><h1>' +
+    (who ? greeting() + ', ' + esc(who) : title) + '</h1>' +
+    '<div class="sub">' + sub + ' · ' + fmtDate(TODAY) + '</div></div></div>';
+}
+
+/* ---- cashier ---------------------------------------------------------------
+   Her shift, not the shop. No revenue total, no month, no charts, no profit —
+   the till, what she has done today, and what is running out where she can
+   see it. */
+function viewShiftHome() {
+  var me = firstName();
+  var mine = DB.sales.filter(function (s) {
+    /* Matched on the first name so it still works when the account name and
+       the staff record disagree on a middle name or a spelling. */
+    return isToday(s.date) &&
+           String(s.cashier || '').indexOf(me) === 0;
+  });
+  var taken = mine.reduce(function (a, s) { return a + s.total; }, 0);
+
+  var h = roleHomeHead(t('nav_pos'), t('my_sales_today'));
+
+  h += '<div class="grid stat-row">' +
+    '<div class="stat"><span class="eyebrow">' + t('my_sales_today') + '</span>' +
+      '<div class="val accent">' + moneyStat(taken) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('my_invoices') + '</span>' +
+      '<div class="val">' + nf(mine.length) + '</div>' +
+      '<div class="foot">' + fmtDate(TODAY) + '</div></div>' +
+  '</div>';
+
+  h += ifNav('pos', '<div class="home-cta mt">' +
+    '<button class="btn btn-primary btn-lg" data-act="nav" data-view="pos">' +
+      t('open_till') + ' →</button></div>');
+
+  /* -- what she has rung up -- */
+  h += '<div class="card mt"><div class="card-head"><h3>' + t('my_last_sales') + '</h3></div>';
+  if (!mine.length) {
+    h += '<div class="cart-empty"><b>' + t('nothing_sold_yet') + '</b>' + t('first_sale_hint') + '</div>';
+  } else {
+    h += '<div class="table-wrap"><table class="tbl"><thead><tr>' +
+      '<th>' + t('invoice') + '</th><th>' + t('customer') + '</th>' +
+      '<th>' + t('items') + '</th><th class="num">' + t('total') + '</th>' +
+    '</tr></thead><tbody>';
+    mine.slice(0, 6).forEach(function (s) {
+      h += '<tr class="clickable" data-act="open-invoice" data-id="' + s.id + '">' +
+        '<td><b>' + s.id + '</b></td>' +
+        '<td>' + esc(s.customerName) + '</td>' +
+        '<td class="muted">' + s.items.length + ' × ' + esc(s.items[0].name.slice(0, 20)) +
+          (s.items.length > 1 ? '…' : '') + '</td>' +
+        '<td class="num"><b>' + money(s.total) + '</b></td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  h += '</div>';
+
+  /* -- what she will be asked for and cannot find --
+     Only what is short ON THE FLOOR. A cashier does not care that the back is
+     low; she cares that the customer in front of her wants a 42 and the wall
+     is empty. */
+  var gaps = DB.floorOuts().slice(0, 6);
+  h += '<div class="card mt"><div class="card-head"><h3>' + t('low_on_shelf') + '</h3>' +
+    '<div class="card-actions"><span class="badge ' + (gaps.length ? 'critical' : 'healthy') + '">' +
+      gaps.length + '</span></div></div>';
+  if (!gaps.length) {
+    h += '<div class="cart-empty"><b>' + t('shelf_all_good') + '</b></div>';
+  } else {
+    gaps.forEach(function (g) {
+      var p = DB.product(g.productId);
+      h += '<div class="alert-row">' +
+        '<span class="alert-ico amber">!</span>' +
+        '<span class="alert-txt"><b>' + esc(p ? p.name : g.sku) + '</b>' +
+          '<small>' + t('size') + ' ' + esc(g.size) + ' · ' + t('low_on_shelf_sub') + '</small></span>' +
+      '</div>';
+    });
+  }
+  h += '</div>';
+
+  return h;
+}
+
+/* ---- warehouse -------------------------------------------------------------
+   The back room. Four counts, two buttons, and the list of things that need
+   carrying to the front. Not one money figure: he has neither money.read nor
+   cost.read, and a stock keeper does not need either to do his job well. */
+function viewBackHome() {
+  var arrived = DB.stockMovements.filter(function (m) {
+    return m.delta > 0 && isToday(m.date);
+  });
+  var arrivedPieces = arrived.reduce(function (a, m) { return a + m.delta; }, 0);
+  var toMove = DB.floorOuts();
+  var openPOs = DB.purchaseOrders.filter(function (p) { return p.status !== 'received'; });
+  var empties = DB.variants.filter(function (v) { return DB.stockAt(v, 'floor') === 0; }).length;
+
+  var h = roleHomeHead(t('back_title'), t('back_sub'));
+
+  h += '<div class="grid stat-row">' +
+    '<div class="stat"><span class="eyebrow">' + t('arrived_today') + '</span>' +
+      '<div class="val accent">' + nf(arrivedPieces) + '</div>' +
+      '<div class="foot">' + t('pieces') + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('to_move_out') + '</span>' +
+      '<div class="val' + (toMove.length ? ' warn' : '') + '">' + nf(toMove.length) + '</div>' +
+      '<div class="foot">' + t('sku') + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('empty_on_floor') + '</span>' +
+      '<div class="val">' + nf(empties) + '</div>' +
+      '<div class="foot">' + t('wh_empty_sizes') + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('open_orders') + '</span>' +
+      '<div class="val">' + nf(openPOs.length) + '</div>' +
+      '<div class="foot">' + t('po_title').toLowerCase() + '</div></div>' +
+  '</div>';
+
+  h += '<div class="home-cta mt">' +
+    (allow('product.write')
+      ? '<button class="btn btn-primary btn-lg" data-act="home-wh" data-tab="add">' + t('back_receive') + '</button>'
+      : '') +
+    (allow('stock.count')
+      ? '<button class="btn btn-lg" data-act="home-wh" data-tab="count">' + t('back_count') + '</button>'
+      : '') +
+  '</div>';
+
+  /* -- the actual to-do list: sold out on the wall, still in the back -- */
+  h += '<div class="card mt"><div class="card-head"><h3>' + t('to_move_out') + '</h3>' +
+    '<div class="card-actions"><span class="badge ' + (toMove.length ? 'critical' : 'healthy') + '">' +
+      toMove.length + '</span></div></div>';
+
+  if (!toMove.length) {
+    h += '<div class="cart-empty"><b>' + t('back_nothing') + '</b>' + t('back_nothing_sub') + '</div>';
+  } else {
+    h += '<div class="table-wrap"><table class="tbl"><thead><tr>' +
+      '<th>' + t('product') + '</th><th>' + t('size') + '</th>' +
+      '<th class="num">' + t('wh_in_the_back') + '</th><th></th>' +
+    '</tr></thead><tbody>';
+    toMove.slice(0, 10).forEach(function (g) {
+      var p = DB.product(g.productId);
+      h += '<tr>' +
+        '<td><div class="cell-prod">' + (p ? thumb(p) : '') + '<span><b>' +
+          esc(p ? p.name : g.sku) + '</b></span></div></td>' +
+        '<td><b>' + esc(g.size) + '</b></td>' +
+        '<td class="num' + (g.back ? '' : ' muted') + '">' + nf(g.back) + '</td>' +
+        '<td>' + (allow('stock.move') && p
+          ? '<button class="btn btn-sm btn-primary" data-act="wh-transfer" data-id="' + p.id + '">' +
+            t('wh_move') + '</button>'
+          : '') + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  h += '</div>';
+
+  return h;
+}
+
+/* ---- delivery --------------------------------------------------------------
+   Rendered by js/deliveries.js, which owns the whole screen — it is the only
+   role whose home is live server data rather than a view over what is already
+   in memory, so it loads asynchronously and paints itself. */
+function viewRunsHome() {
+  return (typeof Deliveries !== 'undefined')
+    ? Deliveries.view()
+    : '<div class="card"><div class="cart-empty"><b>' + t('dl_none') + '</b></div></div>';
+}
+
 /* -------------------------------------------------------------- 8. PRODUCTS */
 
-var PROD_COLS = [
+/* `need` names the permission a column depends on. A column with no `need` is
+   for everyone. Declaring it here rather than filtering at each draw site
+   means the header, the body and the export all read the same list and cannot
+   drift apart — which is exactly how a hidden column reappears in a
+   spreadsheet six months later. */
+var PROD_COLS_ALL = [
   { k: 'name',   label: 'product' },
   { k: 'type',   label: 'type' },
-  { k: 'qty',    label: 'stock', num: true },
-  { k: 'cost',   label: 'cost',  num: true },
+  { k: 'qty',    label: 'stock', num: true, need: 'stock.read' },
+  { k: 'cost',   label: 'cost',  num: true, need: 'cost.read' },
   { k: 'price',  label: 'price', num: true },
-  { k: 'margin', label: 'margin', num: true },
-  { k: 'health', label: 'health' },
-  { k: 'hidden', label: 'visible' }
+  { k: 'margin', label: 'margin', num: true, need: 'profit.read' },
+  { k: 'health', label: 'health', need: 'stock.read' },
+  /* Hiding something from the storefront is editing the catalogue, not
+     browsing it. */
+  { k: 'hidden', label: 'visible', need: 'product.write' }
 ];
+
+function prodCols() {
+  return PROD_COLS_ALL.filter(function (c) { return !c.need || allow(c.need); });
+}
 
 function productRows() {
   var f = OG.prod;
@@ -2094,10 +2468,16 @@ function productRows() {
     });
   }
 
+  /* Sorting by a column this person cannot see would order the whole table by
+     an invisible number — and cost order and price order are close enough that
+     it would look like a bug rather than a secret. Fall back to name. */
+  var sort = f.sort;
+  if (!prodCols().some(function (c) { return c.k === sort; })) sort = 'name';
+
   var order = { out: 0, critical: 1, low: 2, healthy: 3 };
   rows.sort(function (a, b) {
-    var x = a[f.sort], y = b[f.sort];
-    if (f.sort === 'health') { x = order[x]; y = order[y]; }
+    var x = a[sort], y = b[sort];
+    if (sort === 'health') { x = order[x]; y = order[y]; }
     if (typeof x === 'string') return x.localeCompare(y) * f.dir;
     return (x - y) * f.dir;
   });
@@ -2108,10 +2488,15 @@ function viewProducts() {
   var rows = productRows();
   var types = Object.keys(DB.typeLabels);
 
+  /* The products sheet is an inventory document — stock levels, pieces,
+     critical SKUs. Without stock.read it would export a list of names and
+     prices under a heading about inventory, which is worse than no button. */
+  var canExport = allow('stock.read');
+
   var h = '<div class="page-head"><div><h1>' + t('products_title') + '</h1>' +
     '<div class="sub">' + t('products_sub') + '</div></div>' +
     '<div class="head-actions">' +
-      exportButtons() +
+      (canExport ? exportButtons() : '') +
       ifNav('warehouse',
         '<button class="btn btn-primary" data-act="nav" data-view="warehouse">+ ' + t('tab_add') + '</button>') +
     '</div></div>';
@@ -2122,16 +2507,31 @@ function viewProducts() {
   types.forEach(function (ty) {
     h += '<option value="' + ty + '"' + (OG.prod.type === ty ? ' selected' : '') + '>' + DB.typeLabels[ty] + '</option>';
   });
-  h += '</select><select class="inp" data-change="prod-health"><option value="">' + t('all_health') + '</option>';
-  ['healthy', 'low', 'critical', 'out', 'gap', 'archived'].forEach(function (hh) {
-    h += '<option value="' + hh + '"' + (OG.prod.health === hh ? ' selected' : '') + '>' +
-         t(hh === 'gap' ? 'gap_only' : (hh === 'archived' ? 'bk_archived_only' : hh)) + '</option>';
-  });
-  h += '</select><span class="badge neutral">' + rows.length + ' / ' + DB.products.length + '</span></div>';
+  h += '</select>';
+
+  /* Every option in this filter is a stock level. To someone who cannot see
+     the stock column it is a dropdown that reorders the list for no visible
+     reason. */
+  if (allow('stock.read')) {
+    h += '<select class="inp" data-change="prod-health"><option value="">' + t('all_health') + '</option>';
+    ['healthy', 'low', 'critical', 'out', 'gap', 'archived'].forEach(function (hh) {
+      h += '<option value="' + hh + '"' + (OG.prod.health === hh ? ' selected' : '') + '>' +
+           t(hh === 'gap' ? 'gap_only' : (hh === 'archived' ? 'bk_archived_only' : hh)) + '</option>';
+    });
+    h += '</select>';
+  }
+
+  h += '<span class="badge neutral">' + rows.length + ' / ' + DB.products.length + '</span></div>';
+
+  var cols = prodCols();
+
+  /* Bulk select feeds bulk EDIT. No point offering the checkboxes to someone
+     who cannot act on the selection. */
+  var bulk = allow('product.write');
 
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>';
-  h += '<th class="bk-col">' + Bulk.headBox('products') + '</th>';
-  PROD_COLS.forEach(function (c) {
+  if (bulk) h += '<th class="bk-col">' + Bulk.headBox('products') + '</th>';
+  cols.forEach(function (c) {
     var arrow = OG.prod.sort === c.k ? (OG.prod.dir === 1 ? ' ▲' : ' ▼') : '';
     h += '<th class="sortable' + (c.num ? ' num' : '') + '" data-act="prod-sort" data-k="' + c.k + '">' +
          t(c.label) + '<span class="arrow">' + arrow + '</span></th>';
@@ -2140,23 +2540,32 @@ function viewProducts() {
 
   rows.forEach(function (r, ri) {
     var gaps = DB.sizeGaps(r.p.id);
-    h += '<tr class="clickable' + (Bulk.has('products', r.p.id) ? ' bk-on' : '') +
-         '" data-act="open-product" data-id="' + r.p.id + '">' +
-      '<td class="bk-col">' + Bulk.box('products', r.p.id, ri) + '</td>' +
-      '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
+
+    /* Built as a map and emitted in header order, rather than as a fixed run
+       of <td>s. Dropping a column from the header alone would shunt every
+       later cell one place left — the cashier would not see cost, she would
+       see cost UNDER the heading "price", which is worse than showing it. */
+    var cell = {
+      name: '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
         '<small>' + esc(r.p.brand) + ' · ' + esc(r.p.colorway) +
         (gaps.length ? ' · <span style="color:var(--destructive);font-weight:600">' + t('size') + ' ' + gaps.join('/') + ' = 0</span>' : '') +
-        '</small></span></div></td>' +
-      '<td><span class="badge neutral">' + DB.typeLabels[r.type] + '</span></td>' +
-      '<td class="num"><b>' + nf(r.qty) + '</b> <span class="muted small">' + t('pieces') + '</span></td>' +
-      '<td class="num muted">' + money(r.cost) + '</td>' +
-      '<td class="num"><b>' + money(r.price) + '</b></td>' +
-      '<td class="num">' + pct(r.margin, 0) + '</td>' +
-      '<td class="nowrap">' + healthBadge(r.qty) +
-        (gaps.length ? ' <span class="badge critical">' + t('size_gap') + '</span>' : '') + '</td>' +
-      '<td onclick="event.stopPropagation()"><label class="switch"><input type="checkbox"' +
-        (r.p.hidden ? '' : ' checked') + ' data-change="toggle-visible" data-id="' + r.p.id + '"><i></i></label></td>' +
-    '</tr>';
+        '</small></span></div></td>',
+      type: '<td><span class="badge neutral">' + DB.typeLabels[r.type] + '</span></td>',
+      qty: '<td class="num"><b>' + nf(r.qty) + '</b> <span class="muted small">' + t('pieces') + '</span></td>',
+      cost: '<td class="num muted">' + money(r.cost) + '</td>',
+      price: '<td class="num"><b>' + money(r.price) + '</b></td>',
+      margin: '<td class="num">' + pct(r.margin, 0) + '</td>',
+      health: '<td class="nowrap">' + healthBadge(r.qty) +
+        (gaps.length ? ' <span class="badge critical">' + t('size_gap') + '</span>' : '') + '</td>',
+      hidden: '<td onclick="event.stopPropagation()"><label class="switch"><input type="checkbox"' +
+        (r.p.hidden ? '' : ' checked') + ' data-change="toggle-visible" data-id="' + r.p.id + '"><i></i></label></td>'
+    };
+
+    h += '<tr class="clickable' + (bulk && Bulk.has('products', r.p.id) ? ' bk-on' : '') +
+         '" data-act="open-product" data-id="' + r.p.id + '">' +
+      (bulk ? '<td class="bk-col">' + Bulk.box('products', r.p.id, ri) + '</td>' : '');
+    cols.forEach(function (c) { h += cell[c.k]; });
+    h += '</tr>';
   });
 
   h += '</tbody></table></div>';
@@ -2189,11 +2598,22 @@ function openProductDrawer(pid) {
       '<button class="btn btn-sm btn-primary" data-act="reorder" data-id="' + p.id + '">' + t('reorder') + '</button></div>';
   }
 
-  body += '<div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">' +
-    '<div class="stat"><span class="eyebrow">' + t('total_stock') + '</span><div class="val">' + nf(total) + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('stock_value') + '</span><div class="val">' + moneyShort(total * p.costPrice) + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('margin') + '</span><div class="val accent">' + pct((p.sellingPrice - p.costPrice) / p.sellingPrice * 100, 0) + '</div></div>' +
-  '</div>';
+  /* Stock, then what it is worth to us, then what we make on it — the last
+     two are only for people allowed the numbers. The selling price is on the
+     header above and stays: a cashier has to be able to answer "how much?". */
+  var kpi = [
+    '<div class="stat"><span class="eyebrow">' + t('total_stock') + '</span><div class="val">' + nf(total) + '</div></div>'
+  ];
+  if (seesCost()) {
+    kpi.push('<div class="stat"><span class="eyebrow">' + t('stock_value') + '</span><div class="val">' +
+             moneyShort(total * p.costPrice) + '</div></div>');
+  }
+  if (seesProfit()) {
+    kpi.push('<div class="stat"><span class="eyebrow">' + t('margin') + '</span><div class="val accent">' +
+             pct((p.sellingPrice - p.costPrice) / p.sellingPrice * 100, 0) + '</div></div>');
+  }
+  body += '<div class="grid" style="grid-template-columns:repeat(' + kpi.length +
+          ',1fr);margin-bottom:16px">' + kpi.join('') + '</div>';
 
   body += '<div class="card mb"><div class="card-head"><h3>' + t('per_size') + '</h3>' +
     '<div class="card-actions"><span class="badge neutral">' + vs.length + ' SKU</span></div></div>' +
@@ -2224,7 +2644,7 @@ function openProductDrawer(pid) {
     '<dt>' + t('brand') + '</dt><dd>' + esc(p.brand) + '</dd>' +
     '<dt>' + t('made_in') + '</dt><dd>' + esc(p.madeIn) + '</dd>' +
     '<dt>' + t('colour') + '</dt><dd>' + esc(p.colorway) + '</dd>' +
-    '<dt>' + t('cost_price') + '</dt><dd>' + money(p.costPrice) + '</dd>' +
+    (seesCost() ? '<dt>' + t('cost_price') + '</dt><dd>' + money(p.costPrice) + '</dd>' : '') +
     '<dt>' + t('selling_price') + '</dt><dd>' + money(p.sellingPrice) + '</dd>' +
     '<dt>' + t('last_sold') + '</dt><dd>' + p.lastSoldDaysAgo + ' ' + t('days_ago') + '</dd>' +
     '<dt>' + t('visible') + '</dt><dd>' + (p.hidden ? t('no') : t('yes')) + '</dd>' +
@@ -2265,21 +2685,39 @@ function viewWarehouse() {
 
   var floorGaps = DB.floorOuts().length;
 
-  h += '<div class="tabs">' +
-    '<button class="tab ' + (OG.wh.tab === 'stock' ? 'on' : '') + '" data-act="wh-tab" data-tab="stock">' + t('wh_stock') +
-      (floorGaps ? '<span class="tab-dot"></span>' : '') + '</button>' +
-    '<button class="tab ' + (OG.wh.tab === 'add' ? 'on' : '') + '" data-act="wh-tab" data-tab="add">' + t('tab_add') + '</button>' +
-    '<button class="tab ' + (OG.wh.tab === 'moves' ? 'on' : '') + '" data-act="wh-tab" data-tab="moves">' + t('tab_moves') + '</button>' +
-    '<button class="tab ' + (OG.wh.tab === 'po' ? 'on' : '') + '" data-act="wh-tab" data-tab="po">' + t('po_title') +
-      (openPOs ? '<span class="tab-dot"></span>' : '') + '</button>' +
-    '<button class="tab ' + (OG.wh.tab === 'count' ? 'on' : '') + '" data-act="wh-tab" data-tab="count">' + t('st_count') +
-      (Stock.active() ? '<span class="tab-dot"></span>' : '') + '</button>' +
-  '</div>';
+  /* Which tabs this person's job includes. A cashier has stock.read and
+     nothing else here: she is allowed to look in the back to answer "have you
+     got it in a 42", and that is all. Receiving, moving, ordering and counting
+     are somebody else's work, and a tab that opens onto a form the server will
+     refuse is worse than no tab. */
+  var tabs = [
+    { id: 'stock', label: t('wh_stock'), dot: !!floorGaps },
+    { id: 'add',   label: t('tab_add'),  need: 'product.write' },
+    { id: 'moves', label: t('tab_moves') },
+    { id: 'po',    label: t('po_title'), dot: !!openPOs, need: 'stock.move' },
+    { id: 'count', label: t('st_count'), dot: !!Stock.active(), need: 'stock.count' }
+  ].filter(function (x) { return !x.need || allow(x.need); });
 
-  h += (OG.wh.tab === 'stock') ? whStockTab()
-     : (OG.wh.tab === 'add')   ? whAddTab()
-     : (OG.wh.tab === 'po')    ? whPoTab()
-     : (OG.wh.tab === 'count') ? Stock.view()
+  /* A tab bar with one tab in it is furniture. */
+  if (tabs.length > 1) {
+    h += '<div class="tabs">';
+    tabs.forEach(function (x) {
+      h += '<button class="tab ' + (OG.wh.tab === x.id ? 'on' : '') + '" data-act="wh-tab" data-tab="' + x.id + '">' +
+        x.label + (x.dot ? '<span class="tab-dot"></span>' : '') + '</button>';
+    });
+    h += '</div>';
+  }
+
+  /* Landing on a tab that is no longer there — a remembered choice, a deep
+     link — falls back to the first one she does have rather than rendering
+     a blank panel under no heading. */
+  var tab = OG.wh.tab;
+  if (!tabs.some(function (x) { return x.id === tab; })) tab = tabs[0].id;
+
+  h += (tab === 'stock') ? whStockTab()
+     : (tab === 'add')   ? whAddTab()
+     : (tab === 'po')    ? whPoTab()
+     : (tab === 'count') ? Stock.view()
      : whMovesTab();
   return h;
 }
@@ -2309,22 +2747,32 @@ function whStockTab() {
     return (whId === 'all' ? v.qty : DB.stockAt(v, whId)) === 0;
   }).length;
 
-  h += '<div class="grid stat-row mb" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
+  /* "Value at cost" is the capital sitting on the shelf. It is a money figure
+     dressed as a stock figure, and it is the one thing on this page a cashier
+     or a stock keeper has no business reading. */
+  var whStats = [
     '<div class="stat"><span class="eyebrow">' + t('stock') + '</span>' +
       '<div class="val">' + nf(tot.pieces) + '</div>' +
-      '<div class="foot">' + t('wh_pieces_here') + '</div></div>' +
+      '<div class="foot">' + t('wh_pieces_here') + '</div></div>',
     '<div class="stat"><span class="eyebrow">' + t('sku') + '</span>' +
       '<div class="val">' + tot.skus + '</div>' +
-      '<div class="foot">' + (whId === 'all' ? t('in_catalogue') : t('wh_skus_here')) + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('wh_value_here') + '</span>' +
-      '<div class="val" style="font-size:20px">' + money(tot.value) + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('out') + '</span>' +
-      '<div class="val' + (emptyHere ? ' warn' : '') + '">' + emptyHere + '</div>' +
-      '<div class="foot">' + t('wh_empty_sizes') + '</div></div>' +
-  '</div>';
+      '<div class="foot">' + (whId === 'all' ? t('in_catalogue') : t('wh_skus_here')) + '</div></div>'
+  ];
+  if (seesCost()) {
+    whStats.push('<div class="stat"><span class="eyebrow">' + t('wh_value_here') + '</span>' +
+      '<div class="val" style="font-size:20px">' + money(tot.value) + '</div></div>');
+  }
+  whStats.push('<div class="stat"><span class="eyebrow">' + t('out') + '</span>' +
+    '<div class="val' + (emptyHere ? ' warn' : '') + '">' + emptyHere + '</div>' +
+    '<div class="foot">' + t('wh_empty_sizes') + '</div></div>');
+
+  h += '<div class="grid stat-row mb" style="grid-template-columns:repeat(' +
+       whStats.length + ',minmax(0,1fr))">' + whStats.join('') + '</div>';
 
   /* -- suggested moves, only where they exist -- */
-  if (whId !== 'store') h += whSuggestCard();
+  /* "Move these to the floor" is an instruction to do something. Without
+     stock.move it is an instruction she cannot carry out. */
+  if (whId !== 'store' && allow('stock.move')) h += whSuggestCard();
 
   /* -- grouped by product type: "Sneakers · 142 pieces" -- */
   var byType = {};
@@ -2379,8 +2827,10 @@ function whStockTab() {
       });
 
       h += '</div></td>' +
-        '<td><button class="btn btn-sm btn-ghost" data-act="wh-transfer" data-id="' + r.p.id + '">' +
-          t('wh_transfer') + '</button></td></tr>';
+        '<td>' + (allow('stock.move')
+          ? '<button class="btn btn-sm btn-ghost" data-act="wh-transfer" data-id="' + r.p.id + '">' +
+            t('wh_transfer') + '</button>'
+          : '') + '</td></tr>';
     });
 
     h += '</tbody></table></div></div>';
@@ -2514,9 +2964,16 @@ function whPoTab() {
            t('po_none_sub') + '</div></div>';
   }
 
+  /* A purchase order is two things at once: a list of goods to check off the
+     van, and a bill. The stock keeper needs the first and not the second, so
+     the tab stays and the money column goes. Hiding the whole tab instead
+     would take his receiving workflow away to protect a number. */
+  var poMoney = seesCost();
+
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
     '<th>' + t('yi_invoice') + '</th><th>' + t('supplier') + '</th><th>' + t('date') + '</th>' +
-    '<th class="num">' + t('pieces') + '</th><th class="num">' + t('total') + '</th>' +
+    '<th class="num">' + t('pieces') + '</th>' +
+    (poMoney ? '<th class="num">' + t('total') + '</th>' : '') +
     '<th>' + t('status') + '</th><th></th>' +
   '</tr></thead><tbody>';
 
@@ -2528,7 +2985,7 @@ function whPoTab() {
       '<td>' + esc(sup ? sup.name : '—') + '</td>' +
       '<td class="num muted">' + fmtDate(po.created) + '</td>' +
       '<td class="num">' + DB.poPieces(po) + '</td>' +
-      '<td class="num"><b>' + money(DB.poTotal(po)) + '</b></td>' +
+      (poMoney ? '<td class="num"><b>' + money(DB.poTotal(po)) + '</b></td>' : '') +
       '<td><span class="badge ' + cls + '">' + t('po_' + po.status) + '</span></td>' +
       '<td style="white-space:nowrap">' +
         '<button class="btn btn-sm btn-ghost" data-act="po-whatsapp" data-id="' + po.id + '">' +
@@ -2591,11 +3048,20 @@ function whAddTab() {
         }).join('') + '</select></label>' +
       '<label class="field"><span>' + t('brand') + '</span><input class="inp" type="text" value="OG" placeholder="OG"></label>' +
     '</div>' +
-    '<div class="row3">' +
+    '<div class="' + (seesCost() ? 'row3' : 'row2') + '">' +
       '<label class="field"><span>' + t('made_in') + '</span><input class="inp" type="text" value="Syria"></label>' +
-      '<label class="field"><span>' + t('cost_price') + '</span><input class="inp num" id="whCost" type="number" value="105000" data-change="wh-recalc"></label>' +
+      /* Someone booking goods in without cost.read enters what the shop sells
+         it for, not what it was bought for. The field is left out rather than
+         disabled, because a disabled box invites a guess — and a guessed cost
+         price is worse than a missing one: it quietly poisons every margin
+         and profit figure the manager reads afterwards. */
+      (seesCost()
+        ? '<label class="field"><span>' + t('cost_price') + '</span><input class="inp num" id="whCost" type="number" value="105000" data-change="wh-recalc"></label>'
+        : '') +
       '<label class="field"><span>' + t('selling_price') + '</span><input class="inp num" id="whPrice" type="number" value="225000" data-change="wh-recalc"></label>' +
     '</div>' +
+    (seesCost() ? '' :
+      '<div class="partner-note">' + t('wh_cost_later') + '</div>') +
     '<label class="field"><span>' + t('shelf_box') + '</span><input class="inp" type="text" value="D-09"></label>' +
   '</div></div>';
 
@@ -2643,8 +3109,12 @@ function whAddTab() {
   }
   h += '</tbody><tfoot><tr><td>' + t('total_pieces') + '</td><td class="num">' + totalPieces + '</td><td></td></tr></tfoot></table></div></div>';
 
-  h += '<div class="grid mt" style="grid-template-columns:1fr 1fr">' +
-    '<div class="stat"><span class="eyebrow">' + t('total_cost') + '</span><div class="val">' + moneyShort(totalCost) + '</div></div>' +
+  /* Expected revenue is selling price × pieces — no cost in it, so it stays
+     for everyone. Total cost does not. */
+  h += '<div class="grid mt" style="grid-template-columns:' + (seesCost() ? '1fr 1fr' : '1fr') + '">' +
+    (seesCost()
+      ? '<div class="stat"><span class="eyebrow">' + t('total_cost') + '</span><div class="val">' + moneyShort(totalCost) + '</div></div>'
+      : '') +
     '<div class="stat"><span class="eyebrow">' + t('expected_revenue') + '</span><div class="val accent">' + moneyShort(totalRev) + '</div></div>' +
   '</div>';
 
@@ -3596,7 +4066,9 @@ function viewPrint() {
     '<div class="sub">' + t('print_sub') + ' · ' + t('drag_hint') + '</div></div>' +
     '<div class="head-actions">' +
       exportButtons() +
-      '<button class="btn btn-dark" data-act="partner-view">' + t('partner_view') + '</button>' +
+      (allow('partner.read')
+        ? '<button class="btn btn-dark" data-act="partner-view">' + t('partner_view') + '</button>'
+        : '') +
     '</div></div>';
 
   /* Two halves of the same relationship: the work, and the bill for it. */
@@ -3916,7 +4388,9 @@ function openJobDrawer(id) {
   body += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
     '<button class="btn btn-ghost" data-act="og-nudge" data-id="' + j.id + '">' + t('og_nudge') + '</button>' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="job" data-kind="pdf" data-id="' + j.id + '">' + t('yl_work_order') + '</button>' +
-    '<button class="btn btn-dark" style="flex:1" data-act="partner-view">' + t('partner_view') + '</button></div>';
+    (allow('partner.read')
+      ? '<button class="btn btn-dark" style="flex:1" data-act="partner-view">' + t('partner_view') + '</button>'
+      : '') + '</div>';
 
   openDrawer({ head: head, body: body });
 }
@@ -4751,11 +5225,25 @@ var Tour = {
 /* ------------------------------------------------------------- 17. ROUTING */
 
 var VIEWS = {
-  dashboard: viewDashboard,
+  /* "Home" is a different screen for different jobs. A chooser rather than a
+     fifth branch inside viewDashboard, so each one stays a small readable
+     function instead of one screen with four moods.
+
+     roleOf() is null on file://, on the static demo and in _shot.html, so all
+     three keep the full manager dashboard — the demo exists to show the whole
+     system, and the Arabic proposal is screenshotted from it. */
+  dashboard: function () {
+    var r = roleOf();
+    return r === 'cashier'   ? viewShiftHome()
+         : r === 'warehouse' ? viewBackHome()
+         : r === 'delivery'  ? viewRunsHome()
+         : viewDashboard();
+  },
   money: function () { return Money.view(); },
   pos: function () { return POS.render(); },
   products: viewProducts,
   warehouse: viewWarehouse,
+  deliveries: function () { return Deliveries.view(); },
   customers: viewCustomers,
   print: viewPrint,
   reports: viewReports,
@@ -4764,7 +5252,15 @@ var VIEWS = {
 };
 
 var AFTER = {
-  dashboard: afterDashboard,
+  dashboard: function () {
+    var r = roleOf();
+    /* The charts only exist on the manager's dashboard. Calling afterDashboard
+       on a shift home would hand Chart.js three canvases that are not there. */
+    if (r === 'cashier' || r === 'warehouse') return;
+    if (r === 'delivery') return Deliveries.after();
+    afterDashboard();
+  },
+  deliveries: function () { return Deliveries.after(); },
   pos: function () { POS.after(); },
   reports: afterReports,
   print: bindKanban,
@@ -4911,6 +5407,13 @@ function labelWideTables(root) {
 function render() {
   Charts.destroyAll();
   var host = document.getElementById('view');
+
+  /* The last gate. Whatever set OG.print.partner false — a stale hash, a
+     console poke, a toggle that should not exist for them — a partner account
+     renders the portal. Checked at the point of drawing rather than at the
+     point of navigating, because there is only one of the former. */
+  if (isPartnerAccount()) OG.print.partner = true;
+
   var partner = OG.print.partner;
 
   /* Claimed exactly once per view change. Every other repaint — a keystroke
@@ -5701,6 +6204,14 @@ var ACTIONS = {
   },
 
   'wh-tab': function (el) { OG.wh.tab = el.getAttribute('data-tab'); render(); },
+
+  /* The shortcuts on the warehouse home. Same as wh-tab, but it has to travel
+     to the screen first — wh-tab alone would set the tab and re-render the
+     home he is already standing on. */
+  'home-wh': function (el) {
+    OG.wh.tab = el.getAttribute('data-tab');
+    go('warehouse');
+  },
   'wh-place': function (el) { OG.wh.place = el.getAttribute('data-w'); render(); },
 
   /* One tap on a suggested move: carry it out of the back and onto the wall. */
@@ -5972,6 +6483,11 @@ var ACTIONS = {
   },
 
   'partner-view': function () {
+    /* This is the manager's preview of what Yalla Wear sees. For Yalla Wear
+       themselves it is the way out of their own portal, so there is no way
+       out. Nothing renders this button for them; this is the belt to that
+       brace. */
+    if (isPartnerAccount()) return;
     OG.print.partner = !OG.print.partner;
     /* A portal switch is the biggest context change in the app — it earns a
        full entrance, and it always reads as going forward. */
@@ -6056,6 +6572,11 @@ var CHANGES = {
   'cust-q': function (el) { OG.cust.q = el.value; render(); focusBack('[data-change="cust-q"]', el.value.length); },
 
   'toggle-visible': function (el) {
+    /* Hiding a product from the storefront is editing the catalogue. The
+       column is not drawn without product.write, so reaching this is either a
+       stale screen or someone poking at it — either way, put the switch back
+       rather than letting the UI show a change the server will not keep. */
+    if (!allow('product.write')) { el.checked = !el.checked; return; }
     var p = DB.product(+el.getAttribute('data-id'));
     p.hidden = !el.checked;
     toast(p.name, p.hidden
@@ -6334,6 +6855,18 @@ function bindWedge() {
 
 function boot() {
   applyLang();
+
+  /* Yalla Wear signs in and is already inside their portal. Set before the
+     first paint, so there is no frame in which the shop's dashboard is on
+     screen — and set here rather than by hiding the toggle, because the
+     toggle is a button and buttons can be clicked from a console. */
+  if (isPartnerAccount()) OG.print.partner = true;
+
+  /* deliveries.js adds its own handlers to the shared ACTIONS table. Done at
+     boot rather than at load time because ACTIONS is a var in this file and
+     script order should not decide whether the buttons work. */
+  if (typeof Deliveries !== 'undefined') Deliveries.register();
+
   renderTopbar();
   var raw = window.location.hash;
   var v = raw.replace('#', '');

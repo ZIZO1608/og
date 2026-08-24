@@ -14,6 +14,11 @@ var POS = (function () {
     coupon: null,
     pointsUsed: 0,
     payment: 'cash',
+    /* Going out with a driver. `deliver` is the tick box; `deliverAddress` is
+       null until someone types, so an empty string can mean "cleared it
+       deliberately" and still be told apart from "not filled in yet". */
+    deliver: false,
+    deliverAddress: null,
     /* Which location this sale takes stock out of. The wall by default,
        because that is what a customer is holding when they reach the till. */
     warehouse: DB.defaultWh,
@@ -49,6 +54,43 @@ var POS = (function () {
   }
 
   function cartCount() { return S.cart.reduce(function (a, l) { return a + l.qty; }, 0); }
+
+  /* ---------------------------------------------------- the discount ceiling
+
+     The real check is on the server, in Sales.record, and it stays there: a
+     limit that only exists in the browser is not a limit, and the request can
+     be sent by hand.
+
+     This is the same rule drawn on the screen, and it is worth doing twice for
+     one reason — the cashier is standing in front of a customer she has just
+     offered a discount to. Finding out it was refused AFTER pressing Charge
+     makes her look like she does not know her own shop's rules. */
+
+  var MAX_DISCOUNT_PCT = 10;      /* mirrors config sale.max_discount_pct */
+
+  function discountCapped() {
+    /* Demo mode has no accounts, so nothing is capped — the demo exists to
+       show the whole system, and a refused discount in a sales pitch just
+       looks broken. */
+    if (typeof Auth === 'undefined' || Auth.demoMode()) return false;
+    return !Auth.can('discount.unlimited');
+  }
+
+  /* The most that may come off this basket, in lira. Floored, so a discount
+     one lira over the line is over the line — the same comparison the server
+     makes, or the two would disagree at the boundary. */
+  function discountCeiling() {
+    return Math.floor(totals().subtotal * MAX_DISCOUNT_PCT / 100);
+  }
+
+  function overCap() {
+    if (!discountCapped()) return false;
+    var x = totals();
+    /* The manual discount only. A coupon is a rule the shop set deliberately
+       and points are the customer spending something they earned; neither is
+       the cashier deciding to knock money off. */
+    return x.manual > discountCeiling();
+  }
 
   /* -------------------------------------------------------------- adding */
 
@@ -245,6 +287,56 @@ var POS = (function () {
     DB.paymentMethods.forEach(function (m) {
       h += '<button class="' + (S.payment === m ? 'on' : '') + '" data-pos="pay" data-m="' + m + '">' + DB.paymentLabels[m] + '</button>';
     });
+    return h + '</div>' + deliveryBoxHtml();
+  }
+
+  /* ------------------------------------------------------------- delivery
+
+     "Cash on delivery" was already a payment method here and meant nothing —
+     it printed a word on the receipt and the parcel's whereabouts stayed on
+     paper. Choosing it now opens the address, because a COD sale is by
+     definition going out of the door with somebody.
+
+     A sale paid in the shop can be sent out too, hence the tick box: people
+     pay for a pair and ask for it to be dropped at their flat. */
+  function deliveryBoxHtml() {
+    if (typeof Auth === 'undefined' || Auth.demoMode()) return '';
+    if (!Auth.can('delivery.write')) return '';
+
+    /* COD is not optional — money is owed on the doorstep, so somebody has to
+       stand on it. The tick box is hidden in that case rather than shown
+       ticked and disabled, which invites a fight with it. */
+    var forced = S.payment === 'cod';
+    var on = forced || S.deliver;
+
+    var h = '<div class="deliver-add">';
+
+    if (!forced) {
+      h += '<label class="check"><input type="checkbox" id="posDeliver"' +
+        (S.deliver ? ' checked' : '') + ' data-pos-check="deliver">' +
+        '<span><b>' + t('dl_assign') + '</b></span></label>';
+    } else {
+      h += '<div class="lbl" style="margin:0 0 6px">' + t('dl_assign') + '</div>';
+    }
+
+    if (on) {
+      /* Pre-filled from the customer when we have one, because the commonest
+         delivery is to somebody the shop already knows. Still editable — the
+         address on the delivery is the one he was actually sent to. */
+      var cust = S.customerId ? DB.customer(S.customerId) : null;
+      var addr = S.deliverAddress !== null && S.deliverAddress !== undefined
+        ? S.deliverAddress
+        : ((cust && cust.address) || '');
+
+      h += '<label class="field"><span>' + t('dl_address') + '</span>' +
+        '<input class="inp" id="posAddr" type="text" data-pos-input="addr" ' +
+          'placeholder="' + esc(t('dl_address_ph')) + '" value="' + esc(addr) + '"></label>';
+
+      if (cust && cust.phone) {
+        h += '<div class="partner-note">' + t('dl_phone') + ': ' + tel(cust.phone) + '</div>';
+      }
+    }
+
     return h + '</div>';
   }
 
@@ -270,6 +362,37 @@ var POS = (function () {
     return h + '</div>';
   }
 
+  /* Silent until she types something, and only ever says the one thing she
+     needs: what the biggest allowed number is. Nobody wants a permanent
+     "maximum discount 10%" label on a till they use four hundred times a day.
+
+     The empty container is always rendered so the hint can be filled in place
+     on each keystroke — repainting the whole foot would take the focus out of
+     the box she is typing in, which is the single most annoying bug a till
+     can have. */
+  function discHintText() {
+    if (!discountCapped() || !S.discount.value) return '';
+    var line = t('disc_max').replace('{v}', money(discountCeiling()));
+    return overCap()
+      ? t('disc_capped').replace('{p}', MAX_DISCOUNT_PCT) + ' · ' + line
+      : line;
+  }
+
+  function discHintHtml() {
+    return '<div class="disc-hint' + (overCap() ? ' is-bad' : '') + '" id="discHint">' +
+           discHintText() + '</div>';
+  }
+
+  function paintDiscHint() {
+    var el = document.getElementById('discHint');
+    if (el) {
+      el.textContent = discHintText();
+      el.className = 'disc-hint' + (overCap() ? ' is-bad' : '');
+    }
+    var inp = document.getElementById('posDisc');
+    if (inp) inp.classList.toggle('is-bad', overCap());
+  }
+
   function footHtml() {
     var x = totals();
     return '<div id="custWrap">' + custBoxHtml() + '</div>' +
@@ -277,12 +400,12 @@ var POS = (function () {
       '<div class="row2 mt">' +
         '<div><span class="lbl">' + t('discount') + '</span>' +
           '<div style="display:flex;gap:4px">' +
-            '<input class="inp num" id="posDisc" type="number" min="0" placeholder="0" value="' + (S.discount.value || '') + '" data-pos-input="disc">' +
+            '<input class="inp num' + (overCap() ? ' is-bad' : '') + '" id="posDisc" type="number" min="0" placeholder="0" value="' + (S.discount.value || '') + '" data-pos-input="disc">' +
             '<span class="seg" style="flex:none">' +
               '<button data-pos="disc-mode" data-m="amount" class="' + (S.discount.mode === 'amount' ? 'on' : '') + '">#</button>' +
               '<button data-pos="disc-mode" data-m="percent" class="' + (S.discount.mode === 'percent' ? 'on' : '') + '">%</button>' +
             '</span>' +
-          '</div></div>' +
+          '</div>' + discHintHtml() + '</div>' +
         '<div><span class="lbl">' + t('coupon') + '</span>' +
           (S.coupon
             ? '<div style="display:flex;gap:4px;align-items:center;height:34px">' +
@@ -468,6 +591,17 @@ var POS = (function () {
 
     if (typeof Auth === 'undefined' || Auth.demoMode()) return completeLocal(silent, null);
 
+    /* Caught here so she is told before the customer is told. The server
+       refuses this too — that is the actual boundary — but a cashier should
+       not have to press Charge to discover she is not allowed. */
+    if (overCap()) {
+      toast(t('cart'),
+            t('disc_capped').replace('{p}', MAX_DISCOUNT_PCT) + ' · ' +
+            t('disc_max').replace('{v}', money(discountCeiling())),
+            'err', 6000);
+      return;
+    }
+
     /* Disable while the server decides. It is about a fifth of a second, which
        is exactly long enough for an impatient second click — and two clicks
        would be two sales. The opId below makes that harmless, but not showing
@@ -495,7 +629,10 @@ var POS = (function () {
     })
       .then(function (data) {
         S.opId = null;
+        /* Read before completeLocal, which resets the cart. */
+        var out = wantsDelivery() ? deliveryPayload(data.sale) : null;
         completeLocal(silent, data.sale);
+        if (out) sendOut(out);
       })
       .catch(function (err) {
         if (btn) { btn.disabled = false; btn.innerHTML = wasLabel; }
@@ -509,16 +646,79 @@ var POS = (function () {
           return;
         }
 
+        /* Over the ceiling. Reachable even with the check above — the cap can
+           be lowered in Settings while this basket is open, or the permission
+           taken away mid-shift. The server's own sentence names the real
+           limit and the real maximum, so it is repeated rather than
+           paraphrased, and the cart is left alone to be adjusted. */
+        if (err.code === 'discount_too_big') {
+          toast(t('cart'), err.message, 'err', 7000);
+          paintFoot();
+          return;
+        }
+
         /* Everything else — offline, timeout, signed out. The cart is left
            exactly as it was so the sale can be retried without re-scanning. */
         toast(t('cart'), API.friendly(err), 'err', 6000);
       });
   }
 
+  /* --------------------------------------------------------- sending it out */
+
+  function wantsDelivery() {
+    if (typeof Auth === 'undefined' || Auth.demoMode()) return false;
+    if (!Auth.can('delivery.write')) return false;
+    return S.payment === 'cod' || S.deliver;
+  }
+
+  function deliveryPayload(sale) {
+    var cust = S.customerId ? DB.customer(S.customerId) : null;
+    var addr = (S.deliverAddress !== null && S.deliverAddress !== undefined)
+      ? S.deliverAddress
+      : ((cust && cust.address) || '');
+
+    return {
+      saleId: sale.id,
+      address: String(addr).trim(),
+      phone: cust ? cust.phone : null,
+      /* No driver named here. The cashier does not know who is free — the
+         manager assigns from the board, and an unassigned row is visible
+         there. A guess would be worse than an empty field. */
+      driverId: null,
+      opId: 'dl-' + sale.id
+    };
+  }
+
+  /* Deliberately AFTER the sale is committed, and never in the same request.
+
+     The money is already in the drawer by the time this runs. A delivery that
+     fails to save must not be able to unwind a completed sale, so a failure
+     here is reported and left alone: the sale stands, and the order shows on
+     the manager's board as needing an address. Rolling back real money because
+     a second write failed would be the worse bug by a long way. */
+  function sendOut(payload) {
+    if (!payload.address) {
+      toast(t('dl_assign'), t('dl_no_address'), 'warn', 6000);
+      return;
+    }
+    Deliveries.assign(payload)
+      .then(function () { toast(t('dl_assign'), t('dl_sent'), 'ok', 3000); })
+      .catch(function (err) {
+        toast(t('dl_assign'), API.friendly(err), 'err', 7000);
+      });
+  }
+
   function completeLocal(silent, server) {
     var x = totals();
     var cust = S.customerId ? DB.customer(S.customerId) : null;
-    var cashier = 'Lubna Kayali';
+
+    /* Whoever is actually standing at the till. This was hardcoded to one
+       cashier's name from the demo, which was harmless while there were no
+       accounts and is not any more: it is the name that goes on the receipt,
+       into the stock movement log, and onto "my sales today". */
+    var cashier = (typeof Auth !== 'undefined' && Auth.user() && Auth.user().name)
+      ? Auth.user().name
+      : 'Lubna Kayali';
 
     var sale = {
       /* The server's invoice number when it wrote one, so the printed receipt
@@ -621,6 +821,10 @@ var POS = (function () {
     S.coupon = null;
     S.pointsUsed = 0;
     S.payment = 'cash';
+    /* Cleared with everything else. An address left behind would be attached
+       to the NEXT customer's sale, and the parcel would go to the wrong door. */
+    S.deliver = false;
+    S.deliverAddress = null;
     S.print = { on: false, text: '', qty: 1, priority: 'normal', deadline: null };
     S.q = '';
     S.cat = '';
@@ -817,8 +1021,13 @@ var POS = (function () {
       if (k === 'disc') {
         S.discount.value = Math.max(0, parseInt(el.value, 10) || 0);
         paintTotals();
+        paintDiscHint();
         return;
       }
+      /* Kept in state on every keystroke rather than read off the DOM at the
+         end, because the foot repaints when the payment method changes and
+         a half-typed address would vanish with it. */
+      if (k === 'addr') { S.deliverAddress = el.value; return; }
       if (el.id === 'prText') S.print.text = el.value;
       if (el.id === 'prQty') S.print.qty = Math.max(1, parseInt(el.value, 10) || 1);
       if (el.id === 'prDate') S.print.deadline = el.value;
@@ -828,6 +1037,10 @@ var POS = (function () {
       var el = e.target;
       if (el.getAttribute && el.getAttribute('data-pos-check') === 'print') {
         S.print.on = el.checked;
+        paintFoot();
+      }
+      if (el.getAttribute && el.getAttribute('data-pos-check') === 'deliver') {
+        S.deliver = el.checked;
         paintFoot();
       }
       if (el.id === 'prPrio') S.print.priority = el.value;

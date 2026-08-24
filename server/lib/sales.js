@@ -83,7 +83,12 @@ export function nextInvoiceId() {
    pair for nothing. */
 export function record({
   lines, whId, customerId, payment, discount = 0,
-  currency, userId, opId, note
+  currency, userId, opId, note,
+  /* Set by the route from the caller's permissions. Passed in rather than
+     looked up here so this module stays free of the auth tables — but it
+     defaults to false, so a new caller that forgets it gets the cap, not a
+     hole. Failing closed is the whole point of a default. */
+  unlimitedDiscount = false
 }) {
   if (!Array.isArray(lines) || !lines.length) throw new Error('a sale needs at least one line');
   if (!whId) throw new Error('a sale must say which place it came out of');
@@ -146,6 +151,31 @@ export function record({
 
     const disc = Math.max(0, Math.round(Number(discount) || 0));
     if (disc > subtotal) throw new Error('the discount is larger than the sale');
+
+    /* ---- the ceiling ------------------------------------------------------
+       Checked here, not only at the till. A cap that lives in the browser is
+       a suggestion: the request can be sent by hand, and the whole reason
+       prices are read from the product table above is that the client's
+       numbers are not trusted. The discount is one of the client's numbers. */
+    if (!unlimitedDiscount && disc > 0) {
+      const maxPct = Number(d.prepare(
+        "SELECT value FROM config WHERE key = 'sale.max_discount_pct'"
+      ).get()?.value ?? 100);
+
+      /* Compared as amounts rather than a rounded percentage, so a discount
+         one lira over the line is over the line. */
+      const ceiling = Math.floor(subtotal * maxPct / 100);
+      if (disc > ceiling) {
+        const e = new Error(
+          `Discounts above ${maxPct}% need a manager. The most you can take off ` +
+          `this sale is ${ceiling} (you asked for ${disc}).`);
+        e.code = 'discount_too_big';
+        e.maxPct = maxPct;
+        e.ceiling = ceiling;
+        throw e;
+      }
+    }
+
     const total = subtotal - disc;
 
     /* ---- take the stock -------------------------------------------------- */

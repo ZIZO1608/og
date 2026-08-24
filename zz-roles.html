@@ -1,0 +1,104 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>role check</title>
+<body style="font:13px/1.5 Menlo,Consolas,monospace;background:#0A0A0B;color:#FAFAFA;padding:16px">
+<pre id="out">running…</pre>
+<script>
+/* Throwaway. Signs in as each account in turn, walks every screen that role
+   can reach, and reports what is on the page plus any JS error thrown along
+   the way. Deleted once the run is green. */
+
+var L = [];
+function say(s) { L.push(s); document.getElementById('out').textContent = L.join('\n'); }
+
+var errs = [];
+window.addEventListener('error', function (e) { errs.push(e.message); });
+window.addEventListener('unhandledrejection', function (e) {
+  errs.push('promise: ' + (e.reason && e.reason.message || e.reason));
+});
+
+function post(path, body) {
+  return fetch(path, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {})
+  }).then(function (r) { return r.json(); });
+}
+
+var F;                       /* the app iframe */
+function boot(cb) {
+  if (F) F.remove();
+  F = document.createElement('iframe');
+  F.style.cssText = 'width:414px;height:900px;border:1px solid #333';
+  F.src = 'index.html?t=' + Date.now();
+  F.onload = function () { setTimeout(cb, 1400); };
+  document.body.appendChild(F);
+}
+
+function W() { return F.contentWindow; }
+function D() { return F.contentDocument; }
+
+function txt() { return (D().body.innerText || '').replace(/\s+/g, ' '); }
+function has(s) { return txt().indexOf(s) > -1; }
+function q(sel) { return D().querySelector(sel); }
+function all(sel) { return Array.prototype.slice.call(D().querySelectorAll(sel)); }
+
+function nav() {
+  return all('.nav-item, .navitem, [data-act="nav"]')
+    .map(function (b) { return b.getAttribute('data-view'); })
+    .filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+}
+
+function go(view) {
+  W().OG.view = view;
+  W().render();
+}
+
+var ROLES = ['hussam', 'lubna', 'maher', 'talal', 'yalla'];
+var i = 0;
+
+function next() {
+  if (i >= ROLES.length) { say('\n=== DONE ==='); say('JS ERRORS: ' + (errs.length ? errs.join(' | ') : 'none')); return; }
+  var u = ROLES[i++];
+
+  post('/api/auth/logout')
+    .then(function () { return post('/api/auth/login', { username: u, password: 'test-1234' }); })
+    .then(function (r) {
+      if (!r.ok) { say('LOGIN FAILED ' + u); return next(); }
+      boot(function () { check(u); });
+    });
+}
+
+function check(u) {
+  say('\n================ ' + u.toUpperCase() + ' ================');
+  var role = W().Auth.user().role;
+  say('role      : ' + role);
+  say('portal    : ' + W().OG.print.partner);
+  say('nav       : ' + nav().join(',') || '(none)');
+  say('home has  : ' + txt().slice(0, 150));
+
+  /* money words that must not appear on a role home */
+  var leak = ['Sales this month', 'Sales — last 6', 'Best sellers', 'Profit', 'Stock value at cost', 'Value at cost'];
+  var found = leak.filter(has);
+  say('LEAK home : ' + (found.length ? found.join(' | ') : 'none'));
+
+  var views = nav();
+  views.forEach(function (v) {
+    try {
+      go(v);
+      var costCols = all('th').map(function (th) { return th.textContent.trim(); });
+      say('  [' + v + '] th: ' + costCols.join('|').slice(0, 130));
+    } catch (e) { errs.push(v + ': ' + e.message); }
+  });
+
+  /* try to escape */
+  try { go('reports'); } catch (e) {}
+  say('escape to reports -> view=' + W().OG.view + ' portal=' + W().OG.print.partner);
+  try { go('settings'); } catch (e) {}
+  say('escape to settings -> view=' + W().OG.view);
+
+  setTimeout(next, 300);
+}
+
+next();
+</script>
