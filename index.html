@@ -56,6 +56,12 @@
 <script src="js/motion.js"></script>
 <script src="js/export.js"></script>
 <script src="js/data.js"></script>
+<!-- The 80mm thermal receipt: receipt.js draws it on canvas (needs Codes for
+     the barcode/QR and CONFIG for shop/receipt settings, both above), escpos.js
+     packs that canvas into printer bytes. Both must load before pos.js, which
+     calls Receipt.autoPrint() the moment a sale completes. -->
+<script src="js/receipt.js"></script>
+<script src="js/escpos.js"></script>
 <!-- shop.js turns server payloads into the shapes data.js defines, so it must
      come after it. Nothing it does runs at load time: app.js calls Shop.load()
      once, after sign-in, before the first paint. -->

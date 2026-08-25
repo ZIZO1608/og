@@ -106,6 +106,29 @@ var I18N = {
     rc_paper: 'Receipt paper', rc_80: '80 mm', rc_58: '58 mm',
     rc_paper_hint: 'The roll your printer takes. 80 mm is standard.',
 
+    /* --- the 80mm thermal receipt (js/receipt.js) — drawn on canvas, so
+       these are read directly off I18N.en / I18N.ar rather than through
+       t(), because the printed slip needs both languages on the page at
+       once, never just whichever one the app happens to be showing. */
+    rc2_invoice: 'Invoice', rc2_datetime: 'Date & time', rc2_cashier: 'Cashier',
+    rc2_customer: 'Customer', rc2_phone: 'Phone', rc2_points_balance: 'Points balance',
+    rc2_size: 'Size', rc2_line_discount: 'Discount',
+    rc2_subtotal: 'Subtotal', rc2_discount: 'Discount', rc2_points_used: 'Points used',
+    rc2_total: 'TOTAL', rc2_payment: 'Payment', rc2_to_collect: 'Amount to collect (COD)',
+    rc2_points_earned: 'Points earned', rc2_shop_copy: 'SHOP COPY',
+    print_receipt: 'Print receipt', preview_receipt: 'Preview', printing: 'Printing',
+    print_sent: 'Sent to the printer', print_retry: 'Retry from the receipt.',
+
+    rc3_title: 'Receipt printer', rc3_sub: 'The 80mm slip a customer walks out holding',
+    rc3_host: 'Printer address (LAN IP)', rc3_port: 'Port', rc3_branch: 'Branch name',
+    rc3_auto_print: 'Auto-print on sale', rc3_auto_print_hint: 'Off for a client demo — a printer chattering through a meeting is a bad look.',
+    rc3_copies: 'Copies', rc3_cut_mode: 'Cut', rc3_cut_partial: 'Partial', rc3_cut_full: 'Full',
+    rc3_show_qr: 'QR code', rc3_show_barcode: 'Barcode', rc3_show_loyalty: 'Loyalty lines',
+    rc3_footer_ar: 'Footer (Arabic)', rc3_footer_en: 'Footer (English)',
+    rc3_policy_ar: 'Return policy (Arabic)', rc3_policy_en: 'Return policy (English)',
+    rc3_save: 'Save receipt settings', rc3_saved: 'Receipt settings saved',
+    rc3_demo_note: 'No server here — these are shown for reference and cannot be saved.',
+
     /* --- discounts --- */
     disc_capped: 'Discounts above {p}% need a manager',
     disc_max: 'most you can take off: {v}',
@@ -499,6 +522,25 @@ var I18N = {
     rc_policy: 'الاستبدال خلال ٧ أيام مع هذه الفاتورة',
     rc_paper: 'ورق الفاتورة', rc_80: '٨٠ مم', rc_58: '٥٨ مم',
     rc_paper_hint: 'قياس الرول في طابعتك. ٨٠ مم هو القياس المعتاد.',
+
+    rc2_invoice: 'رقم الفاتورة', rc2_datetime: 'التاريخ والوقت', rc2_cashier: 'الكاشير',
+    rc2_customer: 'الزبون', rc2_phone: 'الهاتف', rc2_points_balance: 'رصيد النقاط',
+    rc2_size: 'مقاس', rc2_line_discount: 'خصم',
+    rc2_subtotal: 'المجموع الفرعي', rc2_discount: 'الخصم', rc2_points_used: 'نقاط مستخدمة',
+    rc2_total: 'الإجمالي', rc2_payment: 'طريقة الدفع', rc2_to_collect: 'المبلغ المطلوب تحصيله',
+    rc2_points_earned: 'نقاط مكتسبة', rc2_shop_copy: 'نسخة المحل',
+    print_receipt: 'طباعة الفاتورة', preview_receipt: 'معاينة', printing: 'جارٍ الطباعة',
+    print_sent: 'أُرسلت إلى الطابعة', print_retry: 'أعد المحاولة من الفاتورة.',
+
+    rc3_title: 'طابعة الفاتورة', rc3_sub: 'الفاتورة الحرارية ٨٠ مم التي يحملها الزبون',
+    rc3_host: 'عنوان الطابعة (IP على الشبكة)', rc3_port: 'المنفذ', rc3_branch: 'اسم الفرع',
+    rc3_auto_print: 'طباعة تلقائية عند البيع', rc3_auto_print_hint: 'أوقفها في عرض تجريبي للعميل — طابعة تعمل خلال اجتماع مظهر غير مناسب.',
+    rc3_copies: 'عدد النسخ', rc3_cut_mode: 'القص', rc3_cut_partial: 'جزئي', rc3_cut_full: 'كامل',
+    rc3_show_qr: 'رمز QR', rc3_show_barcode: 'الباركود', rc3_show_loyalty: 'سطور نقاط الولاء',
+    rc3_footer_ar: 'التذييل (عربي)', rc3_footer_en: 'التذييل (إنجليزي)',
+    rc3_policy_ar: 'سياسة الاستبدال (عربي)', rc3_policy_en: 'سياسة الاستبدال (إنجليزي)',
+    rc3_save: 'حفظ إعدادات الفاتورة', rc3_saved: 'تم حفظ إعدادات الفاتورة',
+    rc3_demo_note: 'لا يوجد خادم هنا — هذه القيم للعرض فقط ولا يمكن حفظها.',
 
     /* --- الحسومات --- */
     disc_capped: 'الحسم فوق {p}٪ يحتاج موافقة المدير',
@@ -5063,6 +5105,80 @@ function hardwareCard() {
   return h + '</div></div>';
 }
 
+/* ---- the 80mm thermal receipt --------------------------------------------
+   Everything a manager can tune without a code change: which printer to
+   talk to, how many copies, and the two blocks of text that print on every
+   receipt bilingual — the footer and the return policy. Saves straight to
+   the server's config table via PUT /api/config; there is nothing to save
+   in demo mode, so the fields show the seeded defaults and stay read-only. */
+function receiptSettingsCard() {
+  var demo = typeof Auth === 'undefined' || Auth.demoMode();
+  var dis = demo ? ' disabled' : '';
+
+  var h = '<div class="card mb"><div class="card-head"><h3>' + t('rc3_title') + '</h3>' +
+    '<div class="card-actions muted small">' + t('rc3_sub') + '</div></div><div class="card-body">';
+
+  if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
+
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_host') + '</span>' +
+      '<input class="inp num" dir="ltr" id="rcHost" value="' + esc(CONFIG.RECEIPT_PRINTER_HOST) + '"' + dis + '></label>' +
+    '<label class="field"><span>' + t('rc3_port') + '</span>' +
+      '<input class="inp num" type="number" id="rcPort" value="' + CONFIG.RECEIPT_PRINTER_PORT + '"' + dis + '></label>' +
+  '</div>';
+
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_branch') + '</span>' +
+      '<input class="inp" id="rcBranch" value="' + esc(CONFIG.SHOP_BRANCH) + '"' + dis + '></label>' +
+    '<label class="field"><span>' + t('phone') + '</span>' +
+      '<input class="inp num" dir="ltr" id="rcPhone" value="' + esc(CONFIG.SHOP_PHONE) + '"' + dis + '></label>' +
+  '</div>';
+
+  h += '<div class="rule-row"><div class="rr-txt"><b>' + t('rc3_auto_print') + '</b>' +
+    '<small>' + t('rc3_auto_print_hint') + '</small></div>' +
+    '<label class="switch"><input type="checkbox" id="rcAutoPrint"' +
+      (CONFIG.RECEIPT_AUTO_PRINT ? ' checked' : '') + dis + '><i></i></label></div>';
+
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_copies') + '</span>' +
+      '<input class="inp num" type="number" min="1" max="4" id="rcCopies" value="' + CONFIG.RECEIPT_COPIES + '"' + dis + '></label>' +
+    '<label class="field"><span>' + t('rc3_cut_mode') + '</span>' +
+      '<div class="chip-row" id="rcCutMode" data-v="' + esc(CONFIG.RECEIPT_CUT_MODE) + '">' +
+        '<button class="chip ' + (CONFIG.RECEIPT_CUT_MODE !== 'full' ? 'on' : '') + '"' + dis +
+          ' data-act="rc-cut" data-k="partial">' + t('rc3_cut_partial') + '</button>' +
+        '<button class="chip ' + (CONFIG.RECEIPT_CUT_MODE === 'full' ? 'on' : '') + '"' + dis +
+          ' data-act="rc-cut" data-k="full">' + t('rc3_cut_full') + '</button>' +
+      '</div></label>' +
+  '</div>';
+
+  [['rcShowQr', 'rc3_show_qr', CONFIG.RECEIPT_SHOW_QR],
+   ['rcShowBarcode', 'rc3_show_barcode', CONFIG.RECEIPT_SHOW_BARCODE],
+   ['rcShowLoyalty', 'rc3_show_loyalty', CONFIG.RECEIPT_SHOW_LOYALTY]
+  ].forEach(function (f) {
+    h += '<div class="rule-row"><div class="rr-txt"><b>' + t(f[1]) + '</b></div>' +
+      '<label class="switch"><input type="checkbox" id="' + f[0] + '"' + (f[2] ? ' checked' : '') + dis + '><i></i></label></div>';
+  });
+
+  h += '<div class="row2 mt">' +
+    '<label class="field"><span>' + t('rc3_footer_ar') + '</span>' +
+      '<textarea class="inp" dir="rtl" id="rcFooterAr" rows="2"' + dis + '>' + esc(CONFIG.RECEIPT_FOOTER_AR) + '</textarea></label>' +
+    '<label class="field"><span>' + t('rc3_footer_en') + '</span>' +
+      '<textarea class="inp" dir="ltr" id="rcFooterEn" rows="2"' + dis + '>' + esc(CONFIG.RECEIPT_FOOTER_EN) + '</textarea></label>' +
+  '</div>';
+
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_policy_ar') + '</span>' +
+      '<textarea class="inp" dir="rtl" id="rcPolicyAr" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_POLICY_AR) + '</textarea></label>' +
+    '<label class="field"><span>' + t('rc3_policy_en') + '</span>' +
+      '<textarea class="inp" dir="ltr" id="rcPolicyEn" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_POLICY_EN) + '</textarea></label>' +
+  '</div>';
+
+  h += '<div class="mt"><button class="btn btn-primary" data-act="rc-save-config"' + dis + '>' +
+    t('rc3_save') + '</button></div>';
+
+  return h + '</div></div>';
+}
+
 function viewSettings() {
   var h = '<div class="page-head"><div><h1>' + t('settings_title') + '</h1>' +
     '<div class="sub">' + t('settings_sub') + '</div></div>' +
@@ -5070,6 +5186,8 @@ function viewSettings() {
       '<button class="btn btn-primary" data-act="settings-save">' + t('save_changes') + '</button></div></div>';
 
   h += hardwareCard();
+
+  h += receiptSettingsCard();
 
   h += rolesCard();
 
@@ -5397,6 +5515,10 @@ function openReceipt(sale, opts) {
     foot: '<button class="btn btn-ghost" data-act="rc-invoice" data-id="' + esc(sale.id) + '">' +
             t('rc_full_page') + '</button>' +
           '<button class="btn" data-act="print-now">' + t('print') + '</button>' +
+          (allow('sale.reprint')
+            ? '<button class="btn" data-act="print-receipt" data-id="' + esc(sale.id) + '">' +
+                t('print_receipt') + '</button>'
+            : '') +
           (opts.newSale
             ? '<button class="btn btn-primary" data-act="new-sale">' + t('new_sale') + '</button>'
             : '<button class="btn btn-primary" data-act="modal-close">' + t('close') + '</button>'),
@@ -5415,6 +5537,12 @@ function openInvoice(sale, opts) {
     body: invoiceHtml(sale),
     foot: '<button class="btn btn-ghost" data-act="export" data-kind="pdf">' + t('pdf') + '</button>' +
           '<button class="btn" data-act="print-now">' + t('print') + '</button>' +
+          (allow('sale.reprint')
+            ? '<button class="btn btn-ghost" data-act="preview-receipt" data-id="' + esc(sale.id) + '">' +
+                t('preview_receipt') + '</button>' +
+              '<button class="btn" data-act="print-receipt" data-id="' + esc(sale.id) + '">' +
+                t('print_receipt') + '</button>'
+            : '') +
           (opts.newSale
             ? '<button class="btn btn-primary" data-act="new-sale">' + t('new_sale') + '</button>'
             : '<button class="btn btn-primary" data-act="modal-close">' + t('close') + '</button>')
@@ -6489,6 +6617,49 @@ var ACTIONS = {
     if (OG.view === 'settings') { render(); } else { repaintLabels(); }
   },
 
+  /* Just flips which chip is lit — rc-save-config reads the choice straight
+     back off this element when the card is actually saved. */
+  'rc-cut': function (el) {
+    var row = document.getElementById('rcCutMode');
+    if (!row) return;
+    row.setAttribute('data-v', el.getAttribute('data-k'));
+    Array.prototype.forEach.call(row.querySelectorAll('.chip'), function (c) {
+      c.classList.toggle('on', c === el);
+    });
+  },
+
+  'rc-save-config': function (el) {
+    if (!allow('config.write') || typeof Auth === 'undefined' || Auth.demoMode()) return;
+    var updates = {
+      'receipt.printer_host': (document.getElementById('rcHost') || {}).value || '',
+      'receipt.printer_port': (document.getElementById('rcPort') || {}).value || '9100',
+      'shop.branch_name':     (document.getElementById('rcBranch') || {}).value || '',
+      'shop.phone':           (document.getElementById('rcPhone') || {}).value || '',
+      'receipt.auto_print':   (document.getElementById('rcAutoPrint') || {}).checked ? '1' : '0',
+      'receipt.copies':       (document.getElementById('rcCopies') || {}).value || '2',
+      'receipt.cut_mode':     ((document.getElementById('rcCutMode') || {}).getAttribute &&
+                                document.getElementById('rcCutMode').getAttribute('data-v')) || 'partial',
+      'receipt.show_qr':      (document.getElementById('rcShowQr') || {}).checked ? '1' : '0',
+      'receipt.show_barcode': (document.getElementById('rcShowBarcode') || {}).checked ? '1' : '0',
+      'receipt.show_loyalty': (document.getElementById('rcShowLoyalty') || {}).checked ? '1' : '0',
+      'receipt.footer_ar':    (document.getElementById('rcFooterAr') || {}).value || '',
+      'receipt.footer_en':    (document.getElementById('rcFooterEn') || {}).value || '',
+      'receipt.policy_ar':    (document.getElementById('rcPolicyAr') || {}).value || '',
+      'receipt.policy_en':    (document.getElementById('rcPolicyEn') || {}).value || ''
+    };
+    el.disabled = true;
+    API.put('/api/config', { updates: updates })
+      .then(function (res) {
+        if (typeof DB !== 'undefined' && DB.hydrate) DB.hydrate({ config: res.config });
+        toast(t('rc3_title'), t('rc3_saved'), 'ok', 3000);
+        if (OG.view === 'settings') render();
+      })
+      .catch(function (err) {
+        el.disabled = false;
+        toast(t('rc3_title'), API.friendly(err), 'err', 6000);
+      });
+  },
+
   /* One label, printed now, so the roll and the driver can be proved before
      a hundred stickers are committed to it. */
   'hw-test-label': function () {
@@ -7372,6 +7543,7 @@ function boot() {
      boot rather than at load time because ACTIONS is a var in this file and
      script order should not decide whether the buttons work. */
   if (typeof Deliveries !== 'undefined') Deliveries.register();
+  if (typeof Receipt !== 'undefined') Receipt.register();
 
   renderTopbar();
   var raw = window.location.hash;

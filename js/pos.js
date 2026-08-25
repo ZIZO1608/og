@@ -861,6 +861,11 @@ var POS = (function () {
        for anyone who wants it. */
     openReceipt(sale, { newSale: true });
 
+    /* The actual paper. Fire-and-forget — a printer that is off or out of
+       paper must never hold up the till, the same principle as a delivery
+       assignment happening only after the sale has already committed. */
+    if (typeof Receipt !== 'undefined') Receipt.autoPrint(sale);
+
     if (!silent) {
       toast(t('sale_complete'), sale.id + ' · ' + money(sale.total), 'ok');
       setTimeout(function () {
