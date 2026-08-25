@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v24';
+var CACHE = 'og-system-v25';
 
 var SHELL = [
   './',

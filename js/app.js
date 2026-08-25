@@ -28,7 +28,7 @@ var OG = {
      sticker sheet needs them tiled. */
   /* price:false by default — see LABEL_TEMPLATES.product. cw/ch are the
      custom label size in mm, used when size === 'custom'. */
-  lb:   { pid: null, template: 'product', size: '50x30', cw: 50, ch: 30, max: 4,
+  lb:   { pid: null, template: 'product', size: '30x30', cw: 30, ch: 30, max: 4,
           sym: 'c128', mode: 'roll',
           barcode: true, qr: true, price: false, size2: true, shelf: true, logo: true },
   /* Receipt paper. 80mm is the shop standard; 58mm rolls are common enough
@@ -3375,6 +3375,7 @@ var LABEL_TEMPLATES = {
 };
 
 var LABEL_SIZES = {
+  '30x30': { w: 30, h: 30 },
   '50x30': { w: 50, h: 30 },
   '40x30': { w: 40, h: 30 },
   '70x40': { w: 70, h: 40 }
@@ -3407,7 +3408,7 @@ function labelDim() {
       h: Math.max(10, Math.min(200, +OG.lb.ch || 30))
     };
   }
-  return LABEL_SIZES[OG.lb.size] || LABEL_SIZES['50x30'];
+  return LABEL_SIZES[OG.lb.size] || LABEL_SIZES['30x30'];
 }
 
 /* Work out the module width that makes this exact symbol span the usable
