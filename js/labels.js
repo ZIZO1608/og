@@ -73,8 +73,9 @@ var Labels = (function () {
     var logo = presetObj.logo === 'omit' ? null : { xDots: marginDots, yDots: 4, wDots: 40, hDots: 40 };
     var textLeft = presetObj.logo === 'left-of-text' ? marginDots + 46 : marginDots;
     var y = (logo && presetObj.logo !== 'left-of-text') ? logo.yDots + logo.hDots + 4 : 6;
-    var name = { xDots: textLeft, yDots: y, widthDots: widthDots - textLeft - marginDots, maxLines: presetObj.nameLines, arabic: isArabic(variant.name), text: variant.name };
-    y += presetObj.nameLines * 22 + 4;
+    var nameHeightDots = presetObj.nameLines * 22;
+    var name = { xDots: textLeft, yDots: y, widthDots: widthDots - textLeft - marginDots, heightDots: nameHeightDots, maxLines: presetObj.nameLines, arabic: isArabic(variant.name), text: variant.name };
+    y += nameHeightDots + 4;
     var variantLine = { xDots: textLeft, yDots: y, text: String(variant.size) };
     y += 30;
     var barcodeY = Math.max(y, heightDots - barcodeHeightDots - 26);
@@ -123,8 +124,14 @@ var Labels = (function () {
       boxes += '<img class="lbl-logo" style="left:' + mm(L.logo.xDots) + ';top:' + mm(L.logo.yDots) +
         ';width:' + mm(L.logo.wDots) + ';height:' + mm(L.logo.hDots) + '" src="assets/logo.svg" alt="">';
     }
+    /* height + overflow:hidden so the preview clips at exactly the box the
+       bitmap will be rasterized into — an Arabic name skips wrapName's
+       ellipsis truncation (only Latin text goes through it) and is instead
+       clipped by canvas height when printed, so the preview has to clip
+       the same way or it would show text that never comes out on paper. */
     boxes += '<div class="lbl-name" style="left:' + mm(L.name.xDots) + ';top:' + mm(L.name.yDots) +
-      ';width:' + mm(L.name.widthDots) + '"' + (L.name.arabic ? ' dir="rtl"' : '') + '>' + esc(line.name) + '</div>';
+      ';width:' + mm(L.name.widthDots) + ';height:' + mm(L.name.heightDots) + ';overflow:hidden"' +
+      (L.name.arabic ? ' dir="rtl"' : '') + '>' + esc(line.name) + '</div>';
     boxes += '<div class="lbl-variant" style="left:' + mm(L.variant.xDots) + ';top:' + mm(L.variant.yDots) + '">' + esc(line.size) + '</div>';
     boxes += '<div class="lbl-barcode" style="left:' + mm(L.barcode.xDots) + ';top:' + mm(L.barcode.yDots) +
       ';width:' + mm(L.barcode.wDots) + ';height:' + mm(L.barcode.hDots) + '">' +
@@ -145,7 +152,8 @@ var Labels = (function () {
      scaling step can blur it, then packed with the SAME function the
      receipt feature uses (ESCPOS.packBitmap) — same polarity (ESC/POS,
      1=black); the server inverts it exactly once before embedding. */
-  function rasterizeArabic(text, widthDots, heightDots) {
+  function rasterizeArabic(text, widthDots, heightDots, maxLines) {
+    maxLines = maxLines || 2;
     var c = document.createElement('canvas');
     c.width = Math.ceil(widthDots / 8) * 8;   // ESCPOS.packBitmap requires a multiple of 8
     c.height = Math.max(8, heightDots);
@@ -155,8 +163,39 @@ var Labels = (function () {
     ctx.direction = 'rtl';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
-    ctx.font = Math.floor(c.height * 0.6) + "px 'Montserrat','Segoe UI',Tahoma,sans-serif";
-    ctx.fillText(text, c.width - 2, 2);
+    var lineH = Math.floor(c.height / maxLines);
+    var fontPx = Math.max(8, Math.floor(lineH * 0.72));
+    ctx.font = fontPx + "px 'Montserrat','Segoe UI',Tahoma,sans-serif";
+
+    /* Greedy word wrap by real measured width — the same approach proven
+       correct for Arabic shaping in js/receipt.js's wrapText, so a label's
+       name box actually uses its 1-2 reserved lines instead of drawing one
+       line and letting anything past the canvas edge fall off silently. */
+    var words = String(text).split(/\s+/).filter(Boolean);
+    var lines = [], cur = '';
+    for (var i = 0; i < words.length; i++) {
+      var next = cur ? cur + ' ' + words[i] : words[i];
+      if (ctx.measureText(next).width > c.width - 4 && cur) {
+        lines.push(cur);
+        cur = words[i];
+        if (lines.length === maxLines) break;
+      } else {
+        cur = next;
+      }
+    }
+    if (lines.length < maxLines && cur) lines.push(cur);
+
+    var consumed = lines.join(' ').split(/\s+/).length;
+    if (lines.length === maxLines && consumed < words.length) {
+      var last = lines[maxLines - 1];
+      while (ctx.measureText(last + '…').width > c.width - 4 && last.length > 1) {
+        last = last.slice(0, -1);
+      }
+      lines[maxLines - 1] = last + '…';
+    }
+
+    lines.forEach(function (line, i) { ctx.fillText(line, c.width - 2, i * lineH + 2); });
+
     var bmp = ESCPOS.packBitmap(c);
     return { bytesPerRow: bmp.bytesPerRow, height: bmp.height, dataB64: bytesToB64(bmp.data) };
   }
@@ -172,7 +211,7 @@ var Labels = (function () {
     var out = {};
     previewData.lines.forEach(function (l) {
       if (l.layout.name.arabic) {
-        out[l.sku] = { name: rasterizeArabic(l.name, l.layout.name.widthDots, (l.layout.name.maxLines || 2) * 24) };
+        out[l.sku] = { name: rasterizeArabic(l.name, l.layout.name.widthDots, l.layout.name.heightDots, l.layout.name.maxLines) };
       }
     });
     return out;

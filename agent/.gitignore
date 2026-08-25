@@ -1,0 +1,14 @@
+# =============================================================================
+#  Never commit this. The repository is public.
+# -----------------------------------------------------------------------------
+#  agent-config.json holds a real OG System login (username + password) for
+#  whichever station this agent runs as, plus the printer share path. Commit
+#  agent-config.example.json instead — a template with no real credentials.
+# =============================================================================
+
+agent-config.json
+
+# ---- runtime ------------------------------------------------------------------
+node_modules/
+*.log
+*.prn

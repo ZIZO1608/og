@@ -218,12 +218,13 @@ export function computeLayout(variant, presetObj) {
   let y = (logo && !logo.inline) ? logo.yDots + logo.hDots + 4 : 6;
 
   const nameArabic = isArabic(variant.name);
+  const nameLineHeight = TSPL_FONTS['2'].charH + 2;
   const name = {
     xDots: textLeft, yDots: y, font: '2', maxLines: presetObj.nameLines,
-    widthDots: textWidth, arabic: nameArabic,
+    widthDots: textWidth, heightDots: presetObj.nameLines * nameLineHeight, arabic: nameArabic,
     text: nameArabic ? variant.name : wrapName(variant.name, { font: '2', maxLines: presetObj.nameLines, widthDots: textWidth }).join('\n')
   };
-  y += presetObj.nameLines * (TSPL_FONTS['2'].charH + 2) + 4;
+  y += name.heightDots + 4;
 
   const variantLine = { xDots: textLeft, yDots: y, font: '3', text: String(variant.size) };
   y += TSPL_FONTS['3'].charH + 6;
