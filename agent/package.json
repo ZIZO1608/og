@@ -1,0 +1,8 @@
+{
+  "name": "og-label-agent",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.5.0" },
+  "dependencies": {},
+  "devDependencies": {}
+}

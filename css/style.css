@@ -3324,3 +3324,42 @@ html.has-demo-banner .view { padding-bottom: 52px; }
      torn in half across the cut. */
   .rcp-name, .rcp-line, .rcp-grand, .rcp-qr { break-inside: avoid; }
 }
+
+/* ==========================================================================
+   Thermal product labels (XP-235B / TSPL) — js/labels.js
+   --------------------------------------------------------------------------
+   True-mm-scale preview: a 30mm label renders 30mm wide on screen, so what
+   is approved here is what the printer will actually produce — the same
+   principle as .receipt above, applied to a much smaller sticker. Not to be
+   confused with the OLD browser Label Studio's print sheet elsewhere in
+   this file, a different system entirely.
+   ========================================================================== */
+.lbl-picker { display: flex; flex-direction: column; gap: 4px; }
+.lbl-batch-total { font-size: 13px; }
+.lbl-lbl { font-size: 11px; color: var(--muted-foreground); margin-inline-end: 6px; align-self: center; }
+
+.lbl-preview-host { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; }
+.lbl-line { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.lbl-line-qty { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-foreground); }
+.lbl-line-qty input { width: 56px; }
+
+.lbl-sticker {
+  position: relative;
+  background: #FFFFFF; color: #000000;
+  border: 1px solid #D4D4D8; border-radius: 2px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / .3);
+  flex: none;
+}
+.lbl-sticker * { color: #000000 !important; }
+.lbl-logo { position: absolute; object-fit: contain; filter: grayscale(1) contrast(1000%); }
+.lbl-name {
+  position: absolute; font-weight: 700; font-size: 7.5pt; line-height: 1.15;
+  font-family: "Helvetica Neue", Arial, sans-serif; overflow: hidden;
+}
+.lbl-variant { position: absolute; font-weight: 800; font-size: 10pt; font-family: var(--font-head), Arial, sans-serif; }
+.lbl-barcode { position: absolute; text-align: center; }
+.lbl-barcode svg { width: 100%; height: 100%; }
+.lbl-fallback {
+  display: block; font-size: 6pt; color: #B45309; background: #FEF3C7;
+  border-radius: 2px; padding: 1px 3px; margin-top: 1px;
+}

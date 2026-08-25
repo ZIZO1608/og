@@ -126,7 +126,25 @@ var CONFIG = {
   RECEIPT_SHOW_LOYALTY: true,
   RECEIPT_AUTO_PRINT: true,
   RECEIPT_COPIES: 2,
-  RECEIPT_CUT_MODE: 'partial'
+  RECEIPT_CUT_MODE: 'partial',
+
+  /* Thermal product labels (Xprinter XP-235B, TSPL) — a separate printer
+     from the receipt, a separate config namespace. Demo-mode defaults only;
+     a real server overwrites these from config.label.* in DB.hydrate. */
+  LABEL_DEFAULT_PRESET: '30x30',
+  LABEL_STATIONS: 'warehouse-laptop,till-1',
+  LABEL_TRANSPORT: 'agent',
+  LABEL_PRINTER_HOST: '',
+  LABEL_PRINTER_PORT: 9100,
+  LABEL_DENSITY: 8,
+  LABEL_GAP_MM: 2,
+  LABEL_MAX_BATCH: 500,
+  LABEL_PRESETS: [
+    { key: '30x30', widthMm: 30, heightMm: 30, gapMm: 2, logo: 'small-top', nameLines: 2, barcodeHeightMm: 12, allowEan: false },
+    { key: '30x20', widthMm: 30, heightMm: 20, gapMm: 2, logo: 'omit', nameLines: 1, barcodeHeightMm: 9, allowEan: false },
+    { key: '40x30', widthMm: 40, heightMm: 30, gapMm: 2, logo: 'small-top-left', nameLines: 2, barcodeHeightMm: 13, allowEan: true },
+    { key: '50x30', widthMm: 50, heightMm: 30, gapMm: 2, logo: 'left-of-text', nameLines: 2, barcodeHeightMm: 13, allowEan: true }
+  ]
 };
 
 /* Deterministic pseudo-random so the demo looks identical every time it opens. */
@@ -264,6 +282,11 @@ products.forEach(function (p) {
       /* 12-digit body + a real mod-10 check digit, so it scans. */
       barcode: (function (body) { return body + Codes.ean13Check(body); })(
         '621' + pad(p.id, 3) + pad(idx, 2) + pad(ri(0, 9999), 4)),
+      /* Numeric-only, deterministic, mirrors the server's label_code
+         counter shape (a persisted sequence starting past six digits) —
+         used for the thermal label's Code128 barcode instead of the
+         alphanumeric sku, which subset C can't pack two-digits-per-symbol. */
+      labelCode: String(100000 + p.id * 100 + idx),
       qty: qty,
       shelf: p.shelfZone + '-' + pad(ri(1, 18), 2)
     });
@@ -1035,6 +1058,7 @@ var DB = {
   variantsOf: function (pid) { return variants.filter(function (v) { return v.productId === pid; }); },
   variantBySku: function (sku) { return variants.filter(function (v) { return v.sku === sku; })[0]; },
   variantByBarcode: function (b) { return variants.filter(function (v) { return v.barcode === b; })[0]; },
+  variantByLabelCode: function (c) { return variants.filter(function (v) { return v.labelCode === c; })[0]; },
 
   totalQty: function (pid) {
     return DB.variantsOf(pid).reduce(function (s, v) { return s + v.qty; }, 0);
@@ -2447,6 +2471,19 @@ var DB = {
     CONFIG.RECEIPT_AUTO_PRINT   = bool('receipt.auto_print', CONFIG.RECEIPT_AUTO_PRINT);
     CONFIG.RECEIPT_COPIES       = num('receipt.copies', CONFIG.RECEIPT_COPIES);
     if (cfg['receipt.cut_mode'] !== undefined) CONFIG.RECEIPT_CUT_MODE = cfg['receipt.cut_mode'];
+
+    /* ---- thermal product labels ------------------------------------------- */
+    if (cfg['label.default_preset'] !== undefined) CONFIG.LABEL_DEFAULT_PRESET = cfg['label.default_preset'];
+    if (cfg['label.stations'] !== undefined) CONFIG.LABEL_STATIONS = cfg['label.stations'];
+    if (cfg['label.transport'] !== undefined) CONFIG.LABEL_TRANSPORT = cfg['label.transport'];
+    if (cfg['label.printer_host'] !== undefined) CONFIG.LABEL_PRINTER_HOST = cfg['label.printer_host'];
+    CONFIG.LABEL_PRINTER_PORT = num('label.printer_port', CONFIG.LABEL_PRINTER_PORT);
+    CONFIG.LABEL_DENSITY = num('label.density', CONFIG.LABEL_DENSITY);
+    CONFIG.LABEL_GAP_MM = num('label.gap_mm', CONFIG.LABEL_GAP_MM);
+    CONFIG.LABEL_MAX_BATCH = num('label.max_batch', CONFIG.LABEL_MAX_BATCH);
+    if (cfg['label.presets'] !== undefined) {
+      try { CONFIG.LABEL_PRESETS = JSON.parse(cfg['label.presets']); } catch (e) { /* keep the demo defaults */ }
+    }
 
     /* ---- the two places -------------------------------------------------- */
     if (payload.warehouses && payload.warehouses.length) {

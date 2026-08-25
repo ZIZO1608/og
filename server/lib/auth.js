@@ -62,6 +62,7 @@ export const ALL_PERMISSIONS = [
   { perm: 'stock.read',      group: 'stock',     label: 'See stock levels' },
   { perm: 'stock.move',      group: 'stock',     label: 'Receive and move stock' },
   { perm: 'stock.count',     group: 'stock',     label: 'Do a stock count' },
+  { perm: 'label.print',     group: 'stock',     label: 'Print product labels' },
 
   { perm: 'product.read',    group: 'products',  label: 'See products' },
   { perm: 'product.write',   group: 'products',  label: 'Add and edit products' },
@@ -118,7 +119,10 @@ const FORBIDDEN = {
     p.startsWith('delivery.') || p === 'discount.unlimited' ||
     /* A receipt payload carries the customer's name and phone number, so
        this follows customer.* rather than sitting on its own. */
-    p === 'sale.reprint'
+    p === 'sale.reprint' ||
+    /* Label printing drives hardware sitting in the shop, keyed to a
+       station name a partner has no business addressing. */
+    p === 'label.print'
 };
 
 export function isPinned(role, perm) {

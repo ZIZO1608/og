@@ -62,6 +62,11 @@
      calls Receipt.autoPrint() the moment a sale completes. -->
 <script src="js/receipt.js"></script>
 <script src="js/escpos.js"></script>
+<!-- Thermal product labels (XP-235B / TSPL) — a separate printer, a separate
+     queue, from the receipt above. Needs Codes+CONFIG (data.js) and
+     ESCPOS.packBitmap (escpos.js, for rasterizing an Arabic name), so it
+     loads right after both. -->
+<script src="js/labels.js"></script>
 <!-- shop.js turns server payloads into the shapes data.js defines, so it must
      come after it. Nothing it does runs at load time: app.js calls Shop.load()
      once, after sign-in, before the first paint. -->

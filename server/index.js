@@ -28,6 +28,7 @@ import * as Customers from './lib/customers.js';
 import * as Deliveries from './lib/deliveries.js';
 import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
+import * as Labels from './lib/labels.js';
 import {
   readJson, sendOk, sendError, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
@@ -251,7 +252,7 @@ router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
    that shop.* itself doesn't already have a writer for. Restricted to that
    allowlist rather than any config key — this route exists for the receipt
    Settings card, not as a general "edit the config table" backdoor. */
-const CONFIG_WRITABLE = /^receipt\.|^shop\.(branch_name|phone)$/;
+const CONFIG_WRITABLE = /^receipt\.|^shop\.(branch_name|phone)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|logo_asset|code_source|max_batch|lease_minutes|calibrate_cmd)$/;
 
 router.add('PUT /api/config', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
@@ -639,6 +640,121 @@ router.add('PATCH /api/deliveries/:id', requirePerm('delivery.write', async (ctx
         phone: b.phone
       }, ctx.user)
     });
+  } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+/* --- product labels (XP-235B / TSPL) ----------------------------------------
+   A separate printer, a separate queue, a separate concern from the 80mm
+   thermal receipt above — see server/lib/labels.js's own header for why.
+
+   GET /api/labels/next deliberately holds the response open for up to ~25s
+   (Labels.next()'s bounded-wait loop) so the agent doesn't have to busy-poll.
+   It must NEVER be called through js/api.js — that module's request() aborts
+   every call at a hard 15s (js/api.js:31) — only agent/print-agent.js, over
+   raw node:http with no such timeout, calls it. */
+
+router.add('POST /api/labels/print', requirePerm('label.print', async (ctx) => {
+  const b = await readJson(ctx.req);
+  if (!Array.isArray(b.lines) || !b.lines.length) {
+    return sendError(ctx.res, 400, 'invalid', 'No lines to print.');
+  }
+  try {
+    const result = Labels.enqueue({
+      lines: b.lines, presetKey: b.preset, station: b.station,
+      userId: ctx.user.id, opId: typeof b.opId === 'string' ? b.opId : null,
+      arabicBitmaps: b.arabicBitmaps || {}
+    });
+
+    /* Only when a manager has switched the transport to 'tcp' (a USB→LAN
+       adapter is on the printer) does the server dispatch here and now,
+       rather than leaving the jobs for an agent to poll for. */
+    if (!result.replayed) {
+      const d = DB.get();
+      const transport = d.prepare("SELECT value FROM config WHERE key = 'label.transport'").get()?.value;
+      if (transport === 'tcp') {
+        const host = d.prepare("SELECT value FROM config WHERE key = 'label.printer_host'").get()?.value;
+        const port = Number(d.prepare("SELECT value FROM config WHERE key = 'label.printer_port'").get()?.value) || 9100;
+        await Labels.dispatchTcp(result.jobIds, { host, port });
+      }
+    }
+
+    sendOk(ctx.res, result);
+  } catch (e) {
+    sendError(ctx.res, e.code === 'batch_too_large' ? 413 : 400, e.code || 'invalid', e.message);
+  }
+}));
+
+router.add('POST /api/labels/preview', requirePerm('label.print', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const presetObj = Labels.preset(b.preset);
+    const lines = (b.lines || []).map((l) => {
+      const variant = Labels.resolveVariant(l.sku || l.variantId);
+      return {
+        sku: variant.sku, qty: l.qty, name: variant.name, size: variant.size,
+        layout: Labels.computeLayout(variant, presetObj)
+      };
+    });
+    sendOk(ctx.res, { preset: presetObj, lines });
+  } catch (e) {
+    sendError(ctx.res, e.code === 'barcode_too_wide' ? 409 : 400, e.code || 'invalid', e.message);
+  }
+}));
+
+router.add('GET /api/labels/next', requirePerm('label.print', async (ctx) => {
+  const station = ctx.url.searchParams.get('station');
+  if (!station) return sendError(ctx.res, 400, 'invalid', 'station is required');
+  const job = await Labels.next({ station });
+  sendOk(ctx.res, { job });
+}));
+
+router.add('POST /api/labels/:id/done', requirePerm('label.print', async (ctx) => {
+  const b = await readJson(ctx.req);
+  sendOk(ctx.res, Labels.complete(Number(ctx.params.id), b.claimToken, 'done', null));
+}));
+
+router.add('POST /api/labels/:id/failed', requirePerm('label.print', async (ctx) => {
+  const b = await readJson(ctx.req);
+  sendOk(ctx.res, Labels.complete(Number(ctx.params.id), b.claimToken, 'failed', String(b.error || 'unknown error')));
+}));
+
+router.add('POST /api/labels/:id/cancel', requirePerm('label.print', (ctx) => {
+  const r = Labels.cancel(Number(ctx.params.id), ctx.user.id);
+  if (!r.ok) return sendError(ctx.res, 409, 'not_cancellable', 'Already claimed or resolved.');
+  sendOk(ctx.res, r);
+}));
+
+router.add('POST /api/labels/calibrate', requirePerm('label.print', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const result = Labels.calibrate({ station: b.station, userId: ctx.user.id, opId: typeof b.opId === 'string' ? b.opId : null });
+    if (!result.replayed) {
+      const d = DB.get();
+      const transport = d.prepare("SELECT value FROM config WHERE key = 'label.transport'").get()?.value;
+      if (transport === 'tcp') {
+        const host = d.prepare("SELECT value FROM config WHERE key = 'label.printer_host'").get()?.value;
+        const port = Number(d.prepare("SELECT value FROM config WHERE key = 'label.printer_port'").get()?.value) || 9100;
+        await Labels.dispatchTcp([result.jobId], { host, port });
+      }
+    }
+    sendOk(ctx.res, result);
+  } catch (e) {
+    sendError(ctx.res, 400, e.code || 'invalid', e.message);
+  }
+}));
+
+router.add('GET /api/labels/queue', requirePerm('label.print', (ctx) => {
+  sendOk(ctx.res, { jobs: Labels.queue({ station: ctx.url.searchParams.get('station') || null }) });
+}));
+
+/* Attaching a scanned code to a variant is product editing, not label
+   printing — reuses product.write rather than a new permission. */
+router.add('PATCH /api/variants/:sku', requirePerm('product.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { variant: Cat.attachCode(ctx.params.sku, { barcode: b.barcode, labelCode: b.labelCode }, ctx.user.id) });
   } catch (e) {
     sendError(ctx.res, 400, 'invalid', e.message);
   }

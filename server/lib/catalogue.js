@@ -142,6 +142,27 @@ export function nextBarcode(d, productId) {
   throw new Error('could not find a free barcode after 50 tries');
 }
 
+/* label_code: numeric-only, <=8 digits, for the thermal label printer's
+   Code128 subset C — two digits per symbol, half the width of alphanumeric,
+   which matters on a 30mm label. sku stays alphanumeric and unchanged; this
+   is a separate identifier, generated once, stable forever — a label
+   printed with it must still scan correctly next year.
+
+   A plain counter, not a random-retry scheme like nextBarcode: there's no
+   format to collide on here, so the uniqueness is structural. Must run
+   inside the same transaction as the variant insert, same reasoning as
+   nextBarcode — two variants created at once must not be handed the same
+   value. */
+export function nextLabelCode(d) {
+  const row = d.prepare('SELECT next_value FROM label_code_seq WHERE id = 1').get();
+  if (!row) throw new Error('label_code_seq is missing its row — did migration 010 run?');
+  if (row.next_value > 99999999) {
+    throw new Error('label_code counter exhausted (8-digit cap reached)');
+  }
+  d.prepare('UPDATE label_code_seq SET next_value = next_value + 1 WHERE id = 1').run();
+  return String(row.next_value);
+}
+
 /* ---------------------------------------------------------------- products */
 
 export function list({ includeHidden = false } = {}) {
@@ -202,9 +223,37 @@ export function byBarcode(code) {
     `SELECT v.*, p.name, p.type, p.brand, p.colorway, p.currency,
             p.cost_price, p.selling_price, p.image_bg, p.image_initials
        FROM variants v JOIN products p ON p.id = v.product_id
-      WHERE v.barcode = ? OR v.sku = ?`
-  ).get(code, code);
+      WHERE v.barcode = ? OR v.sku = ? OR v.label_code = ?`
+  ).get(code, code, code);
   return v ?? null;
+}
+
+/* Attach a scanned code to an existing variant — either a fresh barcode (the
+   box actually carries one and it was never recorded) or a corrected
+   label_code. Never touches sku. Refuses a code already claimed by a
+   DIFFERENT variant so two products can't end up sharing an identity. */
+export function attachCode(sku, { barcode, labelCode }, userId) {
+  return tx((d) => {
+    const v = d.prepare('SELECT sku FROM variants WHERE sku = ?').get(sku);
+    if (!v) throw new Error('no such variant');
+
+    if (barcode) {
+      const clash = d.prepare('SELECT sku FROM variants WHERE barcode = ? AND sku != ?').get(barcode, sku);
+      if (clash) throw new Error(`that barcode already belongs to ${clash.sku}`);
+    }
+    if (labelCode) {
+      if (!/^\d{1,8}$/.test(labelCode)) throw new Error('label_code must be numeric, 8 digits or fewer');
+      const clash = d.prepare('SELECT sku FROM variants WHERE label_code = ? AND sku != ?').get(labelCode, sku);
+      if (clash) throw new Error(`that code already belongs to ${clash.sku}`);
+    }
+    if (!barcode && !labelCode) throw new Error('nothing to attach');
+
+    const at = nowIso();
+    if (barcode) d.prepare('UPDATE variants SET barcode = ?, updated_at = ? WHERE sku = ?').run(barcode, at, sku);
+    if (labelCode) d.prepare('UPDATE variants SET label_code = ?, updated_at = ? WHERE sku = ?').run(labelCode, at, sku);
+    logChange('variants', sku, 'update', userId, null);
+    return bySku(sku);
+  });
 }
 
 /* ------------------------------------------------------------------ create
@@ -264,12 +313,13 @@ export function createWithVariants({
       const size = String(s.size).trim();
       const sku = `OG-${String(productId).padStart(3, '0')}-${size}`;
       const barcode = s.barcode || nextBarcode(d, productId);
+      const labelCode = nextLabelCode(d);
 
       d.prepare(
-        `INSERT INTO variants (sku, product_id, size, color, barcode, shelf,
+        `INSERT INTO variants (sku, product_id, size, color, barcode, label_code, shelf,
                                created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(sku, productId, size, colorway ?? null, barcode, s.shelf ?? null, at, at);
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(sku, productId, size, colorway ?? null, barcode, labelCode, s.shelf ?? null, at, at);
 
       logChange('variants', sku, 'insert', userId, null);
       made.push({ sku, size, barcode });
@@ -352,11 +402,11 @@ export function addVariant({ productId, size, barcode, shelf, userId }) {
 
     const at = nowIso();
     d.prepare(
-      `INSERT INTO variants (sku, product_id, size, color, barcode, shelf,
+      `INSERT INTO variants (sku, product_id, size, color, barcode, label_code, shelf,
                              created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(sku, productId, label, p.colorway ?? null,
-          barcode || nextBarcode(d, productId), shelf ?? null, at, at);
+          barcode || nextBarcode(d, productId), nextLabelCode(d), shelf ?? null, at, at);
 
     logChange('variants', sku, 'insert', userId, null);
     return { sku, size: label };

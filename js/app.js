@@ -129,6 +129,30 @@ var I18N = {
     rc3_save: 'Save receipt settings', rc3_saved: 'Receipt settings saved',
     rc3_demo_note: 'No server here — these are shown for reference and cannot be saved.',
 
+    /* --- thermal product labels (XP-235B) — separate from the browser
+       "Label Studio" (rc_paper/hw_printer strings above stay untouched) --- */
+    lbl_title: 'Thermal labels',
+    lbl_print_now: 'Print now', lbl_preview_title: 'Label preview',
+    lbl_demo_only: 'No server here — labels can be previewed but not printed.',
+    lbl_queued: 'Queued {n} labels for {station}',
+    lbl_pick_station: 'Pick a station first',
+    lbl_calibrate_sent: 'Calibration sent',
+    lbl_fallback: 'Falls back to Code128 — too narrow for EAN-13',
+    lbl_station: 'Station', lbl_preset: 'Size', lbl_qty: 'Qty',
+    lbl_batch_total: 'labels total',
+    lbl_thermal_section: 'Thermal labels (XP-235B)',
+    lbl_thermal_sub: 'The barcode sticker on the box, printed over USB',
+    lbl_queue_title: 'Print queue', lbl_queue_empty: 'Nothing queued',
+    lbl_cancel: 'Cancel', lbl_reprint: 'Reprint',
+    lbl_unknown_code: 'That code doesn’t match any product',
+    lbl_attach_code: 'Attach this code to a product',
+    lbl_attach_search: 'Search products…', lbl_attach_save: 'Save',
+    lbl_save: 'Save label settings', lbl_saved: 'Label settings saved',
+    lbl_host: 'Printer address (LAN, only for the TCP transport)',
+    lbl_port: 'Port', lbl_transport: 'Transport', lbl_transport_agent: 'Agent (USB laptop)',
+    lbl_transport_tcp: 'Direct (LAN)', lbl_density: 'Density', lbl_speed: 'Speed',
+    lbl_gap: 'Gap between labels (mm)', lbl_max_batch: 'Batch ceiling',
+
     /* --- discounts --- */
     disc_capped: 'Discounts above {p}% need a manager',
     disc_max: 'most you can take off: {v}',
@@ -541,6 +565,28 @@ var I18N = {
     rc3_policy_ar: 'سياسة الاستبدال (عربي)', rc3_policy_en: 'سياسة الاستبدال (إنجليزي)',
     rc3_save: 'حفظ إعدادات الفاتورة', rc3_saved: 'تم حفظ إعدادات الفاتورة',
     rc3_demo_note: 'لا يوجد خادم هنا — هذه القيم للعرض فقط ولا يمكن حفظها.',
+
+    lbl_title: 'ملصقات حرارية',
+    lbl_print_now: 'اطبع الآن', lbl_preview_title: 'معاينة الملصق',
+    lbl_demo_only: 'لا يوجد خادم هنا — يمكن معاينة الملصق لكن لا يمكن طباعته.',
+    lbl_queued: 'تمت إضافة {n} ملصق إلى {station}',
+    lbl_pick_station: 'اختر محطة أولاً',
+    lbl_calibrate_sent: 'تم إرسال أمر المعايرة',
+    lbl_fallback: 'يتحول إلى Code128 — العرض غير كافٍ لـ EAN-13',
+    lbl_station: 'المحطة', lbl_preset: 'المقاس', lbl_qty: 'العدد',
+    lbl_batch_total: 'ملصق بالمجموع',
+    lbl_thermal_section: 'ملصقات حرارية (XP-235B)',
+    lbl_thermal_sub: 'ملصق الباركود على الصندوق، يُطبع عبر USB',
+    lbl_queue_title: 'طابور الطباعة', lbl_queue_empty: 'لا يوجد شيء في الطابور',
+    lbl_cancel: 'إلغاء', lbl_reprint: 'إعادة طباعة',
+    lbl_unknown_code: 'هذا الرمز لا يطابق أي منتج',
+    lbl_attach_code: 'اربط هذا الرمز بمنتج',
+    lbl_attach_search: 'ابحث عن منتج…', lbl_attach_save: 'حفظ',
+    lbl_save: 'حفظ إعدادات الملصق', lbl_saved: 'تم حفظ إعدادات الملصق',
+    lbl_host: 'عنوان الطابعة (شبكة، لوضع النقل المباشر فقط)',
+    lbl_port: 'المنفذ', lbl_transport: 'طريقة النقل', lbl_transport_agent: 'وكيل (لابتوب USB)',
+    lbl_transport_tcp: 'مباشر (شبكة)', lbl_density: 'الكثافة', lbl_speed: 'السرعة',
+    lbl_gap: 'الفجوة بين الملصقات (مم)', lbl_max_batch: 'سقف الدفعة',
 
     /* --- الحسومات --- */
     disc_capped: 'الحسم فوق {p}٪ يحتاج موافقة المدير',
@@ -2700,11 +2746,13 @@ function openProductDrawer(pid) {
   body += '<div class="grid" style="grid-template-columns:repeat(' + kpi.length +
           ',1fr);margin-bottom:16px">' + kpi.join('') + '</div>';
 
+  var canLabel = allow('label.print');
   body += '<div class="card mb"><div class="card-head"><h3>' + t('per_size') + '</h3>' +
     '<div class="card-actions"><span class="badge neutral">' + vs.length + ' SKU</span></div></div>' +
     '<div class="table-wrap"><table class="tbl tbl-compact"><thead><tr>' +
       '<th>' + t('size') + '</th><th>' + t('sku') + '</th><th>' + t('barcode') + '</th>' +
       '<th class="num">' + t('qty') + '</th><th>' + t('shelf') + '</th><th>' + t('status') + '</th>' +
+      (canLabel ? '<th class="num">' + t('lbl_qty') + '</th><th></th>' : '') +
     '</tr></thead><tbody>';
   vs.forEach(function (v) {
     body += '<tr' + (v.qty === 0 ? ' class="row-danger"' : '') + '>' +
@@ -2713,7 +2761,13 @@ function openProductDrawer(pid) {
       '<td class="num muted nowrap">' + v.barcode + '</td>' +
       '<td class="num"><b>' + v.qty + '</b></td>' +
       '<td><span class="badge neutral">' + v.shelf + '</span></td>' +
-      '<td>' + healthBadge(v.qty) + '</td></tr>';
+      '<td>' + healthBadge(v.qty) + '</td>' +
+      (canLabel
+        ? '<td class="num"><input class="inp num lbl-qty-inp" type="number" min="1" max="99" value="1" style="width:56px"></td>' +
+          '<td><button class="btn btn-sm" data-act="preview-labels" data-variant-sku="' + esc(v.sku) + '">' +
+            t('print_labels') + '</button></td>'
+        : '') +
+      '</tr>';
   });
   body += '</tbody></table></div></div>';
 
@@ -3863,6 +3917,13 @@ function resolveScan(raw) {
   v = DB.variantBySku(code);
   if (v) return { kind: 'variant', variant: v };
 
+  /* The numeric code printed under a thermal label's Code128 barcode —
+     matching it here is the other half of "scanning must match printing":
+     server/lib/catalogue.js's byBarcode() checks the same three fields for
+     a real server. */
+  v = DB.variantByLabelCode(code);
+  if (v) return { kind: 'variant', variant: v };
+
   var sale = DB.sale(code);
   if (sale) return { kind: 'invoice', sale: sale };
 
@@ -3878,13 +3939,47 @@ function resolveScan(raw) {
   return null;
 }
 
+/* A scanned code that matches nothing — printing a code the till can't
+   resolve is the worst failure here, it stops a sale with a customer
+   standing there. Rather than a dead-end error, offer to attach the code
+   to whichever product it actually belongs to (a supplier barcode typed by
+   hand, or a label whose code was never recorded). */
+function attachResultsHTML(q, code) {
+  var query = String(q || '').trim().toLowerCase();
+  if (query.length < 2) return '<p class="small muted">' + t('lbl_attach_search') + '</p>';
+  var hits = DB.variants.filter(function (v) {
+    var p = DB.product(v.productId);
+    return p && (p.name.toLowerCase().indexOf(query) > -1 || v.sku.toLowerCase().indexOf(query) > -1);
+  }).slice(0, 12);
+  if (!hits.length) return '<p class="small muted">' + t('none') + '</p>';
+  return hits.map(function (v) {
+    var p = DB.product(v.productId);
+    return '<div class="rule-row"><div class="rr-txt"><b>' + esc(p.name) + '</b>' +
+      '<small>' + esc(v.sku) + ' · ' + t('size') + ' ' + esc(v.size) + '</small></div>' +
+      '<button class="btn btn-sm btn-primary" data-act="variant-attach-save" data-sku="' + esc(v.sku) +
+        '" data-code="' + esc(code) + '">' + t('lbl_attach_save') + '</button></div>';
+  }).join('');
+}
+
+function openUnknownCodeModal(code) {
+  openModal({
+    title: t('lbl_unknown_code'),
+    body: '<p class="num" style="margin-top:0">' + esc(code) + '</p>' +
+      '<label class="field"><span>' + t('lbl_attach_code') + '</span>' +
+      '<input class="inp" id="attachSearchInp" data-change="attach-search" placeholder="' + esc(t('lbl_attach_search')) + '" autocomplete="off"></label>' +
+      '<div id="attachSearchResults" data-code="' + esc(code) + '">' + attachResultsHTML('', code) + '</div>',
+    foot: '<button class="btn btn-primary" data-act="modal-close">' + t('close') + '</button>'
+  });
+  setTimeout(function () { var el = document.getElementById('attachSearchInp'); if (el) el.focus(); }, 60);
+}
+
 /* The product sheet a scan lands on: the size that was scanned, every other
    size with its stock, where each one sits, and what to do next. */
 function openScanResult(raw) {
   var found = resolveScan(raw);
 
   if (!found) {
-    toast(t('sc_title'), t('sc_unknown') + ' ' + esc(String(raw).slice(0, 24)), 'err', 4000);
+    openUnknownCodeModal(String(raw).slice(0, 40));
     return;
   }
   if (found.kind === 'route')   { handleDeepLink(found.hash); return; }
@@ -5179,6 +5274,88 @@ function receiptSettingsCard() {
   return h + '</div></div>';
 }
 
+/* ---- thermal product labels (XP-235B) -------------------------------------
+   A separate card from receiptSettingsCard() and from the old browser
+   Label Studio's controls inside hardwareCard() — different printer,
+   different protocol, different queue. Station/preset pickers and the
+   queue view work for anyone with label.print; the config fields below
+   them are manager-only (config.write), same split as everywhere else. */
+function thermalLabelsCard() {
+  var demo = typeof Auth === 'undefined' || Auth.demoMode();
+  var canPrint = allow('label.print');
+  var canConfig = allow('config.write') && !demo;
+  var dis = demo || !canPrint ? ' disabled' : '';
+  var cdis = canConfig ? '' : ' disabled';
+
+  var h = '<div class="card mb"><div class="card-head"><h3>' + t('lbl_thermal_section') + '</h3>' +
+    '<div class="card-actions muted small">' + t('lbl_thermal_sub') + '</div></div><div class="card-body">';
+
+  if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
+  else if (!canPrint) h += '<div class="partner-note note-warn mb">' + t('no_access') + '</div>';
+
+  h += '<div class="chip-row"><span class="lbl-lbl">' + t('lbl_station') + '</span>';
+  Labels.stationOptions().forEach(function (s) {
+    h += '<button class="chip ' + (Labels.lastChoice().station === s ? 'on' : '') + '"' + dis +
+      ' data-act="label-station" data-k="' + esc(s) + '">' + esc(s) + '</button>';
+  });
+  h += '</div>';
+
+  h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_preset') + '</span>';
+  Labels.presetOptions().forEach(function (p) {
+    h += '<button class="chip ' + (Labels.lastChoice().preset === p.key ? 'on' : '') + '"' + dis +
+      ' data-act="label-preset" data-k="' + p.key + '">' + p.key + '</button>';
+  });
+  h += '</div>';
+
+  h += '<div class="mt"><button class="btn btn-ghost"' + dis + ' data-act="label-calibrate">' +
+    t('hw_calibrate') + '</button></div>';
+
+  if (!demo && canPrint && OG.labelQueue === undefined && !OG.labelQueueLoading) {
+    OG.labelQueueLoading = true;
+    API.get('/api/labels/queue').then(function (res) {
+      OG.labelQueueLoading = false;
+      OG.labelQueue = res.jobs || [];
+      if (OG.view === 'settings') render();
+    }).catch(function () { OG.labelQueueLoading = false; OG.labelQueue = []; });
+  }
+  var jobs = OG.labelQueue || [];
+  h += '<div class="hw-sep"></div><h4 class="hw-h">' + t('lbl_queue_title') + '</h4>';
+  if (!jobs.length) {
+    h += '<p class="small muted">' + t('lbl_queue_empty') + '</p>';
+  } else {
+    h += '<div class="table-wrap"><table class="tbl tbl-compact"><tbody>';
+    jobs.forEach(function (j) {
+      h += '<tr><td>' + esc(j.station) + '</td><td class="muted small">' + esc(j.preset) + '</td>' +
+        '<td class="num">' + j.label_count + '</td>' +
+        '<td><span class="badge ' + (j.status === 'done' ? 'silver' : j.status === 'failed' ? 'danger' : 'neutral') + '">' + esc(j.status) + '</span></td>' +
+        '<td>' + (j.status === 'pending'
+          ? '<button class="btn btn-sm btn-ghost" data-act="label-cancel-job" data-id="' + j.id + '">' + t('lbl_cancel') + '</button>'
+          : '') + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+
+  h += '<div class="hw-sep"></div><h4 class="hw-h">' + t('lbl_transport') + '</h4>';
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('lbl_transport') + '</span>' +
+      '<select class="inp" id="lblTransport"' + cdis + '>' +
+        '<option value="agent"' + (CONFIG.LABEL_TRANSPORT !== 'tcp' ? ' selected' : '') + '>' + t('lbl_transport_agent') + '</option>' +
+        '<option value="tcp"' + (CONFIG.LABEL_TRANSPORT === 'tcp' ? ' selected' : '') + '>' + t('lbl_transport_tcp') + '</option>' +
+      '</select></label>' +
+    '<label class="field"><span>' + t('lbl_host') + '</span>' +
+      '<input class="inp num" dir="ltr" id="lblHost" value="' + esc(CONFIG.LABEL_PRINTER_HOST || '') + '"' + cdis + '></label>' +
+  '</div>';
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('lbl_density') + '</span>' +
+      '<input class="inp num" type="number" min="1" max="15" id="lblDensity" value="' + (CONFIG.LABEL_DENSITY || 8) + '"' + cdis + '></label>' +
+    '<label class="field"><span>' + t('lbl_gap') + '</span>' +
+      '<input class="inp num" type="number" min="0" step="0.5" id="lblGap" value="' + (CONFIG.LABEL_GAP_MM || 2) + '"' + cdis + '></label>' +
+  '</div>';
+  h += '<div class="mt"><button class="btn btn-primary"' + cdis + ' data-act="lbl-save-config">' + t('lbl_save') + '</button></div>';
+
+  return h + '</div></div>';
+}
+
 function viewSettings() {
   var h = '<div class="page-head"><div><h1>' + t('settings_title') + '</h1>' +
     '<div class="sub">' + t('settings_sub') + '</div></div>' +
@@ -5188,6 +5365,8 @@ function viewSettings() {
   h += hardwareCard();
 
   h += receiptSettingsCard();
+
+  h += thermalLabelsCard();
 
   h += rolesCard();
 
@@ -6586,10 +6765,46 @@ var ACTIONS = {
         if (Shop.live()) DB.receivePO(po, true);
         render();
         toast(po.id, DB.poPieces(po) + ' ' + t('pieces') + ' · ' + t('po_received_toast'), 'ok', 4000);
+
+        /* Offer to print a label for every piece that just arrived — the
+           `lines` list here is the exact same {sku, qty} breakdown Shop.receive
+           was just called with, one entry per variant on the order. */
+        if (allow('label.print') && typeof Labels !== 'undefined' && lines.length) {
+          Labels.openPreviewModal(lines, Labels.lastChoice().preset, Labels.lastChoice().station);
+        }
       }
     );
   },
   'labels-for': function (el) { openLabelSheet(+el.getAttribute('data-id')); },
+
+  'variant-attach-save': function (el) {
+    var sku = el.getAttribute('data-sku');
+    var code = el.getAttribute('data-code');
+    var digits = String(code || '').replace(/\D/g, '');
+    /* A real EAN-13 goes on `barcode`; a shorter numeric code (what a
+       thermal label's Code128 actually carries) goes on `labelCode`.
+       Anything else still goes on `barcode` — a supplier code that isn't a
+       clean 13-digit EAN is still the code printed on the box. */
+    var isLabelCode = digits.length === code.length && digits.length > 0 && digits.length <= 8;
+    var patch = isLabelCode ? { labelCode: code } : { barcode: code };
+
+    function apply() {
+      var v = DB.variantBySku(sku);
+      if (v) { if (patch.barcode) v.barcode = patch.barcode; if (patch.labelCode) v.labelCode = patch.labelCode; }
+      closeModal();
+      toast(t('lbl_attach_code'), (v && DB.product(v.productId) || {}).name || sku, 'ok', 3000);
+    }
+
+    if (typeof Auth === 'undefined' || Auth.demoMode()) { apply(); return; }
+    API.patch('/api/variants/' + encodeURIComponent(sku), patch)
+      .then(function (res) {
+        var v = DB.variantBySku(sku);
+        if (v && res.variant) { v.barcode = res.variant.barcode; v.labelCode = res.variant.label_code; }
+        closeModal();
+        toast(t('lbl_attach_code'), res.variant ? res.variant.name : sku, 'ok', 3000);
+      })
+      .catch(function (err) { toast(t('lbl_attach_code'), API.friendly(err), 'err', 6000); });
+  },
   'open-job': function (el) { openJobDrawer(el.getAttribute('data-jid')); },
 
   'lb-tpl': function (el) {
@@ -6657,6 +6872,27 @@ var ACTIONS = {
       .catch(function (err) {
         el.disabled = false;
         toast(t('rc3_title'), API.friendly(err), 'err', 6000);
+      });
+  },
+
+  'lbl-save-config': function (el) {
+    if (!allow('config.write') || typeof Auth === 'undefined' || Auth.demoMode()) return;
+    var updates = {
+      'label.transport':    (document.getElementById('lblTransport') || {}).value || 'agent',
+      'label.printer_host': (document.getElementById('lblHost') || {}).value || '',
+      'label.density':      (document.getElementById('lblDensity') || {}).value || '8',
+      'label.gap_mm':       (document.getElementById('lblGap') || {}).value || '2'
+    };
+    el.disabled = true;
+    API.put('/api/config', { updates: updates })
+      .then(function (res) {
+        if (typeof DB !== 'undefined' && DB.hydrate) DB.hydrate({ config: res.config });
+        toast(t('lbl_title'), t('lbl_saved'), 'ok', 3000);
+        if (OG.view === 'settings') render();
+      })
+      .catch(function (err) {
+        el.disabled = false;
+        toast(t('lbl_title'), API.friendly(err), 'err', 6000);
       });
   },
 
@@ -7243,6 +7479,14 @@ var ACTIONS = {
 };
 
 var CHANGES = {
+  /* Modal-scoped, so it updates the results div directly rather than
+     going through the app-wide render() — the modal lives outside #app,
+     a full render() would never touch it. */
+  'attach-search': function (el) {
+    var host = document.getElementById('attachSearchResults');
+    if (!host) return;
+    host.innerHTML = attachResultsHTML(el.value, host.getAttribute('data-code'));
+  },
   'prod-q': function (el) { OG.prod.q = el.value; render(); focusBack('[data-change="prod-q"]', el.value.length); },
   'prod-type': function (el) { OG.prod.type = el.value; render(); },
   'prod-health': function (el) { OG.prod.health = el.value; render(); },
@@ -7544,6 +7788,7 @@ function boot() {
      script order should not decide whether the buttons work. */
   if (typeof Deliveries !== 'undefined') Deliveries.register();
   if (typeof Receipt !== 'undefined') Receipt.register();
+  if (typeof Labels !== 'undefined') Labels.register();
 
   renderTopbar();
   var raw = window.location.hash;
