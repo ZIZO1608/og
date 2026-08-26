@@ -1,0 +1,633 @@
+/* ==========================================================================
+   OG SYSTEM — application shell  ·  11/17: STOREFRONT + full SETTINGS screen
+   --------------------------------------------------------------------------
+   Split from the original js/app.js (lines 4811-5437). Loads after
+   app-jobs-reports.js.
+   ========================================================================== */
+
+/* ------------------------------------------------------------ 13. STOREFRONT */
+
+function storeVisible() { return DB.products.filter(function (p) { return !p.hidden; }); }
+
+function viewStorefront() {
+  var visible = storeVisible();
+  var hidden = DB.products.length - visible.length;
+
+  var h = '<div class="page-head"><div><h1>' + t('store_title') + '</h1>' +
+    '<div class="sub">' + t('store_sub') + '</div></div>' +
+    '<div class="head-actions">' +
+      '<span class="badge accent">' + visible.length + ' ' + t('products_online') + '</span>' +
+      '<span class="badge neutral">' + hidden + ' ' + t('hidden_count') + '</span>' +
+      exportButtons() +
+    '</div></div>';
+
+  h += '<div class="store-layout">' +
+    '<div><div class="eyebrow" style="text-align:center;margin-bottom:8px">' + t('live_shop') + '</div>' +
+      '<div class="phone"><div class="phone-notch"><i></i></div>' +
+      '<div class="phone-screen" id="phoneScreen">' + storeScreen() + '</div></div>' +
+      '<div class="partner-note" style="margin-top:12px">' + t('store_note') + '</div>' +
+    '</div>';
+
+  h += '<div><div class="card"><div class="card-head"><h3>' + t('orders_queue') + '</h3>' +
+    '<div class="card-actions"><span class="badge critical">' +
+      DB.storeOrders.filter(function (o) { return o.status === 'pending'; }).length + ' ' + t('pending').toLowerCase() + '</span></div></div>' +
+    '<div id="ordersList">' + ordersList() + '</div></div>';
+
+  h += '<div class="card mt"><div class="card-head"><h3>' + t('visible') + '</h3></div>' +
+    '<div class="table-wrap" style="max-height:320px;overflow-y:auto"><table class="tbl tbl-compact"><thead><tr>' +
+      '<th>' + t('product') + '</th><th class="num">' + t('stock') + '</th><th class="num">' + t('price') + '</th><th>' + t('visible') + '</th>' +
+    '</tr></thead><tbody>';
+  DB.products.forEach(function (p) {
+    var q = DB.totalQty(p.id);
+    h += '<tr' + (p.hidden ? ' class="muted"' : '') + '>' +
+      '<td><div class="cell-prod">' + thumb(p) + '<span><b class="' + (p.hidden ? 'hidden-flag' : '') + '">' + esc(p.name) + '</b>' +
+      '<small>' + DB.typeLabels[p.type] + '</small></span></div></td>' +
+      '<td class="num">' + q + '</td><td class="num">' + money(p.sellingPrice) + '</td>' +
+      '<td><label class="switch"><input type="checkbox"' + (p.hidden ? '' : ' checked') +
+        ' data-change="toggle-visible" data-id="' + p.id + '"><i></i></label></td></tr>';
+  });
+  h += '</tbody></table></div></div></div></div>';
+
+  return h;
+}
+
+function ordersList() {
+  var h = '';
+  DB.storeOrders.forEach(function (o, i) {
+    h += '<div class="order-row' + (o.fresh ? ' fresh' : '') + (Bulk.has('orders', o.id) ? ' bk-on' : '') + '">' +
+      '<span class="bk-inline">' + Bulk.box('orders', o.id, i) + '</span>' +
+      '<span class="cc-av" style="width:30px;height:30px;font-size:11px">' + esc(o.name[0]) + '</span>' +
+      '<div style="flex:1;min-width:0"><b>' + esc(o.name) + ' <span class="muted num">· ' + o.id + '</span></b>' +
+        '<small>' + esc(o.items) + '</small>' +
+        '<small>' + esc(o.city) + ' · ' + DB.payLabel(o.payment) + ' · ' + relDate(o.date) + '</small></div>' +
+      '<div class="money">' + money(o.total) +
+        '<div>' + (o.status === 'pending'
+          ? '<button class="btn btn-sm btn-primary" data-act="order-confirm" data-i="' + i + '">' + t('confirm') + '</button>'
+          : '<span class="badge healthy">' + t('confirmed') + '</span>') + '</div>' +
+      '</div></div>';
+    o.fresh = false;
+  });
+  return h;
+}
+
+function storeScreen() {
+  var s = OG.store;
+  var cartCount = s.cart.reduce(function (a, x) { return a + x.qty; }, 0);
+  var cartTotal = s.cart.reduce(function (a, x) { return a + x.qty * x.price; }, 0);
+
+  var bar = '<div class="st-bar">' +
+    (s.screen !== 'grid' ? '<button class="btn btn-sm btn-ghost" data-act="st-back">‹ ' + t('back') + '</button>' : '<b>' + t('shop_all') + '</b>') +
+    '<button class="btn btn-sm ' + (cartCount ? 'btn-primary' : 'btn-ghost') + '" data-act="st-cart">' + t('cart') + ' (' + cartCount + ')</button>' +
+  '</div>';
+
+  if (s.screen === 'grid') {
+    var h = '<div class="st-hero"><div class="brand-mark"><img src="assets/logo.svg" alt="OG"></div><h2>OG STORE</h2><p>' + t('tagline') + '</p></div>' + bar + '<div class="st-grid">';
+    storeVisible().forEach(function (p) {
+      h += '<div class="st-card" data-act="st-open" data-id="' + p.id + '">' +
+        thumbBox(p) +
+        '<div class="info"><b>' + esc(p.name) + '</b><span>' + money(p.sellingPrice) + '</span></div></div>';
+    });
+    return h + '</div>';
+  }
+
+  if (s.screen === 'pd') {
+    var p = DB.product(s.productId);
+    var vs = DB.variantsOf(p.id);
+    var picked = vs.filter(function (v) { return v.size === s.size; })[0];
+    var h2 = bar + '<div class="st-pd">' +
+      thumbBox(p) +
+      '<span class="eyebrow">' + esc(p.brand) + ' · ' + DB.typeLabels[p.type] + '</span>' +
+      '<h3 style="font-size:16px;margin:4px 0 6px">' + esc(p.name) + '</h3>' +
+      '<div class="strong-num" style="font-size:20px">' + money(p.sellingPrice) + '</div>' +
+      '<div class="lbl" style="margin-top:12px">' + t('choose_size') + '</div><div class="st-sizes">';
+    vs.forEach(function (v) {
+      h2 += '<button class="st-size' + (s.size === v.size ? ' on' : '') + '"' + (v.qty <= 0 ? ' disabled' : '') +
+        ' data-act="st-size" data-size="' + v.size + '">' + v.size + '</button>';
+    });
+    h2 += '</div>' +
+      '<button class="btn btn-primary btn-block btn-lg" data-act="st-add"' + (picked && picked.qty > 0 ? '' : ' disabled') + '>' +
+        (s.size ? t('add_to_cart') : t('choose_size')) + '</button>' +
+      '<div class="partner-note" style="margin-top:12px">' + esc(p.colorway) + ' · ' + t('made_in') + ' ' + esc(p.madeIn) + '</div>' +
+    '</div>';
+    return h2;
+  }
+
+  if (s.screen === 'cart') {
+    var h3 = bar + '<div class="st-pd"><h3 style="font-size:16px;margin-bottom:8px">' + t('cart') + '</h3>';
+    if (!s.cart.length) {
+      h3 += '<div class="partner-note">' + t('empty_cart') + '</div>' +
+        '<button class="btn btn-block mt" data-act="st-back">' + t('shop_all') + '</button>';
+    } else {
+      s.cart.forEach(function (l, i) {
+        h3 += '<div class="st-line"><b>' + esc(l.name) + '</b><span class="muted">· ' + l.size + ' ×' + l.qty + '</span>' +
+          '<span class="money">' + money(l.qty * l.price) + '</span>' +
+          '<button class="cl-del" data-act="st-remove" data-i="' + i + '">×</button></div>';
+      });
+      h3 += '<div class="st-line" style="border:0;font-size:15px"><b>' + t('total') + '</b>' +
+        '<span class="money strong-num" style="font-size:17px">' + money(cartTotal) + '</span></div>' +
+        '<button class="btn btn-primary btn-block btn-lg mt" data-act="st-checkout">' + t('checkout') + '</button>';
+    }
+    return h3 + '</div>';
+  }
+
+  /* checkout */
+  var h4 = bar + '<div class="st-pd"><h3 style="font-size:16px;margin-bottom:10px">' + t('checkout') + '</h3>' +
+    '<label class="field"><span>' + t('name') + '</span><input class="inp" id="stName" value="Joud Attar"></label>' +
+    '<label class="field"><span>' + t('whatsapp') + '</span><input class="inp num" id="stPhone" value="+963 933 662 108"></label>' +
+    '<div class="row2">' +
+      '<label class="field"><span>' + t('gender') + '</span><select class="inp" id="stGender">' +
+        '<option value="male">' + t('male') + '</option><option value="female">' + t('female') + '</option></select></label>' +
+      '<label class="field"><span>' + t('city') + '</span><select class="inp" id="stCity">' +
+        ['Damascus', 'Aleppo', 'Homs', 'Latakia', 'Hama', 'Tartus'].map(function (c) { return '<option>' + c + '</option>'; }).join('') +
+      '</select></label>' +
+    '</div>' +
+    '<label class="field"><span>' + t('payment_method') + '</span><select class="inp" id="stPay">' +
+      DB.paymentMethods.map(function (m) { return '<option value="' + m + '">' + DB.payLabel(m) + '</option>'; }).join('') +
+    '</select></label>' +
+    '<div class="st-line" style="border:0;font-size:15px"><b>' + t('total') + '</b>' +
+      '<span class="money strong-num" style="font-size:17px">' + money(cartTotal) + '</span></div>' +
+    '<button class="btn btn-primary btn-block btn-lg" data-act="st-place">' + t('place_order') + '</button></div>';
+  return h4;
+}
+
+function renderStore() {
+  var el = document.getElementById('phoneScreen');
+  if (el) el.innerHTML = storeScreen();
+  var ol = document.getElementById('ordersList');
+  if (ol) ol.innerHTML = ordersList();
+}
+
+/* -------------------------------------------------------------- 14. SETTINGS */
+
+/* ------------------------------------------------------------ ROLES & ACCESS
+
+   This used to be a hardcoded array of thirteen rows with tick boxes wired to
+   nothing — it edited a variable in the browser and the server never saw it.
+   It looked exactly like the control panel for permissions and controlled
+   nothing at all.
+
+   The real matrix now comes from GET /api/roles and saves back with PUT. Held
+   here after the first fetch so a re-render does not blank the table. */
+var ROLE_MATRIX = null;
+var ROLE_SAVE_T = null;
+
+/* Fallback for demo mode and for _shot.html, where there is no server to ask.
+   Shows the shipped defaults, read-only, so the screen still says something
+   true rather than rendering an empty card in a client screenshot. */
+var DEMO_MATRIX_ROLES = ['manager', 'cashier', 'warehouse', 'delivery', 'partner'];
+var DEMO_MATRIX = [
+  ['sell',           'till',      'Sell at the till',            [1, 1, 0, 0, 0]],
+  ['refund',         'till',      'Give a refund',               [1, 1, 0, 0, 0]],
+  ['void',           'till',      'Cancel a completed sale',     [1, 0, 0, 0, 0]],
+  ['stock.read',     'stock',     'See stock levels',            [1, 1, 1, 1, 0]],
+  ['stock.move',     'stock',     'Receive and move stock',      [1, 0, 1, 0, 0]],
+  ['stock.count',    'stock',     'Do a stock count',            [1, 0, 1, 0, 0]],
+  ['product.read',   'products',  'See products',                [1, 1, 1, 1, 0]],
+  ['product.write',  'products',  'Add and edit products',       [1, 0, 1, 0, 0]],
+  ['customer.read',  'customers', 'See customers',                [1, 1, 0, 1, 0]],
+  ['customer.write', 'customers', 'Add and edit customers',      [1, 1, 0, 0, 0]],
+  ['cost.read',      'money',     'See what things cost',        [1, 0, 0, 0, 0]],
+  ['profit.read',    'money',     'See profit',                  [1, 0, 0, 0, 0]],
+  ['money.read',     'money',     'See the money screen',        [1, 0, 0, 0, 0]],
+  ['money.write',    'money',     'Record expenses and debts',   [1, 0, 0, 0, 0]],
+  ['print.read',     'print',     'See print jobs',              [1, 1, 1, 1, 0]],
+  ['print.write',    'print',     'Create and change print jobs',[1, 0, 0, 0, 0]],
+  ['partner.read',   'print',     'See the partner portal',      [1, 0, 0, 0, 0]],
+  ['partner.write',  'print',     'Act on partner orders',       [1, 0, 0, 0, 0]],
+  ['staff.read',     'admin',     'See staff accounts',          [1, 0, 0, 0, 0]],
+  ['staff.write',    'admin',     'Add and edit staff',          [1, 0, 0, 0, 0]],
+  ['report.read',    'admin',     'See reports',                 [1, 0, 0, 0, 0]],
+  ['config.write',   'admin',     'Change settings',             [1, 0, 0, 0, 0]],
+  ['partner.jobs',   'partner',   'Yalla Wear: own jobs',        [0, 0, 0, 0, 1]],
+  ['partner.respond','partner',   'Yalla Wear: accept or decline',[0, 0, 0, 0, 1]],
+  ['partner.invoice','partner',   'Yalla Wear: own invoices',    [0, 0, 0, 0, 1]]
+];
+
+function demoMatrix() {
+  return {
+    roles: DEMO_MATRIX_ROLES,
+    permissions: DEMO_MATRIX.map(function (r) {
+      var roles = {};
+      DEMO_MATRIX_ROLES.forEach(function (name, i) {
+        roles[name] = { allowed: !!r[3][i], locked: true, why: null };
+      });
+      return { perm: r[0], group: r[1], label: r[2], roles: roles };
+    })
+  };
+}
+
+function rolesCard() {
+  var m = ROLE_MATRIX || (typeof Auth === 'undefined' || Auth.demoMode() ? demoMatrix() : null);
+
+  /* Still loading. Draw the frame rather than nothing, so the card does not
+     pop into existence and shove the rest of the page down. */
+  if (!m) {
+    return '<div class="card mb"><div class="card-head"><h3>' + t('roles_perms') + '</h3></div>' +
+      '<div class="card-body muted small">…</div></div>';
+  }
+
+  /* Only a manager may change these. Everyone else sees the same grid,
+     read-only — knowing the rules is not a privilege, changing them is. */
+  var editable = typeof Auth !== 'undefined' && !Auth.demoMode() && Auth.can('config.write');
+
+  var h = '<div class="card mb"><div class="card-head"><h3>' + t('roles_perms') + '</h3>' +
+    '<div class="card-actions muted small">' +
+      m.roles.length + ' ' + t('role').toLowerCase() + 's · ' +
+      m.permissions.length + ' ' + t('permission').toLowerCase() + 's</div></div>';
+
+  if (editable) h += '<div class="perm-hint">' + t('roles_editable') + '</div>';
+
+  h += '<div class="table-wrap"><table class="tbl perm-tbl"><thead><tr>' +
+    '<th>' + t('permission') + '</th>';
+  m.roles.forEach(function (r) {
+    h += '<th class="pc">' + esc(roleLabel(r)) + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  var lastGroup = null;
+  m.permissions.forEach(function (p) {
+    /* A group heading row. Twenty-five ticked boxes in a column is unreadable;
+       broken into "Till", "Stock", "Money" it reads as a description of a job. */
+    if (p.group !== lastGroup) {
+      lastGroup = p.group;
+      h += '<tr class="perm-group"><td colspan="' + (m.roles.length + 1) + '">' +
+        t('pg_' + p.group) + '</td></tr>';
+    }
+
+    h += '<tr><td class="perm-name">' + esc(p.label) + '</td>';
+    m.roles.forEach(function (r) {
+      var cell = p.roles[r] || { allowed: false, locked: true };
+      var locked = cell.locked || !editable;
+      h += '<td class="pc' + (cell.locked ? ' is-locked' : '') + '"' +
+        (cell.why ? ' title="' + esc(cell.why) + '"' : '') + '>' +
+        '<input type="checkbox"' + (cell.allowed ? ' checked' : '') +
+        (locked ? ' disabled' : ' data-change="set-perm" data-role="' + r +
+                                '" data-perm="' + esc(p.perm) + '"') + '>' +
+        (cell.locked ? '<span class="lock-i" aria-hidden="true">🔒</span>' : '') +
+        '</td>';
+    });
+    h += '</tr>';
+  });
+
+  h += '</tbody></table></div></div>';
+  return h;
+}
+
+/* Pull the live matrix, then repaint Settings once. Called from afterSettings
+   so it only runs when the screen is actually open. */
+function loadRoleMatrix() {
+  if (typeof Auth === 'undefined' || Auth.demoMode()) return;
+  if (ROLE_MATRIX) return;
+
+  API.get('/api/roles')
+    .then(function (m) {
+      ROLE_MATRIX = { roles: m.roles, permissions: m.permissions };
+      if (OG.view === 'settings') render();
+    })
+    .catch(function () { /* the card keeps its placeholder; nothing else breaks */ });
+}
+
+/* Save one role. Sends the whole granted list rather than a diff, so the
+   server never has to reconcile a partial view of the truth. */
+function saveRolePermissions(role) {
+  if (!ROLE_MATRIX) return;
+
+  var granted = ROLE_MATRIX.permissions
+    .filter(function (p) { return p.roles[role] && p.roles[role].allowed; })
+    .map(function (p) { return p.perm; });
+
+  API.put('/api/roles/' + encodeURIComponent(role), { granted: granted })
+    .then(function (res) {
+      ROLE_MATRIX = { roles: res.matrix.roles, permissions: res.matrix.permissions };
+
+      /* The server may have refused part of it — a pinned manager permission,
+         or something the partner may never have. Say so plainly and redraw
+         from what actually saved, rather than leaving a tick that did not
+         stick. */
+      if (res.refused && res.refused.length) {
+        toast(t('perm_refused'), res.refused.join(', '), 'err', 5000);
+      } else {
+        toast(t('perm_saved'), roleLabel(role), 'ok', 1800);
+      }
+
+      /* Your own role may have just changed — repaint the menu, not just the
+         table. */
+      if (typeof Auth !== 'undefined') Auth.refresh().then(function () { refreshAll(); });
+      else render();
+    })
+    .catch(function (e) { toast(t('roles_perms'), API.friendly(e), 'err', 5000); });
+}
+
+var REMINDER_RULES = [
+  ['Low stock alert', 'Warn when any SKU drops to 3 pieces or fewer', 1],
+  ['Size gap alert', 'Warn when a middle size hits zero but the product still has stock', 1],
+  ['Dormant customer', 'Flag customers with no purchase for 90 days', 1],
+  ['Supplier payment', 'Remind 5 days before a supplier payment is due', 1],
+  ['Print deadline', 'Remind 1 day before a print job deadline', 1],
+  ['Dead stock', 'Flag products with no sale for 60 days', 0],
+  ['Daily closing summary', 'Send the day total on WhatsApp at 22:00', 0]
+];
+
+/* ---- hardware ------------------------------------------------------------
+   A scanner that half-works is the worst failure mode in the shop: codes land
+   in a search box, or nothing happens at all, and there is nothing on screen
+   to say why. This card is the answer to "is it the scanner or the app?" —
+   it shows the raw characters, how fast they arrived, and the verdict. */
+function hardwareCard() {
+  var cfg = (typeof Wedge !== 'undefined') ? Wedge.config() : { prefix: '', maxGapMs: 35 };
+  var cam = (typeof Scan !== 'undefined') ? Scan.supported() : { native: false };
+
+  var h = '<div class="card mb"><div class="card-head"><h3>' + t('hw_title') + '</h3>' +
+    '<div class="card-actions muted small">' + t('hw_sub') + '</div></div><div class="card-body">';
+
+  /* -- scanner -- */
+  h += '<h4 class="hw-h">' + t('hw_scanner') + '</h4>' +
+    '<p class="small muted">' + t('hw_scanner_note') + '</p>' +
+    '<div class="hw-test" id="hwTest">' +
+      '<input class="inp" id="hwProbe" type="text" placeholder="' + esc(t('hw_test')) + '" autocomplete="off">' +
+      '<div class="hw-read" id="hwRead"><span class="muted">' + t('hw_waiting') + '</span></div>' +
+    '</div>';
+
+  h += '<div class="grid mt" style="grid-template-columns:1fr 1fr;gap:12px">' +
+    '<label class="field"><span class="lbl">' + t('hw_prefix') + '</span>' +
+      '<input class="inp" id="hwPrefix" type="text" maxlength="1" value="' + esc(cfg.prefix) + '">' +
+      '<small class="faint">' + t('hw_prefix_note') + '</small></label>' +
+    '<label class="field"><span class="lbl">' + t('hw_threshold') + ' — <b id="hwGapVal">' + cfg.maxGapMs + '</b> ms</span>' +
+      '<input class="inp" id="hwGap" type="range" min="10" max="120" step="5" value="' + cfg.maxGapMs + '">' +
+      '<small class="faint">' + t('hw_threshold_note') + '</small></label>' +
+  '</div>';
+
+  /* The camera gap, said out loud rather than discovered in the shop. */
+  if (!cam.native) {
+    h += '<div class="partner-note note-warn mt">' + t('hw_camera_gap') + '</div>';
+  }
+
+  /* -- printer -- */
+  h += '<div class="hw-sep"></div>' +
+    '<h4 class="hw-h">' + t('hw_printer') + '</h4>' +
+    '<p class="small muted">' + t('hw_printer_note') + '</p>' +
+    '<div class="chip-row mt">' +
+      '<button class="chip ' + (OG.lb.mode === 'roll' ? 'on' : '') + '" data-act="lb-mode" data-k="roll">' + t('hw_roll') + '</button>' +
+      '<button class="chip ' + (OG.lb.mode === 'sheet' ? 'on' : '') + '" data-act="lb-mode" data-k="sheet">' + t('hw_sheet') + '</button>' +
+    '</div>' +
+    '<div class="chip-row mt">';
+  Object.keys(LABEL_SIZES).forEach(function (k) {
+    h += '<button class="chip ' + (OG.lb.size === k ? 'on' : '') + '" data-act="lb-size" data-k="' + k + '">' +
+      k.replace('x', ' × ') + ' mm</button>';
+  });
+  h += '</div>' +
+    '<div class="chip-row mt">' +
+      '<button class="btn btn-ghost" data-act="hw-test-label">' + t('hw_test_label') + '</button>' +
+      '<button class="btn btn-ghost" data-act="hw-calibrate">' + t('hw_calibrate') + '</button>' +
+    '</div>';
+
+  h += '<div class="partner-note mt">' + t('hw_sym_note') + '</div>';
+
+  /* -- receipt paper --
+     Separate from the label roll above: they are two different printers in
+     most shops, and even where they are one machine, a 30mm label and an 80mm
+     receipt are different stock. */
+  h += '<div class="hw-sep"></div>' +
+    '<h4 class="hw-h">' + t('rc_paper') + '</h4>' +
+    '<p class="small muted">' + t('rc_paper_hint') + '</p>' +
+    '<div class="chip-row mt">' +
+      '<button class="chip ' + (OG.rc.width === '80' ? 'on' : '') + '" data-act="rc-width" data-k="80">' + t('rc_80') + '</button>' +
+      '<button class="chip ' + (OG.rc.width === '58' ? 'on' : '') + '" data-act="rc-width" data-k="58">' + t('rc_58') + '</button>' +
+    '</div>';
+
+  return h + '</div></div>';
+}
+
+/* ---- the 80mm thermal receipt --------------------------------------------
+   Everything a manager can tune without a code change: which printer to
+   talk to, how many copies, and the two blocks of text that print on every
+   receipt bilingual — the footer and the return policy. Saves straight to
+   the server's config table via PUT /api/config; there is nothing to save
+   in demo mode, so the fields show the seeded defaults and stay read-only. */
+function receiptSettingsCard() {
+  var demo = typeof Auth === 'undefined' || Auth.demoMode();
+  var dis = demo ? ' disabled' : '';
+
+  var h = '<div class="card mb"><div class="card-head"><h3>' + t('rc3_title') + '</h3>' +
+    '<div class="card-actions muted small">' + t('rc3_sub') + '</div></div><div class="card-body">';
+
+  if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
+
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_host') + '</span>' +
+      '<input class="inp num" dir="ltr" id="rcHost" value="' + esc(CONFIG.RECEIPT_PRINTER_HOST) + '"' + dis + '></label>' +
+    '<label class="field"><span>' + t('rc3_port') + '</span>' +
+      '<input class="inp num" type="number" id="rcPort" value="' + CONFIG.RECEIPT_PRINTER_PORT + '"' + dis + '></label>' +
+  '</div>';
+
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_branch') + '</span>' +
+      '<input class="inp" id="rcBranch" value="' + esc(CONFIG.SHOP_BRANCH) + '"' + dis + '></label>' +
+    '<label class="field"><span>' + t('phone') + '</span>' +
+      '<input class="inp num" dir="ltr" id="rcPhone" value="' + esc(CONFIG.SHOP_PHONE) + '"' + dis + '></label>' +
+  '</div>';
+
+  h += '<div class="rule-row"><div class="rr-txt"><b>' + t('rc3_auto_print') + '</b>' +
+    '<small>' + t('rc3_auto_print_hint') + '</small></div>' +
+    '<label class="switch"><input type="checkbox" id="rcAutoPrint"' +
+      (CONFIG.RECEIPT_AUTO_PRINT ? ' checked' : '') + dis + '><i></i></label></div>';
+
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_copies') + '</span>' +
+      '<input class="inp num" type="number" min="1" max="4" id="rcCopies" value="' + CONFIG.RECEIPT_COPIES + '"' + dis + '></label>' +
+    '<label class="field"><span>' + t('rc3_cut_mode') + '</span>' +
+      '<div class="chip-row" id="rcCutMode" data-v="' + esc(CONFIG.RECEIPT_CUT_MODE) + '">' +
+        '<button class="chip ' + (CONFIG.RECEIPT_CUT_MODE !== 'full' ? 'on' : '') + '"' + dis +
+          ' data-act="rc-cut" data-k="partial">' + t('rc3_cut_partial') + '</button>' +
+        '<button class="chip ' + (CONFIG.RECEIPT_CUT_MODE === 'full' ? 'on' : '') + '"' + dis +
+          ' data-act="rc-cut" data-k="full">' + t('rc3_cut_full') + '</button>' +
+      '</div></label>' +
+  '</div>';
+
+  [['rcShowQr', 'rc3_show_qr', CONFIG.RECEIPT_SHOW_QR],
+   ['rcShowBarcode', 'rc3_show_barcode', CONFIG.RECEIPT_SHOW_BARCODE],
+   ['rcShowLoyalty', 'rc3_show_loyalty', CONFIG.RECEIPT_SHOW_LOYALTY]
+  ].forEach(function (f) {
+    h += '<div class="rule-row"><div class="rr-txt"><b>' + t(f[1]) + '</b></div>' +
+      '<label class="switch"><input type="checkbox" id="' + f[0] + '"' + (f[2] ? ' checked' : '') + dis + '><i></i></label></div>';
+  });
+
+  h += '<div class="row2 mt">' +
+    '<label class="field"><span>' + t('rc3_footer_ar') + '</span>' +
+      '<textarea class="inp" dir="rtl" id="rcFooterAr" rows="2"' + dis + '>' + esc(CONFIG.RECEIPT_FOOTER_AR) + '</textarea></label>' +
+    '<label class="field"><span>' + t('rc3_footer_en') + '</span>' +
+      '<textarea class="inp" dir="ltr" id="rcFooterEn" rows="2"' + dis + '>' + esc(CONFIG.RECEIPT_FOOTER_EN) + '</textarea></label>' +
+  '</div>';
+
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_policy_ar') + '</span>' +
+      '<textarea class="inp" dir="rtl" id="rcPolicyAr" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_POLICY_AR) + '</textarea></label>' +
+    '<label class="field"><span>' + t('rc3_policy_en') + '</span>' +
+      '<textarea class="inp" dir="ltr" id="rcPolicyEn" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_POLICY_EN) + '</textarea></label>' +
+  '</div>';
+
+  h += '<div class="mt"><button class="btn btn-primary" data-act="rc-save-config"' + dis + '>' +
+    t('rc3_save') + '</button></div>';
+
+  return h + '</div></div>';
+}
+
+/* ---- thermal product labels (XP-235B) -------------------------------------
+   A separate card from receiptSettingsCard() and from the old browser
+   Label Studio's controls inside hardwareCard() — different printer,
+   different protocol, different queue. Station/preset pickers and the
+   queue view work for anyone with label.print; the config fields below
+   them are manager-only (config.write), same split as everywhere else. */
+function thermalLabelsCard() {
+  var demo = typeof Auth === 'undefined' || Auth.demoMode();
+  var canPrint = allow('label.print');
+  var canConfig = allow('config.write') && !demo;
+  var dis = demo || !canPrint ? ' disabled' : '';
+  var cdis = canConfig ? '' : ' disabled';
+
+  var h = '<div class="card mb"><div class="card-head"><h3>' + t('lbl_thermal_section') + '</h3>' +
+    '<div class="card-actions muted small">' + t('lbl_thermal_sub') + '</div></div><div class="card-body">';
+
+  if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
+  else if (!canPrint) h += '<div class="partner-note note-warn mb">' + t('no_access') + '</div>';
+
+  h += '<div class="chip-row"><span class="lbl-lbl">' + t('lbl_station') + '</span>';
+  Labels.stationOptions().forEach(function (s) {
+    h += '<button class="chip ' + (Labels.lastChoice().station === s ? 'on' : '') + '"' + dis +
+      ' data-act="label-station" data-k="' + esc(s) + '">' + esc(s) + '</button>';
+  });
+  h += '</div>';
+
+  h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_preset') + '</span>';
+  Labels.presetOptions().forEach(function (p) {
+    h += '<button class="chip ' + (Labels.lastChoice().preset === p.key ? 'on' : '') + '"' + dis +
+      ' data-act="label-preset" data-k="' + p.key + '">' + p.key + '</button>';
+  });
+  h += '</div>';
+
+  h += '<div class="mt"><button class="btn btn-ghost"' + dis + ' data-act="label-calibrate">' +
+    t('hw_calibrate') + '</button></div>';
+
+  if (!demo && canPrint && OG.labelQueue === undefined && !OG.labelQueueLoading) {
+    OG.labelQueueLoading = true;
+    API.get('/api/labels/queue').then(function (res) {
+      OG.labelQueueLoading = false;
+      OG.labelQueue = res.jobs || [];
+      if (OG.view === 'settings') render();
+    }).catch(function () { OG.labelQueueLoading = false; OG.labelQueue = []; });
+  }
+  var jobs = OG.labelQueue || [];
+  h += '<div class="hw-sep"></div><h4 class="hw-h">' + t('lbl_queue_title') + '</h4>';
+  if (!jobs.length) {
+    h += '<p class="small muted">' + t('lbl_queue_empty') + '</p>';
+  } else {
+    h += '<div class="table-wrap"><table class="tbl tbl-compact"><tbody>';
+    jobs.forEach(function (j) {
+      h += '<tr><td>' + esc(j.station) + '</td><td class="muted small">' + esc(j.preset) + '</td>' +
+        '<td class="num">' + j.label_count + '</td>' +
+        '<td><span class="badge ' + (j.status === 'done' ? 'silver' : j.status === 'failed' ? 'danger' : 'neutral') + '">' + esc(j.status) + '</span></td>' +
+        '<td>' + (j.status === 'pending'
+          ? '<button class="btn btn-sm btn-ghost" data-act="label-cancel-job" data-id="' + j.id + '">' + t('lbl_cancel') + '</button>'
+          : '') + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+
+  h += '<div class="hw-sep"></div><h4 class="hw-h">' + t('lbl_transport') + '</h4>';
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('lbl_transport') + '</span>' +
+      '<select class="inp" id="lblTransport"' + cdis + '>' +
+        '<option value="agent"' + (CONFIG.LABEL_TRANSPORT !== 'tcp' ? ' selected' : '') + '>' + t('lbl_transport_agent') + '</option>' +
+        '<option value="tcp"' + (CONFIG.LABEL_TRANSPORT === 'tcp' ? ' selected' : '') + '>' + t('lbl_transport_tcp') + '</option>' +
+      '</select></label>' +
+    '<label class="field"><span>' + t('lbl_host') + '</span>' +
+      '<input class="inp num" dir="ltr" id="lblHost" value="' + esc(CONFIG.LABEL_PRINTER_HOST || '') + '"' + cdis + '></label>' +
+  '</div>';
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('lbl_density') + '</span>' +
+      '<input class="inp num" type="number" min="1" max="15" id="lblDensity" value="' + (CONFIG.LABEL_DENSITY || 8) + '"' + cdis + '></label>' +
+    '<label class="field"><span>' + t('lbl_gap') + '</span>' +
+      '<input class="inp num" type="number" min="0" step="0.5" id="lblGap" value="' + (CONFIG.LABEL_GAP_MM || 2) + '"' + cdis + '></label>' +
+  '</div>';
+  h += '<div class="mt"><button class="btn btn-primary"' + cdis + ' data-act="lbl-save-config">' + t('lbl_save') + '</button></div>';
+
+  return h + '</div></div>';
+}
+
+function viewSettings() {
+  var h = '<div class="page-head"><div><h1>' + t('settings_title') + '</h1>' +
+    '<div class="sub">' + t('settings_sub') + '</div></div>' +
+    '<div class="head-actions">' + exportButtons() +
+      '<button class="btn btn-primary" data-act="settings-save">' + t('save_changes') + '</button></div></div>';
+
+  h += hardwareCard();
+
+  h += receiptSettingsCard();
+
+  h += thermalLabelsCard();
+
+  h += rolesCard();
+
+  h += '<div class="set-grid">';
+
+  h += '<div class="card"><div class="card-head"><h3>' + t('exchange_rate') + '</h3></div><div class="card-body">' +
+    '<label class="field"><span>' + t('rate_hint') + '</span>' +
+      '<input class="inp num" id="setRate" type="number" value="' + CONFIG.EXCHANGE_RATE + '" data-change="set-rate"></label>' +
+    '<div class="partner-note">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP · ' +
+      (OG.lang === 'ar' ? 'كل الأسعار في النظام تتحدّث فوراً' : 'every price in the system updates instantly') + '</div>' +
+  '</div></div>';
+
+  h += '<div class="card"><div class="card-head"><h3>' + t('loyalty_rules') + '</h3></div><div class="card-body">' +
+    '<div class="row2">' +
+      '<label class="field"><span>' + t('points_per') + '</span><input class="inp num" type="number" min="0" ' +
+        'value="' + CONFIG.LOYALTY_POINTS_PER_1000 + '" data-change="set-pts"></label>' +
+      '<label class="field"><span>' + t('point_value') + '</span><input class="inp num" type="number" min="0" ' +
+        'value="' + CONFIG.LOYALTY_POINT_VALUE + '" data-change="set-ptval"></label>' +
+    '</div>' +
+    '<div class="partner-note">500 ' + t('points') + ' = ' + money(500 * CONFIG.LOYALTY_POINT_VALUE) + '</div>' +
+    '<div class="mt"><div class="lbl">' + t('tier') + '</div>' +
+      '<span class="badge bronze">' + t('bronze') + ' 0–' + nf(CONFIG.TIER_SILVER - 1) + '</span> ' +
+      '<span class="badge silver">' + t('silver') + ' ' + nf(CONFIG.TIER_SILVER) + '–' + nf(CONFIG.TIER_GOLD - 1) + '</span> ' +
+      '<span class="badge gold">' + t('gold') + ' ' + nf(CONFIG.TIER_GOLD) + '+</span></div>' +
+  '</div></div>';
+
+  /* The escape hatch for a laggy projector or a remote-desktop demo. Writes
+     body[data-motion], which the reduced-motion rules already honour, so no
+     screen needs to know about it. */
+  var moOff = document.body.getAttribute('data-motion') === 'off';
+  h += '<div class="card"><div class="card-head"><h3>' + t('mo_title') + '</h3></div>' +
+    '<div class="card-body">' +
+      '<div class="rule-row"><div class="rr-txt"><b>' + t('mo_animations') + '</b>' +
+        '<small>' + t('mo_hint') + '</small></div>' +
+        '<label class="switch"><input type="checkbox"' + (moOff ? '' : ' checked') +
+          ' data-change="set-motion"><i></i></label></div>' +
+    '</div></div>';
+
+  h += '<div class="card"><div class="card-head"><h3>' + t('reminders') + '</h3></div>';
+  REMINDER_RULES.forEach(function (r) {
+    h += '<div class="rule-row"><div class="rr-txt"><b>' + r[0] + '</b><small>' + r[1] + '</small></div>' +
+      '<label class="switch"><input type="checkbox"' + (r[2] ? ' checked' : '') + '><i></i></label></div>';
+  });
+  h += '</div>';
+
+  h += '<div class="card"><div class="card-head"><h3>' + t('branding') + '</h3></div><div class="card-body">' +
+    '<div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">' +
+      '<div class="brand-mark" style="width:56px;height:56px"><img src="assets/logo.svg" alt="OG"></div>' +
+      '<div style="flex:1"><label class="field" style="margin:0"><span>' + t('shop_name') + '</span>' +
+        '<input class="inp" id="setShopName" value="' + esc(CONFIG.SHOP_NAME) + '" data-change="set-shopname"></label></div>' +
+    '</div>' +
+    '<div class="lbl">' + t('accent_colour') + '</div>' +
+    '<div class="swatch-row" style="margin-bottom:24px">' +
+      '<div class="swatch" style="background:#C6FF00;border-color:var(--foreground);border-width:2px"><span>C6FF00</span></div>' +
+      '<div class="swatch" style="background:#0A0A0B"><span>0A0A0B</span></div>' +
+      '<div class="swatch" style="background:#FAFAFA"><span>FAFAFA</span></div>' +
+      '<div class="swatch" style="background:#F87171"><span>F87171</span></div>' +
+      '<div class="swatch" style="background:#4ADE80"><span>4ADE80</span></div>' +
+    '</div>' +
+    '<label class="field"><span>' + t('phone') + '</span><input class="inp num" dir="ltr" id="setAddr" ' +
+      'value="' + esc(CONFIG.SHOP_ADDRESS) + '" data-change="set-addr"></label>' +
+  '</div></div>';
+
+  h += '</div>';
+  return h;
+}

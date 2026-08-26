@@ -1,0 +1,336 @@
+/* ==========================================================================
+   OG SYSTEM — application shell  ·  14/17: I18N EXTRAS (Yalla Wear v3, Label
+   Studio, bulk-select, export strings) — merged into the base I18N table
+   --------------------------------------------------------------------------
+   Split from the original js/app.js (lines 6189-6516). Loads after
+   app-tour-routing.js. Must load after app-i18n.js (file 2) since the merge
+   statements at the bottom write into I18N.en/I18N.ar.
+
+   Every key here exists in the *_AR object too. A missing key does not
+   throw — t() quietly returns the slug — so the demo would render
+   "yl_outstanding" in Arabic and nobody would notice until the meeting.
+   ========================================================================== */
+
+/* ---- Yalla Wear v3: kits, board, radar, money, messages ------------------ */
+var EXTRA_V3_EN = {
+  /* nav + modes */
+  yl_invoices: 'Invoices', yl_board: 'Board', yl_list: 'List',
+  yl_col_empty: 'nothing here',
+
+  /* radar + heatmap */
+  yl_radar: 'Deadline radar', yl_radar_sub: 'next 14 days · tap a day to filter',
+  yl_late: 'LATE', yl_heat: 'Capacity', yl_per_day: 'pieces a day',
+  yl_heat_key: 'quiet → overbooked',
+
+  /* activity */
+  yl_activity: 'Activity', yl_activity_sub: 'messages, moves and warnings',
+  yl_no_activity: 'All quiet', yl_no_activity_sub: 'Nothing has happened today',
+  yl_you: 'You', yl_just_now: 'just now', yl_m: 'm', yl_h: 'h', yl_d: 'd',
+  yl_past_deadline: 'Past deadline',
+
+  /* money */
+  yl_money: 'Money', yl_outstanding: 'Outstanding', yl_from_og: 'owed by OG System',
+  yl_invoiced_month: 'Paid this month', yl_avg_pay: 'Average time to pay',
+  yl_avg_pay_sub: 'from issue to settled', yl_days: 'days',
+  yl_unbilled: 'Not invoiced yet', yl_unbilled_sub: 'delivered work',
+  yl_view_invoices: 'Invoices', yl_ageing: 'How old',
+
+  /* kits + TBC */
+  yl_kit_lines: 'Print list', yl_kit: 'Kit', yl_print: 'Print',
+  yl_to_confirm: 'TO BE CONFIRMED', yl_tbc: 'TBC', yl_tbc_pieces: 'shirts have no name yet',
+  yl_tbc_filter: 'Waiting on names',
+  yl_blocked_head: 'shirts cannot be printed',
+  yl_blocked_sub: 'the customer has not chosen a name yet, so only OG can clear these',
+  yl_blocked_toast: 'shirts still have no name — OG has to confirm them first',
+  yl_blocked_tip: 'Blocked: names still missing',
+  yl_request_names: 'Ask OG for the names',
+  yl_names_requested: 'OG has been asked for the missing names',
+  yl_nothing_pending: 'every name is already confirmed',
+  yl_need_names: 'Names still needed on', yl_lines: 'lines',
+
+  /* messages */
+  yl_thread: 'Messages', yl_messages: 'messages', yl_no_messages: 'No messages',
+  yl_no_messages_sub: 'Nothing has been said about this job yet',
+  yl_add_note: 'Tell OG something', yl_reason: 'Reason', yl_message: 'Message',
+  yl_note_ph: 'What should OG know?',
+  yl_note_hint: 'This lands in OG System straight away — they see it on the job.',
+  yl_note_empty: 'Write something first', yl_note_sent: 'sent to OG System',
+  yl_msg_nudge: 'Nudge', yl_msg_delay: 'Delay', yl_msg_note: 'Note',
+  yl_msg_name_request: 'Names needed', yl_msg_invoice: 'Invoice',
+  yl_msg_reminder: 'Reminder', yl_msg_reply: 'Reply',
+  yl_reason_fabric_late: 'Fabric delivery late', yl_reason_printer_down: 'Printer / heat press down',
+  yl_reason_awaiting_names: 'Waiting on name confirmation',
+  yl_reason_quality_recheck: 'Quality re-check', yl_reason_other: 'Other',
+  yl_recent: 'recent',
+
+  /* invoices + finance */
+  yi_sub: 'What OG System owes you, and how long it has been owed',
+  yi_new: 'New invoice', yi_from_work: 'From delivered work',
+  yi_mode_blank: 'Blank invoice', yi_mode_work: 'Pick delivered kits',
+  yi_invoice: 'Invoice', yi_issued: 'Issued', yi_due: 'Due',
+  yi_lines: 'Lines', yi_lines_ready: 'lines ready to bill',
+  yi_paid: 'Paid', yi_balance: 'Still owed',
+  yi_st_draft: 'Draft', yi_st_sent: 'Sent', yi_st_part: 'Part paid', yi_st_paid: 'Paid',
+  yi_ageing_sub: 'unpaid balance by age since issue',
+  yi_add_line: 'Add a shirt', yi_rows: 'rows', yi_price: 'Price', yi_number: 'No.',
+  yi_pick_club: 'Choose a kit…', yi_other_club: 'Something else…', yi_club_name: 'Type the kit name',
+  yi_name_ph: 'Name on the back — leave blank for TBC',
+  yi_empty: 'Nothing on this invoice yet', yi_empty_sub: 'Add a shirt to get started',
+  yi_nothing_ready: 'Nothing to bill', yi_nothing_ready_sub: 'Every delivered kit is already invoiced',
+  yi_note: 'Notes', yi_default_note: 'All kits printed · payment on delivery.',
+  yi_per_kit: 'per kit, printing included', yi_terms: 'payment on delivery',
+  yi_total_due: 'TOTAL DUE', yi_received: 'RECEIVED',
+  yi_save_draft: 'Save as draft', yi_issue: 'Issue invoice',
+  yi_draft_saved: 'saved as a draft', yi_issued_toast: 'issued and sent to OG System',
+  yi_draft_deleted: 'draft deleted', yi_need_a_line: 'Add at least one shirt first',
+  yi_record_payment: 'Record a payment', yi_amount: 'Amount received',
+  yi_half: 'Half', yi_full: 'Full balance',
+  yi_payment_saved: 'payment recorded', yi_bad_amount: 'That is more than the balance',
+  yi_paper: 'Paper version', yi_brand_mode: 'Branded version',
+  yi_msg_issued: 'Invoice issued —', yi_due_in: 'due in',
+
+  /* OG side */
+  og_partner_inv: 'Partner invoices', og_pay_now: 'Pay this invoice',
+  og_owed_to: 'Owed to Yalla Wear', og_nudge: 'Nudge the partner',
+  og_nudge_sent: 'sent to Yalla Wear', og_confirm_names: 'Confirm the names',
+  og_names_saved: 'names confirmed — Yalla Wear can print now',
+  og_kit_lines: 'Kit lines', og_tbc_warn: 'shirts have no name yet — Yalla Wear cannot print them',
+  og_paid_toast: 'marked as paid',
+  og_unread_head: 'new messages from Yalla Wear',
+  og_unread_sub: 'open the speech bubble in the top bar, or the job itself',
+  og_nudge_default: 'The customer is asking about this one — can it move up the queue?',
+  og_nudge_hint: 'This lands in Yalla Wear straight away — they see it on the job.',
+  og_nothing_changed: 'nothing changed',
+  og_names_msg: 'Names confirmed:', og_all_confirmed: 'all names confirmed, you can print',
+  og_paid_msg: 'Payment sent:',
+
+  /* notifications */
+  nt_title: 'Partner messages', nt_new: 'new', nt_read_all: 'Mark all read',
+  nt_you: 'You', nt_empty: 'Nothing yet',
+  nt_empty_sub: 'Messages between OG System and Yalla Wear show up here',
+
+  yl_scorecard: 'Your record', yl_scorecard_sub: 'from the stamped history',
+  yl_on_time: 'Delivered on time', yl_on_time_sub: 'of finished jobs hit their deadline',
+  yl_turnaround: 'Average turnaround', yl_turnaround_sub: 'order taken to delivered'
+};
+
+var EXTRA_V3_AR = {
+  yl_invoices: 'الفواتير', yl_board: 'لوحة', yl_list: 'قائمة',
+  yl_col_empty: 'لا شيء هنا',
+
+  yl_radar: 'رادار المواعيد', yl_radar_sub: '١٤ يوماً القادمة · اضغط يوماً للتصفية',
+  yl_late: 'متأخر', yl_heat: 'الطاقة الإنتاجية', yl_per_day: 'قطعة يومياً',
+  yl_heat_key: 'هادئ ← محمّل زيادة',
+
+  yl_activity: 'النشاط', yl_activity_sub: 'رسائل وتحديثات وتنبيهات',
+  yl_no_activity: 'كل شيء هادئ', yl_no_activity_sub: 'لم يحدث شيء اليوم',
+  yl_you: 'أنت', yl_just_now: 'الآن', yl_m: ' د', yl_h: ' س', yl_d: ' ي',
+  yl_past_deadline: 'تجاوز الموعد',
+
+  yl_money: 'المال', yl_outstanding: 'مستحق لك', yl_from_og: 'على OG System',
+  yl_invoiced_month: 'المقبوض هذا الشهر', yl_avg_pay: 'متوسط مدة السداد',
+  yl_avg_pay_sub: 'من الإصدار حتى التحصيل', yl_days: 'يوم',
+  yl_unbilled: 'لم تُفوتر بعد', yl_unbilled_sub: 'أعمال مسلّمة',
+  yl_view_invoices: 'الفواتير', yl_ageing: 'حسب العمر',
+
+  yl_kit_lines: 'قائمة الطباعة', yl_kit: 'القميص', yl_print: 'الطباعة',
+  yl_to_confirm: 'بانتظار التأكيد', yl_tbc: 'غير مؤكد', yl_tbc_pieces: 'قميصاً بلا اسم بعد',
+  yl_tbc_filter: 'بانتظار الأسماء',
+  yl_blocked_head: 'قميصاً لا يمكن طباعته',
+  yl_blocked_sub: 'الزبون لم يختر الاسم بعد، وOG وحده يستطيع تأكيده',
+  yl_blocked_toast: 'قميصاً بلا اسم — على OG تأكيدها أولاً',
+  yl_blocked_tip: 'موقوف: الأسماء ناقصة',
+  yl_request_names: 'اطلب الأسماء من OG',
+  yl_names_requested: 'تم إرسال طلب الأسماء إلى OG',
+  yl_nothing_pending: 'كل الأسماء مؤكدة',
+  yl_need_names: 'أسماء ناقصة على', yl_lines: 'سطر',
+
+  yl_thread: 'الرسائل', yl_messages: 'رسالة', yl_no_messages: 'لا رسائل',
+  yl_no_messages_sub: 'لم يُكتب شيء عن هذا الطلب بعد',
+  yl_add_note: 'أبلغ OG', yl_reason: 'السبب', yl_message: 'الرسالة',
+  yl_note_ph: 'ما الذي يجب أن يعرفه OG؟',
+  yl_note_hint: 'تصل إلى OG System فوراً وتظهر لهم على الطلب.',
+  yl_note_empty: 'اكتب شيئاً أولاً', yl_note_sent: 'أُرسلت إلى OG System',
+  yl_msg_nudge: 'استعجال', yl_msg_delay: 'تأخير', yl_msg_note: 'ملاحظة',
+  yl_msg_name_request: 'أسماء مطلوبة', yl_msg_invoice: 'فاتورة',
+  yl_msg_reminder: 'تذكير', yl_msg_reply: 'رد',
+  yl_reason_fabric_late: 'تأخر توريد القماش', yl_reason_printer_down: 'عطل في المكبس/الطابعة',
+  yl_reason_awaiting_names: 'بانتظار تأكيد الأسماء',
+  yl_reason_quality_recheck: 'إعادة فحص الجودة', yl_reason_other: 'أخرى',
+  yl_recent: 'الأخيرة',
+
+  yi_sub: 'ما له عليك من OG System، ومنذ متى',
+  yi_new: 'فاتورة جديدة', yi_from_work: 'من الأعمال المسلّمة',
+  yi_mode_blank: 'فاتورة فارغة', yi_mode_work: 'اختر قمصاناً مسلّمة',
+  yi_invoice: 'فاتورة', yi_issued: 'تاريخ الإصدار', yi_due: 'الاستحقاق',
+  yi_lines: 'البنود', yi_lines_ready: 'بنداً جاهزاً للفوترة',
+  yi_paid: 'المدفوع', yi_balance: 'المتبقي',
+  yi_st_draft: 'مسودة', yi_st_sent: 'مُرسلة', yi_st_part: 'مدفوعة جزئياً', yi_st_paid: 'مدفوعة',
+  yi_ageing_sub: 'الرصيد غير المدفوع حسب عمره منذ الإصدار',
+  yi_add_line: 'أضف قميصاً', yi_rows: 'أسطر', yi_price: 'السعر', yi_number: 'الرقم',
+  yi_pick_club: 'اختر القميص…', yi_other_club: 'شيء آخر…', yi_club_name: 'اكتب اسم القميص',
+  yi_name_ph: 'الاسم على الظهر — اتركه فارغاً إن لم يُحدَّد',
+  yi_empty: 'لا شيء في هذه الفاتورة بعد', yi_empty_sub: 'أضف قميصاً للبدء',
+  yi_nothing_ready: 'لا شيء للفوترة', yi_nothing_ready_sub: 'كل الأعمال المسلّمة مفوترة',
+  yi_note: 'ملاحظات', yi_default_note: 'جميع القمصان مطبوعة · الدفع عند الاستلام.',
+  yi_per_kit: 'للقميص، الطباعة مشمولة', yi_terms: 'الدفع عند الاستلام',
+  yi_total_due: 'المبلغ المستحق', yi_received: 'الاستلام',
+  yi_save_draft: 'حفظ كمسودة', yi_issue: 'إصدار الفاتورة',
+  yi_draft_saved: 'حُفظت كمسودة', yi_issued_toast: 'صدرت وأُرسلت إلى OG System',
+  yi_draft_deleted: 'حُذفت المسودة', yi_need_a_line: 'أضف قميصاً واحداً على الأقل',
+  yi_record_payment: 'تسجيل دفعة', yi_amount: 'المبلغ المقبوض',
+  yi_half: 'النصف', yi_full: 'كامل المتبقي',
+  yi_payment_saved: 'سُجّلت الدفعة', yi_bad_amount: 'المبلغ أكبر من المتبقي',
+  yi_paper: 'نسخة ورقية', yi_brand_mode: 'النسخة المُعلَّمة',
+  yi_msg_issued: 'صدرت الفاتورة —', yi_due_in: 'تستحق خلال',
+
+  og_partner_inv: 'فواتير الشريك', og_pay_now: 'سدّد هذه الفاتورة',
+  og_owed_to: 'مستحق لـ Yalla Wear', og_nudge: 'استعجل الشريك',
+  og_nudge_sent: 'أُرسلت إلى Yalla Wear', og_confirm_names: 'تأكيد الأسماء',
+  og_names_saved: 'تم تأكيد الأسماء — يستطيع Yalla Wear الطباعة الآن',
+  og_kit_lines: 'بنود القمصان', og_tbc_warn: 'قميصاً بلا اسم — لا يستطيع Yalla Wear طباعتها',
+  og_paid_toast: 'وُسمت كمدفوعة',
+  og_unread_head: 'رسالة جديدة من Yalla Wear',
+  og_unread_sub: 'افتح أيقونة الرسائل في الشريط العلوي، أو الطلب نفسه',
+  og_nudge_default: 'الزبون يسأل عن هذا الطلب — هل يمكن تقديمه في الدور؟',
+  og_nudge_hint: 'تصل إلى Yalla Wear فوراً وتظهر لهم على الطلب.',
+  og_nothing_changed: 'لم يتغيّر شيء',
+  og_names_msg: 'تم تأكيد الأسماء:', og_all_confirmed: 'كل الأسماء مؤكدة، يمكنكم الطباعة',
+  og_paid_msg: 'تم إرسال دفعة:',
+
+  nt_title: 'رسائل الشريك', nt_new: 'جديدة', nt_read_all: 'تعليم الكل كمقروء',
+  nt_you: 'أنت', nt_empty: 'لا شيء بعد',
+  nt_empty_sub: 'الرسائل بين OG System وYalla Wear تظهر هنا',
+
+  yl_scorecard: 'سجلّك', yl_scorecard_sub: 'من سجل المراحل الموثّق',
+  yl_on_time: 'التسليم في الموعد', yl_on_time_sub: 'من الطلبات المنجزة سُلّمت بموعدها',
+  yl_turnaround: 'متوسط مدة الإنجاز', yl_turnaround_sub: 'من استلام الطلب حتى التسليم'
+};
+
+var EXTRA_EN = {
+  yl_tagline: 'Style That Moves You!', yl_operator: 'Production',
+  yl_today: 'Today', yl_today_sub: 'What has to be printed, and by when',
+  yl_queue: 'Job queue', yl_queue_sub: 'Late work first, then by deadline',
+  yl_earnings: 'Earnings', yl_earnings_sub: 'What OG System owes you, job by job',
+  yl_production: 'Production', yl_open_jobs: 'Open jobs', yl_pieces: 'pieces',
+  yl_urgent: 'Urgent', yl_due_week: 'Due this week', yl_earned_month: 'Earned this month',
+  yl_in_queue: 'waiting in the queue', yl_priority_first: 'printed first',
+  yl_line: 'Production line', yl_line_sub: 'tap a stage to filter the queue',
+  yl_capacity: 'Capacity this week', yl_vs_capacity: 'against', yl_per_week: 'per week',
+  yl_next_up: 'Next up', yl_open: 'Open', yl_jobs: 'jobs',
+  yl_urgent_late: 'Urgent & late', yl_all_clear: 'Nothing waiting',
+  yl_all_clear_sub: 'Every job in this filter is finished', yl_job: 'Job',
+  yl_progress: 'Progress', yl_size_breakdown: 'Sizes to print', yl_payout: 'You get paid',
+  yl_piece: 'piece', yl_move_to: 'Move to', yl_moved_to: 'moved to',
+  yl_flag: 'Flag a problem', yl_flagged: 'Flagged for OG System — they have been notified',
+  yl_invoice_og: 'Invoice OG System', yl_invoice_sent: 'invoice sent',
+  yl_unpaid: 'On open jobs', yl_on_open_jobs: 'not invoiced yet', yl_lifetime: 'All time',
+  yl_per_piece: 'Average per piece', yl_monthly: 'Earnings by month',
+  yl_back_og: '← Back to OG System', yl_partner_of: 'Printing partner of ',
+  yl_scope: 'You see only your own jobs and your own pay',
+  yl_entered: 'Partner portal — this is all they can see',
+  yl_left: 'Back in the admin system', yl_now: 'now', yl_charged: 'Charged to customer',
+  yl_billed_to: 'Billed to',
+
+  lb_studio: 'Label studio', lb_template: 'Template', lb_size: 'Label size',
+  lb_show: 'Show on label', lb_copies: 'Copies per size',
+  lb_copies_hint: 'capped at the stock on hand', lb_sheet: 'Print sheet',
+  lb_labels: 'labels', lb_scannable: 'Real EAN-13 · scannable',
+  lb_qr: 'QR code', lb_logo: 'Logo', lb_nothing: 'Enter some quantities first',
+  lb_price: 'Price tag', lb_shelf: 'Shelf label', lb_hang: 'Hang tag', lb_mini: 'Mini sticker',
+  lb_product: 'Product label', lb_custom: 'Custom size',
+  lb_fit_warn: 'Bars come out {mm}mm wide on {n} label(s) — under 0.25mm a thermal head cannot print them cleanly and they will not scan. Use a wider label.',
+  lb_fit_ok: 'Sized to the label: {mm}mm per bar.',
+  lb_no_price_note: 'Prices are left off on purpose. The barcode identifies the shoe; the price lives at the till, so changing a price never means reprinting stickers.',
+
+  ex_generated: 'Generated', ex_footer: 'Generated by OG System',
+  ex_pdf_preview: 'PDF preview', ex_save_pdf: 'Print / Save as PDF',
+  ex_pdf_hint: 'Choose "Save as PDF" as the destination',
+  export_failed: 'Export failed',
+
+  bk_select: 'Select', bk_select_all: 'Select everything the filter matches',
+  bk_selected: 'selected', bk_clear: 'Clear selection',
+  bk_show: 'Show in shop', bk_hide: 'Hide from shop',
+  bk_price: 'Change price', bk_price_pct: 'Adjust by percent',
+  bk_price_hint: 'Applies to every selected product, rounded to the nearest 1,000.',
+  bk_archive: 'Archive', bk_archived: 'archived', bk_archived_only: 'Archived',
+  bk_delete: 'Delete', bk_deleted: 'deleted', bk_delete_title: 'Delete permanently',
+  bk_delete_q: 'Delete {n} records?',
+  bk_delete_note: 'Archiving is usually what you want — it hides them but keeps the history. Delete cannot be undone once the Undo toast disappears.',
+  bk_undo: 'Undo', bk_undo_hint: 'Undo available for a few seconds',
+  bk_restored: 'Restored', bk_hidden: 'hidden from the shop', bk_shown: 'visible in the shop',
+  bk_message: 'Send WhatsApp', bk_message_hint: 'Each opens WhatsApp with the message ready to send.',
+  bk_log_all: 'Mark all as sent', bk_logged: 'logged as sent',
+  bk_points: '+250 points', bk_advance: 'Move to next stage', bk_done: 'Mark done',
+  bk_moved: 'jobs moved', bk_sent: 'orders sent to Yalla Wear',
+
+  ex_scan: 'Scan to open', ex_till: 'Till PDF',
+  rec_statement: 'Customer statement', rec_stock_sheet: 'Stock sheet',
+  yl_work_order: 'Work order'
+};
+
+var EXTRA_AR = {
+  yl_tagline: 'ستايل يحرّكك!', yl_operator: 'الإنتاج',
+  yl_today: 'اليوم', yl_today_sub: 'ما يجب طباعته ومتى',
+  yl_queue: 'قائمة الطلبات', yl_queue_sub: 'المتأخر أولاً ثم حسب موعد التسليم',
+  yl_earnings: 'الأرباح', yl_earnings_sub: 'ما يترتب على OG لك، طلباً بطلب',
+  yl_production: 'الإنتاج', yl_open_jobs: 'طلبات مفتوحة', yl_pieces: 'قطعة',
+  yl_urgent: 'مستعجل', yl_due_week: 'مستحق هذا الأسبوع', yl_earned_month: 'أرباح هذا الشهر',
+  yl_in_queue: 'بانتظار الطباعة', yl_priority_first: 'تُطبع أولاً',
+  yl_line: 'خط الإنتاج', yl_line_sub: 'اضغط مرحلة لتصفية القائمة',
+  yl_capacity: 'الطاقة هذا الأسبوع', yl_vs_capacity: 'مقابل', yl_per_week: 'أسبوعياً',
+  yl_next_up: 'التالي', yl_open: 'فتح', yl_jobs: 'طلب',
+  yl_urgent_late: 'مستعجل ومتأخر', yl_all_clear: 'لا يوجد شيء بالانتظار',
+  yl_all_clear_sub: 'كل الطلبات في هذا الفلتر منجزة', yl_job: 'الطلب',
+  yl_progress: 'مراحل التنفيذ', yl_size_breakdown: 'القياسات المطلوبة', yl_payout: 'مستحقاتك',
+  yl_piece: 'قطعة', yl_move_to: 'نقل إلى', yl_moved_to: 'انتقل إلى',
+  yl_flag: 'الإبلاغ عن مشكلة', yl_flagged: 'تم إبلاغ OG System بالمشكلة',
+  yl_invoice_og: 'إرسال فاتورة إلى OG', yl_invoice_sent: 'أُرسلت الفاتورة',
+  yl_unpaid: 'على الطلبات المفتوحة', yl_on_open_jobs: 'لم تُفوتر بعد', yl_lifetime: 'الإجمالي الكلي',
+  yl_per_piece: 'متوسط سعر القطعة', yl_monthly: 'الأرباح حسب الشهر',
+  yl_back_og: '→ العودة إلى OG System', yl_partner_of: 'شريك الطباعة لـ ',
+  yl_scope: 'ترى طلباتك ومستحقاتك فقط',
+  yl_entered: 'واجهة الشريك — هذا كل ما يراه', yl_left: 'عدنا إلى نظام الإدارة',
+  yl_now: 'الآن', yl_charged: 'المحصّل من الزبون', yl_billed_to: 'الفاتورة إلى',
+
+  lb_studio: 'استوديو الملصقات', lb_template: 'القالب', lb_size: 'قياس الملصق',
+  lb_show: 'ما يظهر على الملصق', lb_copies: 'نسخ لكل قياس',
+  lb_copies_hint: 'بحد أقصى الكمية المتوفرة', lb_sheet: 'ورقة الطباعة',
+  lb_labels: 'ملصق', lb_scannable: 'باركود EAN-13 حقيقي · قابل للمسح',
+  lb_qr: 'رمز QR', lb_logo: 'الشعار', lb_nothing: 'أدخل الكميات أولاً',
+  lb_price: 'بطاقة سعر', lb_shelf: 'ملصق رف', lb_hang: 'بطاقة معلّقة', lb_mini: 'ملصق صغير',
+  lb_product: 'ملصق منتج', lb_custom: 'قياس خاص',
+  lb_fit_warn: 'عرض الخطوط بيطلع {mm} ملم على {n} ملصق — تحت ٠٫٢٥ ملم الطابعة الحرارية ما بتقدر تطبعها نظيفة وما رح تنقرأ. استعمل ملصق أعرض.',
+  lb_fit_ok: 'متقاس على الملصق: {mm} ملم لكل خط.',
+  lb_no_price_note: 'الأسعار مقصود ما تنطبع. الباركود بيعرّف الحذاء، والسعر بيضلّ عالكاشير — فتغيير السعر أبداً ما بيحتاج إعادة طباعة الملصقات.',
+
+  ex_generated: 'تاريخ الإصدار', ex_footer: 'صادر عن نظام OG',
+  ex_pdf_preview: 'معاينة PDF', ex_save_pdf: 'طباعة / حفظ PDF',
+  ex_pdf_hint: 'اختر "حفظ كـ PDF" كوجهة للطباعة',
+  export_failed: 'فشل التصدير',
+
+  bk_select: 'تحديد', bk_select_all: 'تحديد كل ما يطابق الفلتر',
+  bk_selected: 'محدد', bk_clear: 'إلغاء التحديد',
+  bk_show: 'إظهار بالمتجر', bk_hide: 'إخفاء عن المتجر',
+  bk_price: 'تعديل السعر', bk_price_pct: 'التعديل بالنسبة المئوية',
+  bk_price_hint: 'يُطبّق على كل منتج محدد، مقرّباً لأقرب ١٠٠٠.',
+  bk_archive: 'أرشفة', bk_archived: 'مؤرشف', bk_archived_only: 'المؤرشف',
+  bk_delete: 'حذف', bk_deleted: 'محذوف', bk_delete_title: 'حذف نهائي',
+  bk_delete_q: 'حذف {n} سجل؟',
+  bk_delete_note: 'الأرشفة غالباً هي المطلوب — تخفيها وتحتفظ بالسجل. الحذف لا يمكن التراجع عنه بعد اختفاء التنبيه.',
+  bk_undo: 'تراجع', bk_undo_hint: 'التراجع متاح لثوانٍ',
+  bk_restored: 'تمت الاستعادة', bk_hidden: 'أُخفيت عن المتجر', bk_shown: 'ظاهرة بالمتجر',
+  bk_message: 'إرسال واتساب', bk_message_hint: 'كل زر يفتح واتساب والرسالة جاهزة للإرسال.',
+  bk_log_all: 'اعتبارها مُرسلة', bk_logged: 'سُجّلت كمُرسلة',
+  bk_points: '+٢٥٠ نقطة', bk_advance: 'نقل للمرحلة التالية', bk_done: 'إنهاء',
+  bk_moved: 'طلب تم نقله', bk_sent: 'طلب أُرسل ليلا وير',
+
+  ex_scan: 'امسح للفتح', ex_till: 'تقرير الصندوق',
+  rec_statement: 'كشف حساب الزبون', rec_stock_sheet: 'كشف المخزون',
+  yl_work_order: 'أمر عمل'
+};
+
+Object.keys(EXTRA_EN).forEach(function (k) { I18N.en[k] = EXTRA_EN[k]; });
+Object.keys(EXTRA_AR).forEach(function (k) { I18N.ar[k] = EXTRA_AR[k]; });
+Object.keys(EXTRA_V3_EN).forEach(function (k) { I18N.en[k] = EXTRA_V3_EN[k]; });
+Object.keys(EXTRA_V3_AR).forEach(function (k) { I18N.ar[k] = EXTRA_V3_AR[k]; });
