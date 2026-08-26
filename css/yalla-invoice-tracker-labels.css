@@ -1,0 +1,300 @@
+/* ==========================================================================
+   OG SYSTEM — stylesheet  ·  8/10: Yalla Wear invoice document, DELIVERY
+   TRACKER, LABEL STUDIO (old), EXPORTED PDF SHEET
+   --------------------------------------------------------------------------
+   Split from the original css/style.css (lines 2159-2451). Loads after
+   tour-yalla-scan.css.
+   ========================================================================== */
+
+/* ================================== YALLA WEAR — the invoice document
+   Navy stock with mint ink, matching the partner's printed invoice.
+
+   Every other document in this app is white paper on purpose. A full-bleed
+   dark A4 depends on print-color-adjust, which "Save as PDF" honours and a
+   good many office printer drivers quietly ignore — you would get white paper
+   with near-invisible mint text. That is why `.paper` exists: same document,
+   white stock, navy ink, safe on any printer.                              */
+
+/* #2E2D4C is not an arbitrary navy: it is the exact colour of the opaque
+   plate baked into assets/yalla-wear.svg. Matching it means the lockup sits
+   on the sheet with no visible box around it, without editing the artwork the
+   client supplied. */
+.yw-sheet {
+  background: #2E2D4C; color: #EFF4F0; padding: 34px 36px 30px;
+  border-radius: var(--radius); position: relative; overflow: hidden;
+  font-size: 12.5px; font-weight: 500;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.yw-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+.yw-lockup { width: 42mm; height: auto; display: block; }
+.yw-title { text-align: end; line-height: 1; }
+.yw-title b {
+  display: block; font-family: var(--font-head); font-weight: 900; font-style: italic;
+  font-size: 34px; letter-spacing: .16em; color: #B5DCC0;
+}
+.yw-title span { display: block; margin-top: 7px; font-size: 15px; color: #9A93C4; letter-spacing: .1em; }
+
+.yw-meta {
+  display: flex; align-items: flex-end; gap: 34px; position: relative;
+  padding-bottom: 14px; margin-bottom: 4px; border-bottom: 2px solid #B5DCC0;
+}
+.yw-lbl { display: block; font-size: 8.5px; font-weight: 700; letter-spacing: .18em;
+  text-transform: uppercase; color: #8F88BC; margin-bottom: 4px; }
+.yw-meta b { font-family: var(--font-head); font-weight: 800; font-size: 15px; letter-spacing: .01em; }
+/* logo.svg is a white glyph on a solid BLACK plate, which reads as a black
+   square on a navy sheet. `screen` drops black to nothing and keeps white, so
+   the plate vanishes and the mark floats — no artwork edit needed. */
+.yw-mark { margin-inline-start: auto; width: 46px; height: 46px; mix-blend-mode: screen; }
+.yw-mark.sm { width: 26px; height: 26px; }
+
+table.yw-tbl { width: 100%; border-collapse: collapse; margin-top: 14px; }
+table.yw-tbl th {
+  text-align: start; padding: 9px 8px; font-size: 8.5px; font-weight: 700;
+  letter-spacing: .18em; text-transform: uppercase; color: #8F88BC;
+  border-bottom: 1px solid #453E74;
+}
+table.yw-tbl td { padding: 9px 8px; border-bottom: 1px solid #38326099; vertical-align: middle; }
+table.yw-tbl .num { text-align: end; }
+.yw-n { width: 26px; font-size: 10px; color: #6F6899; font-variant-numeric: tabular-nums; }
+.yw-kit b { display: block; font-family: var(--font-head); font-weight: 800; font-size: 13.5px; }
+.yw-ar { display: block; font-size: 10px; color: #9A93C4; direction: rtl; margin-top: 1px; }
+.yw-name { font-weight: 700; font-size: 11.5px; letter-spacing: .13em; }
+.yw-no {
+  display: inline-grid; place-items: center; min-width: 19px; height: 17px; padding: 0 4px;
+  margin-inline-start: 7px; border: 1px solid #6C6499; border-radius: 3px;
+  font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.yw-tbc { font-size: 9.5px; font-weight: 700; letter-spacing: .17em; color: #7C74A8; }
+.yw-qty { font-size: 12px; color: #C9C3E4; font-variant-numeric: tabular-nums; }
+.yw-amt { font-family: var(--font-head); font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
+
+.yw-foot-grid { display: grid; grid-template-columns: 1fr 260px; gap: 26px; margin-top: 24px; align-items: start; }
+.yw-notes p { margin: 0 0 5px; font-size: 11px; color: #B6AFDA; line-height: 1.6; }
+.yw-total { background: #B5DCC0; color: #211D3C; border-radius: var(--radius); padding: 15px 18px 16px; }
+.yw-total .yw-lbl { color: #3D5946; }
+.yw-total-ar { display: block; font-size: 10.5px; color: #3D5946; margin: -2px 0 5px; direction: rtl; }
+.yw-total b {
+  display: block; font-family: var(--font-head); font-weight: 900; font-size: 33px;
+  line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+}
+.yw-total b i { font-style: normal; font-size: 12px; font-weight: 800; margin-inline-start: 6px; letter-spacing: .06em; }
+.yw-paid { display: block; margin-top: 7px; font-size: 10.5px; color: #3D5946; }
+
+.yw-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; }
+.yw-sign > div { border-top: 1px solid #4A4278; padding-top: 8px; }
+.yw-end {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  margin-top: 26px; padding-top: 14px; border-top: 1px solid #38326099;
+}
+.yw-end span { font-size: 11px; font-weight: 800; letter-spacing: .22em; color: #B5DCC0; }
+.yw-qr { position: absolute; inset-inline-end: 36px; bottom: 74px; text-align: center; }
+.yw-qr svg { display: block; }
+.yw-qr span { display: block; margin-top: 3px; font-size: 7.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: #7C74A8; }
+
+/* Paper mode — identical layout, printer-safe colours. */
+.yw-sheet.paper { background: #FFFFFF; color: #211D3C; }
+.yw-sheet.paper .yw-title b { color: #2A2547; }
+.yw-sheet.paper .yw-title span,
+.yw-sheet.paper .yw-lbl,
+.yw-sheet.paper .yw-ar,
+.yw-sheet.paper .yw-n { color: #6E6890; }
+.yw-sheet.paper .yw-meta { border-bottom-color: #2A2547; }
+.yw-sheet.paper table.yw-tbl th { color: #6E6890; border-bottom-color: #2A2547; }
+.yw-sheet.paper table.yw-tbl td { border-bottom-color: #E2E0EC; }
+.yw-sheet.paper .yw-no { border-color: #9C96B8; }
+.yw-sheet.paper .yw-qty { color: #4B4570; }
+.yw-sheet.paper .yw-notes p { color: #55506F; }
+.yw-sheet.paper .yw-total { background: #2A2547; color: #FFFFFF; }
+.yw-sheet.paper .yw-total .yw-lbl,
+.yw-sheet.paper .yw-total-ar,
+.yw-sheet.paper .yw-paid { color: #B5DCC0; }
+.yw-sheet.paper .yw-sign > div { border-top-color: #C9C5D8; }
+.yw-sheet.paper .yw-end { border-top-color: #E2E0EC; }
+.yw-sheet.paper .yw-end span { color: #2A2547; }
+.yw-sheet.paper .yw-tbc { color: #8A84A8; }
+/* On white stock the artwork keeps its own navy plate, which is correct — it
+   is how the logo is meant to appear on light backgrounds. The OG mark gets
+   inverted instead: its black plate goes white (invisible on paper) and its
+   white glyph goes dark. `screen` must be turned off or it would erase it. */
+.yw-sheet.paper .yw-mark { mix-blend-mode: normal; filter: invert(1) brightness(.22); }
+
+@media (max-width: 760px) {
+  .yw-sheet { padding: 22px 18px; }
+  .yw-foot-grid { grid-template-columns: 1fr; }
+  .yw-qr { position: static; margin-top: 16px; }
+  .yw-title b { font-size: 24px; }
+}
+
+@media (max-width: 1100px) {
+  .yl-board { grid-template-columns: repeat(5, minmax(190px, 1fr)); }
+}
+@media (max-width: 760px) {
+  .yl-heat { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .yl-msg.mine, .yl-msg:not(.mine) { margin-inline: 0; }
+}
+
+/* ============================================ DELIVERY TRACKER (both apps) */
+
+.track { display: flex; align-items: flex-start; gap: 0; flex-wrap: nowrap; }
+.track-step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; min-width: 0; }
+.track-node {
+  width: 30px; height: 30px; border-radius: var(--radius-full);
+  display: grid; place-items: center; flex: none;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+  border: 2px solid var(--border-strong); background: var(--card); color: var(--dim);
+  transition: background var(--t), border-color var(--t), color var(--t);
+}
+.track-step.done .track-node { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); }
+.track-step.now .track-node {
+  border-color: var(--brand); color: var(--brand); background: var(--brand-soft);
+  box-shadow: 0 0 0 4px rgb(198 255 0 / .14);
+  animation: trackPulse 2s ease-in-out infinite;
+}
+body[data-portal="yalla"] .track-step.now .track-node { box-shadow: 0 0 0 4px rgb(181 220 192 / .18); }
+@keyframes trackPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.09); } }
+.track-label { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.3; max-width: 74px; }
+.track-step.next .track-label { color: var(--dim); font-weight: 500; }
+.track-time { font-size: 10px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.track-step.now .track-time { color: var(--brand); font-weight: 600; }
+
+.track-arrow { flex: 1; height: 30px; position: relative; min-width: 16px; }
+.track-arrow::before {
+  content: ''; position: absolute; top: 15px; inset-inline-start: 2px; inset-inline-end: 7px;
+  height: 2px; background: var(--border-strong);
+}
+.track-arrow::after {
+  content: ''; position: absolute; top: 15px; inset-inline-end: 2px;
+  border: 4px solid transparent; border-inline-start-color: var(--border-strong);
+  transform: translateY(-50%);
+}
+body.rtl .track-arrow::after { transform: translateY(-50%) scaleX(-1); }
+/* an arrow leading into a reached node is itself "done" */
+.track-step.done + .track-arrow::before,
+.track-step.done + .track-arrow::after { background: var(--brand); border-inline-start-color: var(--brand); }
+.track-step.done + .track-arrow::before { background: var(--brand); }
+
+.track.compact { margin: 4px 0 2px; }
+.track.compact .track-node { width: 18px; height: 18px; font-size: 9px; border-width: 1.5px; }
+.track.compact .track-arrow { height: 18px; min-width: 8px; }
+.track.compact .track-arrow::before { top: 9px; }
+.track.compact .track-arrow::after { top: 9px; border-width: 3px; }
+.track.compact .track-step.now .track-node { animation: none; box-shadow: none; }
+
+.track.late .track-step.now .track-node {
+  border-color: var(--destructive); color: var(--destructive); background: var(--destructive-soft);
+  box-shadow: 0 0 0 4px rgb(248 113 113 / .16);
+}
+.track.late .track-step.now .track-label,
+.track.late .track-step.now .track-time { color: var(--destructive); }
+
+/* ==================================================== LABEL STUDIO / SHEET */
+
+.lb-controls {
+  display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--subtle);
+  padding: 15px 16px; margin-bottom: 16px;
+}
+.lb-group { min-width: 0; }
+.lb-group .lbl { margin-bottom: 8px; }
+.lb-preview-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+
+/* Real millimetres — what you see is the size that comes out of the printer. */
+.label-sheet { display: flex; flex-wrap: wrap; gap: 4mm; align-items: flex-start; }
+.blabel {
+  background: #FFFFFF; color: #09090B; border: 1px dashed #9CA3AF; border-radius: 1mm;
+  padding: 2mm 2.5mm; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .8mm; text-align: center; box-sizing: border-box;
+}
+.blabel .bl-logo { height: 4mm; width: auto; opacity: .9; }
+.blabel .bl-name { font-size: 2.6mm; font-weight: 700; line-height: 1.15; max-width: 100%;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.blabel .bl-meta { display: flex; gap: 2mm; align-items: baseline; }
+.blabel .bl-size { font-family: var(--font-head); font-weight: 800; font-size: 4mm; }
+.blabel .bl-shelf { font-size: 2.4mm; font-weight: 600; border: .3mm solid #09090B; border-radius: .8mm; padding: 0 1mm; }
+.blabel .bl-price { font-family: var(--font-head); font-weight: 800; font-size: 3.4mm; font-variant-numeric: tabular-nums; }
+.blabel .bl-bc svg, .blabel .bl-qr svg { display: block; max-width: 100%; height: auto; }
+.blabel.tpl-mini .bl-name { display: none; }
+
+/* With a QR the label goes two-column: text left, code right. Stacking a
+   14mm QR under the name overflows a 30mm-tall label and clips the price. */
+.blabel .bl-col {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  align-items: flex-start; justify-content: center; gap: .8mm; text-align: start;
+}
+.blabel.has-qr { flex-direction: row; align-items: center; gap: 2mm; }
+.blabel .bl-qr { flex: none; }
+.blabel .bl-qr svg { width: 16mm; height: 16mm; }
+.blabel[style*="70mm"] .bl-qr svg { width: 22mm; height: 22mm; }
+.blabel .bl-col .bl-name { -webkit-line-clamp: 3; }
+
+/* ====================================================== EXPORTED PDF SHEET
+   A light A4 document living inside the dark app, same principle as the
+   invoice: it is a preview of paper, so it is painted like paper.         */
+
+.pdf-sheet {
+  background: #FFFFFF; color: #18181B; padding: 16mm 14mm;
+  font-family: var(--font-body); font-size: 10.5pt; font-weight: 500;
+  border-radius: var(--radius); width: 100%;
+}
+.pdf-sheet .pdf-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16mm;
+  border-bottom: 1mm solid #0A0A0B; padding-bottom: 5mm; margin-bottom: 7mm;
+}
+.pdf-brand { display: flex; align-items: center; gap: 4mm; }
+.pdf-brand img { width: 16mm; height: 16mm; border-radius: 2mm; display: block; }
+.pdf-brand b { font-family: var(--font-head); font-weight: 800; font-size: 15pt; display: block; letter-spacing: -.01em; }
+.pdf-brand small { color: #71717A; font-size: 8.5pt; }
+.pdf-meta { text-align: end; font-size: 8.5pt; color: #71717A; line-height: 1.65; }
+.pdf-meta b { color: #18181B; font-variant-numeric: tabular-nums; }
+
+.pdf-title { font-family: var(--font-head); font-weight: 800; font-size: 20pt; letter-spacing: -.03em; margin: 0; }
+.pdf-sub { color: #71717A; font-size: 9.5pt; margin-top: 1.5mm; }
+
+.pdf-kpis { display: flex; gap: 4mm; margin: 7mm 0; flex-wrap: wrap; }
+.pdf-kpi { flex: 1; min-width: 32mm; border: .3mm solid #E4E4E7; border-radius: 2mm; padding: 3mm 4mm; }
+.pdf-kpi span { display: block; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #71717A; }
+.pdf-kpi b {
+  display: block; margin-top: 1.5mm; font-family: var(--font-head); font-weight: 800;
+  font-size: 14pt; letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 -3mm 0 var(--brand); width: fit-content;
+}
+
+.pdf-chart { display: block; width: 100%; height: auto; margin: 6mm 0; }
+/* The CSS-bar fallback is cloned from a dark surface — repaint it for paper. */
+.pdf-chart-fb { margin: 6mm 0; }
+.pdf-chart-fb .fb-row { font-size: 9pt; margin-bottom: 2mm; }
+.pdf-chart-fb .fb-label { color: #71717A; width: 34mm; }
+.pdf-chart-fb .fb-track { background: #F4F4F5; height: 4mm; }
+.pdf-chart-fb .fb-bar { background: #0A0A0B; }
+.pdf-chart-fb .fb-val { color: #18181B; width: 30mm; }
+
+table.pdf-tbl { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-top: 4mm; }
+table.pdf-tbl th {
+  text-align: start; background: #0A0A0B; color: var(--brand);
+  font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  padding: 2.5mm 3mm;
+}
+table.pdf-tbl td { padding: 2.2mm 3mm; border-bottom: .2mm solid #E4E4E7; font-variant-numeric: tabular-nums; }
+table.pdf-tbl th.num, table.pdf-tbl td.num { text-align: end; }
+table.pdf-tbl tbody tr:nth-child(even) { background: #FAFAFA; }
+table.pdf-tbl tfoot td {
+  font-weight: 800; font-family: var(--font-head); border-top: .6mm solid #0A0A0B;
+  border-bottom: 0; padding-top: 3mm; font-size: 10.5pt;
+}
+.pdf-foot { margin-top: 8mm; padding-top: 3mm; border-top: .2mm solid #E4E4E7; text-align: center; color: #A1A1AA; font-size: 8pt; }
+/* With a QR the footer becomes two columns: code left, credits centred. */
+.pdf-foot.has-qr { display: flex; align-items: center; gap: 5mm; text-align: start; }
+.pdf-foot .pdf-foot-txt { flex: 1; }
+.pdf-foot.has-qr .pdf-foot-txt { text-align: end; }
+.pdf-qr { flex: none; display: flex; align-items: center; gap: 2mm; }
+.pdf-qr svg { width: 17mm; height: 17mm; display: block; }
+.pdf-qr span { font-size: 7pt; color: #71717A; max-width: 18mm; line-height: 1.3; }
+
+/* Partner exports carry Yalla Wear's identity instead */
+.pdf-yalla .pdf-head { border-bottom-color: #302B54; }
+.pdf-yalla table.pdf-tbl th { background: #302B54; color: #B5DCC0; }
+.pdf-yalla table.pdf-tbl tfoot td { border-top-color: #302B54; }
+.pdf-yalla .pdf-kpi b { box-shadow: inset 0 -3mm 0 #B5DCC0; }
+.pdf-yalla .pdf-chart-fb .fb-bar { background: #302B54; }

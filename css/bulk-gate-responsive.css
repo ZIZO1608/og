@@ -1,0 +1,497 @@
+/* ==========================================================================
+   OG SYSTEM — stylesheet  ·  9/10: BULK SELECT, PASSCODE GATE, RESPONSIVE,
+   BOTTOM TAB BAR, TOPBAR ON A PHONE, BOTTOM SHEET
+   --------------------------------------------------------------------------
+   Split from the original css/style.css (lines 2452-2936). Loads after
+   yalla-invoice-tracker-labels.css.
+
+   Declares `--sidebar-w`'s phone override (base is in tokens.css, must load
+   first — it does) and `--tabbar-h`'s ONLY declarations in the whole
+   stylesheet (default here, phone override right after it, same file, same
+   relative order preserved).
+   ========================================================================== */
+
+/* ================================================== BULK SELECT + ACTIONS */
+
+.bk-col { width: 40px; text-align: center; padding-inline: 10px !important; }
+.bk-box { display: inline-grid; place-items: center; cursor: pointer; padding: 3px; }
+.bk-box input {
+  appearance: none; width: 17px; height: 17px; margin: 0; cursor: pointer;
+  border: 1.5px solid var(--border-strong); border-radius: 5px; background: var(--card);
+  display: grid; place-items: center; transition: background var(--t), border-color var(--t);
+}
+.bk-box input:hover { border-color: var(--brand); }
+.bk-box input:checked, .bk-box input:indeterminate { background: var(--brand); border-color: var(--brand); }
+.bk-box input:checked::after {
+  content: '✓'; color: var(--brand-foreground); font-size: 12px; font-weight: 900; line-height: 1;
+}
+.bk-box input:indeterminate::after {
+  content: ''; width: 9px; height: 2px; background: var(--brand-foreground); border-radius: 1px;
+}
+
+tr.bk-on { background: var(--brand-soft) !important; }
+tr.bk-on td { border-bottom-color: var(--brand-border); }
+.cust-card.bk-on, .kcard.bk-on { border-color: var(--brand); background: var(--brand-soft); }
+.order-row.bk-on { background: var(--brand-soft); }
+
+.cust-card { position: relative; }
+.bk-corner { position: absolute; top: 10px; inset-inline-end: 10px; z-index: 2; }
+.bk-inline { flex: none; display: inline-grid; place-items: center; }
+
+/* The action bar is centre-anchored so it never meets the tour button. */
+.bk-bar {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  z-index: 320; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--popover); border: 1px solid var(--brand-border);
+  border-radius: var(--radius-full); padding: 9px 10px 9px 18px;
+  box-shadow: var(--shadow-lg); max-width: calc(100vw - 32px);
+  animation: bkUp .18s cubic-bezier(.4, 0, .2, 1) both;
+}
+body.rtl .bk-bar { padding: 9px 18px 9px 10px; }
+@keyframes bkUp { from { opacity: 0; transform: translateX(-50%) translateY(14px); } to { opacity: 1; transform: translateX(-50%); } }
+.bk-count { font-size: 13px; color: var(--muted-foreground); white-space: nowrap; margin-inline-end: 4px; }
+.bk-count b { font-family: var(--font-head); font-weight: 800; font-size: 15px; color: var(--brand); }
+.bk-danger { background: var(--destructive-soft); border: 1px solid var(--destructive-border); color: var(--destructive); font-weight: 600; }
+.bk-danger:hover { background: var(--destructive-solid); border-color: var(--destructive-solid); color: #FFFFFF; }
+.bk-x {
+  width: 30px; height: 30px; flex: none; border: 0; border-radius: var(--radius-full);
+  background: var(--muted); color: var(--muted-foreground); font-size: 17px; line-height: 1;
+  transition: background var(--t), color var(--t);
+}
+.bk-x:hover { background: var(--accent); color: var(--foreground); }
+
+.toast-act {
+  flex: none; align-self: center; border: 1px solid var(--brand); background: transparent;
+  color: var(--brand); border-radius: var(--radius-sm); padding: 5px 12px;
+  font-size: 12px; font-weight: 700; transition: background var(--t), color var(--t);
+}
+.toast-act:hover { background: var(--brand); color: var(--brand-foreground); }
+
+@media (max-width: 720px) {
+  /* `bottom` is deliberately NOT set here. The tab-bar block further down owns
+     it, because it is the only place that knows how tall the bar is. Setting
+     it in two places is how the bulk bar ends up buried under the navigation. */
+  .bk-bar { padding: 8px 8px 8px 14px; gap: 6px; }
+  .bk-count { width: 100%; margin: 0 0 2px; }
+}
+
+/* ======================================================== PASSCODE GATE */
+
+html.gated body { overflow: hidden; }
+html.gated #app { filter: blur(6px); pointer-events: none; }
+
+.gate {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgb(10 10 11 / .96); backdrop-filter: blur(8px);
+  display: grid; place-items: center; padding: 24px;
+  animation: fade .2s ease both;
+}
+.gate.gate-out { animation: fade .2s ease reverse forwards; }
+.gate-card {
+  width: 100%; max-width: 360px; text-align: center;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 34px 28px 26px; box-shadow: var(--shadow-lg);
+}
+.gate-card.shake { animation: gateShake .32s cubic-bezier(.36,.07,.19,.97); }
+@keyframes gateShake {
+  10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-7px); } 40%, 60% { transform: translateX(7px); }
+}
+.gate-mark { width: 62px; height: 62px; margin: 0 auto 16px; border-radius: var(--radius); overflow: hidden; }
+.gate-mark img { width: 100%; height: 100%; display: block; }
+.gate-card h1 { font-size: 21px; font-weight: 800; letter-spacing: .03em; }
+.gate-card p { color: var(--dim); font-size: 12.5px; margin: 5px 0 22px; }
+.gate-card form { display: flex; gap: 8px; }
+.gate-card input {
+  flex: 1; min-width: 0; height: 42px; padding: 0 14px;
+  border: 1px solid var(--input); border-radius: var(--radius);
+  background: var(--muted); color: var(--foreground);
+  font-size: 15px; font-weight: 600; letter-spacing: .1em; outline: none;
+  transition: border-color var(--t), box-shadow var(--t);
+}
+.gate-card input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .14); }
+.gate-card button {
+  flex: none; height: 42px; padding: 0 20px; border: 0; border-radius: var(--radius);
+  background: var(--brand); color: var(--brand-foreground); font-weight: 700; font-size: 14px;
+  transition: background var(--t);
+}
+.gate-card button:hover { background: #D4FF3D; }
+.gate-card small { display: block; min-height: 16px; margin-top: 11px; color: var(--destructive); font-size: 12px; font-weight: 600; }
+.gate-note { display: block; margin-top: 14px; color: #52525B; font-size: 11px; }
+
+/* ---- sign-in ---------------------------------------------------------------
+   The gate above was one passcode box beside one button, so its form is a
+   row. A real login is username over password over a full-width button, so
+   the layout is restacked here rather than duplicating the card styling. */
+.gate-card form { flex-direction: column; gap: 10px; }
+
+/* The wide letter-spacing suited a passcode being read off a note. It makes a
+   typed username look wrong, and an email address unreadable. */
+.gate-card input { letter-spacing: normal; font-size: 14.5px; }
+
+.gate-card button[type="submit"] { width: 100%; padding: 0; margin-top: 2px; }
+
+/* Signing in takes about a tenth of a second of deliberate hashing on the
+   server. Show that the click landed, or people press it again. */
+.gate-card button[disabled] {
+  opacity: .6; cursor: default; background: var(--brand);
+}
+
+/* "Forgotten your password?" is a quiet third option, not a second action
+   competing with Sign in — so it sheds the button styling entirely. */
+.gate-card .gate-link {
+  width: auto; height: auto; margin-top: 10px; padding: 2px 4px;
+  background: none; border: 0; color: var(--dim);
+  font-size: 11.5px; font-weight: 600; text-decoration: underline;
+  text-underline-offset: 2px; cursor: pointer;
+  transition: color var(--t);
+}
+.gate-card .gate-link:hover { background: none; color: var(--foreground); }
+
+/* A returned hint is information, not a failure — it must not be red, or it
+   reads as another rejected attempt. */
+.gate-card small.lg-ok { color: var(--dim); font-weight: 600; }
+
+/* The server being unreachable is worth saying before someone types a correct
+   password and is told it is wrong. */
+.gate-note.gate-warn { color: var(--warning); font-weight: 600; }
+
+/* ---- demo banner -----------------------------------------------------------
+   Shown when the app is served over http but no server answered — a static
+   host, or the shop's own server being down. Deliberately hard to ignore: the
+   risk it guards against is a cashier ringing real sales into data that
+   evaporates, and they must see that without reading anything. */
+.demo-banner {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 9px 16px;
+  background: var(--warning-soft); border-top: 1px solid var(--warning);
+  color: var(--warning); font-size: 12.5px; font-weight: 600;
+}
+.demo-banner strong {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--warning); color: #1A1206;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .08em;
+}
+.demo-banner span { color: var(--foreground); font-weight: 500; }
+.demo-banner button {
+  padding: 4px 12px; border: 1px solid var(--warning); border-radius: var(--radius);
+  background: none; color: var(--warning); font-size: 11.5px; font-weight: 700;
+  cursor: pointer; transition: background var(--t), color var(--t);
+}
+.demo-banner button:hover { background: var(--warning); color: #1A1206; }
+
+/* Keep the banner off the last row of any scrolling list, and clear of the
+   phone tab bar, which is also fixed to the bottom. */
+html.has-demo-banner .view { padding-bottom: 52px; }
+
+/* ---- the shop would not load ------------------------------------------------
+   The counterpart to the demo banner, and the harsher one. The banner says
+   "this is not real"; this says "there is nothing here at all". It replaces
+   the whole page on purpose. A cashier must not be able to reach a cart, a
+   product or a Charge button when the server is unreachable — a till that
+   keeps working offline and forgets everything on reload is the single worst
+   failure this system can have, because nobody finds out until the money is
+   counted. */
+.boot-fail {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--background); color: var(--foreground);
+}
+.boot-fail-card {
+  max-width: 460px; width: 100%;
+  padding: 28px 30px; border: 1px solid var(--destructive-border);
+  border-radius: var(--radius-lg); background: var(--card);
+}
+.boot-fail-card h1 {
+  margin: 0 0 12px; font-size: 19px; font-weight: 700; color: var(--destructive);
+}
+.boot-fail-card p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.6; }
+.boot-fail-why {
+  padding: 9px 12px; border-radius: var(--radius);
+  background: var(--destructive-soft); color: var(--destructive); font-weight: 600;
+}
+.boot-fail-card ol {
+  margin: 0 0 20px; padding-inline-start: 20px;
+  font-size: 13px; line-height: 1.9; color: var(--muted-foreground);
+}
+@media (max-width: 900px) {
+  .demo-banner { bottom: var(--tabbar-h); }
+}
+
+/* ------------------------------------------------------------------ MISC */
+
+.sparkline { display: flex; align-items: flex-end; gap: 3px; height: 54px; }
+.sparkline i { flex: 1; background: var(--border-strong); min-height: 3px; border-radius: 3px 3px 0 0; transition: height var(--t); }
+.sparkline i.last { background: var(--brand); }
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; font-size: 13px; margin: 0; }
+.kv dt { color: var(--dim); font-size: 12px; align-self: center; }
+.kv dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.bar-track { height: 7px; background: var(--muted); border-radius: var(--radius-full); overflow: hidden; }
+.bar-track i { display: block; height: 100%; background: var(--border-strong); border-radius: var(--radius-full); }
+.bar-track i.lime { background: var(--brand); }
+
+.muted { color: var(--muted-foreground); }
+.small { font-size: 12px; }
+.mt { margin-top: 14px; } .mt-lg { margin-top: 22px; } .mb { margin-bottom: 14px; }
+.strong-num { font-family: var(--font-head); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.nowrap { white-space: nowrap; }
+.hidden-flag { color: var(--dim); text-decoration: line-through; }
+
+.print-root { display: none; }
+
+/* ------------------------------------------------------------ RESPONSIVE */
+
+@media (max-width: 1400px) {
+  .pos { grid-template-columns: minmax(0, 1fr) 396px; }
+  .dash-grid { grid-template-columns: minmax(0, 1fr) 336px; }
+}
+
+@media (max-width: 1240px) {
+  .stat-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* minmax(0, 1fr), never a bare 1fr. `1fr` means minmax(AUTO, 1fr), and that
+     auto floor is the track's min-content width — so a grid holding a
+     six-column table refuses to shrink below the table and pushes the whole
+     page sideways. On the dashboard this made a 694px column inside a 500px
+     screen. Every single-column collapse below has the same guard. */
+  .dash-grid { grid-template-columns: minmax(0, 1fr); }
+  .kanban { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .store-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  :root { --sidebar-w: 70px; }
+  .brand-text, .nav-item span.nav-txt, .nav-label, .sidebar-foot { display: none; }
+  .brand { justify-content: center; padding: 16px 6px; }
+  .brand-mark-inverse { font-size: 30px; }
+  .nav { padding: 10px 9px; }
+  .nav-item { justify-content: center; padding: 11px 6px; }
+  .nav-badge { display: none; }
+  .pos { grid-template-columns: minmax(0, 1fr); height: auto; overflow: visible; }
+  .pos-left { border-inline-end: 0; border-bottom: 1px solid var(--border); }
+  .view.pos-view { overflow-y: auto; }
+  .pos-right { max-height: none; }
+  .cart-foot { max-height: none; }
+}
+
+/* ======================================================== BOTTOM TAB BAR
+   The phone navigation. Hidden above 720px, so desktop is untouched.
+
+   --tabbar-h is the single source of truth for how much room it occupies, and
+   it includes the iOS home-indicator inset. Everything that used to sit at
+   the bottom of the screen now measures itself against this variable instead
+   of a hardcoded 24px, which is what stops the bar burying the bulk-action
+   bar, the tour button and the POS "Complete sale" control.               */
+
+:root { --tabbar-h: 0px; }
+
+.tabbar { display: none; }
+
+@media (max-width: 720px) {
+  :root { --tabbar-h: calc(58px + env(safe-area-inset-bottom, 0px)); }
+
+  .tabbar {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+    position: fixed; inset-inline: 0; bottom: 0; z-index: 340;
+    height: var(--tabbar-h); padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--sidebar); border-top: 1px solid var(--sidebar-border);
+  }
+  .tabbtn {
+    border: 0; background: none; color: var(--dim);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-size: 10px; font-weight: 600; letter-spacing: -.01em;
+    position: relative; min-height: 46px;                 /* thumb target */
+    transition: color var(--d-1) var(--e-std);
+  }
+  .tabbtn .tb-ico { position: relative; display: grid; place-items: center; }
+  .tabbtn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+  .tabbtn .tb-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .tabbtn.on { color: var(--brand); }
+  /* A lime cap above the active tab rather than a filled block — the icon and
+     label already carry the colour, a block would be shouting. */
+  .tabbtn.on::before {
+    content: ''; position: absolute; top: 0; inset-inline: 26%;
+    height: 2px; background: var(--brand); border-radius: 0 0 3px 3px;
+  }
+  .tb-dot {
+    position: absolute; top: -2px; inset-inline-end: -4px;
+    width: 7px; height: 7px; border-radius: var(--radius-full);
+    background: var(--destructive-solid); border: 1.5px solid var(--sidebar);
+  }
+
+  /* The sidebar goes away completely — no 70px rail eating a fifth of the
+     screen. The grid collapses to a single column. */
+  #app { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { display: none; }
+
+  html, body { font-size: 13.5px; }
+  .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kanban { grid-template-columns: minmax(0, 1fr); }
+  .row2, .row3 { grid-template-columns: minmax(0, 1fr); }
+  /* Any inline two-column grid written by a view falls back to one column.
+     There are a dozen of these built as style="grid-template-columns:..." and
+     chasing each one in JS would be worse than one rule here. */
+  .view .grid[style*="minmax"] { grid-template-columns: minmax(0, 1fr) !important; }
+  /* Bottom padding clears the tab bar, or the last table row sits underneath
+     it and cannot be tapped. */
+  .view { padding: 16px 14px calc(var(--tabbar-h) + 24px); }
+  .search { max-width: none; }
+  .user-chip span { display: none; }
+  .drawer { width: 100%; }
+  .phone { border-width: 8px; height: 640px; border-radius: 32px; }
+  .label-sheet { grid-template-columns: repeat(2, 1fr); }
+  .tour-pop { width: calc(100vw - 32px); inset-inline-start: 16px !important; }
+  .page-head h1 { font-size: 23px; }
+
+  /* --- the three things that already lived at the bottom ---------------- */
+  .tour-fab { bottom: calc(var(--tabbar-h) + 14px); }
+  body[data-view="pos"] .tour-fab { display: none; }   /* POS needs the room */
+  /* 24px of air above the tab bar, not 12. The two are both position:fixed and
+     resolve against the same box, but a tight arithmetic fit leaves nothing
+     for a taller bar when the action labels wrap to two lines. */
+  .bk-bar { bottom: calc(var(--tabbar-h) + 24px); }
+  .cart-foot { padding-bottom: var(--s-4); }
+
+  /* --- POS on a phone --------------------------------------------------
+     The till screen matters most here: this is the one he will use standing
+     up, one-handed, with a customer waiting. */
+  .pos-scanbar { padding: 12px 14px; }
+  .scan-input { height: 50px; font-size: 16px; padding: 0 14px; }
+  .scan-wrap .btn-lg { padding: 0 14px; }
+  .scan-meta .keys { display: none; }          /* no keyboard on a phone */
+  .pos-cats { padding: 10px 14px; }
+  .pos-grid-wrap { padding: 14px 14px 24px; }
+  .pos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .pcard-body { padding: 9px 10px 11px; }
+  .cart-head, .cart-lines, .cart-foot { padding-inline: 14px; }
+
+  /* --- the cart as a bottom sheet --------------------------------------
+     Stacked below the product grid, the cart was unreachable without
+     scrolling past every product — on the one screen where speed is the
+     entire point. It becomes a sheet pinned above the tab bar: collapsed to
+     a summary bar, expanded by tapping it.
+
+     Pure CSS via :focus-within and a checkbox-free toggle would be fragile,
+     so the state lives on body[data-cart] which POS sets. */
+  .pos-right {
+    position: fixed; inset-inline: 0; bottom: var(--tabbar-h); z-index: 330;
+    max-height: 76vh; display: flex; flex-direction: column;
+    background: var(--surface-3);
+    border-top: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: 0 -14px 40px -12px rgb(0 0 0 / .7);
+    transform: translateY(calc(100% - 62px));
+    transition: transform var(--d-3) var(--e-out);
+  }
+  body[data-cart="open"] .pos-right { transform: translateY(0); }
+
+  /* The always-visible handle: item count and total, tap to expand. */
+  .cart-head {
+    min-height: 62px; cursor: pointer; position: relative;
+    border-bottom: 1px solid var(--border);
+  }
+  .cart-head::after {
+    content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+    width: 34px; height: 3px; border-radius: 2px; background: var(--border-strong);
+  }
+  .cart-lines { flex: 1; overflow-y: auto; min-height: 90px; }
+  /* Room under the grid so the collapsed sheet never hides the last row. */
+  .pos-grid-wrap { padding-bottom: calc(62px + 24px); }
+  .cart-peek { display: inline; }
+
+  /* ---- wide tables become cards --------------------------------------
+     A nine-column table at 320px is unusable however it scrolls. Below this
+     width the primary tables restack: each row becomes a block, and each
+     cell carries its own label from the data-l attribute the renderer sets.
+     The header row is hidden because every cell now labels itself. */
+  .tbl-cards thead { display: none; }
+  .tbl-cards, .tbl-cards tbody, .tbl-cards tr, .tbl-cards td { display: block; width: 100%; }
+  .tbl-cards tr {
+    background: var(--surface-1); border-radius: var(--radius);
+    padding: 12px 14px; margin-bottom: 10px;
+  }
+  .tbl-cards tr + tr td { box-shadow: none; }
+  .tbl-cards td {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 5px 0; text-align: start; border: 0;
+  }
+  .tbl-cards td::before {
+    content: attr(data-l); flex: none;
+    font-size: var(--fs-micro); font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  /* The first cell is the identity of the row — it gets the full width and
+     no label, because a product name does not need to be told it is one. */
+  .tbl-cards td:first-child { padding-bottom: 9px; }
+  .tbl-cards td:first-child::before { content: none; }
+  .tbl-cards td.num { justify-content: space-between; }
+  .tbl-cards .cell-prod { min-width: 0; }
+
+  /* --- touch targets ---------------------------------------------------
+     A phone has no hover and a fingertip is about 9mm. Controls sized for a
+     mouse at 32px are genuinely hard to hit. */
+  .btn-sm { height: 38px; padding: 0 14px; }
+  .stepper button, .cl-del, .up-x, .modal-head .x { min-width: 38px; min-height: 38px; }
+  .chip { padding: 9px 14px; }
+  /* The default blue tap flash fights the brand on every single tap. */
+  * { -webkit-tap-highlight-color: rgb(198 255 0 / .14); }
+  /* Hover-only affordances need a pressed state instead. */
+  .yl-card:active, .pcard:active, .st-card:active, .kcard:active { background: var(--surface-2); }
+}
+
+/* ------------------------------------------------------ TOPBAR ON A PHONE
+   Six controls in ~320px is the overlap. Below 560px only three survive on
+   the bar; language, currency and the portal switch move into the More sheet,
+   which is reachable in one tap from the tab bar. */
+@media (max-width: 560px) {
+  .topbar { padding: 0 12px; gap: 8px; }
+  .topbar .seg, .user-chip { display: none; }
+  .search { flex: 1; min-width: 0; }
+  .search input { height: 36px; font-size: 13px; }
+  .nt-bell, .icon-btn { width: 34px; height: 34px; flex: none; }
+  .page-head { gap: 10px; margin-bottom: 16px; }
+  .page-head .head-actions { width: 100%; margin-inline-start: 0; }
+  .page-head .head-actions .btn { flex: 1; }
+
+  /* The 28px display figure does not fit a half-width phone column. Ten
+     digits at 28px Montserrat 800 is roughly 190px and the column is ~150px. */
+  .stat .val { font-size: 21px; letter-spacing: -.03em; }
+  .stat .eyebrow { min-height: 0; }
+  .stat + .stat::before { display: none; }
+  .stat { padding: var(--s-3) var(--s-2) var(--s-3) 0; }
+
+  .modal { max-height: 92vh; }
+  .toasts { inset-inline: 12px; top: 12px; }
+  .toast { min-width: 0; max-width: none; width: 100%; }
+}
+
+/* ------------------------------------------------------------ BOTTOM SHEET
+   A modal that rises from the bottom edge instead of sitting in the middle —
+   the phone idiom, and it lands under the thumb rather than under the eye. */
+.modal-backdrop.as-sheet { align-items: flex-end; padding: 0; }
+.modal.sheet {
+  width: 100%; max-width: none; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: sheetUp var(--d-3) var(--e-out) both;
+}
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+
+.more-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
+.more-item {
+  display: flex; align-items: center; gap: 10px; text-align: start;
+  padding: 13px 14px; min-height: 48px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-1); color: var(--foreground);
+  font-size: var(--fs-base); font-weight: 600;
+}
+.more-item.on { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+.mi-ico { flex: none; display: grid; place-items: center; }
+.mi-ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.more-item .nav-badge { margin-inline-start: auto; }
+.more-rows { margin-top: var(--s-4); display: flex; flex-direction: column; gap: var(--s-2); }
+.more-row {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 10px 2px; font-size: var(--fs-sm); color: var(--muted-foreground);
+}
+.more-row > .seg, .more-row > .btn { margin-inline-start: auto; }

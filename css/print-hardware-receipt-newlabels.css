@@ -1,0 +1,448 @@
+/* ==========================================================================
+   OG SYSTEM — stylesheet  ·  10/10: PRINTING, HARDWARE, RECEIPT, new
+   Thermal product labels (XP-235B/TSPL)
+   --------------------------------------------------------------------------
+   Split from the original css/style.css (lines 2937-3371). LAST file in the
+   load order — see index.html.
+
+   Contains all 3 real @media print blocks in the whole stylesheet. Note the
+   new "Thermal product labels" section at the bottom has NO @media print
+   block of its own (it forces black-on-white inline via `* { color: #000
+   !important }` instead) — don't go looking for one.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- PRINTING
+   Only the open dialog (invoice or barcode sheet) reaches paper, and it
+   prints as black on white regardless of the dark UI.                      */
+
+@media print {
+  @page { margin: 12mm; }
+  html, body { background: #FFFFFF !important; color: #000000 !important; }
+  body > *:not(#modal-root) { display: none !important; }
+  #modal-root .modal-backdrop { position: static; background: none; padding: 0; display: block; animation: none; backdrop-filter: none; }
+  #modal-root .modal { max-width: none; width: auto; max-height: none; border: 0; box-shadow: none; animation: none; border-radius: 0; background: #FFFFFF; }
+  #modal-root .modal-head, #modal-root .modal-foot, #modal-root .no-print { display: none !important; }
+  #modal-root .modal-body { padding: 0; overflow: visible; }
+  .invoice-sheet { padding: 0; border-radius: 0; }
+
+  /* Labels keep their millimetre sizes and gain crop marks; the studio
+     controls carry .no-print so only the sheet reaches paper. */
+  .label-sheet { display: flex; flex-wrap: wrap; gap: 3mm; }
+  .blabel { break-inside: avoid; border: .2mm dashed #999; border-radius: 0; }
+  .blabel .bl-bc svg, .blabel .bl-qr svg { shape-rendering: crispEdges; }
+
+  /* ---- thermal roll -----------------------------------------------------
+     A roll printer is not a small sheet printer. Each label IS a page: no
+     margin, no gap, no crop marks, one per page. The @page size itself is
+     injected at print time from the chosen dimensions, because @page cannot
+     read a CSS variable — see setRollPageSize() in js/app.js.
+
+     The dashed crop border has to go too: on a 50mm label it would print a
+     visible rectangle on every single sticker. */
+  body.roll-labels .label-sheet { display: block; gap: 0; }
+  body.roll-labels .blabel {
+    border: 0;
+    margin: 0;
+    page-break-after: always;
+    break-after: page;
+    /* The label fills its page exactly, so what the driver feeds is what
+       gets used. Any padding here shows up as drift down a long roll. */
+    box-sizing: border-box;
+  }
+  body.roll-labels .blabel:last-child { page-break-after: auto; break-after: auto; }
+
+  /* The calibration sheet: rulers that must measure what they claim. */
+  .cal-sheet { display: block; }
+  .cal-rule { background: #000 !important; }
+}
+
+/* Custom label size, in the millimetres the roll is actually sold in. */
+.lb-custom { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.lb-custom .inp { width: 88px; text-align: center; font-weight: 700; }
+.lb-custom .lb-x { color: var(--muted-foreground); font-weight: 700; }
+.lb-fit { margin-top: 10px; }
+
+/* A barcode whose bars fall under the print head's resolution. It still
+   renders — it just will not scan — so it is marked rather than hidden. */
+.blabel .bl-bc-tight { outline: .3mm dashed var(--destructive); outline-offset: .4mm; }
+@media print { .blabel .bl-bc-tight { outline: 0; } }
+
+/* ============================================================== HARDWARE
+   The scanner test box and the scan sheet's action row.                    */
+
+.hw-h { font-size: var(--fs-lg); font-weight: 700; margin: 0 0 4px; }
+.hw-sep { height: 1px; background: var(--border); margin: 20px 0 16px; }
+
+.hw-test { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.hw-read {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-0); padding: 12px 14px; min-height: 74px;
+  font-size: var(--fs-sm);
+}
+.hw-line { display: flex; gap: 12px; align-items: baseline; padding: 3px 0; }
+.hw-line > span:first-child { color: var(--muted-foreground); min-width: 92px; flex: none; }
+.hw-line b { font-weight: 700; word-break: break-all; }
+.hw-line .lat { font-family: Menlo, Consolas, monospace; }
+
+/* ---- the scan sheet ---- */
+
+/* Big enough to tell two similar shoes apart, which is the first question
+   asked with a box in hand. */
+.sc-hit .thumb-box.sc-photo {
+  width: 68px; height: 68px; flex: none; border-radius: var(--radius);
+  font-size: 22px;
+}
+.sc-hit .sc-sku { font-size: var(--fs-xs); color: var(--dim); letter-spacing: .04em; }
+
+/* Supplier / cost / last delivery. */
+.sc-src { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-4); }
+.sc-src > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sc-src b { font-size: var(--fs-base); font-weight: 700; }
+.sc-src small { font-size: var(--fs-xs); }
+
+/* ---- the scan sheet's "what now" row ----
+   Sticky to the foot of the scrolling body. Four detail cards were added
+   above it, which pushed the Sell button two screens down and undid the whole
+   point of scan-then-Enter. The reading order stays details-first; the buttons
+   simply never leave the screen. */
+.sc-do {
+  border-color: var(--brand-border);
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  /* Opaque, or the size table scrolls visibly through the buttons. */
+  background: var(--popover);
+  box-shadow: 0 -10px 20px -6px rgb(0 0 0 / .55);
+}
+/* A plain class on the modal rather than :has(.sc-do) — the same reason
+   .has-qr exists on the labels: no CSS-support risk. Killing the body's own
+   bottom padding lets the sticky row sit flush on the floor of the sheet
+   instead of hovering 20px above scrolling content. */
+.modal.sc-modal .modal-body { padding-bottom: 0; }
+.modal.sc-modal .sc-do { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.sc-qty { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.sc-qty .lbl { margin: 0; flex: none; }
+.sc-qty #scQty { width: 84px; flex: none; text-align: center; font-weight: 700; }
+.sc-qty #scPlace { flex: 1; min-width: 150px; }
+.sc-step { min-width: 42px; padding: 0 12px; font-size: 18px; font-weight: 700; flex: none; }
+
+.sc-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Sell is the wide one: it is the answer most of the time, and at the till
+   the thumb should not have to aim. */
+.sc-acts .btn { flex: 1; min-width: 130px; }
+.sc-acts .btn-primary { flex: 1.6; }
+.sc-acts .btn-primary:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+@media (max-width: 720px) {
+  .sc-acts .btn { flex: 1 1 100%; }
+  .sc-qty #scPlace { flex: 1 1 100%; }
+}
+
+/* ---- printer calibration ------------------------------------------------
+   Thermal printers scale silently when the driver's stock size does not match
+   the roll actually loaded, and a barcode printed at 94% simply stops
+   scanning. Printed rulers are the only honest check: hold a real ruler
+   against them. */
+.cal-sheet { background: #FFFFFF; color: #000; padding: 4mm; }
+.cal-row { display: flex; align-items: center; gap: 3mm; margin-bottom: 3mm; }
+.cal-rule { background: #000; }
+.cal-rule.h { width: 10mm; height: 1mm; }
+.cal-rule.v { width: 1mm; height: 10mm; }
+.cal-sheet small { font: 700 7pt Menlo, Consolas, monospace; color: #000; }
+
+/* ---- the driver's round -------------------------------------------------
+   The only screen in this app designed for a phone held in one hand,
+   outdoors, by someone who is not sitting down. That drives every decision
+   below and none of them are taste:
+
+     * the ADDRESS is the largest text on the card, because it is the one
+       thing he is actually reading;
+     * every action is at least 44px tall, because a thumb is not a mouse
+       and a mis-tap here marks the wrong parcel delivered;
+     * finished runs fade to 55% instead of disappearing, because he needs
+       to check he did tick number 12 without navigating anywhere;
+     * one card per row below 720px. Two columns of delivery cards on a
+       phone is how you tap the wrong one.
+   ------------------------------------------------------------------------ */
+
+.run-list { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+.run-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* On the road: the one he is holding right now, marked down the leading edge
+   so it is findable at a glance without reading a single word. */
+.run-card.is-out {
+  border-color: var(--brand-border);
+  border-inline-start: 3px solid var(--brand);
+  background: linear-gradient(var(--brand-soft), transparent 46px), var(--card);
+}
+
+.run-card.is-done { opacity: .55; }
+.run-card.is-done:hover { opacity: 1; }
+
+.rc-top { display: flex; align-items: flex-start; gap: 10px; }
+.rc-who { flex: 1; min-width: 0; }
+.rc-who b {
+  display: block; font-family: var(--font-head); font-size: 15px;
+  font-weight: 700; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rc-who small { color: var(--dim); font-size: 11px; letter-spacing: .04em; }
+
+/* The biggest thing on the card. He is looking for a door. */
+.rc-addr {
+  font-size: 15.5px; font-weight: 600; line-height: 1.45;
+  color: var(--foreground);
+}
+
+.rc-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.rc-item {
+  font-size: 11.5px; color: var(--muted-foreground);
+  background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 3px 8px;
+}
+.rc-item b { color: var(--foreground); }
+
+.rc-money { display: flex; align-items: baseline; gap: 8px; }
+.rc-collect { display: flex; align-items: baseline; gap: 8px; }
+.rc-collect i {
+  font-style: normal; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--dim);
+}
+/* Money he is responsible for. Brand colour, tabular figures so a column of
+   cards lines up and a wrong digit is visible. */
+.rc-collect b {
+  font-family: var(--font-head); font-size: 20px; font-weight: 800;
+  color: var(--brand); font-variant-numeric: tabular-nums;
+}
+.rc-paid {
+  font-size: 12px; font-weight: 600; color: var(--success);
+}
+
+.rc-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+/* 44px is the smallest target a thumb hits reliably. Everything in this row
+   is a decision that is awkward to undo, so none of them get less. */
+.rc-acts .btn {
+  min-height: 44px; flex: 1 1 auto; min-width: 88px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.rc-acts .btn-primary { flex: 2 1 130px; }
+
+.rc-reason {
+  flex: 1 1 100%; font-size: 12px; color: var(--destructive);
+  background: var(--destructive-soft); border: 1px solid var(--destructive-border);
+  border-radius: var(--radius-sm); padding: 7px 10px;
+}
+
+@media (max-width: 720px) {
+  .run-list { grid-template-columns: 1fr; }
+  .rc-addr { font-size: 16.5px; }
+  /* Take it out / Delivered is the whole point of the card down here. */
+  .rc-acts .btn-primary { flex: 1 1 100%; }
+}
+
+/* ---- the big button on a role home --------------------------------------
+   A cashier's home has exactly one thing she came to do. It is not competing
+   with a dashboard for attention, so it gets to be the size it deserves. */
+.home-cta { display: flex; gap: 10px; flex-wrap: wrap; }
+.home-cta .btn { min-height: 48px; }
+.home-cta .btn-primary { flex: 1 1 240px; font-size: 15.5px; font-weight: 700; }
+
+@media (max-width: 720px) {
+  .home-cta .btn { flex: 1 1 100%; }
+}
+
+/* ---- the discount ceiling, and sending a sale out -----------------------
+   Both live in the till footer and both follow the same rule: say nothing
+   until there is something to say. A permanent "maximum discount 10%" label
+   on a screen used four hundred times a day is noise, and noise is what
+   people learn to stop reading. */
+
+.disc-hint {
+  font-size: 11.5px; line-height: 1.4; color: var(--dim);
+  margin-top: 5px; min-height: 16px;
+}
+/* Over the line. Not a shake, not a toast — the number she typed is wrong and
+   the sentence beside it says what the right one would be. */
+.disc-hint.is-bad { color: var(--destructive); font-weight: 600; }
+
+.inp.is-bad,
+.inp.is-bad:focus {
+  border-color: var(--destructive-border);
+  background: var(--destructive-soft);
+}
+
+.deliver-add {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--card); padding: 13px; margin: 14px 0;
+}
+.deliver-add .field { margin-top: 10px; }
+.deliver-add .partner-note { margin-top: 8px; }
+
+/* ============================================================== RECEIPT
+   80mm thermal roll, 5mm clear each side, 70mm of content, height
+   continuous. The @page size itself is injected at print time from the
+   chosen paper — @page cannot read a CSS variable — see
+   setReceiptPageSize() in js/app.js.
+
+   EVERYTHING BELOW IS FOR A 203dpi THERMAL HEAD, WHICH PRINTS ONE BIT PER
+   DOT. There is no grey. The A4 invoice's #71717A labels, soft borders and
+   background fills either vanish or dither into speckle, so none of them
+   appear here: hierarchy is weight and size, and every colour is pure black.
+   ---------------------------------------------------------------------- */
+
+.receipt {
+  /* A fallback only. The real width is injected by
+     setReceiptPageSize() from the paper chosen in Settings, for screen and
+     print alike, because @page cannot read a CSS variable. */
+  width: 70mm;
+  margin: 0 auto;
+  background: #FFFFFF;
+  color: #000000;
+  /* A grotesque with open counters survives a thermal head far better than
+     anything with fine strokes. Montserrat for the shop name only. */
+  font: 400 9.5pt/1.35 "Helvetica Neue", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  padding: 4mm 0;
+}
+.receipt * { color: #000000 !important; }
+
+/* ---- head ---- */
+.rcp-head { text-align: center; }
+.rcp-mark { margin-bottom: 1.5mm; }
+/* The mark is a black square with white letters, so it is ALREADY the two
+   values a thermal head can print. It only needs forcing binary in case the
+   file ever gains an anti-aliased edge or a tint: grayscale collapses any
+   colour, and the extreme contrast pushes every mid-tone to one end.
+
+   brightness(0) was here and was wrong — it drove the white letters to black
+   too and printed a 14mm solid slab, which is both unreadable and a lot of
+   heat for a thermal head to put down on every single receipt. */
+.rcp-mark img {
+  width: 13mm; height: 13mm; object-fit: contain;
+  filter: grayscale(1) contrast(1000%);
+}
+.rcp-shop {
+  font-family: var(--font-head), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800; font-size: 15pt; line-height: 1.1; letter-spacing: .06em;
+}
+.rcp-tag { font-size: 8pt; line-height: 1.3; }
+
+/* ---- separators ----
+   A dashed rule at a real millimetre weight. A 1px border at 203dpi is either
+   dropped entirely or smeared across two dots. */
+.rcp-rule { border-top: .3mm dashed #000; margin: 2.5mm 0; }
+
+/* ---- meta ---- */
+.rcp-meta { font-size: 8.5pt; }
+.rcp-meta div { display: flex; justify-content: space-between; gap: 3mm; padding: .3mm 0; }
+.rcp-meta b { font-weight: 700; text-align: end; }
+
+/* ---- items ----
+   Two lines each: the name gets the full width, then size, quantity and money
+   underneath. One cramped row at 70mm leaves a product name about four
+   characters of room. */
+.rcp-items { width: 100%; }
+.rcp-name { font-weight: 700; font-size: 9.5pt; padding-top: 1.6mm; line-height: 1.25; }
+/* space-between pins the amount to the paper edge with no width arithmetic —
+   the same thing every totals row on this receipt already does. */
+.rcp-line {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 3mm; font-size: 8.5pt; padding-bottom: .6mm;
+}
+.rcp-amt { text-align: end; white-space: nowrap; font-weight: 700; }
+
+/* ---- totals ---- */
+.rcp-tot { display: flex; justify-content: space-between; gap: 3mm; font-size: 9pt; padding: .4mm 0; }
+.rcp-grand {
+  display: flex; justify-content: space-between; gap: 3mm; align-items: baseline;
+  font-family: var(--font-head), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800; font-size: 15pt;
+  border-top: .5mm solid #000; margin-top: 1.5mm; padding-top: 1.5mm;
+}
+.rcp-usd { text-align: end; font-size: 8pt; padding-top: .5mm; }
+
+/* ---- QR ----
+   crispEdges is not cosmetic. Anti-aliased module edges land on half-dots,
+   the head fires or does not fire on a coin toss, and the code stops
+   scanning — with nothing on screen to suggest why. */
+.rcp-qr { text-align: center; margin: 3.5mm 0 2mm; }
+.rcp-qr svg { shape-rendering: crispEdges; width: 22mm; height: 22mm; }
+.rcp-qr-cap { font-size: 7.5pt; margin-top: .8mm; }
+
+/* ---- foot ---- */
+.rcp-foot { text-align: center; font-size: 8pt; line-height: 1.4; }
+.rcp-policy { font-weight: 700; margin-bottom: 1mm; }
+
+/* On screen the receipt is previewed on a dark page, so it needs a physical
+   edge to read as paper. It gets one here and NOT in print. */
+.modal-body .receipt {
+  border-radius: 3px;
+  box-shadow: 0 2px 14px rgb(0 0 0 / .5);
+  padding: 5mm 3mm;
+}
+
+@media print {
+  /* Nothing but the receipt. No modal chrome, no shadow, no rounding — and
+     no page margin, because the 5mm clear edge is the .receipt margin the
+     injected @page rule sets, measured from the paper edge. */
+  body.printing-receipt .receipt {
+    box-shadow: none; border-radius: 0; padding: 3mm 0;
+  }
+  /* A long receipt runs onto a second length of roll; an item must not be
+     torn in half across the cut. */
+  .rcp-name, .rcp-line, .rcp-grand, .rcp-qr { break-inside: avoid; }
+}
+
+/* ==========================================================================
+   Thermal product labels (XP-235B / TSPL) — js/labels.js
+   --------------------------------------------------------------------------
+   True-mm-scale preview: a 30mm label renders 30mm wide on screen, so what
+   is approved here is what the printer will actually produce — the same
+   principle as .receipt above, applied to a much smaller sticker. Not to be
+   confused with the OLD browser Label Studio's print sheet elsewhere in
+   this file, a different system entirely.
+   ========================================================================== */
+.lbl-picker { display: flex; flex-direction: column; gap: 4px; }
+.lbl-batch-total { font-size: 13px; }
+.lbl-lbl { font-size: 11px; color: var(--muted-foreground); margin-inline-end: 6px; align-self: center; }
+
+.lbl-preview-host { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; }
+.lbl-line { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.lbl-line-qty { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-foreground); }
+.lbl-line-qty input { width: 56px; }
+
+.lbl-sticker {
+  position: relative;
+  background: #FFFFFF; color: #000000;
+  border: 1px solid #D4D4D8; border-radius: 2px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / .3);
+  flex: none;
+}
+.lbl-sticker * { color: #000000 !important; }
+.lbl-logo { position: absolute; object-fit: contain; filter: grayscale(1) contrast(1000%); }
+.lbl-name {
+  position: absolute; font-weight: 700; font-size: 7.5pt; line-height: 1.15;
+  font-family: "Helvetica Neue", Arial, sans-serif; overflow: hidden;
+}
+.lbl-variant { position: absolute; font-weight: 800; font-size: 10pt; font-family: var(--font-head), Arial, sans-serif; }
+.lbl-barcode { position: absolute; text-align: center; }
+.lbl-barcode svg { width: 100%; height: 100%; }
+.lbl-fallback {
+  display: block; font-size: 6pt; color: #B45309; background: #FEF3C7;
+  border-radius: 2px; padding: 1px 3px; margin-top: 1px;
+}
+
+/* New slot kinds from the template editor — .lbl-name/.lbl-variant above
+   stay as they were so nothing about the 4 legacy presets shifts a pixel. */
+.lbl-header { position: absolute; font-weight: 700; font-size: 6.5pt; font-family: var(--font-head), Arial, sans-serif; white-space: nowrap; }
+.lbl-price  { position: absolute; font-weight: 800; font-size: 9pt; font-family: var(--font-head), Arial, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lbl-date   { position: absolute; font-size: 5.5pt; color: #3F3F46; white-space: nowrap; }

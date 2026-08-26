@@ -1,0 +1,823 @@
+/* ==========================================================================
+   OG SYSTEM — stylesheet  ·  7/10: TOUR, Yalla Wear token re-skin + v3
+   widgets, PARTNER MESSAGES, ORDER HANDSHAKE, WAREHOUSES, SCANNER, MONEY,
+   COMMAND PALETTE
+   --------------------------------------------------------------------------
+   Split from the original css/style.css (lines 1350-2158). Loads after
+   warehouse-storefront-settings.css.
+
+   Contains `.seg` v2 (Warehouses' standalone pill, line ~1900 of the
+   original file) — a DIFFERENT component from `.seg` v1 (topbar segmented
+   control) in css/shell.css. This file loads after shell.css, so this
+   version keeps winning on shared specificity, exactly as the original
+   single-file cascade did. Do not reorder shell.css after this file.
+   ========================================================================== */
+
+/* ------------------------------------------------------------------- TOUR */
+
+.tour-fab {
+  position: fixed; bottom: 24px; inset-inline-end: 24px; z-index: 300;
+  background: var(--brand); color: var(--brand-foreground); border: 0;
+  padding: 0 22px; height: 50px; border-radius: var(--radius-full);
+  box-shadow: 0 12px 32px -8px rgb(198 255 0 / .35), var(--shadow-lg);
+  font-weight: 700; font-size: 14px; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: 10px;
+  transition: background var(--t), transform var(--t);
+}
+.tour-fab:hover { background: #D4FF3D; transform: translateY(-2px); }
+.tour-fab-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--brand-foreground); animation: blink 1.8s ease-in-out infinite; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+body.tour-on .tour-fab { display: none; }
+/* POS has no scroll slack in the cart column and the FAB would cover
+   "Complete sale" — park it over the product grid, centred in LTR and RTL. */
+body[data-view="pos"] .tour-fab { inset-inline-start: auto; inset-inline-end: auto; left: 50%; transform: translateX(-50%); }
+body[data-view="pos"] .tour-fab:hover { transform: translateX(-50%) translateY(-2px); }
+
+.spot {
+  position: fixed; z-index: 400; pointer-events: none;
+  border: 2px solid var(--brand); border-radius: var(--radius);
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / .82), 0 0 32px rgb(198 255 0 / .22);
+  transition: all 250ms cubic-bezier(.4, 0, .2, 1);
+}
+.tour-pop {
+  position: fixed; z-index: 401; width: 348px;
+  background: var(--popover); color: var(--foreground);
+  border: 1px solid var(--brand-border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); padding: 19px 20px 17px;
+  transition: all 250ms cubic-bezier(.4, 0, .2, 1);
+}
+.tour-pop .step { font-size: 10.5px; color: var(--brand); margin-bottom: 8px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.tour-pop h4 { font-size: 17px; color: var(--foreground); margin-bottom: 9px; line-height: 1.3; font-weight: 800; letter-spacing: -.02em; }
+.tour-pop p { margin: 0 0 16px; font-size: 13px; color: var(--muted-foreground); line-height: 1.6; font-weight: 500; }
+.tour-pop .tp-foot { display: flex; gap: 8px; align-items: center; }
+.tour-pop .tp-foot .skip { margin-inline-start: auto; background: none; border: 0; color: var(--dim); font-size: 12px; text-decoration: underline; }
+.tour-pop .tp-foot .skip:hover { color: var(--foreground); }
+.tour-progress { display: flex; gap: 4px; margin-bottom: 14px; }
+.tour-progress i { flex: 1; height: 3px; border-radius: var(--radius-full); background: var(--border); transition: background var(--t); }
+.tour-progress i.on { background: var(--brand); }
+
+/* ============================================== YALLA WEAR — token re-skin
+   No new components. The whole partner portal is this override plus the
+   handful of yl-* layout rules below: same engine, the partner's brand.   */
+
+body[data-portal="yalla"] {
+  --app:              #262244;
+  --background:       #262244;
+  --card:             #302B54;
+  --card-hover:       #363061;
+  --popover:          #383163;
+  --muted:            #363061;
+  --accent:           #3C3568;
+  --subtle:           #2A2649;
+
+  --foreground:       #F2F7F3;
+  --muted-foreground: #B9B4D8;
+  --dim:              #8E88B8;
+
+  --border:           #423B6E;
+  --border-strong:    #574E8C;
+  --input:            #4A427A;
+  --ring:             #B5DCC0;
+
+  --primary:          #B5DCC0;
+  --primary-foreground: #1E1B38;
+  --secondary:        #3C3568;
+
+  --brand:            #B5DCC0;
+  --brand-dim:        #9CCBA9;
+  --brand-foreground: #1E1B38;
+  --brand-soft:       #2C3F35;
+  --brand-border:     #4C7159;
+
+  --sidebar:          #1E1B38;
+  --sidebar-border:   #322C5A;
+  --sidebar-accent:   #2A2649;
+
+  --destructive-soft: #3A2038;
+  --warning-soft:     #3A3020;
+  --success-soft:     #1F3A2C;
+}
+/* The partner's scrollbar is mint on navy, not OG's lime on black. Redefining
+   the two tokens is the whole change — the ::-webkit- rules above read them. */
+body[data-portal="yalla"] {
+  --scroll-thumb:       #3B5344;
+  --scroll-thumb-hover: var(--brand-dim);
+}
+
+body[data-portal="yalla"] .brand-mark { background: transparent; }
+body[data-portal="yalla"] .tour-fab { display: none; }
+body[data-portal="yalla"] .btn-primary:hover { background: #C9EBD3; border-color: #C9EBD3; }
+
+/* Partner invoice — a white sheet, and the one place the full lockup fits. */
+.yl-inv .yl-lockup { width: 46mm; height: auto; display: block; border-radius: var(--radius-sm); }
+.yl-inv .inv-top { border-bottom-color: #302B54; }
+.yl-inv .inv-totals .grand { border-top-color: #302B54; }
+
+.yl-topline { display: flex; align-items: center; gap: 12px; }
+.yl-leave { padding: 14px 16px 18px; border-top: 1px solid var(--sidebar-border); }
+.yl-leave-note { font-size: 11.5px; color: var(--dim); margin-bottom: 9px; }
+.yl-leave-note b { display: block; color: var(--foreground); font-weight: 700; letter-spacing: .04em; }
+
+/* production line — the delivery metaphor at shop scale */
+.yl-line { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+.yl-line-node {
+  flex: 1; min-width: 104px; border: 1px solid var(--border); background: var(--subtle);
+  border-radius: var(--radius); padding: 13px 10px; text-align: center;
+  transition: border-color var(--t), background var(--t), transform var(--t);
+}
+.yl-line-node:hover { border-color: var(--brand); transform: translateY(-2px); }
+.yl-line-node.on { background: var(--card); }
+.yl-line-node.hot { border-color: var(--destructive-border); }
+.yl-line-count { display: block; font-family: var(--font-head); font-weight: 800; font-size: 26px; letter-spacing: -.03em; }
+.yl-line-node.on .yl-line-count { color: var(--brand); }
+.yl-line-name { display: block; font-size: 11.5px; font-weight: 600; margin-top: 3px; }
+.yl-line-pcs { display: block; font-size: 11px; color: var(--dim); margin-top: 2px; }
+.yl-line-arrow { align-self: center; width: 26px; flex: none; position: relative; }
+.yl-line-arrow::before {
+  content: ''; position: absolute; top: 50%; left: 5px; right: 9px; height: 2px;
+  background: var(--border-strong); transform: translateY(-50%);
+}
+.yl-line-arrow::after {
+  content: ''; position: absolute; top: 50%; right: 5px;
+  border: 5px solid transparent; border-inline-start-color: var(--border-strong);
+  transform: translateY(-50%);
+}
+body.rtl .yl-line-arrow::after { right: auto; left: 5px; transform: translateY(-50%) scaleX(-1); }
+
+.yl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+.yl-card {
+  border: 1px solid var(--border); background: var(--card); border-radius: var(--radius-lg);
+  padding: 16px 17px; cursor: pointer;
+  transition: border-color var(--t), transform var(--t), background var(--t);
+}
+.yl-card:hover { border-color: var(--brand); transform: translateY(-3px); background: var(--card-hover); }
+.yl-card.overdue { border-inline-start: 3px solid var(--destructive-solid); }
+.yl-card-top { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; flex-wrap: wrap; }
+/* Never break the job id across two lines — "P-" above "1046" reads as two
+   different things. The due date wraps instead; it is the softer of the two. */
+.yl-id { font-family: var(--font-head); font-weight: 800; font-size: 15px; letter-spacing: -.02em; white-space: nowrap; }
+.yl-due { margin-inline-start: auto; font-size: 11.5px; color: var(--dim); font-weight: 600; white-space: nowrap; }
+.yl-due.late { color: var(--destructive); }
+.yl-design { font-size: 13px; color: var(--muted-foreground); line-height: 1.5; margin-bottom: 11px; min-height: 38px; }
+.yl-sizes { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 13px; }
+.yl-size {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  border: 1px solid var(--border); background: var(--subtle); border-radius: var(--radius-sm);
+  padding: 3px 8px; font-size: 11.5px; font-variant-numeric: tabular-nums;
+}
+.yl-size b { font-family: var(--font-head); font-weight: 800; font-size: 12px; }
+.yl-sizes.lg .yl-size { padding: 7px 13px; font-size: 14px; }
+.yl-sizes.lg .yl-size b { font-size: 15px; color: var(--brand); }
+.yl-card-foot { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); padding-top: 11px; margin-top: 11px; }
+.yl-qty { font-size: 12px; color: var(--dim); }
+.yl-qty b { font-family: var(--font-head); font-size: 15px; font-weight: 800; color: var(--foreground); }
+.yl-payout { margin-inline-start: auto; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--brand); }
+
+/* ================================================== YALLA WEAR v3 — widgets
+   Everything below is token-driven, so it inherits the navy/mint palette from
+   the [data-portal="yalla"] block above and would read correctly on the OG
+   lime theme too if it were ever shown there.                              */
+
+.yl-line-ico { display: block; margin: 0 auto 4px; }
+.yl-line-ico svg { width: 18px; height: 18px; fill: none; stroke: var(--dim); stroke-width: 1.7; }
+.yl-line-node.on .yl-line-ico svg { stroke: var(--brand); }
+.yl-line-tbc {
+  display: block; margin-top: 5px; font-size: 10px; font-weight: 700;
+  color: var(--warning); letter-spacing: .04em; text-transform: uppercase;
+}
+
+/* ---- the blocked banner: the one thing that stops the shop dead ---------- */
+.yl-block {
+  display: flex; align-items: center; gap: 13px; margin-bottom: 14px;
+  padding: 13px 16px; border-radius: var(--radius-lg);
+  border: 1px solid var(--warning-border); background: var(--warning-soft);
+}
+.yb-ico { flex: none; display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: var(--radius-full); background: var(--warning-solid); }
+.yb-ico svg { width: 18px; height: 18px; fill: none; stroke: #FFFFFF; stroke-width: 2; }
+.yb-txt { flex: 1; min-width: 0; font-size: 13px; }
+.yb-txt b { display: block; color: var(--warning); font-size: 13.5px; }
+.yb-txt small { display: block; margin-top: 2px; color: var(--muted-foreground); font-size: 11.5px; line-height: 1.5; }
+
+/* ---- deadline radar ----------------------------------------------------- */
+.yl-radar { display: flex; align-items: stretch; gap: 5px; overflow-x: auto; padding-bottom: 4px; }
+.yl-rd {
+  flex: 1 0 58px; min-width: 58px; padding: 9px 6px 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--subtle); border-radius: var(--radius);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  transition: border-color var(--t), background var(--t), transform var(--t);
+}
+.yl-rd:hover { border-color: var(--brand); transform: translateY(-2px); }
+.yl-rd.on { background: var(--card); border-color: var(--border-strong); }
+.yl-rd.today { border-color: var(--brand); }
+.yl-rd.over { background: var(--warning-soft); border-color: var(--warning-border); }
+.yl-rd.late.on { background: var(--destructive-soft); border-color: var(--destructive-border); }
+.rd-dow { font-size: 9.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--dim); }
+.yl-rd.today .rd-dow { color: var(--brand); }
+.yl-rd.late .rd-dow { color: var(--destructive); }
+.rd-num { font-family: var(--font-head); font-weight: 800; font-size: 17px; line-height: 1; letter-spacing: -.02em; }
+.rd-dots { display: flex; align-items: center; justify-content: center; gap: 3px; min-height: 16px; flex-wrap: wrap; }
+.rd-dot { display: block; border-radius: var(--radius-full); background: var(--brand); flex: none; }
+.rd-dot.urgent { background: var(--destructive-solid); }
+.yl-rd.late .rd-dot { background: var(--destructive-solid); }
+.rd-none { display: block; width: 4px; height: 4px; border-radius: var(--radius-full); background: var(--border-strong); }
+.rd-more { font-size: 9.5px; font-weight: 700; color: var(--dim); }
+.rd-split { flex: none; width: 1px; background: var(--border); margin: 6px 3px; }
+
+/* ---- capacity heatmap --------------------------------------------------- */
+.yl-heat { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.yl-hc {
+  cursor: pointer; padding: 10px 4px 9px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--subtle);
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  transition: transform var(--t), border-color var(--t);
+}
+.yl-hc:hover { transform: translateY(-2px); border-color: var(--brand); }
+.hc-dow { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.hc-val { font-family: var(--font-head); font-weight: 800; font-size: 16px; line-height: 1; }
+.hc-pct { font-size: 10px; font-weight: 600; color: var(--dim); font-variant-numeric: tabular-nums; }
+/* Four steps rather than a continuous ramp: a reader can name the level they
+   are looking at, which a gradient never allows. */
+.yl-hc.l1 { background: color-mix(in srgb, var(--brand) 12%, var(--subtle)); }
+.yl-hc.l2 { background: color-mix(in srgb, var(--brand) 30%, var(--subtle)); }
+.yl-hc.l3 { background: var(--warning-soft); border-color: var(--warning-border); }
+.yl-hc.l3 .hc-pct { color: var(--warning); }
+.yl-hc.l4 { background: var(--destructive-soft); border-color: var(--destructive-border); }
+.yl-hc.l4 .hc-val, .yl-hc.l4 .hc-pct { color: var(--destructive); }
+.yl-heat-key { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
+.hk { width: 16px; height: 8px; border-radius: 2px; }
+.hk.l1 { background: color-mix(in srgb, var(--brand) 12%, var(--subtle)); }
+.hk.l2 { background: color-mix(in srgb, var(--brand) 30%, var(--subtle)); }
+.hk.l3 { background: var(--warning-solid); }
+.hk.l4 { background: var(--destructive-solid); }
+.yl-heat-key .small { margin-inline-start: 6px; }
+
+/* A column of cards that behaves as one grid item, so two stacked cards can
+   balance against one tall one instead of leaving a hole in the layout. */
+.yl-stack { display: flex; flex-direction: column; gap: var(--s-4); }
+
+/* ---- activity feed ------------------------------------------------------ */
+/* The fade tells the reader the list continues. Without it the final row is
+   simply sliced in half and reads as a rendering fault. */
+.yl-feed {
+  max-height: 428px; overflow-y: auto;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+}
+.yl-fi {
+  width: 100%; display: flex; gap: 11px; align-items: flex-start; cursor: pointer;
+  padding: 11px 16px; border-bottom: 1px solid var(--border); text-align: start;
+  background: none; transition: background var(--t);
+}
+.yl-fi:last-child { border-bottom: 0; }
+.yl-fi:hover { background: var(--accent); }
+.yl-fi.unread { background: var(--brand-soft); }
+.yl-fi.unread:hover { background: var(--card-hover); }
+.fi-ico { flex: none; display: grid; place-items: center; width: 28px; height: 28px;
+  border-radius: var(--radius-full); background: var(--muted); }
+.fi-ico svg { width: 15px; height: 15px; fill: none; stroke: var(--muted-foreground); stroke-width: 1.8; }
+.yl-fi.k-delay .fi-ico, .yl-fi.k-overdue .fi-ico { background: var(--destructive-soft); }
+.yl-fi.k-delay .fi-ico svg, .yl-fi.k-overdue .fi-ico svg { stroke: var(--destructive); }
+.yl-fi.k-nudge .fi-ico, .yl-fi.k-name-request .fi-ico { background: var(--warning-soft); }
+.yl-fi.k-nudge .fi-ico svg, .yl-fi.k-name-request .fi-ico svg { stroke: var(--warning); }
+.yl-fi.k-stage .fi-ico, .yl-fi.k-invoice .fi-ico { background: var(--brand-soft); }
+.yl-fi.k-stage .fi-ico svg, .yl-fi.k-invoice .fi-ico svg { stroke: var(--brand); }
+.fi-body { flex: 1; min-width: 0; }
+.fi-top { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; }
+.fi-top b { font-family: var(--font-head); font-weight: 800; font-size: 12.5px; }
+.fi-who { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); }
+.fi-ago { margin-inline-start: auto; font-size: 10.5px; color: var(--dim); flex: none; }
+.fi-txt { display: block; font-size: 12px; color: var(--muted-foreground); line-height: 1.5;
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* ---- ageing bar --------------------------------------------------------- */
+/* min-width stops a near-zero bucket collapsing so far that "31-60d" prints
+   on top of "8-30d" — the bars are proportional, the labels are not. */
+.yl-age { display: flex; gap: 8px; align-items: flex-end; }
+.yl-age-b { display: flex; flex-direction: column; gap: 4px; min-width: 52px; }
+.ab-bar { height: 6px; border-radius: 3px; background: var(--border); }
+.yl-age-b.on .ab-bar { background: var(--brand); }
+.yl-age-b:nth-child(3).on .ab-bar { background: var(--warning-solid); }
+.yl-age-b:nth-child(4).on .ab-bar { background: var(--destructive-solid); }
+.ab-k { font-size: 9.5px; font-weight: 700; color: var(--dim); letter-spacing: .04em; }
+.ab-v { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- kanban board ------------------------------------------------------- */
+.yl-board { display: grid; grid-template-columns: repeat(5, minmax(215px, 1fr)); gap: 11px; overflow-x: auto; padding-bottom: 6px; }
+.yl-col {
+  border: 1px solid var(--border); background: var(--subtle); border-radius: var(--radius-lg);
+  padding: 12px 11px; min-height: 190px; transition: background var(--t), border-color var(--t);
+}
+.yl-col.can-drop { border-color: var(--brand-border); background: var(--brand-soft); }
+.yl-col.no-drop { opacity: .42; }
+.yl-col.over { border-color: var(--brand); background: var(--card-hover); box-shadow: inset 0 0 0 1px var(--brand); }
+.yl-col-head { display: flex; align-items: center; gap: 7px; }
+.yc-ico { display: grid; place-items: center; width: 22px; height: 22px; flex: none;
+  border-radius: var(--radius-sm); background: var(--muted); }
+.yc-ico svg { width: 13px; height: 13px; fill: none; stroke: var(--muted-foreground); stroke-width: 1.9; }
+.yc-name { font-size: 12px; font-weight: 700; letter-spacing: .01em; }
+.yc-n { margin-inline-start: auto; font-family: var(--font-head); font-weight: 800; font-size: 14px; }
+.yl-col-sub { font-size: 10.5px; color: var(--dim); margin: 3px 0 10px; }
+.yl-col-sub .late { color: var(--destructive); }
+.yl-col-body { display: flex; flex-direction: column; gap: 9px; }
+.yl-col-empty { padding: 18px 6px; text-align: center; font-size: 11.5px; color: var(--dim);
+  border: 1px dashed var(--border); border-radius: var(--radius); }
+.yl-board .yl-card { padding: 12px 13px; }
+.yl-board .yl-design { font-size: 12px; min-height: 0; margin-bottom: 9px; }
+/* In a 215px column the qty, the payout and the action button cannot share a
+   row — the button was being clipped off the card edge. Wrap it onto its own
+   full-width line, which is what a kanban card wants anyway. */
+.yl-board .yl-card-foot { flex-wrap: wrap; gap: 8px 10px; }
+.yl-board .yl-card-foot .btn { width: 100%; margin-inline-start: 0; }
+.yl-board .yl-payout { font-size: 12px; }
+.yl-card.drag { cursor: grab; }
+.yl-card.dragging { opacity: .4; transform: rotate(1.5deg); }
+.yl-card.blocked { border-inline-start: 3px solid var(--warning-solid); }
+.yl-card.blocked.overdue { border-inline-start-color: var(--destructive-solid); }
+/* Finished work shown for context, not work in hand — muted and undraggable
+   so it cannot be mistaken for something still to do. */
+.yl-card.past { opacity: .5; background: transparent; }
+.yl-card.past:hover { opacity: 1; }
+
+.yl-tbc-strip {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 12px;
+  padding: 6px 9px; border-radius: var(--radius-sm);
+  background: var(--warning-soft); border: 1px solid var(--warning-border);
+  font-size: 11px; color: var(--warning); font-weight: 600;
+}
+.yl-tbc-strip svg { width: 13px; height: 13px; fill: none; stroke: var(--warning); stroke-width: 1.9; flex: none; }
+.yl-tbc-strip b { font-family: var(--font-head); font-weight: 800; font-size: 13px; }
+
+.badge.tbc { color: var(--warning); border-color: var(--warning-border); background: var(--warning-soft); font-weight: 700; }
+.dot-new { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--brand); flex: none;
+  box-shadow: 0 0 0 3px var(--brand-soft); }
+.btn.is-blocked { opacity: .7; cursor: not-allowed; }
+.chip.chip-x { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); font-weight: 700; }
+.stat .val.warn { color: var(--warning); }
+
+/* ---- partner scorecard -------------------------------------------------- */
+.yl-score { display: flex; flex-direction: column; gap: 16px; }
+.ys b {
+  display: block; margin-top: 5px; font-family: var(--font-head); font-weight: 800;
+  font-size: 30px; line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+}
+.ys b i { font-style: normal; font-size: 12px; font-weight: 700; color: var(--dim); margin-inline-start: 5px; }
+.ys b.good { color: var(--brand); }
+.ys b.mid  { color: var(--warning); }
+.ys b.bad  { color: var(--destructive); }
+.ys-foot { display: block; margin-top: 6px; font-size: 11px; color: var(--dim); line-height: 1.45; }
+
+/* ---- kit print list ----------------------------------------------------- */
+table.yl-kits td { vertical-align: middle; }
+table.yl-kits td small.ar { display: block; font-size: 10.5px; color: var(--dim); direction: rtl; }
+tr.is-tbc { background: var(--warning-soft); }
+.kit-name { font-weight: 700; letter-spacing: .06em; font-size: 12px; }
+.kit-no {
+  display: inline-grid; place-items: center; min-width: 20px; height: 18px; padding: 0 4px;
+  margin-inline-start: 6px; border: 1px solid var(--border-strong); border-radius: 3px;
+  font-family: var(--font-head); font-weight: 800; font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.kit-tbc { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: var(--warning); }
+
+/* ---- message thread ----------------------------------------------------- */
+.yl-thread { max-height: 300px; overflow-y: auto; padding: 4px 16px 14px; }
+.yl-msg {
+  border: 1px solid var(--border); background: var(--subtle); border-radius: var(--radius);
+  padding: 9px 12px; margin-top: 9px;
+}
+/* "Mine" is tinted and pulled inward, so a two-way thread is readable at a
+   glance without needing to read the sender label on every row. */
+.yl-msg.mine { background: var(--brand-soft); border-color: var(--brand-border); margin-inline-start: 26px; }
+.yl-msg:not(.mine) { margin-inline-end: 26px; }
+.ym-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 5px; }
+.ym-head b { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; }
+.ym-kind {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: var(--radius-full); background: var(--muted); color: var(--muted-foreground);
+}
+.ym-kind.k-delay, .ym-kind.k-reminder { background: var(--destructive-soft); color: var(--destructive); }
+.ym-kind.k-nudge, .ym-kind.k-name-request { background: var(--warning-soft); color: var(--warning); }
+.ym-kind.k-invoice { background: var(--brand-soft); color: var(--brand); }
+.ym-reason { font-size: 10px; color: var(--dim); font-style: italic; }
+.ym-ago { margin-inline-start: auto; font-size: 10px; color: var(--dim); }
+.ym-txt { font-size: 12.5px; line-height: 1.55; color: var(--muted-foreground); }
+
+/* ================================ PARTNER MESSAGES — the bell, both portals
+   Rendered into a .nt-slot in each topbar, so neither portal has to know how
+   the other one draws its header.                                          */
+
+.nt-slot { position: relative; display: inline-flex; }
+.nt-bell {
+  position: relative; width: 36px; height: 36px; border-radius: var(--radius);
+  display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card); color: var(--muted-foreground);
+  transition: border-color var(--t), color var(--t), background var(--t);
+}
+.nt-bell svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.nt-bell:hover, .nt-bell.on { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+.nt-bell.has { color: var(--foreground); }
+.nt-count {
+  position: absolute; top: -5px; inset-inline-end: -5px; min-width: 17px; height: 17px;
+  padding: 0 4px; border-radius: var(--radius-full); display: grid; place-items: center;
+  background: var(--destructive-solid); color: #FFFFFF;
+  font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums;
+  border: 2px solid var(--app);
+}
+.nt-panel {
+  position: absolute; top: calc(100% + 9px); inset-inline-end: 0; width: 366px; z-index: 60;
+  background: var(--popover); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg, 0 18px 44px rgb(0 0 0 / .5));
+  overflow: hidden; animation: ntIn .16s ease;
+}
+@keyframes ntIn { from { opacity: 0; transform: translateY(-6px); } }
+.nt-head { display: flex; align-items: center; gap: 9px; padding: 13px 15px; border-bottom: 1px solid var(--border); }
+.nt-head b { font-size: 12.5px; font-weight: 700; }
+.nt-pill {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: var(--radius-full);
+  background: var(--destructive-soft); color: var(--destructive);
+}
+.nt-read { margin-inline-start: auto; font-size: 11px; color: var(--brand); font-weight: 600; cursor: pointer; background: none; }
+.nt-read:hover { text-decoration: underline; }
+.nt-list { max-height: 400px; overflow-y: auto; }
+.nt-item {
+  width: 100%; display: flex; gap: 10px; align-items: flex-start; text-align: start;
+  padding: 11px 15px; border-bottom: 1px solid var(--border); cursor: pointer; background: none;
+  transition: background var(--t);
+}
+.nt-item:last-child { border-bottom: 0; }
+.nt-item:hover { background: var(--accent); }
+.nt-item.unread { background: var(--brand-soft); }
+.nt-item.unread:hover { background: var(--card-hover); }
+.nt-item.mine { opacity: .62; }
+.nt-ico { flex: none; display: grid; place-items: center; width: 26px; height: 26px;
+  border-radius: var(--radius-full); background: var(--muted); }
+.nt-ico svg { width: 14px; height: 14px; fill: none; stroke: var(--muted-foreground); stroke-width: 1.8; }
+.nt-item.k-delay .nt-ico, .nt-item.k-reminder .nt-ico { background: var(--destructive-soft); }
+.nt-item.k-delay .nt-ico svg, .nt-item.k-reminder .nt-ico svg { stroke: var(--destructive); }
+.nt-item.k-nudge .nt-ico, .nt-item.k-name-request .nt-ico { background: var(--warning-soft); }
+.nt-item.k-nudge .nt-ico svg, .nt-item.k-name-request .nt-ico svg { stroke: var(--warning); }
+.nt-item.k-invoice .nt-ico { background: var(--brand-soft); }
+.nt-item.k-invoice .nt-ico svg { stroke: var(--brand); }
+.nt-body { flex: 1; min-width: 0; }
+.nt-top { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; }
+.nt-top b { font-family: var(--font-head); font-weight: 800; font-size: 12px; }
+.nt-from { font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); }
+.nt-ago { margin-inline-start: auto; font-size: 10px; color: var(--dim); flex: none; }
+.nt-reason { display: block; font-size: 10px; font-style: italic; color: var(--warning); margin-bottom: 2px; }
+.nt-txt {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 11.5px; color: var(--muted-foreground); line-height: 1.5;
+}
+.nt-empty { padding: 34px 20px; text-align: center; }
+.nt-empty b { display: block; font-size: 13px; margin-bottom: 4px; }
+.nt-empty span { font-size: 11.5px; color: var(--dim); }
+.tab-dot { display: inline-block; width: 6px; height: 6px; border-radius: var(--radius-full);
+  background: var(--warning); margin-inline-start: 6px; vertical-align: middle; }
+
+/* ========================================================= ORDER HANDSHAKE
+   The handover between OG and Yalla Wear. Four states, and the colour carries
+   the meaning before the words do: grey is not sent, amber is waiting on
+   somebody else, lime is agreed, red is refused.                           */
+
+.ord-card.is-pending  { border-color: var(--warning-border); }
+.ord-card.is-declined { border-color: var(--destructive-border); }
+.ord-card.is-accepted { border-color: var(--brand-border); }
+
+.ord-wait { display: flex; align-items: center; gap: 9px; padding: 4px 0; }
+.ord-wait b { font-size: var(--fs-base); color: var(--warning); }
+.ord-wait small { color: var(--dim); font-size: var(--fs-xs); margin-inline-start: auto; }
+
+/* A slow pulse, not a spinner. Nothing is loading — somebody is deciding. */
+.ord-dot {
+  width: 8px; height: 8px; border-radius: var(--radius-full);
+  background: var(--warning); flex: none;
+  animation: ordPulse 2s var(--e-std) infinite;
+}
+@keyframes ordPulse {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 0 0 rgb(251 191 36 / .45); }
+  50%      { opacity: .55; box-shadow: 0 0 0 6px rgb(251 191 36 / 0); }
+}
+
+.kcard-ord { margin: 6px 0 2px; }
+
+/* Review sheet — what the other side will see, before it goes. */
+.ord-review { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.ord-rv-row {
+  display: flex; gap: 12px; align-items: baseline; justify-content: space-between;
+  padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: var(--fs-base);
+}
+.ord-rv-row:last-child { border-bottom: 0; }
+.ord-rv-row span { color: var(--muted-foreground); font-size: var(--fs-sm); flex: none; }
+.ord-rv-row b { text-align: end; font-weight: 600; }
+
+/* Timeline. Deliberately plain rows rather than a decorated rail — this is
+   evidence, and it should read like a log. */
+.ord-tl { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.ord-tl-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 5px 0; font-size: var(--fs-sm);
+}
+.ord-tl-dot {
+  width: 6px; height: 6px; border-radius: var(--radius-full);
+  background: var(--border-strong); flex: none;
+}
+.ord-tl-row:last-child .ord-tl-dot { background: var(--brand); }
+.ord-tl-txt { color: var(--foreground); font-weight: 600; }
+.ord-tl-by  { color: var(--dim); font-size: var(--fs-xs); }
+.ord-tl-at  { margin-inline-start: auto; color: var(--muted-foreground); font-size: var(--fs-xs); white-space: nowrap; }
+
+/* ---- the partner's inbox ---- */
+.yl-inbox { border-color: var(--brand-border); }
+.yl-offer {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; margin-bottom: 10px; background: var(--surface-2);
+}
+.yl-offer:last-child { margin-bottom: 0; }
+.yl-offer.urgent { border-color: var(--warning-border); }
+.yl-offer-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.yl-offer-ago { margin-inline-start: auto; color: var(--dim); font-size: var(--fs-xs); }
+.yl-offer-design { font-size: var(--fs-base); font-weight: 600; margin-bottom: 8px; }
+.yl-offer-meta {
+  display: flex; flex-wrap: wrap; gap: 6px 16px;
+  font-size: var(--fs-sm); color: var(--muted-foreground); margin-bottom: 9px;
+}
+.yl-offer-meta .accent { color: var(--brand); }
+.yl-offer-sizes { margin-bottom: 11px; }
+.yl-offer-acts { display: flex; gap: 8px; }
+/* Accept is the wide one: it is the answer given most of the time, and on a
+   phone the thumb should not have to aim for it. */
+.yl-offer-acts .btn { flex: 1; min-height: 42px; }
+.yl-offer-acts .btn-primary { flex: 2; }
+
+@media (max-width: 720px) {
+  .ord-tl-at { font-size: 10px; }
+  .ord-rv-row { flex-direction: column; gap: 2px; align-items: flex-start; }
+  .ord-rv-row b { text-align: start; }
+}
+
+/* ============================================================= WAREHOUSES
+   Stock split across the shop floor and the back storage. The one thing this
+   view has to make obvious at a glance is the size that is empty HERE while
+   sitting in the other place — that is the whole reason it exists, so it gets
+   the amber treatment while a genuine zero stays quiet red.                 */
+
+.seg-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg {
+  border: 1px solid var(--border); background: var(--card); color: var(--muted-foreground);
+  border-radius: var(--radius-full); padding: 8px 15px; font-size: var(--fs-sm); font-weight: 600;
+  min-height: 38px;   /* thumb target: this is used on a phone in the stockroom */
+  transition: background var(--d-1) var(--e-std), color var(--d-1) var(--e-std),
+              border-color var(--d-1) var(--e-std);
+}
+.seg:hover { background: var(--accent); color: var(--foreground); }
+.seg.on { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); font-weight: 700; }
+
+.wh-sizes { display: flex; flex-wrap: wrap; gap: 4px; }
+.wh-cell {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 40px; padding: 4px 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface-2); line-height: 1.15;
+}
+.wh-cell b { font-size: 10.5px; font-weight: 700; color: var(--dim); }
+.wh-cell i { font-style: normal; font-size: var(--fs-sm); font-weight: 700; color: var(--foreground); }
+
+/* Empty here, but it exists in the other place — fetchable, not lost. */
+.wh-cell.elsewhere { background: var(--warning-soft); border-color: var(--warning-border); }
+.wh-cell.elsewhere i { color: var(--warning); }
+
+/* Genuinely nowhere. */
+.wh-cell.zero { background: var(--destructive-soft); border-color: var(--destructive-border); }
+.wh-cell.zero i { color: var(--destructive); }
+
+.row-dim > td { opacity: .45; }
+
+/* Same idea inside the POS size picker: still tappable, because tapping it
+   offers to bring the pair out rather than refusing the sale. */
+.size-btn.size-elsewhere { border-color: var(--warning-border); background: var(--warning-soft); }
+.size-btn.size-elsewhere small { color: var(--warning); }
+
+@media (max-width: 720px) {
+  /* The per-size strip is the one thing that must stay readable on a phone,
+     so it scrolls sideways inside its cell rather than wrapping into a wall
+     of tiny boxes or forcing the whole table wider than the screen. */
+  .wh-sizes { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .wh-cell { flex: 0 0 auto; }
+}
+.og-kits .inp { padding: 5px 8px; font-size: 12px; }
+
+/* ================================================================ SCANNER
+   The viewfinder. Deliberately dark and high-contrast: this is used standing
+   up, at arm's length, often in bad shop lighting.                         */
+
+.sc-stage {
+  position: relative; aspect-ratio: 4 / 3; border-radius: var(--radius);
+  overflow: hidden; background: #000; display: grid; place-items: center;
+}
+.sc-stage video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Corner brackets, not a full box — a solid frame hides the very edges of
+   the label, which is where the quiet zone the decoder needs lives. */
+.sc-frame { position: absolute; inset: 14% 8%; pointer-events: none; }
+.sc-frame i {
+  position: absolute; width: 26px; height: 26px;
+  border: 3px solid var(--brand); border-radius: 3px;
+}
+.sc-frame i:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.sc-frame i:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+.sc-frame i:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+.sc-frame i:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+
+.sc-laser {
+  position: absolute; inset-inline: 8%; height: 2px; top: 50%;
+  background: linear-gradient(90deg, transparent, var(--brand), transparent);
+  box-shadow: 0 0 12px var(--brand); pointer-events: none;
+  animation: scSweep 2.4s ease-in-out infinite;
+}
+@keyframes scSweep {
+  0%, 100% { transform: translateY(-58px); opacity: .5; }
+  50%      { transform: translateY(58px);  opacity: 1; }
+}
+
+.sc-stage.no-cam { aspect-ratio: 16 / 9; background: var(--surface-1); }
+.sc-nocam { text-align: center; padding: 22px; max-width: 320px; }
+.sc-nocam svg { width: 38px; height: 38px; fill: none; stroke: var(--dim); stroke-width: 1.4; margin-bottom: 10px; }
+.sc-nocam b { display: block; font-size: var(--fs-base); margin-bottom: 5px; }
+.sc-nocam span { font-size: var(--fs-sm); color: var(--dim); line-height: 1.55; }
+
+.sc-status {
+  margin-top: 12px; text-align: center; font-size: var(--fs-sm);
+  color: var(--muted-foreground); min-height: 20px;
+}
+.sc-status.good { color: var(--brand); font-weight: 700; }
+.sc-status.bad { color: var(--destructive); font-weight: 600; }
+
+.sc-manual { display: flex; gap: 8px; margin-top: 12px; }
+.sc-manual .inp { flex: 1; min-width: 0; }
+
+/* The result sheet */
+.sc-hit { display: flex; align-items: center; gap: 14px; }
+.sc-hit-txt { flex: 1; min-width: 0; }
+.sc-hit-txt b { display: block; font-size: var(--fs-lg); font-weight: 700; }
+.sc-hit-txt span { display: block; font-size: var(--fs-sm); color: var(--muted-foreground); }
+.sc-hit-txt span.num { font-size: var(--fs-xs); color: var(--dim); letter-spacing: .04em; }
+tr.sc-row-on td { background: var(--brand-soft); }
+tr.sc-row-on td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
+
+.scan-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; }
+
+/* ==================================================================== MONEY
+   The drawer arithmetic is laid out as a sum he can check by eye. That is the
+   point of the screen — not that the app knows the answer, but that he can
+   see how it got there and trust it.                                       */
+
+.mn-calc { font-size: var(--fs-base); }
+.mn-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  padding: 8px 0; color: var(--muted-foreground);
+}
+.mn-row .num { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--foreground); }
+.mn-row.plus .num  { color: var(--success); }
+.mn-row.minus .num { color: var(--destructive); }
+.mn-line { height: 1px; background: var(--border-strong); margin: 6px 0; }
+.mn-row.total { padding-top: 12px; }
+.mn-row.total span:first-child { font-weight: 700; color: var(--foreground); font-size: var(--fs-lg); }
+.mn-row.total .num {
+  font-family: var(--font-head); font-weight: 800; font-size: 26px;
+  letter-spacing: -.03em; color: var(--brand);
+}
+
+/* Payment methods, with the drawer distinction made visible rather than
+   explained — a green dot is in the box, amber is owed, grey settles later. */
+.mn-method { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.mn-method:last-child { border-bottom: 0; }
+.mm-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--dim); flex: none; }
+.mm-dot.in { background: var(--success); }
+.mm-dot.owed { background: var(--warning); }
+.mm-name { font-size: var(--fs-base); font-weight: 600; }
+.mm-tag {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--dim); padding: 2px 7px; border-radius: var(--radius-full); background: var(--muted);
+}
+.mm-amt { margin-inline-start: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.mn-cat { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: var(--fs-sm); }
+.mc-name { width: 106px; flex: none; color: var(--muted-foreground); }
+.mc-bar { flex: 1; height: 7px; background: var(--muted); border-radius: 4px; overflow: hidden; }
+.mc-bar i { display: block; height: 100%; background: var(--brand); border-radius: 4px; }
+.mc-amt { width: 66px; text-align: end; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
+
+.tab-dot.on { background: var(--success); }
+
+/* ========================================================= COMMAND PALETTE
+   Sits above everything, near the top rather than centred — the eye is
+   already up there when you press Ctrl+K, and the list wants room to grow
+   downwards without the box jumping.                                       */
+
+.cp-back {
+  position: fixed; inset: 0; z-index: 600;
+  background: rgb(0 0 0 / .62); backdrop-filter: blur(4px);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 12vh 20px 20px;
+  animation: fade var(--d-2) var(--e-out) both;
+}
+.cp {
+  width: 100%; max-width: 580px;
+  background: var(--popover); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  overflow: hidden; animation: cpIn var(--d-3) var(--e-out) both;
+}
+@keyframes cpIn { from { opacity: 0; transform: translateY(-10px) scale(.985); } }
+
+.cp-head { display: flex; align-items: center; gap: 11px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.cp-head svg { width: 18px; height: 18px; fill: none; stroke: var(--dim); stroke-width: 1.9; flex: none; }
+.cp-head input {
+  flex: 1; min-width: 0; border: 0; background: none; outline: none;
+  color: var(--foreground); font-size: 16px; font-weight: 500;
+}
+.cp-head input::placeholder { color: var(--dim); font-weight: 500; }
+
+.cp-list { max-height: 52vh; overflow-y: auto; padding: 6px; }
+.cp-row {
+  width: 100%; display: flex; align-items: center; gap: 11px;
+  padding: 9px 10px; border-radius: var(--radius-sm); border: 0;
+  background: none; text-align: start; cursor: pointer;
+  transition: background var(--d-1);
+}
+.cp-row:hover { background: var(--accent); }
+.cp-row.on { background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand-border); }
+.cp-ico {
+  flex: none; width: 30px; height: 30px; display: grid; place-items: center;
+  border-radius: var(--radius-sm); background: var(--muted);
+  font-size: 14px; color: var(--muted-foreground);
+}
+.cp-row.on .cp-ico { background: var(--brand); color: var(--brand-foreground); }
+.cp-txt { flex: 1; min-width: 0; }
+.cp-txt b { display: block; font-size: var(--fs-base); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-txt small { display: block; font-size: var(--fs-xs); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-kind {
+  flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--dim);
+  padding: 2px 7px; border-radius: var(--radius-full); background: var(--muted);
+}
+.cp-row.on .cp-kind { color: var(--brand); background: var(--brand-soft); }
+.cp-empty { padding: 30px; text-align: center; color: var(--dim); font-size: var(--fs-sm); }
+
+@media (max-width: 560px) {
+  .cp-back { padding: 8vh 12px 12px; }
+  .cp-kind { display: none; }
+}
+
+/* ---- stock count ---------------------------------------------------------
+   Colour carries the answer: a matching row recedes, a short row is the one
+   that costs money. Tinted rows rather than badges, because he is scanning
+   down a long list looking for the exceptions. */
+.st-in { width: 86px; padding: 6px 8px; font-size: 13px; text-align: end; }
+tr.st-ok td    { background: color-mix(in srgb, var(--success-solid) 6%, transparent); }
+tr.st-short td { background: color-mix(in srgb, var(--destructive-solid) 9%, transparent); }
+tr.st-over td  { background: color-mix(in srgb, var(--warning-solid) 9%, transparent); }
+.st-neg { color: var(--destructive); }
+.st-pos { color: var(--warning); }
+
+/* Reorder sheet. The "lasts N days" column is the one that drives the
+   decision, so an urgent one is coloured rather than left to be read. */
+.po-urgent { color: var(--destructive); font-weight: 700; }
+.po-tbl .po-qty { width: 78px; padding: 6px 8px; font-size: 13px; }
+.po-tbl td { padding: 8px 10px; }
+
+@media (max-width: 560px) {
+  .nt-panel { width: min(340px, calc(100vw - 24px)); }
+}
+
+/* ---- invoice builder ----------------------------------------------------
+   Column widths are pinned rather than left to the browser. Left to itself
+   the table gave equal room to every cell, which squeezed the printed NAME —
+   the single most important field on the row — down to three characters
+   while the size dropdown sat half empty. */
+.yi-build { table-layout: fixed; width: 100%; }
+.yi-build td, .yi-build th { padding: 6px 5px; vertical-align: middle; }
+.yi-build .inp { padding: 6px 8px; font-size: 12px; min-width: 0; width: 100%; }
+.inp.mt-xs { margin-top: 5px; }
+
+.yi-build th:nth-child(1), .yi-build td:nth-child(1) { width: 30px; }
+.yi-build th:nth-child(2), .yi-build td:nth-child(2) { width: 23%; }
+.yi-build th:nth-child(3), .yi-build td:nth-child(3) { width: auto; }   /* the name — takes the slack */
+.yi-build th:nth-child(4), .yi-build td:nth-child(4) { width: 58px; }
+.yi-build th:nth-child(5), .yi-build td:nth-child(5) { width: 72px; }
+.yi-build th:nth-child(6), .yi-build td:nth-child(6) { width: 62px; }
+.yi-build th:nth-child(7), .yi-build td:nth-child(7) { width: 94px; }
+.yi-build th:nth-child(8), .yi-build td:nth-child(8) { width: 88px; }
+.yi-build th:nth-child(9), .yi-build td:nth-child(9) { width: 38px; }
+/* The fixed-width cells set their own size, so the generic rule above must
+   not stretch their inputs past the column. */
+.yi-build td:nth-child(4) .inp, .yi-build td:nth-child(5) .inp,
+.yi-build td:nth-child(6) .inp, .yi-build td:nth-child(7) .inp { width: 100%; }
+.yi-sum {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  padding: 13px 16px; border-radius: var(--radius);
+  background: var(--brand-soft); border: 1px solid var(--brand-border);
+  font-size: 12.5px; color: var(--muted-foreground);
+}
+.yi-sum b { font-family: var(--font-head); font-weight: 800; font-size: 22px;
+  color: var(--brand); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+tr.row-late td { background: color-mix(in srgb, var(--destructive-solid) 7%, transparent); }

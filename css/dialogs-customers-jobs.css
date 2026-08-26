@@ -1,0 +1,154 @@
+/* ==========================================================================
+   OG SYSTEM — stylesheet  ·  5/10: DIALOG/SHEET, INVOICE preview, CUSTOMERS,
+   PRINT JOBS kanban
+   --------------------------------------------------------------------------
+   Split from the original css/style.css (lines 1015-1157). Loads after
+   inputs-dashboard-pos.css.
+
+   Note: "PRINT JOBS" here is the Yalla Wear production kanban board
+   (.kcol/.kcard/.partner-*), NOT print-media CSS — the real @media print
+   rules live in print-hardware-receipt-newlabels.css.
+   ========================================================================== */
+
+/* --------------------------------------------------- DIALOG / SHEET (shadcn) */
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgb(0 0 0 / .78); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center; padding: 26px; z-index: 200;
+  animation: fade .15s ease both;
+}
+.modal {
+  background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%; max-width: 540px; max-height: 92vh; display: flex; flex-direction: column;
+  animation: pop .18s cubic-bezier(.4, 0, .2, 1) both;
+}
+@keyframes pop { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+.modal.wide { max-width: 940px; }
+.modal.narrow { max-width: 430px; }
+.modal-head { display: flex; align-items: center; gap: 12px; padding: 18px 20px 14px; }
+.modal-head h3 { font-size: 16.5px; font-weight: 700; letter-spacing: -.02em; }
+.modal-head .x {
+  margin-inline-start: auto; border: 0; background: none; font-size: 20px; line-height: 1;
+  color: var(--dim); width: 28px; height: 28px; border-radius: var(--radius-sm);
+  transition: background var(--t), color var(--t);
+}
+.modal-head .x:hover { background: var(--accent); color: var(--foreground); }
+.modal-body { padding: 0 20px 20px; overflow-y: auto; }
+.modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 9px; justify-content: flex-end; background: var(--subtle); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+
+.drawer-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / .70); z-index: 190; animation: fade .15s ease both; }
+.drawer {
+  position: fixed; top: 0; inset-inline-end: 0; height: 100%; width: 620px; max-width: 96vw;
+  background: var(--app); border-inline-start: 1px solid var(--border);
+  box-shadow: var(--shadow-lg); z-index: 191;
+  display: flex; flex-direction: column;
+  animation: slideIn 220ms cubic-bezier(.4, 0, .2, 1) both;
+}
+@keyframes slideIn { from { transform: translateX(100%); } to { transform: none; } }
+body.rtl .drawer { animation-name: slideInR; }
+@keyframes slideInR { from { transform: translateX(-100%); } to { transform: none; } }
+.drawer-head { padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 14px; align-items: flex-start; background: var(--card); }
+.drawer-head .x { width: 28px; height: 28px; border-radius: var(--radius-sm); transition: background var(--t); }
+.drawer-head .x:hover { background: var(--accent); }
+.drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
+
+/* -------------------------------------------------- INVOICE (stays on paper)
+   This is a preview of a printed document, so it keeps a white sheet.       */
+
+.invoice-sheet { background: #FFFFFF; color: #09090B; padding: 28px 30px; font-size: 12.5px; border-radius: var(--radius); font-weight: 500; }
+.invoice-sheet .lbl { color: #71717A; text-transform: uppercase; }
+.inv-top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #09090B; padding-bottom: 16px; margin-bottom: 16px; gap: 20px; }
+.inv-logo { display: flex; align-items: center; gap: 12px; }
+.inv-logo .brand-mark { background: #000000; color: #FFFFFF; width: 52px; height: 52px; font-size: 30px; border-radius: var(--radius); }
+.inv-logo b { font-family: var(--font-head); font-weight: 800; font-size: 17px; display: block; letter-spacing: .01em; }
+.inv-logo small { color: #71717A; font-size: 11.5px; }
+.inv-meta { text-align: end; font-variant-numeric: tabular-nums; font-size: 12px; line-height: 1.7; }
+.inv-meta b { font-family: var(--font-head); font-size: 17px; font-weight: 800; }
+.inv-parties { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 16px; font-size: 12px; }
+.inv-parties .lbl { margin-bottom: 3px; font-size: 10.5px; }
+table.inv-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.inv-tbl th { text-align: start; border-bottom: 1px solid #09090B; padding: 8px 7px; font-size: 10.5px; font-weight: 700; color: #71717A; text-transform: uppercase; letter-spacing: .05em; }
+table.inv-tbl td { padding: 9px 7px; border-bottom: 1px solid #E4E4E7; font-variant-numeric: tabular-nums; }
+table.inv-tbl td.num, table.inv-tbl th.num { text-align: end; }
+.inv-sum { margin-top: 16px; display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
+.inv-qr { border: 1px solid #E4E4E7; border-radius: var(--radius-sm); padding: 6px; flex: none; background: #fff; }
+.inv-totals { min-width: 270px; font-variant-numeric: tabular-nums; }
+.inv-totals .tr { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12.5px; }
+.inv-totals .grand { border-top: 2px solid #09090B; margin-top: 8px; padding-top: 10px; font-family: var(--font-head); font-weight: 800; font-size: 20px; }
+.inv-loyalty { margin-top: 18px; border: 1px dashed #A1A1AA; border-radius: var(--radius); padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.inv-loyalty b { font-family: var(--font-head); font-size: 15px; font-weight: 800; }
+.inv-foot { margin-top: 18px; padding-top: 13px; border-top: 1px solid #E4E4E7; text-align: center; color: #71717A; font-size: 11px; }
+
+/* -------------------------------------------------------------- CUSTOMERS */
+
+.cust-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 12px; }
+.cust-card {
+  border: 1px solid var(--border); background: var(--card); border-radius: var(--radius-lg);
+  padding: 15px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 11px;
+  transition: border-color var(--t), transform var(--t), background var(--t);
+}
+.cust-card:hover { border-color: var(--border-strong); transform: translateY(-3px); background: var(--card-hover); }
+.cust-card.risk { border-color: var(--destructive-border); background: var(--destructive-soft); }
+.cc-top { display: flex; gap: 11px; align-items: flex-start; }
+.cc-av {
+  width: 40px; height: 40px; flex: none; border-radius: var(--radius-full);
+  background: var(--muted); color: var(--brand); border: 1px solid var(--border);
+  display: grid; place-items: center; font-family: var(--font-head); font-weight: 800; font-size: 12.5px;
+}
+.cc-top b { display: block; font-size: 14px; font-weight: 700; }
+.cc-top small { color: var(--dim); font-size: 11.5px; font-variant-numeric: tabular-nums; display: block; }
+.cc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border-top: 1px solid var(--border); padding-top: 11px; }
+.cc-stats div .eyebrow { font-size: 10px; display: block; margin-bottom: 1px; }
+.cc-stats div b { font-family: var(--font-head); font-weight: 800; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+
+.timeline { border-inline-start: 2px solid var(--border); padding-inline-start: 18px; margin: 0; }
+.timeline li { list-style: none; position: relative; padding-bottom: 15px; font-size: 13px; }
+.timeline li::before { content: ''; position: absolute; inset-inline-start: -24px; top: 5px; width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--border-strong); }
+.timeline li.plus::before { background: var(--brand); }
+.timeline li small { display: block; color: var(--dim); font-size: 11.5px; }
+
+/* ------------------------------------------------------------- PRINT JOBS */
+
+.kanban { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.kcol {
+  background: var(--subtle); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  display: flex; flex-direction: column; min-height: 340px;
+  transition: background var(--t), border-color var(--t);
+}
+.kcol.over { border-color: var(--brand); background: var(--brand-soft); }
+.kcol-head { padding: 13px 14px; display: flex; align-items: center; gap: 8px; }
+.kcol-head b { font-family: var(--font-head); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.kcol-head .cnt { margin-inline-start: auto; background: var(--muted); color: var(--muted-foreground); font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: var(--radius-full); border: 1px solid var(--border); }
+.kcol-body { padding: 0 9px 9px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+.kcard {
+  border: 1px solid var(--border); background: var(--card); border-radius: var(--radius);
+  padding: 12px 13px; cursor: grab; transition: border-color var(--t), background var(--t);
+}
+.kcard:hover { border-color: var(--border-strong); background: var(--card-hover); }
+.kcard:active { cursor: grabbing; }
+.kcard.dragging { opacity: .4; }
+.kcard.overdue { border-color: var(--destructive-border); border-inline-start: 3px solid var(--destructive-solid); animation: pulseRed 2.6s ease-in-out infinite; }
+@keyframes pulseRed { 0%, 100% { background: var(--card); } 50% { background: var(--destructive-soft); } }
+.kcard-top { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 6px; }
+.kcard-top b { font-size: 13px; font-weight: 700; flex: 1; }
+.kcard .note { color: var(--dim); font-size: 11.5px; line-height: 1.5; margin-bottom: 9px; }
+.kcard-foot { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-variant-numeric: tabular-nums; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; color: var(--dim); }
+.kcard-foot .money { margin-inline-start: auto; font-weight: 700; color: var(--foreground); }
+.kcard-foot .cost { color: var(--dim); font-weight: 500; }
+
+.partner-shell { border: 1px solid var(--brand-border); border-radius: var(--radius-lg); overflow: hidden; }
+.partner-head { background: var(--brand); color: var(--brand-foreground); padding: 18px 22px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.partner-head h2 { font-size: 19px; color: var(--brand-foreground); font-weight: 800; letter-spacing: -.02em; }
+.partner-head .sub { color: rgb(10 10 11 / .68); font-size: 12px; font-weight: 600; }
+.partner-head .brand-mark { background: var(--brand-foreground) !important; color: var(--brand) !important; }
+.partner-chip { background: var(--brand-foreground); color: var(--brand); font-size: 11px; font-weight: 700; padding: 5px 13px; border-radius: var(--radius-full); text-transform: uppercase; letter-spacing: .06em; }
+.partner-head .btn-primary { background: var(--brand-foreground); border-color: var(--brand-foreground); color: var(--brand); }
+.partner-head .btn-primary:hover { background: #27272A; border-color: #27272A; }
+.partner-body { background: var(--card); padding: 20px 22px; }
+.partner-note { background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px; color: var(--muted-foreground); margin-top: 14px; line-height: 1.6; }
+.note-danger { border-color: var(--destructive-border); background: var(--destructive-soft); color: var(--destructive); }
+/* The other two tones. These were being used before they existed, which meant
+   a "waiting" banner and an "all clear" note both rendered as plain body text. */
+.note-warn { border-color: var(--warning-border); background: var(--warning-soft); color: var(--warning); }
+.note-ok   { border-color: var(--success-border); background: var(--success-soft); color: var(--success); }

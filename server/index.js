@@ -689,15 +689,15 @@ router.add('POST /api/labels/print', requirePerm('label.print', async (ctx) => {
 router.add('POST /api/labels/preview', requirePerm('label.print', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
-    const presetObj = Labels.preset(b.preset);
+    const tpl = Labels.template(b.preset);
     const lines = (b.lines || []).map((l) => {
       const variant = Labels.resolveVariant(l.sku || l.variantId);
       return {
         sku: variant.sku, qty: l.qty, name: variant.name, size: variant.size,
-        layout: Labels.computeLayout(variant, presetObj)
+        layout: Labels.computeLayout(variant, tpl)
       };
     });
-    sendOk(ctx.res, { preset: presetObj, lines });
+    sendOk(ctx.res, { preset: tpl, lines });
   } catch (e) {
     sendError(ctx.res, e.code === 'barcode_too_wide' ? 409 : 400, e.code || 'invalid', e.message);
   }

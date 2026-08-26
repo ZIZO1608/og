@@ -64,6 +64,10 @@ var Labels = (function () {
     var narrowDots = Math.max(2, Math.floor(usableDots / modules));
     return { narrowDots: narrowDots, widthDots: narrowDots * modules };
   }
+  /* Demo mode has no server to ask for a template, so it still renders from
+     the old fixed 4-preset shape (demoPresets() below) — but the OUTPUT is
+     now the same generic `fields` array the live path produces, so
+     labelPreviewHTML/buildArabicBitmaps only need to know one shape. */
   function demoLayout(variant, presetObj) {
     var widthDots = presetObj.widthMm * DOTS_PER_MM, heightDots = presetObj.heightMm * DOTS_PER_MM;
     var marginDots = Math.round(2.5 * DOTS_PER_MM);
@@ -74,16 +78,28 @@ var Labels = (function () {
     var textLeft = presetObj.logo === 'left-of-text' ? marginDots + 46 : marginDots;
     var y = (logo && presetObj.logo !== 'left-of-text') ? logo.yDots + logo.hDots + 4 : 6;
     var nameHeightDots = presetObj.nameLines * 22;
-    var name = { xDots: textLeft, yDots: y, widthDots: widthDots - textLeft - marginDots, heightDots: nameHeightDots, maxLines: presetObj.nameLines, arabic: isArabic(variant.name), text: variant.name };
+    var nameArabic = isArabic(variant.name);
+    var nameYDots = y;
     y += nameHeightDots + 4;
-    var variantLine = { xDots: textLeft, yDots: y, text: String(variant.size) };
+    var variantYDots = y;
     y += 30;
     var barcodeY = Math.max(y, heightDots - barcodeHeightDots - 26);
-    var barcode = {
+
+    var fields = [];
+    if (logo) fields.push({ kind: 'logo', type: 'image', xDots: logo.xDots, yDots: logo.yDots, wDots: logo.wDots, hDots: logo.hDots });
+    fields.push({
+      kind: 'name', type: nameArabic ? 'bitmap' : 'text', arabic: nameArabic,
+      xDots: textLeft, yDots: nameYDots, wDots: widthDots - textLeft - marginDots, hDots: nameHeightDots,
+      text: variant.name
+    });
+    fields.push({ kind: 'variant', type: 'text', xDots: textLeft, yDots: variantYDots, text: String(variant.size) });
+    fields.push({
+      kind: 'barcode', type: 'barcode',
       xDots: Math.max(marginDots, Math.round((widthDots - bcWidth.widthDots) / 2)), yDots: barcodeY,
-      wDots: bcWidth.widthDots, hDots: barcodeHeightDots, symbology: bc.symbology, content: bc.content, fallbackReason: bc.fallbackReason
-    };
-    return { widthDots: widthDots, heightDots: heightDots, logo: logo, name: name, variant: variantLine, barcode: barcode };
+      wDots: bcWidth.widthDots, hDots: barcodeHeightDots,
+      symbology: bc.symbology, content: bc.content, fallbackReason: bc.fallbackReason
+    });
+    return { widthDots: widthDots, heightDots: heightDots, fields: fields };
   }
 
   function demoPresets() {
@@ -116,28 +132,39 @@ var Labels = (function () {
     return API.post('/api/labels/preview', { lines: lines, preset: presetKey });
   }
 
-  function labelPreviewHTML(line, presetObj) {
-    var L = line.layout;
+  /* One DOM box per field, generic over kind — logo/barcode render their
+     real content, text/bitmap fields just show the relevant string (a DOM
+     preview gets real Arabic shaping from the browser natively, so bitmap
+     fields don't need a canvas here — only the actual print does). */
+  function fieldPreviewHTML(f, line) {
     var mm = function (dots) { return (dots / DOTS_PER_MM) + 'mm'; };
-    var boxes = '';
-    if (L.logo) {
-      boxes += '<img class="lbl-logo" style="left:' + mm(L.logo.xDots) + ';top:' + mm(L.logo.yDots) +
-        ';width:' + mm(L.logo.wDots) + ';height:' + mm(L.logo.hDots) + '" src="assets/logo.svg" alt="">';
+    var style = 'left:' + mm(f.xDots) + ';top:' + mm(f.yDots);
+    if (f.wDots != null) style += ';width:' + mm(f.wDots);
+    if (f.hDots != null) style += ';height:' + mm(f.hDots);
+
+    if (f.type === 'image') {
+      return '<img class="lbl-logo" style="' + style + '" src="assets/logo.svg" alt="">';
     }
-    /* height + overflow:hidden so the preview clips at exactly the box the
-       bitmap will be rasterized into — an Arabic name skips wrapName's
-       ellipsis truncation (only Latin text goes through it) and is instead
-       clipped by canvas height when printed, so the preview has to clip
-       the same way or it would show text that never comes out on paper. */
-    boxes += '<div class="lbl-name" style="left:' + mm(L.name.xDots) + ';top:' + mm(L.name.yDots) +
-      ';width:' + mm(L.name.widthDots) + ';height:' + mm(L.name.heightDots) + ';overflow:hidden"' +
-      (L.name.arabic ? ' dir="rtl"' : '') + '>' + esc(line.name) + '</div>';
-    boxes += '<div class="lbl-variant" style="left:' + mm(L.variant.xDots) + ';top:' + mm(L.variant.yDots) + '">' + esc(line.size) + '</div>';
-    boxes += '<div class="lbl-barcode" style="left:' + mm(L.barcode.xDots) + ';top:' + mm(L.barcode.yDots) +
-      ';width:' + mm(L.barcode.wDots) + ';height:' + mm(L.barcode.hDots) + '">' +
-      (L.barcode.symbology === 'ean13' ? Codes.ean13SVG(L.barcode.content) : Codes.code128SVG(L.barcode.content)) +
-      (L.barcode.fallbackReason ? '<small class="lbl-fallback">' + t('lbl_fallback') + '</small>' : '') +
-      '</div>';
+    if (f.type === 'barcode') {
+      return '<div class="lbl-barcode" style="' + style + '">' +
+        (f.symbology === 'ean13' ? Codes.ean13SVG(f.content) : Codes.code128SVG(f.content)) +
+        (f.fallbackReason ? '<small class="lbl-fallback">' + t('lbl_fallback') + '</small>' : '') +
+        '</div>';
+    }
+
+    var raw = f.type === 'bitmap'
+      ? (f.kind === 'name' ? line.name : f.kind === 'variant' ? String(line.size) : ((typeof CONFIG !== 'undefined' && CONFIG.SHOP_NAME) || ''))
+      : f.text;
+    /* overflow:hidden on a bitmap field so the preview clips at exactly the
+       box the bitmap will be rasterized into — an Arabic field skips the
+       ellipsis truncation Latin text gets and is instead clipped by canvas
+       height when printed, so the preview has to clip the same way. */
+    return '<div class="lbl-' + f.kind + '" style="' + style + (f.type === 'bitmap' ? ';overflow:hidden' : '') + '"' +
+      (f.arabic ? ' dir="rtl"' : '') + '>' + esc(raw || '') + '</div>';
+  }
+
+  function labelPreviewHTML(line, presetObj) {
+    var boxes = (line.layout.fields || []).map(function (f) { return fieldPreviewHTML(f, line); }).join('');
     var sticker = '<div class="lbl-sticker" style="width:' + presetObj.widthMm + 'mm;height:' + presetObj.heightMm + 'mm">' + boxes + '</div>';
     return '<div class="lbl-line">' + sticker +
       '<label class="lbl-line-qty"><span>' + t('lbl_qty') + '</span>' +
@@ -205,14 +232,24 @@ var Labels = (function () {
     return btoa(bin);
   }
 
-  /* Only the lines whose resolved name is actually Arabic get a bitmap —
-     per-string detection, exactly as specified, not per-label. */
+  /* Only fields whose resolved text is actually Arabic get a bitmap — per
+     FIELD detection, exactly as specified, not per-label. Keyed by the
+     field's `kind` (name/variant/header/...) so the server can splice each
+     one into the right spot — see arabicBitmaps[sku][kind] in
+     server/lib/labels.js's buildLabelBytes. */
   function buildArabicBitmaps(previewData) {
     var out = {};
     previewData.lines.forEach(function (l) {
-      if (l.layout.name.arabic) {
-        out[l.sku] = { name: rasterizeArabic(l.name, l.layout.name.widthDots, l.layout.name.heightDots, l.layout.name.maxLines) };
-      }
+      var bitmaps = {};
+      (l.layout.fields || []).forEach(function (f) {
+        if (f.type !== 'bitmap') return;
+        var raw = f.kind === 'name' ? l.name
+          : f.kind === 'variant' ? String(l.size)
+          : (typeof CONFIG !== 'undefined' && CONFIG.SHOP_NAME) || '';
+        var maxLines = f.kind === 'name' ? 2 : 1;
+        bitmaps[f.kind] = rasterizeArabic(raw, f.wDots, f.hDots, maxLines);
+      });
+      if (Object.keys(bitmaps).length) out[l.sku] = bitmaps;
     });
     return out;
   }

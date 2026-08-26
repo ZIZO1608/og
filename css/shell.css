@@ -1,0 +1,244 @@
+/* ==========================================================================
+   OG SYSTEM — stylesheet  ·  2/10: SHELL + TOPBAR
+   --------------------------------------------------------------------------
+   Split from the original css/style.css (lines 291-524). Loads after
+   tokens.css. Defines `.seg` (segmented control, v1) — a second, unrelated
+   `.seg` (standalone pill) is redefined later in tour-yalla-scan.css for the
+   Warehouses screen; THIS file must load before that one so the later rule
+   keeps winning, exactly as it did in the original single-file cascade.
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ SHELL */
+
+#app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; height: 100vh; overflow: hidden; }
+
+.sidebar {
+  background: var(--sidebar); color: var(--foreground);
+  display: flex; flex-direction: column; overflow-y: auto;
+  border-inline-end: 1px solid var(--sidebar-border);
+}
+
+.brand { padding: 18px 20px 16px; border-bottom: 1px solid var(--sidebar-border); display: flex; align-items: center; gap: 13px; }
+/* The real logo artwork: a black square with the white OG. Because the tile is
+   already black, it drops straight onto the black sidebar with no seam. */
+.brand-mark {
+  width: 48px; height: 48px; flex: none; overflow: hidden;
+  background: #000000; color: #FFFFFF; border-radius: var(--radius);
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 900; font-size: 26px;
+  letter-spacing: -.05em; line-height: 1;
+}
+.brand-mark img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.brand-mark-inverse { width: 46px; height: 46px; border-radius: var(--radius-sm); }
+.brand-text { line-height: 1.25; min-width: 0; }
+.brand-text b { font-family: var(--font-head); font-weight: 800; font-size: 14.5px; letter-spacing: .01em; display: block; }
+.brand-text span { font-size: 11.5px; font-weight: 500; color: var(--dim); }
+
+.nav { padding: 12px 12px 8px; flex: 1; position: relative; }
+
+/* One bar that travels between items, instead of the lime fill teleporting.
+   Sits behind the buttons and is positioned from the active item's own
+   offsetTop by motion.js, so it survives a sidebar re-render, the group
+   headings, and RTL without a second code path. */
+.nav-ind {
+  position: absolute; inset-inline: 12px; top: 0; height: 0;
+  background: var(--brand); border-radius: var(--radius-sm);
+  z-index: 0; opacity: 0; pointer-events: none;
+  transition: transform var(--d-3) var(--e-out), height var(--d-3) var(--e-out), opacity var(--d-1);
+}
+.nav-item { position: relative; z-index: 1; }
+.nav-label { font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #52525B; padding: 14px 11px 7px; }
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 10px 12px; margin-bottom: 3px;
+  border: 0; background: none; border-radius: var(--radius-sm);
+  color: #A1A1AA; font-size: 13.5px; font-weight: 600;
+  text-align: start;
+  transition: background var(--t), color var(--t);
+}
+.nav-item:hover { background: var(--sidebar-accent); color: var(--foreground); }
+/* The fill now comes from .nav-ind sliding underneath, so the active item
+   only changes its own text colour. Left transparent, or the block would
+   still jump instantly and race the bar. */
+.nav-item.active { background: none; color: var(--brand-foreground); font-weight: 700; }
+.nav-item.active:hover { background: none; color: var(--brand-foreground); }
+.nav-item.active .nav-icon svg { stroke: var(--brand-foreground); }
+.nav-icon { width: 18px; flex: none; display: grid; place-items: center; }
+.nav-icon svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+/* --- dock magnification ---------------------------------------------------
+   Only the ICON scales. The label is deliberately left alone: scaling text
+   resamples the glyphs and they go soft, which is the single thing that makes
+   a magnification effect look cheap.
+
+   The row's padding and inline offset are written by js/motion.js every frame,
+   so no transition is declared here — a CSS transition fighting a spring
+   integrator produces a mushy double-easing. The spring IS the easing. */
+.nav-item.dockable .nav-icon {
+  transform-origin: center;
+  will-change: transform;
+}
+/* The stroke thins visually as the glyph scales up; nudging the weight back
+   keeps it looking like the same icon rather than a faded one. */
+.nav-item.dockable:hover .nav-icon svg { stroke-width: 2; }
+.nav-badge {
+  margin-inline-start: auto;
+  background: var(--destructive-solid); color: #FFFFFF;
+  font-size: 10.5px; font-weight: 700; line-height: 1;
+  padding: 3px 7px; min-width: 21px; text-align: center; border-radius: var(--radius-full);
+}
+.nav-item.active .nav-badge { background: var(--brand-foreground); color: var(--brand); }
+
+.sidebar-foot { padding: 14px 22px 18px; border-top: 1px solid var(--sidebar-border); font-size: 11.5px; color: #52525B; }
+.sidebar-foot b { color: var(--brand); font-weight: 700; }
+
+.main { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* ----------------------------------------------------------------- TOPBAR */
+
+.topbar {
+  height: var(--topbar-h); flex: none;
+  background: var(--app); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; padding: 0 20px; position: relative;
+}
+
+.search { flex: 1; max-width: 440px; position: relative; }
+.search input {
+  width: 100%; height: 38px;
+  border: 1px solid var(--input); border-radius: var(--radius);
+  background: var(--card); color: var(--foreground);
+  padding-inline: 38px 14px; outline: none; font-size: 13.5px; font-weight: 500;
+  transition: border-color var(--t), box-shadow var(--t), background var(--t);
+}
+.search input::placeholder { color: var(--dim); font-weight: 500; }
+.search input:focus { border-color: var(--brand); background: var(--muted); box-shadow: 0 0 0 3px rgb(198 255 0 / .12); }
+.search svg { position: absolute; inset-inline-start: 13px; top: 11px; width: 16px; height: 16px; stroke: var(--dim); fill: none; stroke-width: 2; }
+
+.search-results {
+  position: absolute; top: 44px; inset-inline-start: 0; width: 100%;
+  background: var(--popover); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  z-index: 60; max-height: 380px; overflow-y: auto; padding: 6px;
+}
+.sr-group { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); padding: 9px 10px 5px; }
+.sr-item { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; transition: background var(--t); }
+.sr-item:hover { background: var(--accent); }
+.sr-item small { color: var(--muted-foreground); margin-inline-start: auto; }
+
+.spacer { flex: 1; }
+
+/* Segmented control = shadcn TabsList */
+.seg { display: inline-flex; gap: 2px; background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; }
+.seg button {
+  border: 0; background: none; padding: 5px 12px; border-radius: var(--radius-sm);
+  font-size: 12.5px; font-weight: 600; color: var(--muted-foreground);
+  transition: background var(--t), color var(--t);
+}
+/* Light pill, not lime — lime stays reserved for nav state and real actions. */
+.seg button.on { background: var(--foreground); color: var(--primary-foreground); font-weight: 700; }
+.seg button:not(.on):hover { color: var(--foreground); background: var(--accent); }
+
+.icon-btn {
+  position: relative; width: 38px; height: 38px; flex: none;
+  border: 1px solid var(--input); background: var(--card);
+  border-radius: var(--radius); display: grid; place-items: center;
+  transition: background var(--t), border-color var(--t);
+}
+.icon-btn:hover { background: var(--accent); border-color: var(--border-strong); }
+.icon-btn svg { width: 17px; height: 17px; stroke: var(--foreground); fill: none; stroke-width: 1.8; }
+.bell-badge {
+  position: absolute; top: -5px; inset-inline-end: -5px;
+  background: var(--destructive-solid); color: #FFFFFF;
+  font-size: 10px; font-weight: 700; line-height: 1;
+  min-width: 18px; height: 18px; display: grid; place-items: center; padding: 0 4px;
+  border-radius: var(--radius-full); border: 2px solid var(--app);
+}
+
+.user-chip {
+  display: flex; align-items: center; gap: 9px; height: 38px;
+  border: 1px solid var(--input); border-radius: var(--radius);
+  background: var(--card); padding: 0 13px 0 5px;
+}
+body.rtl .user-chip { padding: 0 5px 0 13px; }
+.user-avatar {
+  width: 28px; height: 28px; flex: none; border-radius: var(--radius-full);
+  background: var(--brand); color: var(--brand-foreground);
+  display: grid; place-items: center; font-size: 11.5px; font-weight: 800;
+}
+.user-chip span { font-size: 12.5px; font-weight: 600; }
+
+.notif-pop {
+  position: absolute; top: 54px; inset-inline-end: 20px; width: 366px;
+  background: var(--popover); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg); z-index: 70; padding: 6px; overflow: hidden;
+}
+.notif-pop h4 { padding: 11px 12px 10px; font-size: 14px; font-weight: 700; border-bottom: 1px solid var(--border); margin-bottom: 5px; }
+.notif-row { display: flex; gap: 11px; padding: 10px 12px; border-radius: var(--radius-sm); cursor: pointer; align-items: center; transition: background var(--t); font-size: 12.5px; }
+.notif-row:hover { background: var(--accent); }
+.notif-dot { width: 22px; height: 22px; flex: none; border-radius: var(--radius-full); display: grid; place-items: center; font-size: 10.5px; font-weight: 800; color: #FFFFFF; }
+.notif-dot.red { background: var(--destructive-solid); }
+.notif-dot.amber { background: var(--warning-solid); }
+.notif-dot.grey { background: #3F3F46; color: var(--foreground); }
+
+/* ---- account chip and menu -------------------------------------------------
+   The chip was a static "A / Admin" left over from the demo. It is now a real
+   button, so it needs the affordances of one. */
+.user-chip.is-btn { cursor: pointer; font: inherit; transition: border-color var(--t), background var(--t); }
+.user-chip.is-btn:hover { border-color: var(--ring); background: var(--accent); }
+.uc-name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uc-caret { width: 13px; height: 13px; stroke: var(--muted-foreground); fill: none; stroke-width: 2; flex: none; }
+.user-avatar.demo { background: var(--warning); color: #1A1206; }
+.user-chip.is-demo { border-style: dashed; }
+
+/* A password waiting to be changed after a manager reset. A dot rather than a
+   banner: it must be noticeable without blocking someone mid-queue. */
+.user-chip.needs-pw { position: relative; }
+.user-chip.needs-pw::after {
+  content: ''; position: absolute; top: -3px; inset-inline-end: -3px;
+  width: 9px; height: 9px; border-radius: var(--radius-full);
+  background: var(--warning); border: 2px solid var(--background);
+}
+
+.acct-pop {
+  position: absolute; top: 54px; inset-inline-end: 20px; width: 252px;
+  background: var(--popover); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg); z-index: 70; padding: 6px;
+}
+.acct-head { display: flex; align-items: center; gap: 11px; padding: 9px 10px 11px; }
+.acct-head b { display: block; font-size: 13.5px; font-weight: 700; }
+.user-avatar.lg { width: 36px; height: 36px; font-size: 13px; }
+.acct-role { font-size: 11.5px; color: var(--muted-foreground); }
+.acct-sep { height: 1px; background: var(--border); margin: 2px 0 5px; }
+.acct-warn {
+  margin: 0 4px 6px; padding: 7px 9px; border-radius: var(--radius-sm);
+  background: var(--warning-soft); color: var(--warning);
+  font-size: 11.5px; font-weight: 600; line-height: 1.4;
+}
+.acct-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: var(--radius-sm);
+  background: none; color: var(--foreground);
+  font-size: 12.5px; font-weight: 600; text-align: start;
+  cursor: pointer; transition: background var(--t), color var(--t);
+}
+.acct-item svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; }
+.acct-item:hover { background: var(--accent); }
+.acct-item.danger { color: var(--destructive); }
+.acct-item.danger:hover { background: var(--destructive-soft); }
+
+/* The same block inside the More sheet. Not a duplicate for convenience —
+   .user-chip is display:none below 900px, so on a phone this is the only
+   route to sign out. */
+.more-acct { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.ma-who { display: flex; align-items: center; gap: 11px; margin-bottom: 11px; }
+.ma-who b { display: block; font-size: 13.5px; }
+.ma-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ---- change password -------------------------------------------------------- */
+.pw-form { display: grid; gap: 12px; }
+.pw-err:empty { display: none; }
+.pw-err {
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--destructive-soft); color: var(--destructive);
+  font-size: 12px; font-weight: 600;
+}

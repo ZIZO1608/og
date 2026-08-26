@@ -3363,3 +3363,9 @@ html.has-demo-banner .view { padding-bottom: 52px; }
   display: block; font-size: 6pt; color: #B45309; background: #FEF3C7;
   border-radius: 2px; padding: 1px 3px; margin-top: 1px;
 }
+
+/* New slot kinds from the template editor — .lbl-name/.lbl-variant above
+   stay as they were so nothing about the 4 legacy presets shifts a pixel. */
+.lbl-header { position: absolute; font-weight: 700; font-size: 6.5pt; font-family: var(--font-head), Arial, sans-serif; white-space: nowrap; }
+.lbl-price  { position: absolute; font-weight: 800; font-size: 9pt; font-family: var(--font-head), Arial, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lbl-date   { position: absolute; font-size: 5.5pt; color: #3F3F46; white-space: nowrap; }

@@ -1,0 +1,293 @@
+/* ==========================================================================
+   OG SYSTEM — stylesheet  ·  DARK ONLY  ·  1/10: TOKENS
+   --------------------------------------------------------------------------
+   Split from the original css/style.css (lines 1-290). MUST load first —
+   every other split file uses var(--...) tokens defined here. Followed by
+   css/shell.css. See index.html for the full load order.
+
+   Design system: shadcn/ui component anatomy rebuilt in plain CSS — no React,
+   no Tailwind, no build step. Same tokens, same parts: card, button, badge,
+   tabs, input, switch, dialog, sheet, sonner toast, table.
+
+   The logo is white on pure black, so the product is dark-native. Depth comes
+   from surface lightness (app < card < popover), never from shadows — shadows
+   do not read on black. One accent: electric lime.
+
+   Two things stay light on purpose: the invoice sheet and the barcode labels.
+   Both are print previews of white paper.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* --- surfaces ---------------------------------------------------------- */
+  --app:                   #0A0A0B;
+  --background:            #0A0A0B;
+  --card:                  #141417;
+  --card-hover:            #17171B;
+  --popover:               #1B1B1F;
+  --muted:                 #1E1E22;
+  --accent:                #232327;   /* hover surface */
+  --subtle:                #101013;
+
+  /* --- text -------------------------------------------------------------- */
+  --foreground:            #FAFAFA;
+  --card-foreground:       #FAFAFA;
+  --muted-foreground:      #A1A1AA;   /* zinc-400 */
+  --dim:                   #71717A;   /* zinc-500, decorative only */
+
+  /* --- lines ------------------------------------------------------------- */
+  --border:                #27272A;
+  --border-strong:         #3F3F46;
+  --input:                 #2A2A2F;
+  --ring:                  #C6FF00;
+
+  --primary:               #FAFAFA;
+  --primary-foreground:    #0A0A0B;
+  --secondary:             #27272A;
+  --secondary-foreground:  #FAFAFA;
+
+  /* --- semantics, lifted to 400-weight so they read on black ------------- */
+  --destructive:           #F87171;
+  --destructive-solid:     #E5484D;
+  --destructive-soft:      #2B1416;
+  --destructive-border:    #7F2226;
+  --warning:               #FBBF24;
+  --warning-solid:         #D97706;
+  --warning-soft:          #2A2110;
+  --warning-border:        #7C5410;
+  --success:               #4ADE80;
+  --success-solid:         #16A34A;
+  --success-soft:          #0F2418;
+  --success-border:        #1D6B3D;
+
+  /* --- brand ------------------------------------------------------------- */
+  --brand:                 #C6FF00;
+  --brand-dim:             #A8DA00;
+  --brand-foreground:      #0A0A0B;
+  --brand-soft:            #1C2600;
+  --brand-border:          #4A6600;
+
+  --sidebar:               #000000;   /* pure black, exactly like the logo */
+  --sidebar-border:        #1C1C20;
+  --sidebar-accent:        #141417;
+
+  /* --- geometry ---------------------------------------------------------- */
+  --radius:      10px;
+  --radius-sm:   7px;
+  --radius-lg:   14px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .45);
+  --shadow:    0 2px 8px -2px rgb(0 0 0 / .55);
+  --shadow-md: 0 10px 24px -8px rgb(0 0 0 / .65);
+  --shadow-lg: 0 24px 56px -14px rgb(0 0 0 / .85), 0 0 0 1px rgb(255 255 255 / .07);
+
+  --sidebar-w: 256px;
+  --topbar-h:  62px;
+
+  /* Montserrat throughout. The two-letter mark keeps a fat-face serif —
+     that glyph pair is the logo itself. */
+  --font-display: 'Playfair Display', 'Bodoni MT', Didot, Georgia, serif;
+  --font-head:    'Montserrat', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-body:    'Montserrat', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* --- type scale --------------------------------------------------------
+     Seven steps. The file previously used eleven different sizes between
+     10.5px and 21px, which is why nothing on a card looked more important
+     than anything else — the differences were too small to register. */
+  --fs-micro:   10.5px;   /* table headers, eyebrows */
+  --fs-xs:      11.5px;   /* card footnotes */
+  --fs-sm:      12.5px;   /* secondary text, badges */
+  --fs-base:    13.5px;   /* body, table cells */
+  --fs-lg:        15px;   /* card titles */
+  --fs-xl:        19px;   /* page titles */
+  --fs-display:   28px;   /* the number on a stat */
+
+  /* --- spacing, on a 4px rhythm ------------------------------------------ */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 24px; --s-6: 32px; --s-7: 48px;
+
+  /* --- elevation ---------------------------------------------------------
+     Tone first, shadow second, border last. --surface-1 sits a notch
+     brighter than the old --card because a card with no outline has to earn
+     its edge from luminance alone. */
+  --surface-0: #0A0A0B;
+  --surface-1: #131317;
+  --surface-2: #1A1A1F;
+  --surface-3: #1B1B1F;
+
+  /* --- motion ------------------------------------------------------------
+     Four durations and three easings, so a duration is a decision made once
+     rather than a number invented at each call site.
+
+     Everything ENTERING decelerates (--e-out). Everything LEAVING
+     accelerates (--e-in). State flips use --e-std. Nothing overshoots. */
+  --d-1: 120ms;   /* state flips: hover, focus, colour */
+  --d-2: 180ms;   /* small movement: press, tick, badge */
+  --d-3: 260ms;   /* entrance: cards, rows, panels */
+  --d-4: 420ms;   /* view transitions, chart draw */
+
+  --e-out: cubic-bezier(.16, 1, .3, 1);
+  --e-in:  cubic-bezier(.4, 0, 1, 1);
+  --e-std: cubic-bezier(.4, 0, .2, 1);
+
+  --stagger: 22ms;
+
+  /* Kept as an alias so the ~85 transitions already written against --t pick
+     up the new easing without every one of them having to be edited. */
+  --t: var(--d-1) var(--e-std);
+}
+
+/* ---------------------------------------------------------- REDUCED MOTION
+   Lands before anything animates, not after.
+
+   Two switches, one rule: the OS setting, and a manual toggle in Settings.
+   The manual one matters because a projector or a remote-desktop session can
+   turn tasteful animation into a stutter, and that needs to be killable in
+   the meeting without editing code.
+
+   Durations collapse to .01ms rather than 0 — a zero-length transition never
+   fires `transitionend`, and anything waiting on that event would hang. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+body[data-motion="off"] *,
+body[data-motion="off"] *::before,
+body[data-motion="off"] *::after {
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+  scroll-behavior: auto !important;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--app);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;                 /* Montserrat 400 is thin on black */
+  line-height: 1.5;
+  letter-spacing: -.005em;          /* Montserrat runs wide by default */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body.rtl { font-family: 'Montserrat', 'Segoe UI', Tahoma, sans-serif; }
+
+h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 700; margin: 0; letter-spacing: -.025em; }
+button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+/* ---------------------------------------------------------------- CURSOR
+   A branded pointer, applied with care rather than everywhere.
+
+   Every rule ends in a native keyword fallback (`, auto` / `, pointer`) so if
+   a platform refuses the SVG the cursor degrades to the system one instead of
+   vanishing. The hotspot `3 3` matches the arrow tip in both files, so the
+   point of contact does not shift as the pointer moves onto a button.
+
+   Deliberately NOT applied to:
+     - text inputs and textareas, which keep the I-beam. This is a till; if
+       typing feels wrong the branding is not worth it.
+     - drag handles, which keep grab/grabbing. The affordance matters more.
+     - disabled controls, which keep not-allowed.
+     - touch devices, which have no cursor at all. */
+:root {
+  --cur:     url("../assets/cursor.svg") 3 3, auto;
+  --cur-int: url("../assets/cursor-pointer.svg") 3 3, pointer;
+}
+
+@media (pointer: fine) {
+  html, body { cursor: var(--cur); }
+  button, a, .clickable, [data-act], [data-pos], [data-yl], [data-yi], [data-bk], [data-nt],
+  .chip, .tab, .nav-item, .pcard, .st-card, .yl-rd, .yl-hc, .upload-box, label.switch,
+  table.tbl th.sortable, table.tbl tbody tr.clickable {
+    cursor: var(--cur-int);
+  }
+  /* Typing surfaces keep the native caret. */
+  input[type="text"], input[type="number"], input[type="search"], input[type="date"],
+  textarea, [contenteditable="true"] { cursor: text; }
+  /* Dragging keeps its own language. */
+  .kcard, .yl-card.drag { cursor: grab; }
+  .kcard:active, .yl-card.drag:active { cursor: grabbing; }
+  /* A disabled control must still say so. */
+  button:disabled, .btn:disabled, .btn.is-blocked,
+  .size-btn:disabled, .st-size:disabled { cursor: not-allowed; }
+}
+
+button { cursor: pointer; }
+
+/* The pointer glow. One fixed element moved by transform only, so it never
+   causes layout or paint outside its own compositor layer. js/motion.js
+   creates it and skips it entirely on coarse pointers and reduced motion. */
+.mo-glow {
+  position: fixed; top: 0; left: 0; width: 260px; height: 260px;
+  margin: -130px 0 0 -130px; border-radius: var(--radius-full);
+  pointer-events: none; z-index: 1; opacity: 0;
+  background: radial-gradient(circle, rgb(198 255 0 / .10) 0%, rgb(198 255 0 / 0) 62%);
+  transition: opacity 260ms var(--e-out);
+  will-change: transform;
+}
+body[data-portal="yalla"] .mo-glow {
+  background: radial-gradient(circle, rgb(181 220 192 / .12) 0%, rgb(181 220 192 / 0) 62%);
+}
+.mo-glow.on { opacity: 1; }
+/* Never over a light document — a lime haze on a white invoice looks like a
+   screen smudge. */
+body.modal-open .mo-glow { opacity: 0; }
+a { color: inherit; }
+
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+/* ------------------------------------------------------------ SCROLLBARS
+   Brand-tinted rather than grey, and driven by tokens so the Yalla Wear
+   re-skin gets its own mint bar for free instead of inheriting OG's.
+
+   The transparent border plus background-clip is what keeps the thumb a slim
+   pill inside a wider track — without it the thumb fills the full 12px and
+   reads as a heavy bar.
+
+   scrollbar-color is the Firefox equivalent and was missing entirely, so
+   Firefox showed the default OS scrollbar on a black UI.                   */
+
+:root {
+  --scroll-thumb:       #33402A;   /* lime, heavily desaturated for rest */
+  --scroll-thumb-hover: var(--brand-dim);
+}
+
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb); border-radius: var(--radius-full);
+  border: 3px solid transparent; background-clip: content-box;
+  transition: background var(--t);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover); background-clip: content-box; border: 3px solid transparent;
+}
+::-webkit-scrollbar-thumb:active { background: var(--brand); background-clip: content-box; border: 3px solid transparent; }
+
+/* The two light surfaces are print previews of white paper. A lime scrollbar
+   on a white invoice reads as a rendering fault, so they get a plain grey. */
+.invoice-sheet, .yw-sheet.paper, .pdf-sheet, .label-sheet {
+  scrollbar-color: #C9C5D8 transparent;
+}
+.invoice-sheet ::-webkit-scrollbar-thumb,
+.yw-sheet.paper ::-webkit-scrollbar-thumb,
+.pdf-sheet ::-webkit-scrollbar-thumb,
+.label-sheet ::-webkit-scrollbar-thumb {
+  background: #C9C5D8; background-clip: content-box; border: 3px solid transparent;
+}
+::selection { background: var(--brand); color: var(--brand-foreground); }

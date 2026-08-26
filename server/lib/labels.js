@@ -10,15 +10,29 @@
 
    The one exception is Arabic text. TSPL's native TEXT command cannot shape
    Arabic, and Node has no font-shaping engine (no canvas, and the
-   zero-dependency rule rules out installing one) — so when a name is
-   Arabic, the BROWSER pre-renders just that text run to a 1-bit bitmap (see
-   js/labels.js) and this module splices it into the TSPL it is otherwise
-   building entirely on its own. Detected per string, not per label.
+   zero-dependency rule rules out installing one) — so when a text field is
+   Arabic, the BROWSER pre-renders just that field's text to a 1-bit bitmap
+   (see js/labels.js) and this module splices it into the TSPL it is
+   otherwise building entirely on its own. Detected per field, not per
+   label — keyed by the field's slot `kind` in `arabicBitmaps`.
 
    This is not printer.js/printing.js (the 80mm THERMAL RECEIPT's TCP
    sender) — a different printer, a different protocol, a different queue —
    though label-transport-tcp.js mirrors printer.js's shape on purpose for
    the config.label.transport = 'tcp' case.
+
+   ---- templates (server/migrations/011_label_templates.sql) --------------
+   Labels used to be laid out from 4 hardcoded presets. They are now rows in
+   `label_templates`: a physical size plus an ordered list of "slots" — named
+   regions (logo/header/name/variant/barcode/price/date), each a bounding box
+   in DOTS with kind-specific options. `resolveSlot` fits real content INSIDE
+   a slot's box exactly the way the old hardcoded code positioned things
+   (e.g. a barcode centers itself inside its box) — the box is available
+   space, not a literal fixed placement, which is what lets one engine serve
+   the 4 legacy presets (seeded to reproduce their exact old dot positions)
+   and a user-authored template identically. The wire field name `preset` in
+   POST /api/labels/print|preview|calibrate is UNCHANGED — it means "template
+   key" now, so the agent and the existing browser chips need no changes.
    ========================================================================== */
 
 import { get, nowIso, tx } from './db.js';
@@ -32,45 +46,65 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 const DOTS_PER_MM = 8;              // 203dpi
-const QUIET_ZONE_MM = 2.5;
 const JOB_CHUNK_LABELS = 20;        // labels per queued job — see enqueue()
 const POLL_MS = 500;
 const LONGPOLL_WAIT_MS = 25000;     // stays under js/api.js's 15s AbortController by never being called from the browser at all — see GET /api/labels/next in index.js
 
-const DEFAULT_PRESETS = [
-  { key: '30x30', widthMm: 30, heightMm: 30, gapMm: 2, logo: 'small-top',      nameLines: 2, barcodeHeightMm: 12, allowEan: false },
-  { key: '30x20', widthMm: 30, heightMm: 20, gapMm: 2, logo: 'omit',           nameLines: 1, barcodeHeightMm: 9,  allowEan: false },
-  { key: '40x30', widthMm: 40, heightMm: 30, gapMm: 2, logo: 'small-top-left', nameLines: 2, barcodeHeightMm: 13, allowEan: true  },
-  { key: '50x30', widthMm: 50, heightMm: 30, gapMm: 2, logo: 'left-of-text',   nameLines: 2, barcodeHeightMm: 13, allowEan: true  }
-];
+/* Ultimate fallback ONLY — used if label_templates is somehow unreadable
+   (e.g. mid-migration). Normal operation always reads the table. Kept in
+   the old flat-preset shape purely as a last resort, not as a second
+   source of truth. */
+const FALLBACK_TEMPLATE = {
+  key: '30x30', name: '30 x 30mm', widthMm: 30, heightMm: 30, gapMm: 2,
+  slots: [
+    { kind: 'logo', on: true, xDots: 100, yDots: 4, wDots: 40, hDots: 40 },
+    { kind: 'name', on: true, xDots: 20, yDots: 48, wDots: 200, hDots: 44, lines: 2 },
+    { kind: 'variant', on: true, xDots: 20, yDots: 96, wDots: 200, hDots: 24 },
+    { kind: 'barcode', on: true, xDots: 20, yDots: 126, wDots: 200, hDots: 96, barcodeType: 'auto', showHri: true }
+  ]
+};
 
 /* Fixed-cell bitmap-font geometry for TSPL's built-in fonts. STARTING
    VALUES — confirm against the XP-235B's actual TSPL manual on first print;
    clone firmwares vary. Needed because Node has no font-metrics engine, so
-   Latin line-wrapping is done here via fixed-width char math rather than
-   real text measurement. */
+   line-wrapping/alignment is done here via fixed-width char math rather
+   than real text measurement. */
 const TSPL_FONTS = {
   '1': { charW: 8,  charH: 12 },
   '2': { charW: 12, charH: 20 },
   '3': { charW: 16, charH: 24 },
   '4': { charW: 24, charH: 32 }
 };
+const FONT_SIZE_TO_TSPL = { S: '1', M: '2', L: '3' };
 
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 export function isArabic(s) { return ARABIC_RE.test(String(s || '')); }
 
-/* ------------------------------------------------------------- presets */
+/* ------------------------------------------------------------- templates */
 
-export function presets() {
-  const row = get().prepare("SELECT value FROM config WHERE key = 'label.presets'").get();
-  if (!row) return DEFAULT_PRESETS;
-  try { return JSON.parse(row.value); } catch { return DEFAULT_PRESETS; }
+function normalizeTemplateRow(row) {
+  let slots;
+  try { slots = JSON.parse(row.slots); } catch { slots = []; }
+  return {
+    id: row.id, key: row.key, name: row.name, nameAr: row.name_ar,
+    widthMm: row.width_mm, heightMm: row.height_mm, gapMm: row.gap_mm,
+    slots
+  };
 }
 
-export function preset(key) {
-  const p = presets().find(p => p.key === key);
-  if (!p) throw Object.assign(new Error(`unknown label preset: ${key}`), { code: 'invalid' });
-  return p;
+export function templates() {
+  const rows = get().prepare('SELECT * FROM label_templates WHERE archived = 0 ORDER BY id').all();
+  if (!rows.length) return [FALLBACK_TEMPLATE];
+  return rows.map(normalizeTemplateRow);
+}
+
+export function template(key) {
+  const row = get().prepare('SELECT * FROM label_templates WHERE key = ? AND archived = 0').get(key);
+  if (!row) {
+    if (key === FALLBACK_TEMPLATE.key) return FALLBACK_TEMPLATE;
+    throw Object.assign(new Error(`unknown label template: ${key}`), { code: 'invalid' });
+  }
+  return normalizeTemplateRow(row);
 }
 
 function cfgStr(key, fallback) {
@@ -82,13 +116,13 @@ function cfgNum(key, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-/* The per-preset default, unless a manager has set a live override — gap
-   varies by label-stock supplier, worth exposing separately from the
-   preset's own geometry. */
-function effectiveGapMm(presetObj) {
+/* The per-template default, unless a manager has set a live override — gap
+   varies by label-stock supplier, worth exposing separately from a
+   template's own geometry. */
+function effectiveGapMm(tpl) {
   const row = get().prepare("SELECT value FROM config WHERE key = 'label.gap_mm'").get();
   const n = row ? Number(row.value) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : presetObj.gapMm;
+  return Number.isFinite(n) && n > 0 ? n : tpl.gapMm;
 }
 
 /* --------------------------------------------------------------- resolve */
@@ -102,23 +136,33 @@ export function resolveVariant(sku) {
   return v;
 }
 
-/* --------------------------------------------------------- symbology rules
-   EAN-13 only when the preset allows it (>=40mm) AND the stored barcode is
-   a genuinely valid EAN-13 — reusing Cat.ean13Check rather than
-   reimplementing it. Otherwise Code128 of the numeric label_code, with a
-   reason string the preview surfaces so the fallback is never a surprise. */
-export function barcodeFor(variant, presetObj) {
+/* --------------------------------------------------------------- symbology
+   'auto' (the common case): EAN-13 if the variant carries a genuinely valid
+   one (Cat.ean13Check, reused not reimplemented) AND it fits the slot's own
+   width — computeBarcodeWidth is the single source of truth for "fits",
+   so there is no separate width-class policy to keep in sync with it.
+   'ean13'/'code128' on the slot force the symbology; a forced EAN-13 that
+   truly cannot fit still throws barcode_too_wide rather than silently
+   printing something else, since that was an explicit choice. */
+export function barcodeFor(variant, slot) {
   const barcode = variant.barcode || '';
   const validEan = /^\d{13}$/.test(barcode) && Cat.ean13Check(barcode.slice(0, 12)) === Number(barcode[12]);
-  const eligible = presetObj.allowEan && validEan;
+  const forced = slot.barcodeType === 'ean13' || slot.barcodeType === 'code128';
+  const tryEan = slot.barcodeType === 'ean13' || (!forced && validEan);
 
-  if (eligible) {
-    return { symbology: 'ean13', content: barcode, fallbackReason: null };
+  if (tryEan) {
+    if (!validEan) {
+      return { symbology: 'code128', content: variant.label_code, fallbackReason: 'no valid EAN-13 on this variant' };
+    }
+    try {
+      computeBarcodeWidth('ean13', barcode, slot); // throws barcode_too_wide if it doesn't fit — caught below unless forced
+      return { symbology: 'ean13', content: barcode, fallbackReason: null };
+    } catch (e) {
+      if (slot.barcodeType === 'ean13') throw e;
+      return { symbology: 'code128', content: variant.label_code, fallbackReason: "EAN-13 does not fit this label's width" };
+    }
   }
-  const fallbackReason = !presetObj.allowEan
-    ? `${presetObj.widthMm}mm is narrower than the 40mm EAN-13 needs`
-    : 'no valid EAN-13 on this variant';
-  return { symbology: 'code128', content: variant.label_code, fallbackReason };
+  return { symbology: 'code128', content: variant.label_code, fallbackReason: null };
 }
 
 /* -------------------------------------------------- width / quiet-zone budget
@@ -126,7 +170,11 @@ export function barcodeFor(variant, presetObj) {
    always digits by construction, so this never needs the mixed-mode
    analysis js/codes.js's code128Values does for arbitrary text. Every
    symbol is 11 modules except STOP (13): START + digit-pairs (+ one
-   leftover-digit switch-to-B if odd length) + CHECK + STOP. */
+   leftover-digit switch-to-B if odd length) + CHECK + STOP.
+
+   `slot.wDots` is already the USABLE width — a template's slot boxes are
+   authored (or seeded) inset from the label edge, so no separate quiet-zone
+   subtraction happens here; the box IS the quiet-zone-safe area. */
 export function code128SymbolCount(digits) {
   const s = String(digits);
   const pairs = Math.floor(s.length / 2);
@@ -140,25 +188,25 @@ function code128ModuleCount(digits) {
 const EAN13_MODULES = 11 + 95 + 7;   // asymmetric quiet + 95 data + guard — matches fitBarcode() in js/app.js's old Label Studio
 
 /* Narrowest bar width (in dots) that still clears the printer's 2-dot floor
-   and fits the barcode PLUS a 2.5mm quiet zone on both sides inside the
-   preset. Throws a NAMED error rather than silently overflowing the label. */
-export function computeBarcodeWidth(symbology, content, presetObj) {
+   and fits the barcode inside the slot's own box. Throws a NAMED error
+   rather than silently overflowing the label. */
+export function computeBarcodeWidth(symbology, content, slot) {
   const modules = symbology === 'ean13' ? EAN13_MODULES : code128ModuleCount(content);
-  const usableDots = (presetObj.widthMm - 2 * QUIET_ZONE_MM) * DOTS_PER_MM;
+  const usableDots = slot.wDots;
   const narrowDots = Math.floor(usableDots / modules);
   if (narrowDots < 2) {
     throw Object.assign(
-      new Error(`${symbology === 'ean13' ? 'EAN-13' : 'Code128'} "${content}" does not fit on a ` +
-        `${presetObj.widthMm}\u00d7${presetObj.heightMm}mm label even at the minimum bar width — choose a larger preset.`),
+      new Error(`${symbology === 'ean13' ? 'EAN-13' : 'Code128'} "${content}" does not fit a ` +
+        `${Math.round(usableDots / DOTS_PER_MM)}mm-wide slot even at the minimum bar width — widen the slot or choose a larger template.`),
       { code: 'barcode_too_wide' }
     );
   }
   return { narrowDots, modules, widthDots: narrowDots * modules };
 }
 
-/* ------------------------------------------------------------- name wrap
-   Fixed-width wrap/truncate for LATIN text only — an Arabic name never
-   reaches this, it goes through the browser-bitmap path instead. Wraps to
+/* ------------------------------------------------------------- text fitting
+   Fixed-width wrap/truncate — Latin only, an Arabic field never reaches
+   this (routed to the browser-bitmap path instead by resolveSlot). Wraps to
    at most `maxLines`, then ellipsizes the last line — truncation is
    explicitly fine here, unlike the receipt: the barcode is the identity. */
 export function wrapName(name, { font = '2', maxLines, widthDots }) {
@@ -188,56 +236,125 @@ export function wrapName(name, { font = '2', maxLines, widthDots }) {
   return lines.slice(0, maxLines);
 }
 
-/* ------------------------------------------------------ logo placement */
-function logoBox(logoMode, widthDots) {
-  if (logoMode === 'omit') return null;
-  const size = 40; // dots — 5mm, a small monochrome mark, never the full label width
-  if (logoMode === 'small-top') return { xDots: Math.round((widthDots - size) / 2), yDots: 4, wDots: size, hDots: size, inline: false };
-  if (logoMode === 'small-top-left') return { xDots: 4, yDots: 4, wDots: size, hDots: size, inline: false };
-  if (logoMode === 'left-of-text') return { xDots: 4, yDots: 4, wDots: size, hDots: size, inline: true };
-  return null;
+/* Single-line fit for header/variant/price/date: truncate with an ellipsis
+   rather than let TSPL draw text past the slot (which, unlike a browser,
+   TSPL will happily do — it has no clipping of its own). Returns whether it
+   had to shorten anything, so the caller can surface a non-fatal warning
+   (the spec's "warn rather than silently clip" rule) instead of throwing —
+   unlike a barcode not fitting, a slightly-truncated price is not a print
+   that should be blocked. */
+function fitOneLine(text, font, widthDots) {
+  const cell = TSPL_FONTS[font].charW;
+  const maxChars = Math.max(1, Math.floor(widthDots / cell));
+  const s = String(text);
+  if (s.length <= maxChars) return { text: s, overflow: false };
+  return { text: s.slice(0, Math.max(1, maxChars - 1)) + '\u2026', overflow: true };
+}
+
+/* Left/center/right within a box, in dots, using the same fixed-cell char
+   math as everything else here (TSPL has no native text alignment). */
+function alignX(text, font, align, box) {
+  const textWidthDots = String(text).length * TSPL_FONTS[font].charW;
+  if (align === 'center') return box.xDots + Math.max(0, Math.round((box.wDots - textWidthDots) / 2));
+  if (align === 'right') return box.xDots + Math.max(0, box.wDots - textWidthDots);
+  return box.xDots;
+}
+
+function thousandsSep(digits) {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+/* -------------------------------------------------------------- one slot
+   Every kind returns a "field": the thing buildLabelBytes/the browser
+   preview actually draw. `type` is 'text' | 'barcode' | 'bitmap' | 'image'.
+   A text field whose content is Arabic becomes 'bitmap' instead — the
+   browser must supply arabicBitmaps[slot.kind] for it (see js/labels.js). */
+function resolveSlot(slot, variant, shopCfg) {
+  const font = FONT_SIZE_TO_TSPL[slot.fontSize] || '2';
+
+  if (slot.kind === 'logo') {
+    return { kind: 'logo', type: 'image', xDots: slot.xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots };
+  }
+
+  if (slot.kind === 'barcode') {
+    const bc = barcodeFor(variant, slot);
+    const bcWidth = computeBarcodeWidth(bc.symbology, bc.content, slot);
+    const xDots = slot.xDots + Math.max(0, Math.round((slot.wDots - bcWidth.widthDots) / 2));
+    return {
+      kind: 'barcode', type: 'barcode', xDots, yDots: slot.yDots, wDots: bcWidth.widthDots, hDots: slot.hDots,
+      narrowDots: bcWidth.narrowDots, symbology: bc.symbology, content: bc.content,
+      showHri: slot.showHri !== false, fallbackReason: bc.fallbackReason
+    };
+  }
+
+  if (slot.kind === 'name') {
+    const arabic = isArabic(variant.name);
+    const maxLines = slot.lines || 2;
+    const lineHeight = TSPL_FONTS['2'].charH + 2;
+    if (arabic) {
+      return { kind: 'name', type: 'bitmap', arabic: true, xDots: slot.xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots };
+    }
+    const lines = wrapName(variant.name, { font: '2', maxLines, widthDots: slot.wDots });
+    return {
+      kind: 'name', type: 'text', xDots: slot.xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots,
+      font: '2', lineHeight, text: lines.join('\n'), overflow: false
+    };
+  }
+
+  if (slot.kind === 'variant') {
+    const arabic = isArabic(variant.size);
+    if (arabic) return { kind: 'variant', type: 'bitmap', arabic: true, xDots: slot.xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots };
+    const fit = fitOneLine(variant.size, '3', slot.wDots);
+    return { kind: 'variant', type: 'text', xDots: slot.xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots, font: '3', text: fit.text, overflow: fit.overflow };
+  }
+
+  if (slot.kind === 'header') {
+    const raw = shopCfg.name || '';
+    const arabic = isArabic(raw);
+    if (arabic) return { kind: 'header', type: 'bitmap', arabic: true, xDots: slot.xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots };
+    const fit = fitOneLine(raw, font, slot.wDots);
+    const xDots = alignX(fit.text, font, slot.align, slot);
+    return { kind: 'header', type: 'text', xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots, font, text: fit.text, overflow: fit.overflow };
+  }
+
+  if (slot.kind === 'price') {
+    const amount = Cat.fromMinor(variant.selling_price ?? 0, variant.currency);
+    const [whole, frac] = amount.split('.');
+    const wholeFmt = slot.thousands ? thousandsSep(whole.replace('-', '')) : whole.replace('-', '');
+    const sign = whole.startsWith('-') ? '-' : '';
+    const body = sign + wholeFmt + (frac ? '.' + frac : '');
+    const text = `${slot.currencyPrefix || ''}${body}${slot.currencySuffix ? ' ' + slot.currencySuffix : ''}`.trim();
+    const fit = fitOneLine(text, font, slot.wDots);
+    const xDots = alignX(fit.text, font, slot.align, slot);
+    return { kind: 'price', type: 'text', xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots, font, text: fit.text, overflow: fit.overflow };
+  }
+
+  if (slot.kind === 'date') {
+    const text = nowIso().slice(0, 10);
+    const fit = fitOneLine(text, '1', slot.wDots);
+    return { kind: 'date', type: 'text', xDots: slot.xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots, font: '1', text: fit.text, overflow: fit.overflow };
+  }
+
+  throw Object.assign(new Error(`unknown slot kind: ${slot.kind}`), { code: 'invalid' });
 }
 
 /* -------------------------------------------------------------- layout
    THE data both the TSPL builder AND the browser preview consume — see
    POST /api/labels/preview in index.js and js/labels.js — so the preview
-   can never drift from what actually prints. Pure function, no I/O. */
-export function computeLayout(variant, presetObj) {
-  const widthDots = presetObj.widthMm * DOTS_PER_MM;
-  const heightDots = presetObj.heightMm * DOTS_PER_MM;
-  const marginDots = Math.round(QUIET_ZONE_MM * DOTS_PER_MM);
+   can never drift from what actually prints. Pure function except for the
+   Cat.fromMinor/config reads resolveSlot makes, which are themselves pure
+   reads with no side effects. `tpl` is a normalized template row (see
+   normalizeTemplateRow) — `template(key)`'s return shape. */
+export function computeLayout(variant, tpl) {
+  const widthDots = tpl.widthMm * DOTS_PER_MM;
+  const heightDots = tpl.heightMm * DOTS_PER_MM;
+  const shopCfg = { name: cfgStr('shop.name', '') };
 
-  const bc = barcodeFor(variant, presetObj);
-  const bcWidth = computeBarcodeWidth(bc.symbology, bc.content, presetObj);
-  const barcodeHeightDots = presetObj.barcodeHeightMm * DOTS_PER_MM;
+  const fields = (tpl.slots || [])
+    .filter((s) => s.on !== false)
+    .map((slot) => resolveSlot(slot, variant, shopCfg));
 
-  const logo = logoBox(presetObj.logo, widthDots);
-  const textLeft = (logo && logo.inline) ? logo.xDots + logo.wDots + 6 : marginDots;
-  const textWidth = widthDots - textLeft - marginDots;
-
-  let y = (logo && !logo.inline) ? logo.yDots + logo.hDots + 4 : 6;
-
-  const nameArabic = isArabic(variant.name);
-  const nameLineHeight = TSPL_FONTS['2'].charH + 2;
-  const name = {
-    xDots: textLeft, yDots: y, font: '2', maxLines: presetObj.nameLines,
-    widthDots: textWidth, heightDots: presetObj.nameLines * nameLineHeight, arabic: nameArabic,
-    text: nameArabic ? variant.name : wrapName(variant.name, { font: '2', maxLines: presetObj.nameLines, widthDots: textWidth }).join('\n')
-  };
-  y += name.heightDots + 4;
-
-  const variantLine = { xDots: textLeft, yDots: y, font: '3', text: String(variant.size) };
-  y += TSPL_FONTS['3'].charH + 6;
-
-  const barcodeY = Math.max(y, heightDots - barcodeHeightDots - 26 /* HRI text clearance below the bars */);
-  const barcode = {
-    xDots: Math.max(marginDots, Math.round((widthDots - bcWidth.widthDots) / 2)),
-    yDots: barcodeY, wDots: bcWidth.widthDots, hDots: barcodeHeightDots,
-    narrowDots: bcWidth.narrowDots, symbology: bc.symbology, content: bc.content,
-    fallbackReason: bc.fallbackReason
-  };
-
-  return { widthDots, heightDots, logo, name, variant: variantLine, barcode, quietZoneDots: marginDots };
+  return { widthDots, heightDots, fields };
 }
 
 /* ------------------------------------------------------------- calibrate
@@ -254,9 +371,9 @@ export function calibrate({ station, userId, opId }) {
   if (!station) throw Object.assign(new Error('a station is required'), { code: 'invalid' });
 
   const cmd = cfgStr('label.calibrate_cmd', 'AUTODETECT');
-  const p = preset(cfgStr('label.default_preset', '30x30'));
+  const tpl = template(cfgStr('label.default_preset', '30x30'));
   const bytes = Buffer.from(
-    `SIZE ${p.widthMm} mm,${p.heightMm} mm\r\nGAP ${effectiveGapMm(p)} mm,0 mm\r\n${cmd}\r\n`,
+    `SIZE ${tpl.widthMm} mm,${tpl.heightMm} mm\r\nGAP ${effectiveGapMm(tpl)} mm,0 mm\r\n${cmd}\r\n`,
     'ascii'
   );
 
@@ -266,7 +383,7 @@ export function calibrate({ station, userId, opId }) {
       `INSERT INTO label_print_jobs
          (batch_id, station, preset, lines, label_count, tspl_b64, status, created_at, created_by)
        VALUES (?, ?, ?, '[]', 0, ?, 'pending', ?, ?)`
-    ).run(randomBytes(8).toString('hex'), station, p.key, bytes.toString('base64'), at, userId ?? null);
+    ).run(randomBytes(8).toString('hex'), station, tpl.key, bytes.toString('base64'), at, userId ?? null);
     return Number(info.lastInsertRowid);
   });
 
@@ -316,48 +433,58 @@ function bitmapCmd(x, y, bmp) {
 }
 function escText(s) { return String(s).replace(/["\\]/g, '\\$&'); }
 
-/* One full TSPL command block for ONE label. arabicBitmaps: { name?: {bytesPerRow,height,dataB64} }
-   — only present when that field's text is Arabic. SIZE/GAP/CLS resent
-   every label, per the printer's own unreliable memory across power
+/* One full TSPL command block for ONE label. `fields` comes from
+   computeLayout(). arabicBitmaps: { [kind]: {bytesPerRow,height,dataB64} }
+   — only present for fields resolveSlot marked type:'bitmap'. SIZE/GAP/CLS
+   resent every label, per the printer's own unreliable memory across power
    cycles; DIRECTION 1 controls which edge feeds first (verify on first
    physical print — wrong here means every label upside down). */
-export function buildLabelBytes(layout, presetObj, arabicBitmaps = {}) {
+export function buildLabelBytes(layout, tpl, arabicBitmaps = {}) {
   const chunks = [];
   chunks.push(ascii(
-    `SIZE ${presetObj.widthMm} mm,${presetObj.heightMm} mm\r\n` +
-    `GAP ${effectiveGapMm(presetObj)} mm,0 mm\r\n` +
+    `SIZE ${tpl.widthMm} mm,${tpl.heightMm} mm\r\n` +
+    `GAP ${effectiveGapMm(tpl)} mm,0 mm\r\n` +
     `DIRECTION 1\r\n` +
     `DENSITY ${cfgNum('label.density', 8)}\r\n` +
     `SPEED ${cfgNum('label.speed', 4)}\r\n` +
     `CLS\r\n`
   ));
 
-  if (layout.logo) {
-    const asset = loadLogoAsset();
-    if (asset) chunks.push(bitmapCmd(layout.logo.xDots, layout.logo.yDots, asset));
-  }
-
-  if (layout.name.arabic) {
-    const bmp = arabicBitmaps.name;
-    if (!bmp) {
-      throw Object.assign(new Error('Arabic product name needs a browser-rendered bitmap but none was supplied'), { code: 'missing_bitmap' });
+  for (const f of layout.fields) {
+    if (f.type === 'image') {
+      if (f.kind === 'logo') {
+        const asset = loadLogoAsset();
+        if (asset) chunks.push(bitmapCmd(f.xDots, f.yDots, asset));
+      }
+      continue;
     }
-    chunks.push(bitmapCmd(layout.name.xDots, layout.name.yDots, bmp));
-  } else {
-    layout.name.text.split('\n').forEach((line, i) => {
-      chunks.push(ascii(`TEXT ${layout.name.xDots},${layout.name.yDots + i * (TSPL_FONTS['2'].charH + 2)},"2",0,1,1,"${escText(line)}"\r\n`));
-    });
+
+    if (f.type === 'bitmap') {
+      const bmp = arabicBitmaps[f.kind];
+      if (!bmp) {
+        throw Object.assign(new Error(`Arabic "${f.kind}" field needs a browser-rendered bitmap but none was supplied`), { code: 'missing_bitmap' });
+      }
+      chunks.push(bitmapCmd(f.xDots, f.yDots, bmp));
+      continue;
+    }
+
+    if (f.type === 'text') {
+      const lineHeight = f.lineHeight || (TSPL_FONTS[f.font].charH + 2);
+      String(f.text).split('\n').forEach((line, i) => {
+        chunks.push(ascii(`TEXT ${f.xDots},${f.yDots + i * lineHeight},"${f.font}",0,1,1,"${escText(line)}"\r\n`));
+      });
+      continue;
+    }
+
+    if (f.type === 'barcode') {
+      /* 1 = print the human-readable code below the bars when showHri is
+         on. Scanners fail sometimes, eyes don't. */
+      chunks.push(ascii(
+        `BARCODE ${f.xDots},${f.yDots},"${f.symbology === 'ean13' ? 'EAN13' : '128'}",` +
+        `${f.hDots},${f.showHri ? 1 : 0},0,${f.narrowDots},${f.narrowDots},"${f.content}"\r\n`
+      ));
+    }
   }
-
-  chunks.push(ascii(`TEXT ${layout.variant.xDots},${layout.variant.yDots},"3",0,2,2,"${escText(layout.variant.text)}"\r\n`));
-
-  const bc = layout.barcode;
-  /* 1 = print the human-readable code below the bars. Scanners fail
-     sometimes, eyes don't. */
-  chunks.push(ascii(
-    `BARCODE ${bc.xDots},${bc.yDots},"${bc.symbology === 'ean13' ? 'EAN13' : '128'}",` +
-    `${bc.hDots},1,0,${bc.narrowDots},${bc.narrowDots},"${bc.content}"\r\n`
-  ));
 
   chunks.push(ascii('PRINT 1,1\r\n'));
   return Buffer.concat(chunks);
@@ -377,7 +504,7 @@ export function enqueue({ lines, presetKey, station, userId, opId, arabicBitmaps
   }
   if (!station) throw Object.assign(new Error('a station is required'), { code: 'invalid' });
 
-  const presetObj = preset(presetKey);
+  const tpl = template(presetKey);
   const maxBatch = cfgNum('label.max_batch', 500);
   const totalQty = lines.reduce((a, l) => a + (Number(l.qty) || 0), 0);
   if (totalQty <= 0) throw Object.assign(new Error('nothing to print'), { code: 'invalid' });
@@ -406,8 +533,8 @@ export function enqueue({ lines, presetKey, station, userId, opId, arabicBitmaps
       const bytesChunks = [];
       for (const sku of chunkSkus) {
         const variant = resolveVariant(sku);
-        const layout = computeLayout(variant, presetObj);
-        bytesChunks.push(buildLabelBytes(layout, presetObj, arabicBitmaps[sku]));
+        const layout = computeLayout(variant, tpl);
+        bytesChunks.push(buildLabelBytes(layout, tpl, arabicBitmaps[sku]));
       }
       const tsplB64 = Buffer.concat(bytesChunks).toString('base64');
 
@@ -415,14 +542,14 @@ export function enqueue({ lines, presetKey, station, userId, opId, arabicBitmaps
         `INSERT INTO label_print_jobs
            (batch_id, station, preset, lines, label_count, tspl_b64, status, created_at, created_by)
          VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
-      ).run(batchId, station, presetKey, JSON.stringify(chunkLines), chunkSkus.length, tsplB64, at, userId ?? null);
+      ).run(batchId, station, tpl.key, JSON.stringify(chunkLines), chunkSkus.length, tsplB64, at, userId ?? null);
       made.push(Number(info.lastInsertRowid));
 
       for (const { sku, qty } of chunkLines) {
         d.prepare(
           `INSERT INTO label_print_log (batch_id, job_id, sku, qty, preset, station, user_id, status, at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?)`
-        ).run(batchId, info.lastInsertRowid, sku, qty, presetKey, station, userId ?? null, at);
+        ).run(batchId, info.lastInsertRowid, sku, qty, tpl.key, station, userId ?? null, at);
       }
     }
     return made;
@@ -435,6 +562,46 @@ export function enqueue({ lines, presetKey, station, userId, opId, arabicBitmaps
     ).run(opId, at, userId ?? null, JSON.stringify(result));
   }
   return result;
+}
+
+/* Restores a past batch as a fresh print — re-derives {lines, presetKey,
+   station} from the original job rows and calls enqueue() directly, so a
+   reprint is provably the same code path as a first print, not a parallel
+   one. Idempotent via its own opId, distinct from the original batch's. */
+export function reprint(batchId, userId, opId) {
+  if (opId) {
+    const seen = get().prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
+    if (seen) return { ...JSON.parse(seen.result), replayed: true };
+  }
+  const jobs = get().prepare(
+    `SELECT station, preset, lines FROM label_print_jobs WHERE batch_id = ? ORDER BY id`
+  ).all(batchId);
+  if (!jobs.length) throw Object.assign(new Error(`no such batch: ${batchId}`), { code: 'invalid' });
+
+  const counts = {};
+  for (const job of jobs) {
+    for (const { sku, qty } of JSON.parse(job.lines)) counts[sku] = (counts[sku] || 0) + qty;
+  }
+  const lines = Object.entries(counts).map(([sku, qty]) => ({ sku, qty }));
+  return enqueue({ lines, presetKey: jobs[0].preset, station: jobs[0].station, userId, opId });
+}
+
+/* Read side of label_print_log — never had one before; History (js/app.js's
+   `labels` view) is the first consumer. */
+export function printLog({ sku, batchId, station, limit = 200 } = {}) {
+  const clauses = [];
+  const params = [];
+  if (sku) { clauses.push('sku = ?'); params.push(sku); }
+  if (batchId) { clauses.push('batch_id = ?'); params.push(batchId); }
+  if (station) { clauses.push('station = ?'); params.push(station); }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  params.push(limit);
+  return get().prepare(
+    `SELECT l.*, u.username AS user_name
+       FROM label_print_log l LEFT JOIN users u ON u.id = l.user_id
+       ${where}
+      ORDER BY l.at DESC LIMIT ?`
+  ).all(...params);
 }
 
 /* ---------------------------------------------- claim / lease / complete
