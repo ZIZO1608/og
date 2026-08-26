@@ -14,13 +14,22 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v25';
+var CACHE = 'og-system-v26';
 
 var SHELL = [
   './',
   'index.html',
   'manifest.webmanifest',
-  'css/style.css',
+  'css/tokens.css',
+  'css/shell.css',
+  'css/motion-cards.css',
+  'css/inputs-dashboard-pos.css',
+  'css/dialogs-customers-jobs.css',
+  'css/warehouse-storefront-settings.css',
+  'css/tour-yalla-scan.css',
+  'css/yalla-invoice-tracker-labels.css',
+  'css/bulk-gate-responsive.css',
+  'css/print-hardware-receipt-newlabels.css',
   'assets/fonts/fonts.css',
   'assets/logo.svg',
   'assets/cursor.svg',
@@ -53,7 +62,23 @@ var SHELL = [
   'js/ylinvoice.js',
   'js/yalla.js',
   'js/deliveries.js',
-  'js/app.js'
+  'js/app-state.js',
+  'js/app-i18n.js',
+  'js/app-util.js',
+  'js/app-export.js',
+  'js/app-shell.js',
+  'js/app-dashboard.js',
+  'js/app-products.js',
+  'js/app-warehouse.js',
+  'js/app-customers-scan.js',
+  'js/app-jobs-reports.js',
+  'js/app-storefront-settings.js',
+  'js/app-documents.js',
+  'js/app-tour-routing.js',
+  'js/app-i18n-extra.js',
+  'js/app-actions.js',
+  'js/app-changes.js',
+  'js/app-boot.js'
 ];
 
 /* Cache each file on its own rather than with addAll().

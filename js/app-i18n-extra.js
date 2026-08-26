@@ -5,13 +5,13 @@
    Split from the original js/app.js (lines 6189-6516). Loads after
    app-tour-routing.js. Must load after app-i18n.js (file 2) since the merge
    statements at the bottom write into I18N.en/I18N.ar.
-
-   Every key here exists in the *_AR object too. A missing key does not
-   throw — t() quietly returns the slug — so the demo would render
-   "yl_outstanding" in Arabic and nobody would notice until the meeting.
    ========================================================================== */
 
-/* ---- Yalla Wear v3: kits, board, radar, money, messages ------------------ */
+/* ---- Yalla Wear v3: kits, board, radar, money, messages ------------------
+   Every key here exists in EXTRA_AR too. A missing key does not throw — t()
+   quietly returns the slug — so the demo would render "yl_outstanding" in
+   Arabic and nobody would notice until the meeting. The suite asserts the two
+   objects have identical key sets for exactly that reason. */
 var EXTRA_V3_EN = {
   /* nav + modes */
   yl_invoices: 'Invoices', yl_board: 'Board', yl_list: 'List',

@@ -184,7 +184,7 @@ var DEMO_MATRIX = [
   ['stock.count',    'stock',     'Do a stock count',            [1, 0, 1, 0, 0]],
   ['product.read',   'products',  'See products',                [1, 1, 1, 1, 0]],
   ['product.write',  'products',  'Add and edit products',       [1, 0, 1, 0, 0]],
-  ['customer.read',  'customers', 'See customers',                [1, 1, 0, 1, 0]],
+  ['customer.read',  'customers', 'See customers',               [1, 1, 0, 1, 0]],
   ['customer.write', 'customers', 'Add and edit customers',      [1, 1, 0, 0, 0]],
   ['cost.read',      'money',     'See what things cost',        [1, 0, 0, 0, 0]],
   ['profit.read',    'money',     'See profit',                  [1, 0, 0, 0, 0]],
