@@ -112,6 +112,12 @@ function viewProducts() {
      who cannot act on the selection. */
   var bulk = allow('product.write');
 
+  /* One-click "just this size" printing, right from the row — the bulk
+     Print labels screen is for a batch; this is for the one sticker that
+     fell off a shoe on the shelf. Opens straight to that product's own
+     sizes, no drawer in between. */
+  var canLabel = allow('label.print');
+
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>';
   if (bulk) h += '<th class="bk-col">' + Bulk.headBox('products') + '</th>';
   cols.forEach(function (c) {
@@ -119,6 +125,7 @@ function viewProducts() {
     h += '<th class="sortable' + (c.num ? ' num' : '') + '" data-act="prod-sort" data-k="' + c.k + '">' +
          t(c.label) + '<span class="arrow">' + arrow + '</span></th>';
   });
+  if (canLabel) h += '<th></th>';
   h += '</tr></thead><tbody>';
 
   rows.forEach(function (r, ri) {
@@ -148,6 +155,10 @@ function viewProducts() {
          '" data-act="open-product" data-id="' + r.p.id + '">' +
       (bulk ? '<td class="bk-col">' + Bulk.box('products', r.p.id, ri) + '</td>' : '');
     cols.forEach(function (c) { h += cell[c.k]; });
+    if (canLabel) {
+      h += '<td onclick="event.stopPropagation()"><button class="btn btn-sm btn-ghost" ' +
+        'data-act="quick-label" data-id="' + r.p.id + '">' + t('print_labels') + '</button></td>';
+    }
     h += '</tr>';
   });
 

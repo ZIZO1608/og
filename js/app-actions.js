@@ -183,6 +183,7 @@ var ACTIONS = {
   },
 
   'open-product': function (el) { openProductDrawer(+el.getAttribute('data-id')); },
+  'quick-label': function (el) { openQuickLabelPicker(+el.getAttribute('data-id')); },
   'open-customer': function (el) { openCustomerDrawer(+el.getAttribute('data-id')); },
   whatsapp: function (el) { openWhatsapp(+el.getAttribute('data-id')); },
   'day-summary': function () { openDaySummary(); },

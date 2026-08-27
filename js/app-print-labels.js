@@ -98,3 +98,36 @@ function viewPrintLabels() {
   h += '</tbody></table></div>';
   return h;
 }
+
+/* The Products table's per-row "Print labels" button — for the one sticker
+   that fell off, not a batch. Same per-size markup and the same
+   `preview-labels` action as the product drawer's own size table (see
+   openProductDrawer in app-products.js), just reachable without opening the
+   whole drawer first. */
+function openQuickLabelPicker(pid) {
+  var p = DB.product(pid);
+  if (!p) return;
+  var vs = DB.variantsOf(pid);
+
+  var body = '<div class="table-wrap"><table class="tbl tbl-compact"><thead><tr>' +
+    '<th>' + t('size') + '</th><th class="num">' + t('qty') + '</th>' +
+    '<th class="num">' + t('lbl_qty') + '</th><th></th>' +
+    '</tr></thead><tbody>';
+  vs.forEach(function (v) {
+    body += '<tr' + (v.qty === 0 ? ' class="row-danger"' : '') + '>' +
+      '<td><b style="font-family:var(--font-head);font-size:14px">' + v.size + '</b></td>' +
+      '<td class="num">' + v.qty + '</td>' +
+      '<td class="num"><input class="inp num lbl-qty-inp" type="number" min="1" max="99" value="1" style="width:56px"></td>' +
+      '<td><button class="btn btn-sm" data-act="preview-labels" data-variant-sku="' + esc(v.sku) + '">' +
+        t('print_labels') + '</button></td>' +
+    '</tr>';
+  });
+  body += '</tbody></table></div>';
+
+  openModal({
+    title: t('print_labels') + ' · ' + esc(p.name),
+    size: 'narrow',
+    body: body,
+    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>'
+  });
+}
