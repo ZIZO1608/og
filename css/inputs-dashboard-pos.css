@@ -66,6 +66,7 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 }
 .chip:hover { background: var(--accent); color: var(--foreground); border-color: var(--border-strong); }
 .chip.on { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); font-weight: 700; }
+.chip:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 
 .hint-chip {
   display: inline-flex; align-items: center; gap: 7px;

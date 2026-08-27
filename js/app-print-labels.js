@@ -40,6 +40,12 @@ function labelVariantRows() {
 
 function viewPrintLabels() {
   OG.lbf = OG.lbf || { q: '', type: '', wh: 'all', stock: '' };
+  /* {sku: qty} — how many of EACH selected variant to print, set inline on
+     this table before/while ticking the bulk checkbox. Survives filter
+     changes and re-renders exactly like OG.lbf does; a stale entry for a
+     sku that scrolls out of the current filter is harmless (only read by
+     sku lookup at print time, in js/bulk.js's variants/print runner). */
+  OG.lbQty = OG.lbQty || {};
   var f = OG.lbf;
   var rows = labelVariantRows();
   var types = Object.keys(DB.typeLabels);
@@ -76,10 +82,11 @@ function viewPrintLabels() {
     '<th>' + t('product') + '</th><th>' + t('size') + '</th>' +
     '<th class="num">' + t('qty') + '</th><th>' + t('sku') + '</th>' +
     '<th>' + t('barcode') + '</th><th>' + t('status') + '</th>' +
+    '<th class="num">' + t('lbl_print_qty') + '</th>' +
     '</tr></thead><tbody>';
 
   if (!rows.length) {
-    h += '<tr><td colspan="7" class="muted" style="text-align:center;padding:28px">' + t('none') + '</td></tr>';
+    h += '<tr><td colspan="8" class="muted" style="text-align:center;padding:28px">' + t('none') + '</td></tr>';
   }
 
   rows.forEach(function (r, ri) {
@@ -92,6 +99,8 @@ function viewPrintLabels() {
       '<td class="muted num nowrap">' + r.v.sku + '</td>' +
       '<td class="muted num nowrap">' + r.v.barcode + '</td>' +
       '<td>' + healthBadge(r.v.qty) + '</td>' +
+      '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' +
+        (OG.lbQty[r.v.sku] || 1) + '" style="width:56px" data-change="lb-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
     '</tr>';
   });
 

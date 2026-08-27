@@ -664,7 +664,7 @@ router.add('POST /api/labels/print', requirePerm('label.print', async (ctx) => {
     const result = Labels.enqueue({
       lines: b.lines, presetKey: b.preset, station: b.station,
       userId: ctx.user.id, opId: typeof b.opId === 'string' ? b.opId : null,
-      arabicBitmaps: b.arabicBitmaps || {}
+      arabicBitmaps: b.arabicBitmaps || {}, barcodeType: b.barcodeType
     });
 
     /* Only when a manager has switched the transport to 'tcp' (a USB→LAN
@@ -682,19 +682,22 @@ router.add('POST /api/labels/print', requirePerm('label.print', async (ctx) => {
 
     sendOk(ctx.res, result);
   } catch (e) {
-    sendError(ctx.res, e.code === 'batch_too_large' ? 413 : 400, e.code || 'invalid', e.message);
+    sendError(ctx.res, e.code === 'batch_too_large' ? 413 : e.code === 'barcode_too_wide' ? 409 : 400, e.code || 'invalid', e.message);
   }
 }));
 
 router.add('POST /api/labels/preview', requirePerm('label.print', async (ctx) => {
   const b = await readJson(ctx.req);
+  if (!Labels.isValidBarcodeType(b.barcodeType)) {
+    return sendError(ctx.res, 400, 'invalid', 'Invalid barcodeType.');
+  }
   try {
     const tpl = Labels.template(b.preset);
     const lines = (b.lines || []).map((l) => {
       const variant = Labels.resolveVariant(l.sku || l.variantId);
       return {
         sku: variant.sku, qty: l.qty, name: variant.name, size: variant.size,
-        layout: Labels.computeLayout(variant, tpl)
+        layout: Labels.computeLayout(variant, tpl, { barcodeType: b.barcodeType })
       };
     });
     sendOk(ctx.res, { preset: tpl, lines });

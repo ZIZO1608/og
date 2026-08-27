@@ -269,7 +269,7 @@ function thousandsSep(digits) {
    preview actually draw. `type` is 'text' | 'barcode' | 'bitmap' | 'image'.
    A text field whose content is Arabic becomes 'bitmap' instead — the
    browser must supply arabicBitmaps[slot.kind] for it (see js/labels.js). */
-function resolveSlot(slot, variant, shopCfg) {
+function resolveSlot(slot, variant, shopCfg, opts = {}) {
   const font = FONT_SIZE_TO_TSPL[slot.fontSize] || '2';
 
   if (slot.kind === 'logo') {
@@ -277,7 +277,13 @@ function resolveSlot(slot, variant, shopCfg) {
   }
 
   if (slot.kind === 'barcode') {
-    const bc = barcodeFor(variant, slot);
+    /* A request-level override wins over the template's own 'auto', so an
+       admin's Auto/EAN-13/internal-code choice applies to every barcode
+       slot in the job without editing templates. 'auto' (or no override)
+       leaves the slot exactly as authored. */
+    const effectiveType = (opts.barcodeType && opts.barcodeType !== 'auto') ? opts.barcodeType : slot.barcodeType;
+    const effectiveSlot = effectiveType === slot.barcodeType ? slot : { ...slot, barcodeType: effectiveType };
+    const bc = barcodeFor(variant, effectiveSlot);
     const bcWidth = computeBarcodeWidth(bc.symbology, bc.content, slot);
     const xDots = slot.xDots + Math.max(0, Math.round((slot.wDots - bcWidth.widthDots) / 2));
     return {
@@ -345,16 +351,23 @@ function resolveSlot(slot, variant, shopCfg) {
    Cat.fromMinor/config reads resolveSlot makes, which are themselves pure
    reads with no side effects. `tpl` is a normalized template row (see
    normalizeTemplateRow) — `template(key)`'s return shape. */
-export function computeLayout(variant, tpl) {
+export function computeLayout(variant, tpl, opts = {}) {
   const widthDots = tpl.widthMm * DOTS_PER_MM;
   const heightDots = tpl.heightMm * DOTS_PER_MM;
   const shopCfg = { name: cfgStr('shop.name', '') };
 
   const fields = (tpl.slots || [])
     .filter((s) => s.on !== false)
-    .map((slot) => resolveSlot(slot, variant, shopCfg));
+    .map((slot) => resolveSlot(slot, variant, shopCfg, opts));
 
   return { widthDots, heightDots, fields };
+}
+
+/* 'auto' or absent leaves every template slot exactly as authored; 'ean13'/
+   'code128' force that symbology across the whole job. Anything else is a
+   client mistake, not a state worth silently coercing. */
+export function isValidBarcodeType(bt) {
+  return bt == null || ['auto', 'ean13', 'code128'].includes(bt);
 }
 
 /* ------------------------------------------------------------- calibrate
@@ -497,12 +510,15 @@ export function buildLabelBytes(layout, tpl, arabicBitmaps = {}) {
    Distinct from the per-job claim_token lease below, which guards a
    different failure: an already-physically-printed job being handed out
    again, not a double-tapped print button. */
-export function enqueue({ lines, presetKey, station, userId, opId, arabicBitmaps = {} }) {
+export function enqueue({ lines, presetKey, station, userId, opId, arabicBitmaps = {}, barcodeType }) {
   if (opId) {
     const seen = get().prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
     if (seen) return { ...JSON.parse(seen.result), replayed: true };
   }
   if (!station) throw Object.assign(new Error('a station is required'), { code: 'invalid' });
+  if (!isValidBarcodeType(barcodeType)) {
+    throw Object.assign(new Error(`invalid barcodeType: ${barcodeType}`), { code: 'invalid' });
+  }
 
   const tpl = template(presetKey);
   const maxBatch = cfgNum('label.max_batch', 500);
@@ -533,7 +549,7 @@ export function enqueue({ lines, presetKey, station, userId, opId, arabicBitmaps
       const bytesChunks = [];
       for (const sku of chunkSkus) {
         const variant = resolveVariant(sku);
-        const layout = computeLayout(variant, tpl);
+        const layout = computeLayout(variant, tpl, { barcodeType });
         bytesChunks.push(buildLabelBytes(layout, tpl, arabicBitmaps[sku]));
       }
       const tsplB64 = Buffer.concat(bytesChunks).toString('base64');

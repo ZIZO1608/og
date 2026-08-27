@@ -22,14 +22,19 @@ var Labels = (function () {
 
   var DOTS_PER_MM = 8;
 
-  var lastChoice = { station: null, preset: null };
+  var lastChoice = { station: null, preset: null, barcodeType: 'auto' };
   try {
     var saved = JSON.parse(localStorage.getItem('og_label_choice') || 'null');
     if (saved) lastChoice = saved;
   } catch (e) { /* ignore a corrupt/blocked localStorage */ }
+  if (!lastChoice.barcodeType) lastChoice.barcodeType = 'auto';
 
-  function remember(station, preset) {
-    lastChoice = { station: station || lastChoice.station, preset: preset || lastChoice.preset };
+  function remember(station, preset, barcodeType) {
+    lastChoice = {
+      station: station || lastChoice.station,
+      preset: preset || lastChoice.preset,
+      barcodeType: barcodeType || lastChoice.barcodeType || 'auto'
+    };
     try { localStorage.setItem('og_label_choice', JSON.stringify(lastChoice)); } catch (e) { /* private mode etc. */ }
   }
 
@@ -49,13 +54,17 @@ var Labels = (function () {
     var symbols = 1 + pairs + (odd ? 2 : 0) + 1 + 1;
     return (symbols - 1) * 11 + 13;
   }
-  function barcodeFor(variant, presetObj) {
+  function barcodeFor(variant, presetObj, barcodeType) {
     var barcode = variant.barcode || '';
     var validEan = /^\d{13}$/.test(barcode) && Codes.ean13Valid(barcode);
-    if (presetObj.allowEan && validEan) return { symbology: 'ean13', content: barcode, fallbackReason: null };
-    var reason = !presetObj.allowEan
-      ? presetObj.widthMm + 'mm is narrower than the 40mm EAN-13 needs'
-      : 'no valid EAN-13 on this variant';
+    var forced = barcodeType === 'ean13' || barcodeType === 'code128';
+    var tryEan = barcodeType === 'ean13' || (!forced && presetObj.allowEan && validEan);
+    if (tryEan && validEan) return { symbology: 'ean13', content: barcode, fallbackReason: null };
+    var reason = barcodeType === 'code128'
+      ? null
+      : !presetObj.allowEan
+        ? presetObj.widthMm + 'mm is narrower than the 40mm EAN-13 needs'
+        : 'no valid EAN-13 on this variant';
     return { symbology: 'code128', content: variant.labelCode, fallbackReason: reason };
   }
   function computeBarcodeWidthDemo(symbology, content, presetObj) {
@@ -68,10 +77,10 @@ var Labels = (function () {
      the old fixed 4-preset shape (demoPresets() below) — but the OUTPUT is
      now the same generic `fields` array the live path produces, so
      labelPreviewHTML/buildArabicBitmaps only need to know one shape. */
-  function demoLayout(variant, presetObj) {
+  function demoLayout(variant, presetObj, barcodeType) {
     var widthDots = presetObj.widthMm * DOTS_PER_MM, heightDots = presetObj.heightMm * DOTS_PER_MM;
     var marginDots = Math.round(2.5 * DOTS_PER_MM);
-    var bc = barcodeFor(variant, presetObj);
+    var bc = barcodeFor(variant, presetObj, barcodeType);
     var bcWidth = computeBarcodeWidthDemo(bc.symbology, bc.content, presetObj);
     var barcodeHeightDots = presetObj.barcodeHeightMm * DOTS_PER_MM;
     var logo = presetObj.logo === 'omit' ? null : { xDots: marginDots, yDots: 4, wDots: 40, hDots: 40 };
@@ -123,17 +132,17 @@ var Labels = (function () {
      Live mode asks the server for the SAME layout object the TSPL builder
      will use, so preview cannot drift from what prints. Demo mode computes
      the same shape locally — there is no server to ask. */
-  function renderPreview(lines, presetKey) {
+  function renderPreview(lines, presetKey, barcodeType) {
     if (typeof Auth === 'undefined' || Auth.demoMode()) {
       var presetObj = demoPreset(presetKey);
       var out = lines.map(function (l) {
         var v = DB.variantBySku(l.sku || l.variantId);
         if (!v) return null;
-        return { sku: v.sku, qty: l.qty, name: v.name || (DB.product(v.productId) || {}).name || v.sku, size: v.size, layout: demoLayout({ name: v.name || (DB.product(v.productId) || {}).name || v.sku, size: v.size, barcode: v.barcode, labelCode: v.labelCode }, presetObj) };
+        return { sku: v.sku, qty: l.qty, name: v.name || (DB.product(v.productId) || {}).name || v.sku, size: v.size, layout: demoLayout({ name: v.name || (DB.product(v.productId) || {}).name || v.sku, size: v.size, barcode: v.barcode, labelCode: v.labelCode }, presetObj, barcodeType) };
       }).filter(Boolean);
       return Promise.resolve({ preset: presetObj, lines: out });
     }
-    return API.post('/api/labels/preview', { lines: lines, preset: presetKey });
+    return API.post('/api/labels/preview', { lines: lines, preset: presetKey, barcodeType: barcodeType });
   }
 
   /* One DOM box per field, generic over kind — logo/barcode render their
@@ -259,7 +268,7 @@ var Labels = (function () {
   }
 
   /* ------------------------------------------------------------- printing */
-  function doPrint(lines, presetKey, station) {
+  function doPrint(lines, presetKey, station, barcodeType) {
     if (typeof Auth === 'undefined' || Auth.demoMode()) {
       toast(t('lbl_title'), t('lbl_demo_only'), 'info', 5000);
       return Promise.resolve(null);
@@ -268,11 +277,12 @@ var Labels = (function () {
       toast(t('lbl_title'), t('lbl_pick_station'), 'err', 4000);
       return Promise.resolve(null);
     }
-    remember(station, presetKey);
-    return renderPreview(lines, presetKey).then(function (preview) {
+    barcodeType = barcodeType || lastChoice.barcodeType || 'auto';
+    remember(station, presetKey, barcodeType);
+    return renderPreview(lines, presetKey, barcodeType).then(function (preview) {
       var arabicBitmaps = buildArabicBitmaps(preview);
       return API.post('/api/labels/print', {
-        lines: lines, preset: presetKey, station: station,
+        lines: lines, preset: presetKey, station: station, barcodeType: barcodeType,
         opId: opId(), arabicBitmaps: arabicBitmaps
       });
     }).then(function (res) {
@@ -303,7 +313,9 @@ var Labels = (function () {
   function pickerHTML(lines) {
     var st = lastChoice.station || stationOptions()[0];
     var pk = lastChoice.preset || (typeof CONFIG !== 'undefined' && CONFIG.LABEL_DEFAULT_PRESET) || '30x30';
+    var bt = lastChoice.barcodeType || 'auto';
     var total = lines.reduce(function (a, l) { return a + (Number(l.qty) || 0); }, 0);
+    var curPreset = presetOptions().filter(function (p) { return p.key === pk; })[0] || {};
 
     var h = '<div class="lbl-picker">';
     h += '<div class="lbl-batch-total"><b>' + total + '</b> ' + t('lbl_batch_total') + '</div>';
@@ -316,19 +328,34 @@ var Labels = (function () {
     presetOptions().forEach(function (p) {
       h += '<button class="chip ' + (p.key === pk ? 'on' : '') + '" data-act="label-preset" data-k="' + esc(p.key) + '">' + p.key + '</button>';
     });
-    h += '</div></div>';
+    h += '</div>';
+    if (curPreset.hasBarcode !== false) {
+      h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_barcode_type') + '</span>';
+      [
+        { k: 'auto', label: t('lbl_bt_auto') },
+        { k: 'ean13', label: t('lbl_bt_ean13'), disabled: curPreset.allowEan === false },
+        { k: 'code128', label: t('lbl_bt_code128') }
+      ].forEach(function (b) {
+        h += b.disabled
+          ? '<button class="chip" disabled title="' + esc(t('lbl_bt_ean_disabled')) + '">' + b.label + '</button>'
+          : '<button class="chip ' + (b.k === bt ? 'on' : '') + '" data-act="label-barcode-type" data-k="' + b.k + '">' + b.label + '</button>';
+      });
+      h += '</div>';
+    }
+    h += '</div>';
     return h;
   }
 
-  function openPreviewModal(lines, presetKey, station) {
+  function openPreviewModal(lines, presetKey, station, barcodeType) {
     presetKey = presetKey || lastChoice.preset || (typeof CONFIG !== 'undefined' && CONFIG.LABEL_DEFAULT_PRESET) || '30x30';
     station = station || lastChoice.station || stationOptions()[0];
-    remember(station, presetKey);
+    barcodeType = barcodeType || lastChoice.barcodeType || 'auto';
+    remember(station, presetKey, barcodeType);
     activeLines = lines.filter(function (l) { return (Number(l.qty) || 0) > 0; });
     if (!activeLines.length) { if (typeof closeModal === 'function') closeModal(); return; }
     lines = activeLines;
 
-    renderPreview(lines, presetKey).then(function (preview) {
+    renderPreview(lines, presetKey, barcodeType).then(function (preview) {
       var body = pickerHTML(lines) +
         '<div class="lbl-preview-host">' +
         preview.lines.map(function (l) { return labelPreviewHTML(l, preview.preset); }).join('') +
@@ -374,7 +401,7 @@ var Labels = (function () {
         toast(t('lbl_title'), t('no_access'), 'err');
         return;
       }
-      doPrint(lines, lastChoice.preset, lastChoice.station).then(function (res) {
+      doPrint(lines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType).then(function (res) {
         if (res) { activeLines = null; if (typeof closeModal === 'function') closeModal(); }
       });
     };
@@ -383,13 +410,23 @@ var Labels = (function () {
        preview reflects it immediately; the Settings card's station/preset
        chips (no open batch) just remember the choice and re-render the page. */
     ACTIONS['label-station'] = function (el) {
-      remember(el.getAttribute('data-k'), null);
-      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station);
+      remember(el.getAttribute('data-k'), null, null);
+      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
       else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
     };
     ACTIONS['label-preset'] = function (el) {
-      remember(null, el.getAttribute('data-k'));
-      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station);
+      remember(null, el.getAttribute('data-k'), null);
+      /* Switching to a preset too narrow for EAN-13 while "Always EAN-13"
+         was selected would leave an invalid choice stranded behind a chip
+         that just vanished — downgrade back to Auto instead. */
+      var np = presetOptions().filter(function (p) { return p.key === lastChoice.preset; })[0];
+      if (np && np.allowEan === false && lastChoice.barcodeType === 'ean13') remember(null, null, 'auto');
+      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
+      else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
+    };
+    ACTIONS['label-barcode-type'] = function (el) {
+      remember(null, null, el.getAttribute('data-k'));
+      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
       else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
     };
 
@@ -420,7 +457,7 @@ var Labels = (function () {
         var sku = el.getAttribute('data-sku');
         var qty = Math.max(0, parseInt(el.value, 10) || 0);
         var next = activeLines.map(function (l) { return l.sku === sku ? { sku: sku, qty: qty } : l; });
-        openPreviewModal(next, lastChoice.preset, lastChoice.station);
+        openPreviewModal(next, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
       };
     }
 
@@ -444,7 +481,7 @@ var Labels = (function () {
           return l;
         });
         if (!found) next.push({ sku: v.sku, qty: 1 });
-        openPreviewModal(next, lastChoice.preset, lastChoice.station);
+        openPreviewModal(next, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
       });
     }
   }

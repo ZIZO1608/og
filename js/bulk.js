@@ -368,7 +368,9 @@ var Bulk = (function () {
        per-size "Print labels" button drives, so nothing here is a second
        implementation of preview/print/station/preset behaviour) ---- */
     if (sc === 'variants' && a === 'print') {
-      var lines = ids('variants').map(function (sku) { return { sku: sku, qty: 1 }; });
+      var lines = ids('variants').map(function (sku) {
+        return { sku: sku, qty: (typeof OG !== 'undefined' && OG.lbQty && OG.lbQty[sku]) || 1 };
+      });
       if (typeof Labels !== 'undefined') {
         Labels.openPreviewModal(lines, Labels.lastChoice().preset, Labels.lastChoice().station);
       }

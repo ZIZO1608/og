@@ -28,6 +28,15 @@ var CHANGES = {
   'lbf-wh': function (el) { OG.lbf.wh = el.value; render(); },
   'lbf-stock': function (el) { OG.lbf.stock = el.value; render(); },
 
+  /* The Print Labels table's per-row print quantity — set inline, before or
+     after ticking the bulk checkbox. No render() call, same reasoning as
+     qlp-qty right below: a full table repaint mid-keystroke would rebuild
+     this input and drop focus. */
+  'lb-qty': function (el) {
+    OG.lbQty = OG.lbQty || {};
+    OG.lbQty[el.getAttribute('data-sku')] = Math.max(1, Math.min(99, parseInt(el.value, 10) || 1));
+  },
+
   /* The quick label picker's per-size qty. Patches only the modal footer's
      live count, not the whole body — a full repaint would rebuild this very
      input mid-keystroke and drop focus, the same reasoning focusBack exists
