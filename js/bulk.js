@@ -253,7 +253,24 @@ var Bulk = (function () {
     /* ---- products ---- */
     if (sc === 'products') {
       var list = selProducts();
-      if (a === 'labels') { OG.lb.pids = list.map(function (p) { return p.id; }); openLabelSheet(null); return; }
+      /* Every size of every selected product, one line each at qty 1 — same
+         shape and the same Labels.openPreviewModal call the 'variants' scope
+         below and the quick per-product picker (js/app-print-labels.js) both
+         use, so bulk-selecting from the Products table lands on the real
+         preview/print pipeline (station, presets incl. 60x40, live barcode
+         preview) instead of the older browser-print Label Studio. Quantities
+         are editable per line right there in that preview, same as anywhere
+         else labels are queued. */
+      if (a === 'labels') {
+        var labelLines = [];
+        list.forEach(function (p) {
+          DB.variantsOf(p.id).forEach(function (v) { labelLines.push({ sku: v.sku, qty: 1 }); });
+        });
+        if (typeof Labels !== 'undefined') {
+          Labels.openPreviewModal(labelLines, Labels.lastChoice().preset, Labels.lastChoice().station);
+        }
+        return;
+      }
       if (a === 'show' || a === 'hide') {
         var before = list.map(function (p) { return p.hidden; });
         list.forEach(function (p) { p.hidden = (a === 'hide'); });
