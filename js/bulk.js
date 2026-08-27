@@ -2,7 +2,7 @@
    OG SYSTEM — bulk selection and actions
    --------------------------------------------------------------------------
    Turns the filters into a tool: filter to Size gaps -> select all -> print
-   labels. One selection engine, five scopes, a floating action bar.
+   labels. One selection engine, six scopes, a floating action bar.
 
    Destructive work is two-step: archive is the everyday action (recoverable
    from a filter chip, and sales history keeps resolving because the record is
@@ -13,14 +13,14 @@
 
 var Bulk = (function () {
 
-  var SEL = { products: {}, customers: {}, jobs: {}, orders: {}, movements: {} };
+  var SEL = { products: {}, customers: {}, jobs: {}, orders: {}, movements: {}, variants: {} };
   var lastIdx = {};
   var undoEntry = null;
   var undoTimer = null;
 
   var VIEW_SCOPE = {
     products: 'products', customers: 'customers', print: 'jobs',
-    storefront: 'orders', warehouse: 'movements'
+    storefront: 'orders', warehouse: 'movements', labels: 'variants'
   };
 
   function scope() {
@@ -52,6 +52,7 @@ var Bulk = (function () {
       case 'jobs':      return DB.printJobs.map(function (j) { return j.id; });
       case 'orders':    return DB.storeOrders.map(function (o) { return o.id; });
       case 'movements': return DB.stockMovements.slice(0, 90).map(function (m) { return m.id; });
+      case 'variants':  return labelVariantRows().map(function (r) { return r.v.sku; });
       default:          return [];
     }
   }
@@ -114,6 +115,9 @@ var Bulk = (function () {
     ],
     movements: [
       { id: 'export', key: 'export_excel', primary: true }
+    ],
+    variants: [
+      { id: 'print', key: 'print_labels', primary: true }
     ]
   };
 
@@ -341,6 +345,18 @@ var Bulk = (function () {
     }
 
     if (sc === 'movements' && a === 'export') { exportSelection(sc); return; }
+
+    /* ---- label printing (one line per selected variant, real hardware
+       preview/print — the same Labels module the product drawer's own
+       per-size "Print labels" button drives, so nothing here is a second
+       implementation of preview/print/station/preset behaviour) ---- */
+    if (sc === 'variants' && a === 'print') {
+      var lines = ids('variants').map(function (sku) { return { sku: sku, qty: 1 }; });
+      if (typeof Labels !== 'undefined') {
+        Labels.openPreviewModal(lines, Labels.lastChoice().preset, Labels.lastChoice().station);
+      }
+      return;
+    }
   }
 
   /* Delete names the damage before it happens. */

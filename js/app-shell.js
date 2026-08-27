@@ -60,6 +60,7 @@ var NAV = [
   { id: 'money',      key: 'nav_money',     group: 'main', icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4' },
   { id: 'deliveries', key: 'nav_deliveries',group: 'ops',  icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
   { id: 'customers',  key: 'nav_customers', group: 'ops',  icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' },
+  { id: 'labels',     key: 'nav_labels',    group: 'ops',  icon: 'M4 5v14M8 5v14M11 5v9M14 5v14M17 5v9M20 5v14' },
   { id: 'print',      key: 'nav_print',     group: 'ops',  icon: 'M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z' },
   { id: 'reports',    key: 'nav_reports',   group: 'ops',  icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
   { id: 'storefront', key: 'nav_storefront',group: 'ops',  icon: 'M4 8h16l-1 12H5zM9 8V6a3 3 0 0 1 6 0v2' },
@@ -82,6 +83,7 @@ var NAV_PERM = {
   money:      'money.read',
   deliveries: 'delivery.read',
   customers:  'customer.read',
+  labels:     'label.print',
   print:      'print.read',
   reports:    'report.read',
   storefront: 'product.read',
@@ -179,7 +181,7 @@ function renderSidebar() {
    Five is the ceiling — a sixth tab makes each one too narrow for a thumb, so
    the rest live behind More. */
 var TABS = ['dashboard', 'pos', 'products', 'print'];
-var MORE_ITEMS = ['warehouse', 'deliveries', 'customers', 'reports', 'storefront', 'settings'];
+var MORE_ITEMS = ['warehouse', 'deliveries', 'customers', 'labels', 'reports', 'storefront', 'settings'];
 
 function renderTabbar() {
   var host = document.getElementById('tabbar');

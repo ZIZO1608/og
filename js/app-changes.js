@@ -20,6 +20,14 @@ var CHANGES = {
   'prod-health': function (el) { OG.prod.health = el.value; render(); },
   'cust-q': function (el) { OG.cust.q = el.value; render(); focusBack('[data-change="cust-q"]', el.value.length); },
 
+  /* Label-printing filters — same shape as prod-q/prod-type above, kept in
+     their own OG.lbf bucket so narrowing the print picker never touches the
+     Products screen's own filter state. */
+  'lbf-q': function (el) { OG.lbf.q = el.value; render(); focusBack('[data-change="lbf-q"]', el.value.length); },
+  'lbf-type': function (el) { OG.lbf.type = el.value; render(); },
+  'lbf-wh': function (el) { OG.lbf.wh = el.value; render(); },
+  'lbf-stock': function (el) { OG.lbf.stock = el.value; render(); },
+
   'toggle-visible': function (el) {
     /* Hiding a product from the storefront is editing the catalogue. The
        column is not drawn without product.write, so reaching this is either a

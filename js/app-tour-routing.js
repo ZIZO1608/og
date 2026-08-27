@@ -4,10 +4,11 @@
    --------------------------------------------------------------------------
    Split from the original js/app.js (lines 5732-6188). Loads after
    app-documents.js — and MUST load after every view/after-hook file above
-   it (5-12), since VIEWS/AFTER are object literals evaluated top-to-bottom
-   that reference those functions by value (`products: viewProducts`) —
-   cross-<script> execution does not hoist, so those functions must already
-   exist as loaded scripts by the time this file runs.
+   it (5-12, plus app-print-labels.js), since VIEWS/AFTER are object
+   literals evaluated top-to-bottom that reference those functions by value
+   (`products: viewProducts`) — cross-<script> execution does not hoist, so
+   those functions must already exist as loaded scripts by the time this
+   file runs.
    ========================================================================== */
 
 /* ----------------------------------------------------------------- 16. TOUR */
@@ -156,6 +157,7 @@ var VIEWS = {
   warehouse: viewWarehouse,
   deliveries: function () { return Deliveries.view(); },
   customers: viewCustomers,
+  labels: viewPrintLabels,
   print: viewPrint,
   reports: viewReports,
   storefront: viewStorefront,
