@@ -80,6 +80,8 @@ function viewProducts() {
     '<div class="sub">' + t('products_sub') + '</div></div>' +
     '<div class="head-actions">' +
       (canExport ? exportButtons() : '') +
+      ifNav('labels',
+        '<button class="btn btn-ghost" data-act="nav" data-view="labels">' + t('nav_labels') + '</button>') +
       ifNav('warehouse',
         '<button class="btn btn-primary" data-act="nav" data-view="warehouse">+ ' + t('tab_add') + '</button>') +
     '</div></div>';

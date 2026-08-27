@@ -344,9 +344,7 @@ html.has-demo-banner .view { padding-bottom: 52px; }
   .tour-pop { width: calc(100vw - 32px); inset-inline-start: 16px !important; }
   .page-head h1 { font-size: 23px; }
 
-  /* --- the three things that already lived at the bottom ---------------- */
-  .tour-fab { bottom: calc(var(--tabbar-h) + 14px); }
-  body[data-view="pos"] .tour-fab { display: none; }   /* POS needs the room */
+  /* --- the two things that already lived at the bottom ------------------ */
   /* 24px of air above the tab bar, not 12. The two are both position:fixed and
      resolve against the same box, but a tight arithmetic fit leaves nothing
      for a taller bar when the action labels wrap to two lines. */

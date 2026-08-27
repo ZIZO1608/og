@@ -12,7 +12,6 @@
 <link rel="stylesheet" href="css/print-hardware-receipt-newlabels.css"></head><body>
 <div id="app"><aside class="sidebar" id="sidebar"></aside><div class="main"><header class="topbar" id="topbar"></header><main class="view" id="view"></main></div></div>
 <nav id="tabbar" class="tabbar"></nav><div id="toasts" class="toasts"></div><div id="palette-root"></div><div id="modal-root"></div><div id="drawer-root"></div><div id="tour-root"></div><div id="bulk-root"></div><div id="print-root" class="print-root"></div>
-<button id="tourBtn" class="tour-fab"><span class="tour-fab-dot"></span><span id="tourBtnLabel">Demo tour</span></button>
 <script src="js/vendor/chart.umd.min.js"></script>
 <script src="js/codes.js"></script><script src="js/motion.js"></script><script src="js/export.js"></script><script src="js/data.js"></script><script src="js/charts.js"></script>
 <script src="js/pos.js"></script><script src="js/bulk.js"></script><script src="js/scan.js"></script><script src="js/wedge.js"></script><script src="js/stock.js"></script><script src="js/money.js"></script><script src="js/palette.js"></script><script src="js/whatsapp.js"></script><script src="js/notify.js"></script><script src="js/ylinvoice.js"></script><script src="js/yalla.js"></script>
@@ -37,9 +36,6 @@
 <script>
 (function(){var q={};location.search.replace(/^\?/,'').split('&').forEach(function(p){if(!p)return;var kv=p.split('=');q[kv[0]]=decodeURIComponent(kv[1]||'');});
 document.getElementById('toasts').style.display='none';
-/* clean=1 strips demo-only furniture. The tour button is a prompt for someone
-   sitting at the app; in a client document it is just clutter over the UI. */
-if(q.clean==='1'){var tb=document.getElementById('tourBtn');if(tb)tb.style.display='none';}
 /* Screenshots must capture the FINAL state. Headless virtual time does not
    drive CSS animation timelines reliably, so without this every shot catches
    the entrance half-finished and elements read as missing. */

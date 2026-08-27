@@ -15,24 +15,6 @@
 
 /* ------------------------------------------------------------------- TOUR */
 
-.tour-fab {
-  position: fixed; bottom: 24px; inset-inline-end: 24px; z-index: 300;
-  background: var(--brand); color: var(--brand-foreground); border: 0;
-  padding: 0 22px; height: 50px; border-radius: var(--radius-full);
-  box-shadow: 0 12px 32px -8px rgb(198 255 0 / .35), var(--shadow-lg);
-  font-weight: 700; font-size: 14px; letter-spacing: -.01em;
-  display: flex; align-items: center; gap: 10px;
-  transition: background var(--t), transform var(--t);
-}
-.tour-fab:hover { background: #D4FF3D; transform: translateY(-2px); }
-.tour-fab-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--brand-foreground); animation: blink 1.8s ease-in-out infinite; }
-@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
-body.tour-on .tour-fab { display: none; }
-/* POS has no scroll slack in the cart column and the FAB would cover
-   "Complete sale" — park it over the product grid, centred in LTR and RTL. */
-body[data-view="pos"] .tour-fab { inset-inline-start: auto; inset-inline-end: auto; left: 50%; transform: translateX(-50%); }
-body[data-view="pos"] .tour-fab:hover { transform: translateX(-50%) translateY(-2px); }
-
 .spot {
   position: fixed; z-index: 400; pointer-events: none;
   border: 2px solid var(--brand); border-radius: var(--radius);
@@ -105,7 +87,6 @@ body[data-portal="yalla"] {
 }
 
 body[data-portal="yalla"] .brand-mark { background: transparent; }
-body[data-portal="yalla"] .tour-fab { display: none; }
 body[data-portal="yalla"] .btn-primary:hover { background: #C9EBD3; border-color: #C9EBD3; }
 
 /* Partner invoice — a white sheet, and the one place the full lockup fits. */

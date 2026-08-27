@@ -393,7 +393,6 @@ function applyLang() {
   document.documentElement.lang = ar ? 'ar' : 'en';
   document.documentElement.dir = ar ? 'rtl' : 'ltr';
   document.body.classList.toggle('rtl', ar);
-  document.getElementById('tourBtnLabel').textContent = t('tour_start');
 }
 
 function refreshAll() {

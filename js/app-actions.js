@@ -1009,5 +1009,6 @@ var ACTIONS = {
   'tour-next': function () { Tour.go(Tour.i + 1); },
   'tour-back': function () { Tour.go(Tour.i - 1); },
   'tour-skip': function () { Tour.stop(); },
+  'tour-start-fab': function () { Tour.start(); },
   'new-sale': function () { closeModal(); go('pos'); }
 };

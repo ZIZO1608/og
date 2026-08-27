@@ -68,8 +68,6 @@ function bindGlobal() {
     var v = raw.replace('#', '');
     if (v && VIEWS[v] && v !== OG.view) go(v);
   });
-
-  document.getElementById('tourBtn').addEventListener('click', function () { Tour.start(); });
 }
 
 /* ---- thermal roll page sizing --------------------------------------------

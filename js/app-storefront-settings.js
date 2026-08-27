@@ -603,6 +603,17 @@ function viewSettings() {
           ' data-change="set-motion"><i></i></label></div>' +
     '</div></div>';
 
+  /* Moved off a floating pill on every screen (it sat over real controls,
+     e.g. a Products row's own "Print labels" button) and into a plain
+     action here — same trigger, Tour.start(), just reached through the
+     normal dispatch table instead of a permanent on-screen button. */
+  h += '<div class="card"><div class="card-head"><h3>' + t('tour_start') + '</h3></div>' +
+    '<div class="card-body">' +
+      '<div class="rule-row"><div class="rr-txt"><b>' + t('tour_start') + '</b>' +
+        '<small>' + t('tour_hint') + '</small></div>' +
+        '<button class="btn btn-sm btn-primary" data-act="tour-start-fab">' + t('tour_start') + '</button></div>' +
+    '</div></div>';
+
   h += '<div class="card"><div class="card-head"><h3>' + t('reminders') + '</h3></div>';
   REMINDER_RULES.forEach(function (r) {
     h += '<div class="rule-row"><div class="rr-txt"><b>' + r[0] + '</b><small>' + r[1] + '</small></div>' +
