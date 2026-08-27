@@ -28,6 +28,18 @@ var CHANGES = {
   'lbf-wh': function (el) { OG.lbf.wh = el.value; render(); },
   'lbf-stock': function (el) { OG.lbf.stock = el.value; render(); },
 
+  /* The quick label picker's per-size qty. Patches only the modal footer's
+     live count, not the whole body — a full repaint would rebuild this very
+     input mid-keystroke and drop focus, the same reasoning focusBack exists
+     for elsewhere. */
+  'qlp-qty': function (el) {
+    if (!quickPick) return;
+    var sku = el.getAttribute('data-sku');
+    quickPick.sel[sku] = Math.max(1, Math.min(99, parseInt(el.value, 10) || 1));
+    var foot = document.querySelector('.modal-foot');
+    if (foot) foot.innerHTML = quickPickerFootHTML();
+  },
+
   'toggle-visible': function (el) {
     /* Hiding a product from the storefront is editing the catalogue. The
        column is not drawn without product.write, so reaching this is either a

@@ -184,6 +184,11 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 .size-btn:hover:not(:disabled) { border-color: var(--brand); background: var(--brand); color: var(--brand-foreground); }
 .size-btn:hover:not(:disabled) small { color: var(--brand-foreground); opacity: .75; }
 .size-btn:disabled { opacity: .35; text-decoration: line-through; cursor: not-allowed; background: var(--muted); }
+/* A persistent picked state, for pickers where more than one size stays
+   chosen at once (the quick label picker) rather than POS's single-pick
+   which never lingers on screen long enough to need one. */
+.size-btn.on { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); }
+.size-btn.on small { color: var(--brand-foreground); opacity: .8; }
 
 .pos-right { display: flex; flex-direction: column; overflow: hidden; background: var(--app); }
 .cart-head { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }

@@ -184,6 +184,37 @@ var ACTIONS = {
 
   'open-product': function (el) { openProductDrawer(+el.getAttribute('data-id')); },
   'quick-label': function (el) { openQuickLabelPicker(+el.getAttribute('data-id')); },
+
+  'qlp-toggle': function (el) {
+    if (!quickPick) return;
+    var sku = el.getAttribute('data-sku');
+    if (Object.prototype.hasOwnProperty.call(quickPick.sel, sku)) delete quickPick.sel[sku];
+    else quickPick.sel[sku] = 1;
+    repaintQuickLabelPicker();
+  },
+  'qlp-all': function () {
+    if (!quickPick) return;
+    DB.variantsOf(quickPick.pid).forEach(function (v) {
+      if (v.qty > 0) quickPick.sel[v.sku] = quickPick.sel[v.sku] || 1;
+    });
+    repaintQuickLabelPicker();
+  },
+  'qlp-clear': function () {
+    if (!quickPick) return;
+    quickPick.sel = {};
+    repaintQuickLabelPicker();
+  },
+  'qlp-print': function () {
+    if (!quickPick) return;
+    var skus = Object.keys(quickPick.sel);
+    if (!skus.length) { toast(t('print_labels'), t('lbl_none_picked'), 'warn'); return; }
+    var lines = skus.map(function (sku) { return { sku: sku, qty: quickPick.sel[sku] }; });
+    closeModal();
+    if (typeof Labels !== 'undefined') {
+      Labels.openPreviewModal(lines, Labels.lastChoice().preset, Labels.lastChoice().station);
+    }
+  },
+
   'open-customer': function (el) { openCustomerDrawer(+el.getAttribute('data-id')); },
   whatsapp: function (el) { openWhatsapp(+el.getAttribute('data-id')); },
   'day-summary': function () { openDaySummary(); },

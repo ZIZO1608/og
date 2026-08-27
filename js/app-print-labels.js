@@ -99,35 +99,102 @@ function viewPrintLabels() {
   return h;
 }
 
-/* The Products table's per-row "Print labels" button — for the one sticker
-   that fell off, not a batch. Same per-size markup and the same
-   `preview-labels` action as the product drawer's own size table (see
-   openProductDrawer in app-products.js), just reachable without opening the
-   whole drawer first. */
+/* ---- quick per-product size picker ----------------------------------------
+   The Products table's per-row "Print labels" button — for the one sticker
+   that fell off, not a batch. Reuses the same .size-pop/.size-btn grid
+   js/pos.js's openSizePicker draws at the till, but multi-select rather than
+   single-pick-then-navigate: every size stays a toggle, so several can be
+   queued for one print run.
+
+   Module-scoped, one product at a time — same shape as js/labels.js's own
+   `activeLines` — holding which sizes are picked and at what quantity.
+   Mutated by the qlp-* actions/changes below and repainted in place (the
+   .modal-body/.modal-foot are patched directly) so the modal never has to
+   close and reopen mid-pick. */
+var quickPick = null;   // { pid, sel: { sku: qty, ... } }
+
+function quickPickCount() {
+  var sizes = 0, labels = 0;
+  Object.keys(quickPick.sel).forEach(function (sku) { sizes++; labels += quickPick.sel[sku]; });
+  return { sizes: sizes, labels: labels };
+}
+
+function quickPickerBodyHTML() {
+  var p = DB.product(quickPick.pid);
+  var vs = DB.variantsOf(quickPick.pid);
+
+  var h = '<div style="display:flex;gap:12px;align-items:center;margin-bottom:14px">' +
+    thumb(p, 'lg') + '<div><span class="eyebrow">' + esc(p.brand) + ' · ' + DB.typeLabels[p.type] + '</span>' +
+    '<h3 style="font-size:16px;margin:2px 0 3px">' + esc(p.name) + '</h3></div></div>';
+
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">' +
+    '<span class="lbl">' + t('pick_size') + '</span>' +
+    '<span><button class="btn btn-sm btn-ghost" data-act="qlp-all">' + t('lbl_pick_in_stock') + '</button> ' +
+    '<button class="btn btn-sm btn-ghost" data-act="qlp-clear">' + t('clear') + '</button></span></div>';
+
+  /* Zero-stock sizes stay clickable — printing a sticker ahead of an
+     incoming delivery, or a reprint, is a real reason to want one even at
+     zero on hand. They just lose the healthy stock note in favour of a
+     flagged one, same as the old table's row-danger treatment. */
+  h += '<div class="size-pop" style="margin-bottom:16px">';
+  vs.forEach(function (v) {
+    var picked = Object.prototype.hasOwnProperty.call(quickPick.sel, v.sku);
+    var note = v.qty > 0 ? (v.qty + ' ' + t('in_stock')) : t('out');
+    h += '<button class="size-btn' + (picked ? ' on' : '') + '" data-act="qlp-toggle" data-sku="' + esc(v.sku) + '">' +
+      v.size + '<small' + (v.qty === 0 && !picked ? ' style="color:var(--destructive)"' : '') + '>' + note + '</small></button>';
+  });
+  h += '</div>';
+
+  var skus = Object.keys(quickPick.sel);
+  if (skus.length) {
+    h += '<div class="table-wrap"><table class="tbl tbl-compact"><thead><tr>' +
+      '<th>' + t('size') + '</th><th class="num">' + t('lbl_qty') + '</th>' +
+      '</tr></thead><tbody>';
+    skus.forEach(function (sku) {
+      var v = DB.variantBySku(sku);
+      if (!v) return;
+      h += '<tr>' +
+        '<td><b style="font-family:var(--font-head);font-size:14px">' + v.size + '</b></td>' +
+        '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' + quickPick.sel[sku] +
+          '" style="width:56px" data-change="qlp-qty" data-sku="' + esc(sku) + '"></td>' +
+      '</tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+
+  return h;
+}
+
+function quickPickerFootHTML() {
+  var c = quickPickCount();
+  var summary = c.sizes
+    ? (c.sizes + ' ' + t('size') + ' · ' + c.labels + ' ' + t('lb_labels'))
+    : t('lbl_none_picked');
+  return '<span class="muted small" style="margin-inline-end:auto;align-self:center">' + summary + '</span>' +
+    '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
+    '<button class="btn btn-primary" data-act="qlp-print"' + (c.sizes ? '' : ' disabled') + '>' + t('print_labels') + '</button>';
+}
+
 function openQuickLabelPicker(pid) {
   var p = DB.product(pid);
   if (!p) return;
-  var vs = DB.variantsOf(pid);
-
-  var body = '<div class="table-wrap"><table class="tbl tbl-compact"><thead><tr>' +
-    '<th>' + t('size') + '</th><th class="num">' + t('qty') + '</th>' +
-    '<th class="num">' + t('lbl_qty') + '</th><th></th>' +
-    '</tr></thead><tbody>';
-  vs.forEach(function (v) {
-    body += '<tr' + (v.qty === 0 ? ' class="row-danger"' : '') + '>' +
-      '<td><b style="font-family:var(--font-head);font-size:14px">' + v.size + '</b></td>' +
-      '<td class="num">' + v.qty + '</td>' +
-      '<td class="num"><input class="inp num lbl-qty-inp" type="number" min="1" max="99" value="1" style="width:56px"></td>' +
-      '<td><button class="btn btn-sm" data-act="preview-labels" data-variant-sku="' + esc(v.sku) + '">' +
-        t('print_labels') + '</button></td>' +
-    '</tr>';
-  });
-  body += '</tbody></table></div>';
+  quickPick = { pid: pid, sel: {} };
 
   openModal({
     title: t('print_labels') + ' · ' + esc(p.name),
     size: 'narrow',
-    body: body,
-    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>'
+    body: quickPickerBodyHTML(),
+    foot: quickPickerFootHTML(),
+    onClose: function () { quickPick = null; }
   });
+}
+
+/* Re-render the grid/selected-list and the footer count in place — the
+   modal stays open, same pattern as repaintLabels() in app-warehouse.js. */
+function repaintQuickLabelPicker() {
+  if (!quickPick) return;
+  var body = document.querySelector('.modal-body');
+  var foot = document.querySelector('.modal-foot');
+  if (body) body.innerHTML = quickPickerBodyHTML();
+  if (foot) foot.innerHTML = quickPickerFootHTML();
 }
