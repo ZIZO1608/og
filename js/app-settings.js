@@ -135,6 +135,72 @@ function loadRoleMatrix() {
     .catch(function () { /* the card keeps its placeholder; nothing else breaks */ });
 }
 
+/* ------------------------------------------------------ ONLINE NOW (presence)
+
+   Reuses sessions.last_seen — already ticking on every authenticated
+   request — rather than any new tracking. GET /api/staff/presence lists
+   only accounts with a live (non-expired) session; someone who's fully
+   signed out just isn't in the list, same "absent means nothing to
+   report" shape as the rest of the app. Same fetch-once/cache/render
+   pattern as ROLE_MATRIX/loadRoleMatrix above. */
+var STAFF_PRESENCE = null;
+
+function loadStaffPresence() {
+  if (typeof Auth === 'undefined' || Auth.demoMode()) return;
+  if (!Auth.can('staff.read')) return;
+
+  API.get('/api/staff/presence')
+    .then(function (r) {
+      STAFF_PRESENCE = r.staff || [];
+      if (OG.view === 'settings') render();
+    })
+    .catch(function () { /* card keeps its placeholder */ });
+}
+
+function presenceMinutesAgo(iso) {
+  var mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return t('presence_active_now');
+  if (mins < 60) return t('presence_active_min').replace('{n}', mins);
+  var hrs = Math.round(mins / 60);
+  return t('presence_active_hr').replace('{n}', hrs);
+}
+
+function presenceCard() {
+  if (typeof Auth === 'undefined' || Auth.demoMode()) {
+    return '<div class="card mb"><div class="card-head"><h3>' + t('presence_title') + '</h3></div>' +
+      '<div class="card-body muted small">' + t('demo_no_account') + '</div></div>';
+  }
+  if (!Auth.can('staff.read')) return '';
+
+  var list = STAFF_PRESENCE;
+  var h = '<div class="card mb"><div class="card-head"><h3>' + t('presence_title') + '</h3>';
+  if (list) {
+    var onlineNow = list.filter(function (s) { return s.online; }).length;
+    h += '<div class="card-actions"><span class="badge ' + (onlineNow ? 'healthy' : 'neutral') + '">' +
+      onlineNow + ' ' + t('presence_online_count') + '</span></div>';
+  }
+  h += '</div>';
+
+  if (!list) {
+    h += '<div class="card-body muted small">…</div></div>';
+    return h;
+  }
+  if (!list.length) {
+    h += '<div class="card-body muted small">' + t('presence_empty') + '</div></div>';
+    return h;
+  }
+
+  list.forEach(function (s) {
+    h += '<div class="alert-row">' +
+      '<span class="dot ' + (s.online ? 'healthy' : 'offline') + '"></span>' +
+      '<span class="alert-txt"><b>' + esc(s.name) + '</b>' +
+        '<small>' + esc(roleLabel(s.role)) + ' · ' + presenceMinutesAgo(s.lastSeen) + '</small></span>' +
+    '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
 /* Save one role. Sends the whole granted list rather than a diff, so the
    server never has to reconcile a partial view of the truth. */
 function saveRolePermissions(role) {
@@ -413,6 +479,8 @@ function viewSettings() {
   h += receiptSettingsCard();
 
   h += thermalLabelsCard();
+
+  h += presenceCard();
 
   h += rolesCard();
 

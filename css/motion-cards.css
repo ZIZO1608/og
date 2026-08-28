@@ -243,3 +243,4 @@ tr.row-danger { background: var(--destructive-soft) !important; }
 .dot.healthy { background: var(--success); } .dot.low { background: var(--warning); }
 .dot.critical { background: var(--destructive); }
 .dot.out { background: #FFFFFF; }
+.dot.offline { background: var(--dim); }

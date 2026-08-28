@@ -155,6 +155,34 @@ router.add('GET /api/users', requirePerm('staff.read', (ctx) => {
   sendOk(ctx.res, { users: rows.map(Auth.publicUser) });
 }));
 
+/* "Online now" reuses sessions.last_seen, which already ticks forward on
+   every authenticated request (Auth.userForToken) — no new tracking, just
+   exposing what the sliding-expiry mechanism already keeps. One row per
+   user (their most recent live session), never the raw token. A user with
+   no live session at all is simply absent from the list rather than sent
+   as "offline" — keeps the payload proportional to who's actually signed
+   in, and matches the "absent means nothing to report" shape used
+   elsewhere (e.g. scrubCost). */
+const PRESENCE_ONLINE_MS = 5 * 60 * 1000;
+
+router.add('GET /api/staff/presence', requirePerm('staff.read', (ctx) => {
+  const now = Date.now();
+  const rows = DB.get().prepare(
+    `SELECT u.id, u.username, u.name, u.role, MAX(s.last_seen) AS last_seen
+     FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.expires_at > ?
+     GROUP BY u.id
+     ORDER BY last_seen DESC`
+  ).all(DB.nowIso());
+  sendOk(ctx.res, {
+    staff: rows.map((r) => ({
+      id: r.id, username: r.username, name: r.name, role: r.role,
+      lastSeen: r.last_seen,
+      online: (now - new Date(r.last_seen).getTime()) < PRESENCE_ONLINE_MS
+    }))
+  });
+}));
+
 router.add('POST /api/users', requirePerm('staff.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {

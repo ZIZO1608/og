@@ -184,9 +184,10 @@ var AFTER = {
    of opening the product sheet — otherwise every test scan would fire the
    sheet over the page you are trying to configure. */
 function afterSettings() {
-  /* Before the early return below — the roles grid must still load on a
-     machine with no scanner support, which is most of them. */
+  /* Before the early return below — the roles grid and presence card must
+     still load on a machine with no scanner support, which is most of them. */
   loadRoleMatrix();
+  loadStaffPresence();
 
   var probeBox = document.getElementById('hwProbe');
   var read = document.getElementById('hwRead');
