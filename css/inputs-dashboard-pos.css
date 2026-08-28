@@ -324,6 +324,12 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 .pr-item-inputs { display: grid; grid-template-columns: minmax(0, 1fr) 86px; gap: 6px; margin-top: 6px; }
 .pr-count { margin: 8px 2px 0; }
 
+/* The transaction reference sits under the payment grid, and only for the
+   methods that produce one. Latin digits even on an Arabic till, so the input
+   is forced LTR rather than inheriting the page direction. */
+.txn-field { margin: 12px 0 0; }
+.txn-field .inp { direction: ltr; text-align: start; }
+
 /* Priority as the site's segmented pill, sized to sit level with the date
    box beside it. Urgent picked = the same red every urgent badge wears. */
 .pr-seg { display: flex; width: 100%; height: 38px; }

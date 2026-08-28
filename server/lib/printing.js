@@ -45,7 +45,8 @@ export function data(saleId) {
   const sale = get().prepare(
     `SELECT s.id, s.at, s.customer_id, s.customer_name, s.wh_id, s.payment,
             s.currency, s.subtotal, s.discount, s.total, s.fx_rate, s.fx_base,
-            s.voided, s.points_used, s.points_earned, u.name AS cashier_name
+            s.voided, s.points_used, s.points_earned, s.txn_ref,
+            u.name AS cashier_name
        FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
       WHERE s.id = ?`
   ).get(saleId);

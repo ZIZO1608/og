@@ -114,6 +114,9 @@ var EXTRA_V3_EN = {
   yl_turnaround: 'Average turnaround', yl_turnaround_sub: 'order taken to delivered',
 
   /* per-piece print picks at the till */
+  txn_ref: 'Transaction ID',
+  txn_ref_ph: 'Reference from the transfer or terminal',
+
   pr_pick: 'Items to print',
   pr_name: 'Name', pr_num: 'Number',
   pr_none_sel: 'Pick at least one item for the print job',
@@ -211,6 +214,9 @@ var EXTRA_V3_AR = {
   yl_scorecard: 'سجلّك', yl_scorecard_sub: 'من سجل المراحل الموثّق',
   yl_on_time: 'التسليم في الموعد', yl_on_time_sub: 'من الطلبات المنجزة سُلّمت بموعدها',
   yl_turnaround: 'متوسط مدة الإنجاز', yl_turnaround_sub: 'من استلام الطلب حتى التسليم',
+
+  txn_ref: 'رقم العملية',
+  txn_ref_ph: 'الرقم المرجعي للحوالة أو جهاز البطاقة',
 
   pr_pick: 'القطع المطلوب طباعتها',
   pr_name: 'الاسم', pr_num: 'الرقم',

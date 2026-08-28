@@ -46,6 +46,8 @@ function invoiceHtml(sale) {
       (sale.pointsUsed ? '<div class="tr"><span>' + t('loyalty') + ' (' + sale.pointsUsed + ' ' + t('points') + ')</span>' +
         '<span>− ' + money(sale.pointsUsed * CONFIG.LOYALTY_POINT_VALUE) + '</span></div>' : '') +
       '<div class="tr"><span>' + t('payment_method') + '</span><span>' + DB.payLabel(sale.payment) + '</span></div>' +
+      (sale.txnRef ? '<div class="tr"><span>' + t('txn_ref') + '</span>' +
+        '<span class="num" dir="ltr">' + esc(sale.txnRef) + '</span></div>' : '') +
       '<div class="tr grand"><span>' + t('total') + '</span><span>' + money(sale.total) + '</span></div>' +
       (OG.currency === 'SYP' ? '<div class="tr" style="color:#666;font-size:11px"><span></span><span>≈ $' +
         nf(sale.total / CONFIG.EXCHANGE_RATE) + '</span></div>' : '') +
@@ -224,6 +226,11 @@ function receiptHtml(sale) {
   }
   h += '<div class="rcp-tot"><span>' + t('payment_method') + '</span><span>' +
        DB.payLabel(sale.payment) + '</span></div>';
+
+  if (sale.txnRef) {
+    h += '<div class="rcp-tot"><span>' + t('txn_ref') + '</span>' +
+         '<span class="num" dir="ltr">' + esc(sale.txnRef) + '</span></div>';
+  }
 
   h += '<div class="rcp-grand"><span>' + t('total') + '</span><span>' + money(sale.total) + '</span></div>';
 

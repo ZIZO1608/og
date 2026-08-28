@@ -98,6 +98,10 @@ export function record({
      more than it gets to decide what a shoe costs. */
   pointsUsed = 0,
   currency, userId, opId, note,
+  /* The transfer/terminal reference for Sham Cash, Fuad, Haram or a card.
+     Trimmed and capped here rather than trusted: it is free text typed at a
+     till and it ends up on a printed receipt. */
+  txnRef = null,
   /* Set by the route from the caller's permissions. Passed in rather than
      looked up here so this module stays free of the auth tables — but it
      defaults to false, so a new caller that forgets it gets the cap, not a
@@ -113,6 +117,8 @@ export function record({
     const seen = get().prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
     if (seen) return { ...JSON.parse(seen.result), replayed: true };
   }
+
+  const ref = String(txnRef ?? '').trim().slice(0, 64) || null;
 
   return tx((d) => {
     const at = nowIso();
@@ -290,12 +296,12 @@ export function record({
       `INSERT INTO sales
          (id, at, customer_id, customer_name, cashier_id, wh_id, payment,
           currency, subtotal, discount, total, fx_rate, fx_base, created_at,
-          public_token, points_used, points_earned)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          public_token, points_used, points_earned, txn_ref)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(saleId, at, cust ? cust.id : null, cust ? cust.name : null,
           userId ?? null, whId, payment || 'cash',
           settle, subtotal, disc, total, rate, base, at, token, wantPoints,
-          earnedForRow);
+          earnedForRow, ref);
 
     const insLine = d.prepare(
       `INSERT INTO sale_items
@@ -334,6 +340,7 @@ export function record({
       customerId: cust ? cust.id : null,
       customerName: cust ? cust.name : null,
       payment: payment || 'cash',
+      txnRef: ref,
       pointsEarned: earned,
       pointsUsed: wantPoints,
       /* What the redeemed points were actually worth, so the receipt can print

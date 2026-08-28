@@ -383,6 +383,14 @@ var Receipt = (function () {
     var lbl = payLabel(R.payment);
     y = rowLR(ctx, y, both('rc2_payment'), lbl.ar + ' · ' + lbl.en, { size: 19, leftSize: 17 });
 
+    /* The transfer reference, printed under the method it belongs to — the
+       line somebody reads back over the phone weeks later. rowLR already
+       draws the value column LTR, which is what these latin-digit references
+       need on an otherwise Arabic receipt. */
+    if (R.txnRef) {
+      y = rowLR(ctx, y, both('txn_ref'), String(R.txnRef), { size: 18, leftSize: 15 });
+    }
+
     if (R.toCollect) {
       y = dashRule(ctx, y + 6, 14);
       y = rowLR(ctx, y, L('rc2_to_collect').ar, fmtMoney(R.toCollect, R.currency, true),
@@ -523,6 +531,7 @@ var Receipt = (function () {
       pointsValue: 0, total: payload.total / div,
       fxRate: payload.fx_rate, secondCurrency: second,
       payment: payload.payment,
+      txnRef: payload.txn_ref || null,
       toCollect: payload.delivery ? payload.delivery.to_collect / div : 0,
       pointsEarned: payload.points_earned || 0,
       shop: {
@@ -555,7 +564,8 @@ var Receipt = (function () {
       currency: CONFIG.BASE_CURRENCY, subtotal: sale.subtotal, discount: sale.discount,
       pointsValue: sale.pointsUsed ? sale.pointsUsed * CONFIG.LOYALTY_POINT_VALUE : 0,
       total: sale.total, fxRate: sale.fxRate, secondCurrency: second,
-      payment: sale.payment, toCollect: sale.payment === 'cod' ? sale.total : 0,
+      payment: sale.payment, txnRef: sale.txnRef || null,
+      toCollect: sale.payment === 'cod' ? sale.total : 0,
       pointsEarned: Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000),
       shop: {
         name: CONFIG.SHOP_NAME, branch: CONFIG.SHOP_BRANCH,

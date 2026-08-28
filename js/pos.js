@@ -14,6 +14,10 @@ var POS = (function () {
     coupon: null,
     pointsUsed: 0,
     payment: 'cash',
+    /* The transfer or terminal reference for the methods that produce one.
+       Kept out of the sale unless the chosen method actually has one, so a
+       cash sale can never carry a stale number from the sale before it. */
+    txnRef: '',
     /* Going out with a driver. `deliver` is the tick box; `deliverAddress` is
        null until someone types, so an empty string can mean "cleared it
        deliberately" and still be told apart from "not filled in yet". */
@@ -284,12 +288,29 @@ var POS = (function () {
     return h + '</div>';
   }
 
+  /* Sham Cash, Fuad, Haram and a card terminal each hand back a reference for
+     the transfer. Cash, COD and on-credit do not, so asking for one there
+     would be a box that can only ever be wrong. */
+  var TXN_METHODS = { sham: 1, fuad: 1, haram: 1, card: 1 };
+  function wantsTxnRef() { return !!TXN_METHODS[S.payment]; }
+
   function payGridHtml() {
     var h = '<span class="lbl">' + t('payment_method') + '</span><div class="pay-grid" id="payGrid">';
     DB.paymentMethods.forEach(function (m) {
       h += '<button class="' + (S.payment === m ? 'on' : '') + '" data-pos="pay" data-m="' + m + '">' + DB.payLabel(m) + '</button>';
     });
-    return h + '</div>' + deliveryBoxHtml();
+    h += '</div>';
+
+    if (wantsTxnRef()) {
+      /* Optional on purpose. A till that refuses to sell because a reference
+         was not typed is a till that stops the queue over paperwork. */
+      h += '<label class="field txn-field"><span>' + t('txn_ref') + ' · ' + esc(DB.payLabel(S.payment)) + '</span>' +
+        '<input class="inp num" id="posTxn" type="text" autocomplete="off" inputmode="latin" ' +
+          'maxlength="64" placeholder="' + esc(t('txn_ref_ph')) + '" ' +
+          'value="' + esc(S.txnRef) + '" data-pos-input="txn"></label>';
+    }
+
+    return h + deliveryBoxHtml();
   }
 
   /* ------------------------------------------------------------- delivery
@@ -696,6 +717,7 @@ var POS = (function () {
       whId: S.warehouse,
       customerId: S.customerId || null,
       payment: S.payment,
+      txnRef: (wantsTxnRef() && S.txnRef.trim()) || null,
       /* Manual discount and coupon only — totals() keeps the points out of
          this figure deliberately. */
       discount: totals().discount,
@@ -843,6 +865,9 @@ var POS = (function () {
       couponCode: S.coupon ? CONFIG.COUPON.code : null,
       total: x.total,
       payment: S.payment,
+      /* Read from state, not the DOM: the foot repaints on every payment
+         change, so the input node the cashier typed into may be long gone. */
+      txnRef: (wantsTxnRef() && S.txnRef.trim()) || null,
       warehouseId: S.warehouse,
       cashier: cashier,
       /* Stamped with the open shift, not matched by time later. A sale rung
@@ -982,6 +1007,7 @@ var POS = (function () {
     S.coupon = null;
     S.pointsUsed = 0;
     S.payment = 'cash';
+    S.txnRef = '';
     /* Cleared with everything else. An address left behind would be attached
        to the NEXT customer's sale, and the parcel would go to the wrong door. */
     S.deliver = false;
@@ -1090,7 +1116,14 @@ var POS = (function () {
     },
     unredeem: function () { S.pointsUsed = 0; paintFoot(); },
 
-    pay: function (el) { S.payment = el.getAttribute('data-m'); paintFoot(); },
+    pay: function (el) {
+      S.payment = el.getAttribute('data-m');
+      /* Dropped when the new method has no reference of its own — otherwise a
+         mis-tap on Sham Cash and back to Cash leaves a number attached to a
+         cash sale, and it would print on the receipt. */
+      if (!wantsTxnRef()) S.txnRef = '';
+      paintFoot();
+    },
 
     /* Switching location re-renders the whole POS body, not just the footer:
        the product grid's availability badges and every size in the picker are
@@ -1343,6 +1376,7 @@ var POS = (function () {
          end, because the foot repaints when the payment method changes and
          a half-typed address would vanish with it. */
       if (k === 'addr') { S.deliverAddress = el.value; return; }
+      if (k === 'txn') { S.txnRef = el.value; return; }
       /* Same state-on-every-keystroke rule as the address above — these boxes
          sit inside a panel that repaints when the cart changes. */
       if (k === 'pr-name' || k === 'pr-num') {

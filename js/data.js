@@ -2628,6 +2628,7 @@ var DB = {
         couponCode: null,
         total: s.total,
         payment: s.payment,
+        txnRef: s.txn_ref || null,
         warehouseId: s.wh_id,
         cashier: s.cashier_name || '',
         shiftId: null,

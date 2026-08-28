@@ -466,6 +466,7 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
       whId: b.whId,
       customerId: b.customerId ? Number(b.customerId) : null,
       payment: b.payment,
+      txnRef: typeof b.txnRef === 'string' ? b.txnRef : null,
       discount: Number(b.discount) || 0,
       /* A count of points, not an amount. The server values them from the
          config table — the till knowing what a point is worth is a display
