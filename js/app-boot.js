@@ -123,24 +123,82 @@ function openCalibration() {
    be. Before this, a scan only registered when the POS search box was focused;
    from the dashboard or the warehouse it went nowhere.
 
-   One rule: every scan opens the product sheet, on every screen. Predictable
-   beats clever — the person holding the scanner should never have to think
-   about which page they are on. */
+   Two rules. At the till a scan IS the sale: straight into the cart, no
+   sheet, no extra Enter — the person scanning there is mid-queue with a box
+   in one hand. On every other screen a scan opens the product sheet, because
+   away from the till the question is "what is this?", not "sell this". */
+function handleScan(code) {
+  /* Only an EXACT product code goes into the cart — the same three matchers
+     labels.js trusts, and pointedly not resolveScan's cropped-label prefix
+     guess: a guess picks whichever size sorts first, and a guessed size in
+     the cart with only a toast to announce it is a mischarge waiting at the
+     door. Everything else — a QR deep link, an invoice, a job card, a
+     partial or unknown code — falls through to the sheet, which knows what
+     to do with each and asks before selling anything.
+
+     The partner check matters because OG.view stays 'pos' while a manager
+     previews the Yalla portal: a scan taken there must not feed a cart
+     nobody can see. */
+  if (OG.view === 'pos' && !(OG.print && OG.print.partner) && typeof POS !== 'undefined') {
+    var c = String(code || '').trim();
+    var v = DB.variantByBarcode(c) || DB.variantBySku(c) ||
+            (DB.variantByLabelCode && DB.variantByLabelCode(c));
+    if (v) {
+      closeModal();
+      POS.add(v);
+      return;
+    }
+  }
+  closeModal();
+  openScanResult(code);
+}
+
 function bindWedge() {
   if (typeof Wedge === 'undefined') return;
+
+  /* A scanner left in presentation mode re-reads the same label every few
+     hundred milliseconds while it sits under the beam, and each re-read
+     used to be a whole extra unit in the cart — or, on the sheet, a
+     phantom press of its Sell button. Two deliberate scans of a second
+     identical box are essentially never this fast, so inside this window
+     the same code is one scan. The camera has its own, longer window
+     (scan.js's DUPE_MS) because video re-decodes for as long as the label
+     is in frame. */
+  var DUPE_MS = 700;
+  var lastCode = null, lastAt = 0;
 
   Wedge.onScan(function (code) {
     /* The hardware settings page owns the scanner while it is open, or its
        own test box would fire the product sheet on every test scan. */
     if (OG.view === 'settings' && OG.set && OG.set.captureScans) return;
 
+    /* Scanning IS the answer to "what did you want?" — a palette left open
+       would sit over whatever the scan produces and feed the next Enter to
+       its highlighted row instead of the page. */
+    if (typeof Palette !== 'undefined' && Palette.isOpen()) Palette.close();
+
+    /* The label batch modal owns the scanner — labels.js turns a scan into
+       +1 on the matching row. Acting here too would close the batch
+       mid-count. But labels.js only knows exact product codes and stays
+       silent otherwise, so the one thing owed from here is feedback on a
+       code it will ignore — silence reads as a dead scanner. */
+    if (document.querySelector('.lbl-picker')) {
+      var known = DB.variantByBarcode(code) || DB.variantBySku(code) ||
+                  (DB.variantByLabelCode && DB.variantByLabelCode(code));
+      if (!known) toast(t('lbl_unknown_code'), String(code).slice(0, 40), 'warn');
+      return;
+    }
+
+    var now = Date.now();
+    if (code === lastCode && (now - lastAt) < DUPE_MS) { lastAt = now; return; }
+    lastCode = code; lastAt = now;
+
     /* A second scan of the same code confirms whatever the sheet is already
        offering, so a fast cashier never has to reach for the keyboard. */
     var open = document.getElementById('scPrimary');
     if (open && open.getAttribute('data-code') === code) { open.click(); return; }
 
-    closeModal();
-    openScanResult(code);
+    handleScan(code);
   });
 }
 

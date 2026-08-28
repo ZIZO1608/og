@@ -132,8 +132,13 @@ var Wedge = (function () {
     if (e.key === CFG.suffix) {
       if (!S.buf.length) return;
       /* Only swallow the Enter if this really was a scan — otherwise a person
-         pressing Enter in a form would find the form never submits. */
-      if (finish(e.target)) e.preventDefault();
+         pressing Enter in a form would find the form never submits. Once it
+         IS a scan, the Enter is the scanner's terminator, not a keypress, and
+         no other listener may treat it as one: POS reads Enter-on-an-empty-
+         search-box as the demo's random-sale shortcut, and the palette runs
+         whatever row is highlighted. Hence stopImmediatePropagation, not just
+         preventDefault. */
+      if (finish(e.target)) { e.preventDefault(); e.stopImmediatePropagation(); }
       return;
     }
 

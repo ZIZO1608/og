@@ -25,7 +25,11 @@ var POS = (function () {
     cat: '',
     q: '',
     flashSku: null,
-    print: { on: false, text: '', qty: 1, priority: 'normal', deadline: null }
+    /* `sel` maps a physical piece in the cart — keyed sku#unit, because a
+       line with qty 3 is three shirts — to the name and number that go on
+       its back. No qty field: the job's quantity IS how many pieces are
+       picked. */
+    print: { on: false, text: '', sel: {}, priority: 'normal', deadline: null }
   };
 
   var PRINT_UNIT_PRICE = 950;     // charged to the customer, per piece (new pound)
@@ -143,6 +147,7 @@ var POS = (function () {
     S.flashSku = v.sku;
     if (!silent) toast(p.name, t('size') + ' ' + v.size + ' · ' + money(p.sellingPrice), 'ok', 1600);
     paintCart();
+    paintPrintBox();
     pulseScan(true);
     countTotal();
     /* Leave the sheet closed on a phone — he is mid-scan and wants to see the
@@ -345,17 +350,78 @@ var POS = (function () {
     return h + '</div>';
   }
 
+  /* Every physical piece in the cart, one row each — a line with qty 3 is
+     three shirts and each back gets its own name and number. */
+  function printUnits() {
+    var out = [];
+    S.cart.forEach(function (l) {
+      for (var u = 0; u < l.qty; u++) {
+        out.push({ key: l.sku + '#' + u, line: l, unit: u });
+      }
+    });
+    return out;
+  }
+
+  /* Only picks that still point at a piece in the cart. Read fresh at every
+     use, so a piece removed from the basket can never ride into a job. */
+  function printPicks() {
+    var out = [];
+    printUnits().forEach(function (x) {
+      if (S.print.sel[x.key]) out.push({ line: x.line, sel: S.print.sel[x.key] });
+    });
+    return out;
+  }
+
   function printBoxHtml() {
-    var h = '<div class="print-add">' +
+    var h = '<div class="print-add" id="printBox">' +
       '<label class="check"><input type="checkbox" id="posPrintOn"' + (S.print.on ? ' checked' : '') + ' data-pos-check="print">' +
         '<span><b>' + t('add_print') + '</b><br><small class="muted">→ ' + CONFIG.PRINT_PARTNER + '</small></span></label>';
     if (S.print.on) {
+      var units = printUnits();
+
+      /* Prune selections whose piece has left the cart, so the count below
+         and the job built later can never disagree with what is on screen. */
+      var valid = {};
+      units.forEach(function (x) { valid[x.key] = true; });
+      Object.keys(S.print.sel).forEach(function (k) { if (!valid[k]) delete S.print.sel[k]; });
+
       h += '<div class="print-add-form">' +
         '<label class="field"><span>' + t('print_text') + '</span>' +
-          '<input class="inp" id="prText" type="text" value="' + esc(S.print.text) + '" placeholder="TEAM OG · back print"></label>' +
-        '<div class="row3">' +
-          '<label class="field"><span>' + t('qty') + '</span>' +
-            '<input class="inp num" id="prQty" type="number" min="1" value="' + S.print.qty + '"></label>' +
+          '<input class="inp" id="prText" type="text" value="' + esc(S.print.text) + '" placeholder="TEAM OG · back print"></label>';
+
+      h += '<div class="mt"><span class="lbl">' + t('pr_pick') + '</span></div>' +
+        '<div class="pr-items">';
+      if (!units.length) {
+        h += '<div class="muted small">' + t('empty_cart') + '</div>';
+      }
+      units.forEach(function (x) {
+        var s = S.print.sel[x.key];
+        var mark = x.line.qty > 1 ? ' · #' + (x.unit + 1) : '';
+        h += '<div class="pr-unit">' +
+          '<div class="pr-item' + (s ? ' on' : '') + '" data-pos="pr-item" data-k="' + esc(x.key) + '">' +
+            '<span class="pi-box">' + (s ? '✓' : '') + '</span>' +
+            '<span class="pi-name">' + esc(x.line.name) + '</span>' +
+            '<span class="pi-size num">' + esc(String(x.line.size)) + mark + '</span>' +
+          '</div>';
+        if (s) {
+          h += '<div class="pr-item-inputs">' +
+            '<input class="inp" type="text" value="' + esc(s.name) + '" placeholder="' + esc(t('pr_name')) + '" ' +
+              'data-pos-input="pr-name" data-k="' + esc(x.key) + '">' +
+            '<input class="inp num" type="number" min="0" max="999" value="' + esc(s.num) + '" placeholder="' + esc(t('pr_num')) + '" ' +
+              'data-pos-input="pr-num" data-k="' + esc(x.key) + '">' +
+          '</div>';
+        }
+        h += '</div>';
+      });
+      h += '</div>';
+
+      var n = printPicks().length;
+      if (n) {
+        h += '<div class="pr-count muted small num">' + n + ' × ' + money(PRINT_UNIT_PRICE) +
+          ' = ' + money(n * PRINT_UNIT_PRICE) + '</div>';
+      }
+
+      h += '<div class="row2 mt">' +
           '<label class="field"><span>' + t('priority') + '</span><select class="inp" id="prPrio">' +
             '<option value="normal"' + (S.print.priority === 'normal' ? ' selected' : '') + '>' + t('normal') + '</option>' +
             '<option value="urgent"' + (S.print.priority === 'urgent' ? ' selected' : '') + '>' + t('urgent') + '</option>' +
@@ -365,6 +431,15 @@ var POS = (function () {
         '</div></div>';
     }
     return h + '</div>';
+  }
+
+  /* Repaint just the print panel when the cart changes underneath it — a
+     newly scanned shirt must show up as pickable at once. Cheaper than a
+     full foot repaint, and it cannot pull focus out of the customer or
+     address boxes the way repainting the whole foot would. */
+  function paintPrintBox() {
+    var el = document.getElementById('printBox');
+    if (el) el.outerHTML = printBoxHtml();
   }
 
   /* Silent until she types something, and only ever says the one thing she
@@ -449,8 +524,6 @@ var POS = (function () {
             '<button class="btn btn-dark btn-lg" style="flex:none" data-pos="scan-random">⌁ ' + t('scan_btn') + '</button>' +
           '</div>' +
           '<div class="scan-meta">' +
-            '<span class="hint-chip">' + t('try_scanning') + ' <b>' + CONFIG.DEMO_BARCODE + '</b></span>' +
-            '<button class="btn btn-sm btn-ghost" data-pos="fill-demo">↧</button>' +
             '<button class="btn btn-sm btn-ghost" data-act="export" data-kind="pdf">' + t('ex_till') + '</button>' +
             '<span class="keys">' +
               '<span><span class="keycap">↵</span> ' + (OG.lang === 'ar' ? 'مسح' : 'scan') + '</span>' +
@@ -591,6 +664,13 @@ var POS = (function () {
   function complete(silent) {
     if (!S.cart.length) {
       if (!silent) toast(t('cart'), t('empty_cart'), 'err');
+      return;
+    }
+
+    /* A print job with no pieces picked is a job Yalla Wear cannot print.
+       Caught before anything is charged, in demo and live mode alike. */
+    if (S.print.on && !printPicks().length) {
+      if (!silent) toast(t('add_print'), t('pr_none_sel'), 'err', 5000);
       return;
     }
 
@@ -831,21 +911,37 @@ var POS = (function () {
     var job = null;
     if (S.print.on) {
       var txtEl = document.getElementById('prText');
-      var qtyEl = document.getElementById('prQty');
       var prioEl = document.getElementById('prPrio');
       var dateEl = document.getElementById('prDate');
-      var pqty = Math.max(1, parseInt((qtyEl && qtyEl.value) || S.print.qty, 10) || 1);
       var pdate = (dateEl && dateEl.value) || S.print.deadline || isoAhead(5);
+
+      /* One kit line per picked piece — the exact shape the seeded kit jobs
+         use, so the job drawer, the Yalla portal and the partner invoice all
+         show these names and numbers with no special casing. An empty name
+         stays null: that is the established to-be-confirmed state, and
+         DB.setStage already refuses to finish a job while one is missing. */
+      var klines = printPicks().map(function (x) {
+        return DB.newKitLine({
+          club: x.line.name,
+          clubAr: '',
+          print: (x.sel.name || '').toUpperCase().trim() || null,
+          number: (x.sel.num !== '' && isFinite(+x.sel.num)) ? +x.sel.num : null,
+          size: String(x.line.size),
+          qty: 1,
+          price: PRINT_UNIT_COST
+        });
+      });
 
       job = DB.newPrintJob({
         customer: cust ? cust.name : t('walk_in'),
         phone: cust ? cust.phone : '—',
         design: ((txtEl && txtEl.value) || S.print.text || 'Custom print') + ' · ' + sale.id,
-        qty: pqty,
+        lines: klines,
+        qty: klines.length,
         priority: (prioEl && prioEl.value) || S.print.priority,
         deadline: new Date(pdate + 'T12:00:00'),
-        price: pqty * PRINT_UNIT_PRICE,
-        cost: pqty * PRINT_UNIT_COST
+        price: klines.length * PRINT_UNIT_PRICE,
+        cost: klines.length * PRINT_UNIT_COST
       });
     }
 
@@ -891,7 +987,7 @@ var POS = (function () {
        to the NEXT customer's sale, and the parcel would go to the wrong door. */
     S.deliver = false;
     S.deliverAddress = null;
-    S.print = { on: false, text: '', qty: 1, priority: 'normal', deadline: null };
+    S.print = { on: false, text: '', sel: {}, priority: 'normal', deadline: null };
     S.q = '';
     S.cat = '';
     if (!keepView) { paintCart(); paintGrid(); }
@@ -921,24 +1017,30 @@ var POS = (function () {
       else document.body.setAttribute('data-cart', 'open');
     },
 
-    'fill-demo': function () {
-      var inp = document.getElementById('posScan');
-      if (inp) { inp.value = CONFIG.DEMO_BARCODE; inp.focus(); inp.select(); }
-    },
-
     inc: function (el) {
       var l = S.cart[+el.getAttribute('data-i')];
       if (l.qty >= stockFor(l.sku)) { toast(t('out_of_stock'), l.name + ' · ' + l.size, 'err'); return; }
-      l.qty += 1; S.flashSku = l.sku; paintCart();
+      l.qty += 1; S.flashSku = l.sku; paintCart(); paintPrintBox();
     },
     dec: function (el) {
       var i = +el.getAttribute('data-i');
       S.cart[i].qty -= 1;
       if (S.cart[i].qty <= 0) S.cart.splice(i, 1);
       paintCart();
+      paintPrintBox();
     },
-    del: function (el) { S.cart.splice(+el.getAttribute('data-i'), 1); paintCart(); },
-    clear: function () { S.cart = []; S.coupon = null; S.pointsUsed = 0; paintCart(); },
+    del: function (el) { S.cart.splice(+el.getAttribute('data-i'), 1); paintCart(); paintPrintBox(); },
+    clear: function () { S.cart = []; S.coupon = null; S.pointsUsed = 0; paintCart(); paintPrintBox(); },
+
+    /* Toggle one piece in or out of the print job. The panel repaints so the
+       name and number boxes appear under the tick — focus is on the tapped
+       row itself, so nothing typed elsewhere can be lost. */
+    'pr-item': function (el) {
+      var k = el.getAttribute('data-k');
+      if (S.print.sel[k]) delete S.print.sel[k];
+      else S.print.sel[k] = { name: '', num: '' };
+      paintPrintBox();
+    },
 
     'disc-mode': function (el) { S.discount.mode = el.getAttribute('data-m'); paintFoot(); },
 
@@ -1116,8 +1218,14 @@ var POS = (function () {
          end, because the foot repaints when the payment method changes and
          a half-typed address would vanish with it. */
       if (k === 'addr') { S.deliverAddress = el.value; return; }
+      /* Same state-on-every-keystroke rule as the address above — these boxes
+         sit inside a panel that repaints when the cart changes. */
+      if (k === 'pr-name' || k === 'pr-num') {
+        var s = S.print.sel[el.getAttribute('data-k')];
+        if (s) { if (k === 'pr-name') s.name = el.value; else s.num = el.value; }
+        return;
+      }
       if (el.id === 'prText') S.print.text = el.value;
-      if (el.id === 'prQty') S.print.qty = Math.max(1, parseInt(el.value, 10) || 1);
       if (el.id === 'prDate') S.print.deadline = el.value;
     });
 

@@ -68,14 +68,6 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 .chip.on { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); font-weight: 700; }
 .chip:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 
-.hint-chip {
-  display: inline-flex; align-items: center; gap: 7px;
-  background: var(--brand-soft); color: var(--muted-foreground);
-  border: 1px solid var(--brand-border); border-radius: var(--radius);
-  font-size: 12px; font-weight: 500; padding: 5px 11px; font-variant-numeric: tabular-nums;
-}
-.hint-chip b { color: var(--brand); font-weight: 700; letter-spacing: .03em; }
-
 /* -------------------------------------------------------------- DASHBOARD */
 
 .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) 366px; gap: 14px; align-items: start; }
@@ -278,3 +270,27 @@ body.rtl .cust-drop small { float: left; }
 
 .print-add { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 13px; margin: 14px 0; }
 .print-add-form { margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--border); }
+
+/* The per-piece picker inside the print panel: one tappable row per physical
+   piece in the cart, with the name/number boxes appearing under a picked row. */
+.pr-items { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.pr-item {
+  display: flex; align-items: center; gap: 9px;
+  border: 1px solid var(--input); border-radius: var(--radius); background: var(--card);
+  padding: 8px 10px; cursor: pointer; user-select: none;
+  transition: border-color var(--t), background var(--t);
+}
+.pr-item:hover { border-color: var(--border-strong); }
+.pr-item.on { border-color: var(--brand); background: var(--brand-soft); }
+.pi-box {
+  flex: none; width: 16px; height: 16px; border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; line-height: 1; color: var(--brand-foreground);
+  transition: background var(--t), border-color var(--t);
+}
+.pr-item.on .pi-box { background: var(--brand); border-color: var(--brand); }
+.pi-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-size { flex: none; font-size: 11.5px; color: var(--muted-foreground); }
+.pr-item-inputs { display: grid; grid-template-columns: minmax(0, 1fr) 86px; gap: 6px; margin-top: 6px; }
+.pr-count { margin: 8px 2px 0; }

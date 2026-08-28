@@ -144,7 +144,7 @@ var I18N = {
     shelf: 'Shelf', sku: 'SKU', brand: 'Brand', made_in: 'Made in', colour: 'Colourway',
 
     pos_title: 'Point of Sale', pos_sub: 'Scan, size, done — under ten seconds',
-    scan_ph: 'Scan barcode or search product…', scan_btn: 'Scan', try_scanning: 'Try scanning:',
+    scan_ph: 'Scan barcode or search product…', scan_btn: 'Scan',
     cart: 'Cart', clear: 'Clear', empty_cart: 'Cart is empty',
     empty_cart_sub: 'Scan a barcode or tap a product to start a sale',
     all_products: 'All', subtotal: 'Subtotal', discount: 'Discount', coupon: 'Coupon code',
@@ -579,7 +579,7 @@ var I18N = {
     shelf: 'الرف', sku: 'الرمز', brand: 'الماركة', made_in: 'بلد الصنع', colour: 'اللون',
 
     pos_title: 'نقطة البيع', pos_sub: 'امسح، اختر القياس، خلصت — بأقل من عشر ثوانٍ',
-    scan_ph: 'امسح الباركود أو ابحث عن منتج…', scan_btn: 'مسح', try_scanning: 'جرّب مسح:',
+    scan_ph: 'امسح الباركود أو ابحث عن منتج…', scan_btn: 'مسح',
     cart: 'السلة', clear: 'إفراغ', empty_cart: 'السلة فارغة',
     empty_cart_sub: 'امسح باركود أو اضغط على منتج لبدء البيع',
     all_products: 'الكل', subtotal: 'المجموع', discount: 'الخصم', coupon: 'كود الخصم',

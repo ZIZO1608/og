@@ -454,10 +454,12 @@ function openScanResult(raw) {
   h += '</div>';
 
   /* ---- what to do with the thing now that it is in your hand -------------
-     Every scan lands here, so this row is the whole point of owning a
-     scanner: put it away, take it out, or sell it. Check in and check out go
-     through DB.moveStock — the same audited path the warehouse uses — so a
-     hardware scan can never become a second way to change stock. */
+     Every scan away from the till lands here (at the till an exact product
+     code goes straight into the cart — handleScan), so this row is what the
+     scanner is for on every other screen: put it away, take it out, or sell
+     it. Check in and check out go through DB.moveStock — the same audited
+     path the warehouse uses — so a hardware scan can never become a second
+     way to change stock. */
   h += '<div class="card mt sc-do"><div class="card-head"><h3>' + t('sc_what_now') + '</h3>' +
     '<div class="card-actions muted small">' + esc(v.sku) + '</div></div><div class="card-body">' +
     '<div class="sc-qty">' +
@@ -494,9 +496,11 @@ function openScanResult(raw) {
           '<button class="btn btn-ghost" data-act="labels-for" data-id="' + p.id + '">' + t('print_labels') + '</button>' +
           '<button class="btn btn-ghost" data-act="scan-open">' + t('sc_again') + '</button>',
     onOpen: function () {
-      /* Focused on open so Enter completes the sale without a mouse. Always
-         showing the sheet costs a tap at the till; this is what buys it back —
-         scan, Enter, done, with the detail still there if it is wanted. */
+      /* Focused on open so Enter sells without a mouse — scan, Enter, done,
+         with the detail still there if it is wanted. (Exact scans AT the
+         till skip this sheet entirely and land in the cart; this focus
+         serves every other screen, and the partial-code case where the
+         sheet is the confirmation step.) */
       var b = document.getElementById('scPrimary');
       if (b) b.focus();
     }

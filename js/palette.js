@@ -32,7 +32,7 @@ var Palette = (function () {
       { icon: '⌁', label: t('cp_new_sale'), hint: t('nav_pos'),
         run: function () { go('pos'); } },
       { icon: '⛶', label: t('sc_title'), hint: t('cp_scan_hint'),
-        run: function () { Scan.open({ onHit: function (code) { openScanResult(code); } }); } },
+        run: function () { Scan.open({ onHit: function (code) { handleScan(code); } }); } },
       { icon: '＋', label: t('cp_add_product'), hint: t('nav_warehouse'),
         run: function () { OG.wh.tab = 'add'; go('warehouse'); } },
       { icon: '☑', label: t('st_count'), hint: t('nav_warehouse'),

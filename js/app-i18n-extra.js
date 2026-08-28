@@ -111,7 +111,12 @@ var EXTRA_V3_EN = {
 
   yl_scorecard: 'Your record', yl_scorecard_sub: 'from the stamped history',
   yl_on_time: 'Delivered on time', yl_on_time_sub: 'of finished jobs hit their deadline',
-  yl_turnaround: 'Average turnaround', yl_turnaround_sub: 'order taken to delivered'
+  yl_turnaround: 'Average turnaround', yl_turnaround_sub: 'order taken to delivered',
+
+  /* per-piece print picks at the till */
+  pr_pick: 'Items to print',
+  pr_name: 'Name', pr_num: 'Number',
+  pr_none_sel: 'Pick at least one item for the print job'
 };
 
 var EXTRA_V3_AR = {
@@ -204,7 +209,11 @@ var EXTRA_V3_AR = {
 
   yl_scorecard: 'سجلّك', yl_scorecard_sub: 'من سجل المراحل الموثّق',
   yl_on_time: 'التسليم في الموعد', yl_on_time_sub: 'من الطلبات المنجزة سُلّمت بموعدها',
-  yl_turnaround: 'متوسط مدة الإنجاز', yl_turnaround_sub: 'من استلام الطلب حتى التسليم'
+  yl_turnaround: 'متوسط مدة الإنجاز', yl_turnaround_sub: 'من استلام الطلب حتى التسليم',
+
+  pr_pick: 'القطع المطلوب طباعتها',
+  pr_name: 'الاسم', pr_num: 'الرقم',
+  pr_none_sel: 'اختر قطعة واحدة على الأقل لطلب الطباعة'
 };
 
 var EXTRA_EN = {

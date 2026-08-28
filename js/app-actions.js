@@ -761,10 +761,11 @@ var ACTIONS = {
   'rep-tab': function (el) { OG.rep.tab = el.getAttribute('data-tab'); render(); },
 
   /* One scan entry point, used by the topbar, the tab bar, POS and the
-     product pages, so the camera behaves identically everywhere. */
+     product pages, so the camera behaves identically everywhere — including
+     the till rule: a hit while POS is open lands in the cart, not a sheet. */
   'scan-open': function () {
     closeModal();
-    Scan.open({ onHit: function (code) { openScanResult(code); } });
+    Scan.open({ onHit: function (code) { handleScan(code); } });
   },
 
   'scan-to-pos': function (el) {
