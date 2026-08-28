@@ -111,8 +111,27 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 
 /* -------------------------------------------------------------------- POS */
 
-.pos { display: grid; grid-template-columns: minmax(0, 1fr) 428px; height: calc(100vh - var(--topbar-h)); overflow: hidden; }
-.pos-left { display: flex; flex-direction: column; overflow: hidden; border-inline-end: 1px solid var(--border); }
+/* The cart's width is a variable so the splitter below can move it, and so a
+   dragged width survives every re-render — it lives on the root element, not
+   inside the view that POS rebuilds on each paint. */
+:root { --pos-cart-w: 428px; }
+
+.pos { display: grid; grid-template-columns: minmax(0, 1fr) 1px var(--pos-cart-w); height: calc(100vh - var(--topbar-h)); overflow: hidden; }
+.pos-left { display: flex; flex-direction: column; overflow: hidden; }
+
+/* The divider between the products and the cart, draggable.
+   The column is 1px so the line looks exactly as it did when it was a border;
+   the ::before widens the GRAB area to nine pixels without widening the mark,
+   because a one-pixel drag target is a target nobody can hit. */
+.pos-split { position: relative; background: var(--border); cursor: col-resize; touch-action: none; }
+.pos-split::before { content: ''; position: absolute; inset-block: 0; inset-inline: -4px; }
+.pos-split:hover, .pos-split:focus-visible, body.pos-resizing .pos-split { background: var(--brand); }
+/* A one-pixel line turning green is not a focus indicator anyone can see,
+   so keyboard focus gets a band around it instead. */
+.pos-split:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--brand); }
+/* While dragging, the pointer owns the screen: no text gets selected under it
+   and the cursor stays col-resize even over the grid it passes across. */
+body.pos-resizing { cursor: col-resize; user-select: none; }
 .pos-scanbar { padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--app); }
 .scan-wrap { display: flex; gap: 10px; }
 .scan-input {

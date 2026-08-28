@@ -244,7 +244,7 @@ html.has-demo-banner .view { padding-bottom: 52px; }
 /* ------------------------------------------------------------ RESPONSIVE */
 
 @media (max-width: 1400px) {
-  .pos { grid-template-columns: minmax(0, 1fr) 396px; }
+  :root { --pos-cart-w: 396px; }
   .dash-grid { grid-template-columns: minmax(0, 1fr) 336px; }
 }
 
@@ -269,6 +269,9 @@ html.has-demo-banner .view { padding-bottom: 52px; }
   .nav-item { justify-content: center; padding: 11px 6px; }
   .nav-badge { display: none; }
   .pos { grid-template-columns: minmax(0, 1fr); height: auto; overflow: visible; }
+  /* One column: there is nothing left to drag, and a stray 1px row would
+     read as a hairline floating between the sections. */
+  .pos-split { display: none; }
   .pos-left { border-inline-end: 0; border-bottom: 1px solid var(--border); }
   .view.pos-view { overflow-y: auto; }
   .pos-right { max-height: none; }

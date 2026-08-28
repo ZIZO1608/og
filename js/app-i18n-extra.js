@@ -114,6 +114,7 @@ var EXTRA_V3_EN = {
   yl_turnaround: 'Average turnaround', yl_turnaround_sub: 'order taken to delivered',
 
   /* per-piece print picks at the till */
+  pos_resize: 'Drag to resize · double-click to reset',
   txn_ref: 'Transaction ID',
   txn_ref_ph: 'Reference from the transfer or terminal',
 
@@ -215,6 +216,7 @@ var EXTRA_V3_AR = {
   yl_on_time: 'التسليم في الموعد', yl_on_time_sub: 'من الطلبات المنجزة سُلّمت بموعدها',
   yl_turnaround: 'متوسط مدة الإنجاز', yl_turnaround_sub: 'من استلام الطلب حتى التسليم',
 
+  pos_resize: 'اسحب لتغيير العرض · نقرة مزدوجة للإرجاع',
   txn_ref: 'رقم العملية',
   txn_ref_ph: 'الرقم المرجعي للحوالة أو جهاز البطاقة',
 

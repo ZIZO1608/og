@@ -174,6 +174,97 @@ var POS = (function () {
     return addVariant(v, silent);
   }
 
+  /* ------------------------------------------------- the cart/grid divider
+
+     A shop's screens are not all the same shape, and neither are the people
+     using them: one cashier wants the cart wide enough to read across the
+     counter, another wants more products on screen. So the split is theirs to
+     set, and it is remembered — a width that resets on every reload is a
+     setting nobody bothers to touch twice.
+
+     The width lives as a CSS variable on the ROOT element rather than on the
+     POS markup, because POS rebuilds that markup on every paint and an inline
+     style there would vanish with the next scan. */
+
+  var CART_W_KEY = 'og.pos.cartw';
+  var CART_MIN = 320;          /* below this the totals start wrapping */
+  var GRID_MIN = 380;          /* two product tiles, the point of the left side */
+
+  function cartWidthBounds(pos) {
+    var total = pos ? pos.getBoundingClientRect().width : 0;
+    /* On a narrow window the two ideal minimums do not both fit. The cart's
+       floor wins: a cart you cannot read is useless, a grid with one column
+       is merely cramped. */
+    return { min: CART_MIN, max: Math.max(CART_MIN, total - GRID_MIN) };
+  }
+
+  function setCartWidth(px, persist) {
+    var root = document.documentElement;
+    if (px === null) {
+      root.style.removeProperty('--pos-cart-w');
+      if (persist) { try { localStorage.removeItem(CART_W_KEY); } catch (e) {} }
+      return;
+    }
+    root.style.setProperty('--pos-cart-w', Math.round(px) + 'px');
+    if (persist) { try { localStorage.setItem(CART_W_KEY, String(Math.round(px))); } catch (e) {} }
+  }
+
+  /* Re-applied on every POS paint. Clamped here as well as during the drag,
+     so a width saved on a wide monitor cannot push the cart off the edge of a
+     laptop opened later. */
+  function applyStoredCartWidth() {
+    var stored = null;
+    try { stored = localStorage.getItem(CART_W_KEY); } catch (e) {}
+    if (!stored) return;
+    var px = parseInt(stored, 10);
+    if (!px) return;
+    var pos = document.querySelector('.pos');
+    if (pos) {
+      var b = cartWidthBounds(pos);
+      px = Math.min(b.max, Math.max(b.min, px));
+    }
+    setCartWidth(px, false);
+  }
+
+  var drag = null;
+
+  function cartWidthFrom(pos, clientX) {
+    var r = pos.getBoundingClientRect();
+    /* In Arabic the cart sits on the LEFT, so the same gesture has to be read
+       from the other edge. Measuring against the container instead of
+       accumulating a delta keeps that to one line and cannot drift. */
+    var w = (OG.lang === 'ar') ? (clientX - r.left) : (r.right - clientX);
+    var b = cartWidthBounds(pos);
+    return Math.min(b.max, Math.max(b.min, w));
+  }
+
+  function startResize(e, el) {
+    var pos = el.closest ? el.closest('.pos') : null;
+    if (!pos) return;
+    /* Below the collapse breakpoint there is one column and nothing to split.
+       The handle is display:none there, so this is belt and braces. */
+    if (!el.getBoundingClientRect().width) return;
+    drag = { pos: pos };
+    document.body.classList.add('pos-resizing');
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  }
+
+  function moveResize(e) {
+    if (!drag) return;
+    setCartWidth(cartWidthFrom(drag.pos, e.clientX), false);
+  }
+
+  function endResize() {
+    if (!drag) return;
+    var w = document.documentElement.style.getPropertyValue('--pos-cart-w');
+    drag = null;
+    document.body.classList.remove('pos-resizing');
+    /* Written once, at the end. Saving on every pointermove would be a few
+       hundred localStorage writes per drag. */
+    if (w) { try { localStorage.setItem(CART_W_KEY, String(parseInt(w, 10))); } catch (e) {} }
+  }
+
   /* ------------------------------------------------------------ rendering */
 
   function filteredProducts() {
@@ -548,6 +639,10 @@ var POS = (function () {
     h += '</div>' +
         '<div class="pos-grid-wrap"><div class="pos-grid" id="posGrid">' + gridHtml() + '</div></div>' +
       '</div>' +
+
+      '<div class="pos-split" data-pos-split tabindex="0" role="separator" ' +
+        'aria-orientation="vertical" title="' + esc(t('pos_resize')) + '" ' +
+        'aria-label="' + esc(t('pos_resize')) + '"></div>' +
 
       '<div class="pos-right">' +
         /* On a phone this row is the sheet handle — tapping it opens the
@@ -1335,6 +1430,9 @@ var POS = (function () {
 
   /* Called by app.js after the POS view is inserted into the DOM. */
   function after() {
+    /* Run here, not at load: the stored width is clamped against the real
+       .pos box, which only exists once this view is in the DOM. */
+    applyStoredCartWidth();
     S.print.deadline = S.print.deadline || isoAhead(5);
     setTimeout(focusScan, 60);
   }
@@ -1398,6 +1496,24 @@ var POS = (function () {
       }
     });
 
+    /* The divider. One delegated pointerdown, then document-level move/up for
+       the length of the drag, so the pointer leaving the 9px handle does not
+       kill the drag under it. */
+    document.addEventListener('pointerdown', function (e) {
+      var el = e.target.closest ? e.target.closest('.pos-split') : null;
+      if (el) startResize(e, el);
+    });
+    document.addEventListener('pointermove', moveResize);
+    document.addEventListener('pointerup', endResize);
+    document.addEventListener('pointercancel', endResize);
+
+    /* Double-click puts it back — the way out for anyone who has dragged the
+       cart somewhere useless and does not want to fight it back by hand. */
+    document.addEventListener('dblclick', function (e) {
+      var el = e.target.closest ? e.target.closest('.pos-split') : null;
+      if (el) setCartWidth(null, true);
+    });
+
     /* Focusing the box opens the list — including via F2, so the whole
        customer step is reachable without ever touching the mouse. */
     document.addEventListener('focusin', function (e) {
@@ -1414,6 +1530,27 @@ var POS = (function () {
 
     document.addEventListener('keydown', function (e) {
       if (OG.view !== 'pos') return;
+
+      /* Arrow keys while the divider has focus. A drag handle that answers
+         only to a mouse is a control half the shop cannot reach. */
+      var sp = document.activeElement;
+      if (sp && sp.classList && sp.classList.contains('pos-split')) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          var pos = sp.closest('.pos');
+          if (!pos) return;
+          var right = pos.querySelector('.pos-right');
+          if (!right) return;
+          var cur = right.getBoundingClientRect().width;
+          /* Right widens the cart in Arabic and narrows it in English,
+             because the cart is on the opposite side in each. */
+          var step = (e.key === 'ArrowRight' ? -16 : 16) * (OG.lang === 'ar' ? -1 : 1);
+          var b = cartWidthBounds(pos);
+          setCartWidth(Math.min(b.max, Math.max(b.min, cur + step)), true);
+          return;
+        }
+        if (e.key === 'Home') { e.preventDefault(); setCartWidth(null, true); return; }
+      }
 
       if (document.activeElement && document.activeElement.id === 'posCust') {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
