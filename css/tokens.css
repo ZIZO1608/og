@@ -291,3 +291,76 @@ a { color: inherit; }
   background: #C9C5D8; background-clip: content-box; border: 3px solid transparent;
 }
 ::selection { background: var(--brand); color: var(--brand-foreground); }
+
+/* ================================================== NATIVE BROWSER CHROME
+   Everything above styles markup we render. This section is about the parts
+   the BROWSER draws for us — tick boxes, the slider, the calendar popup, the
+   select menu, and the block Chrome paints over an autofilled field. Left
+   alone they arrive in the OS's own colours (a blue tick on a lime-and-black
+   till) and they are the last places the brand stops at the edge.
+
+   All of it is token-driven, so the Yalla Wear portal — which redefines the
+   same tokens in mint — gets its own version for free rather than inheriting
+   OG's lime. */
+
+/* One line that colours every native control the app uses: tick boxes,
+   radios, the scanner-speed slider, progress bars. Previously set on two
+   individual checkbox rules, which left everything else browser-blue. */
+:root { accent-color: var(--brand); }
+
+/* The caret in a field, matched to the focus ring rather than left white. */
+.inp, .gate-card input, .scan-input, input, textarea { caret-color: var(--brand); }
+
+/* ---- autofill ------------------------------------------------------------
+   Chrome paints its own background straight over a filled username or
+   password, which on the sign-in card means a pale block sitting on the dark
+   panel — the first screen anyone sees on a real server. It refuses a plain
+   background override, so the colour goes on as an inset shadow, and the
+   absurd transition delay stops the pale flash returning when the browser
+   re-fills the field. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--foreground);
+  -webkit-box-shadow: 0 0 0 1000px var(--card) inset;
+  caret-color: var(--brand);
+  transition: background-color 100000s ease-in-out 0s;
+}
+/* The sign-in card's fields sit on --muted, not --card. */
+.gate-card input:-webkit-autofill,
+.gate-card input:-webkit-autofill:hover,
+.gate-card input:-webkit-autofill:focus,
+.gate-card input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--muted) inset;
+}
+
+/* ---- the date field and its calendar -------------------------------------
+   color-scheme: dark (top of this file) is what makes the calendar popup
+   itself dark. What it does NOT do is colour the highlight on the
+   day/month/year segment you are typing in — that stays the OS accent. */
+input[type="date"]::-webkit-datetime-edit-day-field:focus,
+input[type="date"]::-webkit-datetime-edit-month-field:focus,
+input[type="date"]::-webkit-datetime-edit-year-field:focus,
+input[type="date"]::-webkit-datetime-edit-hour-field:focus,
+input[type="date"]::-webkit-datetime-edit-minute-field:focus {
+  background: var(--brand); color: var(--brand-foreground);
+  border-radius: 3px; outline: none;
+}
+input[type="date"]::-webkit-datetime-edit-text { color: var(--dim); padding: 0 1px; }
+
+/* ---- select menus --------------------------------------------------------
+   The popup list is drawn by the browser and is only partly ours to style.
+   color-scheme makes it dark; these give the rows the app's own surface and
+   put the brand on the chosen one instead of the system blue. */
+select.inp option, select option { background: var(--popover); color: var(--foreground); }
+select.inp option:checked, select option:checked {
+  background: var(--brand); color: var(--brand-foreground); font-weight: 700;
+}
+
+/* The slider in Settings — the track reads as part of the panel rather than
+   as a browser control dropped onto it. accent-color above does the thumb. */
+input[type="range"].inp {
+  height: 38px; padding: 0 2px; background: var(--card);
+  border: 1px solid var(--input); border-radius: var(--radius);
+}
