@@ -66,16 +66,33 @@ var Auth = (function () {
   function loginScreen() {
     var el = document.createElement('div');
     el.className = 'gate';
+    /* Labels sit above the fields rather than living as placeholders. A
+       placeholder disappears the moment someone starts typing, which is
+       exactly when a tired cashier looks up to check which box they are in —
+       and it is the reason password managers mis-fill login forms. */
     el.innerHTML =
       '<div class="gate-card">' +
         '<div class="gate-mark"><img src="assets/logo.svg" alt="OG"></div>' +
         '<h1>OG SYSTEM</h1>' +
         '<p>Sneakers &amp; Streetwear — retail operations</p>' +
         '<form id="lgForm" autocomplete="on">' +
-          '<input id="lgUser" type="text" placeholder="Username" aria-label="Username" ' +
-            'autocomplete="username" spellcheck="false" autocapitalize="none">' +
-          '<input id="lgPass" type="password" placeholder="Password" aria-label="Password" ' +
-            'autocomplete="current-password">' +
+          '<label class="gate-field"><span>Username</span>' +
+            '<input id="lgUser" type="text" aria-label="Username" ' +
+              'autocomplete="username" spellcheck="false" autocapitalize="none"></label>' +
+          '<label class="gate-field"><span>Password</span>' +
+            '<span class="gate-pw">' +
+              '<input id="lgPass" type="password" aria-label="Password" ' +
+                'autocomplete="current-password">' +
+              /* A shop keyboard is often the wrong layout, and the password is
+                 typed one-handed over a counter. Being able to see what was
+                 actually typed turns a second failed attempt into none. */
+              '<button type="button" id="lgEye" class="gate-eye" ' +
+                'aria-label="Show password" title="Show password">' +
+                '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
+                  '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/>' +
+                  '<circle cx="12" cy="12" r="2.6"/>' +
+                  '<path class="eye-slash" d="M4 20L20 4"/></svg></button>' +
+            '</span></label>' +
           '<button type="submit" id="lgGo">Sign in</button>' +
         '</form>' +
         '<small id="lgErr"></small>' +
@@ -111,6 +128,18 @@ var Auth = (function () {
     var note = el.querySelector('#lgNote');
 
     setTimeout(function () { uEl.focus(); }, 60);
+
+    /* Reveal the password. Focus is put back in the field afterwards so the
+       cursor does not end up parked on the button mid-typing. */
+    var eye = el.querySelector('#lgEye');
+    eye.addEventListener('click', function () {
+      var hidden = pEl.type === 'password';
+      pEl.type = hidden ? 'text' : 'password';
+      eye.classList.toggle('on', hidden);
+      eye.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
+      eye.setAttribute('title', hidden ? 'Hide password' : 'Show password');
+      pEl.focus();
+    });
 
     /* Say up front if the server cannot be reached, rather than letting
        someone type a correct password and be told it is wrong. */

@@ -76,7 +76,15 @@ body.rtl .bk-bar { padding: 9px 18px 9px 10px; }
   .bk-count { width: 100%; margin: 0 0 2px; }
 }
 
-/* ======================================================== PASSCODE GATE */
+/* ============================================================ THE SIGN-IN
+   The first screen anybody sees on a real server, so it carries the brand
+   rather than merely admitting people. Built entirely from the same tokens
+   as the rest of the app — swap the token block and this re-skins along with
+   everything else, exactly as the Yalla Wear portal does.
+
+   Still called .gate because Auth.mount() and the shake/dismiss animations
+   address it by that name; renaming the class would be a rename of the login
+   code, not a restyle. */
 
 html.gated body { overflow: hidden; }
 html.gated #app { filter: blur(6px); pointer-events: none; }
@@ -88,74 +96,140 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
   animation: fade .2s ease both;
 }
 .gate.gate-out { animation: fade .2s ease reverse forwards; }
-.gate-card {
-  width: 100%; max-width: 360px; text-align: center;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 34px 28px 26px; box-shadow: var(--shadow-lg);
+
+/* One wide, very dim brand wash behind the card. It is what stops the screen
+   reading as a black rectangle on a black page, and it is the only
+   decoration here — everything else on this screen is a real control. */
+.gate::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(58% 42% at 50% 38%, rgb(198 255 0 / .07), transparent 70%);
 }
+
+.gate-card {
+  position: relative; width: 100%; max-width: 392px; text-align: center;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 40px 34px 28px;
+  box-shadow: var(--shadow-lg);
+  animation: gateIn .22s cubic-bezier(.4, 0, .2, 1) both;
+}
+/* The hairline every dark interface uses to keep a raised panel from reading
+   as a hole: light along the top edge, fading out before the corners. */
+.gate-card::before {
+  content: ''; position: absolute; inset-inline: 22px; top: -1px; height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(198 255 0 / .5), transparent);
+}
+@keyframes gateIn { from { opacity: 0; transform: translateY(10px) scale(.985); } }
+
 .gate-card.shake { animation: gateShake .32s cubic-bezier(.36,.07,.19,.97); }
 @keyframes gateShake {
   10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); }
   30%, 50%, 70% { transform: translateX(-7px); } 40%, 60% { transform: translateX(7px); }
 }
-.gate-mark { width: 62px; height: 62px; margin: 0 auto 16px; border-radius: var(--radius); overflow: hidden; }
+
+.gate-mark {
+  width: 66px; height: 66px; margin: 0 auto 18px; border-radius: var(--radius);
+  overflow: hidden; box-shadow: 0 0 0 1px var(--border), 0 10px 26px rgb(0 0 0 / .45);
+}
 .gate-mark img { width: 100%; height: 100%; display: block; }
-.gate-card h1 { font-size: 21px; font-weight: 800; letter-spacing: .03em; }
-.gate-card p { color: var(--dim); font-size: 12.5px; margin: 5px 0 22px; }
-.gate-card form { display: flex; gap: 8px; }
+
+.gate-card h1 {
+  font-family: var(--font-head); font-size: 23px; font-weight: 800;
+  letter-spacing: .04em; line-height: 1.1;
+}
+.gate-card p { color: var(--dim); font-size: 12.5px; margin: 6px 0 26px; }
+
+.gate-card form { display: flex; flex-direction: column; gap: 15px; }
+
+/* Label above, field below, both start-aligned inside a centred card — the
+   same shape as every .field in the app, so this screen does not read as a
+   different product from the one behind it. */
+.gate-field { display: block; text-align: start; }
+.gate-field > span {
+  display: block; margin-bottom: 7px;
+  font-size: 11px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--dim);
+}
 .gate-card input {
-  flex: 1; min-width: 0; height: 42px; padding: 0 14px;
+  width: 100%; min-width: 0; height: 46px; padding: 0 15px;
   border: 1px solid var(--input); border-radius: var(--radius);
   background: var(--muted); color: var(--foreground);
-  font-size: 15px; font-weight: 600; letter-spacing: .1em; outline: none;
-  transition: border-color var(--t), box-shadow var(--t);
+  font-size: 14.5px; font-weight: 600; outline: none;
+  transition: border-color var(--t), box-shadow var(--t), background var(--t);
 }
-.gate-card input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .14); }
-.gate-card button {
-  flex: none; height: 42px; padding: 0 20px; border: 0; border-radius: var(--radius);
-  background: var(--brand); color: var(--brand-foreground); font-weight: 700; font-size: 14px;
-  transition: background var(--t);
+.gate-card input:focus {
+  border-color: var(--brand); background: var(--card);
+  box-shadow: 0 0 0 3px rgb(198 255 0 / .14);
 }
-.gate-card button:hover { background: #D4FF3D; }
-.gate-card small { display: block; min-height: 16px; margin-top: 11px; color: var(--destructive); font-size: 12px; font-weight: 600; }
-.gate-note { display: block; margin-top: 14px; color: #52525B; font-size: 11px; }
 
-/* ---- sign-in ---------------------------------------------------------------
-   The gate above was one passcode box beside one button, so its form is a
-   row. A real login is username over password over a full-width button, so
-   the layout is restacked here rather than duplicating the card styling. */
-.gate-card form { flex-direction: column; gap: 10px; }
+/* The reveal button sits inside the field's box, so the input reserves room
+   for it rather than running its text underneath. */
+.gate-pw { position: relative; display: block; }
+.gate-pw input { padding-inline-end: 46px; }
+.gate-eye {
+  position: absolute; inset-inline-end: 5px; top: 5px;
+  width: 36px; height: 36px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  color: var(--dim); transition: color var(--t), background var(--t);
+}
+.gate-eye svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.gate-eye:hover { color: var(--foreground); background: var(--accent); }
+.gate-eye.on { color: var(--brand); }
+/* One icon, two states: the slash is drawn only while the password is
+   hidden, so the button always shows what pressing it will do next. */
+.gate-eye.on .eye-slash { display: none; }
 
-/* The wide letter-spacing suited a passcode being read off a note. It makes a
-   typed username look wrong, and an email address unreadable. */
-.gate-card input { letter-spacing: normal; font-size: 14.5px; }
-
-.gate-card button[type="submit"] { width: 100%; padding: 0; margin-top: 2px; }
+.gate-card button[type="submit"] {
+  width: 100%; height: 46px; margin-top: 4px; padding: 0;
+  border-radius: var(--radius);
+  background: var(--brand); color: var(--brand-foreground);
+  font-size: 14.5px; font-weight: 700; letter-spacing: .01em;
+  transition: background var(--t), transform var(--t), box-shadow var(--t);
+}
+.gate-card button[type="submit"]:hover {
+  background: #D4FF3D; box-shadow: 0 8px 22px rgb(198 255 0 / .18);
+}
+.gate-card button[type="submit"]:active { transform: translateY(1px); box-shadow: none; }
 
 /* Signing in takes about a tenth of a second of deliberate hashing on the
    server. Show that the click landed, or people press it again. */
 .gate-card button[disabled] {
-  opacity: .6; cursor: default; background: var(--brand);
+  opacity: .55; cursor: default; background: var(--brand);
+  box-shadow: none; transform: none;
+}
+
+/* An error is a message, not a red whisper under the button. Given the same
+   soft-tinted treatment the app uses for every other warning — and no box at
+   all while empty, so the card does not jump as one appears. */
+.gate-card small {
+  display: block; margin-top: 14px; font-size: 12.5px; font-weight: 600;
+  color: var(--destructive); line-height: 1.45;
+}
+.gate-card small:not(:empty) {
+  padding: 9px 12px; border-radius: var(--radius);
+  background: var(--destructive-soft); border: 1px solid var(--destructive-border);
+}
+/* A returned hint is information, not a failure — it must not be red, or it
+   reads as another rejected attempt. */
+.gate-card small.lg-ok { color: var(--muted-foreground); font-weight: 500; }
+.gate-card small.lg-ok:not(:empty) {
+  background: var(--muted); border-color: var(--border);
 }
 
 /* "Forgotten your password?" is a quiet third option, not a second action
    competing with Sign in — so it sheds the button styling entirely. */
 .gate-card .gate-link {
-  width: auto; height: auto; margin-top: 10px; padding: 2px 4px;
-  background: none; border: 0; color: var(--dim);
-  font-size: 11.5px; font-weight: 600; text-decoration: underline;
-  text-underline-offset: 2px; cursor: pointer;
-  transition: color var(--t);
+  width: auto; height: auto; margin-top: 16px; padding: 3px 6px;
+  color: var(--dim); font-size: 11.5px; font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px;
+  border-radius: var(--radius-sm); transition: color var(--t);
 }
-.gate-card .gate-link:hover { background: none; color: var(--foreground); }
+.gate-card .gate-link:hover { color: var(--foreground); }
 
-/* A returned hint is information, not a failure — it must not be red, or it
-   reads as another rejected attempt. */
-.gate-card small.lg-ok { color: var(--dim); font-weight: 600; }
-
+.gate-note { display: block; margin-top: 14px; color: #52525B; font-size: 11px; }
 /* The server being unreachable is worth saying before someone types a correct
    password and is told it is wrong. */
 .gate-note.gate-warn { color: var(--warning); font-weight: 600; }
+
 
 /* ---- demo banner -----------------------------------------------------------
    Shown when the app is served over http but no server answered — a static
