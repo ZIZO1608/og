@@ -99,6 +99,23 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 .alert-txt { flex: 1; min-width: 0; font-size: 13px; line-height: 1.45; font-weight: 500; }
 .alert-txt small { display: block; color: var(--dim); font-size: 11.5px; margin-top: 3px; }
 .alert-row .btn { flex: none; align-self: center; }
+.alert-row.clickable { transition: background var(--t); }
+.alert-row.clickable:hover { background: var(--accent); }
+.alert-chevron { flex: none; align-self: center; color: var(--dim); font-size: 18px; }
+
+/* ---------------------------------------------------- DASHBOARD · RECEIPT
+   The tear line — a full-width dashed rule, not a card border — echoing the
+   perforation on the shop's own receipt roll. Built from --border-strong,
+   the app's existing tokens; no new colour. Three per page, no more. */
+.dash-tear {
+  border: 0; border-top: 1px dashed var(--border-strong);
+  margin: var(--s-5) 0; height: 0;
+}
+.dash-hero { text-align: start; }
+.dash-hero-val { font-family: var(--font-head); font-weight: 800; font-size: 42px; line-height: 1.1;
+  letter-spacing: -.03em; color: var(--brand); margin-top: var(--s-2); }
+.dash-hero-sub { font-size: var(--fs-sm); color: var(--dim); margin-top: 4px; }
+.dash-hero .delta { margin-top: var(--s-3); }
 
 /* -------------------------------------------------------------------- POS */
 

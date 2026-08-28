@@ -218,6 +218,7 @@ var ACTIONS = {
   'open-customer': function (el) { openCustomerDrawer(+el.getAttribute('data-id')); },
   whatsapp: function (el) { openWhatsapp(+el.getAttribute('data-id')); },
   'day-summary': function () { openDaySummary(); },
+  'dash-scope': function (el) { OG.dashScope = el.getAttribute('data-k'); render(); },
 
   'prod-sort': function (el) {
     var k = el.getAttribute('data-k');

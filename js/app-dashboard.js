@@ -88,23 +88,128 @@ function buildAlerts() {
   return out;
 }
 
-function viewDashboard() {
-  var today = sumSalesOn(0), yest = sumSalesOn(1);
-  var m = DB.monthlySales(6);
-  var thisMonth = monthToDate(0), lastMonth = monthToDate(1);
-  var mtdLabel = '1–' + TODAY.getDate() + ' ' + (OG.lang === 'ar' ? MONTHS_AR : MONTHS_EN)[TODAY.getMonth()];
-  var crit = DB.criticalVariants().length;
-  var active = DB.customers.filter(function (c) { return DB.daysSince(c.lastPurchaseDate) < 90; }).length;
-  var pendingPrint = DB.printJobs.filter(function (j) { return j.stage !== 'done'; }).length;
+/* -------------------------------------------------------- 7c. RECEIPT BANDS
+   The manager dashboard, rebuilt around one receipt-inspired idea: a tear
+   line — a full-width dashed rule, .dash-tear in css/inputs-dashboard-pos.css
+   — separating three strict bands (the total, what needs a decision, the
+   story) instead of a wall of equal stat cards. Built entirely from the
+   app's existing tokens (--brand accent, .stat/.delta/.alert-row/.chip
+   components) — no new colour palette. See the Dashboard Programme plan for
+   the reasoning.
 
-  var stats = [
-    { k: 'st_today',   v: moneyStat(today),     d: deltaTag(today, yest, t('vs_yesterday')), accent: true },
-    { k: 'st_month',   v: moneyStat(thisMonth), d: deltaTag(thisMonth, lastMonth, t('vs_last_month')), f: mtdLabel },
-    { k: 'st_products',v: nf(DB.products.length), d: deltaTag(DB.products.length, DB.products.length - 2, t('vs_last_month')), f: t('in_catalogue') },
-    { k: 'st_critical',v: nf(crit),           d: deltaTag(crit, crit - 4, t('vs_last_period')), f: t('need_reorder') },
-    { k: 'st_customers', v: nf(active),       d: deltaTag(active, active - 5, t('vs_last_month')), f: t('bought_90') },
-    { k: 'st_print',   v: nf(pendingPrint),   d: deltaTag(pendingPrint, 11, t('vs_last_month')), f: t('in_queue') }
-  ];
+   OG.dashScope ('today' | '7d' | '30d') is the one state variable that
+   drives every band, same pattern as OG.lbf/OG.prod elsewhere. */
+
+function scopeRange(scope) {
+  if (scope === '30d') return { from: daysAgo(29), to: daysAgo(-1) };
+  if (scope === '7d')  return { from: daysAgo(6),  to: daysAgo(-1) };
+  return { from: daysAgo(0), to: daysAgo(-1) }; // today
+}
+
+function sumSalesForScope(scope) {
+  var r = scopeRange(scope);
+  return sumSalesRange(r.from, r.to);
+}
+
+/* The baseline Band 1's delta compares against — mean of the last 7
+   individual days' takings, via the existing sumSalesOn(). */
+function avg7dTakings() {
+  var total = 0;
+  for (var i = 0; i < 7; i++) total += sumSalesOn(i);
+  return total / 7;
+}
+
+/* USD primary + SYP secondary shown AT ONCE (unlike money()/moneyStat(),
+   which show one currency toggled by OG.currency) — Band 1's whole point is
+   proving the frozen rate, so both must be on screen together. Digits are
+   wrapped dir="ltr" so the browser cannot reorder them inside an Arabic
+   line; the currency tag sits outside that span so it still flows with the
+   page's own direction. */
+function heroMoney(syp) {
+  var usd = (Number(syp) || 0) / CONFIG.EXCHANGE_RATE;
+  return {
+    primary: '$<span dir="ltr" class="num">' + nf(usd) + '</span>',
+    secondary: '<span dir="ltr" class="num">' + nf(syp) + '</span>' +
+      '<span class="cur">' + (OG.lang === 'ar' ? 'ل.س' : 'SYP') + '</span>'
+  };
+}
+
+/* Revenue/cost re-derived per line item within the scope window — the same
+   fields DB.profitByType() reads (it.qty/unitPrice/unitCost), just windowed
+   by date since profitByType() covers all-time. Only ever called behind
+   seesProfit(), same as the rest of the app's margin displays. */
+function scopedMarginPct(scope) {
+  var r = scopeRange(scope), revenue = 0, cost = 0;
+  DB.sales.forEach(function (s) {
+    if (s.date < r.from || s.date >= r.to) return;
+    s.items.forEach(function (it) { revenue += it.qty * it.unitPrice; cost += it.qty * it.unitCost; });
+  });
+  return revenue ? (revenue - cost) / revenue * 100 : 0;
+}
+
+/* Without profit.read the third shelf stat becomes Returns — a real count,
+   not a placeholder: js/data.js already models a customer return as a
+   'returned' stock-movement type. */
+function scopedReturns(scope) {
+  var r = scopeRange(scope);
+  return DB.stockMovements.filter(function (m) {
+    return m.type === 'returned' && m.date >= r.from && m.date < r.to;
+  }).length;
+}
+
+/* Sales whose discount exceeds today's cap — real signal, not always empty:
+   the seed already includes 15%-discount sales against a 10% cap. */
+function discountRequests(scope) {
+  var r = scopeRange(scope);
+  return DB.sales.filter(function (s) {
+    return s.date >= r.from && s.date < r.to && s.discount > 0 &&
+      (s.discount / s.subtotal * 100) > CONFIG.MAX_DISCOUNT_PCT;
+  });
+}
+
+/* Band 2 — a derived action queue, NOT the dashboard's older buildAlerts()
+   mix (that stays, used elsewhere — see js/app-export.js's day summary and
+   the alert-fix action). Only 3 of the design programme's 5 signals have a
+   real demo-data source: deliveries (COD outstanding, failed runs) require
+   a real server by design (js/deliveries.js) and are never faked in demo
+   mode, so those two rows simply never appear here. */
+function bandTwoRows(scope) {
+  var rows = [];
+  var crit = DB.criticalVariants().length;
+  if (crit > 0) {
+    rows.push({
+      tone: 'red', icon: '!',
+      text: crit + ' ' + t('dash_low_stock_row'),
+      view: 'warehouse'
+    });
+  }
+  var pendingPrint = DB.printJobs.filter(function (j) { return j.stage !== 'done'; }).length;
+  if (pendingPrint > 0) {
+    rows.push({
+      tone: 'amber', icon: 'P',
+      text: pendingPrint + ' ' + t('dash_print_waiting_row'),
+      view: 'print'
+    });
+  }
+  var discReq = discountRequests(scope);
+  if (discReq.length > 0) {
+    rows.push({
+      tone: 'amber', icon: '%',
+      text: discReq.length + ' ' + t('dash_discount_row'),
+      view: 'reports'
+    });
+  }
+  return rows;
+}
+
+function viewDashboard() {
+  OG.dashScope = OG.dashScope || 'today';
+  var scope = OG.dashScope;
+  var scopeTotal = sumSalesForScope(scope);
+  var r = scopeRange(scope);
+  var salesInScope = DB.sales.filter(function (s) { return s.date >= r.from && s.date < r.to; });
+  var avgBasket = salesInScope.length ? scopeTotal / salesInScope.length : 0;
+  var hero = heroMoney(scopeTotal);
 
   var h =
     '<div class="page-head"><div><h1>' + t('dash_title') + '</h1>' +
@@ -115,14 +220,64 @@ function viewDashboard() {
       ifNav('pos', '<button class="btn btn-primary" data-act="nav" data-view="pos">' + t('nav_pos') + '</button>') +
     '</div></div>';
 
-  h += '<div class="grid stat-row" id="dashStats">';
-  stats.forEach(function (s) {
-    h += '<div class="stat"><span class="eyebrow">' + t(s.k) + '</span>' +
-         '<div class="val' + (s.accent ? ' accent' : '') + '">' + s.v + '</div>' + s.d +
-         (s.f ? '<div class="foot">' + s.f + '</div>' : '') + '</div>';
+  /* -- scope selector + frozen-rate line, above Band 1 -- */
+  h += '<div class="chip-row"><span class="lbl-lbl">' + t('dash_scope_label') + '</span>';
+  [['today', 'dash_scope_today'], ['7d', 'dash_scope_7d'], ['30d', 'dash_scope_30d']].forEach(function (o) {
+    h += '<button class="chip ' + (scope === o[0] ? 'on' : '') + '" data-act="dash-scope" data-k="' + o[0] + '">' +
+      t(o[1]) + '</button>';
   });
   h += '</div>';
+  h += '<div class="muted small mt">' + t('dash_rate_frozen').replace('{rate}', nf(CONFIG.EXCHANGE_RATE)) + '</div>';
 
+  /* ============================================================ BAND 1 -- */
+  h += '<hr class="dash-tear">';
+  h += '<div class="dash-hero"><span class="eyebrow">' + t('dash_takings') + '</span>' +
+    '<div class="dash-hero-val">' + hero.primary + '</div>' +
+    '<div class="dash-hero-sub">' + hero.secondary + '</div>' +
+    deltaTag(scopeTotal, avg7dTakings(), t('vs_7d_avg')) +
+  '</div>';
+
+  h += '<div class="grid stat-row mt">';
+  h += '<div class="stat"><span class="eyebrow">' + t('invoices') + '</span>' +
+    '<div class="val">' + nf(salesInScope.length) + '</div></div>';
+  h += '<div class="stat"><span class="eyebrow">' + t('avg_basket') + '</span>' +
+    '<div class="val">' + moneyStat(avgBasket) + '</div></div>';
+  if (seesProfit()) {
+    h += '<div class="stat"><span class="eyebrow">' + t('margin') + '</span>' +
+      '<div class="val">' + pct(scopedMarginPct(scope)) + '</div></div>';
+  } else {
+    h += '<div class="stat"><span class="eyebrow">' + t('returns') + '</span>' +
+      '<div class="val">' + nf(scopedReturns(scope)) + '</div></div>';
+  }
+  h += '</div>';
+
+  /* ============================================================ BAND 2 -- */
+  h += '<hr class="dash-tear">';
+  var rows = bandTwoRows(scope);
+  h += '<div class="card" id="attentionPanel"><div class="card-head">' +
+       '<h3>' + t('needs_attention') + '</h3>' +
+       '<div class="card-actions"><span class="badge ' + (rows.length ? 'critical' : 'healthy') + '">' +
+         rows.length + '</span></div></div>';
+  if (!rows.length) {
+    h += '<div class="cart-empty"><b>' + t('dash_nothing_waiting') + '</b>' + t('dash_shop_clean') + '</div>';
+  } else {
+    rows.forEach(function (a) {
+      h += ifNav(a.view,
+        '<div class="alert-row clickable" data-act="nav" data-view="' + a.view + '">' +
+          '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
+          '<span class="alert-txt">' + a.text + '</span>' +
+          '<span class="alert-chevron">›</span>' +
+        '</div>') ||
+        ('<div class="alert-row">' +
+          '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
+          '<span class="alert-txt">' + a.text + '</span>' +
+        '</div>');
+    });
+  }
+  h += '</div>';
+
+  /* ============================================================ BAND 3 -- */
+  h += '<hr class="dash-tear">';
   h += '<div class="dash-grid mt">' +
     '<div>' +
       '<div class="card"><div class="card-head"><h3>' + t('sales_6m') + '</h3>' +
@@ -157,37 +312,52 @@ function viewDashboard() {
 
   h += '</tbody></table></div></div></div>';
 
-  /* Right column — live alerts */
-  h += '<div class="card" id="alertPanel"><div class="card-head">' +
-       '<h3>' + t('needs_attention') + '</h3>' +
-       '<div class="card-actions"><span class="badge critical">' + buildAlerts().length + '</span></div></div>';
-  buildAlerts().forEach(function (a, i) {
-    h += '<div class="alert-row">' +
-      '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
-      '<span class="alert-txt">' + a.text + (a.sub ? '<small>' + a.sub + '</small>' : '') + '</span>' +
-      '<button class="btn btn-sm btn-ghost" data-act="alert-fix" data-i="' + i + '">' + t('fix') + '</button>' +
-    '</div>';
+  /* Right column — staff on shift (a stable, always-populated card so the
+     two-column band never collapses to a single lopsided column). */
+  var staffToday = {};
+  DB.sales.forEach(function (s) {
+    if (isToday(s.date) && s.cashier) staffToday[s.cashier] = (staffToday[s.cashier] || 0) + 1;
   });
+  h += '<div class="card"><div class="card-head"><h3>' + t('staff_on_shift') + '</h3></div>';
+  var staffNames = Object.keys(staffToday);
+  if (!staffNames.length) {
+    h += '<div class="cart-empty"><b>' + t('dash_nothing_waiting') + '</b></div>';
+  } else {
+    staffNames.sort(function (a, b) { return staffToday[b] - staffToday[a]; }).forEach(function (name) {
+      h += '<div class="alert-row"><span class="alert-txt"><b>' + esc(name) + '</b></span>' +
+        '<span class="num">' + nf(staffToday[name]) + '</span></div>';
+    });
+  }
   h += '</div></div>';
 
   return h;
 }
 
 function afterDashboard() {
+  var scope = OG.dashScope || 'today';
+  var r = scopeRange(scope);
+  var salesInScope = DB.sales.filter(function (s) { return s.date >= r.from && s.date < r.to; });
+
   var m = DB.monthlySales(6);
   Charts.line(document.getElementById('dashLine'),
     m.map(function (x) { return x.label; }),
     m.map(function (x) { return OG.currency === 'USD' ? x.total / CONFIG.EXCHANGE_RATE : x.total; }),
     { fmt: function (v) { return (OG.currency === 'USD' ? '$' : '') + Charts.compact(v); } });
 
-  var byType = DB.salesByType();
+  var byType = {};
+  salesInScope.forEach(function (s) {
+    s.items.forEach(function (it) { byType[it.type] = (byType[it.type] || 0) + it.qty * it.unitPrice; });
+  });
+  var byTypeArr = Object.keys(byType).map(function (k) {
+    return { label: DB.typeLabels[k] || k, total: byType[k] };
+  }).sort(function (a, b) { return b.total - a.total; });
   Charts.donut(document.getElementById('dashDonut'),
-    byType.map(function (x) { return x.label; }),
-    byType.map(function (x) { return OG.currency === 'USD' ? x.total / CONFIG.EXCHANGE_RATE : x.total; }),
+    byTypeArr.map(function (x) { return x.label; }),
+    byTypeArr.map(function (x) { return OG.currency === 'USD' ? x.total / CONFIG.EXCHANGE_RATE : x.total; }),
     { fmt: function (v) { return (OG.currency === 'USD' ? '$' : '') + Charts.compact(v); } });
 
   var unitsByProduct = {};
-  DB.sales.forEach(function (s) {
+  salesInScope.forEach(function (s) {
     s.items.forEach(function (it) { unitsByProduct[it.productId] = (unitsByProduct[it.productId] || 0) + it.qty; });
   });
   var top = Object.keys(unitsByProduct).map(function (k) {
