@@ -150,7 +150,7 @@ var I18N = {
     all_products: 'All', subtotal: 'Subtotal', discount: 'Discount', coupon: 'Coupon code',
     apply: 'Apply', applied: 'Applied', points: 'points', loyalty: 'Loyalty',
     use_points: 'Use', payment_method: 'Payment method', add_print: 'Add print job to this sale',
-    complete_sale: 'Complete sale', customer_ph: 'Type 3 digits of the phone…', change_customer: 'Change',
+    complete_sale: 'Complete sale', customer_ph: 'Pick a customer, or type to search…', change_customer: 'Change',
     walk_in: 'Walk-in customer', priority: 'Priority',
     deadline: 'Deadline', normal: 'Normal', urgent: 'Urgent', amount: 'Amount', percent: 'Percent',
     in_stock: 'in stock', pick_size: 'Pick a size', out_of_stock: 'Out of stock',
@@ -395,6 +395,7 @@ var I18N = {
 
     customers_title: 'Customers', customers_sub: 'Who buys, what they buy, when they stopped',
     cu_new: 'New customer', cu_name_ph: 'Full name',
+    cu_more: '{n} more — keep typing to narrow it down',
     cu_new_note: 'Three fields is all it takes. Points start at zero and build from the first sale.',
     cu_exists: 'Already in the list',
     no_access: 'Your account does not have access to this',
@@ -585,7 +586,7 @@ var I18N = {
     all_products: 'الكل', subtotal: 'المجموع', discount: 'الخصم', coupon: 'كود الخصم',
     apply: 'تطبيق', applied: 'مطبّق', points: 'نقطة', loyalty: 'الولاء',
     use_points: 'استخدم', payment_method: 'طريقة الدفع', add_print: 'أضف طلب طباعة لهذه الفاتورة',
-    complete_sale: 'إتمام البيع', customer_ph: 'اكتب ٣ أرقام من الهاتف…', change_customer: 'تغيير',
+    complete_sale: 'إتمام البيع', customer_ph: 'اختر زبوناً أو اكتب للبحث…', change_customer: 'تغيير',
     walk_in: 'زبون عابر', priority: 'الأولوية',
     deadline: 'موعد التسليم', normal: 'عادي', urgent: 'مستعجل', amount: 'مبلغ', percent: 'نسبة',
     in_stock: 'متوفر', pick_size: 'اختر القياس', out_of_stock: 'غير متوفر',
@@ -809,6 +810,7 @@ var I18N = {
 
     customers_title: 'الزبائن', customers_sub: 'من يشتري وماذا يشتري ومتى توقّف',
     cu_new: 'زبون جديد', cu_name_ph: 'الاسم الكامل',
+    cu_more: 'و{n} غيرهم — تابع الكتابة لتضييق النتائج',
     cu_new_note: 'ثلاث خانات وبس. النقاط تبدأ من صفر وتزيد من أول عملية بيع.',
     cu_exists: 'موجود في القائمة',
     no_access: 'حسابك ما عندو صلاحية لهالشي',

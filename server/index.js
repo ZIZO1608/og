@@ -11,6 +11,9 @@
                        calls. Leave unset in development; set it in production.
           OG_SECURE    '1' when behind HTTPS, so cookies get the Secure flag.
 
+          All of the above may instead live in server/.env — see
+          server/.env.example. Real environment variables override the file.
+
    Zero npm dependencies. Deployment is: copy the folder, run node.
    ========================================================================== */
 
@@ -19,6 +22,7 @@ import { networkInterfaces } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { load as loadEnv } from './lib/env.js';
 import * as DB from './lib/db.js';
 import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
@@ -35,6 +39,12 @@ import {
 } from './lib/http.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/* Before anything reads process.env. server/.env is optional — with no file
+   the server starts exactly as it always did — but when one exists its
+   values must be in place before the constants below are computed. Real
+   environment variables still win over the file. */
+loadEnv();
 
 const PORT    = Number(process.env.OG_PORT || 8090);
 const DB_FILE = process.env.OG_DB || resolve(HERE, 'data', 'og.db');
@@ -1033,6 +1043,20 @@ if (runDirectly) {
       console.log('');
       console.log('    OG_SECURE is not set — cookies are being sent without');
       console.log('    the Secure flag. Fine locally, wrong behind HTTPS.');
+    }
+
+    /* The CSRF check passes everything when the list is empty — see
+       originAllowed() in lib/http.js. That is deliberate for a shop network
+       nobody else is on, but it is exactly the setting people forget on the
+       day they first reach the till from outside, which is also the day it
+       starts to matter. Say so while the address is still on screen. */
+    if (!ORIGINS.length) {
+      console.log('');
+      console.log('    OG_ORIGINS is not set — any site your browser visits can');
+      console.log('    send writes here while you are logged in. Fine on a shop');
+      console.log('    network you control. Set it before reaching this from');
+      console.log('    outside the shop, e.g.');
+      console.log('      OG_ORIGINS=http://og-shop:8090');
     }
     console.log('');
   });

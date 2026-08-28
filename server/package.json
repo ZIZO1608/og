@@ -2,7 +2,7 @@
   "name": "og-system-server",
   "version": "1.0.0",
   "private": true,
-  "description": "OG System backend — SQLite, sessions, sync. Zero runtime dependencies by design.",
+  "description": "OG System backend \u2014 SQLite, sessions, sync. Zero runtime dependencies by design.",
   "type": "module",
   "engines": {
     "node": ">=22.5.0"
@@ -13,7 +13,8 @@
     "createuser": "node scripts/createuser.js",
     "demo-users": "node scripts/demo-users.js",
     "demo-catalogue": "node scripts/demo-catalogue.js",
-    "backup": "node scripts/backup.js"
+    "backup": "node scripts/backup.js",
+    "supabase:check": "node scripts/supabase-check.js"
   },
   "dependencies": {},
   "devDependencies": {}

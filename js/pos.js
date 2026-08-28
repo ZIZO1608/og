@@ -252,6 +252,8 @@ var POS = (function () {
       return '<span class="lbl">' + t('customer') + ' <span class="keycap">F2</span></span>' +
         '<div class="cust-box"><input class="inp" id="posCust" type="text" autocomplete="off" ' +
           'placeholder="' + t('customer_ph') + '" data-pos-input="cust">' +
+          '<button class="cust-caret" data-pos="cust-toggle" tabindex="-1" type="button" ' +
+            'aria-label="' + esc(t('customer')) + '"></button>' +
           '<div id="custDrop"></div></div>';
     }
     var tier = DB.tier(c.loyaltyPoints);
@@ -1087,17 +1089,21 @@ var POS = (function () {
 
     'cust-clear': function () { S.customerId = null; S.pointsUsed = 0; paintFoot(); setTimeout(focusCust, 30); },
 
-    'cust-pick': function (el) {
-      S.customerId = +el.getAttribute('data-id');
-      paintFoot();
-      var c = DB.customer(S.customerId);
-      toast(t('customer'), c.name + ' · ' + nf(c.loyaltyPoints) + ' ' + t('points'), 'ok', 2000);
+    'cust-pick': function (el) { pickCustomer(el.getAttribute('data-id')); },
+
+    'cust-toggle': function () {
+      var inp = document.getElementById('posCust');
+      if (custDropOpen()) { closeCustDrop(); return; }
+      custSel = -1;
+      if (inp) inp.focus();
+      custDrop(inp ? inp.value : '');
     },
 
     /* Add them and attach them to this basket in one move. Without the
        callback she would create the customer, watch the modal close, and have
        to search for the person she just typed in. */
     'cust-new': function (el) {
+      closeCustDrop();
       openNewCustomer(el.getAttribute('data-q') || '', function (c) {
         S.customerId = c.id;
         paintFoot();
@@ -1166,6 +1172,8 @@ var POS = (function () {
 
   function focusCust() {
     var el = document.getElementById('posCust');
+    /* The focusin listener opens the list; calling custDrop here too would
+       just paint it twice. */
     if (el) el.focus();
     else {
       var btn = document.querySelector('[data-pos="cust-clear"]');
@@ -1173,37 +1181,152 @@ var POS = (function () {
     }
   }
 
+  /* ---- the customer list ---------------------------------------------------
+     A browsable dropdown, not a search box that stays blank until you already
+     know the phone number. Opening it shows every registered customer, most
+     recent purchase first — the person at the counter is usually a regular,
+     and the cashier should be able to point at a name rather than interview
+     someone for their number. Typing narrows the same list; "+ New customer"
+     is always the last row, so adding one is never a dead end. */
+
+  var custSel = -1;             /* keyboard highlight; -1 = nothing chosen yet */
+
+  /* How many rows are drawn at once. The list is rebuilt on every keystroke,
+     and a shop three years in has thousands of customers — painting all of
+     them is a till that stutters while somebody types. What is cut is always
+     counted on screen, never dropped quietly. */
+  var CUST_MAX = 40;
+
+  /* Missing dates sort last rather than poisoning the comparator: an absent
+     lastPurchaseDate is `null` on every customer the server has never seen a
+     sale for, and `new Date(undefined)` is NaN, which makes the sort order
+     arbitrary rather than merely wrong. */
+  function lastBuy(c) {
+    var d = c && c.lastPurchaseDate ? new Date(c.lastPurchaseDate).getTime() : 0;
+    return d === d ? d : 0;                 // NaN check without isNaN's coercion
+  }
+
+  function custMatches(q) {
+    q = String(q || '').trim().toLowerCase();
+    /* Archived people are off the books; the till must not offer them. The
+       server sends them to anyone with customer.write — which a cashier has,
+       because she adds customers here — so filtering has to happen here. */
+    var list = DB.customers.filter(function (c) { return !c.archived; });
+    list.sort(function (a, b) {
+      /* Newest buyer first. Ties break on newest id so somebody added a
+         minute ago and not yet sold to sits at the top of the list rather
+         than the very bottom of it. */
+      return lastBuy(b) - lastBuy(a) || (b.id - a.id);
+    });
+    if (!q) return list;
+    /* Two digits is enough to narrow once the list is already on screen; the
+       old three-digit floor existed only because nothing showed before it.
+
+       Only a query with no letters in it is read as a phone number. Without
+       that test "Bulk Tester 59" also drags in everyone whose number happens
+       to contain 59, and the cashier is handed a list of strangers under the
+       name she typed. Arabic letters count as letters. */
+    var digits = q.replace(/\D/g, '');
+    var byPhone = digits.length >= 2 && !/[a-z؀-ۿ]/.test(q);
+    return list.filter(function (c) {
+      if (byPhone) {
+        return String(c.phone || '').replace(/\D/g, '').indexOf(digits) > -1;
+      }
+      return String(c.name || '').toLowerCase().indexOf(q) > -1 ||
+             String(c.city || '').toLowerCase().indexOf(q) > -1;
+    });
+  }
+
+  function custDropOpen() {
+    var box = document.getElementById('custDrop');
+    return !!(box && box.firstChild);
+  }
+
+  function closeCustDrop() {
+    custSel = -1;
+    var box = document.getElementById('custDrop');
+    if (box) box.innerHTML = '';
+  }
+
   function custDrop(q) {
     var box = document.getElementById('custDrop');
     if (!box) return;
-    q = (q || '').trim().toLowerCase();
-    if (q.length < 3) { box.innerHTML = ''; return; }
-    var digits = q.replace(/\D/g, '');
-    var hits = DB.customers.filter(function (c) {
-      var phone = c.phone.replace(/\D/g, '');
-      return (digits.length >= 3 && phone.indexOf(digits) > -1) || c.name.toLowerCase().indexOf(q) > -1;
-    }).slice(0, 6);
+    var hits = custMatches(q);
+    var shown = hits.slice(0, CUST_MAX);
+    if (custSel >= shown.length) custSel = shown.length - 1;
 
-    /* "Nobody by that name" is exactly the moment to offer to add them — she
-       has the customer in front of her and has already typed what she knows.
-       Carrying the query into the form means she does not type it twice. */
-    var add = (typeof allow === 'function' && allow('customer.write'))
-      ? '<div class="cust-add" data-pos="cust-new" data-q="' + esc(q) + '">+ ' +
-          t('cu_new') + (q ? ' · ' + esc(q) : '') + '</div>'
-      : '';
-
-    if (!hits.length) {
-      box.innerHTML = '<div class="cust-drop"><div class="muted">' + t('no_results') + '</div>' +
-                      add + '</div>';
-      return;
-    }
     var h = '<div class="cust-drop">';
-    hits.forEach(function (c) {
-      h += '<div data-pos="cust-pick" data-id="' + c.id + '"><b>' + esc(c.name) + '</b> ' +
-        '<span class="muted num">' + tel(c.phone) + '</span>' +
-        '<small>' + nf(c.loyaltyPoints) + ' ' + t('points') + '</small></div>';
+    if (!hits.length) h += '<div class="cust-hint">' + t('no_results') + '</div>';
+
+    shown.forEach(function (c, i) {
+      /* Tested before formatting, not after: tel('') is still a non-empty
+         <bdi> wrapper, so filtering the formatted strings would keep a blank
+         phone and leave the row reading " · Aleppo". */
+      var bits = [];
+      if (c.phone) bits.push(tel(c.phone));
+      if (c.city) bits.push(esc(c.city));
+      var sub = bits.join(' · ');
+      h += '<div class="cust-row' + (i === custSel ? ' on' : '') + '" ' +
+          'data-pos="cust-pick" data-id="' + c.id + '">' +
+        '<span class="cr-txt"><b>' + esc(c.name) + '</b>' +
+          '<small class="num">' + sub + '</small></span>' +
+        '<span class="badge ' + DB.tier(c.loyaltyPoints) + '">' + nf(c.loyaltyPoints) + '</span>' +
+      '</div>';
     });
-    box.innerHTML = h + add + '</div>';
+
+    /* Say what was cut. A list that silently stops at forty looks like a list
+       that ends at forty, and she stops typing believing the person is gone. */
+    if (hits.length > shown.length) {
+      h += '<div class="cust-hint">' +
+        t('cu_more').replace('{n}', nf(hits.length - shown.length)) + '</div>';
+    }
+
+    /* Whatever was typed rides into the new-customer form, so a name already
+       spelled out at the counter is never typed twice. */
+    if (typeof allow !== 'function' || allow('customer.write')) {
+      var qq = String(q || '').trim();
+      h += '<div class="cust-add" data-pos="cust-new" data-q="' + esc(qq) + '">+ ' +
+        t('cu_new') + (qq ? ' · ' + esc(qq) : '') + '</div>';
+    }
+
+    box.innerHTML = h + '</div>';
+    var on = box.querySelector('.cust-row.on');
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+  }
+
+  function pickCustomer(id) {
+    S.customerId = +id;
+    closeCustDrop();
+    paintFoot();
+    var c = DB.customer(S.customerId);
+    if (c) toast(t('customer'), c.name + ' · ' + nf(c.loyaltyPoints) + ' ' + t('points'), 'ok', 2000);
+  }
+
+  /* The rows actually on screen. Arrow keys and Enter must agree with what
+     the eye can see — indexing the uncapped list would let Enter attach a
+     customer who was never drawn. */
+  function custShown(q) { return custMatches(q).slice(0, CUST_MAX); }
+
+  function moveCust(d) {
+    var inp = document.getElementById('posCust');
+    if (!inp) return;
+    if (!custDropOpen()) { custDrop(inp.value); return; }
+    var n = custShown(inp.value).length;
+    if (!n) return;
+    custSel = custSel < 0 ? (d > 0 ? 0 : n - 1) : (custSel + d + n) % n;
+    custDrop(inp.value);
+  }
+
+  /* Enter takes the highlighted row, or the only remaining match — typing
+     enough of a name to leave one person and pressing Enter is the fastest
+     honest path, and it cannot pick the wrong one because there is no other. */
+  function pickHighlightedCust() {
+    var inp = document.getElementById('posCust');
+    if (!inp) return false;
+    var hits = custShown(inp.value);
+    if (custSel >= 0 && hits[custSel]) { pickCustomer(hits[custSel].id); return true; }
+    if (hits.length === 1) { pickCustomer(hits[0].id); return true; }
+    return false;
   }
 
   /* Called by app.js after the POS view is inserted into the DOM. */
@@ -1235,7 +1358,9 @@ var POS = (function () {
         return;
       }
       var k = el.getAttribute && el.getAttribute('data-pos-input');
-      if (k === 'cust') { custDrop(el.value); return; }
+      /* Typing restarts the highlight: the row under it a keystroke ago is
+         not the row under it now, and Enter must never take a stale one. */
+      if (k === 'cust') { custSel = -1; custDrop(el.value); return; }
       if (k === 'disc') {
         S.discount.value = Math.max(0, parseInt(el.value, 10) || 0);
         paintTotals();
@@ -1268,8 +1393,37 @@ var POS = (function () {
       }
     });
 
+    /* Focusing the box opens the list — including via F2, so the whole
+       customer step is reachable without ever touching the mouse. */
+    document.addEventListener('focusin', function (e) {
+      if (e.target && e.target.id === 'posCust') { custSel = -1; custDrop(e.target.value); }
+    });
+
+    /* Anywhere outside closes it. Registered after the [data-pos] handler
+       above, so a click on a row still gets to pick before this runs. */
+    document.addEventListener('click', function (e) {
+      if (!custDropOpen()) return;
+      if (e.target.closest && e.target.closest('.cust-box')) return;
+      closeCustDrop();
+    });
+
     document.addEventListener('keydown', function (e) {
       if (OG.view !== 'pos') return;
+
+      if (document.activeElement && document.activeElement.id === 'posCust') {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          moveCust(e.key === 'ArrowDown' ? 1 : -1);
+          return;
+        }
+        if (e.key === 'Enter') { e.preventDefault(); pickHighlightedCust(); return; }
+        /* Stopped here so Escape closes just this list — letting it through
+           would also clear a bulk selection or shut a drawer behind it.
+           stopImmediatePropagation, not stopPropagation: app-boot's Escape
+           handler is on this same document node, and only the immediate form
+           reaches a sibling listener. */
+        if (e.key === 'Escape' && custDropOpen()) { e.stopImmediatePropagation(); closeCustDrop(); return; }
+      }
 
       if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'posScan') {
         e.preventDefault();
