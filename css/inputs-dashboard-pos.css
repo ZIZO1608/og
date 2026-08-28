@@ -221,6 +221,18 @@ body.pos-resizing { cursor: col-resize; user-select: none; }
 
 .pos-right { display: flex; flex-direction: column; overflow: hidden; background: var(--app); }
 .cart-head { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+/* The products/cart focus toggle. Icon-only, so it needs its own box — the
+   ghost button is otherwise sized by its text. */
+.pos-focus-btn { padding: 0; width: 30px; flex: none; }
+.pos-focus-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+/* Products hidden: the cart takes the whole width, and the divider goes with
+   them — there is nothing left on the other side of it to divide. Scanning is
+   untouched; the wedge listens on the document, not on the search box. */
+body[data-pos-focus="cart"] .pos { grid-template-columns: minmax(0, 1fr); }
+body[data-pos-focus="cart"] .pos-left,
+body[data-pos-focus="cart"] .pos-split { display: none; }
+body[data-pos-focus="cart"] .pos-focus-btn { color: var(--brand); }
 .cart-head h3 { font-size: 14.5px; font-weight: 700; }
 .cart-lines { flex: 1; overflow-y: auto; min-height: 96px; }
 .cart-line { display: flex; gap: 11px; padding: 12px 18px; border-bottom: 1px solid var(--border); align-items: center; }

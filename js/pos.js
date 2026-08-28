@@ -188,6 +188,34 @@ var POS = (function () {
 
   var CART_W_KEY = 'og.pos.cartw';
   var FOOT_H_KEY = 'og.pos.footh';
+  var FOCUS_KEY  = 'og.pos.focus';
+
+  /* ---- hiding the products altogether ------------------------------------
+     Taking payment is a different job from picking stock: the cashier is
+     reading a total back, choosing how it was paid and typing a transfer
+     reference, and the wall of product tiles is just noise at that point.
+
+     The scanner is unaffected — the wedge listens on the document, not on
+     the search box — so a collapsed till still rings items up normally. */
+  function focusOnly() {
+    return document.body.getAttribute('data-pos-focus') === 'cart';
+  }
+
+  function setFocusOnly(on) {
+    if (on) document.body.setAttribute('data-pos-focus', 'cart');
+    else document.body.removeAttribute('data-pos-focus');
+    try {
+      if (on) localStorage.setItem(FOCUS_KEY, 'cart');
+      else localStorage.removeItem(FOCUS_KEY);
+    } catch (e) { /* private mode — the choice just does not outlive the tab */ }
+  }
+
+  function applyStoredFocus() {
+    var v = null;
+    try { v = localStorage.getItem(FOCUS_KEY); } catch (e) {}
+    if (v === 'cart') document.body.setAttribute('data-pos-focus', 'cart');
+    else document.body.removeAttribute('data-pos-focus');
+  }
   var CART_MIN = 320;          /* below this the totals start wrapping */
   var GRID_MIN = 380;          /* two product tiles, the point of the left side */
   var FOOT_MIN = 200;          /* the foot scrolls, but below this it is a slit */
@@ -729,7 +757,17 @@ var POS = (function () {
         '<div class="cart-head" data-pos="cart-toggle"><h3>' + t('cart') + '</h3>' +
           '<span class="badge accent" id="cartCount">' + cartCount() + '</span>' +
           '<span class="cart-peek num">' + money(totals().total) + '</span>' +
-          '<button class="btn btn-sm btn-ghost" style="margin-inline-start:auto" ' +
+          /* Lives in the cart head because the cart is the one thing on screen
+             in BOTH states — a button that hides the products cannot sit on
+             the products. stopPropagation for the same reason Clear does it:
+             the whole head is the phone sheet's handle. */
+          '<button class="btn btn-sm btn-ghost pos-focus-btn" style="margin-inline-start:auto" ' +
+            'onclick="event.stopPropagation()" data-pos="focus-cart" ' +
+            'title="' + esc(t(focusOnly() ? 'pos_show_products' : 'pos_hide_products')) + '" ' +
+            'aria-label="' + esc(t(focusOnly() ? 'pos_show_products' : 'pos_hide_products')) + '">' +
+            '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
+              '<path d="M4 5h16v14H4zM10 5v14"/></svg></button>' +
+          '<button class="btn btn-sm btn-ghost" ' +
             'onclick="event.stopPropagation()" data-pos="clear">' + t('clear') + '</button></div>' +
         '<div class="cart-lines" id="cartLines">' + linesHtml() + '</div>' +
         '<div class="cart-split" tabindex="0" role="separator" aria-orientation="horizontal" ' +
@@ -1229,6 +1267,13 @@ var POS = (function () {
     del: function (el) { S.cart.splice(+el.getAttribute('data-i'), 1); paintCart(); paintPrintBox(); },
     clear: function () { S.cart = []; S.coupon = null; S.pointsUsed = 0; paintCart(); paintPrintBox(); },
 
+    /* Full re-render, not a repaint: the grid columns change, so the cart
+       panel has to be laid out again rather than just redrawn. */
+    'focus-cart': function () {
+      setFocusOnly(!focusOnly());
+      render();
+    },
+
     'pr-prio': function (el) {
       S.print.priority = el.getAttribute('data-p');
       paintPrintBox();
@@ -1512,6 +1557,11 @@ var POS = (function () {
   function after() {
     /* Run here, not at load: the stored width is clamped against the real
        .pos box, which only exists once this view is in the DOM. */
+    /* Before the widths: the stored cart width is clamped against the real
+       .pos box, and that box is a different shape once the products are
+       hidden. Also re-asserted on every paint so leaving POS and coming back
+       cannot strand the attribute on the body. */
+    applyStoredFocus();
     applyStoredCartWidth();
     applyStoredFootHeight();
     S.print.deadline = S.print.deadline || isoAhead(5);
