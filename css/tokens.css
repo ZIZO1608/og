@@ -222,7 +222,13 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   .size-btn:disabled, .st-size:disabled { cursor: not-allowed; }
 }
 
-button { cursor: pointer; }
+/* Every button in this app paints itself. Without this reset a button that
+   forgets to say `border: 0` inherits the BROWSER's — which under
+   color-scheme: dark is a pale grey outset, so the control arrives wearing a
+   light box on a black panel. That is exactly what happened to the partner
+   messages list: every row is a <button>, and each one drew a native frame.
+   Resetting once here means no future button can reintroduce it. */
+button { cursor: pointer; border: 0; background: none; }
 
 /* The pointer glow. One fixed element moved by transform only, so it never
    causes layout or paint outside its own compositor layer. js/motion.js

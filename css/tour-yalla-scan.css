@@ -418,18 +418,33 @@ tr.is-tbc { background: var(--warning-soft); }
   font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: var(--radius-full);
   background: var(--destructive-soft); color: var(--destructive);
 }
-.nt-read { margin-inline-start: auto; font-size: 11px; color: var(--brand); font-weight: 600; cursor: pointer; background: none; }
-.nt-read:hover { text-decoration: underline; }
-.nt-list { max-height: 400px; overflow-y: auto; }
+/* A quiet pill rather than an underline-on-hover, matching the way every
+   other small action in a card head behaves. */
+.nt-read {
+  margin-inline-start: auto; font-size: 11px; color: var(--brand); font-weight: 600;
+  padding: 4px 9px; border-radius: var(--radius-sm);
+  transition: background var(--t), color var(--t);
+}
+.nt-read:hover { background: var(--brand-soft); }
+
+/* Padded, rounded rows separated by space — the same shape the shop's own
+   notifications popup uses, instead of full-bleed rows divided by rules. */
+.nt-list { max-height: 400px; overflow-y: auto; padding: 6px; }
 .nt-item {
   width: 100%; display: flex; gap: 10px; align-items: flex-start; text-align: start;
-  padding: 11px 15px; border-bottom: 1px solid var(--border); cursor: pointer; background: none;
+  padding: 10px 11px; border-radius: var(--radius-sm); position: relative;
   transition: background var(--t);
 }
-.nt-item:last-child { border-bottom: 0; }
+.nt-item + .nt-item { margin-top: 2px; }
 .nt-item:hover { background: var(--accent); }
 .nt-item.unread { background: var(--brand-soft); }
 .nt-item.unread:hover { background: var(--card-hover); }
+/* Unread also gets an edge marker, so the state survives for anyone who
+   cannot pick the tinted background out of a dark panel. */
+.nt-item.unread::before {
+  content: ''; position: absolute; inset-inline-start: 3px; top: 11px; bottom: 11px;
+  width: 2px; border-radius: var(--radius-full); background: var(--brand);
+}
 .nt-item.mine { opacity: .62; }
 .nt-ico { flex: none; display: grid; place-items: center; width: 26px; height: 26px;
   border-radius: var(--radius-full); background: var(--muted); }
