@@ -287,11 +287,6 @@ function renderTopbar() {
       '<button data-act="curr" data-val="SYP" class="' + (OG.currency === 'SYP' ? 'on' : '') + '">SYP</button>' +
       '<button data-act="curr" data-val="USD" class="' + (OG.currency === 'USD' ? 'on' : '') + '">USD</button>' +
     '</div>' +
-    /* Scan is the most-reached-for control on a phone in a shop, so it gets a
-       permanent place in the top bar rather than living inside one screen. */
-    '<button class="icon-btn scan-btn" data-act="scan-open" title="' + esc(t('sc_title')) + '">' +
-      '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
-        '<path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M3 12h18"/></svg></button>' +
     /* Partner messages sit beside the alert bell, not inside it. One is the
        shop talking to itself; the other is another company talking to us. */
     (typeof Notify !== 'undefined' ? Notify.bell() : '') +

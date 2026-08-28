@@ -118,7 +118,7 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 .scan-input {
   /* min-width:0 is load-bearing. A flex item's default minimum is its
      min-content width, so without this the input refuses to shrink below its
-     placeholder and shoves the Scan button off the right edge on a phone. */
+     placeholder and overflows the bar on a phone. */
   flex: 1; min-width: 0;
   height: 54px; font-size: 17px; font-weight: 600; padding: 0 18px;
   border: 2px solid var(--border-strong); border-radius: var(--radius);
@@ -323,16 +323,6 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 .pi-size { flex: none; font-size: 11.5px; color: var(--muted-foreground); }
 .pr-item-inputs { display: grid; grid-template-columns: minmax(0, 1fr) 86px; gap: 6px; margin-top: 6px; }
 .pr-count { margin: 8px 2px 0; }
-
-/* The armed-lookup modal: quiet, centered, a slow pulse on the crosshair so
-   "waiting for the scanner" reads at a glance across a counter. */
-.scan-wait { text-align: center; padding: 22px 10px 10px; }
-.scan-wait svg {
-  width: 46px; height: 46px; fill: none; stroke: var(--brand); stroke-width: 2;
-  animation: scanwait 1.6s ease-in-out infinite;
-}
-.scan-wait p { margin: 14px auto 0; max-width: 300px; color: var(--muted-foreground); font-size: 13px; line-height: 1.6; }
-@keyframes scanwait { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
 /* Priority as the site's segmented pill, sized to sit level with the date
    box beside it. Urgent picked = the same red every urgent badge wears. */
