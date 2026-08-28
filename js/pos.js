@@ -29,7 +29,7 @@ var POS = (function () {
        line with qty 3 is three shirts — to the name and number that go on
        its back. No qty field: the job's quantity IS how many pieces are
        picked. */
-    print: { on: false, text: '', sel: {}, priority: 'normal', deadline: null }
+    print: { on: false, sel: {}, priority: 'normal', deadline: null }
   };
 
   var PRINT_UNIT_PRICE = 950;     // charged to the customer, per piece (new pound)
@@ -385,11 +385,9 @@ var POS = (function () {
       units.forEach(function (x) { valid[x.key] = true; });
       Object.keys(S.print.sel).forEach(function (k) { if (!valid[k]) delete S.print.sel[k]; });
 
-      h += '<div class="print-add-form">' +
-        '<label class="field"><span>' + t('print_text') + '</span>' +
-          '<input class="inp" id="prText" type="text" value="' + esc(S.print.text) + '" placeholder="TEAM OG · back print"></label>';
+      h += '<div class="print-add-form">';
 
-      h += '<div class="mt"><span class="lbl">' + t('pr_pick') + '</span></div>' +
+      h += '<div><span class="lbl">' + t('pr_pick') + '</span></div>' +
         '<div class="pr-items">';
       if (!units.length) {
         h += '<div class="muted small">' + t('empty_cart') + '</div>';
@@ -910,7 +908,6 @@ var POS = (function () {
     /* --- optional print job, straight into the Design column --- */
     var job = null;
     if (S.print.on) {
-      var txtEl = document.getElementById('prText');
       var prioEl = document.getElementById('prPrio');
       var dateEl = document.getElementById('prDate');
       var pdate = (dateEl && dateEl.value) || S.print.deadline || isoAhead(5);
@@ -935,7 +932,7 @@ var POS = (function () {
       job = DB.newPrintJob({
         customer: cust ? cust.name : t('walk_in'),
         phone: cust ? cust.phone : '—',
-        design: ((txtEl && txtEl.value) || S.print.text || 'Custom print') + ' · ' + sale.id,
+        design: 'Custom print · ' + sale.id,
         lines: klines,
         qty: klines.length,
         priority: (prioEl && prioEl.value) || S.print.priority,
@@ -987,7 +984,7 @@ var POS = (function () {
        to the NEXT customer's sale, and the parcel would go to the wrong door. */
     S.deliver = false;
     S.deliverAddress = null;
-    S.print = { on: false, text: '', sel: {}, priority: 'normal', deadline: null };
+    S.print = { on: false, sel: {}, priority: 'normal', deadline: null };
     S.q = '';
     S.cat = '';
     if (!keepView) { paintCart(); paintGrid(); }
@@ -1225,7 +1222,6 @@ var POS = (function () {
         if (s) { if (k === 'pr-name') s.name = el.value; else s.num = el.value; }
         return;
       }
-      if (el.id === 'prText') S.print.text = el.value;
       if (el.id === 'prDate') S.print.deadline = el.value;
     });
 
