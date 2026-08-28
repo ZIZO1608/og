@@ -117,7 +117,10 @@ var EXTRA_V3_EN = {
   pr_pick: 'Items to print',
   pr_name: 'Name', pr_num: 'Number',
   pr_none_sel: 'Pick at least one item for the print job',
-  pr_draft_tbc: 'Saved as a draft — {n} name(s) still to confirm. Fill them in Jobs, then press Send.'
+  pr_draft_tbc: 'Saved as a draft — {n} name(s) still to confirm. Fill them in Jobs, then press Send.',
+
+  sc_wait_title: 'Scan an item',
+  sc_wait_hint: 'Point the scanner at any barcode — the full product sheet opens. This scan is a lookup, nothing is added to the cart.'
 };
 
 var EXTRA_V3_AR = {
@@ -215,7 +218,10 @@ var EXTRA_V3_AR = {
   pr_pick: 'القطع المطلوب طباعتها',
   pr_name: 'الاسم', pr_num: 'الرقم',
   pr_none_sel: 'اختر قطعة واحدة على الأقل لطلب الطباعة',
-  pr_draft_tbc: 'حُفظ كمسودة — {n} اسم بانتظار التأكيد. أكمل الأسماء في «الطلبات» ثم اضغط إرسال.'
+  pr_draft_tbc: 'حُفظ كمسودة — {n} اسم بانتظار التأكيد. أكمل الأسماء في «الطلبات» ثم اضغط إرسال.',
+
+  sc_wait_title: 'امسح قطعة',
+  sc_wait_hint: 'وجّه الماسح إلى أي باركود — ستُفتح بطاقة المنتج الكاملة. هذه المسحة للاستعلام فقط، لن يُضاف شيء إلى السلة.'
 };
 
 var EXTRA_EN = {

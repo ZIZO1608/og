@@ -295,6 +295,16 @@ body.rtl .cust-drop small { float: left; }
 .pr-item-inputs { display: grid; grid-template-columns: minmax(0, 1fr) 86px; gap: 6px; margin-top: 6px; }
 .pr-count { margin: 8px 2px 0; }
 
+/* The armed-lookup modal: quiet, centered, a slow pulse on the crosshair so
+   "waiting for the scanner" reads at a glance across a counter. */
+.scan-wait { text-align: center; padding: 22px 10px 10px; }
+.scan-wait svg {
+  width: 46px; height: 46px; fill: none; stroke: var(--brand); stroke-width: 2;
+  animation: scanwait 1.6s ease-in-out infinite;
+}
+.scan-wait p { margin: 14px auto 0; max-width: 300px; color: var(--muted-foreground); font-size: 13px; line-height: 1.6; }
+@keyframes scanwait { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
 /* Priority as the site's segmented pill, sized to sit level with the date
    box beside it. Urgent picked = the same red every urgent badge wears. */
 .pr-seg { display: flex; width: 100%; height: 38px; }

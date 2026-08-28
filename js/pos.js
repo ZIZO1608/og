@@ -170,14 +170,22 @@ var POS = (function () {
     return addVariant(v, silent);
   }
 
-  function randomScan() {
-    var pool = DB.variants.filter(function (v) { return v.qty > 2; });
-    var v = pool[Math.floor(Math.random() * pool.length)];
-    addVariant(v);
-    var inp = document.getElementById('posScan');
-    if (inp) { inp.value = ''; inp.focus(); }
-    S.q = '';
-    paintGrid();
+  /* Arms a one-shot lookup: the NEXT code the hardware scanner reads opens
+     the full product sheet instead of selling. The marker element doubles as
+     the armed flag — closing the modal by any route (Escape, backdrop, the
+     button) disarms it, with no state left behind to forget. */
+  function openScanLookup() {
+    closeModal();
+    openModal({
+      title: t('sc_wait_title'),
+      size: 'narrow',
+      body: '<div id="scanLookupWait" class="scan-wait">' +
+          '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
+            '<path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M3 12h18"/></svg>' +
+          '<p>' + t('sc_wait_hint') + '</p>' +
+        '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>'
+    });
   }
 
   /* ------------------------------------------------------------ rendering */
@@ -517,13 +525,14 @@ var POS = (function () {
           '<div class="scan-wrap">' +
             '<input class="scan-input" id="posScan" type="text" autocomplete="off" spellcheck="false" ' +
               'placeholder="' + t('scan_ph') + '" value="' + esc(S.q) + '">' +
-            /* Camera first — on a phone this is the primary way in, and the
-               random-scan button is the demo shortcut beside it. */
+            /* Camera first — on a phone this is the primary way in. The Scan
+               button beside it arms a hardware-scanner lookup: the next
+               scanned code opens the full product sheet, nothing is sold. */
             '<button class="btn btn-primary btn-lg" style="flex:none" data-act="scan-open" ' +
               'title="' + esc(t('sc_title')) + '">' +
               '<svg viewBox="0 0 24 24" stroke-linecap="square" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2">' +
                 '<path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M3 12h18"/></svg></button>' +
-            '<button class="btn btn-dark btn-lg" style="flex:none" data-pos="scan-random">⌁ ' + t('scan_btn') + '</button>' +
+            '<button class="btn btn-dark btn-lg" style="flex:none" data-pos="scan-look">⌁ ' + t('scan_btn') + '</button>' +
           '</div>' +
           '<div class="scan-meta">' +
             '<button class="btn btn-sm btn-ghost" data-act="export" data-kind="pdf">' + t('ex_till') + '</button>' +
@@ -1021,7 +1030,7 @@ var POS = (function () {
 
     cat: function (el) { S.cat = el.getAttribute('data-c'); renderShellPos(); },
 
-    'scan-random': function () { randomScan(); },
+    'scan-look': function () { openScanLookup(); },
 
     /* Phone only: the cart sheet. Desktop ignores it because the CSS that
        makes the cart a sheet only exists below 720px. */
@@ -1265,7 +1274,7 @@ var POS = (function () {
       if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'posScan') {
         e.preventDefault();
         var val = document.activeElement.value.trim();
-        if (!val) { randomScan(); return; }
+        if (!val) return;
         if (/^\d{6,}$/.test(val)) {
           if (scanBarcode(val)) { document.activeElement.value = ''; S.q = ''; paintGrid(); }
         } else {

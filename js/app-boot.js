@@ -128,6 +128,15 @@ function openCalibration() {
    in one hand. On every other screen a scan opens the product sheet, because
    away from the till the question is "what is this?", not "sell this". */
 function handleScan(code) {
+  /* The till's Scan button arms a one-shot lookup — the cashier asked to
+     SEE the next scanned item, not ring it up. The marker element lives in
+     that modal, so closing it by any route disarms the lookup. */
+  if (document.getElementById('scanLookupWait')) {
+    closeModal();
+    openScanResult(code);
+    return;
+  }
+
   /* Only an EXACT product code goes into the cart — the same three matchers
      labels.js trusts, and pointedly not resolveScan's cropped-label prefix
      guess: a guess picks whichever size sorts first, and a guessed size in
