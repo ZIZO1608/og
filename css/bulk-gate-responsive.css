@@ -278,7 +278,11 @@ html.has-demo-banner .view { padding-bottom: 52px; }
   .pos-left { border-inline-end: 0; border-bottom: 1px solid var(--border); }
   .view.pos-view { overflow-y: auto; }
   .pos-right { max-height: none; }
-  .cart-foot { max-height: none; }
+  /* Stacked, not two panes: the cart foot follows its content down the page,
+     so a dragged height from a desktop session must not survive here. The
+     divider goes with it, and the foot takes back the border it carried. */
+  .cart-split { display: none; }
+  .cart-foot { height: auto; max-height: none; border-top: 1px solid var(--border); }
 }
 
 /* ======================================================== BOTTOM TAB BAR

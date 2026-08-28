@@ -187,8 +187,54 @@ var POS = (function () {
      style there would vanish with the next scan. */
 
   var CART_W_KEY = 'og.pos.cartw';
+  var FOOT_H_KEY = 'og.pos.footh';
   var CART_MIN = 320;          /* below this the totals start wrapping */
   var GRID_MIN = 380;          /* two product tiles, the point of the left side */
+  var FOOT_MIN = 200;          /* the foot scrolls, but below this it is a slit */
+  var LINES_MIN = 96;          /* matches .cart-lines' own floor in the CSS */
+
+  /* The second divider, inside the cart: how much room the totals and payment
+     block takes from the list of scanned lines. A basket of twenty pieces
+     wants the list; a cashier who mostly takes one item and argues about the
+     discount wants the panel. Same deal as the vertical split — set it, and
+     it is remembered. */
+  function footHeightBounds(right) {
+    if (!right) return { min: FOOT_MIN, max: FOOT_MIN };
+    var total = right.getBoundingClientRect().height;
+    var head = right.querySelector('.cart-head');
+    var headH = head ? head.getBoundingClientRect().height : 0;
+    return { min: FOOT_MIN, max: Math.max(FOOT_MIN, total - headH - LINES_MIN) };
+  }
+
+  function setFootHeight(px, persist) {
+    var root = document.documentElement;
+    if (px === null) {
+      root.style.removeProperty('--pos-foot-h');
+      root.style.removeProperty('--pos-foot-max');
+      if (persist) { try { localStorage.removeItem(FOOT_H_KEY); } catch (e) {} }
+      return;
+    }
+    var v = Math.round(px) + 'px';
+    /* Both, because the default look is "as tall as its content, capped at
+       64vh" — a height alone would still be clipped by that cap. */
+    root.style.setProperty('--pos-foot-h', v);
+    root.style.setProperty('--pos-foot-max', v);
+    if (persist) { try { localStorage.setItem(FOOT_H_KEY, String(Math.round(px))); } catch (e) {} }
+  }
+
+  function applyStoredFootHeight() {
+    var stored = null;
+    try { stored = localStorage.getItem(FOOT_H_KEY); } catch (e) {}
+    if (!stored) return;
+    var px = parseInt(stored, 10);
+    if (!px) return;
+    var right = document.querySelector('.pos-right');
+    if (right) {
+      var b = footHeightBounds(right);
+      px = Math.min(b.max, Math.max(b.min, px));
+    }
+    setFootHeight(px, false);
+  }
 
   function cartWidthBounds(pos) {
     var total = pos ? pos.getBoundingClientRect().width : 0;
@@ -238,31 +284,63 @@ var POS = (function () {
     return Math.min(b.max, Math.max(b.min, w));
   }
 
+  function footHeightFrom(right, clientY) {
+    var r = right.getBoundingClientRect();
+    var h = r.bottom - clientY;
+    var b = footHeightBounds(right);
+    return Math.min(b.max, Math.max(b.min, h));
+  }
+
+  /* One description per divider, so the pointer plumbing below is written
+     once and neither handle can drift away from the other's behaviour. */
+  var SPLITS = {
+    cart: {
+      sel: '.pos', axis: 'width', body: 'pos-resizing', prop: '--pos-cart-w',
+      key: CART_W_KEY,
+      move: function (box, e) { setCartWidth(cartWidthFrom(box, e.clientX), false); },
+      reset: function () { setCartWidth(null, true); }
+    },
+    foot: {
+      sel: '.pos-right', axis: 'height', body: 'pos-resizing-v', prop: '--pos-foot-h',
+      key: FOOT_H_KEY,
+      move: function (box, e) { setFootHeight(footHeightFrom(box, e.clientY), false); },
+      reset: function () { setFootHeight(null, true); }
+    }
+  };
+
+  function splitFor(el) {
+    return el.classList.contains('cart-split') ? SPLITS.foot : SPLITS.cart;
+  }
+
   function startResize(e, el) {
-    var pos = el.closest ? el.closest('.pos') : null;
-    if (!pos) return;
-    /* Below the collapse breakpoint there is one column and nothing to split.
-       The handle is display:none there, so this is belt and braces. */
-    if (!el.getBoundingClientRect().width) return;
-    drag = { pos: pos };
-    document.body.classList.add('pos-resizing');
+    var s = splitFor(el);
+    var box = el.closest ? el.closest(s.sel) : null;
+    if (!box) return;
+    /* Below the collapse breakpoint the panel is stacked and there is nothing
+       to split. Both handles are display:none there, so a zero-sized handle
+       means "not draggable right now" — belt and braces. */
+    var r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    drag = { split: s, box: box };
+    document.body.classList.add(s.body);
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
     e.preventDefault();
   }
 
   function moveResize(e) {
     if (!drag) return;
-    setCartWidth(cartWidthFrom(drag.pos, e.clientX), false);
+    drag.split.move(drag.box, e);
   }
 
   function endResize() {
     if (!drag) return;
-    var w = document.documentElement.style.getPropertyValue('--pos-cart-w');
+    var s = drag.split;
+    var v = document.documentElement.style.getPropertyValue(s.prop);
     drag = null;
-    document.body.classList.remove('pos-resizing');
+    document.body.classList.remove(s.body);
     /* Written once, at the end. Saving on every pointermove would be a few
        hundred localStorage writes per drag. */
-    if (w) { try { localStorage.setItem(CART_W_KEY, String(parseInt(w, 10))); } catch (e) {} }
+    if (v) { try { localStorage.setItem(s.key, String(parseInt(v, 10))); } catch (e) {} }
   }
 
   /* ------------------------------------------------------------ rendering */
@@ -654,6 +732,8 @@ var POS = (function () {
           '<button class="btn btn-sm btn-ghost" style="margin-inline-start:auto" ' +
             'onclick="event.stopPropagation()" data-pos="clear">' + t('clear') + '</button></div>' +
         '<div class="cart-lines" id="cartLines">' + linesHtml() + '</div>' +
+        '<div class="cart-split" tabindex="0" role="separator" aria-orientation="horizontal" ' +
+          'title="' + esc(t('pos_resize')) + '" aria-label="' + esc(t('pos_resize')) + '"></div>' +
         '<div class="cart-foot" id="cartFoot">' + footHtml() + '</div>' +
       '</div>' +
     '</div>';
@@ -1433,6 +1513,7 @@ var POS = (function () {
     /* Run here, not at load: the stored width is clamped against the real
        .pos box, which only exists once this view is in the DOM. */
     applyStoredCartWidth();
+    applyStoredFootHeight();
     S.print.deadline = S.print.deadline || isoAhead(5);
     setTimeout(focusScan, 60);
   }
@@ -1500,7 +1581,7 @@ var POS = (function () {
        the length of the drag, so the pointer leaving the 9px handle does not
        kill the drag under it. */
     document.addEventListener('pointerdown', function (e) {
-      var el = e.target.closest ? e.target.closest('.pos-split') : null;
+      var el = e.target.closest ? e.target.closest('.pos-split, .cart-split') : null;
       if (el) startResize(e, el);
     });
     document.addEventListener('pointermove', moveResize);
@@ -1510,8 +1591,8 @@ var POS = (function () {
     /* Double-click puts it back — the way out for anyone who has dragged the
        cart somewhere useless and does not want to fight it back by hand. */
     document.addEventListener('dblclick', function (e) {
-      var el = e.target.closest ? e.target.closest('.pos-split') : null;
-      if (el) setCartWidth(null, true);
+      var el = e.target.closest ? e.target.closest('.pos-split, .cart-split') : null;
+      if (el) splitFor(el).reset();
     });
 
     /* Focusing the box opens the list — including via F2, so the whole
@@ -1531,9 +1612,25 @@ var POS = (function () {
     document.addEventListener('keydown', function (e) {
       if (OG.view !== 'pos') return;
 
-      /* Arrow keys while the divider has focus. A drag handle that answers
-         only to a mouse is a control half the shop cannot reach. */
+      /* Arrow keys while a divider has focus. A drag handle that answers only
+         to a mouse is a control half the shop cannot reach. */
       var sp = document.activeElement;
+      if (sp && sp.classList && sp.classList.contains('cart-split')) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          var right = sp.closest('.pos-right');
+          var foot = right && right.querySelector('.cart-foot');
+          if (!right || !foot) return;
+          /* Up grows the totals panel, which is the direction it grows when
+             you drag the divider up. */
+          var next = foot.getBoundingClientRect().height + (e.key === 'ArrowUp' ? 16 : -16);
+          var fb = footHeightBounds(right);
+          setFootHeight(Math.min(fb.max, Math.max(fb.min, next)), true);
+          return;
+        }
+        if (e.key === 'Home') { e.preventDefault(); setFootHeight(null, true); return; }
+      }
+
       if (sp && sp.classList && sp.classList.contains('pos-split')) {
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           e.preventDefault();

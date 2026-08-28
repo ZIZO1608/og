@@ -244,7 +244,17 @@ body.pos-resizing { cursor: col-resize; user-select: none; }
 .cart-empty { padding: 44px 20px; text-align: center; color: var(--dim); font-size: 13px; font-weight: 500; }
 .cart-empty b { display: block; font-family: var(--font-head); font-size: 16px; color: var(--muted-foreground); margin-bottom: 6px; font-weight: 700; }
 
-.cart-foot { border-top: 1px solid var(--border); padding: 16px 18px 18px; background: var(--subtle); overflow-y: auto; max-height: 64vh; }
+/* The divider inside the cart, between the scanned lines and the totals.
+   Untouched, --pos-foot-h is unset and the foot behaves exactly as it always
+   did: as tall as its content, capped at 64vh. Once dragged, both variables
+   are set together — a height alone would still be clipped by that cap. */
+.cart-split { flex: none; height: 1px; position: relative; background: var(--border); cursor: row-resize; touch-action: none; }
+.cart-split::before { content: ''; position: absolute; inset-inline: 0; inset-block: -4px; }
+.cart-split:hover, body.pos-resizing-v .cart-split { background: var(--brand); }
+.cart-split:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--brand); }
+body.pos-resizing-v { cursor: row-resize; user-select: none; }
+
+.cart-foot { padding: 16px 18px 18px; background: var(--subtle); overflow-y: auto; flex: none; height: var(--pos-foot-h, auto); max-height: var(--pos-foot-max, 64vh); }
 .cust-box { position: relative; }
 /* The caret marks the field as a list to open, not a box to interview someone
    for. tabindex=-1 in the markup keeps it out of the tab order — the input
