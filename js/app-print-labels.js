@@ -4,7 +4,7 @@
    --------------------------------------------------------------------------
    Added after the app.js -> app-*.js split (see the other app-*.js headers
    for that history). Loads after app-products.js — reuses DB.typeLabels /
-   thumb() / healthBadge() — and before app-tour-routing.js, since VIEWS
+   thumb() / healthBadge() — and before app-routing.js, since VIEWS
    there references viewPrintLabels by value.
 
    A dedicated screen for choosing exactly which product x size combinations

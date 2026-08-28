@@ -51,17 +51,11 @@ function bindGlobal() {
     if (e.key === 'Escape') {
       if (modalOpen()) { closeModal(); return; }
       if (document.getElementById('drawer-root').firstChild) { closeDrawer(); return; }
-      if (Tour.on) { Tour.stop(); return; }
       var sc = Bulk.scope();
       if (sc && Bulk.count(sc)) { Bulk.clear(sc); render(); Bulk.paint(); }
     }
-    if (Tour.on && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
-      var fwd = (e.key === 'ArrowRight') !== (OG.lang === 'ar');
-      Tour.go(Tour.i + (fwd ? 1 : -1));
-    }
   });
 
-  window.addEventListener('resize', function () { if (Tour.on) Tour.paint(); });
   window.addEventListener('hashchange', function () {
     var raw = window.location.hash;
     if (handleDeepLink(raw)) return;
@@ -248,9 +242,6 @@ function boot() {
   if (!Charts.has()) {
     console.info('Chart.js unavailable — charts fall back to CSS bars.');
   }
-  setTimeout(function () {
-    toast('OG System', OG.lang === 'ar' ? 'جاهز للعرض — اضغط "جولة العرض"' : 'Ready — press "Demo tour" to begin', 'ok', 4200);
-  }, 700);
 }
 
 /* The login holds boot() back on http(s) until someone is signed in; on

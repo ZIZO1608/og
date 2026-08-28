@@ -38,7 +38,8 @@ tr.bk-on td { border-bottom-color: var(--brand-border); }
 .bk-corner { position: absolute; top: 10px; inset-inline-end: 10px; z-index: 2; }
 .bk-inline { flex: none; display: inline-grid; place-items: center; }
 
-/* The action bar is centre-anchored so it never meets the tour button. */
+/* Centre-anchored, so it never collides with a control pinned to either
+   bottom corner. */
 .bk-bar {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   z-index: 320; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -292,7 +293,7 @@ html.has-demo-banner .view { padding-bottom: 52px; }
    it includes the iOS home-indicator inset. Everything that used to sit at
    the bottom of the screen now measures itself against this variable instead
    of a hardcoded 24px, which is what stops the bar burying the bulk-action
-   bar, the tour button and the POS "Complete sale" control.               */
+   bar and the POS "Complete sale" control.                              */
 
 :root { --tabbar-h: 0px; }
 
@@ -351,7 +352,6 @@ html.has-demo-banner .view { padding-bottom: 52px; }
   .drawer { width: 100%; }
   .phone { border-width: 8px; height: 640px; border-radius: 32px; }
   .label-sheet { grid-template-columns: repeat(2, 1fr); }
-  .tour-pop { width: calc(100vw - 32px); inset-inline-start: 16px !important; }
   .page-head h1 { font-size: 23px; }
 
   /* --- the two things that already lived at the bottom ------------------ */

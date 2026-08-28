@@ -8,7 +8,7 @@
    value (nav: go, whatsapp: openWhatsapp, ...) — every file that defines
    one of those functions (app-shell/app-dashboard/app-products/
    app-warehouse/app-customers-scan/app-jobs-reports/
-   app-settings/app-documents/app-tour-routing) MUST already be
+   app-settings/app-documents/app-routing) MUST already be
    loaded before this file runs, since cross-<script> execution does not
    hoist. Kept as a single intact object literal per the split plan —
    breaking it into ACTIONS['key'] = fn assignments would be a real code
@@ -969,9 +969,5 @@ var ACTIONS = {
       esc(CONFIG.SHOP_NAME), 'ok', 3600);
   },
 
-  'tour-next': function () { Tour.go(Tour.i + 1); },
-  'tour-back': function () { Tour.go(Tour.i - 1); },
-  'tour-skip': function () { Tour.stop(); },
-  'tour-start-fab': function () { Tour.start(); },
   'new-sale': function () { closeModal(); go('pos'); }
 };

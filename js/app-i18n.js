@@ -439,8 +439,8 @@ var I18N = {
     points_per: 'Points per 1,000 SYP spent', point_value: 'Value of 1 point',
     rate_hint: '1 USD equals', shop_name: 'Shop name', accent_colour: 'Accent colour',
 
-    tour_start: 'Demo tour', next: 'Next', back_btn: 'Back', skip: 'Skip',
-    step: 'Step', of: 'of', close: 'Close', cancel: 'Cancel', save: 'Save',
+    next: 'Next', 
+    of: 'of', close: 'Close', cancel: 'Cancel', save: 'Save',
     all_word: 'All', none: 'None', yes: 'Yes', no: 'No', remove: 'Remove',
     print_job: 'Print job', for_word: 'for', day_word: 'day',
     day_overdue: 'day overdue', days_overdue: 'days overdue',
@@ -850,8 +850,8 @@ var I18N = {
     points_per: 'نقاط لكل ١٠٠٠ ل.س', point_value: 'قيمة النقطة الواحدة',
     rate_hint: '١ دولار يساوي', shop_name: 'اسم المحل', accent_colour: 'اللون المميز',
 
-    tour_start: 'جولة العرض', next: 'التالي', back_btn: 'السابق', skip: 'تخطي',
-    step: 'خطوة', of: 'من', close: 'إغلاق', cancel: 'إلغاء', save: 'حفظ',
+    next: 'التالي', 
+    of: 'من', close: 'إغلاق', cancel: 'إلغاء', save: 'حفظ',
     all_word: 'الكل', none: 'لا شيء', yes: 'نعم', no: 'لا', remove: 'حذف',
     print_job: 'طلب طباعة', for_word: 'لـ', day_word: 'يوم',
     day_overdue: 'يوم تأخير', days_overdue: 'أيام تأخير',

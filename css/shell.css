@@ -3,7 +3,7 @@
    --------------------------------------------------------------------------
    Split from the original css/style.css (lines 291-524). Loads after
    tokens.css. Defines `.seg` (segmented control, v1) — a second, unrelated
-   `.seg` (standalone pill) is redefined later in tour-yalla-scan.css for the
+   `.seg` (standalone pill) is redefined later in yalla-scan.css for the
    Warehouses screen; THIS file must load before that one so the later rule
    keeps winning, exactly as it did in the original single-file cascade.
    ========================================================================== */
