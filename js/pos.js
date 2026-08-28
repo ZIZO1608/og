@@ -532,7 +532,6 @@ var POS = (function () {
               'placeholder="' + t('scan_ph') + '" value="' + esc(S.q) + '">' +
           '</div>' +
           '<div class="scan-meta">' +
-            '<button class="btn btn-sm btn-ghost" data-act="export" data-kind="pdf">' + t('ex_till') + '</button>' +
             '<span class="keys">' +
               '<span><span class="keycap">↵</span> ' + (OG.lang === 'ar' ? 'مسح' : 'scan') + '</span>' +
               '<span><span class="keycap">F2</span> ' + (OG.lang === 'ar' ? 'زبون' : 'customer') + '</span>' +

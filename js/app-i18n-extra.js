@@ -308,7 +308,7 @@ var EXTRA_EN = {
   bk_points: '+250 points', bk_advance: 'Move to next stage', bk_done: 'Mark done',
   bk_moved: 'jobs moved', bk_sent: 'orders sent to Yalla Wear',
 
-  ex_scan: 'Scan to open', ex_till: 'Till PDF',
+  ex_scan: 'Scan to open',
   rec_statement: 'Customer statement', rec_stock_sheet: 'Stock sheet',
   yl_work_order: 'Work order'
 };
@@ -396,7 +396,7 @@ var EXTRA_AR = {
   bk_points: '+٢٥٠ نقطة', bk_advance: 'نقل للمرحلة التالية', bk_done: 'إنهاء',
   bk_moved: 'طلب تم نقله', bk_sent: 'طلب أُرسل ليلا وير',
 
-  ex_scan: 'امسح للفتح', ex_till: 'تقرير الصندوق',
+  ex_scan: 'امسح للفتح',
   rec_statement: 'كشف حساب الزبون', rec_stock_sheet: 'كشف المخزون',
   yl_work_order: 'أمر عمل'
 };
