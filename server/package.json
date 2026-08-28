@@ -14,7 +14,8 @@
     "demo-users": "node scripts/demo-users.js",
     "demo-catalogue": "node scripts/demo-catalogue.js",
     "backup": "node scripts/backup.js",
-    "supabase:check": "node scripts/supabase-check.js"
+    "supabase:check": "node scripts/supabase-check.js",
+    "supabase:test-write": "node scripts/supabase-test-write.js"
   },
   "dependencies": {},
   "devDependencies": {}
