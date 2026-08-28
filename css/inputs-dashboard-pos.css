@@ -294,3 +294,9 @@ body.rtl .cust-drop small { float: left; }
 .pi-size { flex: none; font-size: 11.5px; color: var(--muted-foreground); }
 .pr-item-inputs { display: grid; grid-template-columns: minmax(0, 1fr) 86px; gap: 6px; margin-top: 6px; }
 .pr-count { margin: 8px 2px 0; }
+
+/* Priority as the site's segmented pill, sized to sit level with the date
+   box beside it. Urgent picked = the same red every urgent badge wears. */
+.pr-seg { display: flex; width: 100%; height: 38px; }
+.pr-seg button { flex: 1; }
+.pr-seg button.urg.on { background: var(--destructive-solid); color: #FFFFFF; font-weight: 700; }

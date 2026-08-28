@@ -419,11 +419,15 @@ var POS = (function () {
           ' = ' + money(n * PRINT_UNIT_PRICE) + '</div>';
       }
 
+      /* Priority as the site's own segmented pill, not the OS dropdown — two
+         options never earned a menu, and the native select is the one control
+         on this panel the theme cannot reach. */
       h += '<div class="row2 mt">' +
-          '<label class="field"><span>' + t('priority') + '</span><select class="inp" id="prPrio">' +
-            '<option value="normal"' + (S.print.priority === 'normal' ? ' selected' : '') + '>' + t('normal') + '</option>' +
-            '<option value="urgent"' + (S.print.priority === 'urgent' ? ' selected' : '') + '>' + t('urgent') + '</option>' +
-          '</select></label>' +
+          '<div class="field"><span>' + t('priority') + '</span>' +
+            '<div class="seg pr-seg">' +
+              '<button data-pos="pr-prio" data-p="normal" class="' + (S.print.priority === 'normal' ? 'on' : '') + '">' + t('normal') + '</button>' +
+              '<button data-pos="pr-prio" data-p="urgent" class="urg ' + (S.print.priority === 'urgent' ? 'on' : '') + '">' + t('urgent') + '</button>' +
+            '</div></div>' +
           '<label class="field"><span>' + t('deadline') + '</span>' +
             '<input class="inp" id="prDate" type="date" value="' + (S.print.deadline || isoAhead(5)) + '"></label>' +
         '</div></div>';
@@ -908,7 +912,6 @@ var POS = (function () {
     /* --- optional print job, straight into the Design column --- */
     var job = null;
     if (S.print.on) {
-      var prioEl = document.getElementById('prPrio');
       var dateEl = document.getElementById('prDate');
       var pdate = (dateEl && dateEl.value) || S.print.deadline || isoAhead(5);
 
@@ -935,7 +938,7 @@ var POS = (function () {
         design: 'Custom print · ' + sale.id,
         lines: klines,
         qty: klines.length,
-        priority: (prioEl && prioEl.value) || S.print.priority,
+        priority: S.print.priority,
         deadline: new Date(pdate + 'T12:00:00'),
         price: klines.length * PRINT_UNIT_PRICE,
         cost: klines.length * PRINT_UNIT_COST
@@ -966,9 +969,23 @@ var POS = (function () {
       }, 400);
     }
     if (job) {
+      /* Straight onto Yalla Wear's desk: the same DB.sendOrder the Jobs
+         screen's Send button uses, so the order lands in their portal inbox
+         with the names, numbers and deadline the moment the sale commits.
+         The one thing that stops it is a piece with no name yet —
+         canSendOrder's TBC gate, because an order carrying a nameless shirt
+         cannot honestly be placed. Then the job waits in Design and the
+         toast says exactly what to finish. */
+      var sentToYalla = DB.sendOrder(job);
+      if (sentToYalla && typeof Notify !== 'undefined') Notify.refresh();
       setTimeout(function () {
-        toast(OG.lang === 'ar' ? 'أُرسل طلب الطباعة إلى يلا وير' : 'Print job sent to Yalla Wear',
-              job.id + ' · ' + job.qty + ' pcs · ' + t(job.priority), 'ok', 4000);
+        if (sentToYalla) {
+          toast(OG.lang === 'ar' ? 'أُرسل طلب الطباعة إلى يلا وير' : 'Print job sent to Yalla Wear',
+                job.id + ' · ' + job.qty + ' pcs · ' + t(job.priority), 'ok', 4000);
+        } else {
+          toast(t('add_print'),
+                t('pr_draft_tbc').replace('{n}', DB.tbcCount(job)), 'warn', 6000);
+        }
       }, silent ? 300 : 900);
     }
   }
@@ -1028,6 +1045,11 @@ var POS = (function () {
     },
     del: function (el) { S.cart.splice(+el.getAttribute('data-i'), 1); paintCart(); paintPrintBox(); },
     clear: function () { S.cart = []; S.coupon = null; S.pointsUsed = 0; paintCart(); paintPrintBox(); },
+
+    'pr-prio': function (el) {
+      S.print.priority = el.getAttribute('data-p');
+      paintPrintBox();
+    },
 
     /* Toggle one piece in or out of the print job. The panel repaints so the
        name and number boxes appear under the tick — focus is on the tapped
@@ -1235,7 +1257,6 @@ var POS = (function () {
         S.deliver = el.checked;
         paintFoot();
       }
-      if (el.id === 'prPrio') S.print.priority = el.value;
     });
 
     document.addEventListener('keydown', function (e) {

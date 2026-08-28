@@ -2361,8 +2361,9 @@ var DB = {
       created: now,
       sizes: f.sizes || splitSizes(f.qty),
       history: [{ stage: 'design', at: now }],
-      /* Born unsent. A job taken at the till is OG's intention, not yet an
-         order the printer has agreed to — somebody still has to press Send. */
+      /* Born unsent — an order the printer has not yet agreed to. Callers
+         that want it on Yalla's desk immediately call DB.sendOrder right
+         after (the till does, once every picked piece has its name). */
       order: { state: 'draft', sentAt: null, respondedAt: null, promisedAt: null, note: '' }
     };
     if (lines) DB.resyncKit(job);
