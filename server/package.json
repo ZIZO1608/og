@@ -2,13 +2,14 @@
   "name": "og-system-server",
   "version": "1.0.0",
   "private": true,
-  "description": "OG System backend \u2014 SQLite, sessions, sync. Zero runtime dependencies by design.",
+  "description": "OG System backend — SQLite, sessions, sync. Zero runtime dependencies by design.",
   "type": "module",
   "engines": {
     "node": ">=22.5.0"
   },
   "scripts": {
     "start": "node index.js",
+    "preflight": "node scripts/preflight.js",
     "dev": "node --watch index.js",
     "createuser": "node scripts/createuser.js",
     "demo-users": "node scripts/demo-users.js",

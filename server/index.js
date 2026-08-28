@@ -33,6 +33,7 @@ import * as Deliveries from './lib/deliveries.js';
 import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
+import * as SyncWorker from './lib/sync-worker.js';
 import {
   readJson, sendOk, sendError, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
@@ -1087,6 +1088,14 @@ if (runDirectly) {
       console.log('    outside the shop, e.g.');
       console.log('      OG_ORIGINS=http://og-shop:8090');
     }
+
+    /* Started here rather than at import, so the mirror can only ever begin
+       once the till is actually listening. It runs the sync in a child
+       process and prints one line per run — see lib/sync-worker.js for why a
+       failed mirror must never be able to disturb a sale. */
+    console.log('');
+    SyncWorker.start();
+
     console.log('');
   });
 

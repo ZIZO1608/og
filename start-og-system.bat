@@ -36,6 +36,18 @@ if %NODEMAJOR% LSS 22 (
 )
 
 cd /d "%~dp0server"
+
+REM  A readiness report before the shop opens: can anyone sign in, is there
+REM  anything to sell, and is the Supabase mirror wired up. It only ever
+REM  PRINTS - it never blocks the start - because a broken mirror must not be
+REM  able to stop the till taking cash. An empty users table used to show up
+REM  only as "Wrong username or password" on every attempt, which reads as a
+REM  broken login rather than an empty table; this is that afternoon, saved.
+node scripts\preflight.js
+
+REM  The server serves the app and the API, and - when server\.env has
+REM  Supabase credentials - pushes the mirror on a timer while it runs. See
+REM  server\lib\sync-worker.js. Nothing else has to be started or remembered.
 node index.js
 
 REM  Only reached if the server stopped. Hold the window so the error above
