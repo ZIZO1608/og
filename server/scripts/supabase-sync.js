@@ -36,6 +36,7 @@ import { env } from 'node:process';
 import { load } from '../lib/env.js';
 import * as DB from '../lib/db.js';
 import * as SB from '../lib/supabase.js';
+import * as Vault from '../lib/credvault.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DB_FILE = env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
@@ -82,9 +83,15 @@ async function syncReference() {
    The column list is named explicitly and does not include pw_hash,
    pw_salt, pw_hint or must_change — see the file header. This is the only
    place in the whole script that matters for keeping that promise: get
-   this SELECT wrong and the safety described above stops being true. */
+   this SELECT wrong and the safety described above stops being true.
+
+   When OG_VAULT_KEY is set, a SEALED box is attached as well — ciphertext
+   built on this machine by lib/credvault.js, which Supabase cannot read.
+   That is not a hash leaving the building; it is the only way a dead shop
+   machine can ever get its accounts back. */
 async function syncUsers() {
-  console.log(head('users (safe fields only)'));
+  const sealing = Vault.isEnabled();
+  console.log(head(sealing ? 'users (safe fields + sealed credentials)' : 'users (safe fields only)'));
 
   const users = DB.get().prepare(
     'SELECT id, username, name, role, phone, active, created_at, updated_at FROM users'
@@ -92,8 +99,47 @@ async function syncUsers() {
 
   if (!users.length) { console.log('  none'); return; }
 
-  await SB.insert('users', users.map((u) => ({ ...u, active: !!u.active })), { upsert: true });
-  console.log(tick(`upserted ${users.length} row(s) — username/name/role/phone/active only`));
+  const rows = users.map((u) => ({ ...u, active: !!u.active }));
+
+  /* The sealed box is fetched in a SECOND query, per user, and never joined
+     into the SELECT above. That keeps the promise in this file's header
+     literally true — the query that builds the mirror rows still cannot
+     return a hash — and it means a vault failure cannot quietly turn into a
+     plain hash being sent instead. */
+  if (sealing) {
+    const cred = DB.get().prepare(
+      'SELECT pw_hash, pw_salt, pw_hint, must_change FROM users WHERE id = ?'
+    );
+    for (const r of rows) {
+      const c = cred.get(r.id);
+      /* A user with no password set yet is a real state (createuser writes
+         the row and the hash together, but a future path might not), and it
+         must not abort the whole staff sync. */
+      r.pw_enc = (c && c.pw_hash && c.pw_salt) ? Vault.sealUser(c) : null;
+    }
+  }
+
+  /* The pw_enc column arrives with server/supabase/002_user_credentials.sql,
+     run by hand in the dashboard. If the vault is switched on before that
+     migration lands, Postgres rejects the whole batch — which would take the
+     ENTIRE staff sync down over an optional extra. Fall back to the columns
+     that have always worked and say exactly what to run. */
+  let sealedLanded = sealing;
+  try {
+    await SB.insert('users', rows, { upsert: true });
+  } catch (e) {
+    if (sealing && /pw_enc/.test(String(e.message))) {
+      console.log('  [33m![0m Supabase has no pw_enc column yet — syncing without the sealed boxes.');
+      console.log('    [2mRun server/supabase/002_user_credentials.sql in the Supabase SQL editor.[0m');
+      await SB.insert('users', rows.map(({ pw_enc, ...rest }) => rest), { upsert: true });
+      sealedLanded = false;
+    } else { throw e; }
+  }
+  console.log(tick(`upserted ${users.length} row(s) — username/name/role/phone/active` +
+    (sealedLanded ? ', plus a sealed credential box each' : ' only')));
+  if (!sealing) {
+    console.log(`    \x1b[2mOG_VAULT_KEY is not set, so accounts cannot be restored from this mirror.\x1b[0m`);
+  }
 }
 
 /* ---------------------------------------------------------- table configs

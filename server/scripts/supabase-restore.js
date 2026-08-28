@@ -12,13 +12,16 @@
    truth; it copies the mirror back into the database the till actually runs
    on, once, so the shop can carry on working offline exactly as before.
 
-   WHAT IT WILL NOT DO
-   -------------------
-   Users. The mirror holds username/name/role/phone/active and deliberately
-   never held a password hash — see the header of supabase-sync.js. Restoring
-   those rows would create accounts nobody can sign in to, and would overwrite
-   the local rows that DO have passwords. Staff are recreated with
-   `npm run createuser`, which is the only path that sets a password at all.
+   ACCOUNTS
+   --------
+   Only with the vault. The mirror never holds a plain password hash, so a
+   user row on its own would restore an account nobody could sign in to. What
+   it can hold is a SEALED box (lib/credvault.js) that only this machine's
+   OG_VAULT_KEY opens — and when one is present, the account comes back able
+   to log in with the password it always had.
+
+   Without OG_VAULT_KEY, users are skipped entirely rather than half-restored,
+   and `npm run createuser` remains the way back in.
 
    REFUSES TO CLOBBER
    ------------------
@@ -35,6 +38,7 @@ import { fileURLToPath } from 'node:url';
 import { load } from '../lib/env.js';
 import * as DB from '../lib/db.js';
 import * as SB from '../lib/supabase.js';
+import * as Vault from '../lib/credvault.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -175,8 +179,65 @@ for (const { table, cols, rows } of plan) {
   tick(`${table} — ${written} row(s)`);
 }
 
+/* ---------------------------------------------------------------- accounts
+
+   Deliberately last and deliberately separate from the table loop above: a
+   staff row carries something none of the others do, and the rules for it
+   are different at every step — sealed rather than plain, skipped rather
+   than forced, and never allowed to overwrite a local account that already
+   works. */
+head('Accounts');
+
+if (!Vault.isEnabled()) {
+  warn('OG_VAULT_KEY is not set — accounts skipped.');
+  dim('Without it a restored user could not sign in. Set it in server/.env,');
+  dim('then re-run. New staff meanwhile:  npm run createuser');
+} else {
+  let remote = [];
+  try { remote = await fetchAll('users'); }
+  catch (e) { warn(`could not read users from Supabase (${e.message})`); }
+
+  const sealed = remote.filter((u) => u.pw_enc);
+  if (!remote.length) {
+    warn('no users in the mirror');
+  } else if (!sealed.length) {
+    warn(`${remote.length} user(s) in the mirror, none with a sealed box.`);
+    dim('They were synced before the vault was switched on. Run npm run supabase:sync');
+    dim('on a machine that still has the accounts, then restore again.');
+  } else {
+    const cols = columnsOf(d, 'users');
+    let added = 0, kept = 0, failed = 0;
+
+    for (const u of sealed) {
+      /* An account that already exists locally is never touched. The local
+         row is the one with a password that currently works; the box is a
+         copy of some earlier moment, and quietly winding a password back is
+         the one outcome nobody would forgive. */
+      const here = d.prepare('SELECT id FROM users WHERE lower(username) = lower(?)').get(u.username);
+      if (here && !FORCE) { kept++; continue; }
+
+      let cred;
+      try { cred = Vault.unsealUser(u.pw_enc); }
+      catch (e) { failed++; if (failed === 1) bad(e.message); continue; }
+
+      const row = adapt(u, cols);
+      delete row.pw_enc;
+      Object.assign(row, cred);
+
+      const keys = Object.keys(row);
+      d.prepare(`INSERT OR REPLACE INTO users (${keys.join(',')}) ` +
+                `VALUES (${keys.map(() => '?').join(',')})`).run(...keys.map((k) => row[k]));
+      added++;
+    }
+
+    if (added) tick(`${added} account(s) restored — they can sign in with their existing password.`);
+    if (kept) dim(`${kept} left alone because they already exist here (--force overwrites).`);
+    if (failed) dim(`${failed} box(es) could not be opened with this OG_VAULT_KEY.`);
+    if (!added && !failed && kept) tick('every mirrored account already exists here.');
+  }
+}
+
 head('Done');
 console.log(`  ${total} row(s) restored into the local database.`);
-dim('Staff accounts were NOT restored — the mirror never held passwords.');
 dim('Check who can sign in with:  npm run preflight');
 console.log('');
