@@ -229,10 +229,14 @@ CREATE TABLE IF NOT EXISTS sales (
   public_token  TEXT,
   points_used   INTEGER NOT NULL DEFAULT 0,
   points_earned INTEGER NOT NULL DEFAULT 0,
+  -- Sham Cash / Fuad / Haram / card-terminal reference. Nullable — cash, COD
+  -- and on-credit sales have none. Mirrors server/migrations/014_sale_txn_ref.sql.
+  txn_ref       TEXT,
   created_at    TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS sales_at       ON sales (at DESC);
 CREATE INDEX IF NOT EXISTS sales_customer ON sales (customer_id);
+CREATE INDEX IF NOT EXISTS sales_txn_ref  ON sales (txn_ref) WHERE txn_ref IS NOT NULL;
 
 COMMENT ON COLUMN sales.fx_rate IS
   'The rate frozen at the moment of sale. Without it, re-running last month''s profit after the rate moves gives a different answer every time.';

@@ -9,13 +9,14 @@
    by hand): every table sync is a cursor over change_log, so a run that
    dies halfway just picks up where it left off next time.
 
-   SCOPE OF THIS RUN: products, variants, stock — the "stock data" chain —
-   plus the two small reference tables they depend on (currencies,
-   warehouses), which aren't logged to change_log since they're rarely-
-   changed setup data, not day-to-day writes. sales/customers/deliveries
-   already have real activity in change_log (confirmed: 17/90/9 rows) but
-   are NOT synced by this script yet — adding them is adding entries to the
-   TABLES map below, not a redesign.
+   SCOPE: products, variants, stock, customers, sales (+ their line items),
+   deliveries — everything in change_log except `users`, which is left out
+   deliberately: no staff/login data leaves this machine through this
+   script. That's a real choice, not a technical necessity — nothing in the
+   Supabase schema requires it (driver_id/cashier_id/assigned_by carry no
+   foreign key into users on the Supabase side), and it changes nothing
+   about login either way: authentication is checked against local SQLite
+   only, on this server, whether or not `users` is ever synced.
 
    ONE CURSOR PER TABLE, not one global cursor. sync_state gets a row per
    table synced (id = 'sync:<table>'), independent of the pre-seeded 'shop'
@@ -71,7 +72,16 @@ async function syncReference() {
 /* ---------------------------------------------------------- table configs
    parseKey turns a change_log.row_id back into the columns needed to fetch
    the row locally and to match it on Supabase for delete. mapRow adapts
-   SQLite's types to Postgres's (currently only hidden: 0/1 -> boolean). */
+   SQLite's types to Postgres's (INTEGER 0/1 -> boolean; nothing else
+   differs between the two schemas for these tables).
+
+   Deliberately excludes `users` — no staff/login data leaves this machine
+   through this script. Nothing here needs it either: driver_id/cashier_id/
+   assigned_by are plain columns with no foreign key into users on the
+   Supabase side (confirmed against server/supabase/001_mirror_schema.sql
+   before adding these), so skipping users breaks nothing downstream. Real
+   login is checked against local SQLite only, on this server — Supabase is
+   never part of authentication, with or without this table synced. */
 const TABLES = {
   products: {
     parseKey: (rowId) => ({ id: Number(rowId) }),
@@ -86,6 +96,34 @@ const TABLES = {
   stock: {
     parseKey: (rowId) => { const [sku, wh_id] = rowId.split(':'); return { sku, wh_id }; },
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM stock WHERE sku = ? AND wh_id = ?').get(key.sku, key.wh_id),
+    mapRow: (r) => r
+  },
+  customers: {
+    parseKey: (rowId) => ({ id: Number(rowId) }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM customers WHERE id = ?').get(key.id),
+    mapRow: (r) => r
+  },
+  /* sale_items has no change_log entries of its own (server/lib/sales.js
+     logs only the parent 'sales' row) — so every time a sale is pushed,
+     its full current line-item set is pushed alongside it: delete what's
+     there for that sale_id, insert the current rows. Simplest correct
+     option given items are only ever written once, at sale time, never
+     edited afterward. A deleted sale cascades its items on the Postgres
+     side (sale_items.sale_id ON DELETE CASCADE) — no manual cleanup
+     needed for that path. */
+  sales: {
+    parseKey: (rowId) => ({ id: rowId }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM sales WHERE id = ?').get(key.id),
+    mapRow: (r) => ({ ...r, voided: !!r.voided }),
+    afterUpsert: async (localRow) => {
+      const items = DB.get().prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(localRow.id);
+      await SB.remove('sale_items', { sale_id: localRow.id }).catch(() => {});
+      if (items.length) await SB.insert('sale_items', items, { upsert: true });
+    }
+  },
+  deliveries: {
+    parseKey: (rowId) => ({ id: Number(rowId) }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM deliveries WHERE id = ?').get(key.id),
     mapRow: (r) => r
   }
 };
@@ -133,6 +171,11 @@ async function syncTable(name) {
     await SB.insert(name, toUpsert, { upsert: true });
     pushed = toUpsert.length;
     console.log(tick(`upserted ${pushed} row(s)`));
+
+    if (cfg.afterUpsert) {
+      for (const row of toUpsert) await cfg.afterUpsert(row);
+      console.log(tick(`ran afterUpsert for ${pushed} row(s)`));
+    }
   }
   for (const key of toDeleteKeys) {
     await SB.remove(name, key);
@@ -153,8 +196,11 @@ async function syncTable(name) {
 await syncReference();
 
 /* Insertion order is the FK dependency order: products before variants
-   (variants.product_id), variants before stock (stock.sku). */
-for (const name of ['products', 'variants', 'stock']) {
+   (variants.product_id), variants before stock (stock.sku); customers
+   before sales (sales.customer_id); sales before deliveries
+   (deliveries.sale_id) and before sale_items, which sales' own afterUpsert
+   hook pushes right after each sale row lands. */
+for (const name of ['products', 'variants', 'stock', 'customers', 'sales', 'deliveries']) {
   await syncTable(name);
 }
 
