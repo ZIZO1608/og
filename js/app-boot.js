@@ -204,6 +204,9 @@ function bindWedge() {
 
 function boot() {
   applyLang();
+  /* Before renderSidebar below, so a machine set to the icon rail never shows
+     a wide sidebar for a frame first. */
+  applySidebarMode();
 
   /* Yalla Wear signs in and is already inside their portal. Set before the
      first paint, so there is no frame in which the shop's dashboard is on

@@ -92,6 +92,43 @@
 .sidebar-foot { padding: 14px 22px 18px; border-top: 1px solid var(--sidebar-border); font-size: 11.5px; color: #52525B; }
 .sidebar-foot b { color: var(--brand); font-weight: 700; }
 
+/* ---- collapse to an icon rail -------------------------------------------
+   The same shape the ≤900px breakpoint already produces, reached on purpose
+   instead of by luck of window size. Only above that breakpoint, because
+   below it the sidebar is a rail either way and a button that cannot change
+   anything is worse than no button. */
+.sb-toggle {
+  margin-inline-start: auto; flex: none;
+  width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm);
+  background: none; color: #52525B; cursor: pointer;
+  display: grid; place-items: center;
+  transition: background var(--t), color var(--t);
+}
+.sb-toggle svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+.sb-toggle:hover { background: var(--sidebar-accent); color: var(--foreground); }
+
+/* Never in the partner portal: Yalla Wear's sidebar is rendered by
+   YALLA.sidebar() and carries no collapse button, so a manager who
+   previewed it collapsed would have no way back out. */
+body[data-sidebar="mini"]:not([data-portal="yalla"]) { --sidebar-w: 70px; }
+body[data-sidebar="mini"]:not([data-portal="yalla"]) .brand-text,
+body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-item .nav-txt,
+body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-label,
+body[data-sidebar="mini"]:not([data-portal="yalla"]) .sidebar-foot { display: none; }
+/* Stacked, not squeezed: at 70px the logo and the button cannot sit side by
+   side without one of them losing. */
+body[data-sidebar="mini"]:not([data-portal="yalla"]) .brand { flex-direction: column; gap: 10px; padding: 16px 6px; }
+body[data-sidebar="mini"]:not([data-portal="yalla"]) .sb-toggle { margin-inline-start: 0; }
+body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav { padding: 10px 9px; }
+body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-item { justify-content: center; padding: 11px 6px; }
+/* The count cannot fit, but "something needs you" still has to survive the
+   collapse — otherwise hiding the labels quietly hides the alerts too. */
+body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-badge {
+  position: absolute; top: 5px; inset-inline-end: 11px;
+  margin: 0; padding: 0; min-width: 0; width: 8px; height: 8px;
+  border-radius: var(--radius-full); font-size: 0; line-height: 0; overflow: hidden;
+}
+
 .main { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 
 /* ----------------------------------------------------------------- TOPBAR */

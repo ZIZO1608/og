@@ -131,6 +131,31 @@ function navBadge(id) {
   return 0;
 }
 
+/* ---- the icon rail -------------------------------------------------------
+   Collapsing is a per-machine preference, not a per-user one: the till in the
+   corner with the small screen wants the rail whoever is signed into it, and
+   the office machine wants the labels. So it lives in localStorage next to
+   the other things this browser remembers, not on the account. */
+
+var SIDEBAR_KEY = 'og.sidebar';
+
+function setSidebarMini(on) {
+  if (on) document.body.setAttribute('data-sidebar', 'mini');
+  else document.body.removeAttribute('data-sidebar');
+  try {
+    if (on) localStorage.setItem(SIDEBAR_KEY, 'mini');
+    else localStorage.removeItem(SIDEBAR_KEY);
+  } catch (e) { /* private mode — the choice just does not outlive the tab */ }
+}
+
+/* Called by boot() BEFORE the first renderSidebar, so the rail is never drawn
+   wide and then snapped narrow in front of someone. */
+function applySidebarMode() {
+  var v = null;
+  try { v = localStorage.getItem(SIDEBAR_KEY); } catch (e) {}
+  if (v === 'mini') document.body.setAttribute('data-sidebar', 'mini');
+}
+
 function renderSidebar() {
   /* Partner mode takes over the whole shell — its own nav, its own brand. */
   if (OG.print.partner) { document.getElementById('sidebar').innerHTML = YALLA.sidebar(); return; }
@@ -144,6 +169,14 @@ function renderSidebar() {
          sidebar still saying OG SYSTEM. */
       '<div class="brand-text"><b>' + esc(CONFIG.SHOP_NAME.toUpperCase()) + '</b>' +
         '<span>' + t('tagline') + '</span></div>' +
+      /* The collapse control lives in the brand row rather than floating over
+         the edge, so it cannot land on top of a nav item. Below 900px the
+         sidebar is already a rail and there is nothing to collapse, so CSS
+         hides this there rather than offering a button that does nothing. */
+      '<button class="sb-toggle" data-act="sidebar-toggle" ' +
+        'title="' + esc(t('sb_collapse')) + '" aria-label="' + esc(t('sb_collapse')) + '">' +
+        '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
+          '<path d="M4 5h16v14H4zM10 5v14"/></svg></button>' +
     '</div><nav class="nav">';
 
   ['main', 'ops'].forEach(function (g) {
@@ -155,7 +188,10 @@ function renderSidebar() {
     items.forEach(function (n) {
       var b = navBadge(n.id);
       html +=
-        '<button class="nav-item' + (OG.view === n.id ? ' active' : '') + '" data-act="nav" data-view="' + n.id + '">' +
+        /* The title carries the label for the collapsed rail, where the text
+           beside the icon is gone and hovering is the only way to be sure. */
+        '<button class="nav-item' + (OG.view === n.id ? ' active' : '') + '" data-act="nav" data-view="' + n.id + '"' +
+          ' title="' + esc(t(n.key)) + '">' +
           '<span class="nav-icon"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter"><path d="' + n.icon + '"/></svg></span>' +
           '<span class="nav-txt">' + t(n.key) + '</span>' +
           (b ? '<span class="nav-badge">' + b + '</span>' : '') +

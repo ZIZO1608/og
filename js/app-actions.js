@@ -21,6 +21,14 @@ var ACTIONS = {
   nav: function (el) { go(el.getAttribute('data-view')); },
   'nav-close': function (el) { closeDrawer(); go(el.getAttribute('data-view')); },
 
+  /* Collapse the sidebar to an icon rail, and remember it. Re-rendered rather
+     than just re-styled because the sliding active-indicator is positioned
+     from the nav's real geometry, which the narrower rail changes. */
+  'sidebar-toggle': function () {
+    setSidebarMini(document.body.getAttribute('data-sidebar') !== 'mini');
+    renderSidebar();
+  },
+
   lang: function (el) {
     OG.lang = el.getAttribute('data-val');
     applyLang();
