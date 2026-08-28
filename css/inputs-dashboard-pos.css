@@ -221,17 +221,30 @@ body.pos-resizing { cursor: col-resize; user-select: none; }
 
 .pos-right { display: flex; flex-direction: column; overflow: hidden; background: var(--app); }
 .cart-head { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
-/* The products/cart focus toggle. Icon-only, so it needs its own box — the
-   ghost button is otherwise sized by its text. */
+/* The products/cart focus toggle, in the product panel's own meta row.
+   Icon-only, so it needs its own box — a ghost button is otherwise sized by
+   its text. pointer-events on the svg so a click always reports the BUTTON as
+   its target, which is what the delegated [data-pos] dispatch walks up from. */
 .pos-focus-btn { padding: 0; width: 30px; flex: none; }
-.pos-focus-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.pos-focus-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; pointer-events: none; }
 
-/* Products hidden: the cart takes the whole width, and the divider goes with
-   them — there is nothing left on the other side of it to divide. Scanning is
-   untouched; the wedge listens on the document, not on the search box. */
-body[data-pos-focus="cart"] .pos { grid-template-columns: minmax(0, 1fr); }
-body[data-pos-focus="cart"] .pos-left,
-body[data-pos-focus="cart"] .pos-split { display: none; }
+/* ---- products folded away ------------------------------------------------
+   Not display:none on the whole panel: the button lives inside it, and a
+   control that hides itself leaves no way back. The panel becomes a narrow
+   rail holding only the button, and the cart takes everything else.
+
+   Scanning is untouched — the wedge listens on the document, not on the
+   search box — so a folded till still rings items up normally. */
+body[data-pos-focus="cart"] .pos { grid-template-columns: 46px minmax(0, 1fr); }
+body[data-pos-focus="cart"] .pos-split,
+body[data-pos-focus="cart"] .scan-wrap,
+body[data-pos-focus="cart"] .scan-meta .keys,
+body[data-pos-focus="cart"] .pos-cats,
+body[data-pos-focus="cart"] .pos-grid-wrap { display: none; }
+/* The divider is gone with the grid, so the rail carries the edge itself. */
+body[data-pos-focus="cart"] .pos-left { border-inline-end: 1px solid var(--border); }
+body[data-pos-focus="cart"] .pos-scanbar { padding: 14px 8px; border-bottom: 0; }
+body[data-pos-focus="cart"] .scan-meta { margin-top: 0; justify-content: center; }
 body[data-pos-focus="cart"] .pos-focus-btn { color: var(--brand); }
 .cart-head h3 { font-size: 14.5px; font-weight: 700; }
 .cart-lines { flex: 1; overflow-y: auto; min-height: 96px; }

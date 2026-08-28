@@ -729,6 +729,14 @@ var POS = (function () {
               'placeholder="' + t('scan_ph') + '" value="' + esc(S.q) + '">' +
           '</div>' +
           '<div class="scan-meta">' +
+            /* The collapse control sits ON the product section, and stays
+               visible when it folds: collapsing leaves a narrow rail holding
+               just this button, so there is always a way back. */
+            '<button class="btn btn-sm btn-ghost pos-focus-btn" data-pos="focus-cart" ' +
+              'title="' + esc(t(focusOnly() ? 'pos_show_products' : 'pos_hide_products')) + '" ' +
+              'aria-label="' + esc(t(focusOnly() ? 'pos_show_products' : 'pos_hide_products')) + '">' +
+              '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
+                '<path d="M4 5h16v14H4zM10 5v14"/></svg></button>' +
             '<span class="keys">' +
               '<span><span class="keycap">↵</span> ' + (OG.lang === 'ar' ? 'مسح' : 'scan') + '</span>' +
               '<span><span class="keycap">F2</span> ' + (OG.lang === 'ar' ? 'زبون' : 'customer') + '</span>' +
@@ -757,18 +765,14 @@ var POS = (function () {
         '<div class="cart-head" data-pos="cart-toggle"><h3>' + t('cart') + '</h3>' +
           '<span class="badge accent" id="cartCount">' + cartCount() + '</span>' +
           '<span class="cart-peek num">' + money(totals().total) + '</span>' +
-          /* Lives in the cart head because the cart is the one thing on screen
-             in BOTH states — a button that hides the products cannot sit on
-             the products. stopPropagation for the same reason Clear does it:
-             the whole head is the phone sheet's handle. */
-          '<button class="btn btn-sm btn-ghost pos-focus-btn" style="margin-inline-start:auto" ' +
-            'onclick="event.stopPropagation()" data-pos="focus-cart" ' +
-            'title="' + esc(t(focusOnly() ? 'pos_show_products' : 'pos_hide_products')) + '" ' +
-            'aria-label="' + esc(t(focusOnly() ? 'pos_show_products' : 'pos_hide_products')) + '">' +
-            '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
-              '<path d="M4 5h16v14H4zM10 5v14"/></svg></button>' +
-          '<button class="btn btn-sm btn-ghost" ' +
-            'onclick="event.stopPropagation()" data-pos="clear">' + t('clear') + '</button></div>' +
+          /* No inline onclick here. It used to carry
+             onclick="event.stopPropagation()", which killed the event before
+             it reached the delegated [data-pos] dispatcher on `document` —
+             so Clear had never actually cleared. It was never needed either:
+             the dispatcher resolves e.target.closest('[data-pos]'), which
+             finds THIS button, not the .cart-head handle above it. */
+          '<button class="btn btn-sm btn-ghost" style="margin-inline-start:auto" ' +
+            'data-pos="clear">' + t('clear') + '</button></div>' +
         '<div class="cart-lines" id="cartLines">' + linesHtml() + '</div>' +
         '<div class="cart-split" tabindex="0" role="separator" aria-orientation="horizontal" ' +
           'title="' + esc(t('pos_resize')) + '" aria-label="' + esc(t('pos_resize')) + '"></div>' +
