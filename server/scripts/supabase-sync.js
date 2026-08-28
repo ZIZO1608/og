@@ -10,13 +10,17 @@
    dies halfway just picks up where it left off next time.
 
    SCOPE: products, variants, stock, customers, sales (+ their line items),
-   deliveries — everything in change_log except `users`, which is left out
-   deliberately: no staff/login data leaves this machine through this
-   script. That's a real choice, not a technical necessity — nothing in the
-   Supabase schema requires it (driver_id/cashier_id/assigned_by carry no
-   foreign key into users on the Supabase side), and it changes nothing
-   about login either way: authentication is checked against local SQLite
-   only, on this server, whether or not `users` is ever synced.
+   deliveries, and users — a SAFE PROJECTION ONLY (id, username, name, role,
+   phone, active, created_at, updated_at). pw_hash/pw_salt/pw_hint/
+   must_change are never even SELECTed off the local table, let alone sent —
+   the query that reads users names its columns explicitly rather than
+   SELECT *, so there is no code path where a password hash passes through
+   this script's memory at all. The Supabase users table has no columns for
+   them either (see server/supabase/001_mirror_schema.sql's own comment:
+   "Password hashes and salts deliberately stay on the shop machine and are
+   never mirrored"). This changes nothing about login: authentication is
+   checked against local SQLite only, on this server, regardless of what's
+   mirrored.
 
    ONE CURSOR PER TABLE, not one global cursor. sync_state gets a row per
    table synced (id = 'sync:<table>'), independent of the pre-seeded 'shop'
@@ -67,6 +71,29 @@ async function syncReference() {
     await SB.insert('warehouses', warehouses, { upsert: true });
     console.log(tick(`warehouses   ${warehouses.length} rows`));
   }
+}
+
+/* ------------------------------------------------------------------ users
+   Not logged to change_log at all (no logChange() call anywhere in
+   server/lib/auth.js), so there is no cursor to replay — this is a plain
+   full upsert every run, same as reference data. A staff list is a handful
+   of rows; re-pushing all of them each time costs nothing.
+
+   The column list is named explicitly and does not include pw_hash,
+   pw_salt, pw_hint or must_change — see the file header. This is the only
+   place in the whole script that matters for keeping that promise: get
+   this SELECT wrong and the safety described above stops being true. */
+async function syncUsers() {
+  console.log(head('users (safe fields only)'));
+
+  const users = DB.get().prepare(
+    'SELECT id, username, name, role, phone, active, created_at, updated_at FROM users'
+  ).all();
+
+  if (!users.length) { console.log('  none'); return; }
+
+  await SB.insert('users', users.map((u) => ({ ...u, active: !!u.active })), { upsert: true });
+  console.log(tick(`upserted ${users.length} row(s) — username/name/role/phone/active only`));
 }
 
 /* ---------------------------------------------------------- table configs
@@ -194,6 +221,7 @@ async function syncTable(name) {
 }
 
 await syncReference();
+await syncUsers();
 
 /* Insertion order is the FK dependency order: products before variants
    (variants.product_id), variants before stock (stock.sku); customers
