@@ -10,7 +10,7 @@
      4. SALES           — 120 invoices across the last 6 months
      5. PRINT JOBS      — printing jobs with Yalla Wear, bulk and per-kit
      6. MOVEMENTS       — warehouse stock movement log
-     7. MISC            — storefront orders, notifications
+     7. MISC            — notifications
      8. PARTNER FINANCE — Yalla Wear invoices to OG, and the message thread
      9. HELPERS         — lookup functions used by the rest of the app
    ========================================================================== */
@@ -821,11 +821,6 @@ var mvSeq = 0;
 
 /* ----------------------------------------------------------------- 7. MISC */
 
-var storeOrders = [
-  { id: 'ORD-4412', name: 'Joud Attar',   phone: '+963 933 662 108', city: 'Damascus', items: 'OG Heavyweight Tee — L ×1', total: 2250,  payment: 'cod',  status: 'pending', date: daysAgo(0) },
-  { id: 'ORD-4411', name: 'Rami Daoud',   phone: '+963 944 771 355', city: 'Aleppo',   items: 'Adidas Samba OG — 43 ×1',   total: 11800, payment: 'sham', status: 'confirmed', date: daysAgo(1) }
-];
-
 /* Every WhatsApp message the shop has sent, newest first. wa.me hands off to
    the WhatsApp app and tells us nothing back, so this is a record of what was
    composed and opened — not a delivery receipt, and the UI never calls it one. */
@@ -923,7 +918,6 @@ var notifications = [
   { icon: '!', tone: 'red',   text: 'Print job #P-1043 is 2 days overdue',            view: 'print' },
   { icon: '$', tone: 'amber', text: 'Karam Trading — 41,500,000 SYP due in 3 days',   view: 'reports' },
   { icon: '~', tone: 'amber', text: '5 SKUs dropped into critical stock this week',   view: 'warehouse' },
-  { icon: 'C', tone: 'grey',  text: '2 storefront orders waiting for confirmation',   view: 'storefront' },
   { icon: 'P', tone: 'grey',  text: 'Payroll for 6 employees runs in 6 days',         view: 'reports' }
 ];
 
@@ -1030,7 +1024,6 @@ var DB = {
   suppliers: suppliers,
   employees: employees,
   stockMovements: stockMovements,
-  storeOrders: storeOrders,
   notifications: notifications,
   sizeSets: SIZE_SETS,
   typeLabels: TYPE_LABELS,
@@ -2388,12 +2381,6 @@ var DB = {
     var max = 1035;
     printJobs.forEach(function (j) { var n = parseInt(j.id.split('-')[1], 10); if (n > max) max = n; });
     return 'P-' + (max + 1);
-  },
-
-  nextOrderId: function () {
-    var max = 4411;
-    storeOrders.forEach(function (o) { var n = parseInt(o.id.split('-')[1], 10); if (n > max) max = n; });
-    return 'ORD-' + (max + 1);
   },
 
   logMovement: function (m) {

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   OG SYSTEM — stylesheet  ·  6/10: WAREHOUSE tabs, STOREFRONT, SETTINGS,
+   OG SYSTEM — stylesheet  ·  6/10: WAREHOUSE tabs, SETTINGS,
    TOASTS
    --------------------------------------------------------------------------
    Split from the original css/style.css (lines 1158-1349). Loads after
@@ -87,48 +87,6 @@
 
 .mv-delta { font-weight: 700; font-variant-numeric: tabular-nums; }
 .mv-delta.pos { color: var(--success); } .mv-delta.neg { color: var(--destructive); }
-
-/* ------------------------------------------------------------- STOREFRONT */
-
-.store-layout { display: grid; grid-template-columns: 440px minmax(0, 1fr); gap: 22px; align-items: start; }
-.phone {
-  width: 404px; max-width: 100%; margin: 0 auto;
-  border: 11px solid #1B1B1F; border-radius: 40px; overflow: hidden;
-  background: var(--app); height: 728px; display: flex; flex-direction: column;
-  box-shadow: var(--shadow-lg);
-}
-.phone-notch { height: 26px; background: #1B1B1F; display: grid; place-items: center; }
-.phone-notch i { display: block; width: 88px; height: 5px; background: #3F3F46; border-radius: var(--radius-full); }
-.phone-screen { flex: 1; overflow-y: auto; background: var(--app); }
-.st-hero { background: #000000; color: #FFFFFF; padding: 26px 18px; text-align: center; border-bottom: 1px solid var(--border); }
-.st-hero .brand-mark { margin: 0 auto 12px; background: #FFFFFF; color: #000000; }
-.st-hero h2 { font-size: 20px; color: #FFFFFF; letter-spacing: .06em; font-weight: 800; }
-.st-hero p { color: var(--dim); font-size: 11px; margin: 6px 0 0; letter-spacing: .05em; text-transform: uppercase; }
-.st-bar { display: flex; align-items: center; gap: 9px; padding: 11px 14px; background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
-.st-bar b { font-size: 13px; font-weight: 700; }
-.st-bar .btn { margin-inline-start: auto; }
-.st-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
-.st-card { border: 1px solid var(--border); background: var(--card); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: border-color var(--t); }
-.st-card:hover { border-color: var(--brand); }
-.st-card .thumb-box { aspect-ratio: 1; display: grid; place-items: center; color: #FFFFFF; font-family: var(--font-head); font-weight: 800; font-size: 24px; }
-.st-card .info { padding: 9px 10px; }
-.st-card .info b { display: block; font-size: 11px; font-weight: 600; line-height: 1.35; margin-bottom: 4px; }
-.st-card .info span { font-family: var(--font-head); font-weight: 800; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--brand); }
-.st-pd { padding: 14px; }
-.st-pd .thumb-box { aspect-ratio: 1.2; display: grid; place-items: center; color: #FFFFFF; font-family: var(--font-head); font-weight: 800; font-size: 46px; margin-bottom: 14px; border-radius: var(--radius); }
-.st-sizes { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0 16px; }
-.st-size { min-width: 52px; padding: 10px 6px; border: 1px solid var(--input); background: var(--card); color: var(--foreground); border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; transition: all var(--t); }
-.st-size.on { background: var(--brand); color: var(--brand-foreground); border-color: var(--brand); }
-.st-size:disabled { opacity: .3; text-decoration: line-through; background: var(--muted); cursor: not-allowed; }
-.st-line { display: flex; gap: 9px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; align-items: center; }
-.st-line .money { margin-inline-start: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
-
-.order-row { display: flex; gap: 11px; padding: 13px 16px; border-bottom: 1px solid var(--border); align-items: center; }
-.order-row:last-child { border-bottom: 0; }
-.order-row.fresh { animation: flashRow 1.1s ease; }
-.order-row b { font-size: 13px; font-weight: 700; }
-.order-row small { display: block; color: var(--dim); font-size: 11.5px; }
-.order-row .money { margin-inline-start: auto; font-weight: 700; font-variant-numeric: tabular-nums; text-align: end; }
 
 /* --------------------------------------------------------------- SETTINGS */
 

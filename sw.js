@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v40';
+var CACHE = 'og-system-v41';
 
 var SHELL = [
   './',
@@ -25,7 +25,7 @@ var SHELL = [
   'css/motion-cards.css',
   'css/inputs-dashboard-pos.css',
   'css/dialogs-customers-jobs.css',
-  'css/warehouse-storefront-settings.css',
+  'css/warehouse-settings.css',
   'css/tour-yalla-scan.css',
   'css/yalla-invoice-tracker-labels.css',
   'css/bulk-gate-responsive.css',
@@ -73,7 +73,7 @@ var SHELL = [
   'js/app-warehouse.js',
   'js/app-customers-scan.js',
   'js/app-jobs-reports.js',
-  'js/app-storefront-settings.js',
+  'js/app-settings.js',
   'js/app-documents.js',
   'js/app-tour-routing.js',
   'js/app-i18n-extra.js',

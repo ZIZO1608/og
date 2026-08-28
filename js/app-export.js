@@ -203,21 +203,6 @@ function printJobsExportSpec() {
   };
 }
 
-function ordersExportSpec() {
-  return {
-    name: 'store-orders', sheet: 'Orders', title: t('orders_queue'),
-    subtitle: DB.storeOrders.length + ' · ' + fmtDate(TODAY),
-    columns: [{ label: 'Order' }, { label: t('name'), width: 22 }, { label: t('phone') },
-              { label: t('city') }, { label: t('items'), width: 34 }, { label: t('payment') },
-              { label: t('status') }, { label: exCol(t('total')), num: true }],
-    rows: DB.storeOrders.map(function (o) {
-      return [o.id, o.name, o.phone, o.city, o.items, DB.payLabel(o.payment), t(o.status), exMoney(o.total)];
-    }),
-    totals: [t('total'), null, null, null, null, null, null,
-             exMoney(DB.storeOrders.reduce(function (a, o) { return a + o.total; }, 0))]
-  };
-}
-
 function salesExportSpec() {
   var sales = DB.sales.slice(0, 200);
   return {
@@ -510,7 +495,6 @@ function currentExportSpec() {
        movement log. */
     case 'print':      return (OG.pr && OG.pr.tab === 'invoices')
                               ? partnerInvoicesExportSpec() : printJobsExportSpec();
-    case 'storefront': return ordersExportSpec();
     default:           return salesExportSpec();
   }
 }

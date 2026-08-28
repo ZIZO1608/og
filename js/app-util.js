@@ -96,7 +96,7 @@ function thumb(p, cls) {
   return '<span class="thumb ' + (cls || '') + '" style="background:' + p.image.bg + '">' + p.image.initials + '</span>';
 }
 
-/* Big square version, for the storefront and the product drawer. */
+/* Big square version, for the product drawer. */
 function thumbBox(p, cls) {
   if (p.image && p.image.src) {
     return '<div class="thumb-box ' + (cls || '') + ' has-img">' +

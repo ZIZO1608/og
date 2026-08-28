@@ -63,7 +63,6 @@ var NAV = [
   { id: 'labels',     key: 'nav_labels',    group: 'ops',  icon: 'M4 5v14M8 5v14M11 5v9M14 5v14M17 5v9M20 5v14' },
   { id: 'print',      key: 'nav_print',     group: 'ops',  icon: 'M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z' },
   { id: 'reports',    key: 'nav_reports',   group: 'ops',  icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
-  { id: 'storefront', key: 'nav_storefront',group: 'ops',  icon: 'M4 8h16l-1 12H5zM9 8V6a3 3 0 0 1 6 0v2' },
   { id: 'settings',   key: 'nav_settings',  group: 'ops',  icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L6 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z' }
 ];
 
@@ -86,7 +85,6 @@ var NAV_PERM = {
   labels:     'label.print',
   print:      'print.read',
   reports:    'report.read',
-  storefront: 'product.read',
   settings:   'config.write'
 };
 
@@ -127,7 +125,6 @@ if (typeof Motion !== 'undefined') {
 function navBadge(id) {
   if (id === 'print') { var n = DB.printJobs.filter(function (j) { return DB.isOverdue(j); }).length; return n ? n : 0; }
   if (id === 'products') { return DB.criticalVariants().length; }
-  if (id === 'storefront') { return DB.storeOrders.filter(function (o) { return o.status === 'pending'; }).length; }
   return 0;
 }
 
@@ -217,7 +214,7 @@ function renderSidebar() {
    Five is the ceiling — a sixth tab makes each one too narrow for a thumb, so
    the rest live behind More. */
 var TABS = ['dashboard', 'pos', 'products', 'print'];
-var MORE_ITEMS = ['warehouse', 'deliveries', 'customers', 'labels', 'reports', 'storefront', 'settings'];
+var MORE_ITEMS = ['warehouse', 'deliveries', 'customers', 'labels', 'reports', 'settings'];
 
 function renderTabbar() {
   var host = document.getElementById('tabbar');

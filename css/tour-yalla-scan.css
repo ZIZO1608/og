@@ -4,7 +4,7 @@
    COMMAND PALETTE
    --------------------------------------------------------------------------
    Split from the original css/style.css (lines 1350-2158). Loads after
-   warehouse-storefront-settings.css.
+   warehouse-settings.css.
 
    Contains `.seg` v2 (Warehouses' standalone pill, line ~1900 of the
    original file) — a DIFFERENT component from `.seg` v1 (topbar segmented

@@ -8,7 +8,7 @@
    value (nav: go, whatsapp: openWhatsapp, ...) — every file that defines
    one of those functions (app-shell/app-dashboard/app-products/
    app-warehouse/app-customers-scan/app-jobs-reports/
-   app-storefront-settings/app-documents/app-tour-routing) MUST already be
+   app-settings/app-documents/app-tour-routing) MUST already be
    loaded before this file runs, since cross-<script> execution does not
    hoist. Kept as a single intact object literal per the split plan —
    breaking it into ACTIONS['key'] = fn assignments would be a real code
@@ -956,53 +956,6 @@ var ACTIONS = {
     render();
     toast(OG.print.partner ? 'YALLA WEAR' : CONFIG.SHOP_NAME.toUpperCase(),
           t(OG.print.partner ? 'yl_entered' : 'yl_left'), 'ok', 2400);
-  },
-
-  'st-open': function (el) { OG.store.screen = 'pd'; OG.store.productId = +el.getAttribute('data-id'); OG.store.size = null; renderStore(); },
-  'st-size': function (el) { OG.store.size = el.getAttribute('data-size'); renderStore(); },
-  'st-back': function () {
-    var s = OG.store;
-    s.screen = (s.screen === 'checkout') ? 'cart' : 'grid';
-    renderStore();
-  },
-  'st-cart': function () { OG.store.screen = 'cart'; renderStore(); },
-  'st-add': function () {
-    var s = OG.store, p = DB.product(s.productId);
-    s.cart.push({ productId: p.id, name: p.name, size: s.size, price: p.sellingPrice, qty: 1 });
-    toast(t('add_to_cart'), p.name + ' · ' + s.size, 'ok', 1800);
-    s.screen = 'cart';
-    renderStore();
-  },
-  'st-remove': function (el) { OG.store.cart.splice(+el.getAttribute('data-i'), 1); renderStore(); },
-  'st-checkout': function () { OG.store.screen = 'checkout'; renderStore(); },
-  'st-place': function () {
-    var s = OG.store;
-    if (!s.cart.length) return;
-    var total = s.cart.reduce(function (a, x) { return a + x.qty * x.price; }, 0);
-    var order = {
-      id: DB.nextOrderId(),
-      name: (document.getElementById('stName') || {}).value || 'Online customer',
-      phone: (document.getElementById('stPhone') || {}).value || '+963 9xx xxx xxx',
-      city: (document.getElementById('stCity') || {}).value || 'Damascus',
-      items: s.cart.map(function (l) { return l.name + ' — ' + l.size + ' ×' + l.qty; }).join(', '),
-      total: total,
-      payment: (document.getElementById('stPay') || {}).value || 'cod',
-      status: 'pending',
-      date: new Date(),
-      fresh: true
-    };
-    DB.storeOrders.unshift(order);
-    s.cart = []; s.screen = 'grid'; s.productId = null; s.size = null;
-    renderSidebar();
-    render();
-    toast(t('order_placed'), order.id + ' · ' + money(total), 'ok');
-  },
-  'order-confirm': function (el) {
-    var o = DB.storeOrders[+el.getAttribute('data-i')];
-    o.status = 'confirmed';
-    renderSidebar();
-    render();
-    toast(t('confirmed'), o.id + ' · ' + o.name, 'ok');
   },
 
   /* Every field applies as it is typed, so by the time this is pressed the

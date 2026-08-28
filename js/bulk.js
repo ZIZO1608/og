@@ -13,14 +13,14 @@
 
 var Bulk = (function () {
 
-  var SEL = { products: {}, customers: {}, jobs: {}, orders: {}, movements: {}, variants: {} };
+  var SEL = { products: {}, customers: {}, jobs: {}, movements: {}, variants: {} };
   var lastIdx = {};
   var undoEntry = null;
   var undoTimer = null;
 
   var VIEW_SCOPE = {
     products: 'products', customers: 'customers', print: 'jobs',
-    storefront: 'orders', warehouse: 'movements', labels: 'variants'
+    warehouse: 'movements', labels: 'variants'
   };
 
   function scope() {
@@ -50,7 +50,6 @@ var Bulk = (function () {
       case 'products':  return productRows().map(function (r) { return String(r.p.id); });
       case 'customers': return customerRows().map(function (c) { return String(c.id); });
       case 'jobs':      return DB.printJobs.map(function (j) { return j.id; });
-      case 'orders':    return DB.storeOrders.map(function (o) { return o.id; });
       case 'movements': return DB.stockMovements.slice(0, 90).map(function (m) { return m.id; });
       case 'variants':  return labelVariantRows().map(function (r) { return r.v.sku; });
       default:          return [];
@@ -107,10 +106,6 @@ var Bulk = (function () {
     jobs: [
       { id: 'advance', key: 'bk_advance', primary: true },
       { id: 'done',    key: 'bk_done' },
-      { id: 'export',  key: 'export_excel' }
-    ],
-    orders: [
-      { id: 'confirm', key: 'confirm', primary: true },
       { id: 'export',  key: 'export_excel' }
     ],
     movements: [
@@ -183,7 +178,7 @@ var Bulk = (function () {
 
     /* Match rows back to the selection by their first column, which is the
        id for every scope except products and customers (name first). */
-    var idCol = { jobs: 0, orders: 0, movements: null, products: null, customers: null }[sc];
+    var idCol = { jobs: 0, movements: null, products: null, customers: null }[sc];
     if (sc === 'products') {
       var names = {};
       selProducts().forEach(function (p) { names[p.name] = true; });

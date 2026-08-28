@@ -2,7 +2,7 @@
    OG SYSTEM — application shell  ·  12/17: INVOICE (A4) + THE THERMAL RECEIPT
    --------------------------------------------------------------------------
    Split from the original js/app.js (lines 5438-5731). Loads after
-   app-storefront-settings.js.
+   app-settings.js.
    ========================================================================== */
 
 /* --------------------------------------------------------------- 15. INVOICE */

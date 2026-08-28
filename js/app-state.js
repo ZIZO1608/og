@@ -24,7 +24,6 @@ var OG = {
   dir:  null,                                           // page-transition direction
   rep:  { tab: 'sales' },
   print:{ partner: false },
-  store:{ screen: 'grid', productId: null, size: null, cart: [] },
   cust: { q: '', filter: 'all' },
   /* `sym` is what gets PRINTED on our own labels: 'c128' carries the SKU,
      'ean13' is kept for anyone who wants the old numeric code. `mode` is the

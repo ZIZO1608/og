@@ -50,7 +50,7 @@ var CHANGES = {
   },
 
   'toggle-visible': function (el) {
-    /* Hiding a product from the storefront is editing the catalogue. The
+    /* Marking a product hidden is editing the catalogue. The
        column is not drawn without product.write, so reaching this is either a
        stale screen or someone poking at it — either way, put the switch back
        rather than letting the UI show a change the server will not keep. */
@@ -60,7 +60,6 @@ var CHANGES = {
     toast(p.name, p.hidden
       ? (OG.lang === 'ar' ? 'أُخفي عن المتجر' : 'Hidden from the storefront')
       : (OG.lang === 'ar' ? 'ظاهر في المتجر' : 'Visible on the storefront'), 'ok', 2000);
-    if (OG.view === 'storefront') render();
   },
 
   'wh-type': function (el) { OG.wh.type = el.value; OG.wh.sizes = {}; render(); },

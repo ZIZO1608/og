@@ -20,7 +20,7 @@ var PROD_COLS_ALL = [
   { k: 'price',  label: 'price', num: true },
   { k: 'margin', label: 'margin', num: true, need: 'profit.read' },
   { k: 'health', label: 'health', need: 'stock.read' },
-  /* Hiding something from the storefront is editing the catalogue, not
+  /* Marking something hidden is editing the catalogue, not
      browsing it. */
   { k: 'hidden', label: 'visible', need: 'product.write' }
 ];

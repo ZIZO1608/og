@@ -160,7 +160,6 @@ var VIEWS = {
   labels: viewPrintLabels,
   print: viewPrint,
   reports: viewReports,
-  storefront: viewStorefront,
   settings: viewSettings
 };
 
