@@ -64,11 +64,15 @@ var CHANGES = {
 
   'wh-type': function (el) { OG.wh.type = el.value; OG.wh.sizes = {}; render(); },
   'wh-name': function (el) { OG.wh.name = el.value; },
+  /* Was a full render() on every keystroke, which rebuilt the page, lost the
+     caret and threw the scroll back to the top — while somebody was still
+     typing. Now only the parts that actually depend on the number change,
+     and the box being typed into is never replaced, so the caret stays put
+     with no focus-restoring trick needed. */
   'wh-size': function (el) {
     var s = el.getAttribute('data-size');
     OG.wh.sizes[s] = el.value === '' ? '' : Math.max(0, parseInt(el.value, 10) || 0);
-    render();
-    focusBack('[data-change="wh-size"][data-size="' + s + '"]', String(OG.wh.sizes[s]).length);
+    repaintWhAdd();
   },
   'lb-max': function (el) {
     OG.lb.max = Math.max(1, Math.min(24, parseInt(el.value, 10) || 1));

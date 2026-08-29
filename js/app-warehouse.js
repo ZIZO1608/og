@@ -478,14 +478,29 @@ function whAddTab() {
 
   h += '</div></div>';
 
-  /* -- live preview -- */
+  /* The whole right-hand column is a function of OG.wh.sizes, so it is
+     wrapped in an id and rebuilt on its own when a quantity changes. What it
+     must NOT do is take the size grid with it: the box being typed into
+     lives there, and replacing it mid-keystroke is what used to throw the
+     page back to the top. */
+  h += '<div id="whPreview">' + whAddPreview(sizes, totalPieces) + '</div>';
+
+  return h + '</div>';
+}
+
+/* Everything that depends on the quantities, and nothing that holds focus. */
+function whAddPreview(sizes, totalPieces) {
+  var h = '';
+  var cost = Number(document.getElementById('whCost') && document.getElementById('whCost').value) || 1050;
+  var totalCost, totalRev;
   var priceEl = document.getElementById('whPrice');
   var price = Number(priceEl && priceEl.value) || 2250;
   cost = cost || 1050;
   totalCost = totalPieces * cost;
   totalRev = totalPieces * price;
 
-  h += '<div><div class="card"><div class="card-head"><h3>' + t('barcode_preview') + '</h3></div>' +
+  /* No wrapping <div> here: #whPreview in whAddTab IS this column. */
+  h += '<div class="card"><div class="card-head"><h3>' + t('barcode_preview') + '</h3></div>' +
     '<div class="table-wrap" style="max-height:300px;overflow-y:auto"><table class="tbl tbl-compact"><thead><tr>' +
       '<th>' + t('size') + '</th><th class="num">' + t('qty') + '</th><th>' + t('barcode') + '</th></tr></thead><tbody>';
   var any = false;
@@ -521,9 +536,37 @@ function whAddTab() {
       '<small>' + esc(mv.note) + ' · ' + relDate(mv.date) + '</small></span>' +
       '<b class="mv-delta ' + (mv.delta > 0 ? 'pos' : 'neg') + '">' + (mv.delta > 0 ? '+' : '') + mv.delta + '</b></div>';
   });
-  h += '</div></div></div>';
+  h += '</div>';
 
   return h;
+}
+
+/* Called on every keystroke in a size box. Touches three things and leaves
+   the rest of the page — and the caret — exactly where they were. */
+function repaintWhAdd() {
+  var sizes = DB.sizeSets[OG.wh.type] || [];
+  var total = 0;
+  sizes.forEach(function (s) { total += Number(OG.wh.sizes[s] || 0); });
+
+  /* the cell's own highlight and barcode, without rebuilding its input */
+  sizes.forEach(function (s, i) {
+    var input = document.querySelector('[data-change="wh-size"][data-size="' + s + '"]');
+    if (!input) return;
+    var cell = input.parentNode;
+    var q = Number(OG.wh.sizes[s] || 0);
+    if (cell) {
+      cell.classList.toggle('filled', !!q);
+      var code = cell.querySelector('small');
+      if (code) code.textContent = q ? whBarcode(OG.wh.type, s, i + 1) : '—';
+    }
+  });
+
+  var box = document.getElementById('whPreview');
+  if (box) box.innerHTML = whAddPreview(sizes, total);
+
+  /* Nothing to print until something has a quantity. */
+  var labels = document.querySelector('[data-act="wh-labels"]');
+  if (labels) labels.disabled = !total;
 }
 
 function whMovesTab() {
