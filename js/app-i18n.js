@@ -28,7 +28,6 @@ var I18N = {
     pw_changed: 'Password changed', pw_reauth: 'Sign in again with your new password',
     pw_mismatch: 'The two new passwords do not match',
     pw_must_change: 'Your password was reset — please change it',
-    demo_account: 'Demo', demo_no_account: 'No server — demo data, nothing is saved',
     role_delivery: 'Delivery', role_partner: 'Print partner',
     /* --- roles grid --- */
     roles_editable: 'Tick what each role may do. Saved straight away.',
@@ -467,7 +466,6 @@ var I18N = {
     pw_changed: 'تم تغيير كلمة المرور', pw_reauth: 'سجّل الدخول من جديد بكلمة المرور الجديدة',
     pw_mismatch: 'كلمتا المرور غير متطابقتين',
     pw_must_change: 'تمت إعادة تعيين كلمة مرورك — يرجى تغييرها',
-    demo_account: 'عرض تجريبي', demo_no_account: 'بدون خادم — بيانات تجريبية ولا يُحفظ شيء',
     role_delivery: 'التوصيل', role_partner: 'شريك الطباعة',
     /* --- جدول الصلاحيات --- */
     roles_editable: 'حدّد ما يستطيع كل دور فعله. يُحفظ فوراً.',

@@ -9,14 +9,16 @@
    until someone is allowed in — so app.js needed a one-line change rather than
    a rewrite.
 
-   Three ways in, decided in this order:
+   Two ways in:
 
-     1. file://           no server exists. Straight through to the demo data,
-                          no login, nothing saved. Double-clicking index.html
-                          still works, which is how the system gets shown to
-                          people.
-     2. valid session     the cookie is still good. Straight through.
-     3. everything else   the login screen.
+     1. valid session     the cookie is still good. Straight through.
+     2. everything else   the login screen.
+
+   And one way to be refused: no server. There used to be a third way in —
+   generated data with a DEMO banner over it, so the app opened from a
+   file:// double-click or a static host. That is gone. Every number on
+   screen now comes from the shop's own database or the screen says why it
+   cannot. Nothing is invented to fill a page.
 
    Who is signed in, and what they may do, lives in Auth.user() and
    Auth.can(). The server decides both; these are a copy for drawing the UI.
@@ -45,21 +47,11 @@ var Auth = (function () {
      should leave the app working on what it already knew, not break the
      screen that asked. */
   function refresh() {
-    if (demo || !API.live) return Promise.resolve(user);
+    if (!API.live) return Promise.resolve(user);
     return API.get('/api/auth/me')
       .then(function (d) { user = d.user; return user; })
       .catch(function () { return user; });
   }
-
-  /* Demo mode: no server answered, so there are no accounts. Everything is
-     permitted because nothing is real and nothing is saved.
-
-     Set by guard() rather than derived from the protocol alone. A page served
-     over http from a plain static host — GitHub Pages, serve.ps1 — is not
-     file://, but has no server behind it either, and showing a login nobody
-     can complete makes the app unusable. */
-  var demo = false;
-  function demoMode() { return demo; }
 
   /* ----------------------------------------------------------------- screen */
 
@@ -260,15 +252,16 @@ var Auth = (function () {
     releaseApp = release;
     API.onLostSession(lostSession);
 
-    /* Opened from disk. There is no server to ask, and never will be. */
-    if (!API.live) return enterDemo(release);
+    /* Opened from disk. There is no server to ask and never will be, so
+       there is nothing to show either — the app needs the shop's database
+       to say anything true. */
+    if (!API.live) return stop(release);
 
     /* Served over http — but that alone does not mean a backend exists. A
        static host answers for index.html and 404s every /api call, so ask
        before deciding which world we are in. */
     API.ping().then(function (verdict) {
       if (verdict === 'up') {
-        rememberBackend(true);
 
         /* Real deployment. Is the cookie still good? A reload should not make
            a cashier type their password again mid-queue. */
@@ -281,87 +274,34 @@ var Auth = (function () {
           .catch(function () { mount(); });
       }
 
-      /* Something served this page but has no API: a static host. Safe to
-         show the demo, and the banner says so. */
-      if (verdict === 'none') { rememberBackend(false); return enterDemo(release); }
+      /* Something served this page but has no API, or nothing answered at
+         all. Either way there is no shop behind this page, and there is
+         nothing honest to show.
 
-      /* Nothing answered at all.
-
-         This is the case the DEMO banner was never really enough for. If this
-         origin has served a working server before, then a server is supposed
-         to be here and is not — the shop's machine is off, or the wifi went.
-         Falling back to generated data would hand a cashier a till that looks
-         completely normal and throws every sale away.
-
-         If we have NEVER seen a backend here, this is the offline demo — the
-         GitHub Pages copy opened with no signal — and it should just work. */
-      if (backendExpected()) return stop(release);
-      enterDemo(release);
+         This is the case the DEMO banner was never really enough for. Falling
+         back to generated data handed a cashier a till that looked completely
+         normal and threw every sale away — and a banner is a thing you stop
+         seeing by the second day. */
+      stop(release);
     });
   }
 
-  /* Has a real server ever answered on this origin?
-
-     Per-origin by nature: localStorage is scoped to the origin, so the shop's
-     LAN address remembering a backend cannot make the public demo refuse to
-     open. Wrapped because a browser with site data blocked throws on the
-     accessor itself rather than returning null. */
-  function rememberBackend(yes) {
-    try {
-      if (yes) localStorage.setItem('og.backend', '1');
-      else localStorage.removeItem('og.backend');
-    } catch (e) { /* private window, or storage blocked */ }
-  }
-
-  function backendExpected() {
-    try { return localStorage.getItem('og.backend') === '1'; }
-    catch (e) { return false; }
-  }
-
-  /* No app at all. shop.js draws the reason and how to fix it; if it somehow
-     is not loaded, fall back to the demo with its banner rather than a blank
-     page — a labelled demo beats nothing on screen. */
+  /* No app at all: the reason, and how to fix it. An empty screen would be
+     read as "the shop has no stock" rather than "this machine cannot reach
+     the server", and those call for very different next actions. */
   function stop(release) {
-    if (typeof Shop !== 'undefined' && Shop.fail) {
-      var e = new Error('The shop server is not answering.');
-      e.code = 'offline';
-      Shop.fail(e);
-      return;
-    }
-    enterDemo(release);
-  }
+    var e = new Error('The shop server is not answering.');
+    e.code = 'offline';
+    if (typeof Shop !== 'undefined' && Shop.fail) return Shop.fail(e);
 
-  /* Straight into the app on generated data. */
-  function enterDemo(release) {
-    demo = true;
-    started = true;
-    release();
-    /* Only worth saying out loud when a server might have been expected.
-       On file:// it is obvious and the banner would just be clutter. */
-    if (API.live) showDemoBanner();
-  }
-
-  /* A permanent, unmissable label.
-
-     This is the safety on falling back automatically. The dangerous case is
-     not GitHub Pages — it is the shop's real server being down for ten
-     minutes while a cashier keeps ringing sales into data that evaporates.
-     They must be able to see that at a glance, without reading anything. */
-  function showDemoBanner() {
-    if (document.getElementById('demoBanner')) return;
-    var b = document.createElement('div');
-    b.id = 'demoBanner';
-    b.className = 'demo-banner';
-    b.innerHTML =
-      '<strong>DEMO</strong>' +
-      '<span>No server connected — nothing you do here is saved.</span>' +
-      '<button type="button" id="demoRetry">Retry</button>';
-    document.body.appendChild(b);
-    document.documentElement.classList.add('has-demo-banner');
-
-    b.querySelector('#demoRetry').addEventListener('click', function () {
-      API.ping().then(function (verdict) { if (verdict === 'up') location.reload(); });
-    });
+    /* shop.js is the one that draws it properly. If even that is missing,
+       say it in plain text rather than leaving a white page. */
+    document.body.innerHTML =
+      '<div style="max-width:32rem;margin:20vh auto;padding:0 1.5rem;' +
+      'font:400 15px/1.6 Montserrat,system-ui,sans-serif;color:#E7E7EA">' +
+      '<h1 style="font-size:1.25rem;margin:0 0 .5rem">The shop server is not answering</h1>' +
+      '<p style="margin:0;color:#9A9AA2">Start it with <code>cd server &amp;&amp; npm start</code>, ' +
+      'or double-click <code>start-og-system.bat</code>, then reload this page.</p></div>';
   }
 
   return {
@@ -370,7 +310,6 @@ var Auth = (function () {
     can: can,
     is: is,
     refresh: refresh,
-    demoMode: demoMode,
     logout: logout
   };
 })();

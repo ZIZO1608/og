@@ -263,8 +263,6 @@ body.rtl .user-chip { padding: 0 5px 0 13px; }
 .user-chip.is-btn:hover { border-color: var(--ring); background: var(--accent); }
 .uc-name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uc-caret { width: 13px; height: 13px; stroke: var(--muted-foreground); fill: none; stroke-width: 2; flex: none; }
-.user-avatar.demo { background: var(--warning); color: #1A1206; }
-.user-chip.is-demo { border-style: dashed; }
 
 /* A password waiting to be changed after a manager reset. A dot rather than a
    banner: it must be noticeable without blocking someone mid-queue. */

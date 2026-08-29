@@ -85,7 +85,7 @@ var POS = (function () {
     /* Demo mode has no accounts, so nothing is capped — the demo exists to
        show the whole system, and a refused discount in a sales pitch just
        looks broken. */
-    if (typeof Auth === 'undefined' || Auth.demoMode()) return false;
+    if (typeof Auth === 'undefined') return false;
     return !Auth.can('discount.unlimited');
   }
 
@@ -520,7 +520,7 @@ var POS = (function () {
      A sale paid in the shop can be sent out too, hence the tick box: people
      pay for a pair and ask for it to be dropped at their flat. */
   function deliveryBoxHtml() {
-    if (typeof Auth === 'undefined' || Auth.demoMode()) return '';
+    if (typeof Auth === 'undefined') return '';
     if (!Auth.can('delivery.write')) return '';
 
     /* COD is not optional — money is owed on the doorstep, so somebody has to
@@ -898,7 +898,7 @@ var POS = (function () {
       return;
     }
 
-    if (typeof Auth === 'undefined' || Auth.demoMode()) return completeLocal(silent, null);
+    if (typeof Auth === 'undefined') return completeLocal(silent, null);
 
     /* Caught here so she is told before the customer is told. The server
        refuses this too — that is the actual boundary — but a cashier should
@@ -1009,7 +1009,7 @@ var POS = (function () {
   /* --------------------------------------------------------- sending it out */
 
   function wantsDelivery() {
-    if (typeof Auth === 'undefined' || Auth.demoMode()) return false;
+    if (typeof Auth === 'undefined') return false;
     if (!Auth.can('delivery.write')) return false;
     return S.payment === 'cod' || S.deliver;
   }

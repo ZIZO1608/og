@@ -17,9 +17,8 @@ this in meetings. The owner keeps his records on paper today.
 # The real thing — serves the app AND the API from one origin on :8090
 cd server && npm start          # or double-click start-og-system.bat
 
-# Frontend only, no server: demo data, saves nothing
-.\serve.ps1                      # :8080, adds the service worker
-# or just double-click index.html (file://)
+# serve.ps1 and double-clicking index.html no longer show an app — there is
+# nothing to draw without the server. Both now say so rather than inventing a shop.
 
 cd server
 npm run createuser               # interactive; also accepts piped stdin
@@ -50,17 +49,19 @@ These are constraints, not preferences. Breaking one means rewriting a lot.
 
 - **Vanilla HTML/CSS/JS. No framework, no bundler, no npm, no build step** for the frontend. The only
   third-party file is `js/vendor/chart.umd.min.js`, committed directly.
-- **It must still work by double-clicking `index.html`, fully offline.** Anything that only works over
-  `http://` breaks the fastest way to show the app to a client.
+- **It needs the server.** This used to say the opposite — that double-clicking `index.html` had to
+  keep working offline, because that was the fastest way to show the app to a client. That constraint
+  was dropped deliberately: it was paid for with a generated shop, and generated data on a till looks
+  exactly like the truth. There is now no way to run the app without `cd server && npm start`.
 - **Dark mode only. Montserrat. English and Arabic with real RTL** — the layouts are built for both, not
   a mirrored stylesheet.
 - **No placeholder content.** No lorem ipsum, no "coming soon", no stock photos. Product images are CSS
   colour blocks. If a screen exists, it works.
 - Avoid `:has()` and very recent CSS — this runs on the shop's actual hardware.
 
-> `README.md` still states "no backend, no database, no login, no fetch" and says the public demo is
-> dead. **Both are now out of date** — there is a real server, and the demo at
-> `https://zizo1608.github.io/og/` is live. Trust this file over the README on those two points.
+> `README.md` is out of date on several points. There is a real server; the Pages deployment at
+> `https://zizo1608.github.io/og/` is a static host with no backend and so now shows only the
+> "server is not answering" screen. Trust this file over the README.
 
 ## Architecture
 
@@ -71,23 +72,28 @@ index.html + css/ + js/     static frontend — runs with or without a server
 server/                     zero-dependency Node + node:sqlite, serves the API *and* the static files
 ```
 
-### Three run modes, and every feature must answer for all three
+### One run mode: a real server, or nothing
 
-| Mode | How | `Auth.demoMode()` | Notes |
-|---|---|---|---|
-| `file://` | double-click `index.html` | `true` | No server can exist. No login, no banner. |
-| static host | GitHub Pages, `serve.ps1` | `true` | Login would be unusable, so a **permanent DEMO banner** is shown |
-| real | `cd server && npm start` | `false` | Accounts, permissions, persistence |
+`cd server && npm start`. That is the only way the app runs.
 
-`js/auth.js` decides by calling `API.ping()` — **not by protocol alone**. That distinction was a real
-bug: a static host is not `file://` but has no backend either, and the app showed a login nobody could
-complete.
+There used to be three. Opened from a `file://` double-click or served from GitHub Pages, the app ran
+on a seeded generator — 24 products, 40 customers, 120 invoices — with a permanent DEMO banner over it.
+Both are gone, along with `Auth.demoMode()`, the banner, and the ~500 lines that generated the shop.
 
-The DEMO banner is the safety on falling back automatically. The dangerous case is not GitHub Pages —
-it is the shop's own server being down while a cashier keeps ringing sales into data that evaporates.
+**Nothing is invented to fill a screen.** Every collection in `js/data.js` starts empty and is filled
+by `DB.hydrate()` from the server. When the server cannot be reached, `Shop.fail()` draws the reason
+and how to fix it — an empty app would be read as "the shop has no stock" rather than "this machine
+cannot reach the server", and those call for very different next actions.
 
-`_shot.html` loads **neither `api.js` nor `auth.js`**, so `Auth` is `undefined` there. Every call site
-that touches permissions must guard for that or the Arabic proposal build breaks.
+The failure this prevents was specific and real: generated data looks exactly like the truth, so a
+till that falls back to it takes money into memory nobody keeps. A banner is a thing you stop seeing
+by the second day.
+
+`_shot.html` loads **neither `api.js` nor `auth.js`**, so `Auth` is `undefined` there, and the
+`typeof Auth === 'undefined'` guards all over the frontend exist for it. **It no longer renders
+anything useful** — it drew the seeded shop, and there is no seeded shop. The file and its guards are
+kept because deleting them is a separate decision; the Arabic proposal PDF cannot be built until it is
+given a data source.
 
 ### Frontend conventions
 
@@ -100,8 +106,8 @@ that touches permissions must guard for that or the Arabic proposal build breaks
 - **Every new string goes in BOTH `I18N.en` and `I18N.ar`** in `js/app.js`. A missing Arabic key falls
   back to English mid-sentence inside an RTL layout and reads as a bug.
 - `js/api.js` is **the only file allowed to talk to the server**. Everything else goes through `DB.*`.
-- Most screens still read seeded demo data from `js/data.js`. Only **sales** and **deliveries** are
-  server-backed so far; wiring the rest is outstanding work.
+- Every screen reads from the server. `js/data.js` holds the shape and the lookups; the data arrives
+  through `DB.hydrate()`.
 
 ### The seeded generator — call order is load-bearing
 
@@ -133,8 +139,8 @@ as the actual protection.
 ### Helpers in `js/app.js` you should reuse rather than re-derive
 
 ```js
-roleOf()            // 'manager' | 'cashier' | … | null in demo mode and in _shot.html
-allow(perm)         // true in demo/_shot (the demo must show the whole system)
+roleOf()            // 'manager' | 'cashier' | … | null in _shot.html
+allow(perm)         // Auth.can(), or true in _shot.html where Auth does not exist
 seesCost()          // allow('cost.read')
 seesProfit()        // allow('profit.read')
 isPartnerAccount()  // Yalla Wear — locked into their portal
@@ -142,8 +148,9 @@ navAllowed(id)      // per-screen gate, via the NAV_PERM map
 ifNav(view, html)   // wrap in-page shortcut buttons ("View all →")
 ```
 
-`allow()` returning **true** in demo mode is deliberate: the demo and the Arabic proposal exist to show
-the whole system, and neither has real data behind it.
+`allow()` returns **true** only when `Auth` is undefined, which now means `_shot.html` alone. In the
+app it is `Auth.can()`, so a signed-out browser draws nothing — there is no longer a mode where
+everything is permitted because nothing is real.
 
 ### Two rules enforced in code, not in the table
 
@@ -167,7 +174,7 @@ anyone can send the request by hand.
 | cashier | `viewShiftHome()` — her shift, never the shop's money | `stat`, `card`, `tbl` markup |
 | warehouse | `viewBackHome()` — what arrived, what needs moving | same |
 | delivery | `viewRunsHome()` → `Deliveries.view()` | live server data |
-| manager / demo / `_shot.html` | `viewDashboard()` — the full dashboard | charts |
+| manager / `_shot.html` | `viewDashboard()` — the full dashboard | charts |
 
 The partner never reaches it: `boot()` and `render()` both force `OG.print.partner = true` for that role,
 and the `partner-view` toggle refuses for them.

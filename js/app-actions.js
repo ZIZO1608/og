@@ -398,7 +398,7 @@ var ACTIONS = {
       toast(t('lbl_attach_code'), (v && DB.product(v.productId) || {}).name || sku, 'ok', 3000);
     }
 
-    if (typeof Auth === 'undefined' || Auth.demoMode()) { apply(); return; }
+    if (typeof Auth === 'undefined') { apply(); return; }
     API.patch('/api/variants/' + encodeURIComponent(sku), patch)
       .then(function (res) {
         var v = DB.variantBySku(sku);
@@ -447,7 +447,7 @@ var ACTIONS = {
   },
 
   'rc-save-config': function (el) {
-    if (!allow('config.write') || typeof Auth === 'undefined' || Auth.demoMode()) return;
+    if (!allow('config.write') || typeof Auth === 'undefined') return;
     var updates = {
       'receipt.printer_host': (document.getElementById('rcHost') || {}).value || '',
       'receipt.printer_port': (document.getElementById('rcPort') || {}).value || '9100',
@@ -479,7 +479,7 @@ var ACTIONS = {
   },
 
   'lbl-save-config': function (el) {
-    if (!allow('config.write') || typeof Auth === 'undefined' || Auth.demoMode()) return;
+    if (!allow('config.write') || typeof Auth === 'undefined') return;
     var updates = {
       'label.transport':    (document.getElementById('lblTransport') || {}).value || 'agent',
       'label.printer_host': (document.getElementById('lblHost') || {}).value || '',

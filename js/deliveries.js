@@ -214,15 +214,6 @@ var Deliveries = (function () {
   /* -------------------------------------------------------------- the shell */
 
   function view() {
-    /* No server, no round. Said plainly rather than shown as an empty list,
-       which would read as "you have nothing to deliver today". */
-    if (typeof Auth !== 'undefined' && Auth.demoMode()) {
-      return '<div class="page-head"><div><h1>' + t('dl_title') + '</h1>' +
-        '<div class="sub">' + t('dl_sub') + '</div></div></div>' +
-        '<div class="card"><div class="cart-empty"><b>' + t('demo_account') + '</b>' +
-        t('demo_no_account') + '</div></div>';
-    }
-
     if (failed) {
       return '<div class="page-head"><div><h1>' + t('dl_title') + '</h1></div></div>' +
         '<div class="card"><div class="cart-empty"><b>' + esc(failed) + '</b>' +
@@ -241,7 +232,6 @@ var Deliveries = (function () {
      entered, so a driver pulling the app out of his pocket sees the round as
      it is now rather than as it was when he last looked. */
   function after() {
-    if (typeof Auth !== 'undefined' && Auth.demoMode()) return;
     /* Don't ask for a board this account cannot read. The server answers 403
        correctly, but the browser logs every refusal as a failed request, and
        a console full of expected failures is a console nobody reads. */

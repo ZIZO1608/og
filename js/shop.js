@@ -143,7 +143,7 @@ var Shop = (function () {
   /* ------------------------------------------------------------- writing */
 
   function live() {
-    return typeof Auth !== 'undefined' && !Auth.demoMode() && DB.live;
+    return typeof Auth !== 'undefined' && DB.live;
   }
 
   /* One write at a time.
@@ -209,8 +209,9 @@ var Shop = (function () {
     write: write,
 
     /* True when the app is running against a real server AND has loaded from
-       it. Both halves matter: `!demoMode()` alone is already true in the
-       moment between signing in and the data arriving. */
+       it. Both halves matter: a signed-in session is already true in the
+       moment between the login and the data arriving, and a write sent then
+       would be built on a catalogue that is not there yet. */
     live: live,
 
     /* ---- stock ---- */

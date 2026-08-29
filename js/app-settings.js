@@ -65,7 +65,7 @@ function demoMatrix() {
 }
 
 function rolesCard() {
-  var m = ROLE_MATRIX || (typeof Auth === 'undefined' || Auth.demoMode() ? demoMatrix() : null);
+  var m = ROLE_MATRIX || (typeof Auth === 'undefined' ? demoMatrix() : null);
 
   /* Still loading. Draw the frame rather than nothing, so the card does not
      pop into existence and shove the rest of the page down. */
@@ -76,7 +76,7 @@ function rolesCard() {
 
   /* Only a manager may change these. Everyone else sees the same grid,
      read-only — knowing the rules is not a privilege, changing them is. */
-  var editable = typeof Auth !== 'undefined' && !Auth.demoMode() && Auth.can('config.write');
+  var editable = typeof Auth !== 'undefined' && Auth.can('config.write');
 
   var h = '<div class="card mb"><div class="card-head"><h3>' + t('roles_perms') + '</h3>' +
     '<div class="card-actions muted small">' +
@@ -124,7 +124,7 @@ function rolesCard() {
 /* Pull the live matrix, then repaint Settings once. Called from afterSettings
    so it only runs when the screen is actually open. */
 function loadRoleMatrix() {
-  if (typeof Auth === 'undefined' || Auth.demoMode()) return;
+  if (typeof Auth === 'undefined') return;
   if (ROLE_MATRIX) return;
 
   API.get('/api/roles')
@@ -161,7 +161,7 @@ var PRESENCE_FRESH_MS = 30 * 1000;
 var STAFF_PRESENCE_AT = 0;
 
 function loadStaffPresence() {
-  if (typeof Auth === 'undefined' || Auth.demoMode()) return;
+  if (typeof Auth === 'undefined') return;
   if (!Auth.can('staff.read')) return;
 
   /* The render this fetch triggers lands back here immediately; that second
@@ -190,7 +190,7 @@ function presenceMinutesAgo(iso) {
 }
 
 function presenceCard() {
-  if (typeof Auth === 'undefined' || Auth.demoMode()) {
+  if (typeof Auth === 'undefined') {
     return '<div class="card mb"><div class="card-head"><h3>' + t('presence_title') + '</h3></div>' +
       '<div class="card-body muted small">' + t('demo_no_account') + '</div></div>';
   }
@@ -343,7 +343,7 @@ function hardwareCard() {
    the server's config table via PUT /api/config; there is nothing to save
    in demo mode, so the fields show the seeded defaults and stay read-only. */
 function receiptSettingsCard() {
-  var demo = typeof Auth === 'undefined' || Auth.demoMode();
+  var demo = typeof Auth === 'undefined';
   var dis = demo ? ' disabled' : '';
 
   var h = '<div class="card mb"><div class="card-head"><h3>' + t('rc3_title') + '</h3>' +
@@ -417,7 +417,7 @@ function receiptSettingsCard() {
    queue view work for anyone with label.print; the config fields below
    them are manager-only (config.write), same split as everywhere else. */
 function thermalLabelsCard() {
-  var demo = typeof Auth === 'undefined' || Auth.demoMode();
+  var demo = typeof Auth === 'undefined';
   var canPrint = allow('label.print');
   var canConfig = allow('config.write') && !demo;
   var dis = demo || !canPrint ? ' disabled' : '';

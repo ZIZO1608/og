@@ -1,25 +1,36 @@
 /* ==========================================================================
-   OG SYSTEM — MOCK DATA
+   OG SYSTEM — THE MODEL
    --------------------------------------------------------------------------
-   Everything the demo displays comes from this file. It is safe to edit any
-   value here live during a meeting; the whole app re-renders from it.
-   Sections, in order:
-     1. CONFIG          — exchange rate, loyalty rules, thresholds
-     2. CATALOGUE       — 24 products + their per-size variants (stock lives here)
-     3. PEOPLE          — 40 customers, 7 employees, 6 suppliers
-     4. SALES           — 120 invoices across the last 6 months
-     5. PRINT JOBS      — printing jobs with Yalla Wear, bulk and per-kit
-     6. MOVEMENTS       — warehouse stock movement log
-     7. MISC            — notifications
-     8. PARTNER FINANCE — Yalla Wear invoices to OG, and the message thread
-     9. HELPERS         — lookup functions used by the rest of the app
+   Every collection the screens read, and the lookups over them. All of it
+   starts EMPTY and is filled by DB.hydrate() from the server.
+
+   This file used to generate a shop: 24 products, 40 customers, 120 invoices
+   across six months, a print queue, a movement log — all from one seeded
+   generator, so every launch told an identical story. That was how the system
+   got shown to people before it had a server.
+
+   It is gone. A number on this screen is a number in the shop's database or
+   it is not there at all. The failure it prevents is specific and was real:
+   generated data looks exactly like the truth, and a till that falls back to
+   it takes money into memory nobody keeps.
+
+   What remains is the shape:
+     1. CONFIG      — exchange rate, loyalty rules, thresholds (server overrides)
+     2. CATALOGUE   — the empty collections, size sets, warehouses
+     3. PEOPLE      — customers, employees, suppliers
+     4. SALES       — invoices
+     5. PRINT JOBS  — the Yalla Wear queue, its stages and kit lines
+     6. MOVEMENTS   — the stock movement log
+     7. MISC        — the derived notification bell
+     8. PARTNER     — invoices between the two companies, and the message line
+     9. HELPERS     — the lookups every screen uses, and hydrate()
    ========================================================================== */
 
 /* ---------------------------------------------------------------- 1. CONFIG */
 
 /* MONEY IN THIS FILE IS THE NEW SYRIAN POUND.
    The redenomination took two zeros off: 1 new pound = 100 old lira. Every
-   amount below, and every price in PRODUCT_SEED, was divided by 100 when the
+   amount below, and every price the shop had, was divided by 100 when the
    shop moved over. A pair of Air Force 1s is 12,500 — if you ever find a
    four-digit shoe reading 1,250,000, something has been pasted in from the
    old currency and the whole report it lands in is wrong by 100x. */
@@ -188,51 +199,12 @@ var TYPE_LABELS = {
 };
 
 /* name, type, brand, madeIn, colour block, colourway, cost, price, shelf zone, hidden */
-var PRODUCT_SEED = [
-  ["Nike Air Force 1 '07",      'sneakers', 'Nike',        'Vietnam',   '#5B5B66', 'Triple White',   7800,  12500, 'A', false],
-  ['Nike Air Max 90',           'sneakers', 'Nike',        'Vietnam',   '#3E5C8A', 'Infrared',       8600,  13900, 'A', false],
-  ['Nike Dunk Low Panda',       'sneakers', 'Nike',        'China',     '#4A4A52', 'Black / White',  9100,  14900, 'A', false],
-  ['Adidas Samba OG',           'sneakers', 'Adidas',      'Indonesia', '#6B5B45', 'Core Black',     7200,  11800, 'A', false],
-  ['Adidas Campus 00s',         'sneakers', 'Adidas',      'Indonesia', '#6455A0', 'Dark Green',     6900,  11200, 'A', false],
-  ['New Balance 550',           'sneakers', 'New Balance', 'Vietnam',   '#7E8B99', 'White / Green',  8300,  13400, 'B', false],
-  ['Converse Chuck 70 Hi',      'sneakers', 'Converse',    'Vietnam',   '#8E3B3B', 'Egret',          5400,   8900, 'B', false],
-  ['Timberland 6" Premium',     'boots',    'Timberland',  'Dominican', '#B5822F', 'Wheat Nubuck',  13200,  20500, 'C', false],
-  ['Dr. Martens 1460',          'boots',    'Dr. Martens', 'Thailand',  '#7A2B28', 'Cherry Red',    11800,  18500, 'C', false],
-  ['CAT Colorado Boot',         'boots',    'Caterpillar', 'Vietnam',   '#8A6E3A', 'Honey Reset',    9400,  14800, 'C', false],
-  ['OG Heavyweight Tee',        'tshirts',  'OG',          'Syria',     '#4A4A52', 'Washed Black',   1050,   2250, 'D', false],
-  ['OG Box Logo Tee',           'tshirts',  'OG',          'Syria',     '#A8946E', 'Sand',           1120,   2450, 'D', false],
-  ['Stussy Basic Tee',          'tshirts',  'Stussy',      'Turkey',    '#3A5478', 'Navy',           1480,   2950, 'D', false],
-  ['Carhartt WIP Pocket Tee',   'tshirts',  'Carhartt',    'Turkey',    '#8A7658', 'Hamilton Brown', 1600,   3200, 'D', false],
-  ['Nike Sportswear Club Tee',  'tshirts',  'Nike',        'Egypt',     '#A33636', 'University Red',  950,   1980, 'D', true ],
-  ["Levi's 501 Original",       'jeans',    "Levi's",      'Egypt',     '#4A6A8F', 'Mid Stone',      3400,   6200, 'E', false],
-  ["Levi's 511 Slim",           'jeans',    "Levi's",      'Egypt',     '#35496B', 'Rinse Dark',     3250,   5950, 'E', false],
-  ['OG Baggy Denim',            'jeans',    'OG',          'Syria',     '#6E8299', 'Light Wash',     2350,   4450, 'E', false],
-  ['Real Madrid Home 24/25',    'jerseys',  'Adidas',      'Thailand',  '#9CA3AF', 'White / Gold',   2150,   4200, 'F', false],
-  ['Barcelona Away 24/25',      'jerseys',  'Nike',        'Thailand',  '#C9A227', 'Yellow',         2050,   4050, 'F', false],
-  ['Al-Ittihad Home 24/25',     'jerseys',  'Nike',        'Thailand',  '#2F5744', 'Black / Yellow', 1680,   3450, 'F', true ],
-  ['Crocs Classic Clog',        'crocs',    'Crocs',       'China',     '#3E7A9E', 'Bijou Blue',     2450,   4300, 'G', false],
-  ['OG Oxford Shirt',           'shirts',   'OG',          'Syria',     '#7E92A3', 'Powder Blue',    1860,   3490, 'H', true ],
-  ['OG Denim Jacket',           'jackets',  'OG',          'Syria',     '#5A748C', 'Stone Wash',     4180,   7850, 'B', false]
-];
 
-var products = PRODUCT_SEED.map(function (p, i) {
-  var words = p[0].replace(/[^A-Za-z0-9 ]/g, ' ').trim().split(/\s+/);
-  var initials = (words[0][0] + (words[1] ? words[1][0] : words[0][1] || '')).toUpperCase();
-  return {
-    id: i + 1,
-    name: p[0],
-    type: p[1],
-    brand: p[2],
-    madeIn: p[3],
-    image: { bg: p[4], initials: initials },   // solid colour placeholder block
-    colorway: p[5],
-    costPrice: p[6],
-    sellingPrice: p[7],
-    shelfZone: p[8],
-    hidden: p[9],
-    lastSoldDaysAgo: 0                          // filled in after sales are built
-  };
-});
+/* Filled by DB.hydrate from the server. Empty until then, and empty is
+   honest: an empty shop is a shop whose catalogue has not loaded, and the
+   screens say so. Invented stock on a real till is how somebody sells a
+   product that does not exist. */
+var products = [];
 
 /* Products that carry a "size gap": healthy total stock, zero in the sizes
    customers actually ask for. This is one of the headline insights in the pitch. */
@@ -259,46 +231,6 @@ var DEFAULT_WH = 'floor';   /* what the till sells from unless told otherwise */
 var INTAKE_WH  = 'store';   /* deliveries arrive at the back door, not the wall */
 
 var variants = [];
-products.forEach(function (p) {
-  var sizes = SIZE_SETS[p.type];
-  var gap = SIZE_GAP[p.id] || [];
-  sizes.forEach(function (size, idx) {
-    var qty;
-    if (gap.indexOf(size) > -1) {
-      qty = 0;                               // the gap
-    } else if (gap.length) {
-      qty = ri(9, 22);                       // deliberately healthy around the gap
-    } else {
-      var roll = rnd();
-      if (roll < 0.10)      qty = 0;         // out
-      else if (roll < 0.24) qty = ri(1, 3);  // critical
-      else if (roll < 0.42) qty = ri(4, 9);  // low
-      else                  qty = ri(10, 34);// healthy
-    }
-    variants.push({
-      sku: 'OG-' + pad(p.id, 3) + '-' + size,
-      productId: p.id,
-      size: size,
-      color: p.colorway,
-      /* 12-digit body + a real mod-10 check digit, so it scans. */
-      barcode: (function (body) { return body + Codes.ean13Check(body); })(
-        '621' + pad(p.id, 3) + pad(idx, 2) + pad(ri(0, 9999), 4)),
-      /* Numeric-only, deterministic, mirrors the server's label_code
-         counter shape (a persisted sequence starting past six digits) —
-         used for the thermal label's Code128 barcode instead of the
-         alphanumeric sku, which subset C can't pack two-digits-per-symbol. */
-      labelCode: String(100000 + p.id * 100 + idx),
-      qty: qty,
-      shelf: p.shelfZone + '-' + pad(ri(1, 18), 2)
-    });
-  });
-});
-
-/* The barcode the presenter types on stage. Pinned to Air Force 1 / size 41. */
-(function pinDemoBarcode() {
-  var v = variants.filter(function (x) { return x.productId === 1 && x.size === '41'; })[0];
-  if (v) { v.barcode = CONFIG.DEMO_BARCODE; if (v.qty < 4) v.qty = 12; }
-})();
 
 /* The dead-stock alert on the dashboard points at a real row. */
 (function pinDeadStock() {
@@ -356,54 +288,13 @@ function whRnd() {
 /* --------------------------------------------------------------- 3. PEOPLE */
 
 var CITIES = ['Damascus', 'Aleppo', 'Homs', 'Latakia', 'Hama', 'Tartus', 'Deir ez-Zor'];
-var CUSTOMER_SEED = [
-  ['Ahmad Al-Khatib', 'm'], ['Layla Haddad', 'f'], ['Omar Sayegh', 'm'], ['Rana Mansour', 'f'],
-  ['Bashar Nassar', 'm'], ['Nour Al-Ali', 'f'], ['Karim Deeb', 'm'], ['Hala Zaher', 'f'],
-  ['Yousef Kanaan', 'm'], ['Maya Shaheen', 'f'], ['Tarek Jaber', 'm'], ['Salma Rifai', 'f'],
-  ['Fadi Barakat', 'm'], ['Dina Halabi', 'f'], ['Samer Aswad', 'm'], ['Lina Tarabishi', 'f'],
-  ['Hassan Murad', 'm'], ['Reem Qassab', 'f'], ['Ziad Sabbagh', 'm'], ['Joud Attar', 'f'],
-  ['Malek Hamwi', 'm'], ['Sara Kurdi', 'f'], ['Anas Shami', 'm'], ['Yara Malki', 'f'],
-  ['Rami Daoud', 'm'], ['Tala Ibrahim', 'f'], ['Wael Khoury', 'm'], ['Nada Sultan', 'f'],
-  ['Bilal Ammar', 'm'], ['Rita Azzam', 'f'], ['Majd Rustom', 'm'], ['Aya Fares', 'f'],
-  ['Ibrahim Saleh', 'm'], ['Ghina Aboud', 'f'], ['Nabil Homsi', 'm'], ['Rasha Debs', 'f'],
-  ['Kinan Trad', 'm'], ['Farah Zeitoun', 'f'], ['Adel Baroudi', 'm'], ['Lama Sharif', 'f']
-];
 
-var customers = CUSTOMER_SEED.map(function (c, i) {
-  return {
-    id: i + 1,
-    name: c[0],
-    gender: c[1] === 'm' ? 'male' : 'female',
-    phone: '+963 9' + pad(ri(30, 99), 2) + ' ' + pad(ri(0, 999), 3) + ' ' + pad(ri(0, 999), 3),
-    city: pick(CITIES),
-    source: chance(0.42) ? 'online' : 'in-store',
-    loyaltyPoints: 0,
-    totalSpent: 0,
-    lastPurchaseDate: null,
-    history: []               // invoice ids, newest first
-  };
-});
+var customers = [];
 
-var suppliers = [
-  { id: 1, name: 'Karam Trading',      contact: '+963 944 210 337', category: 'Sneakers import', outstanding: 415000, dueDate: daysAhead(3),  lastPayment: daysAgo(26), totalPurchased: 3180000 },
-  { id: 2, name: 'Yalla Wear',         contact: '+963 932 887 190', category: 'Printing partner', outstanding:  62500, dueDate: daysAhead(11), lastPayment: daysAgo(9),  totalPurchased:  384000 },
-  { id: 3, name: 'Al-Sham Textiles',   contact: '+963 955 104 662', category: 'T-shirts & blanks', outstanding: 128000, dueDate: daysAhead(18), lastPayment: daysAgo(14), totalPurchased:  967000 },
-  { id: 4, name: 'Damascus Denim Co.', contact: '+963 988 512 043', category: 'Jeans',            outstanding:        0, dueDate: daysAhead(30), lastPayment: daysAgo(4),  totalPurchased:  742000 },
-  { id: 5, name: 'Sport Line Import',  contact: '+963 941 663 528', category: 'Jerseys',          outstanding:  94000, dueDate: daysAgo(2),   lastPayment: daysAgo(41), totalPurchased:  529000 },
-  { id: 6, name: 'Nour Leather',       contact: '+963 966 337 815', category: 'Boots',            outstanding: 231000, dueDate: daysAhead(7),  lastPayment: daysAgo(19), totalPurchased: 1415000 }
-];
+var suppliers = [];
 
-var employees = [
-  { id: 1, name: 'Hussam Fattal',  role: 'Manager',        salary: 95000, nextPayment: daysAhead(6),  since: '2021-03-01', sales: 0, phone: '+963 933 118 204' },
-  { id: 2, name: 'Lubna Kayali',   role: 'Cashier',        salary: 52000, nextPayment: daysAhead(6),  since: '2022-08-15', sales: 0, phone: '+963 991 447 610' },
-  { id: 3, name: 'Rawad Sheikh',   role: 'Cashier',        salary: 49000, nextPayment: daysAhead(6),  since: '2023-01-09', sales: 0, phone: '+963 944 902 155' },
-  { id: 4, name: 'Maher Odeh',     role: 'Warehouse',      salary: 56000, nextPayment: daysAhead(6),  since: '2020-11-20', sales: 0, phone: '+963 955 613 728' },
-  { id: 5, name: 'Sirine Bakri',   role: 'Warehouse',      salary: 51000, nextPayment: daysAhead(6),  since: '2023-06-02', sales: 0, phone: '+963 932 550 461' },
-  { id: 6, name: 'Talal Mroue',    role: 'Delivery',       salary: 44000, nextPayment: daysAhead(13), since: '2024-02-11', sales: 0, phone: '+963 987 226 903' },
-  { id: 7, name: 'Ghaith Sallum',  role: 'Social / Online', salary: 61000, nextPayment: daysAhead(6), since: '2022-04-27', sales: 0, phone: '+963 941 809 372' }
-];
+var employees = [];
 
-var CASHIERS = ['Lubna Kayali', 'Rawad Sheikh', 'Hussam Fattal'];
 /* `credit` is الدين — sold now, paid later. It is a payment METHOD because
    that is how it is recorded at the till, but it is the only one that creates
    a receivable instead of money. */
@@ -432,97 +323,8 @@ var DRAWER_METHODS = ['cash', 'cod'];
 /* ---------------------------------------------------------------- 4. SALES */
 
 var sales = [];
-(function buildSales() {
-  /* Weight every day of the last 6 months: weekends busier, business trending up. */
-  var pool = [];
-  for (var d = 179; d >= 0; d--) {
-    var date = daysAgo(d);
-    var dow = date.getDay();                       // 5 = Friday, 6 = Saturday
-    var trend = 1 + ((179 - d) / 179) * 1.05;      // steady growth over 6 months
-    var season = (dow === 5 || dow === 6) ? 1.75 : (dow === 0 ? 0.65 : 1);
-    var w = Math.round(trend * season * 10);
-    for (var k = 0; k < w; k++) pool.push(d);
-  }
-
-  var days = [];
-  for (var i = 0; i < 116; i++) days.push(pick(pool));
-  days.push(0, 0, 0, 0, 1, 1, 1);                   // guarantee sales today and yesterday
-  days.sort(function (a, b) { return b - a; });     // oldest first
-
-  var inStock = variants.filter(function (v) { return v.qty > 0; });
-  var counter = 2101;
-
-  days.forEach(function (dOffset) {
-    var date = daysAgo(dOffset);
-    date.setHours(ri(10, 21), ri(0, 59), 0, 0);
-    var cust = pick(customers);
-    var lines = ri(1, 3);
-    var items = [], subtotal = 0;
-
-    for (var i = 0; i < lines; i++) {
-      var v = pick(inStock);
-      var p = products[v.productId - 1];
-      var qty = chance(0.78) ? 1 : 2;
-      items.push({
-        sku: v.sku, productId: p.id, name: p.name, type: p.type, size: v.size,
-        qty: qty, unitPrice: p.sellingPrice, unitCost: p.costPrice
-      });
-      subtotal += qty * p.sellingPrice;
-    }
-
-    var discount = chance(0.22) ? Math.round(subtotal * pick([0.05, 0.1, 0.15])) : 0;
-    var total = subtotal - discount;
-
-    sales.push({
-      id: 'INV-' + (counter++),
-      date: date,
-      customerId: cust.id,
-      customerName: cust.name,
-      items: items,
-      subtotal: subtotal,
-      discount: discount,
-      total: total,
-      payment: pick(PAYMENT_METHODS),
-      cashier: pick(CASHIERS)
-    });
-  });
-
-  sales.sort(function (a, b) { return b.date - a.date; });   // newest first
-})();
 
 /* Roll the sales up into customer stats, employee stats and per-product recency. */
-(function rollUp() {
-  var lastSold = {};
-  sales.forEach(function (s) {
-    var c = customers[s.customerId - 1];
-    c.totalSpent += s.total;
-    c.history.push(s.id);
-    if (!c.lastPurchaseDate || s.date > c.lastPurchaseDate) c.lastPurchaseDate = s.date;
-
-    var e = employees.filter(function (x) { return x.name === s.cashier; })[0];
-    if (e) e.sales += s.total;
-
-    s.items.forEach(function (it) {
-      if (!lastSold[it.productId] || s.date > lastSold[it.productId]) lastSold[it.productId] = s.date;
-    });
-  });
-
-  customers.forEach(function (c) {
-    c.loyaltyPoints = Math.round(c.totalSpent / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
-    if (!c.lastPurchaseDate) c.lastPurchaseDate = daysAgo(ri(95, 160));
-  });
-
-  /* Five customers parked deliberately far in the past so "At risk" is never empty. */
-  [3, 9, 17, 26, 34].forEach(function (idx, i) {
-    customers[idx].lastPurchaseDate = daysAgo([104, 121, 96, 148, 133][i]);
-  });
-
-  products.forEach(function (p) {
-    var d = lastSold[p.id];
-    p.lastSoldDaysAgo = d ? Math.round((TODAY - d) / 86400000) : ri(60, 90);
-  });
-  products[23].lastSoldDaysAgo = 74;   // OG Denim Jacket — the dead-stock alert
-})();
 
 /* ----------------------------------------------------------- 5. PRINT JOBS */
 
@@ -542,17 +344,8 @@ var PRINT_STAGE_LABELS = {
    separate `tbc` flag: an empty name IS the state, so the two can never
    drift apart. */
 
-var CLUBS = {
-  rma:  ['Real Madrid',                     'ريال مدريد'],
-  rmal: ['Real Madrid · Limited Edition',   'ريال مدريد · إصدار محدود'],
-  bay:  ['Bayern Munich',                   'بايرن ميونخ'],
-  bar:  ['Barcelona 26/27 · Fan Edition',   'برشلونة · نسخة الجماهير'],
-  int:  ['Inter Milan',                     'إنتر ميلان'],
-  fra:  ['France',                          'فرنسا'],
-  syr:  ['Syria',                           'سوريا'],
-  syrg: ['Syria · Green',                   'سوريا · الأخضر'],
-  syrw: ['Syria · White',                   'سوريا · الأبيض']
-};
+/* The jersey catalogue, filled from the server by DB.hydrate. */
+var CLUBS = {};
 
 var _lineSeq = 0;
 function kl(clubKey, print, number, size, qty) {
@@ -571,88 +364,12 @@ function kl(clubKey, print, number, size, qty) {
    squad places were still open when the order was taken, so five lines have
    no name. That is why this job sits at "Sent to print" while overdue: it
    physically cannot advance. It is the best single story in the demo. */
-var SYRIA_SQUAD = [
-  ['SHAMOUN', 1, 'L'], ['MATER', 2, 'M'],   ['C. ADIB', 3, 'L'],  ['KHRIBIN', 4, 'XL'],
-  ['AL SOMA', 5, 'L'], ['MAWAS', 6, 'M'],   ['AL SALIH', 7, 'M'], [null, 8, 'L'],
-  ['KOURBIS', 9, 'XL'],['OMARI', 10, 'M'],  ['AL DALI', 11, 'L'], [null, 12, 'M'],
-  ['KALFA', 13, 'S'],  [null, 14, 'L'],     ['JENYAT', 15, 'XL'], [null, 16, 'M'],
-  ['AL MIDANI', 17, 'L'], [null, 18, 'S']
-];
 
-var KIT_LINES = {
-  /* Delivered and fully invoiced — the history the finance page needs.
-     Every name is filled in, and it has to be: a shirt cannot reach "done"
-     with no name on it, and DB.setStage enforces exactly that. The paper
-     invoice you supplied shows TBC lines because it was raised before
-     production; here, TBC lives on jobs still in flight (P-1043, P-1047). */
-  'P-1030': [
-    kl('fra',  'MBAPPE',       10, 'L', 2), kl('bay', 'KANE',        9, 'M', 1),
-    kl('rma',  'VINICIUS',      7, 'L', 1), kl('syr', 'KHRIBIN',     9, 'M', 1),
-    kl('rma',  'ARDA GÜLER',   15, 'M', 1), kl('bay', 'MUSIALA',    42, 'L', 2),
-    kl('int',  'MAKDISI',      10, 'XL',1), kl('rma', 'ZIDANE',      5, 'L', 1),
-    kl('rma',  'ABDO',         22, 'M', 1), kl('rmal','ROUNI',        7, 'S', 1),
-    kl('bar',  'AREES',        10, 'L', 1), kl('syrg','C. ADIB',     10, 'M', 1),
-    kl('syrg', 'MATER',         7, 'L', 1), kl('syrw','SHAMOUN',     11, 'M', 1)
-  ],
-  'P-1032': [
-    kl('bay', 'MUSIALA',      42, 'M', 2), kl('bay', 'KANE',        9, 'XL',1),
-    kl('rma', 'VINICIUS',      7, 'L', 2), kl('rma', 'BELLINGHAM',  5, 'M', 1),
-    kl('bar', 'YAMAL',        19, 'S', 2), kl('bar', 'PEDRI',       8, 'M', 1),
-    kl('int', 'LAUTARO',      10, 'L', 1), kl('fra', 'MBAPPE',     10, 'M', 2),
-    kl('fra', 'GRIEZMANN',     7, 'L', 1), kl('syrg','KHRIBIN',     9, 'XL',1)
-  ],
-  'P-1034': [
-    kl('syrw','AL SOMA',      10, 'L', 2), kl('syrg','MAWAS',      11, 'M', 1),
-    kl('rma', 'MODRIC',       10, 'S', 1), kl('int', 'BARELLA',    23, 'M', 1),
-    kl('bay', 'DAVIES',       19, 'L', 1), kl('bar', 'GAVI',        6, 'M', 1)
-  ],
-  /* delivered, NOT yet invoiced — what the invoice builder opens onto */
-  'P-1036': [
-    kl('rma', 'ZIDANE',        5, 'L', 1), kl('rma', 'ABDO',     null, 'M', 1),
-    kl('bay', 'MUSIALA',      42, 'M', 2), kl('bar', 'AREES',      10, 'L', 1),
-    kl('int', 'MAKDISI',    null, 'XL',1), kl('fra', 'MBAPPE',     10, 'M', 2),
-    kl('syrg','MATER',         7, 'L', 1), kl('syrw','SHAMOUN',    11, 'M', 1),
-    kl('rmal','ROUNI',         7, 'S', 1), kl('bay', 'KANE',        9, 'XL',1)
-  ],
-  'P-1038': [
-    kl('rma', 'ARDA GÜLER', null, 'M', 1), kl('rma', 'VINICIUS',    7, 'L', 1),
-    kl('syrg','C. ADIB',      10, 'M', 2), kl('int', 'LAUTARO',    10, 'L', 1),
-    kl('fra', 'GRIEZMANN',     7, 'M', 1)
-  ],
-  /* in production, all names confirmed — so it was allowed past "Sent" */
-  'P-1040': [
-    kl('bay', 'OLISE',         7, 'M', 1), kl('rma', 'BELLINGHAM',  5, 'L', 1),
-    kl('syrg','AL SALIH',     14, 'M', 1), kl('bar', 'YAMAL',      19, 'S', 1)
-  ],
-  /* blocked: five names missing, and already two days late */
-  'P-1043': SYRIA_SQUAD.map(function (s) { return kl('syrg', s[0], s[1], s[2], 1); }),
-  /* just taken at the till, still being designed */
-  'P-1047': [
-    kl('rmal','ROUNI',         7, 'M', 1), kl('bar', null,       null, 'L', 1),
-    kl('syrw','SHAMOUN',      11, 'S', 1), kl('fra', null,       null, 'M', 2)
-  ]
-};
 
 /* `qty`, `sizes` and `cost` are DERIVED for kit jobs in buildJobDetail below,
    so a line can never disagree with its job's totals. Only `price` — what OG
    charges the customer — is authored here, because that is OG's margin call. */
-var printJobs = [
-  { id: 'P-1030', customer: 'Ligue Sport Club',phone: '+963 933 552 001', design: 'Kit batch — 16 shirts, mixed clubs',   kind: 'kit',  qty: 16, priority: 'normal', deadline: daysAgo(90), stage: 'done',     price:  6400, created: daysAgo(96) },
-  { id: 'P-1032', customer: 'Malki Sports',    phone: '+963 944 330 812', design: 'Kit batch — 14 shirts, mixed clubs',   kind: 'kit',  qty: 14, priority: 'normal', deadline: daysAgo(68), stage: 'done',     price:  5600, created: daysAgo(74) },
-  { id: 'P-1034', customer: 'Hamra Fan Store', phone: '+963 991 774 265', design: 'Kit batch — 7 shirts, mixed clubs',    kind: 'kit',  qty:  7, priority: 'normal', deadline: daysAgo(56), stage: 'done',     price:  2800, created: daysAgo(62) },
-  { id: 'P-1036', customer: 'Rana Mansour',   phone: '+963 933 447 210', design: 'Kit batch — 12 shirts, mixed clubs',   kind: 'kit',  qty: 12, priority: 'normal', deadline: daysAgo(6),  stage: 'done',     price:  4800, created: daysAgo(20) },
-  { id: 'P-1037', customer: 'Al-Nour School', phone: '+963 944 118 663', design: 'Graduation shirts, white on navy',                   qty: 45, priority: 'normal', deadline: daysAgo(3),  stage: 'done',     price: 38250, cost: 19125, created: daysAgo(24) },
-  { id: 'P-1038', customer: 'Karim Deeb',     phone: '+963 991 220 574', design: 'Kit batch — 6 shirts, Real / Syria / Inter', kind: 'kit', qty: 6, priority: 'normal', deadline: daysAgo(1), stage: 'done',  price:  2450, created: daysAgo(15) },
-  { id: 'P-1039', customer: 'Fadi Barakat',   phone: '+963 955 761 038', design: 'Full back — Damascus skyline, 3 colour',            qty: 20, priority: 'normal', deadline: daysAhead(4), stage: 'delivery', price: 21000, cost: 10500, created: daysAgo(12) },
-  { id: 'P-1040', customer: 'Sara Kurdi',     phone: '+963 932 604 917', design: 'Kit batch — 4 shirts, names confirmed', kind: 'kit', qty: 4, priority: 'normal', deadline: daysAhead(6), stage: 'printing', price:  1650, created: daysAgo(9)  },
-  { id: 'P-1041', customer: 'Bilal Ammar',    phone: '+963 987 335 402', design: 'Sleeve print both arms, gold foil',                 qty: 15, priority: 'urgent', deadline: daysAhead(2), stage: 'printing', price: 18750, cost:  9000, created: daysAgo(7)  },
-  { id: 'P-1042', customer: 'Maya Shaheen',   phone: '+963 941 552 286', design: 'Oversized front — "NO SLEEP" arabic',               qty:  8, priority: 'normal', deadline: daysAhead(9), stage: 'sent',     price:  7600, cost:  3680, created: daysAgo(5)  },
-  { id: 'P-1043', customer: 'Ahmad Al-Khatib',phone: '+963 933 118 204', design: 'Syria team kit — numbers 1 to 18',     kind: 'kit',  qty: 18, priority: 'urgent', deadline: daysAgo(2),  stage: 'sent',     price:  7600, created: daysAgo(16) },
-  { id: 'P-1044', customer: 'Ziad Sabbagh',   phone: '+963 966 810 447', design: 'Cafe staff shirts, embroidered',                    qty: 10, priority: 'normal', deadline: daysAgo(1),  stage: 'sent',     price: 12500, cost:  6200, created: daysAgo(13) },
-  { id: 'P-1045', customer: 'Yara Malki',     phone: '+963 944 273 159', design: 'Couple set, front text arabic script',              qty:  2, priority: 'normal', deadline: daysAhead(5), stage: 'design',   price:  2100, cost:   960, created: daysAgo(2)  },
-  { id: 'P-1046', customer: 'Tarek Jaber',    phone: '+963 955 336 720', design: 'Gym brand — 2 designs, 3 sizes',                    qty: 30, priority: 'urgent', deadline: daysAhead(3), stage: 'design',   price: 33000, cost: 16200, created: daysAgo(1)  },
-  { id: 'P-1047', customer: 'Nada Sultan',    phone: '+963 932 447 881', design: 'Kit batch — 5 shirts, 2 names pending', kind: 'kit', qty: 5, priority: 'normal', deadline: daysAhead(8), stage: 'design',  price:  2150, created: TODAY       }
-];
+var printJobs = [];
 
 /* Split an order across tee sizes on a realistic curve. Shared by the seed
    data and by DB.newPrintJob, so a job created live at the till carries the
@@ -677,92 +394,11 @@ function splitSizes(qty) {
    where the job sits now. Kit jobs additionally derive qty, cost and the
    size breakdown FROM their lines — never the other way round, so a line
    and its job total can never disagree. */
-(function buildJobDetail() {
-  printJobs.forEach(function (j) {
-    j.kind = j.kind || 'bulk';
-    j.lines = KIT_LINES[j.id] || null;
-    if (!j.lines) j.kind = 'bulk';
-
-    if (j.kind === 'kit') {
-      j.qty = j.lines.reduce(function (a, l) { return a + l.qty; }, 0);
-      j.cost = j.lines.reduce(function (a, l) { return a + l.qty * l.price; }, 0);
-      j.sizes = {};
-      /* Walk TEE_SIZES rather than the lines, so the chips always read
-         S · M · L · XL in that order however the order was taken. */
-      TEE_SIZES.forEach(function (sz) {
-        var n = j.lines.reduce(function (a, l) { return a + (l.size === sz ? l.qty : 0); }, 0);
-        if (n) j.sizes[sz] = n;
-      });
-    } else {
-      j.sizes = splitSizes(j.qty);
-    }
-
-    /* Spread the completed stages evenly between created and the point the
-       job actually stopped moving.
-
-       For work still in flight that point is today. For a FINISHED job it is
-       its deadline — not today. Stamping every completed job as finishing
-       today made the last stage land after every past deadline, so the
-       on-time rate computed from this history came out at a flat 0%. Two
-       jobs are deliberately stamped two days late so the figure reads like a
-       real workshop rather than a suspicious 100%. */
-    var idx = PRINT_STAGES.indexOf(j.stage);
-    var lateBy = (parseInt(j.id.split('-')[1], 10) % 4 === 0) ? 2 : 0;
-    var startBack = Math.round((TODAY - j.created) / 86400000);
-    var endBack = (j.stage === 'done')
-      ? Math.max(0, Math.round((TODAY - j.deadline) / 86400000) - lateBy)
-      : 0;
-    if (endBack > startBack) endBack = 0;
-    var span = Math.max(1, startBack - endBack);
-
-    j.history = [];
-    for (var i = 0; i <= idx; i++) {
-      var back = idx === 0 ? startBack : Math.round(startBack - (span * i / idx));
-      j.history.push({ stage: PRINT_STAGES[i], at: daysAgo(Math.max(0, back)) });
-    }
-
-    /* ---- the order envelope ------------------------------------------------
-       Anything that has reached "sent" or beyond is, by definition, work Yalla
-       Wear agreed to take — so it is stamped accepted, promising the date OG
-       asked for. Seeding promisedAt as the deadline is what keeps the on-time
-       percentage identical to before this feature existed; only future jobs,
-       where Yalla names a different date, can move it. */
-    if (idx >= PRINT_STAGES.indexOf('sent')) {
-      var sentAt = DB_stageAtSeed(j, 'sent') || j.created;
-      j.order = {
-        state: 'accepted',
-        sentAt: sentAt,
-        respondedAt: sentAt,
-        promisedAt: j.deadline,
-        note: ''
-      };
-    } else {
-      j.order = { state: 'draft', sentAt: null, respondedAt: null, promisedAt: null, note: '' };
-    }
-  });
-
-  function DB_stageAtSeed(job, stage) {
-    var hit = (job.history || []).filter(function (h) { return h.stage === stage; })[0];
-    return hit ? hit.at : null;
-  }
-})();
 
 /* Two of the three jobs still in Design are pushed off draft, so BOTH sides
    have something to do the moment the demo opens: OG can send one, Yalla can
    accept another, and the third refuses to send because two of its shirts
    still have no name on them. */
-(function seedOrderHandshake() {
-  var pending = DB_job('P-1046');
-  if (pending) {
-    pending.order.state = 'pending';
-    pending.order.sentAt = hoursAgoSeed(5);
-  }
-
-  function DB_job(id) {
-    return printJobs.filter(function (j) { return j.id === id; })[0];
-  }
-  function hoursAgoSeed(n) { return new Date(Date.now() - n * 3600000); }
-})();
 
 /* ------------------------------------------------------------ 6. MOVEMENTS */
 
@@ -782,42 +418,6 @@ var stockMovements = [];
    from the length would hand out numbers that already exist. */
 var mvSeq = 0;
 
-(function buildMovements() {
-  var users = ['Maher Odeh', 'Sirine Bakri', 'Lubna Kayali', 'Rawad Sheikh', 'Hussam Fattal'];
-  var picked = [];
-  for (var i = 0; i < 22; i++) picked.push(pick(variants));
-
-  picked.forEach(function (v) {
-    var chain = [], n = ri(2, 4), bal = v.qty;
-    for (var i = 0; i < n; i++) {
-      var roll = rnd(), type, delta, note;
-      if (roll < 0.42)      { type = 'received'; delta = ri(8, 40);  note = 'Received from ' + pick(suppliers).name; }
-      else if (roll < 0.78) { type = 'sold';     delta = -ri(1, 2);  note = 'Sold, invoice #' + pick(sales).id; }
-      else if (roll < 0.90) { type = 'damaged';  delta = -ri(1, 2);  note = 'Damaged on arrival — written off'; }
-      else                  { type = 'returned'; delta = 1;          note = 'Customer return, restocked'; }
-
-      chain.push({
-        id: 'MV-' + pad(stockMovements.length + chain.length + 1, 4),
-        date: daysAgo(ri(0, 150)),
-        sku: v.sku, productId: v.productId, size: v.size,
-        /* Derived from the type rather than drawn, so no value is taken from
-           the shared generator: deliveries land in the back, sales leave the
-           wall, write-offs happen where the boxes are, returns come back to
-           the counter. */
-        wh: (type === 'received' || type === 'damaged') ? 'store' : 'floor',
-        type: type, delta: delta, note: note,
-        user: pick(users),
-        balance: 0
-      });
-    }
-    chain.sort(function (a, b) { return a.date - b.date; });
-    /* Walk backwards from today's real quantity so the running balance ties out. */
-    for (var j = chain.length - 1; j >= 0; j--) { chain[j].balance = bal; bal -= chain[j].delta; }
-    stockMovements = stockMovements.concat(chain);
-  });
-
-  stockMovements.sort(function (a, b) { return b.date - a.date; });
-})();
 
 /* ----------------------------------------------------------------- 7. MISC */
 
@@ -857,69 +457,11 @@ var expenses = [];
    there is no separate "debt" record to fall out of step with it. */
 var debtPayments = [];
 
-(function seedMoney() {
-  /* Two closed shifts so the demo opens with history rather than a blank
-     screen, and one deliberately short — a perfect till is not a demo. */
-  shifts.push({
-    id: 'SH-0001', user: 'Lubna Kayali',
-    openedAt: daysAgo(2), closedAt: daysAgo(2), float: 2000,
-    counted: 39650, expected: 39800, diff: -150, closed: true
-  });
-  shifts.push({
-    id: 'SH-0002', user: 'Rawad Sheikh',
-    openedAt: daysAgo(1), closedAt: daysAgo(1), float: 2000,
-    counted: 28700, expected: 28700, diff: 0, closed: true
-  });
 
-  var notes = {
-    rent: 'Shop rent', generator: 'Generator diesel', salaries: 'Staff advance',
-    transport: 'Delivery to Aleppo', packaging: 'Bags and boxes',
-    supplier: 'Part payment to Karam Trading', other: 'Cleaning'
-  };
-  var amounts = { rent: 32000, generator: 4800, salaries: 9000,
-                  transport: 2600, packaging: 1750, supplier: 41000, other: 900 };
-
-  EXPENSE_CATEGORIES.forEach(function (cat, i) {
-    expenses.push({
-      id: 'EX-' + pad(i + 1, 4), at: daysAgo(i * 3),
-      category: cat, amount: amounts[cat], method: i % 3 === 0 ? 'cash' : 'sham',
-      note: notes[cat], shiftId: null
-    });
-  });
-  /* A couple more inside the current month so the profit figure has teeth. */
-  expenses.push({ id: 'EX-0008', at: daysAgo(4), category: 'generator',
-                  amount: 5200, method: 'cash', note: 'Generator diesel', shiftId: null });
-  expenses.push({ id: 'EX-0009', at: daysAgo(6), category: 'transport',
-                  amount: 1900, method: 'cash', note: 'Courier', shiftId: null });
-
-  /* Turn a handful of recent sales into debts, so the debt book is populated
-     and ageing is visible on day one. */
-  var picked = 0;
-  for (var i = 0; i < sales.length && picked < 6; i++) {
-    var s = sales[i];
-    if (!s.customerId) continue;
-    if (DB_daysBetweenSeed(s.date) < 3 || DB_daysBetweenSeed(s.date) > 70) continue;
-    s.payment = 'credit';
-    picked++;
-    /* One of them is part-paid, so "settle" has something interesting to do. */
-    if (picked === 2) {
-      debtPayments.push({ id: 'DP-0001', saleId: s.id, at: daysAgo(5),
-                          amount: Math.round(s.total * 0.4), method: 'cash' });
-    }
-  }
-
-  function DB_daysBetweenSeed(d) {
-    return Math.round((TODAY - new Date(d).setHours(0, 0, 0, 0)) / 86400000);
-  }
-})();
-
-var notifications = [
-  { icon: '!', tone: 'red',   text: 'Nike Air Force 1 — size 42 out of stock',        view: 'products' },
-  { icon: '!', tone: 'red',   text: 'Print job #P-1043 is 2 days overdue',            view: 'print' },
-  { icon: '$', tone: 'amber', text: 'Karam Trading — 41,500,000 SYP due in 3 days',   view: 'reports' },
-  { icon: '~', tone: 'amber', text: '5 SKUs dropped into critical stock this week',   view: 'warehouse' },
-  { icon: 'P', tone: 'grey',  text: 'Payroll for 6 employees runs in 6 days',         view: 'reports' }
-];
+/* Derived from the shop's own state by DB.buildNotifications(), which
+   runs after every hydrate. Nothing is hardcoded: an alert naming a
+   product is naming one that is really out of stock. */
+var notifications = [];
 
 /* ----------------------------------------------------- 8. PARTNER FINANCE */
 
@@ -938,30 +480,8 @@ var notifications = [
 
 var INVOICE_TERMS = CONFIG.INVOICE_TERMS_DAYS;
 
-function refsFor(jobId) {
-  var ls = KIT_LINES[jobId];
-  if (!ls) return [{ jobId: jobId, lineId: null }];
-  return ls.map(function (l) { return { jobId: jobId, lineId: l.id }; });
-}
 
-var partnerInvoices = [
-  { id: 'YW-2026-011', issued: daysAgo(88), due: daysAgo(58), refs: refsFor('P-1030'),
-    note: 'All kits printed · payment on delivery.',
-    payments: [{ at: daysAgo(76), amount: 2880, method: 'cash' }] },
-
-  { id: 'YW-2026-012', issued: daysAgo(66), due: daysAgo(36), refs: refsFor('P-1032'),
-    note: 'All kits printed · names confirmed before production.',
-    payments: [{ at: daysAgo(55), amount: 2520, method: 'sham' }] },
-
-  /* Left unpaid on purpose and long past its terms — the partner finance page
-     needs something genuinely overdue or the ageing table is decoration. */
-  { id: 'YW-2026-013', issued: daysAgo(45), due: daysAgo(15), refs: refsFor('P-1034'),
-    note: 'Kit batch — 7 shirts.', payments: [] },
-
-  { id: 'YW-2026-014', issued: daysAgo(6), due: daysAhead(24), refs: refsFor('P-1037'),
-    note: 'Graduation order, 45 shirts · part payment received.',
-    payments: [{ at: daysAgo(5), amount: 10000, method: 'cash' }] }
-];
+var partnerInvoices = [];
 
 /* ---- the two-way line between OG and Yalla Wear ---------------------------
    One array, read from both portals. That is the whole mechanism: there is no
@@ -982,35 +502,7 @@ var MSG_REASONS = {
 function hoursAgo(n) { return new Date(Date.now() - n * 3600000); }
 
 var _msgSeq = 0;
-var jobMessages = [
-  { id: 'M' + (++_msgSeq), jobId: 'P-1043', from: 'yalla', kind: 'name-request',
-    text: 'Cannot start printing — 5 shirts still have no name. Numbers 8, 12, 14, 16 and 18.',
-    at: hoursAgo(52), readOg: false, readYl: true },
-
-  { id: 'M' + (++_msgSeq), jobId: 'P-1043', from: 'og', kind: 'nudge',
-    text: 'Customer is calling every day about this one. The moment the names land, please push it to the front.',
-    at: hoursAgo(29), readOg: true, readYl: true },
-
-  { id: 'M' + (++_msgSeq), jobId: 'P-1041', from: 'yalla', kind: 'delay', reason: 'printer-down',
-    text: 'Heat press went down yesterday evening. Engineer is booked for Tuesday morning.',
-    at: hoursAgo(7), readOg: false, readYl: true },
-
-  { id: 'M' + (++_msgSeq), jobId: 'P-1046', from: 'og', kind: 'nudge',
-    text: 'Gym brand order — the customer moved the opening to Thursday. Can we pull it forward a day?',
-    at: hoursAgo(3), readOg: true, readYl: false },
-
-  { id: 'M' + (++_msgSeq), jobId: 'P-1039', from: 'yalla', kind: 'note',
-    text: 'Packed and going out with the afternoon run.',
-    at: hoursAgo(26), readOg: true, readYl: true },
-
-  { id: 'M' + (++_msgSeq), invoiceId: 'YW-2026-014', from: 'yalla', kind: 'invoice',
-    text: 'Invoice YW-2026-014 issued — 1,912,500 SYP, 45 shirts, due in 24 days.',
-    at: hoursAgo(140), readOg: false, readYl: true },
-
-  { id: 'M' + (++_msgSeq), invoiceId: 'YW-2026-013', from: 'yalla', kind: 'reminder',
-    text: 'YW-2026-013 is now 15 days past its terms. 126,000 SYP still outstanding.',
-    at: hoursAgo(50), readOg: false, readYl: true }
-];
+var jobMessages = [];
 
 /* -------------------------------------------------------------- 9. HELPERS */
 
@@ -1256,6 +748,74 @@ var DB = {
   daysSince: function (d) { return Math.round((TODAY - new Date(d).setHours(0, 0, 0, 0)) / 86400000); },
 
   isOverdue: function (job) { return job.stage !== 'done' && DB.daysSince(job.deadline) > 0; },
+
+  /* ---- the bell -------------------------------------------------------
+     Derived from what the shop actually has, rebuilt after every hydrate.
+     These used to be five hardcoded lines naming a product the shop had
+     never stocked and a print job it had never taken — which is worse than
+     no bell at all, because somebody eventually acts on one.
+
+     Ordered by what it costs to ignore: a shirt somebody is trying to buy
+     right now, then a promise already broken, then money, then things that
+     are merely coming. Capped, because a list nobody finishes reading is a
+     list nobody reads. */
+  buildNotifications: function () {
+    var out = [];
+
+    /* Out of stock, not merely low — this is a sale being lost at the till. */
+    variants.filter(function (v) { return v.qty === 0; }).slice(0, 3).forEach(function (v) {
+      var p = DB.product(v.productId);
+      if (!p) return;
+      out.push({ icon: '!', tone: 'red', view: 'products',
+                 text: p.name + ' — size ' + v.size + ' out of stock' });
+    });
+
+    printJobs.filter(function (j) { return DB.isOverdue(j); })
+      .sort(function (a, b) { return DB.daysSince(b.deadline) - DB.daysSince(a.deadline); })
+      .slice(0, 3).forEach(function (j) {
+        var late = DB.daysSince(j.deadline);
+        out.push({ icon: '!', tone: 'red', view: 'print',
+                   text: 'Print job #' + j.id + ' is ' + late +
+                         (late === 1 ? ' day overdue' : ' days overdue') });
+      });
+
+    suppliers.filter(function (sp) {
+      return sp.outstanding > 0 && sp.dueDate && DB.daysSince(sp.dueDate) > -14;
+    }).sort(function (a, b) { return new Date(a.dueDate) - new Date(b.dueDate); })
+      .slice(0, 3).forEach(function (sp) {
+        var left = -DB.daysSince(sp.dueDate);
+        out.push({ icon: '$', tone: left < 0 ? 'red' : 'amber', view: 'reports',
+                   /* money() already carries the currency; adding it again
+                      read "415,000 SYP SYP". */
+                   text: sp.name + ' — ' + money(sp.outstanding) +
+                         (left < 0 ? ' overdue by ' + (-left) + ' days'
+                                   : ' due in ' + left + ' days') });
+      });
+
+    var crit = DB.criticalVariants().filter(function (v) { return v.qty > 0; }).length;
+    if (crit) {
+      out.push({ icon: '~', tone: 'amber', view: 'warehouse',
+                 text: crit + (crit === 1 ? ' SKU is' : ' SKUs are') + ' down to critical stock' });
+    }
+
+    /* Payroll: the soonest run, not one line per person. */
+    var soonest = employees.filter(function (e) { return e.nextPayment; })
+      .sort(function (a, b) { return new Date(a.nextPayment) - new Date(b.nextPayment); })[0];
+    if (soonest) {
+      var run = -DB.daysSince(soonest.nextPayment);
+      var who = employees.filter(function (e) {
+        return e.nextPayment &&
+               DB.daysSince(e.nextPayment) === DB.daysSince(soonest.nextPayment);
+      }).length;
+      out.push({ icon: 'P', tone: 'grey', view: 'reports',
+                 text: 'Payroll for ' + who + (who === 1 ? ' employee' : ' employees') +
+                       (run <= 0 ? ' is due now' : ' runs in ' + run + ' days') });
+    }
+
+    notifications.length = 0;
+    out.slice(0, 8).forEach(function (n) { notifications.push(n); });
+    return notifications;
+  },
 
   stageIndex: function (job) { return PRINT_STAGES.indexOf(job.stage); },
 
@@ -2733,6 +2293,9 @@ var DB = {
        were written against camelCase and real Dates. Translating here, once,
        is what lets sixteen call sites stay exactly as they are. */
     if (payload.partner) hydratePartner(payload.partner);
+
+    /* Last, because every alert is derived from something above it. */
+    DB.buildNotifications();
 
     DB.live = true;
     return DB;

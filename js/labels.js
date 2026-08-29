@@ -133,7 +133,7 @@ var Labels = (function () {
      will use, so preview cannot drift from what prints. Demo mode computes
      the same shape locally — there is no server to ask. */
   function renderPreview(lines, presetKey, barcodeType) {
-    if (typeof Auth === 'undefined' || Auth.demoMode()) {
+    if (typeof Auth === 'undefined') {
       var presetObj = demoPreset(presetKey);
       var out = lines.map(function (l) {
         var v = DB.variantBySku(l.sku || l.variantId);
@@ -269,7 +269,7 @@ var Labels = (function () {
 
   /* ------------------------------------------------------------- printing */
   function doPrint(lines, presetKey, station, barcodeType) {
-    if (typeof Auth === 'undefined' || Auth.demoMode()) {
+    if (typeof Auth === 'undefined') {
       toast(t('lbl_title'), t('lbl_demo_only'), 'info', 5000);
       return Promise.resolve(null);
     }
@@ -300,7 +300,7 @@ var Labels = (function () {
     return raw.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
   }
   function presetOptions() {
-    return (typeof Auth === 'undefined' || Auth.demoMode()) ? demoPresets() : ((typeof CONFIG !== 'undefined' && CONFIG.LABEL_PRESETS) || demoPresets());
+    return (typeof Auth === 'undefined') ? demoPresets() : ((typeof CONFIG !== 'undefined' && CONFIG.LABEL_PRESETS) || demoPresets());
   }
 
   /* The batch modal's working copy of {sku, qty} — mutated by the qty
@@ -431,7 +431,7 @@ var Labels = (function () {
     };
 
     ACTIONS['label-calibrate'] = function (el) {
-      if (typeof Auth === 'undefined' || Auth.demoMode()) return;
+      if (typeof Auth === 'undefined') return;
       var station = lastChoice.station || stationOptions()[0];
       API.post('/api/labels/calibrate', { station: station, opId: opId() })
         .then(function () { toast(t('lbl_title'), t('lbl_calibrate_sent'), 'ok', 4000); })

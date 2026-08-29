@@ -2,18 +2,15 @@
    OG SYSTEM — talking to the server
    --------------------------------------------------------------------------
    The original brief said "no fetch, no backend, all state in memory". That
-   was right for a demo and is no longer true: there is a server now, and this
-   is the only file in the frontend allowed to reach it. Everything else goes
-   through DB.*, exactly as before.
+   is no longer true: there is a server now, and this is the only file in the
+   frontend allowed to reach it. Everything else goes through DB.*.
 
-   TWO MODES, and the app must work in both.
+   ONE MODE. A real server, or nothing.
 
-     file://   — no server can be reached at all. API.live is false, the app
-                 runs on the seeded demo data, nothing is saved. This keeps
-                 "double-click index.html" working, which is still the fastest
-                 way to show someone the system.
-
-     http(s):// — a real server. Log in, load real data, save real sales.
+   There used to be a second: opened from a file:// double-click, API.live
+   false, running on generated data with a banner over it. That is gone.
+   Every number on screen now comes from the shop's own database, and when
+   the server cannot be reached the app says so instead of inventing a shop.
 
    Nothing here throws a bare string. Every failure comes back as an ApiError
    with a `code`, because the caller nearly always needs to tell "you are

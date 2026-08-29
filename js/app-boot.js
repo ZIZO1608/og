@@ -244,21 +244,21 @@ function boot() {
   }
 }
 
-/* The login holds boot() back on http(s) until someone is signed in; on
-   file:// there is no server to ask, so it releases immediately and the app
-   runs on demo data. Double-clicking index.html behaves exactly as before.
+/* The login holds boot() back until someone is signed in, and the shop's data
+   is loaded BEFORE the first paint.
 
-   In live mode the shop's real data is loaded BEFORE the first paint. Drawing
-   the seeded catalogue first and swapping it underneath would put invented
-   prices on screen for a moment, and a cashier who scanned in that moment
-   would be looking at a product the server does not have. */
+   Both matter for the same reason. There is nothing to draw before the server
+   answers — no seeded catalogue to fall back on any more — so a paint that
+   happened first would show an empty shop, and a cashier who scanned in that
+   moment would be told the product does not exist. */
 function start() {
   if (typeof Auth === 'undefined') return boot();
 
   Auth.guard(function () {
-    if (Auth.demoMode() || typeof Shop === 'undefined') return boot();
-    /* No fallback to demo data on failure. A till that boots anyway is a till
-       that takes real money into memory nobody keeps. */
+    if (typeof Shop === 'undefined') return boot();
+    /* No fallback on failure — there is nothing to fall back TO now, which is
+       the point. A till that boots anyway is a till that takes real money into
+       memory nobody keeps. */
     Shop.load().then(boot, Shop.fail);
   });
 }

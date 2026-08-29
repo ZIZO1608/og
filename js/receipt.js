@@ -581,7 +581,7 @@ var Receipt = (function () {
   /* ---------------------------------------------------------------- data */
 
   function fetchData(saleId) {
-    if (typeof Auth !== 'undefined' && !Auth.demoMode()) {
+    if (typeof Auth !== 'undefined') {
       return API.get('/api/sales/' + encodeURIComponent(saleId) + '/receipt')
         .then(function (res) { return fromServer(res.receipt); });
     }
@@ -634,7 +634,7 @@ var Receipt = (function () {
     opts = opts || {};
     return fetchData(saleId).then(function (R) {
       return Promise.all([draw(R, 'customer'), draw(R, 'shop')]).then(function (copies) {
-        if (typeof Auth === 'undefined' || Auth.demoMode()) {
+        if (typeof Auth === 'undefined') {
           printLocal(copies[0].canvas);
           return { local: true };
         }
@@ -648,7 +648,7 @@ var Receipt = (function () {
      cashier wait on the printer — same principle as a delivery assignment
      happening after the sale is already committed. */
   function autoPrint(sale) {
-    if (typeof Auth === 'undefined' || Auth.demoMode()) return;
+    if (typeof Auth === 'undefined') return;
     if (!CONFIG.RECEIPT_AUTO_PRINT) return;
     if (typeof allow === 'function' && !allow('sale.reprint')) return;
 

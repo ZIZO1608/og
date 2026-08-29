@@ -26,13 +26,13 @@
    because neither case has any real data behind it. */
 
 function roleOf() {
-  if (typeof Auth === 'undefined' || Auth.demoMode()) return null;
+  if (typeof Auth === 'undefined') return null;
   var u = Auth.user();
   return u ? u.role : null;
 }
 
 function allow(perm) {
-  if (typeof Auth === 'undefined' || Auth.demoMode()) return true;
+  if (typeof Auth === 'undefined') return true;
   return Auth.can(perm);
 }
 
@@ -320,7 +320,7 @@ function renderTopbar() {
        Hidden in demo mode and for anyone without config.write, because in
        both cases pressing it could only ever produce an error: there is no
        server to push from, or no permission to do it. */
-    (allow('config.write') && !(typeof Auth === 'undefined' || Auth.demoMode())
+    (allow('config.write') && !(typeof Auth === 'undefined')
       ? '<button class="icon-btn sync-btn" data-act="sync-now" ' +
           'title="' + esc(t('sync_now')) + '" aria-label="' + esc(t('sync_now')) + '">' +
           '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
@@ -360,7 +360,7 @@ function renderTopbar() {
      demo mode       — file:// or a static host. Nobody to sign out.
      signed in       — the real thing.  */
 function acct() {
-  return (typeof Auth !== 'undefined' && !Auth.demoMode()) ? Auth.user() : null;
+  return (typeof Auth !== 'undefined') ? Auth.user() : null;
 }
 
 function initialsOf(name) {
@@ -378,11 +378,6 @@ function accountChip() {
   if (typeof Auth === 'undefined') {
     return '<div class="user-chip"><span class="user-avatar">A</span>' +
            '<span>' + t('admin') + '</span></div>';
-  }
-
-  if (Auth.demoMode()) {
-    return '<div class="user-chip is-demo" title="' + esc(t('demo_no_account')) + '">' +
-      '<span class="user-avatar demo">D</span><span>' + t('demo_account') + '</span></div>';
   }
 
   var u = Auth.user();
