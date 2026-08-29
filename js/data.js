@@ -1025,6 +1025,40 @@ var DB = {
   employees: employees,
   stockMovements: stockMovements,
   notifications: notifications,
+
+  /* ---- which alerts have been seen ------------------------------------
+     Kept per machine rather than per account, and keyed on the alert's own
+     text rather than its position: these are derived from the shop's state,
+     so tomorrow's list is a different length and an index would quietly
+     mark the wrong row. Text is what the person actually read. */
+  notifRead: function () {
+    try { return JSON.parse(localStorage.getItem('og.notif.read') || '[]'); }
+    catch (e) { return []; }
+  },
+
+  isNotifRead: function (n) { return DB.notifRead().indexOf(n.text) > -1; },
+
+  unreadNotifications: function () {
+    var seen = DB.notifRead();
+    return notifications.filter(function (n) { return seen.indexOf(n.text) === -1; });
+  },
+
+  markNotifRead: function (n) {
+    /* One alert, or all of them when nothing is named. */
+    var seen = DB.notifRead();
+    var add = n ? [n.text] : notifications.map(function (x) { return x.text; });
+    add.forEach(function (txt) { if (seen.indexOf(txt) === -1) seen.push(txt); });
+    /* Anything no longer in the list is dropped, so this cannot grow without
+       bound as alerts come and go over months. */
+    var live = notifications.map(function (x) { return x.text; });
+    seen = seen.filter(function (txt) { return live.indexOf(txt) > -1; });
+    try { localStorage.setItem('og.notif.read', JSON.stringify(seen)); } catch (e) {}
+    return seen.length;
+  },
+
+  clearNotifRead: function () {
+    try { localStorage.removeItem('og.notif.read'); } catch (e) {}
+  },
   sizeSets: SIZE_SETS,
   typeLabels: TYPE_LABELS,
   paymentLabels: PAYMENT_LABELS,

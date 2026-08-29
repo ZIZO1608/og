@@ -91,19 +91,38 @@ var ACTIONS = {
     var pop = document.createElement('div');
     pop.id = 'notifPop';
     pop.className = 'notif-pop';
-    var h = '<h4>' + t('notifications') + ' · ' + DB.notifications.length + '</h4>';
+    var unread = DB.unreadNotifications().length;
+    var h = '<h4>' + t('notifications') +
+      (unread ? ' · ' + unread + ' ' + t('nt_new') : '') +
+      (unread
+        ? '<button class="notif-read-all" data-act="notif-read-all">' + t('nt_read_all') + '</button>'
+        : '') +
+      '</h4>';
     DB.notifications.forEach(function (n, i) {
-      h += '<div class="notif-row" data-act="notif-go" data-i="' + i + '">' +
+      h += '<div class="notif-row' + (DB.isNotifRead(n) ? ' seen' : '') +
+        '" data-act="notif-go" data-i="' + i + '">' +
         '<span class="notif-dot ' + n.tone + '">' + n.icon + '</span><span>' + n.text + '</span></div>';
     });
     pop.innerHTML = h;
     document.getElementById('topbar').appendChild(pop);
   },
 
+  /* Reading one is opening it — the same thing every mail client does, and
+     it means the badge falls as alerts are actually dealt with rather than
+     only when somebody presses the button. */
   'notif-go': function (el) {
     var n = DB.notifications[+el.getAttribute('data-i')];
     var pop = document.getElementById('notifPop'); if (pop) pop.remove();
+    DB.markNotifRead(n);
+    renderTopbar();
     go(n.view);
+  },
+
+  'notif-read-all': function (el) {
+    DB.markNotifRead();
+    var pop = document.getElementById('notifPop'); if (pop) pop.remove();
+    renderTopbar();
+    toast(t('notifications'), t('nt_all_read'), 'ok', 1800);
   },
 
   /* --- account ------------------------------------------------------------ */

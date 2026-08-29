@@ -19,6 +19,7 @@ var I18N = {
 
     search_ph: 'Search products, customers, invoices…', admin: 'Admin',
     notifications: 'Notifications', view_all: 'View all', no_results: 'Nothing matched that search',
+    nt_new: 'new', nt_read_all: 'Mark all read', nt_all_read: 'Every alert is marked as read',
 
     /* --- account --- */
     signed_in_as: 'Signed in as', sign_out: 'Sign out', signing_out: 'Signing out…',
@@ -457,6 +458,7 @@ var I18N = {
 
     search_ph: 'ابحث عن منتج أو زبون أو فاتورة…', admin: 'المدير',
     notifications: 'التنبيهات', view_all: 'عرض الكل', no_results: 'لا توجد نتائج مطابقة',
+    nt_new: 'جديد', nt_read_all: 'تعليم الكل كمقروء', nt_all_read: 'تم تعليم كل التنبيهات كمقروءة',
 
     /* --- الحساب --- */
     signed_in_as: 'مسجّل الدخول باسم', sign_out: 'تسجيل الخروج', signing_out: 'جارٍ الخروج…',

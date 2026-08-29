@@ -341,7 +341,11 @@ function renderTopbar() {
     (typeof Notify !== 'undefined' ? Notify.bell() : '') +
     '<button class="icon-btn" data-act="bell" title="' + t('notifications') + '">' +
       '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M18 16V10a6 6 0 1 0-12 0v6l-2 3h16zM10 21h4"/></svg>' +
-      '<span class="bell-badge">' + DB.notifications.length + '</span>' +
+      /* Unread, not total — a badge that never moves is one people stop
+         looking at. Hidden entirely at zero rather than showing a 0. */
+      (DB.unreadNotifications().length
+        ? '<span class="bell-badge">' + DB.unreadNotifications().length + '</span>'
+        : '') +
     '</button>' +
     accountChip();
 }
