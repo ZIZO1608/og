@@ -59,7 +59,17 @@ var Receipt = (function () {
   function western(n) {
     /* toLocaleString('en-US') is already Western-digit and comma-grouped —
        reused from app.js when it has loaded, else the same formula inline
-       so this module never hard-depends on load order. */
+       so this module never hard-depends on load order.
+
+       The 'en-US' is not a placeholder and must never be swapped for
+       OG.lang or a locale lookup — 'ar' (and several other Arabic
+       locales) makes toLocaleString emit Arabic-Indic digits (٠١٢٣...) on
+       some engines. Every digit that reaches paper is 0123456789,
+       unconditionally, even on a fully Arabic receipt — Arabic in this
+       codebase's printed output is for words (labels, sizes, payment
+       method) only, never numerals. If this ever needs to "follow the UI
+       language," it doesn't: that is the bug this comment exists to
+       prevent. */
     return Math.round(Number(n) || 0).toLocaleString('en-US');
   }
 
