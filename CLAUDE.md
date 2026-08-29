@@ -401,6 +401,36 @@ array, so an order raised on Sunday was gone on Monday.
 - The unit cost is frozen onto the line at order time — with the lira moving, what a pair cost when it
   was ordered is not what it costs when it lands, and the invoice has to agree with the order.
 
+## Archived is not deleted, and not stock either
+
+A product is never deleted — a discontinued line still has to resolve on every invoice that
+named it — so archiving sets `products.hidden` and the row stays with whatever stock it had.
+`/api/catalogue` even sends hidden rows to anyone with `product.write`, deliberately, so a
+manager can bring one back.
+
+Which means **everything answering "how much stock does the shop have" must skip them**, and
+for a long time nothing did except the Products screen. The demo catalogue was carrying 293
+pieces this way, and they were in the warehouse totals, the dashboard's stock value and the
+count sheet — the screen was asking somebody to walk a shelf for a line the shop had stopped
+selling.
+
+`DB.liveVariants()` in `js/data.js` is the filter, and it is what `whTotals`,
+`criticalVariants`, `floorOuts` and `reorderSuggestions` walk. `js/app-warehouse.js`,
+`js/stock.js` and `js/app-dashboard.js` use it too. `js/app-products.js` deliberately does
+not — its Archived filter is the one place they should appear.
+
+`server/scripts/purge-demo.js` removes demo rows for good. Dry run by default; `--test-sales`
+additionally takes sales rung up by accounts that no longer work here, which is a judgement
+rather than a flag and so never fires on its own. **Every delete calls `logChange`** — the old
+teardown did not, which is why nineteen products once vanished locally and stayed in the
+mirror forever.
+
+**Deletes sync in the opposite order to inserts.** A variant cannot land before its product;
+a customer cannot be removed while a sale still points at them. `supabase-sync.js` therefore
+runs each group twice — `phase: 'upsert'` in FK order, then `phase: 'delete'` in reverse —
+and only advances the cursor after the second. Doing both in one pass is what rejected the
+first demo purge halfway through.
+
 ## The drawer
 
 `server/lib/money.js` and `server/lib/counts.js`, migration `017_money_and_counts.sql`. Shifts,

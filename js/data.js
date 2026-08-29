@@ -569,6 +569,25 @@ var DB = {
   customer: function (id) { return customers.filter(function (c) { return c.id === id; })[0]; },
   sale: function (id) { return sales.filter(function (s) { return s.id === id; })[0]; },
   variantsOf: function (pid) { return variants.filter(function (v) { return v.productId === pid; }); },
+
+  /* Variants whose product is still on sale.
+
+     Archiving a product does NOT remove it — a discontinued line still has to
+     resolve on every invoice that named it — so its variants stay in this
+     array with whatever stock they had. Everything that answers "how much
+     stock does the shop have" therefore has to skip them, or the answer
+     includes goods nobody can sell.
+
+     The five demo products were carrying 293 pieces this way, and they were
+     in the warehouse totals, the dashboard's stock value and the count sheet.
+     The Products screen was the only one that filtered, which is why they
+     looked fine there and wrong everywhere else. */
+  liveVariants: function () {
+    return variants.filter(function (v) {
+      var p = DB.product(v.productId);
+      return p && !p.archived;
+    });
+  },
   variantBySku: function (sku) { return variants.filter(function (v) { return v.sku === sku; })[0]; },
   variantByBarcode: function (b) { return variants.filter(function (v) { return v.barcode === b; })[0]; },
   variantByLabelCode: function (c) { return variants.filter(function (v) { return v.labelCode === c; })[0]; },
@@ -593,7 +612,7 @@ var DB = {
   },
 
   criticalVariants: function () {
-    return variants.filter(function (v) { return v.qty <= CONFIG.STOCK_CRITICAL; });
+    return DB.liveVariants().filter(function (v) { return v.qty <= CONFIG.STOCK_CRITICAL; });
   },
 
   /* ---- warehouses --------------------------------------------------------
@@ -684,7 +703,7 @@ var DB = {
 
   whTotals: function (whId) {
     var skus = 0, pieces = 0, value = 0, low = 0;
-    variants.forEach(function (v) {
+    DB.liveVariants().forEach(function (v) {
       var n = whId === 'all' ? v.qty : DB.stockAt(v, whId);
       if (n > 0) skus++;
       pieces += n;
@@ -699,7 +718,7 @@ var DB = {
      Ranked by how fast it sells, so the busiest gap is the first one fixed. */
   floorOuts: function () {
     var out = [];
-    variants.forEach(function (v) {
+    DB.liveVariants().forEach(function (v) {
       var here = DB.stockAt(v, DEFAULT_WH);
       var back = DB.stockElsewhere(v, DEFAULT_WH);
       if (here > 0 || back <= 0) return;
@@ -1744,7 +1763,8 @@ var DB = {
   reorderSuggestions: function (coverWeeks) {
     coverWeeks = coverWeeks || 4;
     var out = [];
-    variants.forEach(function (v) {
+    /* Never suggest reordering something the shop has stopped selling. */
+    DB.liveVariants().forEach(function (v) {
       var rate = DB.weeklyRate(v.productId, v.size);
       var cover = DB.daysOfCover(v);
       var dead = rate <= 0;

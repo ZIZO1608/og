@@ -27,7 +27,7 @@ function buildAlerts() {
 
   /* Size gaps — the three products with holes in the popular middle sizes. */
   var gapped = [];
-  DB.products.forEach(function (p) {
+  DB.products.filter(function (p) { return !p.archived; }).forEach(function (p) {
     DB.sizeGaps(p.id).forEach(function (sz) { gapped.push({ p: p, size: sz }); });
   });
   gapped.slice(0, 3).forEach(function (g) {
@@ -497,7 +497,7 @@ function viewBackHome() {
   var arrivedPieces = arrived.reduce(function (a, m) { return a + m.delta; }, 0);
   var toMove = DB.floorOuts();
   var openPOs = DB.purchaseOrders.filter(function (p) { return p.status !== 'received'; });
-  var empties = DB.variants.filter(function (v) { return DB.stockAt(v, 'floor') === 0; }).length;
+  var empties = DB.liveVariants().filter(function (v) { return DB.stockAt(v, 'floor') === 0; }).length;
 
   var h = roleHomeHead(t('back_title'), t('back_sub'));
 

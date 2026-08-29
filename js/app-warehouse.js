@@ -22,8 +22,8 @@ function viewWarehouse() {
   var h = '<div class="page-head"><div><h1>' + t('warehouse_title') + '</h1>' +
     '<div class="sub">' + t('warehouse_sub') + '</div></div>' +
     '<div class="head-actions">' +
-      '<span class="badge neutral">' + DB.variants.length + ' SKU</span>' +
-      '<span class="badge accent">' + nf(DB.variants.reduce(function (a, v) { return a + v.qty; }, 0)) + ' ' + t('total_pieces').toLowerCase() + '</span>' +
+      '<span class="badge neutral">' + DB.liveVariants().length + ' SKU</span>' +
+      '<span class="badge accent">' + nf(DB.liveVariants().reduce(function (a, v) { return a + v.qty; }, 0)) + ' ' + t('total_pieces').toLowerCase() + '</span>' +
       exportButtons() +
     '</div></div>';
 
@@ -93,7 +93,7 @@ function whStockTab() {
   h += '</div>';
 
   /* -- what is in the selected place -- */
-  var emptyHere = DB.variants.filter(function (v) {
+  var emptyHere = DB.liveVariants().filter(function (v) {
     return (whId === 'all' ? v.qty : DB.stockAt(v, whId)) === 0;
   }).length;
 
@@ -126,7 +126,9 @@ function whStockTab() {
 
   /* -- grouped by product type: "Sneakers · 142 pieces" -- */
   var byType = {};
-  DB.products.forEach(function (p) {
+  /* Archived products keep their stock rows so old invoices resolve, but the
+     warehouse is a list of what is here to sell — they do not belong on it. */
+  DB.products.filter(function (p) { return !p.archived; }).forEach(function (p) {
     var n = DB.variantsOf(p.id).reduce(function (s, v) {
       return s + (whId === 'all' ? v.qty : DB.stockAt(v, whId));
     }, 0);

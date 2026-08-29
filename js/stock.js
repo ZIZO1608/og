@@ -83,7 +83,9 @@ var Stock = (function () {
 
   function rows() {
     if (!S.active) return [];
-    var list = DB.variants.slice();
+    /* The sheet somebody walks. A discontinued line is not on the shelf to
+       be found, so putting it here only produces a variance nobody can fix. */
+    var list = DB.liveVariants();
 
     if (S.q) {
       var q = S.q.toLowerCase();
@@ -115,15 +117,16 @@ var Stock = (function () {
   }
 
   function totals() {
-    if (!S.active) return { counted: 0, total: DB.variants.length, variance: 0, pieces: 0, value: 0 };
+    if (!S.active) return { counted: 0, total: DB.liveVariants().length, variance: 0, pieces: 0, value: 0 };
     var counted = 0, variance = 0, pieces = 0, value = 0;
-    DB.variants.forEach(function (v) {
+    /* Nobody should be sent to walk a shelf for a discontinued line. */
+    DB.liveVariants().forEach(function (v) {
       if (!Object.prototype.hasOwnProperty.call(S.active.counted, v.sku)) return;
       counted++;
       var d = S.active.counted[v.sku] - systemQty(v);
       if (d !== 0) { variance++; pieces += d; value += d * (DB.product(v.productId) || {}).costPrice || 0; }
     });
-    return { counted: counted, total: DB.variants.length, variance: variance, pieces: pieces, value: value };
+    return { counted: counted, total: DB.liveVariants().length, variance: variance, pieces: pieces, value: value };
   }
 
   function set(sku, qty) {

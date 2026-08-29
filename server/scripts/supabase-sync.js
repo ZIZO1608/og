@@ -390,7 +390,23 @@ const TABLES = {
   }
 };
 
-async function syncTable(name) {
+/* TWO PHASES, AND THEY RUN IN OPPOSITE ORDERS.
+
+   Inserts need parents first: a variant cannot land before its product, a
+   sale before its customer. Deletes need exactly the reverse — Postgres
+   refuses to remove a customer while a sale still points at them.
+
+   Doing both in one pass over the tables in insert order therefore breaks the
+   moment a run contains deletes, which is what happened the first time the
+   demo purge was pushed: products, variants and stock went, and then removing
+   the customers was rejected because their sales were still there, waiting
+   two positions later in the same loop.
+
+   So: every table upserts, in FK order; then every table deletes, in reverse.
+   The cursor only advances after the delete phase, so a run that dies between
+   the two picks both up again next time. Re-reading the same change_log rows
+   in the second phase costs one query and is idempotent. */
+async function syncTable(name, { phase = 'both' } = {}) {
   const cfg = TABLES[name];
   const cursorId = 'sync:' + name;
 
@@ -414,7 +430,7 @@ async function syncTable(name) {
      push is an upsert keyed on the row's own id. */
   const highest = DB.get().prepare('SELECT MAX(seq) AS m FROM change_log').get().m;
   if (highest !== null && lastSeq > highest) {
-    console.log(head(name));
+    if (phase !== 'delete') console.log(head(name));
     console.log(warn(`cursor was at ${lastSeq} but the log only reaches ${highest} — ` +
                      'it was reset underneath us. Rewinding to 0 and replaying.'));
     lastSeq = 0;
@@ -429,7 +445,7 @@ async function syncTable(name) {
 
   console.log(head(name));
   if (!rows.length) {
-    console.log('  nothing new since seq ' + lastSeq);
+    if (phase !== 'delete') console.log('  nothing new since seq ' + lastSeq);
     return;
   }
 
@@ -454,7 +470,7 @@ async function syncTable(name) {
   }
 
   let pushed = 0, deleted = 0;
-  if (toUpsert.length) {
+  if (phase !== 'delete' && toUpsert.length) {
     /* A column this machine has and the mirror does not.
 
        sales gained shift_id with migration 017, and sales is pushed OUTSIDE
@@ -489,11 +505,16 @@ async function syncTable(name) {
       console.log(tick(`ran afterUpsert for ${pushed} row(s)`));
     }
   }
-  for (const key of toDeleteKeys) {
-    await SB.remove(name, key);
-    deleted++;
+  if (phase !== 'upsert') {
+    for (const key of toDeleteKeys) {
+      await SB.remove(name, key);
+      deleted++;
+    }
+    if (deleted) console.log(tick(`deleted ${deleted} row(s)`));
   }
-  if (deleted) console.log(tick(`deleted ${deleted} row(s)`));
+
+  /* Only after the deletes. Advancing in the upsert phase would lose them. */
+  if (phase === 'upsert') return;
 
   const maxSeq = rows[rows.length - 1].seq;
   await SB.update('sync_state', { id: cursorId }, {
@@ -514,9 +535,9 @@ await syncUsers();
    before sales (sales.customer_id); sales before deliveries
    (deliveries.sale_id) and before sale_items, which sales' own afterUpsert
    hook pushes right after each sale row lands. */
-for (const name of ['products', 'variants', 'stock', 'customers', 'sales', 'deliveries']) {
-  await syncTable(name);
-}
+const CORE = ['products', 'variants', 'stock', 'customers', 'sales', 'deliveries'];
+for (const name of CORE) await syncTable(name, { phase: 'upsert' });
+for (const name of CORE.slice().reverse()) await syncTable(name, { phase: 'delete' });
 
 /* After the loop, not before: a movement points at a variant and a
    warehouse, and a rate at a currency. Both would be rejected if they
@@ -555,17 +576,18 @@ try {
      before the day's sales were pushed, which is the exact failure this
      block is here to prevent. */
   await mirrorTable('clubs', ['code'], (r) => ({ ...r, archived: !!r.archived }));
-  for (const name of ['print_jobs', 'partner_invoices', 'job_messages', 'suppliers',
-                      'employees', 'purchase_orders']) {
-    await syncTable(name);
-  }
+  const PARTNER = ['print_jobs', 'partner_invoices', 'job_messages', 'suppliers',
+                   'employees', 'purchase_orders'];
+  for (const name of PARTNER) await syncTable(name, { phase: 'upsert' });
+  for (const name of PARTNER.slice().reverse()) await syncTable(name, { phase: 'delete' });
   await syncAppendOnly('wa_messages');
 
   /* The drawer. Shifts and count sheets change — a shift closes, a sheet
      posts — so they replay the log. An expense and a debt payment are
      written once and never edited, so the highest id already sent is a
      cheaper and self-healing cursor. */
-  for (const name of ['shifts', 'stock_counts']) await syncTable(name);
+  for (const name of ['shifts', 'stock_counts']) await syncTable(name, { phase: 'upsert' });
+  for (const name of ['stock_counts', 'shifts']) await syncTable(name, { phase: 'delete' });
   await syncAppendOnly('expenses');
   await syncAppendOnly('debt_payments');
 
