@@ -251,6 +251,7 @@ var Shop = (function () {
        Wear is a different company and the browser is not a boundary. */
     newPrintJob:   function (body)        { return API.post('/api/print-jobs', body); },
     setJobStage:   function (id, stage)   { return API.patch('/api/print-jobs/' + id + '/stage', { stage: stage }); },
+    setJobLines:   function (id, lines)   { return API.patch('/api/print-jobs/' + id + '/lines', { lines: lines }); },
     sendOrder:     function (id)          { return API.post('/api/print-jobs/' + id + '/order', {}); },
     respondOrder:  function (id, ok, o)   { return API.post('/api/print-jobs/' + id + '/respond', { accept: !!ok, promisedAt: (o||{}).promisedAt || null, note: (o||{}).note || null }); },
     postMessage:   function (body)        { return API.post('/api/messages', body); },

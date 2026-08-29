@@ -277,6 +277,21 @@ export function respondToOrder(id, accept, { promisedAt = null, note = null, use
         WHERE id = ?`
     ).run(accept ? 'accepted' : 'declined', at, accept ? promisedAt : null, note, at, id);
 
+    /* Accepting IS handing the job over, so the stage moves here rather than
+       in a second call from the browser. Two round trips could leave the
+       order accepted and the job still sitting in Design if the second one
+       failed, and 'sent' is precisely the stage that means "the printer took
+       it" — the same fact the acceptance just recorded.
+
+       Declining leaves the stage alone on purpose: it was never handed over,
+       so nothing about where it sits should suggest that it was. */
+    if (accept && row.stage === 'design') {
+      d.prepare('UPDATE print_jobs SET stage = ? WHERE id = ?').run('sent', id);
+      d.prepare(
+        'INSERT INTO print_job_stages (job_id, stage, at, by_side, user_id) VALUES (?,?,?,?,?)'
+      ).run(id, 'sent', at, 'yalla', userId);
+    }
+
     insertMessage(d, {
       jobId: id, from: 'yalla', kind: accept ? 'accepted' : 'declined',
       body: note || (accept ? `Order accepted — ${id}` : `Order declined — ${id}`),
@@ -284,6 +299,52 @@ export function respondToOrder(id, accept, { promisedAt = null, note = null, use
     });
 
     DB.logChange('print_jobs', id, 'update', userId, null);
+    return job(id);
+  });
+}
+
+/* Fill in the names and numbers on a kit sheet.
+
+   An order is taken before the squad is settled, so a line starts with no
+   name and the shop rings round to collect them. That is the single most
+   common edit anyone makes to a job, and until this existed it was the one
+   edit that could not be saved: the browser wrote the names onto its own
+   copy, the next reload replaced the copy, and every shirt went back to TBC.
+
+   Only the two fields worth changing. Quantity, size and cost are what was
+   ordered and agreed; changing those is a different act than writing a name
+   on a shirt, and letting one form do both is how a price gets edited by
+   somebody correcting a spelling. */
+export function setLines(id, lines = [], userId = null) {
+  return DB.tx(() => {
+    const d = DB.get();
+    const jobRow = d.prepare('SELECT id FROM print_jobs WHERE id = ?').get(id);
+    if (!jobRow) throw Object.assign(new Error('no such job'), { code: 'not_found' });
+
+    const own = d.prepare('SELECT id FROM print_job_lines WHERE job_id = ?').all(id)
+      .map((r) => r.id);
+    const set = d.prepare(
+      'UPDATE print_job_lines SET print_name = ?, number = ? WHERE id = ? AND job_id = ?'
+    );
+
+    let changed = 0;
+    for (const l of lines) {
+      const lineId = Number(l.id);
+      /* A line id from another job would let one customer's sheet be edited
+         through another's. Checked rather than trusted. */
+      if (!own.includes(lineId)) continue;
+      const name = l.printName == null || l.printName === ''
+        ? null : String(l.printName).toUpperCase().trim() || null;
+      const number = l.number == null || l.number === '' ? null : Number(l.number);
+      changed += set.run(name, number, lineId, id).changes;
+    }
+
+    if (changed) {
+      d.prepare('UPDATE print_jobs SET updated_at = ? WHERE id = ?').run(nowIso(), id);
+      /* Logged against the JOB, not the lines: the lines have no cursor of
+         their own and reach Supabase on the job's afterUpsert hook. */
+      DB.logChange('print_jobs', id, 'update', userId, null);
+    }
     return job(id);
   });
 }

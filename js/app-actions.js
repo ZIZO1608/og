@@ -954,6 +954,12 @@ var ACTIONS = {
     var after = DB.tbcCount(job);
     if (after === before) { toast(id, t('og_nothing_changed'), 'warn'); return; }
 
+    /* Send them. Without this the names went onto the local copy only, and
+       the reload that the message below triggers put every TBC straight
+       back — the shop typed them in, watched them save, and found the job
+       still unprintable. The id carries the 'L' prefix the browser adds. */
+    DB.saveLines(job);
+
     DB.postMessage({ jobId: id, from: 'og', kind: 'reply',
       text: t('og_names_msg') + ' ' + (before - after) + ' — ' +
             (after ? after + ' ' + t('yl_tbc_pieces') : t('og_all_confirmed')) });
@@ -1010,15 +1016,49 @@ var ACTIONS = {
           t(OG.print.partner ? 'yl_entered' : 'yl_left'), 'ok', 2400);
   },
 
-  /* Every field applies as it is typed, so by the time this is pressed the
-     settings are already live. It reports what actually changed rather than
-     claiming to have performed a save that never existed. */
-  'settings-save': function () {
-    render();
-    toast(t('save_changes'),
-      '1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' · ' +
-      CONFIG.LOYALTY_POINTS_PER_1000 + ' ' + t('points').toLowerCase() + '/1,000 · ' +
-      esc(CONFIG.SHOP_NAME), 'ok', 3600);
+  /* This used to say the settings were "already live" because every field
+     applies as it is typed — which was true when there was nowhere to save
+     them TO. It has been false since the server arrived: typing changed
+     CONFIG in memory, this button re-rendered and claimed success, and the
+     next load overwrote all of it from the database. The exchange rate is
+     the one that matters, because every dollar price on every screen is
+     converted through it.
+
+     The rate is not a config key — it lives in fx_rates with its own
+     endpoint, so that it can be frozen onto each sale — hence two requests
+     rather than one. */
+  'settings-save': function (el) {
+    if (typeof Shop === 'undefined' || !Shop.live()) { render(); return; }
+    if (el) el.disabled = true;
+
+    var updates = {
+      'loyalty.points_per_1000': String(CONFIG.LOYALTY_POINTS_PER_1000),
+      'loyalty.point_value':     String(CONFIG.LOYALTY_POINT_VALUE),
+      'shop.name':               CONFIG.SHOP_NAME,
+      'shop.address':            CONFIG.SHOP_ADDRESS || '',
+      'shop.city':               CONFIG.SHOP_CITY || '',
+      'shop.phone':              CONFIG.SHOP_PHONE || ''
+    };
+
+    API.put('/api/config', { updates: updates })
+      .then(function () {
+        return API.post('/api/fx', { base: 'USD', quote: 'SYP', rate: CONFIG.EXCHANGE_RATE });
+      })
+      .then(function () { return Shop.reload(); })
+      .then(function () {
+        toast(t('save_changes'),
+          '1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' · ' +
+          CONFIG.LOYALTY_POINTS_PER_1000 + ' ' + t('points').toLowerCase() + '/1,000 · ' +
+          esc(CONFIG.SHOP_NAME), 'ok', 3600);
+      })
+      .catch(function (err) {
+        /* Reload so the screen shows what the server actually holds. Leaving
+           the typed values up after a failed save is how somebody walks away
+           believing the rate changed. */
+        toast(t('save_changes'), API.friendly(err), 'err', 6000);
+        Shop.reload();
+      })
+      .then(function () { if (el) el.disabled = false; });
   },
 
   'new-sale': function () { closeModal(); go('pos'); }

@@ -344,17 +344,9 @@ var Bulk = (function () {
       clear(sc); refreshAll(); paint(); return;
     }
 
-    /* ---- orders ---- */
-    if (sc === 'orders') {
-      if (a === 'export') { exportSelection(sc); return; }
-      var ol = DB.storeOrders.filter(function (o) { return SEL.orders[o.id]; });
-      var st = ol.map(function (o) { return o.status; });
-      ol.forEach(function (o) { o.status = 'confirmed'; });
-      stageUndo(n + ' ' + t('confirmed').toLowerCase(), function () {
-        ol.forEach(function (o, i) { o.status = st[i]; });
-      });
-      clear(sc); refreshAll(); paint(); return;
-    }
+    /* The 'orders' scope went with the storefront. It read DB.storeOrders,
+       which no longer exists anywhere, so reaching it threw — nothing does
+       reach it, but a branch that can only crash is worse than no branch. */
 
     if (sc === 'movements' && a === 'export') { exportSelection(sc); return; }
 

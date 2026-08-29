@@ -828,6 +828,21 @@ router.add('POST /api/print-jobs/:id/order', requirePerm('print.write', async (c
   } catch (e) { partnerFail(ctx.res, e); }
 }));
 
+/* Writing the names onto a kit sheet. Both sides do it — the shop as the
+   customer rings them in, the printer as it corrects a spelling off the
+   artwork — so it takes the same any-of gate the board does. */
+router.add('PATCH /api/print-jobs/:id/lines',
+  requirePerm(['print.write', 'partner.jobs'], async (ctx) => {
+    const b = await readJson(ctx.req);
+    try {
+      sendOk(ctx.res, {
+        job: Partner.setLines(ctx.params.id,
+                              Array.isArray(b.lines) ? b.lines : [],
+                              ctx.user.id)
+      });
+    } catch (e) { partnerFail(ctx.res, e); }
+  }));
+
 router.add('POST /api/print-jobs/:id/respond', requirePerm('partner.respond', async (ctx) => {
   const b = await readJson(ctx.req);
   try {

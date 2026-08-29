@@ -821,6 +821,13 @@ var DB = {
     return null;
   },
 
+  /* ---- the order handshake --------------------------------------------
+     All three push. They used to move the envelope in memory only, which
+     broke the whole board: accepting set order.state = 'accepted' here and
+     then asked the server for stage 'sent', but the server's own
+     order_state was still 'draft', so it refused with not_accepted and the
+     reload threw the acceptance away. Nothing could leave Design. */
+
   sendOrder: function (job) {
     if (DB.canSendOrder(job)) return false;
     var o = DB.order(job);
@@ -828,6 +835,9 @@ var DB = {
     o.sentAt = new Date();
     o.respondedAt = null;
     o.note = '';
+    pushPartner(function () { return Shop.sendOrder(job.id); },
+                typeof t === 'function' ? t('print_title') : 'Print jobs');
+    /* The server posts no message for this one, so this is the only copy. */
     DB.postMessage({
       jobId: job.id, from: 'og', kind: 'order',
       text: job.design + ' — ' + job.qty + ' pcs, wanted by ' + fmtDateSeed(job.deadline)
@@ -841,12 +851,22 @@ var DB = {
     o.state = 'accepted';
     o.respondedAt = new Date();
     o.promisedAt = promisedAt ? new Date(promisedAt) : new Date(job.deadline);
-    /* Order first, stage second: the gate above reads o.state. */
-    DB.setStage(job, 'sent');
+
+    /* No DB.setStage here any more. The server moves the stage inside the
+       same transaction that records the acceptance, because they are one
+       fact — and doing it in a second call could leave an accepted order on
+       a job still sitting in Design. */
+    if (job.stage === 'design') job.stage = 'sent';
+
+    pushPartner(function () {
+      return Shop.respondOrder(job.id, true, { promisedAt: o.promisedAt.toISOString() });
+    }, typeof t === 'function' ? t('print_title') : 'Print jobs');
+
+    /* quiet: the server writes its own copy of this line. */
     DB.postMessage({
       jobId: job.id, from: 'yalla', kind: 'accepted',
       text: 'Accepted — ready by ' + fmtDateSeed(o.promisedAt)
-    });
+    }, true);
     return true;
   },
 
@@ -857,12 +877,17 @@ var DB = {
     o.respondedAt = new Date();
     o.promisedAt = null;
     o.note = String(note || '').trim();
+
+    pushPartner(function () {
+      return Shop.respondOrder(job.id, false, { note: o.note });
+    }, typeof t === 'function' ? t('print_title') : 'Print jobs');
+
     /* The job stays in Design. It was never handed over, so nothing about its
        stage should suggest that it was. */
     DB.postMessage({
       jobId: job.id, from: 'yalla', kind: 'declined',
       text: o.note || 'Cannot take this one right now.'
-    });
+    }, true);
     return true;
   },
 
@@ -930,7 +955,26 @@ var DB = {
     if (!l) return false;
     l.print = (name || '').toUpperCase().trim() || null;
     if (number !== undefined) l.number = number || null;
+    DB.saveLines(DB.job(jobId));
     return !!l.print;
+  },
+
+  /* Send a kit sheet's names and numbers to the server.
+
+     Line ids are prefixed 'L' on the way in from hydrate — the screens have
+     always wanted a string id — so the prefix comes off again here. Sending
+     'L12' would match nothing and the save would look like it worked. */
+  saveLines: function (job) {
+    if (!job || !job.lines) return;
+    pushPartner(function () {
+      return Shop.setJobLines(job.id, job.lines.map(function (l) {
+        return {
+          id: String(l.id).replace(/^L/, ''),
+          printName: l.print,
+          number: l.number
+        };
+      }));
+    }, typeof t === 'function' ? t('print_title') : 'Print jobs');
   },
 
   /* ---- partner invoices --------------------------------------------------

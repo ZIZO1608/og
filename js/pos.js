@@ -1368,16 +1368,30 @@ var POS = (function () {
       });
       if (!from) { toast(t('out_of_stock'), '', 'err'); return; }
 
-      DB.transfer(v, from, S.warehouse, 1, 'POS');
       var p = DB.product(v.productId);
-      toast(t('wh_moved'),
-            p.name + ' · ' + t('size') + ' ' + v.size + ' — ' +
-              DB.whName(from, OG.lang === 'ar') + ' → ' +
-              DB.whName(S.warehouse, OG.lang === 'ar'),
-            'ok');
-      addVariant(v, true);
-      renderShellPos();
-      focusScan();
+      var moved = function () {
+        toast(t('wh_moved'),
+              p.name + ' · ' + t('size') + ' ' + v.size + ' — ' +
+                DB.whName(from, OG.lang === 'ar') + ' → ' +
+                DB.whName(S.warehouse, OG.lang === 'ar'),
+              'ok');
+        addVariant(v, true);
+        renderShellPos();
+        focusScan();
+      };
+
+      /* Through the server, like every other stock move. Done in memory only
+         this looked fine and then made the NEXT sale fail: the server never
+         saw the pair leave the back, so charging the basket came back
+         insufficient_stock for something the screen said was on the shelf.
+         js/app-actions.js does the same move correctly. */
+      if (typeof Shop !== 'undefined' && Shop.live()) {
+        Shop.write(function () { return Shop.transfer(v.sku, from, S.warehouse, 1, 'POS'); },
+                   null, moved);
+      } else {
+        DB.transfer(v, from, S.warehouse, 1, 'POS');
+        moved();
+      }
     },
 
     complete: function () { complete(); }
