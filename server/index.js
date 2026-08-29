@@ -31,6 +31,8 @@ import * as Sales from './lib/sales.js';
 import * as Customers from './lib/customers.js';
 import * as Deliveries from './lib/deliveries.js';
 import * as Partner from './lib/partner.js';
+import * as Purchasing from './lib/purchasing.js';
+import * as Alerts from './lib/alerts.js';
 import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
@@ -667,6 +669,79 @@ router.add('GET /api/deliveries/:id', requirePerm('delivery.read', (ctx) => {
      by telling a 403 from a 404. */
   if (!d) return sendError(ctx.res, 404, 'not_found', 'No such delivery.');
   sendOk(ctx.res, { delivery: d });
+}));
+
+/* ------------------------------------------------------------------ bell
+   Computed, never stored: an alert is a fact about the state right now, and
+   a stored alert is a fact about a state that has moved on.
+
+   Which alerts a person gets depends on what they may see — supplier debt is
+   money.read, payroll is staff.read — so this is per account rather than one
+   list filtered in the browser. */
+router.add('GET /api/notifications', (ctx) => {
+  sendOk(ctx.res, { notifications: Alerts.list(ctx.user) });
+});
+
+/* One alert by key, or everything currently showing when no key is named.
+   Keyed on what the alert is ABOUT, so counting down from "due in 3 days" to
+   "due in 2 days" does not make a read alert come back unread. */
+router.add('POST /api/notifications/read', async (ctx) => {
+  const b = await readJson(ctx.req);
+  sendOk(ctx.res, Alerts.markRead(ctx.user, b.key || null));
+});
+
+/* -------------------------------------------------------- purchase orders */
+
+router.add('GET /api/purchase-orders', requirePerm('stock.read', (ctx) => {
+  sendOk(ctx.res, {
+    purchaseOrders: Purchasing.list({
+      status: ctx.url.searchParams.get('status') || null,
+      limit: Number(ctx.url.searchParams.get('limit')) || 100
+    }).map((o) => ({
+      ...scrubCost(o, ctx.user),
+      lines: o.lines.map((l) => scrubCost(l, ctx.user))
+    }))
+  });
+}));
+
+function poFail(res, e) {
+  const status = e.code === 'not_found' ? 404 : e.code === 'bad_status' ? 409 : 400;
+  sendError(res, status, e.code || 'invalid', e.message);
+}
+
+/* What the shop pays a supplier is cost, so raising an order needs cost.read
+   as well as the permission to move stock — a line carries a unit cost, and
+   somebody who may not see cost cannot meaningfully write one. */
+router.add('POST /api/purchase-orders', requirePerm('cost.read', async (ctx) => {
+  if (!Auth.can(ctx.user, 'stock.move')) {
+    return sendError(ctx.res, 403, 'forbidden', 'Your account does not have access to this.');
+  }
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { po: Purchasing.create({ ...b, userId: ctx.user.id }) }); }
+  catch (e) { poFail(ctx.res, e); }
+}));
+
+router.add('POST /api/purchase-orders/:id/send', requirePerm('stock.move', async (ctx) => {
+  try { sendOk(ctx.res, { po: Purchasing.send(ctx.params.id, ctx.user.id) }); }
+  catch (e) { poFail(ctx.res, e); }
+}));
+
+/* Receiving books stock, so it is the stock permission that gates it — not
+   the one that let somebody raise the order in the first place. */
+router.add('POST /api/purchase-orders/:id/receive', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      po: Purchasing.receive(ctx.params.id,
+                             Array.isArray(b.received) ? b.received : null,
+                             ctx.user.id)
+    });
+  } catch (e) { poFail(ctx.res, e); }
+}));
+
+router.add('POST /api/purchase-orders/:id/cancel', requirePerm('stock.move', async (ctx) => {
+  try { sendOk(ctx.res, { po: Purchasing.cancel(ctx.params.id, ctx.user.id) }); }
+  catch (e) { poFail(ctx.res, e); }
 }));
 
 /* ---------------------------------------------------------------- partner

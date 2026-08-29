@@ -65,7 +65,11 @@ var Shop = (function () {
          two companies. null rather than an empty bundle when the account
          cannot read it: hydrate leaves the screens alone on null, where an
          empty bundle would blank them. */
-      want('print.read', '/api/partner', null)
+      want('print.read', '/api/partner', null),
+      want('stock.read', '/api/purchase-orders', { purchaseOrders: [] }),
+      /* The bell is computed per account, so it comes back already filtered
+         to what this person may see and already marked read or not. */
+      soft(API.get('/api/notifications'), { notifications: [] })
     ]).then(function (r) {
       DB.hydrate({
         config: r[0].config,
@@ -75,7 +79,9 @@ var Shop = (function () {
         customers: r[2].customers,
         sales: r[3].sales,
         movements: r[4].movements,
-        partner: r[5]
+        partner: r[5],
+        purchaseOrders: r[6].purchaseOrders,
+        notifications: r[7].notifications
       });
       return DB;
     });
@@ -253,6 +259,15 @@ var Shop = (function () {
     payInvoice:    function (id, body)    { return API.post('/api/partner-invoices/' + id + '/payments', body); },
     saveSupplier:  function (body)        { return API.post('/api/suppliers', body); },
     saveEmployee:  function (body)        { return API.post('/api/employees', body); },
+
+    /* ---- purchase orders ---- */
+    newPO:      function (body)     { return API.post('/api/purchase-orders', body); },
+    sendPO:     function (id)       { return API.post('/api/purchase-orders/' + id + '/send', {}); },
+    receivePO:  function (id, got)  { return API.post('/api/purchase-orders/' + id + '/receive', { received: got || null }); },
+    cancelPO:   function (id)       { return API.post('/api/purchase-orders/' + id + '/cancel', {}); },
+
+    /* One alert by key, or all of them. */
+    markAlertRead: function (key)   { return API.post('/api/notifications/read', { key: key || null }); },
 
     newCustomer: function (body) { return API.post('/api/customers', body); },
     updateCustomer: function (id, fields) { return API.patch('/api/customers/' + id, fields); },

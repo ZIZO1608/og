@@ -354,6 +354,20 @@ const TABLES = {
     parseKey: (rowId) => ({ id: Number(rowId) }),
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM employees WHERE id = ?').get(key.id),
     mapRow: (r) => ({ ...r, archived: !!r.archived })
+  },
+
+  /* An order's lines are written with it and only ever change through it,
+     so they ride along the same way a sale's items do. Replaced rather than
+     merged: a line taken off an order has to disappear from the mirror. */
+  purchase_orders: {
+    parseKey: (rowId) => ({ id: rowId }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM purchase_orders WHERE id = ?').get(key.id),
+    mapRow: (r) => r,
+    afterUpsert: async (localRow) => {
+      const rows = DB.get().prepare('SELECT * FROM purchase_order_lines WHERE po_id = ?').all(localRow.id);
+      await SB.remove('purchase_order_lines', { po_id: localRow.id }).catch(() => {});
+      if (rows.length) await SB.insert('purchase_order_lines', rows, { upsert: true });
+    }
   }
 };
 
@@ -483,14 +497,25 @@ try {
      before the day's sales were pushed, which is the exact failure this
      block is here to prevent. */
   await mirrorTable('clubs', ['code'], (r) => ({ ...r, archived: !!r.archived }));
-  for (const name of ['print_jobs', 'partner_invoices', 'job_messages', 'suppliers', 'employees']) {
+  for (const name of ['print_jobs', 'partner_invoices', 'job_messages', 'suppliers',
+                      'employees', 'purchase_orders']) {
     await syncTable(name);
   }
   await syncAppendOnly('wa_messages');
+
+  /* Which alerts each person has already read. Small, unlogged, and worth
+     keeping: restoring onto a new machine without it makes every alert in
+     the shop bold again on the first morning. */
+  await mirrorTable('notification_reads', ['user_id', 'key']);
 } catch (e) {
   if (/does not exist|Could not find the table|PGRST205|schema cache/i.test(String(e.message))) {
-    console.log(warn('Supabase has no partner tables yet — skipped.'));
-    console.log('    \x1b[2mRun server/supabase/003_partner.sql in the Supabase SQL editor.\x1b[0m');
+    /* Name the one it stopped on. "Run 003" is unhelpful when 003 has been
+       run and 004 has not. */
+    const named = String(e.message).match(/public.([a-z_]+)/);
+    console.log(warn("Supabase is missing a table" + (named ? ": " + named[1] : "") + " — skipped."));
+    console.log("    [2mRun these in the Supabase SQL editor, in order:[0m");
+    console.log("    [2m  server/supabase/003_partner.sql[0m");
+    console.log("    [2m  server/supabase/004_purchasing_and_alerts.sql[0m");
   } else { throw e; }
 }
 

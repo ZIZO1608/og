@@ -69,9 +69,26 @@ const dim  = (m) => console.log(`    ${DIM}${m}${OFF}`);
    database they are already populated and get skipped — they are listed for
    the case that matters, restoring onto a machine where they are not. */
 const ORDER = [
+  /* nothing points out of these */
   'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates',
+  'clubs', 'suppliers', 'employees',
+
+  /* the catalogue and what was sold from it */
   'products', 'variants', 'stock', 'customers', 'sales', 'sale_items', 'deliveries',
-  'fx_rates', 'stock_movements'
+
+  /* a rate needs its currencies; a movement needs its variant and warehouse */
+  'fx_rates', 'stock_movements',
+
+  /* a job may name the sale that raised it; a line names a club; an invoice
+     names jobs; a message hangs off one or the other */
+  'print_jobs', 'print_job_lines', 'print_job_stages',
+  'partner_invoices', 'partner_invoice_refs', 'partner_invoice_payments',
+  'job_messages',
+
+  /* an order names a supplier and a warehouse; its lines name variants */
+  'purchase_orders', 'purchase_order_lines',
+
+  'wa_messages', 'notification_reads'
 ];
 
 /* These are not data somebody entered — the migrations seed them with
@@ -82,7 +99,10 @@ const ORDER = [
    how a manager rebuilds on a new machine and quietly gets the factory
    permissions back instead of the ones he set. */
 const SEEDED = new Set([
-  'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates', 'fx_rates'
+  'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates', 'fx_rates',
+  /* the migration plants the nine clubs the shop prints, so this is never
+     empty either and would be skipped forever without saying so */
+  'clubs'
 ]);
 
 const PAGE = 1000;   /* Supabase caps a REST read at 1000 rows per request. */

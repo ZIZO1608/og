@@ -282,8 +282,8 @@ Three shapes, because three kinds of table behave differently:
 
 | Shape | Tables | How |
 |---|---|---|
-| **Cursor** | `products` `variants` `stock` `customers` `sales` (+`sale_items`) `deliveries` `print_jobs` (+lines, +stages) `partner_invoices` (+refs, +payments) `job_messages` `suppliers` `employees` | Replays `change_log` from a cursor held in Supabase `sync_state` |
-| **Mirror** | `config` `role_permissions` `label_templates` `clubs` | Pushed whole every run, **and rows deleted here are deleted there** |
+| **Cursor** | `products` `variants` `stock` `customers` `sales` (+`sale_items`) `deliveries` `print_jobs` (+lines, +stages) `partner_invoices` (+refs, +payments) `job_messages` `suppliers` `employees` `purchase_orders` (+lines) | Replays `change_log` from a cursor held in Supabase `sync_state` |
+| **Mirror** | `config` `role_permissions` `label_templates` `clubs` `notification_reads` | Pushed whole every run, **and rows deleted here are deleted there** |
 | **Append-only** | `fx_rates` `stock_movements` `wa_messages` | Pushed above the highest `id` already sent |
 
 Plus `currencies`, `warehouses` and `users` as plain full upserts.
@@ -306,7 +306,8 @@ Things that will bite you:
   `OG_VAULT_KEY` the restore skips accounts rather than creating ones nobody can sign in to.
 - `npm run supabase:reconcile` is the repair tool for the cursor tables when something wrote rows
   outside `change_log`. The mirror and append-only tables are self-correcting and do not need it.
-- **The partner tables arrive with `server/supabase/003_partner.sql`, run by hand in the dashboard.**
+- **Two schema files are run by hand in the Supabase dashboard: `003_partner.sql` and
+  `004_purchasing_and_alerts.sql`.**
   Until it is, the sync says so by name and pushes everything else — taking a whole run down because
   one table is missing would stop a day's sales being mirrored over a table nobody has created yet.
 
@@ -350,9 +351,8 @@ Things worth knowing:
 
 ## Known open work
 
-- The **notifications bell** is derived, not stored — five alerts computed from stock, jobs and
-  suppliers. Its read state is per-machine `localStorage`. There is nothing to mirror; the data it
-  reads from is mirrored already.
+- **`shifts` and `expenses` are still memory-only.** The Money screen has no tables behind it, so a
+  recorded expense does not survive a refresh. Same shape of gap purchase orders had.
 - Delivery **cash reconciliation** is designed and the schema carries it (`to_collect`, `collected`,
   `Deliveries.driverDay()`), but the end-of-day settle-up screen is not built.
 - Bulk catalogue entry; the Yalla Wear remote portal against real data; an offline write queue.
@@ -362,3 +362,33 @@ Things worth knowing:
 - The demo catalogue rows are hidden, not deleted — all five had been sold, so removing them would
   have broken the invoices referencing them. `products.demo` and `customers.demo` still exist for that
   reason, but nothing sets them any more.
+
+## The bell
+
+`server/lib/alerts.js`. Computed on every request from the shop's current state — never stored,
+because an alert is a fact about now and a stored alert is a fact about a state that has moved on.
+
+Two things it gets right that earlier versions did not:
+
+- **Per account.** Supplier debt needs `money.read`, payroll needs `staff.read`. Derived in the
+  browser these were filtered only because the data had already been withheld, which was true by
+  accident rather than by rule.
+- **Read state keyed on what the alert is ABOUT** (`stock:OG-1-42`, `job:P-1043`, `supplier:3`,
+  `critical`, `payroll`) and stored per user in `notification_reads`. The first version keyed on the
+  alert's **text** and kept it in `localStorage`. Both were wrong: the text changes on its own —
+  "due in 3 days" becomes "due in 2 days" — so a read alert came back unread every morning; and
+  `localStorage` is per machine, so reading it on the till left it bold in the office.
+
+## Purchase orders
+
+`server/lib/purchasing.js`. The last screen in the warehouse writing to nothing — the browser held an
+array, so an order raised on Sunday was gone on Monday.
+
+- **Receiving books stock through the same movement log** as everything else, via `Stock.apply()`
+  rather than `Stock.receive()`: the latter opens its own transaction and `DB.tx()` refuses to nest,
+  deliberately, because SQLite has no nested transactions and a half-applied delivery is worse than a
+  refused one.
+- **A short delivery is normal.** `received_qty` is separate from `qty`; eight of ten leaves the order
+  open and the two still owed. The supplier balance moves by what **arrived**, not by what was ordered.
+- The unit cost is frozen onto the line at order time — with the lira moving, what a pair cost when it
+  was ordered is not what it costs when it lands, and the invoice has to agree with the order.

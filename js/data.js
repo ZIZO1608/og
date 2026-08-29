@@ -458,9 +458,9 @@ var expenses = [];
 var debtPayments = [];
 
 
-/* Derived from the shop's own state by DB.buildNotifications(), which
-   runs after every hydrate. Nothing is hardcoded: an alert naming a
-   product is naming one that is really out of stock. */
+/* Computed by the server, per account, and replaced on every hydrate.
+   Nothing is hardcoded: an alert naming a product is naming one that is
+   really out of stock. */
 var notifications = [];
 
 /* ----------------------------------------------------- 8. PARTNER FINANCE */
@@ -519,37 +519,30 @@ var DB = {
   notifications: notifications,
 
   /* ---- which alerts have been seen ------------------------------------
-     Kept per machine rather than per account, and keyed on the alert's own
-     text rather than its position: these are derived from the shop's state,
-     so tomorrow's list is a different length and an index would quietly
-     mark the wrong row. Text is what the person actually read. */
-  notifRead: function () {
-    try { return JSON.parse(localStorage.getItem('og.notif.read') || '[]'); }
-    catch (e) { return []; }
-  },
+     The server decides. It knows who is asking, so supplier debt and
+     payroll only reach the people allowed to see them, and it keys the
+     read state on WHAT the alert is about rather than on its words.
 
-  isNotifRead: function (n) { return DB.notifRead().indexOf(n.text) > -1; },
+     Both of those were wrong in the first version. It kept the read set in
+     localStorage, so reading an alert on the till left it bold in the
+     office; and it keyed on the text, so "due in 3 days" becoming "due in
+     2 days" overnight quietly made a read alert unread again. */
+  isNotifRead: function (n) { return !!n.read; },
 
   unreadNotifications: function () {
-    var seen = DB.notifRead();
-    return notifications.filter(function (n) { return seen.indexOf(n.text) === -1; });
+    return notifications.filter(function (n) { return !n.read; });
   },
 
+  /* Optimistic, like every other partner write: the badge falls now and the
+     server is told, rather than the person watching a round trip finish
+     before the number moves. */
   markNotifRead: function (n) {
-    /* One alert, or all of them when nothing is named. */
-    var seen = DB.notifRead();
-    var add = n ? [n.text] : notifications.map(function (x) { return x.text; });
-    add.forEach(function (txt) { if (seen.indexOf(txt) === -1) seen.push(txt); });
-    /* Anything no longer in the list is dropped, so this cannot grow without
-       bound as alerts come and go over months. */
-    var live = notifications.map(function (x) { return x.text; });
-    seen = seen.filter(function (txt) { return live.indexOf(txt) > -1; });
-    try { localStorage.setItem('og.notif.read', JSON.stringify(seen)); } catch (e) {}
-    return seen.length;
-  },
-
-  clearNotifRead: function () {
-    try { localStorage.removeItem('og.notif.read'); } catch (e) {}
+    var hit = n ? [n] : notifications;
+    hit.forEach(function (x) { x.read = true; });
+    if (DB.live && typeof Shop !== 'undefined' && Shop.live()) {
+      Shop.markAlertRead(n ? n.key : null).catch(function () {});
+    }
+    return notifications.filter(function (x) { return x.read; }).length;
   },
   sizeSets: SIZE_SETS,
   typeLabels: TYPE_LABELS,
@@ -749,73 +742,6 @@ var DB = {
 
   isOverdue: function (job) { return job.stage !== 'done' && DB.daysSince(job.deadline) > 0; },
 
-  /* ---- the bell -------------------------------------------------------
-     Derived from what the shop actually has, rebuilt after every hydrate.
-     These used to be five hardcoded lines naming a product the shop had
-     never stocked and a print job it had never taken — which is worse than
-     no bell at all, because somebody eventually acts on one.
-
-     Ordered by what it costs to ignore: a shirt somebody is trying to buy
-     right now, then a promise already broken, then money, then things that
-     are merely coming. Capped, because a list nobody finishes reading is a
-     list nobody reads. */
-  buildNotifications: function () {
-    var out = [];
-
-    /* Out of stock, not merely low — this is a sale being lost at the till. */
-    variants.filter(function (v) { return v.qty === 0; }).slice(0, 3).forEach(function (v) {
-      var p = DB.product(v.productId);
-      if (!p) return;
-      out.push({ icon: '!', tone: 'red', view: 'products',
-                 text: p.name + ' — size ' + v.size + ' out of stock' });
-    });
-
-    printJobs.filter(function (j) { return DB.isOverdue(j); })
-      .sort(function (a, b) { return DB.daysSince(b.deadline) - DB.daysSince(a.deadline); })
-      .slice(0, 3).forEach(function (j) {
-        var late = DB.daysSince(j.deadline);
-        out.push({ icon: '!', tone: 'red', view: 'print',
-                   text: 'Print job #' + j.id + ' is ' + late +
-                         (late === 1 ? ' day overdue' : ' days overdue') });
-      });
-
-    suppliers.filter(function (sp) {
-      return sp.outstanding > 0 && sp.dueDate && DB.daysSince(sp.dueDate) > -14;
-    }).sort(function (a, b) { return new Date(a.dueDate) - new Date(b.dueDate); })
-      .slice(0, 3).forEach(function (sp) {
-        var left = -DB.daysSince(sp.dueDate);
-        out.push({ icon: '$', tone: left < 0 ? 'red' : 'amber', view: 'reports',
-                   /* money() already carries the currency; adding it again
-                      read "415,000 SYP SYP". */
-                   text: sp.name + ' — ' + money(sp.outstanding) +
-                         (left < 0 ? ' overdue by ' + (-left) + ' days'
-                                   : ' due in ' + left + ' days') });
-      });
-
-    var crit = DB.criticalVariants().filter(function (v) { return v.qty > 0; }).length;
-    if (crit) {
-      out.push({ icon: '~', tone: 'amber', view: 'warehouse',
-                 text: crit + (crit === 1 ? ' SKU is' : ' SKUs are') + ' down to critical stock' });
-    }
-
-    /* Payroll: the soonest run, not one line per person. */
-    var soonest = employees.filter(function (e) { return e.nextPayment; })
-      .sort(function (a, b) { return new Date(a.nextPayment) - new Date(b.nextPayment); })[0];
-    if (soonest) {
-      var run = -DB.daysSince(soonest.nextPayment);
-      var who = employees.filter(function (e) {
-        return e.nextPayment &&
-               DB.daysSince(e.nextPayment) === DB.daysSince(soonest.nextPayment);
-      }).length;
-      out.push({ icon: 'P', tone: 'grey', view: 'reports',
-                 text: 'Payroll for ' + who + (who === 1 ? ' employee' : ' employees') +
-                       (run <= 0 ? ' is due now' : ' runs in ' + run + ' days') });
-    }
-
-    notifications.length = 0;
-    out.slice(0, 8).forEach(function (n) { notifications.push(n); });
-    return notifications;
-  },
 
   stageIndex: function (job) { return PRINT_STAGES.indexOf(job.stage); },
 
@@ -2294,8 +2220,36 @@ var DB = {
        is what lets sixteen call sites stay exactly as they are. */
     if (payload.partner) hydratePartner(payload.partner);
 
-    /* Last, because every alert is derived from something above it. */
-    DB.buildNotifications();
+    /* The bell is computed on the server now — per account, so supplier debt
+       and payroll only reach the people allowed to see them, and the read
+       state follows the person rather than the machine. */
+    if (payload.notifications) {
+      notifications.length = 0;
+      payload.notifications.forEach(function (n) { notifications.push(n); });
+    }
+
+    purchaseOrders.length = 0;
+    (payload.purchaseOrders || []).forEach(function (o) {
+      purchaseOrders.push({
+        id: o.id,
+        supplierId: o.supplier_id,
+        supplierName: o.supplier_name,
+        status: o.status,
+        note: o.note || '',
+        whId: o.wh_id,
+        created: o.created_at ? new Date(o.created_at) : null,
+        sentAt: o.sent_at ? new Date(o.sent_at) : null,
+        receivedAt: o.received_at ? new Date(o.received_at) : null,
+        lines: (o.lines || []).map(function (l) {
+          return {
+            sku: l.sku, productId: l.product_id, size: l.size,
+            name: l.product_name, qty: l.qty,
+            /* absent for anyone without cost.read — the server strips it */
+            cost: l.unit_cost, received: l.received_qty
+          };
+        })
+      });
+    });
 
     DB.live = true;
     return DB;

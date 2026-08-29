@@ -99,7 +99,7 @@ var ACTIONS = {
         : '') +
       '</h4>';
     DB.notifications.forEach(function (n, i) {
-      h += '<div class="notif-row' + (DB.isNotifRead(n) ? ' seen' : '') +
+      h += '<div class="notif-row' + (n.read ? ' seen' : '') +
         '" data-act="notif-go" data-i="' + i + '">' +
         '<span class="notif-dot ' + n.tone + '">' + n.icon + '</span><span>' + n.text + '</span></div>';
     });
