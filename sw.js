@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v49';
+var CACHE = 'og-system-v50';
 
 var SHELL = [
   './',
@@ -56,6 +56,7 @@ var SHELL = [
   'js/wedge.js',
   'js/stock.js',
   'js/money.js',
+  'js/selectbox.js',
   'js/palette.js',
   'js/whatsapp.js',
   'js/notify.js',
