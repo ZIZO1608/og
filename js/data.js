@@ -133,6 +133,9 @@ var CONFIG = {
      queue — see server/lib/printer.js's sendUsb()). */
   RECEIPT_TRANSPORT: 'tcp',
   RECEIPT_PRINTER_SHARE: '\\\\localhost\\OGRECEIPT',
+  RECEIPT_INSTAGRAM: 'https://www.instagram.com/og_sports_1',
+  RECEIPT_TELEGRAM: 'https://t.me/ogsports1',
+  RECEIPT_MAPS_URL: 'https://maps.app.goo.gl/i5VcMRV8sg4c7E639',
   RECEIPT_FOOTER_AR: 'شكراً لتسوقكم معنا',
   RECEIPT_FOOTER_EN: 'Thank you for shopping with us',
   RECEIPT_POLICY_AR: 'يمكن استبدال القطعة خلال 7 أيام من تاريخ الفاتورة بشرط إبراز هذه الفاتورة وعدم استخدام المنتج.',
@@ -2090,6 +2093,9 @@ var DB = {
     CONFIG.RECEIPT_WIDTH_DOTS   = num('receipt.width_dots', CONFIG.RECEIPT_WIDTH_DOTS);
     if (cfg['receipt.transport'] !== undefined) CONFIG.RECEIPT_TRANSPORT = cfg['receipt.transport'];
     if (cfg['receipt.printer_share'] !== undefined) CONFIG.RECEIPT_PRINTER_SHARE = cfg['receipt.printer_share'];
+    if (cfg['receipt.instagram'] !== undefined) CONFIG.RECEIPT_INSTAGRAM = cfg['receipt.instagram'];
+    if (cfg['receipt.telegram'] !== undefined) CONFIG.RECEIPT_TELEGRAM = cfg['receipt.telegram'];
+    if (cfg['receipt.maps_url'] !== undefined) CONFIG.RECEIPT_MAPS_URL = cfg['receipt.maps_url'];
     if (cfg['receipt.footer_ar'] !== undefined) CONFIG.RECEIPT_FOOTER_AR = cfg['receipt.footer_ar'];
     if (cfg['receipt.footer_en'] !== undefined) CONFIG.RECEIPT_FOOTER_EN = cfg['receipt.footer_en'];
     if (cfg['receipt.policy_ar'] !== undefined) CONFIG.RECEIPT_POLICY_AR = cfg['receipt.policy_ar'];

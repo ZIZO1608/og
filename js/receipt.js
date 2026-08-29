@@ -48,6 +48,34 @@ var Receipt = (function () {
     return logoPromise;
   }
 
+  /* Official Instagram/Telegram glyphs, sourced as real SVG (not redrawn
+     from memory — a wrong logo reads worse than none), loaded the exact
+     same way as the shop's own logo above. Vector stays vector until
+     js/escpos.js's packBitmap() thresholds it to pure black/white at print
+     time, same as the logo — no separate monochrome-PNG step needed. */
+  var igMarkPromise = null;
+  function loadInstagramMark() {
+    if (igMarkPromise) return igMarkPromise;
+    igMarkPromise = new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { resolve(null); };
+      img.src = 'assets/instagram-mark.svg';
+    });
+    return igMarkPromise;
+  }
+  var tgMarkPromise = null;
+  function loadTelegramMark() {
+    if (tgMarkPromise) return tgMarkPromise;
+    tgMarkPromise = new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { resolve(null); };
+      img.src = 'assets/telegram-mark.svg';
+    });
+    return tgMarkPromise;
+  }
+
   function fontsReady() {
     return (typeof document !== 'undefined' && document.fonts && document.fonts.ready)
       ? document.fonts.ready
@@ -71,6 +99,13 @@ var Receipt = (function () {
        language," it doesn't: that is the bug this comment exists to
        prevent. */
     return Math.round(Number(n) || 0).toLocaleString('en-US');
+  }
+
+  /* "https://www.instagram.com/og_sports_1" -> "instagram.com/og_sports_1".
+     A receipt is not a browser — nobody taps this — so the scheme/www is
+     dead weight, and every character here is a fraction of a mm of roll. */
+  function shortUrl(url) {
+    return String(url || '').replace(/^https?:\/\/(www\.)?/i, '');
   }
 
   function currencySuffix(code, ar) {
@@ -221,6 +256,26 @@ var Receipt = (function () {
     return y + Math.round(size * 1.5);
   }
 
+  /* A small square mark immediately left of a line of text, the pair
+     centered together as one block — used for the Instagram/Telegram rows.
+     y is the text's baseline; the mark is sized off the text size and
+     nudged up so its visual center roughly lines up with the text's
+     x-height rather than sitting on the baseline itself. */
+  function iconTextRow(ctx, y, iconImg, text, size) {
+    size = size || 15;
+    setFont(ctx, size);
+    var textW = ctx.measureText(String(text || '')).width;
+    var iconSize = Math.round(size * 1.7), gap = 8;
+    var hasIcon = !!iconImg;
+    var totalW = (hasIcon ? iconSize + gap : 0) + textW;
+    var x0 = Math.round((W - totalW) / 2);
+    if (hasIcon) {
+      ctx.drawImage(iconImg, x0, y - iconSize + Math.round(size * 0.28), iconSize, iconSize);
+    }
+    textAt(ctx, text, x0 + (hasIcon ? iconSize + gap : 0), y, { size: size, dir: 'ltr', align: 'left' });
+    return y + Math.round(size * 1.7);
+  }
+
   /* ------------------------------------------------------ codes: barcode */
 
   function drawBarcode(ctx, y, text) {
@@ -256,17 +311,15 @@ var Receipt = (function () {
     return y + 8;
   }
 
-  function drawQr(ctx, y, payload, fallback) {
-    if (typeof Codes === 'undefined' || !Codes.qrMatrix) return y;
-    var qr = Codes.qrMatrix(payload) || Codes.qrMatrix(fallback);
-    if (!qr) return y;
-
+  /* Draws one QR's modules centered on cx, sized to fit maxPx. Returns the
+     drawn side length (0 if there was nothing to draw) so the caller can
+     line up labels under whichever QR(s) actually rendered. */
+  function paintQr(ctx, qr, cx, y, maxPx) {
+    if (!qr) return 0;
     var quiet = 3, total = qr.size + quiet * 2;
-    var px = Math.min(240, CW);
-    var scale = Math.max(1, Math.floor(px / total));
+    var scale = Math.max(1, Math.floor(maxPx / total));
     var side = scale * total;
-    var x0 = Math.round((W - side) / 2);
-
+    var x0 = Math.round(cx - side / 2);
     ctx.save();
     ctx.fillStyle = '#000';
     for (var r = 0; r < qr.size; r++) {
@@ -275,7 +328,38 @@ var Receipt = (function () {
       }
     }
     ctx.restore();
-    return y + side + 14;
+    return side;
+  }
+
+  /* One QR (existing "view online" link) or two side by side (that one
+     plus the Telegram deep-link) — the receipt keeps both scannable
+     purposes rather than one replacing the other, confirmed with the shop
+     owner: the existing /i/:token web view and the new Telegram bot link
+     are genuinely separate destinations, not the same QR repointed.
+     `right` is optional; with it omitted this draws exactly like the
+     single-QR layout used to. */
+  function drawQrPair(ctx, y, left, right) {
+    if (typeof Codes === 'undefined' || !Codes.qrMatrix) return y;
+    var leftQr = left && (Codes.qrMatrix(left.payload) || (left.fallback && Codes.qrMatrix(left.fallback)));
+    var rightQr = right && (Codes.qrMatrix(right.payload) || (right.fallback && Codes.qrMatrix(right.fallback)));
+    if (!leftQr && !rightQr) return y;
+
+    var gap = 24;
+    var slot = rightQr ? Math.floor((CW - gap) / 2) : CW;
+    var maxPx = Math.min(200, slot);
+
+    var leftCx = rightQr ? (W / 2 - slot / 2 - gap / 2) : W / 2;
+    var rightCx = W / 2 + slot / 2 + gap / 2;
+
+    var leftSide = paintQr(ctx, leftQr, leftCx, y, maxPx);
+    var rightSide = paintQr(ctx, rightQr, rightCx, y, maxPx);
+    var maxSide = Math.max(leftSide, rightSide);
+
+    var labelY = y + maxSide + 20;
+    if (leftQr && left.label) textAt(ctx, left.label, leftCx, labelY, { size: 13, dir: 'rtl', align: 'center' });
+    if (rightQr && right.label) textAt(ctx, right.label, rightCx, labelY, { size: 13, dir: 'rtl', align: 'center' });
+
+    return labelY + 12;
   }
 
   /* ------------------------------------------------------------ sections */
@@ -313,9 +397,15 @@ var Receipt = (function () {
   }
 
   function drawHeader(ctx, y, R) {
+    /* No street address here on purpose — the customer holding this paper
+       is standing in the shop; the address line stopped being useful the
+       moment it printed. What replaces it, further down, is how to find
+       the shop again: the contact block (drawContact) with Instagram,
+       Telegram and the maps link. shop.address itself is untouched and
+       still used elsewhere (customer-facing delivery slips, etc.) — only
+       this one printed line goes away. */
     y = centerText(ctx, (R.shop.name || 'OG SPORTS').toUpperCase(), y, { size: 30, weight: '800' });
     if (R.shop.branch) y = centerText(ctx, R.shop.branch, y, { size: 18, dir: 'rtl' });
-    if (R.shop.address) y = centerText(ctx, R.shop.address, y, { size: 18, dir: 'rtl' });
     if (R.shop.phone) y = centerText(ctx, R.shop.phone, y, { size: 18, dir: 'ltr' });
     return y + 4;
   }
@@ -416,9 +506,36 @@ var Receipt = (function () {
 
   function drawCodes(ctx, y, R) {
     y = dashRule(ctx, y);
-    if (R.showBarcode) y = drawBarcode(ctx, y, R.id);
-    if (R.showQr) y = drawQr(ctx, y, R.qrPayload, R.id);
+    if (R.showBarcode) {
+      y = drawBarcode(ctx, y, R.id);
+      y = centerText(ctx, both('rc2_scan_exchange'), y, { size: 13, dir: 'rtl' });
+    }
+    if (R.showQr) {
+      y += 8;
+      y = drawQrPair(ctx,
+        y,
+        { payload: R.qrPayload, fallback: R.id, label: both('rc2_view_online') },
+        R.telegramQrPayload
+          ? { payload: R.telegramQrPayload, label: both('rc2_get_telegram') }
+          : null
+      );
+    }
     return y;
+  }
+
+  /* Instagram, Telegram, the maps link — printed here, not in the header,
+     because the customer is standing in the shop when this comes off the
+     printer: the street address stopped being useful the moment it did,
+     but "find us again" and "reach us online" stay useful long after they
+     leave. Icons are optional-safe (icon load failure just draws the text
+     alone, same graceful-degrade shape drawLogo already uses for the shop
+     logo) so a slow/broken asset load never blocks a receipt printing. */
+  function drawContact(ctx, y, R, igImg, tgImg) {
+    if (!R.instagram && !R.telegram && !R.mapsUrl) return y;
+    if (R.instagram) y = iconTextRow(ctx, y, igImg, shortUrl(R.instagram), 15);
+    if (R.telegram) y = iconTextRow(ctx, y, tgImg, shortUrl(R.telegram), 15);
+    if (R.mapsUrl) y = centerText(ctx, shortUrl(R.mapsUrl), y, { size: 13, dir: 'ltr' });
+    return y + 6;
   }
 
   function drawPolicy(ctx, y, R) {
@@ -446,8 +563,8 @@ var Receipt = (function () {
   /* --------------------------------------------------------------- draw */
 
   function draw(R, copyLabel) {
-    return Promise.all([loadLogo(), fontsReady()]).then(function (res) {
-      var logoImg = res[0];
+    return Promise.all([loadLogo(), fontsReady(), loadInstagramMark(), loadTelegramMark()]).then(function (res) {
+      var logoImg = res[0], igImg = res[2], tgImg = res[3];
 
       /* Height cannot be known before drawing, and resizing a canvas clears
          it — so the layout runs once into a generously tall scratch canvas,
@@ -474,6 +591,7 @@ var Receipt = (function () {
       y = drawTotals(ctx, y, R);
       y = drawPayment(ctx, y, R);
       y = drawCodes(ctx, y, R);
+      y = drawContact(ctx, y, R, igImg, tgImg);
       y = drawPolicy(ctx, y, R);
       y = drawFooter(ctx, y, R);
       y += 24;   // trailing feed so the footer isn't eaten by the cutter
@@ -499,7 +617,9 @@ var Receipt = (function () {
       footerAr: CONFIG.RECEIPT_FOOTER_AR, footerEn: CONFIG.RECEIPT_FOOTER_EN,
       policyAr: CONFIG.RECEIPT_POLICY_AR, policyEn: CONFIG.RECEIPT_POLICY_EN,
       showQr: !!CONFIG.RECEIPT_SHOW_QR, showBarcode: !!CONFIG.RECEIPT_SHOW_BARCODE,
-      showLoyalty: !!CONFIG.RECEIPT_SHOW_LOYALTY
+      showLoyalty: !!CONFIG.RECEIPT_SHOW_LOYALTY,
+      instagram: CONFIG.RECEIPT_INSTAGRAM, telegram: CONFIG.RECEIPT_TELEGRAM,
+      mapsUrl: CONFIG.RECEIPT_MAPS_URL
     };
   }
 
@@ -509,6 +629,16 @@ var Receipt = (function () {
       return base + '/i/' + token;
     }
     return (CONFIG.SHOP_NAME || 'OG').toUpperCase() + ' | ' + id;
+  }
+
+  /* PLACEHOLDER — piece 4 of the receipt-delivery work replaces this with
+     the real https://t.me/<bot>?start=<token> deep link once the Telegram
+     bot and its token table exist. Until then the second QR points at the
+     Instagram profile (still a real, useful destination) rather than at
+     nothing, per the agreed staging: ship the two-QR layout now, swap the
+     payload later without touching layout code again. */
+  function telegramQrPayloadFor(instagramUrl) {
+    return instagramUrl || null;
   }
 
   /* From GET /api/sales/:id/receipt — amounts are minor units, straight off
@@ -549,6 +679,14 @@ var Receipt = (function () {
         address: payload.shop.address, phone: payload.shop.phone
       },
       qrPayload: qrPayloadFor(payload.id, null),
+      /* payload.receipt.instagram/.telegram/.maps_url arrive here for free —
+         server/lib/printing.js's configBlock() already forwards every
+         receipt.* config key generically (strips the prefix, keeps the
+         rest as the key), so the new migration's rows reach the client
+         with no server-side code change. */
+      instagram: payload.receipt.instagram, telegram: payload.receipt.telegram,
+      mapsUrl: payload.receipt.maps_url,
+      telegramQrPayload: telegramQrPayloadFor(payload.receipt.instagram),
       footerAr: payload.receipt.footer_ar, footerEn: payload.receipt.footer_en,
       policyAr: payload.receipt.policy_ar, policyEn: payload.receipt.policy_en,
       showQr: payload.receipt.show_qr === '1', showBarcode: payload.receipt.show_barcode === '1',
@@ -582,6 +720,8 @@ var Receipt = (function () {
         address: CONFIG.SHOP_ADDRESS, phone: CONFIG.SHOP_PHONE
       },
       qrPayload: qrPayloadFor(sale.id, sale.publicToken),
+      instagram: cfg.instagram, telegram: cfg.telegram, mapsUrl: cfg.mapsUrl,
+      telegramQrPayload: telegramQrPayloadFor(cfg.instagram),
       footerAr: cfg.footerAr, footerEn: cfg.footerEn,
       policyAr: cfg.policyAr, policyEn: cfg.policyEn,
       showQr: cfg.showQr, showBarcode: cfg.showBarcode, showLoyalty: cfg.showLoyalty

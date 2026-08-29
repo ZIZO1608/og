@@ -487,6 +487,9 @@ var ACTIONS = {
       'receipt.transport':    transport,
       'shop.branch_name':     (document.getElementById('rcBranch') || {}).value || '',
       'shop.phone':           (document.getElementById('rcPhone') || {}).value || '',
+      'receipt.instagram':    (document.getElementById('rcInstagram') || {}).value || '',
+      'receipt.telegram':     (document.getElementById('rcTelegram') || {}).value || '',
+      'receipt.maps_url':     (document.getElementById('rcMapsUrl') || {}).value || '',
       'receipt.auto_print':   (document.getElementById('rcAutoPrint') || {}).checked ? '1' : '0',
       'receipt.copies':       (document.getElementById('rcCopies') || {}).value || '2',
       'receipt.cut_mode':     ((document.getElementById('rcCutMode') || {}).getAttribute &&

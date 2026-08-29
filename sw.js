@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v65';
+var CACHE = 'og-system-v66';
 
 var SHELL = [
   './',
@@ -32,6 +32,8 @@ var SHELL = [
   'css/print-hardware-receipt-newlabels.css',
   'assets/fonts/fonts.css',
   'assets/logo.svg',
+  'assets/instagram-mark.svg',
+  'assets/telegram-mark.svg',
   'assets/cursor.svg',
   'assets/cursor-pointer.svg',
   'assets/yalla-wear.svg',

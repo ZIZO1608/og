@@ -380,6 +380,19 @@ function receiptSettingsCard() {
       '<input class="inp num" dir="ltr" id="rcPhone" value="' + esc(CONFIG.SHOP_PHONE) + '"' + dis + '></label>' +
   '</div>';
 
+  /* Printed on the receipt in place of the street address (drawHeader() no
+     longer prints it — the customer is standing in the shop already). */
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_instagram') + '</span>' +
+      '<input class="inp num" dir="ltr" id="rcInstagram" value="' + esc(CONFIG.RECEIPT_INSTAGRAM) + '"' + dis + '></label>' +
+    '<label class="field"><span>' + t('rc3_telegram') + '</span>' +
+      '<input class="inp num" dir="ltr" id="rcTelegram" value="' + esc(CONFIG.RECEIPT_TELEGRAM) + '"' + dis + '></label>' +
+  '</div>';
+  h += '<div class="row2">' +
+    '<label class="field" style="grid-column:1/-1"><span>' + t('rc3_maps_url') + '</span>' +
+      '<input class="inp num" dir="ltr" id="rcMapsUrl" value="' + esc(CONFIG.RECEIPT_MAPS_URL) + '"' + dis + '></label>' +
+  '</div>';
+
   h += '<div class="rule-row"><div class="rr-txt"><b>' + t('rc3_auto_print') + '</b>' +
     '<small>' + t('rc3_auto_print_hint') + '</small></div>' +
     '<label class="switch"><input type="checkbox" id="rcAutoPrint"' +
