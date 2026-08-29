@@ -129,6 +129,25 @@ body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-badge {
   border-radius: var(--radius-full); font-size: 0; line-height: 0; overflow: hidden;
 }
 
+/* ---- the Sync button -----------------------------------------------------
+   Pushing the shop to Supabase takes a few seconds against a shop
+   connection, which is long enough that a button doing nothing visible reads
+   as a button that did not work. So it spins for exactly as long as the
+   server is actually working, and stops on the real answer. */
+.sync-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.sync-btn:hover { color: var(--brand); border-color: var(--brand); }
+.sync-btn[disabled] { opacity: 1; cursor: progress; color: var(--brand); border-color: var(--brand); }
+.sync-btn.spinning svg { animation: syncSpin .9s linear infinite; transform-origin: 50% 50%; }
+@keyframes syncSpin { to { transform: rotate(360deg); } }
+
+/* Someone who has asked for less motion still needs to know it is working —
+   they get a steady pulse instead of a spin. */
+@media (prefers-reduced-motion: reduce) {
+  .sync-btn.spinning svg { animation: none; }
+  .sync-btn.spinning { animation: syncPulse 1s ease-in-out infinite; }
+  @keyframes syncPulse { 50% { opacity: .45; } }
+}
+
 .main { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 
 /* ----------------------------------------------------------------- TOPBAR */

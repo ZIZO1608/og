@@ -312,6 +312,22 @@ function renderTopbar() {
       '<div id="searchResults"></div>' +
     '</div>' +
     '<div class="spacer"></div>' +
+
+    /* Push to Supabase on demand. The mirror already runs on a timer, but
+       somebody who has just finished a stock count wants it up NOW rather
+       than within ten minutes.
+
+       Hidden in demo mode and for anyone without config.write, because in
+       both cases pressing it could only ever produce an error: there is no
+       server to push from, or no permission to do it. */
+    (allow('config.write') && !(typeof Auth === 'undefined' || Auth.demoMode())
+      ? '<button class="icon-btn sync-btn" data-act="sync-now" ' +
+          'title="' + esc(t('sync_now')) + '" aria-label="' + esc(t('sync_now')) + '">' +
+          '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
+            '<path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.7-4.4M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.7 4.4"/>' +
+            '<path d="M21 4v5h-5M3 20v-5h5"/></svg></button>'
+      : '') +
+
     '<div class="seg">' +
       '<button data-act="lang" data-val="en" class="' + (OG.lang === 'en' ? 'on' : '') + '">EN</button>' +
       '<button data-act="lang" data-val="ar" class="' + (OG.lang === 'ar' ? 'on' : '') + '">ع</button>' +

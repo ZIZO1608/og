@@ -293,6 +293,26 @@ router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
    Settings card, not as a general "edit the config table" backdoor. */
 const CONFIG_WRITABLE = /^receipt\.|^shop\.(branch_name|phone)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|logo_asset|code_source|max_batch|lease_minutes|calibrate_cmd)$/;
 
+/* ---- the Sync button in the topbar --------------------------------------
+   The mirror already runs on a timer, but somebody who has just finished a
+   stock count wants to know it is up NOW rather than within ten minutes.
+
+   config.write, so it is a manager thing: this reaches out to the internet
+   and rewrites the mirror, which is not something a cashier should be able
+   to set off from the till. It waits for the real verdict rather than
+   answering "started" — a button that always says success teaches people to
+   stop believing it. */
+router.add('POST /api/sync/push', requirePerm('config.write', async (ctx) => {
+  const r = await SyncWorker.runNow();
+  if (r.ok) return sendOk(ctx.res, { seconds: r.seconds });
+
+  /* 409 for "already running" — the request was fine, the moment was not.
+     503 for anything else, since the failure is the mirror being out of
+     reach rather than the caller doing something wrong. */
+  const status = r.reason === 'busy' ? 409 : 503;
+  return sendError(ctx.res, status, r.reason, r.message);
+}));
+
 router.add('PUT /api/config', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   const updates = b.updates && typeof b.updates === 'object' ? b.updates : {};

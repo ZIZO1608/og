@@ -127,6 +127,44 @@ export function start() {
   timer.unref();
 }
 
+/* The same run, but awaitable and with a verdict — for the Sync button in
+   the topbar, which has somebody standing there waiting for an answer. The
+   timer path deliberately stays fire-and-forget: nobody is watching it, and
+   a promise nobody awaits is just a way to lose an error. */
+export function runNow() {
+  return new Promise((done) => {
+    if (!SB.isConfigured()) {
+      return done({ ok: false, reason: 'not_configured',
+        message: 'Supabase is not set up on this server.' });
+    }
+    if (running) {
+      /* Not a failure. Somebody pressed twice, or the timer beat them to it. */
+      return done({ ok: false, reason: 'busy', message: 'A sync is already running.' });
+    }
+
+    running = true;
+    const started = Date.now();
+    const child = spawn(process.execPath, [SCRIPT], {
+      cwd: resolve(HERE, '..'), stdio: 'ignore', windowsHide: true
+    });
+
+    child.on('exit', (code) => {
+      running = false;
+      runs++;
+      const seconds = Math.round((Date.now() - started) / 1000);
+      done(code === 0
+        ? { ok: true, seconds }
+        : { ok: false, reason: 'failed', seconds,
+            message: 'The sync script exited with code ' + code + '.' });
+    });
+
+    child.on('error', (err) => {
+      running = false;
+      done({ ok: false, reason: 'spawn', message: err.message });
+    });
+  });
+}
+
 export function stop() {
   if (timer) { clearInterval(timer); timer = null; }
 }

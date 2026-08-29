@@ -115,6 +115,9 @@ var EXTRA_V3_EN = {
 
   /* per-piece print picks at the till */
   sb_collapse: 'Collapse / expand the sidebar',
+  sync_now: 'Upload everything to Supabase',
+  sync_done: 'Mirror updated in {s}s',
+  sync_busy: 'A sync is already running — give it a moment.',
   pos_hide_products: 'Hide the products · focus on the cart',
   pos_show_products: 'Show the products',
   pos_resize: 'Drag to resize · double-click to reset',
@@ -220,6 +223,9 @@ var EXTRA_V3_AR = {
   yl_turnaround: 'متوسط مدة الإنجاز', yl_turnaround_sub: 'من استلام الطلب حتى التسليم',
 
   sb_collapse: 'طي / توسيع القائمة الجانبية',
+  sync_now: 'رفع كل البيانات إلى Supabase',
+  sync_done: 'تم تحديث النسخة خلال {s} ثانية',
+  sync_busy: 'هناك مزامنة جارية بالفعل — انتظر قليلاً.',
   pos_hide_products: 'إخفاء المنتجات · التركيز على السلة',
   pos_show_products: 'إظهار المنتجات',
   pos_resize: 'اسحب لتغيير العرض · نقرة مزدوجة للإرجاع',

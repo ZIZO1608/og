@@ -29,6 +29,34 @@ var ACTIONS = {
     renderSidebar();
   },
 
+  /* Push everything to Supabase now. The timer already does this every ten
+     minutes; this is for the moment somebody has just finished a stock count
+     and wants to see it land.
+
+     The button reports the real verdict — it spins while the server works and
+     then says what happened. A button that always flashes green teaches
+     people to stop believing it, which is worse than no button. */
+  'sync-now': function (el) {
+    if (el.disabled) return;
+    el.disabled = true;
+    el.classList.add('spinning');
+
+    API.post('/api/sync/push', {})
+      .then(function (r) {
+        toast(t('sync_now'), t('sync_done').replace('{s}', r.seconds || 0), 'ok', 3500);
+        /* The mirror changed, not the shop — nothing on screen is stale, so
+           there is deliberately no re-render here. */
+      })
+      .catch(function (e) {
+        var busy = e && e.code === 'busy';
+        toast(t('sync_now'), busy ? t('sync_busy') : API.friendly(e), busy ? 'warn' : 'err', 6000);
+      })
+      .then(function () {
+        el.disabled = false;
+        el.classList.remove('spinning');
+      });
+  },
+
   lang: function (el) {
     OG.lang = el.getAttribute('data-val');
     applyLang();
