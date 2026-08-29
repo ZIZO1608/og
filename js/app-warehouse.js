@@ -419,18 +419,12 @@ function whAddTab() {
         ? '<img class="up-img" src="' + OG.wh.imgSrc + '" alt="">' +
           '<span class="up-swap">' + t('up_swap') + '</span>' +
           '<button class="up-x" data-act="wh-image-clear" title="' + esc(t('remove')) + '">✕</button>'
-        : OG.wh.img
-          ? '<span class="up-preview" style="background:' + OG.wh.img + '">' +
-              (OG.wh.name.slice(0, 2).toUpperCase() || 'OG') + '</span>' +
-            '<button class="up-x" data-act="wh-image-clear" title="' + esc(t('remove')) + '">✕</button>'
-          : '<span class="up-empty">' +
-              '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
-                '<path d="M3 16l5-5 4 4 3-3 6 6M3 5h18v14H3zM8.5 9.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></svg>' +
-              '<b>' + t('up_pick') + '</b><small>' + t('up_hint') + '</small></span>') +
+        : '<span class="up-empty">' +
+            '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
+              '<path d="M3 16l5-5 4 4 3-3 6 6M3 5h18v14H3zM8.5 9.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></svg>' +
+            '<b>' + t('up_pick') + '</b><small>' + t('up_hint') + '</small></span>') +
     '</div>' +
     '<input type="file" id="whFile" accept="image/*" hidden>' +
-    '<button class="btn btn-sm btn-ghost btn-block mt-xs" data-act="wh-image-colour">' +
-      t('up_colour') + '</button>' +
   '</div>';
 
   h += '<div>' +

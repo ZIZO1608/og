@@ -662,14 +662,6 @@ var ACTIONS = {
     render();
   },
 
-  /* The colour block is still offered — it is genuinely the faster choice
-     when he is entering thirty items and has no photos. */
-  'wh-image-colour': function () {
-    var palette = ['#4A4A52', '#3E5C8A', '#8E3B3B', '#B5822F', '#6B5B45', '#6455A0', '#3A5478', '#2F5744'];
-    OG.wh.imgSrc = null;
-    OG.wh.img = palette[Math.floor(Math.random() * palette.length)];
-    render();
-  },
   'wh-labels': function () { openLabelSheet(null); },
 
   'cu-new': function (el) {

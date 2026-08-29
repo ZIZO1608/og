@@ -24,7 +24,6 @@
   transition: border-color var(--t), background var(--t), color var(--t);
 }
 .upload-box:hover { border-color: var(--brand); background: var(--accent); color: var(--foreground); }
-.upload-box .up-preview { position: absolute; inset: 0; display: grid; place-items: center; color: #FFFFFF; font-family: var(--font-head); font-weight: 800; font-size: 42px; }
 
 /* Once a photo is in, the dashed "drop something here" border is no longer
    telling the truth — it becomes a solid frame around real content. */
