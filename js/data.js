@@ -1208,6 +1208,13 @@ var DB = {
     return jobMessages.filter(function (m) { return !m[f]; });
   },
 
+  /* Reading a thread on one side never clears the other side's badge — the
+     two flags are tracked apart on purpose.
+
+     This is optimistic rather than server-first: a badge that waits for a
+     round trip before it clears makes opening a thread feel broken, and the
+     worst case if the push fails is a badge that comes back. It did not push
+     at all before, so the badge came back on every single reload. */
   markRead: function (side, filter) {
     var f = side === 'og' ? 'readOg' : 'readYl', n = 0;
     jobMessages.forEach(function (m) {
@@ -1216,6 +1223,15 @@ var DB = {
       if (filter && filter.invoiceId && m.invoiceId !== filter.invoiceId) return;
       m[f] = true; n++;
     });
+
+    /* Only when a thread was named. The server marks a job or an invoice, not
+       "everything", so a blanket call would have nothing to address. */
+    if (n && filter && (filter.jobId || filter.invoiceId)) {
+      pushPartner(function () {
+        return Shop.markMsgRead({ jobId: filter.jobId || null,
+                                  invoiceId: filter.invoiceId || null });
+      }, typeof t === 'function' ? t('messages') : 'Messages', true);
+    }
     return n;
   },
 
@@ -2319,10 +2335,15 @@ function clubCodeFor(name) {
   return null;
 }
 
-function pushPartner(send, title) {
+/* `quiet` skips the reload on success, for a write whose only effect is one
+   the browser has already applied identically — marking a thread read being
+   the case. Opening a thread should not cost a full refetch of the shop, and
+   there is nothing the server would send back that is not already on screen.
+   A failure still reloads: then the screen really is lying. */
+function pushPartner(send, title, quiet) {
   if (!DB.live || typeof Shop === 'undefined' || !Shop.live()) return;
   send()
-    .then(function () { return Shop.reload(); })
+    .then(function () { return quiet ? null : Shop.reload(); })
     .catch(function (err) {
       if (typeof toast === 'function') {
         toast(title, (typeof API !== 'undefined' && API.friendly) ? API.friendly(err)

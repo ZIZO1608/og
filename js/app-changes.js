@@ -57,6 +57,20 @@ var CHANGES = {
     if (!allow('product.write')) { el.checked = !el.checked; return; }
     var p = DB.product(+el.getAttribute('data-id'));
     p.hidden = !el.checked;
+    p.archived = p.hidden;
+    /* Optimistic: the switch has already moved under the finger, and waiting
+       for a round trip before it settles reads as a broken toggle. It pushed
+       nothing at all before, so the switch flicked back on the next reload. */
+    if (typeof Shop !== 'undefined' && Shop.live()) {
+      Shop.hideProduct(p.id, p.hidden)
+        .then(function () { return Shop.reload(); })
+        .catch(function (err) {
+          el.checked = !el.checked;
+          p.hidden = !p.hidden;
+          p.archived = p.hidden;
+          toast(p.name, API.friendly(err), 'err', 6000);
+        });
+    }
     toast(p.name, p.hidden
       ? (OG.lang === 'ar' ? 'أُخفي عن المتجر' : 'Hidden from the storefront')
       : (OG.lang === 'ar' ? 'ظاهر في المتجر' : 'Visible on the storefront'), 'ok', 2000);

@@ -307,16 +307,40 @@ var ACTIONS = {
     if (!lines.length) { toast(t('reorder'), t('po_need_qty'), 'warn'); return; }
 
     var supId = +(document.getElementById('poSupplier') || {}).value || DB.supplierFor(p).id;
-    var po = DB.newPO(supId, lines, p.name);
-    DB.sendPO(po);
 
-    closeModal();
-    render();
-    toast(po.id + ' → ' + DB.supplier(supId).name,
-      DB.poPieces(po) + ' ' + t('pieces') + ' · ' + money(DB.poTotal(po)), 'ok', 5000, {
-        label: t('po_whatsapp'),
-        attrs: 'data-act="po-whatsapp" data-id="' + po.id + '"'
-      });
+    /* The server keys a line on its sku — which is what the shop reads off
+       the box when the delivery arrives — so the product+size pair is
+       resolved here rather than sent as two halves. */
+    var srvLines = lines.map(function (l) {
+      var v = DB.variants.filter(function (x) {
+        return x.productId === l.productId && x.size === l.size;
+      })[0];
+      return v ? { sku: v.sku, qty: l.qty, unitCost: l.cost } : null;
+    }).filter(Boolean);
+
+    Shop.write(
+      function () {
+        return Shop.newPO({
+          supplierId: supId, whId: DB.intakeWh, note: p.name, lines: srvLines
+        }).then(function (r) {
+          /* Raised and placed in one gesture, the way the screen presents it. */
+          return Shop.sendPO(r.po.id).then(function (sent) { return sent; });
+        });
+      },
+      function () { var local = DB.newPO(supId, lines, p.name); DB.sendPO(local); return local; },
+      function (res) {
+        /* The server hands out the real order number; the local one was a
+           guess made before it answered. */
+        var po = (res && res.po) ? DB.po(res.po.id) || res.po : res;
+        closeModal();
+        render();
+        toast(po.id + ' → ' + DB.supplier(supId).name,
+          DB.poPieces(po) + ' ' + t('pieces') + ' · ' + money(DB.poTotal(po)), 'ok', 5000, {
+            label: t('po_whatsapp'),
+            attrs: 'data-act="po-whatsapp" data-id="' + po.id + '"'
+          });
+      }
+    );
   },
 
   /* Send the order to the supplier on WhatsApp — which is how these orders
@@ -342,12 +366,19 @@ var ACTIONS = {
     var po = DB.po(el.getAttribute('data-id'));
     if (!po || po.status === 'received') return;
 
-    /* Purchase orders themselves have no server table yet — they live in this
-       browser. The STOCK they raise does not: an arrival that only exists here
-       would be gone on the next reload while the boxes are on the floor. So
-       the pieces go through the same receive endpoint a scan uses, and the
-       order's own paperwork is updated afterwards. */
+    /* One call, not one per line. The server books every piece through the
+       movement log AND moves the supplier balance in a single transaction,
+       so a delivery either lands whole or not at all.
+
+       This used to fire N parallel Shop.receive calls and then patch the
+       order's own paperwork locally — which meant the stock persisted, the
+       order status and the supplier balance did not, and a retry could book
+       the same boxes twice. Calling both would now double the stock. */
+    /* A hydrated line already carries its sku; a locally built one still has
+       the product+size pair it was raised from. Both shapes resolve here so
+       the label offer below works either way. */
     var lines = po.lines.map(function (l) {
+      if (l.sku) return { sku: l.sku, qty: l.qty };
       var v = DB.variants.filter(function (x) {
         return x.productId === l.productId && x.size === l.size;
       })[0];
@@ -355,17 +386,9 @@ var ACTIONS = {
     }).filter(Boolean);
 
     Shop.write(
-      function () {
-        return Promise.all(lines.map(function (l) {
-          return Shop.receive(l.sku, DB.intakeWh, l.qty, 'Received on ' + po.id);
-        }));
-      },
+      function () { return Shop.receivePO(po.id); },
       function () { DB.receivePO(po); },
       function () {
-        /* In live mode the stock is already booked and re-read, so only the
-           order's own state is left to move — passing `true` stops it raising
-           the same pieces a second time. */
-        if (Shop.live()) DB.receivePO(po, true);
         render();
         toast(po.id, DB.poPieces(po) + ' ' + t('pieces') + ' · ' + t('po_received_toast'), 'ok', 4000);
 
@@ -919,20 +942,31 @@ var ACTIONS = {
 
   'og-open-inv': function (el) { openPartnerInvoice(el.getAttribute('data-id')); },
 
-  /* OG settles the bill. This writes into the same invoice object the partner
-     portal renders, so switching portals shows it already paid — no sync. */
+  /* OG settles the bill. Both portals read the same invoice, so paying it
+     here shows it paid there — the row is one row, not a copy.
+
+     Money leaving the shop, so it goes server-first rather than optimistic.
+     It used to write the payment into memory and then post a message, and
+     the reload that message triggered wiped the payment about a second
+     later: the bill showed itself unpaid again with the cash gone. */
   'og-pay-inv': function (el) {
     var inv = DB.invoice(el.getAttribute('data-id'));
     if (!inv) return;
     var bal = DB.invoiceBalance(inv);
     if (bal <= 0) return;
-    DB.payInvoice(inv, bal, 'cash');
-    DB.postMessage({ invoiceId: inv.id, from: 'og', kind: 'invoice',
-      text: t('og_paid_msg') + ' ' + money(bal) + ' — ' + inv.id });
-    closeModal();
-    toast(inv.id, money(bal) + ' · ' + t('og_paid_toast'), 'ok', 3200);
-    render();
-    if (typeof Notify !== 'undefined') Notify.refresh();
+
+    Shop.write(
+      function () { return Shop.payInvoice(inv.id, { amount: bal, method: 'cash' }); },
+      function () { DB.payInvoice(inv, bal, 'cash'); },
+      function () {
+        DB.postMessage({ invoiceId: inv.id, from: 'og', kind: 'invoice',
+          text: t('og_paid_msg') + ' ' + money(bal) + ' — ' + inv.id });
+        closeModal();
+        toast(inv.id, money(bal) + ' · ' + t('og_paid_toast'), 'ok', 3200);
+        render();
+        if (typeof Notify !== 'undefined') Notify.refresh();
+      }
+    );
   },
 
   /* Fill in the names Yalla Wear is waiting on. Reads the inputs already in

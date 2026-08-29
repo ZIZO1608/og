@@ -4,11 +4,13 @@
    Turns the filters into a tool: filter to Size gaps -> select all -> print
    labels. One selection engine, six scopes, a floating action bar.
 
-   Destructive work is two-step: archive is the everyday action (recoverable
-   from a filter chip, and sales history keeps resolving because the record is
-   never removed), delete is behind it for real mistakes. Both push an undo
-   snapshot and raise a toast with an Undo button for 8 seconds — that is the
-   safety net if he wipes the catalogue in front of the client.
+   Archive is the destructive action, and the only one: the record stays, so
+   every past sale keeps resolving, and a filter chip brings it back. There is
+   no delete — see ACTIONS_FOR below for why.
+
+   Every action pushes to the server row by row, and so does its undo. An undo
+   that only reverses the screen while the server keeps the change is worse
+   than no undo at all, because it tells you the mistake is fixed.
    ========================================================================== */
 
 var Bulk = (function () {
@@ -86,6 +88,14 @@ var Bulk = (function () {
     return DB.printJobs.filter(function (j) { return set[j.id]; });
   }
 
+  /* There is no Delete.
+
+     There used to be, and it did nothing: it spliced the rows out of the
+     local arrays, showed an undo bar, and the next reload brought every one
+     of them back. There is no delete route to wire it to either, and that is
+     deliberate — a deleted product breaks every past sale that references it,
+     which is why server/lib/catalogue.js hides instead. Archive is the same
+     gesture, it is what the shop actually means, and it persists. */
   var ACTIONS_FOR = {
     products: [
       { id: 'labels', key: 'lb_studio', primary: true },
@@ -93,15 +103,13 @@ var Bulk = (function () {
       { id: 'hide',   key: 'bk_hide' },
       { id: 'price',  key: 'bk_price' },
       { id: 'export', key: 'export_excel' },
-      { id: 'archive', key: 'bk_archive' },
-      { id: 'delete', key: 'bk_delete', danger: true }
+      { id: 'archive', key: 'bk_archive' }
     ],
     customers: [
       { id: 'message', key: 'bk_message', primary: true },
       { id: 'points',  key: 'bk_points' },
       { id: 'export',  key: 'export_excel' },
-      { id: 'archive', key: 'bk_archive' },
-      { id: 'delete',  key: 'bk_delete', danger: true }
+      { id: 'archive', key: 'bk_archive' }
     ],
     jobs: [
       { id: 'advance', key: 'bk_advance', primary: true },
@@ -268,23 +276,30 @@ var Bulk = (function () {
       }
       if (a === 'show' || a === 'hide') {
         var before = list.map(function (p) { return p.hidden; });
-        list.forEach(function (p) { p.hidden = (a === 'hide'); });
+        var now = (a === 'hide');
+        list.forEach(function (p) { p.hidden = now; p.archived = now; });
+        pushRows(list, function (p) { return Shop.hideProduct(p.id, now); });
         stageUndo(n + ' ' + t(a === 'hide' ? 'bk_hidden' : 'bk_shown'), function () {
-          list.forEach(function (p, i) { p.hidden = before[i]; });
+          list.forEach(function (p, i) { p.hidden = before[i]; p.archived = before[i]; });
+          pushRows(list, function (p, i) { return Shop.hideProduct(p.id, before[i]); });
         });
         refreshAll(); paint(); return;
       }
       if (a === 'price')  { priceModal(); return; }
       if (a === 'export') { exportSelection(sc); return; }
       if (a === 'archive') {
-        list.forEach(function (p) { p.archived = true; });
+        /* One column, not two. `archived` and `hidden` mean the same thing on
+           a product — the server has a single `hidden` and it is right — so
+           archiving here is hiding there. */
+        list.forEach(function (p) { p.archived = true; p.hidden = true; });
+        pushRows(list, function (p) { return Shop.hideProduct(p.id, true); });
         clear(sc);
         stageUndo(n + ' ' + t('bk_archived'), function () {
-          list.forEach(function (p) { p.archived = false; });
+          list.forEach(function (p) { p.archived = false; p.hidden = false; });
+          pushRows(list, function (p) { return Shop.hideProduct(p.id, false); });
         });
         refreshAll(); paint(); return;
       }
-      if (a === 'delete') { confirmDelete(sc, list); return; }
     }
 
     /* ---- customers ---- */
@@ -293,21 +308,24 @@ var Bulk = (function () {
       if (a === 'message') { messageModal(); return; }
       if (a === 'points') {
         cl.forEach(function (c) { c.loyaltyPoints += 250; });
+        pushRows(cl, function (c) { return Shop.adjustPoints(c.id, 250, t('bulk_title')); });
         stageUndo(n + ' · +250 ' + t('points'), function () {
           cl.forEach(function (c) { c.loyaltyPoints -= 250; });
+          pushRows(cl, function (c) { return Shop.adjustPoints(c.id, -250, t('undo')); });
         });
         refreshAll(); paint(); return;
       }
       if (a === 'export') { exportSelection(sc); return; }
       if (a === 'archive') {
         cl.forEach(function (c) { c.archived = true; });
+        pushRows(cl, function (c) { return Shop.updateCustomer(c.id, { archived: 1 }); });
         clear(sc);
         stageUndo(n + ' ' + t('bk_archived'), function () {
           cl.forEach(function (c) { c.archived = false; });
+          pushRows(cl, function (c) { return Shop.updateCustomer(c.id, { archived: 0 }); });
         });
         refreshAll(); paint(); return;
       }
-      if (a === 'delete') { confirmDelete(sc, cl); return; }
     }
 
     /* ---- print jobs ---- */
@@ -334,13 +352,26 @@ var Bulk = (function () {
         var to = (a === 'done') ? 'done' : DB.printStages[Math.min(i + 1, DB.printStages.length - 1)];
         DB.setStage(j, to, 'og');
       });
-      stageUndo(n + ' ' + t(sent === n ? 'bk_sent' : 'bk_moved'), function () {
-        prev.forEach(function (p) {
-          p.j.stage = p.stage;
-          p.j.history = p.hist;
-          if (p.j.order) p.j.order = p.order;
+      /* Undo only the stage moves. An order that has been placed cannot be
+         unplaced by a button here — another company has been told, and their
+         board already shows it. Offering to take that back would be a lie of
+         exactly the kind this whole pass is removing, so the jobs that were
+         SENT are left out of the snapshot and their toast says "sent". */
+      var moved = prev.filter(function (p) { return p.j.stage !== p.stage && p.j.order.state === p.order.state; });
+      if (moved.length) {
+        stageUndo(n + ' ' + t(sent === n ? 'bk_sent' : 'bk_moved'), function () {
+          moved.forEach(function (p) {
+            /* Through DB.setStage, not by assignment, so the server hears it
+               too — it drops the later stamps itself. Assigning p.j.stage
+               first would make setStage a no-op, because its very first check
+               is whether the job is already there. */
+            DB.setStage(p.j, p.stage, 'og');
+            p.j.history = p.hist;
+          });
         });
-      });
+      } else {
+        toast(n + ' ' + t(sent === n ? 'bk_sent' : 'bk_moved'), '', 'ok', 3200);
+      }
       clear(sc); refreshAll(); paint(); return;
     }
 
@@ -366,46 +397,35 @@ var Bulk = (function () {
   }
 
   /* Delete names the damage before it happens. */
-  function confirmDelete(sc, list) {
-    var extra = '';
-    if (sc === 'products') {
-      var pcs = list.reduce(function (a2, p) { return a2 + DB.totalQty(p.id); }, 0);
-      var skus = list.reduce(function (a2, p) { return a2 + DB.variantsOf(p.id).length; }, 0);
-      extra = nf(pcs) + ' ' + t('pieces') + ' · ' + skus + ' SKU';
-    } else {
-      extra = list.reduce(function (a2, c) { return a2 + c.history.length; }, 0) + ' ' + t('invoices').toLowerCase();
-    }
+  /* Send a bulk edit row by row.
 
-    openModal({
-      title: t('bk_delete_title'), size: 'narrow',
-      body: '<div class="alert-row alert-danger" style="margin-bottom:14px">' +
-              '<span class="alert-ico red">!</span>' +
-              '<span class="alert-txt"><b>' + t('bk_delete_q').replace('{n}', list.length) + '</b>' +
-              '<small>' + extra + '</small></span></div>' +
-            '<div class="partner-note">' + t('bk_delete_note') + '</div>',
-      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
-            '<button class="btn bk-danger" data-bk="delete-go" data-sc="' + sc + '">' +
-              t('bk_delete') + ' ' + list.length + '</button>'
-    });
+     One request per row rather than a bulk endpoint, because the server's
+     rules are per row — a price has a floor, a hidden product still has to
+     exist for past sales — and a batch route would have to restate every one
+     of them in a second place.
+
+     None of this pushed at all before. The rows changed on screen, the undo
+     bar appeared, and the next reload put every value back: a shop could
+     reprice forty products, see it work, and find the old prices at closing.
+
+     `undo` is given the same treatment, or it is not an undo — reversing on
+     screen while the server keeps the change is worse than no undo at all. */
+  function pushRows(list, make, title) {
+    if (typeof Shop === 'undefined' || !Shop.live()) return;
+    Promise.all(list.map(make))
+      .then(function () { return Shop.reload(); })
+      .catch(function (err) {
+        if (typeof toast === 'function') {
+          toast(title || t('bulk_title'),
+                (typeof API !== 'undefined' && API.friendly) ? API.friendly(err)
+                                                             : String(err.message || err),
+                'err', 6000);
+        }
+        Shop.reload();
+      });
   }
 
-  function doDelete(sc) {
-    var arr = sc === 'products' ? DB.products : DB.customers;
-    var list = sc === 'products' ? selProducts() : selCustomers();
-    /* remember index so Undo puts each record back where it was */
-    var snap = list.map(function (o) { return { o: o, i: arr.indexOf(o) }; })
-                   .sort(function (a, b) { return a.i - b.i; });
 
-    snap.slice().reverse().forEach(function (s) { if (s.i > -1) arr.splice(s.i, 1); });
-    clear(sc);
-    closeModal();
-
-    stageUndo(snap.length + ' ' + t('bk_deleted'), function () {
-      snap.forEach(function (s) { arr.splice(Math.min(s.i, arr.length), 0, s.o); });
-    });
-    refreshAll();
-    paint();
-  }
 
   /* ---------------------------------------------------------------- events */
 
@@ -440,7 +460,6 @@ var Bulk = (function () {
     clear: function (el) { clear(el.getAttribute('data-sc')); render(); paint(); },
     run: function (el) { run(el.getAttribute('data-sc'), el.getAttribute('data-a')); },
     undo: runUndo,
-    'delete-go': function (el) { doDelete(el.getAttribute('data-sc')); },
 
     'price-apply': function () {
       var pctEl = document.getElementById('bkPct');
@@ -450,9 +469,33 @@ var Bulk = (function () {
       list.forEach(function (x) {
         x.sellingPrice = Math.max(1000, Math.round(x.sellingPrice * (1 + p / 100) / 1000) * 1000);
       });
+      /* A price is stored in the product's OWN currency. x.sellingPrice is the
+         lira-converted figure the screens draw, so sending that back would
+         turn a dollar-priced shoe into a lira-priced one at today's rate —
+         and one pass through this button would silently repeg the catalogue.
+         The percentage goes onto srcSellingPrice, in srcCurrency, which
+         hydrate keeps beside the converted value for exactly this. */
+      var srcBefore = list.map(function (x) { return x.srcSellingPrice; });
+      var priced = function (x, val) {
+        return Shop.updateProduct(x.id, {
+          selling_price: val,
+          currency: x.srcCurrency || CONFIG.BASE_CURRENCY
+        });
+      };
+      list.forEach(function (x) {
+        if (x.srcSellingPrice != null) {
+          x.srcSellingPrice = Math.max(1, Math.round(x.srcSellingPrice * (1 + p / 100)));
+        }
+      });
+      pushRows(list, function (x) { return priced(x, x.srcSellingPrice); });
+
       closeModal();
       stageUndo(list.length + ' · ' + (p > 0 ? '+' : '') + p + '%', function () {
-        list.forEach(function (x, i) { x.sellingPrice = before[i]; });
+        list.forEach(function (x, i) {
+          x.sellingPrice = before[i];
+          x.srcSellingPrice = srcBefore[i];
+        });
+        pushRows(list, function (x, i) { return priced(x, srcBefore[i]); });
       });
       refreshAll(); paint();
     },

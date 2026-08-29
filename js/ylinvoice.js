@@ -567,11 +567,32 @@ var YLINV = (function () {
         toast(inv.id, t('yi_bad_amount'), 'err');
         return;
       }
+      /* Money received, so it goes to the server. It used to change the
+         invoice in memory only and the next reload showed it unpaid again. */
+      pushInvoice(function () {
+        return Shop.payInvoice(inv.id, { amount: amt, method: method });
+      });
       closeModal();
       toast(inv.id, money(amt) + ' · ' + t('yi_payment_saved'), 'ok', 3200);
       refresh();
     }
   };
+
+  /* Same shape as data.js's pushPartner: the screen has already moved, the
+     server is told, and a refusal reloads so the screen stops lying. Local
+     to this module because the invoice screens are the only callers. */
+  function pushInvoice(send) {
+    if (typeof Shop === 'undefined' || !Shop.live()) return;
+    send()
+      .then(function () { return Shop.reload(); })
+      .catch(function (err) {
+        toast(t('yi_title'),
+              (typeof API !== 'undefined' && API.friendly) ? API.friendly(err)
+                                                           : String(err.message || err),
+              'err', 6000);
+        Shop.reload();
+      });
+  }
 
   /* Turn the working copy into a real invoice. Validation happens here, once,
      rather than being scattered through the row editor. */
@@ -592,8 +613,25 @@ var YLINV = (function () {
 
     var noteEl = document.querySelector('[data-yi-in="note"]');
     var inv = DB.newInvoice(D.refs, noteEl ? noteEl.value : D.note, lines);
+
+    /* Issuing is the moment the invoice becomes a document in the world, and
+       that is what reaches the server. A DRAFT still lives only in this
+       browser: partner_invoices.issued is NOT NULL, so there is nowhere to
+       put one yet. Saying so out loud because "Draft saved" currently means
+       saved until you refresh. */
     if (issueIt) {
       DB.issueInvoice(inv);
+      var body = {
+        id: inv.id,
+        issued: inv.issued.toISOString(),
+        due: inv.due.toISOString(),
+        note: inv.note || null,
+        jobIds: (inv.refs || []).map(function (r) { return r.jobId; })
+          .filter(function (v, i, a) { return v && a.indexOf(v) === i; })
+      };
+      if (body.jobIds.length) {
+        pushInvoice(function () { return Shop.newInvoice(body); });
+      }
       DB.postMessage({ invoiceId: inv.id, from: 'yalla', kind: 'invoice',
         text: t('yi_msg_issued') + ' ' + inv.id + ' — ' + money(DB.invoiceTotal(inv)) +
               ', ' + t('yi_due_in') + ' ' + CONFIG.INVOICE_TERMS_DAYS + ' ' + t('yl_days') });
