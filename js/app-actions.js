@@ -17,9 +17,22 @@
 
 /* -------------------------------------------------------------- 19. ACTIONS */
 
+/* Which piece of state holds a screen's open tab. Only two screens have
+   tabs; naming them here means a shortcut can say WHERE it is going rather
+   than only which screen — "+ Add product" on the Products page should land
+   on the Add form, not on whichever warehouse tab was open last. */
+var NAV_TAB_STATE = { warehouse: function () { return OG.wh; }, reports: function () { return OG.rep; } };
+
+function navTo(view, tab) {
+  /* Set before go(), because go() renders — doing it after would draw the
+     old tab first and then snap. */
+  if (tab && NAV_TAB_STATE[view]) NAV_TAB_STATE[view]().tab = tab;
+  go(view);
+}
+
 var ACTIONS = {
-  nav: function (el) { go(el.getAttribute('data-view')); },
-  'nav-close': function (el) { closeDrawer(); go(el.getAttribute('data-view')); },
+  nav: function (el) { navTo(el.getAttribute('data-view'), el.getAttribute('data-tab')); },
+  'nav-close': function (el) { closeDrawer(); navTo(el.getAttribute('data-view'), el.getAttribute('data-tab')); },
 
   /* Collapse the sidebar to an icon rail, and remember it. Re-rendered rather
      than just re-styled because the sliding active-indicator is positioned

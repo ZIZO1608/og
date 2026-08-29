@@ -82,8 +82,11 @@ function viewProducts() {
       (canExport ? exportButtons() : '') +
       ifNav('labels',
         '<button class="btn btn-ghost" data-act="nav" data-view="labels">' + t('nav_labels') + '</button>') +
+      /* data-tab, so this lands ON the Add form. Without it the button only
+         opened the Warehouse and left somebody to find the right tab. */
       ifNav('warehouse',
-        '<button class="btn btn-primary" data-act="nav" data-view="warehouse">+ ' + t('tab_add') + '</button>') +
+        '<button class="btn btn-primary" data-act="nav" data-view="warehouse" data-tab="add">+ ' +
+          t('tab_add') + '</button>') +
     '</div></div>';
 
   h += '<div class="filters">' +
@@ -255,7 +258,7 @@ function openProductDrawer(pid) {
   '</dl></div></div>';
 
   body += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
-    '<button class="btn btn-primary" data-act="nav-close" data-view="warehouse">' + t('edit_product') + '</button>' +
+    '<button class="btn btn-primary" data-act="nav-close" data-view="warehouse" data-tab="add">' + t('edit_product') + '</button>' +
     '<button class="btn" data-act="labels-for" data-id="' + p.id + '">' + t('print_labels') + '</button>' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="product" data-kind="pdf" data-id="' + p.id + '">' + t('rec_stock_sheet') + '</button>' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="product" data-kind="excel" data-id="' + p.id + '">' + t('export_excel') + '</button>' +

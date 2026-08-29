@@ -293,7 +293,7 @@ function viewDashboard() {
 
       '<div class="card mt"><div class="card-head"><h3>' + t('recent_sales') + '</h3>' +
         '<div class="card-actions">' + ifNav('reports',
-          '<button class="btn btn-ghost btn-sm" data-act="nav" data-view="reports">' + t('view_all') + '</button>') +
+          '<button class="btn btn-ghost btn-sm" data-act="nav" data-view="reports" data-tab="sales">' + t('view_all') + '</button>') +
         '</div></div>' +
         '<div class="table-wrap"><table class="tbl"><thead><tr>' +
           '<th>' + t('invoice') + '</th><th>' + t('customer') + '</th><th>' + t('items') + '</th>' +
