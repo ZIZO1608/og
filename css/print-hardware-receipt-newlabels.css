@@ -390,6 +390,67 @@
   padding: 5mm 3mm;
 }
 
+/* ------------------------------------------------------- PRINT-AND-TEAR
+   Plays once, the moment a sale completes (js/app-documents.js's
+   openReceipt wraps the receipt in .rc-fresh only when opts.newSale is
+   true — never on a reprint). Screen only: no @media print rule touches
+   this, so the physical printer output is completely unaffected either
+   way, and nothing here can slow the till down — the modal's own buttons
+   sit outside .rc-fresh and stay clickable throughout.
+
+   Three beats sharing one timeline: the paper prints into view top-to-
+   bottom (clip-path, cheap for the compositor — no layout properties
+   animated), a bright head-line sweeps down with it, then a torn edge
+   settles onto the top of the now-fully-printed slip. Kept fast (~1s
+   total) on purpose — a cashier sees this dozens of times a shift, so
+   "high quality" here means precise and quick, not long.
+
+   Respects prefers-reduced-motion / the manual motion-off toggle for
+   free: both are already global rules in css/tokens.css that collapse
+   every animation-duration to .01ms on *, so nothing extra is needed
+   here for a reduced-motion viewer to just see the finished receipt. */
+.rc-fresh .receipt {
+  animation: rcPrintOut 620ms 160ms var(--e-out) both;
+  position: relative;
+}
+@keyframes rcPrintOut {
+  from { clip-path: inset(0 0 100% 0); }
+  to   { clip-path: inset(0 0 0% 0); }
+}
+
+/* The print head — a thin bright sweep that travels down with the paper,
+   then fades right as the tear beat begins. Same delay/duration/easing as
+   the reveal above so the two stay locked together with no JS needed to
+   keep them in sync. */
+.rc-fresh .receipt::after {
+  content: ''; position: absolute; inset-inline: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--brand) 35%, var(--brand) 65%, transparent);
+  box-shadow: 0 0 8px 1px var(--brand);
+  animation: rcHead 620ms 160ms var(--e-out) both, rcHeadFade 160ms 700ms var(--e-in) forwards;
+}
+@keyframes rcHead { from { top: 0; } to { top: 100%; } }
+@keyframes rcHeadFade { to { opacity: 0; } }
+
+/* The torn edge — a small jagged strip capping the top of the receipt,
+   appearing only once printing has finished (780ms in: 160ms start delay
+   + 620ms reveal). A quick settle (translateY overshoot easing back to 0)
+   sells "just separated from the roll" without animating an actual tear
+   sweeping across, which reads as fussier than the payoff is worth here. */
+.rc-fresh .receipt::before {
+  content: ''; position: absolute; inset-inline: 0; top: -7px; height: 10px;
+  background: #FFFFFF;
+  clip-path: polygon(0% 0%, 100% 0%, 100% 40%, 92% 100%, 84% 40%, 76% 100%,
+    68% 40%, 60% 100%, 52% 40%, 44% 100%, 36% 40%, 28% 100%, 20% 40%,
+    12% 100%, 4% 40%, 0% 100%);
+  opacity: 0;
+  animation: rcTear 260ms 780ms var(--e-out) both;
+}
+@keyframes rcTear {
+  0%   { opacity: 0; transform: translateY(-6px); }
+  60%  { opacity: 1; transform: translateY(1px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 @media print {
   /* Nothing but the receipt. No modal chrome, no shadow, no rounding — and
      no page margin, because the 5mm clear edge is the .receipt margin the

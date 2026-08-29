@@ -268,7 +268,11 @@ function openReceipt(sale, opts) {
   document.body.classList.add('printing-receipt');
   openModal({
     title: t('rc_title') + ' ' + sale.id,
-    body: receiptHtml(sale),
+    /* The print-and-tear animation (css/print-hardware-receipt-newlabels.css's
+       .rc-fresh) only plays for the sale that just happened — a reprint pulled
+       up later is a lookup, not a moment, and replaying "fresh off the press"
+       on a receipt from three days ago would read as a bug, not a delight. */
+    body: opts.newSale ? '<div class="rc-fresh">' + receiptHtml(sale) + '</div>' : receiptHtml(sale),
     foot: '<button class="btn btn-ghost" data-act="rc-invoice" data-id="' + esc(sale.id) + '">' +
             t('rc_full_page') + '</button>' +
           '<button class="btn" data-act="print-now">' + t('print') + '</button>' +
