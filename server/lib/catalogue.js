@@ -284,9 +284,12 @@ export function createWithVariants({
   name, type, brand, madeIn, colorway, imageBg, imageInitials,
   currency, costPrice, sellingPrice, shelfZone,
   sizes = [], whId = 'store', userId,
-  /* Set only by scripts/demo-catalogue.js. Defaults to false so anything a
-     person creates through the app is real, and a bug here leaves demo rows
-     behind rather than marking the shop's catalogue for deletion. */
+  /* Nothing sets this any more — the script that planted demo rows is gone.
+     The column stays because rows it marked are still in the database,
+     hidden rather than deleted so the invoices naming them still read.
+     Defaults to false so anything a person creates through the app is real,
+     and a bug here leaves rows behind rather than marking the shop's
+     catalogue for deletion. */
   demo = false
 }) {
   if (!name || !String(name).trim()) throw new Error('name is required');

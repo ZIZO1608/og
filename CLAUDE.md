@@ -23,9 +23,8 @@ cd server && npm start          # or double-click start-og-system.bat
 
 cd server
 npm run createuser               # interactive; also accepts piped stdin
-npm run demo-users               # add the five test accounts
-npm run demo-users -- --remove   # REQUIRED before go-live
 npm run backup                   # VACUUM INTO + integrity_check + FK check
+npm run preflight                # accounts, catalogue, Supabase, port
 ```
 
 **Node 22.5+ required** (`node:sqlite` is used, which arrived in 22.5). There is **no `npm install`** —
@@ -34,11 +33,16 @@ the server has zero dependencies by design, and the frontend has no build step a
 Publishing: **double-click `push.bat`** (add → commit → pull --rebase → push). CI then builds `dist/`
 and deploys to GitHub Pages.
 
-### Test accounts
+### Accounts
 
-`hussam` (manager) · `lubna` (cashier) · `maher` (warehouse) · `talal` (delivery) · `yalla` (partner).
-Password for all: `test-1234`. The password is published in `server/scripts/demo-users.js`, and the
-server prints a warning naming the active test accounts **on every startup** while they exist.
+There are no test accounts. The five that used to exist (`hussam`, `lubna`, `maher`, `talal`,
+`yalla`, all on a password published in the repo) were retired, and the scripts that created them
+deleted. `maher` and `yalla` referenced nothing and were removed outright; `hussam`, `lubna` and
+`talal` had rung up real sales and deliveries, so their rows survive **disabled, with their password
+hashes replaced by random bytes** — deleting them would have taken the invoices that name them.
+
+**Their old password is still in git history.** The server and `npm run preflight` both warn if one
+of those usernames is ever `active = 1` again. Make new accounts with `npm run createuser`.
 
 ## Hard constraints
 
@@ -270,4 +274,6 @@ publishes nothing.
 - **Old vs redenominated Syrian lira has never been settled.** The seed assumes old lira — 1 USD = 13,000,
   salaries in millions. If the shop is on new lira, the entire dataset is wrong by three orders of magnitude.
 - `flutter_app/` fails to build on an Android NDK/`sdkmanager` crash.
-- Remove the test accounts before go-live: `npm run demo-users -- --remove`.
+- The demo catalogue rows are hidden, not deleted — all five had been sold, so removing them would
+  have broken the invoices referencing them. `products.demo` and `customers.demo` still exist for that
+  reason, but nothing sets them any more.

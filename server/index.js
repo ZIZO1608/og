@@ -1058,27 +1058,31 @@ if (runDirectly) {
       console.log('      npm run createuser');
     }
 
-    /* Test accounts have their passwords printed in a public file. Say so on
-       every single startup while they exist — the failure this guards against
-       is nobody remembering they are there on the day the shop goes live. */
+    /* The test accounts are gone, but three of them had rung up real sales,
+       so their rows survive — disabled, with their passwords replaced by
+       random bytes — because deleting them would have taken the invoices
+       that name them. Only an ACTIVE one is worth shouting about: that
+       means somebody switched it back on, and its old password was
+       published in git history. */
     const demo = DB.get().prepare(
       `SELECT username FROM users
-        WHERE username IN ('hussam','lubna','maher','talal','yalla')`
+        WHERE active = 1
+          AND username IN ('hussam','lubna','maher','talal','yalla')`
     ).all().map(r => r.username);
 
     if (demo.length) {
       console.log('');
-      console.log(`    ${SECURE ? '*** WARNING ***  ' : ''}TEST ACCOUNTS ARE ACTIVE: ${demo.join(', ')}`);
-      console.log('    Their password is published in scripts/demo-users.js.');
-      console.log('    Remove before real use:  npm run demo-users -- --remove');
+      console.log(`    ${SECURE ? '*** WARNING ***  ' : ''}A RETIRED TEST ACCOUNT IS ACTIVE AGAIN: ${demo.join(', ')}`);
+      console.log('    Its old password is in this repository' + "'" + 's history.');
+      console.log('    Give it a new one, or set active = 0 in Settings.');
     }
 
     /* Same reasoning, and the more expensive one to miss: a seeded price is a
        price a cashier can charge a real customer. Counted rather than assumed,
        so the line disappears the moment the rows actually go. */
     const seeded = DB.get().prepare(
-      `SELECT (SELECT COUNT(*) FROM products  WHERE demo = 1) AS p,
-              (SELECT COUNT(*) FROM customers WHERE demo = 1) AS c`
+      `SELECT (SELECT COUNT(*) FROM products  WHERE demo = 1 AND hidden = 0) AS p,
+              (SELECT COUNT(*) FROM customers WHERE demo = 1 AND archived = 0) AS c`
     ).get();
 
     if (seeded.p || seeded.c) {
@@ -1086,7 +1090,7 @@ if (runDirectly) {
       console.log(`    ${SECURE ? '*** WARNING ***  ' : ''}DEMO CATALOGUE IS LOADED: ` +
                   `${seeded.p} product(s), ${seeded.c} customer(s).`);
       console.log('    Invented goods at invented prices — the till will sell them.');
-      console.log('    Remove before real use:  npm run demo-catalogue -- --remove');
+      console.log('    Hide or delete them in Products before the shop opens.');
     }
 
     if (!SECURE) {

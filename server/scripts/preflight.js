@@ -63,43 +63,51 @@ try {
   hint('The server will try again itself and report the real error.');
 }
 
-function countOf(table) {
-  try { return db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n; }
+function countOf(table, where) {
+  try { return db.prepare(`SELECT COUNT(*) AS n FROM ${table}${where ? ' WHERE ' + where : ''}`).get().n; }
   catch { return null; }
 }
 
 if (db) {
-  const users = countOf('users');
+  /* Only an active account can sign in. Counting the rows would claim four
+     people can get in when three are retired staff kept for their sales. */
+  const users = countOf('users', 'active = 1');
 
   if (users === null) {
     warn('The database has no tables yet — the server will create them on this run.');
     hint('Run this again afterwards to check the accounts.');
   } else if (users === 0) {
     warn('There are NO accounts, so every sign-in will say "Wrong username or password".');
-    hint('Make a real account:   npm run createuser');
-    hint('Or the five test ones: npm run demo-users     (password test-1234)');
+    hint('Make one:  npm run createuser');
   } else {
     ok(`${users} account${users === 1 ? '' : 's'} can sign in.`);
 
-    /* Known-password accounts on a machine other people can reach is worth
-       one line every single start, not a note in a file nobody reopens. */
+    /* The old test accounts were retired, but three of them own real sales
+       and so still exist as disabled rows. An ACTIVE one means somebody
+       turned it back on, and its old password is in this repository's
+       history — worth a line every start, not a note nobody reopens. */
     try {
       const demo = db.prepare(
-        "SELECT COUNT(*) AS n FROM users WHERE username IN ('hussam','lubna','maher','talal','yalla')"
+        "SELECT COUNT(*) AS n FROM users WHERE active = 1 AND username IN ('hussam','lubna','maher','talal','yalla')"
       ).get().n;
       if (demo > 0) {
-        warn(`${demo} of them are TEST accounts with a published password.`);
-        hint('Before the shop goes live:  npm run demo-users -- --remove');
+        warn(`${demo} retired TEST account${demo === 1 ? ' is' : 's are'} active again.`);
+        hint('Give it a new password, or set active = 0 in Settings.');
       }
     } catch { /* older database without those columns — not worth failing over */ }
   }
 
-  const products = countOf('products');
+  /* What the till can actually put in a basket. Hidden rows are still in
+     the table — sold-out demo goods, discontinued lines — but reporting
+     them as stock to sell is how you open with an empty-looking shop. */
+  const products = countOf('products', 'hidden = 0');
+  const hidden = countOf('products', 'hidden = 1');
   if (products === 0) {
     warn('The catalogue is empty, so the till will have nothing to sell.');
-    hint('Load the demo catalogue:  npm run demo-catalogue');
+    hint('Add products in Warehouse, or pull them down:  npm run supabase:restore');
   } else if (products > 0) {
-    ok(`${products} products in the catalogue.`);
+    ok(`${products} product${products === 1 ? '' : 's'} the till can sell` +
+       (hidden ? `, ${hidden} hidden.` : '.'));
   }
 }
 
