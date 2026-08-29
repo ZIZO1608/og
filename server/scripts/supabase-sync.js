@@ -206,8 +206,33 @@ async function syncTable(name) {
   const cursorId = 'sync:' + name;
 
   const existing = (await SB.select('sync_state', { eq: { id: cursorId } }))[0];
-  const lastSeq = existing ? existing.last_seq : 0;
+  let lastSeq = existing ? existing.last_seq : 0;
   if (!existing) await SB.insert('sync_state', { id: cursorId, last_seq: 0, note: `cursor for ${name}` });
+
+  /* THE CURSOR CAN OUTLIVE THE LOG IT POINTS INTO.
+     ------------------------------------------------------------------------
+     change_log is a local table with an AUTOINCREMENT seq; the cursor lives
+     in Supabase. Anything that empties the log locally — a demo teardown, a
+     rebuilt database, a restore — starts seq again from 1 while the cursor
+     stays where it was, in the hundreds. Every run then asks for
+     `seq > 948`, finds nothing, and reports "nothing new" while real work
+     piles up underneath it. The sync is not broken and not lying; it is
+     reading a bookmark for a book that was reprinted.
+
+     A cursor ahead of the highest seq that exists is the signature of
+     exactly that, and it cannot arise any other way — seq only grows while
+     the log is intact. So rewind and replay. Replaying costs nothing: every
+     push is an upsert keyed on the row's own id. */
+  const highest = DB.get().prepare('SELECT MAX(seq) AS m FROM change_log').get().m;
+  if (highest !== null && lastSeq > highest) {
+    console.log(head(name));
+    console.log(warn(`cursor was at ${lastSeq} but the log only reaches ${highest} — ` +
+                     'it was reset underneath us. Rewinding to 0 and replaying.'));
+    lastSeq = 0;
+    await SB.update('sync_state', { id: cursorId }, {
+      last_seq: 0, note: 'rewound: change_log had been reset'
+    });
+  }
 
   const rows = DB.get().prepare(
     'SELECT * FROM change_log WHERE tbl = ? AND seq > ? ORDER BY seq ASC'
