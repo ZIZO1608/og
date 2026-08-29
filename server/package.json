@@ -18,7 +18,8 @@
     "supabase:check": "node scripts/supabase-check.js",
     "supabase:test-write": "node scripts/supabase-test-write.js",
     "supabase:sync": "node scripts/supabase-sync.js",
-    "supabase:restore": "node scripts/supabase-restore.js"
+    "supabase:restore": "node scripts/supabase-restore.js",
+    "supabase:reconcile": "node scripts/supabase-reconcile.js"
   },
   "dependencies": {},
   "devDependencies": {}
