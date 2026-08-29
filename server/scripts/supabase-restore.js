@@ -88,7 +88,15 @@ const ORDER = [
   /* an order names a supplier and a warehouse; its lines name variants */
   'purchase_orders', 'purchase_order_lines',
 
-  'wa_messages', 'notification_reads'
+  'wa_messages', 'notification_reads',
+
+  /* the drawer: a shift before the sales that stamp it, the payments after
+     the sales they are against */
+  'shifts', 'expenses', 'debt_payments',
+  'stock_counts', 'stock_count_lines',
+
+  /* what was printed, which the mirror has always had room for */
+  'print_log', 'label_print_log'
 ];
 
 /* These are not data somebody entered — the migrations seed them with

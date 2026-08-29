@@ -80,8 +80,8 @@ export function all({ includeArchived = false } = {}) {
     })),
     messages,
     clubs: d.prepare('SELECT * FROM clubs WHERE archived = 0 ORDER BY name').all(),
-    suppliers: d.prepare(`SELECT * FROM suppliers ${live} ORDER BY name`).all(),
-    employees: d.prepare(`SELECT * FROM employees ${live} ORDER BY name`).all(),
+    suppliers: suppliers({ includeArchived }),
+    employees: employees({ includeArchived }),
     waMessages: d.prepare('SELECT * FROM wa_messages ORDER BY at DESC LIMIT 200').all()
   };
 }
@@ -98,6 +98,20 @@ function shapeJob(j, lines, history) {
     history,
     tbc: lines.filter((l) => !l.print_name).length
   };
+}
+
+/* Their own readers, so /api/suppliers and /api/employees share one query
+   with the bundle rather than growing a second copy that drifts. */
+export function suppliers({ includeArchived = false } = {}) {
+  return DB.get().prepare(
+    `SELECT * FROM suppliers ${includeArchived ? '' : 'WHERE archived = 0'} ORDER BY name`
+  ).all();
+}
+
+export function employees({ includeArchived = false } = {}) {
+  return DB.get().prepare(
+    `SELECT * FROM employees ${includeArchived ? '' : 'WHERE archived = 0'} ORDER BY name`
+  ).all();
 }
 
 export function job(id) {

@@ -292,16 +292,24 @@ export function record({
       earnedForRow = Math.round(wholeForRow / 1000 * per1000ForRow);
     }
 
+    /* Which drawer this belongs to, resolved HERE rather than read from the
+       request. A till that can name its own shift can post a sale into
+       somebody else's closed count — the same reason prices come from the
+       product table and not from the client. */
+    const openShift = d.prepare(
+      'SELECT id FROM shifts WHERE closed_at IS NULL ORDER BY opened_at DESC LIMIT 1'
+    ).get();
+
     d.prepare(
       `INSERT INTO sales
          (id, at, customer_id, customer_name, cashier_id, wh_id, payment,
           currency, subtotal, discount, total, fx_rate, fx_base, created_at,
-          public_token, points_used, points_earned, txn_ref)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          public_token, points_used, points_earned, txn_ref, shift_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(saleId, at, cust ? cust.id : null, cust ? cust.name : null,
           userId ?? null, whId, payment || 'cash',
           settle, subtotal, disc, total, rate, base, at, token, wantPoints,
-          earnedForRow, ref);
+          earnedForRow, ref, openShift ? openShift.id : null);
 
     const insLine = d.prepare(
       `INSERT INTO sale_items
@@ -418,6 +426,19 @@ export function voidSale(id, { reason, userId }) {
     const s = d.prepare('SELECT * FROM sales WHERE id = ?').get(id);
     if (!s) throw new Error('no such sale');
     if (s.voided) throw new Error('that sale is already voided');
+
+    /* A credit sale the customer has already part-paid cannot simply be
+       undone. The cash is in the box; voiding would erase the debt it was
+       paid against and leave the money unexplained in every report. Refund
+       the payments first, then void. */
+    const paid = d.prepare(
+      'SELECT COUNT(*) AS n FROM debt_payments WHERE sale_id = ?'
+    ).get(id).n;
+    if (paid) {
+      throw Object.assign(
+        new Error('that sale has been part-paid — refund the payments before voiding it'),
+        { code: 'has_payments' });
+    }
 
     const items = d.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(id);
     for (const it of items) {

@@ -2203,7 +2203,21 @@ var DB = {
        product ids and SKUs that now mean something else entirely. The
        dashboard would show invented revenue itemised against real goods. */
     sales.length = 0;
-    (payload.sales || []).forEach(function (s) {
+    /* Every credit sale still carrying a balance, however old, folded in
+       before the mapping so it gets exactly the same shape.
+
+       The debt book is derived from this array, and this array is the last
+       200 sales — so an unpaid debt older than that quietly stopped being
+       owed, which is the worst thing this screen could do. The server sends
+       them unbounded; deduped on id because a recent one is in both. */
+    var srcSales = (payload.sales || []).slice();
+    if (payload.money && payload.money.creditSales) {
+      var have = {};
+      srcSales.forEach(function (s) { have[s.id] = true; });
+      payload.money.creditSales.forEach(function (s) { if (!have[s.id]) srcSales.push(s); });
+    }
+
+    srcSales.forEach(function (s) {
       var sale = {
         id: s.id,
         date: new Date(s.at),
@@ -2231,7 +2245,11 @@ var DB = {
         txnRef: s.txn_ref || null,
         warehouseId: s.wh_id,
         cashier: s.cashier_name || '',
-        shiftId: null,
+        /* Which drawer it belongs to. This was hardcoded null, so the stamp
+           the till puts on every sale died on arrival and the shift summary
+           had nothing to count — one line, and the whole till reconciliation
+           rested on it. */
+        shiftId: s.shift_id || null,
         publicToken: s.public_token || null,
         fxRate: s.fx_rate || rate
       };
@@ -2279,6 +2297,46 @@ var DB = {
        were written against camelCase and real Dates. Translating here, once,
        is what lets sixteen call sites stay exactly as they are. */
     if (payload.partner) hydratePartner(payload.partner);
+    if (payload.money) hydrateMoney(payload.money);
+
+    /* Their own lists on their own gates. An empty array here really does
+       mean none — `want` already resolved a refusal to an empty list. */
+    if (payload.suppliers) {
+      suppliers.length = 0;
+      payload.suppliers.forEach(function (x) {
+        suppliers.push({
+          id: x.id, name: x.name, contact: x.contact, category: x.category,
+          outstanding: x.outstanding, totalPurchased: x.total_purchased,
+          dueDate: x.due_date ? new Date(x.due_date) : null,
+          lastPayment: x.last_payment ? new Date(x.last_payment) : null
+        });
+      });
+    }
+
+    if (payload.employees) {
+      employees.length = 0;
+      payload.employees.forEach(function (x) {
+        employees.push({
+          id: x.id, name: x.name, role: x.role, salary: x.salary,
+          nextPayment: x.next_payment ? new Date(x.next_payment) : null,
+          since: x.since, phone: x.phone, sales: 0
+        });
+      });
+    }
+
+    if (payload.stockCounts) {
+      stockCounts.length = 0;
+      payload.stockCounts.forEach(function (c) {
+        stockCounts.push({
+          id: c.id, whId: c.wh_id, scope: c.scope, status: c.status,
+          posted: c.status === 'posted',
+          started: c.started_at ? new Date(c.started_at) : null,
+          finished: c.posted_at ? new Date(c.posted_at) : null,
+          by: c.user_name || '',
+          pieces: c.pieces, applied: c.variance, lines: c.lines || []
+        });
+      });
+    }
 
     /* The bell is computed on the server now — per account, so supplier debt
        and payroll only reach the people allowed to see them, and the read
@@ -2352,6 +2410,52 @@ function pushPartner(send, title, quiet) {
       }
       Shop.reload();
     });
+}
+
+/* ---- the drawer ------------------------------------------------------
+   Shifts, expenses, and what customers have paid against what they owe.
+   Guarded because a payload without `money` means the account could not
+   read it, not that the shop has no takings — blanking the screens on a
+   permission would read as a shop with an empty till. */
+function hydrateMoney(m) {
+  var date = function (v) { return v ? new Date(v) : null; };
+
+  shifts.length = 0;
+  (m.shifts || []).forEach(function (s) {
+    shifts.push({
+      id: s.id, user: s.user_name, userId: s.user_id, whId: s.wh_id,
+      float: s.float_amount,
+      openedAt: date(s.opened_at), closedAt: date(s.closed_at),
+      /* One fact, one field: closed is derived from closedAt rather than
+         stored beside it, so the two can never disagree. */
+      closed: !!s.closed_at,
+      counted: s.counted, expected: s.expected, diff: s.diff,
+      sales: s.sales, collected: s.collected, paidOut: s.paidOut,
+      note: s.note || ''
+    });
+  });
+
+  expenses.length = 0;
+  (m.expenses || []).forEach(function (e) {
+    expenses.push({
+      id: e.id, at: date(e.at), category: e.category, amount: e.amount,
+      method: e.method, note: e.note || '', shiftId: e.shift_id
+    });
+  });
+
+  debtPayments.length = 0;
+  (m.debtPayments || []).forEach(function (p) {
+    debtPayments.push({
+      id: p.id, saleId: p.sale_id, at: date(p.at), amount: p.amount,
+      method: p.method, shiftId: p.shift_id
+    });
+  });
+
+
+  if (m.categories && m.categories.length) {
+    EXPENSE_CATEGORIES.length = 0;
+    m.categories.forEach(function (c) { EXPENSE_CATEGORIES.push(c); });
+  }
 }
 
 function hydratePartner(p) {
@@ -2441,27 +2545,10 @@ function hydratePartner(p) {
     });
   }
 
-  if (p.suppliers) {
-    suppliers.length = 0;
-    p.suppliers.forEach(function (x) {
-      suppliers.push({
-        id: x.id, name: x.name, contact: x.contact, category: x.category,
-        outstanding: x.outstanding, totalPurchased: x.total_purchased,
-        dueDate: date(x.due_date), lastPayment: date(x.last_payment)
-      });
-    });
-  }
-
-  if (p.employees) {
-    employees.length = 0;
-    p.employees.forEach(function (x) {
-      employees.push({
-        id: x.id, name: x.name, role: x.role, salary: x.salary,
-        nextPayment: date(x.next_payment), since: x.since,
-        phone: x.phone, sales: 0
-      });
-    });
-  }
+  /* suppliers and employees are NOT here any more — they have their own
+     requests on their own permissions. Inside this bundle they were gated
+     on print.read, so a manager without it saw an empty payroll and empty
+     supplier balances with nothing to say why. */
 
   if (p.waMessages) {
     waMessages.length = 0;

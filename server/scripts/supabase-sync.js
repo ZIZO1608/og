@@ -292,6 +292,8 @@ const TABLES = {
     parseKey: (rowId) => ({ id: rowId }),
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM sales WHERE id = ?').get(key.id),
     mapRow: (r) => ({ ...r, voided: !!r.voided }),
+    /* until 005 has been run in the dashboard */
+    fallbackDrop: ['shift_id'],
     afterUpsert: async (localRow) => {
       const items = DB.get().prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(localRow.id);
       await SB.remove('sale_items', { sale_id: localRow.id }).catch(() => {});
@@ -359,6 +361,23 @@ const TABLES = {
   /* An order's lines are written with it and only ever change through it,
      so they ride along the same way a sale's items do. Replaced rather than
      merged: a line taken off an order has to disappear from the mirror. */
+  shifts: {
+    parseKey: (rowId) => ({ id: rowId }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM shifts WHERE id = ?').get(key.id),
+    mapRow: (r) => r
+  },
+
+  stock_counts: {
+    parseKey: (rowId) => ({ id: rowId }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM stock_counts WHERE id = ?').get(key.id),
+    mapRow: (r) => r,
+    afterUpsert: async (localRow) => {
+      const rows = DB.get().prepare('SELECT * FROM stock_count_lines WHERE count_id = ?').all(localRow.id);
+      await SB.remove('stock_count_lines', { count_id: localRow.id }).catch(() => {});
+      if (rows.length) await SB.insert('stock_count_lines', rows, { upsert: true });
+    }
+  },
+
   purchase_orders: {
     parseKey: (rowId) => ({ id: rowId }),
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM purchase_orders WHERE id = ?').get(key.id),
@@ -436,7 +455,32 @@ async function syncTable(name) {
 
   let pushed = 0, deleted = 0;
   if (toUpsert.length) {
-    await SB.insert(name, toUpsert, { upsert: true });
+    /* A column this machine has and the mirror does not.
+
+       sales gained shift_id with migration 017, and sales is pushed OUTSIDE
+       the guarded block below — so on any project where 005 has not been run
+       by hand, PostgREST would reject the whole batch and a shop's entire
+       day of sales would stop mirroring over an optional table.
+
+       Same shape as the pw_enc fallback in syncUsers: try it properly, and
+       on a rejection naming the column, retry without it and say what to
+       run. Deliberately NOT solved by dropping the column in mapRow, which
+       would kill the shift-to-sale link at the mirror boundary permanently
+       rather than until somebody runs one SQL file. */
+    const drop = cfg.fallbackDrop || [];
+    try {
+      await SB.insert(name, toUpsert, { upsert: true });
+    } catch (e) {
+      const hit = drop.find((c) => String(e.message).includes(c));
+      if (!hit) throw e;
+      console.log(warn(`Supabase has no ${name}.${hit} column yet — pushing without it.`));
+      console.log('    \x1b[2mRun server/supabase/005_money_and_counts.sql in the SQL editor.\x1b[0m');
+      await SB.insert(name, toUpsert.map((r) => {
+        const copy = { ...r };
+        for (const c of drop) delete copy[c];
+        return copy;
+      }), { upsert: true });
+    }
     pushed = toUpsert.length;
     console.log(tick(`upserted ${pushed} row(s)`));
 
@@ -489,6 +533,20 @@ await syncAppendOnly('stock_movements');
    created yet. So it says exactly what to run and carries on.
 
    Jobs before their invoices, because an invoice references a job. */
+/* Two tables 001_mirror_schema.sql created a home for and nothing ever
+   pushed. Its own comment says which half is worth keeping: the queue of
+   pending label jobs is local and ephemeral, but WHAT WAS ACTUALLY PRINTED
+   is history. The templates got mirrored; the history did not.
+
+   Their own guard, because they arrived with 001 rather than an unrun
+   migration — a failure here is real. But a print audit log is not worth
+   stopping a day of sales for, so it warns and carries on. */
+console.log(head('Print history'));
+for (const t of ['print_log', 'label_print_log']) {
+  try { await syncAppendOnly(t); }
+  catch (e) { console.log(warn(`${t}: ${e.message.slice(0, 90)}`)); }
+}
+
 console.log(head('Partner'));
 try {
   /* Reference data a kit line points at, and part of the same migration —
@@ -503,6 +561,14 @@ try {
   }
   await syncAppendOnly('wa_messages');
 
+  /* The drawer. Shifts and count sheets change — a shift closes, a sheet
+     posts — so they replay the log. An expense and a debt payment are
+     written once and never edited, so the highest id already sent is a
+     cheaper and self-healing cursor. */
+  for (const name of ['shifts', 'stock_counts']) await syncTable(name);
+  await syncAppendOnly('expenses');
+  await syncAppendOnly('debt_payments');
+
   /* Which alerts each person has already read. Small, unlogged, and worth
      keeping: restoring onto a new machine without it makes every alert in
      the shop bold again on the first morning. */
@@ -516,6 +582,7 @@ try {
     console.log("    [2mRun these in the Supabase SQL editor, in order:[0m");
     console.log("    [2m  server/supabase/003_partner.sql[0m");
     console.log("    [2m  server/supabase/004_purchasing_and_alerts.sql[0m");
+    console.log("    [2m  server/supabase/005_money_and_counts.sql[0m");
   } else { throw e; }
 }
 

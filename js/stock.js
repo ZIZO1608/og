@@ -41,7 +41,36 @@ var Stock = (function () {
     };
     S.filter = 'all';
     S.q = '';
+
+    /* Open the session on the server too, and take its id. Counting a
+       stockroom is an hour's work, and it all lived in this tab: a closed
+       laptop lost the sheet and the shelves had to be walked again. The
+       local id above is a placeholder until the server answers. */
+    if (typeof Shop !== 'undefined' && Shop.live()) {
+      Shop.startCount({ whId: S.active.whId, scope: S.active.scope })
+        .then(function (r) {
+          if (S.active && r && r.count) S.active.id = r.count.id;
+          if (typeof render === 'function') render();
+        })
+        .catch(function () { /* the sheet still works; only the record is lost */ });
+    }
     return S.active;
+  }
+
+  /* Send the sheet as it stands. Debounced, because this fires on every
+     keystroke and a request per digit would be absurd — but short, because
+     the whole point is that a closed laptop does not lose the hour. */
+  var saveTimer = null;
+  function saveSheet() {
+    if (typeof Shop === 'undefined' || !Shop.live() || !S.active) return;
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      var a = S.active;
+      if (!a || !/^CNT-\d{4}$/.test(a.id)) return;   /* server id not back yet */
+      Shop.saveCountLines(a.id, Object.keys(a.counted).map(function (sku) {
+        return { sku: sku, counted: a.counted[sku] };
+      })).catch(function () {});
+    }, 1200);
   }
 
   function active() { return S.active; }
@@ -104,9 +133,11 @@ var Stock = (function () {
       /* Clearing the box means "not counted", which is deliberately different
          from counting zero. */
       delete S.active.counted[sku];
+      saveSheet();
       return;
     }
     S.active.counted[sku] = n;
+    saveSheet();
   }
 
   /* A scan during a count increments what is in front of him rather than
@@ -180,11 +211,28 @@ var Stock = (function () {
 
     if (!adjust.length) { mirror(); finish(); return; }
 
+    var serverSession = typeof Shop !== 'undefined' && Shop.live() &&
+                        S.active && /^CNT-\d{4}$/.test(S.active.id);
+
     Shop.write(
       function () {
-        /* Every adjustment, then one re-read. The server records each as the
-           DIFFERENCE it found rather than the number sent, so a shortfall in
-           March is still explainable in June. */
+        if (serverSession) {
+          /* One call. The server walks the sheet inside a single transaction,
+             reads each live figure at that moment and books the difference —
+             so the whole count lands or none of it does, and posting twice is
+             refused rather than adjusting the stock twice.
+
+             The old way fired one request per line, each its own transaction:
+             a retry re-applied every adjustment, and a sale landing between
+             two of them made the second correct against a figure that had
+             already moved. */
+          return Shop.saveCountLines(S.active.id, adjust.map(function (a) {
+            return { sku: a.v.sku, counted: a.counted };
+          })).then(function () { return Shop.postCount(S.active.id); });
+        }
+        /* No server session — the sheet was started before the server
+           answered, or this account cannot open one. The adjustments still
+           have to land, so they go the ordinary way. */
         return Promise.all(adjust.map(function (a) {
           return Shop.count(a.v.sku, whId, a.counted, note);
         }));
@@ -194,7 +242,17 @@ var Stock = (function () {
     );
   }
 
-  function cancel() { S.active = null; }
+  /* Abandoning a count. The server session is closed too rather than left
+     open forever — an open sheet nobody is walking looks like work in
+     progress on every other device. */
+  function cancel() {
+    var a = S.active;
+    S.active = null;
+    if (saveTimer) clearTimeout(saveTimer);
+    if (a && typeof Shop !== 'undefined' && Shop.live() && /^CNT-\d{4}$/.test(a.id)) {
+      Shop.cancelCount(a.id).catch(function () {});
+    }
+  }
 
   /* ---------------------------------------------------------------- view */
 

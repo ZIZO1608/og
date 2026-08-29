@@ -33,6 +33,8 @@ import * as Deliveries from './lib/deliveries.js';
 import * as Partner from './lib/partner.js';
 import * as Purchasing from './lib/purchasing.js';
 import * as Alerts from './lib/alerts.js';
+import * as Money from './lib/money.js';
+import * as Counts from './lib/counts.js';
 import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
@@ -671,6 +673,131 @@ router.add('GET /api/deliveries/:id', requirePerm('delivery.read', (ctx) => {
   sendOk(ctx.res, { delivery: d });
 }));
 
+/* ----------------------------------------------------------------- money
+   The drawer: shifts, expenses, and customers paying down what they owe.
+   money.write is labelled "Record expenses and debts" in the permission
+   table — it has existed since the beginning and nothing used it until now. */
+
+router.add('GET /api/money', requirePerm('money.read', (ctx) => {
+  sendOk(ctx.res, Money.all());
+}));
+
+function moneyFail(res, e) {
+  const status = e.code === 'not_found' ? 404
+               : ['already_open', 'already_closed', 'already_settled',
+                  'overpaid', 'voided', 'bad_status'].includes(e.code) ? 409
+               : 400;
+  sendError(res, status, e.code || 'invalid', e.message);
+}
+
+/* Whose name goes on the drawer is the account opening it, not a dropdown.
+   "Who was on the till" is an accountability record, and a picker lets
+   anybody put somebody else's name on a short count. Naming another person
+   takes staff.write. */
+router.add('POST /api/shifts', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  const other = b.userId && Number(b.userId) !== ctx.user.id;
+  if (other && !Auth.can(ctx.user, 'staff.write')) {
+    return sendError(ctx.res, 403, 'forbidden', 'You cannot open a shift for someone else.');
+  }
+  try {
+    const who = other
+      ? Auth.findById(Number(b.userId))
+      : ctx.user;
+    sendOk(ctx.res, {
+      shift: Money.openShift({
+        float: Number(b.float) || 0, whId: b.whId || null,
+        userId: who ? who.id : ctx.user.id,
+        userName: who ? who.name : ctx.user.name
+      })
+    });
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+router.add('POST /api/shifts/:id/close', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { shift: Money.closeShift(ctx.params.id, Number(b.counted), ctx.user.id) });
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+router.add('POST /api/expenses', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      expense: Money.addExpense({
+        category: b.category, amount: Number(b.amount), method: b.method,
+        note: b.note || null, at: b.at || null, currency: b.currency || null,
+        userId: ctx.user.id
+      })
+    });
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+/* Money in, and the one direction that cannot be corrected by doing it
+   again — so it carries an opId, exactly like a sale. */
+router.add('POST /api/debt-payments', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      payment: Money.payDebt({
+        saleId: b.saleId, amount: Number(b.amount), method: b.method,
+        note: b.note || null, currency: b.currency || null,
+        opId: typeof b.opId === 'string' ? b.opId : null,
+        userId: ctx.user.id
+      })
+    });
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+/* ---------------------------------------------------------- stock counts */
+
+router.add('GET /api/stock-counts', requirePerm('stock.read', (ctx) => {
+  sendOk(ctx.res, { stockCounts: Counts.list({}) });
+}));
+
+router.add('POST /api/stock-counts', requirePerm('stock.count', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      count: Counts.start({ whId: b.whId, scope: b.scope || 'all',
+                            userId: ctx.user.id, userName: ctx.user.name })
+    });
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+router.add('PUT /api/stock-counts/:id/lines', requirePerm('stock.count', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      count: Counts.setLines(ctx.params.id, Array.isArray(b.lines) ? b.lines : [], ctx.user.id)
+    });
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+router.add('POST /api/stock-counts/:id/post', requirePerm('stock.count', async (ctx) => {
+  try { sendOk(ctx.res, { count: Counts.post(ctx.params.id, ctx.user.id) }); }
+  catch (e) { moneyFail(ctx.res, e); }
+}));
+
+router.add('POST /api/stock-counts/:id/cancel', requirePerm('stock.count', async (ctx) => {
+  try { sendOk(ctx.res, { count: Counts.cancel(ctx.params.id, ctx.user.id) }); }
+  catch (e) { moneyFail(ctx.res, e); }
+}));
+
+/* ---------------------------------------------- suppliers and the payroll
+   Their own routes, on their own gates. They used to arrive only bundled
+   inside /api/partner, which is gated on print.read — so revoking that from
+   a manager silently emptied the supplier list and the payroll, with no
+   error to explain it. One list, one permission, one place. */
+router.add('GET /api/suppliers', requirePerm('money.read', (ctx) => {
+  sendOk(ctx.res, { suppliers: Partner.suppliers() });
+}));
+
+router.add('GET /api/employees', requirePerm('staff.read', (ctx) => {
+  sendOk(ctx.res, { employees: Partner.employees() });
+}));
+
 /* ------------------------------------------------------------------ bell
    Computed, never stored: an alert is a fact about the state right now, and
    a stored alert is a fact about a state that has moved on.
@@ -787,9 +914,12 @@ router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx)
     invoices: bundle.invoices,
     messages: bundle.messages,
     clubs: bundle.clubs,
-    waMessages: bundle.waMessages,
-    suppliers: Auth.can(ctx.user, 'money.read') ? bundle.suppliers : [],
-    employees: Auth.can(ctx.user, 'staff.read') ? bundle.employees : []
+    waMessages: bundle.waMessages
+    /* suppliers and employees are NOT here. They have their own routes on
+       their own permissions — carried in this bundle they were gated on
+       print.read, so revoking that from a manager emptied the payroll and
+       the supplier balances silently. Two paths that can disagree is one
+       path too many. */
   });
 }));
 

@@ -54,34 +54,63 @@ var Shop = (function () {
     return may(perm) ? soft(API.get(path), empty) : Promise.resolve(empty);
   }
 
+  /* Named, not positional.
+
+     This was a Promise.all over a plain array read back as r[0]..r[11], and
+     inserting one request in the middle silently shifted every index after
+     it — the kind of mistake that hands the notification bundle to the
+     payroll and shows nothing wrong until somebody opens the screen. The
+     names cost one Object.keys and remove the whole class. */
+  var REQUESTS = {
+    config:   function () { return API.get('/api/config'); },
+    catalogue: function () { return API.get('/api/catalogue'); },
+    customers: function () { return want('customer.read', '/api/customers', { customers: [] }); },
+    sales:    function () { return want('sell', '/api/sales?limit=200', { sales: [] }); },
+    movements: function () { return want('stock.read', '/api/movements?limit=400', { movements: [] }); },
+
+    /* The print jobs, the line to Yalla Wear and the money between the two
+       companies. null rather than an empty bundle when the account cannot
+       read it: hydrate leaves those screens alone on null, where an empty
+       bundle would blank them. */
+    partner:  function () { return want('print.read', '/api/partner', null); },
+    purchase: function () { return want('stock.read', '/api/purchase-orders', { purchaseOrders: [] }); },
+
+    /* The drawer, on the same null reasoning. */
+    money:    function () { return want('money.read', '/api/money', null); },
+    counts:   function () { return want('stock.read', '/api/stock-counts', { stockCounts: [] }); },
+
+    /* Their own requests on their own gates. Bundled inside /api/partner they
+       were hostage to print.read, so revoking that from a manager silently
+       emptied the payroll and the supplier balances with no error. */
+    suppliers: function () { return want('money.read', '/api/suppliers', { suppliers: [] }); },
+    employees: function () { return want('staff.read', '/api/employees', { employees: [] }); },
+
+    /* Computed per account, so it arrives already filtered to what this
+       person may see and already marked read or not. */
+    alerts:   function () { return soft(API.get('/api/notifications'), { notifications: [] }); }
+  };
+
   function load() {
-    return Promise.all([
-      API.get('/api/config'),
-      API.get('/api/catalogue'),
-      want('customer.read', '/api/customers', { customers: [] }),
-      want('sell', '/api/sales?limit=200', { sales: [] }),
-      want('stock.read', '/api/movements?limit=400', { movements: [] }),
-      /* The print jobs, the line to Yalla Wear and the money between the
-         two companies. null rather than an empty bundle when the account
-         cannot read it: hydrate leaves the screens alone on null, where an
-         empty bundle would blank them. */
-      want('print.read', '/api/partner', null),
-      want('stock.read', '/api/purchase-orders', { purchaseOrders: [] }),
-      /* The bell is computed per account, so it comes back already filtered
-         to what this person may see and already marked read or not. */
-      soft(API.get('/api/notifications'), { notifications: [] })
-    ]).then(function (r) {
+    var names = Object.keys(REQUESTS);
+    return Promise.all(names.map(function (n) { return REQUESTS[n](); })).then(function (list) {
+      var r = {};
+      names.forEach(function (n, i) { r[n] = list[i]; });
+
       DB.hydrate({
-        config: r[0].config,
-        rate: r[0].rate,
-        warehouses: r[0].warehouses,
-        products: r[1].products,
-        customers: r[2].customers,
-        sales: r[3].sales,
-        movements: r[4].movements,
-        partner: r[5],
-        purchaseOrders: r[6].purchaseOrders,
-        notifications: r[7].notifications
+        config: r.config.config,
+        rate: r.config.rate,
+        warehouses: r.config.warehouses,
+        products: r.catalogue.products,
+        customers: r.customers.customers,
+        sales: r.sales.sales,
+        movements: r.movements.movements,
+        partner: r.partner,
+        purchaseOrders: r.purchase.purchaseOrders,
+        money: r.money,
+        stockCounts: r.counts.stockCounts,
+        suppliers: r.suppliers.suppliers,
+        employees: r.employees.employees,
+        notifications: r.alerts.notifications
       });
       return DB;
     });
@@ -269,6 +298,22 @@ var Shop = (function () {
 
     /* One alert by key, or all of them. */
     markAlertRead: function (key)   { return API.post('/api/notifications/read', { key: key || null }); },
+
+    /* ---- the drawer ----
+       All server-first through Shop.write rather than optimistic. Money is
+       the one place where applying locally and posting afterwards is exactly
+       wrong: a payment that looks recorded and is not is worse than a
+       payment that takes a moment to appear. */
+    openShift:   function (body)      { return API.post('/api/shifts', body); },
+    closeShift:  function (id, count) { return API.post('/api/shifts/' + id + '/close', { counted: count }); },
+    addExpense:  function (body)      { return API.post('/api/expenses', body); },
+    payDebt:     function (body)      { return API.post('/api/debt-payments', body); },
+
+    /* ---- the count sheet ---- */
+    startCount:     function (body)      { return API.post('/api/stock-counts', body); },
+    saveCountLines: function (id, lines) { return API.put('/api/stock-counts/' + id + '/lines', { lines: lines }); },
+    postCount:      function (id)        { return API.post('/api/stock-counts/' + id + '/post', {}); },
+    cancelCount:    function (id)        { return API.post('/api/stock-counts/' + id + '/cancel', {}); },
 
     newCustomer: function (body) { return API.post('/api/customers', body); },
     updateCustomer: function (id, fields) { return API.patch('/api/customers/' + id, fields); },

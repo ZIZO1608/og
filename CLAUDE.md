@@ -282,9 +282,9 @@ Three shapes, because three kinds of table behave differently:
 
 | Shape | Tables | How |
 |---|---|---|
-| **Cursor** | `products` `variants` `stock` `customers` `sales` (+`sale_items`) `deliveries` `print_jobs` (+lines, +stages) `partner_invoices` (+refs, +payments) `job_messages` `suppliers` `employees` `purchase_orders` (+lines) | Replays `change_log` from a cursor held in Supabase `sync_state` |
+| **Cursor** | `products` `variants` `stock` `customers` `sales` (+`sale_items`) `deliveries` `print_jobs` (+lines, +stages) `partner_invoices` (+refs, +payments) `job_messages` `suppliers` `employees` `purchase_orders` (+lines) `shifts` `stock_counts` (+lines) | Replays `change_log` from a cursor held in Supabase `sync_state` |
 | **Mirror** | `config` `role_permissions` `label_templates` `clubs` `notification_reads` | Pushed whole every run, **and rows deleted here are deleted there** |
-| **Append-only** | `fx_rates` `stock_movements` `wa_messages` | Pushed above the highest `id` already sent |
+| **Append-only** | `fx_rates` `stock_movements` `wa_messages` `expenses` `debt_payments` `print_log` `label_print_log` | Pushed above the highest `id` already sent |
 
 Plus `currencies`, `warehouses` and `users` as plain full upserts.
 
@@ -306,8 +306,12 @@ Things that will bite you:
   `OG_VAULT_KEY` the restore skips accounts rather than creating ones nobody can sign in to.
 - `npm run supabase:reconcile` is the repair tool for the cursor tables when something wrote rows
   outside `change_log`. The mirror and append-only tables are self-correcting and do not need it.
-- **Two schema files are run by hand in the Supabase dashboard: `003_partner.sql` and
-  `004_purchasing_and_alerts.sql`.**
+- **`sales.shift_id` is the one column that can break a sync.** `sales` is pushed OUTSIDE the guarded
+  block, so on a Supabase without `005` the whole batch is rejected and a day of sales stops mirroring
+  over an optional table. `TABLES.sales.fallbackDrop` retries without the column and names the file to
+  run — the same shape as the `pw_enc` fallback in `syncUsers`. Verified against the live mirror.
+- **Three schema files are run by hand in the Supabase dashboard: `003_partner.sql`,
+  `004_purchasing_and_alerts.sql` and `005_money_and_counts.sql`.**
   Until it is, the sync says so by name and pushes everything else — taking a whole run down because
   one table is missing would stop a day's sales being mirrored over a table nobody has created yet.
 
@@ -351,8 +355,12 @@ Things worth knowing:
 
 ## Known open work
 
-- **`shifts` and `expenses` are still memory-only.** The Money screen has no tables behind it, so a
-  recorded expense does not survive a refresh. Same shape of gap purchase orders had.
+- The **supplier and payroll editors do not exist**. `Shop.saveSupplier` / `saveEmployee` and their
+  routes are live and tested; there is simply no screen. Same for adding one size to an existing
+  product (`Shop.addVariant`) and cancelling a purchase order (`Shop.cancelPO`). These are listed by
+  name in the wiring test so they stay visible rather than becoming permanent.
+- A **draft partner invoice** still lives only in the browser — `partner_invoices.issued` is
+  `NOT NULL`, so there is nowhere to put one. Issuing it reaches the server; saving a draft does not.
 - Delivery **cash reconciliation** is designed and the schema carries it (`to_collect`, `collected`,
   `Deliveries.driverDay()`), but the end-of-day settle-up screen is not built.
 - Bulk catalogue entry; the Yalla Wear remote portal against real data; an offline write queue.
@@ -392,3 +400,31 @@ array, so an order raised on Sunday was gone on Monday.
   open and the two still owed. The supplier balance moves by what **arrived**, not by what was ordered.
 - The unit cost is frozen onto the line at order time — with the lira moving, what a pair cost when it
   was ordered is not what it costs when it lands, and the invoice has to agree with the order.
+
+## The drawer
+
+`server/lib/money.js` and `server/lib/counts.js`, migration `017_money_and_counts.sql`. Shifts,
+expenses, customer debt repayments, and the stock-count session — the last four things that lived
+only in the browser and died on a refresh.
+
+- **A shift is a cash box, not a login session.** Sessions expire overnight and tabs close; neither
+  means the drawer was counted. It is also routinely a handover, which no session spans. One open
+  shift at a time, enforced inside `DB.tx()` where `BEGIN IMMEDIATE` makes the check actually hold —
+  **not** a `UNIQUE` index, because NULLs are distinct in SQLite and such an index would permit any
+  number of open shifts.
+- **`expected` is frozen at close**, unlike almost everything else here, which derives. The variance
+  was signed off by a person, and voiding a sale a week later must not rewrite last Tuesday's cash
+  difference. `counted` is stored because somebody physically counted it.
+- **Paying a debt carries all three guards** — an `opId` through `applied_ops` so a retry cannot take
+  the money twice, the balance recomputed inside the transaction rather than trusted from the browser,
+  and `Sales.void` refusing a sale that has payments against it. Money in is the one direction that
+  cannot be corrected by doing it again.
+- **An expense never touches `suppliers.outstanding`.** Receiving a purchase order already books what
+  the shop owes; moving it here too would pay the same supplier twice in the ledger, and the goods are
+  already in cost price so it would come off profit twice as well. `supplier` is deliberately not in
+  `expense.categories`, which lives in `config` so Settings can add one without a deploy.
+- **Posting a count is one transaction** using `Stock.apply(d, …)`, not `Stock.count()` — the latter
+  opens its own and `DB.tx` refuses to nest. The old way fired one request per line, so a retry
+  re-applied every adjustment and a sale landing mid-way corrected against a figure that had moved.
+- `stock_count_lines.system_qty` is the one derived value this schema stores: the point of a count is
+  the variance *at that moment*, and by June the live figure has moved.

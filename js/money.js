@@ -292,10 +292,21 @@ var Money = (function () {
     'open-shift-go': function () {
       var user = (document.getElementById('mnUser') || {}).value;
       var f = parseInt((document.getElementById('mnFloat') || {}).value, 10) || 0;
-      var s = DB.openShift(user, f);
-      closeModal();
-      render();
-      if (s) toast(s.id, t('mn_shift_open') + ' · ' + money(f), 'ok', 3200);
+      /* Server-first, like everything in this file. The drawer is money, and
+         a shift that looks open and is not means a day of sales stamped to
+         nothing. The server is also where the one-open-shift rule actually
+         holds — checked here it was defeated by opening the screen on a
+         second device. */
+      Shop.write(
+        function () { return Shop.openShift({ float: f, whId: DB.defaultWh }); },
+        function () { return { shift: DB.openShift(user, f) }; },
+        function (res) {
+          var opened = res && res.shift;
+          closeModal();
+          render();
+          if (opened) toast(opened.id, t('mn_shift_open') + ' · ' + money(f), 'ok', 3200);
+        }
+      );
     },
 
     'close-shift': function () {
@@ -328,15 +339,26 @@ var Money = (function () {
       var counted = parseInt(el && el.value, 10);
       if (isNaN(counted) || counted < 0) { toast(t('mn_close_shift'), t('mn_count_needed'), 'warn'); return; }
 
-      DB.closeShift(s, counted);
-      closeModal();
-      render();
-
-      var kind = s.diff === 0 ? 'ok' : Math.abs(s.diff) > 50000 ? 'err' : 'warn';
-      toast(s.id + ' · ' + t('mn_closed'),
-        s.diff === 0 ? t('mn_balanced')
-          : (s.diff > 0 ? '+' : '') + money(s.diff) + ' · ' + t(s.diff < 0 ? 'mn_short' : 'mn_over'),
-        kind, 6000);
+      /* The difference comes back from the server rather than being worked
+         out here: it computes what to expect from the sales, expenses and
+         debt payments it actually holds, and freezes that figure onto the
+         shift. A till that could name its own expected total could sign off
+         a short drawer as exact. */
+      Shop.write(
+        function () { return Shop.closeShift(s.id, counted); },
+        function () { DB.closeShift(s, counted); return { shift: s }; },
+        function (res) {
+          var done = (res && res.shift) || s;
+          closeModal();
+          render();
+          var kind = done.diff === 0 ? 'ok' : Math.abs(done.diff) > 50000 ? 'err' : 'warn';
+          toast(done.id + ' · ' + t('mn_closed'),
+            done.diff === 0 ? t('mn_balanced')
+              : (done.diff > 0 ? '+' : '') + money(done.diff) + ' · ' +
+                t(done.diff < 0 ? 'mn_short' : 'mn_over'),
+            kind, 6000);
+        }
+      );
     },
 
     'add-expense': function () {
@@ -365,16 +387,28 @@ var Money = (function () {
     'add-expense-go': function () {
       var amt = parseInt((document.getElementById('mnAmt') || {}).value, 10);
       if (!amt || amt <= 0) { toast(t('mn_add_expense'), t('mn_amount_needed'), 'warn'); return; }
-      var e = DB.newExpense({
+      var body = {
         category: (document.getElementById('mnCat') || {}).value,
         amount: amt,
         method: (document.getElementById('mnMethod') || {}).value,
         note: (document.getElementById('mnNote') || {}).value
-      });
-      closeModal();
-      render();
-      toast(t('mn_c_' + e.category), money(e.amount) +
-        (e.shiftId ? ' · ' + t('mn_from_drawer') : ''), 'ok', 3200);
+      };
+      Shop.write(
+        function () { return Shop.addExpense(body); },
+        function () { return { expense: DB.newExpense(body) }; },
+        function (res) {
+          var e = res && res.expense;
+          closeModal();
+          render();
+          if (!e) return;
+          /* shift_id from the server, shiftId from the local mirror — the
+             same fact under two spellings, because this is the one toast
+             that reads a field the server named. */
+          var fromDrawer = e.shiftId || e.shift_id;
+          toast(t('mn_c_' + e.category), money(e.amount) +
+            (fromDrawer ? ' · ' + t('mn_from_drawer') : ''), 'ok', 3200);
+        }
+      );
     },
 
     settle: function (el) {
@@ -406,13 +440,33 @@ var Money = (function () {
       var id = el.getAttribute('data-id');
       var amt = parseInt((document.getElementById('mnPay') || {}).value, 10);
       var method = (document.getElementById('mnPayMethod') || {}).value;
-      if (!DB.payDebt(id, amt, method)) { toast(t('mn_settle'), t('yi_bad_amount'), 'err'); return; }
-      closeModal();
-      render();
-      var s = DB.sale(id);
-      toast(esc(s.customerName), money(amt) + ' · ' +
-        (DB.debtBalance(s) ? t('mn_part_paid') + ' ' + money(DB.debtBalance(s)) : t('mn_cleared')),
-        'ok', 4000);
+      /* Money across the counter, and the one write here that carries an
+         opId. A till that loses wifi mid-request does not know whether the
+         payment landed, and tapping Save again must not clear the debt twice
+         on one payment. The server recomputes the balance too — checked here
+         it is only a courtesy, and two devices settling the same debt both
+         pass a check made on screen. */
+      var opId = 'dp-' + id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      Shop.write(
+        function () {
+          return Shop.payDebt({ saleId: id, amount: amt, method: method, opId: opId });
+        },
+        function () {
+          if (!DB.payDebt(id, amt, method)) return null;
+          return { payment: { balance: DB.debtBalance(DB.sale(id)) } };
+        },
+        function (res) {
+          if (!res) { toast(t('mn_settle'), t('yi_bad_amount'), 'err'); return; }
+          closeModal();
+          render();
+          var sale = DB.sale(id);
+          var left = res.payment ? res.payment.balance
+                                 : (sale ? DB.debtBalance(sale) : 0);
+          toast(esc(sale ? sale.customerName : id), money(amt) + ' · ' +
+            (left ? t('mn_part_paid') + ' ' + money(left) : t('mn_cleared')),
+            'ok', 4000);
+        }
+      );
     },
 
     /* Chasing a debt is a WhatsApp message here, not a letter. */
