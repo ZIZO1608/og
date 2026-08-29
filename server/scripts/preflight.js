@@ -14,12 +14,17 @@
      3. Is there anything to SELL?  A migrated but empty catalogue gives a
         till with no products and no explanation.
      4. Is Supabase wired up, and is the mirror going to run?
+     5. Is the PORT free? A second copy of the server cannot bind, and Node
+        answers that with a twelve-line EADDRINUSE stack trace that says
+        nothing about which window to close.
 
-   NEVER blocks. It always exits 0, even when everything is wrong, because
-   the shop must still be able to open and take cash while somebody sorts the
-   mirror out. It reports; index.js decides nothing based on it.
+   It reports rather than gates: everything above exits 0 even when wrong,
+   because the shop must still open and take cash while somebody sorts the
+   mirror out. The port is the one exception — the server cannot start at
+   all, so that exits 2 and the batch file stops with something readable.
    ========================================================================== */
 
+import { createServer } from 'node:net';
 import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -118,7 +123,30 @@ if (!envFileExists()) {
   hint('Check it properly with:  npm run supabase:check');
 }
 
-console.log('');
+/* ---- 5: can the server even bind? --------------------------------------- */
 
-/* Always. See the header: this reports, it does not gate. */
+const PORT = Number(process.env.OG_PORT || 8090);
+
+/* 'done', not 'resolve' — resolve is already the path helper imported at the
+   top of this file, and shadowing it inside here reads like a bug. */
+const busy = await new Promise((done) => {
+  const probe = createServer();
+  probe.once('error', (e) => done(e.code === 'EADDRINUSE'));
+  probe.once('listening', () => probe.close(() => done(false)));
+  probe.listen(PORT);
+});
+
+if (busy) {
+  console.log('');
+  warn(`Port ${PORT} is already in use — the server cannot start.`);
+  hint('Almost always a copy of this server still running in another window.');
+  hint('Close that window, or find and stop it:');
+  hint(`  netstat -ano | findstr :${PORT}`);
+  hint('  taskkill /PID <the number in the last column> /F');
+  console.log('');
+  /* 2, not 0: this one really is fatal, and the batch file reads it. */
+  process.exit(2);
+}
+
+console.log('');
 process.exit(0);

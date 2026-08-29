@@ -38,12 +38,28 @@ if %NODEMAJOR% LSS 22 (
 cd /d "%~dp0server"
 
 REM  A readiness report before the shop opens: can anyone sign in, is there
-REM  anything to sell, and is the Supabase mirror wired up. It only ever
-REM  PRINTS - it never blocks the start - because a broken mirror must not be
-REM  able to stop the till taking cash. An empty users table used to show up
-REM  only as "Wrong username or password" on every attempt, which reads as a
-REM  broken login rather than an empty table; this is that afternoon, saved.
+REM  anything to sell, is the Supabase mirror wired up, and is the port free.
+REM
+REM  It only PRINTS - a broken mirror must never stop the till taking cash.
+REM  The one exception is the port, where the server genuinely cannot start;
+REM  that exits 2 and is handled below.
+REM
+REM  An empty users table used to show up only as "Wrong username or
+REM  password" on every attempt, which reads as a broken login rather than
+REM  an empty table. That afternoon is what this saves.
 node scripts\preflight.js
+
+REM  Exit 2 means the port is taken - almost always this server already
+REM  running in another window. Node answers that with a stack trace that
+REM  never names the window you need to close, so stop here with the
+REM  message preflight just printed rather than letting it throw.
+if errorlevel 2 (
+  echo.
+  echo   Not starting - see above.
+  echo.
+  pause
+  exit /b 1
+)
 
 REM  The server serves the app and the API, and - when server\.env has
 REM  Supabase credentials - pushes the mirror on a timer while it runs. See
