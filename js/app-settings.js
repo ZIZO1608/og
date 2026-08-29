@@ -351,12 +351,27 @@ function receiptSettingsCard() {
 
   if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
 
-  h += '<div class="row2">' +
-    '<label class="field"><span>' + t('rc3_host') + '</span>' +
+  var usb = CONFIG.RECEIPT_TRANSPORT === 'usb';
+  h += '<label class="field"><span>' + t('rc3_transport') + '</span>' +
+    '<div class="chip-row" id="rcTransport" data-v="' + (usb ? 'usb' : 'tcp') + '">' +
+      '<button class="chip ' + (!usb ? 'on' : '') + '"' + dis +
+        ' data-act="rc-transport" data-k="tcp">' + t('rc3_transport_network') + '</button>' +
+      '<button class="chip ' + (usb ? 'on' : '') + '"' + dis +
+        ' data-act="rc-transport" data-k="usb">' + t('rc3_transport_usb') + '</button>' +
+    '</div></label>';
+
+  h += '<div class="row2" id="rcTransportFields">';
+  if (usb) {
+    h += '<label class="field" style="grid-column:1/-1"><span>' + t('rc3_printer_share') + '</span>' +
+      '<input class="inp num" dir="ltr" id="rcShare" value="' + esc(CONFIG.RECEIPT_PRINTER_SHARE) + '"' + dis + '></label>' +
+      '<div class="partner-note" style="grid-column:1/-1">' + t('rc3_printer_share_hint') + '</div>';
+  } else {
+    h += '<label class="field"><span>' + t('rc3_host') + '</span>' +
       '<input class="inp num" dir="ltr" id="rcHost" value="' + esc(CONFIG.RECEIPT_PRINTER_HOST) + '"' + dis + '></label>' +
     '<label class="field"><span>' + t('rc3_port') + '</span>' +
-      '<input class="inp num" type="number" id="rcPort" value="' + CONFIG.RECEIPT_PRINTER_PORT + '"' + dis + '></label>' +
-  '</div>';
+      '<input class="inp num" type="number" id="rcPort" value="' + CONFIG.RECEIPT_PRINTER_PORT + '"' + dis + '></label>';
+  }
+  h += '</div>';
 
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_branch') + '</span>' +

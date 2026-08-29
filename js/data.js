@@ -128,6 +128,11 @@ var CONFIG = {
   RECEIPT_PRINTER_HOST: '',
   RECEIPT_PRINTER_PORT: 9100,
   RECEIPT_WIDTH_DOTS: 576,
+  /* 'tcp' (network, the original default) or 'usb' (a printer on the same
+     machine as the server, reached via a shared Generic/Text-Only printer
+     queue — see server/lib/printer.js's sendUsb()). */
+  RECEIPT_TRANSPORT: 'tcp',
+  RECEIPT_PRINTER_SHARE: '\\\\localhost\\OGRECEIPT',
   RECEIPT_FOOTER_AR: 'شكراً لتسوقكم معنا',
   RECEIPT_FOOTER_EN: 'Thank you for shopping with us',
   RECEIPT_POLICY_AR: 'يمكن استبدال القطعة خلال 7 أيام من تاريخ الفاتورة بشرط إبراز هذه الفاتورة وعدم استخدام المنتج.',
@@ -2083,6 +2088,8 @@ var DB = {
     if (cfg['receipt.printer_host'] !== undefined) CONFIG.RECEIPT_PRINTER_HOST = cfg['receipt.printer_host'];
     CONFIG.RECEIPT_PRINTER_PORT = num('receipt.printer_port', CONFIG.RECEIPT_PRINTER_PORT);
     CONFIG.RECEIPT_WIDTH_DOTS   = num('receipt.width_dots', CONFIG.RECEIPT_WIDTH_DOTS);
+    if (cfg['receipt.transport'] !== undefined) CONFIG.RECEIPT_TRANSPORT = cfg['receipt.transport'];
+    if (cfg['receipt.printer_share'] !== undefined) CONFIG.RECEIPT_PRINTER_SHARE = cfg['receipt.printer_share'];
     if (cfg['receipt.footer_ar'] !== undefined) CONFIG.RECEIPT_FOOTER_AR = cfg['receipt.footer_ar'];
     if (cfg['receipt.footer_en'] !== undefined) CONFIG.RECEIPT_FOOTER_EN = cfg['receipt.footer_en'];
     if (cfg['receipt.policy_ar'] !== undefined) CONFIG.RECEIPT_POLICY_AR = cfg['receipt.policy_ar'];

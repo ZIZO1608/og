@@ -458,6 +458,16 @@ var ACTIONS = {
     if (OG.view === 'settings') { render(); } else { repaintLabels(); }
   },
 
+  /* Network vs USB changes which fields the card even shows (host/port vs
+     a printer share), not just which chip is lit — so unlike rc-cut this
+     needs a real re-render, not just a class toggle. Pending only: applied
+     for real when rc-save-config PUTs it, same as every other field on
+     this card. */
+  'rc-transport': function (el) {
+    CONFIG.RECEIPT_TRANSPORT = el.getAttribute('data-k');
+    if (OG.view === 'settings') render();
+  },
+
   /* Just flips which chip is lit — rc-save-config reads the choice straight
      back off this element when the card is actually saved. */
   'rc-cut': function (el) {
@@ -471,9 +481,10 @@ var ACTIONS = {
 
   'rc-save-config': function (el) {
     if (!allow('config.write') || typeof Auth === 'undefined') return;
+    var transportEl = document.getElementById('rcTransport');
+    var transport = (transportEl && transportEl.getAttribute('data-v')) || 'tcp';
     var updates = {
-      'receipt.printer_host': (document.getElementById('rcHost') || {}).value || '',
-      'receipt.printer_port': (document.getElementById('rcPort') || {}).value || '9100',
+      'receipt.transport':    transport,
       'shop.branch_name':     (document.getElementById('rcBranch') || {}).value || '',
       'shop.phone':           (document.getElementById('rcPhone') || {}).value || '',
       'receipt.auto_print':   (document.getElementById('rcAutoPrint') || {}).checked ? '1' : '0',
@@ -488,6 +499,16 @@ var ACTIONS = {
       'receipt.policy_ar':    (document.getElementById('rcPolicyAr') || {}).value || '',
       'receipt.policy_en':    (document.getElementById('rcPolicyEn') || {}).value || ''
     };
+    /* Only the fields for the transport actually showing are saved — the
+       other transport's settings stay whatever they were on the server,
+       so switching back later doesn't come back to a blanked-out host or
+       share path. */
+    if (transport === 'usb') {
+      updates['receipt.printer_share'] = (document.getElementById('rcShare') || {}).value || '';
+    } else {
+      updates['receipt.printer_host'] = (document.getElementById('rcHost') || {}).value || '';
+      updates['receipt.printer_port'] = (document.getElementById('rcPort') || {}).value || '9100';
+    }
     el.disabled = true;
     API.put('/api/config', { updates: updates })
       .then(function (res) {

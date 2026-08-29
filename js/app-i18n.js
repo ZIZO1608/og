@@ -89,6 +89,8 @@ var I18N = {
     print_sent: 'Sent to the printer', print_retry: 'Retry from the receipt.',
 
     rc3_title: 'Receipt printer', rc3_sub: 'The 80mm slip a customer walks out holding',
+    rc3_transport: 'Connection', rc3_transport_network: 'Network', rc3_transport_usb: 'USB (this computer)',
+    rc3_printer_share: 'Printer share', rc3_printer_share_hint: 'The Windows printer share this was set up under — see the setup steps for adding it as Generic / Text Only and sharing it.',
     rc3_host: 'Printer address (LAN IP)', rc3_port: 'Port', rc3_branch: 'Branch name',
     rc3_auto_print: 'Auto-print on sale', rc3_auto_print_hint: 'Off for a client demo — a printer chattering through a meeting is a bad look.',
     rc3_copies: 'Copies', rc3_cut_mode: 'Cut', rc3_cut_partial: 'Partial', rc3_cut_full: 'Full',
@@ -523,6 +525,8 @@ var I18N = {
     print_sent: 'أُرسلت إلى الطابعة', print_retry: 'أعد المحاولة من الفاتورة.',
 
     rc3_title: 'طابعة الفاتورة', rc3_sub: 'الفاتورة الحرارية ٨٠ مم التي يحملها الزبون',
+    rc3_transport: 'الاتصال', rc3_transport_network: 'الشبكة', rc3_transport_usb: 'USB (هذا الجهاز)',
+    rc3_printer_share: 'مشاركة الطابعة', rc3_printer_share_hint: 'اسم مشاركة الطابعة في ويندوز كما تم إعدادها — راجع خطوات الإعداد لإضافتها كـ Generic / Text Only ومشاركتها.',
     rc3_host: 'عنوان الطابعة (IP على الشبكة)', rc3_port: 'المنفذ', rc3_branch: 'اسم الفرع',
     rc3_auto_print: 'طباعة تلقائية عند البيع', rc3_auto_print_hint: 'أوقفها في عرض تجريبي للعميل — طابعة تعمل خلال اجتماع مظهر غير مناسب.',
     rc3_copies: 'عدد النسخ', rc3_cut_mode: 'القص', rc3_cut_partial: 'جزئي', rc3_cut_full: 'كامل',

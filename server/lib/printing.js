@@ -89,12 +89,22 @@ export function send({ saleId, userId, bytes, copies, opId }) {
   }
 
   const cfg = get().prepare(
-    `SELECT key, value FROM config WHERE key IN ('receipt.printer_host', 'receipt.printer_port')`
+    `SELECT key, value FROM config WHERE key IN
+       ('receipt.printer_host', 'receipt.printer_port', 'receipt.transport', 'receipt.printer_share')`
   ).all();
-  const host = cfg.find(r => r.key === 'receipt.printer_host')?.value || '';
-  const port = Number(cfg.find(r => r.key === 'receipt.printer_port')?.value) || 9100;
+  const at = (k) => cfg.find(r => r.key === k)?.value;
+  const transport = at('receipt.transport') || 'tcp';
 
-  return Printer.send(bytes, { host, port }).then(
+  /* USB: a printer plugged into this same machine, no network interface —
+     reached with a raw `copy /b` to a Generic/Text-Only printer share (see
+     server/lib/printer.js's header). TCP stays the default so an existing
+     network-connected receipt printer keeps working with no config change
+     at all. */
+  const sendPromise = transport === 'usb'
+    ? Printer.sendUsb(bytes, { printerShare: at('receipt.printer_share') || '' })
+    : Printer.send(bytes, { host: at('receipt.printer_host') || '', port: Number(at('receipt.printer_port')) || 9100 });
+
+  return sendPromise.then(
     () => {
       logAttempt({ saleId, userId, copies, status: 'sent', error: null });
       const result = { ok: true };
