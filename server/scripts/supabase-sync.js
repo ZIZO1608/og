@@ -302,6 +302,58 @@ const TABLES = {
     parseKey: (rowId) => ({ id: Number(rowId) }),
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM deliveries WHERE id = ?').get(key.id),
     mapRow: (r) => r
+  },
+
+  /* ---- the partner half ------------------------------------------------
+     A job's lines and its stage history have no change_log entries of their
+     own, the same arrangement sale_items has with sales: they are written
+     once with the job and only ever change through it, so the job carries
+     them. Replace rather than merge, because a line removed from a kit sheet
+     has to disappear from the mirror too. */
+  print_jobs: {
+    parseKey: (rowId) => ({ id: rowId }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM print_jobs WHERE id = ?').get(key.id),
+    mapRow: (r) => r,
+    afterUpsert: async (localRow) => {
+      for (const t of ['print_job_lines', 'print_job_stages']) {
+        const rows = DB.get().prepare(`SELECT * FROM ${t} WHERE job_id = ?`).all(localRow.id);
+        await SB.remove(t, { job_id: localRow.id }).catch(() => {});
+        if (rows.length) await SB.insert(t, rows, { upsert: true });
+      }
+    }
+  },
+
+  partner_invoices: {
+    parseKey: (rowId) => ({ id: rowId }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM partner_invoices WHERE id = ?').get(key.id),
+    mapRow: (r) => r,
+    afterUpsert: async (localRow) => {
+      const refs = DB.get().prepare('SELECT * FROM partner_invoice_refs WHERE invoice_id = ?').all(localRow.id);
+      await SB.remove('partner_invoice_refs', { invoice_id: localRow.id }).catch(() => {});
+      if (refs.length) await SB.insert('partner_invoice_refs', refs, { upsert: true });
+
+      const pays = DB.get().prepare('SELECT * FROM partner_invoice_payments WHERE invoice_id = ?').all(localRow.id);
+      await SB.remove('partner_invoice_payments', { invoice_id: localRow.id }).catch(() => {});
+      if (pays.length) await SB.insert('partner_invoice_payments', pays, { upsert: true });
+    }
+  },
+
+  job_messages: {
+    parseKey: (rowId) => ({ id: Number(rowId) }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM job_messages WHERE id = ?').get(key.id),
+    mapRow: (r) => ({ ...r, read_og: !!r.read_og, read_yl: !!r.read_yl })
+  },
+
+  suppliers: {
+    parseKey: (rowId) => ({ id: Number(rowId) }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM suppliers WHERE id = ?').get(key.id),
+    mapRow: (r) => ({ ...r, archived: !!r.archived })
+  },
+
+  employees: {
+    parseKey: (rowId) => ({ id: Number(rowId) }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM employees WHERE id = ?').get(key.id),
+    mapRow: (r) => ({ ...r, archived: !!r.archived })
   }
 };
 
@@ -414,6 +466,33 @@ for (const name of ['products', 'variants', 'stock', 'customers', 'sales', 'deli
 console.log(head('History'));
 await syncAppendOnly('fx_rates');
 await syncAppendOnly('stock_movements');
+
+/* ---------------------------------------------------------------- partner
+   These tables arrive with server/supabase/003_partner.sql, which is run by
+   hand in the dashboard. If the shop's server updates before somebody runs
+   it, every request here 404s — and taking the WHOLE sync down over that
+   would mean a day's sales stop being mirrored because of a table nobody has
+   created yet. So it says exactly what to run and carries on.
+
+   Jobs before their invoices, because an invoice references a job. */
+console.log(head('Partner'));
+try {
+  /* Reference data a kit line points at, and part of the same migration —
+     so it lives inside this guard rather than with the settings that have
+     always existed. Left in syncSettings it took the entire run down
+     before the day's sales were pushed, which is the exact failure this
+     block is here to prevent. */
+  await mirrorTable('clubs', ['code'], (r) => ({ ...r, archived: !!r.archived }));
+  for (const name of ['print_jobs', 'partner_invoices', 'job_messages', 'suppliers', 'employees']) {
+    await syncTable(name);
+  }
+  await syncAppendOnly('wa_messages');
+} catch (e) {
+  if (/does not exist|Could not find the table|PGRST205|schema cache/i.test(String(e.message))) {
+    console.log(warn('Supabase has no partner tables yet — skipped.'));
+    console.log('    \x1b[2mRun server/supabase/003_partner.sql in the Supabase SQL editor.\x1b[0m');
+  } else { throw e; }
+}
 
 await SB.update('sync_state', { id: 'shop' }, {
   last_push_at: new Date().toISOString(),

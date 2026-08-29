@@ -1292,9 +1292,12 @@ var DB = {
         DB.postMessage({
           jobId: job.id, from: by, kind: KIND[stage],
           text: PRINT_STAGE_LABELS[stage] + ' — ' + job.id + ' · ' + job.qty + ' pcs'
-        });
+        }, true);
       }
     }
+
+    pushPartner(function () { return Shop.setJobStage(job.id, stage); },
+                typeof t === 'function' ? t('print_title') : 'Print jobs');
     return true;
   },
 
@@ -1647,7 +1650,7 @@ var DB = {
     }).sort(function (a, b) { return a.at - b.at; });
   },
 
-  postMessage: function (m) {
+  postMessage: function (m, quiet) {
     var msg = {
       id: 'M' + (++_msgSeq),
       jobId: m.jobId || null, invoiceId: m.invoiceId || null,
@@ -1656,6 +1659,17 @@ var DB = {
       readOg: m.from === 'og', readYl: m.from === 'yalla'
     };
     jobMessages.push(msg);
+    /* `quiet` is for the message a stage change posts by itself: the
+       server writes its own copy when the stage moves, and sending this
+       one too would put the same line in the thread twice. */
+    if (!quiet) {
+      pushPartner(function () {
+        return Shop.postMessage({
+          jobId: msg.jobId, invoiceId: msg.invoiceId,
+          kind: msg.kind, reason: msg.reason, text: msg.text
+        });
+      }, typeof t === 'function' ? t('messages') : 'Messages');
+    }
     return msg;
   },
 
@@ -2395,6 +2409,25 @@ var DB = {
     };
     if (lines) DB.resyncKit(job);
     printJobs.push(job);
+
+    /* The server hands out its own job number from the highest that
+       exists, so the id above is a local guess. The reload after the write
+       replaces this whole array with what was actually recorded, which is
+       the only copy anybody quotes down the phone. */
+    pushPartner(function () {
+      return Shop.newPrintJob({
+        customer: job.customer, phone: job.phone, design: job.design,
+        kind: job.kind, qty: job.qty, priority: job.priority,
+        deadline: job.deadline ? new Date(job.deadline).toISOString() : null,
+        price: job.price, cost: job.cost,
+        lines: (job.lines || []).map(function (l) {
+          return {
+            clubCode: clubCodeFor(l.club), printName: l.print,
+            number: l.number, size: l.size, qty: l.qty, unitCost: l.price
+          };
+        })
+      });
+    }, typeof t === 'function' ? t('print_title') : 'Print jobs');
     return job;
   },
 
@@ -2690,7 +2723,171 @@ var DB = {
       if (e) e.sales += s.total;
     });
 
+    /* ---- the partner half ------------------------------------------------
+       Only when the server sent it. A payload without a partner key means
+       the caller could not read it — a cashier with no print.read, say — and
+       replacing the arrays with nothing would empty screens she is allowed to
+       see rather than leaving them as they were.
+
+       The server speaks snake_case and stores dates as text; these screens
+       were written against camelCase and real Dates. Translating here, once,
+       is what lets sixteen call sites stay exactly as they are. */
+    if (payload.partner) hydratePartner(payload.partner);
+
     DB.live = true;
     return DB;
   }
 };
+
+/* Push a partner change the server has not heard about yet.
+
+   The local model has already moved, so the board does not sit still for a
+   round trip while somebody drags a card. The server enforces the same
+   rules, so a refusal means the local guess was wrong rather than that
+   something broke — reloading puts the truth back on screen and the toast
+   says which rule it was. Both paths reload: after a refusal because the
+   screen is now lying, after a success because the server may have added
+   something of its own, like the message a stage change posts. */
+/* A kit line carries the club's NAME because that is what the sheet shows;
+   the server keys on its code. One lookup rather than storing both. */
+function clubCodeFor(name) {
+  var keys = Object.keys(CLUBS);
+  for (var i = 0; i < keys.length; i++) {
+    if (CLUBS[keys[i]][0] === name || CLUBS[keys[i]][1] === name) return keys[i];
+  }
+  return null;
+}
+
+function pushPartner(send, title) {
+  if (!DB.live || typeof Shop === 'undefined' || !Shop.live()) return;
+  send()
+    .then(function () { return Shop.reload(); })
+    .catch(function (err) {
+      if (typeof toast === 'function') {
+        toast(title, (typeof API !== 'undefined' && API.friendly) ? API.friendly(err)
+                                                                  : String(err.message || err),
+              'err', 6000);
+      }
+      Shop.reload();
+    });
+}
+
+function hydratePartner(p) {
+  var date = function (v) { return v ? new Date(v) : null; };
+
+  /* ---- clubs ----------------------------------------------------------
+     Shaped as a lookup, not a list, because every kit line reaches for one
+     by code. */
+  if (p.clubs) {
+    Object.keys(CLUBS).forEach(function (k) { delete CLUBS[k]; });
+    p.clubs.forEach(function (c) { CLUBS[c.code] = [c.name, c.name_ar || c.name]; });
+  }
+
+  if (p.jobs) {
+    printJobs.length = 0;
+    p.jobs.forEach(function (j) {
+      var lines = (j.lines || []).map(function (l) {
+        var club = CLUBS[l.club_code] || [l.club_code || '', l.club_code || ''];
+        return {
+          id: 'L' + l.id, club: club[0], clubAr: club[1],
+          print: l.print_name,          /* null still means TO BE CONFIRMED */
+          number: l.number, size: l.size, qty: l.qty,
+          /* Absent for anyone without cost.read — the server strips it from
+             the response rather than trusting us not to draw it. */
+          price: l.unit_cost
+        };
+      });
+
+      var job = {
+        id: j.id, customer: j.customer, phone: j.phone, design: j.design,
+        kind: j.kind, qty: j.qty, priority: j.priority, stage: j.stage,
+        price: j.price, cost: j.cost,
+        deadline: date(j.deadline), created: date(j.created_at),
+        saleId: j.sale_id || null,
+        lines: j.kind === 'kit' ? lines : null,
+        history: (j.history || []).map(function (h) {
+          return { stage: h.stage, at: date(h.at), by: h.by_side };
+        }),
+        order: {
+          state: j.order_state || 'draft',
+          sentAt: date(j.order_sent_at),
+          respondedAt: date(j.order_responded_at),
+          promisedAt: date(j.order_promised_at),
+          note: j.order_note || ''
+        }
+      };
+
+      /* The size chips, in S · M · L · XL order however the order was taken.
+         Derived from the lines for a kit and from the curve for a bulk run,
+         exactly as the seed builder did. */
+      if (job.kind === 'kit') {
+        job.sizes = {};
+        TEE_SIZES.forEach(function (sz) {
+          var n = lines.reduce(function (a, l) { return a + (l.size === sz ? l.qty : 0); }, 0);
+          if (n) job.sizes[sz] = n;
+        });
+      } else {
+        job.sizes = splitSizes(job.qty);
+      }
+
+      printJobs.push(job);
+    });
+  }
+
+  if (p.invoices) {
+    partnerInvoices.length = 0;
+    p.invoices.forEach(function (v) {
+      partnerInvoices.push({
+        id: v.id, issued: date(v.issued), due: date(v.due),
+        note: v.note || '', refs: v.refs || [],
+        payments: (v.payments || []).map(function (x) {
+          return { at: date(x.at), amount: x.amount, method: x.method };
+        })
+      });
+    });
+  }
+
+  if (p.messages) {
+    jobMessages.length = 0;
+    p.messages.forEach(function (m) {
+      jobMessages.push({
+        id: 'M' + m.id, jobId: m.job_id, invoiceId: m.invoice_id,
+        from: m.from_side, kind: m.kind, reason: m.reason,
+        text: m.body, at: date(m.at),
+        readOg: !!m.read_og, readYl: !!m.read_yl
+      });
+    });
+  }
+
+  if (p.suppliers) {
+    suppliers.length = 0;
+    p.suppliers.forEach(function (x) {
+      suppliers.push({
+        id: x.id, name: x.name, contact: x.contact, category: x.category,
+        outstanding: x.outstanding, totalPurchased: x.total_purchased,
+        dueDate: date(x.due_date), lastPayment: date(x.last_payment)
+      });
+    });
+  }
+
+  if (p.employees) {
+    employees.length = 0;
+    p.employees.forEach(function (x) {
+      employees.push({
+        id: x.id, name: x.name, role: x.role, salary: x.salary,
+        nextPayment: date(x.next_payment), since: x.since,
+        phone: x.phone, sales: 0
+      });
+    });
+  }
+
+  if (p.waMessages) {
+    waMessages.length = 0;
+    p.waMessages.forEach(function (m) {
+      waMessages.push({
+        id: m.id, at: date(m.at), phone: m.phone, text: m.body,
+        kind: m.kind, refType: m.ref_type, refId: m.ref_id
+      });
+    });
+  }
+}

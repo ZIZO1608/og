@@ -60,7 +60,12 @@ var Shop = (function () {
       API.get('/api/catalogue'),
       want('customer.read', '/api/customers', { customers: [] }),
       want('sell', '/api/sales?limit=200', { sales: [] }),
-      want('stock.read', '/api/movements?limit=400', { movements: [] })
+      want('stock.read', '/api/movements?limit=400', { movements: [] }),
+      /* The print jobs, the line to Yalla Wear and the money between the
+         two companies. null rather than an empty bundle when the account
+         cannot read it: hydrate leaves the screens alone on null, where an
+         empty bundle would blank them. */
+      want('print.read', '/api/partner', null)
     ]).then(function (r) {
       DB.hydrate({
         config: r[0].config,
@@ -69,7 +74,8 @@ var Shop = (function () {
         products: r[1].products,
         customers: r[2].customers,
         sales: r[3].sales,
-        movements: r[4].movements
+        movements: r[4].movements,
+        partner: r[5]
       });
       return DB;
     });
@@ -232,6 +238,21 @@ var Shop = (function () {
     },
 
     /* ---- customers ---- */
+    /* ---- the partner half ---------------------------------------------
+       Thin on purpose: every rule that matters — the stage order, the names
+       gate, the acceptance gate — is enforced on the server, because Yalla
+       Wear is a different company and the browser is not a boundary. */
+    newPrintJob:   function (body)        { return API.post('/api/print-jobs', body); },
+    setJobStage:   function (id, stage)   { return API.patch('/api/print-jobs/' + id + '/stage', { stage: stage }); },
+    sendOrder:     function (id)          { return API.post('/api/print-jobs/' + id + '/order', {}); },
+    respondOrder:  function (id, ok, o)   { return API.post('/api/print-jobs/' + id + '/respond', { accept: !!ok, promisedAt: (o||{}).promisedAt || null, note: (o||{}).note || null }); },
+    postMessage:   function (body)        { return API.post('/api/messages', body); },
+    markMsgRead:   function (body)        { return API.post('/api/messages/read', body); },
+    newInvoice:    function (body)        { return API.post('/api/partner-invoices', body); },
+    payInvoice:    function (id, body)    { return API.post('/api/partner-invoices/' + id + '/payments', body); },
+    saveSupplier:  function (body)        { return API.post('/api/suppliers', body); },
+    saveEmployee:  function (body)        { return API.post('/api/employees', body); },
+
     newCustomer: function (body) { return API.post('/api/customers', body); },
     updateCustomer: function (id, fields) { return API.patch('/api/customers/' + id, fields); },
     adjustPoints: function (id, delta, reason) {

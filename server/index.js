@@ -30,6 +30,7 @@ import * as Stock from './lib/stock.js';
 import * as Sales from './lib/sales.js';
 import * as Customers from './lib/customers.js';
 import * as Deliveries from './lib/deliveries.js';
+import * as Partner from './lib/partner.js';
 import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
@@ -668,6 +669,159 @@ router.add('GET /api/deliveries/:id', requirePerm('delivery.read', (ctx) => {
   sendOk(ctx.res, { delivery: d });
 }));
 
+/* ---------------------------------------------------------------- partner
+   The print jobs, the line to Yalla Wear, and the money between the two
+   companies.
+
+   Two audiences read these routes and they are not the same people: the shop
+   sees everything, and the partner is another company who must see their own
+   work and nothing else. That is why the read is split by role rather than by
+   what the request asks for — the same reason a driver's deliveries are
+   scoped in SQL and not by a query parameter. */
+
+/* Everything the portal draws, in one read, so the board and the finance page
+   cannot end up disagreeing about the same job. */
+router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx) => {
+  const bundle = Partner.all();
+  const partner = ctx.user.role === 'partner';
+
+  /* Yalla Wear is a supplier, not staff. Their own jobs and the thread
+     attached to them — never what the shop charges the customer on top,
+     which is the shop's margin and none of their business. */
+  if (partner) {
+    const mine = new Set(bundle.jobs.map((j) => j.id));
+    return sendOk(ctx.res, {
+      jobs: bundle.jobs.map(({ price, ...rest }) => rest),
+      invoices: bundle.invoices,
+      messages: bundle.messages.filter((m) => !m.job_id || mine.has(m.job_id)),
+      clubs: bundle.clubs,
+      suppliers: [], employees: [], waMessages: []
+    });
+  }
+
+  /* One route, but the things it carries are not all gated the same way.
+     print.read gets somebody the board; it does not get them the payroll,
+     what the shop owes its suppliers, or the printer's price. Each of
+     those is left out entirely rather than sent and hidden, because the
+     response is the boundary and the browser is only decoration. */
+  sendOk(ctx.res, {
+    jobs: bundle.jobs.map((j) => ({
+      ...scrubCost(j, ctx.user),
+      lines: j.lines ? j.lines.map((l) => scrubCost(l, ctx.user)) : null
+    })),
+    invoices: bundle.invoices,
+    messages: bundle.messages,
+    clubs: bundle.clubs,
+    waMessages: bundle.waMessages,
+    suppliers: Auth.can(ctx.user, 'money.read') ? bundle.suppliers : [],
+    employees: Auth.can(ctx.user, 'staff.read') ? bundle.employees : []
+  });
+}));
+
+/* One place to turn a thrown reason into a status, so a refusal reads the
+   same however it was reached. */
+function partnerFail(res, e) {
+  const status = e.code === 'not_found' ? 404
+               : (e.code === 'names_missing' || e.code === 'not_accepted') ? 409
+               : 400;
+  sendError(res, status, e.code || 'invalid', e.message);
+}
+
+router.add('POST /api/print-jobs', requirePerm('print.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { job: Partner.create({ ...b, userId: ctx.user.id }) });
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+/* Which side moved it is decided here, from the account. A partner request
+   claiming to be the shop would put the wrong name on the message that the
+   move posts, and that message is the record of who said what. */
+router.add('PATCH /api/print-jobs/:id/stage', requirePerm(['print.write', 'partner.jobs'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  const side = ctx.user.role === 'partner' ? 'yalla' : 'og';
+  try {
+    sendOk(ctx.res, { job: Partner.setStage(ctx.params.id, b.stage, side, ctx.user.id) });
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+/* Placing the order is the shop's move; answering it is the printer's. Each
+   is gated on the permission only that side has. */
+router.add('POST /api/print-jobs/:id/order', requirePerm('print.write', async (ctx) => {
+  try {
+    sendOk(ctx.res, { job: Partner.sendOrder(ctx.params.id, ctx.user.id) });
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/print-jobs/:id/respond', requirePerm('partner.respond', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      job: Partner.respondToOrder(ctx.params.id, !!b.accept, {
+        promisedAt: b.promisedAt || null, note: b.note || null, userId: ctx.user.id
+      })
+    });
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/messages', requirePerm(['print.read', 'partner.jobs'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  const from = ctx.user.role === 'partner' ? 'yalla' : 'og';
+  try {
+    sendOk(ctx.res, {
+      message: Partner.postMessage({
+        jobId: b.jobId || null, invoiceId: b.invoiceId || null,
+        from, kind: b.kind || 'note', reason: b.reason || null,
+        text: b.text, userId: ctx.user.id
+      })
+    });
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/messages/read', requirePerm(['print.read', 'partner.jobs'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  const side = ctx.user.role === 'partner' ? 'yalla' : 'og';
+  try {
+    sendOk(ctx.res, Partner.markRead({
+      side, jobId: b.jobId || null, invoiceId: b.invoiceId || null, userId: ctx.user.id
+    }));
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/partner-invoices', requirePerm('partner.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { invoice: Partner.createInvoice({ ...b, userId: ctx.user.id }) });
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+/* Money leaving the shop, so it sits behind money.write rather than the print
+   permissions — somebody who schedules print jobs is not thereby somebody who
+   can say a supplier was paid. */
+router.add('POST /api/partner-invoices/:id/payments', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      invoice: Partner.recordPayment({
+        invoiceId: ctx.params.id, amount: Number(b.amount),
+        method: b.method, at: b.at || null, userId: ctx.user.id
+      })
+    });
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/suppliers', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { supplier: Partner.saveSupplier(b, ctx.user.id) }); }
+  catch (e) { partnerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/employees', requirePerm('staff.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { employee: Partner.saveEmployee(b, ctx.user.id) }); }
+  catch (e) { partnerFail(ctx.res, e); }
+}));
+
 router.add('POST /api/deliveries', requirePerm('delivery.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
@@ -854,6 +1008,10 @@ async function stockOp(ctx, fn) {
 const COST_KEYS = [
   'cost_price', 'costPrice',
   'unit_cost', 'unitCost',
+  /* A print job's cost is what the OTHER company charges to make it. It is
+     the shop's margin on every shirt, and a cashier who can schedule a job
+     has no business seeing it. */
+  'cost',
   'profit', 'margin'
 ];
 
@@ -876,9 +1034,15 @@ function scrubCost(row, user) {
   return out;
 }
 
+/* One permission, or a list meaning any one of them.
+
+   The list is for the routes both companies use. Yalla Wear holds none of
+   the shop's permissions — they are not staff — so a board gated on
+   print.read alone locked the partner out of their own work. */
 function requirePerm(perm, handler) {
+  const any = Array.isArray(perm) ? perm : [perm];
   return (ctx) => {
-    if (!Auth.can(ctx.user, perm)) {
+    if (!any.some((p) => Auth.can(ctx.user, p))) {
       return sendError(ctx.res, 403, 'forbidden',
         'Your account does not have access to this.');
     }
