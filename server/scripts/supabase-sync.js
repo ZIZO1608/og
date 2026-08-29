@@ -74,6 +74,110 @@ async function syncReference() {
   }
 }
 
+/* ------------------------------------------------------------- settings
+   The shop's own settings, the permission matrix and the label layouts.
+   Nothing logs a change for any of them, and together they are a few
+   hundred rows that move maybe once a month — so they are mirrored whole
+   on every run.
+
+   Mirrored, not merely upserted. A setting somebody deleted or a
+   permission they revoked has to disappear from the mirror as well, or
+   restoring from it hands the shop back a grant it had deliberately taken
+   away. Reading the table back to find those is fine at this size; none of
+   these is ever more than a few hundred rows. */
+async function mirrorTable(table, keyCols, mapRow) {
+  const local = DB.get().prepare(`SELECT * FROM ${table}`).all();
+  const rows = mapRow ? local.map(mapRow) : local;
+
+  if (rows.length) await SB.insert(table, rows, { upsert: true });
+
+  const keyOf = (r) => keyCols.map((c) => r[c]).join('\u0000');
+  const here = new Set(local.map(keyOf));
+  const remote = await SB.select(table, { select: keyCols.join(',') });
+
+  let dropped = 0;
+  for (const r of remote) {
+    if (here.has(keyOf(r))) continue;
+    const match = {};
+    for (const c of keyCols) match[c] = r[c];
+    await SB.remove(table, match);
+    dropped++;
+  }
+
+  console.log(tick(`${table.padEnd(17)}${String(rows.length).padStart(4)} rows` +
+                   (dropped ? `, ${dropped} removed` : '')));
+}
+
+/* slots is a JSON string in SQLite and JSONB in Postgres. Sent as a string
+   it lands as a quoted scalar rather than an object, and every reader of
+   the mirror then has to know to parse it twice. One unreadable template
+   must not take the whole sync down with it. */
+function parseSlots(raw, id) {
+  try { return JSON.parse(raw); }
+  catch { console.log(warn(`label template ${id}: unreadable slots — mirrored as empty`)); return []; }
+}
+
+async function syncSettings() {
+  console.log(head('Settings'));
+  await mirrorTable('config', ['key']);
+  await mirrorTable('role_permissions', ['role', 'perm'],
+                    (r) => ({ ...r, allowed: !!r.allowed }));
+  await mirrorTable('label_templates', ['id'],
+                    (r) => ({ ...r, archived: !!r.archived, slots: parseSlots(r.slots, r.id) }));
+}
+
+/* --------------------------------------------------------- append-only
+   The movement log and the rate history are only ever inserted into, never
+   updated and never deleted. For a table like that the cheapest correct
+   cursor is the highest id already pushed — no change_log entry needed,
+   and the backlog that predates this code syncs itself on the first run
+   instead of staying invisible forever.
+
+   Same trap as the seq cursor, for the same reason: a rebuilt database
+   restarts ids at 1 while the cursor stays in the hundreds, and every run
+   afterwards finds nothing to do while real rows pile up. A cursor ahead
+   of the highest id that exists can only mean that, so rewind and replay —
+   every push is an upsert on the row's own id. */
+async function syncAppendOnly(table, mapRow) {
+  const cursorId = `sync:${table}:maxid`;
+  const existing = (await SB.select('sync_state', { eq: { id: cursorId } }))[0];
+  let lastId = existing ? existing.last_seq : 0;
+  if (!existing) {
+    await SB.insert('sync_state', { id: cursorId, last_seq: 0, note: `highest ${table}.id pushed` });
+  }
+
+  const highest = DB.get().prepare(`SELECT MAX(id) AS m FROM ${table}`).get().m;
+  if (highest !== null && lastId > highest) {
+    console.log(warn(`${table}: cursor at ${lastId} but the table only reaches ${highest} — ` +
+                     'it was rebuilt underneath us. Rewinding and replaying.'));
+    lastId = 0;
+  }
+
+  const rows = DB.get().prepare(
+    `SELECT * FROM ${table} WHERE id > ? ORDER BY id ASC`
+  ).all(lastId);
+
+  if (!rows.length) { console.log(tick(`${table.padEnd(17)}nothing new`)); return; }
+
+  /* In batches. A shop that has not synced for a month can have thousands
+     of movements, and one request carrying all of them is how you discover
+     the request size limit. */
+  const BATCH = 500;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const slice = rows.slice(i, i + BATCH);
+    await SB.insert(table, mapRow ? slice.map(mapRow) : slice, { upsert: true });
+  }
+
+  const top = rows[rows.length - 1].id;
+  await SB.update('sync_state', { id: cursorId }, {
+    last_seq: top,
+    last_push_at: new Date().toISOString(),
+    rows_pushed: (existing ? existing.rows_pushed : 0) + rows.length,
+    note: `highest ${table}.id pushed`
+  });
+  console.log(tick(`${table.padEnd(17)}${String(rows.length).padStart(4)} new row(s), through id ${top}`));
+}
+
 /* ------------------------------------------------------------------ users
    Not logged to change_log at all (no logChange() call anywhere in
    server/lib/auth.js), so there is no cursor to replay — this is a plain
@@ -292,6 +396,7 @@ async function syncTable(name) {
 }
 
 await syncReference();
+await syncSettings();
 await syncUsers();
 
 /* Insertion order is the FK dependency order: products before variants
@@ -302,6 +407,13 @@ await syncUsers();
 for (const name of ['products', 'variants', 'stock', 'customers', 'sales', 'deliveries']) {
   await syncTable(name);
 }
+
+/* After the loop, not before: a movement points at a variant and a
+   warehouse, and a rate at a currency. Both would be rejected if they
+   arrived first. */
+console.log(head('History'));
+await syncAppendOnly('fx_rates');
+await syncAppendOnly('stock_movements');
 
 await SB.update('sync_state', { id: 'shop' }, {
   last_push_at: new Date().toISOString(),

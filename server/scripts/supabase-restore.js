@@ -58,8 +58,32 @@ const dim  = (m) => console.log(`    ${DIM}${m}${OFF}`);
 /* Parent before child, every time: variants reference products, stock
    references variants, sales reference customers, and sale_items and
    deliveries reference sales. Restoring out of order trips the foreign keys
-   the database is opened with (foreign_keys = ON). */
-const ORDER = ['products', 'variants', 'stock', 'customers', 'sales', 'sale_items', 'deliveries'];
+   the database is opened with (foreign_keys = ON).
+
+   The first five carry no references at all and come first so the rest have
+   somewhere to point: a rate needs its currencies, and a movement needs the
+   variant and the warehouse it moved between. The last two come last for
+   the same reason.
+
+   currencies and warehouses are seeded by the migrations, so on any real
+   database they are already populated and get skipped — they are listed for
+   the case that matters, restoring onto a machine where they are not. */
+const ORDER = [
+  'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates',
+  'products', 'variants', 'stock', 'customers', 'sales', 'sale_items', 'deliveries',
+  'fx_rates', 'stock_movements'
+];
+
+/* These are not data somebody entered — the migrations seed them with
+   defaults on every fresh database, so they are never empty and the
+   'already has rows' guard would skip them forever. That guard exists to
+   stop a restore trampling a shop's real stock; a default permission matrix
+   is the opposite, a placeholder waiting to be replaced. Skipping them is
+   how a manager rebuilds on a new machine and quietly gets the factory
+   permissions back instead of the ones he set. */
+const SEEDED = new Set([
+  'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates', 'fx_rates'
+]);
 
 const PAGE = 1000;   /* Supabase caps a REST read at 1000 rows per request. */
 
@@ -133,11 +157,13 @@ for (const table of ORDER) {
   catch (e) { warn(`${table} — could not read from Supabase (${e.message}), skipping`); continue; }
 
   const here = localCount(d, table);
-  const blocked = here > 0 && !FORCE;
+  const seeded = SEEDED.has(table);
+  const blocked = here > 0 && !FORCE && !seeded;
 
-  console.log(`  ${table.padEnd(11)} Supabase ${String(remote.length).padStart(5)}   ` +
+  console.log(`  ${table.padEnd(17)} Supabase ${String(remote.length).padStart(5)}   ` +
               `local ${String(here).padStart(5)}   ` +
-              (blocked ? `${YELLOW}skipped — already has rows${OFF}` : ''));
+              (blocked ? `${YELLOW}skipped — already has rows${OFF}`
+                       : (seeded && here > 0) ? `${DIM}replacing the defaults${OFF}` : ''));
 
   if (!blocked && remote.length) plan.push({ table, cols, rows: remote });
 }
@@ -155,37 +181,16 @@ if (DRY) {
   process.exit(0);
 }
 
-head('Restoring');
-
-let total = 0;
-for (const { table, cols, rows } of plan) {
-  /* One transaction per table: a table either lands completely or not at all,
-     so a connection that drops halfway cannot leave variants pointing at
-     products that never arrived. */
-  const written = DB.tx(() => {
-    let n = 0;
-    for (const row of rows) {
-      const r = adapt(row, cols);
-      const keys = Object.keys(r);
-      if (!keys.length) continue;
-      const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(',')}) ` +
-                  `VALUES (${keys.map(() => '?').join(',')})`;
-      d.prepare(sql).run(...keys.map((k) => r[k]));
-      n++;
-    }
-    return n;
-  });
-  total += written;
-  tick(`${table} — ${written} row(s)`);
-}
-
 /* ---------------------------------------------------------------- accounts
 
-   Deliberately last and deliberately separate from the table loop above: a
-   staff row carries something none of the others do, and the rules for it
-   are different at every step — sealed rather than plain, skipped rather
-   than forced, and never allowed to overwrite a local account that already
-   works. */
+   Before the tables, and separate from the loop that writes them. Before,
+   because sales.cashier_id points at a user: restoring onto a genuinely
+   empty machine — the case this whole script exists for — died on that
+   foreign key partway through, leaving half a database behind. Separate,
+   because a staff row carries something none of the others do and the
+   rules for it differ at every step: sealed rather than plain, skipped
+   rather than forced, and never allowed to overwrite a local account that
+   already works. */
 head('Accounts');
 
 if (!Vault.isEnabled()) {
@@ -236,6 +241,31 @@ if (!Vault.isEnabled()) {
     if (!added && !failed && kept) tick('every mirrored account already exists here.');
   }
 }
+
+head('Restoring');
+
+let total = 0;
+for (const { table, cols, rows } of plan) {
+  /* One transaction per table: a table either lands completely or not at all,
+     so a connection that drops halfway cannot leave variants pointing at
+     products that never arrived. */
+  const written = DB.tx(() => {
+    let n = 0;
+    for (const row of rows) {
+      const r = adapt(row, cols);
+      const keys = Object.keys(r);
+      if (!keys.length) continue;
+      const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(',')}) ` +
+                  `VALUES (${keys.map(() => '?').join(',')})`;
+      d.prepare(sql).run(...keys.map((k) => r[k]));
+      n++;
+    }
+    return n;
+  });
+  total += written;
+  tick(`${table} — ${written} row(s)`);
+}
+
 
 /* Counters that live in their own table do not move when rows are written
    straight in like this, and a counter left behind the data hands the next
