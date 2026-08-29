@@ -107,7 +107,7 @@ var SelectBox = (function () {
     close();
     var panel = build(sel);
     document.body.appendChild(panel);
-    state = { sel: sel, panel: panel, index: sel.selectedIndex, was: sel.value };
+    state = { sel: sel, panel: panel, index: sel.selectedIndex, was: sel.value, at: Date.now() };
     place(panel, sel);
     sel.classList.add('sbx-open');
     paintActive();
@@ -169,8 +169,14 @@ var SelectBox = (function () {
         var same = state && state.sel === sel;
         if (same) { close(); return; }
         /* preventDefault also cancels the focus that press would have given
-           it, and a field that never takes focus cannot be tabbed out of. */
-        sel.focus();
+           it, and a field that never takes focus cannot be tabbed out of.
+
+           preventScroll matters more than it looks: focusing an element the
+           browser considers out of view makes it scroll, that scroll is seen
+           by the handler at the bottom of this file, and the list closes in
+           the same tick it opened — which looks exactly like a dropdown that
+           does not open at all. */
+        try { sel.focus({ preventScroll: true }); } catch (err) { sel.focus(); }
         open(sel);
         return;
       }
@@ -229,7 +235,12 @@ var SelectBox = (function () {
     /* An open list is positioned against the viewport, so anything that moves
        the field underneath it leaves it stranded. Closing is honest and
        cheaper than chasing the field around. */
-    window.addEventListener('scroll', function () { if (state) close(); }, true);
+    /* Capture, so a scroll inside any container counts — but not the one
+       opening can cause by itself. Without that grace period a list can be
+       shut by its own arrival, which is invisible and maddening. */
+    window.addEventListener('scroll', function () {
+      if (state && Date.now() - state.at > 150) close();
+    }, true);
     window.addEventListener('resize', function () { if (state) close(); });
   }
 
