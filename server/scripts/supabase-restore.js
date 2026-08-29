@@ -237,6 +237,24 @@ if (!Vault.isEnabled()) {
   }
 }
 
+/* Counters that live in their own table do not move when rows are written
+   straight in like this, and a counter left behind the data hands the next
+   product a code that already exists. nextLabelCode() also catches up on its
+   own now, but leaving the database in a correct state beats relying on the
+   next caller to notice. */
+if (plan.some((p) => p.table === 'variants')) {
+  const used = d.prepare(
+    'SELECT MAX(CAST(label_code AS INTEGER)) AS m FROM variants WHERE label_code IS NOT NULL'
+  ).get().m;
+  if (used !== null) {
+    const seq = d.prepare('SELECT next_value FROM label_code_seq WHERE id = 1').get();
+    if (seq && seq.next_value <= used) {
+      d.prepare('UPDATE label_code_seq SET next_value = ? WHERE id = 1').run(used + 1);
+      tick('label code counter moved to ' + (used + 1) + ' (past the restored codes)');
+    }
+  }
+}
+
 head('Done');
 console.log(`  ${total} row(s) restored into the local database.`);
 dim('Check who can sign in with:  npm run preflight');

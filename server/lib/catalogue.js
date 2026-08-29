@@ -156,11 +156,28 @@ export function nextBarcode(d, productId) {
 export function nextLabelCode(d) {
   const row = d.prepare('SELECT next_value FROM label_code_seq WHERE id = 1').get();
   if (!row) throw new Error('label_code_seq is missing its row — did migration 010 run?');
-  if (row.next_value > 99999999) {
+
+  /* The counter lives in its own table, so anything that writes variant rows
+     WITHOUT coming through here leaves it behind the data — a restore from
+     the Supabase mirror, an import, a hand-repair. The next product created
+     afterwards is then handed a code that already exists, and the insert dies
+     on "UNIQUE constraint failed: variants.label_code" while pointing at the
+     new product rather than at the counter that is actually wrong.
+
+     So the counter is a floor, not the whole answer: whichever is higher, it
+     or the largest code actually in use, wins. Existing labels keep the codes
+     they were printed with; only the next one moves. */
+  const used = d.prepare(
+    'SELECT MAX(CAST(label_code AS INTEGER)) AS m FROM variants WHERE label_code IS NOT NULL'
+  ).get().m;
+
+  const next = (used !== null && used >= row.next_value) ? used + 1 : row.next_value;
+
+  if (next > 99999999) {
     throw new Error('label_code counter exhausted (8-digit cap reached)');
   }
-  d.prepare('UPDATE label_code_seq SET next_value = next_value + 1 WHERE id = 1').run();
-  return String(row.next_value);
+  d.prepare('UPDATE label_code_seq SET next_value = ? WHERE id = 1').run(next + 1);
+  return String(next);
 }
 
 /* ---------------------------------------------------------------- products */
