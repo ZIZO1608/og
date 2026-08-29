@@ -145,16 +145,40 @@ function loadRoleMatrix() {
    pattern as ROLE_MATRIX/loadRoleMatrix above. */
 var STAFF_PRESENCE = null;
 
+/* How long a presence read stays good enough to reuse.
+
+   This number is doing more than saving a request. loadStaffPresence() is
+   called from afterSettings(), which runs after EVERY render — and the
+   response calls render(). Without something to break that, the two chase
+   each other forever: render, fetch, render, fetch. The page never settles,
+   which is felt as a Settings screen that lags and throws the scroll back to
+   the top every second or so.
+
+   loadRoleMatrix() above avoids it with `if (ROLE_MATRIX) return` — it can,
+   because a permission matrix does not change while you look at it. Who is
+   signed in does, so this cannot latch permanently; it goes stale instead. */
+var PRESENCE_FRESH_MS = 30 * 1000;
+var STAFF_PRESENCE_AT = 0;
+
 function loadStaffPresence() {
   if (typeof Auth === 'undefined' || Auth.demoMode()) return;
   if (!Auth.can('staff.read')) return;
+
+  /* The render this fetch triggers lands back here immediately; that second
+     visit is inside the window and stops, which is what ends the loop. */
+  if (Date.now() - STAFF_PRESENCE_AT < PRESENCE_FRESH_MS) return;
+  STAFF_PRESENCE_AT = Date.now();
 
   API.get('/api/staff/presence')
     .then(function (r) {
       STAFF_PRESENCE = r.staff || [];
       if (OG.view === 'settings') render();
     })
-    .catch(function () { /* card keeps its placeholder */ });
+    .catch(function () {
+      /* The card keeps its placeholder. The stamp stays set on purpose — a
+         server that is refusing this call must not be asked again on every
+         render; the next attempt is a window away. */
+    });
 }
 
 function presenceMinutesAgo(iso) {
