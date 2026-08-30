@@ -156,7 +156,10 @@ function viewPartnerInvoices() {
       '<td class="num">' + (bal ? '<b style="color:var(--warning)">' + money(bal) + '</b>' : '—') + '</td>' +
       '<td><span class="badge ' + cls + '">' + t('yi_st_' + st) +
         (DB.invoiceOverdue(inv) ? ' · ' + DB.daysSince(inv.due) + 'd' : '') + '</span></td>' +
-      '<td onclick="event.stopPropagation()">' + (bal
+      /* No stopPropagation — it killed the click before the delegated
+         [data-act] dispatcher on `document` ever saw it, so Pay now did
+         nothing. closest('[data-act]') finds this button, not the row. */
+      '<td>' + (bal
         ? '<button class="btn btn-sm btn-primary" data-act="og-pay-inv" data-id="' + inv.id + '">' +
             t('og_pay_now') + '</button>'
         : '') + '</td></tr>';

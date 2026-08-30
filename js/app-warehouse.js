@@ -355,7 +355,10 @@ function whPoTab() {
         '<td class="num ' + (s.cover < 14 ? 'po-urgent' : 'muted') + '">' +
           (s.cover === Infinity ? '—' : s.cover + t('yl_d')) + '</td>' +
         '<td class="num"><b>' + s.qty + '</b></td>' +
-        '<td onclick="event.stopPropagation()"><button class="btn btn-sm btn-primary" ' +
+        /* No stopPropagation — it killed the click before the delegated
+           [data-act] dispatcher on `document` ever saw it, so Reorder did
+           nothing. closest('[data-act]') finds this button, not the row. */
+        '<td><button class="btn btn-sm btn-primary" ' +
           'data-act="reorder" data-id="' + p.id + '">' + t('reorder') + '</button></td></tr>';
     });
     h += '</tbody></table></div></div>';

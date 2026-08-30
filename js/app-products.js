@@ -161,7 +161,13 @@ function viewProducts() {
       (bulk ? '<td class="bk-col">' + Bulk.box('products', r.p.id, ri) + '</td>' : '');
     cols.forEach(function (c) { h += cell[c.k]; });
     if (canLabel) {
-      h += '<td onclick="event.stopPropagation()"><button class="btn btn-sm btn-ghost" ' +
+      /* No onclick="event.stopPropagation()" here. It used to carry one, which
+         killed the click before it reached the delegated [data-act] dispatcher
+         on `document` — so this button had never once printed a label. It was
+         never needed either: the dispatcher resolves e.target.closest('[data-act]'),
+         which finds THIS button, not the open-product row around it. Same bug
+         and same fix as the POS cart's Clear button. */
+      h += '<td><button class="btn btn-sm btn-ghost" ' +
         'data-act="quick-label" data-id="' + r.p.id + '">' + t('print_labels') + '</button></td>';
     }
     h += '</tr>';

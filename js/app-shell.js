@@ -130,7 +130,20 @@ if (typeof Motion !== 'undefined') {
 
 function navBadge(id) {
   if (id === 'print') { var n = DB.printJobs.filter(function (j) { return DB.isOverdue(j); }).length; return n ? n : 0; }
-  if (id === 'products') { return DB.criticalVariants().length; }
+  /* How many products the shop sells. Archived lines are left out so this
+     agrees with the list on the screen — viewProducts() filters on the same
+     !p.archived, and a badge saying 4 above a table showing 3 rows is read as
+     a missing row rather than as a different question being answered.
+
+     This used to be DB.criticalVariants().length — sizes at or below
+     STOCK_CRITICAL, not products. It was a fair thing to count and a bad
+     thing to put here unlabelled: one shoe with five thin sizes read as 5,
+     which looks like a quantity of products and is not one. The low-stock
+     figure is still on the screen itself, per row, where the word next to it
+     says what it means. */
+  if (id === 'products') {
+    return DB.products.filter(function (p) { return !p.archived; }).length;
+  }
   return 0;
 }
 
