@@ -683,7 +683,7 @@ export function seedGrid(sectionId, { rows, cols, capacity = null }, userId = nu
   if (r > ROW_LETTERS.length) {
     throw fail(`${ROW_LETTERS.length} rows is the most this can label A–Z`, 'too_many_rows');
   }
-  if (c > MAX_COLS) throw fail(`${MAX_COLS} columns is the most`, 'too_many_cols');
+  if (c > MAX_COLS) throw fail(`${MAX_COLS} bays is the most`, 'too_many_cols');
   const cap = capacity == null ? null : Number(capacity);
   if (cap != null && (!Number.isInteger(cap) || cap < 1)) {
     throw fail('capacity is a whole number of boxes, or nothing at all', 'bad_request');
@@ -736,7 +736,7 @@ export function editRows(sectionId, { action, row = null, cols = null }, userId 
       const top = used.length ? used.slice().sort().pop() : null;
       const nextIdx = top ? ROW_LETTERS.indexOf(top) + 1 : 0;
       if (nextIdx < 0 || nextIdx >= ROW_LETTERS.length) {
-        throw fail(`${sec.key} has reached row Z`, 'too_many_rows');
+        throw fail(`${sec.key} has reached level Z`, 'too_many_rows');
       }
       const letter = ROW_LETTERS[nextIdx];
 
@@ -745,10 +745,10 @@ export function editRows(sectionId, { action, row = null, cols = null }, userId 
       if (!columns.length) {
         const c = Number(cols);
         if (!Number.isInteger(c) || c < 1) {
-          throw fail('this room has no columns yet — say how many, or seed the grid first',
+          throw fail(`${sec.key} has no bays yet — say how many, or lay out the grid first`,
                      'no_columns');
         }
-        if (c > MAX_COLS) throw fail(`${MAX_COLS} columns is the most`, 'too_many_cols');
+        if (c > MAX_COLS) throw fail(`${MAX_COLS} bays is the most`, 'too_many_cols');
         columns = Array.from({ length: c }, (_, i) => i + 1);
       }
 
@@ -772,8 +772,8 @@ export function editRows(sectionId, { action, row = null, cols = null }, userId 
       const doomed = d.prepare(
         'SELECT * FROM shelves WHERE section_id = ? AND row_label = ? ORDER BY col_index'
       ).all(sectionId, letter);
-      if (!doomed.length) throw fail(`${sec.key} has no row ${letter}`, 'not_found');
-      return removeShelves(d, sec, doomed, userId, `row ${letter}`);
+      if (!doomed.length) throw fail(`${sec.key} has no level ${letter}`, 'not_found');
+      return removeShelves(d, sec, doomed, userId, `level ${letter}`);
     }
 
     throw fail("action is 'add' or 'remove'", 'bad_request');
@@ -788,11 +788,11 @@ export function editCols(sectionId, { action, col = null }, userId = null) {
     if (action === 'add') {
       const rows = d.prepare('SELECT DISTINCT row_label FROM shelves WHERE section_id = ? ORDER BY row_label')
                     .all(sectionId).map((x) => x.row_label);
-      if (!rows.length) throw fail('this room has no rows yet — seed the grid first', 'no_rows');
+      if (!rows.length) throw fail(`${sec.key} has no levels yet — lay out the grid first`, 'no_rows');
 
       const next = d.prepare('SELECT COALESCE(MAX(col_index), 0) AS m FROM shelves WHERE section_id = ?')
                     .get(sectionId).m + 1;
-      if (next > MAX_COLS) throw fail(`${MAX_COLS} columns is the most`, 'too_many_cols');
+      if (next > MAX_COLS) throw fail(`${MAX_COLS} bays is the most`, 'too_many_cols');
 
       const at = DB.nowIso();
       const ins = d.prepare(
@@ -814,8 +814,8 @@ export function editCols(sectionId, { action, col = null }, userId = null) {
       const doomed = d.prepare(
         'SELECT * FROM shelves WHERE section_id = ? AND col_index = ? ORDER BY row_label'
       ).all(sectionId, j);
-      if (!doomed.length) throw fail(`${sec.key} has no column ${j}`, 'not_found');
-      return removeShelves(d, sec, doomed, userId, `column ${j}`);
+      if (!doomed.length) throw fail(`${sec.key} has no bay ${j}`, 'not_found');
+      return removeShelves(d, sec, doomed, userId, `bay ${j}`);
     }
 
     throw fail("action is 'add' or 'remove'", 'bad_request');

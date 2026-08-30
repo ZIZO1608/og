@@ -1,10 +1,14 @@
 /* ==========================================================================
    OG SYSTEM — the warehouse map                                [shelfmap.js]
    --------------------------------------------------------------------------
-   The room, drawn. One section at a time — as a WebGL room you can walk
-   round (js/shelfroom.js), with the CSS rack it grew out of kept underneath
-   as the surface for editing the layout, and as what draws when this
-   machine cannot draw the room.
+   The warehouse, drawn — as TWO VIEWS OF ONE PLACE. The 2D view is the
+   default and the working surface: the room from above (the plan strip,
+   every rack a bar on the wall it hangs on) and under it the rack in focus
+   seen straight on, levels down the side and bays across. The 3D room
+   (js/shelfroom.js) is the same data with the walls put back, one press
+   away, for planning and for showing somebody. Both carry the same
+   colours, the same names, the same scan feedback and the same designer;
+   switching changes how it is drawn and nothing about what it says.
 
    TWO SURFACES, ONE RULE. The 3D room is for LOOKING — which shelf, how
    full, where the gap is. The flat panel underneath is for WORKING — what is
@@ -21,17 +25,36 @@
    TIME somebody opens the map, never at boot, so the till pays nothing for
    it on the mornings nobody looks at the warehouse.
 
-   COLOUR DISCIPLINE — THE FLASH IS A RING, THE TYPE IS A FACE. Green, amber
+   COLOUR DISCIPLINE — THE FLASH IS A RING, THE TYPE IS A FILL. Green, amber
    and red exist ONLY as scan feedback — accepted, look-here, refused — and
-   only ever as a ring around a bay: a border and a box-shadow on the flat
-   rack, an outline in the room. The room colours its crates by PRODUCT
-   TYPE (DB.typeColour — muted, dark, and nowhere near the three feedback
-   hues or the lime the app acts in), and a type colour is a FILL and only
-   ever a fill: never a border, an outline, a glow or a tag. Two different
-   properties cannot collide, so a green ring over a plum crate still means
-   one thing. The flat rack stays greys and white; the legend under the room
-   is what makes the colours information rather than decoration, and it is
-   drawn on the flat surface, never in the tilted one.
+   only ever as a RING: a closed line all the way round a bay, for 1.4
+   seconds and then gone. On the elevation that is the tile's border plus a
+   box-shadow; in the room it is an outline.
+
+   A PRODUCT TYPE IS A FILL, ON BOTH SURFACES. This paragraph used to say the
+   flat rack "stays greys and pure white" and that colour-by-type belonged to
+   the room alone. That was written when the flat rack was the failure path —
+   a screen nobody chose — and it is wrong now that it is what opens by
+   default: it would mean the surface most people look at is the one that
+   cannot answer "where are the jackets".
+
+   The fill has two carriers, matching the room's two. What is ON a bay
+   colours its fill area — the crate in the room, the capacity bar on the
+   elevation, or the whole face where there is no capacity to be a fraction
+   of. What a bay is FOR tints the board under it: the shelf board in the
+   room, a 3px board across the foot of the tile. Neither is ever a border,
+   an outline, a glow or a tag, and that is mechanical rather than tasteful:
+   .sm-flash-* sets border-color !important on all four sides, so a type
+   colour parked on any edge blinks green every time somebody scans, and a
+   colour that blinks is a colour nobody can read.
+
+   DB.typeColour is the only source, so the legend, the elevation, the room
+   and the panel's stripe cannot disagree. Its eight colours are muted, dark
+   and deliberately nowhere near the three feedback hues or the lime the app
+   acts in. The legend is mandatory whenever the colours are on — eight dark
+   colours are not all telling apart at bay size, and a colour without a key
+   is decoration — and it is drawn on a flat surface under whichever view is
+   up, never inside the room.
 
    `grid_origin` IS ABOUT THE ROOM, NOT THE LANGUAGE. Column 1 draws on
    whichever side that room's door puts it, and stays there when the app
@@ -53,7 +76,6 @@ var ShelfMap = (function () {
     secId: null,       /* which RACK is in focus — the scan target's rack, the panel's rack */
     rooms: [],         /* the rooms the racks hang in, straight from the same GET */
     roomId: null,      /* which room is on screen; null = one rack drawn on its own */
-    tilt: 18,          /* degrees; 0 = flat */
     edit: false,       /* layout editor on (manager only) */
     sel: null,         /* selected shelf id — also the put-away target */
     loading: false,
@@ -62,10 +84,16 @@ var ShelfMap = (function () {
        failed to load, or the context was lost mid-run. Permanent for the
        page: the flat rack takes over and nothing flickers back. */
     glDead: false,
-    /* Colour the room's crates by product type. Per machine, like sound —
+    /* Colour by product type, on both surfaces. Per machine, like sound —
        and like sound, never the only signal: the code is on every bay and
        the name is on every run. */
     colour: true,
+    /* Which surface: '2d' (the plan and the rack, straight on) or 'room'
+       (the WebGL room). 2D is the default, and that is a decision about the
+       job rather than about taste — the flat view is where a put-away run
+       happens, and defaulting to it means a warehouse tablet never downloads
+       600KB of Three.js unless somebody asks to look at the room. */
+    view: '2d',
 
     /* The put-away run. `chips` is newest-first and is the undo strip: there
        are no confirm dialogs anywhere in this flow, because a dialog needs a
@@ -78,7 +106,11 @@ var ShelfMap = (function () {
   var CHIPS_SHOWN = 8;
   var SOUND_KEY = 'og_sm_sound';
   var COLOUR_KEY = 'og_sm_colour';
+  var VIEW_KEY = 'og_sm_view';
   try { S.colour = localStorage.getItem(COLOUR_KEY) !== '0'; } catch (e) { S.colour = true; }
+  /* Per machine, not per account: the office computer can sit on the room
+     and the warehouse tablet on the plan, and neither has to keep choosing. */
+  try { if (localStorage.getItem(VIEW_KEY) === 'room') S.view = 'room'; } catch (e) { S.view = '2d'; }
 
   try {
     S.sound = localStorage.getItem(SOUND_KEY) !== '0';
@@ -259,29 +291,110 @@ var ShelfMap = (function () {
     var h = scanStrip() + topBar(sec);
     if (!sec && !room) return h + chipStrip();
 
-    if (use3d()) {
-      /* The room, and beside it — never over it — the designer. The room
-         keeps its camera and the scan box keeps the caret while a rack is
-         being added; every change comes back through reload() and the room
-         redraws from the answer. */
-      var on = S.edit && canEdit();
-      h += '<div class="sm-split' + (on ? ' with-designer' : '') + '">' +
-           roomStage() + (on ? designer() : '') + '</div>';
-    } else if (!sec) {
-      h += '<div class="card"><div class="card-body muted">' + t('sm_no_racks') + '</div></div>';
-    } else if (!sec.shelves.length) {
-      h += emptyRoom(sec);
-    } else {
-      /* the flat rack: the failure path, with the grid editor it always had */
-      h += stage(sec);
-      if (S.edit) {
-        h += '<div class="sm-note muted">' + t('sm_no_renumber') + '</div>';
-      }
-    }
+    /* ONE LAYOUT, TWO SURFACES. The designer sits beside whichever surface
+       is drawn — never over it — so the room keeps its camera and the plan
+       keeps its place while a rack is added. It used to be emitted only in
+       the 3D arm, which meant the default view had no way to reach a second
+       rack, add one, or place one: every one of those controls lived in a
+       panel you could only open by first switching to the room. */
+    var on = S.edit && canEdit();
+    h += '<div class="sm-split' + (on ? ' with-designer' : '') + '">' +
+         (use3d() ? roomStage() : flatStage(sec)) +
+         (on ? designer() : '') +
+         '</div>';
+
     if (sec) h += panel(sec);
     h += chipStrip();
     return h;
   }
+
+  /* ---------------------------------------------------------- the 2D view
+     The room from above, and under it the rack in focus seen straight on.
+     Two drawings of one place: the plan says WHERE the rack is, the
+     elevation says what is ON it. Neither is tilted — this is the surface
+     somebody reads while holding a shoe. */
+  function flatStage(sec) {
+    var room = S.roomId != null ? roomById(S.roomId) : null;
+    var h = '<div class="sm-flat">';
+
+    if (room) h += planStrip(room);
+
+    if (!sec) {
+      h += '<div class="sm-stage sm-flatstage"><div class="sm-empty muted">' +
+           t('sm_no_racks') + '</div></div>';
+    } else if (!sec.shelves.length) {
+      h += emptyRack(sec);
+    } else {
+      h += stage(sec);
+    }
+
+    h += '<div class="sm-room-foot">' +
+      roomLegend(racksOnScreen()) +
+      (room && !room.width_cm
+        ? '<span class="muted sm-dz-note">' + t('sm_not_to_scale') + '</span>' : '') +
+      '<div class="sm-room-hint muted">' +
+        (S.edit ? t('sm_no_renumber') : t('sm_flat_hint')) + '</div>' +
+    '</div></div>';
+    return h;
+  }
+
+  /* THE ROOM, FROM ABOVE. Every rack in the room as a bar on the wall it is
+     actually on, the one in focus picked out — and clicking one is how a
+     person moves between racks without opening the designer. Drawn as a
+     grid rather than absolutely positioned: a wall is a row or a column of
+     the plan, and a rack's place along it is a flex order. That keeps it
+     honest at any width and needs no measured room to work.
+
+     Not to scale, and it does not pretend to be: bars are sized by how many
+     bays a rack has, relative to the other racks on the same wall. */
+  function planStrip(room) {
+    var racks = racksIn(room.id);
+    var byWall = { n: [], e: [], s: [], w: [] }, loose = [];
+    racks.forEach(function (r) {
+      if (r.wall && byWall[r.wall]) byWall[r.wall].push(r); else loose.push(r);
+    });
+    var order = function (list) {
+      return list.sort(function (a, b) { return (a.wall_pos || 0) - (b.wall_pos || 0); });
+    };
+
+    var bar = function (r, vertical) {
+      var g = geometry(r);
+      var bays = Math.max(1, g.maxCol);
+      return '<button class="sm-pl-rack' + (sec3dFocus(r) ? ' on' : '') + '" ' +
+        'data-sm="rack-focus" data-id="' + r.id + '" ' +
+        'style="flex:' + bays + ' 1 0" ' +
+        'title="' + esc(r.key + ' · ' + r.name + ' · ' + wallLabel(r.wall) + ' · ' +
+                        nf(bays) + ' ' + t('sm_bays')) + '">' +
+        '<b>' + esc(r.key) + '</b>' +
+        (vertical ? '' : '<small>' + esc(r.name) + '</small>') + '</button>';
+    };
+
+    var side = function (w, vertical) {
+      var list = order(byWall[w]);
+      return '<div class="sm-pl-wall sm-pl-' + w + '">' +
+             list.map(function (r) { return bar(r, vertical); }).join('') + '</div>';
+    };
+
+    var h = '<div class="sm-plan" aria-label="' + esc(room.name) + '">' +
+      '<div class="sm-pl-grid">' +
+        side('n', false) +
+        '<div class="sm-pl-mid">' + side('w', true) +
+          '<div class="sm-pl-floor"><span>' + esc(room.name) + '</span></div>' +
+          side('e', true) + '</div>' +
+        side('s', false) +
+      '</div>';
+
+    /* A rack in the room but on no wall yet is still in the room — listed
+       under the plan rather than dropped, because a rack nobody can see is
+       a rack nobody will place. */
+    if (loose.length) {
+      h += '<div class="sm-pl-loose"><span class="muted">' + t('sm_not_placed') + '</span>' +
+           loose.map(function (r) { return bar(r, false); }).join('') + '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function sec3dFocus(r) { return S.secId === r.id; }
 
   /* ------------------------------------------------------------ the scan box
      One box, and it takes the focus back after every repaint. It is not what
@@ -387,34 +500,43 @@ var ShelfMap = (function () {
     });
     h += '</select></label>';
 
-    /* The tilt slider belongs to the flat rack. Over the room it would be a
-       slider that does nothing, which is broken furniture — the room gets a
-       way home instead (the reset button below). Hidden entirely under
-       prefers-reduced-motion too; see the CSS. */
-    if (!use3d()) {
-      h += '<label class="field sm-tiltbox"><span>' + t('sm_tilt') + '</span>' +
-           '<input class="sm-tilt" type="range" min="0" max="25" step="1" value="' + S.tilt +
-           '" data-smv="tilt"></label>';
+    h += '<div class="sm-topbtns">';
+
+    /* THE SWITCH, ALWAYS DRAWN. Two views of one place, so one control with
+       two states rather than two buttons — and the Room half is REFUSED
+       rather than removed where the room cannot be shown, with the reason
+       on it. The first version drew it only when the room was available, on
+       the reasoning that a button that cannot work is a button that lies.
+       That is right about the button and wrong about the screen: somebody
+       who chose the room on the office computer and then opens the map on
+       the warehouse tablet would get the plan, no toggle and no sentence,
+       which reads as the app having forgotten them. An absence carries no
+       explanation; a disabled button carries one. */
+    var why = whyNoRoom();
+    h += '<div class="sm-viewsw" role="group" aria-label="' + esc(t('sm_view')) + '">' +
+      '<button class="sm-vw' + (use3d() ? '' : ' on') + '" data-sm="view-2d"' +
+        ' aria-pressed="' + (use3d() ? 'false' : 'true') + '">' + t('sm_view_2d') + '</button>' +
+      '<button class="sm-vw' + (use3d() ? ' on' : '') + '" data-sm="view-room"' +
+        (why ? ' disabled title="' + esc(t(why)) + '"' : '') +
+        ' aria-pressed="' + (use3d() ? 'true' : 'false') + '">' + t('sm_view_room') + '</button>' +
+    '</div>';
+
+    /* Colour belongs to both surfaces now — it is the same product, and the
+       legend under either one is what makes it information. */
+    h += '<button class="btn btn-ghost sm-colourbtn' + (S.colour ? ' on' : '') +
+         '" data-sm="room-colour" aria-pressed="' + (S.colour ? 'true' : 'false') + '">' +
+         t('sm_colour_by_type') + '</button>';
+
+    /* Only the room has a camera to lose. */
+    if (use3d()) {
+      h += '<button class="btn btn-ghost" data-sm="room-reset">' + t('sm_reset_view') + '</button>';
     }
 
-    if (use3d() || canEdit()) {
-      h += '<div class="sm-topbtns">';
-      if (use3d()) {
-        h += '<button class="btn btn-ghost" data-sm="room-reset">' + t('sm_reset_view') + '</button>' +
-             '<button class="btn btn-ghost sm-colourbtn' + (S.colour ? ' on' : '') +
-             '" data-sm="room-colour" aria-pressed="' + (S.colour ? 'true' : 'false') + '">' +
-             t('sm_colour_by_type') + '</button>';
-      }
-      if (canEdit()) {
-        h += '<button class="btn ' + (S.edit ? 'btn-primary' : '') + '" data-sm="edit">' +
-             (S.edit ? t('sm_done') : t('sm_edit')) + '</button>';
-        if (S.edit) {
-          h += '<button class="btn btn-ghost" data-sm="room-cfg">' + t('sm_room_cfg') + '</button>' +
-               '<button class="btn btn-ghost" data-sm="room-new">' + t('sm_new_room') + '</button>';
-        }
-      }
-      h += '</div>';
+    if (canEdit()) {
+      h += '<button class="btn ' + (S.edit ? 'btn-primary' : '') + '" data-sm="edit">' +
+           (S.edit ? t('sm_done') : t('sm_edit')) + '</button>';
     }
+    h += '</div>';
     h += '</div>';
 
     /* No put-away line here: the scan box above the room selector already
@@ -423,19 +545,34 @@ var ShelfMap = (function () {
     return h;
   }
 
-  /* ------------------------------------------------------------ the room
-     Which surface draws the racks. The WebGL room is the view, and the
-     designer beside it is the editor; the CSS rack survives as the FAILURE
-     path only — no WebGL on this machine, the library did not load, or the
-     context died. A warehouse screen that cannot put stock away is a screen
-     that does not work, whatever it looks like, so on that path the flat
-     rack still carries the grid editor it always had. */
-  function use3d() {
-    if (S.glDead) return false;
-    if (typeof ShelfRoom === 'undefined' || !ShelfRoom.supported()) return false;
-    if (typeof Motion !== 'undefined' && Motion.reduced && Motion.reduced()) return false;
-    return true;
+  /* ---------------------------------------------------- which surface
+     TWO VIEWS OF ONE PLACE, and the split below is between what a person
+     ASKED for and what this machine can actually do.
+
+     The 2D view — a plan of the room, and under it the rack in focus seen
+     straight on — is the default and the working surface: it is where a
+     put-away run happens, it needs no GPU, and it costs nothing to open.
+     The room is the same data with the walls put back, for planning and for
+     showing somebody.
+
+     Everything else about the screen is common to both: the same colours,
+     the same names, the same scan feedback, the same designer, the same
+     panel. Switching views changes how it is drawn and nothing about what
+     it says. */
+  /* WHY the room cannot be drawn here — an i18n key, or '' when it can.
+     Three reasons and three sentences, because "this machine has no WebGL"
+     and "you asked for less motion" call for very different next actions,
+     and one of them is a setting the person can change. */
+  function whyNoRoom() {
+    if (S.glDead) return 'sm_gl_lost';
+    if (typeof ShelfRoom === 'undefined' || !ShelfRoom.supported()) return 'sm_no_webgl';
+    if (typeof Motion !== 'undefined' && Motion.reduced && Motion.reduced()) return 'sm_room_off_motion';
+    return '';
   }
+
+  function can3d() { return !whyNoRoom(); }
+
+  function use3d() { return S.view === 'room' && can3d(); }
 
   /* THE CANVAS IS NOT IN THIS STRING, AND THAT IS THE WHOLE POINT. Every
      scan is a repaint and a repaint is root.innerHTML = body(); a <canvas>
@@ -547,7 +684,7 @@ var ShelfMap = (function () {
       id: sh.id,
       code: sh.code,
       full: sec.key + '-' + sh.code,
-      row: Math.max(0, ALPHA.indexOf(sh.row_label)),
+      row: Math.max(0, g.levels.indexOf(sh.row_label)),
       col: sec.grid_origin === 'right' ? (g.maxCol - sh.col_index + 1) : sh.col_index,
       qty: sh.qty,
       capacity: sh.capacity,
@@ -574,8 +711,12 @@ var ShelfMap = (function () {
          about to hang racks on */
       var sec = current();
       if (S.roomId != null || (sec && sec.shelves.length)) ShelfRoom.sync(roomModel());
+      if (wantIntro) { wantIntro = false; ShelfRoom.intro(S.secId); }
     });
   }
+
+  /* Set when somebody asks for the room, spent by mount3d once it is there. */
+  var wantIntro = false;
 
   /* ------------------------------------------------------------ designer
      Beside the room, never over it. Every button here hits the same route
@@ -634,30 +775,24 @@ var ShelfMap = (function () {
     /* the rack in focus: its levels and its bays */
     if (sec) {
       h += '<div class="sm-dz"><span class="lbl">' + esc(sec.key + ' · ' + sec.name) + '</span>';
+      /* The 2D view draws this form too when a rack is empty; one function
+         so the two can never drift into different words or different
+         defaults for the same two ids. */
       if (!sec.shelves.length) {
-        h += '<div class="sm-seed">' +
-          '<label class="field"><span>' + t('sm_levels') + '</span>' +
-            '<input class="inp num" id="smSeedR" type="number" min="1" max="26" value="4"></label>' +
-          '<label class="field"><span>' + t('sm_bays') + '</span>' +
-            '<input class="inp num" id="smSeedC" type="number" min="1" max="99" value="6"></label>' +
-          '<label class="field"><span>' + t('sm_capacity') + '</span>' +
-            '<input class="inp num" id="smSeedCap" type="number" min="1" placeholder="' + t('sm_cap_hint') + '"></label>' +
-          '<button class="btn btn-primary btn-sm" data-sm="seed" data-id="' + sec.id + '">' +
-            t('sm_grid_setup') + '</button>' +
-        '</div>';
+        h += seedForm(sec);
       } else {
         var levels = {}, cols = {};
         sec.shelves.forEach(function (sh) { levels[sh.row_label] = 1; cols[sh.col_index] = 1; });
         h += '<span class="muted sm-dz-note">' + t('sm_levels') + '</span><div class="sm-dz-chips">';
         Object.keys(levels).sort().forEach(function (L) {
           h += '<span class="sm-dz-chip">' + L + '<button class="sm-rc-x" data-sm="row-rm" data-row="' + L +
-               '" title="' + esc(t('sm_remove_row').replace('{x}', L)) + '">&times;</button></span>';
+               '" title="' + esc(t('sm_remove_level').replace('{x}', L)) + '">&times;</button></span>';
         });
         h += '<button class="btn btn-sm btn-ghost" data-sm="row-add">+ ' + t('sm_add_level') + '</button></div>';
         h += '<span class="muted sm-dz-note">' + t('sm_bays') + '</span><div class="sm-dz-chips">';
         Object.keys(cols).map(Number).sort(function (a, b) { return a - b; }).forEach(function (c) {
           h += '<span class="sm-dz-chip">' + c + '<button class="sm-rc-x" data-sm="col-rm" data-col="' + c +
-               '" title="' + esc(t('sm_remove_col').replace('{x}', c)) + '">&times;</button></span>';
+               '" title="' + esc(t('sm_remove_bay').replace('{x}', c)) + '">&times;</button></span>';
         });
         h += '<button class="btn btn-sm btn-ghost" data-sm="col-add">+ ' + t('sm_add_bay') + '</button></div>';
         h += '<div class="muted sm-dz-note">' + t('sm_level_hint') + ' ' + t('sm_no_renumber') + '</div>';
@@ -676,20 +811,111 @@ var ShelfMap = (function () {
     repaint();
   }
 
-  function emptyRoom(sec) {
+  function setView(v) {
+    S.view = v;
+    try { localStorage.setItem(VIEW_KEY, v); } catch (e) {}
+    hidePeek();
+    repaint();
+  }
+
+  /* ------------------------------------------------------------- the peek
+     Point at a bay, in either view, and get the one card that answers "what
+     is on this and what is missing" without opening the panel or losing
+     your place.
+
+     It carries the SAME size run the panel does, by the same rule: a chip
+     is binary — filled means that size is here, dim means a hole — and no
+     per-size quantity is printed. The holes are the information, and a card
+     that disagreed with the panel underneath it would be worse than no card.
+
+     One node for the life of the page, moved and refilled: a card built per
+     hover is a card that is built forty times a minute during a put-away. */
+  var peekEl = null, peekId = null;
+
+  function peekNode() {
+    if (peekEl && peekEl.isConnected) return peekEl;
+    peekEl = document.createElement('div');
+    peekEl.className = 'sm-peek';
+    peekEl.hidden = true;
+    document.body.appendChild(peekEl);
+    return peekEl;
+  }
+
+  function hidePeek() {
+    peekId = null;
+    if (peekEl) peekEl.hidden = true;
+  }
+
+  function showPeek(id, x, y) {
+    var hit = shelfById(id);
+    if (!hit) { hidePeek(); return; }
+    var el = peekNode();
+    var sh = hit.sh;
+
+    if (peekId !== id) {
+      peekId = id;
+      var owner = sh.product_id != null ? DB.product(sh.product_id) : null;
+      var held = sh.contents && sh.contents.length ? DB.product(sh.contents[0].product_id) : null;
+      var p = owner || held;
+
+      var h = '<div class="sm-peek-top"><b dir="ltr">' + esc(hit.sec.key + '-' + sh.code) + '</b>' +
+        (sh.capacity != null && sh.capacity > 0
+          ? '<span class="sm-peek-cap">' + nf(sh.qty) + '/' + nf(sh.capacity) + '</span>'
+          : (sh.qty > 0 ? '<span class="sm-peek-cap">' + nf(sh.qty) + '</span>' : '')) + '</div>';
+
+      if (p && !p.archived) {
+        h += '<div class="sm-peek-name" dir="auto">' +
+          (S.colour ? '<i style="background:' + esc(DB.typeColour(p.type)) + '"></i>' : '') +
+          esc(p.name) + '</div>';
+        var have = {};
+        (sh.contents || []).forEach(function (row) { if (row.product_id === p.id) have[row.sku] = row.qty; });
+        var chips = '';
+        sizesOf(p).forEach(function (v) {
+          chips += '<span class="sm-chip' + ((have[v.sku] || 0) > 0 ? ' in' : '') + '">' + esc(v.size) + '</span>';
+        });
+        h += '<div class="sm-chips" dir="ltr">' + chips + '</div>';
+        if (sh.range) h += '<div class="muted sm-peek-range">' + esc(sh.range) + '</div>';
+      } else {
+        h += '<div class="muted sm-peek-name">' + t('sm_unassigned') + '</div>';
+      }
+      el.innerHTML = h;
+    }
+
+    el.hidden = false;
+    /* Placed against the viewport after it has a size, and flipped rather
+       than clipped near an edge. */
+    var w = el.offsetWidth, ht = el.offsetHeight;
+    var left = x + 14, top = y + 14;
+    if (left + w > window.innerWidth - 8) left = x - w - 14;
+    if (top + ht > window.innerHeight - 8) top = y - ht - 14;
+    el.style.transform = 'translate3d(' + Math.max(8, left) + 'px,' + Math.max(8, top) + 'px,0)';
+  }
+
+  /* A rack with no shelves on it yet. ONE seed form, used here and by the
+     designer — same ids, same action, and now the same words. It said
+     "rows" and "columns" here and "levels" and "bays" three hundred lines
+     away, for the same two number boxes writing the same two ids. */
+  function seedForm(sec) {
+    return '<div class="sm-seed">' +
+      '<label class="field"><span>' + t('sm_levels') + '</span>' +
+        '<input class="inp num" id="smSeedR" type="number" min="1" max="26" value="4"></label>' +
+      '<label class="field"><span>' + t('sm_bays') + '</span>' +
+        '<input class="inp num" id="smSeedC" type="number" min="1" max="99" value="6"></label>' +
+      '<label class="field"><span>' + t('sm_capacity') + '</span>' +
+        '<input class="inp num" id="smSeedCap" type="number" min="1" placeholder="' + t('sm_cap_hint') + '"></label>' +
+      '<button class="btn btn-primary" data-sm="seed" data-id="' + sec.id + '">' +
+        t('sm_grid_setup') + '</button>' +
+    '</div>';
+  }
+
+  function emptyRack(sec) {
     var h = '<div class="card"><div class="card-body">' +
-            '<b>' + t('sm_room_empty') + '</b>';
-    if (canEdit()) {
-      h += '<div class="sm-seed">' +
-        '<label class="field"><span>' + t('sm_rows') + '</span>' +
-          '<input class="inp num" id="smSeedR" type="number" min="1" max="26" value="3"></label>' +
-        '<label class="field"><span>' + t('sm_cols') + '</span>' +
-          '<input class="inp num" id="smSeedC" type="number" min="1" max="99" value="6"></label>' +
-        '<label class="field"><span>' + t('sm_capacity') + '</span>' +
-          '<input class="inp num" id="smSeedCap" type="number" min="1" placeholder="' + t('sm_cap_hint') + '"></label>' +
-        '<button class="btn btn-primary" data-sm="seed" data-id="' + sec.id + '">' +
-          t('sm_grid_setup') + '</button>' +
-      '</div>';
+            '<b>' + t('sm_rack_empty') + '</b>';
+    /* The designer carries this same form while it is open, and two
+       <input id="smSeedR"> on one page means ACT['seed'] reads one box while
+       the person is typing in the other. One or the other, never both. */
+    if (canEdit() && !S.edit) {
+      h += seedForm(sec) + '<div class="muted sm-dz-note">' + t('sm_level_hint') + '</div>';
     }
     h += '</div></div>';
     return h;
@@ -697,16 +923,23 @@ var ShelfMap = (function () {
 
   /* ----------------------------------------------------------- the rack */
 
+  /* The rack's shape, from the shelves that exist. `levels` is the letters
+     actually in use, top-down — NOT A..maxLetter. This used to return
+     ALPHA.indexOf(max)+1, so a rack whose levels start at C drew two phantom
+     rows of A and B: empty floor in view mode, and in edit mode "+ add a
+     shelf here" cells offering to grow the rack ABOVE its top — a direction
+     the server never grows it (a new level is appended past the highest
+     letter, at the bottom). The same off-by-everything reached the room,
+     which drew that rack floating two empty levels off the floor. */
   function geometry(sec) {
-    var maxCol = 0, maxRow = 0;
+    var maxCol = 0, seen = {}, byPos = {};
     sec.shelves.forEach(function (sh) {
       if (sh.col_index > maxCol) maxCol = sh.col_index;
-      var ri = ALPHA.indexOf(sh.row_label);
-      if (ri > maxRow) maxRow = ri;
+      seen[sh.row_label] = 1;
+      byPos[sh.row_label + ':' + sh.col_index] = sh;
     });
-    var byPos = {};
-    sec.shelves.forEach(function (sh) { byPos[sh.row_label + ':' + sh.col_index] = sh; });
-    return { maxCol: maxCol, rows: maxRow + 1, byPos: byPos };
+    var levels = Object.keys(seen).sort();
+    return { maxCol: maxCol, levels: levels, rows: levels.length, byPos: byPos };
   }
 
   /* Which grid column a physical column number lands in. +2 because grid
@@ -721,29 +954,35 @@ var ShelfMap = (function () {
     var g = geometry(sec);
     var addable = S.edit && canEdit();
 
-    /* dir="ltr" pinned on the grid: an RTL document mirrors grid tracks on
-       its own, which would flip every room the moment the app speaks Arabic.
+    /* THE RACK, STRAIGHT ON. No tilt: this is the surface a person reads
+       while holding a shoe, and a grid at 18° is a grid nobody can read.
+       The tilt was what made the old rack "3D-ish"; the room does that job
+       properly now, so this one is honest about being a drawing.
+
+       dir="ltr" pinned on the grid: an RTL document mirrors grid tracks on
+       its own, which would flip every rack the moment the app speaks Arabic.
        Placement is explicit coordinates, so what you see is what was said. */
-    var h = '<div class="sm-stage no-print"><div class="sm-rack" style="--sm-tilt:' + S.tilt + 'deg">' +
-            '<div class="sm-grid" dir="ltr" style="grid-template-columns:34px repeat(' +
-            g.maxCol + ', minmax(58px, 1fr))">';
+    var h = '<div class="sm-stage sm-flatstage no-print">' + rackHead(sec) +
+            '<div class="sm-rack">' +
+            '<div class="sm-grid" dir="ltr" style="grid-template-columns:38px repeat(' +
+            g.maxCol + ', minmax(72px, 1fr))">';
 
     /* Column numbers across the top, at their VISUAL positions. */
     for (var c = 1; c <= g.maxCol; c++) {
       h += '<div class="sm-colhead" style="grid-row:1;grid-column:' + visCol(sec, c, g.maxCol) + '">' +
            c +
            (addable ? '<button class="sm-rc-x" data-sm="col-rm" data-col="' + c + '" title="' +
-                      esc(t('sm_remove_col').replace('{x}', String(c))) + '">&times;</button>' : '') +
+                      esc(t('sm_remove_bay').replace('{x}', String(c))) + '">&times;</button>' : '') +
            '</div>';
     }
 
     for (var r = 0; r < g.rows; r++) {
-      var letter = ALPHA.charAt(r);
+      var letter = g.levels[r];
       var gr = r + 2;
 
       h += '<div class="sm-rowhead" style="grid-row:' + gr + ';grid-column:1">' + letter +
            (addable ? '<button class="sm-rc-x" data-sm="row-rm" data-row="' + letter + '" title="' +
-                      esc(t('sm_remove_row').replace('{x}', letter)) + '">&times;</button>' : '') +
+                      esc(t('sm_remove_level').replace('{x}', letter)) + '">&times;</button>' : '') +
            '</div>';
 
       for (var c2 = 1; c2 <= g.maxCol; c2++) {
@@ -762,36 +1001,75 @@ var ShelfMap = (function () {
       }
     }
 
-    h += '</div></div></div>';
+    h += '</div></div>';
 
-    /* Whole-row and whole-column growth lives in a labelled toolbar under
-       the rack rather than as bare + cells in the grid. A new column's
-       position depends on the room's walking direction, and a labelled
-       button never needs the reader to work out which side it will land on
-       — the room grows at its far end either way. */
+    /* Whole-level and whole-bay growth lives in a labelled toolbar under
+       the rack rather than as bare + cells in the grid. A new bay's position
+       depends on which end the rack is read from, and a labelled button
+       never needs the reader to work out which side it will land on — the
+       rack grows at its far end either way, and a level goes on the bottom. */
     if (addable) {
       h += '<div class="sm-growbar no-print">' +
-        '<button class="btn btn-ghost" data-sm="row-add">+ ' + t('sm_add_row') + '</button>' +
-        '<button class="btn btn-ghost" data-sm="col-add">+ ' + t('sm_add_col') + '</button>' +
+        '<button class="btn btn-ghost" data-sm="row-add">+ ' + t('sm_add_level') + '</button>' +
+        '<button class="btn btn-ghost" data-sm="col-add">+ ' + t('sm_add_bay') + '</button>' +
         '</div>';
     }
-    return h;
+    return h + '</div>';
+  }
+
+  /* Which rack this is, and where it hangs — the elevation on its own is a
+     grid of letters that could belong to anything. */
+  function rackHead(sec) {
+    var room = S.roomId != null ? roomById(S.roomId) : null;
+    var where = room
+      ? (sec.wall ? wallLabel(sec.wall) : t('sm_not_placed'))
+      : t('sm_not_placed');
+    return '<div class="sm-rackhead"><b>' + esc(sec.key) + '</b>' +
+      '<span>' + esc(sec.name) + '</span>' +
+      '<small class="muted">' + esc(where) + '</small></div>';
   }
 
   function tile(sec, sh, pos) {
     var cls = 'sm-tile' + (sh.id === S.sel ? ' on' : '');
     var inner = '<span class="sm-code">' + esc(sh.code) + '</span>';
 
+    /* THE SAME TWO PRODUCTS THE ROOM DRAWS: the one the bay is ASSIGNED to,
+       and the one actually on it (which an unassigned bay can carry). Same
+       resolution as bayModel(), so the two surfaces cannot disagree — the
+       fill is what is on it, the tint is what it is for. */
+    var owner = sh.product_id != null ? DB.product(sh.product_id) : null;
+    var held = sh.contents && sh.contents.length ? DB.product(sh.contents[0].product_id) : null;
+    var p = owner || held;
+    var onIt = held || (sh.qty > 0 ? owner : null);
+    var style = pos;
+
     /* Fill against capacity when a capacity is known; a plain count when it
-       is not. Never a bar against a guessed number — an invented capacity is
-       a fill level that lies. */
+       is not. NEVER a bar against a guessed number — an invented capacity is
+       a fill level that lies, and a first pass at this drew a fixed 55% band
+       for unmeasured bays, which is a picture of exactly that. Where there
+       is no capacity the colour still lands, as a wash over the whole face:
+       it says WHAT is on the bay without claiming HOW FULL. */
     if (sh.capacity != null && sh.capacity > 0) {
       var pct = Math.max(0, Math.min(100, Math.round(sh.qty / sh.capacity * 100)));
-      inner += '<span class="sm-fill" style="height:' + pct + '%"></span>' +
+      inner += '<span class="sm-fill" style="height:' + pct + '%' +
+               (S.colour && onIt ? ';background:' + esc(DB.typeColour(onIt.type)) : '') + '"></span>' +
                '<span class="sm-load">' + nf(sh.qty) + '/' + nf(sh.capacity) + '</span>';
     } else if (sh.qty > 0) {
+      if (S.colour && onIt) style += ';background:' + DB.typeColour(onIt.type);
       inner += '<span class="sm-load">' + nf(sh.qty) + '</span>';
     }
+
+    /* What the bay is FOR, on the board across its foot — a child, never an
+       edge: .sm-flash-* sets border-color !important on all four sides. */
+    if (S.colour && owner) {
+      inner += '<span class="sm-board" style="background:' + esc(DB.typeColour(owner.type)) + '"></span>';
+    }
+
+    /* The name, on the face. The room puts one tag over a whole run of bays
+       because forty names over forty crates is unreadable; a flat grid has
+       room for the name in every bay, and a person scanning the wall for a
+       product should not have to hover to find it. */
+    if (p) inner += '<span class="sm-pname" dir="auto">' + esc(p.name) + '</span>';
 
     /* In the editor, a shelf with stock says so before anyone tries to
        delete it — the lock is the same fact the server will enforce. */
@@ -800,10 +1078,12 @@ var ShelfMap = (function () {
                '<path fill="currentColor" d="M17 9V7A5 5 0 0 0 7 7v2H5v13h14V9h-2zM9 7a3 3 0 0 1 6 0v2H9V7z"/></svg>';
     }
 
-    return '<button class="' + cls + '" id="smT' + sh.id + '" style="' + pos +
-           '" data-sm="tile" data-id="' + sh.id + '"' +
-           (sh.product_name ? ' title="' + esc(sh.product_name + (sh.range ? ' · ' + sh.range : '')) + '"' : '') +
-           '>' + inner + '</button>';
+    /* No title=. The peek card says all of this and more, immediately and in
+       the app's own type; a native tooltip arriving half a second later
+       underneath it is two tooltips disagreeing about which is the answer. */
+    return '<button class="' + cls + '" id="smT' + sh.id + '" style="' + style +
+           '" data-sm="tile" data-id="' + sh.id + '" data-peek="' + sh.id + '">' +
+           inner + '</button>';
   }
 
   /* ----------------------------------------------------------- the panel */
@@ -876,7 +1156,11 @@ var ShelfMap = (function () {
       });
 
       h += '<div class="sm-row">' +
-        '<span class="sm-stripe" style="background:' + esc(p.image.bg) + '"></span>' +
+        /* DB.typeColour, not p.image.bg: a product with a hand-picked block
+           colour would otherwise make this one stripe disagree with the
+           legend, the tile board and the room's crate for the same product.
+           One source, four surfaces, no argument between them. */
+        '<span class="sm-stripe" style="background:' + esc(DB.typeColour(p.type)) + '"></span>' +
         '<div class="sm-row-name"><b>' + esc(p.name) + '</b>' +
           (p.colorway ? '<small class="muted">' + esc(p.colorway) + '</small>' : '') +
         '</div>' +
@@ -974,6 +1258,11 @@ var ShelfMap = (function () {
   function repaint() {
     var root = document.getElementById('smRoot');
     if (!root) return;
+
+    /* The peek points at a tile this innerHTML is about to destroy. It lives
+       on <body> so the paint cannot eat it — which is exactly why it would
+       otherwise be left floating over nothing after a scan. */
+    hidePeek();
 
     /* WHO HAD THE CARET, read BEFORE the innerHTML that destroys them.
        Checking afterwards cannot work: replacing the markup detaches the
@@ -1233,9 +1522,23 @@ var ShelfMap = (function () {
       return;
     }
     var el = document.getElementById('smT' + shelfId);
-    if (!el) return;
-    el.classList.add(cls);
-    setTimeout(function () { el.classList.remove(cls); }, 1400);
+    if (el) {
+      el.classList.add(cls);
+      setTimeout(function () { el.classList.remove(cls); }, 1400);
+      return;
+    }
+    /* THE BAY IS NOT ON SCREEN. In the 2D view the elevation draws one rack,
+       so the amber "it belongs over there" rings — which are very often on a
+       DIFFERENT rack in the same room — used to be a silent no-op. Say it in
+       the plan instead: the rack that holds it lights up, which is the same
+       instruction one level out. Green and red always land on the target,
+       which is by definition the rack on screen, so this is the amber path. */
+    var hit = shelfById(shelfId);
+    if (!hit) return;
+    var bar = document.querySelector('.sm-pl-rack[data-id="' + hit.sec.id + '"]');
+    if (!bar) return;
+    bar.classList.add(cls);
+    setTimeout(function () { bar.classList.remove(cls); }, 1400);
   }
 
   /* ---------------------------------------------------- the shared write
@@ -1348,6 +1651,20 @@ var ShelfMap = (function () {
       lastScan = null;
       onScan(code);
     });
+
+    /* The peek, in the 2D view. Delegated at the document like everything
+       else here, because the tiles are rebuilt on every scan and forty
+       per-tile listeners would be rebuilt with them. */
+    document.addEventListener('pointermove', function (e) {
+      if (OG.view !== 'shelfmap' || use3d()) return;
+      var el = e.target.closest ? e.target.closest('[data-peek]') : null;
+      if (!el) { if (peekId != null) hidePeek(); return; }
+      showPeek(+el.getAttribute('data-peek'), e.clientX, e.clientY);
+    });
+    /* A touch has no hover, and a card that survives the finger leaving is
+       a card stuck to the screen. */
+    document.addEventListener('pointerdown', function () { hidePeek(); });
+    window.addEventListener('scroll', function () { if (peekId != null) hidePeek(); }, true);
   }
 
   function register() {
@@ -1374,12 +1691,37 @@ var ShelfMap = (function () {
       repaint();
     };
 
-    /* Straight to the DOM, no repaint: a slider that re-renders forty tiles
-       per tick stutters on exactly the hardware this has to run on. */
-    CHG['tilt'] = function (el) {
-      S.tilt = +el.value;
-      var rack = document.querySelector('.sm-rack');
-      if (rack) rack.style.setProperty('--sm-tilt', S.tilt + 'deg');
+    /* -- the two views ----------------------------------------------
+       Switching is one state change and a repaint; the ANIMATION is the
+       hand-off around it. Going to the room, the room opens looking
+       straight at the rack the plan was showing and then eases back to
+       where it can see the whole place, so the two drawings visibly share
+       a subject. Coming back, the room turns to face that rack first and
+       the surfaces cross-fade — otherwise the elevation appears out of a
+       view that was pointing somewhere else entirely.
+
+       Under reduced motion, or on a machine that never loaded the library,
+       both paths are a plain repaint. */
+    ACT['view-room'] = function () {
+      if (S.view === 'room' || !can3d()) return;
+      /* ASKED FOR, NOT FIRED. The first switch of a session is also the
+         first time Three.js is fetched, so the room does not exist yet when
+         this handler returns — calling intro() here would no-op exactly
+         once, on the one switch a person is most likely to be watching.
+         mount3d() spends the flag after the scene is attached and synced. */
+      wantIntro = true;
+      setView('room');
+    };
+
+    ACT['view-2d'] = function () {
+      if (S.view === '2d') return;
+      if (!can3d() || typeof ShelfRoom === 'undefined' || !ShelfRoom.ready()) { setView('2d'); return; }
+      /* Turn to face the rack, THEN swap. The fade is on the stage, not on
+         the canvas: fading a canvas fades the tag layer with it and the
+         labels smear across the room on the way out. */
+      var stage = document.querySelector('.sm-stage3d');
+      if (stage) stage.classList.add('sm-leaving');
+      ShelfRoom.outro(S.secId, function () { setView('2d'); });
     };
 
     ACT['room-reset'] = function () {
@@ -1395,14 +1737,18 @@ var ShelfMap = (function () {
       repaint();
     };
 
-    /* The room reports a click and a death; the map decides what they mean.
-       A pick is exactly a tile click — same toggle, same repaint — so the
-       flat panel opens the same way from either surface. */
+    /* The room reports a click, a hover and a death; the map decides what
+       they mean. A pick is exactly a tile click — same toggle, same repaint
+       — so the flat panel opens the same way from either surface, and a
+       hover raises the same card the 2D view raises. */
     if (typeof ShelfRoom !== 'undefined') {
       ShelfRoom.hook({
         pick: function (id) {
           S.sel = (S.sel === id) ? null : id;
           repaint();
+        },
+        peek: function (id, x, y) {
+          if (id == null) hidePeek(); else showPeek(id, x, y);
         },
         lost: function () { glFail(t('sm_gl_lost')); }
       });
@@ -1446,11 +1792,11 @@ var ShelfMap = (function () {
     };
     ACT['row-rm'] = function (el) {
       removeRC('rows', { action: 'remove', row: el.getAttribute('data-row') },
-               t('sm_remove_row').replace('{x}', el.getAttribute('data-row')));
+               t('sm_remove_level').replace('{x}', el.getAttribute('data-row')));
     };
     ACT['col-rm'] = function (el) {
       removeRC('cols', { action: 'remove', col: +el.getAttribute('data-col') },
-               t('sm_remove_col').replace('{x}', el.getAttribute('data-col')));
+               t('sm_remove_bay').replace('{x}', el.getAttribute('data-col')));
     };
 
     ACT['save'] = function (el) {
@@ -1489,7 +1835,12 @@ var ShelfMap = (function () {
 
     /* -- rooms -------------------------------------------------------- */
     /* -- racks -------------------------------------------------------- */
-    ACT['rack-focus'] = function (el) { focus(+el.getAttribute('data-id')); S.sel = null; repaint(); };
+    /* LOOKING IS NOT TARGETING. This cleared S.sel, which was harmless while
+       the only way here was the designer — but the plan strip is something a
+       person taps mid-run, and losing the put-away target because you glanced
+       at the next rack is how a box ends up on the floor. The scan strip goes
+       on saying, in words, which bay the next barcode files onto. */
+    ACT['rack-focus'] = function (el) { focus(+el.getAttribute('data-id')); repaint(); };
     ACT['rack-new'] = function () { rackModal(null); };
     ACT['rack-cfg'] = function (el) { rackModal(sectionById(+el.getAttribute('data-id'))); };
     ACT['rack-save'] = function (el) {
@@ -1525,7 +1876,13 @@ var ShelfMap = (function () {
 
     /* -- rooms -------------------------------------------------------- */
     ACT['room-new'] = function () { roomModal(null); };
-    ACT['room-cfg'] = function (el) { roomModal(roomById(+el.getAttribute('data-id'))); };
+    /* No data-id means "the room on screen". Without the fallback this fell
+       through to roomById(NaN) → null, which roomModal reads as "make a new
+       one" — a Room settings button that opened the New room dialog. */
+    ACT['room-cfg'] = function (el) {
+      var id = el.getAttribute('data-id');
+      roomModal(id ? roomById(+id) : (S.roomId != null ? roomById(S.roomId) : null));
+    };
     ACT['room-save'] = function (el) {
       var id = el.getAttribute('data-id');
       var val = function (i) { var e = document.getElementById(i); return e ? e.value : ''; };
@@ -1799,7 +2156,7 @@ var ShelfMap = (function () {
       secs.forEach(function (s) {
         h += '<div class="sm-set-sec"><b>' + esc(s.key) + '</b> · ' + esc(s.name) + '</div>';
         if (!s.shelves.length) {
-          h += '<div class="muted sm-set-none">' + t('sm_room_empty') + '</div>';
+          h += '<div class="muted sm-set-none">' + t('sm_rack_empty') + '</div>';
           return;
         }
         h += '<table class="tbl sm-set-tbl"><tbody>';

@@ -112,7 +112,7 @@ var ShelfRoom = (function () {
   var matFrame = null, matCrate = null, matBoard = null;
   var mats = {};            /* one material per colour, shared by every bay of that type */
 
-  var hooks = { pick: null, lost: null };
+  var hooks = { pick: null, lost: null, peek: null };
 
   var az = 0.38, pol = 1.02, dist = 12;
   var target = null;
@@ -241,6 +241,10 @@ var ShelfRoom = (function () {
   /* --------------------------------------------------------- attach/detach */
 
   function detach() {
+    /* The canvas is leaving the tree. frame() bails on !cv.isConnected so
+       nothing would draw — but the tween would go on asking for frames
+       against a scene nobody can see, for as long as it had left to run. */
+    stopTween();
     if (cv && cv.parentNode) cv.parentNode.removeChild(cv);
     if (tagHost && tagHost.parentNode) tagHost.parentNode.removeChild(tagHost);
   }
@@ -701,9 +705,107 @@ var ShelfRoom = (function () {
   }
 
   function resetView() {
+    stopTween();
     az = homeAz; pol = homePol; dist = homeDist;
     if (target) target.set(0, cur && cur.roomId != null ? 0.9 : 0.7, 0);
     if (cam) updateCam();
+  }
+
+  /* ------------------------------------------------------- the hand-off
+     A BOUNDED TWEEN, NOT A LOOP. The module's rule is that a still camera
+     schedules no frames; this is the one thing that asks for frames on its
+     own, and it stops asking the moment it lands. Nothing else here starts
+     an animation, and this one has a fixed end.
+
+     It exists so the two views visibly share a subject: coming INTO the
+     room you arrive looking straight at the rack the plan was showing and
+     ease back to see the whole place; going OUT you turn to face that rack
+     first, so the elevation does not appear out of a view pointing at the
+     opposite wall. */
+  var tw = null;
+
+  function stopTween() {
+    if (tw && tw.raf) cancelAnimationFrame(tw.raf);
+    tw = null;
+  }
+
+  /* Where the camera stands to look square at one rack, from inside. */
+  function faceOf(secId) {
+    var rec = null;
+    Object.keys(bays).some(function (id) {
+      if (bays[id].rack === secId) { rec = bays[id]; return true; }
+      return false;
+    });
+    if (!rec) return null;
+    /* A rack's meshes are rotated by its wall; the camera wants to stand
+       off its FRONT, which is +Z in the rack's own space. */
+    return {
+      az: rec.theta,
+      pol: 1.16,
+      dist: Math.max(3.2, homeDist * 0.42),
+      tx: rec.x, ty: rec.y, tz: rec.z
+    };
+  }
+
+  function tween(to, ms, done) {
+    stopTween();
+    if (!built || !cam) { if (done) done(); return; }
+    if (typeof Motion !== 'undefined' && Motion.reduced && Motion.reduced()) {
+      apply(to); if (done) done(); return;
+    }
+    var from = { az: az, pol: pol, dist: dist, tx: target.x, ty: target.y, tz: target.z };
+    /* Shortest way round: without this, turning from -170° to +170° goes
+       the long way and the room spins through three walls to move two. */
+    var dAz = to.az - from.az;
+    while (dAz > Math.PI) dAz -= Math.PI * 2;
+    while (dAz < -Math.PI) dAz += Math.PI * 2;
+
+    var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    tw = { raf: 0 };
+    var step = function () {
+      var now = (window.performance && performance.now) ? performance.now() : Date.now();
+      var k = Math.min(1, (now - t0) / ms);
+      /* the app's own --e-out curve, near enough: fast away, soft arrival */
+      var e = 1 - Math.pow(1 - k, 3);
+      apply({
+        az: from.az + dAz * e,
+        pol: from.pol + (to.pol - from.pol) * e,
+        dist: from.dist + (to.dist - from.dist) * e,
+        tx: from.tx + (to.tx - from.tx) * e,
+        ty: from.ty + (to.ty - from.ty) * e,
+        tz: from.tz + (to.tz - from.tz) * e
+      });
+      if (k < 1) { tw.raf = requestAnimationFrame(step); return; }
+      tw = null;
+      if (done) done();
+    };
+    tw.raf = requestAnimationFrame(step);
+  }
+
+  function apply(v) {
+    az = v.az; pol = v.pol; dist = v.dist;
+    target.set(v.tx, v.ty, v.tz);
+    updateCam();
+  }
+
+  /* Arrive facing the rack, then ease back to the whole room. */
+  function intro(secId) {
+    if (!built) return;
+    var f = faceOf(secId);
+    if (!f) { resetView(); return; }
+    apply(f);
+    tween({ az: homeAz, pol: homePol, dist: homeDist,
+            tx: 0, ty: cur && cur.roomId != null ? 0.9 : 0.7, tz: 0 }, 620);
+  }
+
+  /* Turn to face the rack, then hand over to the 2D view. `done` runs even
+     when there is nothing to face or the tween is cut short — the caller is
+     mid-view-switch and must never be left waiting on a frame. */
+  function outro(secId, done) {
+    if (!built) { if (done) done(); return; }
+    var f = faceOf(secId);
+    if (!f) { if (done) done(); return; }
+    tween(f, 340, done);
   }
 
   /* -------------------------------------------------------------- pointer */
@@ -750,6 +852,7 @@ var ShelfRoom = (function () {
         drag.moved += Math.abs(dx) + Math.abs(dy);
         if (drag.pan) panBy(dx, dy);
         else {
+          stopTween();
           az -= dx * 0.0058;
           pol = Math.max(POL_MIN, Math.min(POL_MAX, pol - dy * 0.0058));
           updateCam();
@@ -757,8 +860,11 @@ var ShelfRoom = (function () {
         return;
       }
 
-      if (!ks.length) hover(castAt(e));
+      if (!ks.length) hover(castAt(e), e);
     });
+
+    /* Leaving the canvas takes the card with it. */
+    cv.addEventListener('pointerleave', function () { hover(null, null); });
 
     var lift = function (e) {
       var was = drag;
@@ -781,12 +887,18 @@ var ShelfRoom = (function () {
     }, { passive: false });
   }
 
+  /* A TWEEN FIGHTING A HAND ON THE MOUSE is the worst camera bug there is,
+     and the hand always wins. Every path that moves the camera by hand
+     cancels the arrival first; without this, the 620ms after switching into
+     the room silently overwrote a drag, a wheel or a pinch every frame. */
   function dolly(f) {
+    stopTween();
     dist = Math.max(distMin, Math.min(distMax, dist * f));
     updateCam();
   }
 
   function panBy(dx, dy) {
+    stopTween();
     var k = dist * 0.0016;
     var rx = Math.cos(az), rz = -Math.sin(az);
     var fx = -Math.sin(az), fz = -Math.cos(az);
@@ -808,7 +920,11 @@ var ShelfRoom = (function () {
     return hits.length ? hits[0].object.userData.id : null;
   }
 
-  function hover(id) {
+  function hover(id, e) {
+    /* The card follows the pointer even when the bay under it has not
+       changed, so it is placed on every move; only the scene work is
+       guarded on the id actually changing. */
+    if (hooks.peek) hooks.peek(id, e ? e.clientX : 0, e ? e.clientY : 0);
     if (id === hoverId) return;
     hoverId = id;
     var rec = id != null ? bays[id] : null;
@@ -981,6 +1097,7 @@ var ShelfRoom = (function () {
   function hook(h) {
     if (h && h.pick) hooks.pick = h.pick;
     if (h && h.lost) hooks.lost = h.lost;
+    if (h && h.peek) hooks.peek = h.peek;
   }
 
   return {
@@ -992,6 +1109,8 @@ var ShelfRoom = (function () {
     sync: sync,
     flash: flash,
     resetView: resetView,
+    intro: intro,
+    outro: outro,
     hook: hook
   };
 })();

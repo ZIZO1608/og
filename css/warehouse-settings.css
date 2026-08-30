@@ -237,8 +237,6 @@ body.rtl .toast { animation-name: toastInR; }
 
 .sm-top { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
 .sm-roomsel { min-width: 220px; }
-.sm-tiltbox { min-width: 140px; }
-.sm-tilt { width: 140px; accent-color: #FFFFFF; }
 .sm-topbtns { display: flex; gap: 8px; margin-inline-start: auto; }
 
 .sm-scanline {
@@ -258,19 +256,20 @@ body.rtl .toast { animation-name: toastInR; }
   overflow-x: auto;
 }
 
-/* The one 3D context. Tilt rides a custom property so the slider can move
-   it without a repaint — and so reduced-motion can flatten it wholesale. */
-.sm-rack {
-  transform: perspective(1400px) rotateX(var(--sm-tilt, 18deg));
-  transform-style: preserve-3d;
-  transform-origin: 50% 100%;
-}
+/* NO TILT. This was a perspective(1400px) rotateX() context with a slider,
+   which is what made the old rack "3D-ish"; js/shelfroom.js does that job
+   properly now, so the 2D view is honest about being a drawing. A grid at
+   18° is a grid nobody can read, and this is the surface somebody reads
+   while holding a shoe. The slab back-face on .sm-tile went with it — with
+   no perspective ancestor it was an invisible #101010 rectangle painting
+   over the tile's own background. */
+.sm-rack { position: relative; }
 
 /* Pinned dir="ltr" in the markup AND direction here, belt and braces: an
    RTL document reverses grid tracks on its own, and a room must not turn
    around because the menus switched language. Tiles are placed by explicit
    coordinates; grid_origin decides them, nothing else. */
-.sm-grid { display: grid; gap: 7px; direction: ltr; transform-style: preserve-3d; }
+.sm-grid { display: grid; gap: 7px; direction: ltr; }
 
 .sm-colhead, .sm-rowhead {
   display: flex; align-items: center; justify-content: center; gap: 4px;
@@ -286,26 +285,43 @@ body.rtl .toast { animation-name: toastInR; }
 
 .sm-growbar { display: flex; gap: 8px; margin-top: 10px; }
 
-/* A shelf. A slab, not a sticker: the ::after face sits behind on Z, so the
-   tilt gives it visible thickness without a single gradient. */
+/* A bay, seen straight on. Taller than the old tile because it now carries
+   the product's name as well as its code and load — the room shows one name
+   per RUN of bays because forty names over forty crates is unreadable, but a
+   flat grid has room for the name in every bay, and somebody scanning a wall
+   for a product should not have to hover to find it. */
 .sm-tile {
   position: relative;
-  min-height: 54px;
-  border: 1px solid #2c2c2c; border-radius: 4px;
+  min-height: 74px;
+  border: 1px solid #2c2c2c; border-radius: 5px;
   background: #1a1a1a; color: #FFFFFF;
   font-family: inherit; text-align: start; cursor: pointer;
-  padding: 6px 7px;
-  transform-style: preserve-3d;
-  transition: transform .13s ease, border-color .13s ease;
+  padding: 6px 8px;
+  transition: border-color .13s ease, background .13s ease;
   overflow: hidden;
 }
-.sm-tile::after {
-  content: ''; position: absolute; inset: 0; border-radius: 4px;
-  background: #101010;
-  transform: translateZ(-9px);
-}
-.sm-tile:hover { transform: translateZ(14px); border-color: #555; }
+/* Lift replaced by a lit edge: translateZ did nothing once the perspective
+   went, and a 74px rectangle needs SOME hover affordance. */
+.sm-tile:hover { border-color: #6a6a72; background: #1f1f24; }
 .sm-tile.on { border-color: #FFFFFF; }
+
+/* THE BOARD THE CRATE SITS ON, seen from the front — what the bay is FOR,
+   the same carrier the room tints. A CHILD ELEMENT, not a border: the first
+   version of this was `border-block-end`, and `.sm-flash-*` sets
+   `border-color` !important on all four sides, so every scan repainted the
+   assignment mark green for 1.4 seconds and then snapped it back. A colour
+   that blinks is a colour nobody can read. The ring is the tile's border;
+   the board is inside it. Two properties, two meanings, no collision. */
+.sm-board {
+  position: absolute; inset-inline: 0; bottom: 0; height: 3px; z-index: 3;
+  background: #4A4A52;
+}
+
+.sm-pname {
+  position: absolute; inset-inline: 8px; bottom: 6px; z-index: 2;
+  font-size: 10.5px; font-weight: 600; line-height: 1.2; color: var(--muted-foreground);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .sm-code {
   position: relative; z-index: 2;
@@ -322,17 +338,17 @@ body.rtl .toast { animation-name: toastInR; }
   border-top: 1px solid rgba(255, 255, 255, .45);
 }
 .sm-load {
-  position: absolute; bottom: 4px; inset-inline-end: 6px; z-index: 2;
+  position: absolute; top: 6px; inset-inline-end: 8px; z-index: 2;
   font-size: 10px; color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
 .sm-lock { position: absolute; top: 5px; inset-inline-end: 5px; z-index: 2; color: var(--muted-foreground); }
 
 /* Empty floor is empty floor — a door, a pillar. Not an empty shelf. */
-.sm-cell-gap { min-height: 54px; border-radius: 4px; border: 1px dashed #1e1e1e; }
+.sm-cell-gap { min-height: 74px; border-radius: 5px; border: 1px dashed #1e1e1e; }
 
 .sm-cell-add {
-  min-height: 54px; border-radius: 4px;
+  min-height: 74px; border-radius: 5px;
   border: 1px dashed #3a3a3a; background: none; color: var(--muted-foreground);
   font-size: 15px; cursor: pointer; font-family: inherit;
 }
@@ -426,6 +442,93 @@ body.rtl .toast { animation-name: toastInR; }
 .sm-lg i { width: 11px; height: 11px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12); }
 .sm-colourbtn.on { border-color: #FFFFFF; }
 
+/* ---- the switch ----------------------------------------------------------
+   Two views of one place, so one control with two states rather than two
+   buttons. Drawn only where the room could actually be shown. */
+.sm-viewsw { display: inline-flex; gap: 3px; background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; }
+.sm-vw {
+  border: 0; background: none; padding: 0 13px; height: 28px; border-radius: var(--radius-sm);
+  font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted-foreground); cursor: pointer;
+  transition: background var(--t), color var(--t);
+}
+.sm-vw:hover { color: var(--foreground); background: var(--accent); }
+.sm-vw.on { background: #FFFFFF; color: #0A0A0B; font-weight: 700; }
+
+/* ---- the 2D view ---------------------------------------------------------
+   A plan of the room, and under it the rack in focus seen straight on. */
+.sm-flat { display: flex; flex-direction: column; gap: 12px; }
+.sm-flatstage { padding: 14px 16px 18px; animation: smFade var(--d-2) var(--e-out); }
+@keyframes smFade { from { opacity: 0; transform: translateY(4px); } }
+
+.sm-rackhead { display: flex; align-items: baseline; gap: 9px; margin-bottom: 12px; flex-wrap: wrap; }
+.sm-rackhead b {
+  display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px;
+  background: #FFFFFF; color: #0A0A0B; border-radius: var(--radius-sm);
+  font-family: var(--font-head); font-weight: 800; font-size: 14px;
+}
+.sm-rackhead span { font-weight: 700; font-size: 13.5px; }
+.sm-rackhead small { font-size: 11.5px; }
+
+/* The plan. A wall is a row or a column of this grid and a rack's place
+   along it is a flex order, so it stays honest at any width and needs no
+   measured room to work. Not to scale, and it does not pretend to be:
+   a bar is sized by how many bays it has against the others on its wall. */
+.sm-plan { background: #0d0d0d; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 14px; }
+.sm-pl-grid { display: flex; flex-direction: column; gap: 6px; direction: ltr; }
+/* Short on purpose: the plan is a key to the elevation below it, not the
+   subject. Tall enough that a rack on a side wall reads as vertical, and no
+   taller — the bays are what a person came to look at. */
+.sm-pl-mid { display: flex; gap: 6px; align-items: stretch; min-height: 56px; }
+.sm-pl-wall { display: flex; gap: 5px; }
+.sm-pl-n, .sm-pl-s { min-height: 26px; }
+.sm-pl-w, .sm-pl-e { flex-direction: column; min-width: 26px; }
+.sm-pl-floor {
+  flex: 1; display: grid; place-items: center;
+  border: 1px dashed #232327; border-radius: var(--radius-sm);
+  color: var(--dim); font-size: 11.5px; text-align: center; padding: 4px 8px;
+}
+.sm-pl-floor span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sm-pl-rack {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  border: 1px solid #33333a; border-radius: var(--radius-sm); background: #1f1f24;
+  color: var(--muted-foreground); font-family: inherit; font-size: 11px; cursor: pointer;
+  padding: 3px 7px; min-height: 24px; overflow: hidden;
+  transition: background var(--t), border-color var(--t), color var(--t);
+}
+.sm-pl-rack b { font-weight: 800; font-size: 12px; color: var(--foreground); }
+.sm-pl-rack small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-pl-rack:hover { border-color: #6a6a72; color: var(--foreground); }
+.sm-pl-rack.on { background: #FFFFFF; border-color: #FFFFFF; color: #0A0A0B; }
+.sm-pl-rack.on b { color: #0A0A0B; }
+.sm-pl-w .sm-pl-rack, .sm-pl-e .sm-pl-rack { writing-mode: vertical-rl; min-width: 24px; padding: 7px 3px; }
+.sm-pl-loose { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; font-size: 11.5px; }
+
+/* ---- the peek ------------------------------------------------------------
+   One card, moved and refilled, for the life of the page. It carries the
+   SAME size run the panel does and by the same rule — a chip is binary, and
+   no per-size quantity is printed. The holes are the information. */
+.sm-peek {
+  position: fixed; top: 0; left: 0; z-index: 90; pointer-events: none;
+  min-width: 168px; max-width: 264px;
+  background: var(--popover); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  padding: 9px 11px; box-shadow: 0 10px 30px rgb(0 0 0 / .5);
+  animation: smPeek var(--d-1) var(--e-out);
+}
+@keyframes smPeek { from { opacity: 0; } }
+.sm-peek-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.sm-peek-top b { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.sm-peek-cap { font-size: 11px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.sm-peek-name { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 12px; font-weight: 600; }
+.sm-peek-name i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.sm-peek .sm-chips { margin-top: 7px; }
+.sm-peek-range { margin-top: 5px; font-size: 11px; }
+
+/* Leaving the room: the stage fades, never the canvas — fading a canvas
+   fades the tag layer with it and the labels smear on the way out. */
+.sm-stage3d { transition: opacity var(--d-2) var(--e-out); }
+.sm-stage3d.sm-leaving { opacity: 0; }
+
 /* ---- the designer ---------------------------------------------------------
    Beside the room, never over it: the room keeps its camera and the scanner
    keeps the caret while the layout is being changed. */
@@ -457,12 +560,15 @@ body.rtl .toast { animation-name: toastInR; }
    this is the belt to that brace, so a paint path added later that forgets
    the check still cannot show a camera to somebody who asked for none. ---- */
 @media (prefers-reduced-motion: reduce) {
-  .sm-rack { transform: none !important; }
   .sm-tile { transition: none; }
-  .sm-tile:hover { transform: none; }
-  .sm-tile::after { transform: none; }
-  .sm-tiltbox { display: none; }
-  .sm-room, .sm-room-hint { display: none; }
+  /* .sm-room only — NOT .sm-room-hint. The flat view reuses that class for
+     its foot line, which carries the view's own instructions and, while
+     editing, the no-renumber rule. Hiding it here took both away from
+     exactly the person who had asked for a calmer screen, not a quieter one.
+     And NOT .sm-viewsw: the switch stays, with its Room half refused and the
+     reason on it — an absence has no explanation attached to it. */
+  .sm-room, .sm-stage3d { display: none; }
+  .sm-flatstage, .sm-peek { animation: none !important; transition: none !important; }
 }
 
 /* ---- the scan run -------------------------------------------------------

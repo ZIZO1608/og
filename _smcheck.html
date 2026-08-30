@@ -153,6 +153,7 @@ var DB = {
 var SECTIONS = [
   { id: 11, key: 'M', name: 'مستودع الأحذية', wh_id: 'store', wh_code: 2,
     grid_origin: 'right', sort_index: 1,
+    room_id: 1, wall: 'n', wall_pos: 0,
     shelves: [
       { id: 101, code: 'A1', row_label: 'A', col_index: 1, product_id: 1,
         product_name: 'حذاء الاختبار', size_from: '39', size_to: '41', range: '39–41',
@@ -175,8 +176,24 @@ var SECTIONS = [
         product_name: 'Half Sizes', size_from: '39', size_to: '39.5', range: '39–39.5',
         capacity: null, qty: 0, variants: 0, contents: [] }
     ] },
+  /* A SECOND RACK IN THE SAME ROOM, on another wall. The 2D view draws one
+     rack at a time, so this is what proves the plan can reach the other. */
+  { id: 13, key: 'N', name: 'الرفّ الجانبي', wh_id: 'store', wh_code: 2,
+    grid_origin: 'left', sort_index: 2,
+    room_id: 1, wall: 'e', wall_pos: 1,
+    /* Its one shelf sits on level C — no A, no B. The phantom-level case:
+       geometry() must report ONE level, not three, or view mode draws two
+       rows of empty floor and edit mode offers to grow the rack above its
+       own top, which the server never does. */
+    shelves: [
+      { id: 301, code: 'C1', row_label: 'C', col_index: 1, product_id: 2,
+        product_name: 'Test Tee', size_from: null, size_to: null, range: null,
+        capacity: 10, qty: 4, variants: 1,
+        contents: [{ sku: 'OG-002-M', size: 'M', qty: 4, product_id: 2, product_name: 'Test Tee' }] }
+    ] },
   { id: 12, key: 'F', name: 'واجهة المحل', wh_id: 'floor', wh_code: 1,
     grid_origin: 'left', sort_index: 1,
+    room_id: null, wall: null, wall_pos: null,
     shelves: [
       { id: 201, code: 'A1', row_label: 'A', col_index: 1, product_id: 1,
         product_name: 'حذاء الاختبار', size_from: null, size_to: null, range: null,
@@ -184,7 +201,16 @@ var SECTIONS = [
     ] }
 ];
 
-var Shop = { sections: function () { return Promise.resolve({ sections: JSON.parse(JSON.stringify(SECTIONS)) }); } };
+/* One room holding M and N; F is in no room and draws on its own. */
+var ROOMS = [
+  { id: 1, wh_id: 'store', name: 'المستودع الخلفي', sort_index: 1,
+    width_cm: null, depth_cm: null, height_cm: null }
+];
+
+var Shop = { sections: function () {
+  return Promise.resolve({ sections: JSON.parse(JSON.stringify(SECTIONS)),
+                           rooms: JSON.parse(JSON.stringify(ROOMS)) });
+} };
 
 /* API stub: records calls; behaviour switched per scenario. */
 var __calls = [];
@@ -261,9 +287,21 @@ var ROOM = FORCE && ShelfRoom.supported();
    that has to be true for a put-away run to survive: the canvas node before
    a scan is the canvas node after it. */
 function roomTests(finish) {
+  /* THE 2D VIEW IS THE DEFAULT, so the room is reached the way a person
+     reaches it — by pressing the switch. That makes the switch itself the
+     first assertion rather than something tested separately. */
+  ok('switch: the app opens in 2D', !!$('.sm-plan') && !$('#smRoom'));
+  ok('switch: both views are offered where the room can be drawn', !!$('.sm-viewsw'));
+  ok('switch: 2D is the one lit', $('[data-sm="view-2d"]').classList.contains('on') &&
+     !$('[data-sm="view-room"]').classList.contains('on'));
+  $('[data-sm="view-room"]').click();
+  ok('switch: pressing 3D draws the room', !!$('#smRoom') && !$('.sm-plan'));
+  ok('switch: …and remembers it per machine', localStorage.getItem('og_sm_view') === 'room');
+
   ok('room: the flat rack is not drawn', !$('.sm-rack'));
   ok('room: the mount is', !!$('#smRoom'));
-  ok('room: a reset button, and no tilt slider', !!$('[data-sm="room-reset"]') && !$('.sm-tiltbox'));
+  ok('room: a reset button', !!$('[data-sm="room-reset"]'));
+  ok('room: no tilt slider survives anywhere', !$('.sm-tiltbox') && !$('.sm-tilt'));
 
   var tries = 0;
   (function wait() {
@@ -292,7 +330,13 @@ function roomTests(finish) {
        what is on it, because "where is the tee" is the question the room
        answers. Three runs, not five bays. */
     var rt = $$('.sm-tag.run').map(function (e) { return e.textContent; });
-    ok('room: one tag per RUN, not per shelf — A1+A2 are one, A4 one, B3 one', rt.length === 3, rt);
+    /* FOUR runs across TWO racks: the room draws every rack hanging in it,
+       not just the one in focus — which is the whole difference between the
+       room and the 2D elevation beside it. M gives A1+A2 (one run), A4 and
+       B3; N gives its single bay. */
+    ok('room: every rack in the room is drawn, one tag per RUN', rt.length === 4, rt);
+    ok('room: the second rack contributes its own run',
+       rt.filter(function (s) { return s === 'Test Tee'; }).length === 2, rt);
     ok('room: the run tags carry the product names',
        rt.indexOf('حذاء الاختبار') > -1 && rt.indexOf('Half Sizes') > -1 && rt.indexOf('Test Tee') > -1, rt);
     ok('room: never more than 12 tags', $$('.sm-tag').length <= 12, $$('.sm-tag').length);
@@ -318,7 +362,7 @@ function roomTests(finish) {
          tagText.some(function (s) { return s.indexOf('M-A1') === 0; }), tagText);
       var rt2 = $$('.sm-tag.run').map(function (e) { return e.textContent; });
       ok('room: the run the selected bay sits in yields to its tag',
-         rt2.length === 2 && rt2.indexOf('حذاء الاختبار') < 0 && rt2.indexOf('Half Sizes') > -1, rt2);
+         rt2.length === 3 && rt2.indexOf('حذاء الاختبار') < 0 && rt2.indexOf('Half Sizes') > -1, rt2);
 
       /* colour off: the legend goes, the room stays, the canvas is the same */
       $('[data-sm="room-colour"]').click();
@@ -369,6 +413,82 @@ ShelfMap.after();
 setTimeout(function () {
   if (ROOM) { roomTests(finish); return; }
 
+  /* ---- the 2D view is the default, and it is FLAT --------------------- */
+  ok('2d: the plan is drawn for a room', !!$('.sm-plan'));
+  ok('2d: a bar per rack in the room — M and N', $$('.sm-pl-rack').length === 2, $$('.sm-pl-rack').length);
+  ok('2d: they sit on the walls they are on',
+     !!$('.sm-pl-n .sm-pl-rack') && !!$('.sm-pl-e .sm-pl-rack'));
+  ok('2d: the rack in focus is picked out, and only it',
+     $$('.sm-pl-rack.on').length === 1 && $('.sm-pl-rack.on').getAttribute('data-id') === '11');
+  ok('2d: the elevation is NOT tilted',
+     getComputedStyle($('.sm-rack')).transform === 'none', getComputedStyle($('.sm-rack')).transform);
+  ok('2d: no tilt slider survives', !$('.sm-tiltbox') && !$('.sm-tilt'));
+  ok('2d: the rack heading names it and its wall',
+     !!$('.sm-rackhead') && $('.sm-rackhead b').textContent === 'M' &&
+     $('.sm-rackhead small').textContent === t('sm_wall_n'), $('.sm-rackhead') && $('.sm-rackhead').textContent);
+
+  /* the name on the face — the room shows one per run, the grid one per bay */
+  ok('2d: a bay carries its product name', $('#smT101 .sm-pname').textContent === 'حذاء الاختبار');
+  ok('2d: an unassigned bay with foreign stock names what is ON it',
+     $('#smT104 .sm-pname').textContent === 'Test Tee');
+  /* THE RULE, ASSERTED. A type colour is a board (a child element); the
+     scan ring is the tile's border. .sm-flash-* sets border-color
+     !important on all four sides, so a type colour on any edge would blink
+     green on every scan — this fails the moment one goes back there. */
+  ok('2d: what a bay is FOR is a board, not a border', !!$('#smT101 .sm-board'));
+  ok('2d: an unassigned bay has no board', !$('#smT104 .sm-board'));
+  ok('2d: no type colour ever reaches an edge',
+     ['#smT101', '#smT104', '#smT105'].every(function (s) {
+       var b = getComputedStyle($(s));
+       return b.borderTopColor === b.borderBottomColor;
+     }));
+
+  /* switching racks from the plan, with the designer CLOSED */
+  ok('2d: not editing, so no designer', !$('.sm-designer'));
+  $('.sm-pl-rack[data-id="13"]').click();
+  ok('2d: clicking a bar in the plan opens that rack',
+     $('.sm-rackhead b').textContent === 'N' && !!$('#smT301'));
+  ok('2d: …and the plan follows the focus',
+     $('.sm-pl-rack.on').getAttribute('data-id') === '13');
+  /* the phantom-level case: N's only shelf is on level C */
+  ok('2d: a rack whose levels start at C draws ONE level, not three',
+     $$('.sm-rowhead').map(function (e) { return e.textContent.trim().charAt(0); }).join('') === 'C',
+     $$('.sm-rowhead').map(function (e) { return e.textContent.trim(); }));
+  $('.sm-pl-rack[data-id="11"]').click();
+  ok('2d: and back again', $('.sm-rackhead b').textContent === 'M' && !!$('#smT101'));
+
+  /* the peek card */
+  var peekEv = function (id, type) {
+    var el = $('#smT' + id), r = el.getBoundingClientRect();
+    el.dispatchEvent(new PointerEvent(type || 'pointermove',
+      { bubbles: true, clientX: r.left + 4, clientY: r.top + 4 }));
+  };
+  peekEv(101);
+  var pk = $('.sm-peek');
+  ok('2d: pointing at a bay raises the peek', !!pk && !pk.hidden);
+  ok('2d: the peek names the bay', pk.querySelector('.sm-peek-top b').textContent === 'M-A1');
+  ok('2d: the peek carries the WHOLE size run', pk.querySelectorAll('.sm-chip').length === 7,
+     pk.querySelectorAll('.sm-chip').length);
+  ok('2d: with only the sizes that are here filled — the holes are the information',
+     [].map.call(pk.querySelectorAll('.sm-chip.in'), function (c) { return c.textContent; }).join(',') === '39,40');
+  ok('2d: and no per-size quantity, like the panel', !/\d+\s*×/.test(pk.textContent));
+  ok('2d: the peek never eats a click', getComputedStyle(pk).pointerEvents === 'none');
+  document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  ok('2d: a touch puts it away', $('.sm-peek').hidden);
+
+  /* the view switch. Headless has no GPU, so the room cannot be offered —
+     which is itself the assertion: a button for a view this machine cannot
+     draw would be a button that lies. */
+  /* The switch is ALWAYS drawn — headless has no GPU, so this is the
+     refusal path: the Room half is offered, disabled, and carries the
+     reason. An absence would explain nothing. */
+  ok('2d: the switch is drawn even where the room cannot be', !!$('.sm-viewsw'));
+  ok('2d: …with the Room half refused and the reason on it',
+     $('[data-sm="view-room"]').disabled === true &&
+     $('[data-sm="view-room"]').title === t('sm_no_webgl'),
+     $('[data-sm="view-room"]').title);
+  ok('2d: and 2D is the half that is lit', $('[data-sm="view-2d"]').classList.contains('on'));
+
   /* ---- geometry: origin right means column 1 draws on the RIGHT ------- */
   var heads = $$('.sm-colhead');
   ok('column heads drawn 1..4', heads.length === 4, heads.length);
@@ -389,9 +509,21 @@ setTimeout(function () {
   ok('capacity tile has a fill bar', !!t101.querySelector('.sm-fill'));
   ok('fill is 30% of 40', t101.querySelector('.sm-fill').style.height === '30%',
      t101.querySelector('.sm-fill').style.height);
+  /* NO BAR WITHOUT A CAPACITY. There is no number to be a fraction of, and
+     a band drawn against one nobody measured is a picture of a lie. A first
+     pass at the 2D view drew a fixed 55% band here; this assertion is what
+     protects the rule. The colour still lands — it washes the whole face,
+     which says WHAT is on the bay without claiming HOW FULL. */
   ok('null-capacity tile has NO fill bar', !t104.querySelector('.sm-fill'));
   ok('null-capacity tile shows a plain count', t104.querySelector('.sm-load') &&
      t104.querySelector('.sm-load').textContent === '3');
+  /* Empty but measured: the bar is there at zero and the count says so.
+     "0/20" is a different fact from "nobody has measured this shelf", and
+     the two must not look the same. */
+  ok('an empty measured bay reads 0 of its capacity',
+     $('#smT105 .sm-fill').style.height === '0%' &&
+     $('#smT105 .sm-load').textContent === '0/20',
+     $('#smT105 .sm-load') && $('#smT105 .sm-load').textContent);
 
   /* ---- panel: chips ---------------------------------------------------- */
   t101.click();
@@ -423,8 +555,23 @@ setTimeout(function () {
     ok('edit mode: stocked tiles show the lock', !!$('#smT101 .sm-lock') && !!$('#smT104 .sm-lock'));
     ok('edit mode: empty tiles show no lock', !$('#smT105 .sm-lock'));
     ok('edit mode: growbar present', !!$('.sm-growbar'));
-    ok('edit mode: the no-renumber rule is stated', $('.sm-note') &&
-       $('.sm-note').textContent === t('sm_no_renumber'));
+    /* The rule moved out of its own .sm-note and into the foot line under
+       the stage, which is where the 2D view says everything else about
+       itself. It must still be stated verbatim while editing. */
+    ok('edit mode: the no-renumber rule is stated', $('.sm-room-hint') &&
+       $('.sm-room-hint').textContent === t('sm_no_renumber'),
+       $('.sm-room-hint') && $('.sm-room-hint').textContent);
+    ok('not editing, the foot explains the view instead', true);
+    ok('edit mode: the designer opens beside the plan', !!$('.sm-designer'));
+    ok('edit mode: one seed form at most, never two', $$('#smSeedR').length <= 1,
+       $$('#smSeedR').length);
+    /* F is a floor rack and the room on screen is in the store — a rack
+       cannot be placed into a room in the other building, so the designer
+       must not offer it */
+    ok('edit mode: the designer offers only racks from THIS building',
+       $$('.sm-designer [data-sm="rack-cfg"]').every(function (b) {
+         return b.getAttribute('data-id') !== '12';
+       }));
 
     /* the half-size selected-option regression: B3 is 39..39.5 */
     $('#smT106').click();
