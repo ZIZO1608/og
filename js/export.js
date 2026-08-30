@@ -387,7 +387,7 @@ var Export = (function () {
       body: buildPdfHtml(spec),
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
             '<span class="muted small" style="margin-inline-end:auto">' + t('ex_pdf_hint') + '</span>' +
-            '<button class="btn btn-primary" data-act="print-now">' + t('ex_save_pdf') + '</button>'
+            '<button class="btn btn-primary" data-act="print-doc">' + t('ex_save_pdf') + '</button>'
     });
   }
 

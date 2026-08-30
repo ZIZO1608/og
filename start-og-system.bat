@@ -78,6 +78,52 @@ if errorlevel 2 (
   exit /b 1
 )
 
+REM ===========================================================================
+REM  THE TILL'S HARDWARE: the receipt printer, the label printer, the scanner.
+REM
+REM  The scanner has no driver - it announces itself as a keyboard and Windows
+REM  fits its own in seconds. The two printers do, and it is NOT the driver on
+REM  the box: they are sent bytes they already understand (ESC/POS, TSPL) and
+REM  the manufacturer's driver reformats those into pages of gibberish. What
+REM  they need is the "Generic / Text Only" driver built into Windows, behind
+REM  a shared queue. server\scripts\hardware.js explains the whole thing.
+REM
+REM  This runs AFTER the port check on purpose: on a double-click while the
+REM  shop is already open, nothing here should run at all.
+REM ===========================================================================
+node scripts\hardware.js
+
+REM  Same rule as above - `if errorlevel N` means "N or more", so highest
+REM  first. Exit 4: something is missing that can be installed from here. Do
+REM  it, then ASK AGAIN rather than assuming it worked.
+if errorlevel 4 (
+  echo.
+  echo   Setting up the printers. This may ask for permission.
+  echo.
+  node scripts\hardware.js --install
+  echo.
+  echo   Checking again...
+  node scripts\hardware.js
+)
+
+REM  Anything still wrong needs a person: a printer to plug in, switch on, or
+REM  a choice this must not make on somebody's behalf.
+REM
+REM  It does NOT stop here. A shop that cannot print a receipt can still sell
+REM  shoes, and a launcher that refuses to open the till over a printer that
+REM  is merely switched off has taken the day's takings hostage over a piece
+REM  of paper. So: say it, leave it on screen long enough to be read, and open
+REM  the shop. `timeout` rather than `pause` because nobody may be standing
+REM  there, and an unattended morning must still end with a working till.
+if errorlevel 1 (
+  echo.
+  echo   The shop still opens and still takes money - it is the PRINTING that
+  echo   will not work until the above is sorted out.
+  echo.
+  echo   Press a key to carry on, or wait.
+  timeout /t 15
+)
+
 REM  The server serves the app and the API, and - when server\.env has
 REM  Supabase credentials - pushes the mirror on a timer while it runs. See
 REM  server\lib\sync-worker.js. Nothing else has to be started or remembered.

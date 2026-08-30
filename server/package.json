@@ -10,6 +10,8 @@
   "scripts": {
     "start": "node index.js",
     "preflight": "node scripts/preflight.js",
+    "hardware": "node scripts/hardware.js",
+    "hardware:install": "node scripts/hardware.js --install",
     "dev": "node --watch index.js",
     "createuser": "node scripts/createuser.js",
     "backup": "node scripts/backup.js",

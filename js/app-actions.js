@@ -199,6 +199,16 @@ var ACTIONS = {
   'drawer-close': closeDrawer,
   'print-now': function () { setRollPageSize(); window.print(); },
 
+  /* Printing a DOCUMENT — a report, an export, an invoice — rather than a
+     label or a till receipt.
+
+     Separate from print-now because print-now exists to put the LABEL roll's
+     size on the page, and it does that from OG.lb.mode, which defaults to
+     'roll'. Sent through it, an A4 report asked for a 30mm square page; and
+     if a receipt had been opened first, an 80mm one. Neither is a document,
+     and neither rule belonged to the screen that was actually open. */
+  'print-doc': function () { setDocPageSize(); window.print(); },
+
   export: function (el) {
     var spec = currentExportSpec();
     if (!spec || !spec.rows || !spec.rows.length) { toast(t('export_failed'), t('none'), 'warn'); return; }

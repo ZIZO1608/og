@@ -114,6 +114,50 @@ function setReceiptPageSize() {
   document.head.appendChild(st);
 }
 
+/* ---- putting the paper back ------------------------------------------------
+   `@page` is a PAGE-level at-rule. No body class scopes it, no selector
+   reaches it, and nothing takes it away on its own — so the 80mm receipt rule
+   and the label roll's rule both outlive the screen that injected them and
+   silently re-size the next thing anybody prints, from any screen.
+
+   That was live, and it is why a Products export came out as eight sheets
+   with the shop name sliced down the middle: a receipt had been opened
+   earlier in the session, and the A4 report was being laid out on an 80mm
+   till roll. openReceipt() already tried to undo this by removing the
+   `printing-receipt` class on close, which was a reasonable guess and could
+   never have worked — the class was never what carried the size. */
+function clearReceiptPageSize() {
+  var old = document.getElementById('receiptPageRule');
+  if (old) old.parentNode.removeChild(old);
+}
+
+/* A4, whatever the last thing printed was.
+
+   Documents ASSERT their paper rather than inheriting it. Relying on the
+   previous screen to have cleaned up is what broke this in the first place,
+   and a report is the one thing here that must come out the same on the
+   hundredth print as on the first. */
+function setDocPageSize() {
+  clearReceiptPageSize();
+
+  var roll = document.getElementById('rollPageRule');
+  if (roll) roll.parentNode.removeChild(roll);
+  document.body.classList.remove('roll-labels');
+  document.body.classList.remove('printing-receipt');
+
+  var id = 'docPageRule';
+  var old = document.getElementById(id);
+  if (old) old.parentNode.removeChild(old);
+
+  var st = document.createElement('style');
+  st.id = id;
+  /* The same 12mm the stylesheet has always used for a document — restated
+     here because an injected rule beats the stylesheet's, so putting the
+     margin back is part of putting the size back. */
+  st.textContent = '@media print{@page{size:A4;margin:12mm}}';
+  document.head.appendChild(st);
+}
+
 /* A money figure with no currency suffix.
 
    70mm does not fit "Size 42  1 × 12,500 SYP" and "12,500 SYP" on one line —
@@ -245,10 +289,17 @@ function openReceipt(sale, opts) {
           (opts.newSale
             ? '<button class="btn btn-primary" data-act="new-sale">' + t('new_sale') + '</button>'
             : '<button class="btn btn-primary" data-act="modal-close">' + t('close') + '</button>'),
-    /* The body class drives the @page swap, so it has to come off however the
-       modal is dismissed — otherwise the next thing anyone prints, from any
-       screen, comes out 80mm wide. */
-    onClose: function () { document.body.classList.remove('printing-receipt'); }
+    /* Both halves have to come off however the modal is dismissed, or the next
+       thing anyone prints from any screen comes out 80mm wide.
+
+       The class alone was the original attempt and could not work: the class
+       styles the receipt BODY, while the paper size lives in an injected
+       @page rule that no selector reaches. Removing the rule is the half that
+       actually puts A4 back. */
+    onClose: function () {
+      document.body.classList.remove('printing-receipt');
+      clearReceiptPageSize();
+    }
   });
 }
 

@@ -24,7 +24,33 @@ cd server
 npm run createuser               # interactive; also accepts piped stdin
 npm run backup                   # VACUUM INTO + integrity_check + FK check
 npm run preflight                # accounts, catalogue, Supabase, port
+npm run hardware                 # printers and scanner: what is missing, and why
+npm run hardware:install         # installs what it can (asks for administrator)
 ```
+
+### The till's hardware
+
+`server/scripts/hardware.js`, run by `start-og-system.bat` after the port check — so a
+double-click while the shop is already open does nothing. It exits **4** when something is
+missing that it can install (the launcher then installs and asks again), **1** when a person
+is needed, **0** otherwise. **It never stops the shop opening**: a till that cannot print can
+still sell shoes, same rule as `preflight.js`.
+
+**The driver the printers need is not the one on the box.** Both are sent bytes they already
+understand — ESC/POS for the receipt, TSPL for the label — so what they need is a shared queue
+on the Windows built-in **`Generic / Text Only`** driver. The manufacturer's driver is worse
+than none: it accepts the job and reformats the command bytes into pages of gibberish, which
+looks like a working printer. Which queue is checked comes from `receipt.printer_share` and
+`agent/agent-config.json`; a printer on `transport = tcp` has no driver at all and is only
+probed on :9100.
+
+**The scanner has no driver, deliberately** — it enumerates as a keyboard (see `js/wedge.js`),
+so there is nothing to install and the check says so rather than inventing a step. It reports
+what can actually be wrong: a device Windows left sitting on an error.
+
+It **will not guess between two USB ports.** One candidate, identified by the vendor driver
+name already on that port, is a fact; choosing between two is how labels come out of the
+receipt printer all morning. Two candidates means it stops and prints the list.
 
 **Node 22.5+ required** (`node:sqlite` is used, which arrived in 22.5). There is **no `npm install`** —
 the server has zero dependencies by design, and the frontend has no build step at all.
