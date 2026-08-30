@@ -57,6 +57,7 @@ var NAV = [
   { id: 'pos',        key: 'nav_pos',       group: 'main', icon: 'M3 4h3l2 10h9l2-7H7M9 19a1 1 0 1 0 2 0 1 1 0 1 0-2 0m7 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0' },
   { id: 'products',   key: 'nav_products',  group: 'main', icon: 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10' },
   { id: 'warehouse',  key: 'nav_warehouse', group: 'main', icon: 'M3 20V9l9-5 9 5v11M7 20v-7h10v7' },
+  { id: 'shelfmap',   key: 'nav_shelfmap', group: 'main', icon: 'M3 5h18v6H3zM3 13h18v6H3zM9 5v6M15 5v6M9 13v6M15 13v6' },
   { id: 'money',      key: 'nav_money',     group: 'main', icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4' },
   { id: 'deliveries', key: 'nav_deliveries',group: 'ops',  icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
   { id: 'customers',  key: 'nav_customers', group: 'ops',  icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' },
@@ -79,6 +80,11 @@ var NAV_PERM = {
   pos:        'sell',
   products:   'product.read',
   warehouse:  'stock.read',
+  /* The same gate the warehouse screen has: a cashier answering "have you
+     got it in a 42" is exactly who the map is for. Putting stock away from
+     it needs stock.move, and the layout editor config.write — both checked
+     inside the module, and both again on the server. */
+  shelfmap:   'stock.read',
   money:      'money.read',
   deliveries: 'delivery.read',
   customers:  'customer.read',
@@ -214,7 +220,7 @@ function renderSidebar() {
    Five is the ceiling — a sixth tab makes each one too narrow for a thumb, so
    the rest live behind More. */
 var TABS = ['dashboard', 'pos', 'products', 'print'];
-var MORE_ITEMS = ['warehouse', 'deliveries', 'customers', 'labels', 'reports', 'settings'];
+var MORE_ITEMS = ['warehouse', 'shelfmap', 'deliveries', 'customers', 'labels', 'reports', 'settings'];
 
 function renderTabbar() {
   var host = document.getElementById('tabbar');

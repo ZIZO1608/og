@@ -24,6 +24,11 @@ function viewWarehouse() {
     '<div class="head-actions">' +
       '<span class="badge neutral">' + DB.liveVariants().length + ' SKU</span>' +
       '<span class="badge accent">' + nf(DB.liveVariants().reduce(function (a, v) { return a + v.qty; }, 0)) + ' ' + t('total_pieces').toLowerCase() + '</span>' +
+      /* The map is its own screen — it takes over the scanner and keeps the
+         focus in a scan box, which is not something to do inside a tab of a
+         screen that has four other jobs. */
+      ifNav('shelfmap', '<button class="btn" data-act="nav" data-view="shelfmap">' +
+        t('nav_shelfmap') + '</button>') +
       exportButtons() +
     '</div></div>';
 
@@ -453,7 +458,31 @@ function whAddTab() {
     '</div>' +
     (seesCost() ? '' :
       '<div class="partner-note">' + t('wh_cost_later') + '</div>') +
-    '<label class="field"><span>' + t('shelf_box') + '</span><input class="inp" type="text" value="D-09"></label>' +
+    /* WHERE IT LANDS AND WHERE IT GOES. Both left out entirely without
+       stock.move, for the same reason the cost box is: putting a pair on a
+       shelf is a stock movement, and the server refuses one from an account
+       that cannot make them. A select he can work but not save is worse than
+       no select — he would find out at the end, having already chosen.
+       Without it the goods still arrive, at the intake warehouse, unshelved. */
+    (allow('stock.move')
+      ? '<div class="row2">' +
+          '<label class="field"><span>' + t('wh_intake') + '</span>' +
+            '<select class="inp" data-change="wh-warehouse">' +
+              DB.warehouses.map(function (w) {
+                return '<option value="' + esc(w.id) + '"' + (w.id === whAddWh() ? ' selected' : '') +
+                  '>' + esc(DB.whName(w.id, OG.lang === 'ar')) + '</option>';
+              }).join('') +
+            '</select></label>' +
+          /* Painted empty and disabled because the rooms are live server
+             state, not part of the hydrated catalogue — bindWarehouse fills
+             it once they land. Disabled until then so nobody picks out of a
+             list that is about to be replaced. */
+          '<label class="field"><span>' + t('shelf_box') + '</span>' +
+            '<select class="inp" id="whShelf" data-change="wh-shelf" disabled>' +
+              '<option value="">' + t('loading') + '</option>' +
+            '</select></label>' +
+        '</div>'
+      : '') +
   '</div></div>';
 
   h += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">' +
@@ -482,6 +511,140 @@ function whAddTab() {
   h += '<div id="whPreview">' + whAddPreview(sizes, totalPieces) + '</div>';
 
   return h + '</div>';
+}
+
+/* The warehouse the Add form books opening stock into, and so the only
+   warehouse whose shelves it may offer. Resolved on every read rather than
+   frozen into OG.wh at page load: DB.intakeWh is replaced from server config
+   during hydrate(), so a value captured earlier would be the factory one. */
+function whAddWh() {
+  /* The DB.warehouse() half covers a warehouse that has been removed since it
+     was picked, which would otherwise leave the select showing one place
+     while the state held another and the stock landing at the second. */
+  if (OG.wh.whId && DB.warehouse(OG.wh.whId)) return OG.wh.whId;
+  return DB.intakeWh;
+}
+
+/* The shelf's printed name, read off the select while it is still on the
+   screen. The toast that names it fires after render() has already rebuilt
+   the form, so this has to be taken before the save, not looked up after. */
+function whShelfCode() {
+  var el = document.getElementById('whShelf');
+  if (!el || !el.value) return '';
+  var o = el.options[el.selectedIndex];
+  return o ? o.textContent : '';
+}
+
+/* Put every size of a product that has just been created onto one shelf.
+
+   AFTER the product exists and outside its write, never inside it: the goods
+   are already booked in against a movement row, and a shelf refusing must not
+   unwind a real receipt — the same rule Deliveries.assign follows for a sale.
+
+   ONE AT A TIME, not Promise.all. The first request is what makes an empty
+   shelf adopt this product and CLEARS its size range (server/lib/shelves.js:997);
+   every request after it passes because of what the first one did. Six racing
+   would each be judged against a shelf that had not adopted yet — which
+   happens to work only because BEGIN IMMEDIATE serialises them anyway, and
+   depending on that is not the same as meaning it.
+
+   A refusal does not stop the run. Five sizes on the shelf and one not is
+   better than one on and five not, and the toast can then name which. */
+function whAssignAll(made, whId, shelfId, done) {
+  var failed = [], firstErr = '', i = 0;
+
+  function step() {
+    if (i >= made.length) { done(failed, firstErr); return; }
+    var v = made[i++];
+    Shop.assignShelf(v.sku, whId, shelfId).then(step, function (err) {
+      failed.push(v.size);
+      if (!firstErr) firstErr = API.friendly(err);
+      step();
+    });
+  }
+  step();
+}
+
+/* Fills the Add form's shelf picker from the real rooms.
+
+   Run from bindWarehouse after every render of the screen, and again when the
+   warehouse select moves — a shelf reaches its warehouse through its room, and
+   assign-shelf refuses a pair held in the other building, so the two selects
+   are one control.
+
+   EVERY OPTION IS NAMED WITH ITS ROOM — 'M-A3', never 'A3'. Shelf codes are
+   unique per room only, so a bare code names two different shelves the day a
+   second room opens. This is a list somebody reads while holding a box.
+
+   Rooms are separated by disabled options rather than <optgroup>: js/selectbox.js
+   skins every select.inp by walking sel.options, which flattens groups away, so
+   an optgroup label would be visible in no browser the shop actually uses. */
+function fillWhShelves() {
+  if (!document.getElementById('whShelf') || typeof ShelfMap === 'undefined') return;
+
+  ShelfMap.cachedSections().then(function (secs) {
+    /* The screen may have moved on while the request was out. */
+    var el = document.getElementById('whShelf');
+    if (!el) return;
+
+    var whId = whAddWh();
+    var mine = secs.filter(function (s) { return s.wh_id === whId && s.shelves.length; });
+
+    if (!mine.length) {
+      el.innerHTML = '<option value="">' + t('shelf_no_rooms') + '</option>';
+      el.disabled = true;
+      OG.wh.shelfId = '';
+      return;
+    }
+
+    var h = '<option value="">' + t('shelf_none') + '</option>';
+    var stillThere = false;
+
+    mine.forEach(function (s) {
+      h += '<option disabled>' + esc(s.key + ' · ' + s.name) + '</option>';
+      s.shelves.forEach(function (sh) {
+        /* A shelf already holding a DIFFERENT model would come back as
+           wrong_shelf. Shown rather than hidden, and named with what is on
+           it: a shelf that quietly vanishes from the list reads as a shelf
+           that does not exist, and the map exists so people can see where
+           things actually are.
+
+           AN ARCHIVED PRODUCT STILL HOLDS ITS SHELF. Everywhere else in this
+           app an archived line is not stock and is filtered out, so the
+           tempting thing is to treat its shelf as free — but assignStock
+           compares shelf.product_id alone (server/lib/shelves.js:1000) and
+           never looks at products.hidden. Offering it would be a shelf that
+           is guaranteed to refuse, AFTER the product has already been
+           created. It is named as archived instead, which is the useful half
+           of the fact: it tells the manager why a rack is blocked by a line
+           the shop stopped selling. */
+        var taken = sh.product_id != null;
+        var mineNow = !taken && String(sh.id) === String(OG.wh.shelfId);
+        if (mineNow) stillThere = true;
+        h += '<option value="' + sh.id + '"' + (taken ? ' disabled' : '') +
+          (mineNow ? ' selected' : '') + '>' + esc(sh.full_code) +
+          (taken ? ' — ' + esc(sh.product_name || '?') +
+                   (sh.product_hidden ? ' (' + t('bk_archived') + ')' : '') : '') +
+          '</option>';
+      });
+    });
+
+    /* A shelf chosen for the other warehouse, or taken since, is not a
+       choice any more. Dropped rather than carried, so the value that gets
+       saved is always one that is still on the screen. */
+    if (!stillThere) OG.wh.shelfId = '';
+
+    el.innerHTML = h;
+    el.disabled = false;
+  }, function (err) {
+    var el = document.getElementById('whShelf');
+    if (!el) return;
+    /* Says why, rather than sitting on "Loading…" for good. The product can
+       still be saved — it simply arrives unshelved, which is a real state. */
+    el.innerHTML = '<option value="">' + esc(API.friendly(err)) + '</option>';
+    el.disabled = true;
+    OG.wh.shelfId = '';
+  });
 }
 
 /* Everything that depends on the quantities, and nothing that holds focus. */

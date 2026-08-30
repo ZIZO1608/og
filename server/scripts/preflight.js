@@ -144,11 +144,54 @@ const busy = await new Promise((done) => {
   probe.listen(PORT);
 });
 
+/* A busy port has two completely different meanings and this used to print
+   only the alarming one.
+
+   Nearly every time, the thing holding the port is THIS SERVER, already
+   running and already serving the shop — so the shop is OPEN, and the only
+   thing wrong is that somebody double-clicked the launcher twice. Printing
+   "the server cannot start / Not starting" at that moment describes a
+   healthy shop as a broken one, and somebody who has been told the system
+   is down twice stops believing the screen the third time — the same reason
+   the deploy workflow goes green when Pages is deliberately off.
+
+   The other meaning is real: something ELSE has the port, and the server
+   genuinely cannot start.
+
+   Asking /api/health is what separates them. Our server answers it with
+   {ok:true}; a stray process on the same port does not. */
+async function ourServerIsAnswering() {
+  try {
+    const ctl = new AbortController();
+    const bail = setTimeout(() => ctl.abort(), 1500);
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, { signal: ctl.signal });
+    clearTimeout(bail);
+    if (!res.ok) return false;
+    const body = await res.json();
+    return body && body.ok === true;
+  } catch {
+    /* Unreachable, timed out, or not JSON — whatever is on that port, it is
+       not this server answering normally. Treat it as the fatal case. */
+    return false;
+  }
+}
+
 if (busy) {
   console.log('');
-  warn(`Port ${PORT} is already in use — the server cannot start.`);
-  hint('Almost always a copy of this server still running in another window.');
-  hint('Close that window, or find and stop it:');
+  if (await ourServerIsAnswering()) {
+    ok('The shop is already open — the server is running in another window.');
+    hint(`Open it at:  http://localhost:${PORT}`);
+    hint('Nothing is wrong, and nothing needs restarting.');
+    hint('To restart it anyway, close that other window first.');
+    console.log('');
+    /* 3, not 2: the batch file opens the browser on this instead of
+       announcing a failure. Higher than 2 because `if errorlevel N` in
+       batch means "N or more", so this must be tested first. */
+    process.exit(3);
+  }
+  warn(`Port ${PORT} is in use by something else — the server cannot start.`);
+  hint('Not this server: whatever holds the port did not answer /api/health.');
+  hint('Find and stop it:');
   hint(`  netstat -ano | findstr :${PORT}`);
   hint('  taskkill /PID <the number in the last column> /F');
   console.log('');

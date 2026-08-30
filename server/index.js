@@ -27,6 +27,7 @@ import * as DB from './lib/db.js';
 import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
 import * as Stock from './lib/stock.js';
+import * as Shelves from './lib/shelves.js';
 import * as Sales from './lib/sales.js';
 import * as Customers from './lib/customers.js';
 import * as Deliveries from './lib/deliveries.js';
@@ -449,6 +450,106 @@ router.add('GET /api/stock', requirePerm('stock.read', (ctx) => {
 router.add('GET /api/movements', requirePerm('stock.read', (ctx) => {
   const limit = Math.min(Number(ctx.url.searchParams.get('limit')) || 200, 1000);
   sendOk(ctx.res, { movements: Stock.recent(limit) });
+}));
+
+/* --- shelves ----------------------------------------------------------------
+   Where things physically are. Reading the layout is `stock.read`; changing it
+   and putting stock away are `stock.move` — the existing warehouse pair, so
+   there is no new permission, no migration seeding one, and no fifth place for
+   the boundary to go stale. The people who know where the pillar is are the
+   people who move the boxes.
+
+   `/api/sections` and `/api/shelves` deliberately sit at the top level rather
+   than under `/api/stock/`, where `GET /api/stock/:sku` (registered above)
+   would swallow them: router.match returns the FIRST route whose pattern fits,
+   so `GET /api/stock/shelves` would answer as sku='shelves' with a cheerful
+   200 and an empty result. `POST /api/stock/assign-shelf` is safe because
+   every other POST under /api/stock/ is a literal path. */
+
+router.add('GET /api/sections', requirePerm('stock.read', (ctx) => {
+  const wh = ctx.url.searchParams.get('wh') || null;
+  sendOk(ctx.res, {
+    sections: Shelves.list({ whId: wh }),
+    /* What arrived and has not been put away. Only answerable for one
+       warehouse at a time, because "not put away" is a fact about a room. */
+    unshelved: wh ? Shelves.unshelved(wh) : null
+  });
+}));
+
+router.add('POST /api/sections', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => ({ section: Shelves.createSection({
+    whId: b.whId, key: b.key, name: b.name,
+    sortIndex: b.sortIndex, gridOrigin: b.gridOrigin, userId: ctx.user.id
+  }) }));
+}));
+
+router.add('PATCH /api/sections/:id', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => ({ section: Shelves.updateSection(Number(ctx.params.id), {
+    name: b.name, sortIndex: b.sortIndex, gridOrigin: b.gridOrigin
+  }, ctx.user.id) }));
+}));
+
+router.add('DELETE /api/sections/:id', requirePerm('stock.move', (ctx) => {
+  shelfOp(ctx, () => Shelves.deleteSection(Number(ctx.params.id), ctx.user.id));
+}));
+
+/* Lay a room out. Idempotent on code and it never deletes, because the shop is
+   inventing this layout for the first time and will run it more than once. */
+router.add('POST /api/sections/:id/grid', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => Shelves.seedGrid(Number(ctx.params.id), {
+    rows: b.rows, cols: b.cols, capacity: b.capacity
+  }, ctx.user.id));
+}));
+
+router.add('POST /api/sections/:id/rows', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => Shelves.editRows(Number(ctx.params.id), {
+    action: b.action, row: b.row, cols: b.cols
+  }, ctx.user.id));
+}));
+
+router.add('POST /api/sections/:id/cols', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => Shelves.editCols(Number(ctx.params.id), {
+    action: b.action, col: b.col
+  }, ctx.user.id));
+}));
+
+router.add('POST /api/shelves', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => ({ shelf: Shelves.createShelf({
+    sectionId: Number(b.sectionId), rowLabel: b.rowLabel,
+    colIndex: b.colIndex, capacity: b.capacity, userId: ctx.user.id
+  }) }));
+}));
+
+/* Rename, set capacity, set the assignment. Renaming a code or reassigning a
+   shelf that still has stock on it changes nothing and returns the numbers
+   first; `force` is how the manager says yes to what it just showed him. */
+router.add('PATCH /api/shelves/:id', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => Shelves.updateShelf(Number(ctx.params.id), {
+    code: b.code, capacity: b.capacity,
+    productId: b.productId, sizeFrom: b.sizeFrom, sizeTo: b.sizeTo
+  }, { force: b.force === true, userId: ctx.user.id }));
+}));
+
+router.add('DELETE /api/shelves/:id', requirePerm('stock.move', (ctx) => {
+  shelfOp(ctx, () => Shelves.deleteShelf(Number(ctx.params.id), ctx.user.id));
+}));
+
+/* The guard the whole feature exists for: a pair put down in the wrong place
+   is refused as it is put down, and told where it actually goes. */
+router.add('POST /api/stock/assign-shelf', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => Shelves.assignStock({
+    sku: b.sku, whId: b.whId,
+    shelfId: b.shelfId == null ? null : Number(b.shelfId),
+    userId: ctx.user.id
+  }));
 }));
 
 /* --- customers --------------------------------------------------------------
@@ -1182,6 +1283,29 @@ router.add('POST /api/labels/calibrate', requirePerm('label.print', async (ctx) 
   }
 }));
 
+/* Everything one product label needs, per size, including which shelf each
+   size BELONGS on — resolved on the server so the size-range rules exist in
+   exactly one place. */
+router.add('GET /api/labels/product/:id', requirePerm('label.print', (ctx) => {
+  const wh = ctx.url.searchParams.get('wh') || 'store';
+  shelfOp(ctx, () => Shelves.labelRowsFor(Number(ctx.params.id), wh));
+}));
+
+/* The 60x40 shelf and product labels are laid out in HTML and printed by the
+   browser's own dialog — the only path Arabic survives. They still have to
+   land in the audit log, or nothing can answer "was this shelf's label ever
+   printed", which is what phase 1's reassign warning counts. */
+router.add('POST /api/labels/record', requirePerm('label.print', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Labels.record({
+      preset: b.preset, station: b.station, items: b.items, userId: ctx.user.id
+    }));
+  } catch (e) {
+    sendError(ctx.res, 400, e.code || 'invalid', e.message);
+  }
+}));
+
 router.add('GET /api/labels/queue', requirePerm('label.print', (ctx) => {
   sendOk(ctx.res, { jobs: Labels.queue({ station: ctx.url.searchParams.get('station') || null }) });
 }));
@@ -1210,6 +1334,55 @@ async function stockOp(ctx, fn) {
         `Only ${e.available} left${e.whId ? ` at ${e.whId}` : ''}.`);
     }
     sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}
+
+/* Run a shelf change, turning a refusal into the status it deserves and
+   carrying the numbers the screen has to draw.
+
+   THE FIFTH ARGUMENT OF sendError IS HEADERS, NOT BODY. A shelf refusal has to
+   say where the pair actually belongs — which shelf, which room, which size
+   range — and passing that to sendError would put it in the HTTP headers where
+   nothing reads it. So this builds the body itself with sendJson, in the same
+   `{ ok:false, code, error }` shape every other failure uses, plus whatever the
+   lib attached to the error. Anything not on the list is a bug rather than a
+   rule somebody broke, so it comes back 400 'invalid' like every other lib
+   throw — an unmapped code would otherwise surface as a 500 with a stack. */
+const SHELF_STATUS = {
+  not_found:         404,
+  /* Refusals: the request was well formed and the shop said no. */
+  no_stock:          409,
+  wrong_warehouse:   409,
+  wrong_shelf:       409,
+  wrong_size:        409,
+  shelf_occupied:    409,
+  section_not_empty: 409,
+  duplicate_key:     409,
+  duplicate_code:    409,
+  confirm_required:  409,
+  /* Malformed: the request could not have worked whatever the shop looked like. */
+  bad_request:       400,
+  bad_key:           400,
+  bad_code:          400,
+  bad_range:         400,
+  no_rows:           400,
+  no_columns:        400,
+  too_many_rows:     400,
+  too_many_cols:     400
+};
+
+function shelfOp(ctx, fn) {
+  try {
+    sendOk(ctx.res, fn());
+  } catch (e) {
+    const status = SHELF_STATUS[e.code];
+    if (!status) return sendError(ctx.res, 400, 'invalid', e.message);
+    /* Spreading an Error yields only what was deliberately attached to it —
+       `message` and `stack` are own but not enumerable — so no stack reaches
+       the browser. */
+    const extra = { ...e };
+    delete extra.code;
+    sendJson(ctx.res, status, { ok: false, code: e.code, error: e.message, ...extra });
   }
 }
 

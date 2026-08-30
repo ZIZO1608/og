@@ -20,7 +20,18 @@ var OG = {
   /* `place` is which warehouse the Stock tab is showing: 'all' | a warehouse
      id. The tab defaults to 'stock' because "what have I got, and where" is
      the question this page is opened to answer. */
-  wh:   { tab: 'stock', place: 'all', type: 'sneakers', sizes: {}, name: '', img: null, imgSrc: null },
+  /* whId is the warehouse the NEW product's opening stock is booked into, and
+     so also the only warehouse whose shelves the shelf picker may offer — a
+     shelf reaches its warehouse through its room, and assign-shelf refuses a
+     pair held in the other building.
+
+     Left null rather than set to DB.intakeWh here: data.js loads first, but
+     the intake warehouse is overridden from server config during hydrate(),
+     which is long after this line runs. Resolved where it is read, so the
+     shop's own setting wins. shelfId '' is "not put away yet", which is a
+     real and permanent state — stock.shelf_id is nullable on purpose. */
+  wh:   { tab: 'stock', place: 'all', type: 'sneakers', sizes: {}, name: '', img: null, imgSrc: null,
+          whId: null, shelfId: '' },
   dir:  null,                                           // page-transition direction
   rep:  { tab: 'sales' },
   print:{ partner: false },

@@ -42,10 +42,15 @@ function configBlock() {
    second layer, but the query itself never selects unit_cost/cost_price so
    there is nothing to forget to strip. */
 export function data(saleId) {
+  /* public_token rides along so the printed QR can carry the /i/:token link.
+     It is not a secret from this audience — the till is signed in, and the
+     token is about to be printed on paper the customer walks out with. What
+     it must never do is arrive from the CLIENT: the browser draws whatever
+     token it is handed, so it has to come from the sale's own row. */
   const sale = get().prepare(
     `SELECT s.id, s.at, s.customer_id, s.customer_name, s.wh_id, s.payment,
             s.currency, s.subtotal, s.discount, s.total, s.fx_rate, s.fx_base,
-            s.voided, s.points_used, s.points_earned, s.txn_ref,
+            s.voided, s.points_used, s.points_earned, s.txn_ref, s.public_token,
             u.name AS cashier_name
        FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
       WHERE s.id = ?`

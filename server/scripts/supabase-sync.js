@@ -39,9 +39,15 @@ import * as SB from '../lib/supabase.js';
 import * as Vault from '../lib/credvault.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DB_FILE = env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
 
+/* Before DB_FILE, not after. OG_DB is normally set in server/.env, and reading
+   it first meant the timed sync silently opened server/data/og.db while the
+   server itself used the file the .env named — a mirror faithfully tracking a
+   database nobody was selling from. The same path the server, the restore and
+   the reconcile all resolve. */
 load();
+
+const DB_FILE = env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
 
 if (!SB.isConfigured()) {
   console.error('Supabase is not configured — run npm run supabase:check first.');
@@ -273,6 +279,31 @@ const TABLES = {
   stock: {
     parseKey: (rowId) => { const [sku, wh_id] = rowId.split(':'); return { sku, wh_id }; },
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM stock WHERE sku = ? AND wh_id = ?').get(key.sku, key.wh_id),
+    mapRow: (r) => r,
+    /* until 006 has been run in the dashboard. stock is pushed in the
+       unguarded CORE loop and fetched with SELECT *, so the moment 023 adds
+       shelf_id locally PostgREST rejects the whole batch on a mirror that has
+       not been updated — and the shop's stock stops being mirrored over a
+       column nobody has created yet. Exactly the sales.shift_id situation. */
+    fallbackDrop: ['shelf_id'],
+    fallbackFile: 'server/supabase/006_shelves.sql'
+  },
+
+  /* ---- the warehouse layout --------------------------------------------
+     Rooms and the shelves in them. Pushed inside their own guard below,
+     AFTER the core loop: shelves.product_id names a product, and stock rows
+     carrying a shelf_id go up before any shelf does — which is fine only
+     because neither of those is a foreign key on the Supabase side. See
+     server/supabase/006_shelves.sql for why. */
+  sections: {
+    parseKey: (rowId) => ({ id: Number(rowId) }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM sections WHERE id = ?').get(key.id),
+    mapRow: (r) => r
+  },
+
+  shelves: {
+    parseKey: (rowId) => ({ id: Number(rowId) }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM shelves WHERE id = ?').get(key.id),
     mapRow: (r) => r
   },
   customers: {
@@ -427,8 +458,19 @@ async function syncTable(name, { phase = 'both' } = {}) {
      A cursor ahead of the highest seq that exists is the signature of
      exactly that, and it cannot arise any other way — seq only grows while
      the log is intact. So rewind and replay. Replaying costs nothing: every
-     push is an upsert keyed on the row's own id. */
-  const highest = DB.get().prepare('SELECT MAX(seq) AS m FROM change_log').get().m;
+     push is an upsert keyed on the row's own id.
+
+     THE MAXIMUM MUST BE THIS TABLE'S, NOT THE WHOLE LOG'S. Each table has its
+     own cursor, so each can be stranded on its own. Comparing against the
+     global MAX(seq) hides that completely: a busy table carries the global
+     maximum far above a quiet table's last entry, the quiet table's cursor
+     never looks ahead of it, and the rewind never fires. That is not
+     hypothetical — sync:deliveries sat at 142 while deliveries' own highest
+     entry was 22, and because sales had reached 1001 the shop's four
+     deliveries were reported as "nothing new" on every run, for good. */
+  const highest = DB.get().prepare(
+    'SELECT MAX(seq) AS m FROM change_log WHERE tbl = ?'
+  ).get(name).m;
   if (highest !== null && lastSeq > highest) {
     if (phase !== 'delete') console.log(head(name));
     console.log(warn(`cursor was at ${lastSeq} but the log only reaches ${highest} — ` +
@@ -490,7 +532,11 @@ async function syncTable(name, { phase = 'both' } = {}) {
       const hit = drop.find((c) => String(e.message).includes(c));
       if (!hit) throw e;
       console.log(warn(`Supabase has no ${name}.${hit} column yet — pushing without it.`));
-      console.log('    \x1b[2mRun server/supabase/005_money_and_counts.sql in the SQL editor.\x1b[0m');
+      /* Named per table. Hardcoding 005 here was fine while sales was the only
+         table with a fallback; the second one made it tell the operator to run
+         a file that has nothing to do with the column that was rejected. */
+      const file = cfg.fallbackFile || 'server/supabase/005_money_and_counts.sql';
+      console.log(`    \x1b[2mRun ${file} in the SQL editor.\x1b[0m`);
       await SB.insert(name, toUpsert.map((r) => {
         const copy = { ...r };
         for (const c of drop) delete copy[c];
@@ -538,6 +584,35 @@ await syncUsers();
 const CORE = ['products', 'variants', 'stock', 'customers', 'sales', 'deliveries'];
 for (const name of CORE) await syncTable(name, { phase: 'upsert' });
 for (const name of CORE.slice().reverse()) await syncTable(name, { phase: 'delete' });
+
+/* ------------------------------------------------------- warehouse layout
+   The rooms and shelves the map is drawn from. Their own guard, like the
+   partner half below and for the same reason: these arrive with
+   server/supabase/006_shelves.sql, which is run BY HAND in the dashboard, and
+   taking a whole run down over a table nobody has created yet would stop a
+   day's sales being mirrored.
+
+   AFTER the core loop, not before it. `shelves.product_id` names a product, so
+   products have to be up already; and stock rows carrying a shelf_id go up
+   before any shelf does, which is safe only because 006 declares neither of
+   those as a foreign key — see that file for why.
+
+   Sections before shelves going in, the reverse coming out. A shelf cannot go
+   while a section still owns it, and locally a shelf's removal nulls the
+   stock rows pointing at it — that null is pushed in the core loop just above,
+   so by the time the shelf is removed here nothing refers to it. */
+console.log(head('Warehouse layout'));
+try {
+  const LAYOUT = ['sections', 'shelves'];
+  for (const name of LAYOUT) await syncTable(name, { phase: 'upsert' });
+  for (const name of LAYOUT.slice().reverse()) await syncTable(name, { phase: 'delete' });
+} catch (e) {
+  if (/does not exist|Could not find the table|PGRST205|schema cache/i.test(String(e.message))) {
+    const named = String(e.message).match(/public.([a-z_]+)/);
+    console.log(warn('Supabase is missing a table' + (named ? ': ' + named[1] : '') + ' — skipped.'));
+    console.log('    \x1b[2mRun server/supabase/006_shelves.sql in the SQL editor.\x1b[0m');
+  } else throw e;
+}
 
 /* After the loop, not before: a movement points at a variant and a
    warehouse, and a rate at a currency. Both would be rejected if they

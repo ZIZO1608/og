@@ -380,3 +380,29 @@
 }
 
 
+
+/* ---------------------------------------------------------------- Cairo
+   Montserrat has no Arabic glyphs. Everywhere else in the app that has not
+   mattered, because the browser quietly falls back to Segoe UI or Tahoma from
+   the machine's own font list and Arabic still reads. On a 60x40mm thermal
+   label at 203dpi it matters a great deal: the fallback differs from station
+   to station, and a face whose strokes are half a dot too thin comes off the
+   printer with the dots on its letters merged into a smudge.
+
+   So this one is committed rather than fetched, the same way
+   js/vendor/chart.umd.min.js is — the shop is regularly offline and a label
+   that silently changes shape because a CDN was unreachable is worse than one
+   that never printed. It is the TTF straight from Google Fonts (SIL OFL 1.1),
+   the same file make-proposal.ps1 downloads for the Arabic PDF; there is no
+   woff2 converter in this repo and no build step to run one in.
+
+   700 ONLY, and only on labels. Lighter weights lose their dots at this
+   density. Adopting Cairo for the app's own Arabic is a separate decision
+   about how the whole thing looks, and is deliberately not made here. */
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url('Cairo-700.ttf') format('truetype');
+}

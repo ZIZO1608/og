@@ -73,8 +73,15 @@ const ORDER = [
   'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates',
   'clubs', 'suppliers', 'employees',
 
-  /* the catalogue and what was sold from it */
-  'products', 'variants', 'stock', 'customers', 'sales', 'sale_items', 'deliveries',
+  /* the catalogue and what was sold from it.
+
+     sections and shelves sit between variants and stock and not anywhere
+     else: a shelf names a product, and a stock row names a shelf. This
+     database is opened with foreign_keys = ON, so getting it wrong does not
+     drift quietly — it kills the restore partway through, the way
+     sales.cashier_id did when accounts came last. */
+  'products', 'variants', 'sections', 'shelves', 'stock',
+  'customers', 'sales', 'sale_items', 'deliveries',
 
   /* a rate needs its currencies; a movement needs its variant and warehouse */
   'fx_rates', 'stock_movements',
@@ -270,6 +277,32 @@ if (!Vault.isEnabled()) {
   }
 }
 
+/* ------------------------------------------------- pointing at nothing
+   THE MIRROR IS ALLOWED TO HOLD A PARENT THIS DATABASE NO LONGER HAS, and on
+   one table that is by design: server/supabase/006_shelves.sql declares no
+   foreign key on shelves.product_id, precisely so that a product deleted here
+   — which nulls the shelf's product_id inside SQLite, writing no change_log
+   entry and therefore never reaching the mirror — cannot block the products
+   delete from being pushed.
+
+   The consequence lands here. This database DOES enforce that key
+   (023_shelves.sql, plus PRAGMA foreign_keys = ON), so inserting the mirrored
+   row verbatim throws "FOREIGN KEY constraint failed", the top-level await
+   rejects, and the restore stops after products, variants and sections have
+   already committed — with stock, customers, sales and deliveries never
+   restored and nothing in the message naming the table. Exactly the failure
+   the sales.cashier_id ordering note at the top of this file describes.
+
+   An assignment to a product that no longer exists is not information worth
+   dying for: the shelf comes back unassigned, which is true. */
+function clean(table, r, d) {
+  if (table !== 'shelves' || r.product_id == null) return r;
+  if (d.prepare('SELECT 1 FROM products WHERE id = ?').get(r.product_id)) return r;
+  orphaned++;
+  return { ...r, product_id: null, size_from: null, size_to: null };
+}
+let orphaned = 0;
+
 head('Restoring');
 
 let total = 0;
@@ -280,7 +313,7 @@ for (const { table, cols, rows } of plan) {
   const written = DB.tx(() => {
     let n = 0;
     for (const row of rows) {
-      const r = adapt(row, cols);
+      const r = clean(table, adapt(row, cols), d);
       const keys = Object.keys(r);
       if (!keys.length) continue;
       const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(',')}) ` +
@@ -292,6 +325,10 @@ for (const { table, cols, rows } of plan) {
   });
   total += written;
   tick(`${table} — ${written} row(s)`);
+  if (table === 'shelves' && orphaned) {
+    warn(`${orphaned} shelf/shelves named a product this database does not have — ` +
+         'restored unassigned.');
+  }
 }
 
 

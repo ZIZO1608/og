@@ -51,7 +51,11 @@ function viewPrintLabels() {
   var types = Object.keys(DB.typeLabels);
 
   var h = '<div class="page-head"><div><h1>' + t('labels_title') + '</h1>' +
-    '<div class="sub">' + t('labels_sub') + '</div></div></div>';
+    '<div class="sub">' + t('labels_sub') + '</div></div>' +
+    /* The shelf labels have no product to pick, so they do not belong in the
+       variant table below — they are the other thing this screen prints. */
+    '<div><button class="btn" data-act="l60-shelf-labels">' +
+      t('l60_shelf_title') + '</button></div></div>';
 
   h += '<div class="filters">' +
     '<input class="inp grow" type="text" placeholder="' + t('search_ph') + '" value="' + esc(f.q) + '" data-change="lbf-q">' +

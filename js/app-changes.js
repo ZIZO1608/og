@@ -78,6 +78,23 @@ var CHANGES = {
 
   'wh-type': function (el) { OG.wh.type = el.value; OG.wh.sizes = {}; render(); },
   'wh-name': function (el) { OG.wh.name = el.value; },
+
+  /* Changing the room cannot leave the shelf choice standing: a shelf reaches
+     its warehouse through its section, and a shelf id from the other building
+     comes back as `wrong_warehouse` (server/lib/shelves.js:959) — by which
+     time the product has already been created.
+
+     Repaints the one select rather than calling render(), and that is not a
+     preference. render() rebuilds #view wholesale, and #whCost / #whPrice
+     carry literal value="1050" / value="2250" in the markup — only #whName
+     round-trips through OG.wh. A render here would throw away prices somebody
+     had already typed. */
+  'wh-warehouse': function (el) {
+    OG.wh.whId = el.value;
+    OG.wh.shelfId = '';
+    fillWhShelves();
+  },
+  'wh-shelf': function (el) { OG.wh.shelfId = el.value; },
   /* Was a full render() on every keystroke, which rebuilt the page, lost the
      caret and threw the scroll back to the top — while somebody was still
      typing. Now only the parts that actually depend on the number change,

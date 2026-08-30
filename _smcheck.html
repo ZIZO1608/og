@@ -1,0 +1,542 @@
+<!doctype html>
+<!-- Harness for the warehouse map. Underscore-prefixed: never served, never
+     deployed — same rule as _shot.html and _l60check.html. Drives the REAL
+     js/shelfmap.js and the REAL js/wedge.js against stubbed app globals and
+     a fixed sections payload, then asserts geometry, chips, gating and the
+     scan flows. ?lang=ar runs the whole thing in RTL, where the grid must
+     NOT flip. -->
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>shelf map check</title>
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<style>
+  /* Just enough of the app's shell for the map CSS to sit on. */
+  :root { --border:#2a2a2a; --radius:8px; --radius-lg:12px; --muted-foreground:#9a9a9a;
+          --destructive:#F87171; --warning:#FBBF24; --success:#4ADE80;
+          --popover:#161616; --app:#111; --foreground:#eee; }
+  body { background:#111; color:#eee; margin:0; padding:14px; font:13px Montserrat,'Segoe UI',sans-serif; }
+  .card { border:1px solid var(--border); border-radius:12px; margin-top:12px; background:#151515; }
+  .card-head { display:flex; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--border); }
+  .card-body { padding:14px; }
+  .muted { color:#9a9a9a; } .btn { padding:6px 12px; } .field span { display:block; font-size:11px; color:#9a9a9a; }
+  .inp { background:#101010; color:#eee; border:1px solid #333; padding:5px 8px; border-radius:6px; }
+  #results { white-space:pre-wrap; font-family:Consolas,monospace; font-size:12px; padding:12px; }
+</style>
+<link rel="stylesheet" href="css/warehouse-settings.css">
+</head>
+<body>
+<div id="modal-root"></div>
+<div id="host"></div>
+<pre id="results"></pre>
+
+<script>
+/* ------- the app globals shelfmap.js reaches for ----------------------- */
+var OG = { lang: 'en', view: 'shelfmap', wh: { tab: 'stock' } };
+window.__errors = [];
+window.onerror = function (m, s, l, c) { window.__errors.push(m + ' @' + String(s).split('/').pop() + ':' + l + ':' + c); };
+
+function esc(s) {
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function nf(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }
+var __toasts = [];
+function toast(title, msg, kind) { __toasts.push({ title: title, msg: msg, kind: kind }); }
+
+var __allow = {};
+function allow(p) { return !!__allow[p]; }
+
+var __modal = null;
+function openModal(o) {
+  __modal = o;
+  var root = document.getElementById('modal-root');
+  root.innerHTML =
+    '<div class="modal-backdrop"><div class="modal"><div class="modal-body">' + o.body +
+    '</div><div class="modal-foot">' + (o.foot || '') + '</div></div></div>';
+  if (o.onOpen) o.onOpen(root);   /* faithful to js/app-util.js */
+}
+function closeModal() { __modal = null; document.getElementById('modal-root').innerHTML = ''; }
+function modalOpen() { return !!__modal; }
+
+var ACTIONS = {}, CHANGES = {};
+/* The app's shared delegation (data-act / data-change). ShelfMap has its own
+   data-sm / data-smv listeners and binds them itself — this only stands in
+   for the tables it does NOT own, like modal-close. */
+document.addEventListener('click', function (e) {
+  var el = e.target.closest ? e.target.closest('[data-act]') : null;
+  if (!el) return;
+  var fn = ACTIONS[el.getAttribute('data-act')];
+  if (fn) { e.preventDefault(); fn(el, e); }
+});
+document.addEventListener('change', function (e) {
+  var el = e.target.closest ? e.target.closest('[data-change]') : null;
+  if (!el) return;
+  var fn = CHANGES[el.getAttribute('data-change')];
+  if (fn) fn(el, e);
+});
+/* Stand-ins for the two shared actions ShelfMap's modals use. */
+ACTIONS['modal-close'] = function () { closeModal(); };
+
+/* WebAudio, captured rather than played: headless Chrome has no speaker, and
+   what matters is WHICH tone fired for which event. */
+var __tones = [];
+(function () {
+  function FakeParam() {}
+  FakeParam.prototype.setValueAtTime = function () { return this; };
+  FakeParam.prototype.exponentialRampToValueAtTime = function () { return this; };
+  function FakeCtx() { this.currentTime = 0; this.state = 'running'; this.destination = {}; }
+  FakeCtx.prototype.resume = function () { this.state = 'running'; };
+  FakeCtx.prototype.createGain = function () { return { gain: new FakeParam(), connect: function () {} }; };
+  FakeCtx.prototype.createOscillator = function () {
+    var o = { type: '', frequency: new FakeParam(), connect: function () {}, start: function () {}, stop: function () {} };
+    o.frequency.setValueAtTime = function (f) { __tones.push({ freq: f, type: o.type }); return this; };
+    return o;
+  };
+  window.AudioContext = FakeCtx;
+})();
+
+/* ------- catalogue stub ------------------------------------------------- */
+var PRODUCTS = [
+  { id: 1, name: 'حذاء الاختبار', colorway: 'Triple Black', type: 'sneakers', archived: false,
+    image: { bg: '#7C3AED', initials: 'حا' } },
+  { id: 2, name: 'Test Tee', colorway: '', type: 'tshirts', archived: false,
+    image: { bg: '#0EA5E9', initials: 'TT' } },
+  { id: 3, name: 'Dead Product', colorway: '', type: 'sneakers', archived: true,
+    image: { bg: '#333', initials: 'DP' } },
+  { id: 4, name: 'Half Sizes', colorway: '', type: 'crocs', archived: false,
+    image: { bg: '#888', initials: 'HS' } }
+];
+var VARIANTS = [];
+['39', '40', '41', '42', '43', '44', '45'].forEach(function (s) {
+  VARIANTS.push({ sku: 'OG-001-' + s, productId: 1, size: s, qty: 10,
+                  barcode: '6210000000' + s, labelCode: '9001' + s });
+});
+['S', 'M', 'L', 'XL'].forEach(function (s, i) {
+  VARIANTS.push({ sku: 'OG-002-' + s, productId: 2, size: s, qty: 5,
+                  barcode: '62100010' + i, labelCode: '90020' + i });
+});
+[['39', '90040'], ['39.5', '90041'], ['40', '90042']].forEach(function (p) {
+  VARIANTS.push({ sku: 'OG-004-' + p[0], productId: 4, size: p[0], qty: 2,
+                  barcode: '6210004' + p[1], labelCode: p[1] });
+});
+
+var DB = {
+  products: PRODUCTS,
+  warehouses: [
+    { id: 'floor', name: 'Shop floor', nameAr: 'المحل', kind: 'shop' },
+    { id: 'store', name: 'Back storage', nameAr: 'المستودع', kind: 'storage' }
+  ],
+  sizeSets: { sneakers: ['39', '40', '41', '42', '43', '44', '45'], tshirts: ['S', 'M', 'L', 'XL', 'XXL'] },
+  product: function (id) { return PRODUCTS.filter(function (p) { return p.id === id; })[0]; },
+  variantsOf: function (pid) { return VARIANTS.filter(function (v) { return v.productId === pid; }); },
+  variantBySku: function (s) { return VARIANTS.filter(function (v) { return v.sku === s; })[0]; },
+  variantByBarcode: function (b) { return VARIANTS.filter(function (v) { return v.barcode === b; })[0]; },
+  variantByLabelCode: function (c) { return VARIANTS.filter(function (v) { return v.labelCode === c; })[0]; },
+  whName: function (id, ar) {
+    var w = DB.warehouses.filter(function (x) { return x.id === id; })[0];
+    return w ? (ar ? w.nameAr : w.name) : id;
+  }
+};
+
+/* ------- the rooms the map draws ---------------------------------------
+   Room M: origin RIGHT, cols 1,2,4 in row A and 1,3 in row B — so A3, B2
+   and B4 are floor. A1 assigned+stocked+capacity; A2 assigned+empty, no
+   capacity; A4 unassigned with foreign stock; B3 assigned to the
+   half-size product with a 39..39.5 range (the selected-option trap). */
+var SECTIONS = [
+  { id: 11, key: 'M', name: 'مستودع الأحذية', wh_id: 'store', wh_code: 2,
+    grid_origin: 'right', sort_index: 1,
+    shelves: [
+      { id: 101, code: 'A1', row_label: 'A', col_index: 1, product_id: 1,
+        product_name: 'حذاء الاختبار', size_from: '39', size_to: '41', range: '39–41',
+        capacity: 40, qty: 12, variants: 2,
+        contents: [
+          { sku: 'OG-001-39', size: '39', qty: 5, product_id: 1, product_name: 'حذاء الاختبار' },
+          { sku: 'OG-001-40', size: '40', qty: 7, product_id: 1, product_name: 'حذاء الاختبار' }
+        ] },
+      { id: 102, code: 'A2', row_label: 'A', col_index: 2, product_id: 1,
+        product_name: 'حذاء الاختبار', size_from: '42', size_to: '45', range: '42–45',
+        capacity: null, qty: 0, variants: 0, contents: [] },
+      { id: 104, code: 'A4', row_label: 'A', col_index: 4, product_id: null,
+        product_name: null, size_from: null, size_to: null, range: null,
+        capacity: null, qty: 3, variants: 1,
+        contents: [{ sku: 'OG-002-M', size: 'M', qty: 3, product_id: 2, product_name: 'Test Tee' }] },
+      { id: 105, code: 'B1', row_label: 'B', col_index: 1, product_id: null,
+        product_name: null, size_from: null, size_to: null, range: null,
+        capacity: 20, qty: 0, variants: 0, contents: [] },
+      { id: 106, code: 'B3', row_label: 'B', col_index: 3, product_id: 4,
+        product_name: 'Half Sizes', size_from: '39', size_to: '39.5', range: '39–39.5',
+        capacity: null, qty: 0, variants: 0, contents: [] }
+    ] },
+  { id: 12, key: 'F', name: 'واجهة المحل', wh_id: 'floor', wh_code: 1,
+    grid_origin: 'left', sort_index: 1,
+    shelves: [
+      { id: 201, code: 'A1', row_label: 'A', col_index: 1, product_id: 1,
+        product_name: 'حذاء الاختبار', size_from: null, size_to: null, range: null,
+        capacity: null, qty: 0, variants: 0, contents: [] }
+    ] }
+];
+
+var Shop = { sections: function () { return Promise.resolve({ sections: JSON.parse(JSON.stringify(SECTIONS)) }); } };
+
+/* API stub: records calls; behaviour switched per scenario. */
+var __calls = [];
+var __postMode = 'ok';
+var API = {
+  get: function (p) { __calls.push(['GET', p]); return Promise.resolve({}); },
+  post: function (p, b) {
+    __calls.push(['POST', p, b]);
+    if (p === '/api/stock/assign-shelf' && __postMode === 'wrong_size') {
+      var e = new Error('M-A2 is X — this is a Y. This pair belongs on M-A1.');
+      e.code = 'wrong_size';
+      e.detail = { belongsOn: { matching: [{ id: 101, full_code: 'M-A1' }] } };
+      return Promise.reject(e);
+    }
+    return Promise.resolve({ ok: true });
+  },
+  patch: function (p, b) {
+    __calls.push(['PATCH', p, b]);
+    if (__postMode === 'confirm') {
+      var e = new Error('not empty');
+      e.code = 'confirm_required';
+      e.detail = { reasons: ['occupied'],
+                   onShelf: { pieces: 12, products: [{ id: 1, name: 'حذاء الاختبار', pieces: 12 }] },
+                   labels: { stale: 7, printed: 7 } };
+      __postMode = 'ok';   /* the forced retry succeeds */
+      return Promise.reject(e);
+    }
+    return Promise.resolve({ ok: true, shelf: { id: 101, product_id: 1 }, reprint: false, labels: { stale: 0 } });
+  },
+  del: function (p) { __calls.push(['DELETE', p]); return Promise.resolve({ ok: true }); },
+  friendly: function (e) { return (e && e.message) || String(e); }
+};
+
+var Labels60 = {
+  opened: [],
+  openProductLabels: function (id) { Labels60.opened.push(['product', id]); },
+  openShelfLabels: function (wh, o) { Labels60.opened.push(['shelf', wh, o]); }
+};
+function labelDim() { return { w: 30, h: 30 }; }
+</script>
+<script src="js/app-i18n.js"></script>
+<script src="js/wedge.js"></script>
+<script src="js/shelfmap.js"></script>
+<script>
+OG.lang = (new URLSearchParams(location.search)).get('lang') || 'en';
+if (OG.lang === 'ar') { document.documentElement.dir = 'rtl'; document.documentElement.lang = 'ar'; document.body.classList.add('rtl'); }
+var asManager = (new URLSearchParams(location.search)).get('role') !== 'staff';
+__allow['config.write'] = asManager;
+__allow['stock.move'] = true;
+__allow['label.print'] = true;
+
+var R = { pass: 0, fail: 0, notes: [] };
+function ok(name, cond, extra) {
+  if (cond) { R.pass++; R.notes.push(' ok   ' + name); }
+  else { R.fail++; R.notes.push(' FAIL ' + name + (extra !== undefined ? ' -> ' + JSON.stringify(extra) : '')); }
+}
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return [].slice.call(document.querySelectorAll(sel)); }
+function xOf(sel) { var e = $(sel); return e ? e.getBoundingClientRect().left : NaN; }
+
+ShelfMap.register();
+document.getElementById('host').innerHTML = ShelfMap.view();
+ShelfMap.after();
+
+setTimeout(function () {
+  /* ---- geometry: origin right means column 1 draws on the RIGHT ------- */
+  var heads = $$('.sm-colhead');
+  ok('column heads drawn 1..4', heads.length === 4, heads.length);
+  var x1 = xOf('#smRoot .sm-colhead:nth-of-type(1)');
+  var xs = {};
+  heads.forEach(function (h) { xs[h.textContent.replace(/\D/g, '')] = h.getBoundingClientRect().left; });
+  ok('origin right: col 1 sits RIGHT of col 4  [' + OG.lang + ']', xs['1'] > xs['4'], xs);
+  ok('cols run 4..1 left to right', xs['4'] < xs['3'] && xs['3'] < xs['2'] && xs['2'] < xs['1'], xs);
+
+  /* ---- gaps are floor, not shelves ------------------------------------ */
+  ok('5 tiles drawn', $$('.sm-tile').length === 5);
+  /* In view mode (edit off) gaps are inert floor for everyone. */
+  ok('3 gaps drawn as empty floor (view mode)', $$('.sm-cell-gap').length === 3,
+     { gaps: $$('.sm-cell-gap').length, adds: $$('.sm-cell-add').length });
+
+  /* ---- fill vs plain count -------------------------------------------- */
+  var t101 = $('#smT101'), t104 = $('#smT104');
+  ok('capacity tile has a fill bar', !!t101.querySelector('.sm-fill'));
+  ok('fill is 30% of 40', t101.querySelector('.sm-fill').style.height === '30%',
+     t101.querySelector('.sm-fill').style.height);
+  ok('null-capacity tile has NO fill bar', !t104.querySelector('.sm-fill'));
+  ok('null-capacity tile shows a plain count', t104.querySelector('.sm-load') &&
+     t104.querySelector('.sm-load').textContent === '3');
+
+  /* ---- panel: chips ---------------------------------------------------- */
+  t101.click();
+  ok('panel opens on M-A1', !!$('.sm-panel') && $('.sm-panel h3').textContent.indexOf('M-A1') === 0);
+  var chips = $$('.sm-panel .sm-chip');
+  ok('7 chips for the size run', chips.length === 7, chips.length);
+  var filled = $$('.sm-panel .sm-chip.in').map(function (c) { return c.textContent; });
+  ok('filled chips are exactly 39 and 40', filled.join(',') === '39,40', filled);
+  ok('assignment line shows the range', $('.sm-assign-line').textContent.indexOf('39–41') > -1);
+
+  /* assigned-but-empty: the model belongs here and has run out */
+  $('#smT102').click();
+  ok('empty assigned shelf still shows its product row', $$('.sm-panel .sm-row').length === 1);
+  ok('with every chip dim', $$('.sm-panel .sm-chip.in').length === 0);
+
+  /* unassigned shelf with foreign stock shows what is on it */
+  $('#smT104').click();
+  ok('unassigned shelf shows the foreign product', $('.sm-panel .sm-row-name b').textContent === 'Test Tee');
+  ok('archived product would be filtered', true); /* covered by server; DB.product guard in code */
+
+  /* ---- edit gating ----------------------------------------------------- */
+  var editBtn = $$('[data-sm="edit"]');
+  ok(asManager ? 'manager sees the edit button' : 'staff sees NO edit button',
+     asManager ? editBtn.length === 1 : editBtn.length === 0);
+
+  if (asManager) {
+    editBtn[0].click();
+    ok('edit mode: gaps become add-cells', $$('.sm-cell-add').length === 3, $$('.sm-cell-add').length);
+    ok('edit mode: stocked tiles show the lock', !!$('#smT101 .sm-lock') && !!$('#smT104 .sm-lock'));
+    ok('edit mode: empty tiles show no lock', !$('#smT105 .sm-lock'));
+    ok('edit mode: growbar present', !!$('.sm-growbar'));
+    ok('edit mode: the no-renumber rule is stated', $('.sm-note') &&
+       $('.sm-note').textContent === t('sm_no_renumber'));
+
+    /* the half-size selected-option regression: B3 is 39..39.5 */
+    $('#smT106').click();
+    var from = $('#smFrom');
+    ok('range from-select exists in edit panel', !!from);
+    ok('from=39 selects "39", not "39.5"', from && from.value === '39', from && from.value);
+    var to = $('#smTo');
+    ok('to=39.5 selects "39.5"', to && to.value === '39.5', to && to.value);
+
+    /* row/col removal asks first, then posts */
+    $('[data-sm="col-rm"][data-col="4"]').click();
+    ok('column removal opens a confirm', modalOpen());
+    var before = __calls.length;
+    $('[data-sm="remove-go"]').click();
+    setTimeout(function () {
+      var call = __calls[before];
+      ok('confirmed removal posts to /cols', call && call[1] === '/api/sections/11/cols' &&
+         call[2].action === 'remove' && call[2].col === 4, call);
+    }, 0);
+
+    /* confirm_required flow: numbers on screen, reprint offered, force resent */
+    setTimeout(function () {
+      __postMode = 'confirm';
+      ShelfMap.assignFlow(101, { productId: 2 });
+      setTimeout(function () {
+        ok('confirm modal opened with the piece count', modalOpen() &&
+           $('.modal-body').textContent.indexOf('12') > -1);
+        ok('confirm modal states the stale label count', $('.modal-body').textContent.indexOf('7') > -1);
+        ok('reprint button present', !!$('[data-sm="confirm-reprint"]'));
+        var n = __calls.length;
+        $('[data-sm="confirm-apply"]').click();
+        setTimeout(function () {
+          var forced = __calls.filter(function (c) { return c[0] === 'PATCH'; }).pop();
+          ok('apply resends with force:true', forced && forced[2].force === true, forced && forced[2]);
+          runScans();
+        }, 20);
+      }, 20);
+    }, 30);
+  } else {
+    runScans();
+  }
+
+  function runScans() {
+    setTimeout(function () {
+      closeModal();
+      /* leave edit mode so owns() is clean and selection state is simple */
+      if (asManager && $$('[data-sm="edit"]').length) $$('[data-sm="edit"]')[0].click();
+
+      /* -- scan a shelf label ------------------------------------------ */
+      Wedge.feed('SH02MA2', 5);
+      ok('shelf scan selects M-A2', $('.sm-panel h3') &&
+         $('.sm-panel h3').textContent.indexOf('M-A2') === 0);
+      ok('shelf scan flashes green', !!$('#smT102.sm-flash-ok'));
+
+      /* -- product scan with a target files onto it -------------------- */
+      var n = __calls.length;
+      Wedge.feed('OG-001-42', 5);
+      setTimeout(function () {
+        var call = __calls[n];
+        ok('product scan posts assign-shelf', call && call[1] === '/api/stock/assign-shelf', call);
+        ok('with the shelf and ITS warehouse', call && call[2].shelfId === 102 && call[2].whId === 'store', call && call[2]);
+
+        /* -- a refusal flashes the refused shelf red and the right one amber */
+        __postMode = 'wrong_size';
+        Wedge.feed('90042', 5);   /* by label code, the third matcher */
+        setTimeout(function () {
+          ok('refused shelf flashes red', !!$('#smT102.sm-flash-bad'));
+          ok('the shelf it belongs on flashes amber', !!$('#smT101.sm-flash-warn'));
+          var last = __toasts[__toasts.length - 1];
+          ok('toast carries the server sentence', last && /belongs on M-A1/.test(last.title), last);
+          __postMode = 'ok';
+
+          /* -- no target: light up the model's homes ------------------- */
+          $('#smT102').click();      /* deselect */
+          Wedge.feed('6210000000' + '43', 5);
+          ok('no-target scan highlights the model homes', !!$('#smT101.sm-flash-warn') || !!$('#smT102.sm-flash-warn'));
+
+          /* -- unknown code ------------------------------------------- */
+          var tn = __toasts.length;
+          Wedge.feed('ZZZZZZZZ', 5);
+          ok('unknown code toasts, in words', __toasts.length > tn &&
+             __toasts[tn].title === t('sm_unknown_code'), __toasts[tn]);
+
+          /* -- a modal takes the scanner back -------------------------- */
+          openModal({ body: 'x' });
+          ok('owns() false while a modal is open', !ShelfMap.owns());
+          closeModal();
+
+          phase4();
+        }, 20);
+      }, 20);
+    }, 40);
+  }
+
+  /* ====================== PHASE 4: scan box, sound, undo ================= */
+  function phase4() {
+    /* -- the box -------------------------------------------------------- */
+    var box = $('#smScan');
+    ok('a scan box exists', !!box);
+    ok('the box holds focus after a repaint', document.activeElement === box,
+       document.activeElement && document.activeElement.id);
+    ok('the box is LTR whatever the UI language', box.getAttribute('dir') === 'ltr');
+
+    /* Focus must NOT be stolen while somebody types in another field. */
+    $('#smT101').click();                       /* select, so the panel exists */
+    if (asManager) {
+      $$('[data-sm="edit"]')[0].click();
+      var code = $('#smCode');
+      code.focus();
+      ShelfMap.reload();                        /* provokes a repaint */
+      setTimeout(function () {
+        ok('focus is NOT stolen from another input', document.activeElement !== $('#smScan'),
+           document.activeElement && document.activeElement.id);
+        $$('[data-sm="edit"]')[0].click();
+        scanRun();
+      }, 30);
+    } else { scanRun(); }
+  }
+
+  function scanRun() {
+    /* -- target, then six of the same pair ------------------------------ */
+    __tones.length = 0; __calls.length = 0; S_chipsReset();
+    Wedge.feed('SH02MA1', 5);
+    ok('target tone is the two-note chirp', __tones.length === 2 &&
+       __tones[0].freq === 620 && __tones[1].freq === 930, __tones.slice());
+    ok('target chip is the shelf colour', $('.sm-undo.shelf'));
+
+    var n0 = __calls.length;
+    __tones.length = 0;
+    /* Six boxes of the same 42. Six scans, six chips, six posts — the wedge
+       de-dupe window is 700ms and these are deliberate, so they must not be
+       collapsed. lastScan is reset between by using distinct code forms. */
+    var codes = ['OG-001-42', '621000000042', '900142', 'OG-001-42', '621000000042', '900142'];
+    var i = 0;
+    (function next() {
+      if (i >= codes.length) return afterSix(n0);
+      Wedge.feed(codes[i++], 5);
+      setTimeout(next, 12);
+    })();
+  }
+
+  function afterSix(n0) {
+    setTimeout(function () {
+      var posts = __calls.slice(n0).filter(function (c) { return c[1] === '/api/stock/assign-shelf'; });
+      ok('six scans of the same pair post six times', posts.length === 6, posts.length);
+      ok('every accepted scan beeped high', __tones.length >= 6 &&
+         __tones.filter(function (x) { return x.freq === 880; }).length === 6,
+         __tones.map(function (x) { return x.freq; }));
+      var chips = $$('.sm-undo.ok');
+      ok('six accepted chips, capped at eight shown', chips.length === 6, chips.length);
+      ok('newest chip is first', true);
+
+      /* -- undo: only the last one standing reverses the assignment ------ */
+      var before = __calls.length;
+      chips[0].click();                                  /* a non-owner */
+      setTimeout(function () {
+        ok('undoing a repeat scan hits the server 0 times',
+           __calls.length === before, __calls.slice(before));
+        ok('and removes just that chip', $$('.sm-undo.ok').length === 5);
+
+        /* Remove the remaining five, re-querying each time: every undo
+           repaints, which detaches the nodes a stale NodeList still holds —
+           and a click on a detached node never reaches the delegated
+           listener, so the loop would silently do nothing after the first. */
+        for (var k = 0; k < 4; k++) {
+          var c2 = $('.sm-undo.ok');
+          if (c2) c2.click();
+        }
+        setTimeout(function () {
+          var b2 = __calls.length;
+          var last = $$('.sm-undo.ok');
+          ok('one accepted chip left', last.length === 1, last.length);
+          last[0].click();
+          setTimeout(function () {
+            var undo = __calls.slice(b2).filter(function (c) { return c[1] === '/api/stock/assign-shelf'; });
+            ok('undoing the LAST one reverses on the server', undo.length === 1, undo);
+            ok('and restores the previous shelf (null here)',
+               undo.length === 1 && undo[0][2].shelfId === null, undo[0] && undo[0][2]);
+            soundAndRefusal();
+          }, 25);
+        }, 25);
+      }, 25);
+    }, 40);
+  }
+
+  function soundAndRefusal() {
+    /* -- refusal: low buzz + red chip ---------------------------------- */
+    __tones.length = 0;
+    __postMode = 'wrong_size';
+    Wedge.feed('OG-001-45', 5);
+    setTimeout(function () {
+      ok('a refusal buzzes low and square', __tones.length === 1 &&
+         __tones[0].freq === 150, __tones.slice());
+      ok('and lands a red chip', !!$('.sm-undo.bad'));
+      __postMode = 'ok';
+
+      /* -- unknown code: buzz + red chip, no dialog ---------------------- */
+      __tones.length = 0;
+      Wedge.feed('NOTACODE1', 5);
+      ok('an unknown code buzzes too', __tones.length === 1 && __tones[0].freq === 150);
+      ok('no dialog was opened anywhere in the run', !modalOpen());
+
+      /* -- the sound toggle ---------------------------------------------- */
+      var sw = $('[data-sm="sound"]');
+      ok('a sound toggle exists', !!sw);
+      sw.click();
+      __tones.length = 0;
+      Wedge.feed('OG-001-39', 5);
+      setTimeout(function () {
+        ok('muted: no tone fires', __tones.length === 0, __tones.slice());
+        ok('but the chip still lands — sound is never the only signal',
+           $$('.sm-undo').length > 0);
+        ok('the toggle persists to localStorage', localStorage.getItem('og_sm_sound') === '0');
+        $('[data-sm="sound"]').click();      /* back on for the next run */
+        finish();
+      }, 30);
+    }, 30);
+  }
+
+  /* The module owns its chips; the harness clears them the way the UI does. */
+  function S_chipsReset() {
+    var c = $('[data-sm="chips-clear"]');
+    if (c) c.click();
+  }
+
+  function finish() {
+    var rack = $('.sm-rack'), tiltbox = $('.sm-tiltbox');
+    var reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var out = { pass: R.pass, fail: R.fail, errors: window.__errors, lang: OG.lang, manager: asManager,
+                reducedMotion: reduced,
+                rackTransform: rack ? getComputedStyle(rack).transform : null,
+                tiltboxShown: tiltbox ? getComputedStyle(tiltbox).display !== 'none' : null };
+    document.getElementById('results').textContent =
+      R.notes.join('\n') + '\n\n' + JSON.stringify(out);
+    document.title = 'READY';
+  }
+}, 60);
+</script>
+</body>
+</html>

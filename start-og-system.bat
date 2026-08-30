@@ -49,10 +49,27 @@ REM  password" on every attempt, which reads as a broken login rather than
 REM  an empty table. That afternoon is what this saves.
 node scripts\preflight.js
 
-REM  Exit 2 means the port is taken - almost always this server already
-REM  running in another window. Node answers that with a stack trace that
-REM  never names the window you need to close, so stop here with the
-REM  message preflight just printed rather than letting it throw.
+REM  IMPORTANT: `if errorlevel N` means "N or more", so these must be tested
+REM  highest first. Written the other way round, exit 3 would match the
+REM  errorlevel 2 branch and the "already open" case would be reported as a
+REM  failure - which is the exact bug this replaced.
+
+REM  Exit 3: the port is held by THIS server, already running and already
+REM  serving the shop. That is not a failure, it is a double-click. Open the
+REM  app rather than telling somebody their shop is down when it is not.
+if errorlevel 3 (
+  echo.
+  echo   The shop is already open. Opening it in your browser...
+  echo.
+  start "" "http://localhost:8090"
+  timeout /t 3 >nul
+  exit /b 0
+)
+
+REM  Exit 2: something ELSE holds the port and the server genuinely cannot
+REM  start. Node answers that with a stack trace that never names the window
+REM  you need to close, so stop here with the message preflight just printed
+REM  rather than letting it throw.
 if errorlevel 2 (
   echo.
   echo   Not starting - see above.

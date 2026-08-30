@@ -71,17 +71,24 @@ function bindGlobal() {
 
    Called immediately before window.print(). In roll mode each label becomes a
    page of exactly its own size with no margin; in sheet mode the A4 rule the
-   app has always used is restored. */
-function setRollPageSize() {
+   app has always used is restored.
+
+   `forced` is {w, h} in millimetres, passed by anything that prints a label of
+   a fixed size rather than whatever the Label Studio's controls are set to —
+   js/labels60.js does, for the 60x40 roll. With no argument the behaviour is
+   exactly what it has always been, driven by OG.lb. Giving it an argument
+   rather than having the caller mutate OG.lb keeps the two printers from
+   quietly resizing each other's controls. */
+function setRollPageSize(forced) {
   var id = 'rollPageRule';
   var old = document.getElementById(id);
   if (old) old.parentNode.removeChild(old);
 
-  var roll = OG.lb.mode === 'roll';
+  var roll = forced ? true : OG.lb.mode === 'roll';
   document.body.classList.toggle('roll-labels', roll);
   if (!roll) return;
 
-  var dim = labelDim();
+  var dim = forced || labelDim();
   var st = document.createElement('style');
   st.id = id;
   st.textContent = '@media print{@page{size:' + dim.w + 'mm ' + dim.h + 'mm;margin:0}' +
@@ -183,6 +190,12 @@ function bindWedge() {
       return;
     }
 
+    /* The warehouse map owns the scanner while it is on screen — a shelf
+       scan selects the shelf, a product scan files onto it, and its own
+       handler (registered by ShelfMap.register) has already acted. Opening
+       the scan sheet on top of that would bury the map's answer. */
+    if (typeof ShelfMap !== 'undefined' && ShelfMap.owns()) return;
+
     var now = Date.now();
     if (code === lastCode && (now - lastAt) < DUPE_MS) { lastAt = now; return; }
     lastCode = code; lastAt = now;
@@ -214,6 +227,8 @@ function boot() {
   if (typeof Deliveries !== 'undefined') Deliveries.register();
   if (typeof Receipt !== 'undefined') Receipt.register();
   if (typeof Labels !== 'undefined') Labels.register();
+  if (typeof Labels60 !== 'undefined') Labels60.register();
+  if (typeof ShelfMap !== 'undefined') ShelfMap.register();
 
   renderTopbar();
   var raw = window.location.hash;

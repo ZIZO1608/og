@@ -154,3 +154,246 @@
 body.rtl .toast { animation-name: toastInR; }
 @keyframes toastInR { from { opacity: 0; transform: translateX(-16px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes toastOut { to { opacity: 0; transform: translateY(-6px); } }
+
+/* ======================================================= THE WAREHOUSE MAP
+   js/shelfmap.js. The rack is for looking, the panel below it is for
+   working, and nothing readable is ever put in the tilted plane.
+
+   Greys and pure white only. Green, amber and red exist here SOLELY as scan
+   feedback — an accepted put-away, a look-here, a refusal — and are never
+   decoration, so a flash means one thing. No glow, no gradient, no neon. */
+
+.sm-root { display: flex; flex-direction: column; gap: 14px; }
+
+.sm-top { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.sm-roomsel { min-width: 220px; }
+.sm-tiltbox { min-width: 140px; }
+.sm-tilt { width: 140px; accent-color: #FFFFFF; }
+.sm-topbtns { display: flex; gap: 8px; margin-inline-start: auto; }
+
+.sm-scanline {
+  border: 1px solid var(--border); border-inline-start: 3px solid #FFFFFF;
+  padding: 8px 12px; border-radius: var(--radius); font-weight: 700; font-size: 12.5px;
+}
+
+.sm-note { font-size: 12px; }
+.sm-empty { padding: 30px 0; text-align: center; }
+
+/* ---- the rack ---- */
+
+.sm-stage {
+  background: #0d0d0d;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 26px 18px 34px;
+  overflow-x: auto;
+}
+
+/* The one 3D context. Tilt rides a custom property so the slider can move
+   it without a repaint — and so reduced-motion can flatten it wholesale. */
+.sm-rack {
+  transform: perspective(1400px) rotateX(var(--sm-tilt, 18deg));
+  transform-style: preserve-3d;
+  transform-origin: 50% 100%;
+}
+
+/* Pinned dir="ltr" in the markup AND direction here, belt and braces: an
+   RTL document reverses grid tracks on its own, and a room must not turn
+   around because the menus switched language. Tiles are placed by explicit
+   coordinates; grid_origin decides them, nothing else. */
+.sm-grid { display: grid; gap: 7px; direction: ltr; transform-style: preserve-3d; }
+
+.sm-colhead, .sm-rowhead {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  color: var(--muted-foreground); font-size: 11px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sm-rc-x {
+  border: 0; background: none; color: var(--muted-foreground);
+  font-size: 13px; line-height: 1; cursor: pointer; padding: 0 2px;
+}
+.sm-rc-x:hover { color: var(--destructive); }
+
+.sm-growbar { display: flex; gap: 8px; margin-top: 10px; }
+
+/* A shelf. A slab, not a sticker: the ::after face sits behind on Z, so the
+   tilt gives it visible thickness without a single gradient. */
+.sm-tile {
+  position: relative;
+  min-height: 54px;
+  border: 1px solid #2c2c2c; border-radius: 4px;
+  background: #1a1a1a; color: #FFFFFF;
+  font-family: inherit; text-align: start; cursor: pointer;
+  padding: 6px 7px;
+  transform-style: preserve-3d;
+  transition: transform .13s ease, border-color .13s ease;
+  overflow: hidden;
+}
+.sm-tile::after {
+  content: ''; position: absolute; inset: 0; border-radius: 4px;
+  background: #101010;
+  transform: translateZ(-9px);
+}
+.sm-tile:hover { transform: translateZ(14px); border-color: #555; }
+.sm-tile.on { border-color: #FFFFFF; }
+
+.sm-code {
+  position: relative; z-index: 2;
+  font-weight: 800; font-size: 14px; letter-spacing: -.02em;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* Fill against a KNOWN capacity — the bar rises from the shelf floor. When
+   capacity is null there is no bar at all, only the count: a fill level
+   against a guessed number would be a picture of a lie. */
+.sm-fill {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1;
+  background: rgba(255, 255, 255, .16);
+  border-top: 1px solid rgba(255, 255, 255, .45);
+}
+.sm-load {
+  position: absolute; bottom: 4px; inset-inline-end: 6px; z-index: 2;
+  font-size: 10px; color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.sm-lock { position: absolute; top: 5px; inset-inline-end: 5px; z-index: 2; color: var(--muted-foreground); }
+
+/* Empty floor is empty floor — a door, a pillar. Not an empty shelf. */
+.sm-cell-gap { min-height: 54px; border-radius: 4px; border: 1px dashed #1e1e1e; }
+
+.sm-cell-add {
+  min-height: 54px; border-radius: 4px;
+  border: 1px dashed #3a3a3a; background: none; color: var(--muted-foreground);
+  font-size: 15px; cursor: pointer; font-family: inherit;
+}
+.sm-cell-add span { display: block; font-size: 9px; letter-spacing: .04em; }
+.sm-cell-add:hover { color: #FFFFFF; border-color: #666; }
+
+/* ---- scan state: the ONLY colour on the map ---- */
+.sm-flash-ok   { border-color: var(--success)  !important; box-shadow: 0 0 0 2px var(--success); }
+.sm-flash-warn { border-color: var(--warning)  !important; box-shadow: 0 0 0 2px var(--warning); }
+.sm-flash-bad  { border-color: var(--destructive) !important; box-shadow: 0 0 0 2px var(--destructive); }
+
+/* ---- the flat panel ---- */
+
+.sm-panel .card-head h3 small { font-weight: 500; margin-inline-start: 6px; }
+.sm-assign-line { margin-bottom: 12px; font-size: 13px; }
+
+.sm-rows { display: flex; flex-direction: column; gap: 10px; }
+.sm-row { display: flex; align-items: center; gap: 10px; }
+.sm-stripe { width: 4px; align-self: stretch; border-radius: 2px; flex: 0 0 4px; }
+.sm-row-name { min-width: 160px; }
+.sm-row-name b { display: block; font-size: 13px; }
+.sm-row-name small { display: block; }
+
+/* The size run. A filled chip is a size in stock ON THIS SHELF; a dim
+   outline is a hole in the run. The holes are the information. */
+.sm-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.sm-chip {
+  min-width: 30px; text-align: center; padding: 3px 7px;
+  border-radius: 999px; font-size: 11.5px; font-weight: 700;
+  border: 1px solid #333; color: #4a4a4a;
+  font-variant-numeric: tabular-nums;
+}
+.sm-chip.in { background: #FFFFFF; color: #0d0d0d; border-color: #FFFFFF; }
+
+.sm-emptyrow { padding: 8px 0; }
+
+/* ---- the editor ---- */
+.sm-edit { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 14px; }
+.sm-editrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+.sm-editrow .field.grow { flex: 1 1 220px; }
+.sm-range { display: flex; gap: 10px; }
+.sm-editbtns { align-items: center; }
+.sm-lockednote { font-size: 12px; }
+.sm-seed { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
+
+/* ---- the Settings list ---- */
+.sm-set-sec { margin: 14px 0 6px; }
+.sm-set-sec:first-child { margin-top: 0; }
+.sm-set-none { font-size: 12px; margin-bottom: 8px; }
+.sm-set-tbl td { padding: 4px 8px; vertical-align: middle; }
+.sm-set-tbl td.mono { font-family: Menlo, Consolas, monospace; font-weight: 700; }
+.sm-set-tbl select { min-width: 200px; }
+
+/* ---- reduced motion: no tilt, no lift, and no slider pretending ---- */
+@media (prefers-reduced-motion: reduce) {
+  .sm-rack { transform: none !important; }
+  .sm-tile { transition: none; }
+  .sm-tile:hover { transform: none; }
+  .sm-tile::after { transform: none; }
+  .sm-tiltbox { display: none; }
+}
+
+/* ---- the scan run -------------------------------------------------------
+   One box that takes the focus back after every repaint, the target it is
+   filing onto, and a sound toggle. This is the top of the shelf-map screen
+   because it is what the screen is FOR when somebody is holding a shoe. */
+
+.sm-scan {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 12px 14px; background: #151515;
+}
+/* Wide enough for the whole hint: a placeholder clipped mid-word on the one
+   box this screen is built around reads as a broken layout. */
+.sm-scanbox { flex: 0 0 320px; }
+.sm-scanin {
+  width: 100%;
+  font-family: Menlo, Consolas, monospace; font-size: 15px; font-weight: 700;
+  letter-spacing: .06em;
+}
+/* Armed means the next product scan files onto a shelf. Deliberately white
+   rather than green: green is a scan RESULT, and a permanent green box would
+   blunt the one that matters. */
+.sm-scanbox.armed .sm-scanin { border-color: #FFFFFF; }
+.sm-scanin:focus { outline: 2px solid #FFFFFF; outline-offset: 1px; }
+
+.sm-scanwhat { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sm-scanwhat b { font-size: 13.5px; }
+.sm-scanwhat small { font-size: 11.5px; }
+
+.sm-sound { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.sm-sound.on { color: #FFFFFF; }
+.sm-sound:not(.on) { color: var(--muted-foreground); }
+
+/* ---- the undo strip ----------------------------------------------------
+   The last eight scans, newest first. This is what stands in for a confirm
+   dialog: nothing interrupts the run, and the last few are reversible by
+   tapping. Sticky, because a person mid-run is looking at the bottom of the
+   screen and should not have to scroll to take one back. */
+.sm-chipstrip {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; margin-top: 4px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: #121212;
+}
+.sm-chiplabel { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.sm-chipmore { font-size: 12px; font-variant-numeric: tabular-nums; }
+.sm-chipclear { margin-inline-start: auto; font-size: 12px; }
+
+.sm-undo {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  max-width: 230px;
+  padding: 5px 9px; border-radius: 999px;
+  border: 1px solid #333; background: #1a1a1a; color: #eee;
+  font-family: inherit; font-size: 12px; cursor: pointer;
+  text-align: start;
+}
+.sm-undo b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-undo small { color: var(--muted-foreground); white-space: nowrap; }
+.sm-undo-x { color: var(--muted-foreground); font-size: 14px; line-height: 1; }
+.sm-undo:hover { border-color: #666; }
+.sm-undo:hover .sm-undo-x { color: #FFFFFF; }
+
+/* The chip colour carries exactly what the tone carried, so a muted tablet
+   or a noisy room loses nothing. Same three states, same three meanings. */
+.sm-undo.ok    { border-color: var(--success-border); background: var(--success-soft); }
+.sm-undo.bad   { border-color: var(--destructive-border); background: var(--destructive-soft); }
+.sm-undo.shelf { border-color: #555; background: #1f1f1f; }
+
+@media (max-width: 720px) {
+  .sm-scanbox { flex: 1 1 100%; }
+  .sm-undo { max-width: 150px; }
+}

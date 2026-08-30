@@ -249,6 +249,15 @@ var Shop = (function () {
        would be built on a catalogue that is not there yet. */
     live: live,
 
+    /* ---- the warehouse layout ----
+       Not hydrated into DB like the catalogue is: the shelf map is only read
+       by the screens that draw it and by the label printer, and it changes
+       while somebody is standing in the room laying it out — a copy taken at
+       boot would be the wrong one by the time it was used. */
+    sections: function (whId) {
+      return API.get('/api/sections' + (whId ? '?wh=' + encodeURIComponent(whId) : ''));
+    },
+
     /* ---- stock ---- */
     receive: function (sku, whId, qty, note) {
       return API.post('/api/stock/receive', { sku: sku, whId: whId, qty: qty, note: note });
@@ -261,6 +270,15 @@ var Shop = (function () {
     },
     count: function (sku, whId, counted, note) {
       return API.post('/api/stock/count', { sku: sku, whId: whId, counted: counted, note: note });
+    },
+    /* Where a size LIVES inside a warehouse. Not a movement — no quantity
+       changes — so it is not `transfer`; it is the stock row learning which
+       shelf it sits on. A null shelfId means "taken off the shelf and not put
+       anywhere yet", which is a real state rather than a mistake. */
+    assignShelf: function (sku, whId, shelfId) {
+      return API.post('/api/stock/assign-shelf', {
+        sku: sku, whId: whId, shelfId: shelfId == null ? null : shelfId
+      });
     },
 
     /* ---- catalogue ---- */

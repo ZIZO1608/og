@@ -373,6 +373,16 @@ function insertMessage(d, { jobId = null, invoiceId = null, from, kind, reason =
      VALUES (?,?,?,?,?,?,?,?,?,?)`
   ).run(jobId, invoiceId, from, kind, reason, body, nowIso(),
         from === 'og' ? 1 : 0, from === 'yalla' ? 1 : 0, userId);
+
+  /* Logged HERE, not at the call sites. job_messages is cursor-shape and no
+     parent carries it — print_jobs has no afterUpsert for messages the way
+     sales has for its items — so an unlogged message is one the mirror never
+     sees. Of the three callers only postMessage used to log, which meant every
+     automatic notification (a stage moving, an order accepted or declined) was
+     invisible to Supabase for good. One log inside the insert cannot be missed
+     by a fourth caller added later. */
+  DB.logChange('job_messages', info.lastInsertRowid, 'insert', userId, null);
+
   return info.lastInsertRowid;
 }
 
@@ -391,7 +401,6 @@ export function postMessage({ jobId = null, invoiceId = null, from, kind = 'note
   return DB.tx(() => {
     const d = DB.get();
     const id = insertMessage(d, { jobId, invoiceId, from, kind, reason, body: String(text).trim(), userId });
-    DB.logChange('job_messages', id, 'insert', userId, null);
     return d.prepare('SELECT * FROM job_messages WHERE id = ?').get(id);
   });
 }

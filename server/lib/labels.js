@@ -80,6 +80,19 @@ const FONT_SIZE_TO_TSPL = { S: '1', M: '2', L: '3' };
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 export function isArabic(s) { return ARABIC_RE.test(String(s || '')); }
 
+/* The two 60x40 labels the BROWSER prints, named here because more than one
+   place has to agree on the string: js/labels60.js sends it when recording a
+   print, and server/lib/shelves.js counts against it to work out how many
+   stuck-on labels a shelf reassignment has just invalidated.
+
+   They are deliberately NOT rows in `label_templates`. That table describes
+   TSPL slot geometry in printer dots for the server-side renderer; these two
+   are laid out in CSS at real millimetres and never reach that code path.
+   Adding a row would put a template in the picker that the TSPL renderer
+   cannot draw. */
+export const SHELF_LABEL_PRESET = 'shelf-60x40';
+export const PRODUCT_LABEL_PRESET = 'product-60x40';
+
 /* ------------------------------------------------------------- templates */
 
 function normalizeTemplateRow(row) {
@@ -584,6 +597,57 @@ export function enqueue({ lines, presetKey, station, userId, opId, arabicBitmaps
    station} from the original job rows and calls enqueue() directly, so a
    reprint is provably the same code path as a first print, not a parallel
    one. Idempotent via its own opId, distinct from the original batch's. */
+/* ------------------------------------------------ labels the BROWSER printed
+   The 60x40 shelf and product labels do not come through here. They are laid
+   out in HTML at real millimetre sizes and handed to the operating system's
+   own print dialog, because that is the only path on which Arabic survives —
+   a TSPL `TEXT` command is written as ASCII, so the alternative is rasterising
+   every Arabic run to a bitmap in the browser and splicing it in, keyed by a
+   sku that a shelf does not have.
+
+   What they still owe this table is the record. `who printed what, how many,
+   for which station` is the reason 010 writes a row before an agent has even
+   seen the job, and a shelf label nobody can prove was printed is exactly the
+   thing phase 1's reassign warning has to count.
+
+   status 'printed', never 'done': window.print() hands the page to the OS and
+   returns. Nothing afterwards knows whether paper moved, whether the driver
+   scaled it, or whether the dialog was cancelled. 'done' is the print agent
+   confirming it wrote bytes, and this path can never earn that. */
+export function record({ preset, station, items = [], userId = null }) {
+  if (!Array.isArray(items) || !items.length) {
+    throw Object.assign(new Error('nothing to record'), { code: 'invalid' });
+  }
+
+  const batchId = randomBytes(8).toString('hex');
+  const at = nowIso();
+
+  /* No logChange: label_print_log is an APPEND-ONLY mirror table, bookmarked
+     by the highest id already pushed rather than replayed from change_log. */
+  return tx((d) => {
+    const ins = d.prepare(
+      `INSERT INTO label_print_log
+         (batch_id, sku, subject_type, subject_id, qty, preset, station, user_id, status, at)
+       VALUES (?,?,?,?,?,?,?,?,'printed',?)`
+    );
+
+    let labels = 0;
+    for (const it of items) {
+      const kind = it.subjectType === 'shelf' ? 'shelf' : 'variant';
+      const qty = Math.max(1, Number(it.qty) || 1);
+      /* A variant row keeps its sku in the sku column as well as in
+         subject_id, so `WHERE sku = ?` — which every existing reader uses —
+         goes on meaning what it meant. A shelf has no sku and leaves it NULL. */
+      const sku = kind === 'variant' ? String(it.subjectId) : null;
+      ins.run(batchId, sku, kind, String(it.subjectId), qty,
+              String(preset || ''), String(station || 'browser'), userId, at);
+      labels += qty;
+    }
+
+    return { batchId, labels, items: items.length };
+  });
+}
+
 export function reprint(batchId, userId, opId) {
   if (opId) {
     const seen = get().prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);

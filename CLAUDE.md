@@ -278,6 +278,17 @@ SQLite is the system of record. Supabase is a copy kept for the day this machine
 reads from it in normal operation. `npm run supabase:sync` pushes; `npm run supabase:restore` pulls
 the whole shop back onto a clean machine.
 
+**`npm run supabase:check` is the one command that answers "is the mirror trustworthy".** It
+compares every mirrored table row for row, checks each sync bookmark against its own table, and
+reports whether accounts could actually be recovered. It exits non-zero when the mirror is not a
+faithful copy, so it can gate a deploy. `--quick` stops after the connection test.
+
+It did not always do this. It used to check the connection and five table names, and printed
+"Connected. 5 of 5 core tables present" while five invoices and every delivery were missing —
+both statements true, neither the thing anyone wanted to know. **A check that cannot go red is
+not a check**; if you extend it, verify the new branch fails on a database you have broken
+on purpose.
+
 Three shapes, because three kinds of table behave differently:
 
 | Shape | Tables | How |
@@ -293,7 +304,17 @@ Things that will bite you:
 - **A cursor can outlive the log it points into.** Rebuild the database and `seq` restarts at 1 while
   the cursor sits in the hundreds — every run then reports "nothing new" forever. Both the cursor and
   the append-only paths detect this (a cursor ahead of the highest id that exists) and rewind. Do not
-  remove that check.
+  remove that check. **The comparison must be against that table's own `MAX(seq)`, not the log's.**
+  Every table has its own cursor and so can strand on its own; measured against the global maximum a
+  busy table permanently masks a quiet one. That was live: `sync:deliveries` sat at 142 while
+  deliveries' highest entry was 22, and because `sales` had reached 1001 the rewind never fired and
+  the shop's four deliveries reported "nothing new" on every run, for good.
+- **A write that skips `logChange` never leaves this machine.** It is not a missing audit line, it is
+  a row that exists here and nowhere else, and nothing reports it — the mirror looks healthy. Three
+  paths had this and were fixed: the customer address written by `Deliveries.assign`, the automatic
+  notices from `Partner.setStage` / `respondToOrder` (which is why the log now lives inside
+  `insertMessage`, where a fourth caller cannot miss it), and the zero-delta path in
+  `Stock.reconcile`. When adding a write to a cursor-shape table, log it in the same transaction.
 - **Deleting locally must delete in the mirror**, or a restore hands back a permission somebody
   deliberately revoked. That is why the settings tables are mirrored rather than upserted.
 - **The migrations seed `config`, `role_permissions`, `label_templates`, `currencies`, `warehouses`
@@ -304,16 +325,26 @@ Things that will bite you:
   come last, and a restore onto a genuinely empty database died on that foreign key partway through.
 - Passwords cross only as AES-256-GCM sealed boxes (`server/lib/credvault.js`). Without
   `OG_VAULT_KEY` the restore skips accounts rather than creating ones nobody can sign in to.
+  **It is set in `server/.env`, and a copy must live somewhere that is not this machine** — it is the
+  only thing that opens the sealed boxes, and `users` is not in the restore's `ORDER` list, so
+  without it a rebuilt shop comes back with no way to sign in at all.
 - `npm run supabase:reconcile` is the repair tool for the cursor tables when something wrote rows
   outside `change_log`. The mirror and append-only tables are self-correcting and do not need it.
+  It is also the **only** thing that recovers a row whose log entry was consumed by a run that did
+  not land it — the cursor is legitimately past it, so no rewind will ever look there again. Its
+  comparison reports both directions; a table short of rows *in Supabase* is the case that matters,
+  and it read as "in step" until that was fixed.
 - **`sales.shift_id` is the one column that can break a sync.** `sales` is pushed OUTSIDE the guarded
   block, so on a Supabase without `005` the whole batch is rejected and a day of sales stops mirroring
   over an optional table. `TABLES.sales.fallbackDrop` retries without the column and names the file to
   run — the same shape as the `pw_enc` fallback in `syncUsers`. Verified against the live mirror.
-- **Three schema files are run by hand in the Supabase dashboard: `003_partner.sql`,
-  `004_purchasing_and_alerts.sql` and `005_money_and_counts.sql`.**
-  Until it is, the sync says so by name and pushes everything else — taking a whole run down because
-  one table is missing would stop a day's sales being mirrored over a table nobody has created yet.
+- **Four schema files are run by hand in the Supabase dashboard: `002_user_credentials.sql`,
+  `003_partner.sql`, `004_purchasing_and_alerts.sql` and `005_money_and_counts.sql`** (`001` too, on
+  a new project). All four are applied on the live mirror. `002` adds `users.pw_enc` and is easy to
+  forget because the sync only needs it once `OG_VAULT_KEY` is set.
+  Until they are run, the sync says so by name and pushes everything else — taking a whole run down
+  because one table is missing would stop a day's sales being mirrored over a table nobody has
+  created yet.
 
 ## The partner half
 

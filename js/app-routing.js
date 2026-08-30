@@ -32,6 +32,7 @@ var VIEWS = {
   pos: function () { return POS.render(); },
   products: viewProducts,
   warehouse: viewWarehouse,
+  shelfmap:   ShelfMap.view,
   deliveries: function () { return Deliveries.view(); },
   customers: viewCustomers,
   labels: viewPrintLabels,
@@ -54,6 +55,7 @@ var AFTER = {
   reports: afterReports,
   print: bindKanban,
   warehouse: bindWarehouse,
+  shelfmap:   ShelfMap.after,
   settings: afterSettings
 };
 
@@ -65,6 +67,12 @@ function afterSettings() {
      still load on a machine with no scanner support, which is most of them. */
   loadRoleMatrix();
   loadStaffPresence();
+
+  /* The shelf-assignment list — the same control the map's panel has,
+     hitting the same route. Fetched here because the map's data is live
+     server state, not part of the hydrated catalogue. */
+  var shelvesHost = document.getElementById('setShelves');
+  if (shelvesHost && typeof ShelfMap !== 'undefined') ShelfMap.settingsList(shelvesHost);
 
   var probeBox = document.getElementById('hwProbe');
   var read = document.getElementById('hwRead');
@@ -125,6 +133,14 @@ function afterSettings() {
    so there is nothing to tear down. */
 function bindWarehouse() {
   if (OG.wh.tab !== 'add') return;
+
+  /* Above the image-box guard below, for the same reason loadRoleMatrix()
+     sits above the scanner probe's return in afterSettings(): the shelf
+     picker must still fill on a machine where the drop box did not find its
+     input. The rooms are live server state, not part of the hydrated
+     catalogue, so the select paints empty and is filled once they land. */
+  fillWhShelves();
+
   var box = document.getElementById('whDrop');
   var input = document.getElementById('whFile');
   if (!box || !input) return;

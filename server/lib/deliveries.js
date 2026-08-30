@@ -173,10 +173,18 @@ export function assign({ saleId, driverId, address, phone, note, byUserId, opId 
     /* Remember it on the customer as the address to offer next time, but only
        when they have none — never overwrite one someone typed deliberately. */
     if (sale.customer_id) {
-      d.prepare(
+      const touched = d.prepare(
         `UPDATE customers SET address = ?, updated_at = ?
           WHERE id = ? AND (address IS NULL OR address = '')`
       ).run(String(address).trim(), at, sale.customer_id);
+
+      /* customers is cursor-shape in the mirror, so a write nobody logs never
+         leaves this machine. The WHERE is conditional — most of the time the
+         customer already has an address and nothing changes — so log only when
+         a row actually moved, rather than queueing a no-op push per delivery. */
+      if (touched.changes > 0) {
+        logChange('customers', String(sale.customer_id), 'update', byUserId, null);
+      }
     }
 
     logChange('deliveries', String(id), 'insert', byUserId, null);

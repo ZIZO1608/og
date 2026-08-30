@@ -1,0 +1,243 @@
+<!doctype html>
+<!-- Ruler harness for the 60x40 labels. Underscore-prefixed, so make-deploy.ps1,
+     CI and the server all refuse to publish it — same rule as _shot.html. It
+     drives the REAL js/labels60.js through its real entry points with the
+     globals it expects stubbed, then measures the result in millimetres. -->
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>60x40 label check</title>
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<link rel="stylesheet" href="css/print-hardware-receipt-newlabels.css">
+<style>
+  /* margin AND padding zero, exactly like css/tokens.css does for the real
+     app. 16px of body padding here was enough to push every 40mm label past
+     the bottom of its 40mm page and fragment it onto a second one — which
+     looked like a bug in the labels and was a bug in this harness. */
+  body { background: #fff; margin: 0; padding: 0; font: 13px Menlo, Consolas, monospace; }
+  #out, #results { padding: 16px; }
+  #modal-root .modal-body { display: block; }
+  .l60-controls, .l60-head { display: none; }
+  /* A printed ruler beside the labels: if these two do not agree the browser
+     is scaling, which is the whole thing the ruler test is looking for. */
+  .ruler { position: relative; width: 60mm; height: 6mm; border-left: .2mm solid #000; margin: 8px 0; }
+  .ruler i { position: absolute; top: 0; width: .2mm; height: 6mm; background: #000; }
+  .ruler b { position: absolute; top: 6mm; font: 2.5mm Menlo, monospace; }
+</style>
+</head>
+<body>
+<div id="modal-root"></div>
+<div id="out"></div>
+
+<script src="js/codes.js"></script>
+<script>
+/* ---- the globals labels60.js reaches for ------------------------------- */
+function esc(s) {
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+/* The real t() in js/app-i18n.js reads OG.lang, so this has to exist before
+   anything calls it — the whole page dies on a ReferenceError otherwise. */
+var OG = { lang: 'en' };
+window.__errors = [];
+window.onerror = function (m, src, ln, col) {
+  window.__errors.push(m + ' @' + String(src).split('/').pop() + ':' + ln + ':' + col);
+};
+function toast(m) { (window.__toasts = window.__toasts || []).push(m); }
+var ACTIONS = {}, CHANGES = {};
+var DB = { defaultWh: 'store' };
+/* Records what Labels60 asks for, then does exactly what the real
+   setRollPageSize() in js/app-boot.js does with it — @page cannot read a CSS
+   variable, so the rule has to be written with the numbers in it. Printing
+   this page to PDF is the closest thing to the ruler test that can be run
+   without paper: if the PDF's page box is not 60 x 40 mm, neither is the roll. */
+function setRollPageSize(forced) {
+  window.__pageAsk = forced;
+  var old = document.getElementById('rollPageRule');
+  if (old) old.parentNode.removeChild(old);
+  document.body.classList.toggle('roll-labels', !!forced);
+  if (!forced) return;
+  var st = document.createElement('style');
+  st.id = 'rollPageRule';
+  st.textContent = '@media print{@page{size:' + forced.w + 'mm ' + forced.h + 'mm;margin:0}' +
+                   'body.roll-labels .blabel{width:' + forced.w + 'mm;height:' + forced.h + 'mm}}';
+  document.head.appendChild(st);
+}
+var API = {
+  get: function () { return Promise.resolve(window.__productPayload); },
+  post: function () { return Promise.resolve({ ok: true }); },
+  friendly: function (e) { return String(e && e.message || e); }
+};
+var Shop = { sections: function () { return Promise.resolve(window.__sectionsPayload); } };
+/* The SAME markup js/app-util.js:260 produces. The print stylesheet resets
+   .modal-backdrop and .modal specifically, so a stub that skipped those
+   wrappers would be testing a page the app never builds. */
+function openModal(o) {
+  document.getElementById('modal-root').innerHTML =
+    '<div class="modal-backdrop" data-act="modal-backdrop">' +
+      '<div class="modal ' + (o.size || '') + '">' +
+        '<div class="modal-head"><h3>' + o.title + '</h3></div>' +
+        '<div class="modal-body">' + o.body + '</div>' +
+        '<div class="modal-foot">' + (o.foot || '') + '</div>' +
+      '</div>' +
+    '</div>';
+}
+</script>
+<script src="js/app-i18n.js"></script>
+<script src="js/labels60.js"></script>
+<script>
+/* Real strings from the real table, so a missing key shows up here too. */
+OG.lang = (new URLSearchParams(location.search)).get('lang') || 'en';
+if (OG.lang === 'ar') { document.documentElement.dir = 'rtl'; document.body.classList.add('rtl'); }
+
+window.__sectionsPayload = { sections: [{
+  id: 1, key: 'M', name: 'مستودع الأحذية الخلفي', wh_id: 'store', wh_code: 1,
+  grid_origin: 'right', sort_index: 1,
+  shelves: [
+    { id: 11, code: 'A1',  row_label: 'A', col_index: 1,  product_name: 'حذاء نايك اير فورس ١',
+      product_id: 26, size_from: '39', size_to: '41', qty: 12, variants: 3 },
+    { id: 12, code: 'A2',  row_label: 'A', col_index: 2,  product_name: 'Nike Air Max 90',
+      product_id: 27, size_from: '42', size_to: '45', qty: 8, variants: 4 },
+    { id: 13, code: 'A12', row_label: 'A', col_index: 12, product_name: null,
+      product_id: null, size_from: null, size_to: null, qty: 0, variants: 0 },
+    { id: 14, code: 'B7',  row_label: 'B', col_index: 7,  product_name: 'قميص رياضي برشلونة',
+      product_id: 31, size_from: 'S', size_to: 'XL', qty: 20, variants: 5 }
+  ]
+}] };
+
+window.__productPayload = {
+  product: { id: 26, name: 'حذاء نايك اير فورس ١', colorway: 'Triple White', type: 'sneakers' },
+  rows: [
+    { sku: 'OG-026-39', size: '39', label_code: '100008', color: null, qty: 2, shelf: 'M-A1' },
+    { sku: 'OG-026-42', size: '42', label_code: '100011', color: null, qty: 1, shelf: 'M-A2' },
+    { sku: 'OG-036-XXL', size: 'XXL', label_code: '100140', color: null, qty: 1, shelf: null }
+  ]
+};
+
+var DPM = 8, PXMM = 96 / 25.4;
+function mm(px) { return px / PXMM; }
+
+function ruler() {
+  var h = '<div class="ruler">';
+  for (var i = 0; i <= 60; i += 10) {
+    h += '<i style="left:' + i + 'mm"></i><b style="left:' + i + 'mm">' + i + '</b>';
+  }
+  return h + '</div>';
+}
+
+function measure(el, name) {
+  var box = el.getBoundingClientRect();
+  var inner = el.querySelector('.l60-in');
+  var kids = [].slice.call(inner.children);
+  var bc = el.querySelector('.l60-bc svg');
+  var out = {
+    label: name,
+    widthMm: +mm(box.width).toFixed(2),
+    heightMm: +mm(box.height).toFixed(2),
+    contentTopMm: +mm(kids[0].getBoundingClientRect().top - box.top).toFixed(2),
+    contentBottomMm: +mm(box.bottom - kids[kids.length - 1].getBoundingClientRect().bottom).toFixed(2),
+    contentLeftMm: +mm(inner.getBoundingClientRect().left - box.left).toFixed(2),
+    stackMm: +mm(kids.reduce(function (a, k) { return a + k.getBoundingClientRect().height; }, 0)).toFixed(2),
+    overflow: el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1
+  };
+  if (bc) {
+    var b = bc.getBoundingClientRect();
+    out.barcodeWidthMm = +mm(b.width).toFixed(2);
+    out.barcodeHeightMm = +mm(b.height).toFixed(2);
+    out.barcodeLeftMm = +mm(b.left - box.left).toFixed(2);
+    out.barcodeRightMm = +mm(box.right - b.right).toFixed(2);
+  }
+  out.hri = (el.querySelector('.l60-hri') || {}).textContent || null;
+  return out;
+}
+
+var results = { shelf: [], product: [], payloads: {}, widths: {} };
+
+Labels60.openShelfLabels('store');
+setTimeout(function () {
+  var host = document.getElementById('out');
+  host.innerHTML = '<h3>ruler — the marks must land on a real ruler at 10mm each</h3>' + ruler();
+  var sheet = document.getElementById('l60Sheet');
+  host.innerHTML += '<h3>shelf labels</h3>' + sheet.outerHTML;
+  [].slice.call(document.querySelectorAll('#out .l60')).forEach(function (el, i) {
+    results.shelf.push(measure(el, 'shelf ' + i));
+  });
+
+  Labels60.openProductLabels(26, 'store');
+  setTimeout(function () {
+    var s2 = document.getElementById('l60Sheet');
+    host.innerHTML += '<h3>product labels</h3>' + s2.outerHTML;
+    var all = [].slice.call(document.querySelectorAll('#out .l60'));
+    all.slice(results.shelf.length).forEach(function (el, i) {
+      results.product.push(measure(el, 'product ' + i));
+    });
+
+    ['SH01MA3', 'SH01MA12', 'SH99ZZ99', '100008', '100140'].forEach(function (p) {
+      results.widths[p] = +Labels60.barcodeWidthMm(p).toFixed(2);
+    });
+    results.payloads = {
+      normal: Labels60.shelfPayload(1, 'M', 'A3'),
+      twoDigitCol: Labels60.shelfPayload(1, 'M', 'A12'),
+      wh12: Labels60.shelfPayload(12, 'Z', 'Z99'),
+      noCode: Labels60.shelfPayload(null, 'M', 'A3')
+    };
+    results.toasts = window.__toasts || [];
+    results.errors = window.__errors;
+    /* A key that reached the page as its own slug means it is missing from
+       BOTH languages — t() falls back to the slug with no error. */
+    results.missingKeys = (document.body.textContent.match(/\bl60_[a-z_]+/g) || []);
+    /* ?print=1 leaves ONLY the sheet on the page and arms the roll rule, so
+       Chrome's --print-to-pdf produces exactly what the thermal printer would
+       be handed. window.print() itself is not called — the flag is what the
+       PDF exporter reads. */
+    if ((new URLSearchParams(location.search)).get('print')) {
+      var keep = (new URLSearchParams(location.search)).get('print') === 'product'
+        ? results.shelf.length : 0;
+      var lab = [].slice.call(document.querySelectorAll('#out .l60'));
+      host.innerHTML = '';
+      /* INSIDE #modal-root, because the app's @media print block hides every
+         other direct child of <body>. That is the rule that makes only the
+         open dialog reach paper, and it is why Labels60 renders its sheet
+         through openModal rather than into the page. */
+      openModal({
+        title: 'print', size: 'wide',
+        body: '<div class="l60-sheet">' +
+              lab.slice(keep, keep + (+(new URLSearchParams(location.search)).get('n') || 2))
+                 .map(function (e) { return e.outerHTML; }).join('') + '</div>'
+      });
+      setRollPageSize({ w: 60, h: 40 });
+    }
+    results.pageAsk = window.__pageAsk || null;
+
+    /* Is Cairo actually being used, or has the browser quietly fallen back?
+       A fallback looks fine on this machine (Windows has Segoe UI) and wrong
+       on the shop's. Measured rather than asserted: the same Arabic run is
+       laid out in Cairo and in a font that certainly is not Cairo, and if the
+       two widths agree the face never loaded. */
+    var probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;visibility:hidden;font-size:100px;white-space:nowrap';
+    probe.textContent = 'مستودع الأحذية';
+    document.body.appendChild(probe);
+    probe.style.fontFamily = 'monospace';
+    var wFallback = probe.getBoundingClientRect().width;
+    probe.style.fontFamily = "'Cairo', monospace";
+    probe.style.fontWeight = '700';
+    var wCairo = probe.getBoundingClientRect().width;
+    document.body.removeChild(probe);
+    results.font = {
+      cairoLoaded: document.fonts ? document.fonts.check('700 12px Cairo') : null,
+      widthCairo: +wCairo.toFixed(1),
+      widthFallback: +wFallback.toFixed(1),
+      differs: Math.abs(wCairo - wFallback) > 1
+    };
+    document.title = 'READY';
+    window.__results = results;
+    var pre = document.createElement('pre');
+    pre.id = 'results';
+    pre.textContent = JSON.stringify(results, null, 1);
+    document.body.appendChild(pre);
+  }, 60);
+}, 60);
+</script>
+</body>
+</html>

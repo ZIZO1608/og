@@ -456,6 +456,10 @@ var I18N = {
     up_err_read: 'The file could not be read',
     up_err_decode: 'That image is damaged or in a format the browser cannot open',
     cost_price: 'Cost price', selling_price: 'Selling price', shelf_box: 'Shelf / box',
+    wh_intake: 'Received into',
+    shelf_none: '— not put away yet —',
+    shelf_no_rooms: 'No shelves in this place yet',
+    wh_shelf_partial: '{n} of {m} sizes were not put on the shelf.',
     size_matrix: 'Quantity per size', matrix_hint: 'Enter a quantity — a barcode is generated for each size',
     print_labels: 'Print barcode labels', save_product: 'Save product to warehouse',
     barcode_preview: 'Generated barcodes', movement: 'Movement', user: 'User',
@@ -937,6 +941,12 @@ var I18N = {
     up_err_read: 'تعذّرت قراءة الملف',
     up_err_decode: 'الصورة تالفة أو بصيغة لا يدعمها المتصفح',
     cost_price: 'سعر التكلفة', selling_price: 'سعر البيع', shelf_box: 'الرف / الصندوق',
+    /* A noun phrase, like the labels around it — "تُستلم في" reads as a
+       sentence fragment sitting above a box. */
+    wh_intake: 'مكان الاستلام',
+    shelf_none: '— لم يُرتَّب بعد —',
+    shelf_no_rooms: 'لا رفوف في هذا المكان بعد',
+    wh_shelf_partial: 'لم تُوضع {n} من {m} مقاسات على الرف.',
     size_matrix: 'الكمية لكل قياس', matrix_hint: 'أدخل الكمية — يتم توليد باركود لكل قياس',
     print_labels: 'طباعة ملصقات الباركود', save_product: 'حفظ المنتج في المستودع',
     barcode_preview: 'الباركودات المولّدة', movement: 'الحركة', user: 'المستخدم',

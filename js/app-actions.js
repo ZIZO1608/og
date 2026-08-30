@@ -791,6 +791,14 @@ var ACTIONS = {
 
     var cost = Number((document.getElementById('whCost') || {}).value) || 0;
     var price = Number((document.getElementById('whPrice') || {}).value) || 0;
+
+    /* Read NOW, not inside done() — done() runs after render() has rebuilt
+       the form and cleared OG.wh, so by then both selects are gone.
+       shelfId is ignored without stock.move: the picker is not drawn for
+       that account, and assign-shelf would refuse it anyway. */
+    var whId = whAddWh();
+    var shelfId = (allow('stock.move') && OG.wh.shelfId) ? Number(OG.wh.shelfId) : null;
+    var shelfCode = shelfId ? whShelfCode() : '';
     var sizes = OG.wh.sizes;
     var skus = Object.keys(sizes).filter(function (k) { return sizes[k]; }).length;
     var imgSrc = OG.wh.imgSrc, bg = OG.wh.img;
@@ -822,8 +830,10 @@ var ACTIONS = {
           sizes: Object.keys(sizes)
             .filter(function (s) { return Number(sizes[s]) > 0; })
             .map(function (s) { return { size: s, qty: Number(sizes[s]) }; }),
-          /* Opening stock arrives at the back door, like any delivery. */
-          whId: DB.intakeWh
+          /* Opening stock arrives where the person booking it in says it
+             does. This was hard-coded to the back door, underneath a text
+             box reading "SHELF / BOX" that nothing ever read. */
+          whId: whId
         });
       },
       function () {
@@ -835,14 +845,51 @@ var ACTIONS = {
       function (res) {
         var id = res && (res.productId !== undefined ? res.productId : res.id);
 
+        /* createWithVariants answers { productId, variants:[{sku,size,barcode}] },
+           so the SKUs the server has just minted are already here — nothing
+           has to re-hydrate the catalogue and guess which rows are new. Only
+           sizes with a quantity are in it, which matters: a size with no
+           opening stock has no stock row, and assign-shelf refuses one with
+           `no_stock`. */
+        var made = (res && res.variants) || [];
+        var act = id ? { label: t('view_all'),
+                         attrs: 'data-act="open-new-product" data-id="' + id + '"' } : null;
+        var line = name + ' · ' + pieces + ' pcs · ' + skus + ' SKU';
+
         OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null; OG.wh.imgSrc = null;
+        /* The room STAYS — the next box off the same delivery goes to the
+           same place. The shelf does not: it now belongs to the product just
+           created, so offering it again would create the next product and
+           then refuse it with `wrong_shelf`. */
+        OG.wh.shelfId = '';
         render();
 
         /* Take him to the thing he just made — a toast alone leaves you
            wondering whether it worked. */
-        toast(t('save_product'), name + ' · ' + pieces + ' pcs · ' + skus + ' SKU', 'ok', 5000,
-              id ? { label: t('view_all'),
-                     attrs: 'data-act="open-new-product" data-id="' + id + '"' } : null);
+        if (!(shelfId && made.length)) {
+          toast(t('save_product'), line, 'ok', 5000, act);
+          return;
+        }
+
+        whAssignAll(made, whId, shelfId, function (failed, firstErr) {
+          /* That shelf has just adopted a product; a cached list still
+             showing it free would offer it to the next one. */
+          if (typeof ShelfMap !== 'undefined') ShelfMap.invalidate();
+
+          if (!failed.length) {
+            toast(t('save_product'), line + ' · ' + shelfCode, 'ok', 5000, act);
+            return;
+          }
+          /* The product exists and the stock is in — only the shelf pointer
+             is missing, and only for these sizes. A warning rather than an
+             error for exactly that reason, naming the sizes so they can be
+             put right from the map with the scanner. */
+          toast(t('save_product'),
+                line + ' — ' +
+                t('wh_shelf_partial').replace('{n}', failed.length).replace('{m}', made.length) +
+                ' (' + failed.join(', ') + ') ' + firstErr,
+                'warn', 9000, act);
+        });
       }
     );
   },

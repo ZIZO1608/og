@@ -155,13 +155,22 @@ export function reconcile({ sku, whId, counted, note, userId }) {
   }
 
   return tx((d) => {
-    d.prepare('INSERT INTO stock (sku, wh_id, qty) VALUES (?, ?, 0) ON CONFLICT DO NOTHING')
-     .run(sku, whId);
-    const before = d.prepare('SELECT qty FROM stock WHERE sku = ? AND wh_id = ?')
-                    .get(sku, whId).qty;
+    /* Read before writing. Creating the row first and only then discovering the
+       count matched left a stock row behind that nothing had logged — apply()
+       is what calls logChange, and the delta === 0 path returns before reaching
+       it, so the row existed here and never in the mirror. A count of zero
+       against a sku with no row is not a discrepancy and needs no row at all. */
+    const existing = d.prepare('SELECT qty FROM stock WHERE sku = ? AND wh_id = ?')
+                      .get(sku, whId);
+    const before = existing ? existing.qty : 0;
 
     const delta = counted - before;
     if (delta === 0) return { sku, whId, before, after: before, delta: 0, movementId: null };
+
+    if (!existing) {
+      d.prepare('INSERT INTO stock (sku, wh_id, qty) VALUES (?, ?, 0) ON CONFLICT DO NOTHING')
+       .run(sku, whId);
+    }
 
     return {
       ...apply(d, {

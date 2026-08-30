@@ -260,6 +260,11 @@ function openProductDrawer(pid) {
   body += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
     '<button class="btn btn-primary" data-act="nav-close" data-view="warehouse" data-tab="add">' + t('edit_product') + '</button>' +
     '<button class="btn" data-act="labels-for" data-id="' + p.id + '">' + t('print_labels') + '</button>' +
+    /* The 60x40 roll the shop actually has loaded. Separate from the button
+       above rather than replacing it: that one drives the older studio and its
+       four smaller sizes, which are still what the other rolls are. */
+    '<button class="btn" data-act="l60-product-labels" data-id="' + p.id + '">' +
+      t('l60_product_title') + '</button>' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="product" data-kind="pdf" data-id="' + p.id + '">' + t('rec_stock_sheet') + '</button>' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="product" data-kind="excel" data-id="' + p.id + '">' + t('export_excel') + '</button>' +
   '</div>';
