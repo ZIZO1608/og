@@ -213,6 +213,36 @@ var TYPE_LABELS = {
   jerseys: 'Jerseys', crocs: 'Crocs', shirts: 'Shirts', jackets: 'Jackets'
 };
 
+/* One colour per product type, for every place the app draws a product as a
+   block rather than a photo — the thumbnails, the stripe in the shelf map's
+   panel, the crates in the 3D room. Derived from a column the row already
+   carries, so nothing is invented; and shared from here so the room's legend
+   and the products list can never disagree about what teal means.
+
+   THE RESERVED HUES ARE VACATED. Green (--success), amber (--warning), red
+   (--destructive) and lime (--brand) mean accepted / look-here / refused /
+   act everywhere in this app, and a shelf flashing green has to keep meaning
+   one thing — so nothing here sits within ~20° of them at a comparable
+   saturation, and everything here is muted and dark (roughly 30–45%
+   saturation, 30–40% lightness) where the feedback colours are bright.
+   Eight mutually distinct dark colours at crate size do not exist, which is
+   why the room carries a legend rather than trusting the colour alone. */
+var TYPE_COLOURS = {
+  sneakers: '#3B5C8A',   /* steel blue — the biggest category gets the calmest colour */
+  boots:    '#6E5138',   /* clay; far from amber only because it is desaturated hard */
+  tshirts:  '#2E6E6B',   /* teal */
+  jerseys:  '#6B4585',   /* violet */
+  jeans:    '#3A3F7A',   /* indigo — reads as denim, distinct from sneakers */
+  crocs:    '#7A4468',   /* plum */
+  shirts:   '#2F6E8A',   /* cyan-blue */
+  jackets:  '#5A5060'    /* near-grey */
+};
+var TYPE_COLOUR_DEFAULT = '#4A4A52';   /* the grey the thumbnails have always used */
+
+function typeColour(type) {
+  return TYPE_COLOURS[type] || TYPE_COLOUR_DEFAULT;
+}
+
 /* name, type, brand, madeIn, colour block, colourway, cost, price, shelf zone, hidden */
 
 /* Filled by DB.hydrate from the server. Empty until then, and empty is
@@ -561,6 +591,7 @@ var DB = {
   },
   sizeSets: SIZE_SETS,
   typeLabels: TYPE_LABELS,
+  typeColour: typeColour,
   paymentLabels: PAYMENT_LABELS,
   paymentLabelsAr: PAYMENT_LABELS_AR,
   /* One call site instead of every screen remembering to check the language. */
@@ -2164,7 +2195,12 @@ var DB = {
         type: p.type,
         brand: p.brand || '',
         madeIn: p.made_in || '',
-        image: { bg: p.image_bg || '#4A4A52', initials: p.image_initials || '??', src: null },
+        /* A block coloured by TYPE when nobody has chosen a colour. Every
+           product in the shop had image_bg NULL, so every thumbnail on every
+           screen was the same grey square — two of them with the same
+           initials. A colour from a column the row already carries is not a
+           photo, and it is not a guess either. */
+        image: { bg: p.image_bg || typeColour(p.type), initials: p.image_initials || '??', src: null },
         colorway: p.colorway || '',
         costPrice: toBase(p.cost_price, p.currency),
         sellingPrice: toBase(p.selling_price, p.currency),

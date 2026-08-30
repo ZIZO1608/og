@@ -73,8 +73,12 @@ of those usernames is ever `active = 1` again. Make new accounts with `npm run c
 
 These are constraints, not preferences. Breaking one means rewriting a lot.
 
-- **Vanilla HTML/CSS/JS. No framework, no bundler, no npm, no build step** for the frontend. The only
-  third-party file is `js/vendor/chart.umd.min.js`, committed directly.
+- **Vanilla HTML/CSS/JS. No framework, no bundler, no npm, no build step** for the frontend. Two
+  third-party files, both committed directly to `js/vendor/`: `chart.umd.min.js`, and
+  `three.min.js` (r147 — the last release with a UMD build and a `THREE` global; r150+ is ESM-only,
+  which is a build-step-shaped problem). Three.js is **lazily injected by `js/shelfroom.js` the
+  first time somebody opens the shelf map**, never a `<script>` in `index.html`: it is 600KB, and
+  the till must not parse it every morning for a screen a cashier never opens.
 - **It needs the server.** This used to say the opposite — that double-clicking `index.html` had to
   keep working offline, because that was the fastest way to show the app to a client. That constraint
   was dropped deliberately: it was paid for with a generated shop, and generated data on a till looks
@@ -386,10 +390,14 @@ Things that will bite you:
   block, so on a Supabase without `005` the whole batch is rejected and a day of sales stops mirroring
   over an optional table. `TABLES.sales.fallbackDrop` retries without the column and names the file to
   run — the same shape as the `pw_enc` fallback in `syncUsers`. Verified against the live mirror.
-- **Four schema files are run by hand in the Supabase dashboard: `002_user_credentials.sql`,
-  `003_partner.sql`, `004_purchasing_and_alerts.sql` and `005_money_and_counts.sql`** (`001` too, on
-  a new project). All four are applied on the live mirror. `002` adds `users.pw_enc` and is easy to
-  forget because the sync only needs it once `OG_VAULT_KEY` is set.
+- **Seven schema files are run by hand in the Supabase dashboard: `002_user_credentials.sql`,
+  `003_partner.sql`, `004_purchasing_and_alerts.sql`, `005_money_and_counts.sql`,
+  `006_shelves.sql`, `007_label_subjects.sql` and `008_rooms.sql`** (`001` too, on a new project).
+  `002`–`007` are applied on the live mirror; `008` (rooms, and which wall a rack hangs on) must be
+  run before the shelf map's rooms mirror at all — until then the sync pushes `sections` without
+  the three placement columns and says so by name, and `npm run supabase:check` goes red on the
+  missing columns. `002` adds `users.pw_enc` and is easy to forget because the sync only needs it
+  once `OG_VAULT_KEY` is set.
   Until they are run, the sync says so by name and pushes everything else — taking a whole run down
   because one table is missing would stop a day's sales being mirrored over a table nobody has
   created yet.

@@ -409,14 +409,64 @@ function labelExposure(d, shelfId) {
 
 /* ---------------------------------------------------------------- sections */
 
-export function createSection({ whId, key, name, sortIndex = null, gridOrigin = 'left', userId = null }) {
+/* A section is a RACK: one unit of shelving with a letter, levels (the row
+   letters, A at the top) and bays (the columns). It may hang on one wall of a
+   room (026) or be nowhere yet. */
+
+const WALLS = new Set(['n', 'e', 's', 'w']);
+
+/* Where a rack sits: a room, a wall of it, a position along that wall — all
+   three or none. Checked out loud, because the columns are independently
+   nullable and a wall without a room is a rack drawn on the wall of nothing.
+
+   Overlap is refused by name. Two racks whose bay ranges cross on the same
+   wall would draw through each other, and the one somebody walks to is the
+   one that is not there. A rack's width is the highest column it has; a rack
+   with no shelves yet is one bay wide, so it still claims a place. */
+function checkPlacement(d, sec, { roomId, wall, wallPos }, selfId) {
+  const rid = roomId == null ? null : Number(roomId);
+  const w = wall == null ? null : String(wall);
+  const pos = wallPos == null ? null : Number(wallPos);
+
+  if (rid == null) {
+    if (w != null || pos != null) throw fail('a wall needs a room', 'bad_wall');
+    return { room_id: null, wall: null, wall_pos: null };
+  }
+  const room = d.prepare('SELECT * FROM rooms WHERE id = ?').get(rid);
+  if (!room) throw fail('no such room', 'not_found');
+  if (room.wh_id !== sec.wh_id) {
+    throw fail(`that room is at ${room.wh_id} and rack ${sec.key} is at ${sec.wh_id}`, 'wrong_warehouse');
+  }
+  if ((w == null) !== (pos == null)) throw fail('a wall needs a position along it, and a position needs a wall', 'bad_wall');
+  if (w == null) return { room_id: rid, wall: null, wall_pos: null };
+  if (!WALLS.has(w)) throw fail("a wall is 'n', 'e', 's' or 'w'", 'bad_wall');
+  if (!Number.isInteger(pos) || pos < 0) throw fail('position is a whole number of bays from the left', 'bad_wall');
+
+  const width = (id) => Math.max(1,
+    d.prepare('SELECT COALESCE(MAX(col_index), 1) AS m FROM shelves WHERE section_id = ?').get(id).m);
+  const mine = width(selfId);
+  const others = d.prepare(
+    'SELECT id, key, wall_pos FROM sections WHERE room_id = ? AND wall = ? AND id <> ?'
+  ).all(rid, w, selfId);
+  for (const o of others) {
+    const ow = width(o.id);
+    if (pos < o.wall_pos + ow && o.wall_pos < pos + mine) {
+      throw fail(`rack ${o.key} is already on that wall at ${o.wall_pos}–${o.wall_pos + ow - 1}`,
+                 'wall_overlap', { rack: o.key, from: o.wall_pos, to: o.wall_pos + ow - 1 });
+    }
+  }
+  return { room_id: rid, wall: w, wall_pos: pos };
+}
+
+export function createSection({ whId, key, name, sortIndex = null, gridOrigin = 'left',
+                                roomId = null, wall = null, wallPos = null, userId = null }) {
   if (typeof whId !== 'string' || !whId.trim()) throw fail('which warehouse?', 'bad_request');
   const k = String(key ?? '').trim().toUpperCase();
   if (!/^[A-Z]$/.test(k)) {
-    throw fail('a section key is one Latin letter — it goes on every barcode', 'bad_key');
+    throw fail('a rack letter is one Latin letter — it goes on every barcode', 'bad_key');
   }
   const nm = String(name ?? '').trim();
-  if (!nm) throw fail('a room needs a name', 'bad_request');
+  if (!nm) throw fail('a rack needs a name', 'bad_request');
   if (gridOrigin !== 'left' && gridOrigin !== 'right') {
     throw fail("grid origin is 'left' or 'right'", 'bad_request');
   }
@@ -425,22 +475,33 @@ export function createSection({ whId, key, name, sortIndex = null, gridOrigin = 
     if (!d.prepare('SELECT id FROM warehouses WHERE id = ?').get(whId)) {
       throw fail(`no such warehouse: ${whId}`, 'not_found');
     }
+    /* The letters can run out, and now that racks are counted per warehouse
+       across every room it is plausible. Named before the duplicate check,
+       so the message is about the real problem. */
+    const used = d.prepare('SELECT COUNT(*) AS n FROM sections WHERE wh_id = ?').get(whId).n;
+    if (used >= 26) {
+      throw fail(`every letter A–Z is already a rack at ${whId}. A rack letter rides inside ` +
+                 `every printed barcode, so there is no twenty-seventh one.`, 'no_letters_left');
+    }
     if (d.prepare('SELECT id FROM sections WHERE wh_id = ? AND key = ?').get(whId, k)) {
-      throw fail(`${whId} already has a section ${k}`, 'duplicate_key');
+      throw fail(`${whId} already has a rack ${k}`, 'duplicate_key');
     }
 
     const at = DB.nowIso();
-    /* Left out, a new room goes at the end of the walk rather than at the
-       front — the manager adds rooms in the order he thinks of them. */
+    /* Left out, a new rack goes at the end of the walk rather than at the
+       front — the manager adds them in the order he thinks of them. */
     const sort = sortIndex == null
       ? (d.prepare('SELECT COALESCE(MAX(sort_index), 0) AS m FROM sections WHERE wh_id = ?').get(whId).m + 1)
       : Number(sortIndex);
     if (!Number.isFinite(sort)) throw fail('order must be a number', 'bad_request');
 
+    const place = checkPlacement(d, { wh_id: whId, key: k }, { roomId, wall, wallPos }, -1);
+
     const info = d.prepare(
-      `INSERT INTO sections (wh_id, key, name, sort_index, grid_origin, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?)`
-    ).run(whId, k, nm, sort, gridOrigin, at, at);
+      `INSERT INTO sections (wh_id, key, name, sort_index, grid_origin, room_id, wall, wall_pos,
+                             created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
+    ).run(whId, k, nm, sort, gridOrigin, place.room_id, place.wall, place.wall_pos, at, at);
 
     const id = Number(info.lastInsertRowid);
     DB.logChange('sections', id, 'insert', userId, null);
@@ -448,20 +509,22 @@ export function createSection({ whId, key, name, sortIndex = null, gridOrigin = 
   });
 }
 
-/* Rename, reorder, flip which end you walk in from. The key is deliberately
-   NOT editable: it is printed inside every shelf barcode in the room, so
-   changing it would invalidate every label at once. Make a new section. */
-export function updateSection(id, { name, sortIndex, gridOrigin }, userId = null) {
+/* Rename, reorder, flip which end you walk in from, move it to a wall. The
+   key is deliberately NOT editable: it is printed inside every shelf barcode
+   on the rack, so changing it would invalidate every label at once. Make a
+   new rack. Moving a rack to another wall invalidates nothing — the barcode
+   says which rack, not where it stands. */
+export function updateSection(id, { name, sortIndex, gridOrigin, roomId, wall, wallPos }, userId = null) {
   return DB.tx((d) => {
     const sec = d.prepare('SELECT * FROM sections WHERE id = ?').get(id);
-    if (!sec) throw fail('no such section', 'not_found');
+    if (!sec) throw fail('no such rack', 'not_found');
 
     const next = {
       name: name === undefined ? sec.name : String(name).trim(),
       sort_index: sortIndex === undefined ? sec.sort_index : Number(sortIndex),
       grid_origin: gridOrigin === undefined ? sec.grid_origin : gridOrigin
     };
-    if (!next.name) throw fail('a room needs a name', 'bad_request');
+    if (!next.name) throw fail('a rack needs a name', 'bad_request');
     /* NaN reaches the NOT NULL column as a null and fails there, with a message
        about a constraint rather than about what was typed. */
     if (!Number.isFinite(next.sort_index)) throw fail('order must be a number', 'bad_request');
@@ -469,8 +532,19 @@ export function updateSection(id, { name, sortIndex, gridOrigin }, userId = null
       throw fail("grid origin is 'left' or 'right'", 'bad_request');
     }
 
-    d.prepare('UPDATE sections SET name = ?, sort_index = ?, grid_origin = ?, updated_at = ? WHERE id = ?')
-      .run(next.name, next.sort_index, next.grid_origin, DB.nowIso(), id);
+    /* Placement is patched as a unit: any of the three given means all three
+       are being set, and an omitted one is "clear it", not "keep it" — a rack
+       moved to a new room must not keep the wall position of the old one. */
+    const moving = roomId !== undefined || wall !== undefined || wallPos !== undefined;
+    const place = moving
+      ? checkPlacement(d, sec, { roomId, wall, wallPos }, id)
+      : { room_id: sec.room_id, wall: sec.wall, wall_pos: sec.wall_pos };
+
+    d.prepare(`UPDATE sections SET name = ?, sort_index = ?, grid_origin = ?,
+                                   room_id = ?, wall = ?, wall_pos = ?, updated_at = ?
+                WHERE id = ?`)
+      .run(next.name, next.sort_index, next.grid_origin,
+           place.room_id, place.wall, place.wall_pos, DB.nowIso(), id);
     DB.logChange('sections', id, 'update', userId, null);
     return d.prepare('SELECT * FROM sections WHERE id = ?').get(id);
   });
@@ -479,7 +553,7 @@ export function updateSection(id, { name, sortIndex, gridOrigin }, userId = null
 export function deleteSection(id, userId = null) {
   return DB.tx((d) => {
     const sec = d.prepare('SELECT * FROM sections WHERE id = ?').get(id);
-    if (!sec) throw fail('no such section', 'not_found');
+    if (!sec) throw fail('no such rack', 'not_found');
 
     const n = d.prepare('SELECT COUNT(*) AS n FROM shelves WHERE section_id = ?').get(id).n;
     if (n) {
@@ -489,6 +563,102 @@ export function deleteSection(id, userId = null) {
 
     d.prepare('DELETE FROM sections WHERE id = ?').run(id);
     DB.logChange('sections', id, 'delete', userId, null);
+    return { id, deleted: true };
+  });
+}
+
+/* ------------------------------------------------------------------ rooms
+   The thing with walls. A room has a name and, optionally, a tape measure's
+   worth of numbers; it has no letter and appears in no barcode. */
+
+export function rooms({ whId = null } = {}) {
+  const d = DB.get();
+  return whId
+    ? d.prepare('SELECT * FROM rooms WHERE wh_id = ? ORDER BY sort_index, name').all(whId)
+    : d.prepare('SELECT * FROM rooms ORDER BY wh_id, sort_index, name').all();
+}
+
+/* Both footprint numbers or neither. Height on its own is allowed — a
+   manager with a tape measure does the floor first, and a measured floor
+   under an unmeasured ceiling is a normal state of affairs. */
+function checkDims({ widthCm, depthCm, heightCm }, prev) {
+  const num = (v, was) => {
+    if (v === undefined) return was;
+    if (v === null || v === '') return null;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n <= 0) throw fail('a measurement is a whole number of centimetres', 'bad_request');
+    return n;
+  };
+  const out = {
+    width_cm: num(widthCm, prev.width_cm),
+    depth_cm: num(depthCm, prev.depth_cm),
+    height_cm: num(heightCm, prev.height_cm)
+  };
+  if ((out.width_cm == null) !== (out.depth_cm == null)) {
+    throw fail('a room is measured as width AND depth, or not at all', 'bad_request');
+  }
+  return out;
+}
+
+export function createRoom({ whId, name, sortIndex = null, widthCm, depthCm, heightCm, userId = null }) {
+  if (typeof whId !== 'string' || !whId.trim()) throw fail('which warehouse?', 'bad_request');
+  const nm = String(name ?? '').trim();
+  if (!nm) throw fail('a room needs a name', 'bad_request');
+  const dims = checkDims({ widthCm, depthCm, heightCm }, { width_cm: null, depth_cm: null, height_cm: null });
+
+  return DB.tx((d) => {
+    if (!d.prepare('SELECT id FROM warehouses WHERE id = ?').get(whId)) {
+      throw fail(`no such warehouse: ${whId}`, 'not_found');
+    }
+    const at = DB.nowIso();
+    const sort = sortIndex == null
+      ? (d.prepare('SELECT COALESCE(MAX(sort_index), 0) AS m FROM rooms WHERE wh_id = ?').get(whId).m + 1)
+      : Number(sortIndex);
+    if (!Number.isFinite(sort)) throw fail('order must be a number', 'bad_request');
+
+    const info = d.prepare(
+      `INSERT INTO rooms (wh_id, name, sort_index, width_cm, depth_cm, height_cm, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).run(whId, nm, sort, dims.width_cm, dims.depth_cm, dims.height_cm, at, at);
+    const id = Number(info.lastInsertRowid);
+    DB.logChange('rooms', id, 'insert', userId, null);
+    return d.prepare('SELECT * FROM rooms WHERE id = ?').get(id);
+  });
+}
+
+export function updateRoom(id, { name, sortIndex, widthCm, depthCm, heightCm }, userId = null) {
+  return DB.tx((d) => {
+    const room = d.prepare('SELECT * FROM rooms WHERE id = ?').get(id);
+    if (!room) throw fail('no such room', 'not_found');
+    const nm = name === undefined ? room.name : String(name).trim();
+    if (!nm) throw fail('a room needs a name', 'bad_request');
+    const sort = sortIndex === undefined ? room.sort_index : Number(sortIndex);
+    if (!Number.isFinite(sort)) throw fail('order must be a number', 'bad_request');
+    const dims = checkDims({ widthCm, depthCm, heightCm }, room);
+
+    d.prepare(`UPDATE rooms SET name = ?, sort_index = ?, width_cm = ?, depth_cm = ?, height_cm = ?,
+                                updated_at = ? WHERE id = ?`)
+      .run(nm, sort, dims.width_cm, dims.depth_cm, dims.height_cm, DB.nowIso(), id);
+    DB.logChange('rooms', id, 'update', userId, null);
+    return d.prepare('SELECT * FROM rooms WHERE id = ?').get(id);
+  });
+}
+
+/* A room with racks in it refuses, naming them: "M still has 0 shelves" is
+   not a sentence anybody can act on when the problem is that M and N are
+   inside it. Move them out — or out of the room — first. */
+export function deleteRoom(id, userId = null) {
+  return DB.tx((d) => {
+    const room = d.prepare('SELECT * FROM rooms WHERE id = ?').get(id);
+    if (!room) throw fail('no such room', 'not_found');
+    const racks = d.prepare('SELECT key FROM sections WHERE room_id = ? ORDER BY key').all(id);
+    if (racks.length) {
+      throw fail(`${room.name} still holds rack${racks.length > 1 ? 's' : ''} ` +
+                 `${racks.map((r) => r.key).join(', ')} — move them out first`,
+                 'room_not_empty', { racks: racks.map((r) => r.key) });
+    }
+    d.prepare('DELETE FROM rooms WHERE id = ?').run(id);
+    DB.logChange('rooms', id, 'delete', userId, null);
     return { id, deleted: true };
   });
 }

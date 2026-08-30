@@ -175,6 +175,21 @@ const LOCAL_ONLY = new Set(['sessions', 'login_attempts', 'applied_ops',
                             'label_print_jobs', 'label_code_seq',
                             'schema_migrations', 'change_log']);
 
+/* Columns that exist here and MUST NOT exist there. The column check below
+   would otherwise report the most important security property of this mirror
+   as a fault.
+
+   A password never crosses. syncUsers reads pw_hash, pw_salt, pw_hint and
+   must_change only to seal them into the single pw_enc box (credvault.js) and
+   pushes the sealed box alone — so a stolen Supabase project is not a stolen
+   password list. The absence of these four columns is the design working.
+
+   Keyed by table so a column named pw_hash on some future table is not
+   silently exempted along with this one. */
+const LOCAL_ONLY_COLS = {
+  users: new Set(['pw_hash', 'pw_salt', 'pw_hint', 'must_change'])
+};
+
 const tables = db.prepare(
   `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
 ).all().map((r) => r.name);
@@ -184,7 +199,62 @@ console.log(head('5. Is the shop actually in the mirror?'));
 const behind = [];      /* rows here that are not there — the dangerous case */
 const ahead = [];       /* rows there that are not here */
 const absent = [];      /* table missing remotely */
+const thin = [];        /* table is there, but short of columns */
 let matched = 0;
+
+/* WHAT A ROW COUNT CANNOT SEE.
+   Two tables can agree on fourteen rows apiece while six columns of every one
+   of those rows are missing on the far side — which is exactly what the
+   sync's fallbackDrop leaves behind, quietly, on a run that reported success.
+   Counting rows would call that mirror faithful and a restore would hand back
+   a warehouse with no layout.
+
+   The column list comes from PRAGMA table_info rather than being written out
+   here, so this covers the next column somebody adds without anybody
+   remembering to come back and list it. */
+/* Both shapes the far side answers with:
+     PostgREST  Could not find the 'parent_id' column of 'sections' …
+     Postgres   column sections.parent_id does not exist
+                column "parent_id" of relation "sections" does not exist
+   The bare `table.column` form carries no quotes at all, which is why the
+   first version of this reported "(unnamed)" against a real finding. */
+function namedColumn(msg) {
+  const m = String(msg).match(
+    /'([a-z_0-9]+)' column|column "([a-z_0-9]+)"|column [a-z_0-9]+\.([a-z_0-9]+)/i
+  );
+  return m ? (m[1] || m[2] || m[3]) : null;
+}
+
+async function missingColumns(table) {
+  const skip = LOCAL_ONLY_COLS[table] || new Set();
+  const cols = db.prepare(`PRAGMA table_info("${table}")`).all()
+    .map((c) => c.name).filter((c) => !skip.has(c));
+  if (!cols.length) return [];
+  try {
+    await SB.select(table, { select: cols.join(','), limit: 1 });
+    return [];
+  } catch (e) {
+    /* PostgREST names the first column it could not find and then stops, so
+       this walks: drop the named one, ask again, until it answers. Bounded by
+       the column count, and it only ever runs on a table already known wrong. */
+    const missing = [];
+    let left = cols.slice();
+    let err = e;
+    for (let i = 0; i < cols.length; i++) {
+      const name = namedColumn(err.message);
+      if (!name || left.indexOf(name) < 0) break;
+      missing.push(name);
+      left = left.filter((c) => c !== name);
+      if (!left.length) break;
+      try { await SB.select(table, { select: left.join(','), limit: 1 }); break; }
+      catch (again) { err = again; }
+    }
+    /* Named nothing recognisable — report the table rather than swallow it.
+       A column check that goes quiet on an unfamiliar message is the failure
+       this whole function exists to stop. */
+    return missing.length ? missing : ['(could not name it: ' + err.message.slice(0, 60) + ')'];
+  }
+}
 
 for (const t of tables) {
   if (LOCAL_ONLY.has(t)) continue;
@@ -194,11 +264,26 @@ for (const t of tables) {
   try { there = await SB.count(t); }
   catch { absent.push(t); continue; }
 
-  if (there === here) { matched++; continue; }
+  const gone = await missingColumns(t);
+  if (gone.length) thin.push({ t, cols: gone });
+
+  if (there === here) { if (!gone.length) matched++; continue; }
   (here > there ? behind : ahead).push({ t, here, there });
 }
 
 console.log(tick(`${matched} table(s) match exactly`));
+
+/* Before the row comparisons: a table short of columns is wrong however well
+   its rows line up, and saying so after "36 tables match exactly" reads as an
+   afterthought rather than as the reason the mirror cannot be trusted. */
+for (const { t, cols } of thin) {
+  console.log(cross(`${t.padEnd(18)} missing in Supabase: ${cols.join(', ')}`));
+  failed = true;
+}
+if (thin.length) {
+  console.log(`\n      Fix: run the matching server/supabase/*.sql in the SQL editor,`);
+  console.log(`      ${DIM}then npm run supabase:reconcile — the sync's cursor is past those rows.${OFF}`);
+}
 
 if (absent.length) {
   console.log(cross(`${absent.length} table(s) do not exist in Supabase: ${absent.join(', ')}`));

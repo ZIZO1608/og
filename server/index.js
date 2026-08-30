@@ -470,6 +470,9 @@ router.add('GET /api/sections', requirePerm('stock.read', (ctx) => {
   const wh = ctx.url.searchParams.get('wh') || null;
   sendOk(ctx.res, {
     sections: Shelves.list({ whId: wh }),
+    /* The rooms the racks hang in (026). Sent with the racks rather than
+       behind a second route, because the map needs both in one breath. */
+    rooms: Shelves.rooms({ whId: wh }),
     /* What arrived and has not been put away. Only answerable for one
        warehouse at a time, because "not put away" is a fact about a room. */
     unshelved: wh ? Shelves.unshelved(wh) : null
@@ -480,15 +483,40 @@ router.add('POST /api/sections', requirePerm('stock.move', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => ({ section: Shelves.createSection({
     whId: b.whId, key: b.key, name: b.name,
-    sortIndex: b.sortIndex, gridOrigin: b.gridOrigin, userId: ctx.user.id
+    sortIndex: b.sortIndex, gridOrigin: b.gridOrigin,
+    roomId: b.roomId, wall: b.wall, wallPos: b.wallPos, userId: ctx.user.id
   }) }));
 }));
 
 router.add('PATCH /api/sections/:id', requirePerm('stock.move', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => ({ section: Shelves.updateSection(Number(ctx.params.id), {
-    name: b.name, sortIndex: b.sortIndex, gridOrigin: b.gridOrigin
+    name: b.name, sortIndex: b.sortIndex, gridOrigin: b.gridOrigin,
+    roomId: b.roomId, wall: b.wall, wallPos: b.wallPos
   }, ctx.user.id) }));
+}));
+
+/* Rooms: the walls the racks hang on. Same permission pair, same reasoning —
+   the person who knows which wall the rack is against is the person who
+   moves the boxes. */
+router.add('POST /api/rooms', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => ({ room: Shelves.createRoom({
+    whId: b.whId, name: b.name, sortIndex: b.sortIndex,
+    widthCm: b.widthCm, depthCm: b.depthCm, heightCm: b.heightCm, userId: ctx.user.id
+  }) }));
+}));
+
+router.add('PATCH /api/rooms/:id', requirePerm('stock.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => ({ room: Shelves.updateRoom(Number(ctx.params.id), {
+    name: b.name, sortIndex: b.sortIndex,
+    widthCm: b.widthCm, depthCm: b.depthCm, heightCm: b.heightCm
+  }, ctx.user.id) }));
+}));
+
+router.add('DELETE /api/rooms/:id', requirePerm('stock.move', (ctx) => {
+  shelfOp(ctx, () => Shelves.deleteRoom(Number(ctx.params.id), ctx.user.id));
 }));
 
 router.add('DELETE /api/sections/:id', requirePerm('stock.move', (ctx) => {
@@ -1357,12 +1385,16 @@ const SHELF_STATUS = {
   wrong_size:        409,
   shelf_occupied:    409,
   section_not_empty: 409,
+  room_not_empty:    409,
+  wall_overlap:      409,
+  no_letters_left:   409,
   duplicate_key:     409,
   duplicate_code:    409,
   confirm_required:  409,
   /* Malformed: the request could not have worked whatever the shop looked like. */
   bad_request:       400,
   bad_key:           400,
+  bad_wall:          400,
   bad_code:          400,
   bad_range:         400,
   no_rows:           400,

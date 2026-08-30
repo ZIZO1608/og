@@ -73,6 +73,9 @@
      loads right after both. -->
 <script src="js/labels.js"></script>
 <script src="js/labels60.js"></script>
+<!-- shelfroom.js before shelfmap.js: the map asks the room to draw. Three.js itself is
+     NOT a script tag here — shelfroom.js fetches it the first time the map opens. -->
+<script src="js/shelfroom.js"></script>
 <script src="js/shelfmap.js"></script>
 <!-- shop.js turns server payloads into the shapes data.js defines, so it must
      come after it. Nothing it does runs at load time: app.js calls Shop.load()

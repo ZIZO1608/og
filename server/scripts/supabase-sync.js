@@ -295,10 +295,23 @@ const TABLES = {
      carrying a shelf_id go up before any shelf does — which is fine only
      because neither of those is a foreign key on the Supabase side. See
      server/supabase/006_shelves.sql for why. */
+  rooms: {
+    parseKey: (rowId) => ({ id: Number(rowId) }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM rooms WHERE id = ?').get(key.id),
+    mapRow: (r) => r
+  },
+
   sections: {
     parseKey: (rowId) => ({ id: Number(rowId) }),
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM sections WHERE id = ?').get(key.id),
-    mapRow: (r) => r
+    mapRow: (r) => r,
+    /* until 008 has been run in the dashboard. Same shape as stock.shelf_id:
+       try it properly, and on a rejection naming one of these, retry without
+       them and say what to run. Without this a mirror that has not got 008
+       would drop the whole layout block — and the catch below used to
+       report that as a missing TABLE. */
+    fallbackDrop: ['room_id', 'wall', 'wall_pos'],
+    fallbackFile: 'server/supabase/008_rooms.sql'
   },
 
   shelves: {
@@ -602,13 +615,45 @@ for (const name of CORE.slice().reverse()) await syncTable(name, { phase: 'delet
    stock rows pointing at it — that null is pushed in the core loop just above,
    so by the time the shelf is removed here nothing refers to it. */
 console.log(head('Warehouse layout'));
+/* Set when the layout could not be mirrored for a reason a person has to act
+   on. The run still finishes — a day of sales must not stop over the shelf
+   map — but it must not exit 0 and be taken for a clean sync by whatever ran
+   it. Deploys gate on this exit code. */
+let layoutFailed = false;
 try {
-  const LAYOUT = ['sections', 'shelves'];
+  /* Rooms before the racks that hang in them going in; the reverse coming
+     out. (No foreign key on the mirror makes this an ordering courtesy
+     rather than a hard requirement — see 008 — but a restore reads them in
+     this order and it costs nothing to push them the same way.) */
+  const LAYOUT = ['rooms', 'sections', 'shelves'];
   for (const name of LAYOUT) await syncTable(name, { phase: 'upsert' });
   for (const name of LAYOUT.slice().reverse()) await syncTable(name, { phase: 'delete' });
 } catch (e) {
-  if (/does not exist|Could not find the table|PGRST205|schema cache/i.test(String(e.message))) {
-    const named = String(e.message).match(/public.([a-z_]+)/);
+  const msg = String(e.message);
+  /* A MISSING COLUMN IS NOT A MISSING TABLE, and to this catch they were the
+     same sentence. PostgREST says
+
+       Could not find the 'parent_id' column of 'sections' in the schema cache
+
+     and Postgres says `column "parent_id" ... does not exist` — both match
+     /does not exist|schema cache/, which is what the one test here used to be.
+     So a column nobody had added was reported as a missing TABLE, the whole
+     block was skipped, and sections AND shelves silently stopped mirroring
+     while the run went on to report success. The layout is small and changes
+     rarely, which is exactly why nobody would have noticed.
+
+     Column first: its message contains the table pattern's words, so the
+     other order answers the wrong question. */
+  if (/PGRST204|column .* does not exist|Could not find the '[a-z_]+' column/i.test(msg)) {
+    const col = msg.match(/'([a-z_]+)' column|column "([a-z_]+)"/);
+    console.log(warn('Supabase is missing a layout column' +
+                     (col ? ': ' + (col[1] || col[2]) : '') +
+                     ' — the layout was NOT mirrored.'));
+    console.log('    \x1b[2mRun the newest server/supabase/*.sql in the SQL editor,\x1b[0m');
+    console.log('    \x1b[2mthen npm run supabase:reconcile — the cursor has moved past these rows.\x1b[0m');
+    layoutFailed = true;
+  } else if (/Could not find the table|PGRST205|relation .* does not exist/i.test(msg)) {
+    const named = msg.match(/public.([a-z_]+)/);
     console.log(warn('Supabase is missing a table' + (named ? ': ' + named[1] : '') + ' — skipped.'));
     console.log('    \x1b[2mRun server/supabase/006_shelves.sql in the SQL editor.\x1b[0m');
   } else throw e;
@@ -690,3 +735,11 @@ await SB.update('sync_state', { id: 'shop' }, {
 
 console.log(head('Done'));
 console.log('  Check the Supabase dashboard — Table Editor — to see the rows.\n');
+
+/* Last, and only after the bookmark above is written: everything that COULD
+   be mirrored has been, and the failure is reported by the exit code rather
+   than by taking the run down halfway through. */
+if (layoutFailed) {
+  console.log(warn('  The warehouse layout is NOT in the mirror. Exit 1.\n'));
+  process.exit(1);
+}

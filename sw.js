@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v78';
+var CACHE = 'og-system-v80';
 
 var SHELL = [
   './',
@@ -44,6 +44,7 @@ var SHELL = [
   'assets/icon-192.png',
   'assets/icon-512.png',
   'js/vendor/chart.umd.min.js',
+  'js/vendor/three.min.js',
   'js/api.js',
   'js/auth.js',
   'js/codes.js',
@@ -53,6 +54,7 @@ var SHELL = [
   'js/escpos.js',
   'js/labels.js',
   'js/labels60.js',
+  'js/shelfroom.js',
   'js/shelfmap.js',
   'js/shop.js',
   'js/charts.js',

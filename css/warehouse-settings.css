@@ -222,12 +222,16 @@ body.rtl .toast { animation-name: toastInR; }
 @keyframes toastOut { to { opacity: 0; transform: translateY(-6px); } }
 
 /* ======================================================= THE WAREHOUSE MAP
-   js/shelfmap.js. The rack is for looking, the panel below it is for
-   working, and nothing readable is ever put in the tilted plane.
+   js/shelfmap.js + js/shelfroom.js. The room (and the flat rack it falls
+   back to) is for looking, the panel below it is for working, and nothing
+   readable is ever put in the tilted plane — the room's labels are DOM,
+   upright, over the canvas.
 
-   Greys and pure white only. Green, amber and red exist here SOLELY as scan
-   feedback — an accepted put-away, a look-here, a refusal — and are never
-   decoration, so a flash means one thing. No glow, no gradient, no neon. */
+   THE FLASH IS A RING, THE TYPE IS A FACE. Green, amber and red exist here
+   SOLELY as scan feedback — an accepted put-away, a look-here, a refusal —
+   and only ever as a border plus a box-shadow (a ring). The room colours its
+   crates by product type, as a fill and nothing else; the flat rack stays
+   greys and pure white. No glow, no gradient, no neon. */
 
 .sm-root { display: flex; flex-direction: column; gap: 14px; }
 
@@ -382,13 +386,83 @@ body.rtl .toast { animation-name: toastInR; }
 .sm-set-tbl td.mono { font-family: Menlo, Consolas, monospace; font-weight: 700; }
 .sm-set-tbl select { min-width: 200px; }
 
-/* ---- reduced motion: no tilt, no lift, and no slider pretending ---- */
+/* ---- the room ------------------------------------------------------------
+   The WebGL stage. The canvas and the tag layer are NOT in the markup —
+   js/shelfroom.js owns both and moves them into #smRoom after every paint,
+   which is how they survive the innerHTML a scan causes. */
+.sm-stage3d { padding: 0; overflow: hidden; }
+.sm-room { position: relative; height: 560px; max-height: 64vh; min-height: 340px; background: #0d0d0d; }
+.sm-room canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.sm-room-wait { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12.5px; }
+.sm-room-hint { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 11.5px; text-align: center; }
+
+/* pointer-events:none is not cosmetic. Without it the tag layer eats every
+   click before the canvas sees it, and a bay that will not select gives no
+   error and no clue. NOT dir-pinned, unlike .sm-grid: the grid is pinned ltr
+   because a room must not turn round when the menus change language; a label
+   is TEXT, and an Arabic product name reads right-to-left in Arabic. */
+.sm-room-tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; contain: layout; }
+.sm-tag {
+  position: absolute; top: 0; left: 0; visibility: hidden; will-change: transform;
+  max-width: 190px; padding: 4px 9px; border-radius: 5px;
+  background: rgba(13, 13, 13, .9); border: 1px solid #3a3a3a; color: #FFFFFF;
+  font-size: 11.5px; line-height: 1.3; white-space: nowrap;
+}
+.sm-tag.on { border-color: #FFFFFF; }
+.sm-tag b { display: block; font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.sm-tag small { display: block; color: var(--muted-foreground); max-width: 172px; overflow: hidden; text-overflow: ellipsis; }
+
+/* a run's name: one line, lighter, so six of them over a room read as
+   signage rather than as six dialogs */
+.sm-tag.run { padding: 3px 8px; background: rgba(13, 13, 13, .78); border-color: #2c2c2c; }
+.sm-tag.run b { font-size: 11px; font-weight: 700; color: #E4E4E7; max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+
+/* under the room: the key on one side, the controls hint on the other —
+   both on the flat surface, where a person can read them */
+.sm-room-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--border); padding: 7px 14px; }
+.sm-room-foot .sm-room-hint { border-top: 0; padding: 0; margin-inline-start: auto; }
+.sm-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--muted-foreground); }
+.sm-lg { display: inline-flex; align-items: center; gap: 6px; }
+.sm-lg i { width: 11px; height: 11px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12); }
+.sm-colourbtn.on { border-color: #FFFFFF; }
+
+/* ---- the designer ---------------------------------------------------------
+   Beside the room, never over it: the room keeps its camera and the scanner
+   keeps the caret while the layout is being changed. */
+.sm-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.sm-split.with-designer { grid-template-columns: minmax(0, 1fr) 300px; }
+.sm-designer .card-body { display: flex; flex-direction: column; gap: 14px; }
+.sm-dz { display: flex; flex-direction: column; gap: 6px; }
+.sm-dz .lbl { margin-bottom: 2px; }
+.sm-dz-row { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+.sm-dz-row.on .sm-dz-pick { border-color: #FFFFFF; }
+.sm-dz-pick {
+  flex: 1; min-width: 0; text-align: start; background: #151515; color: #FFFFFF;
+  border: 1px solid #2c2c2c; border-radius: var(--radius-sm); padding: 6px 9px; font: inherit; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sm-dz-pick:hover { border-color: #555; }
+.sm-dz-pick small { margin-inline-start: 6px; }
+.sm-dz-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sm-dz-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 9px; border-radius: var(--radius-full);
+  border: 1px solid #333; background: #1a1a1a; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.sm-dz-chip .sm-rc-x { padding: 0 4px; font-size: 12px; }
+.sm-dz-note { font-size: 11.5px; }
+@media (max-width: 900px) { .sm-split.with-designer { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- reduced motion: no tilt, no lift, no slider pretending — and no room.
+   ShelfMap.use3d() already refuses to draw the room under this setting;
+   this is the belt to that brace, so a paint path added later that forgets
+   the check still cannot show a camera to somebody who asked for none. ---- */
 @media (prefers-reduced-motion: reduce) {
   .sm-rack { transform: none !important; }
   .sm-tile { transition: none; }
   .sm-tile:hover { transform: none; }
   .sm-tile::after { transform: none; }
   .sm-tiltbox { display: none; }
+  .sm-room, .sm-room-hint { display: none; }
 }
 
 /* ---- the scan run -------------------------------------------------------

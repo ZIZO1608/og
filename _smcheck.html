@@ -123,6 +123,12 @@ var VARIANTS = [];
 
 var DB = {
   products: PRODUCTS,
+  /* the type palette the real js/data.js carries — three of the eight,
+     which is every type the fixture uses */
+  typeLabels: { sneakers: 'Sneakers', tshirts: 'T-Shirts', crocs: 'Crocs' },
+  typeColour: function (ty) {
+    return ({ sneakers: '#3B5C8A', tshirts: '#2E6E6B', crocs: '#7A4468' })[ty] || '#4A4A52';
+  },
   warehouses: [
     { id: 'floor', name: 'Shop floor', nameAr: 'المحل', kind: 'shop' },
     { id: 'store', name: 'Back storage', nameAr: 'المستودع', kind: 'storage' }
@@ -221,6 +227,7 @@ function labelDim() { return { w: 30, h: 30 }; }
 </script>
 <script src="js/app-i18n.js"></script>
 <script src="js/wedge.js"></script>
+<script src="js/shelfroom.js"></script>
 <script src="js/shelfmap.js"></script>
 <script>
 OG.lang = (new URLSearchParams(location.search)).get('lang') || 'en';
@@ -239,11 +246,129 @@ function $(sel) { return document.querySelector(sel); }
 function $$(sel) { return [].slice.call(document.querySelectorAll(sel)); }
 function xOf(sel) { var e = $(sel); return e ? e.getBoundingClientRect().left : NaN; }
 
+/* ---- which surface ----------------------------------------------------
+   Headless Chrome has no GPU, so the room runs here only under ?gl=force —
+   a software context, which ShelfRoom otherwise refuses on purpose. Every
+   other run pins the map to the flat rack, and that is not a gap in the
+   coverage: the flat rack IS the room's failure path, so a run that passes
+   without the room is the proof that falling back loses nothing. */
+var FORCE = /[?&]gl=force\b/.test(location.search);
+if (!FORCE) ShelfRoom.supported = function () { return false; };
+var ROOM = FORCE && ShelfRoom.supported();
+
+/* THE assertions the room exists for. None of them look at a pixel — a
+   pixel proves nothing about the shop's tablet — they look at the one thing
+   that has to be true for a put-away run to survive: the canvas node before
+   a scan is the canvas node after it. */
+function roomTests(finish) {
+  ok('room: the flat rack is not drawn', !$('.sm-rack'));
+  ok('room: the mount is', !!$('#smRoom'));
+  ok('room: a reset button, and no tilt slider', !!$('[data-sm="room-reset"]') && !$('.sm-tiltbox'));
+
+  var tries = 0;
+  (function wait() {
+    if (ShelfRoom.ready() && $('#smRoom canvas')) return go();
+    if (++tries > 400) {
+      ok('room: the library loaded and the canvas mounted', false,
+         { ready: ShelfRoom.ready(), errors: window.__errors, toasts: __toasts });
+      return finish();
+    }
+    setTimeout(wait, 25);
+  })();
+
+  function go() {
+    var cv = $('#smRoom canvas');
+    ok('room: exactly one canvas', $$('canvas').length === 1, $$('canvas').length);
+    ok('room: the canvas can never take focus', !cv.hasAttribute('tabindex'));
+    var tagsEl = $('.sm-room-tags');
+    ok('room: a tag layer', !!tagsEl);
+    ok('room: the tag layer does not eat clicks',
+       !!tagsEl && getComputedStyle(tagsEl).pointerEvents === 'none');
+    ok('room: the tag layer is NOT dir-pinned  [' + OG.lang + ']', !!tagsEl && !tagsEl.getAttribute('dir'));
+
+    /* ---- names and colours --------------------------------------------- */
+    /* A1+A2 hold one product and get ONE name; B3 gets its own; and A4 —
+       unassigned, but with a tee physically sitting on it — is named for
+       what is on it, because "where is the tee" is the question the room
+       answers. Three runs, not five bays. */
+    var rt = $$('.sm-tag.run').map(function (e) { return e.textContent; });
+    ok('room: one tag per RUN, not per shelf — A1+A2 are one, A4 one, B3 one', rt.length === 3, rt);
+    ok('room: the run tags carry the product names',
+       rt.indexOf('حذاء الاختبار') > -1 && rt.indexOf('Half Sizes') > -1 && rt.indexOf('Test Tee') > -1, rt);
+    ok('room: never more than 12 tags', $$('.sm-tag').length <= 12, $$('.sm-tag').length);
+    var lg = $$('.sm-lg').map(function (e) { return e.textContent; });
+    var want = [t('ty_sneakers'), t('ty_tshirts'), t('ty_crocs')];
+    ok('room: a legend, on the flat surface, of the types in THIS room  [' + OG.lang + ']',
+       lg.length === 3 && want.every(function (w) { return lg.indexOf(w) > -1; }), { got: lg, want: want });
+    var sw = $('.sm-lg i');
+    ok('room: the legend swatch is the type colour',
+       !!sw && sw.style.background.replace(/\s/g, '').toLowerCase() === 'rgb(59,92,138)',
+       sw && sw.style.background);
+
+    /* a scan IS a repaint, and the canvas has to come through it */
+    Wedge.feed('SH02MA1', 5);
+    setTimeout(function () {
+      ok('room: the canvas SURVIVES a scan repaint — same node', $('#smRoom canvas') === cv);
+      ok('room: and is still in the document', document.contains(cv));
+      ok('room: still exactly one canvas', $$('canvas').length === 1, $$('canvas').length);
+      ok('room: the scan selected M-A1 and the flat panel opened',
+         !!$('.sm-panel') && $('.sm-panel h3').textContent.indexOf('M-A1') === 0);
+      var tagText = $$('.sm-tag').map(function (e) { return e.textContent; });
+      ok('room: the selected bay carries a tag naming it',
+         tagText.some(function (s) { return s.indexOf('M-A1') === 0; }), tagText);
+      var rt2 = $$('.sm-tag.run').map(function (e) { return e.textContent; });
+      ok('room: the run the selected bay sits in yields to its tag',
+         rt2.length === 2 && rt2.indexOf('حذاء الاختبار') < 0 && rt2.indexOf('Half Sizes') > -1, rt2);
+
+      /* colour off: the legend goes, the room stays, the canvas is the same */
+      $('[data-sm="room-colour"]').click();
+      ok('room: colour off removes the legend', !$('.sm-legend'));
+      ok('room: …persisted per machine', localStorage.getItem('og_sm_colour') === '0');
+      ok('room: …and the canvas came through that repaint too', $('#smRoom canvas') === cv);
+      $('[data-sm="room-colour"]').click();
+      ok('room: colour back on restores the legend', !!$('.sm-legend'));
+
+      /* a still camera schedules nothing — count what it asks the browser for */
+      var rafs = 0, origRaf = window.requestAnimationFrame;
+      window.requestAnimationFrame = function (f) { rafs++; return origRaf(f); };
+      setTimeout(function () {
+        window.requestAnimationFrame = origRaf;
+        ok('room: a still camera asks for no frames', rafs === 0, rafs);
+
+        /* editing is grid furniture: Edit → the flat rack, Done → the room */
+        var edit = $('[data-sm="edit"]');
+        if (edit) {
+          edit.click();
+          ok('room: Edit layout opens the designer BESIDE the room',
+             !!$('.sm-designer') && !!$('#smRoom') && !$('.sm-rack'));
+          ok('room: …with the SAME canvas', $('#smRoom canvas') === cv);
+          var chips = $$('.sm-dz-chip').map(function (e) { return e.textContent.replace('×', '').trim(); });
+          ok('room: the designer lists the rack in focus — 2 levels, 4 bays', chips.length === 6, chips);
+          ok('room: a rack not in a room is offered Place', $$('[data-sm="rack-cfg"]').length >= 1);
+          $('[data-sm="edit"]').click();
+          ok('room: Done closes the designer and keeps the room', !$('.sm-designer') && !!$('#smRoom'));
+          ok('room: …still the SAME canvas', $('#smRoom canvas') === cv);
+        }
+
+        /* context loss, last: it is permanent for the page */
+        __toasts.length = 0;
+        cv.dispatchEvent(new Event('webglcontextlost'));
+        ok('room: losing the context falls back to the flat rack', !!$('.sm-rack') && !$('#smRoom'));
+        ok('room: …and says so, once', __toasts.length === 1 && __toasts[0].title === t('sm_gl_lost'), __toasts);
+        ok('room: the flat rack is whole after the fall', $$('.sm-tile').length === 5, $$('.sm-tile').length);
+        finish();
+      }, 250);
+    }, 40);
+  }
+}
+
 ShelfMap.register();
 document.getElementById('host').innerHTML = ShelfMap.view();
 ShelfMap.after();
 
 setTimeout(function () {
+  if (ROOM) { roomTests(finish); return; }
+
   /* ---- geometry: origin right means column 1 draws on the RIGHT ------- */
   var heads = $$('.sm-colhead');
   ok('column heads drawn 1..4', heads.length === 4, heads.length);
