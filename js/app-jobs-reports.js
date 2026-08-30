@@ -366,7 +366,7 @@ function openPartnerInvoice(id) {
   DB.markRead('og', { invoiceId: id });
 
   var foot = '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
-    '<button class="btn" data-act="print-now">' + t('print') + '</button>';
+    '<button class="btn" data-act="print-doc">' + t('print') + '</button>';
   if (bal > 0 && inv.issued) {
     foot += '<button class="btn btn-primary" data-act="og-pay-inv" data-id="' + id + '">' +
       t('og_pay_now') + ' · ' + money(bal) + '</button>';

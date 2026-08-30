@@ -402,7 +402,7 @@ var YLINV = (function () {
     var foot = '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
       '<button class="btn btn-ghost" data-yi="paper" data-id="' + id + '">' + t('yi_paper') + '</button>' +
       '<button class="btn btn-ghost" data-yi="xlsx" data-id="' + id + '">' + t('export_excel') + '</button>' +
-      '<button class="btn" data-act="print-now">' + t('print') + '</button>';
+      '<button class="btn" data-act="print-doc">' + t('print') + '</button>';
 
     if (st === 'draft') {
       foot += '<button class="btn btn-ghost" data-yi="drop" data-id="' + id + '">' + t('bk_delete') + '</button>' +
@@ -513,7 +513,7 @@ var YLINV = (function () {
         title: inv.id + ' · ' + t('yi_paper'), size: 'wide', body: sheet(inv, true),
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
               '<button class="btn btn-ghost" data-yi="open" data-id="' + inv.id + '">' + t('yi_brand_mode') + '</button>' +
-              '<button class="btn btn-primary" data-act="print-now">' + t('print') + '</button>'
+              '<button class="btn btn-primary" data-act="print-doc">' + t('print') + '</button>'
       });
     },
 

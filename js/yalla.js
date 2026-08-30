@@ -1288,7 +1288,7 @@ var YALLA = (function () {
       openModal({
         title: t('yl_invoice_og'), size: 'wide', body: body,
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
-              '<button class="btn" data-act="print-now">' + t('print') + '</button>' +
+              '<button class="btn" data-act="print-doc">' + t('print') + '</button>' +
               '<button class="btn btn-primary" data-yl="invoice-send">' + t('send') + '</button>'
       });
     },

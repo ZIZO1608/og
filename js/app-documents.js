@@ -281,7 +281,7 @@ function openReceipt(sale, opts) {
     body: opts.newSale ? '<div class="rc-fresh">' + receiptHtml(sale) + '</div>' : receiptHtml(sale),
     foot: '<button class="btn btn-ghost" data-act="rc-invoice" data-id="' + esc(sale.id) + '">' +
             t('rc_full_page') + '</button>' +
-          '<button class="btn" data-act="print-now">' + t('print') + '</button>' +
+          '<button class="btn" data-act="print-receipt-now">' + t('print') + '</button>' +
           (allow('sale.reprint')
             ? '<button class="btn" data-act="approve-receipt" data-id="' + esc(sale.id) + '">' +
                 t('print_receipt') + '</button>'
@@ -310,7 +310,7 @@ function openInvoice(sale, opts) {
     size: 'wide',
     body: invoiceHtml(sale),
     foot: '<button class="btn btn-ghost" data-act="export" data-kind="pdf">' + t('pdf') + '</button>' +
-          '<button class="btn" data-act="print-now">' + t('print') + '</button>' +
+          '<button class="btn" data-act="print-doc">' + t('print') + '</button>' +
           /* One button, not "Preview" next to "Print receipt". The old pair
              made checking the slip optional and put the unchecked path one
              click closer; this opens the real rendered receipt with Print

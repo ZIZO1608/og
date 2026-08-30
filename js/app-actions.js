@@ -209,6 +209,19 @@ var ACTIONS = {
      and neither rule belonged to the screen that was actually open. */
   'print-doc': function () { setDocPageSize(); window.print(); },
 
+  /* A till receipt, on till-roll paper. Also asserts rather than inherits:
+     openReceipt() sets the roll width when it opens, but print-now would then
+     append the LABEL rule on top of it and print the receipt at 30mm. */
+  'print-receipt-now': function () {
+    var roll = document.getElementById('rollPageRule');
+    if (roll) roll.parentNode.removeChild(roll);
+    document.body.classList.remove('roll-labels');
+    var doc = document.getElementById('docPageRule');
+    if (doc) doc.parentNode.removeChild(doc);
+    setReceiptPageSize();
+    window.print();
+  },
+
   export: function (el) {
     var spec = currentExportSpec();
     if (!spec || !spec.rows || !spec.rows.length) { toast(t('export_failed'), t('none'), 'warn'); return; }
