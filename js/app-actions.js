@@ -502,6 +502,18 @@ var ACTIONS = {
     });
   },
 
+  /* Same shape as rc-cut: flips which chip is lit and leaves the value on the
+     row for rc-save-config to read back. No re-render — nothing else on the
+     card depends on which darkness is picked. */
+  'rc-ink': function (el) {
+    var row = document.getElementById('rcInk');
+    if (!row) return;
+    row.setAttribute('data-v', el.getAttribute('data-k'));
+    Array.prototype.forEach.call(row.querySelectorAll('.chip'), function (c) {
+      c.classList.toggle('on', c === el);
+    });
+  },
+
   'rc-save-config': function (el) {
     if (!allow('config.write') || typeof Auth === 'undefined') return;
     var transportEl = document.getElementById('rcTransport');
@@ -518,6 +530,8 @@ var ACTIONS = {
       'receipt.copies':       (document.getElementById('rcCopies') || {}).value || '2',
       'receipt.cut_mode':     ((document.getElementById('rcCutMode') || {}).getAttribute &&
                                 document.getElementById('rcCutMode').getAttribute('data-v')) || 'partial',
+      'receipt.ink':          ((document.getElementById('rcInk') || {}).getAttribute &&
+                                document.getElementById('rcInk').getAttribute('data-v')) || 'dark',
       'receipt.show_barcode': (document.getElementById('rcShowBarcode') || {}).checked ? '1' : '0',
       'receipt.show_loyalty': (document.getElementById('rcShowLoyalty') || {}).checked ? '1' : '0',
       'receipt.footer_ar':    (document.getElementById('rcFooterAr') || {}).value || '',
