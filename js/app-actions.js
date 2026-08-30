@@ -1144,6 +1144,47 @@ var ACTIONS = {
           t(OG.print.partner ? 'yl_entered' : 'yl_left'), 'ok', 2400);
   },
 
+  /* Open or shut one section of Settings. Deliberately NOT a render(): half
+     the cards on that screen hold typed-but-unsaved values — the receipt
+     footer, the printer's host, the shop name — and a repaint would take them
+     back to whatever the server last said, in the middle of somebody typing.
+     So this moves one attribute and remembers it. */
+  'set-fold': function (el) {
+    var sec = el.closest ? el.closest('.fold') : null;
+    if (!sec) return;
+
+    var open = sec.getAttribute('data-open') !== '1';
+    sec.setAttribute('data-open', open ? '1' : '0');
+    el.setAttribute('aria-expanded', open ? 'true' : 'false');
+    setFoldRemember(sec.getAttribute('data-fold'), open);
+
+    /* The entrance is added on the way in and taken off again, rather than
+       left on the element: an animation already sitting on a node does not
+       replay when the node comes back from display:none, so folding the same
+       section twice would animate once. */
+    var body = sec.querySelector('.fold-body');
+    if (open && body) {
+      body.classList.add('fold-in');
+      setTimeout(function () { body.classList.remove('fold-in'); }, 320);
+    }
+  },
+
+  /* One button rather than a pair: it does what it says, then says the other
+     thing. The label is flipped here rather than read back off the page,
+     because somebody folding a single section by hand afterwards does not
+     make "collapse all" the wrong offer. */
+  'set-folds': function (el) {
+    var open = el.getAttribute('data-k') === 'open';
+    Array.prototype.forEach.call(document.querySelectorAll('#view .fold'), function (sec) {
+      sec.setAttribute('data-open', open ? '1' : '0');
+      var btn = sec.querySelector('.fold-btn');
+      if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      setFoldRemember(sec.getAttribute('data-fold'), open);
+    });
+    el.setAttribute('data-k', open ? 'close' : 'open');
+    el.textContent = t(open ? 'set_collapse' : 'set_expand');
+  },
+
   /* This used to say the settings were "already live" because every field
      applies as it is typed — which was true when there was nowhere to save
      them TO. It has been false since the server arrived: typing changed

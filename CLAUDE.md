@@ -135,6 +135,28 @@ given a data source.
 - Every screen reads from the server. `js/data.js` holds the shape and the lookups; the data arrives
   through `DB.hydrate()`.
 
+### Settings is an accordion, and a new card is a fold
+
+Eleven unrelated jobs on one page — the receipt printer's paper width above the loyalty tiers above
+who is signed in. `viewSettings()` stacks them as folds under five headings; `setFoldStart(id, title,
+meta)` / `setFoldEnd()` in `js/app-settings.js` are the wrapper, `setSection(label)` the heading. Add a
+card by writing one that returns `setFoldStart(…) + … + setFoldEnd()` and calling it from
+`viewSettings()`.
+
+- **`meta` is the point.** It is the line the head carries while the body is shut — the shop name, the
+  rate, how many people are online. Without one the folded page is eleven bare nouns and every answer
+  costs a click. Wrap anything with digits in `<span dir="ltr">`, or Arabic drags the leading number to
+  the far end (`1 USD = 130 SYP` becomes `USD = 130 SYP 1`).
+- **A shut section is hidden, not skipped.** Every body is in the DOM either way, so `afterSettings()`
+  still binds the scanner probe, fills the shelf list and loads the roles grid behind a head nobody has
+  opened. Rendering only what is open would mean re-running that hook on every toggle.
+- **Toggling never calls `render()`.** Half these cards hold typed-but-unsaved values — the receipt
+  footer, the printer's host, the shop name — and a repaint takes them back to what the server last
+  said, mid-sentence. `ACTIONS['set-fold']` moves one attribute.
+- Which folds are open lives in `localStorage` under `og.settings.open`, per MACHINE like the sidebar
+  rail: the till wants the printer open and the office wants the roles grid, on the same account. Only
+  open ones are stored, so a card added later starts shut.
+
 ### The seeded generator — call order is load-bearing
 
 `js/data.js` builds the whole dataset from an LCG so every launch tells an identical story:

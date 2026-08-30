@@ -123,6 +123,72 @@
   .perm-tbl { min-width: 560px; }
 }
 .set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(370px, 1fr)); gap: 14px; align-items: start; }
+
+/* ------------------------------------------------------- SETTINGS ACCORDION
+
+   Eleven cards of unrelated work on one page. Open all at once it is a wall
+   you scroll; folded, with a heading over each run of them, it is a list you
+   read. The head is the whole switch — padding moves off .card-head and onto
+   the button inside it, so the inch of card either side of the words is not
+   dead space that looks clickable. */
+.set-list { max-width: 1040px; }
+
+/* A signpost over a run of folds, not a title: the heads under it carry the
+   weight, so this is small, quiet and set in caps to read as a divider. */
+.set-sec {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--dim); margin: 26px 2px 8px;
+}
+.set-list > .set-sec:first-child { margin-top: 2px; }
+
+.fold > .fold-head { padding: 0; }
+.fold-h { flex: 1; min-width: 0; margin: 0; }
+.fold-btn {
+  display: flex; align-items: center; gap: var(--s-3); width: 100%;
+  padding: var(--s-4) var(--s-5);
+  background: none; border: 0; border-radius: var(--radius-lg);
+  font: inherit; color: inherit; text-align: start; cursor: pointer;
+  transition: background var(--t);
+}
+.fold-btn:hover { background: var(--accent); }
+.fold[data-open="1"] .fold-btn { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.fold-title { font-size: var(--fs-lg); font-weight: 700; letter-spacing: -.015em; }
+
+/* The one line the head carries while the body is shut — the shop name, the
+   rate, how many people are online. It is why a folded page still says
+   something. Truncated rather than wrapped: a head that grows to two lines
+   breaks the rhythm of the list it belongs to. */
+.fold-meta {
+  margin-inline-start: auto; padding-inline-start: var(--s-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Drawn rather than typed: a chevron glyph would need a font carrying it in
+   both scripts, and would sit differently in each. Physical borders, flipped
+   by hand for RTL — the logical ones rotate into the wrong quadrant. */
+.fold-caret {
+  width: 7px; height: 7px; flex: none; margin-inline-start: 2px;
+  border-right: 2px solid var(--muted-foreground);
+  border-bottom: 2px solid var(--muted-foreground);
+  transform: rotate(-45deg);
+  transition: transform var(--d-2) var(--e-std);
+}
+body.rtl .fold[data-open="0"] .fold-caret { transform: rotate(135deg); }
+.fold[data-open="1"] .fold-caret { transform: rotate(45deg); }
+
+/* Shut is hidden, not absent: everything inside a closed section is still in
+   the page, so the scanner probe binds and the roles grid loads behind it. */
+.fold[data-open="0"] > .fold-body { display: none; }
+.fold[data-open="1"] > .fold-body { border-top: 1px solid var(--border); }
+.fold-body > .perm-hint:first-child { margin-top: 0; padding-top: 10px; }
+
+.fold-body.fold-in { animation: foldIn var(--d-3) var(--e-out); }
+@keyframes foldIn { from { opacity: 0; transform: translateY(-6px); } }
+
+/* A sentence and a button on one line inside a body. */
+.fold-row { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; margin-bottom: 12px; }
+.fold-row .sub { flex: 1; min-width: 180px; }
+
 .rule-row { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .rule-row:last-child { border-bottom: 0; }
 .rule-row .rr-txt { flex: 1; }

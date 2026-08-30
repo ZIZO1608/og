@@ -7,6 +7,79 @@
 
 /* -------------------------------------------------------------- 14. SETTINGS */
 
+/* ---------------------------------------------------------- THE ACCORDION
+
+   Settings is eleven unrelated jobs on one page — the receipt printer's paper
+   width above the loyalty tiers above who is signed in right now. Open all at
+   once it is a wall you scroll rather than a page you read, and the one field
+   somebody came here to change is somewhere in the middle of it.
+
+   So every card folds and the head is the switch. Shut, the page is a list of
+   what is in here; each head keeps the card's own one-line summary — the shop
+   name, the rate, how many people are online — so the closed page still
+   answers a question rather than being eleven bare nouns.
+
+   A closed section is HIDDEN, not skipped. The markup is rendered either way,
+   so the scanner probe still binds, the shelf list still fills and the roles
+   grid still loads behind a head nobody has opened. Folding is a decision
+   about display; making it one about data would mean afterSettings() had to
+   re-run on every toggle, and half of these cards fetch.
+
+   Which sections are open is remembered per MACHINE, like the sidebar rail
+   and for the same reason: the till wants the printer open and the office
+   wants the roles grid, and they are frequently the same account. */
+var SET_FOLD_KEY = 'og.settings.open';
+var SET_FOLDS = null;
+
+function setFolds() {
+  if (SET_FOLDS) return SET_FOLDS;
+  SET_FOLDS = {};
+  try {
+    var raw = localStorage.getItem(SET_FOLD_KEY);
+    var v = raw ? JSON.parse(raw) : null;
+    if (v && typeof v === 'object') SET_FOLDS = v;
+  } catch (e) { /* private mode, or a value in an older shape — start shut */ }
+  return SET_FOLDS;
+}
+
+function setFoldIsOpen(id) { return setFolds()[id] === true; }
+
+/* Only the open ones are stored, so a section added later starts shut rather
+   than inheriting whatever a stale key happened to hold. */
+function setFoldRemember(id, open) {
+  var s = setFolds();
+  if (open) s[id] = true; else delete s[id];
+  try { localStorage.setItem(SET_FOLD_KEY, JSON.stringify(s)); } catch (e) {}
+}
+
+/* Opens a foldable card. `meta` is the line the head carries while the body
+   is shut — the sub-title the card already had, or a live count. */
+/* The switch is a real <button> inside the heading — the disclosure shape,
+   not a div told to behave like one. Enter, Space, the focus ring and the
+   screen-reader announcement all come with the element; a role="button" div
+   would have needed every one of them written by hand, and the keyboard half
+   is the half that quietly never gets written. The <h3> stays outside it so
+   Settings is still a page with headings rather than a stack of buttons. */
+function setFoldStart(id, title, meta) {
+  var open = setFoldIsOpen(id);
+  return '<section class="card fold mb" data-fold="' + id + '" data-open="' + (open ? '1' : '0') + '">' +
+    '<div class="card-head fold-head">' +
+      '<h3 class="fold-h"><button type="button" class="fold-btn" data-act="set-fold"' +
+        ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="fold-' + id + '">' +
+        '<span class="fold-caret" aria-hidden="true"></span>' +
+        '<span class="fold-title">' + title + '</span>' +
+        (meta ? '<span class="fold-meta muted small">' + meta + '</span>' : '') +
+      '</button></h3>' +
+    '</div>' +
+    '<div class="fold-body" id="fold-' + id + '">';
+}
+
+function setFoldEnd() { return '</div></section>'; }
+
+/* A heading over a run of folds. Five of them across eleven cards is the
+   difference between a list and a page. */
+function setSection(label) { return '<div class="set-sec">' + label + '</div>'; }
+
 /* ------------------------------------------------------------ ROLES & ACCESS
 
    This used to be a hardcoded array of thirteen rows with tick boxes wired to
@@ -70,18 +143,17 @@ function rolesCard() {
   /* Still loading. Draw the frame rather than nothing, so the card does not
      pop into existence and shove the rest of the page down. */
   if (!m) {
-    return '<div class="card mb"><div class="card-head"><h3>' + t('roles_perms') + '</h3></div>' +
-      '<div class="card-body muted small">…</div></div>';
+    return setFoldStart('roles', t('roles_perms'), '') +
+      '<div class="card-body muted small">…</div>' + setFoldEnd();
   }
 
   /* Only a manager may change these. Everyone else sees the same grid,
      read-only — knowing the rules is not a privilege, changing them is. */
   var editable = typeof Auth !== 'undefined' && Auth.can('config.write');
 
-  var h = '<div class="card mb"><div class="card-head"><h3>' + t('roles_perms') + '</h3>' +
-    '<div class="card-actions muted small">' +
-      m.roles.length + ' ' + t('role').toLowerCase() + 's · ' +
-      m.permissions.length + ' ' + t('permission').toLowerCase() + 's</div></div>';
+  var h = setFoldStart('roles', t('roles_perms'),
+    m.roles.length + ' ' + t('role').toLowerCase() + 's · ' +
+    m.permissions.length + ' ' + t('permission').toLowerCase() + 's');
 
   if (editable) h += '<div class="perm-hint">' + t('roles_editable') + '</div>';
 
@@ -117,7 +189,7 @@ function rolesCard() {
     h += '</tr>';
   });
 
-  h += '</tbody></table></div></div>';
+  h += '</tbody></table></div>' + setFoldEnd();
   return h;
 }
 
@@ -191,27 +263,26 @@ function presenceMinutesAgo(iso) {
 
 function presenceCard() {
   if (typeof Auth === 'undefined') {
-    return '<div class="card mb"><div class="card-head"><h3>' + t('presence_title') + '</h3></div>' +
-      '<div class="card-body muted small">' + t('demo_no_account') + '</div></div>';
+    return setFoldStart('presence', t('presence_title'), '') +
+      '<div class="card-body muted small">' + t('demo_no_account') + '</div>' + setFoldEnd();
   }
   if (!Auth.can('staff.read')) return '';
 
   var list = STAFF_PRESENCE;
-  var h = '<div class="card mb"><div class="card-head"><h3>' + t('presence_title') + '</h3>';
+
+  /* The count IS the head here: a manager running down a shut page wants to
+     know somebody is on the till, not to open a card to find out. */
+  var meta = '';
   if (list) {
     var onlineNow = list.filter(function (s) { return s.online; }).length;
-    h += '<div class="card-actions"><span class="badge ' + (onlineNow ? 'healthy' : 'neutral') + '">' +
-      onlineNow + ' ' + t('presence_online_count') + '</span></div>';
+    meta = '<span class="badge ' + (onlineNow ? 'healthy' : 'neutral') + '">' +
+      onlineNow + ' ' + t('presence_online_count') + '</span>';
   }
-  h += '</div>';
+  var h = setFoldStart('presence', t('presence_title'), meta);
 
-  if (!list) {
-    h += '<div class="card-body muted small">…</div></div>';
-    return h;
-  }
+  if (!list) return h + '<div class="card-body muted small">…</div>' + setFoldEnd();
   if (!list.length) {
-    h += '<div class="card-body muted small">' + t('presence_empty') + '</div></div>';
-    return h;
+    return h + '<div class="card-body muted small">' + t('presence_empty') + '</div>' + setFoldEnd();
   }
 
   list.forEach(function (s) {
@@ -221,7 +292,7 @@ function presenceCard() {
         '<small>' + esc(roleLabel(s.role)) + ' · ' + presenceMinutesAgo(s.lastSeen) + '</small></span>' +
     '</div>';
   });
-  h += '</div>';
+  h += setFoldEnd();
   return h;
 }
 
@@ -275,8 +346,7 @@ function hardwareCard() {
   var cfg = (typeof Wedge !== 'undefined') ? Wedge.config() : { prefix: '', maxGapMs: 35 };
   var cam = (typeof Scan !== 'undefined') ? Scan.supported() : { native: false };
 
-  var h = '<div class="card mb"><div class="card-head"><h3>' + t('hw_title') + '</h3>' +
-    '<div class="card-actions muted small">' + t('hw_sub') + '</div></div><div class="card-body">';
+  var h = setFoldStart('hw', t('hw_title'), t('hw_sub')) + '<div class="card-body">';
 
   /* -- scanner -- */
   h += '<h4 class="hw-h">' + t('hw_scanner') + '</h4>' +
@@ -333,7 +403,7 @@ function hardwareCard() {
       '<button class="chip ' + (OG.rc.width === '58' ? 'on' : '') + '" data-act="rc-width" data-k="58">' + t('rc_58') + '</button>' +
     '</div>';
 
-  return h + '</div></div>';
+  return h + '</div>' + setFoldEnd();
 }
 
 /* ---- the 80mm thermal receipt --------------------------------------------
@@ -346,8 +416,7 @@ function receiptSettingsCard() {
   var demo = typeof Auth === 'undefined';
   var dis = demo ? ' disabled' : '';
 
-  var h = '<div class="card mb"><div class="card-head"><h3>' + t('rc3_title') + '</h3>' +
-    '<div class="card-actions muted small">' + t('rc3_sub') + '</div></div><div class="card-body">';
+  var h = setFoldStart('receipt', t('rc3_title'), t('rc3_sub')) + '<div class="card-body">';
 
   if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
 
@@ -439,7 +508,7 @@ function receiptSettingsCard() {
   h += '<div class="mt"><button class="btn btn-primary" data-act="rc-save-config"' + dis + '>' +
     t('rc3_save') + '</button></div>';
 
-  return h + '</div></div>';
+  return h + '</div>' + setFoldEnd();
 }
 
 /* ---- thermal product labels (XP-235B) -------------------------------------
@@ -455,8 +524,7 @@ function thermalLabelsCard() {
   var dis = demo || !canPrint ? ' disabled' : '';
   var cdis = canConfig ? '' : ' disabled';
 
-  var h = '<div class="card mb"><div class="card-head"><h3>' + t('lbl_thermal_section') + '</h3>' +
-    '<div class="card-actions muted small">' + t('lbl_thermal_sub') + '</div></div><div class="card-body">';
+  var h = setFoldStart('labels', t('lbl_thermal_section'), t('lbl_thermal_sub')) + '<div class="card-body">';
 
   if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
   else if (!canPrint) h += '<div class="partner-note note-warn mb">' + t('no_access') + '</div>';
@@ -521,7 +589,7 @@ function thermalLabelsCard() {
   '</div>';
   h += '<div class="mt"><button class="btn btn-primary"' + cdis + ' data-act="lbl-save-config">' + t('lbl_save') + '</button></div>';
 
-  return h + '</div></div>';
+  return h + '</div>' + setFoldEnd();
 }
 
 /* Which model each shelf is for — the coarse list beside the map, for the
@@ -530,77 +598,26 @@ function thermalLabelsCard() {
    so both surfaces hit PATCH /api/shelves/:id through one flow, warnings and
    stale-label counts included. */
 function shelvesCard() {
-  return '<div class="card"><div class="card-head"><h3>' + t('sm_shelves_title') + '</h3>' +
-    '<div class="head-actions">' +
-      '<button class="btn btn-ghost" data-act="nav" data-view="warehouse" data-tab="map">' +
-        t('sm_open_map') + '</button>' +
-    '</div></div>' +
-    '<div class="card-body"><div class="sub" style="margin-bottom:10px">' + t('sm_shelves_sub') + '</div>' +
-    '<div id="setShelves"><span class="muted">…</span></div>' +
-    '</div></div>';
+  /* The map button moved out of the head when the head became the fold
+     switch: a button sitting inside the thing you click to open a section is
+     a target people miss in both directions. */
+  return setFoldStart('shelves', t('sm_shelves_title'), '') +
+    '<div class="card-body">' +
+      '<div class="fold-row"><div class="sub">' + t('sm_shelves_sub') + '</div>' +
+        '<button class="btn btn-ghost btn-sm" data-act="nav" data-view="warehouse" data-tab="map">' +
+          t('sm_open_map') + '</button></div>' +
+      '<div id="setShelves"><span class="muted">…</span></div>' +
+    '</div>' + setFoldEnd();
 }
 
-function viewSettings() {
-  var h = '<div class="page-head"><div><h1>' + t('settings_title') + '</h1>' +
-    '<div class="sub">' + t('settings_sub') + '</div></div>' +
-    '<div class="head-actions">' + exportButtons() +
-      '<button class="btn btn-primary" data-act="settings-save">' + t('save_changes') + '</button></div></div>';
-
-  h += hardwareCard();
-
-  h += receiptSettingsCard();
-
-  h += thermalLabelsCard();
-
-  h += shelvesCard();
-
-  h += presenceCard();
-
-  h += rolesCard();
-
-  h += '<div class="set-grid">';
-
-  h += '<div class="card"><div class="card-head"><h3>' + t('exchange_rate') + '</h3></div><div class="card-body">' +
-    '<label class="field"><span>' + t('rate_hint') + '</span>' +
-      '<input class="inp num" id="setRate" type="number" value="' + CONFIG.EXCHANGE_RATE + '" data-change="set-rate"></label>' +
-    '<div class="partner-note">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP · ' +
-      (OG.lang === 'ar' ? 'كل الأسعار في النظام تتحدّث فوراً' : 'every price in the system updates instantly') + '</div>' +
-  '</div></div>';
-
-  h += '<div class="card"><div class="card-head"><h3>' + t('loyalty_rules') + '</h3></div><div class="card-body">' +
-    '<div class="row2">' +
-      '<label class="field"><span>' + t('points_per') + '</span><input class="inp num" type="number" min="0" ' +
-        'value="' + CONFIG.LOYALTY_POINTS_PER_1000 + '" data-change="set-pts"></label>' +
-      '<label class="field"><span>' + t('point_value') + '</span><input class="inp num" type="number" min="0" ' +
-        'value="' + CONFIG.LOYALTY_POINT_VALUE + '" data-change="set-ptval"></label>' +
-    '</div>' +
-    '<div class="partner-note">500 ' + t('points') + ' = ' + money(500 * CONFIG.LOYALTY_POINT_VALUE) + '</div>' +
-    '<div class="mt"><div class="lbl">' + t('tier') + '</div>' +
-      '<span class="badge bronze">' + t('bronze') + ' 0–' + nf(CONFIG.TIER_SILVER - 1) + '</span> ' +
-      '<span class="badge silver">' + t('silver') + ' ' + nf(CONFIG.TIER_SILVER) + '–' + nf(CONFIG.TIER_GOLD - 1) + '</span> ' +
-      '<span class="badge gold">' + t('gold') + ' ' + nf(CONFIG.TIER_GOLD) + '+</span></div>' +
-  '</div></div>';
-
-  /* The escape hatch for a laggy projector or a remote-desktop demo. Writes
-     body[data-motion], which the reduced-motion rules already honour, so no
-     screen needs to know about it. */
-  var moOff = document.body.getAttribute('data-motion') === 'off';
-  h += '<div class="card"><div class="card-head"><h3>' + t('mo_title') + '</h3></div>' +
+/* ---- the shop's own details ----------------------------------------------
+   The five cards below used to be written inline inside viewSettings() and
+   laid out in a two-column grid. They are functions now for one reason: a
+   fold needs a head with a summary on it, and a summary is a line of code,
+   not a line of markup. */
+function brandingCard() {
+  return setFoldStart('brand', t('branding'), esc(CONFIG.SHOP_NAME)) +
     '<div class="card-body">' +
-      '<div class="rule-row"><div class="rr-txt"><b>' + t('mo_animations') + '</b>' +
-        '<small>' + t('mo_hint') + '</small></div>' +
-        '<label class="switch"><input type="checkbox"' + (moOff ? '' : ' checked') +
-          ' data-change="set-motion"><i></i></label></div>' +
-    '</div></div>';
-
-  h += '<div class="card"><div class="card-head"><h3>' + t('reminders') + '</h3></div>';
-  REMINDER_RULES.forEach(function (r) {
-    h += '<div class="rule-row"><div class="rr-txt"><b>' + r[0] + '</b><small>' + r[1] + '</small></div>' +
-      '<label class="switch"><input type="checkbox"' + (r[2] ? ' checked' : '') + '><i></i></label></div>';
-  });
-  h += '</div>';
-
-  h += '<div class="card"><div class="card-head"><h3>' + t('branding') + '</h3></div><div class="card-body">' +
     '<div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">' +
       '<div class="brand-mark" style="width:56px;height:56px"><img src="assets/logo.svg" alt="OG"></div>' +
       '<div style="flex:1"><label class="field" style="margin:0"><span>' + t('shop_name') + '</span>' +
@@ -616,7 +633,103 @@ function viewSettings() {
     '</div>' +
     '<label class="field"><span>' + t('phone') + '</span><input class="inp num" dir="ltr" id="setAddr" ' +
       'value="' + esc(CONFIG.SHOP_ADDRESS) + '" data-change="set-addr"></label>' +
-  '</div></div>';
+    '</div>' + setFoldEnd();
+}
+
+/* Every dollar price on every screen converts through this one number, so the
+   rate itself is what the shut head says. */
+function rateCard() {
+  /* The summary is an LTR run inside what may be an RTL page: unmarked, the
+     leading 1 is dragged to the far end and the head reads 'USD = 130 SYP 1'. */
+  return setFoldStart('rate', t('exchange_rate'),
+      '<span dir="ltr">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP</span>') +
+    '<div class="card-body">' +
+    '<label class="field"><span>' + t('rate_hint') + '</span>' +
+      '<input class="inp num" id="setRate" type="number" value="' + CONFIG.EXCHANGE_RATE + '" data-change="set-rate"></label>' +
+    '<div class="partner-note">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP · ' +
+      (OG.lang === 'ar' ? 'كل الأسعار في النظام تتحدّث فوراً' : 'every price in the system updates instantly') + '</div>' +
+    '</div>' + setFoldEnd();
+}
+
+function loyaltyCard() {
+  return setFoldStart('loyalty', t('loyalty_rules'),
+      '<span dir="ltr">' + CONFIG.LOYALTY_POINTS_PER_1000 + ' / 1,000</span> ' +
+      t('points').toLowerCase()) +
+    '<div class="card-body">' +
+    '<div class="row2">' +
+      '<label class="field"><span>' + t('points_per') + '</span><input class="inp num" type="number" min="0" ' +
+        'value="' + CONFIG.LOYALTY_POINTS_PER_1000 + '" data-change="set-pts"></label>' +
+      '<label class="field"><span>' + t('point_value') + '</span><input class="inp num" type="number" min="0" ' +
+        'value="' + CONFIG.LOYALTY_POINT_VALUE + '" data-change="set-ptval"></label>' +
+    '</div>' +
+    '<div class="partner-note">500 ' + t('points') + ' = ' + money(500 * CONFIG.LOYALTY_POINT_VALUE) + '</div>' +
+    '<div class="mt"><div class="lbl">' + t('tier') + '</div>' +
+      '<span class="badge bronze">' + t('bronze') + ' 0–' + nf(CONFIG.TIER_SILVER - 1) + '</span> ' +
+      '<span class="badge silver">' + t('silver') + ' ' + nf(CONFIG.TIER_SILVER) + '–' + nf(CONFIG.TIER_GOLD - 1) + '</span> ' +
+      '<span class="badge gold">' + t('gold') + ' ' + nf(CONFIG.TIER_GOLD) + '+</span></div>' +
+    '</div>' + setFoldEnd();
+}
+
+/* The escape hatch for a laggy projector or a remote-desktop demo. Writes
+   body[data-motion], which the reduced-motion rules already honour, so no
+   screen needs to know about it. */
+function motionCard() {
+  var moOff = document.body.getAttribute('data-motion') === 'off';
+  return setFoldStart('motion', t('mo_title'), t(moOff ? 'set_off' : 'set_on')) +
+    '<div class="card-body">' +
+      '<div class="rule-row"><div class="rr-txt"><b>' + t('mo_animations') + '</b>' +
+        '<small>' + t('mo_hint') + '</small></div>' +
+        '<label class="switch"><input type="checkbox"' + (moOff ? '' : ' checked') +
+          ' data-change="set-motion"><i></i></label></div>' +
+    '</div>' + setFoldEnd();
+}
+
+function remindersCard() {
+  var on = REMINDER_RULES.filter(function (r) { return r[2]; }).length;
+  var h = setFoldStart('reminders', t('reminders'),
+    '<span dir="ltr">' + on + ' / ' + REMINDER_RULES.length + '</span>');
+  REMINDER_RULES.forEach(function (r) {
+    h += '<div class="rule-row"><div class="rr-txt"><b>' + r[0] + '</b><small>' + r[1] + '</small></div>' +
+      '<label class="switch"><input type="checkbox"' + (r[2] ? ' checked' : '') + '><i></i></label></div>';
+  });
+  return h + setFoldEnd();
+}
+
+/* Eleven folds under five headings, in the order somebody actually walks in
+   here: the shop's own numbers first, then the machines it prints on, then
+   the warehouse, then people, then the two switches nobody touches twice a
+   year. The old two-column .set-grid is gone — with the bodies shut, a grid
+   of heads reads as a wall of tiles, and a single column reads as a list. */
+function viewSettings() {
+  var h = '<div class="page-head"><div><h1>' + t('settings_title') + '</h1>' +
+    '<div class="sub">' + t('settings_sub') + '</div></div>' +
+    '<div class="head-actions">' +
+      '<button class="btn btn-ghost btn-sm" data-act="set-folds" data-k="open">' + t('set_expand') + '</button>' +
+      exportButtons() +
+      '<button class="btn btn-primary" data-act="settings-save">' + t('save_changes') + '</button></div></div>';
+
+  h += '<div class="set-list">';
+
+  h += setSection(t('setg_shop'));
+  h += brandingCard();
+  h += rateCard();
+  h += loyaltyCard();
+
+  h += setSection(t('setg_print'));
+  h += receiptSettingsCard();
+  h += thermalLabelsCard();
+  h += hardwareCard();
+
+  h += setSection(t('setg_wh'));
+  h += shelvesCard();
+
+  h += setSection(t('setg_people'));
+  h += presenceCard();
+  h += rolesCard();
+
+  h += setSection(t('setg_system'));
+  h += remindersCard();
+  h += motionCard();
 
   h += '</div>';
   return h;

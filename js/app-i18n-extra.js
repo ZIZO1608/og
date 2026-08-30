@@ -115,6 +115,12 @@ var EXTRA_V3_EN = {
 
   /* per-piece print picks at the till */
   sb_collapse: 'Collapse / expand the sidebar',
+
+  /* Settings, folded */
+  set_expand: 'Expand all', set_collapse: 'Collapse all',
+  set_on: 'On', set_off: 'Off',
+  setg_shop: 'The shop', setg_print: 'Printing and hardware',
+  setg_wh: 'Warehouse', setg_people: 'People and access', setg_system: 'System',
   sync_now: 'Upload everything to Supabase',
   sync_done: 'Mirror updated in {s}s',
   sync_busy: 'A sync is already running — give it a moment.',
@@ -223,6 +229,11 @@ var EXTRA_V3_AR = {
   yl_turnaround: 'متوسط مدة الإنجاز', yl_turnaround_sub: 'من استلام الطلب حتى التسليم',
 
   sb_collapse: 'طي / توسيع القائمة الجانبية',
+
+  set_expand: 'فتح الكل', set_collapse: 'طي الكل',
+  set_on: 'مفعّلة', set_off: 'مطفأة',
+  setg_shop: 'المحل', setg_print: 'الطباعة والأجهزة',
+  setg_wh: 'المستودع', setg_people: 'الموظفون والصلاحيات', setg_system: 'النظام',
   sync_now: 'رفع كل البيانات إلى Supabase',
   sync_done: 'تم تحديث النسخة خلال {s} ثانية',
   sync_busy: 'هناك مزامنة جارية بالفعل — انتظر قليلاً.',
