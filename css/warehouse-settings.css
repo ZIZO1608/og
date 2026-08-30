@@ -501,7 +501,14 @@ body.rtl .toast { animation-name: toastInR; }
 .sm-pl-rack:hover { border-color: #6a6a72; color: var(--foreground); }
 .sm-pl-rack.on { background: #FFFFFF; border-color: #FFFFFF; color: #0A0A0B; }
 .sm-pl-rack.on b { color: #0A0A0B; }
-.sm-pl-w .sm-pl-rack, .sm-pl-e .sm-pl-rack { writing-mode: vertical-rl; min-width: 24px; padding: 7px 3px; }
+/* text-orientation: upright is not cosmetic. vertical-rl on its own rotates
+   Latin glyphs 90°, and a rotated N reads as a Z — a rack letter that rides
+   in every barcode must never display as a different letter. Upright keeps
+   each glyph facing the reader whichever wall the bar stands on. */
+.sm-pl-w .sm-pl-rack, .sm-pl-e .sm-pl-rack {
+  writing-mode: vertical-rl; text-orientation: upright;
+  min-width: 26px; padding: 7px 3px;
+}
 .sm-pl-loose { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; font-size: 11.5px; }
 
 /* ---- the peek ------------------------------------------------------------
