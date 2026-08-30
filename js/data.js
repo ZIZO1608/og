@@ -148,6 +148,11 @@ var CONFIG = {
   RECEIPT_AUTO_PRINT: true,
   RECEIPT_COPIES: 2,
   RECEIPT_CUT_MODE: 'partial',
+  /* 'normal' | 'dark' | 'darker' — how black a pixel must be before the
+     thermal head burns a dot for it. See 025_receipt_ink.sql: 'dark' is the
+     default because 'normal' (the neutral 128) was printing every small line
+     on the receipt as a grey ghost. */
+  RECEIPT_INK: 'dark',
 
   /* Thermal product labels (Xprinter XP-235B, TSPL) — a separate printer
      from the receipt, a separate config namespace. Demo-mode defaults only;
@@ -2108,6 +2113,7 @@ var DB = {
     CONFIG.RECEIPT_CONFIRM_PRINT = bool('receipt.confirm_print', CONFIG.RECEIPT_CONFIRM_PRINT);
     CONFIG.RECEIPT_COPIES       = num('receipt.copies', CONFIG.RECEIPT_COPIES);
     if (cfg['receipt.cut_mode'] !== undefined) CONFIG.RECEIPT_CUT_MODE = cfg['receipt.cut_mode'];
+    if (cfg['receipt.ink'] !== undefined) CONFIG.RECEIPT_INK = cfg['receipt.ink'];
 
     /* ---- thermal product labels ------------------------------------------- */
     if (cfg['label.default_preset'] !== undefined) CONFIG.LABEL_DEFAULT_PRESET = cfg['label.default_preset'];

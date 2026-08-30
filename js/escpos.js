@@ -27,9 +27,24 @@ var ESCPOS = (function () {
      nothing here has to track where one band ended. */
   var BAND_ROWS = 256;
 
-  /* Below this, a pixel burns. Anti-aliased text is fine — its edge pixels
-     land on whichever side of 128 they're closer to, which is exactly what
-     "the threshold handles it" means. */
+  /* Below this luma, a pixel burns.
+     ------------------------------------------------------------------------
+     128 is the neutral midpoint and it is the WRONG default for a thermal
+     head, which is what this comment used to get backwards: it claimed
+     anti-aliased text was fine because its edge pixels "land on whichever
+     side of 128 they're closer to". True, and beside the point. At 203 dpi a
+     small letter is nothing BUT edge pixels — a stem under one dot wide has
+     no solid core to land on either side of anything. Half its pixels come
+     out grey-150 and are discarded as white paper, and the line prints faint
+     and broken while looking perfect on screen. That was live on the shop's
+     XP-T80A for every line under 18px.
+
+     A thermal dot also bleeds slightly on contact, so a bitmap that is
+     deliberately heavier than neutral is what prints correctly. How much
+     heavier depends on the roll, the head's age and the printer's own density
+     setting, so the caller passes it: receipt.ink in config, surfaced in
+     Settings as Normal / Dark / Darker. This constant stays at 128 as the
+     module's own default so nothing that doesn't ask changes behaviour. */
   var BURN_LUMA = 128;
 
   /* ------------------------------------------------------------- threshold */
@@ -37,9 +52,10 @@ var ESCPOS = (function () {
   /* 1 canvas px = 1 printer dot, packed 8 horizontal pixels per byte, MSB
      first — exactly what GS v 0 expects. Width must already be a multiple
      of 8; the receipt is drawn at 576px so this always holds. */
-  function packBitmap(canvas) {
+  function packBitmap(canvas, burnLuma) {
     var w = canvas.width, h = canvas.height;
     if (w % 8 !== 0) throw new Error('ESCPOS: canvas width must be a multiple of 8, got ' + w);
+    var cut = burnLuma || BURN_LUMA;
 
     var ctx = canvas.getContext('2d');
     var img = ctx.getImageData(0, 0, w, h).data;
@@ -55,7 +71,7 @@ var ESCPOS = (function () {
           var x = bx * 8 + bit;
           var i = (rowBase + x) * 4;
           var luma = img[i] * 0.299 + img[i + 1] * 0.587 + img[i + 2] * 0.114;
-          if (luma < BURN_LUMA) byte |= (1 << (7 - bit));
+          if (luma < cut) byte |= (1 << (7 - bit));
         }
         out[outRowBase + bx] = byte;
       }
@@ -101,7 +117,7 @@ var ESCPOS = (function () {
      clears the tear bar, then the cut. */
   function build(canvas, opts) {
     opts = opts || {};
-    var bmp = packBitmap(canvas);
+    var bmp = packBitmap(canvas, opts.burnLuma);
     var chunks = [initCmd()];
 
     for (var y = 0; y < bmp.height; y += BAND_ROWS) {

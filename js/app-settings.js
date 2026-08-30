@@ -484,6 +484,18 @@ function receiptSettingsCard() {
       '</div></label>' +
   '</div>';
 
+  /* Print darkness. Not a cosmetic preference — this is the knob that decides
+     whether the small print reaches the paper at all, so it sits on the card
+     with a hint rather than being buried. Three named steps and no raw number:
+     the person adjusting it is holding a receipt that came out too faint. */
+  h += '<label class="field"><span>' + t('rc3_ink') + '</span>' +
+    '<div class="chip-row" id="rcInk" data-v="' + esc(CONFIG.RECEIPT_INK) + '">' +
+      ['normal', 'dark', 'darker'].map(function (k) {
+        return '<button class="chip ' + (CONFIG.RECEIPT_INK === k ? 'on' : '') + '"' + dis +
+          ' data-act="rc-ink" data-k="' + k + '">' + t('rc3_ink_' + k) + '</button>';
+      }).join('') +
+    '</div><small class="faint">' + t('rc3_ink_hint') + '</small></label>';
+
   [['rcShowBarcode', 'rc3_show_barcode', CONFIG.RECEIPT_SHOW_BARCODE],
    ['rcShowLoyalty', 'rc3_show_loyalty', CONFIG.RECEIPT_SHOW_LOYALTY]
   ].forEach(function (f) {

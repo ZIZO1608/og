@@ -1,0 +1,47 @@
+-- =============================================================================
+--  How black a pixel has to be before the thermal head burns a dot for it
+-- -----------------------------------------------------------------------------
+--  Every line on the receipt smaller than the item names came off the shop's
+--  XP-T80A faint and patchy, while the on-screen preview was perfect. That
+--  split is the whole diagnosis: the layout, the data and the fonts were
+--  fine, and what failed was the step that turns the picture into printer
+--  dots.
+--
+--  At 203 dpi one canvas pixel is one printer dot, 0.125mm. js/receipt.js was
+--  drawing lines at 13, 14, 15, 16 and 17px -- 3.7pt to 4.8pt -- where a
+--  letter's stem is thinner than a single dot and renders as a half-lit grey
+--  pixel with no solid core. js/escpos.js then thresholded at luma 128, the
+--  neutral midpoint, and threw those pixels away as white paper. Some pixels
+--  of each letter survived and some did not, which is exactly what "faint and
+--  broken" looks like.
+--
+--  Two of the three fixes are code and need no setting: a hard 18px floor on
+--  printed type, and a 0.8px stroke around small glyphs so a one-dot stem
+--  widens to nearly two. This key is the third.
+--
+--  IT IS A SETTING AND NOT A CONSTANT ON PURPOSE. A thermal dot bleeds
+--  slightly on contact, so the bitmap that prints correctly is deliberately
+--  heavier than neutral -- but how much heavier depends on the paper roll,
+--  the age of the head and the printer's own density setting, none of which
+--  can be measured from here. Hardcoding a second guess would only move the
+--  problem. Three named steps, because the person turning this knob is
+--  standing at a till holding a receipt that is too faint:
+--
+--      normal -> 128    the neutral midpoint; what was printing badly
+--      dark   -> 168    the default
+--      darker -> 195    for a tired head or a cheap roll
+--
+--  DEFAULTS TO 'dark', NOT 'normal'. 'normal' is the value that is broken
+--  today, and a fix nobody finds is not a fix. Somebody who wants the old
+--  behaviour back can pick it in Settings -> Receipt.
+--
+--  Falls under CONFIG_WRITABLE's existing ^receipt\. prefix in
+--  server/index.js, and server/lib/printing.js's configBlock() already
+--  forwards every receipt.* key generically -- no route change. config is a
+--  Mirror-shape table in the Supabase sync (pushed whole every run), so the
+--  row travels with no sync change either.
+-- =============================================================================
+
+INSERT INTO config (key, value, updated_at) VALUES
+  ('receipt.ink', 'dark', '1970-01-01T00:00:00.000Z')
+ON CONFLICT (key) DO NOTHING;

@@ -25,14 +25,45 @@ var Receipt = (function () {
   var W = 576;                    // 72mm at 203dpi — never scaled after draw
   var PAD = 24;                   // ~3mm margin each side
   var CW = W - PAD * 2;           // content width
-  var FONT = "'Montserrat', 'Segoe UI', Tahoma, sans-serif";
-  /* Arabic has no glyphs in the vendored Montserrat subset (Latin/Cyrillic/
-     Vietnamese only) — the same stack app-wide RTL text already uses in
-     css/style.css, so Arabic silently falls back to Segoe UI/Tahoma there
-     too. Using the identical stack here means the receipt matches what the
-     rest of the app already renders, not a second, untested font choice. */
+  var FONT = "'Montserrat', 'Cairo', 'Segoe UI', Tahoma, sans-serif";
+  /* Montserrat first and it keeps every Latin glyph — its @font-face blocks
+     carry unicode-ranges (Latin/Cyrillic/Vietnamese) that exclude Arabic
+     entirely, so an Arabic character skips it and lands on Cairo.
+
+     CAIRO IS HERE FOR THE SAME REASON js/labels60.js USES IT, and it took a
+     printer to find out. This stack used to end at 'Segoe UI', Tahoma, which
+     meant the receipt's Arabic was drawn in whatever the machine happened to
+     have, at weight 400. On screen that is invisible; at 203 dpi a weight-400
+     Arabic stroke is under one printer dot wide and comes off the paper as a
+     grey ghost. assets/fonts/fonts.css says it plainly, written when the
+     60x40 labels hit this first: "Lighter weights lose their dots at this
+     density."
+
+     Cairo ships at weight 700 only, so ALL Arabic on the receipt is bold.
+     That is deliberate, not a side effect. */
+
+  /* NOTHING IS DRAWN BELOW THIS, EVER.
+     18 dots at 203dpi is about 2.25mm — roughly 5pt. Below it a letter's stem
+     is thinner than a single printer dot, so it renders as a half-lit grey
+     pixel and js/escpos.js's threshold then throws it away: the line comes off
+     the paper faint and patchy, some pixels of each letter surviving and some
+     not. This receipt used to draw at 13, 14, 15, 16 and 17 — 3.7pt to 4.8pt —
+     and every one of those lines was unreadable on the XP-T80A while looking
+     perfect on screen. Screen pixels are free; printer dots are not. */
+  var MIN_SIZE = 18;
+  function sz(n) { return Math.max(MIN_SIZE, n || 20); }
 
   var MINOR_EXP = { USD: 2, SYP: 0 };   // fixed for this shop — see CLAUDE.md
+
+  /* How black a pixel has to be before js/escpos.js burns a dot for it.
+     Three named steps rather than a raw number, because the person turning
+     this knob is standing at a till holding a receipt that is too faint, not
+     reading a luma histogram. 'dark' is the default and the fix: 'normal' is
+     the neutral 128 that was printing small text as a grey ghost. */
+  var INK = { normal: 128, dark: 168, darker: 195 };
+  function burnLuma() {
+    return INK[(typeof CONFIG !== 'undefined' && CONFIG.RECEIPT_INK) || 'dark'] || INK.dark;
+  }
 
   /* ------------------------------------------------------------- loading */
 
@@ -76,10 +107,22 @@ var Receipt = (function () {
     return tgMarkPromise;
   }
 
+  /* document.fonts.ready only waits for faces the page has already ASKED for,
+     and Cairo is font-display:block and untouched until something actually
+     renders Arabic. Without the explicit load() below, the first receipt after
+     a reload draws its Arabic in the Segoe UI fallback and every later one
+     draws it in Cairo — the same sale, printed twice, coming out in two
+     different fonts.
+
+     The load is allowed to fail and is swallowed: a missing font must never be
+     the reason a sale cannot print. Falling back to Segoe UI is a worse
+     receipt; throwing here would be no receipt at all. */
   function fontsReady() {
-    return (typeof document !== 'undefined' && document.fonts && document.fonts.ready)
-      ? document.fonts.ready
+    if (typeof document === 'undefined' || !document.fonts) return Promise.resolve();
+    var pre = document.fonts.load
+      ? Promise.resolve(document.fonts.load('700 24px Cairo', 'ش'))['catch'](function () {})
       : Promise.resolve();
+    return pre.then(function () { return document.fonts.ready; });
   }
 
   /* -------------------------------------------------------------- format */
@@ -166,13 +209,39 @@ var Receipt = (function () {
 
   function textAt(ctx, text, x, y, opts) {
     opts = opts || {};
+    var size = sz(opts.size);
+    var str = String(text == null ? '' : text);
     ctx.save();
-    setFont(ctx, opts.size || 20, opts.weight);
+    setFont(ctx, size, opts.weight);
     ctx.direction = opts.dir || 'ltr';
     ctx.textAlign = opts.align || 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = opts.color || '#000';
-    ctx.fillText(String(text == null ? '' : text), x, y);
+
+    /* FAUX-BOLD FOR THE SMALL SIZES, and this is what actually gets them onto
+       the paper. Even at the 18px floor a stem is only about one dot wide, so
+       it lands as a single half-lit pixel sitting right on js/escpos.js's
+       threshold — some survive, some don't, and the line reads as broken.
+       Stroking 0.8px around the glyph widens the stem to roughly 1.8 dots,
+       which thresholds to two solid ones.
+
+       strokeStyle tracks fillStyle rather than being hardcoded black, so this
+       also thickens the WHITE 'shop copy' text inside drawShopBand's black
+       band — the right direction there too, and it pays back the thinning that
+       a raised burn threshold would otherwise cost white-on-black.
+
+       Stops at 22 on purpose: item names, the totals and the amount-to-collect
+       already have stems two dots wide, and bolding those further just closes
+       up the counters of letters like e and a into black blobs. */
+    if (size < 22) {
+      ctx.lineWidth = 0.8;
+      ctx.lineJoin = 'round';
+      ctx.miterLimit = 2;
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.strokeText(str, x, y);
+    }
+
+    ctx.fillText(str, x, y);
     ctx.restore();
   }
 
@@ -195,9 +264,16 @@ var Receipt = (function () {
      upward into whatever was drawn before it. */
   function lineHeight(size) { return Math.round(size * 1.42); }
 
+  /* Every helper below clamps with sz() as its FIRST line, and every line
+     height and baseline it goes on to compute uses the clamped value. The
+     clamp deliberately does not live inside setFont(): hidden there, the
+     glyphs would grow while the spacing stayed at the size that was asked for,
+     and the next line's cap-height would reach back up into the block above
+     it — exactly the collision class the vertical convention above exists to
+     end. Clamp once, out in the open, and let the arithmetic follow. */
   function centerText(ctx, text, y, opts) {
     opts = opts || {};
-    var size = opts.size || 20;
+    var size = sz(opts.size);
     textAt(ctx, text, W / 2, y + size, {
       size: size, weight: opts.weight, dir: opts.dir, align: 'center', color: opts.color
     });
@@ -233,7 +309,7 @@ var Receipt = (function () {
      name breaks where the printed line actually would, not where a
      character count guesses it might. */
   function wrapText(ctx, text, maxWidth, size, weight) {
-    setFont(ctx, size, weight);
+    setFont(ctx, sz(size), weight);
     var words = String(text).split(/\s+/).filter(Boolean);
     var lines = [], cur = '';
     for (var i = 0; i < words.length; i++) {
@@ -256,13 +332,19 @@ var Receipt = (function () {
      label side first (right), value side second (left). */
   function labelRow(ctx, y, ar, en, value, opts) {
     opts = opts || {};
-    var arSize = opts.size || 22, enSize = Math.round(arSize * 0.68);
+    /* enSize is derived, not given, so it slipped under the floor on its own:
+       0.68 of a 20px label is 14, which is 4pt and unprintable. The English
+       sub-label ends up nearly the size of the Arabic it sits under, which
+       flattens the hierarchy — that is the price of the line existing at all
+       on paper rather than only on screen. */
+    var arSize = sz(opts.size || 22), enSize = sz(Math.round(arSize * 0.68));
     var arH = Math.round(arSize * 1.3), enH = Math.round(enSize * 1.35);
     textAt(ctx, ar, W - PAD, y + arSize, { size: arSize, weight: '600', dir: 'rtl', align: 'right' });
     textAt(ctx, en, W - PAD, y + arH + enSize - 2, { size: enSize, dir: 'ltr', align: 'right', color: '#000' });
     var blockH = arH + enH;
-    textAt(ctx, value, PAD, y + Math.round(blockH / 2) + Math.round((opts.valueSize || arSize) * 0.36),
-      { size: opts.valueSize || arSize, weight: opts.valueWeight || '700', dir: 'ltr', align: 'left' });
+    var valSize = sz(opts.valueSize || arSize);
+    textAt(ctx, value, PAD, y + Math.round(blockH / 2) + Math.round(valSize * 0.36),
+      { size: valSize, weight: opts.valueWeight || '700', dir: 'ltr', align: 'left' });
     return y + blockH + (opts.gap === undefined ? 10 : opts.gap);
   }
 
@@ -270,10 +352,14 @@ var Receipt = (function () {
      left side (the amount) — item detail lines and totals both use it. */
   function rowLR(ctx, y, right, left, opts) {
     opts = opts || {};
-    var size = opts.size || 20;
+    var size = sz(opts.size);
+    var leftSize = sz(opts.leftSize || size);
     textAt(ctx, right, W - PAD, y + size, { size: size, weight: opts.weight, dir: opts.dir || 'rtl', align: 'right' });
-    textAt(ctx, left, PAD, y + size, { size: opts.leftSize || size, weight: opts.leftWeight || opts.weight, dir: 'ltr', align: 'left' });
-    return y + Math.round(size * 1.5);
+    textAt(ctx, left, PAD, y + size, { size: leftSize, weight: opts.leftWeight || opts.weight, dir: 'ltr', align: 'left' });
+    /* Both columns share the one baseline at y + size, so the row has to be
+       tall enough for whichever of the two is bigger — leftSize can now be
+       clamped UP past size (a 15px value under a 19px label becomes 18). */
+    return y + Math.round(Math.max(size, leftSize) * 1.5);
   }
 
   /* A small square mark immediately left of a line of text, the pair centered
@@ -282,7 +368,7 @@ var Receipt = (function () {
      row's height is the icon's and the text is centred against it rather than
      the other way round. */
   function iconTextRow(ctx, y, iconImg, text, size) {
-    size = size || 15;
+    size = sz(size);
     setFont(ctx, size);
     var textW = ctx.measureText(String(text || '')).width;
     var iconSize = Math.round(size * 1.7), gap = 8;
@@ -405,15 +491,15 @@ var Receipt = (function () {
         y += 30;
       });
       if (it.size) {
-        textAt(ctx, L('rc2_size').ar + ' ' + it.size, W - PAD - 20, y + 17, { size: 17, dir: 'rtl', align: 'right' });
-        y += 24;
+        textAt(ctx, L('rc2_size').ar + ' ' + it.size, W - PAD - 20, y + 18, { size: 18, dir: 'rtl', align: 'right' });
+        y += 26;
       }
       y = rowLR(ctx, y,
         it.qty + ' × ' + western(it.unitPrice),
         western(it.qty * it.unitPrice),
         { size: 19 });
       if (it.lineDiscount) {
-        y = rowLR(ctx, y - 4, both('rc2_line_discount'), '− ' + western(it.lineDiscount), { size: 16 });
+        y = rowLR(ctx, y - 4, both('rc2_line_discount'), '− ' + western(it.lineDiscount), { size: 18 });
       }
       y += 6;
     });
@@ -440,28 +526,28 @@ var Receipt = (function () {
          Arabic suffix. */
       y = centerText(ctx, '≈ $' + western(R.secondCurrency.amount) +
         '  ·  1$ = ' + western(R.fxRate) + ' SYP',
-        y + 2, { size: 16, dir: 'ltr' });
+        y + 2, { size: 18, dir: 'ltr' });
     }
     return y + 6;
   }
 
   function drawPayment(ctx, y, R) {
     var lbl = payLabel(R.payment);
-    y = rowLR(ctx, y, both('rc2_payment'), lbl.ar + ' · ' + lbl.en, { size: 19, leftSize: 17 });
+    y = rowLR(ctx, y, both('rc2_payment'), lbl.ar + ' · ' + lbl.en, { size: 19, leftSize: 19 });
 
     /* The transfer reference, printed under the method it belongs to — the
        line somebody reads back over the phone weeks later. rowLR already
        draws the value column LTR, which is what these latin-digit references
        need on an otherwise Arabic receipt. */
     if (R.txnRef) {
-      y = rowLR(ctx, y, both('txn_ref'), String(R.txnRef), { size: 18, leftSize: 15 });
+      y = rowLR(ctx, y, both('txn_ref'), String(R.txnRef), { size: 18, leftSize: 18 });
     }
 
     if (R.toCollect) {
       y = dashRule(ctx, y + 6, 14);
       y = rowLR(ctx, y, L('rc2_to_collect').ar, fmtMoney(R.toCollect, R.currency, true),
         { size: 24, weight: '800', leftWeight: '800' });
-      y = centerText(ctx, L('rc2_to_collect').en, y, { size: 16, dir: 'ltr' });
+      y = centerText(ctx, L('rc2_to_collect').en, y, { size: 18, dir: 'ltr' });
     }
 
     if (R.pointsEarned && R.showLoyalty) {
@@ -474,7 +560,14 @@ var Receipt = (function () {
     y = dashRule(ctx, y);
     if (R.showBarcode) {
       y = drawBarcode(ctx, y, R.id);
-      y = centerText(ctx, both('rc2_scan_exchange'), y, { size: 13, dir: 'rtl' });
+      /* Wrapped rather than centred as one line: this caption carries the
+         Arabic and the English together and just grew from 13px to 18px, so
+         it is 1.38x wider than the line that used to fit. A centred line that
+         overruns 576 dots does not warn anybody — it simply prints with both
+         ends cut off. */
+      wrapText(ctx, both('rc2_scan_exchange'), CW, 18).forEach(function (ln) {
+        y = centerText(ctx, ln, y, { size: 18, dir: 'rtl' });
+      });
     }
     return y;
   }
@@ -488,9 +581,9 @@ var Receipt = (function () {
      logo) so a slow/broken asset load never blocks a receipt printing. */
   function drawContact(ctx, y, R, igImg, tgImg) {
     if (!R.instagram && !R.telegram && !R.mapsUrl) return y;
-    if (R.instagram) y = iconTextRow(ctx, y, igImg, shortUrl(R.instagram), 15);
-    if (R.telegram) y = iconTextRow(ctx, y, tgImg, shortUrl(R.telegram), 15);
-    if (R.mapsUrl) y = centerText(ctx, shortUrl(R.mapsUrl), y, { size: 13, dir: 'ltr' });
+    if (R.instagram) y = iconTextRow(ctx, y, igImg, shortUrl(R.instagram), 18);
+    if (R.telegram) y = iconTextRow(ctx, y, tgImg, shortUrl(R.telegram), 18);
+    if (R.mapsUrl) y = centerText(ctx, shortUrl(R.mapsUrl), y, { size: 18, dir: 'ltr' });
     return y + 6;
   }
 
@@ -498,13 +591,13 @@ var Receipt = (function () {
     if (!R.policyAr && !R.policyEn) return y;
     y = dashRule(ctx, y);
     if (R.policyAr) {
-      wrapText(ctx, R.policyAr, CW, 17).forEach(function (ln) {
-        y = centerText(ctx, ln, y, { size: 17, dir: 'rtl' });
+      wrapText(ctx, R.policyAr, CW, 20).forEach(function (ln) {
+        y = centerText(ctx, ln, y, { size: 20, dir: 'rtl' });
       });
     }
     if (R.policyEn) {
-      wrapText(ctx, R.policyEn, CW, 14).forEach(function (ln) {
-        y = centerText(ctx, ln, y, { size: 14, dir: 'ltr' });
+      wrapText(ctx, R.policyEn, CW, 18).forEach(function (ln) {
+        y = centerText(ctx, ln, y, { size: 18, dir: 'ltr' });
       });
     }
     return y + 4;
@@ -512,7 +605,7 @@ var Receipt = (function () {
 
   function drawFooter(ctx, y, R) {
     if (R.footerAr) y = centerText(ctx, R.footerAr, y, { size: 20, weight: '600', dir: 'rtl' });
-    if (R.footerEn) y = centerText(ctx, R.footerEn, y, { size: 15, dir: 'ltr' });
+    if (R.footerEn) y = centerText(ctx, R.footerEn, y, { size: 18, dir: 'ltr' });
     return y;
   }
 
@@ -722,7 +815,8 @@ var Receipt = (function () {
           printLocal(copies[0].canvas);
           return { local: true };
         }
-        var bytes = ESCPOS.buildJob([copies[0].canvas, copies[1].canvas], { cutMode: CONFIG.RECEIPT_CUT_MODE });
+        var bytes = ESCPOS.buildJob([copies[0].canvas, copies[1].canvas],
+          { cutMode: CONFIG.RECEIPT_CUT_MODE, burnLuma: burnLuma() });
         return sendToPrinter(ESCPOS.toBase64(bytes), saleId, 2);
       });
     });
