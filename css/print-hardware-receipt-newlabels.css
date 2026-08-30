@@ -374,9 +374,6 @@
    crispEdges is not cosmetic. Anti-aliased module edges land on half-dots,
    the head fires or does not fire on a coin toss, and the code stops
    scanning — with nothing on screen to suggest why. */
-.rcp-qr { text-align: center; margin: 3.5mm 0 2mm; }
-.rcp-qr svg { shape-rendering: crispEdges; width: 22mm; height: 22mm; }
-.rcp-qr-cap { font-size: 7.5pt; margin-top: .8mm; }
 
 /* ---- foot ---- */
 .rcp-foot { text-align: center; font-size: 8pt; line-height: 1.4; }
@@ -391,59 +388,77 @@
 }
 
 /* ------------------------------------------------------- PRINT-AND-TEAR
-   Plays once, the moment a sale completes (js/app-documents.js's
-   openReceipt wraps the receipt in .rc-fresh only when opts.newSale is
-   true — never on a reprint). Screen only: no @media print rule touches
-   this, so the physical printer output is completely unaffected either
-   way, and nothing here can slow the till down — the modal's own buttons
-   sit outside .rc-fresh and stay clickable throughout.
+   Plays once, on the receipt that just happened. Two places wear it:
 
-   Three beats sharing one timeline: the paper prints into view top-to-
-   bottom (clip-path, cheap for the compositor — no layout properties
-   animated), a bright head-line sweeps down with it, then a torn edge
-   settles onto the top of the now-fully-printed slip. Kept fast (~1s
-   total) on purpose — a cashier sees this dozens of times a shift, so
-   "high quality" here means precise and quick, not long.
+     .rc-fresh > .receipt   the HTML receipt that opens on sale completion
+                            (js/app-documents.js's openReceipt, only when
+                            opts.newSale is true — never on a reprint).
+     .rc-fresh > .rc-paper  the approval dialog's canvas preview
+                            (js/receipt.js's approve()) — the moment paper
+                            is actually committed to the printer.
+
+   The approval dialog needs the extra .rc-paper div because ::before and
+   ::after DO NOT RENDER ON A <canvas> — it is a replaced element, and the
+   print head and torn edge are both pseudo-elements. Pointing these rules
+   straight at the canvas would silently animate nothing. .rc-paper is a
+   plain div sized to the paper, so they have something real to hang on.
+
+   Screen only: no @media print rule touches any of this, so the physical
+   printer output is unaffected. Nothing here can slow the till down —
+   the modal's buttons sit outside .rc-fresh and stay clickable throughout.
+
+   Three beats on one timeline: the paper prints into view top-to-bottom
+   (clip-path, cheap for the compositor — no layout properties animated),
+   a bright head-line sweeps down with it, then a torn edge settles onto
+   the top of the finished slip. ~1.4s total: slow enough to actually be
+   seen (the first pass at ~1s went unnoticed by the person who asked for
+   it), still short enough that a cashier is never waiting on it.
 
    Respects prefers-reduced-motion / the manual motion-off toggle for
    free: both are already global rules in css/tokens.css that collapse
-   every animation-duration to .01ms on *, so nothing extra is needed
-   here for a reduced-motion viewer to just see the finished receipt. */
-.rc-fresh .receipt {
-  animation: rcPrintOut 620ms 160ms var(--e-out) both;
+   every animation-duration to .01ms on *, so a reduced-motion viewer
+   just sees the finished receipt with no extra rule needed here. */
+.rc-fresh .receipt,
+.rc-fresh .rc-paper {
+  animation: rcPrintOut 900ms 160ms var(--e-out) both;
   position: relative;
 }
+/* The canvas is sized by js/receipt.js (72mm, centred); .rc-paper matches
+   it so the print head spans exactly the paper, not the whole modal. */
+.rc-fresh .rc-paper { width: 72mm; max-width: 100%; margin: 0 auto; }
+.rc-fresh .rc-paper > canvas { display: block; width: 100%; }
 @keyframes rcPrintOut {
   from { clip-path: inset(0 0 100% 0); }
   to   { clip-path: inset(0 0 0% 0); }
 }
 
-/* The print head — a thin bright sweep that travels down with the paper,
-   then fades right as the tear beat begins. Same delay/duration/easing as
-   the reveal above so the two stay locked together with no JS needed to
-   keep them in sync. */
-.rc-fresh .receipt::after {
-  content: ''; position: absolute; inset-inline: 0; height: 3px;
-  background: linear-gradient(90deg, transparent, var(--brand) 35%, var(--brand) 65%, transparent);
-  box-shadow: 0 0 8px 1px var(--brand);
-  animation: rcHead 620ms 160ms var(--e-out) both, rcHeadFade 160ms 700ms var(--e-in) forwards;
+/* The print head — a bright sweep that travels down with the paper, then
+   fades as the tear beat begins. Same delay/duration/easing as the reveal
+   above, so the two stay locked together with no JS keeping them in sync. */
+.rc-fresh .receipt::after,
+.rc-fresh .rc-paper::after {
+  content: ''; position: absolute; inset-inline: 0; height: 4px; z-index: 2;
+  background: linear-gradient(90deg, transparent, var(--brand) 30%, var(--brand) 70%, transparent);
+  box-shadow: 0 0 14px 2px var(--brand);
+  animation: rcHead 900ms 160ms var(--e-out) both, rcHeadFade 200ms 1020ms var(--e-in) forwards;
 }
 @keyframes rcHead { from { top: 0; } to { top: 100%; } }
 @keyframes rcHeadFade { to { opacity: 0; } }
 
-/* The torn edge — a small jagged strip capping the top of the receipt,
-   appearing only once printing has finished (780ms in: 160ms start delay
-   + 620ms reveal). A quick settle (translateY overshoot easing back to 0)
-   sells "just separated from the roll" without animating an actual tear
-   sweeping across, which reads as fussier than the payoff is worth here. */
-.rc-fresh .receipt::before {
-  content: ''; position: absolute; inset-inline: 0; top: -7px; height: 10px;
+/* The torn edge — a jagged strip capping the top of the receipt, appearing
+   only once printing has finished (1060ms in: 160ms delay + 900ms reveal).
+   A quick settle (translateY overshoot easing back to 0) sells "just
+   separated from the roll" without animating a tear sweeping across, which
+   reads fussier than the payoff is worth. */
+.rc-fresh .receipt::before,
+.rc-fresh .rc-paper::before {
+  content: ''; position: absolute; inset-inline: 0; top: -8px; height: 11px; z-index: 3;
   background: #FFFFFF;
   clip-path: polygon(0% 0%, 100% 0%, 100% 40%, 92% 100%, 84% 40%, 76% 100%,
     68% 40%, 60% 100%, 52% 40%, 44% 100%, 36% 40%, 28% 100%, 20% 40%,
     12% 100%, 4% 40%, 0% 100%);
   opacity: 0;
-  animation: rcTear 260ms 780ms var(--e-out) both;
+  animation: rcTear 300ms 1060ms var(--e-out) both;
 }
 @keyframes rcTear {
   0%   { opacity: 0; transform: translateY(-6px); }
@@ -460,7 +475,7 @@
   }
   /* A long receipt runs onto a second length of roll; an item must not be
      torn in half across the cut. */
-  .rcp-name, .rcp-line, .rcp-grand, .rcp-qr { break-inside: avoid; }
+  .rcp-name, .rcp-line, .rcp-grand { break-inside: avoid; }
 }
 
 /* ==========================================================================
@@ -507,3 +522,152 @@
 .lbl-header { position: absolute; font-weight: 700; font-size: 6.5pt; font-family: var(--font-head), Arial, sans-serif; white-space: nowrap; }
 .lbl-price  { position: absolute; font-weight: 800; font-size: 9pt; font-family: var(--font-head), Arial, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lbl-date   { position: absolute; font-size: 5.5pt; color: #3F3F46; white-space: nowrap; }
+
+/* ==================================================== 60 x 40 mm LABELS
+   The roll actually loaded in the shop's XP-235B. Everything here is in real
+   millimetres, on screen and on paper both — the preview IS the label, which
+   is the only way to catch a layout that overflows before a hundred of them
+   have come off the roll.
+
+   203 dpi = 8 dots/mm, so this sticker is exactly 480 x 320 dots. A 3mm safe
+   margin on all four sides (the roll drifts as it feeds) leaves 54 x 34 mm.
+
+   PURE BLACK ON PURE WHITE, with no exceptions. Thermal paper has no grey:
+   the head either burns a dot or it does not, so a grey is dithered into
+   speckle and a shadow into dirt. No opacity, no border-radius softening, no
+   colour — not even for the warning states, which live in the controls above
+   the sheet rather than on the label itself. */
+
+.l60-sheet { display: flex; flex-wrap: wrap; gap: 4mm; }
+
+.l60 {
+  width: 60mm; height: 40mm;
+  box-sizing: border-box;
+  background: #FFFFFF; color: #000000;
+  /* Screen only — a dashed guide so the edge of the sticker is visible against
+     a white page. Removed for print, where it would be a real rectangle on
+     every label. */
+  border: .2mm dashed #999;
+  overflow: hidden;
+}
+
+.l60-in {
+  box-sizing: border-box;
+  width: 100%; height: 100%;
+  padding: 3mm;
+  display: flex; flex-direction: column;
+}
+
+/* Latin runs and digits keep Montserrat. Arabic gets Cairo, vendored at 700
+   in assets/fonts/fonts.css — Montserrat has no Arabic glyphs at all, and at
+   203 dpi a lighter weight loses the dots on its letters. */
+.l60 .lat { font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif; }
+.l60 .ar  { font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif; font-weight: 700; }
+
+/* ---- shelf label ---- */
+
+/* The room the person is already standing in: context, not the headline. */
+.l60-room {
+  font-size: 3.5mm; line-height: 3.5mm; height: 3.5mm;
+  overflow: hidden; white-space: nowrap;
+  text-align: start;
+}
+
+/* The whole point of the label — read from the far end of an aisle. */
+.l60-code {
+  font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif;
+  font-weight: 800;
+  font-size: 11.5mm; line-height: 12.1mm; height: 12.1mm;
+  letter-spacing: -.02em;
+  text-align: center;
+  margin-top: .6mm;
+  /* Western digits always. A shelf code is what somebody types into a search
+     box and what the scanner emits; Arabic-Indic digits here would be a
+     different string from the one in the barcode. */
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.l60-rule { height: .3mm; background: #000000; margin: .6mm 0; }
+
+/* What the shelf is FOR. Right-aligned because it is normally Arabic; the
+   height is held even when blank so every label in a batch is the same shape. */
+.l60-for {
+  font-size: 3.8mm; line-height: 4.2mm; height: 4.2mm;
+  overflow: hidden; white-space: nowrap;
+  text-align: end;
+}
+
+/* ---- product label ---- */
+
+.l60-top { display: flex; align-items: flex-start; gap: 2mm; height: 14mm; }
+
+/* Biggest thing on the label. Somebody picking off a shelf needs the size. */
+.l60-size {
+  font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif;
+  font-weight: 800;
+  font-size: 13mm; line-height: 14mm;
+  letter-spacing: -.04em;
+  flex: 0 0 auto;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.l60-meta { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.l60-name   { font-size: 3.6mm; line-height: 4mm; max-height: 8mm; overflow: hidden; text-align: end; }
+.l60-colour { font-size: 2.8mm; line-height: 3.2mm; height: 3.2mm; overflow: hidden; white-space: nowrap; text-align: end; }
+/* Arabic never goes below 3.5mm on this stock: under that the dots on the
+   letters merge at 203 dpi and the word turns into a smear. A colourway is
+   usually Latin ("Triple White") and 2.8mm is fine for it, but the field is
+   free text and the day somebody types it in Arabic it has to grow. */
+.l60-colour.ar { font-size: 3.5mm; line-height: 3.8mm; height: 3.8mm; }
+
+/* Where the pair goes back. Monospace so a hand-written correction next to it
+   is obviously not part of the code. */
+.l60-shelf {
+  font-family: Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 3.6mm; line-height: 4mm; height: 4mm;
+  margin-top: 1mm;
+  letter-spacing: .04em;
+}
+
+/* ---- barcode ---- */
+
+/* Pushed to the bottom of whatever space is left, so both labels put their
+   barcode in the same place on the roll. */
+.l60-bc { margin-top: auto; text-align: center; line-height: 0; }
+.l60-bc svg { display: inline-block; }
+
+/* The payload, printed so a damaged barcode can still be typed in. */
+.l60-hri {
+  font-family: Menlo, Consolas, monospace;
+  font-size: 2.6mm; line-height: 2.8mm; height: 2.8mm;
+  text-align: center; letter-spacing: .06em;
+}
+
+/* A label that could not be given a barcode. It is drawn rather than hidden:
+   a missing barcode is invisible until somebody holds a scanner to it. */
+.l60-bc-bad {
+  margin-top: auto;
+  font-size: 2.6mm; line-height: 3mm;
+  text-align: center;
+  border: .3mm solid #000000; padding: 1mm;
+}
+
+/* ---- the preview around the sheet ---- */
+
+.l60-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 12px; }
+.l60-controls .field { min-width: 140px; }
+.l60-head { color: var(--muted-foreground); font-size: 12.5px; margin-bottom: 10px; }
+
+@media print {
+  /* Each label IS a page: no gap, no crop border, one per sheet. The @page
+     size itself is injected at print time by setRollPageSize({w:60,h:40}) —
+     @page cannot read a CSS variable. */
+  body.roll-labels .l60-sheet { display: block; gap: 0; }
+  body.roll-labels .l60 {
+    border: 0; margin: 0;
+    page-break-after: always; break-after: page;
+  }
+  body.roll-labels .l60:last-child { page-break-after: auto; break-after: auto; }
+  .l60 svg { shape-rendering: crispEdges; }
+}

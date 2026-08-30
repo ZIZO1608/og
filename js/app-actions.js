@@ -491,10 +491,10 @@ var ACTIONS = {
       'receipt.telegram':     (document.getElementById('rcTelegram') || {}).value || '',
       'receipt.maps_url':     (document.getElementById('rcMapsUrl') || {}).value || '',
       'receipt.auto_print':   (document.getElementById('rcAutoPrint') || {}).checked ? '1' : '0',
+      'receipt.confirm_print': (document.getElementById('rcConfirmPrint') || {}).checked ? '1' : '0',
       'receipt.copies':       (document.getElementById('rcCopies') || {}).value || '2',
       'receipt.cut_mode':     ((document.getElementById('rcCutMode') || {}).getAttribute &&
                                 document.getElementById('rcCutMode').getAttribute('data-v')) || 'partial',
-      'receipt.show_qr':      (document.getElementById('rcShowQr') || {}).checked ? '1' : '0',
       'receipt.show_barcode': (document.getElementById('rcShowBarcode') || {}).checked ? '1' : '0',
       'receipt.show_loyalty': (document.getElementById('rcShowLoyalty') || {}).checked ? '1' : '0',
       'receipt.footer_ar':    (document.getElementById('rcFooterAr') || {}).value || '',

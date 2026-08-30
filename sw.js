@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v66';
+var CACHE = 'og-system-v71';
 
 var SHELL = [
   './',
@@ -31,6 +31,9 @@ var SHELL = [
   'css/bulk-gate-responsive.css',
   'css/print-hardware-receipt-newlabels.css',
   'assets/fonts/fonts.css',
+  /* Cairo carries the Arabic on a 60x40 thermal label; Montserrat has no
+     Arabic glyphs at all. Precached because the shop is regularly offline. */
+  'assets/fonts/Cairo-700.ttf',
   'assets/logo.svg',
   'assets/instagram-mark.svg',
   'assets/telegram-mark.svg',
@@ -49,6 +52,8 @@ var SHELL = [
   'js/receipt.js',
   'js/escpos.js',
   'js/labels.js',
+  'js/labels60.js',
+  'js/shelfmap.js',
   'js/shop.js',
   'js/charts.js',
   'js/pos.js',

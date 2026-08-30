@@ -176,12 +176,32 @@ var Receipt = (function () {
     ctx.restore();
   }
 
+  /* ONE VERTICAL CONVENTION, and this is it: every y in this module is the
+     TOP of the block about to be drawn, and every draw helper returns the top
+     of the next one. Nothing takes or returns a text baseline.
+
+     It used to be split. textAt/centerText took a BASELINE while rowLR,
+     labelRow and drawItems took a TOP, so composing them was only safe if
+     you remembered which kind each one was — and the failure is silent and
+     ugly: the next line's cap-height reaches back up into the block above
+     it. Every "a bare Npx gap let X creep into Y" comment in this file is
+     one of those collisions found on paper and patched with a magic number.
+     Two of them were still live: the QR caption printed through the
+     Instagram line, and a COD receipt's English "Amount to collect" printed
+     through the Arabic line above it.
+
+     Baseline sits one em below the top, matching what rowLR/labelRow already
+     do, so a line occupies [y, y + lineHeight) and its glyphs cannot escape
+     upward into whatever was drawn before it. */
+  function lineHeight(size) { return Math.round(size * 1.42); }
+
   function centerText(ctx, text, y, opts) {
     opts = opts || {};
-    textAt(ctx, text, W / 2, y, {
-      size: opts.size, weight: opts.weight, dir: opts.dir, align: 'center', color: opts.color
+    var size = opts.size || 20;
+    textAt(ctx, text, W / 2, y + size, {
+      size: size, weight: opts.weight, dir: opts.dir, align: 'center', color: opts.color
     });
-    return y + (opts.lineHeight || Math.round((opts.size || 20) * 1.4));
+    return y + (opts.lineHeight || lineHeight(size));
   }
 
   function dashRule(ctx, y, gap) {
@@ -256,24 +276,26 @@ var Receipt = (function () {
     return y + Math.round(size * 1.5);
   }
 
-  /* A small square mark immediately left of a line of text, the pair
-     centered together as one block — used for the Instagram/Telegram rows.
-     y is the text's baseline; the mark is sized off the text size and
-     nudged up so its visual center roughly lines up with the text's
-     x-height rather than sitting on the baseline itself. */
+  /* A small square mark immediately left of a line of text, the pair centered
+     together as one block — used for the Instagram/Telegram rows. y is the
+     TOP of the row (see centerText); the icon is taller than the text, so the
+     row's height is the icon's and the text is centred against it rather than
+     the other way round. */
   function iconTextRow(ctx, y, iconImg, text, size) {
     size = size || 15;
     setFont(ctx, size);
     var textW = ctx.measureText(String(text || '')).width;
     var iconSize = Math.round(size * 1.7), gap = 8;
     var hasIcon = !!iconImg;
+    var rowH = hasIcon ? iconSize : lineHeight(size);
     var totalW = (hasIcon ? iconSize + gap : 0) + textW;
     var x0 = Math.round((W - totalW) / 2);
-    if (hasIcon) {
-      ctx.drawImage(iconImg, x0, y - iconSize + Math.round(size * 0.28), iconSize, iconSize);
-    }
-    textAt(ctx, text, x0 + (hasIcon ? iconSize + gap : 0), y, { size: size, dir: 'ltr', align: 'left' });
-    return y + Math.round(size * 1.7);
+    if (hasIcon) ctx.drawImage(iconImg, x0, y, iconSize, iconSize);
+    /* Baseline that centres the text's x-height against the icon box. */
+    var baseline = y + Math.round((rowH + size * 0.72) / 2);
+    textAt(ctx, text, x0 + (hasIcon ? iconSize + gap : 0), baseline,
+      { size: size, dir: 'ltr', align: 'left' });
+    return y + rowH + 6;
   }
 
   /* ------------------------------------------------------ codes: barcode */
@@ -301,65 +323,14 @@ var Receipt = (function () {
     }
     ctx.restore();
 
-    /* centerText's y is a text BASELINE, and a 20px line's cap-height reaches
-       back up ~16px from it — a 10px gap after the bars let the human-
-       readable number cut into the bottom row of the barcode itself. */
-    y += barH + 26;
+    /* A plain gap now. It used to be 26 because centerText took a baseline and
+       most of it was swallowed reaching back up for the glyphs; with the top
+       convention the number simply starts 10px under the bars. */
+    y += barH + 10;
     /* Scanners fail sometimes, eyes don't — the number stays underneath in
        Western digits, always LTR regardless of the receipt's own direction. */
     y = centerText(ctx, text, y, { size: 20, dir: 'ltr' });
     return y + 8;
-  }
-
-  /* Draws one QR's modules centered on cx, sized to fit maxPx. Returns the
-     drawn side length (0 if there was nothing to draw) so the caller can
-     line up labels under whichever QR(s) actually rendered. */
-  function paintQr(ctx, qr, cx, y, maxPx) {
-    if (!qr) return 0;
-    var quiet = 3, total = qr.size + quiet * 2;
-    var scale = Math.max(1, Math.floor(maxPx / total));
-    var side = scale * total;
-    var x0 = Math.round(cx - side / 2);
-    ctx.save();
-    ctx.fillStyle = '#000';
-    for (var r = 0; r < qr.size; r++) {
-      for (var c = 0; c < qr.size; c++) {
-        if (qr.modules[r][c]) ctx.fillRect(x0 + (c + quiet) * scale, y + (r + quiet) * scale, scale, scale);
-      }
-    }
-    ctx.restore();
-    return side;
-  }
-
-  /* One QR (existing "view online" link) or two side by side (that one
-     plus the Telegram deep-link) — the receipt keeps both scannable
-     purposes rather than one replacing the other, confirmed with the shop
-     owner: the existing /i/:token web view and the new Telegram bot link
-     are genuinely separate destinations, not the same QR repointed.
-     `right` is optional; with it omitted this draws exactly like the
-     single-QR layout used to. */
-  function drawQrPair(ctx, y, left, right) {
-    if (typeof Codes === 'undefined' || !Codes.qrMatrix) return y;
-    var leftQr = left && (Codes.qrMatrix(left.payload) || (left.fallback && Codes.qrMatrix(left.fallback)));
-    var rightQr = right && (Codes.qrMatrix(right.payload) || (right.fallback && Codes.qrMatrix(right.fallback)));
-    if (!leftQr && !rightQr) return y;
-
-    var gap = 24;
-    var slot = rightQr ? Math.floor((CW - gap) / 2) : CW;
-    var maxPx = Math.min(200, slot);
-
-    var leftCx = rightQr ? (W / 2 - slot / 2 - gap / 2) : W / 2;
-    var rightCx = W / 2 + slot / 2 + gap / 2;
-
-    var leftSide = paintQr(ctx, leftQr, leftCx, y, maxPx);
-    var rightSide = paintQr(ctx, rightQr, rightCx, y, maxPx);
-    var maxSide = Math.max(leftSide, rightSide);
-
-    var labelY = y + maxSide + 20;
-    if (leftQr && left.label) textAt(ctx, left.label, leftCx, labelY, { size: 13, dir: 'rtl', align: 'center' });
-    if (rightQr && right.label) textAt(ctx, right.label, rightCx, labelY, { size: 13, dir: 'rtl', align: 'center' });
-
-    return labelY + 12;
   }
 
   /* ------------------------------------------------------------ sections */
@@ -370,12 +341,9 @@ var Receipt = (function () {
     var w = Math.min(maxW, logoImg.naturalWidth || maxW);
     var h = w * (logoImg.naturalHeight || w) / (logoImg.naturalWidth || w);
     ctx.drawImage(logoImg, Math.round((W - w) / 2), y, w, h);
-    /* Whatever follows this — the shop-copy band, or the header directly —
-       is drawn straight after. The header's first line is a 30px bold
-       centerText call, and centerText's y is a BASELINE: its cap-height
-       reaches back up ~22px, so a bare 14px gap let "OG SPORTS" creep into
-       the logo's own bottom edge (same bug as the barcode/shop-band text). */
-    return y + h + 28;
+    /* Same story as drawShopBand: 28 was baseline compensation for the 30px
+       header line, not breathing room. 14 is the breathing room. */
+    return y + h + 14;
   }
 
   /* Shop copy only: a solid black band right under the logo so the two
@@ -389,11 +357,9 @@ var Receipt = (function () {
     ctx.restore();
     textAt(ctx, both('rc2_shop_copy'), W / 2, y + 27,
       { size: 20, weight: '700', dir: 'rtl', align: 'center', color: '#fff' });
-    /* The header right after this is a 30px bold line whose cap-height
-       reaches back up ~26px from its own baseline — the same clearance
-       problem the barcode's human-readable text had against the bars above
-       it. A bare 16px gap let "OG SPORTS" creep into the black band. */
-    return y + h + 34;
+    /* Was 34 to clear the 30px header's cap-height back up from its baseline;
+       the header now starts at the y it is given, so this is just the gap. */
+    return y + h + 16;
   }
 
   function drawHeader(ctx, y, R) {
@@ -510,16 +476,6 @@ var Receipt = (function () {
       y = drawBarcode(ctx, y, R.id);
       y = centerText(ctx, both('rc2_scan_exchange'), y, { size: 13, dir: 'rtl' });
     }
-    if (R.showQr) {
-      y += 8;
-      y = drawQrPair(ctx,
-        y,
-        { payload: R.qrPayload, fallback: R.id, label: both('rc2_view_online') },
-        R.telegramQrPayload
-          ? { payload: R.telegramQrPayload, label: both('rc2_get_telegram') }
-          : null
-      );
-    }
     return y;
   }
 
@@ -616,29 +572,11 @@ var Receipt = (function () {
     return {
       footerAr: CONFIG.RECEIPT_FOOTER_AR, footerEn: CONFIG.RECEIPT_FOOTER_EN,
       policyAr: CONFIG.RECEIPT_POLICY_AR, policyEn: CONFIG.RECEIPT_POLICY_EN,
-      showQr: !!CONFIG.RECEIPT_SHOW_QR, showBarcode: !!CONFIG.RECEIPT_SHOW_BARCODE,
+      showBarcode: !!CONFIG.RECEIPT_SHOW_BARCODE,
       showLoyalty: !!CONFIG.RECEIPT_SHOW_LOYALTY,
       instagram: CONFIG.RECEIPT_INSTAGRAM, telegram: CONFIG.RECEIPT_TELEGRAM,
       mapsUrl: CONFIG.RECEIPT_MAPS_URL
     };
-  }
-
-  function qrPayloadFor(id, token) {
-    var base = String(CONFIG.PUBLIC_URL || '').trim().replace(/\/+$/, '');
-    if (token && /^https:\/\//i.test(base) && !/github\.io/i.test(base)) {
-      return base + '/i/' + token;
-    }
-    return (CONFIG.SHOP_NAME || 'OG').toUpperCase() + ' | ' + id;
-  }
-
-  /* PLACEHOLDER — piece 4 of the receipt-delivery work replaces this with
-     the real https://t.me/<bot>?start=<token> deep link once the Telegram
-     bot and its token table exist. Until then the second QR points at the
-     Instagram profile (still a real, useful destination) rather than at
-     nothing, per the agreed staging: ship the two-QR layout now, swap the
-     payload later without touching layout code again. */
-  function telegramQrPayloadFor(instagramUrl) {
-    return instagramUrl || null;
   }
 
   /* From GET /api/sales/:id/receipt — amounts are minor units, straight off
@@ -678,7 +616,6 @@ var Receipt = (function () {
         name: payload.shop.name, branch: payload.shop.branch_name,
         address: payload.shop.address, phone: payload.shop.phone
       },
-      qrPayload: qrPayloadFor(payload.id, null),
       /* payload.receipt.instagram/.telegram/.maps_url arrive here for free —
          server/lib/printing.js's configBlock() already forwards every
          receipt.* config key generically (strips the prefix, keeps the
@@ -686,10 +623,9 @@ var Receipt = (function () {
          with no server-side code change. */
       instagram: payload.receipt.instagram, telegram: payload.receipt.telegram,
       mapsUrl: payload.receipt.maps_url,
-      telegramQrPayload: telegramQrPayloadFor(payload.receipt.instagram),
       footerAr: payload.receipt.footer_ar, footerEn: payload.receipt.footer_en,
       policyAr: payload.receipt.policy_ar, policyEn: payload.receipt.policy_en,
-      showQr: payload.receipt.show_qr === '1', showBarcode: payload.receipt.show_barcode === '1',
+      showBarcode: payload.receipt.show_barcode === '1',
       showLoyalty: payload.receipt.show_loyalty === '1'
     };
   }
@@ -719,12 +655,10 @@ var Receipt = (function () {
         name: CONFIG.SHOP_NAME, branch: CONFIG.SHOP_BRANCH,
         address: CONFIG.SHOP_ADDRESS, phone: CONFIG.SHOP_PHONE
       },
-      qrPayload: qrPayloadFor(sale.id, sale.publicToken),
       instagram: cfg.instagram, telegram: cfg.telegram, mapsUrl: cfg.mapsUrl,
-      telegramQrPayload: telegramQrPayloadFor(cfg.instagram),
       footerAr: cfg.footerAr, footerEn: cfg.footerEn,
       policyAr: cfg.policyAr, policyEn: cfg.policyEn,
-      showQr: cfg.showQr, showBarcode: cfg.showBarcode, showLoyalty: cfg.showLoyalty
+      showBarcode: cfg.showBarcode, showLoyalty: cfg.showLoyalty
     };
   }
 
@@ -794,13 +728,25 @@ var Receipt = (function () {
     });
   }
 
-  /* Fire-and-forget, called right after a sale completes. Never makes the
-     cashier wait on the printer — same principle as a delivery assignment
-     happening after the sale is already committed. */
+  /* Called right after a sale completes. Two shapes, and the sale is already
+     committed either way — nothing below this line can unwind money that is
+     already in the drawer.
+
+       confirm_print ON  — show the receipt and print when it is approved.
+       confirm_print OFF — straight to the printer, fire-and-forget, never
+                           making the cashier wait on a printer that might
+                           be off or out of paper.
+
+     The busy-counter case is why OFF still exists: on a Friday afternoon a
+     dialog between every sale and its paper is friction with no upside,
+     because the cashier is watching the same screen anyway. The approval
+     step is for the admin raising an invoice deliberately. */
   function autoPrint(sale) {
     if (typeof Auth === 'undefined') return;
     if (!CONFIG.RECEIPT_AUTO_PRINT) return;
     if (typeof allow === 'function' && !allow('sale.reprint')) return;
+
+    if (CONFIG.RECEIPT_CONFIRM_PRINT) { approve(sale.id); return; }
 
     printJob(sale.id).catch(function (err) {
       if (typeof toast === 'function') {
@@ -836,12 +782,89 @@ var Receipt = (function () {
     return fetchData(saleId).then(function (R) { return draw(R, 'customer'); });
   }
 
+  /* ------------------------------------------------------- approve & print
+
+     The paper is the one artefact of a sale that leaves the shop and cannot
+     be edited afterwards — a wrong name or a wrong total on it is a customer
+     standing at the counter with proof. So the receipt is shown first and
+     printed only when somebody says so.
+
+     What is approved is the SAME canvas that gets packed into ESC/POS bytes,
+     not an HTML lookalike of it: an approval step that shows a different
+     rendering than the one that prints is worse than no approval step, since
+     it teaches people the check is meaningful when it is not. */
+  function approve(saleId, opts) {
+    opts = opts || {};
+    if (typeof openModal !== 'function') { printSale(saleId); return; }
+
+    var canPrint = typeof allow !== 'function' || allow('sale.reprint');
+
+    return preview(saleId).then(function (res) {
+      res.canvas.style.width = '72mm';
+      res.canvas.style.maxWidth = '100%';
+      res.canvas.style.display = 'block';
+      res.canvas.style.margin = '0 auto';
+
+      openModal({
+        title: (typeof t === 'function' ? t('rc_approve_title') : 'Approve receipt') + ' — ' + saleId,
+        body: '<div class="muted small" style="margin-bottom:10px">' +
+                (typeof t === 'function' ? t('rc_approve_hint') : '') + '</div>' +
+              /* .rc-fresh/.rc-paper drive the print-and-tear animation (see
+                 css/print-hardware-receipt-newlabels.css). The canvas needs
+                 the extra .rc-paper wrapper because ::before/::after do NOT
+                 render on a <canvas> — it is a replaced element — and the
+                 torn edge and print head are pseudo-elements. .rc-paper is a
+                 plain div sized to the paper, so they have something real to
+                 hang on. */
+              '<div id="rcPreviewHost" style="background:#fff;padding:12px">' +
+                '<div class="rc-fresh"><div class="rc-paper"></div></div>' +
+              '</div>',
+        /* Cancel first, print second: the destructive-ish, irreversible action
+           (paper, ink, a customer handed the wrong slip) is never the button
+           the thumb lands on by reflex. */
+        foot: '<button class="btn btn-ghost" data-act="modal-close">' +
+                (typeof t === 'function' ? t('rc_approve_cancel') : 'Not yet') + '</button>' +
+              (canPrint
+                ? '<button class="btn btn-primary" data-act="receipt-approve-print" data-id="' +
+                    saleId + '">' + (typeof t === 'function' ? t('print_receipt') : 'Print') + '</button>'
+                : ''),
+        onOpen: function () {
+          var host = document.getElementById('rcPreviewHost');
+          if (!host) return;
+          /* Into .rc-paper when it is there, so the animation wraps the
+             canvas; straight into the host if the markup ever changes, so a
+             missing wrapper costs the animation and never the preview. */
+          (host.querySelector('.rc-paper') || host).appendChild(res.canvas);
+        }
+      });
+    }).catch(function (err) {
+      if (typeof toast === 'function') {
+        toast(t('rc_title'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 6000);
+      }
+    });
+  }
+
   function register() {
     if (typeof ACTIONS === 'undefined') return;
 
     ACTIONS['print-receipt'] = function (el) {
       var id = el.getAttribute('data-id');
       if (id) printSale(id);
+    };
+
+    /* The approval dialog's own Print button: print, then close — so the
+       modal cannot be left open over a receipt that has already been
+       printed, which is how somebody prints a second one by accident. */
+    ACTIONS['receipt-approve-print'] = function (el) {
+      var id = el.getAttribute('data-id');
+      if (!id) return;
+      if (typeof closeModal === 'function') closeModal();
+      printSale(id);
+    };
+
+    ACTIONS['approve-receipt'] = function (el) {
+      var id = el.getAttribute('data-id');
+      if (id) approve(id);
     };
 
     ACTIONS['preview-receipt'] = function (el) {
@@ -877,6 +900,7 @@ var Receipt = (function () {
     autoPrint: autoPrint,
     printSale: printSale,
     preview: preview,
+    approve: approve,
     register: register,
     /* Exposed for testing/preview screens that already have normalised data. */
     draw: draw,

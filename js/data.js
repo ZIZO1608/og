@@ -133,14 +133,16 @@ var CONFIG = {
      queue — see server/lib/printer.js's sendUsb()). */
   RECEIPT_TRANSPORT: 'tcp',
   RECEIPT_PRINTER_SHARE: '\\\\localhost\\OGRECEIPT',
+  /* Show the rendered receipt and print it when somebody approves, rather
+     than firing the printer the moment a sale closes. */
+  RECEIPT_CONFIRM_PRINT: true,
   RECEIPT_INSTAGRAM: 'https://www.instagram.com/og_sports_1',
   RECEIPT_TELEGRAM: 'https://t.me/ogsports1',
   RECEIPT_MAPS_URL: 'https://maps.app.goo.gl/i5VcMRV8sg4c7E639',
   RECEIPT_FOOTER_AR: 'شكراً لتسوقكم معنا',
   RECEIPT_FOOTER_EN: 'Thank you for shopping with us',
-  RECEIPT_POLICY_AR: 'يمكن استبدال القطعة خلال 7 أيام من تاريخ الفاتورة بشرط إبراز هذه الفاتورة وعدم استخدام المنتج.',
-  RECEIPT_POLICY_EN: 'Exchange within 7 days of purchase with this receipt. Item must be unworn.',
-  RECEIPT_SHOW_QR: true,
+  RECEIPT_POLICY_AR: 'يمكن استبدال القطعة خلال 48 ساعة من تاريخ الفاتورة بشرط إبراز هذه الفاتورة وعدم استخدام المنتج.',
+  RECEIPT_POLICY_EN: 'Exchange within 48 hours of purchase with this receipt. Item must be unworn.',
   RECEIPT_SHOW_BARCODE: true,
   RECEIPT_SHOW_LOYALTY: true,
   RECEIPT_AUTO_PRINT: true,
@@ -2100,10 +2102,10 @@ var DB = {
     if (cfg['receipt.footer_en'] !== undefined) CONFIG.RECEIPT_FOOTER_EN = cfg['receipt.footer_en'];
     if (cfg['receipt.policy_ar'] !== undefined) CONFIG.RECEIPT_POLICY_AR = cfg['receipt.policy_ar'];
     if (cfg['receipt.policy_en'] !== undefined) CONFIG.RECEIPT_POLICY_EN = cfg['receipt.policy_en'];
-    CONFIG.RECEIPT_SHOW_QR      = bool('receipt.show_qr', CONFIG.RECEIPT_SHOW_QR);
     CONFIG.RECEIPT_SHOW_BARCODE = bool('receipt.show_barcode', CONFIG.RECEIPT_SHOW_BARCODE);
     CONFIG.RECEIPT_SHOW_LOYALTY = bool('receipt.show_loyalty', CONFIG.RECEIPT_SHOW_LOYALTY);
     CONFIG.RECEIPT_AUTO_PRINT   = bool('receipt.auto_print', CONFIG.RECEIPT_AUTO_PRINT);
+    CONFIG.RECEIPT_CONFIRM_PRINT = bool('receipt.confirm_print', CONFIG.RECEIPT_CONFIRM_PRINT);
     CONFIG.RECEIPT_COPIES       = num('receipt.copies', CONFIG.RECEIPT_COPIES);
     if (cfg['receipt.cut_mode'] !== undefined) CONFIG.RECEIPT_CUT_MODE = cfg['receipt.cut_mode'];
 
@@ -2197,6 +2199,16 @@ var DB = {
           size: v.size,
           color: v.color || '',
           barcode: v.barcode || '',
+          /* The numeric-only code migration 010 created for the label printer,
+             because the sku ('OG-036-XXL') is expensive in Code 128 — 54.4mm
+             of bars at three dots a module, which does not fit a 60mm label
+             once the quiet zone and the safe margin are honoured. Six digits
+             pack into Code Set C at 25.5mm.
+
+             It was already in the API payload and simply never mapped, which
+             is why DB.variantByLabelCode could not match anything it was
+             given unless the attach-code action had set it by hand. */
+          labelCode: v.label_code || '',
           qty: Number(v.total) || 0,
           shelf: v.shelf || '',
           wh: wh

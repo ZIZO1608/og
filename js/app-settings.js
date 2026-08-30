@@ -398,6 +398,11 @@ function receiptSettingsCard() {
     '<label class="switch"><input type="checkbox" id="rcAutoPrint"' +
       (CONFIG.RECEIPT_AUTO_PRINT ? ' checked' : '') + dis + '><i></i></label></div>';
 
+  h += '<div class="rule-row"><div class="rr-txt"><b>' + t('rc3_confirm_print') + '</b>' +
+    '<small>' + t('rc3_confirm_print_hint') + '</small></div>' +
+    '<label class="switch"><input type="checkbox" id="rcConfirmPrint"' +
+      (CONFIG.RECEIPT_CONFIRM_PRINT ? ' checked' : '') + dis + '><i></i></label></div>';
+
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_copies') + '</span>' +
       '<input class="inp num" type="number" min="1" max="4" id="rcCopies" value="' + CONFIG.RECEIPT_COPIES + '"' + dis + '></label>' +
@@ -410,8 +415,7 @@ function receiptSettingsCard() {
       '</div></label>' +
   '</div>';
 
-  [['rcShowQr', 'rc3_show_qr', CONFIG.RECEIPT_SHOW_QR],
-   ['rcShowBarcode', 'rc3_show_barcode', CONFIG.RECEIPT_SHOW_BARCODE],
+  [['rcShowBarcode', 'rc3_show_barcode', CONFIG.RECEIPT_SHOW_BARCODE],
    ['rcShowLoyalty', 'rc3_show_loyalty', CONFIG.RECEIPT_SHOW_LOYALTY]
   ].forEach(function (f) {
     h += '<div class="rule-row"><div class="rr-txt"><b>' + t(f[1]) + '</b></div>' +
@@ -520,6 +524,22 @@ function thermalLabelsCard() {
   return h + '</div></div>';
 }
 
+/* Which model each shelf is for — the coarse list beside the map, for the
+   manager who wants to run down a whole room's assignments without clicking
+   forty tiles. The controls are ShelfMap's own (data-change="smset-assign"),
+   so both surfaces hit PATCH /api/shelves/:id through one flow, warnings and
+   stale-label counts included. */
+function shelvesCard() {
+  return '<div class="card"><div class="card-head"><h3>' + t('sm_shelves_title') + '</h3>' +
+    '<div class="head-actions">' +
+      '<button class="btn btn-ghost" data-act="nav" data-view="warehouse" data-tab="map">' +
+        t('sm_open_map') + '</button>' +
+    '</div></div>' +
+    '<div class="card-body"><div class="sub" style="margin-bottom:10px">' + t('sm_shelves_sub') + '</div>' +
+    '<div id="setShelves"><span class="muted">…</span></div>' +
+    '</div></div>';
+}
+
 function viewSettings() {
   var h = '<div class="page-head"><div><h1>' + t('settings_title') + '</h1>' +
     '<div class="sub">' + t('settings_sub') + '</div></div>' +
@@ -531,6 +551,8 @@ function viewSettings() {
   h += receiptSettingsCard();
 
   h += thermalLabelsCard();
+
+  h += shelvesCard();
 
   h += presenceCard();
 

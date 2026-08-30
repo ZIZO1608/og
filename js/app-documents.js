@@ -114,38 +114,6 @@ function setReceiptPageSize() {
   document.head.appendChild(st);
 }
 
-/* What the QR carries.
-
-   A LAN address is NEVER printed as a link. `http://10.10.99.9:8090` is dead
-   the second the customer leaves the shop, and worse, may one day resolve to a
-   stranger's router on their own home network. So a link is only promised when
-   there is a real public address to promise — otherwise the QR falls back to
-   readable text, which needs no internet and cannot rot. */
-function receiptLink(sale) {
-  var base = String(CONFIG.PUBLIC_URL || '').trim().replace(/\/+$/, '');
-  var token = sale.publicToken || sale.public_token;
-  if (!token || !/^https:\/\//i.test(base)) return null;
-  /* The GitHub Pages demo is a static host with no /i/ route — pointing a
-     customer's receipt at it would open the demo app and show them a
-     fabricated invoice with the same number. Worse than no link. */
-  if (/github\.io/i.test(base)) return null;
-  return base + '/i/' + token;
-}
-
-function receiptQr(sale) {
-  var link = receiptLink(sale);
-  var d = receiptDim();
-  /* Modules must land on whole printer dots. 22mm at 80mm, a little less on
-     58mm paper where there is not room for it. */
-  var px = d.paper >= 80 ? 132 : 108;
-  var payload = link || (CONFIG.SHOP_NAME.toUpperCase() + ' | ' + sale.id + '\n' +
-    money(sale.total) + '\n' + fmtDateTime(sale.date));
-  return {
-    svg: qrSafe(payload, sale.id, { size: px, quiet: 2, style: 'square', dark: '#000000' }),
-    link: link
-  };
-}
-
 /* A money figure with no currency suffix.
 
    70mm does not fit "Size 42  1 × 12,500 SYP" and "12,500 SYP" on one line —
@@ -164,7 +132,6 @@ function receiptHtml(sale) {
   var cust = sale.customerId ? DB.customer(sale.customerId) : null;
   var earned = Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
   var ar = OG.lang === 'ar';
-  var qr = receiptQr(sale);
 
   var addr = ar ? (CONFIG.SHOP_ADDRESS_AR || CONFIG.SHOP_ADDRESS) : CONFIG.SHOP_ADDRESS;
 
@@ -246,11 +213,6 @@ function receiptHtml(sale) {
         nf(cust.loyaltyPoints) + '</span></div>';
   }
 
-  /* ---- the QR ---- */
-  h += '<div class="rcp-qr">' + qr.svg +
-    (qr.link ? '<div class="rcp-qr-cap">' + t('rc_scan') + '</div>' : '') +
-  '</div>';
-
   h += '<div class="rcp-foot">' +
     '<div class="rcp-policy">' + t('rc_policy') + '</div>' +
     '<div>' + t('thank_you') + ' · ' + esc(CONFIG.SHOP_NAME) + '</div>' +
@@ -277,7 +239,7 @@ function openReceipt(sale, opts) {
             t('rc_full_page') + '</button>' +
           '<button class="btn" data-act="print-now">' + t('print') + '</button>' +
           (allow('sale.reprint')
-            ? '<button class="btn" data-act="print-receipt" data-id="' + esc(sale.id) + '">' +
+            ? '<button class="btn" data-act="approve-receipt" data-id="' + esc(sale.id) + '">' +
                 t('print_receipt') + '</button>'
             : '') +
           (opts.newSale
@@ -298,10 +260,12 @@ function openInvoice(sale, opts) {
     body: invoiceHtml(sale),
     foot: '<button class="btn btn-ghost" data-act="export" data-kind="pdf">' + t('pdf') + '</button>' +
           '<button class="btn" data-act="print-now">' + t('print') + '</button>' +
+          /* One button, not "Preview" next to "Print receipt". The old pair
+             made checking the slip optional and put the unchecked path one
+             click closer; this opens the real rendered receipt with Print
+             inside it, so the look and the print are the same gesture. */
           (allow('sale.reprint')
-            ? '<button class="btn btn-ghost" data-act="preview-receipt" data-id="' + esc(sale.id) + '">' +
-                t('preview_receipt') + '</button>' +
-              '<button class="btn" data-act="print-receipt" data-id="' + esc(sale.id) + '">' +
+            ? '<button class="btn" data-act="approve-receipt" data-id="' + esc(sale.id) + '">' +
                 t('print_receipt') + '</button>'
             : '') +
           (opts.newSale
