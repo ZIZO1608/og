@@ -279,6 +279,10 @@ function xOf(sel) { var e = $(sel); return e ? e.getBoundingClientRect().left : 
    coverage: the flat rack IS the room's failure path, so a run that passes
    without the room is the proof that falling back loses nothing. */
 var FORCE = /[?&]gl=force\b/.test(location.search);
+/* ?hold stops the run before the context-loss test, which is destructive by
+   design — it is the only way to LOOK at the finished room, and looking is
+   the one check that cannot be written as an assertion. */
+var HOLD = /[?&]hold\b/.test(location.search);
 if (!FORCE) ShelfRoom.supported = function () { return false; };
 var ROOM = FORCE && ShelfRoom.supported();
 
@@ -389,10 +393,101 @@ function roomTests(finish) {
           var chips = $$('.sm-dz-chip').map(function (e) { return e.textContent.replace('×', '').trim(); });
           ok('room: the designer lists the rack in focus — 2 levels, 4 bays', chips.length === 6, chips);
           ok('room: a rack not in a room is offered Place', $$('[data-sm="rack-cfg"]').length >= 1);
+
+          /* ---- MOVING A RACK BY HAND ---------------------------------
+             The pixels cannot be asserted, so everything else is: that a
+             rack becomes grabbable only in the editor, that the ghost
+             reports a placement in the shape the server accepts, that
+             letting go somewhere illegal writes nothing, and that none of
+             it disturbs the canvas. */
+          var handles = $$('[data-drag]');
+          ok('drag: the editor turns each rack row into a handle', handles.length >= 2, handles.length);
+          ok('drag: a handle carries the shape the ghost needs',
+             handles.every(function (h) {
+               return +h.getAttribute('data-cols') >= 1 && +h.getAttribute('data-rows') >= 1;
+             }));
+
+          var cvr = cv.getBoundingClientRect();
+          var midX = cvr.left + cvr.width / 2, midY = cvr.top + cvr.height / 2;
+
+          ok('drag: nothing is in the air to start with', ShelfRoom.dragging() === false);
+          var got = ShelfRoom.grab(13, 1, 3, false);
+          ok('drag: a rack in the room can be picked up', got === true);
+          ok('drag: …and the room knows it is holding one', ShelfRoom.dragging() === true);
+
+          var info = ShelfRoom.dragTo(midX, midY);
+          ok('drag: the ghost reports where it would land', !!info && typeof info.ok === 'boolean', info);
+          ok('drag: …on a real wall or on the floor, never on nonsense',
+             !!info && (info.wall === null || ['n', 'e', 's', 'w'].indexOf(info.wall) > -1), info && info.wall);
+          ok('drag: …at a whole number of bays from the left, never a fraction',
+             !!info && (info.pos === null || (info.pos >= 0 && info.pos === Math.floor(info.pos))), info && info.pos);
+
+          ShelfRoom.cancelDrag();
+          ok('drag: letting go of the idea puts it back', ShelfRoom.dragging() === false);
+
+          /* A drop nowhere legal must write NOTHING. This is the assertion
+             that matters most: the drop is the save, so a drop that should
+             not save must not reach the server. */
+          var before = __calls.length;
+          ShelfRoom.grab(13, 1, 3, false);
+          ShelfRoom.dragTo(-9999, -9999);
+          var put = ShelfRoom.drop(-9999, -9999);
+          ok('drag: a drop outside the room places nothing', put === null, put);
+          ok('drag: …and sends nothing to the server', __calls.length === before, __calls.slice(before));
+          ok('drag: …and leaves nothing in the air', ShelfRoom.dragging() === false);
+          ok('drag: the canvas came through all of that', $('#smRoom canvas') === cv);
+
+          /* ---- PULLING A WALL -----------------------------------------
+             Width and depth are stored as a pair and so are saved as a
+             pair: the assertion that matters is that letting go of one wall
+             sends BOTH, and sends them in whole centimetres. */
+          ok('wall: nothing is being pulled to start with', ShelfRoom.dragging() === false);
+          ok('wall: a wall can be taken hold of', ShelfRoom.grabWall('e') === true);
+          ok('wall: …and the room knows it', ShelfRoom.dragging() === true);
+          var wi = ShelfRoom.dragWall(midX, midY);
+          ok('wall: pulling reports a room, not a rack', !!wi && wi.kind === 'room', wi);
+          ok('wall: …with both measurements, always',
+             !!wi && typeof wi.w === 'number' && typeof wi.d === 'number' && wi.w > 0 && wi.d > 0, wi);
+          ok('wall: …snapped to five centimetres',
+             !!wi && Math.abs(Math.round(wi.w * 20) - wi.w * 20) < 1e-6, wi && wi.w);
+          ShelfRoom.cancelWall();
+          ok('wall: letting the idea go puts it back', ShelfRoom.dragging() === false);
+
+          var wbefore = __calls.length;
+          ShelfRoom.grabWall('n');
+          var size = ShelfRoom.dropWall(midX, midY);
+          ok('wall: a completed pull yields a width AND a depth',
+             !!size && size.w > 0 && size.d > 0, size);
+          ok('wall: …and by itself writes nothing — the map does the saving',
+             __calls.length === wbefore);
+          ok('wall: a room that is not a room cannot be resized',
+             ShelfRoom.grabWall(null) === false && ShelfRoom.grabWall('') === false);
+
+          /* ---- WHAT WILL NOT FIT --------------------------------------
+             A measured room is drawn at the size the tape says and says so
+             when a rack runs past a wall. Driven straight through sync,
+             because the fixture room is unmeasured and this is the whole
+             behaviour that used to be a silently stretched room. */
+          var fit = $('#smFit');
+          ok('fit: an unmeasured room claims nothing', !!fit && fit.hidden);
+          ShelfRoom.sync({
+            roomId: 1, name: 'Fit test', w: 2, d: 2, h: 3, sel: null,
+            racks: [{ id: 13, key: 'N', name: 'N', wall: 'n', pos: 2, cols: 2, rows: 1,
+                      origin: 'left',
+                      bays: [{ id: 901, code: 'A1', full: 'N-A1', row: 0, col: 1,
+                               qty: 0, capacity: null, pid: null, name: '', fill: null, mark: null }] }]
+          });
+          fit = $('#smFit');
+          ok('fit: a rack past the end of a measured wall is named, not hidden',
+             !!fit && !fit.hidden && fit.textContent.indexOf('N') > -1, fit && fit.textContent);
+
           $('[data-sm="edit"]').click();
           ok('room: Done closes the designer and keeps the room', !$('.sm-designer') && !!$('#smRoom'));
+          ok('drag: with the editor shut nothing is grabbable', $$('[data-drag]').length === 0);
           ok('room: …still the SAME canvas', $('#smRoom canvas') === cv);
         }
+
+        if (HOLD) { $('[data-sm="edit"]').click(); return finish(); }
 
         /* context loss, last: it is permanent for the page */
         __toasts.length = 0;

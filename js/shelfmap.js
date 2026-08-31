@@ -602,7 +602,12 @@ var ShelfMap = (function () {
            person planning a delivery should have. */
         (room && !room.width_cm
           ? '<span class="muted sm-dz-note">' + t('sm_not_to_scale') + '</span>' : '') +
-        '<div class="sm-room-hint muted">' + t('sm_room_hint') + '</div>' +
+        /* What is drawn running past its wall. Filled in by ShelfRoom's fit
+           hook rather than by this string, because the answer is only known
+           once the room has been built. */
+        '<div class="sm-fit" id="smFit" hidden></div>' +
+        '<div class="sm-room-hint muted">' +
+          t(S.edit && canEdit() ? 'sm_room_edit_hint' : 'sm_room_hint') + '</div>' +
       '</div>' +
     '</div>';
   }
@@ -707,6 +712,10 @@ var ShelfMap = (function () {
       var m = document.getElementById('smRoom');
       if (!m) return;
       ShelfRoom.attach(m);
+      /* Racks can only be picked up while the layout editor is open, and
+         only by somebody allowed to change the layout. The server checks it
+         again on the way in; this decides whether the hand does anything. */
+      ShelfRoom.setEdit(S.edit && canEdit());
       /* an empty room is still a room — its walls are what the designer is
          about to hang racks on */
       var sec = current();
@@ -717,6 +726,117 @@ var ShelfMap = (function () {
 
   /* Set when somebody asks for the room, spent by mount3d once it is there. */
   var wantIntro = false;
+
+  /* ---------------------------------------------------------- the readout
+     A rack in the air needs a caption: which wall it will land on, which
+     bays it will take, and — where it cannot go — why not. It rides on
+     <body> for the same reason the peek card does: the room repaints under
+     it, and a node inside #smRoot would be destroyed mid-drag. */
+
+  var hudEl = null;
+
+  function hudNode() {
+    if (!hudEl || !hudEl.isConnected) {
+      hudEl = document.createElement('div');
+      hudEl.className = 'sm-hud';
+      hudEl.hidden = true;
+      document.body.appendChild(hudEl);
+    }
+    return hudEl;
+  }
+
+  function hideHud() { if (hudEl) hudEl.hidden = true; }
+
+  function dragWords(info) {
+    /* A wall being pulled reports BOTH measurements, always. They are stored
+       as a pair and saved as a pair, so showing only the one under the hand
+       would hide half of what is about to be written down. */
+    if (info.kind === 'room') {
+      return t('sm_room_size')
+        .replace('{w}', nf(info.w.toFixed(2)))
+        .replace('{d}', nf(info.d.toFixed(2)));
+    }
+    if (info.ok && info.wall) {
+      var span = info.cols > 1
+        ? t('sm_drag_span').replace('{a}', nf(info.pos)).replace('{b}', nf(info.pos + info.cols - 1))
+        : t('sm_drag_at').replace('{n}', nf(info.pos));
+      return t('sm_wall_' + info.wall) + ' · ' + span +
+             (info.why === 'slid' ? ' · ' + t('sm_drag_slid') : '');
+    }
+    if (info.ok) return t('sm_drag_floor');
+    if (info.why === 'short') return t('sm_drag_short').replace('{n}', nf(info.bays));
+    if (info.why === 'full') {
+      return info.by ? t('sm_drag_full').replace('{k}', info.by) : t('sm_drag_nofit');
+    }
+    return t('sm_drag_out');
+  }
+
+  function showHud(info, x, y) {
+    if (!info) { hideHud(); return; }
+    var el = hudNode();
+    el.className = 'sm-hud' + (info.ok ? '' : ' no');
+    el.textContent = dragWords(info);
+    el.hidden = false;
+    var w = el.offsetWidth, ht = el.offsetHeight;
+    var lx = x + 16, ly = y + 18;
+    if (lx + w > window.innerWidth - 8) lx = x - w - 16;
+    if (ly + ht > window.innerHeight - 8) ly = y - ht - 16;
+    el.style.transform = 'translate3d(' + Math.max(8, lx) + 'px,' + Math.max(8, ly) + 'px,0)';
+  }
+
+  /* What the room could not fit, written straight into the foot. NOT a
+     repaint: this fires from inside ShelfRoom.sync, which is itself called
+     from inside repaint, and a repaint here would eat its own tail. */
+  function paintFit(list) {
+    var host = document.getElementById('smFit');
+    if (!host) return;
+    if (!list || !list.length) { host.innerHTML = ''; host.hidden = true; return; }
+    host.hidden = false;
+    host.innerHTML = list.map(function (o) {
+      return esc(t('sm_overflow'))
+        .replace('{k}', '<b dir="ltr">' + esc(o.key) + '</b>')
+        .replace('{w}', esc(t('sm_wall_' + o.wall)))
+        .replace('{m}', '<span dir="ltr">' + nf(Math.round(o.over * 100)) + '</span>');
+    }).join(' · ');
+  }
+
+  /* THE DROP IS THE SAVE. Placement is patched as a unit — room, wall and
+     position in one body — because the server reads an omitted one as
+     "clear it", and a rack keeping the wall position of the room it just
+     left is a rack standing inside a wall. A refusal is not corrected here:
+     the reload puts the server's truth back and the toast says which rule
+     it was. */
+  function placeRack(id, wall, pos) {
+    API.patch('/api/sections/' + id, {
+      roomId: S.roomId,
+      wall: wall || null,
+      wallPos: wall ? pos : null
+    }).then(function () {
+      focus(id);
+      reload();
+    }).catch(function (err) {
+      toast(API.friendly(err), '', 'warn', 6000);
+      reload();
+    });
+  }
+
+  /* A wall was let go. Width and depth go together because the server
+     refuses one without the other — a room is measured across and deep, or
+     it is not measured. Height is left exactly as it was; it is typed in
+     Room settings and a pull along the floor says nothing about it. */
+  function sizeRoom(w, d) {
+    var room = S.roomId != null ? roomById(S.roomId) : null;
+    if (!room) return;
+    API.patch('/api/rooms/' + room.id, {
+      widthCm: Math.round(w * 100),
+      depthCm: Math.round(d * 100)
+    }).then(function () {
+      reload();
+    }).catch(function (err) {
+      toast(API.friendly(err), '', 'warn', 6000);
+      reload();
+    });
+  }
 
   /* ------------------------------------------------------------ designer
      Beside the room, never over it. Every button here hits the same route
@@ -748,7 +868,8 @@ var ShelfMap = (function () {
       if (!rs.length) h += '<div class="muted sm-dz-note">' + t('sm_no_racks') + '</div>';
       rs.forEach(function (r) {
         h += '<div class="sm-dz-row' + (sec && sec.id === r.id ? ' on' : '') + '">' +
-          '<button class="sm-dz-pick" data-sm="rack-focus" data-id="' + r.id + '"><b>' + esc(r.key) + '</b> · ' +
+          '<button class="sm-dz-pick" data-sm="rack-focus" data-id="' + r.id + '"' + dragAttrs(r) +
+          '><b>' + esc(r.key) + '</b> · ' +
           esc(r.name) + '<small class="muted">' + esc(wallLabel(r.wall)) +
           (r.wall ? ' · ' + nf(r.wall_pos || 0) : '') + '</small></button>' +
           '<button class="btn btn-sm btn-ghost" data-sm="rack-cfg" data-id="' + r.id + '">' +
@@ -763,12 +884,30 @@ var ShelfMap = (function () {
       h += '<div class="sm-dz"><span class="lbl">' + t('sm_not_placed') + '</span>';
       un.forEach(function (r) {
         h += '<div class="sm-dz-row' + (sec && sec.id === r.id ? ' on' : '') + '">' +
-          '<button class="sm-dz-pick" data-sm="rack-focus" data-id="' + r.id + '"><b>' + esc(r.key) + '</b> · ' +
+          '<button class="sm-dz-pick" data-sm="rack-focus" data-id="' + r.id + '"' + dragAttrs(r) +
+          '><b>' + esc(r.key) + '</b> · ' +
           esc(r.name) + '</button>' +
           '<button class="btn btn-sm" data-sm="rack-cfg" data-id="' + r.id + '">' + t('sm_place') + '</button></div>';
       });
       h += '</div>';
     }
+    /* racks in the warehouse's other rooms — draggable in, so a rack that
+       physically moved between rooms can be said to have moved */
+    var els = elsewhere(room);
+    if (els.length) {
+      h += '<div class="sm-dz"><span class="lbl">' + t('sm_other_rooms') + '</span>';
+      els.forEach(function (r) {
+        var rm = roomById(r.room_id);
+        h += '<div class="sm-dz-row sm-dz-far">' +
+          '<button class="sm-dz-pick" data-sm="rack-focus" data-id="' + r.id + '"' + dragAttrs(r) +
+          '><b>' + esc(r.key) + '</b> · ' + esc(r.name) +
+          '<small class="muted">' + esc(rm ? rm.name : '') + '</small></button>' +
+          '<button class="btn btn-sm btn-ghost" data-sm="rack-cfg" data-id="' + r.id + '">' +
+          t('sm_rack_cfg') + '</button></div>';
+      });
+      h += '</div>';
+    }
+
     h += '<div class="sm-dz"><div class="sm-dz-row"><button class="btn btn-sm btn-ghost" data-sm="rack-new">+ ' +
          t('sm_new_rack') + '</button></div></div>';
 
@@ -800,6 +939,31 @@ var ShelfMap = (function () {
       h += '</div>';
     }
     return h + '</div></aside>';
+  }
+
+  /* Racks standing in the warehouse's OTHER rooms. A rack moves between
+     rooms by being dragged into this one, and it cannot be dragged from a
+     list it is not in — so the racks next door are listed here, dimmed,
+     with the room they are in named on the row. The letter they carry into
+     every printed barcode does not change by moving them; only where they
+     stand does. */
+  function elsewhere(room) {
+    if (!room) return [];
+    return S.data.filter(function (s) {
+      return s.room_id != null && s.room_id !== room.id &&
+             s.wh_id === room.wh_id && s.shelves.length;
+    });
+  }
+
+  /* A rack in either list can be dragged straight into the room, so both
+     carry the shape the ghost needs. A rack with no bays yet has nothing to
+     draw and nothing to place — it gets no handle. */
+  function dragAttrs(r) {
+    if (!use3d() || !S.edit || !canEdit() || !r.shelves.length) return '';
+    if (S.roomId == null) return '';   /* nowhere to drop it: no room is open */
+    var g = geometry(r);
+    return ' data-drag="' + r.id + '" data-cols="' + Math.max(1, g.maxCol) +
+           '" data-rows="' + Math.max(1, g.rows) + '"';
   }
 
   function wallLabel(w) { return w ? t('sm_wall_' + w) : t('sm_nowhere'); }
@@ -1261,8 +1425,10 @@ var ShelfMap = (function () {
 
     /* The peek points at a tile this innerHTML is about to destroy. It lives
        on <body> so the paint cannot eat it — which is exactly why it would
-       otherwise be left floating over nothing after a scan. */
+       otherwise be left floating over nothing after a scan. The drag
+       readout is the same kind of node and goes the same way. */
     hidePeek();
+    hideHud();
 
     /* WHO HAD THE CARET, read BEFORE the innerHTML that destroys them.
        Checking afterwards cannot work: replacing the markup detaches the
@@ -1750,7 +1916,15 @@ var ShelfMap = (function () {
         peek: function (id, x, y) {
           if (id == null) hidePeek(); else showPeek(id, x, y);
         },
-        lost: function () { glFail(t('sm_gl_lost')); }
+        lost: function () { glFail(t('sm_gl_lost')); },
+        /* A rack was let go somewhere legal. */
+        move: function (id, wall, pos) { placeRack(id, wall, pos); },
+        /* A rack is in the air; info is null when it lands. */
+        drag: function (info, x, y) { showHud(info, x, y); },
+        /* What would not fit, once the room knows its own size. */
+        fit: function (list) { paintFit(list); },
+        /* A wall was pulled to a new size. */
+        room: function (w, d) { sizeRoom(w, d); }
       });
     }
 
@@ -1950,6 +2124,55 @@ var ShelfMap = (function () {
         if (host) settingsList(host, true);
       });
     };
+
+    /* DRAGGING A RACK OUT OF THE LIST AND INTO THE ROOM.
+       The unplaced list is where a rack with nowhere to be waits, so it is
+       also where placing one ought to start. A press does not become a drag
+       until the hand has moved, or the row stops being a button — the same
+       bargain the room itself strikes between picking a bay and moving a
+       rack. */
+    var tray = null;
+
+    var trayEnd = function (e) {
+      if (!tray) return;
+      var was = tray;
+      tray = null;
+      document.body.classList.remove('sm-dragging');
+      hideHud();
+      if (!was.live) return;
+      var put = ShelfRoom.drop(e.clientX, e.clientY);
+      if (put) placeRack(put.id, put.wall, put.pos);
+      else ShelfRoom.cancelDrag();
+    };
+
+    document.addEventListener('pointerdown', function (e) {
+      tray = null;
+      if (OG.view !== 'shelfmap' || !use3d() || !S.edit || !canEdit()) return;
+      if (typeof ShelfRoom === 'undefined' || !ShelfRoom.ready()) return;
+      var el = e.target.closest ? e.target.closest('[data-drag]') : null;
+      if (!el) return;
+      tray = {
+        id: +el.getAttribute('data-drag'),
+        cols: +el.getAttribute('data-cols') || 1,
+        rows: +el.getAttribute('data-rows') || 1,
+        x: e.clientX, y: e.clientY, live: false
+      };
+      try { el.setPointerCapture(e.pointerId); } catch (x) {}
+    });
+
+    document.addEventListener('pointermove', function (e) {
+      if (!tray) return;
+      if (!tray.live) {
+        if (Math.abs(e.clientX - tray.x) + Math.abs(e.clientY - tray.y) < 8) return;
+        tray.live = ShelfRoom.grab(tray.id, tray.cols, tray.rows, true);
+        if (!tray.live) { tray = null; return; }
+        document.body.classList.add('sm-dragging');
+      }
+      showHud(ShelfRoom.dragTo(e.clientX, e.clientY), e.clientX, e.clientY);
+    });
+
+    document.addEventListener('pointerup', trayEnd);
+    document.addEventListener('pointercancel', trayEnd);
 
     if (typeof Wedge !== 'undefined' && Wedge.onScan) Wedge.onScan(onScan);
   }

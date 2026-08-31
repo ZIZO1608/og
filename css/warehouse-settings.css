@@ -531,6 +531,42 @@ body.rtl .toast { animation-name: toastInR; }
 .sm-peek .sm-chips { margin-top: 7px; }
 .sm-peek-range { margin-top: 5px; font-size: 11px; }
 
+/* THE CAPTION ON A RACK IN THE AIR. Same family as the peek card and the
+   same reason for pointer-events:none — it follows the hand, and a node the
+   hand can hit would take the pointerup that ends the drag.
+   .no is not red: refusal already owns red on this screen as scan feedback.
+   It goes quiet and grey instead, and the words carry the reason. */
+.sm-hud {
+  position: fixed; top: 0; left: 0; z-index: 95; pointer-events: none;
+  max-width: 260px;
+  background: var(--popover); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  padding: 6px 10px; font-size: 12px; font-weight: 600; line-height: 1.35;
+  box-shadow: 0 10px 30px rgb(0 0 0 / .5);
+}
+.sm-hud.no { color: var(--muted-foreground); font-weight: 500; }
+
+/* While a rack is in the air nothing else should look grabbable, and a
+   drag that wanders over the designer must not select its labels. */
+body.sm-dragging { cursor: grabbing; user-select: none; }
+body.sm-dragging .sm-dz-row { cursor: grabbing; }
+
+/* What would not fit, under the room. Stated in the flat foot rather than
+   painted in the room: a wall that is too short is a fact for the person
+   planning the move, not a texture. */
+.sm-fit {
+  margin-top: 6px; font-size: 11px; font-weight: 600;
+  color: var(--warning, #FBBF24);
+}
+.sm-fit b { font-variant-numeric: tabular-nums; }
+
+/* A rack row in the designer is also a handle into the room. */
+.sm-dz-pick[data-drag] { cursor: grab; }
+
+/* A rack standing in a different room: listed so it can be dragged over
+   here, dimmed so it is not mistaken for one already in this one. */
+.sm-dz-row.sm-dz-far .sm-dz-pick { opacity: .68; }
+.sm-dz-row.sm-dz-far .sm-dz-pick:hover { opacity: 1; }
+
 /* Leaving the room: the stage fades, never the canvas — fading a canvas
    fades the tag layer with it and the labels smear on the way out. */
 .sm-stage3d { transition: opacity var(--d-2) var(--e-out); }

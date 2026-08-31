@@ -488,6 +488,59 @@ array, so an order raised on Sunday was gone on Monday.
 - The unit cost is frozen onto the line at order time — with the lira moving, what a pair cost when it
   was ordered is not what it costs when it lands, and the invoice has to agree with the order.
 
+## The shelf map's room, and moving things in it
+
+Two views of one place — a 2D plan plus the rack seen straight on (the default), and the 3D room
+one press away (`js/shelfroom.js`). With the layout editor open the room is also where the layout
+is **changed**: drag a rack onto a wall, drag a rack in from the list beside it, pull a wall to say
+how big the room really is.
+
+- **The drop is the save.** Every drag ends in a `PATCH /api/sections/:id` or `/api/rooms/:id` and
+  a reload. There is no Save button and no edit buffer, deliberately: a layout held in the browser
+  is a layout that dies on a refresh, which is the trap the draft partner invoice is still in.
+- **Placement is patched as a unit** — `roomId`, `wall`, `wallPos` in one body. `updateSection`
+  reads an omitted one as *clear it*, so a rack that moved rooms must not keep the old room's wall
+  position. Send all three or none.
+- **The ghost only ever shows a place the rack can go.** It snaps to whole bays, stops at the end of
+  a measured wall, and slides to the nearest free slot rather than overlapping. `wallAt()` in
+  `shelfroom.js` is the exact inverse of `placeOnWall()` and the two are written next to each other
+  for that reason — change one and you must change the other. The browser runs the server's overlap
+  arithmetic locally so the answer arrives while the rack is still in the air; **the server still
+  decides**, and a refusal reloads the truth back with a toast.
+- **Green and red are not used by the drag.** On this screen they already mean a scan was accepted
+  or refused. The ghost is white where it can land and hidden where it cannot, and the readout
+  beside the hand carries the reason.
+- **A rack in front of a wall wins the grab**, because moving a rack is much the commoner job; bare
+  wall resizes the room. A press is not a drag until the hand has moved six pixels — the same
+  threshold the click-to-select test already used — so a rack row is still a button.
+- **The walls do not move while the hand does.** Changing a room's size rebuilds the whole scene, so
+  a pull draws an outline of the room it would become and the real walls move once, on release.
+  Width and depth are stored as a pair and so are saved as a pair — both are on the readout the
+  whole time. **Height is not pulled**; it stays a number typed in Room settings.
+
+### Measured means measured
+
+A room with a tape on it is now drawn at the size the tape says, full stop. It used to be
+`Math.max` of the tape *and* what the racks wanted, so one rack parked past the end of a wall
+quietly stretched the room while the badge went on saying "to scale". A rack that does not fit is
+drawn not fitting and **named underneath** (`#smFit`, fed by `ShelfRoom`'s `fit` hook) — a wall you
+can see is too short is a wall somebody will fix.
+
+Two more things that were silently wrong and are worth not reintroducing:
+
+- **Names and clicks are occlusion-tested.** One world box per rack, tested against the line from
+  the camera. Without it a product name from the far wall floated over the near rack, and a click
+  went through a rack and selected a bay behind it — the hit boxes write no depth.
+- **The room's name is in `sameSig`.** Left out, renaming a room left the old name painted on the
+  back wall until something structural forced a rebuild.
+- **No mark is better than a black square.** The logo plate starts hidden and appears only once the
+  artwork is in hand; the loader is async and can fail outright.
+
+Verified by `_smcheck.html` — `?gl=force` runs the room suite (needs
+`--use-angle=swiftshader --enable-unsafe-swiftshader` headless), and **`?hold=1` stops before the
+context-loss test** so the finished room can be looked at, which is the one check that cannot be
+written as an assertion.
+
 ## Archived is not deleted, and not stock either
 
 A product is never deleted — a discontinued line still has to resolve on every invoice that
