@@ -390,14 +390,26 @@ Things that will bite you:
   block, so on a Supabase without `005` the whole batch is rejected and a day of sales stops mirroring
   over an optional table. `TABLES.sales.fallbackDrop` retries without the column and names the file to
   run — the same shape as the `pw_enc` fallback in `syncUsers`. Verified against the live mirror.
-- **Seven schema files are run by hand in the Supabase dashboard: `002_user_credentials.sql`,
+- **Eight schema files are run by hand in the Supabase dashboard: `002_user_credentials.sql`,
   `003_partner.sql`, `004_purchasing_and_alerts.sql`, `005_money_and_counts.sql`,
-  `006_shelves.sql`, `007_label_subjects.sql` and `008_rooms.sql`** (`001` too, on a new project).
+  `006_shelves.sql`, `007_label_subjects.sql`, `008_rooms.sql` and `009_gift_receipt.sql`**
+  (`001` too, on a new project).
   `002`–`007` are applied on the live mirror; `008` (rooms, and which wall a rack hangs on) must be
-  run before the shelf map's rooms mirror at all — until then the sync pushes `sections` without
-  the three placement columns and says so by name, and `npm run supabase:check` goes red on the
-  missing columns. `002` adds `users.pw_enc` and is easy to forget because the sync only needs it
-  once `OG_VAULT_KEY` is set.
+  run before the shelf map's rooms mirror at all — until then the sync skips `rooms` by name, pushes
+  `sections` without the three placement columns and says so, and `npm run supabase:check` goes red
+  on the missing columns. `009` adds `print_log.kind` (local migration `027`); until it is run the
+  print history block is rejected on the column and retries on every run — the maxid cursor does not
+  move on a failure, so nothing is lost, only late. `002` adds `users.pw_enc` and is easy to forget
+  because the sync only needs it once `OG_VAULT_KEY` is set.
+- **One Supabase project, one database.** A throwaway test database that is pointed at the live
+  project pushes *itself*: its `users` land beside the shop's (upserted, never deleted), its run
+  writes its own — shorter — `change_log` seqs into every `sync_state` cursor, and its purge deletes
+  the shop's real rows from the mirror. That happened on 2026-08-30: five real invoices and their
+  deliveries vanished from the mirror, the cursors sat above those rows' seqs so no rewind could
+  ever look there again, and every later run died on the `deliveries → sales` foreign key before
+  the history, partner and drawer blocks ran. Test against a Supabase project of its own, or with no
+  Supabase configured at all. `npm run supabase:check` now goes red on an account the shop does not
+  have; `npm run supabase:reconcile` is the repair.
   Until they are run, the sync says so by name and pushes everything else — taking a whole run down
   because one table is missing would stop a day's sales being mirrored over a table nobody has
   created yet.

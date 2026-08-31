@@ -759,7 +759,11 @@ router.add('POST /api/print', requirePerm('sale.reprint', async (ctx) => {
       userId: ctx.user.id,
       bytes,
       copies: Number(b.copies) || 1,
-      opId: typeof b.opId === 'string' ? b.opId : null
+      opId: typeof b.opId === 'string' ? b.opId : null,
+      /* Whitelisted rather than passed through: this lands in print_log and
+         is read back as an audit trail, so it takes one of two known values
+         and never whatever a client felt like sending. */
+      kind: b.kind === 'gift' ? 'gift' : 'sale'
     });
     sendOk(ctx.res, result);
   } catch (e) {

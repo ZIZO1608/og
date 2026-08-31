@@ -356,7 +356,7 @@ if (!Vault.isEnabled()) {
 } else {
   let sealed = 0, total = 0;
   try {
-    const remote = await SB.select('users', { select: 'id,pw_enc' });
+    const remote = await SB.select('users', { select: 'id,username,active,pw_enc' });
     total = remote.length;
     sealed = remote.filter((r) => r.pw_enc).length;
     if (sealed < total) {
@@ -364,6 +364,31 @@ if (!Vault.isEnabled()) {
       console.log('      Run npm run supabase:sync to seal the rest.');
     } else {
       console.log(tick(`all ${total} mirrored account(s) carry a sealed password`));
+    }
+
+    /* A LOGIN THE SHOP DOES NOT HAVE. users is upserted, never mirrored — the
+       app never deletes an account, only disables one — so a row there that
+       is not on this machine can only have come from ANOTHER database pushed
+       at the same project: a throwaway test copy, or a second machine. That
+       happened: a test database left an active manager and an active cashier
+       in the mirror, each sealed with a password this machine never set, and
+       a restore would have created both, able to sign in. Red while one is
+       active. The fix is a person's decision — delete the row in Table
+       Editor → users, or create the account here if it is real — not this
+       script's, and not the sync's: deleting accounts automatically is how a
+       second machine's staff list would erase the first's. */
+    const localNames = new Set(
+      db.prepare('SELECT lower(username) AS u FROM users').all().map((r) => r.u)
+    );
+    const foreign = remote.filter((r) => !localNames.has(String(r.username).toLowerCase()));
+    if (foreign.length) {
+      const live = foreign.filter((r) => r.active);
+      const line = `${foreign.length} mirrored account(s) do not exist here: ` +
+                   foreign.map((r) => `${r.username}${r.active ? ' (active)' : ''}`).join(', ');
+      if (live.length) { console.log(cross(line)); failed = true; }
+      else console.log(warn(line));
+      console.log('      A restore would recreate them. They came from another database pushed');
+      console.log('      at this project. Delete them in Table Editor → users, or create them here.');
     }
   } catch {
     console.log(warn('users.pw_enc is missing — run server/supabase/002_user_credentials.sql.'));

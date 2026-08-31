@@ -537,7 +537,17 @@ var ACTIONS = {
       'receipt.footer_ar':    (document.getElementById('rcFooterAr') || {}).value || '',
       'receipt.footer_en':    (document.getElementById('rcFooterEn') || {}).value || '',
       'receipt.policy_ar':    (document.getElementById('rcPolicyAr') || {}).value || '',
-      'receipt.policy_en':    (document.getElementById('rcPolicyEn') || {}).value || ''
+      'receipt.policy_en':    (document.getElementById('rcPolicyEn') || {}).value || '',
+      /* Days on screen, hours in the database — the field is labelled in days
+         because that is how a shop owner thinks about an exchange window, and
+         stored in hours to match its sibling receipt.exchange_hours. Clamped
+         so an empty or silly box cannot write a window of zero, which would
+         print a gift slip that expired the moment it came off the roll. */
+      'receipt.gift_exchange_hours': String(
+        Math.min(365, Math.max(1,
+          Math.round(Number((document.getElementById('rcGiftDays') || {}).value) || 7))) * 24),
+      'receipt.gift_policy_ar': (document.getElementById('rcGiftPolicyAr') || {}).value || '',
+      'receipt.gift_policy_en': (document.getElementById('rcGiftPolicyEn') || {}).value || ''
     };
     /* Only the fields for the transport actually showing are saved — the
        other transport's settings stay whatever they were on the server,

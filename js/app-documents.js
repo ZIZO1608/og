@@ -284,7 +284,13 @@ function openReceipt(sale, opts) {
           '<button class="btn" data-act="print-receipt-now">' + t('print') + '</button>' +
           (allow('sale.reprint')
             ? '<button class="btn" data-act="approve-receipt" data-id="' + esc(sale.id) + '">' +
-                t('print_receipt') + '</button>'
+                t('print_receipt') + '</button>' +
+              /* The slip that goes in the bag with a present: same sale, no
+                 prices on it. Here as well as in POS because the ask usually
+                 comes after the sale is closed — often days later, when
+                 somebody comes back and says it was a gift. */
+              '<button class="btn" data-act="gift-receipt" data-id="' + esc(sale.id) + '">' +
+                t('gift_receipt') + '</button>'
             : '') +
           (opts.newSale
             ? '<button class="btn btn-primary" data-act="new-sale">' + t('new_sale') + '</button>'
@@ -317,7 +323,9 @@ function openInvoice(sale, opts) {
              inside it, so the look and the print are the same gesture. */
           (allow('sale.reprint')
             ? '<button class="btn" data-act="approve-receipt" data-id="' + esc(sale.id) + '">' +
-                t('print_receipt') + '</button>'
+                t('print_receipt') + '</button>' +
+              '<button class="btn" data-act="gift-receipt" data-id="' + esc(sale.id) + '">' +
+                t('gift_receipt') + '</button>'
             : '') +
           (opts.newSale
             ? '<button class="btn btn-primary" data-act="new-sale">' + t('new_sale') + '</button>'

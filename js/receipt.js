@@ -16,6 +16,8 @@
                                    completes in js/pos.js
      Receipt.printSale(id)        manual "Print receipt" / reprint button
      Receipt.preview(id)          on-screen canvas at ~72mm, no printing
+     Receipt.giftReceipt(id)      pick the lines, preview, print the gift slip
+     Receipt.printGift(id, lines) straight to the printer, no dialog
      Receipt.register()           wires the data-act handlers into ACTIONS,
                                    same shape as Deliveries.register()
    ========================================================================== */
@@ -432,16 +434,21 @@ var Receipt = (function () {
     return y + h + 14;
   }
 
-  /* Shop copy only: a solid black band right under the logo so the two
-     copies can never be confused at a glance, on the customer's side of
-     the counter or in a drawer full of them. */
-  function drawShopBand(ctx, y) {
+  /* A solid black band right under the logo, naming which copy this is, so
+     the kinds can never be confused at a glance — on the customer's side of
+     the counter, in a drawer full of them, or in a gift bag.
+
+     It says the KIND, so it takes the key rather than being the shop copy's
+     private helper: the gift slip is the one where getting this wrong costs
+     something real. A cashier who hands over the customer copy thinking it is
+     the gift slip has just shown somebody the price of their present. */
+  function drawBand(ctx, y, key) {
     var h = 40;
     ctx.save();
     ctx.fillStyle = '#000';
     ctx.fillRect(PAD, y, CW, h);
     ctx.restore();
-    textAt(ctx, both('rc2_shop_copy'), W / 2, y + 27,
+    textAt(ctx, both(key), W / 2, y + 27,
       { size: 20, weight: '700', dir: 'rtl', align: 'center', color: '#fff' });
     /* Was 34 to clear the 30px header's cap-height back up from its baseline;
        the header now starts at the y it is given, so this is just the gap. */
@@ -462,11 +469,34 @@ var Receipt = (function () {
     return y + 4;
   }
 
-  function drawMeta(ctx, y, R) {
+  /* THE DEADLINE AS A DATE, NOT A DURATION. The gift slip's policy sentence
+     says "within 7 days of purchase", which is useless to the one person who
+     reads it: the recipient does not know when it was bought and should not
+     have to add seven days to a date in their head while standing at a
+     counter. This is the line that makes the window setting worth having. */
+  function exchangeBefore(R) {
+    var hours = Number(R.giftExchangeHours);
+    if (!isFinite(hours) || hours <= 0) return null;
+    var at = new Date(R.at);
+    if (isNaN(at.getTime())) return null;
+    return fmtDateTime(new Date(at.getTime() + hours * 3600 * 1000)).date;
+  }
+
+  function drawMeta(ctx, y, R, gift) {
     var dt = fmtDateTime(R.at);
     var inv = L('rc2_invoice'), dtl = L('rc2_datetime'), csh = L('rc2_cashier');
     y = labelRow(ctx, y, inv.ar, inv.en, R.id, { size: 22 });
-    y = labelRow(ctx, y, dtl.ar, dtl.en, dt.en, { size: 20 });
+    /* Date only on a gift slip — the minute somebody bought a present is not
+       information the person unwrapping it needs. */
+    y = labelRow(ctx, y, dtl.ar, dtl.en, gift ? dt.date : dt.en, { size: 20 });
+
+    if (gift) {
+      var by = exchangeBefore(R);
+      var xb = L('rc2_exchange_before');
+      if (by) y = labelRow(ctx, y, xb.ar, xb.en, by, { size: 20 });
+      return y;
+    }
+
     if (R.cashierName) y = labelRow(ctx, y, csh.ar, csh.en, R.cashierName, { size: 20 });
     return y;
   }
@@ -483,7 +513,12 @@ var Receipt = (function () {
     return y;
   }
 
-  function drawItems(ctx, y, R) {
+  /* `gift` drops the two money rows — the qty x unit-price line and the line
+     discount — and keeps the name and the size, which are the only things the
+     recipient and the cashier both need to identify the item being brought
+     back. R.items is already the ticked subset by the time it gets here; the
+     filtering happens once in draw(), not per drawing function. */
+  function drawItems(ctx, y, R, gift) {
     R.items.forEach(function (it) {
       var lines = wrapText(ctx, it.name, CW, 22, '600');
       lines.forEach(function (ln) {
@@ -494,12 +529,14 @@ var Receipt = (function () {
         textAt(ctx, L('rc2_size').ar + ' ' + it.size, W - PAD - 20, y + 18, { size: 18, dir: 'rtl', align: 'right' });
         y += 26;
       }
-      y = rowLR(ctx, y,
-        it.qty + ' × ' + western(it.unitPrice),
-        western(it.qty * it.unitPrice),
-        { size: 19 });
-      if (it.lineDiscount) {
-        y = rowLR(ctx, y - 4, both('rc2_line_discount'), '− ' + western(it.lineDiscount), { size: 18 });
+      if (!gift) {
+        y = rowLR(ctx, y,
+          it.qty + ' × ' + western(it.unitPrice),
+          western(it.qty * it.unitPrice),
+          { size: 19 });
+        if (it.lineDiscount) {
+          y = rowLR(ctx, y - 4, both('rc2_line_discount'), '− ' + western(it.lineDiscount), { size: 18 });
+        }
       }
       y += 6;
     });
@@ -587,16 +624,26 @@ var Receipt = (function () {
     return y + 6;
   }
 
-  function drawPolicy(ctx, y, R) {
-    if (!R.policyAr && !R.policyEn) return y;
+  /* The gift slip gets its OWN sentence, not the ordinary receipt's. Two
+     things differ and both matter at the counter: the window is longer (a
+     present is bought before it is given), and it has to spell out that an
+     exchange is an exchange — no cash back, and the difference is payable on
+     something dearer. An ordinary receipt never needs to say that, because
+     the customer is holding the price. Falls back to the normal wording if
+     the gift text has been emptied, so a blank field is never a slip with no
+     policy on it at all. */
+  function drawPolicy(ctx, y, R, gift) {
+    var ar = gift ? (R.giftPolicyAr || R.policyAr) : R.policyAr;
+    var en = gift ? (R.giftPolicyEn || R.policyEn) : R.policyEn;
+    if (!ar && !en) return y;
     y = dashRule(ctx, y);
-    if (R.policyAr) {
-      wrapText(ctx, R.policyAr, CW, 20).forEach(function (ln) {
+    if (ar) {
+      wrapText(ctx, ar, CW, 20).forEach(function (ln) {
         y = centerText(ctx, ln, y, { size: 20, dir: 'rtl' });
       });
     }
-    if (R.policyEn) {
-      wrapText(ctx, R.policyEn, CW, 18).forEach(function (ln) {
+    if (en) {
+      wrapText(ctx, en, CW, 18).forEach(function (ln) {
         y = centerText(ctx, ln, y, { size: 18, dir: 'ltr' });
       });
     }
@@ -611,7 +658,34 @@ var Receipt = (function () {
 
   /* --------------------------------------------------------------- draw */
 
-  function draw(R, copyLabel) {
+  /* copyLabel is 'customer' | 'shop' | 'gift'.
+
+     THE GIFT SLIP IS THE SAME RENDERER, NOT A SECOND ONE. Everything the
+     receipt already knows how to do — the logo, the band, the header, the
+     barcode, the contact block, the 18px floor, the ink threshold — applies
+     unchanged, and the only question each section answers is whether it is
+     about money. A separate gift renderer would drift: the day somebody fixes
+     a layout bug on the receipt, the gift slip keeps it.
+
+     What a gift slip must never carry: unit price, line discount, subtotal,
+     discount, total, the second-currency line, payment method, transfer
+     reference, COD amount, loyalty points, and the buyer's name and phone.
+     That is the entire point of the piece of paper.
+
+     opts.lines is the ticked subset of R.items, by index. Absent means all.
+     The filter happens ONCE, here, so every drawing function below can go on
+     trusting R.items the way it always has. */
+  function draw(R, copyLabel, opts) {
+    opts = opts || {};
+    var gift = copyLabel === 'gift';
+
+    if (gift && opts.lines && opts.lines.length) {
+      var keep = {};
+      opts.lines.forEach(function (i) { keep[i] = 1; });
+      R = Object.keys(R).reduce(function (o, k) { o[k] = R[k]; return o; }, {});
+      R.items = R.items.filter(function (_, i) { return keep[i]; });
+    }
+
     return Promise.all([loadLogo(), fontsReady(), loadInstagramMark(), loadTelegramMark()]).then(function (res) {
       var logoImg = res[0], igImg = res[2], tgImg = res[3];
 
@@ -629,19 +703,27 @@ var Receipt = (function () {
 
       var y = 24;
       y = drawLogo(ctx, y, logoImg);
-      if (copyLabel === 'shop') y = drawShopBand(ctx, y);
+      if (copyLabel === 'shop') y = drawBand(ctx, y, 'rc2_shop_copy');
+      else if (gift) y = drawBand(ctx, y, 'rc2_gift_copy');
       y = drawHeader(ctx, y, R);
       y = dashRule(ctx, y);
-      y = drawMeta(ctx, y, R);
-      if (R.customer) { y = dashRule(ctx, y); y = drawCustomer(ctx, y, R); }
+      y = drawMeta(ctx, y, R, gift);
+      /* The buyer's name, phone and points balance are skipped on a gift
+         slip. It is the buyer's record, not the recipient's, and the points
+         balance is a number about somebody else's money. */
+      if (R.customer && !gift) { y = dashRule(ctx, y); y = drawCustomer(ctx, y, R); }
       y = dashRule(ctx, y);
-      y = drawItems(ctx, y, R);
+      y = drawItems(ctx, y, R, gift);
       y = dashRule(ctx, y);
-      y = drawTotals(ctx, y, R);
-      y = drawPayment(ctx, y, R);
+      /* The two money blocks, gone in one place rather than guarded line by
+         line inside each of them — nothing in either has a gift meaning. */
+      if (!gift) {
+        y = drawTotals(ctx, y, R);
+        y = drawPayment(ctx, y, R);
+      }
       y = drawCodes(ctx, y, R);
       y = drawContact(ctx, y, R, igImg, tgImg);
-      y = drawPolicy(ctx, y, R);
+      y = drawPolicy(ctx, y, R, gift);
       y = drawFooter(ctx, y, R);
       y += 24;   // trailing feed so the footer isn't eaten by the cutter
 
@@ -665,6 +747,9 @@ var Receipt = (function () {
     return {
       footerAr: CONFIG.RECEIPT_FOOTER_AR, footerEn: CONFIG.RECEIPT_FOOTER_EN,
       policyAr: CONFIG.RECEIPT_POLICY_AR, policyEn: CONFIG.RECEIPT_POLICY_EN,
+      giftPolicyAr: CONFIG.RECEIPT_GIFT_POLICY_AR,
+      giftPolicyEn: CONFIG.RECEIPT_GIFT_POLICY_EN,
+      giftExchangeHours: CONFIG.RECEIPT_GIFT_EXCHANGE_HOURS,
       showBarcode: !!CONFIG.RECEIPT_SHOW_BARCODE,
       showLoyalty: !!CONFIG.RECEIPT_SHOW_LOYALTY,
       instagram: CONFIG.RECEIPT_INSTAGRAM, telegram: CONFIG.RECEIPT_TELEGRAM,
@@ -718,6 +803,11 @@ var Receipt = (function () {
       mapsUrl: payload.receipt.maps_url,
       footerAr: payload.receipt.footer_ar, footerEn: payload.receipt.footer_en,
       policyAr: payload.receipt.policy_ar, policyEn: payload.receipt.policy_en,
+      /* Arrive for free: configBlock() in server/lib/printing.js forwards
+         every receipt.* key generically, stripping the prefix. */
+      giftPolicyAr: payload.receipt.gift_policy_ar,
+      giftPolicyEn: payload.receipt.gift_policy_en,
+      giftExchangeHours: Number(payload.receipt.gift_exchange_hours) || 0,
       showBarcode: payload.receipt.show_barcode === '1',
       showLoyalty: payload.receipt.show_loyalty === '1'
     };
@@ -751,6 +841,8 @@ var Receipt = (function () {
       instagram: cfg.instagram, telegram: cfg.telegram, mapsUrl: cfg.mapsUrl,
       footerAr: cfg.footerAr, footerEn: cfg.footerEn,
       policyAr: cfg.policyAr, policyEn: cfg.policyEn,
+      giftPolicyAr: cfg.giftPolicyAr, giftPolicyEn: cfg.giftPolicyEn,
+      giftExchangeHours: cfg.giftExchangeHours,
       showBarcode: cfg.showBarcode, showLoyalty: cfg.showLoyalty
     };
   }
@@ -796,12 +888,19 @@ var Receipt = (function () {
      fresh opId and genuinely prints again. */
   var pendingOpId = {};
 
-  function sendToPrinter(bytesB64, saleId, copies) {
-    var opId = pendingOpId[saleId] ||
-      (pendingOpId[saleId] = 'pr-' + saleId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  /* `kind` rides along so print_log can tell a gift slip from a reprint. A
+     slip with no prices on it is exactly the one worth being able to trace
+     back to whoever put it on paper. Keyed per kind as well as per sale: a
+     failed gift print and a failed receipt print for the same sale are two
+     different attempts and must not share a retry slot. */
+  function sendToPrinter(bytesB64, saleId, copies, kind) {
+    kind = kind || 'sale';
+    var slot = kind + ':' + saleId;
+    var opId = pendingOpId[slot] ||
+      (pendingOpId[slot] = 'pr-' + kind + '-' + saleId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
 
-    return API.post('/api/print', { saleId: saleId, bytes: bytesB64, copies: copies, opId: opId })
-      .then(function (res) { delete pendingOpId[saleId]; return res; });
+    return API.post('/api/print', { saleId: saleId, bytes: bytesB64, copies: copies, opId: opId, kind: kind })
+      .then(function (res) { delete pendingOpId[slot]; return res; });
   }
 
   /* Builds both copies, and either mails them to the LAN printer in one
@@ -817,8 +916,42 @@ var Receipt = (function () {
         }
         var bytes = ESCPOS.buildJob([copies[0].canvas, copies[1].canvas],
           { cutMode: CONFIG.RECEIPT_CUT_MODE, burnLuma: burnLuma() });
-        return sendToPrinter(ESCPOS.toBase64(bytes), saleId, 2);
+        return sendToPrinter(ESCPOS.toBase64(bytes), saleId, 2, 'sale');
       });
+    });
+  }
+
+  /* ONE copy, not two. The shop already has its copy of this sale from when
+     it was rung up — a second shop copy with the prices stripped off it would
+     be a worse record of the same transaction, filed next to the good one. */
+  function printGiftJob(saleId, lines) {
+    return fetchData(saleId).then(function (R) {
+      return draw(R, 'gift', { lines: lines }).then(function (copy) {
+        if (typeof Auth === 'undefined') {
+          printLocal(copy.canvas);
+          return { local: true };
+        }
+        var bytes = ESCPOS.build(copy.canvas,
+          { cutMode: CONFIG.RECEIPT_CUT_MODE, burnLuma: burnLuma() });
+        return sendToPrinter(ESCPOS.toBase64(bytes), saleId, 1, 'gift');
+      });
+    });
+  }
+
+  function printGift(saleId, lines) {
+    if (typeof allow === 'function' && !allow('sale.reprint')) {
+      if (typeof toast === 'function') toast(t('gift_receipt'), t('no_access'), 'err');
+      return Promise.resolve();
+    }
+    if (typeof toast === 'function') toast(t('gift_receipt'), t('printing') + '…', 'ok', 2000);
+    return printGiftJob(saleId, lines).then(function (res) {
+      if (typeof toast === 'function' && !res.local) {
+        toast(t('gift_receipt'), t('print_sent'), 'ok', 3000);
+      }
+    })['catch'](function (err) {
+      if (typeof toast === 'function') {
+        toast(t('gift_receipt'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 7000);
+      }
     });
   }
 
@@ -938,6 +1071,110 @@ var Receipt = (function () {
     });
   }
 
+  /* --------------------------------------------------------- gift receipt
+
+     Pick the lines, look at the paper, print it. One dialog rather than a
+     picker followed by a preview, because the two questions are really one:
+     "is THIS the slip that goes in the bag?" — and the answer changes as soon
+     as a tick moves, so the paper has to move with it.
+
+     A SINGLE-LINE SALE SKIPS THE TICKS ENTIRELY. Ticking one box out of one
+     asks the cashier nothing and is a click between a customer and their bag.
+
+     The preview redraws on every change rather than being drawn once and
+     filtered: what is approved has to be the canvas that gets packed into
+     bytes, which is the rule approve() above is built on. The logo, the marks
+     and the font promises are all cached by then, so a redraw is a layout
+     pass and nothing more. */
+  var giftSel = null;
+
+  function giftPickerHtml(R) {
+    if (R.items.length < 2) return '';
+    var h = '<div class="muted small" style="margin-bottom:10px">' + t('gift_pick_hint') + '</div>';
+    R.items.forEach(function (it, i) {
+      h += '<label class="check"><input type="checkbox" data-gift-line="' + i + '"' +
+        (giftSel[i] ? ' checked' : '') + '><span><b>' + esc(it.name) + '</b>' +
+        (it.size ? ' <span class="muted">· ' + esc(String(it.size)) + '</span>' : '') +
+        '</span></label>';
+    });
+    return h;
+  }
+
+  function giftLines() {
+    var out = [];
+    giftSel.forEach(function (on, i) { if (on) out.push(i); });
+    return out;
+  }
+
+  /* Redraw the paper for whatever is ticked right now. Guarded by a token so
+     a fast run of clicks cannot land an older draw on top of a newer one —
+     draw() is async, and canvases returning out of order would show a slip
+     that matches neither the ticks nor the print. */
+  var giftDrawSeq = 0;
+  function giftRepaint(R) {
+    var host = document.getElementById('rcGiftPaper');
+    if (!host) return;
+    var mine = ++giftDrawSeq;
+    var lines = giftLines();
+    if (!lines.length) { host.innerHTML = ''; return; }
+    draw(R, 'gift', { lines: lines }).then(function (res) {
+      if (mine !== giftDrawSeq) return;             // a later click already won
+      var h2 = document.getElementById('rcGiftPaper');
+      if (!h2) return;
+      res.canvas.style.width = '72mm';
+      res.canvas.style.maxWidth = '100%';
+      res.canvas.style.display = 'block';
+      res.canvas.style.margin = '0 auto';
+      h2.innerHTML = '';
+      h2.appendChild(res.canvas);
+    });
+  }
+
+  function giftReceipt(saleId) {
+    if (typeof allow === 'function' && !allow('sale.reprint')) {
+      if (typeof toast === 'function') toast(t('gift_receipt'), t('no_access'), 'err');
+      return;
+    }
+    if (typeof openModal !== 'function') { printGift(saleId); return; }
+
+    return fetchData(saleId).then(function (R) {
+      giftSel = R.items.map(function () { return true; });
+
+      openModal({
+        title: t('gift_pick_title') + ' — ' + saleId,
+        body: giftPickerHtml(R) +
+              '<div id="rcGiftHost" style="background:#fff;padding:12px;margin-top:10px">' +
+                '<div class="rc-fresh"><div class="rc-paper" id="rcGiftPaper"></div></div>' +
+              '</div>',
+        foot: '<button class="btn btn-ghost" data-act="modal-close">' +
+                t('rc_approve_cancel') + '</button>' +
+              '<button class="btn btn-primary" data-act="gift-print" data-id="' +
+                esc(saleId) + '">' + t('print') + '</button>',
+        onOpen: function () {
+          giftRepaint(R);
+          var host = document.getElementById('rcGiftHost');
+          var box = host && host.parentNode;
+          if (!box) return;
+          /* One delegated listener on the dialog, not one per tick — the same
+             rule the rest of the app follows, and the list is rebuilt on no
+             other event so there is nothing to rebind. */
+          box.addEventListener('change', function (e) {
+            var el = e.target;
+            if (!el || !el.getAttribute) return;
+            var i = el.getAttribute('data-gift-line');
+            if (i === null) return;
+            giftSel[Number(i)] = !!el.checked;
+            giftRepaint(R);
+          });
+        }
+      });
+    })['catch'](function (err) {
+      if (typeof toast === 'function') {
+        toast(t('gift_receipt'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 6000);
+      }
+    });
+  }
+
   function register() {
     if (typeof ACTIONS === 'undefined') return;
 
@@ -959,6 +1196,28 @@ var Receipt = (function () {
     ACTIONS['approve-receipt'] = function (el) {
       var id = el.getAttribute('data-id');
       if (id) approve(id);
+    };
+
+    ACTIONS['gift-receipt'] = function (el) {
+      var id = el.getAttribute('data-id');
+      if (id) giftReceipt(id);
+    };
+
+    /* Close first, then print — same reason as receipt-approve-print: a dialog
+       left open over a slip that has already come off the roll is how a second
+       one gets printed by accident. Nothing ticked is refused rather than
+       printing a slip with no items on it, which is not a thing to put in a
+       bag. */
+    ACTIONS['gift-print'] = function (el) {
+      var id = el.getAttribute('data-id');
+      if (!id) return;
+      var lines = giftLines();
+      if (!lines.length) {
+        if (typeof toast === 'function') toast(t('gift_receipt'), t('gift_pick_none'), 'err', 4000);
+        return;
+      }
+      if (typeof closeModal === 'function') closeModal();
+      printGift(id, lines);
     };
 
     ACTIONS['preview-receipt'] = function (el) {
@@ -995,6 +1254,8 @@ var Receipt = (function () {
     printSale: printSale,
     preview: preview,
     approve: approve,
+    giftReceipt: giftReceipt,
+    printGift: printGift,
     register: register,
     /* Exposed for testing/preview screens that already have normalised data. */
     draw: draw,

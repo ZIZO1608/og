@@ -1,0 +1,22 @@
+-- =============================================================================
+--  Mirror schema for gift receipts.
+--  Run this in the Supabase SQL editor, like 002 through 008.
+-- -----------------------------------------------------------------------------
+--  Matches server/migrations/027_gift_receipt.sql. The three config rows that
+--  migration seeds (receipt.gift_exchange_hours and the two policy texts) need
+--  nothing here: config is a Mirror-shape table, pushed whole on every run.
+--
+--  What does need a home is the one column: which kind of paper a print
+--  attempt was, 'sale' or 'gift'. A gift slip carries no prices, so it is the
+--  one worth being able to trace back to whoever put it on paper.
+--
+--  Until this is run, supabase-sync.js's print history block is rejected on
+--  the column, says so by name, and leaves the maxid cursor where it was — the
+--  rows are retried on every run and land the moment the column exists.
+--  Nothing to reconcile afterwards.
+-- =============================================================================
+
+--  Nullable, no DEFAULT and no CHECK, for the reasons 027 gives: rows from
+--  before the distinction genuinely predate it, and a constraint on the mirror
+--  is a way to reject a whole batch over one row (see 006).
+ALTER TABLE print_log ADD COLUMN IF NOT EXISTS kind TEXT;

@@ -22,6 +22,9 @@ var POS = (function () {
        null until someone types, so an empty string can mean "cleared it
        deliberately" and still be told apart from "not filled in yet". */
     deliver: false,
+    /* "This sale has a present in it." Opens the gift-slip picker once the
+       sale is committed — see completeSale(). */
+    gift: false,
     deliverAddress: null,
     /* Which location this sale takes stock out of. The wall by default,
        because that is what a customer is holding when they reach the till. */
@@ -507,7 +510,23 @@ var POS = (function () {
           'value="' + esc(S.txnRef) + '" data-pos-input="txn"></label>';
     }
 
-    return h + deliveryBoxHtml();
+    return h + giftBoxHtml() + deliveryBoxHtml();
+  }
+
+  /* "There is a present in this sale." Ticking it opens the gift-slip picker
+     once the sale is committed, so the cashier chooses which lines go on the
+     paper while the customer is still at the counter.
+
+     Behind sale.reprint, the same permission that gates every other way of
+     putting a slip for a sale on paper — a box that opens a dialog the person
+     is not allowed to finish is worse than no box. */
+  function giftBoxHtml() {
+    if (typeof Auth !== 'undefined' && !Auth.can('sale.reprint')) return '';
+    return '<div class="deliver-add">' +
+      '<label class="check"><input type="checkbox" id="posGift"' +
+        (S.gift ? ' checked' : '') + ' data-pos-check="gift">' +
+        '<span><b>' + t('pos_gift') + '</b></span></label>' +
+    '</div>';
   }
 
   /* ------------------------------------------------------------- delivery
@@ -1171,6 +1190,10 @@ var POS = (function () {
       });
     }
 
+    /* Read before reset() clears it — the tick belongs to the sale that just
+       happened, not to the empty cart that replaces it. */
+    var wantGift = !!S.gift;
+
     reset(true);
     renderSidebar();
 
@@ -1187,6 +1210,14 @@ var POS = (function () {
        paper must never hold up the till, the same principle as a delivery
        assignment happening only after the sale has already committed. */
     if (typeof Receipt !== 'undefined') Receipt.autoPrint(sale);
+
+    /* The gift slip, AFTER the customer's own receipt and never instead of
+       it — a sale that contains a present is still a sale, and the person
+       paying for it gets the paper with the price on it. The picker opens on
+       top; the receipt is already on its way to the roll behind it. */
+    if (wantGift && typeof Receipt !== 'undefined' && Receipt.giftReceipt) {
+      Receipt.giftReceipt(sale.id);
+    }
 
     if (!silent) {
       toast(t('sale_complete'), sale.id + ' · ' + money(sale.total), 'ok');
@@ -1228,6 +1259,9 @@ var POS = (function () {
        to the NEXT customer's sale, and the parcel would go to the wrong door. */
     S.deliver = false;
     S.deliverAddress = null;
+    /* Cleared for the same reason as the address: left set, the next customer
+       would be handed a gift slip they never asked for. */
+    S.gift = false;
     S.print = { on: false, sel: {}, priority: 'normal', deadline: null };
     S.q = '';
     S.cat = '';
@@ -1642,6 +1676,11 @@ var POS = (function () {
       if (el.getAttribute && el.getAttribute('data-pos-check') === 'deliver') {
         S.deliver = el.checked;
         paintFoot();
+      }
+      /* No repaint: nothing else on the screen depends on it, and a repaint
+         here would take back a half-typed address or transfer reference. */
+      if (el.getAttribute && el.getAttribute('data-pos-check') === 'gift') {
+        S.gift = el.checked;
       }
     });
 

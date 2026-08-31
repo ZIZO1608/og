@@ -154,6 +154,14 @@ var CONFIG = {
      on the receipt as a grey ghost. */
   RECEIPT_INK: 'dark',
 
+  /* The gift slip. A separate window from RECEIPT policy above, because a
+     present is bought before it is given and the shop's ordinary 48 hours has
+     usually run out by the time the box is opened — see 027_gift_receipt.sql.
+     Hours, matching receipt.exchange_hours; Settings shows it in days. */
+  RECEIPT_GIFT_EXCHANGE_HOURS: 168,
+  RECEIPT_GIFT_POLICY_AR: 'يمكن استبدال القطعة خلال 7 أيام من تاريخ الشراء بإبراز هذه القسيمة، بشرط ألا تكون مستعملة. الاستبدال فقط — لا يوجد استرداد نقدي، وإذا كانت القطعة الجديدة أغلى يُدفع الفرق.',
+  RECEIPT_GIFT_POLICY_EN: 'Exchange within 7 days of purchase with this slip, item unworn. Exchange only — no cash refund; if the new item costs more, the difference is payable.',
+
   /* Thermal product labels (Xprinter XP-235B, TSPL) — a separate printer
      from the receipt, a separate config namespace. Demo-mode defaults only;
      a real server overwrites these from config.label.* in DB.hydrate. */
@@ -2145,6 +2153,9 @@ var DB = {
     CONFIG.RECEIPT_COPIES       = num('receipt.copies', CONFIG.RECEIPT_COPIES);
     if (cfg['receipt.cut_mode'] !== undefined) CONFIG.RECEIPT_CUT_MODE = cfg['receipt.cut_mode'];
     if (cfg['receipt.ink'] !== undefined) CONFIG.RECEIPT_INK = cfg['receipt.ink'];
+    CONFIG.RECEIPT_GIFT_EXCHANGE_HOURS = num('receipt.gift_exchange_hours', CONFIG.RECEIPT_GIFT_EXCHANGE_HOURS);
+    if (cfg['receipt.gift_policy_ar'] !== undefined) CONFIG.RECEIPT_GIFT_POLICY_AR = cfg['receipt.gift_policy_ar'];
+    if (cfg['receipt.gift_policy_en'] !== undefined) CONFIG.RECEIPT_GIFT_POLICY_EN = cfg['receipt.gift_policy_en'];
 
     /* ---- thermal product labels ------------------------------------------- */
     if (cfg['label.default_preset'] !== undefined) CONFIG.LABEL_DEFAULT_PRESET = cfg['label.default_preset'];

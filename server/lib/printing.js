@@ -87,7 +87,7 @@ export function data(saleId) {
    nothing about ESC/POS, Arabic shaping, or canvases — that all happened in
    the browser. Its only jobs are: send it, log it, and never let a printer
    problem look like a problem with the sale. */
-export function send({ saleId, userId, bytes, copies, opId }) {
+export function send({ saleId, userId, bytes, copies, opId, kind }) {
   if (opId) {
     const seen = get().prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
     if (seen) return { ...JSON.parse(seen.result), replayed: true };
@@ -111,7 +111,7 @@ export function send({ saleId, userId, bytes, copies, opId }) {
 
   return sendPromise.then(
     () => {
-      logAttempt({ saleId, userId, copies, status: 'sent', error: null });
+      logAttempt({ saleId, userId, copies, kind, status: 'sent', error: null });
       const result = { ok: true };
       /* Recorded on success only. A failed attempt must stay retryable under
          the same opId — recording it here would make a retry replay the
@@ -125,22 +125,27 @@ export function send({ saleId, userId, bytes, copies, opId }) {
       return result;
     },
     (err) => {
-      logAttempt({ saleId, userId, copies, status: 'failed', error: err.message });
+      logAttempt({ saleId, userId, copies, kind, status: 'failed', error: err.message });
       throw err;
     }
   );
 }
 
-function logAttempt({ saleId, userId, copies, status, error }) {
+/* `kind` is 'sale' or 'gift'. Defaulted here rather than left NULL so the log
+   reads the same for a print from before the column existed and one from a
+   caller that did not say — both are ordinary receipts, which is what they
+   were. A gift slip carries no prices, so it is the one worth being able to
+   trace back to whoever put it on paper. */
+function logAttempt({ saleId, userId, copies, kind, status, error }) {
   get().prepare(
-    `INSERT INTO print_log (sale_id, user_id, copies, status, error, at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(saleId, userId ?? null, copies || 1, status, error ?? null, nowIso());
+    `INSERT INTO print_log (sale_id, user_id, copies, kind, status, error, at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(saleId, userId ?? null, copies || 1, kind || 'sale', status, error ?? null, nowIso());
 }
 
 export function log(saleId, limit = 20) {
   return get().prepare(
-    `SELECT id, user_id, copies, status, error, at FROM print_log
+    `SELECT id, user_id, copies, kind, status, error, at FROM print_log
       WHERE sale_id = ? ORDER BY at DESC LIMIT ?`
   ).all(saleId, limit);
 }

@@ -517,6 +517,31 @@ function receiptSettingsCard() {
       '<textarea class="inp" dir="ltr" id="rcPolicyEn" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_POLICY_EN) + '</textarea></label>' +
   '</div>';
 
+  /* ---- the gift slip -----------------------------------------------------
+     A separate window and separate wording from the two above, because a
+     present is bought before it is given: the shop's ordinary 48 hours has
+     usually run out by the time the box is opened. The wording also has to
+     say "exchange only, no cash back", which an ordinary receipt never needs
+     to because the customer is holding the price.
+
+     STORED IN HOURS, SHOWN IN DAYS. Hours is what receipt.exchange_hours
+     already uses and what the slip's "exchange before" date is computed from;
+     days is how the owner thinks about it. The x24 lives here and nowhere
+     else. */
+  h += '<div class="row2 mt">' +
+    '<label class="field"><span>' + t('rc3_gift_window') + '</span>' +
+      '<input class="inp num" type="number" min="1" max="365" id="rcGiftDays" value="' +
+        Math.max(1, Math.round(CONFIG.RECEIPT_GIFT_EXCHANGE_HOURS / 24)) + '"' + dis + '>' +
+      '<small class="faint">' + t('rc3_gift_window_hint') + '</small></label>' +
+  '</div>';
+
+  h += '<div class="row2">' +
+    '<label class="field"><span>' + t('rc3_gift_policy_ar') + '</span>' +
+      '<textarea class="inp" dir="rtl" id="rcGiftPolicyAr" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_GIFT_POLICY_AR) + '</textarea></label>' +
+    '<label class="field"><span>' + t('rc3_gift_policy_en') + '</span>' +
+      '<textarea class="inp" dir="ltr" id="rcGiftPolicyEn" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_GIFT_POLICY_EN) + '</textarea></label>' +
+  '</div>';
+
   h += '<div class="mt"><button class="btn btn-primary" data-act="rc-save-config"' + dis + '>' +
     t('rc3_save') + '</button></div>';
 

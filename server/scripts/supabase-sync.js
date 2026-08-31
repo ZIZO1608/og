@@ -620,44 +620,64 @@ console.log(head('Warehouse layout'));
    map — but it must not exit 0 and be taken for a clean sync by whatever ran
    it. Deploys gate on this exit code. */
 let layoutFailed = false;
-try {
-  /* Rooms before the racks that hang in them going in; the reverse coming
-     out. (No foreign key on the mirror makes this an ordering courtesy
-     rather than a hard requirement — see 008 — but a restore reads them in
-     this order and it costs nothing to push them the same way.) */
-  const LAYOUT = ['rooms', 'sections', 'shelves'];
-  for (const name of LAYOUT) await syncTable(name, { phase: 'upsert' });
-  for (const name of LAYOUT.slice().reverse()) await syncTable(name, { phase: 'delete' });
-} catch (e) {
-  const msg = String(e.message);
-  /* A MISSING COLUMN IS NOT A MISSING TABLE, and to this catch they were the
-     same sentence. PostgREST says
 
-       Could not find the 'parent_id' column of 'sections' in the schema cache
+/* ONE GUARD PER TABLE, not one around the block. The three tables arrive with
+   two different files — sections and shelves with 006, rooms with 008 — so on
+   a mirror that has 006 and not 008 a single try/catch threw on rooms, the
+   first name in the list, and skipped sections and shelves along with it:
+   every rack added or moved since stopped mirroring over a table that had
+   nothing to do with them, while the run went on to exit 0. That was live —
+   seventy shelves sat here and nowhere else. A table the mirror has not got
+   is now skipped by name and the other two still go up. */
+const LAYOUT = ['rooms', 'sections', 'shelves'];
+const LAYOUT_FILE = { rooms: 'server/supabase/008_rooms.sql' };
+const layoutSkipped = new Set();
 
-     and Postgres says `column "parent_id" ... does not exist` — both match
-     /does not exist|schema cache/, which is what the one test here used to be.
-     So a column nobody had added was reported as a missing TABLE, the whole
-     block was skipped, and sections AND shelves silently stopped mirroring
-     while the run went on to report success. The layout is small and changes
-     rarely, which is exactly why nobody would have noticed.
+async function layoutStep(name, phase) {
+  if (layoutSkipped.has(name)) return;
+  try {
+    await syncTable(name, { phase });
+  } catch (e) {
+    const msg = String(e.message);
+    /* A MISSING COLUMN IS NOT A MISSING TABLE, and to this catch they were the
+       same sentence. PostgREST says
 
-     Column first: its message contains the table pattern's words, so the
-     other order answers the wrong question. */
-  if (/PGRST204|column .* does not exist|Could not find the '[a-z_]+' column/i.test(msg)) {
-    const col = msg.match(/'([a-z_]+)' column|column "([a-z_]+)"/);
-    console.log(warn('Supabase is missing a layout column' +
-                     (col ? ': ' + (col[1] || col[2]) : '') +
-                     ' — the layout was NOT mirrored.'));
-    console.log('    \x1b[2mRun the newest server/supabase/*.sql in the SQL editor,\x1b[0m');
-    console.log('    \x1b[2mthen npm run supabase:reconcile — the cursor has moved past these rows.\x1b[0m');
-    layoutFailed = true;
-  } else if (/Could not find the table|PGRST205|relation .* does not exist/i.test(msg)) {
-    const named = msg.match(/public.([a-z_]+)/);
-    console.log(warn('Supabase is missing a table' + (named ? ': ' + named[1] : '') + ' — skipped.'));
-    console.log('    \x1b[2mRun server/supabase/006_shelves.sql in the SQL editor.\x1b[0m');
-  } else throw e;
+         Could not find the 'parent_id' column of 'sections' in the schema cache
+
+       and Postgres says `column "parent_id" ... does not exist` — both match
+       /does not exist|schema cache/, which is what the one test here used to be.
+       So a column nobody had added was reported as a missing TABLE, the whole
+       block was skipped, and sections AND shelves silently stopped mirroring
+       while the run went on to report success. The layout is small and changes
+       rarely, which is exactly why nobody would have noticed.
+
+       Column first: its message contains the table pattern's words, so the
+       other order answers the wrong question. */
+    if (/PGRST204|column .* does not exist|Could not find the '[a-z_]+' column/i.test(msg)) {
+      const col = msg.match(/'([a-z_]+)' column|column "([a-z_]+)"|column [a-z_]+\.([a-z_]+)/);
+      console.log(warn(`Supabase is missing a layout column on ${name}` +
+                       (col ? ': ' + (col[1] || col[2] || col[3]) : '') +
+                       ` — ${name} was NOT mirrored.`));
+      /* The cursor only moves in the delete phase, and this table's delete
+         phase is skipped too — so the rows wait rather than vanish. */
+      console.log('    \x1b[2mRun the newest server/supabase/*.sql in the SQL editor. The rows are\x1b[0m');
+      console.log('    \x1b[2mretried on every run until then; nothing is lost, only late.\x1b[0m');
+      layoutFailed = true;
+      layoutSkipped.add(name);
+    } else if (/Could not find the table|PGRST205|relation .* does not exist|Supabase 404 on /i.test(msg)) {
+      console.log(warn(`Supabase is missing a table: ${name} — skipped.`));
+      console.log(`    \x1b[2mRun ${LAYOUT_FILE[name] || 'server/supabase/006_shelves.sql'} in the SQL editor.\x1b[0m`);
+      layoutSkipped.add(name);
+    } else throw e;
+  }
 }
+
+/* Rooms before the racks that hang in them going in; the reverse coming out.
+   (No foreign key on the mirror makes this an ordering courtesy rather than a
+   hard requirement — see 008 — but a restore reads them in this order and it
+   costs nothing to push them the same way.) */
+for (const name of LAYOUT) await layoutStep(name, 'upsert');
+for (const name of LAYOUT.slice().reverse()) await layoutStep(name, 'delete');
 
 /* After the loop, not before: a movement points at a variant and a
    warehouse, and a rate at a currency. Both would be rejected if they
@@ -685,7 +705,16 @@ await syncAppendOnly('stock_movements');
 console.log(head('Print history'));
 for (const t of ['print_log', 'label_print_log']) {
   try { await syncAppendOnly(t); }
-  catch (e) { console.log(warn(`${t}: ${e.message.slice(0, 90)}`)); }
+  catch (e) {
+    console.log(warn(`${t}: ${e.message.slice(0, 90)}`));
+    /* print_log gained `kind` with migration 027. The maxid cursor does not
+       move on a failure, so the rows wait rather than vanish — but the person
+       reading this needs the file's name, not a PostgREST sentence. */
+    if (t === 'print_log' && /\bkind\b/.test(String(e.message))) {
+      console.log('    \x1b[2mRun server/supabase/009_gift_receipt.sql in the SQL editor — the rows\x1b[0m');
+      console.log('    \x1b[2mare retried on every run until then.\x1b[0m');
+    }
+  }
 }
 
 console.log(head('Partner'));
