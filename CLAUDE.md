@@ -331,9 +331,19 @@ reads from it in normal operation. `npm run supabase:sync` pushes; `npm run supa
 the whole shop back onto a clean machine.
 
 **`npm run supabase:check` is the one command that answers "is the mirror trustworthy".** It
-compares every mirrored table row for row, checks each sync bookmark against its own table, and
-reports whether accounts could actually be recovered. It exits non-zero when the mirror is not a
-faithful copy, so it can gate a deploy. `--quick` stops after the connection test.
+compares every mirrored table **by primary key** (eight here and eight there is not a match — five
+pushed by the shop and three left by a test database add up to eight as well, and that is the shape
+the live gap took), names rows sitting at or below their table's bookmark (the sync will never look
+at those again; only reconcile will), checks each bookmark against its own table, and reports whether
+accounts could actually be recovered — including a mirrored account this shop does not have. It
+exits non-zero when the mirror is not a faithful copy, so it can gate a deploy. `--quick` stops
+after the connection test. It opens the database through `DB.openReadOnly()`: `DB.open()` applies
+pending migrations, and a check that changes the schema it is checking is not read-only.
+
+The sync worker keeps the tail of each run and pulls the one line that names a failure out of it —
+`SyncWorker.status().lastError` — so the server log, the Sync button's toast and the manager's bell
+(after three failed runs in a row) all say *why*, not just "exit 1". Before that, a foreign key
+killed every run for a day and the only record was a line printed to nowhere.
 
 It did not always do this. It used to check the connection and five table names, and printed
 "Connected. 5 of 5 core tables present" while five invoices and every delivery were missing —
@@ -380,12 +390,15 @@ Things that will bite you:
   **It is set in `server/.env`, and a copy must live somewhere that is not this machine** — it is the
   only thing that opens the sealed boxes, and `users` is not in the restore's `ORDER` list, so
   without it a rebuilt shop comes back with no way to sign in at all.
-- `npm run supabase:reconcile` is the repair tool for the cursor tables when something wrote rows
-  outside `change_log`. The mirror and append-only tables are self-correcting and do not need it.
-  It is also the **only** thing that recovers a row whose log entry was consumed by a run that did
-  not land it — the cursor is legitimately past it, so no rewind will ever look there again. Its
-  comparison reports both directions; a table short of rows *in Supabase* is the case that matters,
-  and it read as "in step" until that was fixed.
+- `npm run supabase:reconcile` is the repair tool for **every cursor and append-only table** when
+  something wrote rows outside `change_log`, or a bookmark was left above rows that never landed.
+  The mirror-shape tables and `users` are rewritten whole on every sync and do not need it. It is
+  the **only** thing that recovers a row whose log entry was consumed by a run that did not land
+  it — the cursor is legitimately past it, so no rewind will ever look there again. Its comparison
+  reports both directions; a table short of rows *in Supabase* is the case that matters, and it
+  read as "in step" until that was fixed. It carries the same per-column fallbacks as the sync
+  (`MIRROR_LAG`): the day it lacked one it threw on the fourth table and never reached the sales
+  the check had sent somebody to repair.
 - **`sales.shift_id` is the one column that can break a sync.** `sales` is pushed OUTSIDE the guarded
   block, so on a Supabase without `005` the whole batch is rejected and a day of sales stops mirroring
   over an optional table. `TABLES.sales.fallbackDrop` retries without the column and names the file to

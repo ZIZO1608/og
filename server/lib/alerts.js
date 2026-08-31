@@ -26,6 +26,7 @@
 
 import * as DB from './db.js';
 import * as Auth from './auth.js';
+import * as Sync from './sync-worker.js';
 
 const nowIso = () => new Date().toISOString();
 
@@ -47,6 +48,23 @@ export function list(user) {
   const low = Number(
     (d.prepare("SELECT value FROM config WHERE key = 'stock.critical'").get() || {}).value
   ) || 2;
+
+  /* THE MIRROR HAS STOPPED. Computed like everything else here — from the
+     sync worker's memory of its last runs, never a stored row — and shown only
+     to whoever can act on it. One failed run is a bad connection; three in a
+     row is half an hour of sales on this machine and nowhere else, and until
+     now the only place that said so was a server window nobody reads. Keyed
+     on the last success, so reading it once does not hide the next outage. */
+  if (can('config.write')) {
+    const s = Sync.status();
+    if (s.configured && s.failures >= 3) {
+      out.push({
+        key: 'mirror:' + (s.lastOkAt || 'boot'), icon: '!', tone: 'red', view: 'settings',
+        text: `Supabase mirror has failed ${s.failures} times in a row` +
+              (s.lastError ? ` — ${s.lastError.slice(0, 140)}` : '')
+      });
+    }
+  }
 
   /* Out of stock, not merely low — somebody is at the counter holding it. */
   if (can('stock.read') || can('product.read')) {

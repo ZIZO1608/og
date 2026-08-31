@@ -30,6 +30,23 @@ function navTo(view, tab) {
   go(view);
 }
 
+/* The gift-slip exchange window, in days, out of a text box.
+   ONE RULE, so the box behaves the same however it is abused: a real number is
+   clamped into range, and anything that is not one falls back to the default.
+   Written out rather than done inline with `Number(v) || 7`, which quietly
+   made 0 mean "seven days" while -4 meant "one day" — two different answers to
+   the same "that isn't a window" and no way to guess which you would get.
+
+   The floor is the point. A window of zero prints a gift slip that expired the
+   moment it came off the roll, which is worse than no slip: the recipient is
+   holding paper that says they are too late. */
+function giftDays(raw) {
+  var s = String(raw == null ? '' : raw).trim();
+  var n = s === '' ? NaN : Number(s);
+  if (!isFinite(n)) return 7;
+  return Math.min(365, Math.max(1, Math.round(n)));
+}
+
 var ACTIONS = {
   nav: function (el) { navTo(el.getAttribute('data-view'), el.getAttribute('data-tab')); },
   'nav-close': function (el) { closeDrawer(); navTo(el.getAttribute('data-view'), el.getAttribute('data-tab')); },
@@ -62,7 +79,12 @@ var ACTIONS = {
       })
       .catch(function (e) {
         var busy = e && e.code === 'busy';
-        toast(t('sync_now'), busy ? t('sync_busy') : API.friendly(e), busy ? 'warn' : 'err', 6000);
+        /* The server's message is now the sync's own last line — the foreign
+           key, the column the mirror has not got, the project that did not
+           answer — so the person who pressed learns why, not only that. */
+        var why = busy ? t('sync_busy')
+                       : t('sync_failed').replace('{why}', (e && e.message) || API.friendly(e));
+        toast(t('sync_now'), why, busy ? 'warn' : 'err', 8000);
       })
       .then(function () {
         el.disabled = false;
@@ -540,12 +562,8 @@ var ACTIONS = {
       'receipt.policy_en':    (document.getElementById('rcPolicyEn') || {}).value || '',
       /* Days on screen, hours in the database — the field is labelled in days
          because that is how a shop owner thinks about an exchange window, and
-         stored in hours to match its sibling receipt.exchange_hours. Clamped
-         so an empty or silly box cannot write a window of zero, which would
-         print a gift slip that expired the moment it came off the roll. */
-      'receipt.gift_exchange_hours': String(
-        Math.min(365, Math.max(1,
-          Math.round(Number((document.getElementById('rcGiftDays') || {}).value) || 7))) * 24),
+         stored in hours to match its sibling receipt.exchange_hours. */
+      'receipt.gift_exchange_hours': String(giftDays((document.getElementById('rcGiftDays') || {}).value) * 24),
       'receipt.gift_policy_ar': (document.getElementById('rcGiftPolicyAr') || {}).value || '',
       'receipt.gift_policy_en': (document.getElementById('rcGiftPolicyEn') || {}).value || ''
     };

@@ -61,6 +61,19 @@ export function close() {
   if (db) { db.close(); db = null; }
 }
 
+/* For the scripts that only ever READ — the mirror check, a diagnostic.
+   open() applies every pending migration on the way in, which on a machine
+   with an unfinished .sql sitting in server/migrations turns "is the mirror
+   in step" into a schema change on the live database that nobody asked for.
+   That happened. A read-only handle cannot migrate, and journal_mode is left
+   alone because the mode lives in the file, not the connection. */
+export function openReadOnly(file) {
+  if (db) return db;
+  db = new DatabaseSync(file, { readOnly: true });
+  db.exec('PRAGMA busy_timeout = 5000');
+  return db;
+}
+
 /* ---------------------------------------------------------------- migrations
    Numbered .sql files applied in order, each recorded so it runs once. Kept
    deliberately dumb: no down-migrations, no checksums. A shop database that

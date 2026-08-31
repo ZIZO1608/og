@@ -166,7 +166,11 @@ if (QUICK || found === 0) {
 
 const DB = await import('../lib/db.js');
 const Vault = await import('../lib/credvault.js');
-DB.open(maybe('OG_DB') || resolve(HERE, '..', 'data', 'og.db'));
+/* Read-only, and it matters: DB.open() applies every pending migration on the
+   way in, so with an unfinished .sql sitting in server/migrations this check
+   was a schema change on the live database that nobody asked for. It did
+   exactly that once. A read-only handle cannot. */
+DB.openReadOnly(maybe('OG_DB') || resolve(HERE, '..', 'data', 'og.db'));
 const db = DB.get();
 
 /* Deliberately never mirrored — live session tokens, a local print queue and a
@@ -199,8 +203,45 @@ console.log(head('5. Is the shop actually in the mirror?'));
 const behind = [];      /* rows here that are not there — the dangerous case */
 const ahead = [];       /* rows there that are not here */
 const absent = [];      /* table missing remotely */
+const unreadable = [];  /* table answered with something other than a count */
 const thin = [];        /* table is there, but short of columns */
 let matched = 0;
+
+/* Tables the sync rewrites WHOLE on every run. A gap in one of these closes
+   on the next sync by itself; the advice for the others is reconcile. */
+const WHOLE = new Set(['config', 'role_permissions', 'label_templates', 'clubs',
+                       'notification_reads', 'users', 'currencies', 'warehouses']);
+
+/* The bookmarks, fetched once here because section 5 needs them too: a row
+   that is missing there AND sits at or below its table's bookmark is a row
+   the ordinary sync will never look at again. */
+let cursors = [];
+try { cursors = await SB.select('sync_state', {}); } catch { /* reported in 6 */ }
+const cursorFor = (t) => {
+  const c = cursors.find((r) => r.id === `sync:${t}`);
+  const m = cursors.find((r) => r.id === `sync:${t}:maxid`);
+  return c ? { kind: 'seq', at: c.last_seq } : m ? { kind: 'id', at: m.last_seq } : null;
+};
+
+/* ROWS, NOT COUNTS. Eight here and eight there is not a match: five pushed by
+   the shop and three left behind by a test database add up to eight as well,
+   and that is the shape the live gap took. The key comes from the schema
+   rather than a list written here, so the next table somebody adds is compared
+   the same way without anyone remembering to come back. Values are still not
+   compared — a qty that moved after its bookmark passes; that is reconcile's
+   job, and this says so at the end. */
+const PAGE = 1000;
+const keyCols = (t) =>
+  db.prepare('SELECT name FROM pragma_table_info(?) WHERE pk > 0 ORDER BY pk').all(t).map((c) => c.name);
+const keyOf = (row, cols) => cols.map((c) => String(row[c])).join(' ');
+async function remoteKeys(t, cols) {
+  const out = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const rows = await SB.select(t, { select: cols.join(','), order: cols.join(','), limit: PAGE, offset });
+    out.push(...rows);
+    if (rows.length < PAGE) return out;
+  }
+}
 
 /* WHAT A ROW COUNT CANNOT SEE.
    Two tables can agree on fourteen rows apiece while six columns of every one
@@ -262,16 +303,57 @@ for (const t of tables) {
 
   let there;
   try { there = await SB.count(t); }
-  catch { absent.push(t); continue; }
+  catch (e) {
+    /* A 404 is a table the mirror has not got. Anything else — a timeout, a
+       500, a rejected key — is not, and calling it "does not exist" sends
+       somebody to run a schema file that has already been run. */
+    if (/404|PGRST205|Could not find the table|does not exist/i.test(e.message)) absent.push(t);
+    else unreadable.push({ t, why: e.message });
+    continue;
+  }
 
   const gone = await missingColumns(t);
   if (gone.length) thin.push({ t, cols: gone });
 
-  if (there === here) { if (!gone.length) matched++; continue; }
-  (here > there ? behind : ahead).push({ t, here, there });
+  const cols = keyCols(t);
+  const missing = [], extra = [];
+  if (cols.length) {
+    const local = new Set(
+      db.prepare(`SELECT ${cols.map((c) => `"${c}"`).join(',')} FROM "${t}"`).all().map((r) => keyOf(r, cols))
+    );
+    let remote;
+    try { remote = new Set((await remoteKeys(t, cols)).map((r) => keyOf(r, cols))); }
+    catch (e) { unreadable.push({ t, why: e.message }); continue; }
+    for (const k of local) if (!remote.has(k)) missing.push(k);
+    for (const k of remote) if (!local.has(k)) extra.push(k);
+  }
+
+  if (!missing.length && !extra.length && there === here) { if (!gone.length) matched++; continue; }
+
+  /* Of the rows that never arrived, how many will the sync never retry?
+     change_log.row_id is the key joined with ':' (stock is 'sku:wh'); an
+     append-only table's bookmark is the highest id sent. */
+  const cur = cursorFor(t);
+  let stranded = 0;
+  if (cur && missing.length) {
+    for (const k of missing) {
+      const parts = k.split(' ');
+      if (cur.kind === 'id') { if (Number(parts[0]) <= cur.at) stranded++; continue; }
+      const top = db.prepare('SELECT MAX(seq) AS m FROM change_log WHERE tbl = ? AND row_id = ?')
+                    .get(t, parts.join(':')).m;
+      if (top !== null && top <= cur.at) stranded++;
+    }
+  }
+
+  if (missing.length || (there !== null && here > there)) behind.push({ t, here, there, missing, extra, stranded });
+  else ahead.push({ t, here, there, missing, extra, stranded });
 }
 
-console.log(tick(`${matched} table(s) match exactly`));
+console.log(tick(`${matched} table(s) match row for row`));
+
+for (const { t, why } of unreadable) {
+  console.log(warn(`${t.padEnd(18)} could not be compared — ${why.slice(0, 90)}`));
+}
 
 /* Before the row comparisons: a table short of columns is wrong however well
    its rows line up, and saying so after "36 tables match exactly" reads as an
@@ -294,21 +376,41 @@ if (absent.length) {
 /* A shop AHEAD of its mirror is the one that matters. It means a sale, a
    delivery or a stock move is on this machine only, and a dead drive loses it.
    Never soften this into a warning. */
-for (const { t, here, there } of behind) {
-  console.log(cross(`${t.padEnd(18)} ${here} here, ${there} in Supabase — ${here - there} NOT mirrored`));
+for (const { t, here, there, missing, extra, stranded } of behind) {
+  const n = missing.length || (here - there);
+  console.log(cross(`${t.padEnd(18)} ${here} here, ${there} in Supabase — ${n} NOT mirrored` +
+                    (extra.length ? `, ${extra.length} extra there` : '') +
+                    (stranded ? `; ${stranded} below the sync's bookmark` : '')));
   failed = true;
 }
-for (const { t, here, there } of ahead) {
-  console.log(warn(`${t.padEnd(18)} ${here} here, ${there} in Supabase — ${there - here} extra there`));
+for (const { t, here, there, extra } of ahead) {
+  console.log(warn(`${t.padEnd(18)} ${here} here, ${there} in Supabase — ${extra.length || (there - here)} extra there`));
 }
 
-if (behind.length) {
+/* Which tool, said truthfully. The sync rewrites the WHOLE tables on every
+   run; for the rest reconcile is the only thing that reads both sides, and
+   the only thing that will ever look at a row below its bookmark again. */
+if (behind.some((b) => !WHOLE.has(b.t))) {
   console.log(`\n      Fix: ${BOLD}npm run supabase:reconcile${OFF} — it pushes what is missing.`);
-  console.log(`      ${DIM}The ordinary sync cannot: its cursor is already past those rows.${OFF}`);
+  if (behind.some((b) => b.stranded)) {
+    console.log(`      ${DIM}The ordinary sync cannot: its bookmark is already past those rows.${OFF}`);
+  }
 }
-if (ahead.length && !behind.length) {
+if (behind.some((b) => WHOLE.has(b.t))) {
+  console.log(`\n      ${DIM}${behind.filter((b) => WHOLE.has(b.t)).map((b) => b.t).join(', ')}: ` +
+              `rewritten whole by the next npm run supabase:sync.${OFF}`);
+}
+if (ahead.some((a) => !WHOLE.has(a.t)) && !behind.length) {
   console.log(`\n      ${DIM}Extra rows there are usually rows deleted here. Check them, then${OFF}`);
   console.log(`      ${DIM}npm run supabase:reconcile removes the ones the shop no longer has.${OFF}`);
+}
+if (ahead.some((a) => a.t === 'users')) {
+  /* Never a script's call — see 7, which names them. */
+  console.log(`\n      ${DIM}users: no script deletes an account. See 7 below.${OFF}`);
+}
+if (ahead.some((a) => WHOLE.has(a.t) && a.t !== 'users')) {
+  console.log(`\n      ${DIM}${ahead.filter((a) => WHOLE.has(a.t) && a.t !== 'users').map((a) => a.t).join(', ')}: ` +
+              `rewritten whole by the next npm run supabase:sync.${OFF}`);
 }
 
 console.log(head('6. Sync bookmarks'));
@@ -317,15 +419,22 @@ console.log(head('6. Sync bookmarks'));
    next run asks for changes after a number nothing will ever reach, finds
    none, and reports "nothing new" for good. Compared against the whole log's
    maximum this is invisible, because a busy table hides a quiet one. */
-let cursors = [];
-try { cursors = await SB.select('sync_state', {}); }
-catch { console.log(warn('sync_state is missing — the sync has never run against this project.')); }
+if (!cursors.length) {
+  console.log(warn('sync_state is empty or missing — the sync has never run against this project.'));
+}
 
 let stuck = 0, live = 0;
 for (const c of cursors) {
   const m = String(c.id).match(/^sync:([a-z_]+)(:maxid)?$/);
   if (!m) continue;
   const [, tbl, byId] = m;
+  /* A bookmark for a table this shop does not have is not "healthy" — it is
+     a bookmark somebody else's database left here, or a table that was
+     renamed. Say so rather than counting it. */
+  if (!tables.includes(tbl)) {
+    console.log(warn(`${c.id.padEnd(30)} is a bookmark for a table this shop does not have`));
+    continue;
+  }
   let top;
   try {
     top = byId

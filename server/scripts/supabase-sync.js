@@ -342,6 +342,18 @@ const TABLES = {
       const items = DB.get().prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(localRow.id);
       await SB.remove('sale_items', { sale_id: localRow.id }).catch(() => {});
       if (items.length) await SB.insert('sale_items', items, { upsert: true });
+    },
+    /* The mirror's print_log (001) and debt_payments (005) point at a sale
+       WITHOUT a cascade, and neither has a delete path of its own — one is
+       append-only, the other bookmarked by highest id. So a sale purged here
+       is refused there, and the refusal lands in the core loop, which takes
+       the whole run down: every later sale stops mirroring over one demo
+       invoice. Clear the children first. The purge deletes the same rows
+       locally, so the two sides end up agreeing. */
+    beforeDelete: async (key) => {
+      for (const t of ['print_log', 'debt_payments']) {
+        await SB.remove(t, { sale_id: key.id }).catch(() => {});
+      }
     }
   },
   deliveries: {
@@ -566,6 +578,7 @@ async function syncTable(name, { phase = 'both' } = {}) {
   }
   if (phase !== 'upsert') {
     for (const key of toDeleteKeys) {
+      if (cfg.beforeDelete) await cfg.beforeDelete(key);
       await SB.remove(name, key);
       deleted++;
     }

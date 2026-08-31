@@ -210,9 +210,15 @@ const removed = DB.tx(() => {
 
     d.prepare(`DELETE FROM sale_items WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
     d.prepare(`DELETE FROM debt_payments WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
+    /* print_log too: it references the sale with no cascade here (009), so a
+       demo sale that ever had a receipt printed made this whole transaction
+       fail on the foreign key — and a purge that fails on the one shop that
+       printed its demo receipts is a purge nobody can run. */
+    d.prepare(`DELETE FROM print_log WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
     d.prepare(`DELETE FROM sales WHERE id IN (${inList(saleIds)})`).run(...saleIds);
     /* sale_items cascade on the Postgres side, so the parent is enough for
-       those. debt_payments cascade there too. */
+       those. debt_payments and print_log do NOT cascade there — the sync's
+       sales.beforeDelete clears them before the sale goes. */
     for (const id of saleIds) DB.logChange('sales', id, 'delete', null, null);
     out.sales = saleIds.length;
   }
@@ -233,8 +239,16 @@ const removed = DB.tx(() => {
 
   if (demoProducts.length) {
     const ids = demoProducts.map((p) => p.id);
+    /* A shelf assigned to one of these is unassigned by ON DELETE SET NULL
+       (023) — a write the database makes on its own, which nothing logs. Name
+       the shelves first so the mirror follows; otherwise it keeps a dead
+       assignment pointing at a product it no longer has. */
+    const shelfIds = many(
+      `SELECT id FROM shelves WHERE product_id IN (${inList(ids)})`, ...ids
+    ).map((r) => r.id);
     d.prepare(`DELETE FROM products WHERE id IN (${inList(ids)})`).run(...ids);
     for (const id of ids) DB.logChange('products', id, 'delete', null, null);
+    for (const id of shelfIds) DB.logChange('shelves', id, 'update', null, null);
     out.products = ids.length;
   }
 

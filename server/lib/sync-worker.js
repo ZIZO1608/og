@@ -65,43 +65,91 @@ function minutes() {
   return n;
 }
 
+/* WHAT THE LAST RUNS SAID. The sync script's report used to be thrown away
+   (stdio 'ignore'), so the server log said "exit 1, run supabase:check" ten
+   minutes apart for a day while the actual sentence — a foreign key on
+   deliveries, a column the mirror had not got — was printed to nowhere. The
+   tail of that report is kept here, the one line that names the failure is
+   pulled out of it, and both are given to the log line, to the Sync button's
+   answer, and to the bell (lib/alerts.js). Nothing is stored: like the bell,
+   this is a fact about now. */
+const TAIL = 4000;
+const last = { okAt: null, failedAt: null, failures: 0, code: null, why: null };
+
+/* The report is written to be read top to bottom by a person. The line worth
+   keeping is the error's own sentence if the run died, else the last '!'
+   warning, else whatever it printed last. ANSI colour stripped: this goes
+   into a toast. */
+function reason(tail) {
+  const lines = tail.replace(/\x1b\[[0-9;]*m/g, '').split(/\r?\n/)
+    .map((l) => l.trim()).filter(Boolean);
+  const died = lines.find((l) => /^(\w*Error|Supabase \d{3} on)/.test(l));
+  const warned = lines.slice().reverse().find((l) => l.startsWith('!'));
+  return (died || warned || lines[lines.length - 1] || 'no output').slice(0, 300);
+}
+
+/* One launcher for both callers. The report is piped rather than ignored —
+   only its tail is kept, and only the extracted line ever reaches the
+   server's own log, so the address the till is on is still not buried under
+   a ten-minute report. */
+function launch(onExit) {
+  running = true;
+  const started = Date.now();
+  const child = spawn(process.execPath, [SCRIPT], {
+    cwd: resolve(HERE, '..'),
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true
+  });
+
+  let tail = '';
+  const keep = (chunk) => { tail = (tail + chunk).slice(-TAIL); };
+  child.stdout.on('data', keep);
+  child.stderr.on('data', keep);
+
+  child.on('exit', (code) => {
+    running = false;
+    runs++;
+    const seconds = Math.round((Date.now() - started) / 1000);
+    if (code === 0) {
+      last.okAt = new Date().toISOString();
+      last.failures = 0; last.code = 0; last.why = null;
+    } else {
+      last.failedAt = new Date().toISOString();
+      last.failures++; last.code = code; last.why = reason(tail);
+    }
+    onExit(code, seconds);
+  });
+
+  child.on('error', (err) => {
+    running = false;
+    last.failedAt = new Date().toISOString();
+    last.failures++; last.code = null; last.why = 'could not start the sync script — ' + err.message;
+    onExit(null, 0, err);
+  });
+}
+
 function runOnce() {
   if (running) {
     /* Not an error worth shouting about: it means the last run is still
        going, and skipping is exactly the right response. */
     return;
   }
-  running = true;
-  const started = Date.now();
 
-  /* stdio ignored on purpose. The sync script prints a readable report meant
-     for someone who ran it by hand; interleaving that into the server's log
-     every ten minutes would bury the lines that matter — the address the
-     till is on, and the warnings about test accounts. */
-  const child = spawn(process.execPath, [SCRIPT], {
-    cwd: resolve(HERE, '..'),
-    stdio: 'ignore',
-    windowsHide: true
-  });
-
-  child.on('exit', (code) => {
-    running = false;
-    runs++;
-    const secs = Math.round((Date.now() - started) / 1000);
-    if (code === 0) {
+  launch((code, secs, err) => {
+    if (err) {
+      console.log(`  [sync] could not start the sync script — ${err.message}`);
+    } else if (code === 0) {
       console.log(`  [sync] Supabase mirror updated (${secs}s)`);
     } else {
-      /* Said plainly and then dropped. A failed mirror is not a failed shop,
-         and the next run is minutes away — so this must never look like
-         something the person at the counter has to act on right now. */
-      console.log(`  [sync] Supabase update failed (exit ${code}) — the shop is unaffected, ` +
-                  `retrying in ${minutes()} min. Run "npm run supabase:check" to see why.`);
+      /* Said plainly, WITH the reason, and then dropped. A failed mirror is
+         not a failed shop, and the next run is minutes away — so this must
+         never look like something the person at the counter has to act on
+         right now. But it has to say what went wrong: "exit 1" on its own is
+         what let a foreign key fail unread for a day. */
+      console.log(`  [sync] Supabase update failed (exit ${code}): ${last.why}`);
+      console.log(`         The shop is unaffected — retrying in ${minutes()} min. ` +
+                  `Run "npm run supabase:check" for the full picture.`);
     }
-  });
-
-  child.on('error', (err) => {
-    running = false;
-    console.log(`  [sync] could not start the sync script — ${err.message}`);
   });
 }
 
@@ -142,25 +190,13 @@ export function runNow() {
       return done({ ok: false, reason: 'busy', message: 'A sync is already running.' });
     }
 
-    running = true;
-    const started = Date.now();
-    const child = spawn(process.execPath, [SCRIPT], {
-      cwd: resolve(HERE, '..'), stdio: 'ignore', windowsHide: true
-    });
-
-    child.on('exit', (code) => {
-      running = false;
-      runs++;
-      const seconds = Math.round((Date.now() - started) / 1000);
+    launch((code, seconds, err) => {
+      if (err) return done({ ok: false, reason: 'spawn', message: last.why });
+      /* The message is the sync's own last line, because the person who
+         pressed the button is the one who can act on it. */
       done(code === 0
         ? { ok: true, seconds }
-        : { ok: false, reason: 'failed', seconds,
-            message: 'The sync script exited with code ' + code + '.' });
-    });
-
-    child.on('error', (err) => {
-      running = false;
-      done({ ok: false, reason: 'spawn', message: err.message });
+        : { ok: false, reason: 'failed', seconds, message: last.why });
     });
   });
 }
@@ -170,5 +206,9 @@ export function stop() {
 }
 
 export function status() {
-  return { configured: SB.isConfigured(), everyMinutes: minutes(), running, runs };
+  return {
+    configured: SB.isConfigured(), everyMinutes: minutes(), running, runs,
+    lastOkAt: last.okAt, lastFailedAt: last.failedAt,
+    failures: last.failures, lastError: last.why
+  };
 }
