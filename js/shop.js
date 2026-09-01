@@ -207,12 +207,12 @@ var Shop = (function () {
      was, because the screen must keep showing what the server thinks is true.
      A stock figure is not a matter of local opinion.
 
-     `fail` is the one exception, for the caller that knows better: a 409
-     phone_taken is not a refusal — the row IS written — and the default
-     toast-and-stop would leave a customer in the database and off the
-     screen. It returns true when it has handled the error; anything else
-     falls through to the default. */
-  function write(send, mirror, done, fail) {
+     Stage B added a fourth `fail` argument here so cu-save could handle the
+     409 a duplicate phone used to return. Stage C made that a 200 with a
+     `warning` in the body — which is what it always was — so the only caller
+     went back to the success path and the argument was removed again. A
+     shared function should not carry an escape hatch nobody uses. */
+  function write(send, mirror, done) {
     if (!live()) {
       /* `mirror` returns whatever the local write produced — a new product,
          say — so `done` receives the same shape in both modes and the call
@@ -235,7 +235,6 @@ var Shop = (function () {
       })
       .catch(function (err) {
         busy = false;
-        if (fail && fail(err) === true) return;
         if (typeof toast === 'function') {
           toast(typeof t === 'function' ? t('warehouse_title') : 'Stock',
                 API.friendly(err), 'err', 6000);

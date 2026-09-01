@@ -155,30 +155,144 @@ function sizesByCustomer(customerId = null) {
   return out;
 }
 
-function decorate(row, debts, sizes) {
+/* ---- how often this person actually comes in -----------------------------
+   customer.at_risk_days is one number for the whole shop, and it is wrong in
+   both directions: somebody who comes every 40 days and has not been seen for
+   90 is late, while somebody who comes twice a year at 90 days is perfectly
+   fine. So each customer gets their own rhythm — the MEDIAN gap between their
+   purchases, in days.
+
+   Median rather than mean: one order placed two years before the rest drags a
+   mean far enough to make a regular look occasional, and the median does not
+   move. Two purchases give one gap, which is not a rhythm — it is a
+   coincidence — so this is null below three purchases and the browser falls
+   back to the shop-wide number (DB.quietAfter, js/data.js).
+
+   Computed here, not in the browser: js/data.js holds the shop's last 200
+   sales, so the same customer would get a different rhythm on a machine that
+   had been open longer. Sorted per customer in JS for the same reason
+   sizesByCustomer does its top-two there — SQLite has no median, and window
+   functions are a newer SQLite than node:sqlite is known to ship. */
+function rhythmByCustomer(customerId = null) {
+  const rows = get().prepare(
+    `SELECT customer_id, at
+       FROM sales
+      WHERE voided = 0 AND customer_id IS NOT NULL
+        ${customerId === null ? '' : 'AND customer_id = ?'}
+      ORDER BY customer_id, at`
+  ).all(...(customerId === null ? [] : [customerId]));
+
+  const gaps = new Map();
+  let prevId = null, prevAt = 0;
+  for (const r of rows) {
+    const at = Date.parse(r.at);
+    if (!Number.isFinite(at)) continue;
+    if (r.customer_id === prevId) {
+      const days = (at - prevAt) / 86400000;
+      /* Two sales in one visit are one visit, not a gap of zero. */
+      if (days >= 0.5) {
+        if (!gaps.has(r.customer_id)) gaps.set(r.customer_id, []);
+        gaps.get(r.customer_id).push(days);
+      }
+    }
+    prevId = r.customer_id;
+    prevAt = at;
+  }
+
+  const out = new Map();
+  for (const [id, list] of gaps) {
+    if (list.length < 2) continue;              /* fewer than three purchases */
+    list.sort((a, b) => a - b);
+    const mid = list.length >> 1;
+    const median = list.length % 2
+      ? list[mid]
+      : (list[mid - 1] + list[mid]) / 2;
+    out.set(id, Math.round(median));
+  }
+  return out;
+}
+
+function decorate(row, debts, sizes, rhythm) {
   const d = debts.get(row.id) || { debt_syp: 0, debt_usd: 0, open_debts: 0 };
   return {
     ...row,
     debt_syp: d.debt_syp,
     debt_usd: d.debt_usd,
     open_debts: d.open_debts,
-    sizes: sizes.get(row.id) || []
+    sizes: sizes.get(row.id) || [],
+    /* null means "not enough history to say" — never 0, which would read as
+       "comes in every day". */
+    median_gap_days: rhythm.get(row.id) ?? null
   };
 }
 
-export function list({ includeArchived = false } = {}) {
+/* ---- the delivery driver -------------------------------------------------
+   A driver holds customer.read — he has to, or he cannot see who he is
+   delivering to — and that used to hand him the WHOLE customer table with
+   spend and debt on every row, on a phone, out on a run. The shop's debt book
+   is not something a driver carries around.
+
+   Scoped by ROLE, not by permission, and in the SQL rather than by filtering
+   afterwards: the same rule and the same reasoning as scope() in
+   server/lib/deliveries.js. Giving a manager customer.read should show him the
+   shop; giving a second driver the same permission must not show him the first
+   driver's round.
+
+   Two narrowings, both deliberate:
+     - only customers on a run he is actually carrying (waiting or out), and
+     - no money at all. Not scrubbed from the row afterwards — never selected,
+       so there is no debt arithmetic to leak and nothing to forget to strip.
+   He gets who they are and how to reach them, which is the job. */
+function driverScope(user) {
+  return user && user.role === 'delivery' ? user.id : null;
+}
+
+const ON_MY_RUN = `
+  c.id IN (SELECT s.customer_id
+             FROM deliveries d
+             JOIN sales s ON s.id = d.sale_id
+            WHERE d.driver_id = ?
+              AND d.status IN ('waiting', 'out')
+              AND s.customer_id IS NOT NULL)`;
+
+const DRIVER_SELECT = `
+  SELECT c.id, c.name, c.phone, c.city, c.source, c.address,
+         c.archived, c.created_at, c.updated_at
+    FROM customers c`;
+
+export function list(user, { includeArchived = false } = {}) {
+  const mine = driverScope(user);
+  if (mine !== null) {
+    /* Archived customers are included: somebody archived after the parcel was
+       assigned still has to receive it. */
+    return get().prepare(
+      `${DRIVER_SELECT} WHERE ${ON_MY_RUN} ORDER BY c.name`
+    ).all(mine);
+  }
+
   const rows = get().prepare(
     `${SELECT} ${includeArchived ? '' : 'WHERE c.archived = 0'} ORDER BY c.name`
   ).all();
   const debts = debtsByCustomer();
   const sizes = sizesByCustomer();
-  return rows.map((r) => decorate(r, debts, sizes));
+  const rhythm = rhythmByCustomer();
+  return rows.map((r) => decorate(r, debts, sizes, rhythm));
 }
 
-export function byId(id) {
+/* null for "not yours", which the routes turn into 404 rather than 403 — the
+   same rule deliveries.js follows, so a driver cannot learn that a customer
+   exists by telling the two answers apart. */
+export function byId(id, user) {
+  const mine = driverScope(user);
+  if (mine !== null) {
+    return get().prepare(
+      `${DRIVER_SELECT} WHERE c.id = ? AND ${ON_MY_RUN}`
+    ).get(id, mine) || null;
+  }
+
   const row = get().prepare(`${SELECT} WHERE c.id = ?`).get(id);
   if (!row) return null;
-  return decorate(row, debtsByCustomer(id), sizesByCustomer(id));
+  return decorate(row, debtsByCustomer(id), sizesByCustomer(id), rhythmByCustomer(id));
 }
 
 /* The invoices, newest first, WITH their lines. Loaded per customer rather
@@ -217,6 +331,26 @@ export function historyFor(id, limit = 200) {
 
   for (const it of items) bySale.get(it.sale_id)?.items.push(it);
   return sales;
+}
+
+/* The parcels, for the profile's timeline. Reached through the sale, because
+   that is the only link a delivery has to a person — deliveries carry their
+   own typed address, not a customer_id (recon §C7).
+
+   Gated on delivery.read at the route: a cashier's timeline simply has no
+   delivery rows in it rather than being told there are some she cannot see. */
+export function deliveriesFor(id, limit = 100) {
+  const n = Math.max(1, Math.min(500, Math.floor(Number(limit)) || 100));
+  return get().prepare(
+    `SELECT d.id, d.sale_id, d.status, d.address, d.assigned_at, d.out_at,
+            d.closed_at, d.fail_reason, u.name AS driver_name
+       FROM deliveries d
+       JOIN sales s ON s.id = d.sale_id
+       LEFT JOIN users u ON u.id = d.driver_id
+      WHERE s.customer_id = ?
+      ORDER BY d.assigned_at DESC
+      LIMIT ?`
+  ).all(id, n);
 }
 
 /* ------------------------------------------------------------------ writing */
@@ -260,13 +394,17 @@ function phoneHolder(d, phone, exceptId) {
   return null;
 }
 
-/* A duplicate phone is a WARNING, not a refusal. The row is written first,
-   and only then does the error go up, carrying both the person who already
-   had the number and the person just made. Two people genuinely share a
-   number — a household, a shop landline — and the till must not be stopped
-   by that; but the same person typed once in Arabic and once in Latin is
-   the commoner case, and somebody has to be told. The route turns this into
-   a 409 whose body holds both rows (server/index.js). */
+/* A duplicate phone is a WARNING, not a refusal, and — since Stage C — not an
+   error either. Two people genuinely share a number (a household, a shop
+   landline), so the row is written and the caller is told; but the same
+   person typed once in Arabic and once in Latin is the commoner case, and
+   somebody has to be told.
+
+   This used to write the row, commit, and then THROW, which the route turned
+   into a 409. That was wrong: 409 says the request did not happen, so a retry
+   layer — or any future client reading the status rather than the body —
+   would send it again and make a second duplicate. The creation succeeded, so
+   it answers 200, and the warning rides along beside the customer. */
 export function create(fields, userId, { demo = false } = {}) {
   const f = clean(fields);
   if (!f.name) throw new Error('a customer needs a name');
@@ -289,18 +427,26 @@ export function create(fields, userId, { demo = false } = {}) {
     return byId(id);
   });
 
-  if (taken) {
-    const e = new Error(
-      `That number already belongs to ${taken.name} (#${taken.id}` +
-      `${taken.archived ? ', archived' : ''}). ${made.name} was saved anyway.`);
-    e.code = 'phone_taken';
-    e.existing = taken;
-    e.customer = made;
-    throw e;
-  }
-  return made;
+  return {
+    customer: made,
+    /* null when there is nothing to say. The browser composes its own wording
+       from I18N — this message is for anything that is not the browser. */
+    warning: taken ? {
+      code: 'phone_taken',
+      message: `That number already belongs to ${taken.name} (#${taken.id}` +
+               `${taken.archived ? ', archived' : ''}). ${made.name} was saved anyway.`,
+      existing: taken
+    } : null
+  };
 }
 
+/* Same shape as create(): { customer, warning }.
+
+   A phone CHANGE deserves the duplicate warning as much as a phone being
+   typed for the first time — arguably more, since correcting a number is
+   exactly when somebody merges two records by accident. phoneHolder has taken
+   an exceptId since Stage A for precisely this and nobody had ever passed it,
+   because until Stage C there was no way to edit a customer at all. */
 export function update(id, fields, userId) {
   const f = clean(fields);
 
@@ -312,7 +458,17 @@ export function update(id, fields, userId) {
   if (!keys.length) throw new Error('nothing to update');
   if (f.name === null) throw new Error('a customer needs a name');
 
-  return tx((d) => {
+  let taken = null;
+  const row = tx((d) => {
+    /* Only when the number actually moved. Re-saving a customer without
+       touching the phone must not warn about the person themselves. */
+    if (f.phone !== undefined) {
+      const before = d.prepare('SELECT phone FROM customers WHERE id = ?').get(id);
+      if (before && normPhone(before.phone) !== normPhone(f.phone)) {
+        taken = phoneHolder(d, f.phone, id);
+      }
+    }
+
     const args = keys.map(k => f[k]);
     args.push(nowIso(), id);
 
@@ -325,10 +481,20 @@ export function update(id, fields, userId) {
     logChange('customers', id, 'update', userId, null);
     return byId(id);
   });
+
+  return {
+    customer: row,
+    warning: taken ? {
+      code: 'phone_taken',
+      message: `That number already belongs to ${taken.name} (#${taken.id}` +
+               `${taken.archived ? ', archived' : ''}).`,
+      existing: taken
+    } : null
+  };
 }
 
 export function archive(id, userId) {
-  return update(id, { archived: 1 }, userId);
+  return update(id, { archived: 1 }, userId).customer;
 }
 
 /* A manager moving someone's balance by hand.

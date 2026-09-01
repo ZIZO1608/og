@@ -243,6 +243,49 @@ function openNewCustomer(prefill, onCreated) {
   }, 60);
 }
 
+/* ---- changing one -------------------------------------------------------
+   Until Stage C there was NO way to change a customer's name, phone or
+   address anywhere in the system. The row was written once at the till and
+   then frozen: a mistyped number stayed mistyped, a person who moved kept the
+   old address, and PATCH /api/customers/:id sat there accepting fields nobody
+   ever sent it.
+
+   The same modal as the create form, plus the two fields that were being
+   stored and never shown. It is a deliberate five now rather than three: this
+   one is not filled in with somebody waiting at the counter. */
+function openEditCustomer(cid) {
+  if (!allow('customer.write')) { toast(t('customer'), t('no_access'), 'err'); return; }
+  var c = DB.customer(cid);
+  if (!c) return;
+
+  openModal({
+    title: t('cu_edit'), size: 'narrow',
+    body:
+      '<label class="field"><span>' + t('name') + '</span>' +
+        '<input class="inp" id="cuName" type="text" value="' + esc(c.name) + '" ' +
+        'placeholder="' + esc(t('cu_name_ph')) + '"></label>' +
+      '<label class="field mt"><span>' + t('phone') + '</span>' +
+        '<input class="inp" id="cuPhone" type="tel" inputmode="tel" value="' + esc(c.phone) + '" ' +
+        'placeholder="+963 9__ ___ ___"></label>' +
+      '<label class="field mt"><span>' + t('city') + '</span>' +
+        '<input class="inp" id="cuCity" type="text" value="' + esc(c.city) + '"></label>' +
+      '<label class="field mt"><span>' + t('address') + '</span>' +
+        '<input class="inp" id="cuAddr" type="text" value="' + esc(c.address) + '" ' +
+        'placeholder="' + esc(t('cu_addr_ph')) + '"></label>' +
+      '<label class="field mt"><span>' + t('note') + '</span>' +
+        '<input class="inp" id="cuNote" type="text" value="' + esc(c.note) + '" ' +
+        'placeholder="' + esc(t('cu_note_ph')) + '"></label>' +
+      '<div class="partner-note mt">' + t('cu_note_seen') + '</div>',
+    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+          '<button class="btn btn-primary" data-act="cu-update" data-id="' + c.id + '">' + t('save') + '</button>'
+  });
+
+  setTimeout(function () {
+    var el = document.getElementById('cuName');
+    if (el) el.focus();
+  }, 60);
+}
+
 function openTransfer(pid) {
   var p = DB.product(pid);
   if (!p) return;

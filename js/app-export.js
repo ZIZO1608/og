@@ -131,23 +131,29 @@ function customersExportSpec() {
   return {
     name: 'customers', sheet: 'Customers', title: t('customers_title'),
     docUrl: deepLink('report', 'sales'),
-    subtitle: list.length + ' · ' + DB.inactiveCustomers().length + ' ' + t('at_risk'),
+    subtitle: list.length + ' · ' + DB.quietCustomers().length + ' ' + t('cu_quiet'),
     columns: [{ label: t('name'), width: 24 }, { label: t('phone') }, { label: t('city') },
               { label: t('tier') }, { label: t('loyalty'), num: true },
               { label: t('total_spent') + ' (SYP)', num: true },
               { label: t('total_spent') + ' (USD)', num: true },
               { label: t('cu_visits'), num: true },
-              { label: t('last_purchase') }],
+              { label: t('last_purchase') },
+              /* Their own rhythm, in days — blank where there is not enough
+                 history to have one. The column that explains why two people
+                 the same distance from their last purchase are judged
+                 differently. */
+              { label: t('cu_rhythm'), num: true }],
     rows: list.map(function (c) {
       return [c.name, c.phone, c.city, t(DB.tier(c.loyaltyPoints)), c.loyaltyPoints,
-              c.spentSyp, Math.round(c.spentUsd) / 100, c.visits, fmtDate(c.lastPurchaseDate)];
+              c.spentSyp, Math.round(c.spentUsd) / 100, c.visits, fmtDate(c.lastPurchaseDate),
+              c.medianGapDays == null ? null : c.medianGapDays];
     }),
     totals: [t('total'), null, null, null, null,
              list.reduce(function (a, c) { return a + c.spentSyp; }, 0),
              Math.round(list.reduce(function (a, c) { return a + c.spentUsd; }, 0)) / 100,
-             list.reduce(function (a, c) { return a + c.visits; }, 0), null],
+             list.reduce(function (a, c) { return a + c.visits; }, 0), null, null],
     kpis: [{ label: t('customers_title'), value: nf(list.length) },
-           { label: t('at_risk'), value: nf(DB.inactiveCustomers().length) }]
+           { label: t('cu_quiet'), value: nf(DB.quietCustomers().length) }]
   };
 }
 
@@ -249,8 +255,15 @@ function handleDeepLink(hash) {
     case 'product':
       go('products', function () { openProductDrawer(+id); });
       return true;
+    /* A QR or a link that names a person now opens their PAGE rather than a
+       drawer over the list: a drawer is not a place, so it did not survive a
+       refresh and Back reopened it instead of leaving it.
+
+       Still navigates away, which is wrong at the till mid-sale — a scanned
+       loyalty card should drop the customer into the basket, not take the
+       cashier off the screen. That is Stage G's job and is not fixed here. */
     case 'customer':
-      go('customers', function () { openCustomerDrawer(+id); });
+      go('customers', null, id);
       return true;
     case 'invoice':
       var s = DB.sale(id);

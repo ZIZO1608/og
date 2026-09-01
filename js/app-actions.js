@@ -328,7 +328,99 @@ var ACTIONS = {
     }
   },
 
+  /* The counter view: a drawer over whatever screen you were on. Deliberately
+     still a drawer — mid-sale, the question is a size and a phone number, and
+     navigating away to answer it loses the basket. */
   'open-customer': function (el) { openCustomerDrawer(+el.getAttribute('data-id')); },
+
+  /* The whole record, as a place. */
+  'cu-open': function (el) { closeDrawer(); go('customers', null, el.getAttribute('data-id')); },
+
+  /* Back from a profile goes to the LIST, not to whatever screen was showing
+     before it. Somebody who arrives from the bell, a scan or a pasted link
+     wants "the customers screen" — not the dashboard they happened to be on.
+     Browser Back still walks the history it actually has; this is the
+     affordance on the page, and the two are allowed to differ. */
+  'cu-list': function () { go('customers', null, null); },
+
+  'cu-edit': function (el) { openEditCustomer(+el.getAttribute('data-id')); },
+
+  'cu-update': function (el) {
+    var id = +el.getAttribute('data-id');
+    var fields = {
+      name: ((document.getElementById('cuName') || {}).value || '').trim(),
+      phone: ((document.getElementById('cuPhone') || {}).value || '').trim(),
+      city: ((document.getElementById('cuCity') || {}).value || '').trim(),
+      address: ((document.getElementById('cuAddr') || {}).value || '').trim(),
+      note: ((document.getElementById('cuNote') || {}).value || '').trim()
+    };
+    if (!fields.name) {
+      toast(t('cu_edit'), OG.lang === 'ar' ? 'اكتب الاسم' : 'Enter a name', 'err');
+      return;
+    }
+
+    Shop.write(
+      function () { return Shop.updateCustomer(id, fields); },
+      function () {
+        var c = DB.customer(id);
+        if (c) {
+          c.name = fields.name; c.phone = fields.phone; c.city = fields.city;
+          c.address = fields.address; c.note = fields.note;
+        }
+        return { customer: c };
+      },
+      function (res) {
+        closeModal();
+        render();
+        /* The same duplicate warning a create gets — see cu-save. Changing a
+           number is exactly when two records get merged by accident. */
+        var w = res && res.warning;
+        if (w && w.code === 'phone_taken' && w.existing) {
+          toast(t('cu_edit'),
+            t(w.existing.archived ? 'cu_phone_taken_archived' : 'cu_phone_taken')
+              .replace('{n}', w.existing.name || ''),
+            'warn', 9000,
+            { label: t('cu_view'),
+              attrs: 'data-act="cu-open" data-id="' + (+w.existing.id) + '"' });
+        } else {
+          toast(t('cu_edit'), fields.name, 'ok', 2500);
+        }
+      }
+    );
+  },
+
+  /* Archiving ONE person. It existed only as a bulk action, so putting one
+     customer away meant ticking a box and using the selection bar — which is
+     the tool for forty, not for one. */
+  'cu-archive': function (el) {
+    var id = +el.getAttribute('data-id');
+    var c = DB.customer(id);
+    if (!c) return;
+    openModal({
+      title: t('bk_archive'), size: 'narrow',
+      body: '<p style="margin-top:0">' + t('cu_archive_ask').replace('{n}', nm(c.name)) + '</p>' +
+            '<div class="partner-note">' + t('cu_archive_note') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+            '<button class="btn btn-primary" data-act="cu-archive-do" data-id="' + id + '">' +
+              t('bk_archive') + '</button>'
+    });
+  },
+
+  'cu-archive-do': function (el) {
+    var id = +el.getAttribute('data-id');
+    Shop.write(
+      function () { return Shop.updateCustomer(id, { archived: 1 }); },
+      function () { var c = DB.customer(id); if (c) c.archived = true; return { customer: c }; },
+      function () {
+        closeModal();
+        /* Back to the list: the page you were reading is now about somebody
+           the list no longer shows, and leaving it up invites a second click
+           on a button that will not work. */
+        go('customers', null, null);
+        toast(t('bk_archive'), t('bk_archived'), 'ok', 2500);
+      }
+    );
+  },
   whatsapp: function (el) { openWhatsapp(+el.getAttribute('data-id')); },
   'day-summary': function () { openDaySummary(); },
   'dash-scope': function (el) { OG.dashScope = el.getAttribute('data-k'); render(); },
@@ -339,6 +431,7 @@ var ACTIONS = {
     render();
   },
   'cust-filter': function (el) { OG.cust.filter = el.getAttribute('data-f'); render(); },
+  'cust-size-clear': function () { OG.cust.size = ''; render(); },
   reorder: function (el) { openReorder(+el.getAttribute('data-id')); },
 
   'po-create': function (el) {
@@ -836,37 +929,27 @@ var ACTIONS = {
         var made = res && res.customer;
         var c = made ? (DB.customer(made.id) || made) : null;
         render();
-        if (c) {
+        if (!c) return;
+
+        /* The creation SUCCEEDED and the customer is already on screen — this
+           is the success path, not an error path. A duplicate phone is only a
+           remark on top of it: two people genuinely share a number (a
+           household, a shop landline), so name whoever had it first, say when
+           that person is archived, and offer to open them, because deciding
+           whether this is really a duplicate is the whole point of telling
+           anybody. Nine seconds, because it is a sentence with a name in it. */
+        var w = res && res.warning;
+        if (w && w.code === 'phone_taken' && w.existing) {
+          toast(t('cu_new'),
+            t(w.existing.archived ? 'cu_phone_taken_archived' : 'cu_phone_taken')
+              .replace('{n}', w.existing.name || ''),
+            'warn', 9000,
+            { label: t('cu_view'),
+              attrs: 'data-act="cu-open" data-id="' + (+w.existing.id) + '"' });
+        } else {
           toast(t('cu_new'), c.name + (c.phone ? ' · ' + c.phone : ''), 'ok', 3500);
-          if (after) after(c);
         }
-      },
-      /* A 409 phone_taken is not a refusal — the row IS written, and two
-         people genuinely share a number (a household, a shop landline). So:
-         put the customer on screen from the 409 body, keep the warning up
-         long enough to read, name whoever had the number first — saying so
-         when that person is archived — and offer to open them, because the
-         point of the warning is deciding whether this is a duplicate. */
-      function (err) {
-        if (!err || err.code !== 'phone_taken') return false;
-        var d = err.detail || {};
-        closeModal();
-        var made = d.customer ? DB.attachCustomer(d.customer) : null;
-        render();
-        var who = (d.existing && d.existing.name) || '';
-        toast(t('cu_new'),
-          t(d.existing && d.existing.archived ? 'cu_phone_taken_archived' : 'cu_phone_taken')
-            .replace('{n}', who),
-          'warn', 9000,
-          d.existing ? {
-            label: t('cu_view'),
-            attrs: 'data-act="open-customer" data-id="' + (+d.existing.id) + '"'
-          } : undefined);
-        if (made && after) after(made);
-        /* True the derived figures up with the server's own read — the
-           attached row came from the 409 body, which is right but thin. */
-        Shop.reload();
-        return true;
+        if (after) after(c);
       }
     );
   },

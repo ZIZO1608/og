@@ -59,8 +59,15 @@ function bindGlobal() {
   window.addEventListener('hashchange', function () {
     var raw = window.location.hash;
     if (handleDeepLink(raw)) return;
-    var v = raw.replace('#', '');
-    if (v && VIEWS[v] && v !== OG.view) go(v);
+    var r = parseHash(raw);
+    if (!r.view || !VIEWS[r.view]) return;
+    /* The parameter is half the address now, so "same view" is no longer the
+       same place: leaving a profile back to the list is `#customers/81` →
+       `#customers`, which is one hash change on one view. Comparing only the
+       view id is how browser Back out of a profile did nothing at all. */
+    if (r.view !== OG.view || (r.param || null) !== (OG.viewParam || null)) {
+      go(r.view, null, r.param);
+    }
   });
 }
 
@@ -232,8 +239,12 @@ function boot() {
 
   renderTopbar();
   var raw = window.location.hash;
-  var v = raw.replace('#', '');
-  OG.view = (v && VIEWS[v]) ? v : 'dashboard';
+  /* Parsed, not split on '#' — a refresh on #customers/81 has to land on that
+     profile, and reading the whole string as a view id would have looked up
+     'customers/81' in VIEWS, missed, and dropped somebody on the dashboard. */
+  var route = parseHash(raw);
+  OG.view = (route.view && VIEWS[route.view]) ? route.view : 'dashboard';
+  applyRouteParam(OG.view, OG.view === route.view ? route.param : null);
 
   /* The same guard go() applies, because the case go()'s comment names — a
      bookmarked #settings — arrives HERE, not there. Landing straight on a
@@ -243,6 +254,7 @@ function boot() {
   if (!navAllowed(OG.view)) {
     var firstAllowed = allowedNav()[0];
     OG.view = firstAllowed ? firstAllowed.id : 'dashboard';
+    applyRouteParam(OG.view, null);
   }
   /* First paint gets the full entrance — this is the moment he first sees
      the app, and it is the one time the animation is unambiguously worth it. */

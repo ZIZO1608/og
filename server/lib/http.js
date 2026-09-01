@@ -68,6 +68,22 @@ export function sendError(res, status, code, message, headers = {}) {
   sendJson(res, status, { ok: false, code, error: message }, headers);
 }
 
+/* A failure that carries the number the caller needs to act on: how many are
+   actually left, what the discount ceiling is, how many points they have.
+
+   It exists because sendError's fifth argument is HTTP HEADERS, and four
+   routes spent a long time passing `{ maxPct: 10 }` there — so the shape was
+   right, the destination was not, and a cashier told her discount was too big
+   was never told what the limit was. js/api.js hands the whole parsed body to
+   the caller as `err.detail`, so these land as `err.detail.maxPct`.
+
+   Deliberately a separate function rather than a fifth-argument change:
+   the 405 handler passes a real `Allow` header, so that argument still means
+   headers and has to keep meaning headers. */
+export function sendErrorDetail(res, status, code, message, detail = {}) {
+  sendJson(res, status, { ok: false, code, error: message, ...detail });
+}
+
 export function sendOk(res, body = {}, headers = {}) {
   sendJson(res, 200, { ok: true, ...body }, headers);
 }

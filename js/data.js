@@ -582,8 +582,11 @@ var jobMessages = [];
 var custIndex = {};
 var custPhoneIndex = {};
 
-/* One server row → one customer object, written once so hydrate() and
-   DB.attachCustomer() cannot drift apart on the shape.
+/* One server row → one customer object.
+
+   A delivery driver's rows arrive NARROW — the server never selects spend or
+   debt for him (driverScope in server/lib/customers.js) — so every field here
+   tolerates being absent rather than assuming the full shape.
 
    Spend is two figures in the currency the customer actually handed over,
    never added together. spentUsdEquiv converts every sale at its own frozen
@@ -609,6 +612,9 @@ function mapCustomer(c) {
     /* [{ fam: 'Footwear', size: '42', qty: 4 }, …] — top two per family,
        mapped on the server from products.type. Read, never re-derived. */
     sizes: Array.isArray(c.sizes) ? c.sizes : [],
+    /* Their own median gap between purchases, in days, or null below three
+       purchases. Read DB.quietAfter(c) rather than this directly. */
+    medianGapDays: c.median_gap_days == null ? null : Number(c.median_gap_days),
     createdAt: c.created_at ? new Date(c.created_at) : null,
     lastPurchaseDate: c.last_purchase_at ? new Date(c.last_purchase_at) : null,
     archived: !!c.archived,
@@ -710,22 +716,6 @@ var DB = {
       if (!k) return;
       (custPhoneIndex[k] = custPhoneIndex[k] || []).push(c);
     });
-  },
-
-  /* One server row, straight into the live array between hydrates. The
-     phone_taken path uses this: the 409 body carries the customer the
-     server already wrote, and the list must show them without waiting for
-     the full reload that follows. Same mapping as hydrate, same indexes. */
-  attachCustomer: function (row) {
-    if (!row || row.id == null) return null;
-    var have = custIndex[row.id];
-    if (have) return have;
-    var c = mapCustomer(row);
-    customers.push(c);
-    custIndex[c.id] = c;
-    var k = DB.normPhone(c.phone);
-    if (k) (custPhoneIndex[k] = custPhoneIndex[k] || []).push(c);
-    return c;
   },
 
   sale: function (id) { return sales.filter(function (s) { return s.id === id; })[0]; },
@@ -1532,14 +1522,53 @@ var DB = {
     return isFinite(n) && n > 0 ? n : 90;
   },
 
-  /* People who HAVE bought and then stopped. Never-bought is a different
-     state — a sale that has not happened yet, not a customer who left — and
-     is deliberately not in this list. */
+  /* How long THIS person may be away before it means something.
+
+     Their own median gap (from the server — see rhythmByCustomer) times 1.5,
+     because a regular is not late the day after their usual gap; people have
+     weeks. Floored at 21 days so somebody who pops in twice a week does not
+     turn amber by Thursday, which would be noise rather than news. With
+     fewer than three purchases there is no rhythm to speak of and the
+     shop-wide number is the honest answer. */
+  quietAfter: function (c) {
+    var m = c && Number(c.medianGapDays);
+    if (!isFinite(m) || m <= 0) return DB.atRiskDays();
+    return Math.max(21, Math.round(m * 1.5));
+  },
+
+  /* Three states, and they are genuinely different things:
+       'new'      never bought — a sale that has not closed yet
+       'quiet'    bought, and is now past their own rhythm
+       'ok'       nothing to say
+     Never-bought is deliberately NOT quiet: there is nothing to have lost. */
+  customerState: function (c) {
+    var n = DB.daysSince(c && c.lastPurchaseDate);
+    if (n === null) return 'new';
+    return n >= DB.quietAfter(c) ? 'quiet' : 'ok';
+  },
+
+  /* People who HAVE bought and then stopped, measured against one fixed
+     window. Never-bought is a different state — a sale that has not happened
+     yet, not a customer who left — and is deliberately not in this list.
+
+     For "who has gone quiet" prefer quietCustomers() below, which measures
+     each person against their own rhythm. This one stays for the places that
+     genuinely mean a fixed window, like "bought in the last N days". */
   inactiveCustomers: function (days) {
     var edge = days || DB.atRiskDays();
     return customers.filter(function (c) {
       var n = DB.daysSince(c.lastPurchaseDate);
       return n !== null && n >= edge;
+    });
+  },
+
+  /* Everyone past their OWN rhythm, archived excluded. Anything that counts
+     quiet customers must call this rather than rolling its own test: the bell
+     sends somebody to the At-risk filter, and a count that disagrees with the
+     list it opens is worse than no count. */
+  quietCustomers: function () {
+    return customers.filter(function (c) {
+      return !c.archived && DB.customerState(c) === 'quiet';
     });
   },
 
@@ -2460,9 +2489,7 @@ var DB = {
        stored total is a second source of truth for money, and the first void
        makes it wrong.
 
-       The shape lives in mapCustomer(), shared with DB.attachCustomer() —
-       the 409 phone_taken path attaches the row the server already wrote,
-       and two copies of the mapping is one copy that is wrong. */
+       The shape lives in mapCustomer(), one mapping in one place. */
     customers.length = 0;
     (payload.customers || []).forEach(function (c) {
       customers.push(mapCustomer(c));

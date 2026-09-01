@@ -70,13 +70,20 @@ function buildAlerts() {
       });
     });
 
-  var inactive = DB.inactiveCustomers().length;
+  /* quietCustomers(), not a window of its own: this row navigates to the
+     At-risk chip, and the two have to be counting the same people or the
+     number here will not match the list it opens. Each customer is measured
+     against their own rhythm now, so the wording no longer names a day count
+     that is only true for some of them. */
+  var quiet = DB.quietCustomers().length;
   out.push({
     tone: 'amber', icon: 'C',
-    text: inactive + ' ' + (OG.lang === 'ar'
-      ? 'زبون لم يشترِ منذ ' + DB.atRiskDays() + ' يوماً'
-      : "customers haven't purchased in " + DB.atRiskDays() + ' days'),
-    sub: OG.lang === 'ar' ? 'أرسل لهم رسالة واتساب بضغطة' : 'One tap sends them a WhatsApp message',
+    text: quiet + ' ' + (OG.lang === 'ar'
+      ? 'زبون صار في وقت ما مرّوا'
+      : 'customers have gone quiet'),
+    sub: OG.lang === 'ar'
+      ? 'متأخرين عن عادتهم · أرسل لهم رسالة واتساب بضغطة'
+      : 'Past their usual rhythm · one tap sends them a WhatsApp message',
     view: 'customers', filter: 'risk'
   });
 

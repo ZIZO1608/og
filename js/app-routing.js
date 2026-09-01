@@ -34,7 +34,13 @@ var VIEWS = {
   warehouse: viewWarehouse,
   shelfmap:   ShelfMap.view,
   deliveries: function () { return Deliveries.view(); },
-  customers: viewCustomers,
+  /* A chooser, like `dashboard` above: `#customers` is the list and
+     `#customers/81` is one person's page. Both are the same VIEWS entry so
+     navAllowed, NAV_PERM and the sidebar's idea of "which screen am I on"
+     all keep working unchanged. */
+  customers: function () {
+    return OG.custId ? viewCustomerProfile(OG.custId) : viewCustomers();
+  },
   labels: viewPrintLabels,
   print: viewPrint,
   reports: viewReports,
@@ -51,6 +57,7 @@ var AFTER = {
     afterDashboard();
   },
   deliveries: function () { return Deliveries.after(); },
+  customers: function () { if (OG.custId) afterCustomerProfile(OG.custId); },
   pos: function () { POS.after(); },
   reports: afterReports,
   print: bindKanban,
@@ -256,7 +263,34 @@ function render() {
   if (OG.pending) { var p = OG.pending; OG.pending = null; try { p(); } catch (e) {} }
 }
 
-function go(view, pending) {
+/* ---- the second routing layer -------------------------------------------
+   Until Stage C the hash WAS a view id, full stop, and the only thing with a
+   slash in it was `#open/<type>/<id>` — which is not a route but a one-shot
+   instruction, consumed by handleDeepLink and then replaced.
+
+   `#customers/81` is a real place: it survives a refresh, it can be
+   bookmarked, and Back leaves it. One optional parameter is enough for every
+   screen that needs one, so this stays a split on the first slash rather than
+   a pattern matcher. Every hash WITHOUT a slash parses to exactly what it
+   parsed to before — `{ view: 'settings', param: null }`.
+
+   Order matters at both call sites: handleDeepLink runs FIRST, or `#open/…`
+   would parse here as the view `open`. */
+function parseHash(raw) {
+  var s = String(raw || '').replace(/^#/, '');
+  if (!s) return { view: '', param: null };
+  var i = s.indexOf('/');
+  if (i < 0) return { view: s, param: null };
+  var p = s.slice(i + 1);
+  try { p = decodeURIComponent(p); } catch (e) { /* keep the raw text */ }
+  return { view: s.slice(0, i), param: p };
+}
+
+function hashFor(view, param) {
+  return '#' + view + (param == null || param === '' ? '' : '/' + encodeURIComponent(param));
+}
+
+function go(view, pending, param) {
   if (!VIEWS[view]) view = 'dashboard';
 
   /* Hiding a menu item does not stop something else asking for that screen —
@@ -266,6 +300,7 @@ function go(view, pending) {
   if (!navAllowed(view)) {
     var first = allowedNav()[0];
     view = first ? first.id : 'dashboard';
+    param = null;                 /* a bounced screen keeps nobody's record open */
   }
   /* Work out the travel direction before OG.view moves on. */
   if (typeof Motion !== 'undefined') {
@@ -273,12 +308,25 @@ function go(view, pending) {
     Motion.mark();
   }
   OG.view = view;
+  applyRouteParam(view, param == null ? null : String(param));
   OG.pending = pending || null;
   /* location.hash, not history.pushState — pushState throws on file:// origins. */
-  if (window.location.hash !== '#' + view) window.location.hash = view;
+  var want = hashFor(view, OG.viewParam);
+  if (window.location.hash !== want) window.location.hash = want;
   closeDrawer();
   renderSidebar();
   render();
+}
+
+/* Where a route parameter is KEPT. One place, so a screen that grows a
+   parameter later does not each invent its own field on OG.
+
+   Held on OG rather than read from location.hash at render time because the
+   hash is a string the user can edit; this is the parsed, validated version
+   the screens actually draw from. */
+function applyRouteParam(view, param) {
+  OG.viewParam = param;
+  OG.custId = (view === 'customers' && param) ? Number(param) : null;
 }
 
 function applyLang() {

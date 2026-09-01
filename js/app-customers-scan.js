@@ -12,15 +12,19 @@
    "select all" can never grab more than the filter is showing. */
 function customerRows() {
   var f = OG.cust;
-  var risk = DB.atRiskDays();
   var list = DB.customers.filter(function (c) { return f.filter === 'archived' ? c.archived : !c.archived; });
-  /* Somebody who has never bought is not "at risk" — there is nothing to lose
-     yet. null from daysSince is that person, and is left out on purpose. */
-  if (f.filter === 'risk') list = list.filter(function (c) {
-    var n = DB.daysSince(c.lastPurchaseDate);
-    return n !== null && n >= risk;
-  });
+  /* Each person against their OWN rhythm, not one shop-wide number — see
+     DB.quietAfter. Somebody who has never bought is not quiet: there is
+     nothing to have lost yet, and customerState calls that 'new'. */
+  if (f.filter === 'risk') list = list.filter(function (c) { return DB.customerState(c) === 'quiet'; });
   if (f.filter === 'gold') list = list.filter(function (c) { return DB.tier(c.loyaltyPoints) === 'gold'; });
+  if (f.filter === 'debt') list = list.filter(function (c) { return c.openDebts > 0; });
+  /* Set by the product screen's "who wears this size" link (Stage E leans on
+     the same field). Matched against the server's top-two-per-family, which
+     is what the card draws — so what you searched is what you can see. */
+  if (f.size) list = list.filter(function (c) {
+    return (c.sizes || []).some(function (s) { return String(s.size) === String(f.size); });
+  });
 
   if (f.q) {
     /* Two paths, kept distinct on purpose. Names go through foldName so محمد
@@ -83,52 +87,125 @@ function customerRowsShown() {
   return customerRows().slice(0, CUST_RENDER_CAP);
 }
 
+/* Does the shop keep points at all? `stamps` and `off` mean no tier, so
+   drawing a Bronze badge would be inventing a scheme the shop does not run. */
+function pointsMode() {
+  return CONFIG.LOYALTY_MODE === 'points' || CONFIG.LOYALTY_MODE === 'both';
+}
+
+/* The size chips — the thing that makes somebody open the card.
+   "43" on its own is the question a shop actually asks; the family is the
+   quieter half, so it goes in the title rather than on the chip. */
+function sizeChips(c) {
+  var sizes = (c.sizes || []).slice(0, 3);
+  if (!sizes.length) return '';
+  return '<div class="cc-sizes">' + sizes.map(function (s) {
+    return '<span class="badge accent" title="' + esc(t('fam_' + s.fam)) + ' · ' +
+      nf(s.qty) + ' ' + esc(t('units').toLowerCase()) + '">' + esc(s.size) + '</span>';
+  }).join('') + '</div>';
+}
+
 function customerCardHTML(c, ci) {
-  var since = DB.daysSince(c.lastPurchaseDate);     /* null = never bought */
-  var atRisk = since !== null && since >= DB.atRiskDays();
+  var state = DB.customerState(c);          /* 'new' | 'quiet' | 'ok' */
   var tier = DB.tier(c.loyaltyPoints);
-  var sizes = (c.sizes || []).map(function (s) {
-    return t('fam_' + s.fam) + ' ' + s.size;
-  }).join(' · ');
 
-  var foot = '';
-  if (c.openDebts || atRisk) {
-    foot = '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
-      (c.openDebts
-        ? '<span class="badge critical">' + t('cu_debt') + ' ' + moneyPair(c.debtSyp, c.debtUsd, true) + '</span>'
-        : '') +
-      (atRisk
-        ? '<span class="badge critical">' + t('at_risk') + '</span>' +
-          '<button class="btn btn-sm btn-primary" style="margin-inline-start:auto" data-act="whatsapp" data-id="' + c.id + '">' + t('send_whatsapp') + '</button>'
-        : '') +
-    '</div>';
-  }
-
-  return '<div class="cust-card' + (atRisk ? ' risk' : '') + (Bulk.has('customers', c.id) ? ' bk-on' : '') +
-       '" data-act="open-customer" data-id="' + c.id + '">' +
+  /* Order is deliberate and is the reading order of the card: who they are,
+     what they are worth to the scheme, WHAT THEY WEAR, when they were last
+     in, what they have spent, and only then anything owed. */
+  return '<div class="cust-card' +
+       (state === 'quiet' ? ' quiet' : state === 'new' ? ' fresh' : '') +
+       (Bulk.has('customers', c.id) ? ' bk-on' : '') +
+       /* From the LIST a card opens the whole record. Nobody is mid-sale on
+          this screen, so the drawer's reason to exist — do not lose the
+          basket — does not apply here. `open-customer` still opens the drawer
+          everywhere else, which is where the counter cases live. */
+       '" data-act="cu-open" data-id="' + c.id + '">' +
     '<span class="bk-corner">' + Bulk.box('customers', c.id, ci) + '</span>' +
-    '<div class="cc-top"><span class="cc-av">' + esc(c.name.split(' ').filter(Boolean).map(function (w) { return w[0]; }).slice(0, 2).join('')) + '</span>' +
+
+    '<div class="cc-top"><span class="cc-av">' + esc(initialsOf(c.name)) + '</span>' +
       '<div style="flex:1;min-width:0"><b>' + nm(c.name) + '</b>' +
       '<small class="num">' + tel(c.phone) + '</small>' +
       '<small>' + nm(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</small></div>' +
-      '<span class="badge ' + tier + '">' + t(tier) + '</span>' +
+      (pointsMode() ? '<span class="badge ' + tier + '">' + t(tier) + '</span>' : '') +
     '</div>' +
+
+    sizeChips(c) +
+
     '<div class="cc-stats">' +
-      '<div><span class="eyebrow">' + t('total_spent') + '</span><b>' + moneyPair(c.spentSyp, c.spentUsd, true) + '</b></div>' +
-      '<div><span class="eyebrow">' + t('loyalty') + '</span><b>' + nf(c.loyaltyPoints) + '</b></div>' +
-      '<div><span class="eyebrow">' + t('cu_visits') + '</span><b>' + nf(c.visits) + '</b></div>' +
-      '<div><span class="eyebrow">' + t('last_purchase') + '</span><b style="font-size:11.5px;font-weight:700">' + relDate(c.lastPurchaseDate) + '</b></div>' +
+      '<div><span class="eyebrow">' + t('cu_last_in') + '</span>' +
+        '<b style="font-size:12.5px">' + relDate(c.lastPurchaseDate) + '</b></div>' +
+      '<div><span class="eyebrow">' + t('total_spent') + '</span>' +
+        '<b style="font-size:12.5px">' + moneyPair(c.spentSyp, c.spentUsd, true) + '</b></div>' +
     '</div>' +
-    (sizes ? '<small class="muted">' + t('preferred_sizes') + ': ' + esc(sizes) + '</small>' : '') +
-    foot +
+
+    (state === 'new' || state === 'quiet' || c.openDebts
+      ? '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+          (state === 'new' ? '<span class="badge neutral">' + t('cu_never_bought') + '</span>' : '') +
+          (state === 'quiet' ? '<span class="badge low">' + t('cu_quiet') + '</span>' : '') +
+          (c.openDebts
+            ? '<span class="badge critical">' + t('cu_debt') + ' ' + moneyPair(c.debtSyp, c.debtUsd, true) + '</span>'
+            : '') +
+          (state === 'quiet'
+            ? '<button class="btn btn-sm btn-primary" style="margin-inline-start:auto" data-act="whatsapp" data-id="' + c.id + '">' + t('send_whatsapp') + '</button>'
+            : '') +
+        '</div>'
+      : '') +
   '</div>';
 }
 
-function customerCardsHTML(list) {
-  if (!list.length) {
-    return '<div class="card" style="grid-column:1/-1"><div class="card-body">' +
-      '<span class="muted">' + t('none') + '</span></div></div>';
+/* Two letters from a name that may be Arabic, Latin, or one word. */
+function initialsOf(name) {
+  var parts = String(name || '').split(/\s+/).filter(Boolean);
+  if (!parts.length) return '؟';
+  return parts.map(function (w) { return w.charAt(0); }).slice(0, 2).join('');
+}
+
+/* Four different nothings, and they call for four different next actions —
+   add somebody, widen the search, order that size, or nothing at all. The
+   shared shape is .card > .cart-empty with a bold line and a sub-line, the
+   nearest thing this codebase has to a convention (recon §B6). */
+function customerEmptyHTML() {
+  var f = OG.cust;
+  var head, sub, action = '';
+
+  if (f.size) {
+    head = t('cu_none_size').replace('{n}', esc(f.size));
+    sub = t('cu_none_size_sub');
+    action = '<button class="btn btn-sm" data-act="cust-size-clear">' + t('cu_clear_size') + '</button>';
+  } else if (f.q) {
+    head = t('cu_none_search');
+    sub = t('cu_none_search_sub');
+    action = allow('customer.write')
+      ? '<button class="btn btn-sm btn-primary" data-act="cu-new" data-q="' + esc(f.q) + '">+ ' + t('cu_new') + '</button>'
+      : '';
+  } else if (f.filter === 'debt') {
+    head = t('cu_none_debt');
+    sub = t('cu_none_debt_sub');
+  } else if (f.filter === 'risk') {
+    head = t('cu_none_quiet');
+    sub = t('cu_none_quiet_sub');
+  } else if (f.filter === 'archived') {
+    head = t('cu_none_archived');
+    sub = t('cu_none_archived_sub');
+  } else if (f.filter === 'gold') {
+    head = t('cu_none_gold');
+    sub = t('cu_none_gold_sub');
+  } else {
+    head = t('cu_none_at_all');
+    sub = t('cu_none_at_all_sub');
+    action = allow('customer.write')
+      ? '<button class="btn btn-sm btn-primary" data-act="cu-new">+ ' + t('cu_new') + '</button>'
+      : '';
   }
+
+  return '<div class="card" style="grid-column:1/-1"><div class="cart-empty">' +
+    '<b>' + head + '</b>' + sub +
+    (action ? '<div style="margin-top:12px">' + action + '</div>' : '') +
+  '</div></div>';
+}
+
+function customerCardsHTML(list) {
+  if (!list.length) return customerEmptyHTML();
   var h = '';
   /* Same slice Bulk's visibleIds uses — see customerRowsShown(). */
   list.slice(0, CUST_RENDER_CAP).forEach(function (c, ci) { h += customerCardHTML(c, ci); });
@@ -155,12 +232,15 @@ function repaintCustomers() {
 
 function viewCustomers() {
   var list = customerRows();
-  var risk = DB.inactiveCustomers().length;
+  /* The same function the At-risk chip filters on. The bell sends people
+     here, so a head count that disagreed with the list it opens would be
+     worse than no count at all. */
+  var quiet = DB.quietCustomers().length;
 
   var h = '<div class="page-head"><div><h1>' + t('customers_title') + '</h1>' +
     '<div class="sub">' + t('customers_sub') + '</div></div>' +
     '<div class="head-actions">' +
-      '<span class="badge critical">' + risk + ' ' + t('at_risk') + '</span>' +
+      (quiet ? '<span class="badge low">' + quiet + ' ' + t('cu_quiet') + '</span>' : '') +
       (allow('customer.write')
         ? '<button class="btn btn-primary btn-sm" data-act="cu-new">+ ' + t('cu_new') + '</button>'
         : '') +
@@ -168,6 +248,10 @@ function viewCustomers() {
     '</div></div>';
 
   var sorts = ['recent', 'name', 'spend', 'visits', 'debt'];
+  var chips = [['all', 'all_customers'], ['risk', 'cu_quiet_only'], ['debt', 'cu_owes_only']];
+  if (pointsMode()) chips.push(['gold', 'gold_only']);
+  chips.push(['archived', 'bk_archived_only']);
+
   h += '<div class="filters">' +
     '<input class="inp grow" type="text" placeholder="' + t('search_ph') + '" value="' + esc(OG.cust.q) + '" data-change="cust-q">' +
     '<select class="inp" data-change="cust-sort" style="max-width:170px" aria-label="' + esc(t('cu_sort')) + '">' +
@@ -177,10 +261,16 @@ function viewCustomers() {
       }).join('') +
     '</select>' +
     '<div class="chip-row">' +
-      '<button class="chip ' + (OG.cust.filter === 'all' ? 'on' : '') + '" data-act="cust-filter" data-f="all">' + t('all_customers') + '</button>' +
-      '<button class="chip ' + (OG.cust.filter === 'risk' ? 'on' : '') + '" data-act="cust-filter" data-f="risk">' + t('risk_only') + '</button>' +
-      '<button class="chip ' + (OG.cust.filter === 'gold' ? 'on' : '') + '" data-act="cust-filter" data-f="gold">' + t('gold_only') + '</button>' +
-      '<button class="chip ' + (OG.cust.filter === 'archived' ? 'on' : '') + '" data-act="cust-filter" data-f="archived">' + t('bk_archived_only') + '</button>' +
+      chips.map(function (p) {
+        return '<button class="chip ' + (OG.cust.filter === p[0] ? 'on' : '') +
+          '" data-act="cust-filter" data-f="' + p[0] + '">' + t(p[1]) + '</button>';
+      }).join('') +
+      /* Only while it is on — a chip that clears a filter nobody set is a
+         control with nothing to do. Same shape as the Yalla date chip. */
+      (OG.cust.size
+        ? '<button class="chip on chip-x" data-act="cust-size-clear">' +
+            t('size') + ' ' + esc(OG.cust.size) + ' ✕</button>'
+        : '') +
     '</div>' +
     '<span class="badge neutral" id="cuCount">' + custCountText(list) + '</span></div>';
 
@@ -188,23 +278,292 @@ function viewCustomers() {
   return h;
 }
 
+/* ======================================================= THE PROFILE PAGE
+   `#customers/<id>`. A place, not an overlay: it survives a refresh, it can
+   be bookmarked and sent, and Back leaves it rather than reopening it.
+
+   The DRAWER still exists and is still the right tool at the counter —
+   mid-sale, tap, read the size and the phone, close, carry on. This page is
+   for the other question: what has this person actually done with us. */
+
+/* One chronological stream. Every source maps into the same row shape, so
+   adding a kind — a stamp, a message, a print job — is one mapper and one
+   entry in TL_ICON, not a new column or a new tab.
+
+     { at: Date, kind, title, sub, tone, act, id }
+
+   `act`/`id` become a data-act on the row, so every line is tappable through
+   to the thing itself. */
+function timelineRows(payload, c) {
+  var out = [];
+
+  (payload.sales || []).forEach(function (s) {
+    var when = new Date(s.at);
+    var items = (s.items || []).map(function (it) {
+      return esc(it.name) + (it.size ? ' (' + esc(it.size) + ')' : '') + ' ×' + it.qty;
+    }).join(' · ');
+    out.push({
+      at: when, kind: 'sale',
+      title: saleMoney(s.total, s.currency) + (s.voided ? ' <span class="badge critical">' + t('cu_voided') + '</span>' : ''),
+      sub: (items || t('none')) + ' · ' + esc(DB.payLabel(s.payment)) +
+           (s.discount ? ' · ' + t('discount') + ' −' + saleMoney(s.discount, s.currency) : ''),
+      tone: s.voided ? 'muted' : '',
+      act: DB.sale(s.id) ? 'open-invoice' : '', id: s.id,
+      lead: esc(s.id)
+    });
+
+    /* Points move BECAUSE of a sale, but they are their own event: the
+       question "where did my points go" is answered by seeing them in the
+       stream, not by opening every invoice. */
+    if (!s.voided && s.points_earned) {
+      out.push({
+        at: when, kind: 'points', title: '+' + nf(s.points_earned) + ' ' + t('points'),
+        sub: t('cu_from_invoice').replace('{n}', esc(s.id)), tone: 'plus',
+        act: DB.sale(s.id) ? 'open-invoice' : '', id: s.id, lead: '★'
+      });
+    }
+    if (!s.voided && s.points_used) {
+      out.push({
+        at: when, kind: 'points', title: '−' + nf(s.points_used) + ' ' + t('points'),
+        sub: t('cu_spent_on').replace('{n}', esc(s.id)), tone: '',
+        act: DB.sale(s.id) ? 'open-invoice' : '', id: s.id, lead: '★'
+      });
+    }
+  });
+
+  /* null means the account may not see deliveries at all — which is not the
+     same as there being none, so nothing is drawn either way. */
+  (payload.deliveries || []).forEach(function (d) {
+    out.push({
+      at: new Date(d.closed_at || d.out_at || d.assigned_at),
+      kind: 'delivery',
+      title: t('dl_one') + ' · ' + t('dl_' + d.status),
+      sub: (d.address ? nm(d.address) : '') +
+           (d.driver_name ? ' · ' + nm(d.driver_name) : '') +
+           (d.fail_reason ? ' · ' + nm(d.fail_reason) : ''),
+      tone: d.status === 'failed' ? 'bad' : '',
+      act: '', id: d.id, lead: '⌂'
+    });
+  });
+
+  return out
+    .filter(function (r) { return r.at && !isNaN(r.at.getTime()); })
+    .sort(function (a, b) { return b.at - a.at; });
+}
+
+function timelineHTML(rows) {
+  if (!rows.length) {
+    return '<div class="cart-empty"><b>' + t('cu_tl_empty') + '</b>' + t('cu_tl_empty_sub') + '</div>';
+  }
+  return '<ul class="timeline cu-tl">' + rows.map(function (r) {
+    return '<li class="' + (r.tone === 'plus' ? 'plus' : '') + '"' +
+      (r.act ? ' data-act="' + r.act + '" data-id="' + esc(r.id) + '" style="cursor:pointer"' : '') + '>' +
+      '<b' + (r.tone === 'muted' ? ' class="muted"' : '') + '>' + r.title + '</b>' +
+      '<small>' + (r.lead ? '<span class="num">' + r.lead + '</span> · ' : '') +
+        fmtDate(r.at) + (r.sub ? ' · ' + r.sub : '') + '</small></li>';
+  }).join('') + '</ul>';
+}
+
+/* Do the sizes they buy NOW differ from the sizes they used to? Either their
+   size changed — a growing teenager, a different cut — or they are buying for
+   somebody else. Both are worth knowing before recommending anything, and
+   neither is something the shop should guess at silently. */
+function sizeDrift(sales) {
+  var recent = {}, older = {}, n = 0;
+  (sales || []).forEach(function (s) {
+    if (s.voided) return;
+    var bucket = (n++ < 3) ? recent : older;
+    (s.items || []).forEach(function (it) {
+      if (!it.size) return;
+      bucket[it.size] = (bucket[it.size] || 0) + it.qty;
+    });
+  });
+  var top = function (o) {
+    return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; })[0];
+  };
+  var r = top(recent), o = top(older);
+  if (!r || !o || r === o) return null;
+  return { recent: r, older: o };
+}
+
+function viewCustomerProfile(cid) {
+  var c = DB.customer(cid);
+
+  /* An id that resolves to nobody — a stale bookmark, a mistyped hash, or a
+     customer this account is not allowed to see. The two are deliberately
+     indistinguishable here, the same reason the delivery routes answer 404
+     rather than 403: a page that said "not allowed" would confirm the person
+     exists to somebody who may not know that. */
+  if (!c) {
+    return '<div class="page-head"><div><h1>' + t('customer') + '</h1>' +
+      '<div class="sub">#' + esc(cid) + '</div></div>' +
+      '<div class="head-actions"><button class="btn" data-act="cu-list">← ' + t('customers_title') + '</button></div></div>' +
+      '<div class="card"><div class="cart-empty"><b>' + t('cu_gone') + '</b>' + t('cu_gone_sub') + '</div></div>';
+  }
+
+  var state = DB.customerState(c);
+  var tier = DB.tier(c.loyaltyPoints);
+  var quietAfter = DB.quietAfter(c);
+
+  var h = '<div class="page-head"><div style="display:flex;gap:12px;align-items:flex-start;min-width:0">' +
+      '<span class="cc-av" style="width:46px;height:46px;font-size:16px">' + esc(initialsOf(c.name)) + '</span>' +
+      '<div style="min-width:0"><h1 style="font-size:22px">' + nm(c.name) + '</h1>' +
+        '<div class="sub">' +
+          '<span class="num">' + tel(c.phone) + '</span>' +
+          (c.city ? ' · ' + nm(c.city) : '') +
+          ' · ' + t(c.source === 'online' ? 'online' : 'in_store') +
+          (c.createdAt ? ' · ' + t('cu_since') + ' ' + fmtDate(c.createdAt) : '') +
+        '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">' +
+          (pointsMode() ? '<span class="badge ' + tier + '">' + t(tier) + '</span>' : '') +
+          (state === 'quiet' ? '<span class="badge low">' + t('cu_quiet') + '</span>' : '') +
+          (state === 'new' ? '<span class="badge neutral">' + t('cu_never_bought') + '</span>' : '') +
+          (c.archived ? '<span class="badge neutral">' + t('bk_archived') + '</span>' : '') +
+          (c.openDebts ? '<span class="badge critical">' + t('cu_debt') + ' ' + moneyPair(c.debtSyp, c.debtUsd) + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="head-actions">' +
+      '<button class="btn" data-act="cu-list">← ' + t('customers_title') + '</button>' +
+      (allow('customer.write')
+        ? '<button class="btn" data-act="cu-edit" data-id="' + c.id + '">' + t('edit') + '</button>' : '') +
+      (c.phone ? '<button class="btn btn-primary" data-act="whatsapp" data-id="' + c.id + '">' + t('send_whatsapp') + '</button>' : '') +
+    '</div></div>';
+
+  /* The numbers, in the order somebody asks for them. */
+  h += '<div class="grid mb" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
+    '<div class="stat"><span class="eyebrow">' + t('total_spent') + '</span>' +
+      '<div class="val" style="font-size:16px">' + moneyPair(c.spentSyp, c.spentUsd) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('cu_visits') + '</span><div class="val">' + nf(c.visits) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('cu_last_in') + '</span>' +
+      '<div class="val" style="font-size:16px">' + relDate(c.lastPurchaseDate) + '</div>' +
+      '<div class="foot">' + fmtDate(c.lastPurchaseDate) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('cu_rhythm') + '</span>' +
+      '<div class="val" style="font-size:16px">' +
+        (c.medianGapDays == null ? '—' : '<span dir="ltr">' + t('cu_every_n').replace('{n}', nf(c.medianGapDays)) + '</span>') +
+      '</div>' +
+      '<div class="foot">' + (c.medianGapDays == null
+        ? t('cu_rhythm_unknown')
+        : '<span dir="ltr">' + t('cu_quiet_after').replace('{n}', nf(quietAfter)) + '</span>') + '</div></div>' +
+    (pointsMode()
+      ? '<div class="stat"><span class="eyebrow">' + t('loyalty') + '</span>' +
+          '<div class="val accent">' + nf(c.loyaltyPoints) + '</div>' +
+          '<div class="foot">= ' + money(c.loyaltyPoints * CONFIG.LOYALTY_POINT_VALUE) + '</div></div>'
+      : '') +
+    (c.openDebts
+      ? '<div class="stat"><span class="eyebrow">' + t('cu_debt') + '</span>' +
+          '<div class="val warn" style="font-size:16px">' + moneyPair(c.debtSyp, c.debtUsd) + '</div>' +
+          '<div class="foot">' + nf(c.openDebts) + ' ' + t('invoices').toLowerCase() + '</div></div>'
+      : '') +
+  '</div>';
+
+  /* The timeline is the page. Filled by afterCustomerProfile; data-cid guards
+     a slow response against a page that has already moved to somebody else. */
+  h += '<div class="card mb"><div class="card-head"><h3>' + t('cu_timeline') + '</h3>' +
+    '<div class="card-actions muted small" id="cuTlCount"></div></div>' +
+    '<div class="card-body" id="cuTl" data-cid="' + c.id + '">' +
+      '<span class="muted small">' + t('loading') + '</span></div></div>';
+
+  h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">';
+
+  /* What they buy. */
+  h += '<div class="card"><div class="card-head"><h3>' + t('preferred_sizes') + '</h3></div>' +
+    '<div class="card-body" id="cuSizes">';
+  if ((c.sizes || []).length) {
+    var byFam = {}, order = [];
+    c.sizes.forEach(function (s) {
+      if (!byFam[s.fam]) { byFam[s.fam] = []; order.push(s.fam); }
+      byFam[s.fam].push(s);
+    });
+    h += '<div style="display:flex;gap:18px;flex-wrap:wrap">';
+    order.forEach(function (f) {
+      var best = byFam[f][0], second = byFam[f][1];
+      h += '<div><span class="eyebrow">' + t('fam_' + f) + '</span>' +
+        '<div class="strong-num" style="font-size:24px">' + esc(best.size) + '</div>' +
+        '<small class="muted">' + nf(best.qty) + ' ' + t('units').toLowerCase() +
+          (second ? ' · ' + esc(second.size) + ' ×' + nf(second.qty) : '') + '</small></div>';
+    });
+    h += '</div><div id="cuDrift"></div>';
+  } else {
+    h += '<span class="muted">' + t('cu_no_sizes') + '</span>';
+  }
+  h += '</div></div>';
+
+  /* Note and address — both stored since the beginning and never once shown.
+     There is no permission of their own: anyone with customer.read sees them
+     from here on. */
+  h += '<div class="card"><div class="card-head"><h3>' + t('cu_details') + '</h3>' +
+    (allow('customer.write')
+      ? '<div class="card-actions"><button class="btn btn-sm" data-act="cu-edit" data-id="' + c.id + '">' + t('edit') + '</button></div>'
+      : '') + '</div>' +
+    '<div class="card-body">' +
+      '<div class="rule-row"><div class="rr-txt"><b>' + t('address') + '</b>' +
+        '<small>' + (c.address ? nm(c.address) : t('cu_no_address')) + '</small></div></div>' +
+      '<div class="rule-row"><div class="rr-txt"><b>' + t('note') + '</b>' +
+        '<small>' + (c.note ? nm(c.note) : t('cu_no_note')) + '</small></div></div>' +
+    '</div></div>';
+
+  h += '</div>';
+
+  if (allow('customer.write') && !c.archived) {
+    h += '<div style="margin-top:16px">' +
+      '<button class="btn" data-act="cu-archive" data-id="' + c.id + '">' + t('bk_archive') + '</button>' +
+      '<div class="partner-note" style="margin-top:8px">' + t('cu_archive_note') + '</div></div>';
+  }
+
+  return h;
+}
+
+/* The one fetch the page makes. Same guard as the drawer: the response is
+   dropped unless the page is still showing the customer it was asked for. */
+function afterCustomerProfile(cid) {
+  var host = document.getElementById('cuTl');
+  if (!host || host.getAttribute('data-cid') !== String(cid)) return;
+
+  if (typeof Shop === 'undefined' || !Shop.live()) {
+    host.innerHTML = timelineHTML([]);
+    return;
+  }
+
+  Shop.customerHistory(cid).then(function (r) {
+    var el = document.getElementById('cuTl');
+    if (!el || el.getAttribute('data-cid') !== String(cid)) return;
+    var rows = timelineRows(r || {}, DB.customer(cid));
+    el.innerHTML = timelineHTML(rows);
+    var n = document.getElementById('cuTlCount');
+    if (n) n.textContent = rows.length ? nf(rows.length) + ' ' + t('cu_events') : '';
+
+    var drift = sizeDrift((r || {}).sales);
+    var d = document.getElementById('cuDrift');
+    if (d && drift) {
+      d.innerHTML = '<div class="partner-note" style="margin-top:12px">' +
+        t('cu_size_drift').replace('{a}', esc(drift.older)).replace('{b}', esc(drift.recent)) + '</div>';
+    }
+  }).catch(function (err) {
+    var el = document.getElementById('cuTl');
+    if (!el || el.getAttribute('data-cid') !== String(cid)) return;
+    el.innerHTML = '<span class="muted small">' + esc(API.friendly(err)) + '</span>';
+  });
+}
+
 function openCustomerDrawer(cid) {
   var c = DB.customer(cid);
   if (!c) return;
 
   var tier = DB.tier(c.loyaltyPoints);
-  var since = DB.daysSince(c.lastPurchaseDate);      /* null = never bought */
-  var atRisk = since !== null && since >= DB.atRiskDays();
+  var state = DB.customerState(c);
+  var atRisk = state === 'quiet';
 
   var head =
     '<div style="display:flex;gap:12px;align-items:flex-start;flex:1">' +
       '<span class="cc-av" style="width:52px;height:52px;font-size:18px">' +
-        esc(c.name.split(' ').filter(Boolean).map(function (w) { return w[0]; }).slice(0, 2).join('')) + '</span>' +
+        esc(initialsOf(c.name)) + '</span>' +
       '<div><span class="eyebrow">' + nm(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</span>' +
         '<h3 style="font-size:19px;margin:3px 0 5px">' + nm(c.name) + '</h3>' +
-        '<span class="badge ' + tier + '">' + t(tier) + '</span> ' +
-        (atRisk ? '<span class="badge critical">' + t('at_risk') + '</span>' : '') +
-        ' <span class="badge neutral num">' + tel(c.phone) + '</span></div>' +
+        (pointsMode() ? '<span class="badge ' + tier + '">' + t(tier) + '</span> ' : '') +
+        (atRisk ? '<span class="badge low">' + t('cu_quiet') + '</span> ' : '') +
+        (state === 'new' ? '<span class="badge neutral">' + t('cu_never_bought') + '</span> ' : '') +
+        '<span class="badge neutral num">' + tel(c.phone) + '</span></div>' +
     '</div>';
 
   var body = '<div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">' +
@@ -261,6 +620,12 @@ function openCustomerDrawer(cid) {
 
   body += '<div class="card"><div class="card-head"><h3>' + t('points_timeline') + '</h3></div>' +
     '<div class="card-body" id="cuPts"><span class="muted small">' + t('loading') + '</span></div></div>';
+
+  /* The way OUT of the counter view and into the whole record. The drawer
+     deliberately stays small — at the till the question is a size and a phone
+     number — so everything it does not carry lives one tap away. */
+  body += '<button class="btn btn-primary btn-block mt" data-act="cu-open" data-id="' + c.id + '">' +
+    t('cu_open_profile') + ' →</button>';
 
   body += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="customer" data-kind="pdf" data-id="' + c.id + '">' + t('rec_statement') + '</button>' +

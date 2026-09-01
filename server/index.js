@@ -41,7 +41,7 @@ import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
 import * as SyncWorker from './lib/sync-worker.js';
 import {
-  readJson, sendOk, sendError, sendJson, parseCookies,
+  readJson, sendOk, sendError, sendErrorDetail, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
 } from './lib/http.js';
 
@@ -589,9 +589,13 @@ router.add('POST /api/stock/assign-shelf', requirePerm('stock.move', async (ctx)
    Wear cannot be granted these however the tick boxes are set. They are a
    different company; the shop's customer list is not theirs to hold. */
 
+/* ctx.user goes in, because the driver rule lives in the query — see
+   driverScope() in server/lib/customers.js. A route that decided this for
+   itself would be a rule in two places, and the second copy is the one that
+   gets forgotten. */
 router.add('GET /api/customers', requirePerm('customer.read', (ctx) => {
   sendOk(ctx.res, {
-    customers: Customers.list({
+    customers: Customers.list(ctx.user, {
       includeArchived: Auth.can(ctx.user, 'customer.write')
     })
   });
@@ -602,31 +606,38 @@ router.add('GET /api/customers', requirePerm('customer.read', (ctx) => {
    call is what keeps it from a cashier. `limit` is a query parameter, capped
    inside historyFor. */
 router.add('GET /api/customers/:id/history', requirePerm('customer.read', (ctx) => {
-  const c = Customers.byId(Number(ctx.params.id));
+  /* A driver has customer.read so he can see who he is delivering to. What
+     somebody bought over the years is not part of that, so this route is
+     closed to him entirely — and closed with 404, so it cannot be used to
+     probe which customers exist. */
+  if (ctx.user.role === 'delivery') {
+    return sendError(ctx.res, 404, 'not_found', 'No such customer.');
+  }
+  const c = Customers.byId(Number(ctx.params.id), ctx.user);
   if (!c) return sendError(ctx.res, 404, 'not_found', 'No such customer.');
   const limit = Number(ctx.url.searchParams.get('limit')) || 200;
   sendOk(ctx.res, {
-    sales: Customers.historyFor(c.id, limit).map(s => scrubCost(s, ctx.user))
+    sales: Customers.historyFor(c.id, limit).map(s => scrubCost(s, ctx.user)),
+    /* One request builds the whole timeline. Left out entirely for an account
+       without delivery.read — an empty array would say "no parcels", which is
+       a different claim from "not yours to see". */
+    deliveries: Auth.can(ctx.user, 'delivery.read') ? Customers.deliveriesFor(c.id) : null
   });
 }));
 
+/* 200, even when the phone is already taken — the customer WAS created, and a
+   status that says otherwise invites a retry that creates a second one. The
+   warning rides beside the customer instead:
+
+     { ok: true, customer: {…}, warning: { code, message, existing } }
+
+   `warning` is null when there is nothing to say. */
 router.add('POST /api/customers', requirePerm('customer.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
-    sendOk(ctx.res, { customer: Customers.create(b, ctx.user.id) });
+    const r = Customers.create(b, ctx.user.id);
+    sendOk(ctx.res, { customer: r.customer, warning: r.warning });
   } catch (e) {
-    /* Not a refusal: the row IS written (two people genuinely share a
-       number). 409 so the till can tell "saved, but somebody already has
-       that phone" from "saved", and the body carries both people — the one
-       just made and the one who had it first — so it can offer the right
-       one. Sent through sendJson rather than sendError, because sendError's
-       fifth argument is HTTP headers, not body fields. */
-    if (e.code === 'phone_taken') {
-      return sendJson(ctx.res, 409, {
-        ok: false, code: 'phone_taken', error: e.message,
-        existing: e.existing, customer: e.customer
-      });
-    }
     sendError(ctx.res, 400, 'invalid', e.message);
   }
 }));
@@ -634,7 +645,8 @@ router.add('POST /api/customers', requirePerm('customer.write', async (ctx) => {
 router.add('PATCH /api/customers/:id', requirePerm('customer.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
-    sendOk(ctx.res, { customer: Customers.update(Number(ctx.params.id), b, ctx.user.id) });
+    const r = Customers.update(Number(ctx.params.id), b, ctx.user.id);
+    sendOk(ctx.res, { customer: r.customer, warning: r.warning });
   } catch (e) {
     sendError(ctx.res, 400, 'invalid', e.message);
   }
@@ -690,16 +702,21 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
     });
     sendOk(ctx.res, { sale: scrubCost(sale, ctx.user) });
   } catch (e) {
+    /* All four of these carry a NUMBER the till has to show — how many are
+       left, the ceiling, the balance, the room. They used to hand it to
+       sendError's fifth argument, which is HTTP headers, so none of it ever
+       reached the browser and the cashier got a bare sentence. sendErrorDetail
+       puts it in the body, where js/api.js already reads it as err.detail. */
     if (e.code === 'insufficient_stock') {
-      return sendError(ctx.res, 409, 'insufficient_stock',
+      return sendErrorDetail(ctx.res, 409, 'insufficient_stock',
         `Only ${e.available} of ${e.sku} left — the other till may have just sold it.`,
-        {});
+        { available: e.available, sku: e.sku });
     }
     /* 403, not 400: the sale is well-formed, the person is not allowed to
        make it. The till tells them to fetch a manager rather than showing
        them a validation error about their own basket. */
     if (e.code === 'discount_too_big') {
-      return sendError(ctx.res, 403, 'discount_too_big', e.message,
+      return sendErrorDetail(ctx.res, 403, 'discount_too_big', e.message,
         { maxPct: e.maxPct, ceiling: e.ceiling });
     }
     /* 409, not 400: the basket is fine and so is the request. The world
@@ -707,11 +724,11 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
        which is the same shape of answer as insufficient_stock and wants the
        same response at the till: reload and try again. */
     if (e.code === 'not_enough_points') {
-      return sendError(ctx.res, 409, 'not_enough_points', e.message,
+      return sendErrorDetail(ctx.res, 409, 'not_enough_points', e.message,
         { available: e.available });
     }
     if (e.code === 'points_exceed_total') {
-      return sendError(ctx.res, 409, 'points_exceed_total', e.message,
+      return sendErrorDetail(ctx.res, 409, 'points_exceed_total', e.message,
         { room: e.room });
     }
     if (e.code === 'unknown_customer') {

@@ -35,7 +35,9 @@ var OG = {
   dir:  null,                                           // page-transition direction
   rep:  { tab: 'sales' },
   print:{ partner: false },
-  cust: { q: '', filter: 'all', sort: 'recent' },
+  /* `size` is set by the product screen's "who wears this" link, and is the
+     one customer filter that arrives from another screen. */
+  cust: { q: '', filter: 'all', sort: 'recent', size: '' },
   /* `sym` is what gets PRINTED on our own labels: 'c128' carries the SKU,
      'ean13' is kept for anyone who wants the old numeric code. `mode` is the
      paper: a thermal roll needs one label per page at exact size, an A4

@@ -89,7 +89,20 @@ table.inv-tbl td.num, table.inv-tbl th.num { text-align: end; }
   transition: border-color var(--t), transform var(--t), background var(--t);
 }
 .cust-card:hover { border-color: var(--border-strong); transform: translateY(-3px); background: var(--card-hover); }
-.cust-card.risk { border-color: var(--destructive-border); background: var(--destructive-soft); }
+
+/* Three states, and they are not degrees of the same thing.
+
+   `quiet` is somebody who bought and has now gone past their OWN rhythm —
+   amber, because it is a nudge, not an alarm. It used to be `risk` in
+   destructive red on a flat 90 days, which shouted at a customer who simply
+   buys twice a year.
+
+   `fresh` is somebody who has never bought: neutral, because there is nothing
+   wrong. It is a sale that has not closed yet, and drawing it in any warning
+   colour blames a person for being new. */
+.cust-card.quiet { border-color: var(--warning-border); background: var(--warning-soft); }
+.cust-card.fresh { border-color: var(--border-strong); border-style: dashed; }
+.cc-sizes { display: flex; gap: 5px; flex-wrap: wrap; }
 .cc-top { display: flex; gap: 11px; align-items: flex-start; }
 .cc-av {
   width: 40px; height: 40px; flex: none; border-radius: var(--radius-full);
