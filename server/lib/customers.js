@@ -237,19 +237,25 @@ function clean(fields) {
 
    A pass over the rows rather than a WHERE, because the normalised form is
    arithmetic on the stored string and there is deliberately no phone_norm
-   column to index (028's header says why). Archived people are skipped —
-   somebody who left is not a duplicate of somebody arriving. */
+   column to index (028's header says why). Archived holders are included —
+   the owner's call: re-adding somebody who was archived should still warn,
+   with the warning saying they are archived, because the right move is
+   usually to bring the old record (and its history) back rather than start
+   a second one. Live holders are checked first, so when a live and an
+   archived customer share the number the warning names the live one. */
 function phoneHolder(d, phone, exceptId) {
   const want = normPhone(phone);
   if (!want) return null;
   const rows = d.prepare(
-    `SELECT id, name, phone FROM customers
-      WHERE archived = 0 AND phone IS NOT NULL AND phone <> ''
-      ORDER BY id`
+    `SELECT id, name, phone, archived FROM customers
+      WHERE phone IS NOT NULL AND phone <> ''
+      ORDER BY archived, id`
   ).all();
   for (const r of rows) {
     if (r.id === exceptId) continue;
-    if (normPhone(r.phone) === want) return { id: r.id, name: r.name };
+    if (normPhone(r.phone) === want) {
+      return { id: r.id, name: r.name, archived: !!r.archived };
+    }
   }
   return null;
 }
@@ -285,7 +291,8 @@ export function create(fields, userId, { demo = false } = {}) {
 
   if (taken) {
     const e = new Error(
-      `That number already belongs to ${taken.name} (#${taken.id}). ${made.name} was saved anyway.`);
+      `That number already belongs to ${taken.name} (#${taken.id}` +
+      `${taken.archived ? ', archived' : ''}). ${made.name} was saved anyway.`);
     e.code = 'phone_taken';
     e.existing = taken;
     e.customer = made;

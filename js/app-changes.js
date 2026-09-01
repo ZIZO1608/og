@@ -18,7 +18,10 @@ var CHANGES = {
   'prod-q': function (el) { OG.prod.q = el.value; render(); focusBack('[data-change="prod-q"]', el.value.length); },
   'prod-type': function (el) { OG.prod.type = el.value; render(); },
   'prod-health': function (el) { OG.prod.health = el.value; render(); },
-  'cust-q': function (el) { OG.cust.q = el.value; render(); focusBack('[data-change="cust-q"]', el.value.length); },
+  /* Repaints the grid and the count only, so the box being typed into is
+     never rebuilt and the caret stays put with no focusBack trick. */
+  'cust-q': function (el) { OG.cust.q = el.value; repaintCustomers(); },
+  'cust-sort': function (el) { OG.cust.sort = el.value; repaintCustomers(); },
 
   /* Label-printing filters — same shape as prod-q/prod-type above, kept in
      their own OG.lbf bucket so narrowing the print picker never touches the
@@ -207,6 +210,29 @@ var CHANGES = {
     focusBack('[data-change="st-q"]', el.value.length);
   },
 
+  /* The at-risk window, and the one Settings number that actually reaches
+     the server: customer.at_risk_days goes through PUT /api/config (the
+     route's allowlist admits customer.*), so it survives a reload and every
+     till agrees on it. Debounced, because "180" typed as 1-18-180 must not
+     fire three writes. The loyalty inputs above still write to memory only —
+     a known, pre-existing gap; it is not made worse here. */
+  'set-atrisk': function (el) {
+    var v = parseInt(el.value, 10);
+    if (!isFinite(v) || v < 1 || v > 3650) return;
+    CONFIG.AT_RISK_DAYS = v;
+    clearTimeout(ATRISK_SAVE_T);
+    if (typeof API === 'undefined' || !API.live) return;   /* _shot.html */
+    ATRISK_SAVE_T = setTimeout(function () {
+      API.put('/api/config', { updates: { 'customer.at_risk_days': String(v) } })
+        .then(function () {
+          toast(t('cu_atrisk_title'), v + ' ' + t('days'), 'ok', 2000);
+        })
+        .catch(function (err) {
+          toast(t('cu_atrisk_title'), API.friendly(err), 'err', 5000);
+        });
+    }, 600);
+  },
+
   'set-rate': function (el) {
     var v = parseInt(el.value, 10);
     if (v > 0) {
@@ -217,6 +243,8 @@ var CHANGES = {
     }
   }
 };
+
+var ATRISK_SAVE_T = null;
 
 /* Re-focus an input after a full re-render so typing is never interrupted. */
 function focusBack(sel, caret) {

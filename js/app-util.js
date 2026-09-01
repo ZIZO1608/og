@@ -27,17 +27,51 @@ function moneyShort(syp) {
 
 function pct(n, digits) { return (Number(n) || 0).toFixed(digits === undefined ? 1 : digits) + '%'; }
 
+/* ---- money in ITS OWN currency ------------------------------------------
+   A customer's spend and debt are per-currency facts: shown in the currency
+   the person actually handed over, never converted and never added together
+   (server/lib/customers.js says why at length). SYP arrives in whole lira
+   (minor_exp 0), USD in cents. The pair is wrapped in <bdi dir="ltr"> for
+   the same reason tel() is — digit runs reorder around the "+" in RTL. */
+function moneySypRaw(v) {
+  return nf(v) + ' ' + (OG.lang === 'ar' ? 'ل.س' : 'SYP');
+}
+function moneyUsdRaw(cents) {
+  var v = (Number(cents) || 0) / 100;
+  return '$' + (v === Math.round(v) ? nf(v) : v.toFixed(2));
+}
+function moneyPairText(syp, usd, compact) {
+  var parts = [];
+  if (Number(syp)) {
+    parts.push(compact
+      ? Charts.compact(Number(syp)) + (OG.lang === 'ar' ? ' ل.س' : ' SYP')
+      : moneySypRaw(syp));
+  }
+  if (Number(usd)) parts.push(moneyUsdRaw(usd));
+  return parts.length ? parts.join(' + ') : '—';
+}
+function moneyPair(syp, usd, compact) {
+  return '<bdi dir="ltr">' + moneyPairText(syp, usd, compact) + '</bdi>';
+}
+
 var MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 var MONTHS_AR = ['كانون٢', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'تشرين١', 'تشرين٢', 'كانون١'];
 
+/* "—" for no date at all, same as relDate below. new Date(null) is the
+   epoch, so a customer who had never bought used to get "1 Jan 1970"
+   printed under "Last purchase" as though it were a fact. */
 function fmtDate(d) {
+  if (d === null || d === undefined || d === '') return '—';
   d = new Date(d);
+  if (isNaN(d.getTime())) return '—';
   var m = OG.lang === 'ar' ? MONTHS_AR[d.getMonth()] : MONTHS_EN[d.getMonth()];
   return d.getDate() + ' ' + m + ' ' + d.getFullYear();
 }
 
 function fmtDateTime(d) {
+  if (d === null || d === undefined || d === '') return '—';
   d = new Date(d);
+  if (isNaN(d.getTime())) return '—';
   var hh = d.getHours(), mm = String(d.getMinutes()).padStart(2, '0');
   /* ص / م, not AM / PM. Two Latin letters in the middle of an Arabic line
      read as a missing translation, and this one is printed on the receipt a

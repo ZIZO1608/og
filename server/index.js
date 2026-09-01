@@ -294,10 +294,14 @@ router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
 
 /* Everything under receipt.* (printer address, paper toggles, the printed
    policy text) plus the two shop.* identity fields the receipt header reads
-   that shop.* itself doesn't already have a writer for. Restricted to that
-   allowlist rather than any config key — this route exists for the receipt
-   Settings card, not as a general "edit the config table" backdoor. */
-const CONFIG_WRITABLE = /^receipt\.|^shop\.(branch_name|phone)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|logo_asset|code_source|max_batch|lease_minutes|calibrate_cmd)$/;
+   that shop.* itself doesn't already have a writer for, plus customer.* for
+   the Settings card that owns the at-risk window. Restricted to that
+   allowlist rather than any config key — this route exists for those
+   Settings cards, not as a general "edit the config table" backdoor.
+   loyalty.* stays closed on purpose: the loyalty fold still writes to
+   memory only, and opening the keys before the fold saves them properly
+   would let half a change persist. */
+const CONFIG_WRITABLE = /^receipt\.|^customer\.|^shop\.(branch_name|phone)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|logo_asset|code_source|max_batch|lease_minutes|calibrate_cmd)$/;
 
 /* ---- the Sync button in the topbar --------------------------------------
    The mirror already runs on a timer, but somebody who has just finished a

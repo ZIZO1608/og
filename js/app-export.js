@@ -124,24 +124,30 @@ function productsExportSpec() {
 }
 
 function customersExportSpec() {
-  var list = DB.customers.slice().sort(function (a, b) { return b.totalSpent - a.totalSpent; });
+  /* Ordered on spentUsdEquiv — the sort-only figure, each sale at its own
+     frozen rate. The sheet itself carries the two REAL columns: what was
+     paid in lira and what was paid in dollars, never added together. */
+  var list = DB.customers.slice().sort(function (a, b) { return b.spentUsdEquiv - a.spentUsdEquiv; });
   return {
     name: 'customers', sheet: 'Customers', title: t('customers_title'),
     docUrl: deepLink('report', 'sales'),
-    subtitle: list.length + ' · ' + DB.inactiveCustomers(90).length + ' ' + t('at_risk'),
+    subtitle: list.length + ' · ' + DB.inactiveCustomers().length + ' ' + t('at_risk'),
     columns: [{ label: t('name'), width: 24 }, { label: t('phone') }, { label: t('city') },
               { label: t('tier') }, { label: t('loyalty'), num: true },
-              { label: exCol(t('total_spent')), num: true }, { label: t('orders'), num: true },
+              { label: t('total_spent') + ' (SYP)', num: true },
+              { label: t('total_spent') + ' (USD)', num: true },
+              { label: t('cu_visits'), num: true },
               { label: t('last_purchase') }],
     rows: list.map(function (c) {
       return [c.name, c.phone, c.city, t(DB.tier(c.loyaltyPoints)), c.loyaltyPoints,
-              exMoney(c.totalSpent), c.history.length, fmtDate(c.lastPurchaseDate)];
+              c.spentSyp, Math.round(c.spentUsd) / 100, c.visits, fmtDate(c.lastPurchaseDate)];
     }),
     totals: [t('total'), null, null, null, null,
-             exMoney(list.reduce(function (a, c) { return a + c.totalSpent; }, 0)),
-             list.reduce(function (a, c) { return a + c.history.length; }, 0), null],
+             list.reduce(function (a, c) { return a + c.spentSyp; }, 0),
+             Math.round(list.reduce(function (a, c) { return a + c.spentUsd; }, 0)) / 100,
+             list.reduce(function (a, c) { return a + c.visits; }, 0), null],
     kpis: [{ label: t('customers_title'), value: nf(list.length) },
-           { label: t('at_risk'), value: nf(DB.inactiveCustomers(90).length) }]
+           { label: t('at_risk'), value: nf(DB.inactiveCustomers().length) }]
   };
 }
 
@@ -287,11 +293,12 @@ function dashboardExportSpec() {
   var today = sumSalesOn(0);
   var mtd = monthToDate(0);
   var crit = DB.criticalVariants().length;
-  /* Bought within the window. null is never-bought, which is not "active" —
-     and would count as one here, because null < 90 is true in JavaScript. */
+  /* Bought within the at-risk window. null is never-bought, which is not
+     "active" — and would count as one here, because null < 90 is true in
+     JavaScript. */
   var active = DB.customers.filter(function (c) {
     var n = DB.daysSince(c.lastPurchaseDate);
-    return n !== null && n < 90;
+    return n !== null && n < DB.atRiskDays();
   }).length;
   var pend = DB.printJobs.filter(function (j) { return j.stage !== 'done'; }).length;
   var byType = DB.salesByType();
@@ -427,8 +434,13 @@ function customerStatementSpec(cid) {
               DB.payLabel(s.payment), exMoney(s.total),
               s.pointsEarned];
     }),
-    totals: [t('total'), null, null, null, exMoney(c.totalSpent), c.loyaltyPoints],
-    kpis: [{ label: t('total_spent'), value: money(c.totalSpent) },
+    /* The totals row sums the rows above it — the invoices actually on the
+       statement — rather than lifetime spend, which the KPI now carries in
+       the currencies it actually happened in. */
+    totals: [t('total'), null, null, null,
+             invoices.reduce(function (a, s) { return a + exMoney(s.total); }, 0),
+             c.loyaltyPoints],
+    kpis: [{ label: t('total_spent'), value: moneyPairText(c.spentSyp, c.spentUsd) },
            { label: t('loyalty'), value: nf(c.loyaltyPoints) + ' ' + t('points') },
            { label: t('tier'), value: t(DB.tier(c.loyaltyPoints)) },
            { label: t('last_purchase'), value: relDate(c.lastPurchaseDate) }]

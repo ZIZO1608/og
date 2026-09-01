@@ -50,7 +50,10 @@ var Bulk = (function () {
   function visibleIds(sc) {
     switch (sc) {
       case 'products':  return productRows().map(function (r) { return String(r.p.id); });
-      case 'customers': return customerRows().map(function (c) { return String(c.id); });
+      /* The CAPPED list — the cards actually drawn. The customers grid stops
+         at CUST_RENDER_CAP, and selecting rows nobody can see is exactly the
+         "silently grab the whole table" this function exists to prevent. */
+      case 'customers': return customerRowsShown().map(function (c) { return String(c.id); });
       case 'jobs':      return DB.printJobs.map(function (j) { return j.id; });
       case 'movements': return DB.stockMovements.slice(0, 90).map(function (m) { return m.id; });
       case 'variants':  return labelVariantRows().map(function (r) { return r.v.sku; });

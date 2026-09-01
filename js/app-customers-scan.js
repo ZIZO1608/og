@@ -12,26 +12,150 @@
    "select all" can never grab more than the filter is showing. */
 function customerRows() {
   var f = OG.cust;
+  var risk = DB.atRiskDays();
   var list = DB.customers.filter(function (c) { return f.filter === 'archived' ? c.archived : !c.archived; });
   /* Somebody who has never bought is not "at risk" — there is nothing to lose
      yet. null from daysSince is that person, and is left out on purpose. */
   if (f.filter === 'risk') list = list.filter(function (c) {
     var n = DB.daysSince(c.lastPurchaseDate);
-    return n !== null && n >= 90;
+    return n !== null && n >= risk;
   });
   if (f.filter === 'gold') list = list.filter(function (c) { return DB.tier(c.loyaltyPoints) === 'gold'; });
+
   if (f.q) {
-    var q = f.q.toLowerCase();
+    /* Two paths, kept distinct on purpose. Names go through foldName so محمد
+       finds مُحَمَّد; digits go through normPhone so 0933 111 222 finds
+       +963 933 111 222. A name is never routed through normPhone — it strips
+       letters to an empty string. The folded forms are cached on the row
+       (rebuilt with it on every hydrate) so a keystroke over 5,000 customers
+       is a substring scan, not ten thousand regex passes. */
+    var qf = DB.foldName(f.q);
+    var qd = DB.normPhone(f.q);
+    /* A local number typed short — 0933… — carries a leading zero the
+       stored, 963-prefixed form does not, so its zero-less tail is what can
+       actually be contained in the stored digits. */
+    var qd0 = qd.charAt(0) === '0' ? qd.replace(/^0+/, '') : '';
     list = list.filter(function (c) {
-      return c.name.toLowerCase().indexOf(q) > -1 || c.phone.replace(/\s/g, '').indexOf(q) > -1 || c.city.toLowerCase().indexOf(q) > -1;
+      if (c._fold === undefined) c._fold = DB.foldName(c.name + ' ' + c.city);
+      if (c._tel === undefined) c._tel = DB.normPhone(c.phone);
+      if (qf && c._fold.indexOf(qf) > -1) return true;
+      if (qd.length >= 3 && c._tel &&
+          (c._tel.indexOf(qd) > -1 || (qd0 && c._tel.indexOf(qd0) > -1))) return true;
+      return false;
     });
   }
-  return list.sort(function (a, b) { return b.totalSpent - a.totalSpent; });
+
+  var by = {
+    /* Spend orders on spentUsdEquiv — every sale at its own frozen rate.
+       Ordering is the ONE thing that figure exists for; it is never drawn. */
+    spend: function (a, b) { return b.spentUsdEquiv - a.spentUsdEquiv; },
+    visits: function (a, b) { return b.visits - a.visits; },
+    name: function (a, b) { return a.name.localeCompare(b.name); },
+    /* Debt needs one number to ORDER by; today's rate is fine for that and
+       would be wrong for display — the same rule as spend. */
+    debt: function (a, b) { return debtOrder(b) - debtOrder(a); },
+    recent: function (a, b) {
+      return (b.lastPurchaseDate ? b.lastPurchaseDate.getTime() : -1) -
+             (a.lastPurchaseDate ? a.lastPurchaseDate.getTime() : -1);
+    }
+  };
+  return list.sort(by[f.sort] || by.recent);
+}
+
+function debtOrder(c) {
+  return c.debtSyp + Math.round(c.debtUsd / 100 * CONFIG.EXCHANGE_RATE);
+}
+
+/* Only this many cards reach the DOM. The filter and the count are honest
+   about the whole list; the grid draws the top of it, because five thousand
+   cards is a page nobody scrolls and a render everybody waits for. The note
+   under the grid says what was left out and how to narrow it. */
+var CUST_RENDER_CAP = 60;
+
+/* The rows actually ON SCREEN — the capped ones.
+
+   Bulk select-all reads this, not customerRows(). Its rule is that select-all
+   must never grab more than the filter is showing, and once the grid is
+   capped those two stopped being the same list: a tick box that selected
+   5,000 people while 60 cards were visible would put the whole customer
+   table one click from Archive. What you can see is what you can select. */
+function customerRowsShown() {
+  return customerRows().slice(0, CUST_RENDER_CAP);
+}
+
+function customerCardHTML(c, ci) {
+  var since = DB.daysSince(c.lastPurchaseDate);     /* null = never bought */
+  var atRisk = since !== null && since >= DB.atRiskDays();
+  var tier = DB.tier(c.loyaltyPoints);
+  var sizes = (c.sizes || []).map(function (s) {
+    return t('fam_' + s.fam) + ' ' + s.size;
+  }).join(' · ');
+
+  var foot = '';
+  if (c.openDebts || atRisk) {
+    foot = '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+      (c.openDebts
+        ? '<span class="badge critical">' + t('cu_debt') + ' ' + moneyPair(c.debtSyp, c.debtUsd, true) + '</span>'
+        : '') +
+      (atRisk
+        ? '<span class="badge critical">' + t('at_risk') + '</span>' +
+          '<button class="btn btn-sm btn-primary" style="margin-inline-start:auto" data-act="whatsapp" data-id="' + c.id + '">' + t('send_whatsapp') + '</button>'
+        : '') +
+    '</div>';
+  }
+
+  return '<div class="cust-card' + (atRisk ? ' risk' : '') + (Bulk.has('customers', c.id) ? ' bk-on' : '') +
+       '" data-act="open-customer" data-id="' + c.id + '">' +
+    '<span class="bk-corner">' + Bulk.box('customers', c.id, ci) + '</span>' +
+    '<div class="cc-top"><span class="cc-av">' + esc(c.name.split(' ').filter(Boolean).map(function (w) { return w[0]; }).slice(0, 2).join('')) + '</span>' +
+      '<div style="flex:1;min-width:0"><b>' + nm(c.name) + '</b>' +
+      '<small class="num">' + tel(c.phone) + '</small>' +
+      '<small>' + nm(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</small></div>' +
+      '<span class="badge ' + tier + '">' + t(tier) + '</span>' +
+    '</div>' +
+    '<div class="cc-stats">' +
+      '<div><span class="eyebrow">' + t('total_spent') + '</span><b>' + moneyPair(c.spentSyp, c.spentUsd, true) + '</b></div>' +
+      '<div><span class="eyebrow">' + t('loyalty') + '</span><b>' + nf(c.loyaltyPoints) + '</b></div>' +
+      '<div><span class="eyebrow">' + t('cu_visits') + '</span><b>' + nf(c.visits) + '</b></div>' +
+      '<div><span class="eyebrow">' + t('last_purchase') + '</span><b style="font-size:11.5px;font-weight:700">' + relDate(c.lastPurchaseDate) + '</b></div>' +
+    '</div>' +
+    (sizes ? '<small class="muted">' + t('preferred_sizes') + ': ' + esc(sizes) + '</small>' : '') +
+    foot +
+  '</div>';
+}
+
+function customerCardsHTML(list) {
+  if (!list.length) {
+    return '<div class="card" style="grid-column:1/-1"><div class="card-body">' +
+      '<span class="muted">' + t('none') + '</span></div></div>';
+  }
+  var h = '';
+  /* Same slice Bulk's visibleIds uses — see customerRowsShown(). */
+  list.slice(0, CUST_RENDER_CAP).forEach(function (c, ci) { h += customerCardHTML(c, ci); });
+  if (list.length > CUST_RENDER_CAP) {
+    h += '<div class="partner-note" style="grid-column:1/-1">' +
+      t('cu_showing').replace('{a}', nf(CUST_RENDER_CAP)).replace('{b}', nf(list.length)) + '</div>';
+  }
+  return h;
+}
+
+function custCountText(list) { return list.length + ' / ' + DB.customers.length; }
+
+/* The keystroke path: repaint the grid and the count, never the whole page.
+   A full render() rebuilds the search box mid-word and then needs focusBack
+   to hide it; leaving the box alone needs nothing. */
+function repaintCustomers() {
+  var grid = document.getElementById('cuGrid');
+  if (!grid) { render(); return; }
+  var list = customerRows();
+  grid.innerHTML = customerCardsHTML(list);
+  var count = document.getElementById('cuCount');
+  if (count) count.textContent = custCountText(list);
 }
 
 function viewCustomers() {
   var list = customerRows();
-  var risk = DB.inactiveCustomers(90).length;
+  var risk = DB.inactiveCustomers().length;
 
   var h = '<div class="page-head"><div><h1>' + t('customers_title') + '</h1>' +
     '<div class="sub">' + t('customers_sub') + '</div></div>' +
@@ -43,98 +167,82 @@ function viewCustomers() {
       exportButtons() +
     '</div></div>';
 
+  var sorts = ['recent', 'name', 'spend', 'visits', 'debt'];
   h += '<div class="filters">' +
     '<input class="inp grow" type="text" placeholder="' + t('search_ph') + '" value="' + esc(OG.cust.q) + '" data-change="cust-q">' +
+    '<select class="inp" data-change="cust-sort" style="max-width:170px" aria-label="' + esc(t('cu_sort')) + '">' +
+      sorts.map(function (s) {
+        return '<option value="' + s + '"' + ((OG.cust.sort || 'recent') === s ? ' selected' : '') + '>' +
+          t('cu_sort') + ': ' + t('cu_sort_' + s) + '</option>';
+      }).join('') +
+    '</select>' +
     '<div class="chip-row">' +
       '<button class="chip ' + (OG.cust.filter === 'all' ? 'on' : '') + '" data-act="cust-filter" data-f="all">' + t('all_customers') + '</button>' +
       '<button class="chip ' + (OG.cust.filter === 'risk' ? 'on' : '') + '" data-act="cust-filter" data-f="risk">' + t('risk_only') + '</button>' +
       '<button class="chip ' + (OG.cust.filter === 'gold' ? 'on' : '') + '" data-act="cust-filter" data-f="gold">' + t('gold_only') + '</button>' +
       '<button class="chip ' + (OG.cust.filter === 'archived' ? 'on' : '') + '" data-act="cust-filter" data-f="archived">' + t('bk_archived_only') + '</button>' +
     '</div>' +
-    '<span class="badge neutral">' + list.length + ' / ' + DB.customers.length + '</span></div>';
+    '<span class="badge neutral" id="cuCount">' + custCountText(list) + '</span></div>';
 
-  h += '<div class="cust-grid">';
-  list.forEach(function (c, ci) {
-    var since = DB.daysSince(c.lastPurchaseDate);     /* null = never bought */
-    var atRisk = since !== null && since >= 90;
-    var tier = DB.tier(c.loyaltyPoints);
-    h += '<div class="cust-card' + (atRisk ? ' risk' : '') + (Bulk.has('customers', c.id) ? ' bk-on' : '') +
-         '" data-act="open-customer" data-id="' + c.id + '">' +
-      '<span class="bk-corner">' + Bulk.box('customers', c.id, ci) + '</span>' +
-      '<div class="cc-top"><span class="cc-av">' + esc(c.name.split(' ').map(function (w) { return w[0]; }).slice(0, 2).join('')) + '</span>' +
-        '<div style="flex:1;min-width:0"><b>' + esc(c.name) + '</b>' +
-        '<small class="num">' + tel(c.phone) + '</small>' +
-        '<small>' + esc(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</small></div>' +
-        '<span class="badge ' + tier + '">' + t(tier) + '</span>' +
-      '</div>' +
-      '<div class="cc-stats">' +
-        '<div><span class="eyebrow">' + t('total_spent') + '</span><b>' + moneyShort(c.totalSpent) + '</b></div>' +
-        '<div><span class="eyebrow">' + t('loyalty') + '</span><b>' + nf(c.loyaltyPoints) + '</b></div>' +
-        '<div><span class="eyebrow">' + t('orders') + '</span><b>' + c.history.length + '</b></div>' +
-        '<div><span class="eyebrow">' + t('last_purchase') + '</span><b style="font-size:11.5px;font-weight:700">' + relDate(c.lastPurchaseDate) + '</b></div>' +
-      '</div>' +
-      (atRisk
-        ? '<div style="display:flex;gap:6px;align-items:center">' +
-            '<span class="badge critical">' + t('at_risk') + '</span>' +
-            '<button class="btn btn-sm btn-primary" style="margin-inline-start:auto" data-act="whatsapp" data-id="' + c.id + '">' + t('send_whatsapp') + '</button>' +
-          '</div>'
-        : '') +
-    '</div>';
-  });
-  h += '</div>';
+  h += '<div class="cust-grid" id="cuGrid">' + customerCardsHTML(list) + '</div>';
   return h;
 }
 
 function openCustomerDrawer(cid) {
   var c = DB.customer(cid);
   if (!c) return;
-  var invoices = c.history.map(function (id) { return DB.sale(id); }).filter(Boolean)
-    .sort(function (a, b) { return b.date - a.date; });
-
-  /* Infer the sizes this customer actually buys, split by category family. */
-  var sizeCount = {};
-  invoices.forEach(function (s) {
-    s.items.forEach(function (it) {
-      var fam = (it.type === 'sneakers' || it.type === 'boots' || it.type === 'crocs') ? 'Footwear'
-              : (it.type === 'jeans' ? 'Jeans' : 'Tops');
-      sizeCount[fam] = sizeCount[fam] || {};
-      sizeCount[fam][it.size] = (sizeCount[fam][it.size] || 0) + it.qty;
-    });
-  });
 
   var tier = DB.tier(c.loyaltyPoints);
   var since = DB.daysSince(c.lastPurchaseDate);      /* null = never bought */
-  var atRisk = since !== null && since >= 90;
+  var atRisk = since !== null && since >= DB.atRiskDays();
 
   var head =
     '<div style="display:flex;gap:12px;align-items:flex-start;flex:1">' +
       '<span class="cc-av" style="width:52px;height:52px;font-size:18px">' +
-        esc(c.name.split(' ').map(function (w) { return w[0]; }).slice(0, 2).join('')) + '</span>' +
-      '<div><span class="eyebrow">' + esc(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</span>' +
-        '<h3 style="font-size:19px;margin:3px 0 5px">' + esc(c.name) + '</h3>' +
+        esc(c.name.split(' ').filter(Boolean).map(function (w) { return w[0]; }).slice(0, 2).join('')) + '</span>' +
+      '<div><span class="eyebrow">' + nm(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</span>' +
+        '<h3 style="font-size:19px;margin:3px 0 5px">' + nm(c.name) + '</h3>' +
         '<span class="badge ' + tier + '">' + t(tier) + '</span> ' +
         (atRisk ? '<span class="badge critical">' + t('at_risk') + '</span>' : '') +
         ' <span class="badge neutral num">' + tel(c.phone) + '</span></div>' +
     '</div>';
 
-  var body = '<div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">' +
-    '<div class="stat"><span class="eyebrow">' + t('total_spent') + '</span><div class="val">' + moneyShort(c.totalSpent) + '</div></div>' +
+  var body = '<div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">' +
+    '<div class="stat"><span class="eyebrow">' + t('total_spent') + '</span><div class="val" style="font-size:15px">' + moneyPair(c.spentSyp, c.spentUsd, true) + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('loyalty') + '</span><div class="val accent">' + nf(c.loyaltyPoints) + '</div>' +
       '<div class="foot">= ' + money(c.loyaltyPoints * CONFIG.LOYALTY_POINT_VALUE) + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('last_purchase') + '</span><div class="val" style="font-size:15px">' + relDate(c.lastPurchaseDate) + '</div>' +
       '<div class="foot">' + fmtDate(c.lastPurchaseDate) + '</div></div>' +
   '</div>';
 
+  body += '<div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">' +
+    '<div class="stat"><span class="eyebrow">' + t('cu_visits') + '</span><div class="val">' + nf(c.visits) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('cu_debt') + '</span><div class="val' + (c.openDebts ? ' warn' : '') + '" style="font-size:15px">' +
+      (c.openDebts ? moneyPair(c.debtSyp, c.debtUsd, true) : '—') + '</div>' +
+      (c.openDebts ? '<div class="foot">' + nf(c.openDebts) + ' ' + t('invoices').toLowerCase() + '</div>' : '') + '</div>' +
+    '<div class="stat"><span class="eyebrow">' + t('cu_since') + '</span><div class="val" style="font-size:15px">' + fmtDate(c.createdAt) + '</div></div>' +
+  '</div>';
+
+  /* The top two sizes per family, aggregated on the server over EVERY
+     non-voided sale — not re-derived here from whatever 200 sales the
+     browser happens to hold, which is what this card used to do and why it
+     went blank for anyone not recent. */
   body += '<div class="card mb"><div class="card-head"><h3>' + t('preferred_sizes') + '</h3>' +
-    '<div class="card-actions muted small">' + (OG.lang === 'ar' ? 'مستنتجة من المشتريات' : 'inferred from purchases') + '</div></div><div class="card-body">';
-  var fams = Object.keys(sizeCount);
-  if (fams.length) {
+    '<div class="card-actions muted small">' + (OG.lang === 'ar' ? 'من كل المشتريات' : 'from every purchase') + '</div></div><div class="card-body">';
+  if ((c.sizes || []).length) {
+    var byFam = {};
+    var famOrder = [];
+    c.sizes.forEach(function (s) {
+      if (!byFam[s.fam]) { byFam[s.fam] = []; famOrder.push(s.fam); }
+      byFam[s.fam].push(s);
+    });
     body += '<div style="display:flex;gap:18px;flex-wrap:wrap">';
-    fams.forEach(function (f) {
-      var best = Object.keys(sizeCount[f]).sort(function (a, b) { return sizeCount[f][b] - sizeCount[f][a]; })[0];
-      body += '<div><span class="eyebrow">' + f + '</span>' +
-        '<div class="strong-num" style="font-size:24px">' + best + '</div>' +
-        '<small class="muted">' + sizeCount[f][best] + ' ' + t('units').toLowerCase() + '</small></div>';
+    famOrder.forEach(function (f) {
+      var best = byFam[f][0], second = byFam[f][1];
+      body += '<div><span class="eyebrow">' + t('fam_' + f) + '</span>' +
+        '<div class="strong-num" style="font-size:24px">' + esc(best.size) + '</div>' +
+        '<small class="muted">' + nf(best.qty) + ' ' + t('units').toLowerCase() +
+          (second ? ' · ' + esc(second.size) + ' ×' + nf(second.qty) : '') + '</small></div>';
     });
     body += '</div>';
   } else {
@@ -142,26 +250,17 @@ function openCustomerDrawer(cid) {
   }
   body += '</div></div>';
 
+  /* Filled by the fetch below — the drawer opens now, the invoices follow.
+     data-cid guards the late response against a drawer that has already
+     moved on to a different customer. */
   body += '<div class="card mb"><div class="card-head"><h3>' + t('purchase_history') + '</h3>' +
-    '<div class="card-actions"><span class="badge neutral">' + invoices.length + '</span></div></div>' +
-    '<div class="table-wrap" style="max-height:250px;overflow-y:auto"><table class="tbl tbl-compact"><thead><tr>' +
-      '<th>' + t('invoice') + '</th><th>' + t('date') + '</th><th>' + t('items') + '</th><th class="num">' + t('total') + '</th>' +
-    '</tr></thead><tbody>';
-  invoices.forEach(function (s) {
-    body += '<tr class="clickable" data-act="open-invoice" data-id="' + s.id + '">' +
-      '<td><b>' + s.id + '</b></td><td class="muted num">' + fmtDate(s.date) + '</td>' +
-      '<td class="muted">' + s.items.map(function (i) { return esc(i.name) + ' (' + i.size + ')'; }).join(', ').slice(0, 46) + '</td>' +
-      '<td class="num"><b>' + money(s.total) + '</b></td></tr>';
-  });
-  body += '</tbody></table></div></div>';
+    '<div class="card-actions"><span class="badge neutral">' + nf(c.visits) + '</span></div></div>' +
+    '<div id="cuHist" data-cid="' + c.id + '">' +
+      '<div class="card-body"><span class="muted small">' + t('loading') + '</span></div>' +
+    '</div></div>';
 
-  body += '<div class="card"><div class="card-head"><h3>' + t('points_timeline') + '</h3></div><div class="card-body">' +
-    '<ul class="timeline" style="margin:0;padding-inline-start:14px">';
-  invoices.slice(0, 6).forEach(function (s) {
-    body += '<li class="plus"><b>+' + nf(s.pointsEarned) + ' ' + t('points') + '</b>' +
-      '<small>' + s.id + ' · ' + fmtDate(s.date) + ' · ' + money(s.total) + '</small></li>';
-  });
-  body += '</ul></div></div>';
+  body += '<div class="card"><div class="card-head"><h3>' + t('points_timeline') + '</h3></div>' +
+    '<div class="card-body" id="cuPts"><span class="muted small">' + t('loading') + '</span></div></div>';
 
   body += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="customer" data-kind="pdf" data-id="' + c.id + '">' + t('rec_statement') + '</button>' +
@@ -173,6 +272,97 @@ function openCustomerDrawer(cid) {
   }
 
   openDrawer({ head: head, body: body });
+
+  if (typeof Shop !== 'undefined' && Shop.live()) {
+    Shop.customerHistory(c.id).then(function (r) {
+      fillCustomerHistory(c.id, (r && r.sales) || []);
+    }).catch(function (err) {
+      var host = custHistHost(c.id);
+      if (host) {
+        host.innerHTML = '<div class="card-body"><span class="muted small">' +
+          esc(API.friendly(err)) + '</span></div>';
+      }
+    });
+  } else {
+    /* _shot.html and demo mirrors: no server to ask, so the history stays
+       honestly empty rather than invented. */
+    fillCustomerHistory(c.id, []);
+  }
+}
+
+function custHistHost(cid) {
+  var el = document.getElementById('cuHist');
+  return el && el.getAttribute('data-cid') === String(cid) ? el : null;
+}
+
+/* One sale's money, in the sale's OWN currency — a dollar invoice must not
+   be drawn as lira at today's rate. */
+function saleMoney(minor, cur) {
+  return '<bdi dir="ltr">' + (cur === 'USD' ? moneyUsdRaw(minor) : moneySypRaw(minor)) + '</bdi>';
+}
+
+function fillCustomerHistory(cid, rows) {
+  var host = custHistHost(cid);
+  if (!host) return;                                 /* drawer moved on */
+
+  var pts = document.getElementById('cuPts');
+  if (!rows.length) {
+    host.innerHTML = '<div class="card-body"><span class="muted">' + t('none') + '</span></div>';
+    if (pts) pts.innerHTML = '<span class="muted">' + t('none') + '</span>';
+    return;
+  }
+
+  var h = '<div class="table-wrap" style="max-height:280px;overflow-y:auto"><table class="tbl tbl-compact"><thead><tr>' +
+    '<th>' + t('invoice') + '</th><th>' + t('date') + '</th><th>' + t('items') + '</th>' +
+    '<th class="num">' + t('total') + '</th><th class="num">' + t('points') + '</th>' +
+  '</tr></thead><tbody>';
+
+  rows.forEach(function (s) {
+    /* Rows only open when the invoice is among the hydrated sales — the
+       history reaches further back than the 200 the app holds, and a click
+       that silently did nothing would read as broken. unit_cost is never
+       drawn here for ANYONE: the server already strips it for those without
+       cost.read, and a cost across the counter is not this screen's job. */
+    var open = !!DB.sale(s.id);
+    var items = (s.items || []).map(function (it) {
+      return nm(it.name) + ' (' + esc(it.size || '—') + ') ×' + it.qty +
+             ' @ ' + saleMoney(it.unit_price, s.currency);
+    }).join('<br>');
+    var p = (s.points_earned ? '+' + nf(s.points_earned) : '') +
+            (s.points_used ? (s.points_earned ? ' ' : '') + '−' + nf(s.points_used) : '');
+    h += '<tr' + (open ? ' class="clickable" data-act="open-invoice" data-id="' + esc(s.id) + '"' : '') +
+         (s.voided ? ' style="opacity:.55"' : '') + '>' +
+      '<td><b>' + esc(s.id) + '</b>' +
+        (s.voided ? ' <span class="badge critical">' + t('cu_voided') + '</span>' : '') +
+        (s.discount ? '<br><small class="muted">' + t('discount') + ' −' + saleMoney(s.discount, s.currency) + '</small>' : '') + '</td>' +
+      '<td class="muted num">' + fmtDate(s.at) + '</td>' +
+      '<td class="muted small">' + (items || '—') + '</td>' +
+      '<td class="num"><b>' + saleMoney(s.total, s.currency) + '</b>' +
+        /* The rate frozen into THIS sale — the number that makes last
+           month's lira figure auditable after the rate has moved. Shown for
+           lira sales; on a dollar sale it is 1 and says nothing. */
+        (s.currency !== 'USD' && s.fx_rate
+          ? '<br><small class="muted"><bdi dir="ltr">$1 = ' + nf(s.fx_rate) + '</bdi></small>'
+          : '') + '</td>' +
+      '<td class="num muted">' + (p || '—') + '</td>' +
+    '</tr>';
+  });
+  h += '</tbody></table></div>';
+  host.innerHTML = h;
+
+  if (pts) {
+    var live = rows.filter(function (s) {
+      return !s.voided && (s.points_earned || s.points_used);
+    }).slice(0, 6);
+    pts.innerHTML = live.length
+      ? '<ul class="timeline" style="margin:0;padding-inline-start:14px">' +
+        live.map(function (s) {
+          return '<li class="plus"><b>' +
+            (s.points_earned ? '+' + nf(s.points_earned) : '−' + nf(s.points_used)) + ' ' + t('points') + '</b>' +
+            '<small>' + esc(s.id) + ' · ' + fmtDate(s.at) + ' · ' + saleMoney(s.total, s.currency) + '</small></li>';
+        }).join('') + '</ul>'
+      : '<span class="muted">' + t('none') + '</span>';
+  }
 }
 
 /* Routed through the WA layer so the Send button opens a real conversation
@@ -186,8 +376,8 @@ function openWhatsapp(cid) {
     kind: 'winback',
     text: WA.templates.winback(c),
     note: OG.lang === 'ar'
-      ? 'آخر شراء: ' + relDate(c.lastPurchaseDate) + ' · إجمالي الإنفاق ' + money(c.totalSpent)
-      : 'Last purchase ' + relDate(c.lastPurchaseDate) + ' · lifetime ' + money(c.totalSpent)
+      ? 'آخر شراء: ' + relDate(c.lastPurchaseDate) + ' · إجمالي الإنفاق ' + moneyPairText(c.spentSyp, c.spentUsd)
+      : 'Last purchase ' + relDate(c.lastPurchaseDate) + ' · lifetime ' + moneyPairText(c.spentSyp, c.spentUsd)
   });
 }
 

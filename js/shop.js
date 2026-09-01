@@ -205,8 +205,14 @@ var Shop = (function () {
 
      On failure: the message, and nothing else. Memory is left exactly as it
      was, because the screen must keep showing what the server thinks is true.
-     A stock figure is not a matter of local opinion. */
-  function write(send, mirror, done) {
+     A stock figure is not a matter of local opinion.
+
+     `fail` is the one exception, for the caller that knows better: a 409
+     phone_taken is not a refusal — the row IS written — and the default
+     toast-and-stop would leave a customer in the database and off the
+     screen. It returns true when it has handled the error; anything else
+     falls through to the default. */
+  function write(send, mirror, done, fail) {
     if (!live()) {
       /* `mirror` returns whatever the local write produced — a new product,
          say — so `done` receives the same shape in both modes and the call
@@ -229,6 +235,7 @@ var Shop = (function () {
       })
       .catch(function (err) {
         busy = false;
+        if (fail && fail(err) === true) return;
         if (typeof toast === 'function') {
           toast(typeof t === 'function' ? t('warehouse_title') : 'Stock',
                 API.friendly(err), 'err', 6000);
@@ -335,6 +342,15 @@ var Shop = (function () {
 
     newCustomer: function (body) { return API.post('/api/customers', body); },
     updateCustomer: function (id, fields) { return API.patch('/api/customers/' + id, fields); },
+    /* The invoices WITH their lines, per customer, on demand — the one read
+       that is not hydrated at sign-in. The whole shop's line items for
+       everyone who ever bought is exactly the payload rule 1 exists to
+       avoid; one customer's, fetched when their drawer opens, is not.
+       unit_cost never arrives for anyone without cost.read — the route
+       scrubs it — and the drawer does not draw it for anyone at all. */
+    customerHistory: function (id, limit) {
+      return API.get('/api/customers/' + id + '/history?limit=' + (limit || 200));
+    },
     adjustPoints: function (id, delta, reason) {
       return API.post('/api/customers/' + id + '/points', { delta: delta, reason: reason });
     }

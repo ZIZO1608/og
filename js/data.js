@@ -582,6 +582,41 @@ var jobMessages = [];
 var custIndex = {};
 var custPhoneIndex = {};
 
+/* One server row → one customer object, written once so hydrate() and
+   DB.attachCustomer() cannot drift apart on the shape.
+
+   Spend is two figures in the currency the customer actually handed over,
+   never added together. spentUsdEquiv converts every sale at its own frozen
+   rate and exists ONLY TO SORT — it must never be drawn; it would restate
+   lira somebody paid as dollars they never did. */
+function mapCustomer(c) {
+  return {
+    id: c.id,
+    name: c.name,
+    phone: c.phone || '',
+    city: c.city || '',
+    source: c.source || 'in-store',
+    address: c.address || '',
+    note: c.note || '',
+    loyaltyPoints: Number(c.loyalty_points) || 0,
+    spentSyp: Number(c.spent_syp) || 0,
+    spentUsd: Number(c.spent_usd) || 0,
+    spentUsdEquiv: Number(c.spent_usd_equiv) || 0,   /* sort only — never display */
+    debtSyp: Number(c.debt_syp) || 0,
+    debtUsd: Number(c.debt_usd) || 0,
+    openDebts: Number(c.open_debts) || 0,
+    visits: Number(c.visits) || 0,
+    /* [{ fam: 'Footwear', size: '42', qty: 4 }, …] — top two per family,
+       mapped on the server from products.type. Read, never re-derived. */
+    sizes: Array.isArray(c.sizes) ? c.sizes : [],
+    createdAt: c.created_at ? new Date(c.created_at) : null,
+    lastPurchaseDate: c.last_purchase_at ? new Date(c.last_purchase_at) : null,
+    archived: !!c.archived,
+    demo: !!c.demo,
+    history: []
+  };
+}
+
 /* -------------------------------------------------------------- 9. HELPERS */
 
 var DB = {
@@ -675,6 +710,22 @@ var DB = {
       if (!k) return;
       (custPhoneIndex[k] = custPhoneIndex[k] || []).push(c);
     });
+  },
+
+  /* One server row, straight into the live array between hydrates. The
+     phone_taken path uses this: the 409 body carries the customer the
+     server already wrote, and the list must show them without waiting for
+     the full reload that follows. Same mapping as hydrate, same indexes. */
+  attachCustomer: function (row) {
+    if (!row || row.id == null) return null;
+    var have = custIndex[row.id];
+    if (have) return have;
+    var c = mapCustomer(row);
+    customers.push(c);
+    custIndex[c.id] = c;
+    var k = DB.normPhone(c.phone);
+    if (k) (custPhoneIndex[k] = custPhoneIndex[k] || []).push(c);
+    return c;
   },
 
   sale: function (id) { return sales.filter(function (s) { return s.id === id; })[0]; },
@@ -1473,13 +1524,22 @@ var DB = {
       });
   },
 
+  /* The one at-risk threshold, read everywhere a literal 90 used to sit.
+     customer.at_risk_days comes from config through hydrate; 90 is only the
+     fallback for a server that has never heard of the key. */
+  atRiskDays: function () {
+    var n = Number(CONFIG.AT_RISK_DAYS);
+    return isFinite(n) && n > 0 ? n : 90;
+  },
+
   /* People who HAVE bought and then stopped. Never-bought is a different
      state — a sale that has not happened yet, not a customer who left — and
      is deliberately not in this list. */
   inactiveCustomers: function (days) {
+    var edge = days || DB.atRiskDays();
     return customers.filter(function (c) {
       var n = DB.daysSince(c.lastPurchaseDate);
-      return n !== null && n >= (days || 90);
+      return n !== null && n >= edge;
     });
   },
 
@@ -2400,44 +2460,12 @@ var DB = {
        stored total is a second source of truth for money, and the first void
        makes it wrong.
 
-       Spend is two figures in the currency the customer actually handed
-       over, never added together. spentUsdEquiv converts every sale at its
-       own frozen rate and exists ONLY TO SORT — it must never be drawn; it
-       would restate lira somebody paid as dollars they never did. */
+       The shape lives in mapCustomer(), shared with DB.attachCustomer() —
+       the 409 phone_taken path attaches the row the server already wrote,
+       and two copies of the mapping is one copy that is wrong. */
     customers.length = 0;
     (payload.customers || []).forEach(function (c) {
-      var spentSyp = Number(c.spent_syp) || 0;
-      var spentUsd = Number(c.spent_usd) || 0;
-      customers.push({
-        id: c.id,
-        name: c.name,
-        phone: c.phone || '',
-        city: c.city || '',
-        source: c.source || 'in-store',
-        address: c.address || '',
-        note: c.note || '',
-        loyaltyPoints: Number(c.loyalty_points) || 0,
-        spentSyp: spentSyp,
-        spentUsd: spentUsd,
-        spentUsdEquiv: Number(c.spent_usd_equiv) || 0,     /* sort only — never display */
-        /* TRANSITIONAL. The screens still read totalSpent as one base-currency
-           figure; it is bridged from the two real ones through the same
-           toBase() the catalogue prices use, so the interim list keeps sorting
-           and drawing. Stage B replaces every call site, then this line goes. */
-        totalSpent: spentSyp + toBase(spentUsd, 'USD'),
-        debtSyp: Number(c.debt_syp) || 0,
-        debtUsd: Number(c.debt_usd) || 0,
-        openDebts: Number(c.open_debts) || 0,
-        visits: Number(c.visits) || 0,
-        /* [{ fam: 'Footwear', size: '42', qty: 4 }, …] — top two per family,
-           mapped on the server from products.type. Read, never re-derived. */
-        sizes: Array.isArray(c.sizes) ? c.sizes : [],
-        createdAt: c.created_at ? new Date(c.created_at) : null,
-        lastPurchaseDate: c.last_purchase_at ? new Date(c.last_purchase_at) : null,
-        archived: !!c.archived,
-        demo: !!c.demo,
-        history: []
-      });
+      customers.push(mapCustomer(c));
     });
 
     /* The id and phone indexes, rebuilt now that the array is full. */

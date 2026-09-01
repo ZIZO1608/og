@@ -70,10 +70,12 @@ function buildAlerts() {
       });
     });
 
-  var inactive = DB.inactiveCustomers(90).length;
+  var inactive = DB.inactiveCustomers().length;
   out.push({
     tone: 'amber', icon: 'C',
-    text: inactive + ' ' + (OG.lang === 'ar' ? 'زبون لم يشترِ منذ ٩٠ يوماً' : "customers haven't purchased in 90 days"),
+    text: inactive + ' ' + (OG.lang === 'ar'
+      ? 'زبون لم يشترِ منذ ' + DB.atRiskDays() + ' يوماً'
+      : "customers haven't purchased in " + DB.atRiskDays() + ' days'),
     sub: OG.lang === 'ar' ? 'أرسل لهم رسالة واتساب بضغطة' : 'One tap sends them a WhatsApp message',
     view: 'customers', filter: 'risk'
   });

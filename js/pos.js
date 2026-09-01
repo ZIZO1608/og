@@ -1151,7 +1151,12 @@ var POS = (function () {
     sale.pointsEarned = earned;
 
     if (cust) {
-      cust.totalSpent += sale.total;
+      /* The till sells in base SYP, so the lira figure is the one that
+         moves. spentUsdEquiv is deliberately left alone — it exists only to
+         sort, and the reload that follows every live sale brings the
+         server's own figure within a moment. */
+      cust.spentSyp += sale.total;
+      cust.visits += 1;
       cust.loyaltyPoints = Math.max(0, cust.loyaltyPoints - spent + earned);
       cust.lastPurchaseDate = sale.date;
       cust.history.unshift(sale.id);

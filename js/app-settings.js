@@ -707,6 +707,22 @@ function loyaltyCard() {
     '</div>' + setFoldEnd();
 }
 
+/* How many days without a purchase before a customer counts as at risk.
+   One number, but it moves the red badge, the risk filter, the dashboard
+   nudge and the "active customers" KPI everywhere at once — and unlike the
+   loyalty inputs above it, it is SAVED: set-atrisk writes it through
+   PUT /api/config, so it holds across reloads and machines. */
+function customersCard() {
+  var d = DB.atRiskDays();
+  return setFoldStart('customers', t('cu_atrisk_title'),
+      '<span dir="ltr">' + d + '</span> ' + t('days')) +
+    '<div class="card-body">' +
+    '<label class="field"><span>' + t('cu_atrisk_days') + '</span>' +
+      '<input class="inp num" id="setAtRisk" type="number" min="1" max="3650" value="' + d + '" data-change="set-atrisk"></label>' +
+    '<div class="partner-note">' + t('cu_atrisk_note') + '</div>' +
+    '</div>' + setFoldEnd();
+}
+
 /* The escape hatch for a laggy projector or a remote-desktop demo. Writes
    body[data-motion], which the reduced-motion rules already honour, so no
    screen needs to know about it. */
@@ -751,6 +767,7 @@ function viewSettings() {
   h += brandingCard();
   h += rateCard();
   h += loyaltyCard();
+  h += customersCard();
 
   h += setSection(t('setg_print'));
   h += receiptSettingsCard();

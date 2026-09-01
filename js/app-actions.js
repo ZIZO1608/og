@@ -791,10 +791,12 @@ var ACTIONS = {
     }
 
     /* Same name AND same phone is a duplicate; same name alone is two people
-       called Ahmad, which in Aleppo is most of them. */
+       called Ahmad, which in Aleppo is most of them. Archived people are
+       left to the server's phone check below — re-adding somebody who was
+       archived should warn AND save, not be silently swallowed here. */
     var dupe = DB.customers.filter(function (c) {
-      return c.name.toLowerCase() === name.toLowerCase() &&
-             (!phone || c.phone.replace(/\D/g, '') === phone.replace(/\D/g, ''));
+      return !c.archived && c.name.toLowerCase() === name.toLowerCase() &&
+             (!phone || DB.normPhone(c.phone) === DB.normPhone(phone));
     })[0];
     if (dupe) {
       closeModal();
@@ -817,7 +819,9 @@ var ACTIONS = {
         var c = {
           id: DB.customers.reduce(function (m, x) { return Math.max(m, x.id); }, 0) + 1,
           name: name, phone: phone, city: city, source: 'in-store', address: '', note: '',
-          loyaltyPoints: 0, totalSpent: 0, lastPurchaseDate: null,
+          loyaltyPoints: 0, spentSyp: 0, spentUsd: 0, spentUsdEquiv: 0,
+          debtSyp: 0, debtUsd: 0, openDebts: 0, visits: 0, sizes: [],
+          createdAt: new Date(), lastPurchaseDate: null,
           archived: false, history: []
         };
         DB.customers.push(c);
@@ -836,6 +840,33 @@ var ACTIONS = {
           toast(t('cu_new'), c.name + (c.phone ? ' · ' + c.phone : ''), 'ok', 3500);
           if (after) after(c);
         }
+      },
+      /* A 409 phone_taken is not a refusal — the row IS written, and two
+         people genuinely share a number (a household, a shop landline). So:
+         put the customer on screen from the 409 body, keep the warning up
+         long enough to read, name whoever had the number first — saying so
+         when that person is archived — and offer to open them, because the
+         point of the warning is deciding whether this is a duplicate. */
+      function (err) {
+        if (!err || err.code !== 'phone_taken') return false;
+        var d = err.detail || {};
+        closeModal();
+        var made = d.customer ? DB.attachCustomer(d.customer) : null;
+        render();
+        var who = (d.existing && d.existing.name) || '';
+        toast(t('cu_new'),
+          t(d.existing && d.existing.archived ? 'cu_phone_taken_archived' : 'cu_phone_taken')
+            .replace('{n}', who),
+          'warn', 9000,
+          d.existing ? {
+            label: t('cu_view'),
+            attrs: 'data-act="open-customer" data-id="' + (+d.existing.id) + '"'
+          } : undefined);
+        if (made && after) after(made);
+        /* True the derived figures up with the server's own read — the
+           attached row came from the 409 body, which is right but thin. */
+        Shop.reload();
+        return true;
       }
     );
   },
