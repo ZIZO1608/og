@@ -122,10 +122,10 @@ const SEEDED = new Set([
 
 const PAGE = 1000;   /* Supabase caps a REST read at 1000 rows per request. */
 
-async function fetchAll(table) {
+async function fetchAll(table, order) {
   const out = [];
   for (let offset = 0; ; offset += PAGE) {
-    const rows = await SB.select(table, { limit: PAGE, offset });
+    const rows = await SB.select(table, { limit: PAGE, offset, order: order || undefined });
     out.push(...rows);
     if (rows.length < PAGE) return out;
   }
@@ -136,6 +136,13 @@ async function fetchAll(table) {
    text or number the local schema expects. Anything the local table does not
    have a column for is dropped rather than guessed at, so a mirror that has
    run ahead of this machine's migrations cannot break the insert. */
+/* Postgres hands a TIMESTAMPTZ back as 2026-08-30T15:56:28.389+00:00; this
+   database wrote it as 2026-08-30T15:56:28.389Z, and it compares and sorts
+   those as strings (WHERE at >= ?, ORDER BY at). '+' sorts before 'Z', so a
+   restored row and a row rung up a moment later in the same second would
+   order wrong, and a mixed table is a table nobody can reason about. Put it
+   back exactly as it was written. Only the unambiguous shape is touched. */
+const PG_TS = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?[+-]\d\d:\d\d$/;
 function adapt(row, cols) {
   const out = {};
   for (const c of cols) {
@@ -143,9 +150,18 @@ function adapt(row, cols) {
     const v = row[c];
     out[c] = typeof v === 'boolean' ? (v ? 1 : 0)
            : (v !== null && typeof v === 'object') ? JSON.stringify(v)
+           : (typeof v === 'string' && PG_TS.test(v)) ? new Date(v).toISOString()
            : v;
   }
   return out;
+}
+
+/* The key, so a page boundary is a fixed place rather than wherever Postgres
+   felt like cutting an unordered read — a row that moves across one is read
+   twice or not at all. */
+function pkOf(d, table) {
+  return d.prepare(`SELECT name FROM pragma_table_info('${table}') WHERE pk > 0 ORDER BY pk`)
+          .all().map((r) => r.name).join(',');
 }
 
 function columnsOf(d, table) {
@@ -188,7 +204,7 @@ for (const table of ORDER) {
   if (!cols.length) { warn(`${table} — no such table locally, skipping`); continue; }
 
   let remote;
-  try { remote = await fetchAll(table); }
+  try { remote = await fetchAll(table, pkOf(d, table)); }
   catch (e) { warn(`${table} — could not read from Supabase (${e.message}), skipping`); continue; }
 
   const here = localCount(d, table);
@@ -234,7 +250,7 @@ if (!Vault.isEnabled()) {
   dim('then re-run. New staff meanwhile:  npm run createuser');
 } else {
   let remote = [];
-  try { remote = await fetchAll('users'); }
+  try { remote = await fetchAll('users', 'id'); }
   catch (e) { warn(`could not read users from Supabase (${e.message})`); }
 
   const sealed = remote.filter((u) => u.pw_enc);
@@ -296,12 +312,27 @@ if (!Vault.isEnabled()) {
    An assignment to a product that no longer exists is not information worth
    dying for: the shelf comes back unassigned, which is true. */
 function clean(table, r, d) {
-  if (table !== 'shelves' || r.product_id == null) return r;
-  if (d.prepare('SELECT 1 FROM products WHERE id = ?').get(r.product_id)) return r;
-  orphaned++;
-  return { ...r, product_id: null, size_from: null, size_to: null };
+  if (table === 'shelves' && r.product_id != null) {
+    if (d.prepare('SELECT 1 FROM products WHERE id = ?').get(r.product_id)) return r;
+    orphaned++;
+    return { ...r, product_id: null, size_from: null, size_to: null };
+  }
+  /* The same shape on the label history, and this one is guaranteed rather
+     than occasional: label_print_log.job_id points at label_print_jobs, the
+     live print queue that is deliberately never mirrored — so on the clean
+     machine this script exists for, EVERY logged job is a job the database
+     has not got, and the restore died on its last table with everything
+     else already committed. Which batch a label came from is not worth
+     that; the line keeps its sku, qty, station and time. */
+  if (table === 'label_print_log' && r.job_id != null) {
+    if (d.prepare('SELECT 1 FROM label_print_jobs WHERE id = ?').get(r.job_id)) return r;
+    unqueued++;
+    return { ...r, job_id: null };
+  }
+  return r;
 }
 let orphaned = 0;
+let unqueued = 0;
 
 head('Restoring');
 
@@ -328,6 +359,10 @@ for (const { table, cols, rows } of plan) {
   if (table === 'shelves' && orphaned) {
     warn(`${orphaned} shelf/shelves named a product this database does not have — ` +
          'restored unassigned.');
+  }
+  if (table === 'label_print_log' && unqueued) {
+    dim(`${unqueued} label print(s) named a queue job this database does not have — ` +
+        'restored without the job link.');
   }
 }
 
