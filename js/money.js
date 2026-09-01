@@ -244,7 +244,7 @@ var Money = (function () {
     debts.forEach(function (d) {
       var late = d.age > 30;
       h += '<tr class="' + (late ? 'row-late' : '') + '">' +
-        '<td><b>' + esc(d.name) + '</b>' +
+        '<td><b>' + nm(d.name) + '</b>' +
           (d.customer ? '<small class="muted" style="display:block">' + tel(d.customer.phone) + '</small>' : '') + '</td>' +
         '<td class="muted">' + d.sale.id + '</td>' +
         '<td class="num muted">' + fmtDate(d.sale.date) + '</td>' +

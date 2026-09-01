@@ -287,7 +287,12 @@ function dashboardExportSpec() {
   var today = sumSalesOn(0);
   var mtd = monthToDate(0);
   var crit = DB.criticalVariants().length;
-  var active = DB.customers.filter(function (c) { return DB.daysSince(c.lastPurchaseDate) < 90; }).length;
+  /* Bought within the window. null is never-bought, which is not "active" —
+     and would count as one here, because null < 90 is true in JavaScript. */
+  var active = DB.customers.filter(function (c) {
+    var n = DB.daysSince(c.lastPurchaseDate);
+    return n !== null && n < 90;
+  }).length;
   var pend = DB.printJobs.filter(function (j) { return j.stage !== 'done'; }).length;
   var byType = DB.salesByType();
 
@@ -420,7 +425,7 @@ function customerStatementSpec(cid) {
     rows: invoices.map(function (s) {
       return [s.id, fmtDate(s.date), s.items.reduce(function (a, i) { return a + i.qty; }, 0),
               DB.payLabel(s.payment), exMoney(s.total),
-              Math.round(s.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000)];
+              s.pointsEarned];
     }),
     totals: [t('total'), null, null, null, exMoney(c.totalSpent), c.loyaltyPoints],
     kpis: [{ label: t('total_spent'), value: money(c.totalSpent) },

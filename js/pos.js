@@ -1144,6 +1144,12 @@ var POS = (function () {
       : Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
     var spent = server ? (server.pointsUsed || 0) : S.pointsUsed;
 
+    /* Onto the sale object itself, because the receipt and the invoice that
+       open a moment later read sale.pointsEarned — the frozen figure, the
+       same one hydrate() carries for every other sale — and this local copy
+       is what they are handed before the reload replaces it. */
+    sale.pointsEarned = earned;
+
     if (cust) {
       cust.totalSpent += sale.total;
       cust.loyaltyPoints = Math.max(0, cust.loyaltyPoints - spent + earned);

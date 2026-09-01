@@ -48,7 +48,8 @@ var YALLA = (function () {
   function piecesDueWithin(days) {
     return openJobs().reduce(function (a, j) {
       var d = DB.daysSince(j.deadline);
-      return (d >= -days) ? a + j.qty : a;
+      /* No deadline (null) is not "due now" — it is not due at all. */
+      return (d !== null && d >= -days) ? a + j.qty : a;
     }, 0);
   }
 
@@ -70,7 +71,10 @@ var YALLA = (function () {
      late. Everything on the radar and the heatmap keys off this, so a job due
      "today at 6pm" and one due "today at 9am" land in the same column. */
   function dayOffset(d) {
-    return -DB.daysSince(d);
+    var n = DB.daysSince(d);
+    /* null stays null, so a job with no deadline matches no column at all
+       rather than landing in today's (-null is -0, which === 0). */
+    return n === null ? null : -n;
   }
 
   function jobsDueOn(off) {

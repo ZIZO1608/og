@@ -54,6 +54,21 @@ var CONFIG = {
   TIER_SILVER: 6000,
   TIER_GOLD: 12000,
 
+  /* "Has not been in for a while." Sneakers are bought two or three times a
+     year, so the literal 90 that used to sit in six screens flagged most of
+     the regulars. Overwritten from config.customer.at_risk_days in hydrate;
+     the screens read this, never a number of their own. */
+  AT_RISK_DAYS: 180,
+
+  /* The paper stamp cards the shop runs beside the points. Groundwork only:
+     nothing earns or redeems a stamp yet, and loyalty.mode says which of the
+     two the screens should talk about — 'points', 'stamps', 'both', 'off'.
+     All four come from config.loyalty.* in hydrate (028_customers_foundation). */
+  LOYALTY_MODE: 'points',
+  STAMPS_REQUIRED: 10,           // buy this many, earn a reward
+  STAMPS_PER: 'item',            // 'item' | 'visit' | 'amount'
+  STAMPS_MIN_MINOR: 0,           // smallest sale that earns one, in minor units
+
   STOCK_CRITICAL: 3,           // <= this many pieces = Critical
   STOCK_LOW: 10,               // <= this many pieces = Low
 
@@ -557,6 +572,16 @@ function hoursAgo(n) { return new Date(Date.now() - n * 3600000); }
 var _msgSeq = 0;
 var jobMessages = [];
 
+/* ---- customer indexes ---------------------------------------------------
+   id → customer, and normalised phone → [customers]. hydrate() used to build
+   the first of these to link sales to people and then throw it away, while
+   DB.customer(id) walked the whole array with a filter on every call — five
+   thousand lookups measured at 121 ms. Kept here instead, rebuilt by
+   DB.indexCustomers() whenever the array is refilled. The phone index is an
+   array per number because two people genuinely can share one. */
+var custIndex = {};
+var custPhoneIndex = {};
+
 /* -------------------------------------------------------------- 9. HELPERS */
 
 var DB = {
@@ -620,7 +645,38 @@ var DB = {
   clubs: CLUBS,
 
   product: function (id) { return products.filter(function (p) { return p.id === id; })[0]; },
-  customer: function (id) { return customers.filter(function (c) { return c.id === id; })[0]; },
+  /* The index first; the scan only for a row that reached the array without
+     going through hydrate (the demo-mode mirror in cu-save pushes one), and
+     that row is then remembered so the next lookup is a hash again. */
+  customer: function (id) {
+    var c = custIndex[id];
+    if (c) return c;
+    c = customers.filter(function (x) { return x.id === id; })[0];
+    if (c) custIndex[c.id] = c;
+    return c;
+  },
+
+  /* By NORMALISED phone (DB.normPhone) — the caller normalises, so a search
+     box and the server agree on what "the same number" means. Prefers a live
+     customer over an archived one holding the same number; undefined when
+     nobody has it. */
+  customerByPhone: function (norm) {
+    var list = norm ? custPhoneIndex[norm] : null;
+    if (!list || !list.length) return undefined;
+    return list.filter(function (c) { return !c.archived; })[0] || list[0];
+  },
+
+  indexCustomers: function () {
+    custIndex = {};
+    custPhoneIndex = {};
+    customers.forEach(function (c) {
+      custIndex[c.id] = c;
+      var k = DB.normPhone(c.phone);
+      if (!k) return;
+      (custPhoneIndex[k] = custPhoneIndex[k] || []).push(c);
+    });
+  },
+
   sale: function (id) { return sales.filter(function (s) { return s.id === id; })[0]; },
   variantsOf: function (pid) { return variants.filter(function (v) { return v.productId === pid; }); },
 
@@ -811,9 +867,24 @@ var DB = {
     return Math.round((b - a) / 86400000);
   },
 
-  daysSince: function (d) { return Math.round((TODAY - new Date(d).setHours(0, 0, 0, 0)) / 86400000); },
+  /* null for no date, and null for a date that does not parse. It used to
+     return ~20,700 for null, because new Date(null) is the Unix epoch and not
+     an invalid date — so every customer who had never bought was "56 years
+     since last purchase", which is >= 90, which made them At risk, with a red
+     border and a win-back button, five minutes after being added. Every
+     caller now handles null on its own terms: "never" is not "long ago". */
+  daysSince: function (d) {
+    if (d === null || d === undefined || d === '') return null;
+    var t = new Date(d).setHours(0, 0, 0, 0);
+    if (isNaN(t)) return null;
+    return Math.round((TODAY - t) / 86400000);
+  },
 
-  isOverdue: function (job) { return job.stage !== 'done' && DB.daysSince(job.deadline) > 0; },
+  isOverdue: function (job) {
+    if (job.stage === 'done') return false;
+    var n = DB.daysSince(job.deadline);
+    return n !== null && n > 0;
+  },
 
 
   stageIndex: function (job) { return PRINT_STAGES.indexOf(job.stage); },
@@ -1115,7 +1186,9 @@ var DB = {
   },
 
   invoiceOverdue: function (inv) {
-    return DB.invoiceStatus(inv) !== 'paid' && !!inv.issued && !!inv.due && DB.daysSince(inv.due) > 0;
+    if (DB.invoiceStatus(inv) === 'paid' || !inv.issued || !inv.due) return false;
+    var n = DB.daysSince(inv.due);
+    return n !== null && n > 0;
   },
 
   /* Delivered work that is not on any invoice yet — the pool the builder
@@ -1236,6 +1309,7 @@ var DB = {
       var bal = DB.invoiceBalance(i);
       if (bal <= 0) return;
       var age = DB.daysSince(i.issued);
+      if (age === null) return;               /* an unparseable issue date is in no bucket */
       for (var k = 0; k < b.length; k++) { if (age <= b[k].max) { b[k].value += bal; return; } }
     });
     return b;
@@ -1399,8 +1473,14 @@ var DB = {
       });
   },
 
+  /* People who HAVE bought and then stopped. Never-bought is a different
+     state — a sale that has not happened yet, not a customer who left — and
+     is deliberately not in this list. */
   inactiveCustomers: function (days) {
-    return customers.filter(function (c) { return DB.daysSince(c.lastPurchaseDate) >= (days || 90); });
+    return customers.filter(function (c) {
+      var n = DB.daysSince(c.lastPurchaseDate);
+      return n !== null && n >= (days || 90);
+    });
   },
 
   tier: function (points) {
@@ -1957,6 +2037,44 @@ var DB = {
       .trim();
   },
 
+  /* ---- the customer pair ---------------------------------------------------
+     THESE TWO HAVE A TWIN. server/lib/text.js carries the same functions with
+     identical bodies. The server is ESM, this file is a <script> tag with no
+     build step, and nothing bridges the two — so the pair exists twice and
+     the copies MUST be kept in step. Change one, change the other.
+
+     They are not normaliseName above, which is for PRODUCTS: it lowercases
+     and collapses punctuation but folds no Arabic. Whether it should call
+     foldName is an open question flagged in the Stage A report; product
+     behaviour is deliberately untouched here. */
+
+  /* The bare digits of a Syrian number, with the local form promoted to the
+     international one: 0933 111 222 → 963933111222. The rule is lifted from
+     js/whatsapp.js, where it already worked. */
+  normPhone: function (s) {
+    var d = String(s == null ? '' : s).replace(/\D/g, '');
+    if (d.length === 10 && d.charAt(0) === '0') d = '963' + d.slice(1);
+    return d;
+  },
+
+  /* Lowercase, then fold the Arabic letter forms that vary by typist but not
+     by meaning. Latin is only lowercased. NO transliteration between scripts
+     — "Ahmad" and "أحمد" are honestly different here; the phone is the
+     identity. */
+  foldName: function (s) {
+    return String(s == null ? '' : s)
+      .toLowerCase()
+      .replace(/[أإآٱ]/g, 'ا')   /* أ إ آ ٱ → ا */
+      .replace(/ة/g, 'ه')                       /* ة → ه */
+      .replace(/ى/g, 'ي')                       /* ى → ي */
+      .replace(/ؤ/g, 'و')                       /* ؤ → و */
+      .replace(/ئ/g, 'ي')                       /* ئ → ي */
+      .replace(/ـ/g, '')                             /* tatweel */
+      .replace(/[ً-ْ]/g, '')                    /* fathatan … sukun */
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
   nameTokens: function (s) {
     /* Words that carry no identity — dropping them stops "OG Tee" matching
        every tee in the shop on the strength of the word "tee". */
@@ -2124,6 +2242,13 @@ var DB = {
     CONFIG.TIER_SILVER             = num('loyalty.tier_silver', CONFIG.TIER_SILVER);
     CONFIG.TIER_GOLD               = num('loyalty.tier_gold', CONFIG.TIER_GOLD);
     CONFIG.MAX_DISCOUNT_PCT        = num('sale.max_discount_pct', CONFIG.MAX_DISCOUNT_PCT);
+    /* 028_customers_foundation: the at-risk line and the stamp-card rules.
+       Read here so a screen can say CONFIG.AT_RISK_DAYS rather than 90. */
+    CONFIG.AT_RISK_DAYS            = num('customer.at_risk_days', CONFIG.AT_RISK_DAYS);
+    if (cfg['loyalty.mode'] !== undefined) CONFIG.LOYALTY_MODE = cfg['loyalty.mode'];
+    CONFIG.STAMPS_REQUIRED         = num('loyalty.stamps.required', CONFIG.STAMPS_REQUIRED);
+    if (cfg['loyalty.stamps.per'] !== undefined) CONFIG.STAMPS_PER = cfg['loyalty.stamps.per'];
+    CONFIG.STAMPS_MIN_MINOR        = num('loyalty.stamps.min_minor', CONFIG.STAMPS_MIN_MINOR);
     if (cfg['shop.name']) CONFIG.SHOP_NAME = cfg['shop.name'];
     if (cfg['shop.address']) CONFIG.SHOP_ADDRESS = cfg['shop.address'];
     if (cfg['shop.city']) CONFIG.SHOP_CITY = cfg['shop.city'];
@@ -2234,7 +2359,7 @@ var DB = {
         /* Never sold falls back to how long the shop has had it, which is the
            honest reading of "nothing has moved" and keeps the dead-stock
            alert pointing at a real row instead of at nothing. */
-        lastSoldDaysAgo: DB.daysSince(p.last_sold_at || p.created_at)
+        lastSoldDaysAgo: DB.daysSince(p.last_sold_at || p.created_at) || 0
       });
 
       (p.variants || []).forEach(function (v) {
@@ -2270,11 +2395,19 @@ var DB = {
     });
 
     /* ---- customers -------------------------------------------------------
-       totalSpent and lastPurchaseDate come from the server, where they are
-       derived from the sales table rather than stored. A stored total is a
-       second source of truth for money, and the first void makes it wrong. */
+       The money, the visits, the debt and the sizes all come from the server,
+       where they are derived from the sales table rather than stored. A
+       stored total is a second source of truth for money, and the first void
+       makes it wrong.
+
+       Spend is two figures in the currency the customer actually handed
+       over, never added together. spentUsdEquiv converts every sale at its
+       own frozen rate and exists ONLY TO SORT — it must never be drawn; it
+       would restate lira somebody paid as dollars they never did. */
     customers.length = 0;
     (payload.customers || []).forEach(function (c) {
+      var spentSyp = Number(c.spent_syp) || 0;
+      var spentUsd = Number(c.spent_usd) || 0;
       customers.push({
         id: c.id,
         name: c.name,
@@ -2284,7 +2417,22 @@ var DB = {
         address: c.address || '',
         note: c.note || '',
         loyaltyPoints: Number(c.loyalty_points) || 0,
-        totalSpent: Number(c.total_spent) || 0,
+        spentSyp: spentSyp,
+        spentUsd: spentUsd,
+        spentUsdEquiv: Number(c.spent_usd_equiv) || 0,     /* sort only — never display */
+        /* TRANSITIONAL. The screens still read totalSpent as one base-currency
+           figure; it is bridged from the two real ones through the same
+           toBase() the catalogue prices use, so the interim list keeps sorting
+           and drawing. Stage B replaces every call site, then this line goes. */
+        totalSpent: spentSyp + toBase(spentUsd, 'USD'),
+        debtSyp: Number(c.debt_syp) || 0,
+        debtUsd: Number(c.debt_usd) || 0,
+        openDebts: Number(c.open_debts) || 0,
+        visits: Number(c.visits) || 0,
+        /* [{ fam: 'Footwear', size: '42', qty: 4 }, …] — top two per family,
+           mapped on the server from products.type. Read, never re-derived. */
+        sizes: Array.isArray(c.sizes) ? c.sizes : [],
+        createdAt: c.created_at ? new Date(c.created_at) : null,
         lastPurchaseDate: c.last_purchase_at ? new Date(c.last_purchase_at) : null,
         archived: !!c.archived,
         demo: !!c.demo,
@@ -2292,8 +2440,8 @@ var DB = {
       });
     });
 
-    var custById = {};
-    customers.forEach(function (c) { custById[c.id] = c; });
+    /* The id and phone indexes, rebuilt now that the array is full. */
+    DB.indexCustomers();
 
     /* ---- sales ------------------------------------------------------------
        Hydrated even though the reported bug was about the catalogue, because
@@ -2337,6 +2485,10 @@ var DB = {
         subtotal: s.subtotal,
         discount: s.discount,
         pointsUsed: Number(s.points_used) || 0,
+        /* Stored on the row since 009, frozen at the sale like fx_rate. Read,
+           never recomputed from today's rate: three documents used to do
+           that, and two of them were paper. */
+        pointsEarned: Number(s.points_earned) || 0,
         couponCode: null,
         total: s.total,
         payment: s.payment,
@@ -2352,7 +2504,7 @@ var DB = {
         fxRate: s.fx_rate || rate
       };
       sales.push(sale);
-      if (custById[sale.customerId]) custById[sale.customerId].history.push(sale.id);
+      if (custIndex[sale.customerId]) custIndex[sale.customerId].history.push(sale.id);
     });
 
     /* ---- the movement log -------------------------------------------------

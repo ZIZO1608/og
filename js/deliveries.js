@@ -194,7 +194,7 @@ var Deliveries = (function () {
     rows.forEach(function (d) {
       h += '<tr' + (d.status === 'failed' ? ' class="row-late"' : '') + '>' +
         '<td><b>' + esc(d.saleId) + '</b></td>' +
-        '<td>' + esc(d.customerName || t('walk_in')) + '</td>' +
+        '<td>' + nm(d.customerName || t('walk_in')) + '</td>' +
         '<td class="muted">' + esc(d.address) +
           (d.phone ? '<small style="display:block">' + tel(d.phone) + '</small>' : '') + '</td>' +
         '<td>' + (d.driverName ? esc(d.driverName) : '<span class="muted">' + t('dl_unassigned') + '</span>') + '</td>' +

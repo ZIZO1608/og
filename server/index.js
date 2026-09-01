@@ -593,10 +593,17 @@ router.add('GET /api/customers', requirePerm('customer.read', (ctx) => {
   });
 }));
 
+/* The invoices WITH their lines now, so scrubCost below is load-bearing for
+   the first time: unit_cost sits inside each nested `items` array, and that
+   call is what keeps it from a cashier. `limit` is a query parameter, capped
+   inside historyFor. */
 router.add('GET /api/customers/:id/history', requirePerm('customer.read', (ctx) => {
   const c = Customers.byId(Number(ctx.params.id));
   if (!c) return sendError(ctx.res, 404, 'not_found', 'No such customer.');
-  sendOk(ctx.res, { sales: Customers.historyFor(c.id).map(s => scrubCost(s, ctx.user)) });
+  const limit = Number(ctx.url.searchParams.get('limit')) || 200;
+  sendOk(ctx.res, {
+    sales: Customers.historyFor(c.id, limit).map(s => scrubCost(s, ctx.user))
+  });
 }));
 
 router.add('POST /api/customers', requirePerm('customer.write', async (ctx) => {
@@ -604,6 +611,18 @@ router.add('POST /api/customers', requirePerm('customer.write', async (ctx) => {
   try {
     sendOk(ctx.res, { customer: Customers.create(b, ctx.user.id) });
   } catch (e) {
+    /* Not a refusal: the row IS written (two people genuinely share a
+       number). 409 so the till can tell "saved, but somebody already has
+       that phone" from "saved", and the body carries both people — the one
+       just made and the one who had it first — so it can offer the right
+       one. Sent through sendJson rather than sendError, because sendError's
+       fifth argument is HTTP headers, not body fields. */
+    if (e.code === 'phone_taken') {
+      return sendJson(ctx.res, 409, {
+        ok: false, code: 'phone_taken', error: e.message,
+        existing: e.existing, customer: e.customer
+      });
+    }
     sendError(ctx.res, 400, 'invalid', e.message);
   }
 }));

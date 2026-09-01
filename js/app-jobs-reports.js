@@ -496,8 +496,10 @@ function repTable() {
     var totalOut = 0;
     DB.suppliers.forEach(function (s) {
       totalOut += s.outstanding;
-      var late = DB.daysSince(s.dueDate) > 0 && s.outstanding > 0;
-      var soon = DB.daysSince(s.dueDate) > -5 && s.outstanding > 0;
+      /* null = no due date: neither late nor soon, whatever is owed. */
+      var due = DB.daysSince(s.dueDate);
+      var late = due !== null && due > 0 && s.outstanding > 0;
+      var soon = due !== null && due > -5 && s.outstanding > 0;
       h += '<tr><td><b>' + esc(s.name) + '</b></td>' +
         '<td class="muted">' + esc(s.category) + '</td>' +
         '<td class="num muted">' + money(s.totalPurchased) + '</td>' +

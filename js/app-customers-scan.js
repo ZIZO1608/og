@@ -13,7 +13,12 @@
 function customerRows() {
   var f = OG.cust;
   var list = DB.customers.filter(function (c) { return f.filter === 'archived' ? c.archived : !c.archived; });
-  if (f.filter === 'risk') list = list.filter(function (c) { return DB.daysSince(c.lastPurchaseDate) >= 90; });
+  /* Somebody who has never bought is not "at risk" — there is nothing to lose
+     yet. null from daysSince is that person, and is left out on purpose. */
+  if (f.filter === 'risk') list = list.filter(function (c) {
+    var n = DB.daysSince(c.lastPurchaseDate);
+    return n !== null && n >= 90;
+  });
   if (f.filter === 'gold') list = list.filter(function (c) { return DB.tier(c.loyaltyPoints) === 'gold'; });
   if (f.q) {
     var q = f.q.toLowerCase();
@@ -50,8 +55,8 @@ function viewCustomers() {
 
   h += '<div class="cust-grid">';
   list.forEach(function (c, ci) {
-    var since = DB.daysSince(c.lastPurchaseDate);
-    var atRisk = since >= 90;
+    var since = DB.daysSince(c.lastPurchaseDate);     /* null = never bought */
+    var atRisk = since !== null && since >= 90;
     var tier = DB.tier(c.loyaltyPoints);
     h += '<div class="cust-card' + (atRisk ? ' risk' : '') + (Bulk.has('customers', c.id) ? ' bk-on' : '') +
          '" data-act="open-customer" data-id="' + c.id + '">' +
@@ -98,7 +103,8 @@ function openCustomerDrawer(cid) {
   });
 
   var tier = DB.tier(c.loyaltyPoints);
-  var since = DB.daysSince(c.lastPurchaseDate);
+  var since = DB.daysSince(c.lastPurchaseDate);      /* null = never bought */
+  var atRisk = since !== null && since >= 90;
 
   var head =
     '<div style="display:flex;gap:12px;align-items:flex-start;flex:1">' +
@@ -107,7 +113,7 @@ function openCustomerDrawer(cid) {
       '<div><span class="eyebrow">' + esc(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</span>' +
         '<h3 style="font-size:19px;margin:3px 0 5px">' + esc(c.name) + '</h3>' +
         '<span class="badge ' + tier + '">' + t(tier) + '</span> ' +
-        (since >= 90 ? '<span class="badge critical">' + t('at_risk') + '</span>' : '') +
+        (atRisk ? '<span class="badge critical">' + t('at_risk') + '</span>' : '') +
         ' <span class="badge neutral num">' + tel(c.phone) + '</span></div>' +
     '</div>';
 
@@ -152,7 +158,7 @@ function openCustomerDrawer(cid) {
   body += '<div class="card"><div class="card-head"><h3>' + t('points_timeline') + '</h3></div><div class="card-body">' +
     '<ul class="timeline" style="margin:0;padding-inline-start:14px">';
   invoices.slice(0, 6).forEach(function (s) {
-    body += '<li class="plus"><b>+' + nf(s.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000) + ' ' + t('points') + '</b>' +
+    body += '<li class="plus"><b>+' + nf(s.pointsEarned) + ' ' + t('points') + '</b>' +
       '<small>' + s.id + ' · ' + fmtDate(s.date) + ' · ' + money(s.total) + '</small></li>';
   });
   body += '</ul></div></div>';
@@ -162,7 +168,7 @@ function openCustomerDrawer(cid) {
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="customer" data-kind="excel" data-id="' + c.id + '">' + t('export_excel') + '</button>' +
   '</div>';
 
-  if (since >= 90) {
+  if (atRisk) {
     body += '<button class="btn btn-primary btn-block btn-lg mt" data-act="whatsapp" data-id="' + c.id + '">' + t('send_whatsapp') + '</button>';
   }
 

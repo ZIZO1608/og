@@ -50,7 +50,13 @@ function buildAlerts() {
     });
   });
 
-  DB.suppliers.filter(function (s) { return s.outstanding > 0 && DB.daysSince(s.dueDate) >= -7; })
+  /* A supplier with money owed and no due date is owed, not overdue — null
+     from daysSince is that case, and it is left off the alert rather than
+     read as the epoch (which made it "20,700 days late"). */
+  DB.suppliers.filter(function (s) {
+      var n = DB.daysSince(s.dueDate);
+      return s.outstanding > 0 && n !== null && n >= -7;
+    })
     .sort(function (a, b) { return a.dueDate - b.dueDate; }).slice(0, 2).forEach(function (s) {
       var n = DB.daysSince(s.dueDate);
       var when = n > 0

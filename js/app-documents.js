@@ -9,7 +9,9 @@
 
 function invoiceHtml(sale) {
   var cust = sale.customerId ? DB.customer(sale.customerId) : null;
-  var earned = Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
+  /* What the sale actually earned, frozen on the row — not today's rate
+     re-run over the total. This goes on paper. */
+  var earned = sale.pointsEarned || 0;
 
   var h = '<div class="invoice-sheet">' +
     '<div class="inv-top"><div class="inv-logo"><div class="brand-mark"><img src="assets/logo.svg" alt="OG"></div>' +
@@ -174,7 +176,7 @@ function moneyBare(v) {
 
 function receiptHtml(sale) {
   var cust = sale.customerId ? DB.customer(sale.customerId) : null;
-  var earned = Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
+  var earned = sale.pointsEarned || 0;     /* the row's figure, never recomputed */
   var ar = OG.lang === 'ar';
 
   var addr = ar ? (CONFIG.SHOP_ADDRESS_AR || CONFIG.SHOP_ADDRESS) : CONFIG.SHOP_ADDRESS;

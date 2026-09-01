@@ -49,9 +49,12 @@ function fmtDateTime(d) {
   return fmtDate(d) + ' · ' + h12 + ':' + mm + ' ' + ap;
 }
 
-/* "3 days ago" / "in 3 days" / "today" */
+/* "3 days ago" / "in 3 days" / "today" — and "—" for no date at all, which
+   is what a customer who has never bought has. It used to say "20700 days
+   ago", the epoch dressed up as a purchase. */
 function relDate(d) {
   var n = DB.daysSince(d);
+  if (n === null) return '—';
   if (n === 0) return t('today_word');
   if (n === 1) return t('yesterday');
   if (n > 0) return n + ' ' + t('days_ago');
@@ -83,6 +86,14 @@ function deltaTag(now, before, suffix) {
    reorders their space-separated groups ("+963 960 380 435" renders backwards),
    so isolate them with <bdi dir="ltr">. */
 function tel(s) { return '<bdi dir="ltr">' + esc(s) + '</bdi>'; }
+
+/* A customer's name may be Arabic or Latin and the layout may be either, so
+   the two can disagree about which end a name starts at — a Latin name in
+   the Arabic layout, or an Arabic name followed by a Latin city, reorders
+   around the punctuation. dir="auto" lets the name declare its own direction
+   and isolates it from the text around it. Every customer name on screen
+   goes through here. */
+function nm(s) { return '<bdi dir="auto">' + esc(s) + '</bdi>'; }
 
 /* A product shows a real photo when it has one and its colour block when it
    does not. `image.src` is a data URL held in memory — the original brief said
