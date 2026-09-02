@@ -127,6 +127,40 @@ export async function select(table, opts = {}) {
   return body || [];
 }
 
+/* ------------------------------------------------------------ the schema
+
+   Which columns PostgREST will actually ACCEPT, per table — read from the
+   OpenAPI document it serves at the API root.
+
+   Read from there rather than by fetching a row, because an empty table hands
+   back no columns at all and would look identical to a table missing every
+   one of them. A mirror is frequently empty in exactly the tables that were
+   added most recently, which are the tables this question is asked about.
+
+   Cached for the life of the process: it is one request, and every caller
+   walks thirty-odd tables against it.
+
+   Returns a Map of table -> column names. A table the API does not expose is
+   absent from the map, which is how a caller tells "no such table" apart from
+   "a table with no columns". */
+let schemaCache = null;
+export async function columns() {
+  if (schemaCache) return schemaCache;
+
+  const { body } = await call('', { method: 'GET' });
+  /* PostgREST 11 emits Swagger 2 (`definitions`); newer builds emit OpenAPI 3
+     (`components.schemas`). Read whichever is there rather than pinning a
+     version of a thing the project upgrades without telling us. */
+  const defs = (body && body.definitions) ||
+               (body && body.components && body.components.schemas) || {};
+
+  schemaCache = new Map();
+  for (const [table, def] of Object.entries(defs)) {
+    if (def && def.properties) schemaCache.set(table, Object.keys(def.properties));
+  }
+  return schemaCache;
+}
+
 /* Row count without dragging the rows across the wire. */
 export async function count(table) {
   const { res } = await call(`${table}?select=*`, {

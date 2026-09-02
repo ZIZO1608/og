@@ -256,7 +256,15 @@ function customerCardsHTML(list) {
   return h;
 }
 
-function custCountText(list) { return list.length + ' / ' + DB.customers.length; }
+/* "3 / 4", and it MUST stay in that order.
+
+   Unisolated, the Arabic layout reordered the whole run and drew "4 / 3" —
+   the badge said the shop had three customers and was showing four. Same
+   bidi trap the Settings folds were written around: anything with digits and
+   a separator needs its own direction. */
+function custCountText(list) {
+  return '<bdi dir="ltr">' + nf(list.length) + ' / ' + nf(DB.customers.length) + '</bdi>';
+}
 
 /* The keystroke path: repaint the grid and the count, never the whole page.
    A full render() rebuilds the search box mid-word and then needs focusBack
@@ -267,7 +275,9 @@ function repaintCustomers() {
   var list = customerRows();
   grid.innerHTML = customerCardsHTML(list);
   var count = document.getElementById('cuCount');
-  if (count) count.textContent = custCountText(list);
+  /* innerHTML, not textContent — custCountText returns a <bdi> wrapper now,
+     and textContent would print the tag. */
+  if (count) count.innerHTML = custCountText(list);
 }
 
 function viewCustomers() {
@@ -690,7 +700,6 @@ function afterCustomerProfile(cid) {
     /* Held so the show-all button can redraw without asking the server again —
        the rows are already here, the cap is only about how many are DRAWN. */
     OG.tlRows = rows;
-    OG.tlAll = false;
     el.innerHTML = timelineHTML(rows, false);
     var n = document.getElementById('cuTlCount');
     if (n) {

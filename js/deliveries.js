@@ -182,6 +182,12 @@ var Deliveries = (function () {
         '<div class="stat"><span class="eyebrow">' + t('dl_owed') + '</span>' +
           '<div class="val accent">' + money(day.owed) + '</div>' +
           '<div class="foot">' + t('dl_collected').toLowerCase() + ' ' + money(day.collected) + '</div></div>' +
+        /* What is in his pocket and not yet in the drawer — the figure the
+           end-of-day settle-up is about, on the screen he actually reads. */
+        '<div class="stat"><span class="eyebrow">' + t('dl_to_hand_in') + '</span>' +
+          '<div class="val' + (day.collected > 0 ? ' warn' : '') + '">' + money(Math.max(0, day.collected)) + '</div>' +
+          '<div class="foot">' + nf(day.delivered) + ' ' + t('dl_delivered').toLowerCase() +
+            (day.failed ? ' · ' + nf(day.failed) + ' ' + t('dl_failed').toLowerCase() : '') + '</div></div>' +
       '</div>';
     }
 

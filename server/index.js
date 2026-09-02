@@ -38,6 +38,7 @@ import * as Deliveries from './lib/deliveries.js';
 import * as Partner from './lib/partner.js';
 import * as Purchasing from './lib/purchasing.js';
 import * as Alerts from './lib/alerts.js';
+import * as Dashboard from './lib/dashboard.js';
 import * as Money from './lib/money.js';
 import * as Counts from './lib/counts.js';
 import * as Receipt from './lib/receipt.js';
@@ -1203,12 +1204,40 @@ router.add('GET /api/employees', requirePerm('staff.read', (ctx) => {
 router.add('GET /api/notifications', (ctx) => {
   const stampsOn = Loyalty.stampsOn(Loyalty.rules().mode);
   sendOk(ctx.res, {
-    notifications: Alerts.list(ctx.user),
+    notifications: Alerts.list(ctx.user).rows,
     fullCards: (stampsOn && ctx.user.role !== 'delivery' && Auth.can(ctx.user, 'customer.read'))
       ? Loyalty.fullCards().map((f) => f.customerId)
       : []
   });
 });
+
+/* ------------------------------------------------------------- dashboard
+   Every figure on the home screens, computed in SQL over EVERY sale — not
+   summed in the browser from the last two hundred. See lib/dashboard.js for
+   the three rules. The window comes from the browser as two ISO instants,
+   because the day is the till's to define and not this server's.
+
+   Any-of on the four permissions that unlock at least one block; the partner
+   holds none of them and the browser never asks on their behalf. What comes
+   back is shaped by what the account may see, block by block, and is NOT
+   passed through scrubCost whole — COST_KEYS deletes a key literally named
+   `margin`, which is the profit.read block. Only the two sale lists carry
+   line items, and only those are scrubbed. */
+router.add('GET /api/dashboard',
+  requirePerm(['sell', 'stock.read', 'money.read', 'customer.read'], (ctx) => {
+    const q = ctx.url.searchParams;
+    const range = Dashboard.parseRange(q.get('from'), q.get('to'), q.get('tz'));
+    if (range.error) return sendError(ctx.res, 400, 'bad_range', range.error);
+
+    const out = Dashboard.build(ctx.user, range);
+    const scrubSale = (s) => ({
+      ...scrubCost(s, ctx.user),
+      items: (s.items || []).map((i) => scrubCost(i, ctx.user))
+    });
+    if (out.latest) out.latest = out.latest.map(scrubSale);
+    if (out.me) out.me.latest = out.me.latest.map(scrubSale);
+    sendOk(ctx.res, out);
+  }));
 
 /* One alert by key, or everything currently showing when no key is named.
    Keyed on what the alert is ABOUT, so counting down from "due in 3 days" to

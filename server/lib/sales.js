@@ -496,6 +496,38 @@ export function recent(limit = 50) {
       ORDER BY s.at DESC LIMIT ?`
   ).all(limit);
 
+  return attachItems(sales);
+}
+
+/* The sales inside one half-open window, newest first, with their lines.
+
+   The window arrives as two ISO instants the BROWSER chose — the server is on
+   UTC and the shop is not, so "today" is a fact only the till knows. `at` is
+   written by nowIso() and so is always an ISO string in UTC; the caller must
+   normalise its bounds the same way before they get here, or a `+03:00`
+   string compares wrongly as text. `cashierId` scopes to one person's own
+   sales BY ID — the cashier's home used to match on her first name, which is
+   two people the day a second Lubna is hired. */
+export function inRange({ from, to, limit = 5, cashierId = null } = {}) {
+  const where = ['s.voided = 0', 's.at >= ?', 's.at < ?'];
+  const args = [from, to];
+  if (cashierId != null) { where.push('s.cashier_id = ?'); args.push(cashierId); }
+  args.push(Math.max(1, Math.min(50, Math.floor(Number(limit)) || 5)));
+
+  const sales = get().prepare(
+    `SELECT s.*, u.name AS cashier_name
+       FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY s.at DESC LIMIT ?`
+  ).all(...args);
+
+  return attachItems(sales);
+}
+
+/* One query for every line of every sale in the list, rather than one per
+   sale. Shared by recent() and inRange() so the two cannot disagree about
+   what a sale carries. */
+function attachItems(sales) {
   if (!sales.length) return sales;
 
   const byId = new Map(sales.map(s => [s.id, s]));

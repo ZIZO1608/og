@@ -16,6 +16,7 @@
     "createuser": "node scripts/createuser.js",
     "backup": "node scripts/backup.js",
     "supabase:check": "node scripts/supabase-check.js",
+    "supabase:drift": "node scripts/mirror-drift.js",
     "supabase:test-write": "node scripts/supabase-test-write.js",
     "supabase:sync": "node scripts/supabase-sync.js",
     "supabase:restore": "node scripts/supabase-restore.js",

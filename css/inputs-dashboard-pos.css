@@ -146,6 +146,27 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 .dash-hero-sub { font-size: var(--fs-sm); color: var(--dim); margin-top: 4px; }
 .dash-hero .delta { margin-top: var(--s-3); }
 
+/* "No sales in this period" standing where a chart would be, in words rather
+   than an empty axis. Absolute inside .chart-box so the card keeps the same
+   height whether or not there is something to draw. */
+.chart-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--dim); font-size: 13px; text-align: center; padding: 0 16px; }
+
+/* A to-do row somebody has already read stays on the list — the fact is
+   still true — but steps back. */
+.alert-row.seen { opacity: .55; }
+
+/* The scope chip's round trip: the old numbers fade rather than sit under a
+   new label as if they were the answer. */
+.dash-loading .stat .val, .dash-loading .dash-hero-val, .dash-loading .chart-box { opacity: .35; transition: opacity var(--t); }
+
+.dash-money { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.dash-money .stat.clickable { cursor: pointer; }
+.dash-drawer-val { font-size: 30px; }
+.stat.clickable { cursor: pointer; }
+.stat.clickable:hover .val { color: var(--brand); }
+.num.warn, .foot .warn { color: var(--warning-solid); }
+
 /* -------------------------------------------------------------------- POS */
 
 /* The cart's width is a variable so the splitter below can move it, and so a

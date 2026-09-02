@@ -3,402 +3,390 @@
    --------------------------------------------------------------------------
    Split from the original js/app.js (lines 2165-2555). Loads after
    app-shell.js.
+
+   EVERY FIGURE HERE COMES FROM THE SERVER, computed in SQL over every sale.
+   `DB.dash` is the snapshot GET /api/dashboard returned for the window the
+   scope chips name — nothing on this screen is summed from `DB.sales`, which
+   is the last two hundred invoices and was, for a long time, the only source
+   the dashboard had. It read as the shop; it was a window with no note on it.
+
+   Two rules follow from that and are visible in every function below:
+
+     - Money arrives as a pair `{ syp, usd }` and is drawn as a pair. Nothing
+       here converts one into the other, and nothing adds them.
+     - A block the account may not see is simply absent from `DB.dash`, so
+       every reader is null-safe and draws nothing rather than a zero that
+       would read as "the shop took nothing".
    ========================================================================== */
 
 /* ------------------------------------------------------------- 7. DASHBOARD */
 
-function sumSalesRange(from, to) {
-  return DB.sales.reduce(function (s, x) { return (x.date >= from && x.date < to) ? s + x.total : s; }, 0);
-}
+/* The window the chips name, in THIS machine's local day.
 
-function sumSalesOn(dayOffset) { return sumSalesRange(daysAgo(dayOffset), daysAgo(dayOffset - 1)); }
-
-/* Month-to-date. Comparing a half-finished August against a whole July would
-   read as a collapse, so both sides use the same 1st-to-today window. */
-function monthToDate(monthsBack) {
-  var start = new Date(TODAY.getFullYear(), TODAY.getMonth() - monthsBack, 1);
-  var end = new Date(start.getFullYear(), start.getMonth(), 1);
-  end.setDate(end.getDate() + TODAY.getDate());
-  return sumSalesRange(start, end);
-}
-
-function buildAlerts() {
-  var out = [];
-
-  /* Size gaps — the three products with holes in the popular middle sizes. */
-  var gapped = [];
-  DB.products.filter(function (p) { return !p.archived; }).forEach(function (p) {
-    DB.sizeGaps(p.id).forEach(function (sz) { gapped.push({ p: p, size: sz }); });
-  });
-  gapped.slice(0, 3).forEach(function (g) {
-    out.push({
-      tone: 'red', icon: '!',
-      text: esc(g.p.name) + ' — ' + t('size') + ' ' + g.size + ' ' + t('out_of_stock').toLowerCase(),
-      sub: t('total_stock') + ': ' + DB.totalQty(g.p.id) + ' ' + t('units').toLowerCase(),
-      view: 'products', pid: g.p.id
-    });
-  });
-
-  DB.printJobs.filter(function (j) { return DB.isOverdue(j); }).slice(0, 2).forEach(function (j) {
-    var n = DB.daysSince(j.deadline);
-    out.push({
-      tone: 'red', icon: 'P',
-      text: t('print_job') + ' #' + j.id + ' ' + t('for_word') + ' ' + esc(j.customer.split(' ')[0]) +
-            ' — ' + n + ' ' + t(n === 1 ? 'day_overdue' : 'days_overdue'),
-      sub: j.qty + ' pcs · ' + t(j.priority) + ' · ' + t('deadline') + ' ' + fmtDate(j.deadline),
-      view: 'print'
-    });
-  });
-
-  /* A supplier with money owed and no due date is owed, not overdue — null
-     from daysSince is that case, and it is left off the alert rather than
-     read as the epoch (which made it "20,700 days late"). */
-  DB.suppliers.filter(function (s) {
-      var n = DB.daysSince(s.dueDate);
-      return s.outstanding > 0 && n !== null && n >= -7;
-    })
-    .sort(function (a, b) { return a.dueDate - b.dueDate; }).slice(0, 2).forEach(function (s) {
-      var n = DB.daysSince(s.dueDate);
-      var when = n > 0
-        ? (t('payment_overdue') + ' ' + n + ' ' + t(n === 1 ? 'day_word' : 'days'))
-        : (t('payment_due') + ' ' + relDate(s.dueDate));
-      out.push({
-        tone: n > 0 ? 'red' : 'amber', icon: '$',
-        text: t('supplier') + ' ' + esc(s.name) + ' — ' + when,
-        sub: money(s.outstanding) + ' · ' + fmtDate(s.dueDate),
-        view: 'reports', tab: 'suppliers'
-      });
-    });
-
-  /* quietCustomers(), not a window of its own: this row navigates to the
-     At-risk chip, and the two have to be counting the same people or the
-     number here will not match the list it opens. Each customer is measured
-     against their own rhythm now, so the wording no longer names a day count
-     that is only true for some of them. */
-  var quiet = DB.quietCustomers().length;
-  out.push({
-    tone: 'amber', icon: 'C',
-    text: quiet + ' ' + (OG.lang === 'ar'
-      ? 'زبون صار في وقت ما مرّوا'
-      : 'customers have gone quiet'),
-    sub: OG.lang === 'ar'
-      ? 'متأخرين عن عادتهم · أرسل لهم رسالة واتساب بضغطة'
-      : 'Past their usual rhythm · one tap sends them a WhatsApp message',
-    view: 'customers', filter: 'risk'
-  });
-
-  var dead = DB.products.slice().sort(function (a, b) { return b.lastSoldDaysAgo - a.lastSoldDaysAgo; })[0];
-  var deadQty = DB.totalQty(dead.id);
-  var deadShelf = (DB.variantsOf(dead.id)[0] || {}).shelf || '—';
-  out.push({
-    tone: 'grey', icon: 'Z',
-    text: esc(dead.name) + ' — ' + (OG.lang === 'ar'
-      ? ('لم يُبَع منذ ' + dead.lastSoldDaysAgo + ' يوماً')
-      : ("hasn't sold in " + dead.lastSoldDaysAgo + ' days')) +
-      ' — ' + deadQty + ' pcs · ' + deadShelf,
-    sub: t('stock_value') + ': ' + money(deadQty * dead.costPrice),
-    view: 'products', pid: dead.id
-  });
-
-  return out;
-}
-
-/* -------------------------------------------------------- 7c. RECEIPT BANDS
-   The manager dashboard, rebuilt around one receipt-inspired idea: a tear
-   line — a full-width dashed rule, .dash-tear in css/inputs-dashboard-pos.css
-   — separating three strict bands (the total, what needs a decision, the
-   story) instead of a wall of equal stat cards. Built entirely from the
-   app's existing tokens (--brand accent, .stat/.delta/.alert-row/.chip
-   components) — no new colour palette. See the Dashboard Programme plan for
-   the reasoning.
-
-   OG.dashScope ('today' | '7d' | '30d') is the one state variable that
-   drives every band, same pattern as OG.lbf/OG.prod elsewhere. */
-
+   Built from a fresh midnight every call, never from the boot-time TODAY: a
+   till left open overnight would otherwise keep sending yesterday's bounds
+   and the morning's takings would sit at zero until somebody reloaded. The
+   server is on UTC and knows nothing about where the shop is; these two
+   instants are the only definition of "today" it ever gets. */
 function scopeRange(scope) {
-  if (scope === '30d') return { from: daysAgo(29), to: daysAgo(-1) };
-  if (scope === '7d')  return { from: daysAgo(6),  to: daysAgo(-1) };
-  return { from: daysAgo(0), to: daysAgo(-1) }; // today
+  var start = new Date(); start.setHours(0, 0, 0, 0);
+  var end = new Date(start); end.setDate(end.getDate() + 1);
+  var from = new Date(start);
+  if (scope === '30d') from.setDate(from.getDate() - 29);
+  else if (scope === '7d') from.setDate(from.getDate() - 6);
+  return { from: from, to: end };
 }
 
-function sumSalesForScope(scope) {
-  var r = scopeRange(scope);
-  return sumSalesRange(r.from, r.to);
+/* One block of the snapshot, or null. Reads never throw on an account that
+   was not sent the block. */
+function dashBlock(name) {
+  return (DB.dash && DB.dash[name] !== undefined) ? DB.dash[name] : null;
 }
 
-/* The baseline Band 1's delta compares against — mean of the last 7
-   individual days' takings, via the existing sumSalesOn(). */
-function avg7dTakings() {
-  var total = 0;
-  for (var i = 0; i < 7; i++) total += sumSalesOn(i);
-  return total / 7;
+/* The shop's own currency out of a pair, and the other one. */
+function dashBase() { return (DB.dash && DB.dash.base) || 'SYP'; }
+function baseOf(p) { return dashBase() === 'USD' ? (p ? p.usd : 0) : (p ? p.syp : 0); }
+function otherOf(p) { return dashBase() === 'USD' ? (p ? p.syp : 0) : (p ? p.usd : 0); }
+function moneyIn(currency, v) {
+  return '<bdi dir="ltr">' + (currency === 'USD' ? moneyUsdRaw(v) : moneySypRaw(v)) + '</bdi>';
+}
+function moneyBase(v) { return moneyIn(dashBase(), v); }
+function moneyOther(v) { return moneyIn(dashBase() === 'USD' ? 'SYP' : 'USD', v); }
+
+/* Month label for a 'YYYY-MM' bucket, in the page's language. */
+function monthLabel(ym) {
+  var mi = Number(ym.slice(5, 7)) - 1;
+  return (OG.lang === 'ar' ? MONTHS_AR : MONTHS_EN)[mi] || ym;
 }
 
-/* USD primary + SYP secondary shown AT ONCE (unlike money()/moneyStat(),
-   which show one currency toggled by OG.currency) — Band 1's whole point is
-   proving the frozen rate, so both must be on screen together. Digits are
-   wrapped dir="ltr" so the browser cannot reorder them inside an Arabic
-   line; the currency tag sits outside that span so it still flows with the
-   page's own direction. */
-function heroMoney(syp) {
-  var usd = (Number(syp) || 0) / CONFIG.EXCHANGE_RATE;
-  return {
-    primary: '$<span dir="ltr" class="num">' + nf(usd) + '</span>',
-    secondary: '<span dir="ltr" class="num">' + nf(syp) + '</span>' +
-      '<span class="cur">' + (OG.lang === 'ar' ? 'ل.س' : 'SYP') + '</span>'
-  };
+function hhmm(iso) {
+  var d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
 }
 
-/* Revenue/cost re-derived per line item within the scope window — the same
-   fields DB.profitByType() reads (it.qty/unitPrice/unitCost), just windowed
-   by date since profitByType() covers all-time. Only ever called behind
-   seesProfit(), same as the rest of the app's margin displays. */
-function scopedMarginPct(scope) {
-  var r = scopeRange(scope), revenue = 0, cost = 0;
-  DB.sales.forEach(function (s) {
-    if (s.date < r.from || s.date >= r.to) return;
-    s.items.forEach(function (it) { revenue += it.qty * it.unitPrice; cost += it.qty * it.unitCost; });
-  });
-  return revenue ? (revenue - cost) / revenue * 100 : 0;
-}
-
-/* Without profit.read the third shelf stat becomes Returns — a real count,
-   not a placeholder: js/data.js already models a customer return as a
-   'returned' stock-movement type. */
-function scopedReturns(scope) {
-  var r = scopeRange(scope);
-  return DB.stockMovements.filter(function (m) {
-    return m.type === 'returned' && m.date >= r.from && m.date < r.to;
-  }).length;
-}
-
-/* Sales whose discount exceeds today's cap — real signal, not always empty:
-   the seed already includes 15%-discount sales against a 10% cap. */
-function discountRequests(scope) {
-  var r = scopeRange(scope);
-  return DB.sales.filter(function (s) {
-    return s.date >= r.from && s.date < r.to && s.discount > 0 &&
-      (s.discount / s.subtotal * 100) > CONFIG.MAX_DISCOUNT_PCT;
-  });
-}
-
-/* Band 2 — a derived action queue, NOT the dashboard's older buildAlerts()
-   mix (that stays, used elsewhere — see js/app-export.js's day summary and
-   the alert-fix action). Only 3 of the design programme's 5 signals have a
-   real demo-data source: deliveries (COD outstanding, failed runs) require
-   a real server by design (js/deliveries.js) and are never faked in demo
-   mode, so those two rows simply never appear here. */
-function bandTwoRows(scope) {
-  var rows = [];
-  var crit = DB.criticalVariants().length;
-  if (crit > 0) {
-    rows.push({
-      tone: 'red', icon: '!',
-      text: crit + ' ' + t('dash_low_stock_row'),
-      view: 'warehouse'
-    });
+/* One to-do row. The sentence is written by DB.alertText from the row's kind
+   and values, so it reads correctly in either language. A row about a PERSON
+   opens that person; everything else goes through alert-fix, which marks it
+   read and navigates. `seen` dims a row somebody has already read — it stays
+   on the list because the fact is still true. */
+function todoRow(a) {
+  var text = DB.alertText(a);
+  var cls = 'alert-row clickable' + (a.read ? ' seen' : '');
+  var body = '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
+             '<span class="alert-txt">' + text + '</span>' +
+             '<span class="alert-chevron">›</span>';
+  var who = a.kind === 'stamps' && a.args ? Number(a.args.customerId) : 0;
+  if (who && DB.customer(who)) {
+    return ifNav('customers',
+      '<div class="' + cls + '" data-act="cu-open" data-id="' + who + '">' + body + '</div>') || '';
   }
-  var pendingPrint = DB.printJobs.filter(function (j) { return j.stage !== 'done'; }).length;
-  if (pendingPrint > 0) {
-    rows.push({
-      tone: 'amber', icon: 'P',
-      text: pendingPrint + ' ' + t('dash_print_waiting_row'),
-      view: 'print'
-    });
-  }
-  var discReq = discountRequests(scope);
-  if (discReq.length > 0) {
-    rows.push({
-      tone: 'amber', icon: '%',
-      text: discReq.length + ' ' + t('dash_discount_row'),
-      view: 'reports'
-    });
-  }
-  return rows;
+  return ifNav(a.view,
+    '<div class="' + cls + '" data-act="alert-fix" data-key="' + esc(a.key) + '">' + body + '</div>') ||
+    ('<div class="alert-row' + (a.read ? ' seen' : '') + '">' +
+       '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
+       '<span class="alert-txt">' + text + '</span></div>');
+}
+
+/* A chart card that says "nothing here" in words rather than drawing an
+   empty axis. The canvas exists only when there is something to draw, so
+   afterDashboard() can test for it. */
+function chartCard(id, title, hasData, badge) {
+  return '<div class="card"><div class="card-head"><h3>' + title + '</h3>' +
+    (badge ? '<div class="card-actions">' + badge + '</div>' : '') + '</div>' +
+    '<div class="card-body"><div class="chart-box">' +
+      (hasData ? '<canvas id="' + id + '"></canvas>'
+               : '<div class="chart-empty">' + t('dash_chart_empty') + '</div>') +
+    '</div></div></div>';
+}
+
+function statBox(label, val, foot, extraCls, act) {
+  return '<div class="stat' + (act ? ' clickable' : '') + (extraCls ? ' ' + extraCls : '') + '"' +
+    (act || '') + '><span class="eyebrow">' + label + '</span>' +
+    '<div class="val">' + val + '</div>' +
+    (foot ? '<div class="foot">' + foot + '</div>' : '') + '</div>';
 }
 
 function viewDashboard() {
   OG.dashScope = OG.dashScope || 'today';
   var scope = OG.dashScope;
-  var scopeTotal = sumSalesForScope(scope);
-  var r = scopeRange(scope);
-  var salesInScope = DB.sales.filter(function (s) { return s.date >= r.from && s.date < r.to; });
-  var avgBasket = salesInScope.length ? scopeTotal / salesInScope.length : 0;
-  var hero = heroMoney(scopeTotal);
+  var dash = DB.dash;
 
-  var h =
-    '<div class="page-head"><div><h1>' + t('dash_title') + '</h1>' +
-    '<div class="sub">' + t('dash_sub') + ' · ' + fmtDate(TODAY) + '</div></div>' +
+  var h = '<div class="' + (OG.dashLoading ? 'dash-loading' : '') + '">';
+  h += '<div class="page-head"><div><h1>' + t('dash_title') + '</h1>' +
+    '<div class="sub">' + t('dash_sub') + ' · ' + fmtDate(new Date()) + '</div></div>' +
     '<div class="head-actions">' +
       exportButtons() +
       '<button class="btn btn-ghost" data-act="day-summary">' + t('wa_send_day') + '</button>' +
       ifNav('pos', '<button class="btn btn-primary" data-act="nav" data-view="pos">' + t('nav_pos') + '</button>') +
     '</div></div>';
 
-  /* -- scope selector + frozen-rate line, above Band 1 -- */
+  /* -- scope selector -- */
   h += '<div class="chip-row"><span class="lbl-lbl">' + t('dash_scope_label') + '</span>';
   [['today', 'dash_scope_today'], ['7d', 'dash_scope_7d'], ['30d', 'dash_scope_30d']].forEach(function (o) {
     h += '<button class="chip ' + (scope === o[0] ? 'on' : '') + '" data-act="dash-scope" data-k="' + o[0] + '">' +
       t(o[1]) + '</button>';
   });
+  if (OG.dashLoading) h += '<span class="muted small">' + t('dash_loading') + '</span>';
   h += '</div>';
-  h += '<div class="muted small mt">' + t('dash_rate_frozen').replace('{rate}', nf(CONFIG.EXCHANGE_RATE)) + '</div>';
 
-  /* ============================================================ BAND 1 -- */
-  h += '<hr class="dash-tear">';
-  h += '<div class="dash-hero"><span class="eyebrow">' + t('dash_takings') + '</span>' +
-    '<div class="dash-hero-val">' + hero.primary + '</div>' +
-    '<div class="dash-hero-sub">' + hero.secondary + '</div>' +
-    deltaTag(scopeTotal, avg7dTakings(), t('vs_7d_avg')) +
-  '</div>';
-
-  h += '<div class="grid stat-row mt">';
-  h += '<div class="stat"><span class="eyebrow">' + t('invoices') + '</span>' +
-    '<div class="val">' + nf(salesInScope.length) + '</div></div>';
-  h += '<div class="stat"><span class="eyebrow">' + t('avg_basket') + '</span>' +
-    '<div class="val">' + moneyStat(avgBasket) + '</div></div>';
-  if (seesProfit()) {
-    h += '<div class="stat"><span class="eyebrow">' + t('margin') + '</span>' +
-      '<div class="val">' + pct(scopedMarginPct(scope)) + '</div></div>';
-  } else {
-    h += '<div class="stat"><span class="eyebrow">' + t('returns') + '</span>' +
-      '<div class="val">' + nf(scopedReturns(scope)) + '</div></div>';
+  /* The request was skipped or refused. One card, no invented zeros: an
+     empty hero would read as "the shop took nothing today". */
+  if (!dash) {
+    h += '<div class="card mt"><div class="cart-empty"><b>' + t('dash_unavailable') + '</b>' +
+         t('dash_unavailable_sub') + '</div></div></div>';
+    return h;
   }
-  h += '</div>';
 
-  /* ============================================================ BAND 2 -- */
+  var sales = dashBlock('sales');
+  var margin = dashBlock('margin');
+  var drawer = dashBlock('drawer');
+  var debts = dashBlock('debts');
+  var sup = dashBlock('suppliers');
+  var cust = dashBlock('customers');
+  var todo = dashBlock('todo');
+  var charts = dashBlock('charts');
+  var latest = dashBlock('latest');
+  var staff = dashBlock('staff');
+
+  /* ============================================================ BAND 1 --
+     The takings, in the shop's own currency, big. Dollars taken as dollars
+     are a second line and never folded in. The approximate line converts at
+     TODAY'S rate and says so — the same rule the credit limit follows. */
   h += '<hr class="dash-tear">';
-  var rows = bandTwoRows(scope);
+  if (sales) {
+    var tk = sales.takings, other = otherOf(tk);
+    h += '<div class="dash-hero"><span class="eyebrow">' + t('dash_takings') + '</span>' +
+      '<div class="dash-hero-val">' + moneyBase(baseOf(tk)) + '</div>';
+    if (other > 0) {
+      h += '<div class="dash-hero-sub">' + t('dash_also_usd') + ': ' + moneyOther(other) + '</div>';
+    }
+    if (dashBase() === 'SYP' && baseOf(tk) > 0 && CONFIG.EXCHANGE_RATE > 0) {
+      h += '<div class="dash-hero-sub">' +
+        t('dash_approx_usd').replace('{usd}', '<bdi dir="ltr">$' + nf(baseOf(tk) / CONFIG.EXCHANGE_RATE) + '</bdi>') +
+        '</div>';
+    }
+    h += deltaTag(baseOf(tk), baseOf(sales.previous), t('dash_vs_prev')) + '</div>';
+
+    h += '<div class="grid stat-row mt">';
+    h += statBox(t('invoices'), '<bdi dir="ltr">' + nf(sales.count) + '</bdi>');
+    h += statBox(t('avg_basket'), moneyPair(sales.avgBasket.syp, sales.avgBasket.usd, true));
+    if (margin && seesProfit()) {
+      var mp = margin.pct[dashBase().toLowerCase()];
+      var mo = margin.pct[dashBase() === 'USD' ? 'syp' : 'usd'];
+      h += statBox(t('margin'), mp === null ? '—' : '<bdi dir="ltr">' + pct(mp) + '</bdi>',
+        (mo !== null && otherOf(sales.takings) > 0) ? '<bdi dir="ltr">' + pct(mo) + '</bdi> USD' : '');
+    }
+    h += statBox(t('dash_discounts'), '<bdi dir="ltr">' + nf(sales.discounts.count) + '</bdi>',
+      sales.discounts.overCap
+        ? '<span class="warn">' + t('dash_over_cap').replace('{n}', '<bdi dir="ltr">' + nf(sales.discounts.overCap) + '</bdi>') + '</span>'
+        : '');
+    h += '</div>';
+  }
+
+  /* ============================================================ MONEY --
+     Only for money.read. The drawer as it stands, what is owed in, what is
+     owed out, and how people paid. */
+  if (drawer) {
+    h += '<hr class="dash-tear">';
+    h += '<div class="grid mt dash-money">';
+
+    /* -- the drawer -- */
+    h += '<div class="card"><div class="card-head"><h3>' + t('dash_drawer') + '</h3>' +
+      (drawer.open ? '<div class="card-actions"><span class="badge healthy">' + esc(drawer.id) + '</span></div>' : '') +
+      '</div>';
+    if (!drawer.open) {
+      h += '<div class="cart-empty"><b>' + t('dash_drawer_none') + '</b>' + t('dash_drawer_none_sub') +
+        ifNav('money', '<div class="mt"><button class="btn btn-sm" data-act="nav" data-view="money">' +
+          t('dash_open_shift') + '</button></div>') + '</div>';
+    } else {
+      var lines = [
+        [t('dash_float'), drawer.float], [t('dash_cash_sales'), drawer.sales],
+        [t('dash_collected'), drawer.collected], [t('dash_paid_out'), -drawer.paidOut]
+      ];
+      h += '<div class="card-body">' +
+        '<div class="dash-hero-val dash-drawer-val">' + moneyIn(drawer.currency, drawer.expected) + '</div>' +
+        '<div class="muted small">' + t('dash_expected') + ' · ' +
+          t('dash_drawer_since').replace('{time}', '<bdi dir="ltr">' + hhmm(drawer.openedAt) + '</bdi>') +
+          (drawer.by ? ' · ' + t('dash_drawer_by').replace('{name}', nm(drawer.by)) : '') + '</div>';
+      h += '<div class="mt">';
+      lines.forEach(function (l) {
+        h += '<div class="alert-row"><span class="alert-txt">' + l[0] + '</span>' +
+          '<span class="num' + (l[1] < 0 ? ' warn' : '') + '">' + moneyIn(drawer.currency, l[1]) + '</span></div>';
+      });
+      h += '</div></div>';
+    }
+    h += '</div>';
+
+    /* -- owed in / owed out -- */
+    h += '<div class="card"><div class="card-body">';
+    h += '<div class="stat clickable" data-act="dash-cust" data-f="debt"><span class="eyebrow">' + t('dash_customers_owe') + '</span>' +
+      '<div class="val">' + moneyPair(debts.syp, debts.usd, true) + '</div>' +
+      '<div class="foot">' + t('dash_open_invoices')
+        .replace('{n}', '<bdi dir="ltr">' + nf(debts.invoices) + '</bdi>')
+        .replace('{c}', '<bdi dir="ltr">' + nf(debts.customers) + '</bdi>') + '</div></div>';
+    h += '<div class="stat mt' + (navAllowed('reports') ? ' clickable" data-act="nav" data-view="reports" data-tab="suppliers"' : '"') + '>' +
+      '<span class="eyebrow">' + t('dash_owe_suppliers') + '</span>' +
+      '<div class="val">' + moneyPair(sup.syp, sup.usd, true) + '</div>' +
+      '<div class="foot">' + t('dash_n_suppliers').replace('{n}', '<bdi dir="ltr">' + nf(sup.count) + '</bdi>') + '</div></div>';
+    h += '</div></div>';
+
+    /* -- how they paid -- */
+    h += '<div class="card"><div class="card-head"><h3>' + t('dash_payment_split') + '</h3></div>';
+    if (!sales || !sales.byPayment.length) {
+      h += '<div class="cart-empty"><b>' + t('dash_no_sales') + '</b></div>';
+    } else {
+      sales.byPayment.forEach(function (p) {
+        h += '<div class="alert-row"><span class="alert-txt"><b>' + DB.payLabel(p.payment) + '</b>' +
+          '<small><bdi dir="ltr">' + nf(p.count) + '</bdi> ' + t('invoices').toLowerCase() + '</small></span>' +
+          '<span class="num">' + moneyPair(p.syp, p.usd, true) + '</span></div>';
+      });
+    }
+    h += '</div>';
+    h += '</div>';
+  }
+
+  /* ============================================================ TO-DO --
+     The same list as the bell, from the same server call, fifty deep
+     instead of eight. The badge is the server's total; when even fifty is
+     not all of it, the note says so. */
+  h += '<hr class="dash-tear">';
+  var rows = todo ? todo.rows : [];
+  var total = todo ? todo.total : 0;
   h += '<div class="card" id="attentionPanel"><div class="card-head">' +
        '<h3>' + t('needs_attention') + '</h3>' +
-       '<div class="card-actions"><span class="badge ' + (rows.length ? 'critical' : 'healthy') + '">' +
-         rows.length + '</span></div></div>';
+       '<div class="card-actions"><span class="badge ' + (total ? 'critical' : 'healthy') + '">' +
+         '<bdi dir="ltr">' + nf(total) + '</bdi></span></div></div>';
   if (!rows.length) {
     h += '<div class="cart-empty"><b>' + t('dash_nothing_waiting') + '</b>' + t('dash_shop_clean') + '</div>';
   } else {
-    rows.forEach(function (a) {
-      /* An alert about a PERSON opens that person, not a list they have to
-         find them in again. The key is already the address — `stamps:83`,
-         `supplier:3` — so this reads it rather than needing a second field.
-
-         Only customers today; the same shape works for the others when their
-         screens grow a per-record page. */
-      var who = /^stamps:(\d+)$/.exec(a.key || '');
-      if (who && DB.customer(Number(who[1]))) {
-        h += ifNav('customers',
-          '<div class="alert-row clickable" data-act="cu-open" data-id="' + Number(who[1]) + '">' +
-            '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
-            '<span class="alert-txt">' + a.text + '</span>' +
-            '<span class="alert-chevron">›</span>' +
-          '</div>') || '';
-        return;
-      }
-      h += ifNav(a.view,
-        '<div class="alert-row clickable" data-act="nav" data-view="' + a.view + '">' +
-          '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
-          '<span class="alert-txt">' + a.text + '</span>' +
-          '<span class="alert-chevron">›</span>' +
-        '</div>') ||
-        ('<div class="alert-row">' +
-          '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
-          '<span class="alert-txt">' + a.text + '</span>' +
-        '</div>');
-    });
+    rows.forEach(function (a) { h += todoRow(a); });
+    if (todo.capped) h += cappedNote(todo, t('needs_attention').toLowerCase());
   }
   h += '</div>';
 
+  /* ============================================================ PEOPLE --
+     Four counts, each the door to the list it counts. New is the server's;
+     the other three are derived from lists that are not windowed, by the
+     same rule the Customers screen's own chips use. */
+  if (cust && allow('customer.read')) {
+    var quiet = DB.quietCustomers().length;
+    var full = Object.keys(DB.fullCardIds()).length;
+    h += '<div class="grid stat-row mt">';
+    h += statBox(t('dash_cust_new'), '<bdi dir="ltr">' + nf(cust.newInScope) + '</bdi>', '', '',
+      ' data-act="dash-cust" data-f="all"');
+    h += statBox(t('dash_cust_quiet'), '<bdi dir="ltr">' + nf(quiet) + '</bdi>', '', quiet ? 'warn' : '',
+      ' data-act="dash-cust" data-f="risk"');
+    if (DB.stampsOn()) {
+      h += statBox(t('dash_cust_full'), '<bdi dir="ltr">' + nf(full) + '</bdi>', '', '',
+        ' data-act="dash-cust" data-f="cardfull"');
+    }
+    h += statBox(t('dash_cust_wants'), '<bdi dir="ltr">' + nf(cust.wantsBack.skus) + '</bdi>',
+      cust.wantsBack.customers
+        ? t('dash_cust_waiting').replace('{n}', '<bdi dir="ltr">' + nf(cust.wantsBack.customers) + '</bdi>')
+        : '',
+      '', ' data-act="dash-cust" data-f="wants"');
+    h += '</div>';
+  }
+
   /* ============================================================ BAND 3 -- */
   h += '<hr class="dash-tear">';
-  h += '<div class="dash-grid mt">' +
-    '<div>' +
-      '<div class="card"><div class="card-head"><h3>' + t('sales_6m') + '</h3>' +
-        '<div class="card-actions"><span class="badge neutral">' + cappedCount(DB.cap('sales')) + ' ' + t('invoices') + '</span></div></div>' +
-        '<div class="card-body"><div class="chart-box"><canvas id="dashLine"></canvas></div></div></div>' +
+  var hasMonthly = !!(charts && charts.monthly.some(function (m) { return m.count > 0; }));
+  var hasTypes = !!(charts && charts.byType.length);
+  var hasTop = !!(charts && charts.topProducts.length);
+  var usdOff = charts ? charts.monthly.reduce(function (a, m) { return a + (m.usd > 0 ? 1 : 0); }, 0) : 0;
+  var sixMonthCount = charts ? charts.monthly.reduce(function (a, m) { return a + m.count; }, 0) : 0;
 
-      '<div class="grid mt" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">' +
-        '<div class="card"><div class="card-head"><h3>' + t('sales_by_type') + '</h3></div>' +
-          '<div class="card-body"><div class="chart-box"><canvas id="dashDonut"></canvas></div></div></div>' +
-        '<div class="card"><div class="card-head"><h3>' + t('best_sellers') + '</h3></div>' +
-          '<div class="card-body"><div class="chart-box"><canvas id="dashBars"></canvas></div></div></div>' +
-      '</div>' +
+  h += '<div class="dash-grid mt"><div>';
+  h += chartCard('dashLine', t('sales_6m'), hasMonthly,
+    '<span class="badge neutral"><bdi dir="ltr">' + nf(sixMonthCount) + '</bdi> ' + t('invoices') + '</span>');
+  if (usdOff && dashBase() === 'SYP') {
+    h += '<div class="muted small mt">' + t('dash_usd_not_drawn').replace('{n}', '<bdi dir="ltr">' + nf(usdOff) + '</bdi>') + '</div>';
+  }
+  h += '<div class="grid mt" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">' +
+    chartCard('dashDonut', t('sales_by_type'), hasTypes) +
+    chartCard('dashBars', t('best_sellers'), hasTop) +
+  '</div>';
 
-      '<div class="card mt"><div class="card-head"><h3>' + t('recent_sales') + '</h3>' +
-        '<div class="card-actions">' + ifNav('reports',
-          '<button class="btn btn-ghost btn-sm" data-act="nav" data-view="reports" data-tab="sales">' + t('view_all') + '</button>') +
-        '</div></div>' +
-        '<div class="table-wrap"><table class="tbl"><thead><tr>' +
-          '<th>' + t('invoice') + '</th><th>' + t('customer') + '</th><th>' + t('items') + '</th>' +
-          '<th>' + t('payment') + '</th><th>' + t('date') + '</th><th class="num">' + t('total') + '</th>' +
-        '</tr></thead><tbody>';
-
-  DB.sales.slice(0, 5).forEach(function (s) {
-    h += '<tr class="clickable" data-act="open-invoice" data-id="' + s.id + '">' +
-      '<td><b>' + s.id + '</b></td>' +
-      '<td>' + esc(s.customerName) + '</td>' +
-      '<td class="muted">' + s.items.length + ' × ' + esc(s.items[0].name.slice(0, 22)) + (s.items.length > 1 ? '…' : '') + '</td>' +
-      '<td><span class="badge neutral">' + DB.payLabel(s.payment) + '</span></td>' +
-      '<td class="num muted">' + fmtDate(s.date) + '</td>' +
-      '<td class="num"><b>' + money(s.total) + '</b></td></tr>';
-  });
-
-  h += '</tbody></table></div></div></div>';
-
-  /* Right column — staff on shift (a stable, always-populated card so the
-     two-column band never collapses to a single lopsided column). */
-  var staffToday = {};
-  DB.sales.forEach(function (s) {
-    if (isToday(s.date) && s.cashier) staffToday[s.cashier] = (staffToday[s.cashier] || 0) + 1;
-  });
-  h += '<div class="card"><div class="card-head"><h3>' + t('staff_on_shift') + '</h3></div>';
-  var staffNames = Object.keys(staffToday);
-  if (!staffNames.length) {
-    h += '<div class="cart-empty"><b>' + t('dash_nothing_waiting') + '</b></div>';
+  /* -- latest sales -- */
+  h += '<div class="card mt"><div class="card-head"><h3>' + t('recent_sales') + '</h3>' +
+    '<div class="card-actions">' + ifNav('reports',
+      '<button class="btn btn-ghost btn-sm" data-act="nav" data-view="reports" data-tab="sales">' + t('view_all') + '</button>') +
+    '</div></div>';
+  if (!latest || !latest.length) {
+    h += '<div class="cart-empty"><b>' + t('dash_no_sales') + '</b>' + t('dash_no_sales_sub') + '</div>';
   } else {
-    staffNames.sort(function (a, b) { return staffToday[b] - staffToday[a]; }).forEach(function (name) {
-      h += '<div class="alert-row"><span class="alert-txt"><b>' + esc(name) + '</b></span>' +
-        '<span class="num">' + nf(staffToday[name]) + '</span></div>';
+    h += '<div class="table-wrap"><table class="tbl"><thead><tr>' +
+      '<th>' + t('invoice') + '</th><th>' + t('customer') + '</th><th>' + t('items') + '</th>' +
+      '<th>' + t('payment') + '</th><th>' + t('date') + '</th><th class="num">' + t('total') + '</th>' +
+    '</tr></thead><tbody>';
+    latest.forEach(function (s) {
+      var first = s.items && s.items[0] ? s.items[0].name : '';
+      h += '<tr class="clickable" data-act="open-invoice" data-id="' + esc(s.id) + '">' +
+        '<td><b>' + esc(s.id) + '</b></td>' +
+        '<td>' + (s.customer_name ? nm(s.customer_name) : '<span class="muted">' + t('walk_in') + '</span>') + '</td>' +
+        '<td class="muted"><bdi dir="ltr">' + (s.items ? s.items.length : 0) + '</bdi> × ' + esc(first.slice(0, 22)) +
+          (s.items && s.items.length > 1 ? '…' : '') + '</td>' +
+        '<td><span class="badge neutral">' + DB.payLabel(s.payment) + '</span></td>' +
+        '<td class="num muted">' + fmtDate(s.at) + '</td>' +
+        '<td class="num"><b>' + moneyIn(s.currency, s.total) + '</b></td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  h += '</div></div>';
+
+  /* -- right column: who sold, in the window -- */
+  h += '<div class="card"><div class="card-head"><h3>' + t('dash_by_staff') + '</h3></div>';
+  if (!staff) {
+    h += '<div class="cart-empty"><b>' + t('dash_no_staff') + '</b></div>';
+  } else if (!staff.length) {
+    h += '<div class="cart-empty"><b>' + t('dash_no_staff') + '</b></div>';
+  } else {
+    staff.forEach(function (p) {
+      h += '<div class="alert-row"><span class="alert-txt"><b>' + (p.name ? nm(p.name) : '—') + '</b>' +
+        '<small>' + moneyPair(p.syp, p.usd, true) + '</small></span>' +
+        '<span class="num"><bdi dir="ltr">' + nf(p.count) + '</bdi></span></div>';
     });
   }
   h += '</div></div>';
 
+  h += '</div>';
   return h;
 }
 
+/* The three charts, in the shop's own currency. Each canvas exists only when
+   viewDashboard() found something to draw, so a missing one is not an
+   error — it is the "no sales" card standing where the chart would be. */
 function afterDashboard() {
-  var scope = OG.dashScope || 'today';
-  var r = scopeRange(scope);
-  var salesInScope = DB.sales.filter(function (s) { return s.date >= r.from && s.date < r.to; });
+  var charts = dashBlock('charts');
+  if (!charts) return;
+  var base = dashBase().toLowerCase();
+  var sym = dashBase() === 'USD' ? '$' : '';
+  var fmtMoney = function (v) { return sym + Charts.compact(v); };
 
-  var m = DB.monthlySales(6);
-  Charts.line(document.getElementById('dashLine'),
-    m.map(function (x) { return x.label; }),
-    m.map(function (x) { return OG.currency === 'USD' ? x.total / CONFIG.EXCHANGE_RATE : x.total; }),
-    { fmt: function (v) { return (OG.currency === 'USD' ? '$' : '') + Charts.compact(v); } });
+  var line = document.getElementById('dashLine');
+  if (line) {
+    Charts.line(line,
+      charts.monthly.map(function (m) { return monthLabel(m.month); }),
+      charts.monthly.map(function (m) { return dashBase() === 'USD' ? m.usd / 100 : m.syp; }),
+      { fmt: fmtMoney });
+  }
 
-  var byType = {};
-  salesInScope.forEach(function (s) {
-    s.items.forEach(function (it) { byType[it.type] = (byType[it.type] || 0) + it.qty * it.unitPrice; });
-  });
-  var byTypeArr = Object.keys(byType).map(function (k) {
-    return { label: DB.typeLabels[k] || k, total: byType[k] };
-  }).sort(function (a, b) { return b.total - a.total; });
-  Charts.donut(document.getElementById('dashDonut'),
-    byTypeArr.map(function (x) { return x.label; }),
-    byTypeArr.map(function (x) { return OG.currency === 'USD' ? x.total / CONFIG.EXCHANGE_RATE : x.total; }),
-    { fmt: function (v) { return (OG.currency === 'USD' ? '$' : '') + Charts.compact(v); } });
+  var donut = document.getElementById('dashDonut');
+  if (donut) {
+    Charts.donut(donut,
+      charts.byType.map(function (x) { return DB.typeLabels[x.type] || x.type || '—'; }),
+      charts.byType.map(function (x) { return dashBase() === 'USD' ? x.usd / 100 : x[base]; }),
+      { fmt: fmtMoney });
+  }
 
-  var unitsByProduct = {};
-  salesInScope.forEach(function (s) {
-    s.items.forEach(function (it) { unitsByProduct[it.productId] = (unitsByProduct[it.productId] || 0) + it.qty; });
-  });
-  var top = Object.keys(unitsByProduct).map(function (k) {
-    return { name: DB.product(+k).name, units: unitsByProduct[k] };
-  }).sort(function (a, b) { return b.units - a.units; }).slice(0, 6);
-
-  Charts.bars(document.getElementById('dashBars'),
-    top.map(function (x) { return x.name.length > 16 ? x.name.slice(0, 15) + '…' : x.name; }),
-    top.map(function (x) { return x.units; }),
-    { horizontal: true, highlight: 0, fmt: function (v) { return nf(v); } });
+  var bars = document.getElementById('dashBars');
+  if (bars) {
+    Charts.bars(bars,
+      charts.topProducts.map(function (x) { return x.name.length > 16 ? x.name.slice(0, 15) + '…' : x.name; }),
+      charts.topProducts.map(function (x) { return x.units; }),
+      { horizontal: true, highlight: 0, fmt: function (v) { return nf(v); } });
+  }
 }
 
 /* ------------------------------------------------------- 7b. HOME, PER ROLE
@@ -421,14 +409,6 @@ function greeting() {
   return hr < 12 ? t('hi_morning') : hr < 17 ? t('hi_afternoon') : t('hi_evening');
 }
 
-/* The same day boundary the dashboard's "Sales today" uses, via the same
-   daysAgo() the seeded data is built around. Rolling our own midnight here
-   would give two screens two different answers for the same word. */
-function isToday(d) {
-  var x = new Date(d);
-  return x >= daysAgo(0) && x < daysAgo(-1);
-}
-
 /* First name only. "Good morning, Hussam" reads like a person talking;
    "Good morning, Hussam Fattal" reads like a bank letter. */
 function firstName() {
@@ -440,38 +420,54 @@ function roleHomeHead(title, sub) {
   var who = firstName();
   return '<div class="page-head"><div><h1>' +
     (who ? greeting() + ', ' + esc(who) : title) + '</h1>' +
-    '<div class="sub">' + sub + ' · ' + fmtDate(TODAY) + '</div></div></div>';
+    '<div class="sub">' + sub + ' · ' + fmtDate(new Date()) + '</div></div></div>';
 }
 
 /* ---- cashier ---------------------------------------------------------------
    Her shift, not the shop. No revenue total, no month, no charts, no profit —
    the till, what she has done today, and what is running out where she can
-   see it. */
+   see it. Her sales are hers BY ACCOUNT: the server matches cashier_id, not
+   her first name, so a second Lubna does not inherit the first one's day. */
 function viewShiftHome() {
-  var me = firstName();
-  var mine = DB.sales.filter(function (s) {
-    /* Matched on the first name so it still works when the account name and
-       the staff record disagree on a middle name or a spelling. */
-    return isToday(s.date) &&
-           String(s.cashier || '').indexOf(me) === 0;
-  });
-  var taken = mine.reduce(function (a, s) { return a + s.total; }, 0);
+  var me = dashBlock('me');
+  var shift = dashBlock('shift');
 
   var h = roleHomeHead(t('nav_pos'), t('my_sales_today'));
 
   h += '<div class="grid stat-row">' +
     '<div class="stat"><span class="eyebrow">' + t('my_sales_today') + '</span>' +
-      '<div class="val accent">' + moneyStat(taken) + '</div></div>' +
+      '<div class="val accent">' + (me ? moneyPair(me.takings.syp, me.takings.usd, true) : '—') + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('my_invoices') + '</span>' +
-      '<div class="val">' + nf(mine.length) + '</div>' +
-      '<div class="foot">' + fmtDate(TODAY) + '</div></div>' +
-  '</div>';
+      '<div class="val"><bdi dir="ltr">' + (me ? nf(me.count) : '—') + '</bdi></div>' +
+      '<div class="foot">' + fmtDate(new Date()) + '</div></div>';
+  if (shift) {
+    h += '<div class="stat"><span class="eyebrow">' + t('my_shift') + '</span>' +
+      (shift.open
+        ? '<div class="val"><bdi dir="ltr">' + hhmm(shift.openedAt) + '</bdi></div>' +
+          '<div class="foot">' + t('shift_open_since').replace('{time}', '') +
+            (shift.by ? ' · ' + t('shift_open_by').replace('{name}', nm(shift.by)) : '') + '</div>'
+        : '<div class="val warn">—</div><div class="foot">' + t('shift_none') + '</div>') +
+      '</div>';
+  }
+  if (allow('customer.read') && DB.stampsOn()) {
+    var full = Object.keys(DB.fullCardIds()).length;
+    h += '<div class="stat' + (full ? ' clickable" data-act="dash-cust" data-f="cardfull"' : '"') + '>' +
+      '<span class="eyebrow">' + t('my_full_cards') + '</span>' +
+      '<div class="val"><bdi dir="ltr">' + nf(full) + '</bdi></div>' +
+      '<div class="foot">' + t('my_full_cards_sub') + '</div></div>';
+  }
+  h += '</div>';
+
+  if (shift && !shift.open) {
+    h += '<div class="card mt"><div class="cart-empty"><b>' + t('shift_none') + '</b>' + t('shift_none_sub') + '</div></div>';
+  }
 
   h += ifNav('pos', '<div class="home-cta mt">' +
     '<button class="btn btn-primary btn-lg" data-act="nav" data-view="pos">' +
       t('open_till') + ' →</button></div>');
 
   /* -- what she has rung up -- */
+  var mine = me ? me.latest : [];
   h += '<div class="card mt"><div class="card-head"><h3>' + t('my_last_sales') + '</h3></div>';
   if (!mine.length) {
     h += '<div class="cart-empty"><b>' + t('nothing_sold_yet') + '</b>' + t('first_sale_hint') + '</div>';
@@ -480,13 +476,14 @@ function viewShiftHome() {
       '<th>' + t('invoice') + '</th><th>' + t('customer') + '</th>' +
       '<th>' + t('items') + '</th><th class="num">' + t('total') + '</th>' +
     '</tr></thead><tbody>';
-    mine.slice(0, 6).forEach(function (s) {
-      h += '<tr class="clickable" data-act="open-invoice" data-id="' + s.id + '">' +
-        '<td><b>' + s.id + '</b></td>' +
-        '<td>' + esc(s.customerName) + '</td>' +
-        '<td class="muted">' + s.items.length + ' × ' + esc(s.items[0].name.slice(0, 20)) +
-          (s.items.length > 1 ? '…' : '') + '</td>' +
-        '<td class="num"><b>' + money(s.total) + '</b></td></tr>';
+    mine.forEach(function (s) {
+      var first = s.items && s.items[0] ? s.items[0].name : '';
+      h += '<tr class="clickable" data-act="open-invoice" data-id="' + esc(s.id) + '">' +
+        '<td><b>' + esc(s.id) + '</b></td>' +
+        '<td>' + (s.customer_name ? nm(s.customer_name) : '<span class="muted">' + t('walk_in') + '</span>') + '</td>' +
+        '<td class="muted"><bdi dir="ltr">' + (s.items ? s.items.length : 0) + '</bdi> × ' + esc(first.slice(0, 20)) +
+          (s.items && s.items.length > 1 ? '…' : '') + '</td>' +
+        '<td class="num"><b>' + moneyIn(s.currency, s.total) + '</b></td></tr>';
     });
     h += '</tbody></table></div>';
   }
@@ -495,7 +492,7 @@ function viewShiftHome() {
   /* -- what she will be asked for and cannot find --
      Only what is short ON THE FLOOR. A cashier does not care that the back is
      low; she cares that the customer in front of her wants a 42 and the wall
-     is empty. */
+     is empty. Stock is not windowed, so this stays derived here. */
   var gaps = DB.floorOuts().slice(0, 6);
   h += '<div class="card mt"><div class="card-head"><h3>' + t('low_on_shelf') + '</h3>' +
     '<div class="card-actions"><span class="badge ' + (gaps.length ? 'critical' : 'healthy') + '">' +
@@ -522,28 +519,27 @@ function viewShiftHome() {
    carrying to the front. Not one money figure: he has neither money.read nor
    cost.read, and a stock keeper does not need either to do his job well. */
 function viewBackHome() {
-  var arrived = DB.stockMovements.filter(function (m) {
-    return m.delta > 0 && isToday(m.date);
-  });
-  var arrivedPieces = arrived.reduce(function (a, m) { return a + m.delta; }, 0);
+  var arrivals = dashBlock('arrivals');
+  var todo = dashBlock('todo');
   var toMove = DB.floorOuts();
   var openPOs = DB.purchaseOrders.filter(function (p) { return p.status !== 'received'; });
   var empties = DB.liveVariants().filter(function (v) { return DB.stockAt(v, 'floor') === 0; }).length;
+  var landed = todo ? todo.rows.filter(function (a) { return a.kind === 'wants_back'; }) : [];
 
   var h = roleHomeHead(t('back_title'), t('back_sub'));
 
   h += '<div class="grid stat-row">' +
     '<div class="stat"><span class="eyebrow">' + t('arrived_today') + '</span>' +
-      '<div class="val accent">' + nf(arrivedPieces) + '</div>' +
+      '<div class="val accent"><bdi dir="ltr">' + (arrivals ? nf(arrivals.pieces) : '—') + '</bdi></div>' +
       '<div class="foot">' + t('pieces') + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('to_move_out') + '</span>' +
-      '<div class="val' + (toMove.length ? ' warn' : '') + '">' + nf(toMove.length) + '</div>' +
+      '<div class="val' + (toMove.length ? ' warn' : '') + '"><bdi dir="ltr">' + nf(toMove.length) + '</bdi></div>' +
       '<div class="foot">' + t('sku') + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('empty_on_floor') + '</span>' +
-      '<div class="val">' + nf(empties) + '</div>' +
+      '<div class="val"><bdi dir="ltr">' + nf(empties) + '</bdi></div>' +
       '<div class="foot">' + t('wh_empty_sizes') + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('open_orders') + '</span>' +
-      '<div class="val">' + nf(openPOs.length) + '</div>' +
+      '<div class="val"><bdi dir="ltr">' + nf(openPOs.length) + '</bdi></div>' +
       '<div class="foot">' + t('po_title').toLowerCase() + '</div></div>' +
   '</div>';
 
@@ -555,6 +551,19 @@ function viewBackHome() {
       ? '<button class="btn btn-lg" data-act="home-wh" data-tab="count">' + t('back_count') + '</button>'
       : '') +
   '</div>';
+
+  /* -- a box landed that somebody is waiting for --
+     It is the back room that knows a shipment came in, and the floor that
+     has to ring the customer. Same rows as the bell, filtered to this kind. */
+  h += '<div class="card mt"><div class="card-head"><h3>' + t('back_wants_landed') + '</h3>' +
+    '<div class="card-actions"><span class="badge ' + (landed.length ? 'critical' : 'healthy') + '">' +
+      landed.length + '</span></div></div>';
+  if (!landed.length) {
+    h += '<div class="cart-empty"><b>' + t('back_wants_none') + '</b></div>';
+  } else {
+    landed.forEach(function (a) { h += todoRow(a); });
+  }
+  h += '</div>';
 
   /* -- the actual to-do list: sold out on the wall, still in the back -- */
   h += '<div class="card mt"><div class="card-head"><h3>' + t('to_move_out') + '</h3>' +

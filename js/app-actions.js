@@ -123,7 +123,7 @@ var ACTIONS = {
     DB.notifications.forEach(function (n, i) {
       h += '<div class="notif-row' + (n.read ? ' seen' : '') +
         '" data-act="notif-go" data-i="' + i + '">' +
-        '<span class="notif-dot ' + n.tone + '">' + n.icon + '</span><span>' + n.text + '</span></div>';
+        '<span class="notif-dot ' + n.tone + '">' + n.icon + '</span><span>' + DB.alertText(n) + '</span></div>';
     });
     pop.innerHTML = h;
     document.getElementById('topbar').appendChild(pop);
@@ -282,12 +282,33 @@ var ACTIONS = {
     if (s) openInvoice(s);
   },
 
+  /* A to-do row on the dashboard or the warehouse home. Found by KEY in the
+     lists the server sent — the dashboard's fifty first, the bell's eight
+     as a fallback — marked read in both, then opened where it can be acted
+     on. The customers screen takes the filter that matches the kind. */
   'alert-fix': function (el) {
-    var a = buildAlerts()[+el.getAttribute('data-i')];
+    var key = el.getAttribute('data-key');
+    var pool = (DB.dash && DB.dash.todo ? DB.dash.todo.rows : []).concat(DB.notifications);
+    var a = null;
+    pool.some(function (x) { if (x.key === key) { a = x; return true; } });
     if (!a) return;
-    if (a.tab) OG.rep.tab = a.tab;
-    if (a.filter) OG.cust.filter = a.filter;
-    go(a.view, a.pid ? function () { openProductDrawer(a.pid); } : null);
+    DB.markNotifReadKey(key);
+    renderTopbar();
+    var of = a.kind === 'more' ? (a.args && a.args.of) : a.kind;
+    /* The wants list lives on the warehouse screen — it is the back room
+       that answers "who was waiting for this box". */
+    if (of === 'wants_back') OG.wh.tab = 'wants';
+    if (of === 'stamps') OG.cust.filter = 'cardfull';
+    if (of === 'supplier_due') OG.rep.tab = 'suppliers';
+    go(a.view);
+  },
+
+  /* A count on the dashboard's people row is the door to the list it counts. */
+  'dash-cust': function (el) {
+    var f = el.getAttribute('data-f');
+    if (f === 'wants') { OG.wh.tab = 'wants'; go('warehouse'); return; }
+    OG.cust.filter = f || 'all';
+    go('customers');
   },
 
   'open-invoice': function (el) {
@@ -348,7 +369,6 @@ var ACTIONS = {
   'cu-tl-all': function () {
     var host = document.getElementById('cuTl');
     if (!host || !OG.tlRows) return;
-    OG.tlAll = true;
     host.innerHTML = timelineHTML(OG.tlRows, true);
   },
 
@@ -723,7 +743,21 @@ var ACTIONS = {
   },
   whatsapp: function (el) { openWhatsapp(+el.getAttribute('data-id')); },
   'day-summary': function () { openDaySummary(); },
-  'dash-scope': function (el) { OG.dashScope = el.getAttribute('data-k'); render(); },
+  /* One request, not twelve, and the old numbers are dimmed while it is in
+     flight so a chip never shows yesterday's figure under today's label. */
+  'dash-scope': function (el) {
+    OG.dashScope = el.getAttribute('data-k');
+    OG.dashLoading = true;
+    render();
+    Shop.reloadDashboard().then(function () {
+      OG.dashLoading = false;
+      if (OG.view === 'dashboard') render();
+    }, function () {
+      OG.dashLoading = false;
+      if (OG.view === 'dashboard') render();
+      toast(t('dash_title'), t('dash_unavailable'), 'err', 3000);
+    });
+  },
 
   'prod-sort': function (el) {
     var k = el.getAttribute('data-k');

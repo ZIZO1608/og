@@ -98,3 +98,26 @@ CREATE INDEX IF NOT EXISTS wants_open     ON wants (product_id, size) WHERE clos
 -- -----------------------------------------------------------------------------
 
 ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS customer_id BIGINT;
+
+-- -----------------------------------------------------------------------------
+--  ROW LEVEL SECURITY
+-- -----------------------------------------------------------------------------
+--  On, with no policies, exactly as 001 sets it for every mirrored table and
+--  every file since has repeated for its own. This file was the one that did
+--  not, which was an oversight and not a decision.
+--
+--  RLS on with no policy means: the service key (which bypasses RLS) still
+--  reads and writes, and NOTHING ELSE CAN. That is the whole security model of
+--  this mirror — there is no per-user authorisation here to get right, because
+--  no user ever reaches it. The shop's own permission matrix lives in SQLite
+--  and is enforced by requirePerm() on the server.
+--
+--  It matters more for these two than for most. `wants` says which customer
+--  asked for which pair, and `loyalty_redemptions` says what each customer has
+--  claimed — both are the shop's customer list joined to their behaviour,
+--  which is the one category of data the FORBIDDEN rules in server/lib/auth.js
+--  refuse even to the print partner.
+-- -----------------------------------------------------------------------------
+
+ALTER TABLE loyalty_redemptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wants               ENABLE ROW LEVEL SECURITY;

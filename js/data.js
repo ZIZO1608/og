@@ -715,6 +715,79 @@ var DB = {
     }
     return notifications.filter(function (x) { return x.read; }).length;
   },
+
+  /* By key, and in BOTH lists. The bell and the dashboard's to-do are the
+     same rows from the same server call, held twice in memory; reading a row
+     on one has to dim it on the other or the badge and the card disagree. */
+  markNotifReadKey: function (key) {
+    var hit = null;
+    notifications.forEach(function (x) { if (x.key === key) { x.read = true; hit = x; } });
+    if (DB.dash && DB.dash.todo) {
+      DB.dash.todo.rows.forEach(function (x) { if (x.key === key) { x.read = true; hit = hit || x; } });
+    }
+    if (DB.live && typeof Shop !== 'undefined' && Shop.live()) {
+      Shop.markAlertRead(key).catch(function () {});
+    }
+    return hit;
+  },
+
+  /* ---- an alert becomes a sentence HERE and nowhere else -----------------
+     The server sends `{ kind, args }` — what happened and the values — and
+     this writes the words from I18N in whichever language the page is in.
+     It used to compose English on the server, which was fine in a popover
+     and wrong the day the list became the centre card of an Arabic-first
+     dashboard. Nothing in args is pre-formatted: money arrives as minor
+     units with a currency, days as integers, and the formatting rules that
+     apply everywhere else (a pair is a pair, digits are isolated in RTL)
+     apply here. */
+  alertText: function (n) {
+    if (!n) return '';
+    if (n.text) return n.text;
+    var a = n.args || {};
+    var key;
+    switch (n.kind) {
+      case 'more':         key = 'al_more_' + a.of; break;
+      case 'job_late':     key = a.days === 1 ? 'al_job_late_1' : 'al_job_late'; break;
+      case 'supplier_due': key = a.days < 0 ? 'al_supplier_overdue'
+                               : a.days === 0 ? 'al_supplier_today'
+                               : a.days === 1 ? 'al_supplier_due_1' : 'al_supplier_due'; break;
+      case 'payroll':      key = a.days <= 0 ? 'al_payroll_now'
+                               : a.days === 1 ? 'al_payroll_tomorrow' : 'al_payroll'; break;
+      default:             key = 'al_' + n.kind;
+    }
+    /* A singular shape where the language has one. */
+    var table = I18N[OG.lang] || I18N.en;
+    if (a.n === 1 && table[key + '_1']) key = key + '_1';
+    var s = t(key);
+    if (n.kind === 'stamps' && a.owed > 1) s += t('al_stamps_owed');
+
+    var amount = a.amount == null ? '' : (a.currency === 'USD' ? moneyUsdRaw(a.amount) : moneySypRaw(a.amount));
+    var id = a.id == null ? '' : String(a.id) + (n.kind === 'po_late' && a.name ? ' — ' + a.name : '');
+    var vals = {
+      n: a.n, total: a.total, stamps: a.stamps, required: a.required, owed: a.owed,
+      days: Math.abs(Number(a.days) || 0),
+      name: n.kind === 'po_late' ? '' : (a.name || ''), size: a.size || '', id: id,
+      amount: amount, err: a.err ? ' — ' + a.err : ''
+    };
+    return s.replace(/\{(\w+)\}/g, function (m, k) {
+      var v = vals[k];
+      if (v === undefined || v === null) return '';
+      return typeof v === 'number'
+        ? '<bdi dir="ltr">' + nf(v) + '</bdi>'
+        : '<bdi>' + esc(String(v)) + '</bdi>';
+    });
+  },
+
+  /* ---- the dashboard snapshot ------------------------------------------
+     Replaced whole, unlike every other collection here, which is mutated in
+     place because screens hold the array reference. Nothing holds this
+     between renders: it is what GET /api/dashboard said about one window at
+     one moment, and swapping the object makes "half old, half new"
+     impossible. null when the request was skipped or refused, and the
+     screens draw "unavailable" rather than a zero that would read as "the
+     shop took nothing". */
+  dash: null,
+  hydrateDashboard: function (d) { DB.dash = d || null; },
   sizeSets: SIZE_SETS,
   typeLabels: TYPE_LABELS,
   typeColour: typeColour,
@@ -2784,6 +2857,10 @@ var DB = {
       fullCards.length = 0;
       payload.fullCards.forEach(function (id) { fullCards.push(Number(id)); });
     }
+
+    /* Always assigned, even to null: a snapshot from an earlier scope or a
+       different account must not survive a reload that did not carry one. */
+    if ('dashboard' in payload) DB.dash = payload.dashboard || null;
 
     purchaseOrders.length = 0;
     (payload.purchaseOrders || []).forEach(function (o) {

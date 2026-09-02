@@ -120,6 +120,66 @@ export function open({ sku = null, productId = null, limit = 200 } = {}) {
   ).all(...args);
 }
 
+/* Sizes people asked for that the shop has since got back in.
+
+   Nothing polls for this. A want is written when the size is out, and the
+   stock table moves on its own — so "back in stock" is a JOIN at read time,
+   not a flag anyone remembered to set. Grouped by SKU, because the action is
+   "ring the three people who wanted a 42", and counted by DISTINCT customer
+   so one person who asked twice is one phone call.
+
+   Only wants with a real SKU: a want recorded against a product with no size
+   chosen cannot be answered by any one box landing. Archived customers and
+   hidden products are skipped for the same reason as everywhere else — there
+   is nobody to ring, or nothing to sell. Shared by the bell and the
+   dashboard so the two cannot disagree about what is waiting. */
+const BACK_SQL = `FROM wants w
+       JOIN variants  v ON v.sku = w.variant_sku
+       JOIN products  p ON p.id = v.product_id
+       JOIN customers c ON c.id = w.customer_id
+      WHERE w.closed_at IS NULL AND w.variant_sku IS NOT NULL
+        AND c.archived = 0 AND p.hidden = 0
+      GROUP BY w.variant_sku
+     HAVING COALESCE((SELECT SUM(st.qty) FROM stock st WHERE st.sku = w.variant_sku), 0) > 0`;
+
+export function backInStock({ limit = 50 } = {}) {
+  const n = Math.max(1, Math.min(500, Math.floor(Number(limit)) || 50));
+  return get().prepare(
+    `SELECT w.variant_sku AS sku, p.name, v.size, COUNT(DISTINCT w.customer_id) AS n
+     ${BACK_SQL}
+      ORDER BY n DESC, p.name, v.size
+      LIMIT ?`
+  ).all(n);
+}
+
+/* How many SKUs, and how many people, are waiting on something that has
+   landed — the totals behind the capped list above. */
+export function backInStockCount() {
+  const rows = get().prepare(
+    `SELECT COUNT(DISTINCT w.customer_id) AS n ${BACK_SQL}`
+  ).all();
+  return rows.length;
+}
+
+export function backInStockTotals() {
+  const rows = get().prepare(
+    `SELECT w.variant_sku AS sku, COUNT(DISTINCT w.customer_id) AS n ${BACK_SQL}`
+  ).all();
+  /* Distinct people across SKUs is not the sum of per-SKU counts — one
+     person waiting on two sizes is one person. */
+  const people = get().prepare(
+    `SELECT COUNT(DISTINCT w.customer_id) AS n
+       FROM wants w
+       JOIN variants  v ON v.sku = w.variant_sku
+       JOIN products  p ON p.id = v.product_id
+       JOIN customers c ON c.id = w.customer_id
+      WHERE w.closed_at IS NULL AND w.variant_sku IS NOT NULL
+        AND c.archived = 0 AND p.hidden = 0
+        AND COALESCE((SELECT SUM(st.qty) FROM stock st WHERE st.sku = w.variant_sku), 0) > 0`
+  ).get().n;
+  return { skus: rows.length, customers: people };
+}
+
 /* One customer's, for their profile — open and answered alike, because "we
    came back to them" is the half that shows the shop kept its word. */
 export function forCustomer(customerId, limit = 50) {

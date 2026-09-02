@@ -37,6 +37,7 @@ import { fileURLToPath } from 'node:url';
 import { load } from '../lib/env.js';
 import * as DB from '../lib/db.js';
 import * as SB from '../lib/supabase.js';
+import { lagColumn } from '../lib/mirror-lag.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -211,31 +212,26 @@ if (DRY) {
 head('Pushing the shop up');
 /* A column this machine has and the mirror has not.
 
-   The ordinary sync carries `fallbackDrop` for exactly this and prints the file
-   to run; this script had nothing, so a mirror one schema file behind made the
-   REPAIR tool the thing that needed repairing — it threw on the first table
-   carrying the new column and stopped before touching any of the others. Same
-   shape as syncTable's retry: try it properly, and on a rejection naming the
-   column, push without it and say what to run. */
-const MIRROR_LAG = {
-  stock:    { cols: ['shelf_id'], file: 'server/supabase/006_shelves.sql' },
-  /* The second time this list was one entry short of the sync's. With 008
-     unrun, this script threw on sections — the fourth table — and never
-     reached sales, sale_items or deliveries, which were the rows the check
-     had sent somebody here to repair. */
-  sections: { cols: ['room_id', 'wall', 'wall_pos'], file: 'server/supabase/008_rooms.sql' },
-  print_log: { cols: ['kind'], file: 'server/supabase/009_gift_receipt.sql' }
-};
+   The ordinary sync carries the same fallback and prints the file to run; this
+   script had nothing, so a mirror one schema file behind made the REPAIR tool
+   the thing that needed repairing — it threw on the first table carrying the
+   new column and stopped before touching any of the others. Same shape as
+   syncTable's retry: try it properly, and on a rejection naming the column,
+   push without it and say what to run.
+
+   The list itself now lives in lib/mirror-lag.js and is shared with the sync.
+   It was kept by hand here and drifted twice — once short of `sections`, which
+   threw on the fourth table and never reached the sales somebody had been sent
+   here to repair, and again short of `sales` itself. */
 
 async function push(name, rows) {
   try {
     await SB.insert(name, rows, { upsert: true });
     return;
   } catch (e) {
-    const lag = MIRROR_LAG[name];
-    const miss = lag && lag.cols.find((c) => String(e.message).includes(c));
-    if (!miss) throw e;
-    warn(`Supabase has no ${name}.${miss} column yet — pushing without it.`);
+    const lag = lagColumn(name, e);
+    if (!lag) throw e;
+    warn(`Supabase has no ${name}.${lag.col} column yet — pushing without it.`);
     dim(`Run ${lag.file} in the SQL editor.`);
     await SB.insert(name, rows.map((r) => {
       const copy = { ...r };

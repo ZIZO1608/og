@@ -37,6 +37,7 @@ import { load } from '../lib/env.js';
 import * as DB from '../lib/db.js';
 import * as SB from '../lib/supabase.js';
 import * as Vault from '../lib/credvault.js';
+import { lagColumn } from '../lib/mirror-lag.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -285,8 +286,6 @@ const TABLES = {
        shelf_id locally PostgREST rejects the whole batch on a mirror that has
        not been updated — and the shop's stock stops being mirrored over a
        column nobody has created yet. Exactly the sales.shift_id situation. */
-    fallbackDrop: ['shelf_id'],
-    fallbackFile: 'server/supabase/006_shelves.sql'
   },
 
   /* ---- the warehouse layout --------------------------------------------
@@ -310,8 +309,6 @@ const TABLES = {
        them and say what to run. Without this a mirror that has not got 008
        would drop the whole layout block — and the catch below used to
        report that as a missing TABLE. */
-    fallbackDrop: ['room_id', 'wall', 'wall_pos'],
-    fallbackFile: 'server/supabase/008_rooms.sql'
   },
 
   shelves: {
@@ -322,7 +319,21 @@ const TABLES = {
   customers: {
     parseKey: (rowId) => ({ id: Number(rowId) }),
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM customers WHERE id = ?').get(key.id),
-    mapRow: (r) => r
+    mapRow: (r) => r,
+    /* until 011 has been run in the dashboard. Migration 033 added these three
+       locally and the matching Supabase file was written late — measured
+       against the live mirror, a customer row as sent gets
+
+         400  Could not find the 'credit_limit' column of 'customers'
+
+       and customers is pushed in the unguarded CORE loop, so that rejection
+       does not skip customers, it takes sales and deliveries with it. The shop
+       was one customer edit away from its whole day going unmirrored.
+
+       Dropping them is safe as a stopgap and NOT as an answer: credit_limit
+       and no_credit are the two columns that decide whether somebody may owe
+       the shop money, so a restore from a mirror missing them hands back a
+       shop where every credit rule has quietly reset. Run the file. */
   },
 
   /* ---- the wants list --------------------------------------------------
@@ -355,7 +366,6 @@ const TABLES = {
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM sales WHERE id = ?').get(key.id),
     mapRow: (r) => ({ ...r, voided: !!r.voided }),
     /* until 005 has been run in the dashboard */
-    fallbackDrop: ['shift_id'],
     afterUpsert: async (localRow) => {
       const items = DB.get().prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(localRow.id);
       await SB.remove('sale_items', { sale_id: localRow.id }).catch(() => {});
@@ -390,6 +400,11 @@ const TABLES = {
     parseKey: (rowId) => ({ id: rowId }),
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM print_jobs WHERE id = ?').get(key.id),
     mapRow: (r) => r,
+    /* until 010 has been run in the dashboard. Migration 032 added customer_id
+       so an old print job can be attached to the person who ordered it. This
+       one is inside the partner guard, so a rejection costs the partner block
+       rather than the shop's sales — but losing the whole partner half over one
+       nullable column is still worse than pushing the jobs without it. */
     afterUpsert: async (localRow) => {
       for (const t of ['print_job_lines', 'print_job_stages']) {
         const rows = DB.get().prepare(`SELECT * FROM ${t} WHERE job_id = ?`).all(localRow.id);
@@ -568,21 +583,22 @@ async function syncTable(name, { phase = 'both' } = {}) {
        run. Deliberately NOT solved by dropping the column in mapRow, which
        would kill the shift-to-sale link at the mirror boundary permanently
        rather than until somebody runs one SQL file. */
-    const drop = cfg.fallbackDrop || [];
     try {
       await SB.insert(name, toUpsert, { upsert: true });
     } catch (e) {
-      const hit = drop.find((c) => String(e.message).includes(c));
-      if (!hit) throw e;
-      console.log(warn(`Supabase has no ${name}.${hit} column yet — pushing without it.`));
-      /* Named per table. Hardcoding 005 here was fine while sales was the only
-         table with a fallback; the second one made it tell the operator to run
-         a file that has nothing to do with the column that was rejected. */
-      const file = cfg.fallbackFile || 'server/supabase/005_money_and_counts.sql';
-      console.log(`    \x1b[2mRun ${file} in the SQL editor.\x1b[0m`);
+      /* Which columns, and which file to run, come from lib/mirror-lag.js —
+         shared with the reconcile, which kept its own copy and drifted out of
+         step with this one twice. Named per table: hardcoding 005 here was
+         fine while sales was the only table with a fallback, and the second
+         one made it tell the operator to run a file that has nothing to do
+         with the column that was rejected. */
+      const lag = lagColumn(name, e);
+      if (!lag) throw e;
+      console.log(warn(`Supabase has no ${name}.${lag.col} column yet — pushing without it.`));
+      console.log(`    \x1b[2mRun ${lag.file} in the SQL editor.\x1b[0m`);
       await SB.insert(name, toUpsert.map((r) => {
         const copy = { ...r };
-        for (const c of drop) delete copy[c];
+        for (const c of lag.cols) delete copy[c];
         return copy;
       }), { upsert: true });
     }

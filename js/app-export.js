@@ -323,9 +323,19 @@ function exportButtons() {
 
 /* The whole shop on one sheet — the page he hands a partner or a bank. */
 function dashboardExportSpec() {
-  var m = DB.monthlySales(6);
-  var today = sumSalesOn(0);
-  var mtd = monthToDate(0);
+  /* Everything money-shaped comes off the server's snapshot — the same one
+     the screen was drawn from, over every sale rather than the last two
+     hundred. Written in the shop's own currency; dollars taken as dollars
+     get their own column only when there were any. */
+  var dash = DB.dash || {};
+  var charts = dash.charts || { monthly: [], byType: [] };
+  var sales = dash.sales || null;
+  var todo = dash.todo ? dash.todo.rows : [];
+  var base = dash.base || 'SYP';
+  var pick = function (p) { return base === 'USD' ? p.usd / 100 : p.syp; };
+  var anyUsd = charts.monthly.some(function (m) { return m.usd > 0; }) ||
+               charts.byType.some(function (x) { return x.usd > 0; });
+
   var crit = DB.criticalVariants().length;
   /* Bought within the at-risk window. null is never-bought, which is not
      "active" — and would count as one here, because null < 90 is true in
@@ -335,25 +345,39 @@ function dashboardExportSpec() {
     return n !== null && n < DB.atRiskDays();
   }).length;
   var pend = DB.printJobs.filter(function (j) { return j.stage !== 'done'; }).length;
-  var byType = DB.salesByType();
 
-  var rows = m.map(function (x) {
-    return [t('sales_6m'), x.label + ' ' + x.date.getFullYear(), x.count, exMoney(x.total)];
+  var rows = charts.monthly.map(function (m) {
+    var r = [t('sales_6m'), monthLabel(m.month) + ' ' + m.month.slice(0, 4), m.count, pick(m)];
+    if (anyUsd) r.push(base === 'USD' ? m.syp : m.usd / 100);
+    return r;
   });
-  byType.forEach(function (x) { rows.push([t('sales_by_type'), x.label, null, exMoney(x.total)]); });
-  buildAlerts().forEach(function (a) {
-    rows.push([t('needs_attention'), String(a.text).replace(/<[^>]+>/g, ''), null, null]);
+  charts.byType.forEach(function (x) {
+    var r = [t('sales_by_type'), DB.typeLabels[x.type] || x.type || '—', x.units, pick(x)];
+    if (anyUsd) r.push(base === 'USD' ? x.syp : x.usd / 100);
+    return rows.push(r);
   });
+  todo.forEach(function (a) {
+    var r = [t('needs_attention'), String(DB.alertText(a)).replace(/<[^>]+>/g, ''), null, null];
+    if (anyUsd) r.push(null);
+    rows.push(r);
+  });
+
+  var columns = [{ label: t('status'), width: 22 }, { label: t('name'), width: 44 },
+                 { label: t('invoices'), num: true },
+                 { label: t('total') + ' (' + base + ')', num: true }];
+  if (anyUsd) columns.push({ label: t('total') + ' (' + (base === 'USD' ? 'SYP' : 'USD') + ')', num: true });
+
+  var scopeLabel = t(OG.dashScope === '30d' ? 'dash_scope_30d' : OG.dashScope === '7d' ? 'dash_scope_7d' : 'dash_scope_today');
 
   return {
     name: 'dashboard', sheet: 'Dashboard', title: t('dash_title'),
-    subtitle: CONFIG.SHOP_NAME + ' · ' + fmtDate(TODAY), chartId: 'dashLine',
+    subtitle: CONFIG.SHOP_NAME + ' · ' + fmtDate(new Date()) + ' · ' + scopeLabel, chartId: 'dashLine',
     docUrl: deepLink('report', 'sales'),
-    columns: [{ label: t('status'), width: 22 }, { label: t('name'), width: 44 },
-              { label: t('invoices'), num: true }, { label: exCol(t('total')), num: true }],
+    columns: columns,
     rows: rows,
-    kpis: [{ label: t('st_today'), value: money(today) },
-           { label: t('st_month'), value: money(mtd) },
+    kpis: [{ label: t('dash_takings') + ' · ' + scopeLabel,
+             value: sales ? moneyPairText(sales.takings.syp, sales.takings.usd) : '—' },
+           { label: t('invoices'), value: sales ? nf(sales.count) : '—' },
            { label: t('st_critical'), value: nf(crit) },
            { label: t('st_customers'), value: nf(active) },
            { label: t('st_print'), value: nf(pend) }]

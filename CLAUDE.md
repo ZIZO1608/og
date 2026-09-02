@@ -24,6 +24,8 @@ cd server
 npm run createuser               # interactive; also accepts piped stdin
 npm run backup                   # VACUUM INTO + integrity_check + FK check
 npm run preflight                # accounts, catalogue, Supabase, port
+npm run supabase:check           # is the mirror a faithful copy of the DATA
+npm run supabase:drift           # can the next write even land — the SHAPE
 npm run hardware                 # printers and scanner: what is missing, and why
 npm run hardware:install         # installs what it can (asks for administrator)
 ```
@@ -396,24 +398,64 @@ Things that will bite you:
   the **only** thing that recovers a row whose log entry was consumed by a run that did not land
   it — the cursor is legitimately past it, so no rewind will ever look there again. Its comparison
   reports both directions; a table short of rows *in Supabase* is the case that matters, and it
-  read as "in step" until that was fixed. It carries the same per-column fallbacks as the sync
-  (`MIRROR_LAG`): the day it lacked one it threw on the fourth table and never reached the sales
-  the check had sent somebody to repair.
-- **`sales.shift_id` is the one column that can break a sync.** `sales` is pushed OUTSIDE the guarded
-  block, so on a Supabase without `005` the whole batch is rejected and a day of sales stops mirroring
-  over an optional table. `TABLES.sales.fallbackDrop` retries without the column and names the file to
-  run — the same shape as the `pw_enc` fallback in `syncUsers`. Verified against the live mirror.
-- **Eight schema files are run by hand in the Supabase dashboard: `002_user_credentials.sql`,
-  `003_partner.sql`, `004_purchasing_and_alerts.sql`, `005_money_and_counts.sql`,
-  `006_shelves.sql`, `007_label_subjects.sql`, `008_rooms.sql` and `009_gift_receipt.sql`**
-  (`001` too, on a new project).
-  `002`–`007` are applied on the live mirror; `008` (rooms, and which wall a rack hangs on) must be
-  run before the shelf map's rooms mirror at all — until then the sync skips `rooms` by name, pushes
-  `sections` without the three placement columns and says so, and `npm run supabase:check` goes red
-  on the missing columns. `009` adds `print_log.kind` (local migration `027`); until it is run the
-  print history block is rejected on the column and retries on every run — the maxid cursor does not
-  move on a failure, so nothing is lost, only late. `002` adds `users.pw_enc` and is easy to forget
-  because the sync only needs it once `OG_VAULT_KEY` is set.
+  read as "in step" until that was fixed. It applies the same per-column fallbacks as the sync: the
+  day it lacked one it threw on the fourth table and never reached the sales the check had sent
+  somebody to repair.
+
+### A column here that the mirror has not got
+
+The local schema migrates itself on boot; the mirror's is applied **by hand** in the dashboard. So
+every local migration touching a mirrored table opens a window where PostgREST rejects the row — and
+it rejects the **whole batch**, not the column:
+
+```
+400  Could not find the 'credit_limit' column of 'customers'
+```
+
+- **`server/lib/mirror-lag.js` is the one list of those windows**, imported by both the sync and the
+  reconcile. It was kept twice and drifted twice, both the same way — the reconcile's copy short of
+  the sync's, so the *repair* tool threw partway down and never reached the rows somebody had been
+  sent there to fix. **Adding a column to a mirrored table means adding it there and writing the
+  matching `server/supabase/` file, in the same change.** Each entry carries `retriedBy`, because the
+  tools deliberately disagree: `print_log` is append-only, so the sync does *not* drop `kind` —
+  landing rows and advancing the bookmark past them means nothing ever fills it in. Late is
+  recoverable; silently wrong forever is not.
+- **`customers` and `sales` are the two that break a whole run**, because both are pushed OUTSIDE the
+  guarded block: a rejection there stops customers, sales *and* deliveries, not just the one table.
+  `sales.shift_id` has been covered since `005`. `customers` gained three columns in local migration
+  `033` and the matching file was written late — measured against the live mirror on 2026-09-02, a
+  customer row was rejected outright. The shop was one customer edit away from a day going unmirrored.
+- **A fallback is a stopgap, never the answer.** The mirror is what a rebuilt shop is restored *from*,
+  and `credit_limit`/`no_credit` decide whether somebody may owe the shop money — a restore missing
+  them hands back a shop where every credit rule has quietly reset. That is why the retry names the
+  file on every single run rather than settling in.
+- **`npm run supabase:drift` is the command that answers "can the next write even land".** Read-only
+  on both sides. It reads the columns PostgREST actually exposes, compares them against this
+  database's, and **goes red on any difference `mirror-lag.js` has not declared** — so the list can no
+  longer quietly fall behind the schema. It is a question about the *shape*, where `supabase:check`
+  asks about the *data*; the shape question used to be answered by a day of missing sales instead of
+  by a command. Both new branches were verified by breaking `mirror-lag.js` on purpose.
+
+- **Eleven schema files are run by hand in the Supabase dashboard**, `002` through `011` (`001` too,
+  on a new project). **`server/supabase/CATCH-UP.sql` is every outstanding one concatenated** — one
+  paste instead of four visits; it is generated, every statement is `IF NOT EXISTS`, and re-running it
+  is safe. `002`–`007` are applied on the live mirror. `008` (rooms, and which wall a rack hangs on)
+  must be run before the shelf map's rooms mirror at all — until then the sync skips `rooms` by name
+  and pushes `sections` without the three placement columns. `009` adds `print_log.kind` (local `027`);
+  until it is run the print history block is rejected and retries every run, so nothing is lost, only
+  late. `010` adds `loyalty_redemptions` and `wants` plus `print_jobs.customer_id` (local `031`/`032`).
+  `011` adds the three `customers` columns (local `033`). `002` adds `users.pw_enc` and is easy to
+  forget because the sync only needs it once `OG_VAULT_KEY` is set.
+- **Running one of these files is only half the repair.** The sync pushed those rows with the missing
+  columns *dropped* and its cursor is already past them, so the columns exist afterwards and stay
+  NULL. **`npm run supabase:reconcile` is what refills them**, and it is not optional.
+- **Every new mirrored table gets `ENABLE ROW LEVEL SECURITY`, with no policies** — `001`'s own
+  header states it and every file since repeats it for its own tables. On with no policy means the
+  service key still works and nothing else can, which is the entire security model of the mirror:
+  there is no per-user authorisation here to get right because no user reaches it. `010` was written
+  without it, which was an oversight rather than a decision, and its two tables are the shop's
+  customer list joined to their behaviour — the one category `FORBIDDEN` in `server/lib/auth.js`
+  refuses even to the print partner. Fixed; check for it when adding a table.
 - **One Supabase project, one database.** A throwaway test database that is pointed at the live
   project pushes *itself*: its `users` land beside the shop's (upserted, never deleted), its run
   writes its own — shorter — `change_log` seqs into every `sync_state` cursor, and its purge deletes
@@ -483,10 +525,56 @@ Things worth knowing:
   have broken the invoices referencing them. `products.demo` and `customers.demo` still exist for that
   reason, but nothing sets them any more.
 
+## The dashboard
+
+`server/lib/dashboard.js`, `GET /api/dashboard?from=&to=&tz=`. **Every figure on the four home
+screens is computed there, in SQL, over every sale.** It used to be summed in the browser from
+`DB.sales` — the last 200 invoices — with nothing on screen saying so; the 201st sale of a month
+made "30 days" quietly mean "the most recent two hundred". `DB.dash` is the snapshot, replaced
+whole on every load (it is one window at one moment, not a collection anyone holds a reference to),
+and `Shop.reloadDashboard()` refetches only it for a scope chip.
+
+- **The day belongs to the browser.** The server is UTC and Aleppo is not. `scopeRange()` in
+  `js/app-dashboard.js` builds the window from a *fresh* local midnight (never the boot-frozen
+  `TODAY`) and sends two ISO instants plus the zone; the server re-normalises both through
+  `toISOString()` before binding — `sales.at` is UTC text and a `+03:00` string compares wrongly —
+  and aggregates half-open `at >= ? AND at < ?`.
+- **Money is a pair, `{ syp, usd }`, never converted and never added.** Every sum is
+  `GROUP BY currency`; the hero shows the base currency, dollars taken as dollars are a second
+  line, and the only converted figure is labelled approximate at today's rate. Ordering never adds
+  the two either (`byType` sorts by units).
+- **A block the account may not see is absent, not null**, like `GET /api/partner`: `drawer`,
+  `debts`, `suppliers` need `money.read`; `margin` needs `profit.read` and leaves as a percentage
+  only; `me` (one's own sales, **by `cashier_id`**, never by name) and `latest` need `sell`;
+  `staff` needs `staff.read`. The payload must **not** go through `scrubCost` whole — `COST_KEYS`
+  deletes a key literally named `margin`. Only the two sale lists carry items, and only those are
+  scrubbed. Every reader in the browser is null-safe and draws "unavailable", never a zero.
+- **`Money.summary` is one currency** — the shift's. It used to add a $100 cash sale to a lira
+  drawer as 100. Every till sale to date settled in the base currency, so nothing already frozen
+  changed.
+- `arrivals` counts `type = 'received'` only; the old browser figure counted any positive delta,
+  so a transfer to the floor looked like a delivery.
+
 ## The bell
 
 `server/lib/alerts.js`. Computed on every request from the shop's current state — never stored,
 because an alert is a fact about now and a stored alert is a fact about a state that has moved on.
+
+**A row is a kind and its values, not a sentence.** `{ key, kind, args, icon, tone, view, read }`.
+The words are written in the browser by `DB.alertText` from `I18N` (`al_<kind>`, with `_1` for a
+singular and `al_more_<kind>` for a summary row), so the same row reads correctly in Arabic. The
+server used to compose English, which was tolerable in a popover and wrong once the list became
+the centre card of an Arabic-first dashboard. Nothing in `args` is formatted: money is minor units
+with its currency beside it, days are integers.
+
+**One list, two caps.** `Alerts.list(user, { limit })` returns `{ rows, shown, total, capped }`; the
+bell asks for 8, the dashboard's to-do for 50, so the two cannot disagree. Each kind that names
+rows has its own `LIMIT` and pushes one `<kind>:more:<total>` summary row when more exist, so the
+badge counts what is there. `markRead` marks and prunes against the **uncapped** list — pruning
+against the eight would un-read row twelve on the dashboard the next time anyone read anything.
+`wants_back` (a size somebody asked for is back in stock, grouped by SKU, gated `stock.read` **or**
+`customer.read`) opens the warehouse's wants tab, because it is the back room that knows a box
+landed and the warehouse account does not hold `customer.read`.
 
 Two things it gets right that earlier versions did not:
 

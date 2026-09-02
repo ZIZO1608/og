@@ -76,21 +76,29 @@ export function shifts({ limit = 60 } = {}) {
    it started with.
 
    Card and transfer takings are deliberately excluded: they never touch the
-   drawer, so counting them would make every honest count look short. */
+   drawer, so counting them would make every honest count look short.
+
+   ONE CURRENCY — the shift's. Every sum below is filtered to `s.currency`,
+   because a sale can settle in dollars (Sales.record takes a currency; the
+   till never sends one, but the API does not refuse it) and this used to add
+   a $100 cash sale to a lira drawer as 100. A dollar note in the box is a
+   real thing, but it is not 100 lira, and it is not what the cashier is asked
+   to count against `expected`. Nothing already frozen changes: every till
+   sale to date settled in the base currency. */
 function summary(d, s) {
   const drawer = "('cash','cod')";
   const sales = d.prepare(
     `SELECT COALESCE(SUM(total), 0) AS n FROM sales
-      WHERE shift_id = ? AND voided = 0 AND payment IN ${drawer}`
-  ).get(s.id).n;
+      WHERE shift_id = ? AND voided = 0 AND payment IN ${drawer} AND currency = ?`
+  ).get(s.id, s.currency).n;
   const collected = d.prepare(
     `SELECT COALESCE(SUM(amount), 0) AS n FROM debt_payments
-      WHERE shift_id = ? AND method IN ${drawer}`
-  ).get(s.id).n;
+      WHERE shift_id = ? AND method IN ${drawer} AND currency = ?`
+  ).get(s.id, s.currency).n;
   const paidOut = d.prepare(
     `SELECT COALESCE(SUM(amount), 0) AS n FROM expenses
-      WHERE shift_id = ? AND method IN ${drawer}`
-  ).get(s.id).n;
+      WHERE shift_id = ? AND method IN ${drawer} AND currency = ?`
+  ).get(s.id, s.currency).n;
 
   const expected = s.float_amount + sales + collected - paidOut;
   return {

@@ -91,8 +91,20 @@ function moneyPairText(syp, usd, compact) {
   if (Number(usd)) parts.push(moneyUsdRaw(usd));
   return parts.length ? parts.join(' + ') : '—';
 }
+/* Each half in ITS OWN isolate. One <bdi> around "2K ل.س + $100" is not
+   enough in Arabic: the lira sign is an Arabic run, and the bidi algorithm
+   then treats the "+ $100" after it as part of that run and draws the
+   dollars as "100$". Isolating the halves separately keeps "$100" as
+   "$100" whichever script sits beside it. */
 function moneyPair(syp, usd, compact) {
-  return '<bdi dir="ltr">' + moneyPairText(syp, usd, compact) + '</bdi>';
+  var parts = [];
+  if (Number(syp)) {
+    parts.push('<bdi dir="ltr">' + (compact
+      ? Charts.compact(Number(syp)) + (OG.lang === 'ar' ? ' ل.س' : ' SYP')
+      : moneySypRaw(syp)) + '</bdi>');
+  }
+  if (Number(usd)) parts.push('<bdi dir="ltr">' + moneyUsdRaw(usd) + '</bdi>');
+  return parts.length ? parts.join(' + ') : '—';
 }
 
 var MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

@@ -54,6 +54,26 @@ var Shop = (function () {
     return may(perm) ? soft(API.get(path), empty) : Promise.resolve(empty);
   }
 
+  /* Any-of, for a route whose guard is a list. The dashboard unlocks on the
+     first of four permissions the account holds; the partner holds none and
+     is never asked for. */
+  function wantAny(perms, path, empty) {
+    return perms.some(may) ? soft(API.get(path), empty) : Promise.resolve(empty);
+  }
+
+  /* The dashboard's window, as this machine's local day.
+
+     The server is on UTC and the shop is not; "today" is a fact only the till
+     knows, so it goes up as two instants and a zone rather than a word. Role
+     homes have no chips and always ask for today. */
+  var DASH_PERMS = ['sell', 'stock.read', 'money.read', 'customer.read'];
+  function dashQuery() {
+    var r = scopeRange(OG.dashScope || 'today');
+    return 'from=' + encodeURIComponent(r.from.toISOString()) +
+           '&to=' + encodeURIComponent(r.to.toISOString()) +
+           '&tz=' + (-new Date().getTimezoneOffset());
+  }
+
   /* Named, not positional.
 
      This was a Promise.all over a plain array read back as r[0]..r[11], and
@@ -87,7 +107,12 @@ var Shop = (function () {
 
     /* Computed per account, so it arrives already filtered to what this
        person may see and already marked read or not. */
-    alerts:   function () { return soft(API.get('/api/notifications'), { notifications: [], fullCards: [] }); }
+    alerts:   function () { return soft(API.get('/api/notifications'), { notifications: [], fullCards: [] }); },
+
+    /* Every figure on the home screens, computed on the server over every
+       sale. null when the account holds none of the four permissions, and
+       the screens say "unavailable" rather than drawing zeros. */
+    dashboard: function () { return wantAny(DASH_PERMS, '/api/dashboard?' + dashQuery(), null); }
   };
 
   function load() {
@@ -116,9 +141,19 @@ var Shop = (function () {
         employees: r.employees.employees,
         notifications: r.alerts.notifications,
         /* The uncapped full-card ids that sit behind the capped bell. */
-        fullCards: r.alerts.fullCards
+        fullCards: r.alerts.fullCards,
+        dashboard: r.dashboard
       });
       return DB;
+    });
+  }
+
+  /* Just the dashboard, for a scope chip. Reloading all twelve requests to
+     answer "and the last seven days?" would make every chip a full boot. */
+  function reloadDashboard() {
+    return REQUESTS.dashboard().then(function (d) {
+      DB.hydrateDashboard(d);
+      return d;
     });
   }
 
@@ -252,6 +287,7 @@ var Shop = (function () {
   return {
     load: load,
     reload: reload,
+    reloadDashboard: reloadDashboard,
     fail: fail,
     write: write,
 
