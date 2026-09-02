@@ -104,6 +104,22 @@ table.inv-tbl td.num, table.inv-tbl th.num { text-align: end; }
 .cust-card.fresh { border-color: var(--border-strong); border-style: dashed; }
 .cc-sizes { display: flex; gap: 5px; flex-wrap: wrap; }
 
+/* The stats sit on the BOTTOM of every card, however much is above them.
+
+   Without this a card with size chips is taller than one without, a card with
+   a debt chip taller again, and a row of them reads as a broken grid rather
+   than as a set. margin-top:auto in a column flex does the whole job — the
+   card is already `display:flex; flex-direction:column`. */
+.cust-card .cc-stats { margin-top: auto; }
+
+/* The little glyph that says what kind of timeline row this is. Muted and
+   fixed-width so a column of them lines up instead of shuffling with the
+   date beside it. */
+.tl-lead {
+  display: inline-block; min-width: 1.1em; text-align: center;
+  color: var(--dim); font-variant-numeric: tabular-nums;
+}
+
 /* ---- the paper stamp card ------------------------------------------------
    Drawn as the boxes it actually is, because the customer is holding the
    paper version while somebody looks at this. Wraps on a phone rather than
@@ -137,6 +153,19 @@ table.inv-tbl td.num, table.inv-tbl th.num { text-align: end; }
 }
 .cc-top b { display: block; font-size: 14px; font-weight: 700; }
 .cc-top small { color: var(--dim); font-size: 11.5px; font-variant-numeric: tabular-nums; display: block; }
+
+/* A PHONE NUMBER MUST NOT WRAP OR TRUNCATE. "+963 955 990 111" was breaking after the
+   third group and finishing "111" on its own line, which reads as two
+   numbers — and a half-read number is the one thing this field exists to be
+   read correctly. Ellipsis rather than wrap: a truncated number is visibly
+   truncated, where a wrapped one looks complete and is not.
+
+   The name and city get the same treatment for the same reason ("Aleppo ·
+   In-" / "store" is not a place), and min-width:0 lets the flex child shrink
+   enough for the ellipsis to happen at all. */
+.cc-top > div { min-width: 0; }
+.cc-top b,
+.cc-top small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border-top: 1px solid var(--border); padding-top: 11px; }
 .cc-stats div .eyebrow { font-size: 10px; display: block; margin-bottom: 1px; }
 .cc-stats div b { font-family: var(--font-head); font-weight: 800; font-size: 14.5px; font-variant-numeric: tabular-nums; }

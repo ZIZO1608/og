@@ -118,7 +118,25 @@ var POS = (function () {
     return v ? DB.stockAt(v, S.warehouse) : 0;
   }
 
-  function addVariant(v, silent) {
+  /* Record that somebody asked for a size the shop did not have.
+
+     Fire-and-forget on purpose: this must never slow down or interrupt a
+     sale, and a failure here is not something the cashier can act on. The
+     SERVER decides whether it is worth keeping — it re-checks the stock and
+     drops a repeat on the same day (server/lib/wants.js), so the till does
+     not have to remember what it already asked. */
+  function noteWant(v, via) {
+    if (!S.customerId || !v) return;
+    if (typeof Shop === 'undefined' || !Shop.live()) return;
+    try {
+      Shop.noteWant({
+        customerId: S.customerId, sku: v.sku, productId: v.productId,
+        size: v.size, source: via === 'scan' ? 'scan' : 'search'
+      }).catch(function () { /* the sale is what matters */ });
+    } catch (e) { /* never let a note stop a sale */ }
+  }
+
+  function addVariant(v, silent, via) {
     if (!v) return false;
     var p = DB.product(v.productId);
     var line = S.cart.filter(function (l) { return l.sku === v.sku; })[0];
@@ -142,6 +160,14 @@ var POS = (function () {
           toast(t('out_of_stock'), p.name + ' · ' + t('size') + ' ' + v.size, 'err');
         }
       }
+      /* ---- the wants list, without asking anybody to keep one ------------
+         This is the moment: a size was looked up, it is not in the shop, and
+         a customer is attached to the basket. Nobody types anything — the
+         habit already exists, and this keeps the result.
+
+         Only when it is out EVERYWHERE (`back <= 0`); a pair in the back is
+         not a want, it is a walk to the stockroom. */
+      if (back <= 0) noteWant(v, via);
       return false;
     }
 
@@ -174,7 +200,7 @@ var POS = (function () {
       }
       return false;
     }
-    return addVariant(v, silent);
+    return addVariant(v, silent, 'scan');
   }
 
   /* ------------------------------------------------- the cart/grid divider
@@ -1155,6 +1181,25 @@ var POS = (function () {
        is what they are handed before the reload replaces it. */
     sale.pointsEarned = earned;
 
+    /* ---- over the credit limit ------------------------------------------
+       The sale HAPPENED — the limit warns, it does not refuse (033), because
+       a regular going over on a Thursday is the call the person at the
+       counter is there to make. So this is said loudly and separately from
+       the receipt, and it does not block anything.
+
+       Nine seconds and 'warn', not 'err': nothing went wrong, and colouring
+       it as a failure would teach people to stop attaching a customer to the
+       sale — which loses the shop far more than the overage. */
+    var cw = server && server.warning;
+    if (cw && cw.code === 'over_credit_limit') {
+      toast(t('cu_over_limit'),
+        t('cu_over_limit_msg')
+          .replace('{n}', cw.name || '')
+          .replace('{a}', moneyUsdRaw(cw.owedAfter))
+          .replace('{b}', moneyUsdRaw(cw.limit)),
+        'warn', 9000);
+    }
+
     if (cust) {
       /* The till sells in base SYP, so the lira figure is the one that
          moves. spentUsdEquiv is deliberately left alone — it exists only to
@@ -1199,6 +1244,11 @@ var POS = (function () {
 
       job = DB.newPrintJob({
         customer: cust ? cust.name : t('walk_in'),
+        /* The till is the one place that KNOWS — the customer is already on
+           the basket. Everywhere else a print job is raised, this stays null
+           and somebody links it by hand, because a name match across Arabic
+           and Latin attaches the wrong person's order. */
+        customerId: cust ? cust.id : null,
         phone: cust ? cust.phone : '—',
         design: 'Custom print · ' + sale.id,
         lines: klines,
@@ -1827,6 +1877,11 @@ var POS = (function () {
     scanBarcode: scanBarcode,
     add: addVariant,
     saleOpen: saleOpen,
+    /* Repaint the foot — where the picked customer, the points and the total
+       live. Exported so a scanned loyalty card can drop somebody into the
+       basket without a full render(), which would rebuild the cart and lose
+       anything half-typed in the discount box. */
+    refresh: paintFoot,
     state: S
   };
 })();

@@ -29,6 +29,11 @@ import * as Auth from './auth.js';
 import * as Sync from './sync-worker.js';
 import * as Loyalty from './loyalty.js';
 
+/* How many rows the bell shows at most. Named, because the stamp block
+   below has to reserve a slot inside this budget for its summary row — and
+   a literal 8 in two places is one place that gets changed. */
+const MAX_ROWS = 8;
+
 const nowIso = () => new Date().toISOString();
 
 /* Whole days from now until `iso`. Negative means it has already passed. */
@@ -141,13 +146,64 @@ export function list(user) {
   if (can('customer.read') && user.role !== 'delivery') {
     const r = Loyalty.rules();
     if (Loyalty.stampsOn(r.mode)) {
-      for (const f of Loyalty.fullCards(r)) {
-        out.push({
-          key: 'stamps:' + f.customerId, icon: '★', tone: 'amber',
-          view: 'customers',
-          text: `${f.name} has a full card — ${f.stamps} of ${f.required}` +
-                (f.cardsOwed > 1 ? ` (${f.cardsOwed} rewards owed)` : '')
-        });
+      const full = Loyalty.fullCards(r);
+
+      /* CAPPED AT FIVE, then one summary row.
+
+         A bell is a list of things to do this morning, and it is read by
+         glancing. Sixty named rows is not a longer list, it is a different
+         object: the stock warnings and the overdue print jobs are still in
+         there, underneath, where nobody scrolls. The cap is here rather than
+         in the browser because the bell is computed per account on the server
+         and the browser must not have to decide what matters.
+
+         Five named, because five is a morning's work and the sixth is not
+         more urgent than the first. The summary row carries the rest and is
+         keyed on the COUNT — `stamps:more:12` — so reading it once does not
+         hide it when a thirteenth card fills. Keyed on its text it would come
+         back unread every time somebody bought a pair, which is the mistake
+         this file's header exists to record. */
+      const NAMED = 5;
+
+      /* The summary must SURVIVE the overall cap at the bottom of this
+         function, and reserving its slot here is the only way.
+
+         This bell has always ended in `out.slice(0, MAX_ROWS)`. Pushing five
+         names and a summary into a list that was already six long meant the
+         summary was the row that got cut — leaving four names and no hint
+         that eight more people were waiting. That is the silent undercount
+         this cap was added to prevent, arriving by a different door. Found by
+         the test, not by reading. */
+      const room = Math.max(0, MAX_ROWS - out.length);
+      if (room > 0) {
+        const needSummary = full.length > Math.min(NAMED, room);
+        const nameCount = Math.max(0, Math.min(NAMED, full.length,
+                                               needSummary ? room - 1 : room));
+
+        for (const f of full.slice(0, nameCount)) {
+          out.push({
+            key: 'stamps:' + f.customerId, icon: '★', tone: 'amber',
+            view: 'customers',
+            text: `${f.name} has a full card — ${f.stamps} of ${f.required}` +
+                  (f.cardsOwed > 1 ? ` (${f.cardsOwed} rewards owed)` : '')
+          });
+        }
+
+        const rest = full.length - nameCount;
+        if (rest > 0) {
+          /* Keyed on the TOTAL, so a thirteenth full card makes a summary
+             somebody has already read come back unread — which is the point
+             of it. Keyed on its text it would return every time anybody
+             bought a pair. */
+          out.push({
+            key: 'stamps:more:' + full.length, icon: '★', tone: 'amber',
+            view: 'customers',
+            text: nameCount
+              ? `${rest} more ${rest === 1 ? 'customer has' : 'customers have'} ` +
+                `a full card — ${full.length} in total`
+              : `${rest} ${rest === 1 ? 'customer has' : 'customers have'} a full card`
+          });
+        }
       }
     }
   }
@@ -190,7 +246,7 @@ export function list(user) {
   const seen = new Set(
     d.prepare('SELECT key FROM notification_reads WHERE user_id = ?').all(user.id).map((r) => r.key)
   );
-  return out.slice(0, 8).map((n) => Object.assign({ read: seen.has(n.key) }, n));
+  return out.slice(0, MAX_ROWS).map((n) => Object.assign({ read: seen.has(n.key) }, n));
 }
 
 /* One alert, or every one currently showing when nothing is named. */

@@ -150,6 +150,23 @@
 .cal-rule.v { width: 1mm; height: 10mm; }
 .cal-sheet small { font: 700 7pt Menlo, Consolas, monospace; color: #000; }
 
+/* ---- the roll-size marks -------------------------------------------------
+   Four L-shaped corner marks at the exact edges of the sticker the app
+   believes is loaded. Somebody holding the printed label sees at a glance
+   whether they land on its corners — no measuring, no arithmetic. That is
+   the only way to settle which roll is in the machine: the config says
+   30x30, js/labels60.js is built around 60x40, and the database's own
+   template row is named "unconfirmed roll size".
+
+   Pure black, 1px-equivalent strokes at 0.4mm: a thermal head has no grey,
+   and a hairline the driver dithers comes off the roll as speckle. */
+.cal-corners { position: relative; margin-bottom: 3mm; }
+.cal-c { position: absolute; width: 4mm; height: 4mm; }
+.cal-c.tl { top: 0; left: 0; border-top: .4mm solid #000; border-left: .4mm solid #000; }
+.cal-c.tr { top: 0; right: 0; border-top: .4mm solid #000; border-right: .4mm solid #000; }
+.cal-c.bl { bottom: 0; left: 0; border-bottom: .4mm solid #000; border-left: .4mm solid #000; }
+.cal-c.br { bottom: 0; right: 0; border-bottom: .4mm solid #000; border-right: .4mm solid #000; }
+
 /* ---- the driver's round -------------------------------------------------
    The only screen in this app designed for a phone held in one hand,
    outdoors, by someone who is not sitting down. That drives every decision

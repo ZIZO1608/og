@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { load, maybe, envFileExists, envFilePath } from '../lib/env.js';
 import * as DB from '../lib/db.js';
 import * as SB from '../lib/supabase.js';
+import * as PermCheck from '../lib/permcheck.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -41,10 +42,33 @@ const GREEN = '\x1b[32m', YELLOW = '\x1b[33m', DIM = '\x1b[2m', BOLD = '\x1b[1m'
 const ok    = (m) => console.log(`  ${GREEN}OK${OFF}    ${m}`);
 const warn  = (m) => console.log(`  ${YELLOW}NOTE${OFF}  ${m}`);
 const hint  = (m) => console.log(`        ${DIM}${m}${OFF}`);
+/* The one condition in this file that is NOT survivable. Everything else here
+   reports a shop that can still sell shoes; a guard that does not guard is a
+   different kind of fact, and index.js refuses to start on it. */
+const RED = '[31m';
+const bad   = (m) => console.log(`  ${RED}STOP${OFF}  ${m}`);
 
 console.log('');
 console.log(`${BOLD}  Checking the shop before it opens${OFF}`);
 console.log('');
+
+/* ---- 0: the permission names ---------------------------------------------
+   First, because it is the one check here that does not depend on the
+   database, the network or a printer — it is a property of the source. And
+   because a wrong permission name is the one fault in this file that is
+   INVISIBLE at runtime: Auth.can returns false for everybody, the guard reads
+   like a guard, and nothing complains. server/index.js refuses to start on it;
+   this says so before the launcher gets that far. */
+try {
+  const { checked, dynamic } = PermCheck.assertPermissionNames();
+  ok(`${checked} permission names all exist` +
+     (dynamic ? ` (${dynamic} passed as a variable, not checkable here)` : ''));
+} catch (e) {
+  bad('A permission name does not exist — the guard using it guards nothing.');
+  for (const o of (e.offences || [])) hint(`${o.file}:${o.line}  '${o.name}'`);
+  hint('Fix the name, or add it to ALL_PERMISSIONS in server/lib/auth.js.');
+  hint('The server will REFUSE to start until this is fixed.');
+}
 
 /* ---- 1 + 2 + 3: the local database, which is the real system ------------- */
 

@@ -56,6 +56,7 @@ import { normPhone } from './text.js';
 const SELECT = `
   SELECT c.id, c.name, c.phone, c.city, c.source, c.address, c.note,
          c.loyalty_points, c.archived, c.demo, c.created_at, c.updated_at,
+         c.credit_limit, c.no_credit, c.merged_into,
          COALESCE(agg.spent_syp, 0)       AS spent_syp,
          COALESCE(agg.spent_usd, 0)       AS spent_usd,
          COALESCE(agg.spent_usd_equiv, 0) AS spent_usd_equiv,
@@ -357,6 +358,12 @@ export function deliveriesFor(id, limit = 100) {
 
 const FIELDS = ['name', 'phone', 'city', 'source', 'address', 'note'];
 
+/* Numbers and flags, kept OUT of FIELDS because clean() turns an empty string
+   into null for text — which is right for an address and catastrophic for a
+   flag, where '' would silently clear somebody's no-credit mark. */
+const NUM_FIELDS = ['credit_limit'];
+const FLAG_FIELDS = ['no_credit'];
+
 function clean(fields) {
   const out = {};
   for (const k of FIELDS) {
@@ -454,6 +461,28 @@ export function update(id, fields, userId) {
      through the same path would make an empty string archive somebody. */
   if (fields.archived !== undefined) f.archived = fields.archived ? 1 : 0;
 
+  /* The credit rules, for the same reason and with one extra care.
+
+     credit_limit is IN USD CENTS (033) and is NULLABLE, where null means "no
+     limit set" and 0 means "no credit at all" — two different instructions.
+     So an empty string clears it to null and a 0 is kept as 0. Running it
+     through clean() would have made '' into null, which is right, and '0'
+     into the STRING '0', which is not. */
+  for (const k of NUM_FIELDS) {
+    if (fields[k] === undefined) continue;
+    const v = fields[k];
+    if (v === null || v === '') { f[k] = null; continue; }
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n) || n < 0) {
+      throw Object.assign(new Error(`${k} must be a number, or blank for no limit`),
+                          { code: 'bad_request' });
+    }
+    f[k] = n;
+  }
+  for (const k of FLAG_FIELDS) {
+    if (fields[k] !== undefined) f[k] = fields[k] ? 1 : 0;
+  }
+
   const keys = Object.keys(f);
   if (!keys.length) throw new Error('nothing to update');
   if (f.name === null) throw new Error('a customer needs a name');
@@ -491,6 +520,185 @@ export function update(id, fields, userId) {
       existing: taken
     } : null
   };
+}
+
+/* ---- merging two records that are one person -----------------------------
+   Mixed-script names guarantee duplicates within a month: the same customer
+   written in Arabic on Tuesday and in Latin on Thursday, or added twice
+   because the phone was typed with a different prefix. This is the repair.
+
+   THE USER PICKS WHICH RECORD SURVIVES. Not the older one, not the one with
+   more sales — a person is looking at both and knows which name is spelled
+   right. Everything else follows.
+
+   THE LOSER IS ARCHIVED WITH A POINTER, NEVER DELETED. Deleting takes the
+   audit trail with it and leaves every invoice that named the row pointing at
+   nothing. `merged_into` (033) means anything still holding the old id can
+   follow it, and "these two were the same person" stays a recorded fact.
+
+   ONE TRANSACTION, and logChange on EVERY table it touches — a repointed row
+   that never reaches the mirror is a row that exists here and nowhere else,
+   and the mirror looks healthy while it does.
+
+   WHAT IS NOT TOUCHED, deliberately:
+     * sales.customer_name — frozen, the same rule the whole of Stage E
+       settled: a receipt is a record of that moment.
+     * stamps — derived from sales, so they follow the repointed sales on
+       their own. Nothing to move and nothing to reconcile.
+     * deliveries — they have no customer_id; they reach a person through
+       their sale, which has just moved. Nothing to do.
+     * debt_payments — likewise attached to a sale, not a customer. */
+export function merge(keepId, loseId, userId) {
+  if (keepId === loseId) {
+    throw Object.assign(new Error('that is the same record twice'), { code: 'same_customer' });
+  }
+
+  return tx((d) => {
+    const keep = d.prepare('SELECT * FROM customers WHERE id = ?').get(keepId);
+    const lose = d.prepare('SELECT * FROM customers WHERE id = ?').get(loseId);
+    if (!keep || !lose) {
+      throw Object.assign(new Error('no such customer'), { code: 'not_found' });
+    }
+    if (keep.archived) {
+      throw Object.assign(
+        new Error(`${keep.name} is archived — restore them before merging into them.`),
+        { code: 'archived' });
+    }
+    if (lose.merged_into) {
+      throw Object.assign(
+        new Error(`${lose.name} has already been merged.`), { code: 'already_merged' });
+    }
+
+    /* Every table that names a customer.
+
+       The ids are read BEFORE the update, not after. Reading them afterwards
+       from the survivor returns everything that customer has ever had — so
+       the merge logged "merged from …" against rows that never moved, and
+       the count it reported was the survivor's whole history rather than what
+       it actually did. Found by the test asserting one entry per moved row.
+
+       logChange PER ROW, not per table: the mirror replays change_log row by
+       row (supabase-sync.js), so a single entry saying "sales changed" would
+       push nothing at all and every repointed invoice would stay attached to
+       the losing customer in the mirror, forever. */
+    const moved = {};
+    const repoint = (table, column) => {
+      const ids = d.prepare(
+        `SELECT id AS rid FROM ${table} WHERE ${column} = ?`).all(loseId).map((r) => r.rid);
+      moved[table] = ids.length;
+      if (!ids.length) return;
+      d.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ?`).run(keepId, loseId);
+      for (const rid of ids) {
+        logChange(table, rid, 'update', userId, `merged from customer ${loseId}`);
+      }
+    };
+
+    /* sales first — stamps and spend both derive from it. Order does not
+       matter for correctness inside one transaction; it matters for reading
+       the list this returns. */
+    repoint('sales', 'customer_id');
+    repoint('print_jobs', 'customer_id');
+    repoint('wants', 'customer_id');
+    repoint('loyalty_redemptions', 'customer_id');
+
+    /* ---- fold duplicate wants ---------------------------------------------
+       Both records asked for a 44, because they were the same person asking
+       twice under two names. Repointed as-is, the survivor now appears twice
+       on the "who is waiting" list and gets rung twice about one pair.
+
+       Wants.record only dedupes within a day, deliberately — asking again in
+       March after nothing arrived in January is a real second ask. But a
+       merge is the one moment we learn the two askers were one person, so it
+       is the moment to fold them.
+
+       KEEP THE EARLIEST ASK — that is when they actually wanted it, and it is
+       what puts them at the front of the queue when the box lands. KEEP THE
+       ANSWER if either was answered: "we told them" is true of the person,
+       and telling them again is the thing this fold exists to prevent. */
+    moved.wants_folded = 0;
+    const dupes = d.prepare(
+      `SELECT COALESCE(product_id, -1) AS pid, COALESCE(size, '') AS sz,
+              COUNT(*) AS n
+         FROM wants
+        WHERE customer_id = ?
+        GROUP BY pid, sz
+       HAVING n > 1`
+    ).all(keepId);
+
+    for (const g of dupes) {
+      const rows = d.prepare(
+        `SELECT id, at, closed_at, closed_note
+           FROM wants
+          WHERE customer_id = ?
+            AND COALESCE(product_id, -1) = ?
+            AND COALESCE(size, '') = ?
+          ORDER BY at ASC, id ASC`
+      ).all(keepId, g.pid, g.sz);
+
+      const survivor = rows[0];
+      const answered = rows.find((r) => r.closed_at);
+
+      /* The survivor takes the earliest `at` (it already has it, being first)
+         and the answer from whichever row carried one. */
+      if (answered && !survivor.closed_at) {
+        d.prepare('UPDATE wants SET closed_at = ?, closed_note = ? WHERE id = ?')
+         .run(answered.closed_at, answered.closed_note, survivor.id);
+        logChange('wants', survivor.id, 'update', userId,
+                  `merged: kept the answer from want ${answered.id}`);
+      }
+
+      for (const r of rows.slice(1)) {
+        d.prepare('DELETE FROM wants WHERE id = ?').run(r.id);
+        /* A DELETE has to be logged or the row lives on in the mirror
+           forever — the exact failure the demo purge caused before it called
+           logChange (CLAUDE.md). */
+        logChange('wants', r.id, 'delete', userId, `merged into want ${survivor.id}`);
+        moved.wants_folded++;
+      }
+    }
+
+    /* Points ADD. They were earned by one person under two records, and
+       taking the lower of the two would be the shop keeping the difference. */
+    const points = (keep.loyalty_points || 0) + (lose.loyalty_points || 0);
+
+    /* Fill in blanks on the survivor from the loser — a phone or an address
+       recorded on only one of the two records is still that person's, and
+       losing it is the commonest complaint about a merge. Never OVERWRITES:
+       the survivor is the record somebody chose. */
+    const fill = {};
+    for (const col of ['phone', 'city', 'address', 'note']) {
+      if ((keep[col] === null || keep[col] === '') && lose[col]) fill[col] = lose[col];
+    }
+    /* The stricter of the two credit rules wins: a no-credit flag on either
+       record was somebody's decision about this person, and a merge must not
+       be a way to clear it. */
+    const noCredit = (keep.no_credit || lose.no_credit) ? 1 : 0;
+    const limits = [keep.credit_limit, lose.credit_limit].filter((x) => x !== null && x !== undefined);
+    const creditLimit = limits.length ? Math.min(...limits) : null;
+
+    const at = nowIso();
+    const sets = ['loyalty_points = ?', 'no_credit = ?', 'credit_limit = ?', 'updated_at = ?'];
+    const args = [points, noCredit, creditLimit, at];
+    for (const col of Object.keys(fill)) { sets.unshift(`${col} = ?`); args.unshift(fill[col]); }
+    args.push(keepId);
+    d.prepare(`UPDATE customers SET ${sets.join(', ')} WHERE id = ?`).run(...args);
+    logChange('customers', keepId, 'update', userId, `merged in customer ${loseId}`);
+
+    d.prepare(
+      'UPDATE customers SET archived = 1, merged_into = ?, updated_at = ? WHERE id = ?'
+    ).run(keepId, at, loseId);
+    logChange('customers', loseId, 'update', userId, `merged into customer ${keepId}`);
+
+    return {
+      keep: byId(keepId),
+      losedId: loseId,
+      loseName: lose.name,
+      moved,
+      pointsBefore: { keep: keep.loyalty_points || 0, lose: lose.loyalty_points || 0 },
+      pointsAfter: points,
+      filled: Object.keys(fill)
+    };
+  });
 }
 
 export function archive(id, userId) {

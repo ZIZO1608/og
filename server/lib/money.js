@@ -213,6 +213,58 @@ export function openDebts() {
   ).all().map((s) => ({ ...s, balance: s.total - s.paid })).filter((s) => s.balance > 0);
 }
 
+/* One customer's open debts, oldest first, each with what it was worth THEN
+   and what it is worth NOW.
+
+   The shop freezes an exchange rate onto every sale, so it can answer this —
+   and refusing to would be a quiet lie. "Took 500,000 in March" is a
+   different sentence from "took $38 in March, which is $34 today", and the
+   second one is what the owner is actually deciding about.
+
+   `thenUsd` uses the sale's own frozen fx_rate. `nowUsd` uses the current
+   one. Both are cents, and both are only ever shown BESIDE the real figure
+   in the currency the customer actually owes — never instead of it.
+
+   Oldest first because that is the order they get chased in. */
+export function debtsForCustomer(customerId) {
+  const d = DB.get();
+  const now = d.prepare(
+    `SELECT rate FROM fx_rates WHERE base = 'USD' AND quote = 'SYP'
+      ORDER BY set_at DESC, id DESC LIMIT 1`).get();
+  const nowRate = now ? now.rate : null;
+
+  const rows = d.prepare(
+    `SELECT s.id, s.at, s.total, s.currency, s.fx_rate, s.fx_base,
+            COALESCE((SELECT SUM(p.amount) FROM debt_payments p WHERE p.sale_id = s.id), 0) AS paid
+       FROM sales s
+      WHERE s.customer_id = ? AND s.payment = 'credit' AND s.voided = 0
+      ORDER BY s.at ASC`
+  ).all(customerId);
+
+  const exp = {};
+  for (const c of d.prepare('SELECT code, minor_exp FROM currencies').all()) exp[c.code] = c.minor_exp;
+
+  return rows
+    .map((s) => {
+      const balance = s.total - s.paid;
+      const whole = balance / Math.pow(10, exp[s.currency] ?? 0);
+      /* A dollar debt is already dollars; only a lira one has a rate to cross. */
+      const thenUsd = s.currency === 'USD' ? Math.round(whole * 100)
+        : (s.fx_rate > 0 ? Math.round(whole / s.fx_rate * 100) : null);
+      const nowUsd = s.currency === 'USD' ? Math.round(whole * 100)
+        : (nowRate > 0 ? Math.round(whole / nowRate * 100) : null);
+      return {
+        id: s.id, at: s.at, total: s.total, paid: s.paid, balance,
+        currency: s.currency, fxRate: s.fx_rate,
+        thenUsd, nowUsd,
+        payments: d.prepare(
+          `SELECT id, at, amount, currency, method, note FROM debt_payments
+            WHERE sale_id = ? ORDER BY at`).all(s.id)
+      };
+    })
+    .filter((s) => s.balance > 0);
+}
+
 export function debtPayments({ saleId = null, limit = 200 } = {}) {
   const d = DB.get();
   return saleId

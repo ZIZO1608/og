@@ -77,6 +77,11 @@ export const ALL_PERMISSIONS = [
   { perm: 'profit.read',     group: 'money',     label: 'See profit' },
   { perm: 'money.read',      group: 'money',     label: 'See the money screen' },
   { perm: 'money.write',     group: 'money',     label: 'Record expenses and debts' },
+  /* Separate from money.read ON PURPOSE. A cashier takes a customer's cash
+     when they settle up — the money is in HER drawer, during HER shift, and
+     if she cannot record it her count comes up over with no explanation. That
+     does not entitle her to the shop's money screen. */
+  { perm: 'debt.collect',    group: 'money',     label: 'Take a payment against a debt' },
   { perm: 'discount.unlimited', group: 'money',  label: 'Discount past the limit' },
 
   { perm: 'print.read',      group: 'print',     label: 'See print jobs' },
@@ -116,6 +121,11 @@ const FORBIDDEN = {
     p === 'customer.read' || p === 'customer.write' ||
     p === 'cost.read' || p === 'profit.read' ||
     p.startsWith('money.') || p.startsWith('staff.') ||
+    /* Named, not matched. debt.collect deliberately does NOT start with
+       'money.' — see 033 — so the startsWith above sails straight past it,
+       and a permission that lets somebody take the shop's cash must never be
+       one a tick box can hand to another company. */
+    p === 'debt.collect' ||
     p.startsWith('delivery.') || p === 'discount.unlimited' ||
     /* A receipt payload carries the customer's name and phone number, so
        this follows customer.* rather than sitting on its own. */

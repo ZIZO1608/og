@@ -58,6 +58,9 @@ function shape(r) {
     collected: r.collected,
     currency: r.currency,
     customerName: r.customer_name || null,
+    /* The LINK to the person, so the board can open them. The NAME above is
+       the sale's frozen copy and stays the name that was written that day. */
+    customerId: r.customer_id || null,
     items: r.items || [],
     assignedAt: r.assigned_at,
     outAt: r.out_at,
@@ -67,7 +70,7 @@ function shape(r) {
 }
 
 const SELECT =
-  `SELECT d.*, u.name AS driver_name, s.customer_name
+  `SELECT d.*, u.name AS driver_name, s.customer_name, s.customer_id
      FROM deliveries d
      LEFT JOIN users u ON u.id = d.driver_id
      LEFT JOIN sales s ON s.id = d.sale_id`;

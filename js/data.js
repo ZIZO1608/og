@@ -543,6 +543,24 @@ var debtPayments = [];
    Nothing is hardcoded: an alert naming a product is naming one that is
    really out of stock. */
 var notifications = [];
+/* The COMPLETE list of customers holding a full stamp card, as ids. The bell
+   is capped at five named rows plus a summary — this is not capped, because
+   the Customers screen filter has to show all of them or the chip and the
+   list disagree. Computed on the server from the same call the alerts make. */
+var fullCards = [];
+
+/* WHICH LISTS ARE A WINDOW RATHER THAN THE WHOLE SET.
+
+   Every array here has a limit on it and that is right — a till does not
+   hold the shop history. What was wrong was the limit being invisible: the
+   dashboard sums DB.sales for revenue, the wants tab badges its length, the
+   timeline counts its events, and each of those reads as a fact about the
+   shop when it is a fact about the last N rows.
+
+   The server sends { shown, total, capped } per list now; this holds it, and
+   cappedNote() in js/app-util.js is what a screen draws when capped is true.
+   Same family as total_spent (A), Bulk.visibleIds (C) and the bell slice (F). */
+var caps = {};
 
 /* ----------------------------------------------------- 8. PARTNER FINANCE */
 
@@ -643,6 +661,12 @@ function mapCustomer(c) {
     /* Their own median gap between purchases, in days, or null below three
        purchases. Read DB.quietAfter(c) rather than this directly. */
     medianGapDays: c.median_gap_days == null ? null : Number(c.median_gap_days),
+    /* IN USD CENTS (033). null = no limit set; 0 = no credit at all. The two
+       are different instructions and the nullable column exists to tell them
+       apart, so this must not collapse to 0. */
+    creditLimit: c.credit_limit == null ? null : Number(c.credit_limit),
+    noCredit: !!c.no_credit,
+    mergedInto: c.merged_into == null ? null : Number(c.merged_into),
     createdAt: c.created_at ? new Date(c.created_at) : null,
     lastPurchaseDate: c.last_purchase_at ? new Date(c.last_purchase_at) : null,
     archived: !!c.archived,
@@ -1586,12 +1610,15 @@ var DB = {
      last redemption — and a second implementation in the browser would be a
      second answer to the same question, computed from the 200 sales this
      machine happens to hold. The alert key IS the fact: `stamps:<id>`. */
+  /* { shown, total, capped } for one of the windowed lists, or a safe
+     not-capped answer for a list nobody has flagged. */
+  cap: function (kind) {
+    return caps[kind] || { shown: 0, total: 0, capped: false };
+  },
+
   fullCardIds: function () {
     var out = {};
-    notifications.forEach(function (n) {
-      var m = /^stamps:(\d+)$/.exec(n.key || '');
-      if (m) out[Number(m[1])] = true;
-    });
+    fullCards.forEach(function (id) { out[id] = true; });
     return out;
   },
 
@@ -2294,6 +2321,11 @@ var DB = {
     var job = {
       id: DB.nextPrintId(),
       customer: f.customer,
+      /* The LINK, set only by a caller that actually knows who this is —
+         the till, where the customer is already attached to the basket.
+         Never matched from the name, which across two scripts attaches
+         somebody else's order. */
+      customerId: f.customerId || null,
       phone: f.phone,
       design: f.design,
       kind: lines ? 'kit' : 'bulk',
@@ -2321,7 +2353,7 @@ var DB = {
        the only copy anybody quotes down the phone. */
     pushPartner(function () {
       return Shop.newPrintJob({
-        customer: job.customer, phone: job.phone, design: job.design,
+        customer: job.customer, customerId: job.customerId, phone: job.phone, design: job.design,
         kind: job.kind, qty: job.qty, priority: job.priority,
         deadline: job.deadline ? new Date(job.deadline).toISOString() : null,
         price: job.price, cost: job.cost,
@@ -2736,6 +2768,22 @@ var DB = {
       notifications.length = 0;
       payload.notifications.forEach(function (n) { notifications.push(n); });
     }
+    /* Which of the incoming lists were windows. Recorded before anything
+       is drawn, so a screen that badges a count can say what it counted. */
+    caps = {};
+    [['sales', 'salesTotal', 'salesCapped', (payload.sales || []).length],
+     ['movements', 'movementsTotal', 'movementsCapped', (payload.movements || []).length],
+     ['deliveries', 'deliveriesTotal', 'deliveriesCapped', 0]].forEach(function (row) {
+      if (payload[row[1]] === undefined) return;
+      caps[row[0]] = {
+        shown: row[3], total: Number(payload[row[1]]) || 0, capped: !!payload[row[2]]
+      };
+    });
+
+    if (payload.fullCards) {
+      fullCards.length = 0;
+      payload.fullCards.forEach(function (id) { fullCards.push(Number(id)); });
+    }
 
     purchaseOrders.length = 0;
     (payload.purchaseOrders || []).forEach(function (o) {
@@ -2877,6 +2925,9 @@ function hydratePartner(p) {
 
       var job = {
         id: j.id, customer: j.customer, phone: j.phone, design: j.design,
+        /* The LINK, set only where a customer_id proves it — never matched
+           from the free-text name beside it. */
+        customerId: j.customer_id == null ? null : Number(j.customer_id),
         kind: j.kind, qty: j.qty, priority: j.priority, stage: j.stage,
         price: j.price, cost: j.cost,
         deadline: date(j.deadline), created: date(j.created_at),

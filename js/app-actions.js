@@ -343,7 +343,244 @@ var ACTIONS = {
      affordance on the page, and the two are allowed to differ. */
   'cu-list': function () { go('customers', null, null); },
 
+  /* Draw the rest of the timeline. A RENDER cap, not a fetch — the rows are
+     already in memory, so this redraws rather than asking the server again. */
+  'cu-tl-all': function () {
+    var host = document.getElementById('cuTl');
+    if (!host || !OG.tlRows) return;
+    OG.tlAll = true;
+    host.innerHTML = timelineHTML(OG.tlRows, true);
+  },
+
   'cu-edit': function (el) { openEditCustomer(+el.getAttribute('data-id')); },
+
+  /* ---- taking a payment against a debt -----------------------------------
+     `debt.collect`, which a cashier has and which does NOT give her the money
+     screen. The three guards are the server's — an opId so a retry cannot
+     take it twice, the balance recomputed inside the transaction, and
+     Sales.void refusing a part-paid sale — and none of them are restated
+     here, because a second copy of a money rule is one copy that is wrong. */
+  'cu-pay': function (el) {
+    if (!allow('debt.collect')) { toast(t('cu_take_payment'), t('no_access'), 'err'); return; }
+    var saleId = el.getAttribute('data-sale');
+    var cid = +el.getAttribute('data-cid');
+    var sale = DB.sale(saleId);
+    OG.payFor = { saleId: saleId, cid: cid };
+
+    openModal({
+      title: t('cu_take_payment') + ' · ' + esc(saleId), size: 'narrow',
+      body: '<label class="field"><span>' + t('amount') + '</span>' +
+          '<input class="inp num" id="cuPayAmt" type="number" min="1" inputmode="numeric"></label>' +
+        '<label class="field mt"><span>' + t('payment_method') + '</span>' +
+          '<select class="inp" id="cuPayMethod">' +
+            ['cash', 'sham', 'fuad', 'haram', 'card'].map(function (m) {
+              return '<option value="' + m + '">' + esc(DB.payLabel(m)) + '</option>';
+            }).join('') +
+          '</select></label>' +
+        '<label class="field mt"><span>' + t('note') + '</span>' +
+          '<input class="inp" id="cuPayNote" type="text"></label>' +
+        '<div class="partner-note mt">' + t('cu_pay_note') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+            '<button class="btn btn-primary" data-act="cu-pay-do">' + t('cu_take_payment') + '</button>',
+      onOpen: function () {
+        setTimeout(function () {
+          var i = document.getElementById('cuPayAmt');
+          if (i) i.focus();
+        }, 60);
+      }
+    });
+  },
+
+  'cu-pay-do': function () {
+    var ref = OG.payFor || {};
+    var amt = Math.round(Number((document.getElementById('cuPayAmt') || {}).value) || 0);
+    if (!(amt > 0)) {
+      toast(t('cu_take_payment'), t('cu_pay_amount_needed'), 'err');
+      return;
+    }
+    var method = (document.getElementById('cuPayMethod') || {}).value || 'cash';
+    var note = ((document.getElementById('cuPayNote') || {}).value || '').trim();
+    /* Generated once, HERE, not inside the send function — Shop.write can be
+       called again by a person tapping twice, and a fresh opId each time is
+       exactly the thing an opId exists to prevent. */
+    var opId = 'pay-' + ref.saleId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
+    Shop.write(
+      function () {
+        return Shop.payDebt({
+          saleId: ref.saleId, amount: amt, method: method,
+          note: note || null, opId: opId
+        });
+      },
+      function () { return null; },
+      function (res) {
+        closeModal();
+        render();
+        var left = res && res.payment ? res.payment.balance : null;
+        toast(t('cu_take_payment'),
+          nf(amt) + (left === 0
+            ? ' · ' + t('cu_debt_cleared')
+            : (left != null ? ' · ' + t('cu_still_owed').replace('{n}', nf(left)) : '')),
+          'ok', 4000);
+      }
+    );
+  },
+
+  /* ---- merging two records that are one person ---------------------------
+     Manager only on the server (staff.write); drawn only for them here so
+     nobody is offered a button that will refuse. */
+  /* Linking an old print job to a customer by hand. Reuses the same picker
+     shape as the attach-a-sale one — one idea, one interaction. */
+  'job-link': function (el) {
+    var jid = el.getAttribute('data-jid');
+    OG.linkJob = jid;
+    openModal({
+      title: t('pj_link'), size: 'narrow',
+      body: '<p style="margin-top:0">' + t('pj_link_ask').replace('{n}', esc(jid)) + '</p>' +
+        '<label class="field"><span>' + t('customer') + '</span>' +
+          '<input class="inp" id="pjQ" type="text" autocomplete="off" ' +
+            'placeholder="' + esc(t('customer_ph')) + '" data-change="pj-q"></label>' +
+        '<div id="pjHits" class="mt"></div>' +
+        '<div class="partner-note mt">' + t('pj_link_note') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>'
+    });
+    setTimeout(function () {
+      var i = document.getElementById('pjQ');
+      if (i) i.focus();
+      pjPaint('');
+    }, 60);
+  },
+
+  'job-link-do': function (el) {
+    var cid = +el.getAttribute('data-id');
+    var jid = OG.linkJob;
+    Shop.write(
+      function () { return Shop.linkJobCustomer(jid, cid); },
+      function () { return null; },
+      function () {
+        closeModal();
+        render();
+        var c = DB.customer(cid);
+        toast(t('pj_link'), (c ? c.name : '') + ' · ' + jid, 'ok', 3000);
+      }
+    );
+  },
+
+  'cu-merge': function (el) {
+    var keepId = +el.getAttribute('data-id');
+    var keep = DB.customer(keepId);
+    if (!keep) return;
+    OG.mergeKeep = keepId;
+    openModal({
+      title: t('cu_merge'), size: 'narrow',
+      body: '<p style="margin-top:0">' + t('cu_merge_ask').replace('{n}', nm(keep.name)) + '</p>' +
+        '<label class="field"><span>' + t('cu_merge_which') + '</span>' +
+          '<input class="inp" id="cuMergeQ" type="text" autocomplete="off" ' +
+            'placeholder="' + esc(t('customer_ph')) + '" data-change="cu-merge-q"></label>' +
+        '<div id="cuMergeHits" class="mt"></div>' +
+        '<div class="partner-note mt">' + t('cu_merge_note') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>'
+    });
+    setTimeout(function () {
+      var i = document.getElementById('cuMergeQ');
+      if (i) i.focus();
+      mergePaint('');
+    }, 60);
+  },
+
+  'cu-merge-do': function (el) {
+    var loseId = +el.getAttribute('data-id');
+    var keepId = OG.mergeKeep;
+    var keep = DB.customer(keepId), lose = DB.customer(loseId);
+    if (!keep || !lose) return;
+
+    /* A confirm that NAMES what will move, because this cannot be undone with
+       a button and "merge" on its own does not tell anybody what they are
+       agreeing to. */
+    openModal({
+      title: t('cu_merge'), size: 'narrow',
+      body: '<p style="margin-top:0">' +
+          t('cu_merge_confirm').replace('{a}', nm(lose.name)).replace('{b}', nm(keep.name)) + '</p>' +
+        '<ul class="ly-past">' +
+          '<li>' + t('cu_merge_sales').replace('{n}', nf(lose.visits || 0)) + '</li>' +
+          '<li>' + t('cu_merge_points')
+            .replace('{a}', nf(keep.loyaltyPoints || 0))
+            .replace('{b}', nf(lose.loyaltyPoints || 0))
+            .replace('{c}', nf((keep.loyaltyPoints || 0) + (lose.loyaltyPoints || 0))) + '</li>' +
+          '<li>' + t('cu_merge_archived').replace('{n}', nm(lose.name)) + '</li>' +
+        '</ul>' +
+        '<div class="partner-note mt">' + t('cu_merge_irreversible') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+            '<button class="btn btn-primary" data-act="cu-merge-go" data-id="' + loseId + '">' +
+              t('cu_merge') + '</button>'
+    });
+  },
+
+  'cu-merge-go': function (el) {
+    var loseId = +el.getAttribute('data-id');
+    var keepId = OG.mergeKeep;
+    Shop.write(
+      function () { return Shop.mergeCustomers(keepId, loseId); },
+      function () { return null; },
+      function (res) {
+        closeModal();
+        go('customers', null, keepId);
+        var moved = (res && res.moved) || {};
+        toast(t('cu_merge'),
+          t('cu_merged').replace('{n}', String(moved.sales || 0)) +
+            (res && res.pointsAfter != null ? ' · ' + nf(res.pointsAfter) + ' ' + t('points') : ''),
+          'ok', 5000);
+      }
+    );
+  },
+
+  /* ---- attaching a customer to a sale already rung up --------------------
+     Reuses the customer picker the till already has rather than inventing a
+     second one. The rules — who may, and how long after — are the server's;
+     this only asks the question. */
+  'sale-attach': function (el) {
+    var saleId = el.getAttribute('data-id');
+    var sale = DB.sale(saleId);
+    if (!sale) return;
+    OG.saSaleId = saleId;
+    openModal({
+      title: t('sa_attach'), size: 'narrow',
+      body: '<p style="margin-top:0">' + t('sa_ask').replace('{n}', esc(saleId)) + '</p>' +
+        '<label class="field"><span>' + t('customer') + '</span>' +
+          '<input class="inp" id="saQ" type="text" autocomplete="off" ' +
+            'placeholder="' + esc(t('customer_ph')) + '" data-change="sa-q"></label>' +
+        '<div id="saHits" class="mt"></div>' +
+        '<div class="partner-note mt">' + t('sa_note') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>'
+    });
+    setTimeout(function () {
+      var i = document.getElementById('saQ');
+      if (i) i.focus();
+      saPaint('');
+    }, 60);
+  },
+
+  'sale-attach-do': function (el) {
+    var saleId = el.getAttribute('data-sale');
+    var cid = +el.getAttribute('data-id');
+    var opId = 'attach-' + saleId + '-' + cid + '-' + Date.now();
+    Shop.write(
+      function () { return Shop.attachSaleCustomer(saleId, cid, opId); },
+      function () { return null; },
+      function (res) {
+        closeModal();
+        render();
+        /* A PLAIN name, not nm(): toast() escapes its message, so markup
+           passed in here reaches the screen as literal <bdi> tags. */
+        toast(t('sa_attach'),
+          ((res && res.customerName) || '') +
+            (res && res.pointsEarned
+              ? ' · +' + nf(res.pointsEarned) + ' ' + t('points')
+              : ''),
+          'ok', 4000);
+      }
+    );
+  },
 
   /* ---- cashing in a full stamp card -------------------------------------
      Nothing fires automatically at ten. The owner decides what the card is
@@ -406,6 +643,17 @@ var ACTIONS = {
       address: ((document.getElementById('cuAddr') || {}).value || '').trim(),
       note: ((document.getElementById('cuNote') || {}).value || '').trim()
     };
+
+    /* Dollars on screen, USD CENTS in the database — and BLANK stays blank.
+       '' means no limit set and 0 means no credit at all, so an empty box
+       must not become 0 on the way through. */
+    var limitEl = document.getElementById('cuLimit');
+    if (limitEl) {
+      var raw = String(limitEl.value || '').trim();
+      fields.credit_limit = raw === '' ? null : Math.round(Number(raw) * 100);
+    }
+    var ncEl = document.getElementById('cuNoCredit');
+    if (ncEl) fields.no_credit = ncEl.value === '1' ? 1 : 0;
     if (!fields.name) {
       toast(t('cu_edit'), OG.lang === 'ar' ? 'اكتب الاسم' : 'Enter a name', 'err');
       return;
@@ -484,6 +732,18 @@ var ACTIONS = {
   },
   'cust-filter': function (el) { OG.cust.filter = el.getAttribute('data-f'); render(); },
   'cust-size-clear': function () { OG.cust.size = ''; render(); },
+
+  /* From a product's size straight to the people who wear it. Sets the same
+     filter the chip clears, so what you arrive at is a state of the list
+     rather than a one-off view you cannot get back to. */
+  'cu-size': function (el) {
+    closeDrawer();
+    closeModal();
+    OG.cust.size = el.getAttribute('data-size') || '';
+    OG.cust.q = '';
+    OG.cust.filter = 'all';
+    go('customers', null, null);
+  },
   reorder: function (el) { openReorder(+el.getAttribute('data-id')); },
 
   'po-create': function (el) {
@@ -837,7 +1097,27 @@ var ACTIONS = {
     });
   },
 
-  'wh-tab': function (el) { OG.wh.tab = el.getAttribute('data-tab'); render(); },
+  'wh-tab': function (el) {
+    OG.wh.tab = el.getAttribute('data-tab');
+    /* The wants list is fetched, not hydrated — drop the cached copy on the
+       way in so opening the tab shows what is true now rather than what was
+       true when it was last opened. */
+    if (OG.wh.tab === 'wants') wantRows = null;
+    render();
+  },
+
+  /* "We came back to them." Never deletes the row — that the shop kept its
+     word is the half worth keeping. */
+  'wa-close': function (el) {
+    var id = +el.getAttribute('data-id');
+    Shop.closeWant(id, null)
+      .then(function () {
+        wantRows = null;
+        render();
+        toast(t('wa_wants'), t('wa_told'), 'ok', 2500);
+      })
+      .catch(function (err) { toast(t('wa_wants'), API.friendly(err), 'err', 5000); });
+  },
 
   /* The shortcuts on the warehouse home. Same as wh-tab, but it has to travel
      to the screen first — wh-tab alone would set the tab and re-render the

@@ -73,10 +73,12 @@ var Notify = (function () {
   /* Everything addressed to whoever is looking, newest first. Messages you
      sent yourself are included — they are the record of what you asked for —
      but they can never be unread, so they never raise the badge. */
+  var INBOX_SHOWN = 14;
+
   function inbox() {
     return DB.jobMessages.slice().sort(function (a, b) {
       return new Date(b.at) - new Date(a.at);
-    }).slice(0, 14);
+    }).slice(0, INBOX_SHOWN);
   }
 
   function panel() {
@@ -93,6 +95,16 @@ var Notify = (function () {
 
     if (!list.length) {
       return h + '<div class="nt-empty"><b>' + t('nt_empty') + '</b><span>' + t('nt_empty_sub') + '</span></div></div>';
+    }
+
+    /* The BADGE counts every unread message; this LIST shows the newest 14.
+       With more unread than that, the badge said 20, the panel showed 14, and
+       the other six were unreachable from here — the same shape as the bell's
+       cut summary row (Stage F). Say so rather than leaving somebody hunting. */
+    if (DB.jobMessages.length > INBOX_SHOWN) {
+      h += '<div class="nt-more">' +
+        t('nt_showing').replace('{a}', nf(INBOX_SHOWN)).replace('{b}', nf(DB.jobMessages.length)) +
+        '</div>';
     }
 
     h += '<div class="nt-list">';

@@ -107,20 +107,48 @@ function setRollPageSize(forced) {
    size does not match the roll that is actually loaded, and a barcode printed
    at 94% simply stops scanning — with nothing on screen to suggest why. The
    only honest test is to print a known length and measure it. */
+/* THE RULER TEST — and, since Stage G, the roll-size test too.
+
+   Two different questions, and this only ever answered the first:
+
+     1. IS THE PRINTER SCALING? The two 10mm rules answer that. If they come
+        off the roll at 9 or 11, the size in the driver does not match the
+        size on the label and everything printed is stretched.
+
+     2. WHAT ROLL IS ACTUALLY LOADED? Nothing answered this, and the code
+        disagrees with itself about it — `label.default_preset` says 30x30,
+        `js/labels60.js` is built entirely around 60x40, and the eighth row of
+        label_templates is named "60 x 40mm (unconfirmed roll size)" in the
+        database. Only somebody holding the roll can settle it.
+
+   So the sheet now prints CORNER MARKS at the edges of what the app believes
+   one sticker is. If the marks sit on the sticker's corners, the app is
+   right; if they fall inside it or off it, the number underneath them is what
+   to change. A person with a ruler and one printed sticker can answer it in
+   ten seconds, which is the whole point — no calculation, no arithmetic, just
+   "do these line up". */
 function openCalibration() {
   var dim = labelDim();
   var body =
     '<div class="cal-sheet" style="width:' + dim.w + 'mm">' +
+      /* The corner marks, at the exact edges of the believed sticker. */
+      '<div class="cal-corners" style="width:' + dim.w + 'mm;height:' + dim.h + 'mm">' +
+        '<i class="cal-c tl"></i><i class="cal-c tr"></i>' +
+        '<i class="cal-c bl"></i><i class="cal-c br"></i>' +
+      '</div>' +
       '<div class="cal-row"><span class="cal-rule h"></span><small>10 mm</small></div>' +
       '<div class="cal-row"><span class="cal-rule v"></span><small>10 mm tall</small></div>' +
-      '<div class="cal-row"><small>' + dim.w + ' &times; ' + dim.h + ' mm</small></div>' +
+      '<div class="cal-row"><small><b>' + dim.w + ' &times; ' + dim.h + ' mm</b> — ' +
+        t('hw_roll_claim') + '</small></div>' +
       '<div class="cal-row">' + Codes.code128SVG('OG-CAL-10MM', { module: 1.2, height: 26 }) + '</div>' +
     '</div>';
 
   openModal({
     title: t('hw_calibrate'),
     size: 'narrow',
-    body: body + '<div class="partner-note mt no-print">' + t('hw_calibrate_note') + '</div>',
+    body: body +
+      '<div class="partner-note mt no-print">' + t('hw_calibrate_note') + '</div>' +
+      '<div class="partner-note no-print">' + t('hw_roll_note') + '</div>',
     foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
           '<button class="btn btn-primary" data-act="print-now">' + t('print') + '</button>'
   });

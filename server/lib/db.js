@@ -145,9 +145,19 @@ export function tx(fn) {
 /* Record a change for the sync feed. Must be called inside the same
    transaction as the write it describes, or a client can observe the change
    log pointing at a row that is not committed yet. */
-export function logChange(tbl, rowId, op, userId, origin) {
+/* The fifth parameter is a NOTE, not an origin.
+
+   It used to be `origin` — "which device produced this, so a client can skip
+   echoes of its own writes" — and not one caller ever passed a device. They
+   all passed human notes: "points +250: goodwill", "merged from customer 84",
+   "attached to customer 12". Nothing read origin, so nothing broke; the day
+   echo-skipping is implemented those notes become bogus device ids and every
+   row carrying one is silently skipped. Migration 034 gave the note its own
+   column and moved origin to a sixth parameter, where it stays unused until
+   something actually sets it. */
+export function logChange(tbl, rowId, op, userId, note = null, origin = null) {
   get().prepare(
-    `INSERT INTO change_log (at, tbl, row_id, op, user_id, origin)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(nowIso(), tbl, String(rowId), op, userId ?? null, origin ?? null);
+    `INSERT INTO change_log (at, tbl, row_id, op, user_id, note, origin)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(nowIso(), tbl, String(rowId), op, userId ?? null, note ?? null, origin ?? null);
 }

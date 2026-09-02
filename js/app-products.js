@@ -177,6 +177,27 @@ function viewProducts() {
   return h;
 }
 
+/* How many customers on file wear this size — and a way through to them.
+
+   THIS IS THE PAYOFF for the size work in Stages A and C. A shipment landing
+   stops being "twelve pairs arrived" and becomes "six people to message", and
+   the six are already known: the server aggregates each customer's top sizes
+   from every non-voided sale they ever made.
+
+   Counted off the hydrated customer rows, which already carry `sizes` — no
+   request, and no second definition of what "wears a 43" means. */
+function wearers(v) {
+  if (typeof allow === 'function' && !allow('customer.read')) return '';
+  var n = DB.customers.filter(function (c) {
+    return !c.archived && (c.sizes || []).some(function (s) {
+      return String(s.size) === String(v.size);
+    });
+  }).length;
+  if (!n) return '';
+  return ' <span class="badge accent clickable" data-act="cu-size" data-size="' + esc(v.size) + '" ' +
+    'title="' + esc(t('pr_wearers_hint')) + '">' + nf(n) + ' ' + t('pr_wear') + '</span>';
+}
+
 function openProductDrawer(pid) {
   var p = DB.product(pid);
   if (!p) return;
@@ -235,7 +256,7 @@ function openProductDrawer(pid) {
       '<td class="num muted nowrap">' + v.barcode + '</td>' +
       '<td class="num"><b>' + v.qty + '</b></td>' +
       '<td><span class="badge neutral">' + v.shelf + '</span></td>' +
-      '<td>' + healthBadge(v.qty) + '</td>' +
+      '<td>' + healthBadge(v.qty) + wearers(v) + '</td>' +
       (canLabel
         ? '<td class="num"><input class="inp num lbl-qty-inp" type="number" min="1" max="99" value="1" style="width:56px"></td>' +
           '<td><button class="btn btn-sm" data-act="preview-labels" data-variant-sku="' + esc(v.sku) + '">' +

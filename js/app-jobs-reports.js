@@ -271,7 +271,21 @@ function openJobDrawer(id) {
     '<h3 style="font-size:19px;margin:4px 0 7px">' + esc(j.customer) + '</h3>' +
     (j.priority === 'urgent' ? '<span class="badge urgent">' + t('urgent') + '</span> ' : '') +
     (over ? '<span class="badge critical">' + t('overdue') + '</span> ' : '') +
-    '<span class="badge neutral num">' + tel(j.phone) + '</span></div>';
+    '<span class="badge neutral num">' + tel(j.phone) + '</span>' +
+    /* WHO this job is actually for. The free text above is what was typed at
+       the time; this is the link, and migration 032 deliberately left every
+       job it could not PROVE unlinked — for a person to link. This is that
+       person's control; without it the migration was an instruction to
+       nobody. Never matched from the name: across two scripts that attaches
+       somebody else's order. */
+    (j.customerId && DB.customer(j.customerId)
+      ? ' <span class="badge accent clickable" data-act="cu-open" data-id="' + j.customerId + '">' +
+          nm(DB.customer(j.customerId).name) + ' ›</span>'
+      : (allow('print.write') && allow('customer.read')
+          ? ' <button class="btn btn-sm" data-act="job-link" data-jid="' + esc(j.id) + '">+ ' +
+              t('pj_link') + '</button>'
+          : '')) +
+    '</div>';
 
   /* The handover sits above the progress bar, because until Yalla Wear has
      accepted, the stage tracker is describing something that has not started. */
@@ -395,6 +409,17 @@ function viewReports() {
   h += '<div class="card mb"><div class="card-head"><h3>' + t(tabs.filter(function (x) { return x[0] === OG.rep.tab; })[0][1]) + '</h3>' +
     '<div class="card-actions muted small">' + fmtDate(daysAgo(179)) + ' — ' + fmtDate(TODAY) + '</div></div>' +
     '<div class="card-body"><div class="chart-box" style="height:250px"><canvas id="repChart"></canvas></div></div></div>';
+
+  /* The sales and profit tabs are BUILT from DB.sales — monthlySales(),
+     profitByType() and every total under them — and that array is the last
+     200 the server sent. On a shop with more, this page charts a window and
+     reads as the year. Say which. */
+  if (OG.rep.tab === 'sales' || OG.rep.tab === 'profit') {
+    h += cappedNote(DB.cap('sales'), t('invoices').toLowerCase());
+  }
+  if (OG.rep.tab === 'inventory') {
+    h += cappedNote(DB.cap('movements'), t('movement').toLowerCase());
+  }
 
   h += repTable();
   return h;

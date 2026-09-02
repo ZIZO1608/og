@@ -87,7 +87,7 @@ var Shop = (function () {
 
     /* Computed per account, so it arrives already filtered to what this
        person may see and already marked read or not. */
-    alerts:   function () { return soft(API.get('/api/notifications'), { notifications: [] }); }
+    alerts:   function () { return soft(API.get('/api/notifications'), { notifications: [], fullCards: [] }); }
   };
 
   function load() {
@@ -103,14 +103,20 @@ var Shop = (function () {
         products: r.catalogue.products,
         customers: r.customers.customers,
         sales: r.sales.sales,
+        salesTotal: r.sales.salesTotal,
+        salesCapped: r.sales.salesCapped,
         movements: r.movements.movements,
+        movementsTotal: r.movements.movementsTotal,
+        movementsCapped: r.movements.movementsCapped,
         partner: r.partner,
         purchaseOrders: r.purchase.purchaseOrders,
         money: r.money,
         stockCounts: r.counts.stockCounts,
         suppliers: r.suppliers.suppliers,
         employees: r.employees.employees,
-        notifications: r.alerts.notifications
+        notifications: r.alerts.notifications,
+        /* The uncapped full-card ids that sit behind the capped bell. */
+        fullCards: r.alerts.fullCards
       });
       return DB;
     });
@@ -338,6 +344,38 @@ var Shop = (function () {
     saveCountLines: function (id, lines) { return API.put('/api/stock-counts/' + id + '/lines', { lines: lines }); },
     postCount:      function (id)        { return API.post('/api/stock-counts/' + id + '/post', {}); },
     cancelCount:    function (id)        { return API.post('/api/stock-counts/' + id + '/cancel', {}); },
+
+    /* ---- the wants list ----
+       noteWant is deliberately NOT routed through Shop.write: it is a note,
+       not a change to the shop, and Shop.write would re-download the whole
+       catalogue for it — in the middle of a sale. */
+    noteWant: function (body) { return API.post('/api/wants', body); },
+    closeWant: function (id, note) { return API.post('/api/wants/' + id + '/close', { note: note || null }); },
+    wantsFor: function (q) {
+      var qs = q && q.sku ? '?sku=' + encodeURIComponent(q.sku)
+             : q && q.productId ? '?product=' + encodeURIComponent(q.productId) : '';
+      return API.get('/api/wants' + qs);
+    },
+
+    /* `payDebt` already exists further down, in the drawer block — the same
+       route, the same shape. One key, not two: an object literal with the
+       name twice silently keeps the last, which is a coin toss written as
+       code. The opId is the CALLER's, generated once before the request so a
+       retry carries the same one; generating it inside would make every retry
+       a new payment, the exact failure applied_ops exists to prevent. */
+    mergeCustomers: function (keepId, loseId) {
+      return API.post('/api/customers/' + keepId + '/merge', { loseId: loseId });
+    },
+    linkJobCustomer: function (jobId, customerId) {
+      return API.patch('/api/print-jobs/' + encodeURIComponent(jobId) + '/customer',
+                       { customerId: customerId });
+    },
+
+    /* Attaching a customer to a sale that was rung up without one. */
+    attachSaleCustomer: function (saleId, customerId, opId) {
+      return API.post('/api/sales/' + encodeURIComponent(saleId) + '/customer',
+                      { customerId: customerId, opId: opId || null });
+    },
 
     /* The stamp card. Fetched per customer rather than hydrated with the
        list: it is derived from every sale that person ever made, so it

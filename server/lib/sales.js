@@ -146,6 +146,9 @@ export function record({
        the points were never earned, and nothing anywhere said so. A sale that
        refuses is a sale someone can fix. */
     let cust = null;
+    /* Set by the credit block below, read after the basket is priced. */
+    let creditLimit = null;
+    let creditWarning = null;
     if (customerId !== null && customerId !== undefined && customerId !== '') {
       cust = d.prepare(
         'SELECT id, name, loyalty_points, archived FROM customers WHERE id = ?'
@@ -161,6 +164,43 @@ export function record({
         e.code = 'unknown_customer';
         throw e;
       }
+    }
+
+    /* ---- credit ----------------------------------------------------------
+       Three rules, and only two of them are policy.
+
+       A DEBT OWED BY NOBODY IS NOT A DEBT. Selling on credit with no customer
+       attached books money against a walk-in: no name to chase, no phone to
+       ring, and it never arrives. That is refused outright and is not a
+       judgement anybody at the counter gets to make.
+
+       The FLAG refuses. `no_credit` is the owner having already decided about
+       this person, and a cashier overriding it at the counter is the decision
+       not being made at all.
+
+       The LIMIT warns and lets the sale through. A regular going 20,000 over
+       on a Thursday is exactly the call the person at the counter is there to
+       make — and a till that refuses it teaches them to stop attaching a
+       customer to the sale, which loses the shop far more than the 20,000.
+       The warning rides back on the sale so the screen can say it. */
+    if (payment === 'credit') {
+      if (!cust) {
+        const e = new Error('A credit sale needs a customer — nobody to chase otherwise.');
+        e.code = 'credit_needs_customer';
+        throw e;
+      }
+      const cr = d.prepare(
+        'SELECT credit_limit, no_credit FROM customers WHERE id = ?').get(cust.id) || {};
+      if (cr.no_credit) {
+        const e = new Error(`${cust.name} is marked no credit.`);
+        e.code = 'no_credit';
+        throw e;
+      }
+      /* The LIMIT needs the sale total, which is not priced yet — checked
+         further down, once it is. Both halves are inside the same
+         transaction either way. */
+      creditLimit = (cr.credit_limit === null || cr.credit_limit === undefined)
+        ? null : Number(cr.credit_limit);
     }
 
     /* ---- price the basket ------------------------------------------------ */
@@ -283,6 +323,57 @@ export function record({
     /* Points earned have to be known before the row is written — the INSERT
        below needs the number, and it is computed from `cust` further down.
        Priced here so both the row and the response agree with each other. */
+    /* The credit limit, now that there is a total to test it against.
+
+       WARNS, does not refuse — see the credit block above for why.
+
+       EVERYTHING HERE IS IN USD CENTS. The limit is stored that way (033),
+       because a limit written in lira decays as the currency moves and stops
+       being a ceiling without anybody changing it. What is owed is converted
+       PER SALE at that sale's own frozen fx_rate — the identical arithmetic
+       to customers.spent_usd_equiv, which is what that figure was built for.
+       Summing sales.total across currencies would be the same mistake Stage A
+       took out of total_spent: a $45 sale and a 45-lira sale are not 90 of
+       anything.
+
+       Recomputed rather than read from a stored balance: there is no stored
+       balance, deliberately (Money.openDebts), and the same rule has to hold
+       whichever screen asks. */
+    if (creditLimit !== null && cust) {
+      const owedUsd = d.prepare(
+        `SELECT COALESCE(SUM(
+                  CASE WHEN s.fx_base = 'USD' AND s.fx_rate > 0
+                       THEN (s.total - COALESCE((SELECT SUM(p.amount) FROM debt_payments p
+                                                  WHERE p.sale_id = s.id), 0))
+                            * 100.0
+                            / (CASE cu.minor_exp WHEN 0 THEN 1 WHEN 1 THEN 10
+                                                 WHEN 2 THEN 100 WHEN 3 THEN 1000 ELSE 1 END)
+                            / s.fx_rate
+                       ELSE 0 END), 0) AS usd
+           FROM sales s
+           JOIN currencies cu ON cu.code = s.currency
+          WHERE s.customer_id = ? AND s.voided = 0 AND s.payment = 'credit'`
+      ).get(cust.id).usd;
+      const before = Math.max(0, Math.round(owedUsd));
+
+      /* This sale, at ITS rate — the one just frozen onto the row above. */
+      const thisUsd = Math.round(
+        total * 100 / Math.pow(10, minorExp(settle)) / (rate > 0 ? rate : 1));
+
+      if (before + thisUsd > creditLimit) {
+        creditWarning = {
+          code: 'over_credit_limit',
+          name: cust.name,
+          /* All four in USD cents, and the browser says so. */
+          limit: creditLimit,
+          owedBefore: before,
+          owedAfter: before + thisUsd,
+          over: before + thisUsd - creditLimit,
+          thisSaleUsd: thisUsd
+        };
+      }
+    }
+
     let earnedForRow = 0;
     if (cust) {
       const per1000ForRow = Number(d.prepare(
@@ -359,7 +450,11 @@ export function record({
       note: note ?? null,
       /* The till needs this to draw the QR on the receipt it is about to
          print. It is not a secret from the person who just made the sale. */
-      publicToken: token
+      publicToken: token,
+      /* The sale HAPPENED. This is a remark on top of it, not a refusal —
+         null when there is nothing to say. Carried on the result rather than
+         thrown so the receipt still prints and the cashier is still told. */
+      warning: creditWarning
     };
 
     if (opId) {
@@ -421,6 +516,113 @@ export function recent(limit = 50) {
    A void is not a delete. The row stays, flagged, and returning the stock
    writes its own movements — so the trail shows a sale happened and was
    reversed, which is exactly what an auditor, or you, needs to see. */
+/* ---- attaching a customer to a sale after the fact ------------------------
+   Half of all sales are anonymous, and the cashier often realises the person
+   is a regular once she is already at payment. Until now there was no way
+   back: customer_id was written once in the INSERT, and the only UPDATE on
+   this table anywhere was the void flag.
+
+   FOUR THINGS HAVE TO BE TRUE AT ONCE, so they are one transaction:
+
+     1. The sale gains the customer.
+     2. The points it would have earned are earned NOW, at the rate stored on
+        the sale rather than today's — the sale is a record of a moment, and
+        re-pricing it against a rate that has since moved would pay out a
+        different number than the receipt showed.
+     3. `points_earned` on the row is filled in, so the invoice, the timeline
+        and the customer's balance all quote the same figure — and so a later
+        void has something to claw back (see the void path above).
+     4. Stamps need no code at all. They are counted from non-voided sales
+        that have a customer_id, so this UPDATE earns them.
+
+   WHAT IS DELIBERATELY NOT DONE: `customer_name` is left exactly as it was.
+   It is denormalised on purpose — a receipt is a record of that moment — and
+   the walk-in who was served as a walk-in was, at that moment, a walk-in. The
+   same rule keeps an old invoice spelling a renamed customer the old way.
+
+   Refuses a sale that already has a customer. Moving a sale from one person
+   to another is not this — it is two corrections, and it would have to take
+   points off somebody who may have spent them. */
+export function attachCustomer(saleId, customerId, { userId, opId = null, canBackdate = false } = {}) {
+  return tx((d) => {
+    if (opId) {
+      const seen = d.prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
+      if (seen) return JSON.parse(seen.result);
+    }
+
+    const s = d.prepare('SELECT * FROM sales WHERE id = ?').get(saleId);
+    if (!s) throw Object.assign(new Error('no such sale'), { code: 'not_found' });
+    if (s.voided) {
+      throw Object.assign(new Error('that sale is voided'), { code: 'voided' });
+    }
+    if (s.customer_id) {
+      throw Object.assign(
+        new Error(`${saleId} already belongs to ${s.customer_name || 'a customer'}.`),
+        { code: 'already_attached' });
+    }
+
+    const cust = d.prepare(
+      'SELECT id, name, archived FROM customers WHERE id = ?').get(customerId);
+    if (!cust) throw Object.assign(new Error('no such customer'), { code: 'unknown_customer' });
+    if (cust.archived) {
+      throw Object.assign(new Error(`${cust.name} is archived.`), { code: 'archived' });
+    }
+
+    /* HOW LONG AFTER. The cashier who rang it up can fix her own shift; older
+       than that is the manager's, because by then the drawer has been counted
+       and somebody is correcting history rather than finishing a sale.
+
+       Resolved from the shift the sale was posted into, not from a clock:
+       "same shift" is the unit the shop actually works in, and a sale at
+       23:55 is not yesterday's problem at 00:05. */
+    if (!canBackdate) {
+      const open = d.prepare(
+        "SELECT id FROM shifts WHERE closed_at IS NULL ORDER BY opened_at DESC LIMIT 1").get();
+      const sameShift = open && s.shift_id && open.id === s.shift_id;
+      if (!sameShift) {
+        throw Object.assign(
+          new Error('That sale is from an earlier shift — a manager can still attach it.'),
+          { code: 'too_late' });
+      }
+    }
+
+    /* The rate the SALE was settled at, not today's. */
+    const per1000 = Number((d.prepare(
+      "SELECT value FROM config WHERE key = 'loyalty.points_per_1000'").get() || {}).value) || 0;
+    const cur = d.prepare('SELECT minor_exp FROM currencies WHERE code = ?').get(s.currency);
+    const whole = s.total / Math.pow(10, cur ? cur.minor_exp : 0);
+    const earned = Math.round(whole / 1000 * per1000);
+
+    const at = nowIso();
+    d.prepare(
+      `UPDATE sales SET customer_id = ?, points_earned = ? WHERE id = ?`
+    ).run(customerId, earned, saleId);
+    logChange('sales', saleId, 'update', userId, `attached to customer ${customerId}`);
+
+    if (earned) {
+      d.prepare(
+        'UPDATE customers SET loyalty_points = loyalty_points + ?, updated_at = ? WHERE id = ?'
+      ).run(earned, at, customerId);
+      logChange('customers', customerId, 'update', userId,
+                `+${earned} points from ${saleId} (attached)`);
+    }
+
+    const out = {
+      saleId, customerId, customerName: cust.name,
+      pointsEarned: earned,
+      /* Named so the caller can say it out loud: the customer_name on the
+         invoice is unchanged and that is not an oversight. */
+      invoiceNameUnchanged: s.customer_name || null
+    };
+
+    if (opId) {
+      d.prepare('INSERT INTO applied_ops (op_id, at, user_id, kind, result) VALUES (?,?,?,?,?)')
+       .run(opId, at, userId ?? null, 'sale_attach', JSON.stringify(out));
+    }
+    return out;
+  });
+}
+
 export function voidSale(id, { reason, userId }) {
   return tx((d) => {
     const s = d.prepare('SELECT * FROM sales WHERE id = ?').get(id);

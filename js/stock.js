@@ -308,7 +308,12 @@ var Stock = (function () {
       '<th class="num">' + t('st_diff') + '</th>' +
     '</tr></thead><tbody>';
 
-    list.slice(0, 120).forEach(function (r) {
+    var SHEET_ROWS = 120;
+    /* The COUNT above this table ("45 / 380 counted") is over every live
+       variant; this table shows the first 120. The number is right and the
+       list is a window — the safe direction of the family, but somebody
+       reconciling a size that is not in the 120 has nowhere to look. */
+    list.slice(0, SHEET_ROWS).forEach(function (r) {
       var cls = !r.has ? '' : r.diff === 0 ? 'st-ok' : r.diff < 0 ? 'st-short' : 'st-over';
       h += '<tr class="' + cls + '">' +
         '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
@@ -327,8 +332,11 @@ var Stock = (function () {
     });
 
     h += '</tbody></table></div>';
-    if (list.length > 120) {
-      h += '<div class="partner-note mt">' + t('st_showing').replace('{n}', 120)
+    /* This screen ALREADY said so, and is the one place in the codebase that
+       did before this sweep. Same constant as the slice above it now, because
+       120 written twice is one of them that drifts. */
+    if (list.length > SHEET_ROWS) {
+      h += '<div class="partner-note mt">' + t('st_showing').replace('{n}', SHEET_ROWS)
              .replace('{t}', list.length) + '</div>';
     }
     return h;

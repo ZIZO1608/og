@@ -324,6 +324,24 @@ const TABLES = {
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM customers WHERE id = ?').get(key.id),
     mapRow: (r) => r
   },
+
+  /* ---- the wants list --------------------------------------------------
+     CURSOR shape, not append-only, and the distinction is the whole point:
+     a want is written when somebody asks for a size the shop has not got and
+     UPDATED when the shop comes back to them (closed_at, closed_note). A
+     highest-id cursor would push the row once, on the day it was created, and
+     never notice it being answered — so the mirror would go on saying
+     somebody is still waiting for a pair they collected in March.
+
+     Both write paths in server/lib/wants.js call logChange (record → insert,
+     close → update); checked before this entry was added, because a write
+     that skips it is a row that lives here and nowhere else, and the mirror
+     looks healthy while it does. */
+  wants: {
+    parseKey: (rowId) => ({ id: Number(rowId) }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM wants WHERE id = ?').get(key.id),
+    mapRow: (r) => r
+  },
   /* sale_items has no change_log entries of its own (server/lib/sales.js
      logs only the parent 'sales' row) — so every time a sale is pushed,
      its full current line-item set is pushed alongside it: delete what's
@@ -730,6 +748,50 @@ for (const t of ['print_log', 'label_print_log']) {
   }
 }
 
+/* --------------------------------------------------------------- loyalty
+   The stamp cards, and what people asked for and did not get.
+
+   ONE GUARD PER TABLE, the same shape as the layout block above and for the
+   same reason it was written that way: these two arrive together in
+   server/supabase/010_loyalty_and_wants.sql, but one guard around both would
+   mean a mirror missing either one silently skips the other. They are also
+   the two tables in this whole mirror that are recoverable from NOTHING —
+   a stamp count can be re-derived from sales, but the redemption that
+   consumed it cannot, and nothing else in the database remembers that
+   somebody asked for a 44.
+
+   AFTER customers (both point at one) and after the partner block is not
+   required — neither has a foreign key on the mirror side — but they are
+   pushed here, before Partner, so that a failure in the partner guard cannot
+   stop them.
+
+   redemptions are append-only: written once, never edited, so the highest id
+   already pushed is the cheaper and self-healing cursor. wants replay
+   change_log, because they are edited when answered — see TABLES.wants. */
+console.log(head('Loyalty and wants'));
+let loyaltyFailed = false;
+
+async function loyaltyStep(name, fn) {
+  try {
+    await fn();
+  } catch (e) {
+    const msg = String(e.message);
+    if (/Could not find the table|PGRST205|relation .* does not exist|Supabase 404 on |does not exist|schema cache/i.test(msg)) {
+      console.log(warn(`Supabase is missing ${name} — skipped, everything else still went up.`));
+      console.log('    \x1b[2mRun server/supabase/010_loyalty_and_wants.sql in the SQL editor.\x1b[0m');
+      console.log('    \x1b[2mThese two are recoverable from nothing else — a redemption row is\x1b[0m');
+      console.log('    \x1b[2mthe only record that a reward was given. Rows are retried every run.\x1b[0m');
+      loyaltyFailed = true;
+    } else throw e;
+  }
+}
+
+await loyaltyStep('loyalty_redemptions', () => syncAppendOnly('loyalty_redemptions'));
+await loyaltyStep('wants', async () => {
+  await syncTable('wants', { phase: 'upsert' });
+  await syncTable('wants', { phase: 'delete' });
+});
+
 console.log(head('Partner'));
 try {
   /* Reference data a kit line points at, and part of the same migration —
@@ -783,5 +845,13 @@ console.log('  Check the Supabase dashboard — Table Editor — to see the rows
    than by taking the run down halfway through. */
 if (layoutFailed) {
   console.log(warn('  The warehouse layout is NOT in the mirror. Exit 1.\n'));
+  process.exit(1);
+}
+
+/* Same rule as the layout: the run finished and everything that could be
+   mirrored was, but this must not exit 0 and be read as a clean sync. These
+   two are the ones a restore cannot reconstruct from anything else. */
+if (loyaltyFailed) {
+  console.log(warn('  The stamp cards and the wants list are NOT in the mirror. Exit 1.\n'));
   process.exit(1);
 }

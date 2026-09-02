@@ -21,6 +21,13 @@ var CHANGES = {
   /* Repaints the grid and the count only, so the box being typed into is
      never rebuilt and the caret stays put with no focusBack trick. */
   'cust-q': function (el) { OG.cust.q = el.value; repaintCustomers(); },
+
+  /* The attach-a-customer picker. Modal-scoped, so it patches its own
+     results div rather than going through render() — the modal lives outside
+     #view and a full render would never touch it. */
+  'sa-q': function (el) { saPaint(el.value); },
+  'cu-merge-q': function (el) { mergePaint(el.value); },
+  'pj-q': function (el) { pjPaint(el.value); },
   'cust-sort': function (el) { OG.cust.sort = el.value; repaintCustomers(); },
 
   /* Label-printing filters — same shape as prod-q/prod-type above, kept in

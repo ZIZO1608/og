@@ -217,9 +217,15 @@ function printJobsExportSpec() {
 
 function salesExportSpec() {
   var sales = DB.sales.slice(0, 200);
+  /* This sheet TOTALS the rows at the bottom, and DB.sales is the last 200
+     the server sent — so on a shop with more than that, the total is of the
+     window and not of the shop. The subtitle says which, because a sheet
+     somebody hands a bank must not imply it is the whole year. */
+  var cap = DB.cap('sales');
   return {
     name: 'sales', sheet: 'Sales', title: t('recent_sales'), chartId: 'dashLine',
-    subtitle: sales.length + ' ' + t('invoices').toLowerCase(),
+    subtitle: sales.length + ' ' + t('invoices').toLowerCase() +
+      (cap.capped ? ' · ' + t('cap_of').replace('{b}', nf(cap.total)) : ''),
     columns: [{ label: t('invoice') }, { label: t('date') }, { label: t('customer'), width: 22 },
               { label: t('items'), num: true }, { label: t('payment') },
               { label: exCol(t('total')), num: true }],

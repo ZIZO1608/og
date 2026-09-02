@@ -31,6 +31,9 @@ import * as Shelves from './lib/shelves.js';
 import * as Sales from './lib/sales.js';
 import * as Customers from './lib/customers.js';
 import * as Loyalty from './lib/loyalty.js';
+import * as Wants from './lib/wants.js';
+import * as PermCheck from './lib/permcheck.js';
+import * as Cap from './lib/capped.js';
 import * as Deliveries from './lib/deliveries.js';
 import * as Partner from './lib/partner.js';
 import * as Purchasing from './lib/purchasing.js';
@@ -456,7 +459,11 @@ router.add('GET /api/stock', requirePerm('stock.read', (ctx) => {
    size; this is the warehouse's Moves tab, which shows everything. */
 router.add('GET /api/movements', requirePerm('stock.read', (ctx) => {
   const limit = Math.min(Number(ctx.url.searchParams.get('limit')) || 200, 1000);
-  sendOk(ctx.res, { movements: Stock.recent(limit) });
+  const cap = Cap.withCap(Stock.recent(limit), limit,
+                          'SELECT COUNT(*) AS n FROM stock_movements');
+  sendOk(ctx.res, {
+    movements: cap.rows, movementsTotal: cap.total, movementsCapped: cap.capped
+  });
 }));
 
 /* --- shelves ----------------------------------------------------------------
@@ -619,15 +626,33 @@ router.add('GET /api/customers/:id/history', requirePerm('customer.read', (ctx) 
   const c = Customers.byId(Number(ctx.params.id), ctx.user);
   if (!c) return sendError(ctx.res, 404, 'not_found', 'No such customer.');
   const limit = Number(ctx.url.searchParams.get('limit')) || 200;
+  const hist = Cap.withCap(Customers.historyFor(c.id, limit), limit,
+    'SELECT COUNT(*) AS n FROM sales WHERE customer_id = ?', c.id);
   sendOk(ctx.res, {
-    sales: Customers.historyFor(c.id, limit).map(s => scrubCost(s, ctx.user)),
+    sales: hist.rows.map(s => scrubCost(s, ctx.user)),
+    /* The timeline badges how many events it drew, and sizeDrift compares
+       "recent" against "older" — both read as facts about this person's whole
+       history. At 200 invoices they would silently become facts about the
+       last 200. See server/lib/capped.js. */
+    salesTotal: hist.total,
+    salesCapped: hist.capped,
     /* One request builds the whole timeline. Left out entirely for an account
        without delivery.read — an empty array would say "no parcels", which is
        a different claim from "not yours to see". */
     deliveries: Auth.can(ctx.user, 'delivery.read') ? Customers.deliveriesFor(c.id) : null,
     /* Stamp redemptions ride along for the same reason: one request, one
        stream. Empty when the shop does not run stamps. */
-    redemptions: Loyalty.stampsOn(Loyalty.rules().mode) ? Loyalty.redemptionsFor(c.id) : []
+    redemptions: Loyalty.stampsOn(Loyalty.rules().mode) ? Loyalty.redemptionsFor(c.id) : [],
+    /* What they asked for and we did not have. */
+    wants: Wants.forCustomer(c.id),
+    /* Their open debts, each with what it was worth THEN and what it is worth
+       NOW. customer.read, not money.read: a cashier who may take the payment
+       has to be able to see what is owed, and Stage A already decided the
+       totals reach her. This is the same fact at invoice grain. */
+    debts: Money.debtsForCustomer(c.id),
+    /* Print jobs, but only the ones a customer_id actually proves — never a
+       name match. Nothing is shown rather than something possibly wrong. */
+    jobs: Auth.can(ctx.user, 'print.read') ? Partner.jobsForCustomer(c.id) : null
   });
 }));
 
@@ -656,6 +681,104 @@ router.add('PATCH /api/customers/:id', requirePerm('customer.write', async (ctx)
   } catch (e) {
     sendError(ctx.res, 400, 'invalid', e.message);
   }
+}));
+
+/* ---- merging two records that are one person ------------------------------
+   staff.write, so it is the manager's. A merge repoints somebody's whole
+   history and cannot be undone with a button; it is not a thing to leave on
+   the till. */
+router.add('POST /api/customers/:id/merge', requirePerm('staff.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Customers.merge(Number(ctx.params.id), Number(b.loseId), ctx.user.id));
+  } catch (e) {
+    const status = e.code === 'not_found' ? 404
+                 : ['same_customer', 'archived', 'already_merged'].includes(e.code) ? 409 : 400;
+    sendError(ctx.res, status, e.code || 'invalid', e.message);
+  }
+}));
+
+/* ---- attaching a customer to a sale after the fact -----------------------
+   `sell`, not `sale.void`: this is the cashier finishing the sale she is
+   still standing in, and the commonest moment for it is the customer saying
+   "I'm on your list" while she is at payment.
+
+   How long after is decided on the SERVER, from the shift the sale was posted
+   into — see Sales.attachCustomer. `void` is what lifts the limit, because
+   somebody who may unwind a sale entirely may certainly relabel one. (The
+   permission is `void`, not `sale.void` — that is the name in
+   role_permissions, and getting it wrong here silently left the manager with
+   no way past the shift rule at all.) */
+router.add('POST /api/sales/:id/customer', requirePerm('sell', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Sales.attachCustomer(ctx.params.id, Number(b.customerId), {
+      userId: ctx.user.id,
+      opId: typeof b.opId === 'string' ? b.opId : null,
+      canBackdate: Auth.can(ctx.user, 'void')
+    }));
+  } catch (e) {
+    const status = e.code === 'not_found' ? 404
+                 : e.code === 'too_late' ? 403
+                 : ['already_attached', 'voided', 'archived', 'unknown_customer'].includes(e.code) ? 409
+                 : 400;
+    sendError(ctx.res, status, e.code || 'invalid', e.message);
+  }
+}));
+
+/* ---- the wants list ------------------------------------------------------
+   Recorded by the act of looking, never typed: the till posts here when a
+   size is looked up while it is out of stock and a customer is attached.
+   `sell` because that is who is standing at the counter when it happens. */
+router.add('POST /api/wants', requirePerm('sell', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { want: Wants.record({
+      customerId: Number(b.customerId),
+      sku: typeof b.sku === 'string' ? b.sku : null,
+      productId: b.productId == null ? null : Number(b.productId),
+      size: b.size == null ? null : String(b.size),
+      source: b.source, userId: ctx.user.id
+    }) });
+  } catch (e) {
+    sendError(ctx.res, 400, e.code || 'invalid', e.message);
+  }
+}));
+
+router.add('POST /api/wants/:id/close', requirePerm('sell', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { want: Wants.close(Number(ctx.params.id), {
+      note: typeof b.note === 'string' ? b.note : null, userId: ctx.user.id
+    }) });
+  } catch (e) {
+    sendError(ctx.res, e.code === 'not_found' ? 404 : 400, e.code || 'invalid', e.message);
+  }
+}));
+
+/* Who is waiting for a size that just landed. product.read, because the
+   question belongs to the shipment rather than to the customer list. */
+router.add('GET /api/wants', requirePerm('product.read', (ctx) => {
+  if (ctx.user.role === 'delivery') {
+    return sendOk(ctx.res, { wants: [], wantsTotal: 0, wantsCapped: false });
+  }
+  const sku = ctx.url.searchParams.get('sku');
+  const product = ctx.url.searchParams.get('product');
+  const rows = Wants.open({ sku, productId: product });
+
+  /* The wants tab badges this list's length. At 200 open wants the badge
+     would have said 200 and meant "at least 200" — see server/lib/capped.js
+     for the three times that shape has already shipped. The COUNT repeats the
+     same WHERE the reader uses, or the total would be of a different set. */
+  const where = ['w.closed_at IS NULL', 'c.archived = 0'];
+  const args = [];
+  if (sku) { where.push('w.variant_sku = ?'); args.push(sku); }
+  if (product) { where.push('w.product_id = ?'); args.push(Number(product)); }
+  const cap = Cap.withCap(rows, 200,
+    `SELECT COUNT(*) AS n FROM wants w JOIN customers c ON c.id = w.customer_id
+      WHERE ${where.join(' AND ')}`, ...args);
+
+  sendOk(ctx.res, { wants: cap.rows, wantsTotal: cap.total, wantsCapped: cap.capped });
 }));
 
 /* ---- the stamp card ------------------------------------------------------
@@ -778,6 +901,12 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
       return sendErrorDetail(ctx.res, 409, 'points_exceed_total', e.message,
         { room: e.room });
     }
+    /* Both refusals, both about credit. 409 rather than 400: the basket is
+       fine and the request is well-formed — the shop has decided this person
+       does not get credit, or there is nobody to owe it. */
+    if (e.code === 'credit_needs_customer' || e.code === 'no_credit') {
+      return sendError(ctx.res, 409, e.code, e.message);
+    }
     if (e.code === 'unknown_customer') {
       return sendError(ctx.res, 409, 'unknown_customer', e.message);
     }
@@ -785,10 +914,19 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
   }
 }));
 
+/* The 200 here is load-bearing — a till does not hold the shop's history —
+   but the browser SUMS this array for the dashboard's revenue, the monthly
+   chart and a shift's takings. So the truncation travels with it: `total` is
+   how many sales actually exist, `capped` says the number on screen is a
+   window rather than the shop. See server/lib/capped.js. */
 router.add('GET /api/sales', requirePerm('sell', (ctx) => {
   const limit = Math.min(200, Number(ctx.url.searchParams.get('limit')) || 50);
+  const cap = Cap.withCap(Sales.recent(limit), limit,
+                          'SELECT COUNT(*) AS n FROM sales');
   sendOk(ctx.res, {
-    sales: Sales.recent(limit).map(s => scrubCost(s, ctx.user))
+    sales: cap.rows.map(s => scrubCost(s, ctx.user)),
+    salesTotal: cap.total,
+    salesCapped: cap.capped
   });
 }));
 
@@ -873,11 +1011,27 @@ router.add('POST /api/print', requirePerm('sale.reprint', async (ctx) => {
    caller for reading — there is no query parameter that widens the view. */
 
 router.add('GET /api/deliveries', requirePerm('delivery.read', (ctx) => {
+  const limit = Number(ctx.url.searchParams.get('limit')) || 100;
+  const status = ctx.url.searchParams.get('status') || null;
+  const rows = Deliveries.list(ctx.user, { status, limit });
+
+  /* whoCell on the board counts a customer's FAILED deliveries across this
+     array (Stage E), so a failure older than the window reads as a clean
+     record. The count repeats the reader's own scoping — a driver's board is
+     his run, and a total over the whole table would be a number about
+     somebody else's work. */
+  const where = [];
+  const args = [];
+  if (ctx.user.role === 'delivery') { where.push('driver_id = ?'); args.push(ctx.user.id); }
+  if (status) { where.push('status = ?'); args.push(status); }
+  const cap = Cap.withCap(rows, limit,
+    `SELECT COUNT(*) AS n FROM deliveries${where.length ? ' WHERE ' + where.join(' AND ') : ''}`,
+    ...args);
+
   sendOk(ctx.res, {
-    deliveries: Deliveries.list(ctx.user, {
-      status: ctx.url.searchParams.get('status') || null,
-      limit: Number(ctx.url.searchParams.get('limit')) || 100
-    }),
+    deliveries: cap.rows,
+    deliveriesTotal: cap.total,
+    deliveriesCapped: cap.capped,
     /* His own day when he is a driver, so the phone can show a running
        count without a second request. */
     day: ctx.user.role === 'delivery' ? Deliveries.driverDay(ctx.user.id) : null
@@ -956,7 +1110,18 @@ router.add('POST /api/expenses', requirePerm('money.write', async (ctx) => {
 
 /* Money in, and the one direction that cannot be corrected by doing it
    again — so it carries an opId, exactly like a sale. */
-router.add('POST /api/debt-payments', requirePerm('money.write', async (ctx) => {
+/* `debt.collect`, not money.write — and that is the whole point of the new
+   permission. A cashier takes the cash when a customer settles up; it is in
+   her drawer, in her shift, and a till that cannot record it makes her count
+   come up over at closing with nothing to explain it. She still does not get
+   money.read, so the shop's money screen stays shut.
+
+   The three guards are already inside Money.payDebt and are not restated
+   here: an opId through applied_ops so a retry cannot take the money twice,
+   the balance recomputed INSIDE the transaction rather than trusted from the
+   browser, and Sales.void refusing a sale with payments against it. Money in
+   is the one direction that cannot be corrected by doing it again. */
+router.add('POST /api/debt-payments', requirePerm('debt.collect', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
     sendOk(ctx.res, {
@@ -1025,8 +1190,24 @@ router.add('GET /api/employees', requirePerm('staff.read', (ctx) => {
    Which alerts a person gets depends on what they may see — supplier debt is
    money.read, payroll is staff.read — so this is per account rather than one
    list filtered in the browser. */
+/* `fullCards` is NOT a second copy of the bell — it is the complete id list
+   behind the capped one.
+
+   The bell names five and summarises the rest, because a bell is read by
+   glancing and sixty rows buries the stock warnings underneath it. But the
+   Customers screen's "Card full" filter has to show all twelve, or the chip
+   says twelve and the list shows five. So: alerts capped for reading, ids
+   complete for filtering, both computed from the same Loyalty.fullCards call
+   the alerts already make. Ids only — no names, no counts — because this is
+   an index, not a payload. */
 router.add('GET /api/notifications', (ctx) => {
-  sendOk(ctx.res, { notifications: Alerts.list(ctx.user) });
+  const stampsOn = Loyalty.stampsOn(Loyalty.rules().mode);
+  sendOk(ctx.res, {
+    notifications: Alerts.list(ctx.user),
+    fullCards: (stampsOn && ctx.user.role !== 'delivery' && Auth.can(ctx.user, 'customer.read'))
+      ? Loyalty.fullCards().map((f) => f.customerId)
+      : []
+  });
 });
 
 /* One alert by key, or everything currently showing when no key is named.
@@ -1109,11 +1290,22 @@ router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx)
 
   /* Yalla Wear is a supplier, not staff. Their own jobs and the thread
      attached to them — never what the shop charges the customer on top,
-     which is the shop's margin and none of their business. */
+     which is the shop's margin and none of their business.
+
+     `customer` and `phone` are stripped for the same reason, and it took
+     until Stage E to notice: the strip list held `price` alone, so every job
+     carried the shop's customer NAME AND PHONE NUMBER to another company, on
+     every poll. FORBIDDEN in lib/auth.js already says a partner can never
+     hold customer.* — this route was handing over the same data by a
+     different door.
+
+     What they need to print a shirt is the design, the sizes and the names
+     that go ON the shirts (print_name, per line). Who ordered it is the
+     shop's business, and `customer_id` (Stage E) is stripped with the rest. */
   if (partner) {
     const mine = new Set(bundle.jobs.map((j) => j.id));
     return sendOk(ctx.res, {
-      jobs: bundle.jobs.map(({ price, ...rest }) => rest),
+      jobs: bundle.jobs.map(({ price, customer, phone, customer_id, ...rest }) => rest),
       invoices: bundle.invoices,
       messages: bundle.messages.filter((m) => !m.job_id || mine.has(m.job_id)),
       clubs: bundle.clubs,
@@ -1156,6 +1348,18 @@ router.add('POST /api/print-jobs', requirePerm('print.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
     sendOk(ctx.res, { job: Partner.create({ ...b, userId: ctx.user.id }) });
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+/* Linking an old job to a customer BY HAND. Migration 032 backfilled only
+   where a sale_id proved it and left the rest for a person — this is the route
+   that person needs. Without it the migration was an instruction to nobody. */
+router.add('PATCH /api/print-jobs/:id/customer', requirePerm('print.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const cid = (b.customerId === null || b.customerId === undefined || b.customerId === '')
+      ? null : Number(b.customerId);
+    sendOk(ctx.res, { job: Partner.setJobCustomer(ctx.params.id, cid, ctx.user.id) });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
 
@@ -1706,6 +1910,27 @@ const runDirectly = process.argv[1] &&
   resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 if (runDirectly) {
+  /* Before anything else, and it STOPS the shop opening — unlike preflight and
+     the hardware check, which deliberately never do.
+
+     Those two report a shop that can still sell shoes: a till that cannot
+     print is a till. This one reports a guard that is not guarding. A
+     permission name that does not exist makes Auth.can return false for
+     everybody, silently, so the code reads like a check and is not one — and
+     the direction it usually fails is open. That is not a thing to carry on
+     past with a warning. */
+  try {
+    const { checked, dynamic } = PermCheck.assertPermissionNames();
+    if (dynamic) {
+      console.log(`\n  \x1b[2m${checked} permission names checked; ${dynamic} passed as a ` +
+                  'variable and cannot be.\x1b[0m');
+    }
+  } catch (e) {
+    console.error('\n\x1b[31m  PERMISSION NAMES\x1b[0m\n');
+    console.error('  ' + e.message.split('\n').join('\n  ') + '\n');
+    process.exit(1);
+  }
+
   DB.open(DB_FILE);
 
   /* Expired sessions and stale login attempts, cleared hourly. unref() so this

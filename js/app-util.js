@@ -20,6 +20,36 @@ function nfOrDash(n) {
   return (n === null || n === undefined || n === '') ? '—' : nf(n);
 }
 
+/* WHEN YOU CAP, SAY YOU CAPPED.
+
+   One line, drawn under any figure derived from a list the server had to
+   truncate. Returns '' when nothing was truncated, so a caller can
+   concatenate it unconditionally and it disappears on a small shop.
+
+   This exists because the same mistake has now shipped three times — lira
+   added to dollars, select-all reaching past the render cap, the bell's
+   summary row cut by an outer slice. Every one was a limit at one layer while
+   another layer went on counting the whole set. The limits are right; being
+   quiet about them is not.
+
+   `cap` is { shown, total, capped } from DB.cap(kind). */
+function cappedNote(cap, what) {
+  if (!cap || !cap.capped) return '';
+  return '<div class="partner-note mt">' +
+    t('cap_window')
+      .replace('{a}', nf(cap.shown))
+      .replace('{b}', nf(cap.total))
+      .replace('{n}', esc(what || t('rows'))) +
+    '</div>';
+}
+
+/* The same fact as a short inline suffix, for a badge that has no room for a
+   sentence: "200+" rather than "200". */
+function cappedCount(cap) {
+  if (!cap) return '0';
+  return nf(cap.shown) + (cap.capped ? '+' : '');
+}
+
 function money(syp) {
   if (OG.currency === 'USD') return '$' + nf((Number(syp) || 0) / CONFIG.EXCHANGE_RATE);
   return nf(syp) + ' ' + (OG.lang === 'ar' ? 'ل.س' : 'SYP');

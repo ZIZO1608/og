@@ -25,6 +25,7 @@
 var Deliveries = (function () {
 
   var rows = [];          /* what the server last told us */
+  var cap = { shown: 0, total: 0, capped: false };
   var day = null;         /* his own totals for today, drivers only */
   var loaded = false;     /* have we asked yet */
   var failed = null;      /* the last error, so the screen can say why */
@@ -74,6 +75,41 @@ var Deliveries = (function () {
   function statusBadge(s) {
     return '<span class="badge ' + (TONE[s] || 'neutral') + '">' +
            t('dl_' + s) + '</span>';
+  }
+
+  /* Who this parcel is for — and whether a parcel to them has come back
+     before.
+
+     DERIVED from deliveries.status, every time, and never written down. "This
+     customer has failed deliveries" is a judgement about a person, and a
+     stored flag is one that outlives its reason: a wrong address fixed in
+     March would still be marking somebody in December. Counted from the board
+     the shop is already looking at, it corrects itself the moment a delivery
+     succeeds.
+
+     Shown to whoever can see the board; a driver gets no link, because the
+     customers screen is not his (navAllowed, js/app-shell.js). */
+  function whoCell(d) {
+    var name = nm(d.customerName || t('walk_in'));
+    var cust = d.customerId ? DB.customer(d.customerId) : null;
+    var link = (cust && typeof allow === 'function' && allow('customer.read') && !isDriver())
+      ? '<span class="clickable" data-act="cu-open" data-id="' + cust.id + '">' + name + ' ›</span>'
+      : name;
+
+    /* Other parcels to the same customer that came back — counted across
+       the board this browser HOLDS, which is a window (cap). A failure older
+       than that window reads as a clean record, so the board says underneath
+       what it counted over. */
+    var failed = 0;
+    if (d.customerId) {
+      rows.forEach(function (x) {
+        if (x.customerId === d.customerId && x.id !== d.id && x.status === 'failed') failed++;
+      });
+    }
+    return link + (failed
+      ? '<small style="display:block" class="muted">' +
+          t('dl_failed_before').replace('{n}', nf(failed)) + '</small>'
+      : '');
   }
 
   /* ------------------------------------------------------------- the driver */
@@ -194,7 +230,7 @@ var Deliveries = (function () {
     rows.forEach(function (d) {
       h += '<tr' + (d.status === 'failed' ? ' class="row-late"' : '') + '>' +
         '<td><b>' + esc(d.saleId) + '</b></td>' +
-        '<td>' + nm(d.customerName || t('walk_in')) + '</td>' +
+        '<td>' + whoCell(d) + '</td>' +
         '<td class="muted">' + esc(d.address) +
           (d.phone ? '<small style="display:block">' + tel(d.phone) + '</small>' : '') + '</td>' +
         '<td>' + (d.driverName ? esc(d.driverName) : '<span class="muted">' + t('dl_unassigned') + '</span>') + '</td>' +
@@ -208,7 +244,7 @@ var Deliveries = (function () {
         '</td></tr>';
     });
 
-    return h + '</tbody></table></div>';
+    return h + '</tbody></table></div>' + cappedNote(cap, t('nav_deliveries').toLowerCase());
   }
 
   /* -------------------------------------------------------------- the shell */
@@ -243,6 +279,11 @@ var Deliveries = (function () {
     return API.get('/api/deliveries')
       .then(function (d) {
         rows = d.deliveries || [];
+        /* whoCell counts a customer's FAILED deliveries across , so a
+           failure older than this window reads as a clean record. Recorded so
+           the board can say the count is of what it can see. */
+        cap = { shown: rows.length, total: d.deliveriesTotal || rows.length,
+                capped: !!d.deliveriesCapped };
         day = d.day || null;
         failed = null;
         loaded = true;

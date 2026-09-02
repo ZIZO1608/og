@@ -50,7 +50,12 @@ function viewWarehouse() {
        paperwork. */
     { id: 'moves', label: t('tab_moves'), need: 'stock.move' },
     { id: 'po',    label: t('po_title'), dot: !!openPOs, need: 'stock.move' },
-    { id: 'count', label: t('st_count'), dot: !!Stock.active(), need: 'stock.count' }
+    { id: 'count', label: t('st_count'), dot: !!Stock.active(), need: 'stock.count' },
+    /* Who is waiting for something the shop did not have. This is the tab a
+       manager opens when a shipment lands — the wants were recorded by the
+       act of looking a size up at the till, so the list is already written.
+       customer.read, because every row names a person. */
+    { id: 'wants', label: t('wa_wants'), need: 'customer.read' }
   ].filter(function (x) { return !x.need || allow(x.need); });
 
   /* A tab bar with one tab in it is furniture. */
@@ -73,8 +78,106 @@ function viewWarehouse() {
      : (tab === 'add')   ? whAddTab()
      : (tab === 'po')    ? whPoTab()
      : (tab === 'count') ? Stock.view()
+     : (tab === 'wants') ? whWantsTab()
      : whMovesTab();
   return h;
+}
+
+/* ---- who is waiting -------------------------------------------------------
+   "What is everybody waiting for" — the view a manager opens when a shipment
+   lands. Until now this only existed per customer, which is the wrong way
+   round: you find out a 44 arrived and want the list of people, not to walk
+   forty profiles looking for one.
+
+   Nobody typed any of it. Every row was recorded by the act of looking a size
+   up at the till while it was out of stock and a customer was attached
+   (server/lib/wants.js). Fetched rather than hydrated: it is a working list
+   that changes while somebody is standing at the back door with a box, and a
+   copy taken at sign-in would be the wrong one by the time it was read. */
+var wantRows = null;
+var wantsLoading = false;
+/* { shown, total, capped } — the wants reader has a LIMIT on it, and this tab
+   badges the length. At 200 open wants the badge would have said 200 and
+   meant "at least 200". See js/app-util.js cappedNote. */
+var wantCap = { shown: 0, total: 0, capped: false };
+
+function whWantsTab() {
+  if (wantRows === null) {
+    if (!wantsLoading) loadWants();
+    return '<div class="card"><div class="card-body">' +
+      '<span class="muted small">' + t('loading') + '</span></div></div>';
+  }
+
+  if (!wantRows.length) {
+    return '<div class="card"><div class="cart-empty"><b>' + t('wa_none') + '</b>' +
+      t('wa_none_sub') + '</div></div>';
+  }
+
+  /* Grouped by what was asked for, because that is the unit a shipment
+     arrives in — one box of 44s answers every row under one heading. */
+  var groups = {};
+  var order = [];
+  wantRows.forEach(function (w) {
+    var key = (w.product_id || 0) + '|' + (w.size || '');
+    if (!groups[key]) { groups[key] = []; order.push(key); }
+    groups[key].push(w);
+  });
+
+  var h = '<div class="card"><div class="card-head"><h3>' + t('wa_wants') + '</h3>' +
+    '<div class="card-actions"><span class="badge critical">' + cappedCount(wantCap) + '</span></div></div>' +
+    '<div class="table-wrap"><table class="tbl"><thead><tr>' +
+      '<th>' + t('product') + '</th><th>' + t('size') + '</th>' +
+      '<th>' + t('customer') + '</th><th>' + t('phone') + '</th>' +
+      '<th>' + t('date') + '</th><th class="num">' + t('in_stock') + '</th><th></th>' +
+    '</tr></thead><tbody>';
+
+  order.forEach(function (key) {
+    var rows = groups[key];
+    var first = rows[0];
+    /* Has it landed? The whole point of the screen is the row that says yes. */
+    var back = first.variant_sku ? DB.variantBySku(first.variant_sku) : null;
+    var here = back ? back.qty : 0;
+
+    rows.forEach(function (w, i) {
+      h += '<tr' + (here > 0 ? ' class="st-ok"' : '') + '>' +
+        '<td>' + (i === 0 ? nm(w.product_name || t('product')) : '') + '</td>' +
+        '<td>' + (i === 0 ? '<b>' + esc(w.size || '—') + '</b>' : '') + '</td>' +
+        '<td><span class="clickable" data-act="cu-open" data-id="' + w.customer_id + '">' +
+          nm(w.customer_name) + ' ›</span></td>' +
+        '<td class="num">' + tel(w.customer_phone || '') + '</td>' +
+        '<td class="muted num nowrap">' + fmtDate(w.at) + '</td>' +
+        '<td class="num">' + (i === 0
+          ? (here > 0 ? '<b class="st-pos">' + nf(here) + '</b>' : '<span class="muted">0</span>')
+          : '') + '</td>' +
+        '<td><button class="btn btn-sm" data-act="wa-close" data-id="' + w.id + '">' +
+          t('wa_tell') + '</button></td>' +
+      '</tr>';
+    });
+  });
+
+  h += '</tbody></table></div></div>' +
+    cappedNote(wantCap, t('wa_wants').toLowerCase()) +
+    '<div class="partner-note mt">' + t('wa_note') + '</div>';
+  return h;
+}
+
+function loadWants() {
+  if (typeof Shop === 'undefined' || !Shop.live()) { wantRows = []; return; }
+  wantsLoading = true;
+  Shop.wantsFor().then(function (r) {
+    wantRows = (r && r.wants) || [];
+    wantCap = { shown: wantRows.length, total: (r && r.wantsTotal) || wantRows.length,
+                capped: !!(r && r.wantsCapped) };
+    wantsLoading = false;
+    /* Only repaint if this tab is still the one on show — a slow response
+       arriving after somebody has moved on must not draw over what they
+       opened instead. */
+    if (OG.view === 'warehouse' && OG.wh.tab === 'wants') render();
+  }).catch(function () {
+    wantRows = [];
+    wantsLoading = false;
+    if (OG.view === 'warehouse' && OG.wh.tab === 'wants') render();
+  });
 }
 
 /* ---- stock by place --------------------------------------------------------
@@ -275,6 +378,29 @@ function openEditCustomer(cid) {
       '<label class="field mt"><span>' + t('note') + '</span>' +
         '<input class="inp" id="cuNote" type="text" value="' + esc(c.note) + '" ' +
         'placeholder="' + esc(t('cu_note_ph')) + '"></label>' +
+
+      /* ---- credit -------------------------------------------------------
+         The limit is IN DOLLARS on screen and in USD CENTS in the database
+         (033). Dollars because a limit written in lira decays as the currency
+         moves — a ceiling set last year quietly stops being one — and cents
+         underneath because money is integer minor units everywhere here.
+
+         BLANK is not zero. Blank means no limit set; 0 means no credit at
+         all. The placeholder says so, because the two look identical in an
+         empty box and mean opposite things. */
+      '<div class="row2 mt">' +
+        '<label class="field"><span>' + t('cu_credit_limit') + '</span>' +
+          '<input class="inp num" id="cuLimit" type="number" min="0" step="1" ' +
+            'value="' + (c.creditLimit == null ? '' : (c.creditLimit / 100)) + '" ' +
+            'placeholder="' + esc(t('cu_no_limit')) + '"></label>' +
+        '<label class="field"><span>' + t('cu_no_credit') + '</span>' +
+          '<select class="inp" id="cuNoCredit">' +
+            '<option value="0"' + (c.noCredit ? '' : ' selected') + '>' + t('cu_credit_ok') + '</option>' +
+            '<option value="1"' + (c.noCredit ? ' selected' : '') + '>' + t('cu_credit_none') + '</option>' +
+          '</select></label>' +
+      '</div>' +
+      '<div class="partner-note">' + t('cu_credit_note') + '</div>' +
+
       '<div class="partner-note mt">' + t('cu_note_seen') + '</div>',
     foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
           '<button class="btn btn-primary" data-act="cu-update" data-id="' + c.id + '">' + t('save') + '</button>'

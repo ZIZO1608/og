@@ -110,13 +110,19 @@ function showPoints(c) {
 /* The size chips — the thing that makes somebody open the card.
    "43" on its own is the question a shop actually asks; the family is the
    quieter half, so it goes in the title rather than on the chip. */
-function sizeChips(c) {
-  var sizes = (c.sizes || []).slice(0, 3);
-  if (!sizes.length) return '';
-  return '<div class="cc-sizes">' + sizes.map(function (s) {
+/* One row of labels about this person: what they wear, and what tier they are.
+
+   The sizes come first because they are the reason somebody opens the card —
+   "43" is the question a shop actually asks. The tier is a scheme label and
+   sits after them, and only when the shop runs points at all. */
+function cardChips(c, tier) {
+  var out = (c.sizes || []).slice(0, 3).map(function (s) {
     return '<span class="badge accent" title="' + esc(t('fam_' + s.fam)) + ' · ' +
       nf(s.qty) + ' ' + esc(t('units').toLowerCase()) + '">' + esc(s.size) + '</span>';
-  }).join('') + '</div>';
+  });
+  if (showPoints(c)) out.push('<span class="badge ' + tier + '">' + t(tier) + '</span>');
+  if (!out.length) return '';
+  return '<div class="cc-sizes">' + out.join('') + '</div>';
 }
 
 function customerCardHTML(c, ci) {
@@ -136,14 +142,29 @@ function customerCardHTML(c, ci) {
        '" data-act="cu-open" data-id="' + c.id + '">' +
     '<span class="bk-corner">' + Bulk.box('customers', c.id, ci) + '</span>' +
 
+    /* The top row is IDENTITY and nothing else — avatar, name, phone, place.
+
+       The tier badge used to sit at the end of it, and between it and the
+       bulk tick box the text column was left about 110px on a 272px card:
+       the phone number wrapped mid-number ("+963 955 990" / "111", which
+       reads as two numbers), and constraining it instead truncated it
+       ("+963 955 99…", which cannot be read at all). A phone number is the
+       one field on this card that is useless unless it is complete.
+
+       So the tier moves down to the chip row, where it belongs anyway —
+       tier and sizes are both labels ABOUT this person, where the top row is
+       who they are. */
     '<div class="cc-top"><span class="cc-av">' + esc(initialsOf(c.name)) + '</span>' +
       '<div style="flex:1;min-width:0"><b>' + nm(c.name) + '</b>' +
       '<small class="num">' + tel(c.phone) + '</small>' +
-      '<small>' + nm(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</small></div>' +
-      (showPoints(c) ? '<span class="badge ' + tier + '">' + t(tier) + '</span>' : '') +
+      /* A customer with no city rendered "· In-store" — a separator with
+         nothing on one side of it, which reads as a field that failed to
+         load rather than one nobody filled in. */
+      '<small>' + (c.city ? nm(c.city) + ' · ' : '') +
+        t(c.source === 'online' ? 'online' : 'in_store') + '</small></div>' +
     '</div>' +
 
-    sizeChips(c) +
+    cardChips(c, tier) +
 
     '<div class="cc-stats">' +
       '<div><span class="eyebrow">' + t('cu_last_in') + '</span>' +
@@ -167,11 +188,16 @@ function customerCardHTML(c, ci) {
   '</div>';
 }
 
-/* Two letters from a name that may be Arabic, Latin, or one word. */
+/* Two letters from a name that may be Arabic, Latin, or one word.
+
+   UPPERCASED, which is not cosmetic: a shop name typed "coda tools" came out
+   as "cT" in the avatar circle, which reads as a rendering fault rather than
+   as initials. Arabic has no case, so toUpperCase leaves it exactly as it
+   was — this only ever touches Latin. */
 function initialsOf(name) {
   var parts = String(name || '').split(/\s+/).filter(Boolean);
   if (!parts.length) return '؟';
-  return parts.map(function (w) { return w.charAt(0); }).slice(0, 2).join('');
+  return parts.map(function (w) { return w.charAt(0); }).slice(0, 2).join('').toUpperCase();
 }
 
 /* Four different nothings, and they call for four different next actions —
@@ -351,6 +377,34 @@ function timelineRows(payload, c) {
     }
   });
 
+  /* Something they asked for that the shop did not have. Nobody typed this —
+     it was recorded by the act of looking the size up (Stage E). */
+  (payload.wants || []).forEach(function (w) {
+    out.push({
+      at: new Date(w.at), kind: 'want',
+      title: t('wa_wanted').replace('{n}', esc(w.product_name || t('product')))
+             + (w.size ? ' · ' + esc(w.size) : ''),
+      sub: w.closed_at
+        ? t('wa_answered') + (w.closed_note ? ' · ' + nm(w.closed_note) : '')
+        : t('wa_still_waiting'),
+      tone: w.closed_at ? 'muted' : '',
+      /* Not '?', which reads as a glyph that failed to render. */
+      act: w.product_id ? 'open-product' : '', id: w.product_id, lead: '•'
+    });
+  });
+
+  /* Print jobs — only where a customer_id proves it. A job matched by name
+     across two scripts is somebody else's order on this person's page. */
+  (payload.jobs || []).forEach(function (j) {
+    out.push({
+      at: new Date(j.created_at), kind: 'job',
+      title: t('print_title') + ' ' + esc(j.id) + ' · ' + t('print_' + j.stage),
+      sub: nm(j.design) + (j.qty ? ' · ' + nf(j.qty) + ' ' + t('units').toLowerCase() : ''),
+      /* open-job reads data-jid, not data-id — see app-actions.js */
+      tone: '', act: 'open-job', id: j.id, idAttr: 'data-jid', lead: '⎙'
+    });
+  });
+
   /* A stamp card being cashed in. Its own kind, not a note on a sale: no
      sale caused it — the shop chose a moment to hand something over — and
      "what did we actually give this person" is a question the stream has to
@@ -386,17 +440,38 @@ function timelineRows(payload, c) {
     .sort(function (a, b) { return b.at - a.at; });
 }
 
-function timelineHTML(rows) {
+/* How many timeline rows are drawn before a "show the rest" button.
+
+   THE SAME RULE AS THE CARD GRID, and I missed it in the screen I wrote the
+   rule for: a customer with 230 invoices rendered 204 rows in one go, which
+   is a wall nobody scrolls and a lot of DOM for a question ("what has this
+   person been doing") that the first dozen rows already answer.
+
+   40, not 60: a timeline row is two lines tall where a card is one tile, so
+   the same screenful holds far fewer of them. */
+var TL_RENDER_CAP = 40;
+
+function timelineHTML(rows, showAll) {
   if (!rows.length) {
     return '<div class="cart-empty"><b>' + t('cu_tl_empty') + '</b>' + t('cu_tl_empty_sub') + '</div>';
   }
-  return '<ul class="timeline cu-tl">' + rows.map(function (r) {
+
+  var shown = showAll ? rows : rows.slice(0, TL_RENDER_CAP);
+  var h = '<ul class="timeline cu-tl">' + shown.map(function (r) {
     return '<li class="' + (r.tone === 'plus' ? 'plus' : '') + '"' +
-      (r.act ? ' data-act="' + r.act + '" data-id="' + esc(r.id) + '" style="cursor:pointer"' : '') + '>' +
+      (r.act ? ' data-act="' + r.act + '" ' + (r.idAttr || 'data-id') + '="' + esc(r.id) + '" style="cursor:pointer"' : '') + '>' +
       '<b' + (r.tone === 'muted' ? ' class="muted"' : '') + '>' + r.title + '</b>' +
-      '<small>' + (r.lead ? '<span class="num">' + r.lead + '</span> · ' : '') +
+      '<small>' + (r.lead ? '<span class="tl-lead">' + r.lead + '</span> ' : '') +
         fmtDate(r.at) + (r.sub ? ' · ' + r.sub : '') + '</small></li>';
   }).join('') + '</ul>';
+
+  /* Say what is not drawn, and offer it — the rest is already in memory, so
+     this is a render cap rather than a fetch. */
+  if (!showAll && rows.length > TL_RENDER_CAP) {
+    h += '<button class="btn btn-block mt" data-act="cu-tl-all">' +
+      t('cu_tl_more').replace('{n}', nf(rows.length - TL_RENDER_CAP)) + '</button>';
+  }
+  return h;
 }
 
 /* Do the sizes they buy NOW differ from the sizes they used to? Either their
@@ -455,6 +530,12 @@ function viewCustomerProfile(cid) {
           (state === 'new' ? '<span class="badge neutral">' + t('cu_never_bought') + '</span>' : '') +
           (c.archived ? '<span class="badge neutral">' + t('bk_archived') + '</span>' : '') +
           (c.openDebts ? '<span class="badge critical">' + t('cu_debt') + ' ' + moneyPair(c.debtSyp, c.debtUsd) + '</span>' : '') +
+          /* The credit rules, where somebody deciding whether to sell on
+             credit is actually looking. */
+          (c.noCredit ? '<span class="badge critical">' + t('cu_credit_none') + '</span>' : '') +
+          (c.creditLimit != null
+            ? '<span class="badge neutral"><span dir="ltr">' + t('cu_limit_of').replace('{n}', moneyUsdRaw(c.creditLimit)) + '</span></span>'
+            : '') +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -505,6 +586,17 @@ function viewCustomerProfile(cid) {
     '<div class="card-actions muted small" id="cuTlCount"></div></div>' +
     '<div class="card-body" id="cuTl" data-cid="' + c.id + '">' +
       '<span class="muted small">' + t('loading') + '</span></div></div>';
+
+  /* What they owe, invoice by invoice, and the button that takes the money.
+     Filled by afterCustomerProfile from the history payload — the balances
+     and both USD figures are computed on the server, because a cashier never
+     receives /api/money and her browser has no payments to subtract. */
+  if (c.openDebts) {
+    h += '<div class="card mb"><div class="card-head"><h3>' + t('cu_debt') + '</h3>' +
+      '<div class="card-actions" id="cuDebtTotal"></div></div>' +
+      '<div class="card-body" id="cuDebts" data-cid="' + c.id + '">' +
+        '<span class="muted small">' + t('loading') + '</span></div></div>';
+  }
 
   /* The stamp card. Filled by afterCustomerProfile — the count is derived
      from every sale this person ever made, so it is not in the boot payload
@@ -558,9 +650,23 @@ function viewCustomerProfile(cid) {
   h += '</div>';
 
   if (allow('customer.write') && !c.archived) {
-    h += '<div style="margin-top:16px">' +
+    h += '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">' +
       '<button class="btn" data-act="cu-archive" data-id="' + c.id + '">' + t('bk_archive') + '</button>' +
-      '<div class="partner-note" style="margin-top:8px">' + t('cu_archive_note') + '</div></div>';
+      /* staff.write on the server too — drawn only for whoever can actually
+         do it, so nobody is offered a button that will refuse. */
+      (allow('staff.write')
+        ? '<button class="btn" data-act="cu-merge" data-id="' + c.id + '">' + t('cu_merge') + '</button>'
+        : '') +
+      '</div><div class="partner-note" style="margin-top:8px">' + t('cu_archive_note') + '</div>';
+  }
+
+  /* Where a merged record went, so an old link or a printed invoice naming
+     the losing id leads somewhere rather than to a dead page. */
+  if (c.mergedInto && DB.customer(c.mergedInto)) {
+    h += '<div class="partner-note mt">' +
+      t('cu_merged_into').replace('{n}', nm(DB.customer(c.mergedInto).name)) +
+      ' <button class="btn btn-sm" data-act="cu-open" data-id="' + c.mergedInto + '">' +
+        t('cu_open_profile') + '</button></div>';
   }
 
   return h;
@@ -581,9 +687,28 @@ function afterCustomerProfile(cid) {
     var el = document.getElementById('cuTl');
     if (!el || el.getAttribute('data-cid') !== String(cid)) return;
     var rows = timelineRows(r || {}, DB.customer(cid));
-    el.innerHTML = timelineHTML(rows);
+    /* Held so the show-all button can redraw without asking the server again —
+       the rows are already here, the cap is only about how many are DRAWN. */
+    OG.tlRows = rows;
+    OG.tlAll = false;
+    el.innerHTML = timelineHTML(rows, false);
     var n = document.getElementById('cuTlCount');
-    if (n) n.textContent = rows.length ? nf(rows.length) + ' ' + t('cu_events') : '';
+    if (n) {
+      /* The history reader has a LIMIT. At 200 invoices this count, and the
+         size-drift comparison below it, quietly stop being facts about this
+         person and become facts about their last 200. */
+      var capped = !!(r && r.salesCapped);
+      n.textContent = rows.length
+        ? nf(rows.length) + (capped ? '+' : '') + ' ' + t('cu_events') : '';
+    }
+    var tl = document.getElementById('cuTl');
+    if (tl && r && r.salesCapped) {
+      tl.insertAdjacentHTML('beforeend', cappedNote(
+        { shown: (r.sales || []).length, total: r.salesTotal, capped: true },
+        t('invoices').toLowerCase()));
+    }
+
+    fillDebts(cid, (r || {}).debts || []);
 
     var drift = sizeDrift((r || {}).sales);
     var d = document.getElementById('cuDrift');
@@ -598,6 +723,64 @@ function afterCustomerProfile(cid) {
   });
 
   if (DB.stampsOn()) loadStampCard(cid);
+}
+
+/* ---- what they owe ------------------------------------------------------
+   One row per invoice, oldest first — the order they get chased in — with
+   what it was worth THEN and what it is worth NOW.
+
+   The shop freezes a rate onto every sale, so it can answer that, and
+   refusing to would be a quiet lie: "took 500,000 in March" and "took $50 in
+   March, which is $38 today" are different sentences, and the second is the
+   one the owner is deciding about. Both dollar figures are drawn BESIDE the
+   real amount in the currency actually owed, never instead of it. */
+function fillDebts(cid, debts) {
+  var host = document.getElementById('cuDebts');
+  if (!host || host.getAttribute('data-cid') !== String(cid)) return;
+
+  if (!debts.length) {
+    host.innerHTML = '<div class="cart-empty"><b>' + t('mn_no_debt') + '</b>' +
+      t('cu_debt_settled') + '</div>';
+    return;
+  }
+
+  var h = '<div class="table-wrap"><table class="tbl tbl-compact"><thead><tr>' +
+    '<th>' + t('invoice') + '</th><th>' + t('date') + '</th>' +
+    '<th class="num">' + t('cu_owed') + '</th>' +
+    '<th class="num">' + t('cu_then_now') + '</th>' +
+    (allow('debt.collect') ? '<th></th>' : '') +
+  '</tr></thead><tbody>';
+
+  debts.forEach(function (dbt) {
+    h += '<tr>' +
+      '<td><b>' + esc(dbt.id) + '</b>' +
+        (dbt.paid ? '<small class="muted" style="display:block">' +
+          t('cu_part_paid').replace('{n}', saleMoney(dbt.paid, dbt.currency)) + '</small>' : '') +
+      '</td>' +
+      '<td class="muted num nowrap">' + fmtDate(dbt.at) + '</td>' +
+      '<td class="num"><b>' + saleMoney(dbt.balance, dbt.currency) + '</b></td>' +
+      '<td class="num muted small"><span dir="ltr">' +
+        (dbt.thenUsd == null ? '—' : moneyUsdRaw(dbt.thenUsd)) + ' ' + t('cu_then') +
+        ' · ' + (dbt.nowUsd == null ? '—' : moneyUsdRaw(dbt.nowUsd)) + ' ' + t('cu_now') +
+      '</span></td>' +
+      (allow('debt.collect')
+        ? '<td><button class="btn btn-sm btn-primary" data-act="cu-pay" ' +
+            'data-sale="' + esc(dbt.id) + '" data-cid="' + cid + '">' + t('cu_take_payment') + '</button></td>'
+        : '') +
+    '</tr>';
+  });
+  h += '</tbody></table></div>';
+
+  /* The rate moved between the oldest debt and today, and saying so is the
+     point of the column above. */
+  h += '<div class="partner-note mt">' + t('cu_then_now_note') + '</div>';
+  host.innerHTML = h;
+
+  var tot = document.getElementById('cuDebtTotal');
+  if (tot) {
+    tot.innerHTML = '<span class="badge critical">' + nf(debts.length) + ' ' +
+      t('invoices').toLowerCase() + '</span>';
+  }
 }
 
 /* ---- the stamp card -----------------------------------------------------
@@ -668,6 +851,142 @@ function stampCardHTML(card, redemptions) {
   return h;
 }
 
+/* The attach-a-customer picker's results.
+
+   Uses the SAME two search paths the list uses — foldName for names so محمد
+   finds مُحَمَّد, normPhone for digits so 0933 finds +963 933 — rather than a
+   third opinion about what matching means. */
+function saPaint(q) {
+  var host = document.getElementById('saHits');
+  if (!host) return;
+  /* Held on OG rather than read back out of the DOM: the modal is rebuilt on
+     every keystroke, and the sale it is about is not. */
+  var saleId = OG.saSaleId || '';
+  var query = String(q || '').trim();
+
+  /* One rule for "which customer does this text mean" — see custSearch. */
+  var list = custSearch(query, null);
+
+  if (!list.length) {
+    host.innerHTML = '<div class="cart-empty"><b>' + t('cu_none_search') + '</b>' +
+      t('cu_none_search_sub') + '</div>';
+    return;
+  }
+
+  host.innerHTML = list.slice(0, 6).map(function (c) {
+    return '<div class="rule-row"><div class="rr-txt"><b>' + nm(c.name) + '</b>' +
+      '<small class="num">' + tel(c.phone) + (c.city ? ' · ' + nm(c.city) : '') + '</small></div>' +
+      '<button class="btn btn-sm btn-primary" data-act="sale-attach-do" ' +
+        'data-sale="' + esc(saleId) + '" data-id="' + c.id + '">' +
+        t('sa_pick') + '</button></div>';
+  }).join('');
+}
+
+/* The job-link picker. Same shape and the same two search paths — this is
+   the third place that asks 'which customer', so the matching rules live in
+   one helper below rather than being written out a third time. */
+function pjPaint(q) {
+  var host = document.getElementById('pjHits');
+  if (!host) return;
+  var list = custSearch(q, null);
+  if (!list.length) {
+    host.innerHTML = '<div class="cart-empty"><b>' + t('cu_none_search') + '</b>' +
+      t('cu_none_search_sub') + '</div>';
+    return;
+  }
+  host.innerHTML = list.slice(0, 6).map(function (c) {
+    return '<div class="rule-row"><div class="rr-txt"><b>' + nm(c.name) + '</b>' +
+      '<small class="num">' + tel(c.phone) + (c.city ? ' · ' + nm(c.city) : '') + '</small></div>' +
+      '<button class="btn btn-sm btn-primary" data-act="job-link-do" data-id="' + c.id + '">' +
+        t('sa_pick') + '</button></div>';
+  }).join('');
+}
+
+/* The one definition of 'which customer does this text mean'.
+
+   Names through foldName so محمد finds مُحَمَّد; digits through normPhone so a
+   locally-typed 0933 finds a stored +963 933. Three pickers ask this question
+   — attach a sale, merge, link a job — and three copies of the rule is two
+   copies that drift. */
+function custSearch(q, exceptId) {
+  var query = String(q || '').trim();
+  var list = DB.customers.filter(function (c) {
+    return !c.archived && !c.mergedInto && c.id !== exceptId;
+  });
+  if (!query) {
+    return list.slice().sort(function (a, b) {
+      return (b.lastPurchaseDate ? b.lastPurchaseDate.getTime() : -1) -
+             (a.lastPurchaseDate ? a.lastPurchaseDate.getTime() : -1);
+    });
+  }
+  var qf = DB.foldName(query);
+  var qd = DB.normPhone(query);
+  var qd0 = qd.charAt(0) === '0' ? qd.replace(/^0+/, '') : '';
+  return list.filter(function (c) {
+    if (c._fold === undefined) c._fold = DB.foldName(c.name + ' ' + c.city);
+    if (c._tel === undefined) c._tel = DB.normPhone(c.phone);
+    if (qf && c._fold.indexOf(qf) > -1) return true;
+    if (qd.length >= 3 && c._tel &&
+        (c._tel.indexOf(qd) > -1 || (qd0 && c._tel.indexOf(qd0) > -1))) return true;
+    return false;
+  });
+}
+
+/* The merge picker's results. Same two search paths as everywhere else, and
+   the survivor is excluded from its own list — offering to merge somebody
+   into themselves is a button that can only produce an error. */
+function mergePaint(q) {
+  var host = document.getElementById('cuMergeHits');
+  if (!host) return;
+  var keepId = OG.mergeKeep;
+  var query = String(q || '').trim();
+
+  var list = DB.customers.filter(function (c) {
+    return c.id !== keepId && !c.mergedInto;
+  });
+  if (query) {
+    var qf = DB.foldName(query);
+    var qd = DB.normPhone(query);
+    var qd0 = qd.charAt(0) === '0' ? qd.replace(/^0+/, '') : '';
+    list = list.filter(function (c) {
+      if (c._fold === undefined) c._fold = DB.foldName(c.name + ' ' + c.city);
+      if (c._tel === undefined) c._tel = DB.normPhone(c.phone);
+      if (qf && c._fold.indexOf(qf) > -1) return true;
+      if (qd.length >= 3 && c._tel &&
+          (c._tel.indexOf(qd) > -1 || (qd0 && c._tel.indexOf(qd0) > -1))) return true;
+      return false;
+    });
+  } else {
+    /* No query: the likeliest duplicates of THIS person — anybody whose
+       folded name or normalised phone matches theirs. That is the whole
+       reason a merge exists, so it is what the box opens on. */
+    var keep = DB.customer(keepId);
+    if (keep) {
+      var kf = DB.foldName(keep.name);
+      var kt = DB.normPhone(keep.phone);
+      list = list.filter(function (c) {
+        return (kf && DB.foldName(c.name) === kf) || (kt && DB.normPhone(c.phone) === kt);
+      });
+    } else { list = []; }
+  }
+
+  if (!list.length) {
+    host.innerHTML = '<div class="cart-empty"><b>' +
+      (query ? t('cu_none_search') : t('cu_merge_no_obvious')) + '</b>' +
+      (query ? t('cu_none_search_sub') : t('cu_merge_no_obvious_sub')) + '</div>';
+    return;
+  }
+
+  host.innerHTML = list.slice(0, 6).map(function (c) {
+    return '<div class="rule-row"><div class="rr-txt"><b>' + nm(c.name) + '</b>' +
+      '<small class="num">' + tel(c.phone) + (c.city ? ' · ' + nm(c.city) : '') + '</small>' +
+      '<small class="muted">' + nf(c.visits || 0) + ' ' + t('cu_visits').toLowerCase() +
+        ' · ' + nf(c.loyaltyPoints || 0) + ' ' + t('points') + '</small></div>' +
+      '<button class="btn btn-sm" data-act="cu-merge-do" data-id="' + c.id + '">' +
+        t('cu_merge_pick') + '</button></div>';
+  }).join('');
+}
+
 function openCustomerDrawer(cid) {
   var c = DB.customer(cid);
   if (!c) return;
@@ -680,7 +999,8 @@ function openCustomerDrawer(cid) {
     '<div style="display:flex;gap:12px;align-items:flex-start;flex:1">' +
       '<span class="cc-av" style="width:52px;height:52px;font-size:18px">' +
         esc(initialsOf(c.name)) + '</span>' +
-      '<div><span class="eyebrow">' + nm(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</span>' +
+      '<div><span class="eyebrow">' + (c.city ? nm(c.city) + ' · ' : '') +
+        t(c.source === 'online' ? 'online' : 'in_store') + '</span>' +
         '<h3 style="font-size:19px;margin:3px 0 5px">' + nm(c.name) + '</h3>' +
         (showPoints(c) ? '<span class="badge ' + tier + '">' + t(tier) + '</span> ' : '') +
         (atRisk ? '<span class="badge low">' + t('cu_quiet') + '</span> ' : '') +
@@ -922,6 +1242,34 @@ function resolveScan(raw) {
   var m = /#open\/([a-z]+)\/(.+)$/.exec(code);
   if (m) return { kind: 'route', hash: '#open/' + m[1] + '/' + m[2] };
 
+  /* ---- a loyalty card -----------------------------------------------------
+     `CU-` + the zero-padded customer id, e.g. CU-000081.
+
+     Checked BEFORE the product lookups, and that ordering is the safety: it
+     collides with none of the seven parsers, but going first means it cannot
+     be shadowed by one of them growing a looser rule later.
+
+     Why this shape survives every existing parser (recon §D3):
+       * not all digits — 6–8 digits is a label code, 13 is an EAN, and the
+         POS treats 8+ digits as "a scanner is typing";
+       * not a prefix of any SKU — every SKU is `OG-` + digits, so the
+         cropped-label fallback in this same function cannot match it;
+       * not `INV-`, not `P-`, not `SH` + two digits;
+       * 9 characters, comfortably over the wedge's four-character minimum,
+         and every character is a single printable key it can type.
+
+     NOTHING IS STORED. The code is derived from the id, so a card cannot go
+     stale, cannot be reissued wrongly, and a customer whose card is lost gets
+     the same number on the replacement. */
+  var cu = /^CU-0*(\d{1,9})$/i.exec(code);
+  if (cu) {
+    var who = DB.customer(Number(cu[1]));
+    /* An id nobody has falls through to the unknown-code modal, which is the
+       right answer: a printed card for a deleted customer is a real thing to
+       be told about, not something to silently ignore. */
+    if (who) return { kind: 'customer', customer: who };
+  }
+
   var v = DB.variantByBarcode(code);
   if (v) return { kind: 'variant', variant: v };
 
@@ -984,6 +1332,45 @@ function openUnknownCodeModal(code) {
   setTimeout(function () { var el = document.getElementById('attachSearchInp'); if (el) el.focus(); }, 60);
 }
 
+/* WHAT A SCANNED LOYALTY CARD DOES — and this is the behaviour the card
+   exists for, so it is the one that matters.
+
+   AT THE TILL WITH A SALE OPEN: attach that customer to the basket and stay
+   exactly where you are. No navigation, no drawer over the cart, no extra
+   tap. The card is handed across the counter mid-sale, and anything that
+   takes the cashier off the POS to "look at" the customer has missed the
+   point — she does not want to look at them, she wants them on the sale.
+
+   ANYWHERE ELSE: open their profile, which is the question a scan away from
+   the till is asking.
+
+   The empty-basket case at the till deliberately goes to the profile too:
+   with nothing in the cart there is no sale to attach to, and silently doing
+   nothing would read as a card that does not work. */
+function scannedCustomer(c) {
+  if (!c) return;
+
+  if (OG.view === 'pos' && typeof POS !== 'undefined' && POS.saleOpen()) {
+    var already = POS.state.customerId;
+    if (already === c.id) {
+      toast(t('cu_card'), t('cu_card_already').replace('{n}', c.name), 'ok', 2500);
+      return;
+    }
+    POS.state.customerId = c.id;
+    /* Repaint the foot, where the picked customer and the points are drawn.
+       POS.after() rebinds the screen; paintFoot is not exported, so the
+       cheapest honest repaint is the one the module already runs. */
+    if (typeof POS.refresh === 'function') POS.refresh();
+    else render();
+    toast(t('cu_card'),
+      c.name + (already ? ' · ' + t('cu_card_swapped') : ''),
+      'ok', 3000);
+    return;
+  }
+
+  go('customers', null, c.id);
+}
+
 /* The product sheet a scan lands on: the size that was scanned, every other
    size with its stock, where each one sits, and what to do next. */
 function openScanResult(raw) {
@@ -996,6 +1383,7 @@ function openScanResult(raw) {
   if (found.kind === 'route')   { handleDeepLink(found.hash); return; }
   if (found.kind === 'invoice') { openInvoice(found.sale); return; }
   if (found.kind === 'job')     { openJobDrawer(found.job.id); return; }
+  if (found.kind === 'customer') { scannedCustomer(found.customer); return; }
 
   var v = found.variant;
   var p = DB.product(v.productId);

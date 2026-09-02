@@ -20,7 +20,14 @@ function invoiceHtml(sale) {
       DB.payLabel(sale.payment) + '</div></div>' +
 
     '<div class="inv-parties">' +
-      '<div><div class="lbl">' + t('bill_to') + '</div><b>' + esc(cust ? cust.name : t('walk_in')) + '</b>' +
+      /* The name FROZEN on the sale, not the customer's name today.
+         sales.customer_name is denormalised on purpose — a receipt is a
+         record of that moment — and reading through to the live record made
+         the column meaningless: renaming somebody rewrote every invoice they
+         ever had, and attaching a customer to an old walk-in sale rewrote it
+         as theirs. Phone and city are not frozen anywhere, so they can only
+         come from the record as it stands. */
+      '<div><div class="lbl">' + t('bill_to') + '</div><b>' + esc(sale.customerName || (cust ? cust.name : t('walk_in'))) + '</b>' +
         (cust ? '<br><span class="num">' + esc(cust.phone) + '</span><br>' + esc(cust.city) : '') + '</div>' +
       '<div style="text-align:end"><div class="lbl">' + t('served_by') + '</div><b>' + esc(sale.cashier) + '</b><br>' +
         esc(CONFIG.SHOP_ADDRESS) + '<br>' + tel(CONFIG.SHOP_PHONE) + '</div>' +
@@ -198,7 +205,9 @@ function receiptHtml(sale) {
     '<div><span>' + t('invoice') + '</span><b>' + esc(sale.id) + '</b></div>' +
     '<div><span>' + t('date') + '</span><b>' + fmtDateTime(sale.date) + '</b></div>' +
     '<div><span>' + t('served_by') + '</span><b>' + esc(String(sale.cashier || '').split(' ')[0]) + '</b></div>' +
-    (cust ? '<div><span>' + t('customer') + '</span><b>' + esc(cust.name) + '</b></div>' : '') +
+    /* Frozen, same as the A4 invoice above. */
+    (cust || sale.customerName
+      ? '<div><span>' + t('customer') + '</span><b>' + esc(sale.customerName || cust.name) + '</b></div>' : '') +
   '</div>';
 
   h += '<div class="rcp-rule"></div>';
@@ -317,7 +326,24 @@ function openInvoice(sale, opts) {
     title: t('invoice') + ' ' + sale.id,
     size: 'wide',
     body: invoiceHtml(sale),
-    foot: '<button class="btn btn-ghost" data-act="export" data-kind="pdf">' + t('pdf') + '</button>' +
+    foot:
+          /* The customer's name on an invoice was dead text. It is the
+             commonest place somebody wants to go from here — "who was this,
+             and what else have they bought" — so it is a way through now.
+
+             When the sale has NO customer, the same slot offers to attach
+             one: half of all sales are anonymous, and the cashier often
+             realises the person is a regular once she is already at payment.
+             The server decides whether she is still allowed to (same shift),
+             so a refusal is a message rather than a hidden button. */
+          (sale.customerId && DB.customer(sale.customerId)
+            ? '<button class="btn btn-ghost" data-act="cu-open" data-id="' + sale.customerId + '">' +
+                nm(sale.customerName || t('customer')) + ' →</button>'
+            : (allow('sell') && !sale.voided
+                ? '<button class="btn btn-ghost" data-act="sale-attach" data-id="' + esc(sale.id) + '">+ ' +
+                    t('sa_attach') + '</button>'
+                : '')) +
+          '<button class="btn btn-ghost" data-act="export" data-kind="pdf">' + t('pdf') + '</button>' +
           '<button class="btn" data-act="print-doc">' + t('print') + '</button>' +
           /* One button, not "Preview" next to "Print receipt". The old pair
              made checking the slip optional and put the unchecked path one

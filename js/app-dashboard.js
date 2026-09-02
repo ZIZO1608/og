@@ -277,6 +277,22 @@ function viewDashboard() {
     h += '<div class="cart-empty"><b>' + t('dash_nothing_waiting') + '</b>' + t('dash_shop_clean') + '</div>';
   } else {
     rows.forEach(function (a) {
+      /* An alert about a PERSON opens that person, not a list they have to
+         find them in again. The key is already the address — `stamps:83`,
+         `supplier:3` — so this reads it rather than needing a second field.
+
+         Only customers today; the same shape works for the others when their
+         screens grow a per-record page. */
+      var who = /^stamps:(\d+)$/.exec(a.key || '');
+      if (who && DB.customer(Number(who[1]))) {
+        h += ifNav('customers',
+          '<div class="alert-row clickable" data-act="cu-open" data-id="' + Number(who[1]) + '">' +
+            '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
+            '<span class="alert-txt">' + a.text + '</span>' +
+            '<span class="alert-chevron">›</span>' +
+          '</div>') || '';
+        return;
+      }
       h += ifNav(a.view,
         '<div class="alert-row clickable" data-act="nav" data-view="' + a.view + '">' +
           '<span class="alert-ico ' + a.tone + '">' + a.icon + '</span>' +
@@ -296,7 +312,7 @@ function viewDashboard() {
   h += '<div class="dash-grid mt">' +
     '<div>' +
       '<div class="card"><div class="card-head"><h3>' + t('sales_6m') + '</h3>' +
-        '<div class="card-actions"><span class="badge neutral">' + DB.sales.length + ' ' + t('invoices') + '</span></div></div>' +
+        '<div class="card-actions"><span class="badge neutral">' + cappedCount(DB.cap('sales')) + ' ' + t('invoices') + '</span></div></div>' +
         '<div class="card-body"><div class="chart-box"><canvas id="dashLine"></canvas></div></div></div>' +
 
       '<div class="grid mt" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">' +

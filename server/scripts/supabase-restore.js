@@ -86,6 +86,17 @@ const ORDER = [
   /* a rate needs its currencies; a movement needs its variant and warehouse */
   'fx_rates', 'stock_movements',
 
+  /* The two the mirror exists FOR, in the sense that nothing else can rebuild
+     them. A stamp count comes back on its own — it is derived from the sales
+     above — but the redemption that consumed those stamps cannot, and without
+     it a customer is holding a card the shop has already honoured. A want is
+     the only record that somebody asked for a size and left without one.
+
+     After customers (both name one), after products and variants (a want names
+     both), and after accounts, which are restored before this list runs
+     because sales.cashier_id needs them — user_id here needs the same. */
+  'loyalty_redemptions', 'wants',
+
   /* a job may name the sale that raised it; a line names a club; an invoice
      names jobs; a message hangs off one or the other */
   'print_jobs', 'print_job_lines', 'print_job_stages',

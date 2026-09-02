@@ -1,0 +1,31 @@
+-- =============================================================================
+--  change_log.note — because every caller was already writing one
+-- -----------------------------------------------------------------------------
+--  logChange(tbl, rowId, op, userId, origin) has five parameters, and the
+--  fifth is documented in 001_init.sql as:
+--
+--      -- Which device produced it, so a client can skip echoes of its own
+--      -- writes instead of applying them twice.
+--
+--  Not one caller has ever passed a device. Every caller that passes anything
+--  passes a HUMAN NOTE — "points +250: goodwill" from adjustPoints, which is
+--  the oldest of them and whose own comment says the reason has to survive so
+--  "a balance which does not match the customer's purchases can still be
+--  explained a year later". Stages D, E and F added more of the same.
+--
+--  Nothing reads `origin` today, so nothing is broken today. That is exactly
+--  what makes it worth fixing now: the day somebody implements the
+--  echo-skipping this column was created for, every one of those notes becomes
+--  a bogus device id and the rows carrying them are silently skipped. A row
+--  that exists here and nowhere else, with the mirror reporting success — the
+--  same failure shape as a write that skips logChange entirely.
+--
+--  So the note gets its own column and `origin` goes back to meaning what it
+--  says. logChange's fifth parameter is now `note`; `origin` moves to a sixth
+--  and stays unused until something actually sets it, which is honest.
+--
+--  change_log is LOCAL_ONLY in supabase-check.js and is never mirrored, so
+--  this column crosses to nobody.
+-- =============================================================================
+
+ALTER TABLE change_log ADD COLUMN note TEXT;

@@ -150,6 +150,11 @@ export function nextJobId(d = DB.get()) {
 export function create({
   customer, phone, design, kind = 'bulk', qty = 0, priority = 'normal',
   deadline, price = 0, cost = null, currency = 'SYP', saleId = null,
+  /* Stage E. The free-text `customer` stays — it is what was written on the
+     job at the time, and a job for somebody not on the customer list still
+     has to say who it is for. customerId is the LINK, and it is only ever
+     set by a caller that actually knows, never matched on a name. */
+  customerId = null,
   lines = [], userId = null
 }) {
   if (!customer) throw Object.assign(new Error('customer is required'), { code: 'bad_request' });
@@ -166,11 +171,11 @@ export function create({
     d.prepare(
       `INSERT INTO print_jobs
          (id, customer, phone, design, kind, priority, stage, qty, currency,
-          price, cost, deadline, sale_id, created_at, updated_at, created_by)
-       VALUES (?,?,?,?,?,?,'design',?,?,?,?,?,?,?,?,?)`
+          price, cost, deadline, sale_id, customer_id, created_at, updated_at, created_by)
+       VALUES (?,?,?,?,?,?,'design',?,?,?,?,?,?,?,?,?,?)`
     ).run(id, customer, phone ?? null, design, kind, priority,
           kind === 'kit' ? 0 : qty, currency, price, cost, deadline ?? null,
-          saleId, at, at, userId);
+          saleId, customerId ?? null, at, at, userId);
 
     const ins = d.prepare(
       `INSERT INTO print_job_lines (job_id, club_code, print_name, number, size, qty, unit_cost)
@@ -530,5 +535,45 @@ function upsert(table, fields, userId) {
     ).run(...cols.map((c) => fields[c]), at, at);
     DB.logChange(table, info.lastInsertRowid, 'insert', userId, null);
     return d.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(info.lastInsertRowid);
+  });
+}
+
+/* Print jobs a customer_id actually proves. Never a name match: in Aleppo
+   the same person is written in Arabic on Tuesday and in Latin on Thursday,
+   and a confident wrong answer here attaches somebody else's order to a
+   profile. A job with no customer_id simply does not appear. */
+export function jobsForCustomer(customerId, limit = 50) {
+  const n = Math.max(1, Math.min(200, Math.floor(Number(limit)) || 50));
+  return DB.get().prepare(
+    `SELECT id, design, kind, stage, priority, qty, deadline, order_state,
+            created_at, updated_at
+       FROM print_jobs
+      WHERE customer_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?`
+  ).all(customerId, n);
+}
+
+/* Linking an old job to a customer BY HAND.
+
+   Migration 032 deliberately backfilled only where a sale_id proved it and
+   left everything else null — for a person to link. This is the route that
+   person needs; without it the migration was an instruction to nobody.
+
+   Setting it to null is allowed and is not an accident: somebody who links
+   the wrong person has to be able to say so. */
+export function setJobCustomer(id, customerId, userId = null) {
+  return DB.tx(() => {
+    const d = DB.get();
+    const j = d.prepare("SELECT id FROM print_jobs WHERE id = ?").get(id);
+    if (!j) throw Object.assign(new Error("no such job"), { code: "not_found" });
+    if (customerId !== null) {
+      const c = d.prepare("SELECT id FROM customers WHERE id = ?").get(customerId);
+      if (!c) throw Object.assign(new Error("no such customer"), { code: "not_found" });
+    }
+    d.prepare("UPDATE print_jobs SET customer_id = ?, updated_at = ? WHERE id = ?")
+     .run(customerId, nowIso(), id);
+    DB.logChange("print_jobs", id, "update", userId, "customer linked by hand");
+    return job(id);
   });
 }
