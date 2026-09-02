@@ -688,23 +688,66 @@ function rateCard() {
     '</div>' + setFoldEnd();
 }
 
+/* The loyalty rules — and since Stage D these actually SAVE.
+
+   Every input here used to write to CONFIG in memory and nothing else, so the
+   fold looked like it worked and lost everything on reload. It sat directly
+   beside the at-risk fold, which did save, with nothing on screen saying which
+   was which — worse than either bug alone. `loyalty.*` is open in
+   CONFIG_WRITABLE now and every control below goes through PUT /api/config. */
 function loyaltyCard() {
-  return setFoldStart('loyalty', t('loyalty_rules'),
-      '<span dir="ltr">' + CONFIG.LOYALTY_POINTS_PER_1000 + ' / 1,000</span> ' +
-      t('points').toLowerCase()) +
-    '<div class="card-body">' +
-    '<div class="row2">' +
+  var mode = CONFIG.LOYALTY_MODE || 'points';
+  var block = DB.redeemBlock();
+  var meta = t('ly_mode_' + mode);
+  if (DB.pointsOn()) {
+    meta += ' · <span dir="ltr">' + CONFIG.LOYALTY_POINTS_PER_1000 + ' / 1,000</span>';
+  }
+  if (DB.stampsOn()) {
+    meta += ' · <span dir="ltr">' + nf(CONFIG.STAMPS_REQUIRED) + '</span> ' + t('ly_stamps').toLowerCase();
+  }
+
+  var h = setFoldStart('loyalty', t('loyalty_rules'), meta) + '<div class="card-body">';
+
+  /* Which scheme the shop runs. Every screen reads this, so the shop can
+     start on stamps alone and turn points on later with no deploy. */
+  h += '<label class="field"><span>' + t('ly_mode') + '</span>' +
+    '<select class="inp" data-change="set-lymode">' +
+      ['points', 'stamps', 'both', 'off'].map(function (m) {
+        return '<option value="' + m + '"' + (mode === m ? ' selected' : '') + '>' +
+          t('ly_mode_' + m) + '</option>';
+      }).join('') +
+    '</select></label>';
+
+  if (DB.pointsOn()) {
+    h += '<div class="row2 mt">' +
       '<label class="field"><span>' + t('points_per') + '</span><input class="inp num" type="number" min="0" ' +
         'value="' + CONFIG.LOYALTY_POINTS_PER_1000 + '" data-change="set-pts"></label>' +
       '<label class="field"><span>' + t('point_value') + '</span><input class="inp num" type="number" min="0" ' +
         'value="' + CONFIG.LOYALTY_POINT_VALUE + '" data-change="set-ptval"></label>' +
     '</div>' +
-    '<div class="partner-note">500 ' + t('points') + ' = ' + money(500 * CONFIG.LOYALTY_POINT_VALUE) + '</div>' +
+    '<label class="field mt"><span>' + t('ly_block') + '</span>' +
+      '<input class="inp num" type="number" min="1" value="' + block + '" data-change="set-lyblock"></label>' +
+    '<div class="partner-note">' + nf(block) + ' ' + t('points') + ' = ' + money(block * CONFIG.LOYALTY_POINT_VALUE) + '</div>' +
     '<div class="mt"><div class="lbl">' + t('tier') + '</div>' +
       '<span class="badge bronze">' + t('bronze') + ' 0–' + nf(CONFIG.TIER_SILVER - 1) + '</span> ' +
       '<span class="badge silver">' + t('silver') + ' ' + nf(CONFIG.TIER_SILVER) + '–' + nf(CONFIG.TIER_GOLD - 1) + '</span> ' +
-      '<span class="badge gold">' + t('gold') + ' ' + nf(CONFIG.TIER_GOLD) + '+</span></div>' +
-    '</div>' + setFoldEnd();
+      '<span class="badge gold">' + t('gold') + ' ' + nf(CONFIG.TIER_GOLD) + '+</span></div>';
+  }
+
+  if (DB.stampsOn()) {
+    h += '<div class="row2 mt">' +
+      '<label class="field"><span>' + t('ly_required') + '</span><input class="inp num" type="number" min="1" max="99" ' +
+        'value="' + nf(CONFIG.STAMPS_REQUIRED) + '" data-change="set-lyreq"></label>' +
+      '<label class="field"><span>' + t('ly_per') + '</span>' +
+        '<select class="inp" data-change="set-lyper">' +
+          '<option value="item"' + (CONFIG.STAMPS_PER === 'item' ? ' selected' : '') + '>' + t('ly_per_item') + '</option>' +
+          '<option value="visit"' + (CONFIG.STAMPS_PER === 'visit' ? ' selected' : '') + '>' + t('ly_per_visit') + '</option>' +
+        '</select></label>' +
+    '</div>' +
+    '<div class="partner-note">' + t('ly_stamps_note') + '</div>';
+  }
+
+  return h + '</div>' + setFoldEnd();
 }
 
 /* How many days without a purchase before a customer counts as at risk.

@@ -310,10 +310,10 @@ var Bulk = (function () {
       var cl = selCustomers();
       if (a === 'message') { messageModal(); return; }
       if (a === 'points') {
-        cl.forEach(function (c) { c.loyaltyPoints += 250; });
+        cl.forEach(function (c) { c.loyaltyPoints = (c.loyaltyPoints || 0) + 250; });
         pushRows(cl, function (c) { return Shop.adjustPoints(c.id, 250, t('bulk_title')); });
         stageUndo(n + ' · +250 ' + t('points'), function () {
-          cl.forEach(function (c) { c.loyaltyPoints -= 250; });
+          cl.forEach(function (c) { c.loyaltyPoints = (c.loyaltyPoints || 0) - 250; });
           pushRows(cl, function (c) { return Shop.adjustPoints(c.id, -250, t('undo')); });
         });
         refreshAll(); paint(); return;

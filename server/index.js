@@ -30,6 +30,7 @@ import * as Stock from './lib/stock.js';
 import * as Shelves from './lib/shelves.js';
 import * as Sales from './lib/sales.js';
 import * as Customers from './lib/customers.js';
+import * as Loyalty from './lib/loyalty.js';
 import * as Deliveries from './lib/deliveries.js';
 import * as Partner from './lib/partner.js';
 import * as Purchasing from './lib/purchasing.js';
@@ -298,10 +299,12 @@ router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
    the Settings card that owns the at-risk window. Restricted to that
    allowlist rather than any config key — this route exists for those
    Settings cards, not as a general "edit the config table" backdoor.
-   loyalty.* stays closed on purpose: the loyalty fold still writes to
-   memory only, and opening the keys before the fold saves them properly
-   would let half a change persist. */
-const CONFIG_WRITABLE = /^receipt\.|^customer\.|^shop\.(branch_name|phone)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|logo_asset|code_source|max_batch|lease_minutes|calibrate_cmd)$/;
+
+   loyalty.* opened in Stage D, and only then: it stayed shut for two stages
+   because the loyalty fold wrote to CONFIG in memory and nothing else, so
+   opening the keys first would have let half a change persist — the earn
+   rate saved, the tiers not. The fold saves properly now. */
+const CONFIG_WRITABLE = /^receipt\.|^customer\.|^loyalty\.|^shop\.(branch_name|phone)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|logo_asset|code_source|max_batch|lease_minutes|calibrate_cmd)$/;
 
 /* ---- the Sync button in the topbar --------------------------------------
    The mirror already runs on a timer, but somebody who has just finished a
@@ -621,7 +624,10 @@ router.add('GET /api/customers/:id/history', requirePerm('customer.read', (ctx) 
     /* One request builds the whole timeline. Left out entirely for an account
        without delivery.read — an empty array would say "no parcels", which is
        a different claim from "not yours to see". */
-    deliveries: Auth.can(ctx.user, 'delivery.read') ? Customers.deliveriesFor(c.id) : null
+    deliveries: Auth.can(ctx.user, 'delivery.read') ? Customers.deliveriesFor(c.id) : null,
+    /* Stamp redemptions ride along for the same reason: one request, one
+       stream. Empty when the shop does not run stamps. */
+    redemptions: Loyalty.stampsOn(Loyalty.rules().mode) ? Loyalty.redemptionsFor(c.id) : []
   });
 }));
 
@@ -648,6 +654,47 @@ router.add('PATCH /api/customers/:id', requirePerm('customer.write', async (ctx)
     const r = Customers.update(Number(ctx.params.id), b, ctx.user.id);
     sendOk(ctx.res, { customer: r.customer, warning: r.warning });
   } catch (e) {
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+/* ---- the stamp card ------------------------------------------------------
+   Reading it is customer.read: a cashier has to be able to answer "how many
+   have I got" across the counter. Cashing one in is customer.write, because
+   it is the shop giving something away.
+
+   There is no "how many stamps" write anywhere, and there cannot be — the
+   count is derived from sale_items (server/lib/loyalty.js). */
+router.add('GET /api/customers/:id/card', requirePerm('customer.read', (ctx) => {
+  if (ctx.user.role === 'delivery') {
+    return sendError(ctx.res, 404, 'not_found', 'No such customer.');
+  }
+  const c = Customers.byId(Number(ctx.params.id), ctx.user);
+  if (!c) return sendError(ctx.res, 404, 'not_found', 'No such customer.');
+  sendOk(ctx.res, {
+    card: Loyalty.cardFor(c.id),
+    redemptions: Loyalty.redemptionsFor(c.id),
+    rules: Loyalty.rules()
+  });
+}));
+
+router.add('POST /api/customers/:id/redeem', requirePerm('customer.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Loyalty.redeem(Number(ctx.params.id), {
+      note: typeof b.note === 'string' ? b.note : null,
+      stamps: b.stamps == null ? null : Number(b.stamps),
+      userId: ctx.user.id,
+      opId: typeof b.opId === 'string' ? b.opId : null
+    }));
+  } catch (e) {
+    if (e.code === 'not_enough_stamps') {
+      return sendErrorDetail(ctx.res, 409, 'not_enough_stamps', e.message,
+        { available: e.available, required: e.required });
+    }
+    if (e.code === 'stamps_off') {
+      return sendError(ctx.res, 409, 'stamps_off', e.message);
+    }
     sendError(ctx.res, 400, 'invalid', e.message);
   }
 }));

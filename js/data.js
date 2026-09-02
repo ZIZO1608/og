@@ -60,6 +60,19 @@ var CONFIG = {
      the screens read this, never a number of their own. */
   AT_RISK_DAYS: 180,
 
+  /* The two numbers behind a customer's OWN quiet line, both from config
+     (029_customer_rhythm). The multiplier is in tenths so the config column
+     never carries a decimal point. Read through DB.quietMultiplier() and
+     DB.quietFloorDays(), never directly. */
+  QUIET_MULTIPLIER_TENTHS: 15,
+  QUIET_FLOOR_DAYS: 21,
+
+  /* How many points come off a sale in one go (031_loyalty_stamps), and
+     whether voiding a sale takes back the points it earned. Read through
+     DB.redeemBlock(); the reversal is enforced on the server. */
+  REDEEM_BLOCK: 500,
+  VOID_REVERSES_POINTS: true,
+
   /* The paper stamp cards the shop runs beside the points. Groundwork only:
      nothing earns or redeems a stamp yet, and loyalty.mode says which of the
      two the screens should talk about — 'points', 'stamps', 'both', 'off'.
@@ -592,6 +605,21 @@ var custPhoneIndex = {};
    never added together. spentUsdEquiv converts every sale at its own frozen
    rate and exists ONLY TO SORT — it must never be drawn; it would restate
    lira somebody paid as dollars they never did. */
+/* A figure the server sent, or NULL when it sent nothing.
+
+   The difference is the whole point. A delivery driver's rows arrive narrow —
+   the server never selects spend or debt for him — and mapping an absent field
+   to 0 would hand any future screen a confident, wrong "owes nothing" instead
+   of "we were not told". `Number(undefined) || 0` did exactly that.
+
+   Zero and null are separately meaningful here: 0 is a customer who genuinely
+   owes nothing, null is a question this account cannot ask. */
+function amountOrNull(v) {
+  if (v === undefined || v === null || v === '') return null;
+  var n = Number(v);
+  return isFinite(n) ? n : null;
+}
+
 function mapCustomer(c) {
   return {
     id: c.id,
@@ -601,14 +629,14 @@ function mapCustomer(c) {
     source: c.source || 'in-store',
     address: c.address || '',
     note: c.note || '',
-    loyaltyPoints: Number(c.loyalty_points) || 0,
-    spentSyp: Number(c.spent_syp) || 0,
-    spentUsd: Number(c.spent_usd) || 0,
-    spentUsdEquiv: Number(c.spent_usd_equiv) || 0,   /* sort only — never display */
-    debtSyp: Number(c.debt_syp) || 0,
-    debtUsd: Number(c.debt_usd) || 0,
-    openDebts: Number(c.open_debts) || 0,
-    visits: Number(c.visits) || 0,
+    loyaltyPoints: amountOrNull(c.loyalty_points),
+    spentSyp: amountOrNull(c.spent_syp),
+    spentUsd: amountOrNull(c.spent_usd),
+    spentUsdEquiv: amountOrNull(c.spent_usd_equiv),  /* sort only — never display */
+    debtSyp: amountOrNull(c.debt_syp),
+    debtUsd: amountOrNull(c.debt_usd),
+    openDebts: amountOrNull(c.open_debts),
+    visits: amountOrNull(c.visits),
     /* [{ fam: 'Footwear', size: '42', qty: 4 }, …] — top two per family,
        mapped on the server from products.type. Read, never re-derived. */
     sizes: Array.isArray(c.sizes) ? c.sizes : [],
@@ -1524,16 +1552,66 @@ var DB = {
 
   /* How long THIS person may be away before it means something.
 
-     Their own median gap (from the server — see rhythmByCustomer) times 1.5,
-     because a regular is not late the day after their usual gap; people have
-     weeks. Floored at 21 days so somebody who pops in twice a week does not
-     turn amber by Thursday, which would be noise rather than news. With
-     fewer than three purchases there is no rhythm to speak of and the
-     shop-wide number is the honest answer. */
+     Their own median gap (from the server — see rhythmByCustomer) times the
+     multiplier, because a regular is not late the day after their usual gap;
+     people have weeks. Floored so somebody who pops in twice a week does not
+     turn amber by Thursday, which would be noise rather than news. Both
+     numbers are config (migration 029) — they were literals here, and a
+     number the shop might disagree with does not belong in a source file.
+
+     With fewer than three purchases there is no rhythm to speak of and the
+     shop-wide customer.at_risk_days is the honest answer. */
   quietAfter: function (c) {
     var m = c && Number(c.medianGapDays);
     if (!isFinite(m) || m <= 0) return DB.atRiskDays();
-    return Math.max(21, Math.round(m * 1.5));
+    return Math.max(DB.quietFloorDays(), Math.round(m * DB.quietMultiplier()));
+  },
+
+  /* ---- loyalty ----------------------------------------------------------
+     Which scheme the shop actually runs. Every screen asks these rather than
+     testing CONFIG.LOYALTY_MODE itself, so adding a fifth mode later is one
+     place. */
+  pointsOn: function () {
+    return CONFIG.LOYALTY_MODE === 'points' || CONFIG.LOYALTY_MODE === 'both';
+  },
+  stampsOn: function () {
+    return CONFIG.LOYALTY_MODE === 'stamps' || CONFIG.LOYALTY_MODE === 'both';
+  },
+  loyaltyOff: function () { return CONFIG.LOYALTY_MODE === 'off'; },
+
+  /* Who is holding a full stamp card, as { customerId: true }.
+
+     Read off the bell rather than counted here. The server already works this
+     out for the alerts — from every non-voided sale since each customer's
+     last redemption — and a second implementation in the browser would be a
+     second answer to the same question, computed from the 200 sales this
+     machine happens to hold. The alert key IS the fact: `stamps:<id>`. */
+  fullCardIds: function () {
+    var out = {};
+    notifications.forEach(function (n) {
+      var m = /^stamps:(\d+)$/.exec(n.key || '');
+      if (m) out[Number(m[1])] = true;
+    });
+    return out;
+  },
+
+  /* How many points come off a sale in one go. Was a literal 500 in three
+     places in js/pos.js while the point value beside it was config. */
+  redeemBlock: function () {
+    var n = Number(CONFIG.REDEEM_BLOCK);
+    return isFinite(n) && n > 0 ? Math.round(n) : 500;
+  },
+
+  /* Stored as tenths so the config column never has to carry a decimal point:
+     "1,5" is a real thing somebody types, and parseFloat would take the 1. */
+  quietMultiplier: function () {
+    var n = Number(CONFIG.QUIET_MULTIPLIER_TENTHS);
+    return isFinite(n) && n > 0 ? n / 10 : 1.5;
+  },
+
+  quietFloorDays: function () {
+    var n = Number(CONFIG.QUIET_FLOOR_DAYS);
+    return isFinite(n) && n >= 0 ? n : 21;
   },
 
   /* Three states, and they are genuinely different things:
@@ -2334,10 +2412,18 @@ var DB = {
     /* 028_customers_foundation: the at-risk line and the stamp-card rules.
        Read here so a screen can say CONFIG.AT_RISK_DAYS rather than 90. */
     CONFIG.AT_RISK_DAYS            = num('customer.at_risk_days', CONFIG.AT_RISK_DAYS);
+    /* 029_customer_rhythm: the multiplier and floor on a customer's own gap. */
+    CONFIG.QUIET_MULTIPLIER_TENTHS = num('customer.quiet_multiplier_tenths', CONFIG.QUIET_MULTIPLIER_TENTHS);
+    CONFIG.QUIET_FLOOR_DAYS        = num('customer.quiet_floor_days', CONFIG.QUIET_FLOOR_DAYS);
     if (cfg['loyalty.mode'] !== undefined) CONFIG.LOYALTY_MODE = cfg['loyalty.mode'];
     CONFIG.STAMPS_REQUIRED         = num('loyalty.stamps.required', CONFIG.STAMPS_REQUIRED);
     if (cfg['loyalty.stamps.per'] !== undefined) CONFIG.STAMPS_PER = cfg['loyalty.stamps.per'];
     CONFIG.STAMPS_MIN_MINOR        = num('loyalty.stamps.min_minor', CONFIG.STAMPS_MIN_MINOR);
+    /* 031_loyalty_stamps */
+    CONFIG.REDEEM_BLOCK            = num('loyalty.redeem_block', CONFIG.REDEEM_BLOCK);
+    if (cfg['loyalty.void_reverses_points'] !== undefined) {
+      CONFIG.VOID_REVERSES_POINTS = cfg['loyalty.void_reverses_points'] !== '0';
+    }
     if (cfg['shop.name']) CONFIG.SHOP_NAME = cfg['shop.name'];
     if (cfg['shop.address']) CONFIG.SHOP_ADDRESS = cfg['shop.address'];
     if (cfg['shop.city']) CONFIG.SHOP_CITY = cfg['shop.city'];

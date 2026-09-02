@@ -103,7 +103,33 @@ table.inv-tbl td.num, table.inv-tbl th.num { text-align: end; }
 .cust-card.quiet { border-color: var(--warning-border); background: var(--warning-soft); }
 .cust-card.fresh { border-color: var(--border-strong); border-style: dashed; }
 .cc-sizes { display: flex; gap: 5px; flex-wrap: wrap; }
-.cc-top { display: flex; gap: 11px; align-items: flex-start; }
+
+/* ---- the paper stamp card ------------------------------------------------
+   Drawn as the boxes it actually is, because the customer is holding the
+   paper version while somebody looks at this. Wraps on a phone rather than
+   scrolling: ten boxes at 34px need 380px, and the card is narrower. */
+.ly-stamps { display: flex; gap: 6px; flex-wrap: wrap; }
+.ly-stamp {
+  width: 34px; height: 34px; flex: none; border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-strong); background: var(--muted);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.ly-stamp.on {
+  border-style: solid; border-color: var(--brand);
+  background: var(--brand-soft); color: var(--brand); font-size: 15px;
+}
+.ly-line { margin-top: 11px; font-size: 13px; }
+.ly-line b { font-family: var(--font-head); font-weight: 800; }
+.ly-full { color: var(--brand); }
+.ly-past { margin: 6px 0 0; padding-inline-start: 16px; }
+.ly-past li { font-size: 12px; color: var(--muted-foreground); padding-bottom: 3px; }
+/* The inline-end padding is for the bulk tick box, which is positioned
+   absolutely into this same corner (.bk-corner). Without it the tier badge
+   and the checkbox sit on top of each other — worst on a phone, where the
+   card is narrow enough that the badge reaches the corner on every row. */
+.cc-top { display: flex; gap: 11px; align-items: flex-start; padding-inline-end: 24px; }
 .cc-av {
   width: 40px; height: 40px; flex: none; border-radius: var(--radius-full);
   background: var(--muted); color: var(--brand); border: 1px solid var(--border);

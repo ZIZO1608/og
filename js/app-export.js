@@ -255,14 +255,29 @@ function handleDeepLink(hash) {
     case 'product':
       go('products', function () { openProductDrawer(+id); });
       return true;
-    /* A QR or a link that names a person now opens their PAGE rather than a
+    /* A QR or a link that names a person opens their PAGE rather than a
        drawer over the list: a drawer is not a place, so it did not survive a
        refresh and Back reopened it instead of leaving it.
 
-       Still navigates away, which is wrong at the till mid-sale — a scanned
-       loyalty card should drop the customer into the basket, not take the
-       cashier off the screen. That is Stage G's job and is not fixed here. */
+       EXCEPT at the till with a basket on the go. Navigating away from the
+       POS mid-sale takes the cashier off the screen with a queue in front of
+       her — so there the old behaviour is the right one, and the drawer opens
+       over the sale without touching the hash. The drawer's Open profile
+       button is still there for anyone who actually wants to leave.
+
+       Stage G makes a scanned loyalty card attach the customer to the basket
+       instead of showing a drawer; this guard is what that will hang on. */
     case 'customer':
+      if (OG.view === 'pos' && typeof POS !== 'undefined' && POS.saleOpen()) {
+        openCustomerDrawer(+id);
+        /* Only go() rewrites the hash, and we deliberately did not call it —
+           so a link pasted into the address bar would leave it reading
+           #open/customer/81 while the till is on screen. Put it back to where
+           we actually are. (Setting it fires one more hashchange, which
+           resolves to the view already showing and does nothing.) */
+        if (window.location.hash !== '#pos') window.location.hash = 'pos';
+        return true;
+      }
       go('customers', null, id);
       return true;
     case 'invoice':

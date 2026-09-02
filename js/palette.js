@@ -97,7 +97,9 @@ var Palette = (function () {
         var sc = Math.max(score(c.name, q), score(c.phone.replace(/\s/g, ''), q));
         if (sc > 0) out.push({
           kind: 'customer', score: sc - 4, icon: '☺',
-          title: c.name, sub: c.city + ' · ' + nf(c.loyaltyPoints) + ' ' + t('points'),
+          /* nfOrDash: a delivery driver's rows carry no points balance, and
+             "0 points" is a claim the server never made. */
+          title: c.name, sub: c.city + ' · ' + nfOrDash(c.loyaltyPoints) + ' ' + t('points'),
           run: function () { go('customers', function () { openCustomerDrawer(c.id); }); }
         });
       });

@@ -9,6 +9,17 @@
 
 function nf(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }
 
+/* Like nf(), but null and undefined print "—" rather than a confident 0.
+
+   The distinction is real: a delivery driver's customer rows arrive without
+   spend, debt, visits or points, because the server never selects them for
+   him (driverScope, server/lib/customers.js). nf(null) is "0", which reads as
+   "this customer has never bought anything" — a claim nobody made. Zero still
+   prints as 0, because a customer who genuinely owes nothing is a fact. */
+function nfOrDash(n) {
+  return (n === null || n === undefined || n === '') ? '—' : nf(n);
+}
+
 function money(syp) {
   if (OG.currency === 'USD') return '$' + nf((Number(syp) || 0) / CONFIG.EXCHANGE_RATE);
   return nf(syp) + ' ' + (OG.lang === 'ar' ? 'ل.س' : 'SYP');

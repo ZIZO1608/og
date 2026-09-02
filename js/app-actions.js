@@ -345,6 +345,58 @@ var ACTIONS = {
 
   'cu-edit': function (el) { openEditCustomer(+el.getAttribute('data-id')); },
 
+  /* ---- cashing in a full stamp card -------------------------------------
+     Nothing fires automatically at ten. The owner decides what the card is
+     worth — a free pair, a discount, early access to a drop — and the person
+     at the counter records what was actually handed over. That is why this is
+     a note rather than a menu: an enum here would be the list of rewards
+     somebody thought of in one afternoon. */
+  'ly-redeem': function (el) {
+    var id = +el.getAttribute('data-id');
+    var c = DB.customer(id);
+    if (!c) return;
+    openModal({
+      title: t('ly_redeem'), size: 'narrow',
+      body: '<p style="margin-top:0">' + t('ly_redeem_ask').replace('{n}', nm(c.name)) + '</p>' +
+        '<label class="field"><span>' + t('ly_given') + '</span>' +
+          '<input class="inp" id="lyNote" type="text" placeholder="' + esc(t('ly_given_ph')) + '"></label>' +
+        '<div class="partner-note mt">' + t('ly_redeem_note') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+            '<button class="btn btn-primary" data-act="ly-redeem-do" data-id="' + id + '">' +
+              t('ly_redeem') + '</button>',
+      onOpen: function () {
+        setTimeout(function () {
+          var n = document.getElementById('lyNote');
+          if (n) n.focus();
+        }, 60);
+      }
+    });
+  },
+
+  'ly-redeem-do': function (el) {
+    var id = +el.getAttribute('data-id');
+    var note = ((document.getElementById('lyNote') || {}).value || '').trim();
+    /* An opId, like every other write that gives something away: a till that
+       loses wifi mid-request and retries must not cash the same card twice. */
+    var opId = 'redeem-' + id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
+    Shop.write(
+      function () { return Shop.redeemCard(id, { note: note || null, opId: opId }); },
+      function () { return null; },
+      function (res) {
+        closeModal();
+        /* The card is derived, so nothing local to patch — re-ask the server
+           for the count it now computes. */
+        loadStampCard(id);
+        var left = res && res.card ? res.card.stamps : 0;
+        toast(t('ly_redeem'),
+          t('ly_redeemed').replace('{n}', nf((res && res.stampsUsed) || 0)) +
+            (left ? ' · ' + t('ly_carried').replace('{n}', nf(left)) : ''),
+          'ok', 4000);
+      }
+    );
+  },
+
   'cu-update': function (el) {
     var id = +el.getAttribute('data-id');
     var fields = {

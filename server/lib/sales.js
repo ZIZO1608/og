@@ -449,10 +449,51 @@ export function voidSale(id, { reason, userId }) {
       });
     }
 
+    /* ---- the points this sale moved --------------------------------------
+       Voiding used to leave them alone, and the two facts then disagreed from
+       that moment on: the sale vanished from the customer's spend and from
+       their visits, while the points it paid out stayed spendable. Points
+       that outlive the purchase that earned them are points the shop pays
+       for twice.
+
+       So: take back what it earned, give back what it spent. Inside this
+       transaction, because a balance corrected in a second statement can
+       interleave with another till serving the same customer.
+
+       Clamped at zero rather than refused. A customer may have already spent
+       the points on a later sale; a void that could fail because of what
+       happened afterwards would leave the shop unable to correct a mistake at
+       all, and the goods are already back on the shelf either way.
+
+       loyalty.void_reverses_points turns it off, because it is a policy some
+       shops will disagree with — but it defaults to on. */
+    const stamps = 0;                       /* derived; nothing to undo here */
+    if (s.customer_id) {
+      const rev = d.prepare(
+        "SELECT value FROM config WHERE key = 'loyalty.void_reverses_points'").get();
+      if (!rev || rev.value !== '0') {
+        const before = d.prepare(
+          'SELECT loyalty_points FROM customers WHERE id = ?').get(s.customer_id);
+        if (before) {
+          const after = Math.max(
+            0, before.loyalty_points - (s.points_earned || 0) + (s.points_used || 0));
+          if (after !== before.loyalty_points) {
+            d.prepare('UPDATE customers SET loyalty_points = ?, updated_at = ? WHERE id = ?')
+             .run(after, nowIso(), s.customer_id);
+            logChange('customers', s.customer_id, 'update', userId,
+                      `void ${id}: points ${before.loyalty_points} → ${after}`);
+          }
+        }
+      }
+    }
+
     d.prepare('UPDATE sales SET voided = 1, void_reason = ? WHERE id = ?')
      .run(reason ?? null, id);
     logChange('sales', id, 'update', userId, null);
 
-    return { id, voided: true, returned: items.length };
+    /* Stamps need no handling at all: they are counted from non-voided sales,
+       so this UPDATE has already taken them back. That is the whole argument
+       for deriving them — see server/lib/loyalty.js. */
+    return { id, voided: true, returned: items.length, stamps };
   });
 }

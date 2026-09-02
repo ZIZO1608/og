@@ -1,0 +1,33 @@
+-- =============================================================================
+--  sales_customer is redundant now, and redundant indexes are not free
+-- -----------------------------------------------------------------------------
+--  001_init.sql created:
+--
+--      CREATE INDEX sales_customer ON sales (customer_id);
+--
+--  029 created:
+--
+--      CREATE INDEX sales_customer_at ON sales (customer_id, at);
+--
+--  A composite index whose LEADING column is customer_id serves every lookup
+--  and every range scan the single-column one served -- SQLite walks the same
+--  b-tree and simply ignores the trailing column. So the older index answers
+--  no question the newer one cannot, and it is paid for on every INSERT and
+--  every UPDATE of a sale: one more b-tree to descend and rewrite, forever, on
+--  the hottest write path in the shop.
+--
+--  Verified before dropping rather than assumed: the query plans for both
+--  customer queries (the size aggregate and the rhythm) already chose
+--  sales_customer_at over sales_customer once 029 existed.
+--
+--  The reverse is NOT true and is worth stating, because it is the mistake
+--  this could invite later: an index on (at) alone cannot be dropped in favour
+--  of (customer_id, at), because `at` is not the leading column there. That is
+--  why sales_at survives untouched.
+--
+--  IF EXISTS because a database rebuilt from scratch after this migration was
+--  written still runs 001 first and so still has it -- but a database restored
+--  from the Supabase mirror may not.
+-- =============================================================================
+
+DROP INDEX IF EXISTS sales_customer;

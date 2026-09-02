@@ -105,6 +105,17 @@ function navAllowed(id) {
      same list is just a way of making him wonder which one is the real one. */
   if (id === 'deliveries' && roleOf() === 'delivery') return false;
 
+  /* And he has no reason to browse the customer list at all. He holds
+     customer.read — he has to, it is what feeds the names and phone numbers
+     onto his board — but the people he needs are the ones on his run, and
+     those reach him through the delivery board already.
+
+     A per-role nav rule rather than taking customer.read away: the permission
+     is what makes GET /api/customers answer him at all, and the server scopes
+     that response to his own run (driverScope, server/lib/customers.js). Remove
+     the permission and his board loses the addresses with it. */
+  if (id === 'customers' && roleOf() === 'delivery') return false;
+
   var need = NAV_PERM[id];
   return !need || allow(need);
 }

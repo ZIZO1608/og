@@ -141,13 +141,51 @@ var CHANGES = {
      There is no separate "save" step because there is nothing to save to —
      state lives in memory by design. Save now just confirms what is already
      true, which is the honest version of that button. */
+  /* ---- loyalty ----------------------------------------------------------
+     These SAVE now. Every one of them used to write to CONFIG and nothing
+     else, so the fold looked like it worked and lost the lot on reload —
+     while the at-risk fold immediately below it did save, with nothing on
+     screen saying which was which.
+
+     saveConfig() is the shared debounced writer: 600ms, so "180" typed as
+     1, 18, 180 is one round trip rather than three. */
   'set-pts': function (el) {
     var v = parseFloat(el.value);
-    if (isFinite(v) && v >= 0) { CONFIG.LOYALTY_POINTS_PER_1000 = v; render(); }
+    if (!isFinite(v) || v < 0) return;
+    CONFIG.LOYALTY_POINTS_PER_1000 = v;
+    saveConfig('loyalty.points_per_1000', v, t('loyalty_rules'));
   },
   'set-ptval': function (el) {
     var v = parseInt(el.value, 10);
-    if (isFinite(v) && v >= 0) { CONFIG.LOYALTY_POINT_VALUE = v; render(); }
+    if (!isFinite(v) || v < 0) return;
+    CONFIG.LOYALTY_POINT_VALUE = v;
+    saveConfig('loyalty.point_value', v, t('loyalty_rules'));
+  },
+  'set-lyblock': function (el) {
+    var v = parseInt(el.value, 10);
+    if (!isFinite(v) || v < 1) return;
+    CONFIG.REDEEM_BLOCK = v;
+    saveConfig('loyalty.redeem_block', v, t('ly_block'));
+  },
+  'set-lyreq': function (el) {
+    var v = parseInt(el.value, 10);
+    if (!isFinite(v) || v < 1 || v > 99) return;
+    CONFIG.STAMPS_REQUIRED = v;
+    saveConfig('loyalty.stamps.required', v, t('ly_required'));
+  },
+  /* A select, so it settles on one value — saved immediately rather than
+     debounced, and re-rendered because the mode decides which controls the
+     fold even draws. */
+  'set-lyper': function (el) {
+    CONFIG.STAMPS_PER = el.value === 'visit' ? 'visit' : 'item';
+    saveConfig('loyalty.stamps.per', CONFIG.STAMPS_PER, t('ly_per'), 0);
+  },
+  'set-lymode': function (el) {
+    var v = el.value;
+    if (['points', 'stamps', 'both', 'off'].indexOf(v) < 0) return;
+    CONFIG.LOYALTY_MODE = v;
+    saveConfig('loyalty.mode', v, t('ly_mode'), 0);
+    render();
   },
   'set-shopname': function (el) {
     var v = String(el.value || '').trim();
@@ -245,6 +283,28 @@ var CHANGES = {
 };
 
 var ATRISK_SAVE_T = null;
+
+/* One debounced writer for every Settings control that persists.
+
+   Debounced because these are number inputs: "180" arrives as 1, 18, 180 and
+   three round trips would race each other to decide the final value. A select
+   passes wait = 0, since it settles on one value the moment it changes.
+
+   Keyed per config key so two different fields being edited in the same
+   breath do not cancel each other — that was the bug waiting in a single
+   shared timer. */
+var CONFIG_SAVE_T = {};
+function saveConfig(key, value, label, wait) {
+  clearTimeout(CONFIG_SAVE_T[key]);
+  if (typeof API === 'undefined' || !API.live) return;    /* _shot.html */
+  CONFIG_SAVE_T[key] = setTimeout(function () {
+    var updates = {};
+    updates[key] = String(value);
+    API.put('/api/config', { updates: updates })
+      .then(function () { toast(label, String(value), 'ok', 1800); })
+      .catch(function (err) { toast(label, API.friendly(err), 'err', 5000); });
+  }, wait === undefined ? 600 : wait);
+}
 
 /* Re-focus an input after a full re-render so typing is never interrupted. */
 function focusBack(sel, caret) {

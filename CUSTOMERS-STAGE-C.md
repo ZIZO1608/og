@@ -1,8 +1,10 @@
 # CUSTOMERS-STAGE-C.md — the screen
 
 Stage C: the two safety fixes, the list, the per-customer rhythm, the profile page and the edit
-form. **85 checks pass** — 23 server-side, 62 browser-side — plus three Arabic RTL screenshots.
-Stage D has not been started.
+form, **plus the five follow-ups from §10** (a second report section at the end).
+
+**121 checks pass** — 29 server-side, 92 browser-side — plus three Arabic RTL screenshots and two
+phone-width renders at a true 390px viewport. Stage D has not been started.
 
 **Preconditions (§0).** Both held at the start: `git status` was clean at `4d80048` (Stage B), and
 the server on :8090 had been restarted at 02:23 local, after Stage B's last server edit at 01:34,
@@ -33,8 +35,10 @@ so it was running Stage B's code.
 `backup()` from a read-only connection, `createApp()` on port 8099 with `OG_SYNC_MINUTES=0` and
 `OG_DB=<copy>`, real HTTP with real `HttpOnly` cookies, and headless Chrome 152 loading the repo's
 **real** `js/` and `css/` over that same server. The live database was verified untouched
-afterwards: customers 2, sales 13, users 5, deliveries 4, migrations 28, and **zero** rows matching
-`Stage C%`, `stagec%` or `INV-8%`. Personal data is redacted; every test identity is synthetic.
+afterwards: customers 2, sales 13, users 5, deliveries 4, and **zero** rows matching `Stage C%`,
+`stagec%` or `INV-8%`. The one write to it is migration **029** (F2/F3 below), applied through the
+server's own `DB.open()` — schema_migrations went 28 → 29, and the data is untouched. Personal
+data is redacted; every test identity is synthetic.
 
 ---
 
@@ -117,7 +121,7 @@ PASS C0b. …a cashier still gets them (she has to take payments)
 PASS C0b. driver asking for a history gets 404, not 403  → 404
 PASS C0b. …even for the customer on his own run  → 404
 PASS C0b: the driver hydrates ONE customer — the one on his run  → 1
-PASS C0b: no money reaches the driver (absent fields map to 0, and nothing draws them)
+PASS C0b: no money reaches the driver — and absent reads as null, not a confident 0
 PASS C0b: …but he still gets who and how to reach them  → +963 955 800 555
 ```
 
@@ -405,6 +409,177 @@ One new CSS rule block went into `css/dialogs-customers-jobs.css`, which is alre
 
 ---
 
+---
+
+# Stage C follow-ups — the five items from §10
+
+Done after the report above, before Stage D. Everything below is re-verified together:
+**29 server checks + 92 browser checks, all passing**, plus phone-width renders at a true 390px
+viewport. `CACHE` is now **`og-system-v88`**.
+
+Two decisions you settled, recorded here because Stage E has to honour them:
+
+- **`customers.note` stays visible to anyone with `customer.read`**, and the edit form saying so on
+  its face is the handling. No private note field, no `note.read` permission.
+- **`sales.customer_name` stays frozen on old invoices** — a receipt is a record of that moment.
+  **Stage E's E2 must match**: when a customer is attached to a sale after the fact, the
+  denormalised name on that sale is *not* rewritten.
+
+## F1. The till guard — taken now, not in Stage G
+
+`POS.saleOpen()` is new and is the whole test: `S.cart.length > 0`. A customer picked or a discount
+typed into an empty basket is a keystroke somebody can repeat; a basket of scanned shoes is a queue
+at the counter.
+
+`handleDeepLink`'s `customer` case now checks `OG.view === 'pos' && POS.saleOpen()` and, when both
+hold, opens the drawer over the sale exactly as it did before Stage C — **and puts the hash back to
+`#pos`**, because only `go()` rewrites it and a pasted link would otherwise leave the address bar
+reading `#open/customer/81` while the till is on screen.
+
+```
+PASS F1: POS.saleOpen() exists
+PASS F1: an empty basket is not an open sale
+PASS F1: away from the till, a customer link opens the PROFILE  → #customers/83
+PASS F1: on the POS with an EMPTY basket it still navigates
+PASS F1: a basket with a line IS an open sale
+PASS F1: mid-sale the till does NOT navigate away  → pos
+PASS F1: …and no customer page was opened underneath  → null
+PASS F1: …the drawer opened over the sale instead
+PASS F1: …showing the right person
+PASS F1: …and the address bar still says #pos  → #pos
+PASS F1: …with Open profile still available for anyone who does want to leave
+```
+
+Tested against the **real** `js/pos.js` loaded into the harness, with a real line pushed into
+`POS.state.cart` — not a stubbed POS, so `saleOpen()` under test is the shipped function.
+
+Stage G still has work here: a scanned loyalty card should *attach* the customer to the basket
+rather than show a drawer. This guard is what that will hang on.
+
+## F2. The multiplier and the floor are config
+
+Migration **029** adds `customer.quiet_multiplier_tenths` (15) and `customer.quiet_floor_days` (21)
+beside `customer.at_risk_days`. `CONFIG_WRITABLE` already opens `^customer\.`, so Settings reaches
+them with no further change.
+
+**Tenths, not a decimal.** `1.5` in a TEXT config column round-trips through `parseFloat` on every
+read and through whoever types it — and "1,5" is a real thing somebody types, which `parseFloat`
+silently reads as 1. The same reasoning money is in minor units.
+
+`DB.quietMultiplier()` and `DB.quietFloorDays()` read them, with the old literals kept as the
+fallback for a database that has never heard of the keys.
+
+Proved by changing the value **on the server** and reloading, not by poking `CONFIG`:
+
+```
+PASS F2: both numbers hydrated from config  → 15 / 21
+PASS F2: tenths → 1.5, floor 21  → 1.5 / 21
+PASS F2: Regular still quiet after 45 d  → 45
+PASS F2: a changed multiplier reaches the browser  → 30
+PASS F2: at ×3.0 the 70-day regular is NO LONGER quiet (30 × 3 = 90)  → 90 / ok
+PASS F2: with ×0.1 the FLOOR is what decides — 60, not 3  → 60
+PASS F2: put back  → 45
+PASS 029. a manager can change the multiplier through PUT /api/config  → 200
+```
+
+## F3. The index on `sales(customer_id, at)`
+
+Also in migration 029. It is the index both halves of the customer query want — sizes and rhythm
+both group by customer and order by date within one.
+
+```
+query plan (rhythm): SEARCH sales USING INDEX sales_customer_at (customer_id>?)
+PASS 029. the index exists  → CREATE INDEX sales_customer_at ON sales (customer_id, at)
+PASS 029. the rhythm query actually uses the index
+```
+
+No `USE TEMP B-TREE FOR ORDER BY` in that plan — the ordering inside each customer comes free,
+which is the half that mattered.
+
+**One thing I found and did not act on.** `001_init.sql:222` already creates
+`sales_customer ON sales (customer_id)`. A composite index whose leading column is `customer_id`
+serves every lookup that one served, so `sales_customer` is now **redundant** and costs a write on
+every sale for nothing. Dropping it is one line — `DROP INDEX sales_customer;` — but it is an
+object from migration 001 that other queries may be planned around, and removing it was not part of
+this ask. Flagged, not taken.
+
+## F4. A driver's absent money is `null`, not `0`
+
+`mapCustomer` now runs every aggregate through `amountOrNull()`: absent stays absent, and a real
+zero stays `0`. Zero and null are separately meaningful — 0 is a customer who genuinely owes
+nothing, null is a question this account cannot ask.
+
+**This is reachable in practice, not theory:** `NAV_PERM.customers` is `customer.read`, which a
+driver holds, so he can open the Customers screen. Before this, every card would have shown him a
+`Bronze` tier badge computed from `DB.tier(null)` and a confident `0` for visits.
+
+New `nfOrDash()` in `js/app-util.js`, and `showPoints(c)` on the customers screen — a tier badge is
+drawn only when the shop runs points **and** we were actually told the balance. Guarded everywhere
+a driver can see: card, profile, drawer, palette. The two places that *mutate* these fields
+(`js/pos.js`'s optimistic mirror, `js/bulk.js`'s +250 points) got `|| 0` so `null + 5000` can never
+become a lifetime total, even though neither is reachable by a driver.
+
+```
+PASS F3: spend is NULL, not 0  → [null,null,null]
+PASS F3: debt is NULL, not 0  → [null,null,null]
+PASS F3: visits and points are NULL too  → [null,null]
+PASS F3: nfOrDash keeps a real zero and dashes an absent one  → — / 0
+PASS F3: the driver CAN open the customers screen (customer.read is in NAV_PERM)
+PASS F3: no tier badge invented from a null balance
+PASS F3: no debt chip
+PASS F3: no confident zero in the card stats
+PASS F3: the driver can open a profile for his own drop
+PASS F3: …with no invented tier
+   driver profile stats: Total spent—  |  Visits—  |  Last in——  |  Comes in—Needs three purchases to tell
+```
+
+## F5. Phone width
+
+**First, a trap worth recording.** Headless Chrome on this machine refuses a window narrower than
+about 500px: `--window-size=390` renders the page at **504** and only the *screenshot* is 390 wide.
+The first phone render therefore looked like it had four overflowing elements, and it had none —
+the picture was just cropped. Two more things had to be right before the measurement meant
+anything: the harness needed the real `<meta name="viewport">` (without it, `mobile: true` falls
+back to the legacy 980px layout viewport), and the emulation has to come from
+`Emulation.setDeviceMetricsOverride` over the DevTools protocol, driven here with Node 22's
+built-in `WebSocket` (`scratchpad/phone-shot.mjs`). Only then does `document.documentElement.clientWidth`
+actually read 390 and the CSS media queries fire at phone width.
+
+At a true 390px, with every element in `#view` measured against the viewport:
+
+```
+--- list at 390px ---        --- profile at 390px ---
+viewport 390                 viewport 390
+#view      client=390 scroll=390     #view      client=390 scroll=390
+.page-head client=362 scroll=362     .page-head client=362 scroll=362
+.filters   client=362 scroll=362     .grid      client=362 scroll=362
+.chip-row  client=362 scroll=362     .card      client=360 scroll=360
+.cust-grid client=362 scroll=362     .cu-tl     client=310 scroll=310
+.cust-card client=360 scroll=360
+body       client=390 scroll=390     body       client=390 scroll=390
+overflow check: nothing in #view is wider than the viewport   (both screens)
+```
+
+**Two real defects, both fixed:**
+
+1. **The bulk tick box sat on top of the tier badge.** `.bk-corner` is
+   `position:absolute; inset-inline-end:10px`, and the badge is the last thing in `.cc-top` — so
+   they occupied the same corner. Visible at every width and worst on a phone; also visible in the
+   Arabic desktop screenshot from the report above, where the box overlapped `برونزي`. **Pre-existing
+   — not introduced by Stage C** — but on the card I had just rebuilt. `.cc-top` now reserves 24px
+   of inline-end padding.
+2. **The profile's stat row stacked one per screenful.** `css/bulk-gate-responsive.css` forces
+   `.view .grid[style*="minmax"]` to a single column on a phone, and my inline
+   `repeat(auto-fit,minmax(150px,1fr))` matched that selector — so the five stats each took a full
+   row and the timeline, which is the point of the page, started roughly 900px down. Replaced with
+   the shared **`.grid stat-row`** class, which already steps 6 → 3 → 2 across the breakpoints.
+   Two-up on a phone now, and the timeline is visible after one short scroll.
+
+Nothing else needed changing: the card grid collapses to one column on its own, `.filters` wraps
+the search, the sort select and the chips onto three rows, and neither screen scrolls sideways.
+
+---
+
 ## What this prompt got wrong, what the code made me do differently, and what it does not settle
 
 **Citations that had drifted.** Every one verified before use:
@@ -421,7 +596,7 @@ One new CSS rule block went into `css/dialogs-customers-jobs.css`, which is alre
 
 **Things I was told to do that turned out differently, or that I did not do as written:**
 
-1. **"`#open/customer/<id>` should redirect here"** — done, but it makes the till case *worse* in
+1. ~~**Resolved in F1.**~~ **"`#open/customer/<id>` should redirect here"** — done, but it makes the till case *worse* in
    the meantime, not better. Before Stage C a scan mid-sale opened a drawer over the POS; now it
    navigates to a page and the basket screen is gone. The prompt defers the fix to Stage G, and I
    have followed that, but this is a live regression at the till between now and then. If Stage G is
@@ -431,7 +606,7 @@ One new CSS rule block went into `css/dialogs-customers-jobs.css`, which is alre
    that meant `loyalty.mode` now silently controls the **Gold filter chip** as well — a chip
    filtering on a tier nobody has would be a control that always returns nothing. That is a Stage D
    concern arriving early, and it is why `pointsMode()` exists in a Stage C file.
-3. **"Either add the median to the server's customer query, or compute it in the profile only."**
+3. ~~**Resolved in F2/F3.**~~ **"Either add the median to the server's customer query, or compute it in the profile only."**
    Neither option is free: the query now walks every non-voided sale twice per `/api/customers` call
    (once for sizes, once for rhythm). At 13 sales this is nothing; at 50,000 it is two full scans on
    every page load by every account. It wants an index on `sales(customer_id, at)` before the shop
@@ -453,14 +628,13 @@ One new CSS rule block went into `css/dialogs-customers-jobs.css`, which is alre
 - **The rhythm has no opinion about a customer who is speeding up.** Somebody who used to come every
   90 days and now comes every 20 has a median that lags months behind their behaviour. A median over
   the last *n* gaps rather than all of them would track it, at the cost of being noisier.
-- **A driver's narrow customer row hydrates missing money fields to `0`, not to "absent".** Nothing
+- ~~**Resolved in F4.**~~ **A driver's narrow customer row hydrates missing money fields to `0`, not to "absent".** Nothing
   on his screens draws them, so it is invisible today — but `Number(undefined) || 0` means a future
   screen that shows a debt would show a driver a confident, wrong zero rather than nothing. The
   honest shape would be `null`.
 - **`customers.note` has no gate** — see the flag in §C3.
-- **The 1.5 multiplier and the 21-day floor are mine, not the shop's.** They are the two numbers in
+- ~~**Resolved in F2 — both are config keys now.**~~ **The 1.5 multiplier and the 21-day floor are mine, not the shop's.** They are the two numbers in
   this stage that came from nowhere; both are one-line changes and neither is in config. If the owner
   has a view, they should be config keys before Stage D adds more.
-- **Nothing was tested on a phone-width viewport.** The card grid and the profile's stat rows use
-  `auto-fit`/`auto-fill`, so they should collapse, but the profile is a new screen and
-  `css/bulk-gate-responsive.css` has never seen it.
+- ~~**Nothing was tested on a phone-width viewport.**~~ **Done** — see F5 above. It found two real
+  defects, one of them pre-existing since before Stage C.

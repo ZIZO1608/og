@@ -443,7 +443,12 @@ var POS = (function () {
           '<div id="custDrop"></div></div>';
     }
     var tier = DB.tier(c.loyaltyPoints);
-    var canRedeem = c.loyaltyPoints >= 500 && !S.pointsUsed;
+    /* The redemption block was a literal 500 in three places here while the
+       point value and the earn rate beside it were already config. A number
+       that decides how much a customer can take off a sale belongs in the
+       config table (031_loyalty_stamps). */
+    var block = DB.redeemBlock();
+    var canRedeem = c.loyaltyPoints >= block && !S.pointsUsed;
     var h = '<span class="lbl">' + t('customer') + '</span>' +
       '<div class="cust-picked"><div style="flex:1;min-width:0"><b>' + esc(c.name) + '</b>' +
         '<small class="num">' + tel(c.phone) + ' · ' + esc(c.city) + '</small></div>' +
@@ -451,7 +456,7 @@ var POS = (function () {
         '<button class="btn btn-sm btn-ghost" data-pos="cust-clear">' + t('change_customer') + '</button></div>';
     if (canRedeem) {
       h += '<button class="btn btn-sm btn-block mt" data-pos="redeem">' +
-        t('use_points') + ' 500 ' + t('points') + ' = ' + money(500 * CONFIG.LOYALTY_POINT_VALUE) + '</button>';
+        t('use_points') + ' ' + nf(block) + ' ' + t('points') + ' = ' + money(block * CONFIG.LOYALTY_POINT_VALUE) + '</button>';
     }
     if (S.pointsUsed) {
       h += '<div class="mt"><span class="badge accent">− ' + money(S.pointsUsed * CONFIG.LOYALTY_POINT_VALUE) +
@@ -1155,9 +1160,13 @@ var POS = (function () {
          moves. spentUsdEquiv is deliberately left alone — it exists only to
          sort, and the reload that follows every live sale brings the
          server's own figure within a moment. */
-      cust.spentSyp += sale.total;
-      cust.visits += 1;
-      cust.loyaltyPoints = Math.max(0, cust.loyaltyPoints - spent + earned);
+      /* `|| 0` because these fields are null when the server did not send
+         them. Nobody who can ring up a sale ever gets a row like that — a
+         driver cannot sell — but `null + 5000` silently becoming a lifetime
+         total is not a failure worth leaving available. */
+      cust.spentSyp = (cust.spentSyp || 0) + sale.total;
+      cust.visits = (cust.visits || 0) + 1;
+      cust.loyaltyPoints = Math.max(0, (cust.loyaltyPoints || 0) - spent + earned);
       cust.lastPurchaseDate = sale.date;
       cust.history.unshift(sale.id);
     }
@@ -1378,7 +1387,7 @@ var POS = (function () {
 
     redeem: function () {
       var c = DB.customer(S.customerId);
-      S.pointsUsed = Math.min(500, c.loyaltyPoints);
+      S.pointsUsed = Math.min(DB.redeemBlock(), c.loyaltyPoints);
       toast(t('loyalty'), '− ' + money(S.pointsUsed * CONFIG.LOYALTY_POINT_VALUE), 'ok');
       paintFoot();
     },
@@ -1803,6 +1812,13 @@ var POS = (function () {
 
   bind();
 
+  /* Is there a sale in progress that would be lost by leaving this screen?
+
+     The cart is the whole test. A customer picked or a discount typed with an
+     empty basket is a keystroke somebody can repeat; a basket of scanned
+     shoes is a queue at the counter. */
+  function saleOpen() { return S.cart.length > 0; }
+
   return {
     render: render,
     after: after,
@@ -1810,6 +1826,7 @@ var POS = (function () {
     reset: reset,
     scanBarcode: scanBarcode,
     add: addVariant,
+    saleOpen: saleOpen,
     state: S
   };
 })();

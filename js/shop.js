@@ -339,6 +339,12 @@ var Shop = (function () {
     postCount:      function (id)        { return API.post('/api/stock-counts/' + id + '/post', {}); },
     cancelCount:    function (id)        { return API.post('/api/stock-counts/' + id + '/cancel', {}); },
 
+    /* The stamp card. Fetched per customer rather than hydrated with the
+       list: it is derived from every sale that person ever made, so it
+       belongs to the profile that asks for it, not to the boot payload. */
+    customerCard: function (id) { return API.get('/api/customers/' + id + '/card'); },
+    redeemCard: function (id, body) { return API.post('/api/customers/' + id + '/redeem', body); },
+
     newCustomer: function (body) { return API.post('/api/customers', body); },
     updateCustomer: function (id, fields) { return API.patch('/api/customers/' + id, fields); },
     /* The invoices WITH their lines, per customer, on demand — the one read

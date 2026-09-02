@@ -27,6 +27,7 @@
 import * as DB from './db.js';
 import * as Auth from './auth.js';
 import * as Sync from './sync-worker.js';
+import * as Loyalty from './loyalty.js';
 
 const nowIso = () => new Date().toISOString();
 
@@ -122,6 +123,32 @@ export function list(user) {
     if (crit) {
       out.push({ key: 'critical', icon: '~', tone: 'amber', view: 'warehouse',
                  text: `${crit} ${crit === 1 ? 'SKU is' : 'SKUs are'} down to critical stock` });
+    }
+  }
+
+  /* ---- full stamp cards --------------------------------------------------
+     "Six people have a full card" is a list somebody can act on in an
+     afternoon — ring them, or have the reward ready when they walk in.
+
+     One row per person rather than one summary line, because the action is
+     per person and the read state has to be too: the key is `stamps:<id>`,
+     what the alert is ABOUT. Keyed on the text it would come back unread
+     every time the count changed, which is the mistake the header of this
+     file exists to record.
+
+     customer.read, and never for a driver — he holds the permission so his
+     board can show names, not so he can be told who is owed a free pair. */
+  if (can('customer.read') && user.role !== 'delivery') {
+    const r = Loyalty.rules();
+    if (Loyalty.stampsOn(r.mode)) {
+      for (const f of Loyalty.fullCards(r)) {
+        out.push({
+          key: 'stamps:' + f.customerId, icon: '★', tone: 'amber',
+          view: 'customers',
+          text: `${f.name} has a full card — ${f.stamps} of ${f.required}` +
+                (f.cardsOwed > 1 ? ` (${f.cardsOwed} rewards owed)` : '')
+        });
+      }
     }
   }
 

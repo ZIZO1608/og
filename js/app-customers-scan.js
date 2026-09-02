@@ -19,6 +19,13 @@ function customerRows() {
   if (f.filter === 'risk') list = list.filter(function (c) { return DB.customerState(c) === 'quiet'; });
   if (f.filter === 'gold') list = list.filter(function (c) { return DB.tier(c.loyaltyPoints) === 'gold'; });
   if (f.filter === 'debt') list = list.filter(function (c) { return c.openDebts > 0; });
+  /* Who has a full stamp card. The ids come from the bell's own list, which
+     the server computes — the browser never counts stamps, so this filter is
+     a lookup rather than arithmetic. */
+  if (f.filter === 'cardfull') {
+    var full = DB.fullCardIds();
+    list = list.filter(function (c) { return full[c.id]; });
+  }
   /* Set by the product screen's "who wears this size" link (Stage E leans on
      the same field). Matched against the server's top-two-per-family, which
      is what the card draws — so what you searched is what you can see. */
@@ -88,9 +95,16 @@ function customerRowsShown() {
 }
 
 /* Does the shop keep points at all? `stamps` and `off` mean no tier, so
-   drawing a Bronze badge would be inventing a scheme the shop does not run. */
-function pointsMode() {
-  return CONFIG.LOYALTY_MODE === 'points' || CONFIG.LOYALTY_MODE === 'both';
+   drawing a Bronze badge would be inventing a scheme the shop does not run.
+   DB.pointsOn() is the one definition; this stays as the name the screen
+   already reads. */
+function pointsMode() { return DB.pointsOn(); }
+
+/* …and were we actually TOLD this customer's balance? A delivery driver's
+   rows come without it, and DB.tier(null) answers 'bronze' quite happily —
+   a tier badge invented out of a field the server never sent. */
+function showPoints(c) {
+  return pointsMode() && c && c.loyaltyPoints !== null && c.loyaltyPoints !== undefined;
 }
 
 /* The size chips — the thing that makes somebody open the card.
@@ -126,7 +140,7 @@ function customerCardHTML(c, ci) {
       '<div style="flex:1;min-width:0"><b>' + nm(c.name) + '</b>' +
       '<small class="num">' + tel(c.phone) + '</small>' +
       '<small>' + nm(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</small></div>' +
-      (pointsMode() ? '<span class="badge ' + tier + '">' + t(tier) + '</span>' : '') +
+      (showPoints(c) ? '<span class="badge ' + tier + '">' + t(tier) + '</span>' : '') +
     '</div>' +
 
     sizeChips(c) +
@@ -249,6 +263,12 @@ function viewCustomers() {
 
   var sorts = ['recent', 'name', 'spend', 'visits', 'debt'];
   var chips = [['all', 'all_customers'], ['risk', 'cu_quiet_only'], ['debt', 'cu_owes_only']];
+  /* Only when the shop runs stamps AND somebody actually has a full card —
+     a filter that can only ever return nothing is a control with nothing to
+     do, the same reasoning as the size chip below. */
+  if (DB.stampsOn() && Object.keys(DB.fullCardIds()).length) {
+    chips.push(['cardfull', 'ly_full_only']);
+  }
   if (pointsMode()) chips.push(['gold', 'gold_only']);
   chips.push(['archived', 'bk_archived_only']);
 
@@ -329,6 +349,21 @@ function timelineRows(payload, c) {
         act: DB.sale(s.id) ? 'open-invoice' : '', id: s.id, lead: '★'
       });
     }
+  });
+
+  /* A stamp card being cashed in. Its own kind, not a note on a sale: no
+     sale caused it — the shop chose a moment to hand something over — and
+     "what did we actually give this person" is a question the stream has to
+     be able to answer a year later. */
+  (payload.redemptions || []).forEach(function (r) {
+    out.push({
+      at: new Date(r.at), kind: 'stamp',
+      title: t('ly_redeemed').replace('{n}', nf(r.stamps_used)),
+      sub: (r.note ? nm(r.note) : t('ly_no_note')) +
+           ' · ' + t('ly_used_n').replace('{n}', nf(r.stamps_used)).replace('{r}', nf(r.required_then)) +
+           (r.user_name ? ' · ' + nm(r.user_name) : ''),
+      tone: 'plus', act: '', id: r.id, lead: '★'
+    });
   });
 
   /* null means the account may not see deliveries at all — which is not the
@@ -415,7 +450,7 @@ function viewCustomerProfile(cid) {
           (c.createdAt ? ' · ' + t('cu_since') + ' ' + fmtDate(c.createdAt) : '') +
         '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">' +
-          (pointsMode() ? '<span class="badge ' + tier + '">' + t(tier) + '</span>' : '') +
+          (showPoints(c) ? '<span class="badge ' + tier + '">' + t(tier) + '</span>' : '') +
           (state === 'quiet' ? '<span class="badge low">' + t('cu_quiet') + '</span>' : '') +
           (state === 'new' ? '<span class="badge neutral">' + t('cu_never_bought') + '</span>' : '') +
           (c.archived ? '<span class="badge neutral">' + t('bk_archived') + '</span>' : '') +
@@ -430,11 +465,18 @@ function viewCustomerProfile(cid) {
       (c.phone ? '<button class="btn btn-primary" data-act="whatsapp" data-id="' + c.id + '">' + t('send_whatsapp') + '</button>' : '') +
     '</div></div>';
 
-  /* The numbers, in the order somebody asks for them. */
-  h += '<div class="grid mb" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
+  /* The numbers, in the order somebody asks for them.
+
+     `.grid stat-row`, not an inline auto-fit: the phone rule
+     `.view .grid[style*="minmax"]` forces any inline minmax grid to ONE
+     column, which stacked these five one per screenful and put the timeline —
+     the point of the page — a thousand pixels down. stat-row is the shared
+     vocabulary for exactly this and already steps 6 → 3 → 2 across the
+     breakpoints. */
+  h += '<div class="grid stat-row mb">' +
     '<div class="stat"><span class="eyebrow">' + t('total_spent') + '</span>' +
       '<div class="val" style="font-size:16px">' + moneyPair(c.spentSyp, c.spentUsd) + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('cu_visits') + '</span><div class="val">' + nf(c.visits) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('cu_visits') + '</span><div class="val">' + nfOrDash(c.visits) + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('cu_last_in') + '</span>' +
       '<div class="val" style="font-size:16px">' + relDate(c.lastPurchaseDate) + '</div>' +
       '<div class="foot">' + fmtDate(c.lastPurchaseDate) + '</div></div>' +
@@ -445,7 +487,7 @@ function viewCustomerProfile(cid) {
       '<div class="foot">' + (c.medianGapDays == null
         ? t('cu_rhythm_unknown')
         : '<span dir="ltr">' + t('cu_quiet_after').replace('{n}', nf(quietAfter)) + '</span>') + '</div></div>' +
-    (pointsMode()
+    (showPoints(c)
       ? '<div class="stat"><span class="eyebrow">' + t('loyalty') + '</span>' +
           '<div class="val accent">' + nf(c.loyaltyPoints) + '</div>' +
           '<div class="foot">= ' + money(c.loyaltyPoints * CONFIG.LOYALTY_POINT_VALUE) + '</div></div>'
@@ -453,7 +495,7 @@ function viewCustomerProfile(cid) {
     (c.openDebts
       ? '<div class="stat"><span class="eyebrow">' + t('cu_debt') + '</span>' +
           '<div class="val warn" style="font-size:16px">' + moneyPair(c.debtSyp, c.debtUsd) + '</div>' +
-          '<div class="foot">' + nf(c.openDebts) + ' ' + t('invoices').toLowerCase() + '</div></div>'
+          '<div class="foot">' + nfOrDash(c.openDebts) + ' ' + t('invoices').toLowerCase() + '</div></div>'
       : '') +
   '</div>';
 
@@ -463,6 +505,16 @@ function viewCustomerProfile(cid) {
     '<div class="card-actions muted small" id="cuTlCount"></div></div>' +
     '<div class="card-body" id="cuTl" data-cid="' + c.id + '">' +
       '<span class="muted small">' + t('loading') + '</span></div></div>';
+
+  /* The stamp card. Filled by afterCustomerProfile — the count is derived
+     from every sale this person ever made, so it is not in the boot payload
+     and cannot be. Drawn only when the shop actually runs stamps. */
+  if (DB.stampsOn()) {
+    h += '<div class="card mb"><div class="card-head"><h3>' + t('ly_card') + '</h3>' +
+      '<div class="card-actions" id="cuCardActions"></div></div>' +
+      '<div class="card-body" id="cuCard" data-cid="' + c.id + '">' +
+        '<span class="muted small">' + t('loading') + '</span></div></div>';
+  }
 
   h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">';
 
@@ -544,6 +596,76 @@ function afterCustomerProfile(cid) {
     if (!el || el.getAttribute('data-cid') !== String(cid)) return;
     el.innerHTML = '<span class="muted small">' + esc(API.friendly(err)) + '</span>';
   });
+
+  if (DB.stampsOn()) loadStampCard(cid);
+}
+
+/* ---- the stamp card -----------------------------------------------------
+   Ten little boxes, the way the paper card looks in somebody's pocket. The
+   count comes from the server and is DERIVED there from every non-voided
+   sale since the last redemption — nothing in the browser counts stamps, and
+   nothing stores one.
+
+   A full card says "reward owed" and offers the button. It does not fire
+   anything on its own: what a card is worth is the owner's judgement, and the
+   cashier records what was actually given. */
+function loadStampCard(cid) {
+  var host = document.getElementById('cuCard');
+  if (!host || host.getAttribute('data-cid') !== String(cid)) return;
+
+  Shop.customerCard(cid).then(function (r) {
+    var el = document.getElementById('cuCard');
+    if (!el || el.getAttribute('data-cid') !== String(cid)) return;
+    el.innerHTML = stampCardHTML(r.card, r.redemptions || []);
+    var acts = document.getElementById('cuCardActions');
+    if (acts) {
+      acts.innerHTML = (r.card.full && allow('customer.write'))
+        ? '<button class="btn btn-sm btn-primary" data-act="ly-redeem" data-id="' + cid + '">' +
+            t('ly_redeem') + '</button>'
+        : '<span class="muted small">' + t('ly_per_' + r.card.per) + '</span>';
+    }
+  }).catch(function (err) {
+    var el = document.getElementById('cuCard');
+    if (!el || el.getAttribute('data-cid') !== String(cid)) return;
+    el.innerHTML = '<span class="muted small">' + esc(API.friendly(err)) + '</span>';
+  });
+}
+
+function stampCardHTML(card, redemptions) {
+  /* One box per stamp the rule asks for. Past the threshold the extras are
+     shown separately rather than as an eleventh box — the card is ten, and
+     the spare stamps carry over to the next one. */
+  var onCard = Math.min(card.stamps, card.required);
+  var h = '<div class="ly-stamps">';
+  for (var i = 0; i < card.required; i++) {
+    h += '<span class="ly-stamp' + (i < onCard ? ' on' : '') + '">' +
+      (i < onCard ? '★' : (i + 1)) + '</span>';
+  }
+  h += '</div>';
+
+  h += '<div class="ly-line">' +
+    (card.full
+      ? '<b class="ly-full">' + t('ly_full') + '</b>'
+      : '<b>' + t('ly_to_go').replace('{n}', nf(card.toGo)) + '</b>') +
+    '<span class="muted small" dir="ltr"> · ' + nf(card.stamps) + ' / ' + nf(card.required) + '</span>' +
+  '</div>';
+
+  if (card.cardsOwed > 1) {
+    h += '<div class="partner-note mt">' +
+      t('ly_owed_many').replace('{n}', nf(card.cardsOwed)) + '</div>';
+  }
+
+  if (redemptions.length) {
+    h += '<div class="mt"><div class="lbl">' + t('ly_past') + '</div><ul class="ly-past">';
+    redemptions.slice(0, 5).forEach(function (r) {
+      h += '<li><b>' + fmtDate(r.at) + '</b> · ' +
+        t('ly_used_n').replace('{n}', nf(r.stamps_used)).replace('{r}', nf(r.required_then)) +
+        (r.note ? ' · ' + nm(r.note) : '') +
+        (r.user_name ? ' <span class="muted">· ' + nm(r.user_name) + '</span>' : '') + '</li>';
+    });
+    h += '</ul></div>';
+  }
+  return h;
 }
 
 function openCustomerDrawer(cid) {
@@ -560,7 +682,7 @@ function openCustomerDrawer(cid) {
         esc(initialsOf(c.name)) + '</span>' +
       '<div><span class="eyebrow">' + nm(c.city) + ' · ' + t(c.source === 'online' ? 'online' : 'in_store') + '</span>' +
         '<h3 style="font-size:19px;margin:3px 0 5px">' + nm(c.name) + '</h3>' +
-        (pointsMode() ? '<span class="badge ' + tier + '">' + t(tier) + '</span> ' : '') +
+        (showPoints(c) ? '<span class="badge ' + tier + '">' + t(tier) + '</span> ' : '') +
         (atRisk ? '<span class="badge low">' + t('cu_quiet') + '</span> ' : '') +
         (state === 'new' ? '<span class="badge neutral">' + t('cu_never_bought') + '</span> ' : '') +
         '<span class="badge neutral num">' + tel(c.phone) + '</span></div>' +
@@ -568,17 +690,19 @@ function openCustomerDrawer(cid) {
 
   var body = '<div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">' +
     '<div class="stat"><span class="eyebrow">' + t('total_spent') + '</span><div class="val" style="font-size:15px">' + moneyPair(c.spentSyp, c.spentUsd, true) + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('loyalty') + '</span><div class="val accent">' + nf(c.loyaltyPoints) + '</div>' +
-      '<div class="foot">= ' + money(c.loyaltyPoints * CONFIG.LOYALTY_POINT_VALUE) + '</div></div>' +
+    (showPoints(c)
+      ? '<div class="stat"><span class="eyebrow">' + t('loyalty') + '</span><div class="val accent">' + nf(c.loyaltyPoints) + '</div>' +
+          '<div class="foot">= ' + money(c.loyaltyPoints * CONFIG.LOYALTY_POINT_VALUE) + '</div></div>'
+      : '<div class="stat"><span class="eyebrow">' + t('loyalty') + '</span><div class="val">—</div></div>') +
     '<div class="stat"><span class="eyebrow">' + t('last_purchase') + '</span><div class="val" style="font-size:15px">' + relDate(c.lastPurchaseDate) + '</div>' +
       '<div class="foot">' + fmtDate(c.lastPurchaseDate) + '</div></div>' +
   '</div>';
 
   body += '<div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">' +
-    '<div class="stat"><span class="eyebrow">' + t('cu_visits') + '</span><div class="val">' + nf(c.visits) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('cu_visits') + '</span><div class="val">' + nfOrDash(c.visits) + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('cu_debt') + '</span><div class="val' + (c.openDebts ? ' warn' : '') + '" style="font-size:15px">' +
       (c.openDebts ? moneyPair(c.debtSyp, c.debtUsd, true) : '—') + '</div>' +
-      (c.openDebts ? '<div class="foot">' + nf(c.openDebts) + ' ' + t('invoices').toLowerCase() + '</div>' : '') + '</div>' +
+      (c.openDebts ? '<div class="foot">' + nfOrDash(c.openDebts) + ' ' + t('invoices').toLowerCase() + '</div>' : '') + '</div>' +
     '<div class="stat"><span class="eyebrow">' + t('cu_since') + '</span><div class="val" style="font-size:15px">' + fmtDate(c.createdAt) + '</div></div>' +
   '</div>';
 
@@ -613,7 +737,7 @@ function openCustomerDrawer(cid) {
      data-cid guards the late response against a drawer that has already
      moved on to a different customer. */
   body += '<div class="card mb"><div class="card-head"><h3>' + t('purchase_history') + '</h3>' +
-    '<div class="card-actions"><span class="badge neutral">' + nf(c.visits) + '</span></div></div>' +
+    '<div class="card-actions"><span class="badge neutral">' + nfOrDash(c.visits) + '</span></div></div>' +
     '<div id="cuHist" data-cid="' + c.id + '">' +
       '<div class="card-body"><span class="muted small">' + t('loading') + '</span></div>' +
     '</div></div>';
