@@ -99,7 +99,7 @@ const ORDER = [
 
   /* a job may name the sale that raised it; a line names a club; an invoice
      names jobs; a message hangs off one or the other */
-  'print_jobs', 'print_job_lines', 'print_job_stages',
+  'print_jobs', 'print_job_lines', 'print_job_stages', 'job_reviews',
   'partner_invoices', 'partner_invoice_refs', 'partner_invoice_payments',
   'job_messages',
 

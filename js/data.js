@@ -788,6 +788,9 @@ var DB = {
      shop took nothing". */
   dash: null,
   hydrateDashboard: function (d) { DB.dash = d || null; },
+  /* The partner's production report, computed on the server in SQL over
+     every finished job. Arrives with the partner bundle. */
+  stats: null,
   sizeSets: SIZE_SETS,
   typeLabels: TYPE_LABELS,
   typeColour: typeColour,
@@ -1333,12 +1336,25 @@ var DB = {
     return DB.invoiceLines(inv).reduce(function (a, d) { return a + d.qty; }, 0);
   },
 
+  /* CONFIRMED money only. A payment one side has recorded and the other has
+     not yet acknowledged is "pending" — real enough to stop it being recorded
+     twice, not yet real enough to call the invoice paid. */
   invoicePaid: function (inv) {
-    return (inv.payments || []).reduce(function (a, p) { return a + p.amount; }, 0);
+    return (inv.payments || []).reduce(function (a, p) { return a + (p.confirmedAt ? p.amount : 0); }, 0);
+  },
+
+  invoicePending: function (inv) {
+    return (inv.payments || []).reduce(function (a, p) { return a + (p.confirmedAt ? 0 : p.amount); }, 0);
   },
 
   invoiceBalance: function (inv) {
     return Math.max(0, DB.invoiceTotal(inv) - DB.invoicePaid(inv));
+  },
+
+  /* What can still be recorded against it: the balance less what is already
+     on its way to being confirmed. */
+  invoiceOpen: function (inv) {
+    return Math.max(0, DB.invoiceTotal(inv) - DB.invoicePaid(inv) - DB.invoicePending(inv));
   },
 
   /* draft (never issued) · paid · part · sent. Overdue is a separate question
@@ -1429,10 +1445,13 @@ var DB = {
 
   /* Refuses overpayment rather than quietly recording a negative balance —
      if the number is wrong the user needs to see that, not have it absorbed. */
-  payInvoice: function (inv, amount, method, when) {
-    var bal = DB.invoiceBalance(inv);
-    if (!(amount > 0) || amount > bal) return false;
-    inv.payments.push({ at: when || new Date(), amount: amount, method: method || 'cash' });
+  payInvoice: function (inv, amount, method, when, side) {
+    var open = DB.invoiceOpen(inv);
+    if (!(amount > 0) || amount > open) return false;
+    /* Pending until the other side confirms; the reload brings the server's
+       id and the confirmation state with it. */
+    inv.payments.push({ id: null, at: when || new Date(), amount: amount, method: method || 'cash',
+                        recordedBy: side || 'og', confirmedAt: null });
     return true;
   },
 
@@ -1553,6 +1572,13 @@ var DB = {
     return jobMessages.filter(function (m) { return m.jobId === jobId && !m[f]; }).length;
   },
 
+  /* The shop's average verdict, out of five, over every reviewed job. */
+  avgRating: function () {
+    var rated = printJobs.filter(function (j) { return j.review; });
+    if (!rated.length) return null;
+    return Math.round(rated.reduce(function (a, j) { return a + j.review.rating; }, 0) / rated.length * 10) / 10;
+  },
+
   /* ---- partner scorecard -------------------------------------------------
      Both computed from the stamped stage history, so they cost nothing to
      keep and cannot be fudged. */
@@ -1608,7 +1634,11 @@ var DB = {
          there is nothing in it the printer should not see. */
       order: job.order,
       payout: job.cost,            // what OG pays Yalla Wear — their own money
-      overdue: DB.isOverdue(job)
+      overdue: DB.isOverdue(job),
+      /* The shop's verdict on THEIR work is theirs to read; where the order
+         came from tells them whether a customer stood at a counter for it. */
+      review: job.review || null,
+      source: job.source || 'manual'
     };
   },
 
@@ -2412,9 +2442,13 @@ var DB = {
       created: now,
       sizes: f.sizes || splitSizes(f.qty),
       history: [{ stage: 'design', at: now }],
-      /* Born unsent — an order the printer has not yet agreed to. Callers
-         that want it on Yalla's desk immediately call DB.sendOrder right
-         after (the till does, once every picked piece has its name). */
+      source: f.source || 'manual',
+      review: null,
+      /* Born unsent — an order the printer has not yet agreed to. With
+         `autoSend` the SERVER places it in the same transaction that creates
+         it, provided every shirt has a name; the reload then shows it
+         pending. Locally it stays a draft until that reload — a guess about
+         the other company's inbox is not something to paint. */
       order: { state: 'draft', sentAt: null, respondedAt: null, promisedAt: null, note: '' }
     };
     if (lines) DB.resyncKit(job);
@@ -2423,19 +2457,27 @@ var DB = {
     /* The server hands out its own job number from the highest that
        exists, so the id above is a local guess. The reload after the write
        replaces this whole array with what was actually recorded, which is
-       the only copy anybody quotes down the phone. */
+       the only copy anybody quotes down the phone. `onSaved` gets the
+       server's job — the one that knows whether the order went. */
     pushPartner(function () {
       return Shop.newPrintJob({
         customer: job.customer, customerId: job.customerId, phone: job.phone, design: job.design,
         kind: job.kind, qty: job.qty, priority: job.priority,
         deadline: job.deadline ? new Date(job.deadline).toISOString() : null,
         price: job.price, cost: job.cost,
+        currency: f.currency || 'SYP',
+        source: job.source, autoSend: !!f.autoSend,
         lines: (job.lines || []).map(function (l) {
           return {
             clubCode: clubCodeFor(l.club), printName: l.print,
             number: l.number, size: l.size, qty: l.qty, unitCost: l.price
           };
         })
+      }).then(function (r) {
+        if (typeof f.onSaved === 'function') {
+          try { f.onSaved(r && r.job); } catch (e) { if (typeof console !== 'undefined') console.warn(e); }
+        }
+        return r;
       });
     }, typeof t === 'function' ? t('print_title') : 'Print jobs');
     return job;
@@ -2985,7 +3027,17 @@ function hydratePartner(p) {
     p.clubs.forEach(function (c) { CLUBS[c.code] = [c.name, c.name_ar || c.name]; });
   }
 
+  /* The production report — one window at one moment, replaced whole like
+     the dashboard snapshot, never patched. */
+  if (p.stats) DB.stats = p.stats;
+
   if (p.jobs) {
+    /* The shop's verdict, keyed by job so the drawer finds it in one step. */
+    var reviewOf = {};
+    (p.reviews || []).forEach(function (r) {
+      reviewOf[r.job_id] = { rating: r.rating, feedback: r.feedback || '', at: date(r.at) };
+    });
+
     printJobs.length = 0;
     p.jobs.forEach(function (j) {
       var lines = (j.lines || []).map(function (l) {
@@ -3009,6 +3061,10 @@ function hydratePartner(p) {
         price: j.price, cost: j.cost,
         deadline: date(j.deadline), created: date(j.created_at),
         saleId: j.sale_id || null,
+        /* Where it was raised — the till, a person on the Print screen, or
+           one day the website — and what the shop thought of it once done. */
+        source: j.source || 'manual',
+        review: reviewOf[j.id] || null,
         lines: j.kind === 'kit' ? lines : null,
         history: (j.history || []).map(function (h) {
           return { stage: h.stage, at: date(h.at), by: h.by_side };
@@ -3042,11 +3098,29 @@ function hydratePartner(p) {
   if (p.invoices) {
     partnerInvoices.length = 0;
     p.invoices.forEach(function (v) {
+      /* The server names the JOBS an invoice bills; the browser model bills
+         kit LINES ({ jobId, lineId }) so that refDetail, billedRefKeys and
+         the unbilled pool all agree. Expanded here, once. Left as bare ids,
+         every server-issued invoice drew as zero pieces and zero lira while
+         quoting the money paid against it — which is how it looked until
+         the first real one came back from a reload. */
+      var refs = [];
+      (v.refs || []).forEach(function (jid) {
+        var j = printJobs.filter(function (x) { return x.id === jid; })[0];
+        if (j && j.kind === 'kit' && j.lines && j.lines.length) {
+          j.lines.forEach(function (l) { refs.push({ jobId: jid, lineId: l.id }); });
+        } else {
+          refs.push({ jobId: jid, lineId: null });
+        }
+      });
       partnerInvoices.push({
         id: v.id, issued: date(v.issued), due: date(v.due),
-        note: v.note || '', refs: v.refs || [],
+        note: v.note || '', refs: refs,
+        /* A payment is a handshake: who recorded it, and whether the other
+           side has confirmed it yet. Only confirmed money counts as paid. */
         payments: (v.payments || []).map(function (x) {
-          return { at: date(x.at), amount: x.amount, method: x.method };
+          return { id: x.id, at: date(x.at), amount: x.amount, method: x.method,
+                   recordedBy: x.recorded_by_side || 'og', confirmedAt: date(x.confirmed_at) };
         })
       });
     });

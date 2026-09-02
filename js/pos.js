@@ -1256,7 +1256,24 @@ var POS = (function () {
         priority: S.print.priority,
         deadline: new Date(pdate + 'T12:00:00'),
         price: klines.length * PRINT_UNIT_PRICE,
-        cost: klines.length * PRINT_UNIT_COST
+        cost: klines.length * PRINT_UNIT_COST,
+        /* Straight onto Yalla Wear's desk, in the same request that creates
+           the job. It used to be two — create, then send at an id the
+           browser had guessed — and the second could race the first. The
+           one thing that holds it back is a piece with no name yet; then
+           the server keeps it a draft and the toast says what to finish. */
+        source: 'till',
+        autoSend: true,
+        onSaved: function (saved) {
+          if (typeof Notify !== 'undefined') Notify.refresh();
+          if (saved && saved.order_state === 'pending') {
+            toast(OG.lang === 'ar' ? 'أُرسل طلب الطباعة إلى يلا وير' : 'Print job sent to Yalla Wear',
+                  saved.id + ' · ' + saved.qty + ' pcs · ' + t(saved.priority), 'ok', 4000);
+          } else {
+            toast(t('add_print'),
+                  t('pr_draft_tbc').replace('{n}', saved ? saved.tbc : '?'), 'warn', 6000);
+          }
+        }
       });
     }
 
@@ -1295,26 +1312,8 @@ var POS = (function () {
         toast(t('points_earned'), '+' + nf(earned) + ' ' + t('points'), 'ok');
       }, 400);
     }
-    if (job) {
-      /* Straight onto Yalla Wear's desk: the same DB.sendOrder the Jobs
-         screen's Send button uses, so the order lands in their portal inbox
-         with the names, numbers and deadline the moment the sale commits.
-         The one thing that stops it is a piece with no name yet —
-         canSendOrder's TBC gate, because an order carrying a nameless shirt
-         cannot honestly be placed. Then the job waits in Design and the
-         toast says exactly what to finish. */
-      var sentToYalla = DB.sendOrder(job);
-      if (sentToYalla && typeof Notify !== 'undefined') Notify.refresh();
-      setTimeout(function () {
-        if (sentToYalla) {
-          toast(OG.lang === 'ar' ? 'أُرسل طلب الطباعة إلى يلا وير' : 'Print job sent to Yalla Wear',
-                job.id + ' · ' + job.qty + ' pcs · ' + t(job.priority), 'ok', 4000);
-        } else {
-          toast(t('add_print'),
-                t('pr_draft_tbc').replace('{n}', DB.tbcCount(job)), 'warn', 6000);
-        }
-      }, silent ? 300 : 900);
-    }
+    /* The print job's own toast arrives from its onSaved above, once the
+       server has said whether it went to Yalla Wear or waits on a name. */
   }
 
   function reset(keepView) {

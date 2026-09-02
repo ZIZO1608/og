@@ -297,6 +297,10 @@ function boot() {
   if (!Charts.has()) {
     console.info('Chart.js unavailable — charts fall back to CSS bars.');
   }
+
+  /* The line to Yalla Wear starts listening once the shell is up. It asks
+     nothing for an account that cannot read the print jobs. */
+  if (typeof Pulse !== 'undefined') Pulse.start();
 }
 
 /* The login holds boot() back until someone is signed in, and the shop's data

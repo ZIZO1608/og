@@ -74,6 +74,7 @@ function afterSettings() {
      still load on a machine with no scanner support, which is most of them. */
   loadRoleMatrix();
   loadStaffPresence();
+  if (typeof YALLA !== 'undefined' && YALLA.telegramLoad) YALLA.telegramLoad('tgHost', 'tgMeta');
 
   /* The shelf-assignment list — the same control the map's panel has,
      hitting the same route. Fetched here because the map's data is live

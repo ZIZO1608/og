@@ -83,7 +83,11 @@ var Shop = (function () {
      names cost one Object.keys and remove the whole class. */
   var REQUESTS = {
     config:   function () { return API.get('/api/config'); },
-    catalogue: function () { return API.get('/api/catalogue'); },
+    /* soft(), like everything below it. Unwrapped, the one 403 a partner
+       account gets here — they hold no product.read, and never will — went
+       straight to Shop.fail, and a real Yalla Wear login could not boot the
+       app at all. Their portal draws nothing from the catalogue. */
+    catalogue: function () { return soft(API.get('/api/catalogue'), { products: [] }); },
     customers: function () { return want('customer.read', '/api/customers', { customers: [] }); },
     sales:    function () { return want('sell', '/api/sales?limit=200', { sales: [] }); },
     movements: function () { return want('stock.read', '/api/movements?limit=400', { movements: [] }); },
@@ -92,7 +96,14 @@ var Shop = (function () {
        companies. null rather than an empty bundle when the account cannot
        read it: hydrate leaves those screens alone on null, where an empty
        bundle would blank them. */
-    partner:  function () { return want('print.read', '/api/partner', null); },
+    partner:  function () {
+      /* Any-of, because the route is: the shop holds print.read, the
+         partner holds partner.jobs, and asking on print.read alone meant
+         the partner's own portal was never fetched for the partner. The
+         offset is for the production report, cut in this machine's day. */
+      return wantAny(['print.read', 'partner.jobs'],
+                     '/api/partner?tz=' + (-new Date().getTimezoneOffset()), null);
+    },
     purchase: function () { return want('stock.read', '/api/purchase-orders', { purchaseOrders: [] }); },
 
     /* The drawer, on the same null reasoning. */
@@ -353,6 +364,21 @@ var Shop = (function () {
     markMsgRead:   function (body)        { return API.post('/api/messages/read', body); },
     newInvoice:    function (body)        { return API.post('/api/partner-invoices', body); },
     payInvoice:    function (id, body)    { return API.post('/api/partner-invoices/' + id + '/payments', body); },
+    /* The other half of the payment handshake: the side that did not record
+       it says the money arrived. */
+    confirmPayment: function (id, pid)    { return API.post('/api/partner-invoices/' + id + '/payments/' + pid + '/confirm', {}); },
+    reviewJob:     function (id, body)    { return API.post('/api/print-jobs/' + id + '/review', body); },
+    /* Has anything moved for my side? Polled, so it is one tiny read. */
+    pulse:         function ()            { return API.get('/api/partner/pulse'); },
+    /* The one bundle again, for the pulse to refetch without re-reading the
+       whole shop. Same request the boot makes. */
+    partnerBundle: function ()            { return REQUESTS.partner(); },
+
+    /* ---- the Telegram line ---- */
+    telegramStatus: function ()           { return API.get('/api/telegram/status'); },
+    telegramLink:   function ()           { return API.post('/api/telegram/link', {}); },
+    telegramUnlink: function ()           { return API.post('/api/telegram/unlink', {}); },
+    telegramTest:   function ()           { return API.post('/api/telegram/test', {}); },
     saveSupplier:  function (body)        { return API.post('/api/suppliers', body); },
     saveEmployee:  function (body)        { return API.post('/api/employees', body); },
 

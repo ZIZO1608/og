@@ -373,7 +373,36 @@ var YLINV = (function () {
           '<i>' + (OG.currency === 'USD' ? 'USD' : 'SYP') + '</i></b>' +
         (paidAmt ? '<span class="yw-paid">' + t('yi_paid') + ' ' + money(paidAmt) +
                    ' · ' + t('yi_balance') + ' <b>' + money(bal) + '</b></span>' : '') +
+        (DB.invoicePending(inv) ? '<span class="yw-paid pending">' + t('pay_pending') + ' ' +
+                   money(DB.invoicePending(inv)) + '</span>' : '') +
       '</div></div>';
+
+    /* The handshake, one row per payment. Whoever is looking sees whose
+       turn it is, and gets the Confirm button only when it is theirs — the
+       side that recorded a payment cannot also vouch for it. */
+    var pays = inv.payments || [];
+    if (pays.length) {
+      var me = (typeof Notify !== 'undefined') ? Notify.side() : 'og';
+      h += '<div class="yw-pays"><span class="yw-lbl">' + t('pay_history') + '</span>';
+      pays.forEach(function (p) {
+        var waitingOn = p.recordedBy === 'og' ? 'yalla' : 'og';
+        var canConfirm = !p.confirmedAt && p.id && waitingOn === me;
+        h += '<div class="yw-pay' + (p.confirmedAt ? '' : ' pending') + '">' +
+          '<span class="yw-pay-at">' + fmtDate(p.at) + '</span>' +
+          '<b>' + money(p.amount) + '</b>' +
+          '<span class="yw-pay-m">' + esc(DB.payLabel(p.method)) + ' · ' +
+            (p.recordedBy === 'og' ? esc(CONFIG.SHOP_NAME) : 'Yalla Wear') + '</span>' +
+          (p.confirmedAt
+            ? '<span class="badge healthy">' + t('pay_confirmed') + '</span>'
+            : '<span class="badge tbc">' + t(waitingOn === 'og' ? 'pay_wait_og' : 'pay_wait_yl') + '</span>') +
+          (canConfirm
+            ? '<button class="btn btn-sm btn-primary" data-yi="pay-confirm" data-id="' + inv.id +
+                '" data-pid="' + p.id + '">' + t('pay_confirm_btn') + '</button>'
+            : '') +
+        '</div>';
+      });
+      h += '</div>';
+    }
 
     h += '<div class="yw-sign">' +
         '<div><span class="yw-lbl">YALLA WEAR · التوقيع</span></div>' +
@@ -407,7 +436,7 @@ var YLINV = (function () {
     if (st === 'draft') {
       foot += '<button class="btn btn-ghost" data-yi="drop" data-id="' + id + '">' + t('bk_delete') + '</button>' +
               '<button class="btn btn-primary" data-yi="issue" data-id="' + id + '">' + t('yi_issue') + '</button>';
-    } else if (bal > 0) {
+    } else if (bal > 0 && DB.invoiceOpen(inv) > 0) {
       foot += '<button class="btn btn-primary" data-yi="pay" data-id="' + id + '">' + t('yi_record_payment') + '</button>';
     }
 
@@ -524,10 +553,63 @@ var YLINV = (function () {
       if (inv) Export.run(invoiceSpec(inv, 'xlsx'));
     },
 
-    pay: function (el) {
+    pay: function (el) { payModal(el.getAttribute('data-id')); },
+
+    /* The other half of the handshake. Optimistic like the rest: the row
+       turns green now, and a refusal reloads the truth with a toast. */
+    'pay-confirm': function (el) {
+      var inv = DB.invoice(el.getAttribute('data-id'));
+      var pid = el.getAttribute('data-pid');
+      if (!inv || !pid) return;
+      (inv.payments || []).forEach(function (p) {
+        if (String(p.id) === String(pid)) p.confirmedAt = new Date();
+      });
+      pushInvoice(function () { return Shop.confirmPayment(inv.id, pid); });
+      closeModal();
+      toast(inv.id, t('pay_confirmed_toast'), 'ok', 3200);
+      if (typeof Notify !== 'undefined') Notify.refresh();
+      refresh();
+    },
+
+    'pay-part': function (el) {
+      var f = document.getElementById('yiPayAmt');
+      if (f) f.value = el.getAttribute('data-v');
+    },
+
+    'pay-save': function (el) {
       var inv = DB.invoice(el.getAttribute('data-id'));
       if (!inv) return;
-      var bal = DB.invoiceBalance(inv);
+      var amt = Math.round(Number((document.getElementById('yiPayAmt') || {}).value) || 0);
+      var method = (document.getElementById('yiPayMethod') || {}).value || 'cash';
+      var me = (typeof Notify !== 'undefined') ? Notify.side() : 'og';
+      if (!DB.payInvoice(inv, amt, method, null, me)) {
+        toast(inv.id, t('yi_bad_amount'), 'err');
+        return;
+      }
+      /* Money received, so it goes to the server — with an opId, because a
+         retry on bad wifi must find the payment already there rather than
+         record it a second time. It used to change the invoice in memory
+         only and the next reload showed it unpaid again. */
+      var opId = 'yw-' + inv.id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      pushInvoice(function () {
+        return Shop.payInvoice(inv.id, { amount: amt, method: method, opId: opId });
+      });
+      closeModal();
+      toast(inv.id, money(amt) + ' · ' + t('yi_payment_saved') + ' — ' +
+            t(me === 'og' ? 'pay_wait_yl' : 'pay_wait_og'), 'ok', 4200);
+      if (typeof Notify !== 'undefined') Notify.refresh();
+      refresh();
+    }
+  };
+
+  /* Recording a payment — from either side. The shop uses it from its own
+     Print screen (Pay now), the printer from the invoice sheet; the server
+     decides whose hand the money left from the account, never from here. */
+  function payModal(id) {
+      var inv = DB.invoice(id);
+      if (!inv) return;
+      var bal = DB.invoiceOpen(inv);
+      if (bal <= 0) { toast(inv.id, t('pay_nothing_open'), 'warn'); return; }
       openModal({
         title: t('yi_record_payment') + ' · ' + inv.id,
         body: '<div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">' +
@@ -551,32 +633,7 @@ var YLINV = (function () {
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-yi="pay-save" data-id="' + inv.id + '">' + t('save') + '</button>'
       });
-    },
-
-    'pay-part': function (el) {
-      var f = document.getElementById('yiPayAmt');
-      if (f) f.value = el.getAttribute('data-v');
-    },
-
-    'pay-save': function (el) {
-      var inv = DB.invoice(el.getAttribute('data-id'));
-      if (!inv) return;
-      var amt = Math.round(Number((document.getElementById('yiPayAmt') || {}).value) || 0);
-      var method = (document.getElementById('yiPayMethod') || {}).value || 'cash';
-      if (!DB.payInvoice(inv, amt, method)) {
-        toast(inv.id, t('yi_bad_amount'), 'err');
-        return;
-      }
-      /* Money received, so it goes to the server. It used to change the
-         invoice in memory only and the next reload showed it unpaid again. */
-      pushInvoice(function () {
-        return Shop.payInvoice(inv.id, { amount: amt, method: method });
-      });
-      closeModal();
-      toast(inv.id, money(amt) + ' · ' + t('yi_payment_saved'), 'ok', 3200);
-      refresh();
-    }
-  };
+  }
 
   /* Same shape as data.js's pushPartner: the screen has already moved, the
      server is told, and a refusal reloads so the screen stops lying. Local
@@ -632,9 +689,9 @@ var YLINV = (function () {
       if (body.jobIds.length) {
         pushInvoice(function () { return Shop.newInvoice(body); });
       }
-      DB.postMessage({ invoiceId: inv.id, from: 'yalla', kind: 'invoice',
-        text: t('yi_msg_issued') + ' ' + inv.id + ' — ' + money(DB.invoiceTotal(inv)) +
-              ', ' + t('yi_due_in') + ' ' + CONFIG.INVOICE_TERMS_DAYS + ' ' + t('yl_days') });
+      /* The "invoice issued" line on the thread is posted by the SERVER now,
+         with the total it computed, so every machine on both sides sees the
+         same one. A copy posted from here lived in this browser alone. */
     }
     D = null;
     closeModal();
@@ -720,6 +777,6 @@ var YLINV = (function () {
 
   bind();
 
-  return { view: view, after: after, open: open, sheet: sheet,
+  return { view: view, after: after, open: open, sheet: sheet, pay: payModal,
            exportSpec: exportSpec, invoiceSpec: invoiceSpec };
 })();

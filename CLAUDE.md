@@ -507,17 +507,84 @@ Things worth knowing:
   for a round trip, then `pushPartner` sends it and reloads. A refusal means the local guess was
   wrong, and the reload puts the truth back with a toast saying which rule it was.
 
+## The line to Yalla Wear: messages, the outbox and Telegram
+
+Migration `035_partner_link.sql`, `server/lib/telegram.js`, `js/pulse.js`. What makes the two
+companies feel connected rather than merely sharing a table.
+
+- **In-app notifications ARE the message thread.** Every event the other side needs to hear about
+  — order sent, accepted, declined, a stage moved, the last name filled in, an invoice, a payment
+  recorded, a payment confirmed, a review — is a `job_messages` row written by the server inside
+  the same transaction as the change (`insertMessage`). The speech-bubble bell (`js/notify.js`)
+  reads them with per-side read flags. There is deliberately no second bell: the alert bell in
+  `alerts.js` stays "computed, never stored".
+- **`partner_events` is the Telegram OUTBOX and nothing else.** `emitEvent(d, …)` in `partner.js`
+  writes it in the same transaction; `telegram.js` drains it every five seconds with the global
+  `fetch`, backs off on failure (`next_try_at`, `attempts`, honours 429), and stops on a chat that
+  refuses the bot. **It is never mirrored to Supabase** — it is delivery state, and a restored shop
+  re-sending three months of "order accepted" to two phones would be a bug. `channel` exists so a
+  WhatsApp transport can queue beside it one day.
+- **The strip list for the partner lives in `emitEvent`**, keyed on the audience: `customer`,
+  `phone`, `customer_id`, `price` never reach Yalla Wear's bot, the same list `GET /api/partner`
+  applies. For the shop's own chat the event carries job id, design and quantity only — a staff
+  group is wider than `customer.read`.
+- **Two bots, two tokens, in `server/.env`** (`OG_TELEGRAM_TOKEN_OG`, `OG_TELEGRAM_TOKEN_YALLA`).
+  Never in `config` — `GET /api/config` hands that table to every login including the partner.
+  Chat ids do live in `config` (`telegram.<side>_chat_id`), written by the lib, not by `PUT
+  /api/config`. Linking: `POST /api/telegram/link` hands out a six-letter code held **in memory
+  for ten minutes**; the person sends it to the bot (or into a group the bot is in); the
+  `getUpdates` long-poll matches it and stores the chat. The audience is always the account's
+  role, never the body — a partner asking for the shop's code gets their own.
+- **Messages are Arabic then English, plain text.** No Markdown: a job id or a name with an
+  underscore would break the parse and the message would silently never arrive.
+- **Nothing pushes to the browser; `js/pulse.js` polls.** `GET /api/partner/pulse` is two counts
+  and a stamp, asked every 30 s while the tab is visible. Only on a change does it refetch the
+  partner bundle, and it **never calls `render()` blind**: only on the Print screen or inside
+  the partner portal, and only with no modal or drawer open. Otherwise it repaints the bells and
+  toasts the newest unread line.
+- **A payment is a handshake.** `partner_invoice_payments.recorded_by_side` says who recorded it;
+  `confirmed_at` is set by the OTHER side (`confirmPayment` refuses `own_side` with a 409).
+  `DB.invoicePaid` counts confirmed money only; `DB.invoicePending` is what is waiting;
+  `DB.invoiceOpen` is what can still be recorded. `recordPayment` carries an `opId` through
+  `applied_ops` like a debt payment — a retry must find the payment already there. Either side may
+  record (`['money.write','partner.invoice']`); the side comes from the role.
+- **A review is written once the job is `done`** (`reviewJob`, 409 `not_done` before that),
+  editable, one row per job in `job_reviews` (cursor shape, mirrored), shown read-only to the
+  partner because it is about their work, and posted into the thread as a `review` message.
+- **`Partner.create` takes `source` and `autoSend`.** The till sends `source:'till', autoSend:true`
+  and no longer fires a second request at a guessed id; the by-hand form on the Print screen
+  (`openNewJob` in `js/app-jobs-reports.js`) does the same with `source:'manual'`. A blank name
+  keeps it a draft and the returned job says so (`order_state`, `tbc`).
+- **`Partner.stats(tz)`** is the production report — pieces per day and per month, on-time %,
+  turnaround, average rating — computed in SQL in the caller's day like the dashboard, so it can
+  never quietly become "the last 200". Payout sums are included only for the partner or `cost.read`.
+- **The partner boot bug** this all sat behind: `js/shop.js` fetched `/api/catalogue` unwrapped
+  (403 for a partner → `Shop.fail`) and asked for `/api/partner` on `print.read`, which the partner
+  does not hold. Both are `soft`/`wantAny` now. A real Yalla Wear login boots into its portal.
+- **`POST /api/partner-invoices` is gated `['partner.write','partner.invoice']`.** On
+  `partner.write` alone the actual partner account could never issue an invoice.
+
+Mirror side: `server/supabase/012_partner_link.sql` (also in `CATCH-UP.sql`), `mirror-lag.js` entries
+for `print_jobs.source` and the three payment columns, and `insertChildren` in `supabase-sync.js` —
+child rows pushed from a parent's `afterUpsert` used to miss the lagging-column fallback entirely.
+
 ## Known open work
 
 - The **supplier and payroll editors do not exist**. `Shop.saveSupplier` / `saveEmployee` and their
   routes are live and tested; there is simply no screen. Same for adding one size to an existing
   product (`Shop.addVariant`) and cancelling a purchase order (`Shop.cancelPO`). These are listed by
   name in the wiring test so they stay visible rather than becoming permanent.
+- **The e-commerce intake does not exist yet.** `print_jobs.source = 'web'` is reserved for it and
+  the review is on the job for it to read; the route and its API key are not written.
+- **WhatsApp push is not built.** The outbox has a `channel` column for it; the WhatsApp Cloud API
+  needs a Meta business account and approval before a transport can be written.
 - A **draft partner invoice** still lives only in the browser — `partner_invoices.issued` is
   `NOT NULL`, so there is nowhere to put one. Issuing it reaches the server; saving a draft does not.
 - Delivery **cash reconciliation** is designed and the schema carries it (`to_collect`, `collected`,
   `Deliveries.driverDay()`), but the end-of-day settle-up screen is not built.
-- Bulk catalogue entry; the Yalla Wear remote portal against real data; an offline write queue.
+- Bulk catalogue entry; an offline write queue. (The Yalla Wear portal now runs against real data —
+  what remains is exposing the server to them: Tailscale or a tunnel, and `OG_ORIGINS` listing the
+  address they use.)
 - **Old vs redenominated Syrian lira has never been settled.** The seed assumes old lira — 1 USD = 13,000,
   salaries in millions. If the shop is on new lira, the entire dataset is wrong by three orders of magnitude.
 - `flutter_app/` fails to build on an Android NDK/`sdkmanager` crash.

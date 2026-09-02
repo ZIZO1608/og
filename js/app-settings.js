@@ -791,6 +791,18 @@ function remindersCard() {
   return h + setFoldEnd();
 }
 
+/* The Telegram line — the shop's own bot, linked to a person or a staff
+   group. The card itself is drawn by YALLA.telegramCard, because the partner
+   portal shows the very same card for their bot; only the words differ. The
+   body loads in afterSettings, like the roles grid — a shut fold still binds. */
+function telegramCard() {
+  var h = setFoldStart('telegram', t('tg_title'),
+    '<span id="tgMeta" class="muted">' + t('tg_loading') + '</span>');
+  h += '<div class="set-body"><div id="tgHost" class="tg-host">' + t('tg_loading') + '</div>' +
+    '<div class="muted small mt">' + t('tg_partner_note') + '</div></div>';
+  return h + setFoldEnd();
+}
+
 /* Eleven folds under five headings, in the order somebody actually walks in
    here: the shop's own numbers first, then the machines it prints on, then
    the warehouse, then people, then the two switches nobody touches twice a
@@ -825,6 +837,7 @@ function viewSettings() {
   h += rolesCard();
 
   h += setSection(t('setg_system'));
+  h += telegramCard();
   h += remindersCard();
   h += motionCard();
 

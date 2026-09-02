@@ -1566,21 +1566,108 @@ var ACTIONS = {
      the reload that message triggered wiped the payment about a second
      later: the bill showed itself unpaid again with the cash gone. */
   'og-pay-inv': function (el) {
-    var inv = DB.invoice(el.getAttribute('data-id'));
-    if (!inv) return;
-    var bal = DB.invoiceBalance(inv);
-    if (bal <= 0) return;
+    /* The same amount-and-method sheet the printer uses to record money
+       received, so both halves of the handshake look alike. It used to pay
+       the whole balance in cash on one tap with no opId — a second tap on
+       bad wifi was a second payment. The server posts the thread line and
+       tells Yalla Wear; they confirm it from their side. */
+    if (typeof YLINV !== 'undefined') YLINV.pay(el.getAttribute('data-id'));
+  },
 
-    Shop.write(
-      function () { return Shop.payInvoice(inv.id, { amount: bal, method: 'cash' }); },
-      function () { DB.payInvoice(inv, bal, 'cash'); },
-      function () {
-        DB.postMessage({ invoiceId: inv.id, from: 'og', kind: 'invoice',
-          text: t('og_paid_msg') + ' ' + money(bal) + ' — ' + inv.id });
-        closeModal();
-        toast(inv.id, money(bal) + ' · ' + t('og_paid_toast'), 'ok', 3200);
-        render();
+  /* ---- a print job raised by hand ---- */
+  'pj-new': function () { openNewJob(); },
+  'pj-kind': function (el) {
+    pjCollect();
+    OG.pj.kind = el.getAttribute('data-k') === 'bulk' ? 'bulk' : 'kit';
+    if (OG.pj.kind === 'kit' && !OG.pj.lines.length) OG.pj.lines.push(pjBlankLine());
+    pjRepaint();
+  },
+  'pj-line-add': function () {
+    pjCollect();
+    var lastLine = OG.pj.lines[OG.pj.lines.length - 1];
+    var fresh = pjBlankLine();
+    /* A squad wears one kit: the next row starts on the club and size the
+       last one used, so twelve rows is twelve names, not twelve menus. */
+    if (lastLine) { fresh.club = lastLine.club; fresh.size = lastLine.size; }
+    OG.pj.lines.push(fresh);
+    pjRepaint();
+    var inputs = document.querySelectorAll('[data-pj-line="print"]');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  },
+  'pj-line-del': function (el) {
+    pjCollect();
+    OG.pj.lines.splice(+el.getAttribute('data-i'), 1);
+    if (!OG.pj.lines.length) OG.pj.lines.push(pjBlankLine());
+    pjRepaint();
+  },
+  'pj-save': function () {
+    var f = pjCollect();
+    if (!f.customer.trim()) { toast(t('pj_new'), t('pj_need_customer'), 'warn'); return; }
+    if (!f.design.trim()) { toast(t('pj_new'), t('pj_need_design'), 'warn'); return; }
+    var lines = null, qty = f.qty;
+    if (f.kind === 'kit') {
+      lines = f.lines.filter(function (l) { return l.club && (Number(l.qty) || 0) > 0; }).map(function (l) {
+        var club = DB.clubs[l.club] || [l.club, l.club];
+        return DB.newKitLine({
+          club: club[0], clubAr: club[1],
+          print: String(l.print || '').toUpperCase().trim() || null,
+          number: (l.number !== '' && isFinite(+l.number)) ? +l.number : null,
+          size: String(l.size || 'M'), qty: Math.max(1, Math.round(Number(l.qty) || 1)),
+          price: f.unitCost
+        });
+      });
+      if (!lines.length) { toast(t('pj_new'), t('pj_need_line'), 'warn'); return; }
+      qty = lines.reduce(function (a, l) { return a + l.qty; }, 0);
+    } else if (!(qty > 0)) { toast(t('pj_new'), t('pj_need_line'), 'warn'); return; }
+
+    var when = f.deadline ? new Date(f.deadline + 'T12:00:00') : new Date(Date.now() + 5 * 86400000);
+    DB.newPrintJob({
+      customer: f.customer.trim(), phone: f.phone.trim() || '—', design: f.design.trim(),
+      lines: lines, qty: qty, priority: f.priority, deadline: when,
+      price: qty * f.unitPrice, cost: qty * (f.unitCost || 0), currency: f.currency,
+      source: 'manual', autoSend: true,
+      onSaved: function (saved) {
         if (typeof Notify !== 'undefined') Notify.refresh();
+        if (saved && saved.order_state === 'pending') {
+          toast(t('pj_new'), saved.id + ' · ' + t('pj_sent'), 'ok', 4500);
+        } else {
+          toast(t('pj_new'), (saved ? saved.id + ' · ' : '') +
+                t('pr_draft_tbc').replace('{n}', saved ? saved.tbc : '?'), 'warn', 6500);
+        }
+      }
+    });
+    closeModal();
+    OG.pj = null;
+    render();
+  },
+
+  /* ---- the review ---- */
+  'job-rate': function (el) {
+    var jid = el.getAttribute('data-jid'), n = +el.getAttribute('data-n');
+    OG.rv = { jobId: jid, rating: n };
+    /* Repaint the five stars in place — a render() would throw away the
+       sentence being typed under them. */
+    var host = el.closest('.rv-stars');
+    if (host) host.querySelectorAll('.rv-star').forEach(function (s, i) {
+      s.classList.toggle('on', i < n);
+    });
+  },
+  'job-review-save': function (el) {
+    var id = el.getAttribute('data-id');
+    var j = DB.job(id);
+    if (!j) return;
+    var rating = (OG.rv && OG.rv.jobId === id) ? OG.rv.rating : (j.review ? j.review.rating : 0);
+    if (!rating) { toast(t('rv_title'), t('rv_need_stars'), 'warn'); return; }
+    var box = document.getElementById('rvText');
+    var feedback = box ? box.value.trim() : '';
+    Shop.write(
+      function () { return Shop.reviewJob(id, { rating: rating, feedback: feedback || null }); },
+      null,
+      function () {
+        OG.rv = null;
+        toast(id, t('rv_saved'), 'ok', 3200);
+        if (typeof Notify !== 'undefined') Notify.refresh();
+        openJobDrawer(id);
       }
     );
   },

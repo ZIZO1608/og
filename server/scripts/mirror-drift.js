@@ -63,7 +63,7 @@ const PUSHED = [
   'deliveries', 'rooms', 'sections', 'shelves',
   'fx_rates', 'stock_movements', 'print_log', 'label_print_log',
   'suppliers', 'employees',
-  'print_jobs', 'print_job_lines', 'print_job_stages',
+  'print_jobs', 'print_job_lines', 'print_job_stages', 'job_reviews',
   'partner_invoices', 'partner_invoice_refs', 'partner_invoice_payments',
   'job_messages', 'purchase_orders', 'purchase_order_lines',
   'wa_messages', 'shifts', 'expenses', 'debt_payments',

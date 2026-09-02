@@ -791,3 +791,90 @@ tr.st-over td  { background: color-mix(in srgb, var(--warning-solid) 9%, transpa
 .yi-sum b { font-family: var(--font-head); font-weight: 800; font-size: 22px;
   color: var(--brand); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 tr.row-late td { background: color-mix(in srgb, var(--destructive-solid) 7%, transparent); }
+
+/* ================================================== THE LINE TO YALLA WEAR
+   Payments as a handshake, the shop's review, the production report, the
+   Telegram card, and the by-hand job form. Both portals share these; the
+   partner's token override recolours them.                                 */
+
+/* payments on the invoice sheet */
+.yw-pays { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.yw-pays .yw-lbl { display: block; margin-bottom: 6px; }
+.yw-pay {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 7px 0; font-size: 12.5px; border-bottom: 1px solid var(--border);
+}
+.yw-pay:last-child { border-bottom: 0; }
+.yw-pay b { font-variant-numeric: tabular-nums; min-width: 90px; }
+.yw-pay-at { color: var(--dim); min-width: 64px; }
+.yw-pay-m { color: var(--muted-foreground); flex: 1; }
+.yw-pay.pending b { color: var(--warning); }
+.yw-pay .btn { margin-inline-start: auto; }
+.yw-paid.pending { color: var(--warning); }
+.yw-sheet.paper .yw-pay .btn { display: none; }
+
+/* the review — five stars, one line */
+.rv-stars { display: inline-flex; gap: 4px; }
+.rv-star {
+  font-size: 26px; line-height: 1; color: var(--border); background: none; border: 0;
+  padding: 2px; cursor: default; transition: color var(--d-1) var(--e-std), transform var(--d-1) var(--e-std);
+}
+.rv-star.on { color: var(--warning); }
+.rv-pick .rv-star { cursor: pointer; min-width: 38px; min-height: 38px; }
+.rv-pick .rv-star:hover { transform: scale(1.15); }
+.rv-text { margin: 8px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--foreground); }
+
+/* the Telegram card */
+.tg-host { min-height: 44px; }
+.tg-row { display: flex; align-items: center; gap: 10px; }
+.tg-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--healthy-solid, #3ddc84); flex: 0 0 auto; }
+.tg-dot.off { background: var(--dim); }
+.tg-txt b { display: block; font-size: 13.5px; }
+.tg-txt small { color: var(--muted-foreground); font-size: var(--fs-xs); }
+.tg-acts { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.tg-off b { display: block; font-size: 13.5px; }
+.tg-off small { display: block; color: var(--muted-foreground); margin-top: 3px; line-height: 1.5; }
+.tg-code-box {
+  margin-top: 12px; padding: 14px; border-radius: var(--radius);
+  border: 1px dashed var(--brand-border); background: var(--brand-soft); text-align: center;
+}
+.tg-code {
+  font-family: var(--font-head); font-weight: 800; font-size: 34px; letter-spacing: .28em;
+  color: var(--brand); margin: 6px 0 10px; font-variant-numeric: tabular-nums;
+}
+.tg-code-box small { display: block; margin-top: 8px; }
+
+/* the by-hand job form */
+.pj-form .field span { font-size: var(--fs-xs); }
+.pj-lines { display: flex; flex-direction: column; gap: 6px; }
+.pj-line {
+  display: grid; grid-template-columns: 28px 1.2fr 1.6fr 64px 76px 64px 36px;
+  gap: 6px; align-items: center;
+}
+.pj-line .inp { padding: 6px 8px; font-size: 12.5px; min-width: 0; }
+.pj-n { text-align: center; font-size: var(--fs-xs); }
+
+@media (max-width: 720px) {
+  /* Offers are answered with a thumb: two full-width bars, decline under
+     accept, both tall enough to hit standing up. */
+  .yl-offer-acts { flex-direction: column-reverse; }
+  .yl-offer-acts .btn, .yl-offer-acts .btn-primary { flex: none; width: 100%; min-height: 48px; }
+  .yl-offer-meta { flex-wrap: wrap; gap: 6px 12px; }
+  /* Drawer actions stack, and every one is a full bar. */
+  .drawer-body > div[style*="display:flex"] > .btn { flex: 1 1 100%; min-height: 46px; }
+  /* A shirt row becomes a small card: name on its own line, the rest under it. */
+  .pj-line {
+    grid-template-columns: 28px 1fr 1fr; grid-template-areas: "n club club" "name name name" "num size qty" "del del del";
+    padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+  }
+  .pj-line .pj-n { grid-area: n; }
+  .pj-line [data-pj-line="club"] { grid-area: club; }
+  .pj-line [data-pj-line="print"] { grid-area: name; }
+  .pj-line [data-pj-line="number"] { grid-area: num; }
+  .pj-line [data-pj-line="size"] { grid-area: size; }
+  .pj-line [data-pj-line="qty"] { grid-area: qty; }
+  .pj-line .btn { grid-area: del; width: 100%; }
+  .pj-form .grid { grid-template-columns: 1fr !important; }
+  .yw-pay .btn { margin-inline-start: 0; width: 100%; min-height: 44px; }
+  .tg-code { font-size: 28px; }
+}

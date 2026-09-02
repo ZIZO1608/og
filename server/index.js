@@ -45,6 +45,7 @@ import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
 import * as SyncWorker from './lib/sync-worker.js';
+import * as Telegram from './lib/telegram.js';
 import {
   readJson, sendOk, sendError, sendErrorDetail, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
@@ -1316,6 +1317,11 @@ router.add('POST /api/purchase-orders/:id/cancel', requirePerm('stock.move', asy
 router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx) => {
   const bundle = Partner.all();
   const partner = ctx.user.role === 'partner';
+  /* The production report is cut in the caller's day, like the dashboard:
+     the browser sends its offset in minutes. Payout figures ride along for
+     the partner (their own money) and for staff who may see cost. */
+  const tz = Number(ctx.url.searchParams.get('tz')) || 0;
+  const stats = Partner.stats(tz, { money: partner || Auth.can(ctx.user, 'cost.read') });
 
   /* Yalla Wear is a supplier, not staff. Their own jobs and the thread
      attached to them — never what the shop charges the customer on top,
@@ -1337,6 +1343,10 @@ router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx)
       jobs: bundle.jobs.map(({ price, customer, phone, customer_id, ...rest }) => rest),
       invoices: bundle.invoices,
       messages: bundle.messages.filter((m) => !m.job_id || mine.has(m.job_id)),
+      /* The shop's verdict on their work is theirs to read; who on the
+         shop's staff wrote it is not. */
+      reviews: bundle.reviews.map(({ user_id, ...rest }) => rest),
+      stats,
       clubs: bundle.clubs,
       suppliers: [], employees: [], waMessages: []
     });
@@ -1354,6 +1364,8 @@ router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx)
     })),
     invoices: bundle.invoices,
     messages: bundle.messages,
+    reviews: bundle.reviews,
+    stats,
     clubs: bundle.clubs,
     waMessages: bundle.waMessages
     /* suppliers and employees are NOT here. They have their own routes on
@@ -1366,17 +1378,52 @@ router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx)
 
 /* One place to turn a thrown reason into a status, so a refusal reads the
    same however it was reached. */
+const PARTNER_CONFLICTS = new Set([
+  'names_missing', 'not_accepted', 'not_pending', 'already_sent', 'already_accepted',
+  'own_side', 'not_done', 'not_linked'
+]);
 function partnerFail(res, e) {
   const status = e.code === 'not_found' ? 404
-               : (e.code === 'names_missing' || e.code === 'not_accepted') ? 409
+               : PARTNER_CONFLICTS.has(e.code) ? 409
+               : e.code === 'not_configured' ? 503
                : 400;
   sendError(res, status, e.code || 'invalid', e.message);
 }
 
+/* Something for the other company was just queued; ask the Telegram line to
+   look now rather than on its next tick, so a phone buzzes within a second
+   of the tap. Fire-and-forget — the queue is drained on a timer regardless. */
+const side = (ctx) => (ctx.user.role === 'partner' ? 'yalla' : 'og');
+
+/* The small poll. Has anything moved for the side asking? Cheap enough to ask
+   every half minute from every open tab. */
+router.add('GET /api/partner/pulse', requirePerm(['print.read', 'partner.jobs'], (ctx) => {
+  sendOk(ctx.res, Partner.pulse(side(ctx)));
+}));
+
 router.add('POST /api/print-jobs', requirePerm('print.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
-    sendOk(ctx.res, { job: Partner.create({ ...b, userId: ctx.user.id }) });
+    const job = Partner.create({
+      ...b, userId: ctx.user.id,
+      source: b.source === 'till' ? 'till' : 'manual',
+      autoSend: !!b.autoSend
+    });
+    Telegram.nudge();
+    sendOk(ctx.res, { job });
+  } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+/* What the shop thought of the finished shirts. The shop's move only, and
+   only once the job is done — refused otherwise, in lib/partner.js. */
+router.add('POST /api/print-jobs/:id/review', requirePerm('print.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const job = Partner.reviewJob(ctx.params.id, {
+      rating: b.rating, feedback: b.feedback ?? null, userId: ctx.user.id
+    });
+    Telegram.nudge();
+    sendOk(ctx.res, { job });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
 
@@ -1397,9 +1444,10 @@ router.add('PATCH /api/print-jobs/:id/customer', requirePerm('print.write', asyn
    move posts, and that message is the record of who said what. */
 router.add('PATCH /api/print-jobs/:id/stage', requirePerm(['print.write', 'partner.jobs'], async (ctx) => {
   const b = await readJson(ctx.req);
-  const side = ctx.user.role === 'partner' ? 'yalla' : 'og';
   try {
-    sendOk(ctx.res, { job: Partner.setStage(ctx.params.id, b.stage, side, ctx.user.id) });
+    const job = Partner.setStage(ctx.params.id, b.stage, side(ctx), ctx.user.id);
+    Telegram.nudge();
+    sendOk(ctx.res, { job });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
 
@@ -1407,7 +1455,9 @@ router.add('PATCH /api/print-jobs/:id/stage', requirePerm(['print.write', 'partn
    is gated on the permission only that side has. */
 router.add('POST /api/print-jobs/:id/order', requirePerm('print.write', async (ctx) => {
   try {
-    sendOk(ctx.res, { job: Partner.sendOrder(ctx.params.id, ctx.user.id) });
+    const job = Partner.sendOrder(ctx.params.id, ctx.user.id);
+    Telegram.nudge();
+    sendOk(ctx.res, { job });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
 
@@ -1418,69 +1468,119 @@ router.add('PATCH /api/print-jobs/:id/lines',
   requirePerm(['print.write', 'partner.jobs'], async (ctx) => {
     const b = await readJson(ctx.req);
     try {
-      sendOk(ctx.res, {
-        job: Partner.setLines(ctx.params.id,
-                              Array.isArray(b.lines) ? b.lines : [],
-                              ctx.user.id)
-      });
+      const job = Partner.setLines(ctx.params.id,
+                                   Array.isArray(b.lines) ? b.lines : [],
+                                   ctx.user.id, side(ctx));
+      Telegram.nudge();
+      sendOk(ctx.res, { job });
     } catch (e) { partnerFail(ctx.res, e); }
   }));
 
 router.add('POST /api/print-jobs/:id/respond', requirePerm('partner.respond', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
-    sendOk(ctx.res, {
-      job: Partner.respondToOrder(ctx.params.id, !!b.accept, {
-        promisedAt: b.promisedAt || null, note: b.note || null, userId: ctx.user.id
-      })
+    const job = Partner.respondToOrder(ctx.params.id, !!b.accept, {
+      promisedAt: b.promisedAt || null, note: b.note || null, userId: ctx.user.id
     });
+    Telegram.nudge();
+    sendOk(ctx.res, { job });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
 
 router.add('POST /api/messages', requirePerm(['print.read', 'partner.jobs'], async (ctx) => {
   const b = await readJson(ctx.req);
-  const from = ctx.user.role === 'partner' ? 'yalla' : 'og';
   try {
-    sendOk(ctx.res, {
-      message: Partner.postMessage({
-        jobId: b.jobId || null, invoiceId: b.invoiceId || null,
-        from, kind: b.kind || 'note', reason: b.reason || null,
-        text: b.text, userId: ctx.user.id
-      })
+    const message = Partner.postMessage({
+      jobId: b.jobId || null, invoiceId: b.invoiceId || null,
+      from: side(ctx), kind: b.kind || 'note', reason: b.reason || null,
+      text: b.text, userId: ctx.user.id
     });
+    Telegram.nudge();
+    sendOk(ctx.res, { message });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
 
 router.add('POST /api/messages/read', requirePerm(['print.read', 'partner.jobs'], async (ctx) => {
   const b = await readJson(ctx.req);
-  const side = ctx.user.role === 'partner' ? 'yalla' : 'og';
   try {
     sendOk(ctx.res, Partner.markRead({
-      side, jobId: b.jobId || null, invoiceId: b.invoiceId || null, userId: ctx.user.id
+      side: side(ctx), jobId: b.jobId || null, invoiceId: b.invoiceId || null, userId: ctx.user.id
     }));
   } catch (e) { partnerFail(ctx.res, e); }
 }));
 
-router.add('POST /api/partner-invoices', requirePerm('partner.write', async (ctx) => {
+/* The printer's bill. Yalla Wear issues it from their portal on partner.invoice;
+   partner.write lets a manager raise one on their behalf from inside the
+   portal view. Gated on partner.write alone, the real partner account — which
+   holds none of the shop's permissions — could never send an invoice at all. */
+router.add('POST /api/partner-invoices', requirePerm(['partner.write', 'partner.invoice'], async (ctx) => {
   const b = await readJson(ctx.req);
   try {
-    sendOk(ctx.res, { invoice: Partner.createInvoice({ ...b, userId: ctx.user.id }) });
+    const invoice = Partner.createInvoice({ ...b, userId: ctx.user.id });
+    Telegram.nudge();
+    sendOk(ctx.res, { invoice });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
 
-/* Money leaving the shop, so it sits behind money.write rather than the print
-   permissions — somebody who schedules print jobs is not thereby somebody who
-   can say a supplier was paid. */
-router.add('POST /api/partner-invoices/:id/payments', requirePerm('money.write', async (ctx) => {
+/* A payment is a handshake between the two companies. Either side may record
+   one — the shop when it hands cash over (money.write: somebody who schedules
+   print jobs is not thereby somebody who can say a supplier was paid), the
+   printer when cash reaches it (partner.invoice). Which side is decided from
+   the account, never the body. */
+router.add('POST /api/partner-invoices/:id/payments', requirePerm(['money.write', 'partner.invoice'], async (ctx) => {
   const b = await readJson(ctx.req);
   try {
-    sendOk(ctx.res, {
-      invoice: Partner.recordPayment({
-        invoiceId: ctx.params.id, amount: Number(b.amount),
-        method: b.method, at: b.at || null, userId: ctx.user.id
-      })
+    const invoice = Partner.recordPayment({
+      invoiceId: ctx.params.id, amount: Number(b.amount),
+      method: b.method, at: b.at || null, side: side(ctx),
+      userId: ctx.user.id, opId: b.opId || null
     });
+    Telegram.nudge();
+    sendOk(ctx.res, { invoice });
   } catch (e) { partnerFail(ctx.res, e); }
+}));
+
+/* The other half: the side that did NOT record the payment says it happened.
+   lib/partner.js refuses a side confirming its own. */
+router.add('POST /api/partner-invoices/:id/payments/:pid/confirm',
+  requirePerm(['money.write', 'partner.invoice'], async (ctx) => {
+    try {
+      const invoice = Partner.confirmPayment({
+        invoiceId: ctx.params.id, paymentId: ctx.params.pid, side: side(ctx), userId: ctx.user.id
+      });
+      Telegram.nudge();
+      sendOk(ctx.res, { invoice });
+    } catch (e) { partnerFail(ctx.res, e); }
+  }));
+
+/* ---- the Telegram line ---------------------------------------------------
+   Each side links its own bot to its own chat and sees only its own half.
+   The audience is the account's, never the body's: a partner asking for the
+   shop's link code gets their own. */
+const tgSide = (ctx) => (ctx.user.role === 'partner' ? 'yalla' : 'og');
+const tgGate = ['config.write', 'partner.jobs'];
+
+router.add('GET /api/telegram/status', requirePerm(tgGate, (ctx) => {
+  const s = Telegram.status();
+  const mine = tgSide(ctx);
+  sendOk(ctx.res, { side: mine, ...s[mine], running: s.running,
+                    /* The manager may also see whether the partner's line is up. */
+                    other: mine === 'og' ? { linked: s.yalla.linked, configured: s.yalla.configured } : undefined });
+}));
+
+router.add('POST /api/telegram/link', requirePerm(tgGate, (ctx) => {
+  try { sendOk(ctx.res, Telegram.linkCode(tgSide(ctx))); }
+  catch (e) { partnerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/telegram/unlink', requirePerm(tgGate, (ctx) => {
+  try { sendOk(ctx.res, Telegram.unlink(tgSide(ctx))); }
+  catch (e) { partnerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/telegram/test', requirePerm(tgGate, async (ctx) => {
+  try { sendOk(ctx.res, await Telegram.sendTest(tgSide(ctx))); }
+  catch (e) { partnerFail(ctx.res, e); }
 }));
 
 router.add('POST /api/suppliers', requirePerm('money.write', async (ctx) => {
@@ -2053,6 +2153,10 @@ if (runDirectly) {
        failed mirror must never be able to disturb a sale. */
     console.log('');
     SyncWorker.start();
+
+    /* The Telegram line, same shape: drains the partner_events outbox on a
+       timer and long-polls each bot for a link code. Off with no token. */
+    Telegram.start();
 
     console.log('');
   });

@@ -41,9 +41,20 @@ export const MIRROR_LAG = {
   customers:  { cols: ['credit_limit', 'no_credit', 'merged_into'],
                 file: 'server/supabase/011_credit_and_merge.sql', retriedBy: ['sync', 'reconcile'] },
 
-  /* 032 — attaching an old print job to the person who ordered it. */
-  print_jobs: { cols: ['customer_id'],
-                file: 'server/supabase/010_loyalty_and_wants.sql', retriedBy: ['sync', 'reconcile'] },
+  /* 032 — attaching an old print job to the person who ordered it (010), and
+     035 — where the job was raised, till or by hand (012). Two files because
+     they arrived months apart; the retry names whichever column was refused. */
+  print_jobs: { cols: ['customer_id', 'source'],
+                file: 'server/supabase/010_loyalty_and_wants.sql then 012_partner_link.sql',
+                retriedBy: ['sync', 'reconcile'] },
+
+  /* 035 — the payment handshake. These rows ride on partner_invoices'
+     afterUpsert rather than a cursor of their own, so the sync's child insert
+     applies this fallback itself (insertChildren in supabase-sync.js). A row
+     pushed without them reads as an unconfirmed payment on a restore — which
+     is why the reconcile is not optional once 012 is run. */
+  partner_invoice_payments: { cols: ['recorded_by_side', 'confirmed_at', 'confirmed_by'],
+                file: 'server/supabase/012_partner_link.sql', retriedBy: ['sync', 'reconcile'] },
 
   /* 023 — which shelf a pair sits on. */
   stock:      { cols: ['shelf_id'],

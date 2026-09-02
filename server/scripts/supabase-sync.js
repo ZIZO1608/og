@@ -266,6 +266,28 @@ async function syncUsers() {
    before adding these), so skipping users breaks nothing downstream. Real
    login is checked against local SQLite only, on this server — Supabase is
    never part of authentication, with or without this table synced. */
+/* Child rows pushed from a parent's afterUpsert — a sale's items, an
+   invoice's payments — go through SB.insert directly and so miss the
+   lagging-column fallback that wraps the parent's own upsert below. Until
+   this existed a payment column the mirror had not got threw out of the
+   partner block and took every later table with it. Same rule, same list
+   (lib/mirror-lag.js), same warning by name. */
+async function insertChildren(table, rows) {
+  try {
+    await SB.insert(table, rows, { upsert: true });
+  } catch (e) {
+    const lag = lagColumn(table, e);
+    if (!lag) throw e;
+    console.log(warn(`Supabase has no ${table}.${lag.col} column yet — pushing without it.`));
+    console.log(`    \x1b[2mRun ${lag.file} in the SQL editor, then npm run supabase:reconcile.\x1b[0m`);
+    await SB.insert(table, rows.map((r) => {
+      const copy = { ...r };
+      for (const c of lag.cols) delete copy[c];
+      return copy;
+    }), { upsert: true });
+  }
+}
+
 const TABLES = {
   products: {
     parseKey: (rowId) => ({ id: Number(rowId) }),
@@ -425,8 +447,16 @@ const TABLES = {
 
       const pays = DB.get().prepare('SELECT * FROM partner_invoice_payments WHERE invoice_id = ?').all(localRow.id);
       await SB.remove('partner_invoice_payments', { invoice_id: localRow.id }).catch(() => {});
-      if (pays.length) await SB.insert('partner_invoice_payments', pays, { upsert: true });
+      if (pays.length) await insertChildren('partner_invoice_payments', pays);
     }
+  },
+
+  /* The shop's verdict on a finished job. Keyed on the job, edited in place
+     when the shop looks again, so it replays the log rather than a maxid. */
+  job_reviews: {
+    parseKey: (rowId) => ({ job_id: rowId }),
+    fetchLocal: (key) => DB.get().prepare('SELECT * FROM job_reviews WHERE job_id = ?').get(key.job_id),
+    mapRow: (r) => r
   },
 
   job_messages: {
@@ -816,7 +846,11 @@ try {
      before the day's sales were pushed, which is the exact failure this
      block is here to prevent. */
   await mirrorTable('clubs', ['code'], (r) => ({ ...r, archived: !!r.archived }));
-  const PARTNER = ['print_jobs', 'partner_invoices', 'job_messages', 'suppliers',
+  /* job_reviews right after the jobs they name, before anything that could
+     fail on a table the mirror has not got (012). partner_events is NOT
+     here and never will be — it is the Telegram outbox, delivery state
+     rather than shop data; see migrations/035_partner_link.sql. */
+  const PARTNER = ['print_jobs', 'job_reviews', 'partner_invoices', 'job_messages', 'suppliers',
                    'employees', 'purchase_orders'];
   for (const name of PARTNER) await syncTable(name, { phase: 'upsert' });
   for (const name of PARTNER.slice().reverse()) await syncTable(name, { phase: 'delete' });

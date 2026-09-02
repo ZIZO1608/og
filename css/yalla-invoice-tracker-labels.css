@@ -124,6 +124,15 @@ table.yw-tbl .num { text-align: end; }
   .yw-foot-grid { grid-template-columns: 1fr; }
   .yw-qr { position: static; margin-top: 16px; }
   .yw-title b { font-size: 24px; }
+  /* The header row was laid out for A4: three labelled facts 34px apart and
+     the mark on the right. On a phone the invoice number broke across three
+     lines and the title ran off the edge. Let the facts wrap and shrink. */
+  .yw-top { gap: 12px; margin-bottom: 16px; }
+  .yw-lockup { width: 30mm; }
+  .yw-title b { font-size: 20px; letter-spacing: .1em; }
+  .yw-meta { flex-wrap: wrap; gap: 10px 18px; }
+  .yw-meta b { font-size: 13px; }
+  .yw-mark { width: 34px; height: 34px; }
 }
 
 @media (max-width: 1100px) {

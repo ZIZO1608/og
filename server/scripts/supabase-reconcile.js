@@ -89,6 +89,7 @@ const TABLES = [
   { name: 'print_jobs',               key: 'id' },
   { name: 'print_job_lines',          key: 'id' },
   { name: 'print_job_stages',         key: 'id' },
+  { name: 'job_reviews',              key: 'job_id' },
   { name: 'partner_invoices',         key: 'id' },
   { name: 'partner_invoice_refs',     key: ['invoice_id', 'job_id'] },
   { name: 'partner_invoice_payments', key: 'id' },

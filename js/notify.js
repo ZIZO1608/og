@@ -33,7 +33,14 @@ var Notify = (function () {
     accepted:       'M20 6L9 17l-5-5',
     declined:       'M18 6L6 18M6 6l12 12',
     'in-print':     'M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z',
-    shipped:        'M1 3h13v13H1zM14 8h4l3 3v5h-7M5.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3m11 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3'
+    shipped:        'M1 3h13v13H1zM14 8h4l3 3v5h-7M5.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3m11 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3',
+    /* The rest of the line: a stage moved, the last name went on, money
+       moved one way and was confirmed the other, and the shop's verdict. */
+    stage:          'M4 12h16M14 6l6 6-6 6',
+    'names-ready':  'M4 13l4 4L20 5',
+    payment:        'M2 7h20v10H2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6',
+    'payment-confirmed': 'M2 7h20v10H2zM8 12l3 3 5-5',
+    review:         'M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2-5.5-2.9-5.5 2.9 1-6.2L3 9.6l6.2-.9z'
   };
 
   function ico(k) {

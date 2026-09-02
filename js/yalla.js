@@ -13,7 +13,7 @@
 
 var YALLA = (function () {
 
-  var S = { view: 'today', filter: 'open', mode: 'board', day: null };
+  var S = { view: 'today', filter: 'open', mode: 'board', day: null, tab: 'money' };
 
   var DAILY_CAPACITY = 60;          // pieces the partner can print per day
   var RADAR_DAYS = 14;              // how far the deadline radar looks ahead
@@ -425,7 +425,98 @@ var YALLA = (function () {
       '<div class="yl-stack">' + feed() + nextUp(open, week) + '</div>' +
     '</div>';
 
+    /* Their phone. Linking the bot is a one-time job, so it sits last. */
+    h += '<div class="card mt tg-card"><div class="card-head"><h3>' + t('tg_title') + '</h3>' +
+      '<div class="card-actions muted small">' + t('tg_sub') + '</div></div>' +
+      '<div class="card-body"><div id="tgHost" class="tg-host">' + t('tg_loading') + '</div></div></div>';
+
     return h;
+  }
+
+  /* ---- the Telegram line ----------------------------------------------------
+     One card, two homes: the shop's Settings fold and the partner's Today
+     screen draw it from the same status call, and the server decides whose
+     bot it is talking about from the account. Linking is: press Connect,
+     read a six-letter code, send it to the bot. The card polls while a code
+     is live so "linked" appears without anyone pressing anything. */
+  var TG = { status: null, code: null, watching: false };
+
+  function tgCardHtml(s) {
+    if (!s) return '<div class="muted small">' + t('tg_loading') + '</div>';
+    var h = '';
+    if (!s.configured) {
+      return '<div class="tg-off"><b>' + t('tg_no_token') + '</b><small>' +
+        (Notify.side() === 'og' ? t('tg_no_token_how') : t('tg_no_token_partner')) + '</small></div>';
+    }
+    if (s.linked) {
+      h += '<div class="tg-row on"><span class="tg-dot"></span><div class="tg-txt"><b>' + t('tg_linked_to') +
+        ' ' + esc(s.chatTitle || '') + '</b><small>' + (s.bot ? '@' + esc(s.bot) + ' · ' : '') +
+        (s.queued ? s.queued + ' ' + t('tg_queued') : t('tg_all_sent')) +
+        (s.failed ? ' · <span style="color:var(--destructive)">' + s.failed + ' ' + t('tg_failed') + '</span>' : '') +
+        (s.lastError ? ' · ' + esc(String(s.lastError).slice(0, 80)) : '') + '</small></div></div>' +
+        '<div class="tg-acts"><button class="btn btn-sm" data-yl="tg-test">' + t('tg_test') + '</button>' +
+        '<button class="btn btn-sm btn-ghost" data-yl="tg-unlink">' + t('tg_unlink') + '</button></div>';
+      return h;
+    }
+    h += '<div class="tg-row"><span class="tg-dot off"></span><div class="tg-txt"><b>' + t('tg_not_linked') +
+      '</b><small>' + (s.bot ? '@' + esc(s.bot) : '') + '</small></div></div>';
+    if (TG.code && new Date(TG.code.expires) > Date.now()) {
+      var link = s.bot ? 'https://t.me/' + encodeURIComponent(s.bot) + '?start=' + TG.code.code : null;
+      h += '<div class="tg-code-box"><span class="eyebrow">' + t('tg_code_hint') + '</span>' +
+        '<div class="tg-code" dir="ltr">' + TG.code.code + '</div>' +
+        (link ? '<a class="btn btn-primary btn-block" href="' + link + '" target="_blank" rel="noopener">' +
+                  t('tg_open_bot') + '</a>' : '') +
+        '<small class="muted">' + t('tg_waiting') + '</small></div>';
+    } else {
+      h += '<div class="tg-acts"><button class="btn btn-primary" data-yl="tg-link">' + t('tg_connect') + '</button></div>';
+    }
+    return h;
+  }
+
+  function tgPaint() {
+    var host = document.getElementById('tgHost');
+    if (host) host.innerHTML = tgCardHtml(TG.status);
+    var meta = document.getElementById('tgMeta');
+    if (meta && TG.status) {
+      meta.innerHTML = !TG.status.configured ? t('tg_no_token')
+        : TG.status.linked ? t('tg_linked_to') + ' ' + esc(TG.status.chatTitle || '')
+        : t('tg_not_linked');
+    }
+  }
+
+  function telegramLoad() {
+    var host = document.getElementById('tgHost');
+    if (!host) return;
+    if (typeof Shop === 'undefined' || !Shop.live()) { host.innerHTML = ''; return; }
+    Shop.telegramStatus().then(function (s) {
+      TG.status = s;
+      tgPaint();
+    }).catch(function (e) {
+      host.innerHTML = '<div class="muted small">' + esc(API.friendly ? API.friendly(e) : String(e)) + '</div>';
+    });
+  }
+
+  /* While a code is live, ask every few seconds whether it has been used. */
+  function tgWatch() {
+    if (TG.watching) return;
+    TG.watching = true;
+    (function again() {
+      setTimeout(function () {
+        if (!TG.code || new Date(TG.code.expires) <= Date.now()) { TG.code = null; TG.watching = false; tgPaint(); return; }
+        if (typeof Shop === 'undefined' || !Shop.live()) { TG.watching = false; return; }
+        Shop.telegramStatus().then(function (s) {
+          TG.status = s;
+          if (s.linked) {
+            TG.code = null; TG.watching = false;
+            toast(t('tg_title'), t('tg_linked') + ' ' + (s.chatTitle || ''), 'ok', 4000);
+            tgPaint();
+            return;
+          }
+          tgPaint();
+          again();
+        }).catch(function () { again(); });
+      }, 4000);
+    })();
   }
 
   function nextUp(open, week) {
@@ -764,6 +855,14 @@ var YALLA = (function () {
         '<button class="btn btn-primary" data-yl="invoice">' + t('yl_invoice_og') + '</button>' +
       '</div></div>';
 
+    /* Two questions on one screen: what it pays, and how much came off the
+       press. A fifth tab would not fit a phone, so they share this one. */
+    h += '<div class="seg-row mb">' +
+      '<button class="seg' + (S.tab === 'production' ? '' : ' on') + '" data-yl="etab" data-t="money">' + t('yl_money_tab') + '</button>' +
+      '<button class="seg' + (S.tab === 'production' ? ' on' : '') + '" data-yl="etab" data-t="production">' + t('yl_prod') + '</button>' +
+    '</div>';
+    if (S.tab === 'production') return h + productionHtml();
+
     h += '<div class="grid mb" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
       '<div class="stat"><span class="eyebrow">' + t('yl_earned_month') + '</span><div class="val accent">' + moneyStat(month) + '</div>' +
         deltaTag(month, last, t('vs_last_month')) + '</div>' +
@@ -818,7 +917,91 @@ var YALLA = (function () {
     return h;
   }
 
+  /* ---- the production report ---------------------------------------------
+     Pieces off the press by day and by month, from DB.stats — computed on
+     the server over every finished job, in this machine's day. Nothing here
+     is summed in the browser, so it cannot quietly become "the last 200". */
+  function prodDays() {
+    var s = DB.stats;
+    var byDay = {};
+    (s.perDay || []).forEach(function (r) { byDay[r.day] = r; });
+    var out = [];
+    var end = new Date(s.todayKey + 'T12:00:00');
+    for (var i = 29; i >= 0; i--) {
+      var d = new Date(end.getTime() - i * 86400000);
+      var key = d.getFullYear() + '-' + pad(d.getMonth() + 1, 2) + '-' + pad(d.getDate(), 2);
+      out.push({ day: key, date: d, jobs: byDay[key] ? byDay[key].jobs : 0, pieces: byDay[key] ? byDay[key].pieces : 0 });
+    }
+    return out;
+  }
+
+  function productionHtml() {
+    var s = DB.stats;
+    if (!s) {
+      return '<div class="card"><div class="cart-empty"><b>' + t('yl_prod_none') + '</b></div></div>';
+    }
+    var rating = s.avgRating;
+    var h = '<div class="grid mb stat-row" style="grid-template-columns:repeat(5,minmax(0,1fr))">' +
+      '<div class="stat"><span class="eyebrow">' + t('yl_prod_today') + '</span><div class="val accent">' + nf(s.today.pieces) + '</div>' +
+        '<div class="foot">' + s.today.jobs + ' ' + t('yl_jobs').toLowerCase() + '</div></div>' +
+      '<div class="stat"><span class="eyebrow">' + t('yl_prod_month') + '</span><div class="val">' + nf(s.month.pieces) + '</div>' +
+        '<div class="foot">' + s.month.jobs + ' ' + t('yl_jobs').toLowerCase() +
+          (s.month.payout != null ? ' · ' + money(s.month.payout) : '') + '</div></div>' +
+      '<div class="stat"><span class="eyebrow">' + t('yl_prod_open') + '</span><div class="val">' + nf(s.open.pieces) + '</div>' +
+        '<div class="foot">' + s.open.jobs + ' ' + t('yl_jobs').toLowerCase() + '</div></div>' +
+      '<div class="stat"><span class="eyebrow">' + t('yl_on_time') + '</span><div class="val' +
+        (s.onTimePct === null ? '' : s.onTimePct >= 80 ? ' accent' : '') + '">' +
+        (s.onTimePct === null ? '—' : s.onTimePct + '%') + '</div>' +
+        '<div class="foot">' + (s.avgTurnaroundDays === null ? '' : s.avgTurnaroundDays + ' ' + t('yl_days') + ' ' + t('yl_turnaround').toLowerCase()) + '</div></div>' +
+      '<div class="stat"><span class="eyebrow">' + t('yl_rating') + '</span><div class="val">' +
+        (rating === null ? '—' : '<span dir="ltr">' + rating + ' <span class="rv-star on" style="font-size:18px">★</span></span>') + '</div>' +
+        '<div class="foot">' + s.reviews + ' ' + t('yl_prod_reviews') + '</div></div>' +
+    '</div>';
+
+    h += '<div class="card mb"><div class="card-head"><h3>' + t('yl_prod_days') + '</h3>' +
+      '<div class="card-actions muted small">' + t('yl_prod_days_sub') + '</div></div>' +
+      '<div class="card-body"><div class="chart-box" style="height:220px"><canvas id="ylProdChart"></canvas></div></div></div>';
+
+    h += '<div class="card mb table-wrap"><div class="card-head"><h3>' + t('yl_prod_months') + '</h3></div>' +
+      '<table class="tbl"><thead><tr><th>' + t('yl_prod_month_col') + '</th>' +
+      '<th class="num">' + t('yl_jobs') + '</th><th class="num">' + t('pieces') + '</th>' +
+      (s.month.payout != null ? '<th class="num">' + t('yl_payout') + '</th>' : '') + '</tr></thead><tbody>';
+    var months = (s.perMonth || []).slice().reverse();
+    if (!months.length) {
+      h += '<tr><td colspan="4" class="muted">' + t('yl_prod_empty') + '</td></tr>';
+    }
+    months.forEach(function (r) {
+      var d = new Date(r.month + '-01T12:00:00');
+      h += '<tr><td><b>' + d.toLocaleDateString(OG.lang === 'ar' ? 'ar-EG' : 'en-GB', { month: 'long', year: 'numeric' }) + '</b></td>' +
+        '<td class="num">' + r.jobs + '</td><td class="num"><b>' + nf(r.pieces) + '</b></td>' +
+        (s.month.payout != null ? '<td class="num">' + money(r.payout || 0) + '</td>' : '') + '</tr>';
+    });
+    h += '</tbody></table></div>';
+
+    var days = prodDays().filter(function (d) { return d.pieces > 0; }).reverse();
+    h += '<div class="card table-wrap"><div class="card-head"><h3>' + t('yl_prod_day_col') + '</h3>' +
+      '<div class="card-actions muted small">' + t('yl_prod_days_sub') + '</div></div>' +
+      '<table class="tbl"><thead><tr><th>' + t('date') + '</th>' +
+      '<th class="num">' + t('yl_jobs') + '</th><th class="num">' + t('pieces') + '</th></tr></thead><tbody>';
+    if (!days.length) h += '<tr><td colspan="3" class="muted">' + t('yl_prod_empty') + '</td></tr>';
+    days.forEach(function (d) {
+      h += '<tr><td>' + fmtDate(d.date) + '</td><td class="num">' + d.jobs + '</td>' +
+        '<td class="num"><b>' + nf(d.pieces) + '</b></td></tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  function afterProduction() {
+    var c = document.getElementById('ylProdChart');
+    if (!c || !DB.stats) return;
+    var days = prodDays();
+    Charts.bars(c, days.map(function (d) { return String(d.date.getDate()); }),
+      days.map(function (d) { return d.pieces; }),
+      { highlight: days.length - 1, fmt: function (v) { return nf(v); } });
+  }
+
   function afterEarnings() {
+    if (S.tab === 'production') { afterProduction(); return; }
     var months = [], vals = [];
     for (var i = 5; i >= 0; i--) {
       var d = new Date(TODAY.getFullYear(), TODAY.getMonth() - i, 1);
@@ -844,7 +1027,8 @@ var YALLA = (function () {
       '<h3 style="font-size:20px;margin:4px 0 7px">' + j.id + '</h3>' +
       (j.priority === 'urgent' ? '<span class="badge urgent">' + t('urgent') + '</span> ' : '') +
       (j.overdue ? '<span class="badge critical">' + t('overdue') + '</span> ' : '') +
-      '<span class="badge neutral">' + j.qty + ' ' + t('pieces') + '</span></div>';
+      '<span class="badge neutral">' + j.qty + ' ' + t('pieces') + '</span> ' +
+      '<span class="badge neutral">' + t('pj_src_' + (j.source || 'manual')) + '</span></div>';
 
     var body = '<div class="card mb"><div class="card-head"><h3>' + t('yl_progress') + '</h3>' +
       '<div class="card-actions muted small">' + (j.overdue
@@ -891,6 +1075,10 @@ var YALLA = (function () {
       '<div class="stat"><span class="eyebrow">' + t('deadline') + '</span><div class="val" style="font-size:16px">' +
         fmtDate(j.deadline) + '</div><div class="foot">' + relDate(j.deadline) + '</div></div>' +
     '</div>';
+
+    /* What OG thought of the finished shirts — read-only here; it is their
+       verdict on this side's work. */
+    if (j.review && typeof reviewCardHtml === 'function') body += reviewCardHtml(j, true);
 
     body += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
     if (idx < DB.printStages.length - 1) {
@@ -1050,12 +1238,40 @@ var YALLA = (function () {
     if (S.view === 'earnings') afterEarnings();
     if (S.view === 'invoices' && hasInv() && YLINV.after) YLINV.after();
     if (S.view === 'queue' && S.mode === 'board') bindBoard();
+    if (S.view === 'today') telegramLoad();
   }
 
   /* --------------------------------------------------------------- acts */
 
   var ACT = {
     nav: function (el) { S.view = el.getAttribute('data-view'); S.day = null; closeDrawer(); repaint(); },
+    etab: function (el) { S.tab = el.getAttribute('data-t'); repaint(); },
+
+    /* ---- the Telegram line. Shared by both portals: the server decides
+       whose bot from the account, so the same three buttons serve OG's
+       Settings fold and the partner's Today card. */
+    'tg-link': function () {
+      if (typeof Shop === 'undefined' || !Shop.live()) return;
+      Shop.telegramLink().then(function (r) {
+        TG.code = r;
+        if (r.bot && TG.status) TG.status.bot = r.bot;
+        tgPaint();
+        tgWatch();
+      }).catch(function (e) { toast(t('tg_title'), API.friendly ? API.friendly(e) : String(e), 'err', 6000); });
+    },
+    'tg-test': function () {
+      if (typeof Shop === 'undefined' || !Shop.live()) return;
+      Shop.telegramTest().then(function () { toast(t('tg_title'), t('tg_test_sent'), 'ok', 3500); })
+        .catch(function (e) { toast(t('tg_title'), API.friendly ? API.friendly(e) : String(e), 'err', 6000); });
+    },
+    'tg-unlink': function () {
+      if (typeof Shop === 'undefined' || !Shop.live()) return;
+      Shop.telegramUnlink().then(function () {
+        TG.code = null;
+        toast(t('tg_title'), t('tg_unlinked'), 'ok', 3000);
+        telegramLoad();
+      }).catch(function (e) { toast(t('tg_title'), API.friendly ? API.friendly(e) : String(e), 'err', 6000); });
+    },
     filter: function (el) { S.filter = el.getAttribute('data-f'); repaint(); },
     'stage-filter': function (el) {
       S.view = 'queue'; S.filter = el.getAttribute('data-stage'); S.day = null; repaint();
@@ -1331,6 +1547,8 @@ var YALLA = (function () {
     exportSpec: exportSpec,
     state: S,
     thread: thread,
+    /* The Telegram card, for OG's Settings fold — same card, their bot. */
+    telegramLoad: telegramLoad,
     go: function (v, id) {
       S.view = v; S.day = null;
       repaint();

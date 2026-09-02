@@ -28,6 +28,11 @@ function viewPrint() {
       (allow('partner.read')
         ? '<button class="btn btn-dark" data-act="partner-view">' + t('partner_view') + '</button>'
         : '') +
+      /* A job raised by hand — a customer who rang, a club order taken at
+         the door. Until this existed the till was the only way in. */
+      (allow('print.write')
+        ? '<button class="btn btn-primary" data-act="pj-new">+ ' + t('pj_new') + '</button>'
+        : '') +
     '</div></div>';
 
   /* Two halves of the same relationship: the work, and the bill for it. */
@@ -159,13 +164,182 @@ function viewPartnerInvoices() {
       /* No stopPropagation — it killed the click before the delegated
          [data-act] dispatcher on `document` ever saw it, so Pay now did
          nothing. closest('[data-act]') finds this button, not the row. */
-      '<td>' + (bal
+      '<td>' + (DB.invoiceOpen(inv) > 0
         ? '<button class="btn btn-sm btn-primary" data-act="og-pay-inv" data-id="' + inv.id + '">' +
             t('og_pay_now') + '</button>'
-        : '') + '</td></tr>';
+        : (DB.invoicePending(inv)
+            ? '<span class="badge tbc">' + t('pay_pending') + '</span>'
+            : '')) + '</td></tr>';
   });
 
   return h + '</tbody></table></div>';
+}
+
+/* ---- a job raised by hand ---------------------------------------------------
+   The till raises most print jobs, with the customer already on the basket.
+   This is the other door: somebody rang, or a club captain walked in with a
+   squad list. Same shape, same server call, same rule — every shirt with a
+   name goes straight to Yalla Wear; a blank one keeps the job a draft. */
+
+var PJ_PIECE_PRICE = 950;    /* what the customer pays per piece, matches the till */
+
+function pjBlankLine() {
+  var first = Object.keys(DB.clubs)[0] || '';
+  return { club: first, print: '', number: '', size: 'M', qty: 1 };
+}
+
+function pjCollect() {
+  var f = OG.pj;
+  var v = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  f.customer = v('pjCustomer'); f.phone = v('pjPhone'); f.design = v('pjDesign');
+  f.qty = Math.max(0, Math.round(Number(v('pjQty')) || 0));
+  f.priority = v('pjPriority') || 'normal';
+  f.deadline = v('pjDeadline');
+  f.unitPrice = Math.max(0, Math.round(Number(v('pjPrice')) || 0));
+  if (document.getElementById('pjCost')) f.unitCost = Math.max(0, Math.round(Number(v('pjCost')) || 0));
+  f.currency = v('pjCurrency') || 'SYP';
+  document.querySelectorAll('[data-pj-line]').forEach(function (el) {
+    var i = +el.getAttribute('data-i'), k = el.getAttribute('data-pj-line');
+    if (!f.lines[i]) return;
+    f.lines[i][k] = el.value;
+  });
+  return f;
+}
+
+function pjLinesHtml(f) {
+  var clubs = Object.keys(DB.clubs);
+  var h = '<div class="pj-lines">';
+  f.lines.forEach(function (l, i) {
+    h += '<div class="pj-line">' +
+      '<span class="pj-n num muted">' + pad(i + 1, 2) + '</span>' +
+      '<select class="inp" data-pj-line="club" data-i="' + i + '">' +
+        clubs.map(function (c) {
+          return '<option value="' + esc(c) + '"' + (c === l.club ? ' selected' : '') + '>' +
+            esc(OG.lang === 'ar' ? DB.clubs[c][1] : DB.clubs[c][0]) + '</option>';
+        }).join('') + '</select>' +
+      '<input class="inp" type="text" placeholder="' + esc(t('pj_line_name_ph')) + '" value="' + esc(l.print) +
+        '" data-pj-line="print" data-i="' + i + '">' +
+      '<input class="inp num" type="number" min="0" max="99" placeholder="#" value="' + esc(l.number) +
+        '" data-pj-line="number" data-i="' + i + '">' +
+      '<select class="inp" data-pj-line="size" data-i="' + i + '">' +
+        TEE_SIZES.map(function (s) {
+          return '<option value="' + s + '"' + (s === l.size ? ' selected' : '') + '>' + s + '</option>';
+        }).join('') + '</select>' +
+      '<input class="inp num" type="number" min="1" value="' + esc(l.qty) + '" data-pj-line="qty" data-i="' + i + '">' +
+      '<button class="btn btn-sm btn-ghost" data-act="pj-line-del" data-i="' + i + '" aria-label="' + esc(t('bk_delete')) + '">✕</button>' +
+    '</div>';
+  });
+  return h + '</div>' +
+    '<button class="btn btn-sm mt" data-act="pj-line-add">+ ' + t('pj_add_line') + '</button>';
+}
+
+function pjFormHtml() {
+  var f = OG.pj;
+  var kit = f.kind === 'kit';
+  var h = '<div class="pj-form">' +
+    '<div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">' +
+      '<label class="field"><span>' + t('pj_customer') + '</span>' +
+        '<input class="inp" id="pjCustomer" type="text" value="' + esc(f.customer) + '" autocomplete="off"></label>' +
+      '<label class="field"><span>' + t('pj_phone') + '</span>' +
+        '<input class="inp num" id="pjPhone" type="tel" value="' + esc(f.phone) + '" dir="ltr"></label>' +
+    '</div>' +
+    '<label class="field mt"><span>' + t('pj_design') + '</span>' +
+      '<textarea class="inp" id="pjDesign" rows="2" placeholder="' + esc(t('pj_design_ph')) + '">' + esc(f.design) + '</textarea></label>' +
+
+    '<div class="seg-row mt">' +
+      '<button class="seg' + (kit ? ' on' : '') + '" data-act="pj-kind" data-k="kit">' + t('pj_kind_kit') + '</button>' +
+      '<button class="seg' + (kit ? '' : ' on') + '" data-act="pj-kind" data-k="bulk">' + t('pj_kind_bulk') + '</button>' +
+    '</div>';
+
+  if (kit) {
+    h += '<div class="mt"><span class="eyebrow">' + t('pj_lines') + '</span>' +
+      '<div class="muted small mb">' + t('pj_lines_hint') + '</div>' + pjLinesHtml(f) + '</div>';
+  } else {
+    h += '<label class="field mt"><span>' + t('pj_qty') + '</span>' +
+      '<input class="inp num" id="pjQty" type="number" min="1" value="' + esc(f.qty || 12) + '"></label>';
+  }
+
+  var today = new Date();
+  var dflt = new Date(today.getTime() + 5 * 86400000);
+  var iso = f.deadline || (dflt.getFullYear() + '-' + pad(dflt.getMonth() + 1, 2) + '-' + pad(dflt.getDate(), 2));
+
+  h += '<div class="grid mt" style="grid-template-columns:1fr 1fr;gap:10px">' +
+      '<label class="field"><span>' + t('pj_deadline') + '</span>' +
+        '<input class="inp" id="pjDeadline" type="date" value="' + esc(iso) + '"></label>' +
+      '<label class="field"><span>' + t('priority') + '</span>' +
+        '<select class="inp" id="pjPriority">' +
+          '<option value="normal"' + (f.priority === 'urgent' ? '' : ' selected') + '>' + t('normal') + '</option>' +
+          '<option value="urgent"' + (f.priority === 'urgent' ? ' selected' : '') + '>' + t('urgent') + '</option>' +
+        '</select></label>' +
+      '<label class="field"><span>' + t('pj_unit_price') + '</span>' +
+        '<input class="inp num" id="pjPrice" type="number" min="0" value="' + esc(f.unitPrice) + '"></label>' +
+      (seesCost()
+        ? '<label class="field"><span>' + t('pj_unit_cost') + '</span>' +
+            '<input class="inp num" id="pjCost" type="number" min="0" value="' + esc(f.unitCost) + '"></label>'
+        : '') +
+      '<label class="field"><span>' + t('pj_currency') + '</span>' +
+        '<select class="inp" id="pjCurrency">' +
+          '<option value="SYP"' + (f.currency === 'USD' ? '' : ' selected') + '>SYP</option>' +
+          '<option value="USD"' + (f.currency === 'USD' ? ' selected' : '') + '>USD</option>' +
+        '</select></label>' +
+    '</div>' +
+    '<div class="partner-note mt">' + t('pj_auto_hint') + '</div>' +
+  '</div>';
+  return h;
+}
+
+function openNewJob() {
+  OG.pj = {
+    kind: 'kit', lines: [pjBlankLine()], customer: '', phone: '', design: '', qty: 12,
+    priority: 'normal', deadline: '', unitPrice: PJ_PIECE_PRICE,
+    unitCost: CONFIG.KIT_PRINT_PRICE, currency: 'SYP'
+  };
+  openModal({
+    title: t('pj_new'), size: 'wide', sheet: window.innerWidth <= 720,
+    body: pjFormHtml(),
+    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+          '<button class="btn btn-primary" data-act="pj-save">' + t('pj_send') + '</button>'
+  });
+}
+
+/* Repaint only the body, so the modal itself (and its scroll) stays put. */
+function pjRepaint() {
+  var body = document.querySelector('#modal-root .modal-body');
+  if (body) body.innerHTML = pjFormHtml();
+}
+
+/* ---- what the shop thought of the finished shirts ---------------------------
+   Five stars and a line, written once the job is done and shown to Yalla Wear
+   because it is about their work. Editable: a second look after a customer
+   complained is exactly when the rating should be allowed to move. */
+function starsHtml(n, pick, jid) {
+  var h = '<div class="rv-stars' + (pick ? ' rv-pick' : '') + '" dir="ltr">';
+  for (var i = 1; i <= 5; i++) {
+    h += pick
+      ? '<button type="button" class="rv-star' + (i <= n ? ' on' : '') + '" data-act="job-rate" data-jid="' +
+          esc(jid) + '" data-n="' + i + '" aria-label="' + i + '">★</button>'
+      : '<span class="rv-star' + (i <= n ? ' on' : '') + '">★</span>';
+  }
+  return h + '</div>';
+}
+
+function reviewCardHtml(j, readOnly) {
+  var r = j.review;
+  var rating = (OG.rv && OG.rv.jobId === j.id) ? OG.rv.rating : (r ? r.rating : 0);
+  var h = '<div class="card mb rv-card"><div class="card-head"><h3>' + t('rv_title') + '</h3>' +
+    '<div class="card-actions muted small">' + (r ? fmtDate(r.at) : t('rv_sub')) + '</div></div>' +
+    '<div class="card-body">';
+  if (readOnly) {
+    h += starsHtml(r ? r.rating : 0, false) +
+      (r && r.feedback ? '<p class="rv-text">' + esc(r.feedback) + '</p>' : '');
+  } else {
+    h += starsHtml(rating, true, j.id) +
+      '<textarea class="inp mt" id="rvText" rows="3" placeholder="' + esc(t('rv_ph')) + '">' +
+        esc(r ? r.feedback : '') + '</textarea>' +
+      '<button class="btn btn-primary btn-block mt" data-act="job-review-save" data-id="' + esc(j.id) + '">' +
+        t(r ? 'rv_update' : 'rv_save') + '</button>';
+  }
+  return h + '</div></div>';
 }
 
 /* Admin-side job detail. Unlike the partner drawer this shows the full
@@ -271,6 +445,7 @@ function openJobDrawer(id) {
     '<h3 style="font-size:19px;margin:4px 0 7px">' + esc(j.customer) + '</h3>' +
     (j.priority === 'urgent' ? '<span class="badge urgent">' + t('urgent') + '</span> ' : '') +
     (over ? '<span class="badge critical">' + t('overdue') + '</span> ' : '') +
+    '<span class="badge neutral">' + t('pj_src_' + (j.source || 'manual')) + '</span> ' +
     '<span class="badge neutral num">' + tel(j.phone) + '</span>' +
     /* WHO this job is actually for. The free text above is what was typed at
        the time; this is the link, and migration 032 deliberately left every
@@ -356,6 +531,11 @@ function openJobDrawer(id) {
       '<div class="foot">' + pct(margin / j.price * 100, 0) + '</div></div>' +
   '</div>';
 
+  /* Once the shirts are in hand, the shop's verdict — written here, read in
+     the partner portal. Before that there is nothing to rate. */
+  if (j.stage === 'done' && allow('print.write')) body += reviewCardHtml(j, false);
+  else if (j.review) body += reviewCardHtml(j, true);
+
   /* The conversation, rendered by the same function the partner portal uses,
      so both sides read an identical thread. */
   if (typeof YALLA !== 'undefined' && YALLA.thread) body += YALLA.thread(j.id, 'og');
@@ -381,9 +561,9 @@ function openPartnerInvoice(id) {
 
   var foot = '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
     '<button class="btn" data-act="print-doc">' + t('print') + '</button>';
-  if (bal > 0 && inv.issued) {
+  if (bal > 0 && inv.issued && DB.invoiceOpen(inv) > 0) {
     foot += '<button class="btn btn-primary" data-act="og-pay-inv" data-id="' + id + '">' +
-      t('og_pay_now') + ' · ' + money(bal) + '</button>';
+      t('og_pay_now') + ' · ' + money(DB.invoiceOpen(inv)) + '</button>';
   }
   openModal({ title: inv.id + ' · ' + CONFIG.PRINT_PARTNER, size: 'wide',
               body: YLINV.sheet(inv, false), foot: foot });

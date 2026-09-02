@@ -39,9 +39,50 @@ const STAGE_LABEL = {
   delivery: 'Delivery', done: 'Done'
 };
 /* Moving a job is news the other side needs, so some steps post themselves. */
-const STAGE_MESSAGE = { printing: 'in-print', delivery: 'shipped', done: 'shipped' };
+const STAGE_MESSAGE = { sent: 'stage', printing: 'in-print', delivery: 'shipped', done: 'shipped' };
 
 const nowIso = () => new Date().toISOString();
+const other = (side) => (side === 'og' ? 'yalla' : 'og');
+
+/* ---- the outbox -----------------------------------------------------------
+   Every change the other company needs to HEAR about — not just see on the
+   next reload — is written to partner_events in the same transaction as the
+   change itself, and lib/telegram.js drains it. Written inside the tx so a
+   rolled-back write tells nobody; read by a worker so a dead Telegram cannot
+   fail a sale.
+
+   THE STRIP LIST LIVES HERE, keyed on who is listening. A message to Yalla
+   Wear's bot goes to another company's phone, and it must carry exactly what
+   GET /api/partner would give them: never the customer's name or number, never
+   what the shop charges. Done once at the door rather than remembered at
+   every call site, because the call site that forgets is the leak. */
+const PARTNER_STRIP = ['customer', 'phone', 'customer_id', 'customerId', 'price'];
+
+function emitEvent(d, { kind, refType, refId, audience, args = {} }) {
+  const a = { ...args };
+  if (audience === 'yalla') for (const k of PARTNER_STRIP) delete a[k];
+  d.prepare(
+    `INSERT INTO partner_events (at, kind, ref_type, ref_id, audience, args_json)
+     VALUES (?,?,?,?,?,?)`
+  ).run(nowIso(), kind, refType, String(refId), audience, JSON.stringify(a));
+}
+
+/* Pieces on a job — summed from the lines for a kit, stored for a bulk run. */
+function jobQty(d, row) {
+  return row.kind === 'kit'
+    ? d.prepare('SELECT COALESCE(SUM(qty),0) AS n FROM print_job_lines WHERE job_id = ?').get(row.id).n
+    : row.qty;
+}
+
+/* What an event about a job carries. The customer's side of it is stripped
+   again by emitEvent for the partner; for the shop's own chat it is left
+   out here on purpose — a shared staff group is wider than customer.read. */
+function jobBrief(d, row) {
+  return {
+    id: row.id, design: row.design, kind: row.kind, qty: jobQty(d, row),
+    priority: row.priority, deadline: row.deadline, stage: row.stage
+  };
+}
 
 /* --------------------------------------------------------------- reading */
 
@@ -79,6 +120,9 @@ export function all({ includeArchived = false } = {}) {
       payments: payments.filter((p) => p.invoice_id === v.id)
     })),
     messages,
+    /* What the shop said about each finished job. Yalla Wear sees these —
+       they are about their work — so the route passes them to both sides. */
+    reviews: d.prepare('SELECT * FROM job_reviews ORDER BY at DESC').all(),
     clubs: d.prepare('SELECT * FROM clubs WHERE archived = 0 ORDER BY name').all(),
     suppliers: suppliers({ includeArchived }),
     employees: employees({ includeArchived }),
@@ -155,6 +199,12 @@ export function create({
      has to say who it is for. customerId is the LINK, and it is only ever
      set by a caller that actually knows, never matched on a name. */
   customerId = null,
+  /* Where it came from: the till, a person on the Print screen, or one day
+     the website. `autoSend` places the order in the same transaction when
+     every shirt already has a name — the till used to create the job and
+     then fire a second request at an id it had guessed, racing its own
+     create. One request, one answer: the returned job says whether it went. */
+  source = 'manual', autoSend = false,
   lines = [], userId = null
 }) {
   if (!customer) throw Object.assign(new Error('customer is required'), { code: 'bad_request' });
@@ -162,6 +212,7 @@ export function create({
   if (kind === 'kit' && !lines.length) {
     throw Object.assign(new Error('a kit job needs at least one line'), { code: 'bad_request' });
   }
+  if (!['till', 'manual', 'web'].includes(source)) source = 'manual';
 
   return DB.tx(() => {
     const d = DB.get();
@@ -171,11 +222,11 @@ export function create({
     d.prepare(
       `INSERT INTO print_jobs
          (id, customer, phone, design, kind, priority, stage, qty, currency,
-          price, cost, deadline, sale_id, customer_id, created_at, updated_at, created_by)
-       VALUES (?,?,?,?,?,?,'design',?,?,?,?,?,?,?,?,?,?)`
+          price, cost, deadline, sale_id, customer_id, source, created_at, updated_at, created_by)
+       VALUES (?,?,?,?,?,?,'design',?,?,?,?,?,?,?,?,?,?,?)`
     ).run(id, customer, phone ?? null, design, kind, priority,
           kind === 'kit' ? 0 : qty, currency, price, cost, deadline ?? null,
-          saleId, customerId ?? null, at, at, userId);
+          saleId, customerId ?? null, source, at, at, userId);
 
     const ins = d.prepare(
       `INSERT INTO print_job_lines (job_id, club_code, print_name, number, size, qty, unit_cost)
@@ -189,6 +240,12 @@ export function create({
     d.prepare(
       'INSERT INTO print_job_stages (job_id, stage, at, by_side, user_id) VALUES (?,?,?,?,?)'
     ).run(id, 'design', at, 'og', userId);
+
+    /* A blank name keeps it a draft — the same rule sendOrder enforces at
+       the door — and the caller reads order_state off the answer. */
+    if (autoSend && tbcCount(d, id) === 0) {
+      placeOrder(d, d.prepare('SELECT * FROM print_jobs WHERE id = ?').get(id), userId);
+    }
 
     DB.logChange('print_jobs', id, 'insert', userId, null);
     return job(id);
@@ -233,15 +290,18 @@ export function setStage(id, stage, side, userId = null) {
     ).run(id, stage, at, side ?? null, userId);
     d.prepare('UPDATE print_jobs SET stage = ?, updated_at = ? WHERE id = ?').run(stage, at, id);
 
+    const qty = jobQty(d, row);
     if (side && STAGE_MESSAGE[stage]) {
-      const qty = row.kind === 'kit'
-        ? d.prepare('SELECT COALESCE(SUM(qty),0) AS n FROM print_job_lines WHERE job_id = ?').get(id).n
-        : row.qty;
       insertMessage(d, {
         jobId: id, from: side, kind: STAGE_MESSAGE[stage],
         body: `${STAGE_LABEL[stage]} — ${id} · ${qty} pcs`, userId
       });
     }
+    /* Whichever side moved it, the other one hears. */
+    emitEvent(d, {
+      kind: 'stage', refType: 'job', refId: id, audience: other(side || 'og'),
+      args: { ...jobBrief(d, row), stage, qty, by: side || 'og' }
+    });
 
     DB.logChange('print_jobs', id, 'update', userId, null);
     return job(id);
@@ -250,30 +310,49 @@ export function setStage(id, stage, side, userId = null) {
 
 /* ---- the order envelope ------------------------------------------------- */
 
+/* The order itself, inside somebody else's transaction — create() places one
+   on the way out and DB.tx() refuses to nest. Posts the shop's copy of the
+   message and queues the partner's notification, so an order placed from the
+   till and one placed by hand leave the same trail. */
+function placeOrder(d, row, userId = null) {
+  const id = row.id;
+  if (row.order_state === 'pending') {
+    throw Object.assign(new Error('already sent'), { code: 'already_sent' });
+  }
+  if (row.order_state === 'accepted') {
+    throw Object.assign(new Error('already accepted'), { code: 'already_accepted' });
+  }
+  /* A shirt with no name cannot be printed, so an order carrying one cannot
+     honestly be placed. The stage gate says the same further down the line;
+     said here it stops the bad order at the door. */
+  if (tbcCount(d, id) > 0) {
+    throw Object.assign(
+      new Error('some shirts still have no name on them'), { code: 'names_missing' });
+  }
+
+  const at = nowIso();
+  d.prepare(
+    `UPDATE print_jobs SET order_state = 'pending', order_sent_at = ?, updated_at = ?
+      WHERE id = ?`
+  ).run(at, at, id);
+
+  const qty = jobQty(d, row);
+  insertMessage(d, {
+    jobId: id, from: 'og', kind: 'order',
+    body: `Order sent — ${id} · ${qty} pcs`, userId
+  });
+  emitEvent(d, {
+    kind: 'order_new', refType: 'job', refId: id, audience: 'yalla',
+    args: { ...jobBrief(d, row), qty }
+  });
+}
+
 export function sendOrder(id, userId = null) {
   return DB.tx(() => {
     const d = DB.get();
     const row = d.prepare('SELECT * FROM print_jobs WHERE id = ?').get(id);
     if (!row) throw Object.assign(new Error('no such job'), { code: 'not_found' });
-    if (row.order_state === 'pending') {
-      throw Object.assign(new Error('already sent'), { code: 'already_sent' });
-    }
-    if (row.order_state === 'accepted') {
-      throw Object.assign(new Error('already accepted'), { code: 'already_accepted' });
-    }
-    /* A shirt with no name cannot be printed, so an order carrying one cannot
-       honestly be placed. The stage gate says the same further down the line;
-       said here it stops the bad order at the door. */
-    if (tbcCount(d, id) > 0) {
-      throw Object.assign(
-        new Error('some shirts still have no name on them'), { code: 'names_missing' });
-    }
-
-    const at = nowIso();
-    d.prepare(
-      `UPDATE print_jobs SET order_state = 'pending', order_sent_at = ?, updated_at = ?
-        WHERE id = ?`
-    ).run(at, at, id);
+    placeOrder(d, row, userId);
     DB.logChange('print_jobs', id, 'update', userId, null);
     return job(id);
   });
@@ -316,6 +395,10 @@ export function respondToOrder(id, accept, { promisedAt = null, note = null, use
       body: note || (accept ? `Order accepted — ${id}` : `Order declined — ${id}`),
       userId
     });
+    emitEvent(d, {
+      kind: accept ? 'order_accepted' : 'order_declined', refType: 'job', refId: id, audience: 'og',
+      args: { ...jobBrief(d, row), promisedAt: accept ? promisedAt : null, note }
+    });
 
     DB.logChange('print_jobs', id, 'update', userId, null);
     return job(id);
@@ -334,11 +417,12 @@ export function respondToOrder(id, accept, { promisedAt = null, note = null, use
    ordered and agreed; changing those is a different act than writing a name
    on a shirt, and letting one form do both is how a price gets edited by
    somebody correcting a spelling. */
-export function setLines(id, lines = [], userId = null) {
+export function setLines(id, lines = [], userId = null, side = 'og') {
   return DB.tx(() => {
     const d = DB.get();
-    const jobRow = d.prepare('SELECT id FROM print_jobs WHERE id = ?').get(id);
+    const jobRow = d.prepare('SELECT * FROM print_jobs WHERE id = ?').get(id);
     if (!jobRow) throw Object.assign(new Error('no such job'), { code: 'not_found' });
+    const tbcBefore = tbcCount(d, id);
 
     const own = d.prepare('SELECT id FROM print_job_lines WHERE job_id = ?').all(id)
       .map((r) => r.id);
@@ -360,6 +444,19 @@ export function setLines(id, lines = [], userId = null) {
 
     if (changed) {
       d.prepare('UPDATE print_jobs SET updated_at = ? WHERE id = ?').run(nowIso(), id);
+      /* The last blank name filled in is the moment the printer has been
+         waiting for — the one edit that unblocks the press. Said out loud,
+         once, when the count reaches zero, not on every keystroke before it. */
+      if (tbcBefore > 0 && tbcCount(d, id) === 0) {
+        insertMessage(d, {
+          jobId: id, from: side, kind: 'names-ready',
+          body: `All names in — ${id}`, userId
+        });
+        emitEvent(d, {
+          kind: 'names_ready', refType: 'job', refId: id, audience: other(side),
+          args: jobBrief(d, jobRow)
+        });
+      }
       /* Logged against the JOB, not the lines: the lines have no cursor of
          their own and reach Supabase on the job's afterUpsert hook. */
       DB.logChange('print_jobs', id, 'update', userId, null);
@@ -405,7 +502,13 @@ export function postMessage({ jobId = null, invoiceId = null, from, kind = 'note
 
   return DB.tx(() => {
     const d = DB.get();
-    const id = insertMessage(d, { jobId, invoiceId, from, kind, reason, body: String(text).trim(), userId });
+    const body = String(text).trim();
+    const id = insertMessage(d, { jobId, invoiceId, from, kind, reason, body, userId });
+    emitEvent(d, {
+      kind: 'message', refType: jobId ? 'job' : 'invoice', refId: jobId || invoiceId,
+      audience: other(from),
+      args: { id: jobId, invoiceId, kind, reason, text: body.slice(0, 200) }
+    });
     return d.prepare('SELECT * FROM job_messages WHERE id = ?').get(id);
   });
 }
@@ -455,24 +558,128 @@ export function createInvoice({ id, issued, due, note = null, currency = 'SYP', 
     const ins = d.prepare('INSERT INTO partner_invoice_refs (invoice_id, job_id) VALUES (?,?)');
     for (const j of jobIds) ins.run(id, j);
 
+    /* The bill lands in the shop's thread and on its phone. The total is
+       what the printer charges for the jobs named — the browser used to post
+       its own copy of this line, and a copy that lives in one browser is one
+       the shop's other machines never see. */
+    const total = invoiceTotal(d, id);
+    insertMessage(d, {
+      invoiceId: id, from: 'yalla', kind: 'invoice',
+      body: `Invoice ${id} — ${total} ${currency}`, userId
+    });
+    emitEvent(d, {
+      kind: 'invoice_new', refType: 'invoice', refId: id, audience: 'og',
+      args: { invoiceId: id, total, currency, due, jobs: jobIds.length }
+    });
+
     DB.logChange('partner_invoices', id, 'insert', userId, null);
     return invoice(id);
   });
 }
 
-export function recordPayment({ invoiceId, amount, method, at = null, userId = null }) {
+/* What the printer charges for everything on an invoice — kit lines summed,
+   bulk cost as agreed. Derived, never stored, like a kit job's own cost. */
+function invoiceTotal(d, invoiceId) {
+  return d.prepare(
+    `SELECT COALESCE(SUM(
+       CASE WHEN j.kind = 'kit'
+            THEN (SELECT COALESCE(SUM(l.qty * l.unit_cost), 0) FROM print_job_lines l WHERE l.job_id = j.id)
+            ELSE COALESCE(j.cost, 0) END), 0) AS total
+       FROM partner_invoice_refs r JOIN print_jobs j ON j.id = r.job_id
+      WHERE r.invoice_id = ?`
+  ).get(invoiceId).total;
+}
+
+/* A PAYMENT IS A HANDSHAKE. One side records that money moved; the other
+   confirms it arrived. Only confirmed money counts against the invoice —
+   until then the row is "waiting", visible to both. Either side may record:
+   the shop when it hands over cash, the printer when cash reaches it.
+
+   Money in is the one direction that cannot be corrected by doing it again,
+   so this carries an opId through applied_ops like a debt payment does — a
+   manager taps Pay, the wifi stalls, they tap again, and the printer must not
+   be told twice that they were paid. */
+export function recordPayment({ invoiceId, amount, method, at = null, side = 'og', userId = null, opId = null }) {
   if (!(amount > 0)) {
     throw Object.assign(new Error('a payment has to be more than nothing'), { code: 'bad_request' });
   }
+  if (side !== 'og' && side !== 'yalla') {
+    throw Object.assign(new Error('side must be og or yalla'), { code: 'bad_request' });
+  }
   return DB.tx(() => {
     const d = DB.get();
-    const inv = d.prepare('SELECT id FROM partner_invoices WHERE id = ?').get(invoiceId);
+    if (opId) {
+      const seen = d.prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
+      if (seen) return JSON.parse(seen.result);
+    }
+    const inv = d.prepare('SELECT * FROM partner_invoices WHERE id = ?').get(invoiceId);
     if (!inv) throw Object.assign(new Error('no such invoice'), { code: 'not_found' });
 
-    d.prepare(
-      'INSERT INTO partner_invoice_payments (invoice_id, at, amount, method, user_id) VALUES (?,?,?,?,?)'
-    ).run(invoiceId, at || nowIso(), amount, method, userId);
+    const amt = Math.round(amount);
+    const when = at || nowIso();
+    const info = d.prepare(
+      `INSERT INTO partner_invoice_payments (invoice_id, at, amount, method, user_id, recorded_by_side)
+       VALUES (?,?,?,?,?,?)`
+    ).run(invoiceId, when, amt, method || 'cash', userId, side);
     d.prepare('UPDATE partner_invoices SET updated_at = ? WHERE id = ?').run(nowIso(), invoiceId);
+
+    insertMessage(d, {
+      invoiceId, from: side, kind: 'payment',
+      body: `Payment recorded — ${amt} ${inv.currency} · ${invoiceId}`, userId
+    });
+    emitEvent(d, {
+      kind: 'payment_recorded', refType: 'invoice', refId: invoiceId, audience: other(side),
+      args: { invoiceId, paymentId: info.lastInsertRowid, amount: amt, currency: inv.currency,
+              method: method || 'cash', by: side }
+    });
+
+    DB.logChange('partner_invoices', invoiceId, 'update', userId, null);
+    const out = invoice(invoiceId);
+    if (opId) {
+      d.prepare('INSERT INTO applied_ops (op_id, at, user_id, kind, result) VALUES (?,?,?,?,?)')
+        .run(opId, nowIso(), userId, 'partner_payment', JSON.stringify(out));
+    }
+    return out;
+  });
+}
+
+/* The other half of the handshake. The side that recorded a payment cannot
+   also confirm it — that would be one company vouching for both ends of a
+   transfer — so the route derives `side` from the account and this refuses
+   its own. Confirming twice is a no-op, not an error: two people on the same
+   side pressing the same button is not a dispute. */
+export function confirmPayment({ invoiceId, paymentId, side, userId = null }) {
+  if (side !== 'og' && side !== 'yalla') {
+    throw Object.assign(new Error('side must be og or yalla'), { code: 'bad_request' });
+  }
+  return DB.tx(() => {
+    const d = DB.get();
+    const inv = d.prepare('SELECT * FROM partner_invoices WHERE id = ?').get(invoiceId);
+    if (!inv) throw Object.assign(new Error('no such invoice'), { code: 'not_found' });
+    const p = d.prepare(
+      'SELECT * FROM partner_invoice_payments WHERE id = ? AND invoice_id = ?'
+    ).get(Number(paymentId), invoiceId);
+    if (!p) throw Object.assign(new Error('no such payment'), { code: 'not_found' });
+    if (p.confirmed_at) return invoice(invoiceId);
+    if (p.recorded_by_side === side) {
+      throw Object.assign(
+        new Error('the side that recorded a payment cannot confirm it'), { code: 'own_side' });
+    }
+
+    const at = nowIso();
+    d.prepare(
+      'UPDATE partner_invoice_payments SET confirmed_at = ?, confirmed_by = ? WHERE id = ?'
+    ).run(at, userId, p.id);
+    d.prepare('UPDATE partner_invoices SET updated_at = ? WHERE id = ?').run(at, invoiceId);
+
+    insertMessage(d, {
+      invoiceId, from: side, kind: 'payment-confirmed',
+      body: `Payment confirmed — ${p.amount} ${inv.currency} · ${invoiceId}`, userId
+    });
+    emitEvent(d, {
+      kind: 'payment_confirmed', refType: 'invoice', refId: invoiceId, audience: other(side),
+      args: { invoiceId, paymentId: p.id, amount: p.amount, currency: inv.currency, by: side }
+    });
 
     DB.logChange('partner_invoices', invoiceId, 'update', userId, null);
     return invoice(invoiceId);
@@ -576,4 +783,163 @@ export function setJobCustomer(id, customerId, userId = null) {
     DB.logChange("print_jobs", id, "update", userId, "customer linked by hand");
     return job(id);
   });
+}
+
+/* ---- what the shop thought of the work ---------------------------------- */
+
+/* One review per job, written by the shop once the shirts are in hand. A job
+   that is not done has nothing to review yet, so that is refused rather than
+   stored early and read as a verdict on work that has not happened. Editable:
+   a second look at the print after the customer complained is exactly the
+   moment the rating should be allowed to change. */
+export function reviewJob(id, { rating, feedback = null, userId = null } = {}) {
+  const r = Number(rating);
+  if (!Number.isInteger(r) || r < 1 || r > 5) {
+    throw Object.assign(new Error('a rating is 1 to 5'), { code: 'bad_request' });
+  }
+  return DB.tx(() => {
+    const d = DB.get();
+    const row = d.prepare('SELECT * FROM print_jobs WHERE id = ?').get(id);
+    if (!row) throw Object.assign(new Error('no such job'), { code: 'not_found' });
+    if (row.stage !== 'done') {
+      throw Object.assign(new Error('the job is not finished yet'), { code: 'not_done' });
+    }
+
+    const text = feedback == null ? null : (String(feedback).trim() || null);
+    const at = nowIso();
+    const existing = d.prepare('SELECT job_id FROM job_reviews WHERE job_id = ?').get(id);
+    d.prepare(
+      `INSERT INTO job_reviews (job_id, rating, feedback, user_id, at, updated_at)
+       VALUES (?,?,?,?,?,?)
+       ON CONFLICT(job_id) DO UPDATE SET
+         rating = excluded.rating, feedback = excluded.feedback,
+         user_id = excluded.user_id, updated_at = excluded.updated_at`
+    ).run(id, r, text, userId, at, at);
+    DB.logChange('job_reviews', id, existing ? 'update' : 'insert', userId, null);
+
+    const stars = '★'.repeat(r) + '☆'.repeat(5 - r);
+    insertMessage(d, {
+      jobId: id, from: 'og', kind: 'review',
+      body: stars + (text ? ' — ' + text : ''), userId
+    });
+    emitEvent(d, {
+      kind: 'review', refType: 'job', refId: id, audience: 'yalla',
+      args: { ...jobBrief(d, row), rating: r, feedback: text ? text.slice(0, 200) : null }
+    });
+    return job(id);
+  });
+}
+
+export function review(id) {
+  return DB.get().prepare('SELECT * FROM job_reviews WHERE job_id = ?').get(id) || null;
+}
+
+/* ---- the production report ------------------------------------------------
+   How many shirts came off the press, by day and by month, computed here in
+   SQL over every finished job rather than summed in the browser from
+   whatever it happened to be holding — the same reason the dashboard moved.
+   The day belongs to the caller: the server is UTC and Aleppo is not, so the
+   browser sends its offset in minutes and every date is cut in that zone.
+
+   `money` decides whether the payout column is included — the partner's own
+   earnings are theirs to see; a member of staff without cost.read gets the
+   piece counts and nothing priced. */
+export function stats(tzMinutes = 0, { money = true } = {}) {
+  const d = DB.get();
+  const tz = Number.isInteger(tzMinutes) && Math.abs(tzMinutes) <= 840 ? tzMinutes : 0;
+  const mod = (tz >= 0 ? '+' : '-') + Math.abs(tz) + ' minutes';
+
+  const PIECES = `CASE WHEN j.kind = 'kit'
+      THEN (SELECT COALESCE(SUM(l.qty), 0) FROM print_job_lines l WHERE l.job_id = j.id)
+      ELSE j.qty END`;
+  const COST = `CASE WHEN j.kind = 'kit'
+      THEN (SELECT COALESCE(SUM(l.qty * l.unit_cost), 0) FROM print_job_lines l WHERE l.job_id = j.id)
+      ELSE COALESCE(j.cost, 0) END`;
+  const DONE = `FROM print_job_stages s
+                JOIN print_jobs j ON j.id = s.job_id AND j.stage = 'done'
+               WHERE s.stage = 'done'`;
+
+  /* Local midnight 29 days back and the first of the month 11 months back,
+     both as UTC instants, so the SQL compares text against text. */
+  const localNow = new Date(Date.now() + tz * 60000);
+  const y = localNow.getUTCFullYear(), m = localNow.getUTCMonth(), day = localNow.getUTCDate();
+  const dayFrom = new Date(Date.UTC(y, m, day - 29) - tz * 60000).toISOString();
+  const monthFrom = new Date(Date.UTC(y, m - 11, 1) - tz * 60000).toISOString();
+  const todayKey = localNow.toISOString().slice(0, 10);
+  const monthKey = todayKey.slice(0, 7);
+
+  const perDay = d.prepare(
+    `SELECT SUBSTR(datetime(s.at, ?), 1, 10) AS day, COUNT(*) AS jobs, SUM(${PIECES}) AS pieces
+       ${DONE} AND s.at >= ?
+      GROUP BY day ORDER BY day`
+  ).all(mod, dayFrom);
+
+  const perMonth = d.prepare(
+    `SELECT SUBSTR(datetime(s.at, ?), 1, 7) AS month, COUNT(*) AS jobs,
+            SUM(${PIECES}) AS pieces, SUM(${COST}) AS payout
+       ${DONE} AND s.at >= ?
+      GROUP BY month ORDER BY month`
+  ).all(mod, monthFrom);
+
+  const totals = d.prepare(
+    `SELECT COUNT(*) AS jobs, COALESCE(SUM(${PIECES}), 0) AS pieces,
+            SUM(CASE WHEN COALESCE(j.order_promised_at, j.deadline) IS NULL
+                       OR SUBSTR(s.at, 1, 10) <= SUBSTR(COALESCE(j.order_promised_at, j.deadline), 1, 10)
+                     THEN 1 ELSE 0 END) AS on_time,
+            AVG(julianday(s.at) - julianday(
+              (SELECT MIN(t.at) FROM print_job_stages t WHERE t.job_id = j.id AND t.stage = 'sent')
+            )) AS turnaround
+       ${DONE}`
+  ).get();
+
+  const open = d.prepare(
+    `SELECT COUNT(*) AS jobs, COALESCE(SUM(${PIECES}), 0) AS pieces
+       FROM print_jobs j WHERE j.stage <> 'done' AND j.order_state = 'accepted'`
+  ).get();
+
+  const rated = d.prepare('SELECT AVG(rating) AS avg, COUNT(*) AS n FROM job_reviews').get();
+
+  const today = perDay.find((r) => r.day === todayKey) || { jobs: 0, pieces: 0 };
+  const month = perMonth.find((r) => r.month === monthKey) || { jobs: 0, pieces: 0, payout: 0 };
+
+  const out = {
+    tz, todayKey, monthKey,
+    perDay: perDay.map((r) => ({ day: r.day, jobs: r.jobs, pieces: r.pieces })),
+    perMonth: perMonth.map((r) => ({ month: r.month, jobs: r.jobs, pieces: r.pieces, payout: r.payout })),
+    today: { jobs: today.jobs, pieces: today.pieces },
+    month: { jobs: month.jobs, pieces: month.pieces, payout: month.payout || 0 },
+    open: { jobs: open.jobs, pieces: open.pieces },
+    jobsDone: totals.jobs, piecesDone: totals.pieces,
+    onTimePct: totals.jobs ? Math.round((totals.on_time / totals.jobs) * 100) : null,
+    avgTurnaroundDays: totals.turnaround == null ? null : Math.round(totals.turnaround * 10) / 10,
+    avgRating: rated.n ? Math.round(rated.avg * 10) / 10 : null,
+    reviews: rated.n
+  };
+  if (!money) {
+    delete out.month.payout;
+    out.perMonth.forEach((r) => { delete r.payout; });
+  }
+  return out;
+}
+
+/* ---- the pulse --------------------------------------------------------------
+   The small answer a browser asks for every half minute: has anything moved
+   since I last looked? Two counts and a stamp, scoped to the side asking, so
+   the poll costs nothing like the bundle it decides whether to refetch. */
+export function pulse(side) {
+  const d = DB.get();
+  const col = side === 'yalla' ? 'read_yl' : 'read_og';
+  const msgs = d.prepare(
+    `SELECT COUNT(*) AS unread FROM job_messages WHERE ${col} = 0`
+  ).get();
+  const lastMsg = d.prepare('SELECT MAX(id) AS id FROM job_messages').get().id || 0;
+  const jobs = d.prepare(
+    `SELECT MAX(updated_at) AS mx, SUM(CASE WHEN order_state = 'pending' THEN 1 ELSE 0 END) AS pending
+       FROM print_jobs`
+  ).get();
+  const inv = d.prepare('SELECT MAX(updated_at) AS mx FROM partner_invoices').get();
+  return {
+    unread: msgs.unread, pending: jobs.pending || 0, lastMessageId: lastMsg,
+    stamp: [jobs.mx || '', inv.mx || '', lastMsg].join('|')
+  };
 }

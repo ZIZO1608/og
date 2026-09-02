@@ -416,7 +416,57 @@ var EXTRA_EN = {
 
   ex_scan: 'Scan to open',
   rec_statement: 'Customer statement', rec_stock_sheet: 'Stock sheet',
-  yl_work_order: 'Work order'
+  yl_work_order: 'Work order',
+
+  /* ---- the line to Yalla Wear: thread kinds the server posts ---- */
+  yl_msg_order: 'Order sent', yl_msg_accepted: 'Accepted', yl_msg_declined: 'Declined',
+  yl_msg_in_print: 'On the press', yl_msg_shipped: 'On its way', yl_msg_stage: 'Stage moved',
+  yl_msg_names_ready: 'Names complete', yl_msg_payment: 'Payment recorded',
+  yl_msg_payment_confirmed: 'Payment confirmed', yl_msg_review: 'Review',
+
+  /* payments as a handshake */
+  pay_history: 'Payments', pay_confirmed: 'Confirmed', pay_pending: 'Waiting for confirmation',
+  pay_wait_og: 'Waiting for OG to confirm', pay_wait_yl: 'Waiting for Yalla Wear to confirm',
+  pay_confirm_btn: 'Confirm received', pay_confirmed_toast: 'payment confirmed',
+  pay_nothing_open: 'Nothing left to record — a payment is already waiting for confirmation',
+
+  /* a job raised by hand */
+  pj_new: 'New print job', pj_customer: 'Customer', pj_phone: 'Phone',
+  pj_design: 'What to print', pj_design_ph: 'Design, colours, anything the printer needs to know',
+  pj_kind_kit: 'Kit — names on shirts', pj_kind_bulk: 'Bulk — one design, many pieces',
+  pj_lines: 'Shirts', pj_lines_hint: 'One row per shirt. Leave the name blank if the customer has not decided — the job waits until it is filled in.',
+  pj_add_line: 'Add a shirt', pj_line_name_ph: 'Name on the shirt',
+  pj_qty: 'Pieces', pj_deadline: 'Wanted by', pj_unit_price: 'Customer pays / piece',
+  pj_unit_cost: 'Yalla Wear charges / piece', pj_currency: 'Currency',
+  pj_auto_hint: 'Saving sends the order straight to Yalla Wear. They accept or decline, and you are told either way — here and on Telegram.',
+  pj_send: 'Save and send', pj_sent: 'sent to Yalla Wear',
+  pj_need_customer: 'Who is it for?', pj_need_design: 'Say what to print',
+  pj_need_line: 'Add at least one shirt',
+  pj_src_till: 'From the till', pj_src_manual: 'Raised by hand', pj_src_web: 'From the website',
+
+  /* the review */
+  rv_title: 'Your review', rv_sub: 'How did the shirts come out?', rv_ph: 'Anything Yalla Wear should know — quality, colours, timing',
+  rv_save: 'Save review', rv_update: 'Update review', rv_saved: 'review saved — Yalla Wear can see it',
+  rv_need_stars: 'Pick a number of stars first', yl_rating: 'Rating',
+
+  /* the production report */
+  yl_money_tab: 'Money', yl_prod: 'Production', yl_prod_today: 'Pieces today',
+  yl_prod_month: 'Pieces this month', yl_prod_open: 'Pieces in hand',
+  yl_prod_days: 'Last 30 days', yl_prod_days_sub: 'pieces finished per day',
+  yl_prod_months: 'By month', yl_prod_month_col: 'Month', yl_prod_day_col: 'By day',
+  yl_prod_reviews: 'reviews', yl_prod_empty: 'Nothing finished yet', yl_prod_none: 'The production report could not be loaded',
+
+  /* the Telegram line */
+  tg_title: 'Telegram', tg_sub: 'get every order and update on your phone', tg_loading: 'checking…',
+  tg_no_token: 'No bot set up yet',
+  tg_no_token_how: 'Make a bot with @BotFather, put its token in server/.env as OG_TELEGRAM_TOKEN_OG, and restart the server.',
+  tg_no_token_partner: 'OG has not set up your bot yet — ask them to add the token on the server.',
+  tg_linked_to: 'Linked to', tg_not_linked: 'Not connected', tg_connect: 'Connect', tg_test: 'Send a test',
+  tg_unlink: 'Disconnect', tg_code_hint: 'Send this code to the bot', tg_open_bot: 'Open the bot in Telegram',
+  tg_waiting: 'Waiting for the code to arrive… (you can also add the bot to a group and send the code there)',
+  tg_linked: 'Connected —', tg_test_sent: 'test message sent', tg_unlinked: 'disconnected',
+  tg_queued: 'waiting to send', tg_failed: 'failed', tg_all_sent: 'everything sent',
+  tg_partner_note: 'Yalla Wear connects their own bot from their portal — this one is the shop’s.'
 };
 
 var EXTRA_AR = {
@@ -581,7 +631,51 @@ var EXTRA_AR = {
 
   ex_scan: 'امسح للفتح',
   rec_statement: 'كشف حساب الزبون', rec_stock_sheet: 'كشف المخزون',
-  yl_work_order: 'أمر عمل'
+  yl_work_order: 'أمر عمل',
+
+  yl_msg_order: 'أُرسل الطلب', yl_msg_accepted: 'مقبول', yl_msg_declined: 'مرفوض',
+  yl_msg_in_print: 'على المكبس', yl_msg_shipped: 'في الطريق', yl_msg_stage: 'انتقلت المرحلة',
+  yl_msg_names_ready: 'اكتملت الأسماء', yl_msg_payment: 'سُجّلت دفعة',
+  yl_msg_payment_confirmed: 'تأكيد الدفعة', yl_msg_review: 'تقييم',
+
+  pay_history: 'الدفعات', pay_confirmed: 'مؤكدة', pay_pending: 'بانتظار التأكيد',
+  pay_wait_og: 'بانتظار تأكيد OG', pay_wait_yl: 'بانتظار تأكيد يلا وير',
+  pay_confirm_btn: 'تأكيد الاستلام', pay_confirmed_toast: 'تم تأكيد الدفعة',
+  pay_nothing_open: 'لا شيء لتسجيله — هناك دفعة بانتظار التأكيد',
+
+  pj_new: 'طلب طباعة جديد', pj_customer: 'الزبون', pj_phone: 'الهاتف',
+  pj_design: 'ماذا نطبع', pj_design_ph: 'التصميم، الألوان، وكل ما تحتاجه المطبعة',
+  pj_kind_kit: 'طقم — أسماء على القمصان', pj_kind_bulk: 'كمية — تصميم واحد لعدة قطع',
+  pj_lines: 'القمصان', pj_lines_hint: 'سطر لكل قميص. اترك الاسم فارغاً إن لم يقرر الزبون بعد — يبقى الطلب بانتظاره.',
+  pj_add_line: 'أضف قميصاً', pj_line_name_ph: 'الاسم على القميص',
+  pj_qty: 'عدد القطع', pj_deadline: 'مطلوب بتاريخ', pj_unit_price: 'يدفع الزبون / قطعة',
+  pj_unit_cost: 'تتقاضى يلا وير / قطعة', pj_currency: 'العملة',
+  pj_auto_hint: 'الحفظ يرسل الطلب فوراً إلى يلا وير. يقبلون أو يرفضون، ويصلك الجواب هنا وعلى تيليغرام.',
+  pj_send: 'حفظ وإرسال', pj_sent: 'أُرسل إلى يلا وير',
+  pj_need_customer: 'لمن الطلب؟', pj_need_design: 'اكتب ماذا نطبع',
+  pj_need_line: 'أضف قميصاً واحداً على الأقل',
+  pj_src_till: 'من الكاشير', pj_src_manual: 'أُدخل يدوياً', pj_src_web: 'من الموقع',
+
+  rv_title: 'تقييمك', rv_sub: 'كيف خرجت القمصان؟', rv_ph: 'أي شيء يجب أن تعرفه يلا وير — الجودة، الألوان، الوقت',
+  rv_save: 'حفظ التقييم', rv_update: 'تعديل التقييم', rv_saved: 'حُفظ التقييم — تراه يلا وير',
+  rv_need_stars: 'اختر عدد النجوم أولاً', yl_rating: 'التقييم',
+
+  yl_money_tab: 'المال', yl_prod: 'الإنتاج', yl_prod_today: 'قطع اليوم',
+  yl_prod_month: 'قطع هذا الشهر', yl_prod_open: 'قطع قيد العمل',
+  yl_prod_days: 'آخر ٣٠ يوماً', yl_prod_days_sub: 'القطع المنجزة في كل يوم',
+  yl_prod_months: 'حسب الشهر', yl_prod_month_col: 'الشهر', yl_prod_day_col: 'حسب اليوم',
+  yl_prod_reviews: 'تقييم', yl_prod_empty: 'لم يُنجز شيء بعد', yl_prod_none: 'تعذّر تحميل تقرير الإنتاج',
+
+  tg_title: 'تيليغرام', tg_sub: 'كل طلب وتحديث يصل إلى هاتفك', tg_loading: 'جارٍ التحقق…',
+  tg_no_token: 'لم يُجهَّز البوت بعد',
+  tg_no_token_how: 'أنشئ بوتاً عبر @BotFather، وضع رمزه في server/.env تحت OG_TELEGRAM_TOKEN_OG، ثم أعد تشغيل الخادم.',
+  tg_no_token_partner: 'لم يجهّز OG البوت الخاص بك بعد — اطلب منهم إضافة الرمز على الخادم.',
+  tg_linked_to: 'مرتبط بـ', tg_not_linked: 'غير متصل', tg_connect: 'اتصال', tg_test: 'أرسل رسالة تجريبية',
+  tg_unlink: 'فصل', tg_code_hint: 'أرسل هذا الرمز إلى البوت', tg_open_bot: 'افتح البوت في تيليغرام',
+  tg_waiting: 'بانتظار وصول الرمز… (يمكنك أيضاً إضافة البوت إلى مجموعة وإرسال الرمز فيها)',
+  tg_linked: 'تم الاتصال —', tg_test_sent: 'أُرسلت الرسالة التجريبية', tg_unlinked: 'تم الفصل',
+  tg_queued: 'بانتظار الإرسال', tg_failed: 'فشلت', tg_all_sent: 'أُرسل كل شيء',
+  tg_partner_note: 'يلا وير تربط بوتها من بوابتها — هذا بوت المحل.'
 };
 
 Object.keys(EXTRA_EN).forEach(function (k) { I18N.en[k] = EXTRA_EN[k]; });
