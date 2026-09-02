@@ -878,3 +878,163 @@ tr.row-late td { background: color-mix(in srgb, var(--destructive-solid) 7%, tra
   .yw-pay .btn { margin-inline-start: 0; width: 100%; min-height: 44px; }
   .tg-code { font-size: 28px; }
 }
+
+/* the live dot: green while the EventSource to /api/live is open */
+.live-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--dim); margin-inline: 4px 8px; flex: 0 0 auto;
+  transition: background var(--d-1) var(--e-std), box-shadow var(--d-1) var(--e-std);
+}
+.live-dot.on { background: #3ddc84; box-shadow: 0 0 0 3px rgba(61, 220, 132, .22); }
+
+/* ================================================ YALLA WEAR — polish pass
+   One stage, one colour, everywhere it appears: the column head, the strip
+   on a phone, the production line, the card's top edge. Icons sit on tinted
+   chips with a full stroke instead of floating thin and grey.              */
+body[data-portal="yalla"] {
+  --st-sent:     #8FB4FF;
+  --st-printing: #B5DCC0;
+  --st-delivery: #F5C15C;
+  --st-done:     #6EE7A0;
+  --st-sent-soft:     rgba(143, 180, 255, .16);
+  --st-printing-soft: var(--brand-soft);
+  --st-delivery-soft: var(--warning-soft);
+  --st-done-soft:     var(--success-soft);
+}
+
+/* icons */
+body[data-portal="yalla"] .nav-item { color: var(--muted-foreground); }
+body[data-portal="yalla"] .nav-icon svg { stroke-width: 2; }
+body[data-portal="yalla"] .tabbtn svg { stroke-width: 2; }
+.yl-line-ico {
+  width: 36px; height: 36px; border-radius: var(--radius-full); display: grid; place-items: center;
+  margin: 0 auto 8px; background: var(--muted);
+}
+.yl-line-ico svg { width: 17px; height: 17px; stroke-width: 2; stroke: var(--muted-foreground); }
+.yl-line-node.on .yl-line-ico { background: var(--brand-soft); }
+.yl-line-node.on .yl-line-ico svg { stroke: var(--brand); }
+.yl-line-node.hot .yl-line-ico { background: var(--destructive-soft); }
+.yl-line-node.hot .yl-line-ico svg { stroke: var(--destructive); }
+
+.yc-ico { width: 28px; height: 28px; border-radius: var(--radius-full); }
+.yc-ico svg { width: 14px; height: 14px; stroke-width: 2; }
+.yl-col.s-sent .yc-ico     { background: var(--st-sent-soft); }     .yl-col.s-sent .yc-ico svg     { stroke: var(--st-sent); }
+.yl-col.s-printing .yc-ico { background: var(--st-printing-soft); } .yl-col.s-printing .yc-ico svg { stroke: var(--st-printing); }
+.yl-col.s-delivery .yc-ico { background: var(--st-delivery-soft); } .yl-col.s-delivery .yc-ico svg { stroke: var(--st-delivery); }
+.yl-col.s-done .yc-ico     { background: var(--st-done-soft); }     .yl-col.s-done .yc-ico svg     { stroke: var(--st-done); }
+.yc-name { font-size: 12.5px; }
+
+.fi-ico {
+  width: 30px; height: 30px; border-radius: var(--radius-full); display: grid; place-items: center;
+  background: var(--muted); flex: none;
+}
+.fi-ico svg { width: 14px; height: 14px; stroke-width: 2; }
+.yl-fi.k-delay .fi-ico, .yl-fi.k-overdue .fi-ico { background: var(--destructive-soft); }
+.yl-fi.k-nudge .fi-ico, .yl-fi.k-name-request .fi-ico { background: var(--warning-soft); }
+.yl-fi.k-stage .fi-ico, .yl-fi.k-invoice .fi-ico { background: var(--brand-soft); }
+
+/* the board */
+.yl-board { grid-template-columns: repeat(4, minmax(230px, 1fr)); }
+.yl-col { border-top: 3px solid var(--border-strong); padding-top: 11px; }
+.yl-col.s-sent     { border-top-color: var(--st-sent); }
+.yl-col.s-printing { border-top-color: var(--st-printing); }
+.yl-col.s-delivery { border-top-color: var(--st-delivery); }
+.yl-col.s-done     { border-top-color: var(--st-done); }
+.yl-col-body { min-height: 120px; }
+.yl-card { position: relative; }
+@media (pointer: fine) {
+  .yl-card.drag::after {
+    content: '⋮⋮'; position: absolute; top: 9px; inset-inline-end: 9px;
+    font-size: 12px; letter-spacing: -3px; color: var(--dim); opacity: 0;
+    transition: opacity var(--d-1) var(--e-std);
+  }
+  .yl-card.drag:hover::after { opacity: 1; }
+}
+.yl-stage-strip { display: none; }
+
+/* phones */
+@media (max-width: 720px) {
+  /* Five numbers as five full-width rows was a screen of scrolling; two
+     across, the odd one full width at the end. */
+  body[data-portal="yalla"] .view .grid.stat-row[style*="minmax"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  body[data-portal="yalla"] .stat-row > .stat:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  body[data-portal="yalla"] .stat { padding: 12px 13px; }
+  body[data-portal="yalla"] .stat .val { font-size: 22px; }
+
+  /* The export pair is a desk job; on a phone it only pushed the real
+     button down. The one that remains fills the row. */
+  body[data-portal="yalla"] .head-actions [data-act="export"] { display: none; }
+  body[data-portal="yalla"] .head-actions { width: 100%; margin-inline-start: 0; }
+  body[data-portal="yalla"] .head-actions .btn { flex: 1; min-height: 44px; }
+  body[data-portal="yalla"] .head-actions .seg { flex: 1; display: flex; }
+  body[data-portal="yalla"] .head-actions .seg button { flex: 1; min-height: 40px; }
+  body[data-portal="yalla"] .yl-topline .small { display: none; }
+  body[data-portal="yalla"] .page-head { margin-bottom: 14px; }
+
+  /* Filter chips in one row that scrolls sideways, not three rows. */
+  body[data-portal="yalla"] .filters { margin-bottom: 10px; }
+  body[data-portal="yalla"] .filters .chip-row {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+  body[data-portal="yalla"] .filters .chip-row::-webkit-scrollbar { display: none; }
+  body[data-portal="yalla"] .filters .chip { flex: none; min-height: 40px; }
+
+  /* The stage strip above the board: which column is under the thumb,
+     and a tap to jump. */
+  .yl-stage-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
+  .yl-ss {
+    border: 1px solid var(--border); background: var(--subtle); border-radius: var(--radius);
+    padding: 8px 3px 7px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    color: var(--muted-foreground); font-size: 10px; font-weight: 700; min-height: 60px;
+    transition: border-color var(--d-1) var(--e-std), background var(--d-1) var(--e-std);
+  }
+  .yl-ss-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+  .yl-ss-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .yl-ss-n { font-family: var(--font-head); font-size: 14px; font-weight: 800; color: var(--foreground); }
+  .yl-ss.on { background: var(--card); }
+  .yl-ss.s-sent.on     { color: var(--st-sent);     border-color: var(--st-sent); }
+  .yl-ss.s-printing.on { color: var(--st-printing); border-color: var(--st-printing); }
+  .yl-ss.s-delivery.on { color: var(--st-delivery); border-color: var(--st-delivery); }
+  .yl-ss.s-done.on     { color: var(--st-done);     border-color: var(--st-done); }
+
+  /* One column at a time, swiped, snapping to centre. */
+  .yl-board {
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 10px;
+    margin-inline: -14px; padding-inline: 14px; scrollbar-width: none; padding-bottom: 8px;
+  }
+  .yl-board::-webkit-scrollbar { display: none; }
+  .yl-col { flex: 0 0 calc(100vw - 44px); scroll-snap-align: center; min-height: 280px; }
+  .yl-board .yl-card { padding: 14px; }
+  .yl-board .yl-card-foot .btn { min-height: 44px; }
+  .yl-grid { grid-template-columns: minmax(0, 1fr); }
+  .yl-card-foot .btn { min-height: 42px; }
+
+  /* The production line scrolls sideways rather than wrapping into a
+     ragged second row. */
+  .yl-line { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+  .yl-line::-webkit-scrollbar { display: none; }
+  .yl-line-node { flex: 0 0 108px; }
+
+  /* The tracker was cut off at "Delivery" on a 390px drawer. It scrolls. */
+  .track { overflow-x: auto; scrollbar-width: none; padding-bottom: 6px; }
+  .track::-webkit-scrollbar { display: none; }
+  .track-label { font-size: 10px; max-width: 62px; }
+  .track-arrow { min-width: 10px; }
+  .drawer .card-head h3 { font-size: 15px; }
+}
+
+/* The brighter inactive nav colour must not reach the active item, whose
+   text sits on the mint fill and needs to stay dark. */
+body[data-portal="yalla"] .nav-item.active { color: var(--brand-foreground); }
+body[data-portal="yalla"] .nav-item.active .nav-icon svg { stroke: var(--brand-foreground); }
+
+@media (max-width: 720px) {
+  /* Five steps must fit a 340px drawer without a scroll: smaller nodes,
+     tighter arrows, labels allowed to wrap to two lines. */
+  .drawer .track .track-node { width: 26px; height: 26px; font-size: 11px; }
+  .drawer .track .track-label { font-size: 9.5px; max-width: 52px; }
+  .drawer .track .track-time { font-size: 9px; }
+  .drawer .track .track-arrow { min-width: 6px; height: 26px; }
+  .drawer .track .track-step { gap: 4px; }
+}

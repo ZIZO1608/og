@@ -537,11 +537,26 @@ companies feel connected rather than merely sharing a table.
   role, never the body — a partner asking for the shop's code gets their own.
 - **Messages are Arabic then English, plain text.** No Markdown: a job id or a name with an
   underscore would break the parse and the message would silently never arrive.
-- **Nothing pushes to the browser; `js/pulse.js` polls.** `GET /api/partner/pulse` is two counts
-  and a stamp, asked every 30 s while the tab is visible. Only on a change does it refetch the
-  partner bundle, and it **never calls `render()` blind**: only on the Print screen or inside
-  the partner portal, and only with no modal or drawer open. Otherwise it repaints the bells and
-  toasts the newest unread line.
+- **The browser is pushed, then it asks.** `GET /api/live` (`server/lib/live.js`) is a
+  server-sent-events stream, one per open tab; every partner route ends in `bump()`, which
+  kicks the Telegram outbox and writes a one-line `change` event to every open tab. The event
+  carries **no data** — `js/pulse.js` then asks `GET /api/partner/pulse` (two counts and a
+  stamp) and refetches the bundle through the ordinary gated routes, so the push is never a
+  second door past `scrubCost` or the partner strip list. A 45 s poll stays as the backstop and
+  the green dot beside the bubble says which one is on. It **never calls `render()` blind**:
+  only on the Print screen or inside the partner portal, and only with no modal or drawer open.
+  Every new line from the OTHER company gets a toast, a short WebAudio chime and, when the tab is
+  hidden, a browser Notification. `DB.hydrate` is never given a partial payload — it would
+  empty the catalogue — so the pulse uses `hydratePartner` and refills the alert arrays in place.
+- **Yalla Wear's unread lines are in the main bell too** (`partner_msg` in `alerts.js`, key
+  `msg:<id>`, shop accounts with `print.read` only). Unread only, so opening the thread removes
+  the row and the prune tidies its read mark; tapping one opens the job or invoice.
+- **The website's door is `POST /api/ext/print-jobs` / `GET /api/ext/print-jobs/:id`**, no
+  session: a bearer key from `OG_WEB_API_KEY` in `server/.env`, compared in constant time in
+  the request pipeline, 503 when no key is configured. A `reference` (the site's order id) is an
+  idempotency key through `applied_ops`. It creates with `source:'web', autoSend:true`, prices
+  from `config` `print.unit_price` / `print.partner_unit_cost` (950 / 460 defaults, the till's
+  numbers), and the answer never carries the printer's cost.
 - **A payment is a handshake.** `partner_invoice_payments.recorded_by_side` says who recorded it;
   `confirmed_at` is set by the OTHER side (`confirmPayment` refuses `own_side` with a 409).
   `DB.invoicePaid` counts confirmed money only; `DB.invoicePending` is what is waiting;
@@ -574,8 +589,8 @@ child rows pushed from a parent's `afterUpsert` used to miss the lagging-column 
   routes are live and tested; there is simply no screen. Same for adding one size to an existing
   product (`Shop.addVariant`) and cancelling a purchase order (`Shop.cancelPO`). These are listed by
   name in the wiring test so they stay visible rather than becoming permanent.
-- **The e-commerce intake does not exist yet.** `print_jobs.source = 'web'` is reserved for it and
-  the review is on the job for it to read; the route and its API key are not written.
+- **The website has an endpoint but no website.** `/api/ext/print-jobs` is live behind
+  `OG_WEB_API_KEY`; nothing calls it yet.
 - **WhatsApp push is not built.** The outbox has a `channel` column for it; the WhatsApp Cloud API
   needs a Meta business account and approval before a transport can be written.
 - A **draft partner invoice** still lives only in the browser — `partner_invoices.issued` is

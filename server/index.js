@@ -46,6 +46,8 @@ import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
 import * as SyncWorker from './lib/sync-worker.js';
 import * as Telegram from './lib/telegram.js';
+import * as Live from './lib/live.js';
+import { timingSafeEqual } from 'node:crypto';
 import {
   readJson, sendOk, sendError, sendErrorDetail, sendJson, parseCookies,
   serveStatic, makeRouter, originAllowed
@@ -1394,6 +1396,86 @@ function partnerFail(res, e) {
    look now rather than on its next tick, so a phone buzzes within a second
    of the tap. Fire-and-forget — the queue is drained on a timer regardless. */
 const side = (ctx) => (ctx.user.role === 'partner' ? 'yalla' : 'og');
+function bump() {
+  Telegram.nudge();
+  Live.notify('all');
+}
+
+/* The live channel. One long GET per open tab; lib/live.js writes a one-line
+   "change" event whenever bump() runs, and the browser refetches through the
+   ordinary gated routes. Which side a tab is on comes from the account. */
+router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs'], (ctx) => {
+  Live.subscribe(ctx.res, side(ctx), ctx.user.id);
+}));
+
+/* ---- the website ----------------------------------------------------------
+   The e-commerce intake. No session: a bearer key from server/.env
+   (OG_WEB_API_KEY), checked in the request pipeline before these run. The
+   website raises a job exactly the way the till does — source 'web',
+   sent to Yalla Wear in the same transaction when every shirt is named —
+   and reads back where it is and what the shop thought of it. It never
+   receives the printer's price. */
+function webPrices() {
+  const d = DB.get();
+  const num = (k, fb) => Number((d.prepare('SELECT value FROM config WHERE key = ?').get(k) || {}).value) || fb;
+  return { price: num('print.unit_price', 950), cost: num('print.partner_unit_cost', 460) };
+}
+
+router.add('POST /api/ext/print-jobs', async (ctx) => {
+  const b = await readJson(ctx.req);
+  const ref = b.reference ? 'web:' + String(b.reference).slice(0, 80) : null;
+  try {
+    const d = DB.get();
+    if (ref) {
+      const seen = d.prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(ref);
+      if (seen) return sendOk(ctx.res, JSON.parse(seen.result));
+    }
+    const px = webPrices();
+    const lines = Array.isArray(b.lines) ? b.lines.map((l) => ({
+      clubCode: l.clubCode ?? null, printName: l.printName ?? l.name ?? null,
+      number: l.number ?? null, size: l.size ?? null, qty: Number(l.qty) || 1,
+      unitCost: px.cost
+    })) : [];
+    const kind = lines.length ? 'kit' : 'bulk';
+    const qty = kind === 'kit' ? lines.reduce((a, l) => a + l.qty, 0) : (Number(b.qty) || 0);
+    const job = Partner.create({
+      customer: b.customer, phone: b.phone ?? null, design: b.design, kind, qty,
+      priority: b.priority === 'urgent' ? 'urgent' : 'normal',
+      deadline: b.deadline ?? null,
+      price: Number.isFinite(Number(b.price)) ? Math.round(Number(b.price)) : qty * px.price,
+      cost: kind === 'bulk' ? qty * px.cost : null,
+      currency: b.currency === 'USD' ? 'USD' : 'SYP',
+      lines, source: 'web', autoSend: true, userId: null
+    });
+    const out = { job: webJob(job) };
+    if (ref) {
+      d.prepare('INSERT INTO applied_ops (op_id, at, user_id, kind, result) VALUES (?,?,?,?,?)')
+        .run(ref, new Date().toISOString(), null, 'web_job', JSON.stringify(out));
+    }
+    bump();
+    sendOk(ctx.res, out);
+  } catch (e) { partnerFail(ctx.res, e); }
+});
+
+router.add('GET /api/ext/print-jobs/:id', (ctx) => {
+  const j = Partner.job(ctx.params.id);
+  if (!j || j.source !== 'web') return sendError(ctx.res, 404, 'not_found', 'No such job.');
+  sendOk(ctx.res, { job: webJob(j) });
+});
+
+/* What the website may know: where the job is and the shop's verdict —
+   never what the printer charges. */
+function webJob(j) {
+  const r = Partner.review(j.id);
+  return {
+    id: j.id, source: j.source, stage: j.stage, order_state: j.order_state,
+    order_note: j.order_note, promised_at: j.order_promised_at, deadline: j.deadline,
+    qty: j.qty, tbc: j.tbc, price: j.price, currency: j.currency,
+    created_at: j.created_at, updated_at: j.updated_at,
+    history: (j.history || []).map((h) => ({ stage: h.stage, at: h.at })),
+    review: r ? { rating: r.rating, feedback: r.feedback, at: r.at } : null
+  };
+}
 
 /* The small poll. Has anything moved for the side asking? Cheap enough to ask
    every half minute from every open tab. */
@@ -1409,7 +1491,7 @@ router.add('POST /api/print-jobs', requirePerm('print.write', async (ctx) => {
       source: b.source === 'till' ? 'till' : 'manual',
       autoSend: !!b.autoSend
     });
-    Telegram.nudge();
+    bump();
     sendOk(ctx.res, { job });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
@@ -1422,7 +1504,7 @@ router.add('POST /api/print-jobs/:id/review', requirePerm('print.write', async (
     const job = Partner.reviewJob(ctx.params.id, {
       rating: b.rating, feedback: b.feedback ?? null, userId: ctx.user.id
     });
-    Telegram.nudge();
+    bump();
     sendOk(ctx.res, { job });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
@@ -1446,7 +1528,7 @@ router.add('PATCH /api/print-jobs/:id/stage', requirePerm(['print.write', 'partn
   const b = await readJson(ctx.req);
   try {
     const job = Partner.setStage(ctx.params.id, b.stage, side(ctx), ctx.user.id);
-    Telegram.nudge();
+    bump();
     sendOk(ctx.res, { job });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
@@ -1456,7 +1538,7 @@ router.add('PATCH /api/print-jobs/:id/stage', requirePerm(['print.write', 'partn
 router.add('POST /api/print-jobs/:id/order', requirePerm('print.write', async (ctx) => {
   try {
     const job = Partner.sendOrder(ctx.params.id, ctx.user.id);
-    Telegram.nudge();
+    bump();
     sendOk(ctx.res, { job });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
@@ -1471,7 +1553,7 @@ router.add('PATCH /api/print-jobs/:id/lines',
       const job = Partner.setLines(ctx.params.id,
                                    Array.isArray(b.lines) ? b.lines : [],
                                    ctx.user.id, side(ctx));
-      Telegram.nudge();
+      bump();
       sendOk(ctx.res, { job });
     } catch (e) { partnerFail(ctx.res, e); }
   }));
@@ -1482,7 +1564,7 @@ router.add('POST /api/print-jobs/:id/respond', requirePerm('partner.respond', as
     const job = Partner.respondToOrder(ctx.params.id, !!b.accept, {
       promisedAt: b.promisedAt || null, note: b.note || null, userId: ctx.user.id
     });
-    Telegram.nudge();
+    bump();
     sendOk(ctx.res, { job });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
@@ -1495,7 +1577,7 @@ router.add('POST /api/messages', requirePerm(['print.read', 'partner.jobs'], asy
       from: side(ctx), kind: b.kind || 'note', reason: b.reason || null,
       text: b.text, userId: ctx.user.id
     });
-    Telegram.nudge();
+    bump();
     sendOk(ctx.res, { message });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
@@ -1517,7 +1599,7 @@ router.add('POST /api/partner-invoices', requirePerm(['partner.write', 'partner.
   const b = await readJson(ctx.req);
   try {
     const invoice = Partner.createInvoice({ ...b, userId: ctx.user.id });
-    Telegram.nudge();
+    bump();
     sendOk(ctx.res, { invoice });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
@@ -1535,7 +1617,7 @@ router.add('POST /api/partner-invoices/:id/payments', requirePerm(['money.write'
       method: b.method, at: b.at || null, side: side(ctx),
       userId: ctx.user.id, opId: b.opId || null
     });
-    Telegram.nudge();
+    bump();
     sendOk(ctx.res, { invoice });
   } catch (e) { partnerFail(ctx.res, e); }
 }));
@@ -1548,7 +1630,7 @@ router.add('POST /api/partner-invoices/:id/payments/:pid/confirm',
       const invoice = Partner.confirmPayment({
         invoiceId: ctx.params.id, paymentId: ctx.params.pid, side: side(ctx), userId: ctx.user.id
       });
-      Telegram.nudge();
+      bump();
       sendOk(ctx.res, { invoice });
     } catch (e) { partnerFail(ctx.res, e); }
   }));
@@ -1936,6 +2018,21 @@ export function createApp() {
               `Use ${allowed.join(' or ')}.`, { Allow: allowed.join(', ') });
           }
           return sendError(res, 404, 'not_found', 'No such endpoint.');
+        }
+
+        /* The website's door. A bearer key from server/.env instead of a
+           session; compared in constant time. With no key configured the
+           door does not exist, which is the state on a shop that has no
+           website yet. */
+        if (path.startsWith('/api/ext/')) {
+          const want = process.env.OG_WEB_API_KEY || '';
+          if (!want) return sendError(res, 503, 'not_configured', 'OG_WEB_API_KEY is not set on this server.');
+          const got = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+          const a = Buffer.from(got), b = Buffer.from(want);
+          if (!got || a.length !== b.length || !timingSafeEqual(a, b)) {
+            return sendError(res, 401, 'bad_key', 'The API key is missing or wrong.');
+          }
+          return await hit.handler({ req, res, url, params: hit.params, user: null, token: null });
         }
 
         const token = parseCookies(req)[Auth.COOKIE] || null;

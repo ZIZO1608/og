@@ -156,6 +156,7 @@ var YALLA = (function () {
         '<button data-act="curr" data-val="USD" class="' + (OG.currency === 'USD' ? 'on' : '') + '">USD</button>' +
       '</div>' +
       (typeof Notify !== 'undefined' ? Notify.bell() : '') +
+      '<span class="live-dot' + (typeof Pulse !== 'undefined' && Pulse.isLive() ? ' on' : '') + '"></span>' +
       '<div class="user-chip"><span class="user-avatar">Y</span><span>' + t('yl_operator') + '</span></div>';
   }
 
@@ -722,12 +723,24 @@ var YALLA = (function () {
      same function the OG kanban calls, so history is stamped identically and
      the TBC gate applies to both boards without being written twice. */
   function boardHTML(list) {
-    var h = '<div class="yl-board">';
+    var stages = DB.printStages.filter(function (s) { return s !== 'design'; });
+    /* On a phone the board is one column wide and swipes sideways; this
+       strip says which stage is in view and jumps to another on a tap. It
+       is hidden above 720px, where all four columns fit. */
+    var h = '<div class="yl-stage-strip">';
+    stages.forEach(function (st) {
+      var n = list.filter(function (j) { return j.stage === st; }).length;
+      h += '<button class="yl-ss s-' + st + '" data-yl="board-jump" data-stage="' + st + '">' +
+        '<span class="yl-ss-ico">' + icon(STAGE_ICON[st]) + '</span>' +
+        '<span class="yl-ss-name">' + t('print_' + st) + '</span>' +
+        '<span class="yl-ss-n">' + n + '</span></button>';
+    });
+    h += '</div><div class="yl-board">';
     /* Design is OG's stage, not Yalla's. A job only reaches this board once it
        has been accepted, and accepting puts it straight on "Sent to print" —
        so the Design column can never hold anything and was a fifth of the
        width spent saying "nothing here". */
-    DB.printStages.filter(function (s) { return s !== 'design'; }).forEach(function (st) {
+    stages.forEach(function (st) {
       var col = list.filter(function (j) { return j.stage === st; });
       var pcs = col.reduce(function (a, j) { return a + j.qty; }, 0);
       var late = col.filter(function (j) { return j.overdue; }).length;
@@ -773,6 +786,24 @@ var YALLA = (function () {
   function bindBoard() {
     var board = document.querySelector('.yl-board');
     if (!board) return;
+
+    /* Keep the phone's stage strip pointing at the column under the thumb. */
+    var strip = document.querySelector('.yl-stage-strip');
+    if (strip) {
+      var mark = function () {
+        var mid = board.scrollLeft + board.clientWidth / 2;
+        var best = null, bestD = Infinity;
+        board.querySelectorAll('.yl-col').forEach(function (col) {
+          var d = Math.abs(col.offsetLeft + col.offsetWidth / 2 - mid);
+          if (d < bestD) { bestD = d; best = col; }
+        });
+        strip.querySelectorAll('.yl-ss').forEach(function (b) {
+          b.classList.toggle('on', !!best && best.classList.contains('s-' + b.getAttribute('data-stage')));
+        });
+      };
+      board.addEventListener('scroll', mark, { passive: true });
+      mark();
+    }
     var dragId = null;
 
     board.querySelectorAll('.yl-card.drag').forEach(function (card) {
@@ -1283,6 +1314,12 @@ var YALLA = (function () {
       repaint();
     },
     'clear-day': function () { S.day = null; repaint(); },
+    'board-jump': function (el) {
+      var col = document.querySelector('.yl-col.s-' + el.getAttribute('data-stage'));
+      if (!col) return;
+      document.querySelectorAll('.yl-ss').forEach(function (b) { b.classList.toggle('on', b === el); });
+      col.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    },
     open: function (el) { openJob(el.getAttribute('data-id')); },
     'open-invoice': function (el) {
       if (!hasInv()) return;

@@ -137,6 +137,13 @@ var ACTIONS = {
     var pop = document.getElementById('notifPop'); if (pop) pop.remove();
     DB.markNotifRead(n);
     renderTopbar();
+    /* A partner message opens the thread it belongs to, not just the screen. */
+    if (n.kind === 'partner_msg' && n.args) {
+      if (n.args.invoice) { OG.pr = OG.pr || {}; OG.pr.tab = 'invoices'; go('print', function () { openPartnerInvoice(n.args.invoice); }); }
+      else if (n.args.job) { go('print', function () { openJobDrawer(n.args.job); }); }
+      else go(n.view);
+      return;
+    }
     go(n.view);
   },
 

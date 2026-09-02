@@ -767,7 +767,10 @@ var DB = {
       n: a.n, total: a.total, stamps: a.stamps, required: a.required, owed: a.owed,
       days: Math.abs(Number(a.days) || 0),
       name: n.kind === 'po_late' ? '' : (a.name || ''), size: a.size || '', id: id,
-      amount: amount, err: a.err ? ' — ' + a.err : ''
+      amount: amount, err: a.err ? ' — ' + a.err : '',
+      /* partner_msg: what Yalla Wear said, and what kind of line it was */
+      text: a.text || '',
+      kind: a.kind ? t('yl_msg_' + String(a.kind).replace(/-/g, '_')) : ''
     };
     return s.replace(/\{(\w+)\}/g, function (m, k) {
       var v = vals[k];

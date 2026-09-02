@@ -466,7 +466,10 @@ var EXTRA_EN = {
   tg_waiting: 'Waiting for the code to arrive… (you can also add the bot to a group and send the code there)',
   tg_linked: 'Connected —', tg_test_sent: 'test message sent', tg_unlinked: 'disconnected',
   tg_queued: 'waiting to send', tg_failed: 'failed', tg_all_sent: 'everything sent',
-  tg_partner_note: 'Yalla Wear connects their own bot from their portal — this one is the shop’s.'
+  tg_partner_note: 'Yalla Wear connects their own bot from their portal — this one is the shop’s.',
+  al_partner_msg: 'Yalla Wear on {id}: {kind} — {text}',
+  al_more_partner_msg: '{n} more messages from Yalla Wear',
+  live_on: 'Live — connected to the shop server', live_off: 'Reconnecting…'
 };
 
 var EXTRA_AR = {
@@ -675,7 +678,10 @@ var EXTRA_AR = {
   tg_waiting: 'بانتظار وصول الرمز… (يمكنك أيضاً إضافة البوت إلى مجموعة وإرسال الرمز فيها)',
   tg_linked: 'تم الاتصال —', tg_test_sent: 'أُرسلت الرسالة التجريبية', tg_unlinked: 'تم الفصل',
   tg_queued: 'بانتظار الإرسال', tg_failed: 'فشلت', tg_all_sent: 'أُرسل كل شيء',
-  tg_partner_note: 'يلا وير تربط بوتها من بوابتها — هذا بوت المحل.'
+  tg_partner_note: 'يلا وير تربط بوتها من بوابتها — هذا بوت المحل.',
+  al_partner_msg: 'يلا وير على {id}: {kind} — {text}',
+  al_more_partner_msg: '{n} رسائل أخرى من يلا وير',
+  live_on: 'مباشر — متصل بخادم المحل', live_off: 'جارٍ إعادة الاتصال…'
 };
 
 Object.keys(EXTRA_EN).forEach(function (k) { I18N.en[k] = EXTRA_EN[k]; });

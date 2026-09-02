@@ -185,7 +185,14 @@ function applySidebarMode() {
 
 function renderSidebar() {
   /* Partner mode takes over the whole shell — its own nav, its own brand. */
-  if (OG.print.partner) { document.getElementById('sidebar').innerHTML = YALLA.sidebar(); return; }
+  if (OG.print.partner) {
+    document.getElementById('sidebar').innerHTML = YALLA.sidebar();
+    /* The phone tab bar is drawn at the end of this function for the shop;
+       returning early here left the partner with an EMPTY bar — a strip of
+       navy with no icons in it — on every phone. */
+    renderTabbar();
+    return;
+  }
 
   /* The logo is white-on-black, so on the black sidebar the wordmark sits bare. */
   var html =
@@ -369,6 +376,9 @@ function renderTopbar() {
     /* Partner messages sit beside the alert bell, not inside it. One is the
        shop talking to itself; the other is another company talking to us. */
     (typeof Notify !== 'undefined' ? Notify.bell() : '') +
+    /* Green while the live line to the server is open; grey while it is
+       reconnecting and the poll carries on. Pulse paints it. */
+    '<span class="live-dot' + (typeof Pulse !== 'undefined' && Pulse.isLive() ? ' on' : '') + '"></span>' +
     '<button class="icon-btn" data-act="bell" title="' + t('notifications') + '">' +
       '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M18 16V10a6 6 0 1 0-12 0v6l-2 3h16zM10 21h4"/></svg>' +
       /* Unread, not total — a badge that never moves is one people stop

@@ -121,6 +121,30 @@ export function list(user, { limit = MAX_ROWS } = {}) {
     }
   }
 
+  /* WHAT YALLA WEAR SAID. The speech bubble already lists the thread; this
+     puts the unread ones in the bell as well, because the bell is the thing
+     staff actually look at. Unread only — once the thread is opened the row
+     is gone and the prune below tidies its read mark. Never for the partner
+     account, whose bubble is its own inbox. */
+  if (can('print.read') && user.role !== 'partner') {
+    const MSG_SQL = `FROM job_messages WHERE from_side = 'yalla' AND read_og = 0`;
+    const rows = d.prepare(
+      `SELECT id, job_id, invoice_id, kind, body ${MSG_SQL} ORDER BY id DESC LIMIT 5`
+    ).all();
+    rows.forEach((m) => {
+      out.push({
+        key: 'msg:' + m.id, kind: 'partner_msg',
+        args: { id: m.job_id || m.invoice_id, kind: m.kind, text: String(m.body).slice(0, 90),
+                job: m.job_id || null, invoice: m.invoice_id || null },
+        icon: '✉', tone: 'amber', view: 'print'
+      });
+    });
+    if (rows.length === 5) {
+      more('partner_msg', d.prepare(`SELECT COUNT(*) AS n ${MSG_SQL}`).get().n, rows.length,
+           '✉', 'amber', 'print');
+    }
+  }
+
   if (can('print.read')) {
     const rows = d.prepare(
       `SELECT id, deadline FROM print_jobs
