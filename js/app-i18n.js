@@ -647,7 +647,7 @@ var I18N = {
 
     print_title: 'Print Jobs', print_sub: 'Every t-shirt job, from design to delivery',
     jobs_month: 'Jobs this month', on_time: 'On-time', print_revenue: 'Printing revenue',
-    paid_partner: 'Paid to Yalla Wear', partner_view: 'Open Yalla Wear portal view',
+    paid_partner: 'Paid to Yalla Wear',
     admin_view: 'Back to admin view', partner_access: 'Partner access',
     partner_note: 'This is everything the printing partner can see. No costs, no customer phone numbers, no stock, no prices you charge.',
     overdue: 'Overdue', design_note: 'Design note', drag_hint: 'Drag a card between columns to move the job',
@@ -1294,7 +1294,7 @@ var I18N = {
 
     print_title: 'أعمال الطباعة', print_sub: 'كل طلب تيشيرت من التصميم حتى التسليم',
     jobs_month: 'طلبات هذا الشهر', on_time: 'التسليم بالوقت', print_revenue: 'إيراد الطباعة',
-    paid_partner: 'المدفوع ليلا وير', partner_view: 'فتح واجهة يلا وير',
+    paid_partner: 'المدفوع ليلا وير',
     admin_view: 'العودة لواجهة الإدارة', partner_access: 'وصول شريك',
     partner_note: 'هذا كل ما يراه شريك الطباعة. لا تكاليف، لا أرقام هواتف زبائن، لا مخزون، ولا أسعارك.',
     overdue: 'متأخر', design_note: 'ملاحظة التصميم', drag_hint: 'اسحب البطاقة بين الأعمدة لتغيير المرحلة',

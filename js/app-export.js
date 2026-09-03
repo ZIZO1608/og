@@ -556,18 +556,15 @@ function handleDeepLink(hash) {
     case 'job':
       go('print', function () { openJobDrawer(id); });
       return true;
-    /* A partner invoice only exists inside the Yalla Wear portal, so the link
-       has to switch portals before it can open anything. Scanning a printed
-       bill therefore lands the reader in the right app, not just the right
-       screen. */
+    /* The same bill has a view on each side of the line. Which one opens
+       is decided by who is signed in, never by switching portals: an OG
+       account lands on OG's copy under Print → Invoices, Yalla Wear on
+       theirs. */
     case 'ywinvoice':
       if (!DB.invoice(id)) { toast(t('yi_invoice'), id, 'err'); return true; }
-      if (!OG.print.partner) {
-        OG.print.partner = true;
-        YALLA.reset();
-        renderSidebar(); renderTopbar();
-      }
-      YALLA.go('invoices', id);
+      if (OG.print.partner) { YALLA.go('invoices', id); return true; }
+      OG.pr = OG.pr || {}; OG.pr.tab = 'invoices';
+      go('print', function () { openPartnerInvoice(id); });
       return true;
     case 'report':
       /* repTab() bounces an account that may not open the named tab back to

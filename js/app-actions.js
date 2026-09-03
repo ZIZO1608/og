@@ -1789,25 +1789,6 @@ var ACTIONS = {
     if (typeof Notify !== 'undefined') Notify.refresh();
   },
 
-  'partner-view': function () {
-    /* This is the manager's preview of what Yalla Wear sees. For Yalla Wear
-       themselves it is the way out of their own portal, so there is no way
-       out. Nothing renders this button for them; this is the belt to that
-       brace. */
-    if (isPartnerAccount()) return;
-    OG.print.partner = !OG.print.partner;
-    /* A portal switch is the biggest context change in the app — it earns a
-       full entrance, and it always reads as going forward. */
-    if (typeof Motion !== 'undefined') { OG.dir = 'fwd'; Motion.mark(); }
-    if (OG.print.partner) YALLA.reset();
-    closeDrawer();
-    renderSidebar();
-    renderTopbar();
-    render();
-    toast(OG.print.partner ? 'YALLA WEAR' : CONFIG.SHOP_NAME.toUpperCase(),
-          t(OG.print.partner ? 'yl_entered' : 'yl_left'), 'ok', 2400);
-  },
-
   /* Open or shut one section of Settings. Deliberately NOT a render(): half
      the cards on that screen hold typed-but-unsaved values — the receipt
      footer, the printer's host, the shop name — and a repaint would take them

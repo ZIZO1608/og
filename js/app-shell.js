@@ -233,21 +233,11 @@ function renderSidebar() {
     });
   });
 
-  /* The way INTO the partner's portal, for whoever may look at it. It
-     lived only on the Print screen's head and in the phone's More sheet,
-     which is to say a manager standing at the sidebar could not find it —
-     "OG cannot open the Yalla Wear portal" was the exact report. Not a view
-     and not a route: it is the same portal switch, drawn where the rest of
-     the navigation is. */
-  if (allow('partner.read') && !isPartnerAccount()) {
-    html += '<div class="nav-label">' + esc(CONFIG.PRINT_PARTNER) + '</div>' +
-      '<button class="nav-item nav-partner" data-act="partner-view" title="' + esc(t('partner_view')) + '">' +
-        '<span class="nav-icon"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
-          '<path d="M4 7l8-4 8 4v4c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10zM9 12l2 2 4-4"/></svg></span>' +
-        '<span class="nav-txt">' + t('nav_partner') + '</span>' +
-      '</button>';
-  }
-
+  /* There is deliberately no door into the Yalla Wear portal from here.
+     They are a different company: which side of the line an account is on
+     is decided by its role at login, and nothing in either shell flips it.
+     What OG needs to know about a job — the thread, the stage, the invoice
+     — is on the Print screen, on OG's own side. */
   html += '</nav><div class="sidebar-foot">' + t('live') + ' · <b>v1.0</b></div>';
   document.getElementById('sidebar').innerHTML = html;
   /* The sliding indicator is positioned from the active item's own offset, so
@@ -324,13 +314,6 @@ function openMoreSheet() {
       '<button data-act="curr" data-val="SYP" class="' + (OG.currency === 'SYP' ? 'on' : '') + '">SYP</button>' +
       '<button data-act="curr" data-val="USD" class="' + (OG.currency === 'USD' ? 'on' : '') + '">USD</button>' +
     '</div></div>' +
-    /* Previewing the partner's portal is a manager's tool for checking what
-       the other company can see. Anyone without partner.read has no business
-       in there, and Yalla Wear are already in it. */
-    (allow('partner.read')
-      ? '<div class="more-row"><span>' + t('partner_view') + '</span>' +
-        '<button class="btn btn-sm btn-dark" data-act="partner-view">' + CONFIG.PRINT_PARTNER + ' →</button></div>'
-      : '') +
   '</div>';
 
   /* The account block lives here too, and this is not a duplicate for

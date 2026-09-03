@@ -129,19 +129,11 @@ var YALLA = (function () {
       '</button>';
     });
 
-    /* The way out is a MANAGER'S PREVIEW control, not a door. For Yalla
-       Wear it does nothing at all — app-actions.js refuses partner-view by
-       role — so on a real partner login it was a button that looked like an
-       exit and was not one, at the bottom of every screen they use all day.
-       The credit line stays: that is branding, not a control. */
-    var previewing = !(typeof isPartnerAccount === 'function' && isPartnerAccount());
-    h += '</nav>' +
-      '<div class="yl-leave' + (previewing ? '' : ' note-only') + '">' +
-        '<div class="yl-leave-note">' + t('yl_partner_of') + '<b>OG SYSTEM</b></div>' +
-        (previewing
-          ? '<button class="btn btn-ghost btn-block btn-sm" data-act="partner-view">' + t('yl_back_og') + '</button>'
-          : '') +
-      '</div>';
+    /* Nothing below the nav. There used to be a "Back to OG System" button
+       here: for Yalla Wear it was an exit that did nothing, and for OG it was
+       the other half of a door between two companies that should not have
+       one. The portal is the whole app for the account that sees it. */
+    h += '</nav>';
     return h;
   }
 
@@ -156,16 +148,8 @@ var YALLA = (function () {
         '<span class="tb-txt">' + t(n.key) + '</span></button>';
     }).join('');
 
-    /* The way back to OG is a MANAGER's preview button. For Yalla Wear
-       themselves it does nothing — app-actions refuses it by role — so on a
-       real partner login it was a dead sixth tab taking a thumb's width from
-       the five that work. */
-    if (typeof isPartnerAccount === 'function' && isPartnerAccount()) return h;
-    return h +
-      '<button class="tabbtn" data-act="partner-view">' +
-        '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square">' +
-          '<path d="M10 19l-7-7 7-7M3 12h18"/></svg></span>' +
-        '<span class="tb-txt">OG</span></button>';
+    /* Five tabs, no sixth: there is no OG behind this portal to go back to. */
+    return h;
   }
 
   function topbar() {

@@ -270,10 +270,9 @@ var EXTRA_EN = {
   yl_invoice_og: 'Invoice OG System', yl_invoice_sent: 'invoice sent',
   yl_unpaid: 'On open jobs', yl_on_open_jobs: 'not invoiced yet', yl_lifetime: 'All time',
   yl_per_piece: 'Average per piece', yl_monthly: 'Earnings by month',
-  yl_back_og: '← Back to OG System', yl_partner_of: 'Printing partner of ',
+  yl_partner_of: 'Printing partner of ',
   yl_scope: 'You see only your own jobs and your own pay',
-  yl_entered: 'Partner portal — this is all they can see',
-  yl_left: 'Back in the admin system', yl_now: 'now', yl_charged: 'Charged to customer',
+  yl_now: 'now', yl_charged: 'Charged to customer',
   yl_billed_to: 'Billed to',
 
   lb_studio: 'Label studio', lb_template: 'Template', lb_size: 'Label size',
@@ -482,8 +481,7 @@ var EXTRA_EN = {
   yl_rv_none: 'No reviews yet',
   yl_rv_none_sub: 'OG writes one once a job is finished and the shirts are in their hands.',
   yl_rv_no_match: 'Nothing under that filter',
-  yl_rv_no_match_sub: 'Try another one, or show them all',
-  nav_partner: 'Yalla Wear portal'
+  yl_rv_no_match_sub: 'Try another one, or show them all'
 };
 
 var EXTRA_AR = {
@@ -505,9 +503,8 @@ var EXTRA_AR = {
   yl_invoice_og: 'إرسال فاتورة إلى OG', yl_invoice_sent: 'أُرسلت الفاتورة',
   yl_unpaid: 'على الطلبات المفتوحة', yl_on_open_jobs: 'لم تُفوتر بعد', yl_lifetime: 'الإجمالي الكلي',
   yl_per_piece: 'متوسط سعر القطعة', yl_monthly: 'الأرباح حسب الشهر',
-  yl_back_og: '→ العودة إلى OG System', yl_partner_of: 'شريك الطباعة لـ ',
+  yl_partner_of: 'شريك الطباعة لـ ',
   yl_scope: 'ترى طلباتك ومستحقاتك فقط',
-  yl_entered: 'واجهة الشريك — هذا كل ما يراه', yl_left: 'عدنا إلى نظام الإدارة',
   yl_now: 'الآن', yl_charged: 'المحصّل من الزبون', yl_billed_to: 'الفاتورة إلى',
 
   lb_studio: 'استوديو الملصقات', lb_template: 'القالب', lb_size: 'قياس الملصق',
@@ -707,8 +704,7 @@ var EXTRA_AR = {
   yl_rv_none: 'لا تقييمات بعد',
   yl_rv_none_sub: 'يكتب OG التقييم بعد انتهاء الطلب ووصول القمصان إليهم.',
   yl_rv_no_match: 'لا شيء ضمن هذه التصفية',
-  yl_rv_no_match_sub: 'جرّب تصفية أخرى أو اعرضها كلها',
-  nav_partner: 'بوابة يلا وير'
+  yl_rv_no_match_sub: 'جرّب تصفية أخرى أو اعرضها كلها'
 };
 
 /* ---- the admin Reports screen -------------------------------------------

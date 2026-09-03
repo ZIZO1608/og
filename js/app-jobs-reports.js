@@ -25,9 +25,6 @@ function viewPrint() {
     '<div class="sub">' + t('print_sub') + ' · ' + t('drag_hint') + '</div></div>' +
     '<div class="head-actions">' +
       exportButtons() +
-      (allow('partner.read')
-        ? '<button class="btn btn-dark" data-act="partner-view">' + t('partner_view') + '</button>'
-        : '') +
       /* A job raised by hand — a customer who rang, a club order taken at
          the door. Until this existed the till was the only way in. */
       (allow('print.write')
@@ -544,9 +541,7 @@ function openJobDrawer(id) {
   body += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
     '<button class="btn btn-ghost" data-act="og-nudge" data-id="' + j.id + '">' + t('og_nudge') + '</button>' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="job" data-kind="pdf" data-id="' + j.id + '">' + t('yl_work_order') + '</button>' +
-    (allow('partner.read')
-      ? '<button class="btn btn-dark" style="flex:1" data-act="partner-view">' + t('partner_view') + '</button>'
-      : '') + '</div>';
+    '</div>';
 
   openDrawer({ head: head, body: body });
 }

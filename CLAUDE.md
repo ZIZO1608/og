@@ -259,8 +259,12 @@ anyone can send the request by hand.
 | delivery | `viewRunsHome()` → `Deliveries.view()` | live server data |
 | manager / `_shot.html` | `viewDashboard()` — the full dashboard | charts |
 
-The partner never reaches it: `boot()` and `render()` both force `OG.print.partner = true` for that role,
-and the `partner-view` toggle refuses for them.
+The partner never reaches it: `boot()` and `render()` both force `OG.print.partner = true` for that role.
+**There is no door between the two sides in either direction.** The `partner-view` toggle, the sidebar
+entry, the Print-screen buttons, the More-sheet row and the portal's "Back to OG System" were all
+removed on request: which side an account sees is decided by its role at login and nothing in the
+browser flips it. A scanned partner-invoice QR opens OG's own copy of the bill (`openPartnerInvoice`)
+for a shop account and the portal's for Yalla Wear, rather than switching portals.
 
 **`boot()` must apply the same `navAllowed` guard as `go()`.** A bookmarked `#settings` arrives through
 `boot()`, not `go()` — that gap was a real bug.
@@ -590,8 +594,8 @@ companies feel connected rather than merely sharing a table.
   job, with the average, a tap-to-filter distribution, and the quote given the type size rather
   than the metadata. Opening it marks those lines read through `markRead`'s **`kind` filter**,
   so a delay note on the same job stays unread; the nav badge counts `DB.unreadReviews('yalla')`.
-  The phone tab bar drops the OG back button for a real partner account (`isPartnerAccount()`) —
-  `partner-view` refuses by role, so it was a dead sixth tab.
+  The phone tab bar is the five screens and nothing else — there is no OG behind the portal to go
+  back to (see "Home screen is chosen by role").
 - **What is new is decided before anything draws.** `Pulse.apply()` takes the unread list first
   and announces it last: the job drawer and the Reviews page both mark messages read as part of
   rendering, so a toast computed afterwards never fired for the line that had just arrived.

@@ -41,8 +41,6 @@ var Palette = (function () {
         run: function () { OG.wh.tab = 'po'; go('warehouse'); } },
       { icon: '✉', label: t('wa_send_day'), hint: t('nav_dashboard'),
         run: function () { openDaySummary(); } },
-      { icon: '⇥', label: t('partner_view'), hint: CONFIG.PRINT_PARTNER,
-        run: function () { ACTIONS['partner-view'](); } },
       { icon: 'ع', label: t('cp_toggle_lang'), hint: OG.lang === 'ar' ? 'English' : 'العربية',
         run: function () { ACTIONS.lang({ getAttribute: function () { return OG.lang === 'ar' ? 'en' : 'ar'; } }); } },
       { icon: '$', label: t('cp_toggle_curr'), hint: OG.currency === 'SYP' ? 'USD' : 'SYP',
