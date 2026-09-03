@@ -175,10 +175,16 @@ DB.openReadOnly(maybe('OG_DB') || resolve(HERE, '..', 'data', 'og.db'));
 const db = DB.get();
 
 /* Deliberately never mirrored — live session tokens, a local print queue and a
-   counter have no business in a copy kept for the day this machine dies. */
+   counter have no business in a copy kept for the day this machine dies.
+   partner_events is the Telegram OUTBOX (035_partner_link.sql): delivery
+   state, not shop data. A restored shop re-sending three months of "order
+   accepted" to two phones would be a bug, so the sync leaves it out on
+   purpose — and this list must agree, or the check reports the design as a
+   missing table every run. */
 const LOCAL_ONLY = new Set(['sessions', 'login_attempts', 'applied_ops',
                             'label_print_jobs', 'label_code_seq',
-                            'schema_migrations', 'change_log']);
+                            'schema_migrations', 'change_log',
+                            'partner_events']);
 
 /* Columns that exist here and MUST NOT exist there. The column check below
    would otherwise report the most important security property of this mirror

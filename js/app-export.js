@@ -283,7 +283,7 @@ function employeesExportSpec(s, r) {
 
   s.columns = [{ label: t('name'), width: 26 }, { label: t('role'), width: 18 }]
     .concat(salC, [{ label: t('invoices'), int: true }], solC,
-            [{ label: t('rp_since'), date: true }, { label: t('next_payment'), date: true },
+            [{ label: t('rp_started'), date: true }, { label: t('next_payment'), date: true },
              { label: t('phone'), width: 18 }]);
 
   /* Somebody with no till login gets BLANK sales cells, not zeros. A zero
@@ -323,8 +323,9 @@ function suppliersExportSpec(s, r) {
   var outC = exMoneyCols(t('outstanding'), pad);
 
   s.columns = [{ label: t('supplier'), width: 26 }, { label: t('category'), width: 18 }]
+    /* `lastPayment`, which is when the shop last paid THEM — not "since". */
     .concat(purC, outC, [{ label: t('due'), date: true },
-                         { label: t('rp_since'), date: true },
+                         { label: t('rp_last_paid'), date: true },
                          { label: t('phone'), width: 18 }]);
 
   s.rows = list.map(function (x) {
@@ -716,25 +717,67 @@ function partnerInvoicesExportSpec() {
   };
 }
 
+/* Who is allowed to do what — printable, for pinning on the wall.
+
+   THIS THREW EVERY TIME IT WAS PRESSED. It walked a global called
+   PERMISSIONS: four roles and a hardcoded matrix, which stopped existing when
+   the real one moved into the `role_permissions` table, and nothing was left
+   behind under that name. Both Export buttons on the Settings screen have
+   been raising a ReferenceError ever since — before the guard in ACTIONS
+   could even look at the result — so the two buttons did nothing at all and
+   said nothing about why.
+
+   It now reads the SAME matrix the grid on screen is drawn from: ROLE_MATRIX,
+   which GET /api/roles filled in, with the shipped defaults as the fallback
+   for _shot.html where there is no server to ask. Five roles, not four, and
+   the permission list is whatever the server actually holds rather than a
+   copy that had already gone stale. */
 function settingsExportSpec() {
-  var roles = [t('role_admin'), t('role_manager'), t('role_cashier'), t('role_warehouse')];
-  var rows = PERMISSIONS.map(function (p) {
-    return [p[0], p[1] ? '✓' : '—', p[2] ? '✓' : '—', p[3] ? '✓' : '—', p[4] ? '✓' : '—'];
+  var m = (typeof ROLE_MATRIX !== 'undefined' && ROLE_MATRIX) ||
+          (typeof demoMatrix === 'function' ? demoMatrix() : null);
+  if (!m) return null;
+
+  var columns = [{ label: t('permission'), width: 36 }];
+  m.roles.forEach(function (r) { columns.push({ label: roleLabel(r), width: 14 }); });
+
+  var pad = m.roles.map(function () { return ''; });
+  var rows = [];
+  var lastGroup = null;
+  m.permissions.forEach(function (p) {
+    /* The same group headings the grid uses. Twenty-five ticked boxes in one
+       column is unreadable; broken into Till, Stock, Money it reads as a
+       description of a job. */
+    if (p.group !== lastGroup) {
+      lastGroup = p.group;
+      rows.push(['— ' + t('pg_' + p.group).toUpperCase()].concat(pad));
+    }
+    rows.push([p.label].concat(m.roles.map(function (r) {
+      var cell = p.roles[r] || {};
+      /* A locked box is not the same as an unticked one — `manager` cannot
+         lose config.write, and `partner` can never be given customer.read —
+         and a wall chart that does not say so invites somebody to try. */
+      return (cell.allowed ? '✓' : '—') + (cell.locked ? ' 🔒' : '');
+    })));
   });
-  rows.push(['', '', '', '', '']);
-  rows.push([t('exchange_rate'), '1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP', '', '', '']);
-  rows.push([t('points_per'), String(CONFIG.LOYALTY_POINTS_PER_1000), '', '', '']);
-  rows.push([t('point_value'), nf(CONFIG.LOYALTY_POINT_VALUE) + ' SYP', '', '', '']);
-  rows.push([t('tier'), t('silver') + ' ' + nf(CONFIG.TIER_SILVER) + ' · ' + t('gold') + ' ' + nf(CONFIG.TIER_GOLD), '', '', '']);
+
+  /* The shop's own numbers under the matrix, because the page they are
+     printed from is the page they are set on. */
+  rows.push([''].concat(pad));
+  rows.push(['— ' + t('setg_shop').toUpperCase()].concat(pad));
+  rows.push([t('exchange_rate') + ': 1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP'].concat(pad));
+  rows.push([t('points_per') + ': ' + nf(CONFIG.LOYALTY_POINTS_PER_1000)].concat(pad));
+  rows.push([t('point_value') + ': ' + nf(CONFIG.LOYALTY_POINT_VALUE) + ' SYP'].concat(pad));
+  rows.push([t('tier') + ': ' + t('silver') + ' ' + nf(CONFIG.TIER_SILVER) +
+             ' · ' + t('gold') + ' ' + nf(CONFIG.TIER_GOLD)].concat(pad));
 
   return {
-    name: 'settings', sheet: 'Roles', title: t('roles_perms'),
-    subtitle: CONFIG.SHOP_NAME + ' · ' + fmtDate(TODAY),
-    columns: [{ label: t('permission'), width: 34 }, { label: roles[0] }, { label: roles[1] },
-              { label: roles[2] }, { label: roles[3] }],
+    name: 'roles-and-permissions', sheet: 'Roles', title: t('roles_perms'),
+    subtitle: CONFIG.SHOP_NAME + ' · ' + fmtDate(new Date()),
+    columns: columns,
     rows: rows,
-    kpis: [{ label: t('roles_perms'), value: PERMISSIONS.length + ' × 4' },
-           { label: t('exchange_rate'), value: nf(CONFIG.EXCHANGE_RATE) }]
+    kpis: [{ label: t('roles_perms'), value: m.permissions.length + ' × ' + m.roles.length },
+           { label: t('exchange_rate'), value: '1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP' }],
+    note: t('rp_locked_note')
   };
 }
 

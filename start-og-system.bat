@@ -65,7 +65,7 @@ if errorlevel 3 (
   REM  because that is the one the browser lets have notifications and the
   REM  camera. Plain HTTP redirects there anyway, but opening it directly
   REM  saves a hop.
-  if exist "serverdatacertsog-cert.pem" (
+  if exist "data\certs\og-cert.pem" (
     start "" "https://localhost:8443"
   ) else (
     start "" "http://localhost:8090"

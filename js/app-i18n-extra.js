@@ -748,6 +748,12 @@ var REPORTS_EN = {
   rp_debt_note: 'What customers owe and what the shop owes suppliers are whole balances, ' +
     'not filtered by the date range above — a sale taken on credit in March is still owed today.',
   rp_collected: 'Debt collected',
+  /* Column headings, not sentence fragments: rp_since reads 'since 3 Jan
+     2020' under a name and is wrong at the top of a column. */
+  rp_started: 'Started', rp_last_paid: 'Last payment',
+  rp_locked_note: 'A box marked 🔒 cannot be changed. A manager always keeps Settings and ' +
+    'staff access, or nobody is left who could put it back; and Yalla Wear is a different ' +
+    'company, so they can never be granted customers, cost, profit, money, staff or deliveries.',
   rp_payroll: 'Payroll', rp_purchased: 'Purchased',
   rp_since: 'since', rp_no_login: 'no till login',
   rp_no_employees: 'Nobody is on the payroll yet',
@@ -782,6 +788,10 @@ var REPORTS_AR = {
   rp_debt_note: 'ديون الزبائن ومستحقّات الموردين أرصدة كاملة، غير مقيّدة بالمدة المختارة أعلاه — ' +
     'فاتورة بيعت بالدين في آذار ما زالت ديناً اليوم.',
   rp_collected: 'ديون محصّلة',
+  rp_started: 'تاريخ المباشرة', rp_last_paid: 'آخر دفعة',
+  rp_locked_note: 'الخانة المعلَّمة 🔒 لا يمكن تغييرها. المدير يحتفظ دائماً بالإعدادات وصلاحية ' +
+    'الموظفين، وإلا لم يبقَ من يستطيع إعادتها؛ ويلا وير شركة أخرى، فلا تُمنح أبداً الزبائن ' +
+    'أو الكلفة أو الربح أو المال أو الموظفين أو التوصيل.',
   rp_payroll: 'الرواتب', rp_purchased: 'إجمالي المشتريات',
   rp_since: 'منذ', rp_no_login: 'لا حساب على الصندوق',
   rp_no_employees: 'لا أحد على كشف الرواتب بعد',

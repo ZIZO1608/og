@@ -753,19 +753,106 @@ function viewReports() {
   return h + repTable(tab);
 }
 
-/* Is there anything to draw? afterReports() tests for the canvas, so this and
-   the markup above have to agree — an axis with no series on it reads as a
-   broken chart, not as a quiet week. */
-function repHasChart(tab) {
+/* ------------------------------------------------------------- the series
+   ONE description of what the chart is, read by both the markup that decides
+   whether to put a canvas on the page and the hook that draws into it.
+
+   They used to be two separate pieces of code answering the same question,
+   and they disagreed: the Inventory canvas appeared whenever any type had
+   PIECES on the shelf, while the donut was fed CAPITAL — so a shop whose cost
+   prices have not been entered got a chart card with a legend, an empty ring
+   and nothing else in it. A canvas drawn over an all-zero series is not an
+   empty chart, it is a broken-looking one, and the reader cannot tell which.
+
+   `positiveOnly` marks the two donuts: a slice of a negative number is not a
+   thing, so a loss is charted as bars and left off a ring. */
+function repChartData(tab) {
   var r = DB.rep;
-  if (!r) return false;
-  if (tab === 'sales')     return !!(r.sales && r.sales.series.some(function (b) { return b.count > 0; }));
-  if (tab === 'profit')    return !!(r.profit && r.profit.rows.length);
-  if (tab === 'inventory') return !!(r.inventory && r.inventory.rows.some(function (x) { return x.units > 0; }));
-  if (tab === 'payments')  return !!(r.payments && r.payments.byPayment.length);
-  if (tab === 'employees') return !!(r.employees && r.employees.rows.length);
-  if (tab === 'suppliers') return !!(r.suppliers && r.suppliers.length);
-  return false;
+  if (!r) return null;
+  var base = DB.repBase();
+  var money = function (v) { return (base === 'USD' ? '$' : '') + Charts.compact(v); };
+  var count = function (v) { return nf(v); };
+  var typeName = function (x) { return DB.typeLabels[x.type] || x.type || '—'; };
+  var firstName = function (s) { return String(s || '—').split(/\s+/)[0]; };
+
+  if (tab === 'sales' && r.sales) {
+    return {
+      kind: 'line', fmt: money,
+      labels: r.sales.series.map(function (b) { return DB.repBucketTick(b.bucket, r.sales.grain); }),
+      values: r.sales.series.map(function (b) { return DB.repBaseOf(b); })
+    };
+  }
+
+  if (tab === 'profit' && r.profit) {
+    return {
+      kind: 'bars', fmt: money, highlight: 0,
+      labels: r.profit.rows.map(typeName),
+      values: r.profit.rows.map(function (x) {
+        return DB.repBaseOf(x.profit || x.revenue);
+      })
+    };
+  }
+
+  if (tab === 'inventory' && r.inventory) {
+    var live = r.inventory.rows.filter(function (x) { return x.units > 0; });
+    /* Capital is the better answer — what the shelves are worth is the
+       question this tab is opened for — but a shop that has not entered its
+       cost prices has none, and pieces is a true answer rather than an empty
+       ring. Whichever is charted, the axis formatter follows it. */
+    var byCost = r.inventory.hasCost &&
+      live.some(function (x) { return DB.repBaseOf(x.cost) > 0; });
+    return {
+      kind: 'donut', positiveOnly: true, fmt: byCost ? money : count,
+      labels: live.map(typeName),
+      values: live.map(function (x) { return byCost ? DB.repBaseOf(x.cost) : x.units; })
+    };
+  }
+
+  if (tab === 'payments' && r.payments) {
+    return {
+      kind: 'donut', positiveOnly: true, fmt: money,
+      labels: r.payments.byPayment.map(function (x) { return DB.payLabel(x.payment); }),
+      values: r.payments.byPayment.map(function (x) { return DB.repBaseOf(x); })
+    };
+  }
+
+  if (tab === 'employees' && r.employees) {
+    var sold = r.employees.rows.filter(function (x) { return x.sold && x.sold.count; })
+      .sort(function (a, b) { return DB.repBaseOf(b.sold) - DB.repBaseOf(a.sold); });
+    return {
+      kind: 'bars', fmt: money, highlight: 0,
+      labels: sold.map(function (x) { return firstName(x.name); }),
+      values: sold.map(function (x) { return DB.repBaseOf(x.sold); })
+    };
+  }
+
+  if (tab === 'suppliers' && r.suppliers) {
+    /* Only the suppliers billed in the shop's own currency can share an axis;
+       putting dollars and lira on one scale would draw a $200 debt as larger
+       than a two-million-lira one. The table beside it carries every row in
+       the currency it is actually owed in. */
+    var sup = r.suppliers
+      .filter(function (x) { return x.currency === base && x.outstanding > 0; })
+      .sort(function (a, b) { return b.outstanding - a.outstanding; }).slice(0, 12);
+    return {
+      kind: 'bars', fmt: money, highlight: 0,
+      labels: sup.map(function (x) { return firstName(x.name); }),
+      values: sup.map(function (x) { return x.outstanding; })
+    };
+  }
+
+  return null;
+}
+
+/* Is there anything worth drawing? A donut needs a positive slice; a bar or a
+   line only needs one figure that is not zero, because a month that lost
+   money is very much worth charting. */
+function repHasChart(tab) {
+  var d = repChartData(tab);
+  if (!d || !d.values.length) return false;
+  return d.values.some(d.positiveOnly
+    ? function (v) { return v > 0; }
+    : function (v) { return v !== 0; });
 }
 
 /* A row of stat cards above a table. */
@@ -1115,9 +1202,6 @@ function repSuppliers() {
     else { outstanding.syp += s.outstanding; purchased.syp += s.totalPurchased; }
   });
   var owing = list.filter(function (s) { return s.outstanding > 0; });
-  var best = list.reduce(function (m, s) {
-    return Math.max(m, s.currency === 'USD' ? 0 : s.outstanding);
-  }, 0);
 
   var h = repStats([
     [t('outstanding'), repMoney(outstanding),
@@ -1155,9 +1239,10 @@ function repSuppliers() {
     '<td class="num">' + repMoney(purchased) + '</td>' +
     '<td class="num">' + repMoney(outstanding) + '</td><td></td><td></td></tr></tfoot></table></div>';
 
-  /* `best` is only ever used for a lira bar, so a dollars-only supplier list
-     would draw no bars at all — which is why there is no bar column here. The
-     badge carries the urgency instead, and it works in either currency. */
+  /* No share-of-total bar column here, deliberately: each supplier is billed
+     in ONE currency, so a bar measured against the biggest lira balance would
+     draw every dollar supplier as empty. The due-date badge carries the
+     urgency instead, and it means the same thing in either currency. */
   return h;
 }
 
@@ -1179,60 +1264,21 @@ function initialsOf(name) {
 }
 
 /* ------------------------------------------------------------------ chart
-   ONE series, in the shop's own currency, and the axis label says which. A
+   ONE series, in the shop's own currency, and the formatter says which. A
    chart cannot draw a pair, so rather than adding two currencies into one
-   misleading line it plots the base one and names it. Dollars taken as
-   dollars are in every table on the screen and in both exports. */
+   misleading line it plots the base one. Dollars taken as dollars are in
+   every table on the screen and in both exports.
+
+   The description comes from repChartData, which is also what decided the
+   canvas was worth drawing — so the two can no longer disagree. */
 function afterReports() {
   var c = document.getElementById('repChart');
   if (!c || !DB.rep) return;
+  var d = repChartData(repTab());
+  if (!d) return;
 
-  var base = DB.repBase();
-  var tab = repTab();
-  var f = function (v) { return (base === 'USD' ? '$' : '') + Charts.compact(v); };
-  var val = function (p) { return DB.repBaseOf(p); };
-
-  if (tab === 'sales') {
-    var s = DB.rep.sales;
-    Charts.line(c,
-      s.series.map(function (b) { return DB.repBucketTick(b.bucket, s.grain); }),
-      s.series.map(val), { fmt: f });
-
-  } else if (tab === 'profit') {
-    var rows = DB.rep.profit.rows;
-    Charts.bars(c,
-      rows.map(function (x) { return DB.typeLabels[x.type] || x.type || '—'; }),
-      rows.map(function (x) { return val(x.profit); }), { highlight: 0, fmt: f });
-
-  } else if (tab === 'inventory') {
-    var iv = DB.rep.inventory;
-    var live = iv.rows.filter(function (x) { return x.units > 0; });
-    Charts.donut(c,
-      live.map(function (x) { return DB.typeLabels[x.type] || x.type || '—'; }),
-      live.map(function (x) { return iv.hasCost ? val(x.cost) : x.units; }),
-      { fmt: iv.hasCost ? f : function (v) { return nf(v); } });
-
-  } else if (tab === 'payments') {
-    var pay = DB.rep.payments.byPayment;
-    Charts.donut(c,
-      pay.map(function (x) { return DB.payLabel(x.payment); }),
-      pay.map(val), { fmt: f });
-
-  } else if (tab === 'employees') {
-    var e = DB.rep.employees.rows.filter(function (x) { return x.sold && x.sold.count; })
-              .sort(function (a, b) { return val(b.sold) - val(a.sold); });
-    Charts.bars(c,
-      e.map(function (x) { return String(x.name).split(/\s+/)[0]; }),
-      e.map(function (x) { return val(x.sold); }), { highlight: 0, fmt: f });
-
-  } else {
-    /* Suppliers: only the ones billed in the base currency can share an axis,
-       and the rest are named under it rather than silently rescaled. */
-    var sup = (DB.rep.suppliers || [])
-      .filter(function (x) { return x.currency === base && x.outstanding > 0; })
-      .sort(function (a, b) { return b.outstanding - a.outstanding; }).slice(0, 12);
-    Charts.bars(c,
-      sup.map(function (x) { return String(x.name).split(/\s+/)[0]; }),
-      sup.map(function (x) { return x.outstanding; }), { highlight: 0, fmt: f });
-  }
+  var opts = { fmt: d.fmt, highlight: d.highlight };
+  if (d.kind === 'line') Charts.line(c, d.labels, d.values, opts);
+  else if (d.kind === 'donut') Charts.donut(c, d.labels, d.values, opts);
+  else Charts.bars(c, d.labels, d.values, opts);
 }

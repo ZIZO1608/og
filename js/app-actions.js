@@ -251,9 +251,24 @@ var ACTIONS = {
     window.print();
   },
 
+  /* AN EMPTY REPORT IS STILL A REPORT.
+
+     This used to refuse whenever `spec.rows` was empty, and say "Export
+     failed · None" — two words that are both wrong. Nothing failed, and the
+     answer is not "none": a week the shop sold nothing is a fact somebody
+     asked for on purpose, and the document still carries the range it covers,
+     the totals, the payroll and what is owed. On the Employees and Suppliers
+     tabs of a shop that has not entered either yet, the button simply did
+     nothing at all and blamed the export for it.
+
+     Both writers handle the empty case deliberately now — the PDF prints
+     "nothing was sold in this period" across the table, and the sheet leaves
+     the autofilter off rather than declaring one over no rows. The only thing
+     still refused is a spec that does not exist, which is a screen with
+     nothing exportable on it rather than a report with nothing in it. */
   export: function (el) {
     var spec = currentExportSpec();
-    if (!spec || !spec.rows || !spec.rows.length) { toast(t('export_failed'), t('none'), 'warn'); return; }
+    if (!spec || !spec.columns) { toast(t('export_failed'), t('no_access'), 'warn'); return; }
     spec.kind = el.getAttribute('data-kind') === 'excel' ? 'xlsx' : 'pdf';
     Export.run(spec);
   },
@@ -264,7 +279,12 @@ var ACTIONS = {
     var spec = type === 'customer' ? customerStatementSpec(+id)
              : type === 'product'  ? productSheetSpec(+id)
              : jobSheetSpec(id);
-    if (!spec || !spec.rows.length) { toast(t('export_failed'), t('none'), 'warn'); return; }
+    /* Same rule as `export` above. A customer with no purchases yet still has
+       a statement — their details, their tier, their points and a line saying
+       there is nothing on it — and that is a more useful thing to hand them
+       than a toast claiming the export failed. Only a record that does not
+       exist is refused. */
+    if (!spec) { toast(t('export_failed'), t('none'), 'warn'); return; }
     spec.kind = el.getAttribute('data-kind') === 'excel' ? 'xlsx' : 'pdf';
     closeDrawer();
     Export.run(spec);
