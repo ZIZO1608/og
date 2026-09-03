@@ -1,0 +1,308 @@
+/* ==========================================================================
+   YALLA WEAR — the portal's own look                        [yalla-theme.css]
+   --------------------------------------------------------------------------
+   Everything here is scoped to body[data-portal="yalla"], so the shop's
+   side never sees it. Loads last, after every shared stylesheet, and only
+   re-skins: no markup changes, no new classes the screens have to learn.
+
+   The idea: ink-indigo depth with one mint light source. A soft glow at the
+   top of every screen, cards that lift off the ground with a gradient and a
+   hairline of light along their top edge, one accent (mint) for anything
+   that can be pressed, and big tabular numbers because the printer reads
+   counts, not paragraphs. Still dark, still Montserrat, still RTL-safe.
+   ========================================================================== */
+
+body[data-portal="yalla"] {
+  --app:              #14122A;
+  --background:       #14122A;
+  --card:             #1F1C3B;
+  --card-hover:       #262251;
+  --popover:          #262251;
+  --muted:            #2A2650;
+  --accent:           #2F2A5A;
+  --subtle:           #1A1732;
+  --surface-1:        #1F1C3B;
+  --surface-2:        #262251;
+
+  --foreground:       #F4F7F5;
+  --muted-foreground: #B7B3D9;
+  --dim:              #8782B5;
+
+  --border:           #2E2A56;
+  --border-strong:    #453F7A;
+  --input:            #3B3670;
+
+  --brand:            #B5DCC0;
+  --brand-dim:        #9CCBA9;
+  --brand-foreground: #12102A;
+  --brand-soft:       #24382F;
+  --brand-border:     #3F6A50;
+
+  --sidebar:          #0F0D22;
+  --sidebar-border:   #24204A;
+  --sidebar-accent:   #1C1940;
+
+  --radius-sm:        10px;
+  --radius:           14px;
+  --radius-lg:        20px;
+
+  --glow:             0 0 0 1px rgba(181, 220, 192, .18), 0 10px 30px rgba(181, 220, 192, .10);
+  --lift:             0 8px 24px rgba(0, 0, 0, .28);
+  --edge:             inset 0 1px 0 rgba(255, 255, 255, .06);
+  --mint-grad:        linear-gradient(135deg, #CDEFD7 0%, #B5DCC0 55%, #97C9A6 100%);
+  --card-grad:        linear-gradient(180deg, #221F44 0%, #1B1836 100%);
+}
+
+/* ----------------------------------------------------------------- ground */
+body[data-portal="yalla"] .view {
+  background:
+    radial-gradient(900px 340px at 18% -8%, rgba(181, 220, 192, .13), transparent 62%),
+    radial-gradient(700px 300px at 100% 0%, rgba(120, 110, 220, .10), transparent 60%),
+    var(--background);
+  padding-top: 22px;
+}
+
+/* --------------------------------------------------------------- sidebar */
+body[data-portal="yalla"] .sidebar {
+  background: linear-gradient(180deg, #110F26 0%, #0E0C1F 100%);
+  border-inline-end: 1px solid rgba(255, 255, 255, .05);
+}
+body[data-portal="yalla"] .brand { padding: 20px 18px 18px; border-bottom: 1px solid rgba(255, 255, 255, .06); }
+body[data-portal="yalla"] .brand-mark {
+  width: 46px; height: 46px; border-radius: 14px; padding: 6px;
+  background: var(--mint-grad); box-shadow: 0 6px 18px rgba(181, 220, 192, .22);
+}
+body[data-portal="yalla"] .brand-text b { font-size: 15px; letter-spacing: .04em; }
+body[data-portal="yalla"] .brand-text span { color: var(--brand-dim); font-weight: 600; }
+body[data-portal="yalla"] .nav { padding: 14px 12px 8px; }
+body[data-portal="yalla"] .nav-label { color: var(--dim); letter-spacing: .14em; }
+body[data-portal="yalla"] .nav-item {
+  padding: 11px 13px; margin-bottom: 4px; border-radius: 12px;
+  color: var(--muted-foreground); font-size: 13.5px;
+}
+body[data-portal="yalla"] .nav-item:hover { background: rgba(255, 255, 255, .05); color: var(--foreground); }
+body[data-portal="yalla"] .nav-item.active,
+body[data-portal="yalla"] .nav-item.active:hover {
+  background: var(--mint-grad); color: var(--brand-foreground);
+  box-shadow: 0 8px 20px rgba(181, 220, 192, .22);
+}
+body[data-portal="yalla"] .nav-ind { display: none; }
+body[data-portal="yalla"] .nav-icon {
+  width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center;
+  background: rgba(255, 255, 255, .05);
+}
+body[data-portal="yalla"] .nav-item.active .nav-icon { background: rgba(18, 16, 42, .18); }
+body[data-portal="yalla"] .nav-badge {
+  margin-inline-start: auto; background: #FF7A7A; color: #1B0A0A; font-weight: 800;
+  border-radius: 999px; min-width: 20px; height: 20px; padding: 0 6px; font-size: 11px;
+  display: inline-grid; place-items: center;
+}
+body[data-portal="yalla"] .yl-leave { padding: 14px 16px 18px; border-top: 1px solid rgba(255, 255, 255, .06); }
+body[data-portal="yalla"] .yl-leave .btn { border-radius: 12px; }
+
+/* ---------------------------------------------------------------- topbar */
+body[data-portal="yalla"] .topbar {
+  background: rgba(20, 18, 42, .82); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+body[data-portal="yalla"] .partner-chip {
+  background: var(--mint-grad); color: var(--brand-foreground); font-weight: 800;
+  box-shadow: 0 4px 14px rgba(181, 220, 192, .22);
+}
+body[data-portal="yalla"] .seg { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .07); border-radius: 12px; }
+body[data-portal="yalla"] .seg button { border-radius: 9px; }
+body[data-portal="yalla"] .seg button.on { background: var(--mint-grad); color: var(--brand-foreground); }
+body[data-portal="yalla"] .icon-btn,
+body[data-portal="yalla"] .nt-bell {
+  border-radius: 12px; background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .07);
+}
+body[data-portal="yalla"] .user-chip { border-radius: 12px; background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .07); }
+body[data-portal="yalla"] .user-avatar { background: var(--mint-grad); color: var(--brand-foreground); }
+
+/* ------------------------------------------------------------- headlines */
+body[data-portal="yalla"] .page-head h1 {
+  font-size: 30px; font-weight: 900; letter-spacing: -.035em;
+  background: linear-gradient(90deg, #FFFFFF 0%, #DDF3E3 60%, #B5DCC0 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  padding-bottom: 2px;
+}
+body[data-portal="yalla"] .page-head .sub { color: var(--muted-foreground); }
+body[data-portal="yalla"] .eyebrow { color: var(--dim); letter-spacing: .09em; font-weight: 700; }
+
+/* --------------------------------------------------------------- buttons */
+body[data-portal="yalla"] .btn { border-radius: 12px; font-weight: 700; }
+body[data-portal="yalla"] .btn-primary {
+  background: var(--mint-grad); border-color: transparent; color: var(--brand-foreground);
+  box-shadow: 0 8px 20px rgba(181, 220, 192, .22), var(--edge);
+}
+body[data-portal="yalla"] .btn-primary:hover { background: linear-gradient(135deg, #DDF6E4, #C3E6CD); box-shadow: 0 10px 26px rgba(181, 220, 192, .32); }
+body[data-portal="yalla"] .btn-ghost { background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .09); color: var(--muted-foreground); }
+body[data-portal="yalla"] .btn-ghost:hover { background: rgba(255, 255, 255, .08); color: var(--foreground); }
+body[data-portal="yalla"] .btn-dark { background: #F4F7F5; color: #12102A; }
+body[data-portal="yalla"] .btn.bk-danger { background: linear-gradient(135deg, #FF9A9A, #FF7A7A); color: #2A0E0E; border-color: transparent; }
+body[data-portal="yalla"] .chip {
+  border-radius: 999px; background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .08);
+}
+body[data-portal="yalla"] .chip.on { background: var(--mint-grad); border-color: transparent; color: var(--brand-foreground); box-shadow: 0 6px 16px rgba(181, 220, 192, .2); }
+body[data-portal="yalla"] .seg-row .seg { border-radius: 999px; }
+body[data-portal="yalla"] .seg-row .seg.on { background: var(--mint-grad); border-color: transparent; color: var(--brand-foreground); }
+
+/* ----------------------------------------------------------------- cards */
+body[data-portal="yalla"] .card {
+  background: var(--card-grad); border: 1px solid rgba(255, 255, 255, .06);
+  box-shadow: var(--lift), var(--edge);
+}
+body[data-portal="yalla"] .card-head h3 { font-size: 15.5px; font-weight: 800; letter-spacing: -.02em; }
+body[data-portal="yalla"] .card-head .card-actions.muted { color: var(--dim); }
+body[data-portal="yalla"] .cart-empty { color: var(--dim); }
+
+/* stats become tiles: a number that fills the tile, a mint bar on its edge */
+body[data-portal="yalla"] .stat {
+  background: var(--card-grad); border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 16px; padding: 16px 16px 15px; box-shadow: var(--lift), var(--edge);
+  overflow: hidden;
+}
+body[data-portal="yalla"] .stat::after {
+  content: ''; position: absolute; inset-inline-start: 0; top: 14px; bottom: 14px; width: 3px;
+  border-radius: 3px; background: var(--brand); opacity: .55;
+}
+body[data-portal="yalla"] .stat + .stat::before { display: none; }
+body[data-portal="yalla"] .stat .eyebrow { min-height: 0; margin-bottom: 8px; font-size: 10.5px; }
+body[data-portal="yalla"] .stat .val { font-size: 30px; letter-spacing: -.04em; }
+body[data-portal="yalla"] .stat .val.accent { color: var(--brand); }
+body[data-portal="yalla"] .stat .val.warn { color: #F5C15C; }
+body[data-portal="yalla"] .stat .foot { color: var(--dim); font-size: 11.5px; margin-top: 4px; }
+body[data-portal="yalla"] .grid.stat-row, body[data-portal="yalla"] .grid.mb[style*="minmax"] { gap: 10px; }
+
+/* ------------------------------------------------------------ production */
+body[data-portal="yalla"] .yl-line-node {
+  background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 16px; padding: 14px 10px 13px;
+}
+body[data-portal="yalla"] .yl-line-node.on { background: rgba(181, 220, 192, .07); border-color: rgba(181, 220, 192, .3); }
+body[data-portal="yalla"] .yl-line-node:hover { border-color: var(--brand); }
+body[data-portal="yalla"] .yl-line-count { font-size: 24px; }
+body[data-portal="yalla"] .yl-line-ico { background: rgba(255, 255, 255, .06); }
+body[data-portal="yalla"] .yl-line-node.on .yl-line-ico { background: var(--mint-grad); }
+body[data-portal="yalla"] .yl-line-node.on .yl-line-ico svg { stroke: var(--brand-foreground); }
+
+/* radar, capacity */
+body[data-portal="yalla"] .yl-rd, body[data-portal="yalla"] .yl-heat-c {
+  border-radius: 12px; background: rgba(255, 255, 255, .03); border-color: rgba(255, 255, 255, .06);
+}
+body[data-portal="yalla"] .yl-rd.today, body[data-portal="yalla"] .yl-rd.on { background: rgba(181, 220, 192, .08); }
+body[data-portal="yalla"] .yl-rd.today { border-color: var(--brand); box-shadow: var(--glow); }
+
+/* the feed */
+body[data-portal="yalla"] .yl-fi { border-color: rgba(255, 255, 255, .05); }
+body[data-portal="yalla"] .yl-fi.unread, body[data-portal="yalla"] .yl-fi.new { background: rgba(181, 220, 192, .06); }
+body[data-portal="yalla"] .fi-ico { background: rgba(255, 255, 255, .06); box-shadow: var(--edge); }
+
+/* the new-orders inbox: the one card that must jump off the page */
+body[data-portal="yalla"] .yl-inbox {
+  border-color: rgba(181, 220, 192, .35);
+  box-shadow: 0 0 0 1px rgba(181, 220, 192, .12), 0 16px 40px rgba(181, 220, 192, .12);
+}
+body[data-portal="yalla"] .yl-offer {
+  background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .07); border-radius: 16px;
+}
+body[data-portal="yalla"] .yl-offer.urgent { border-color: rgba(245, 193, 92, .45); }
+body[data-portal="yalla"] .yl-offer-design { font-size: 15px; }
+
+/* the blocked banner */
+body[data-portal="yalla"] .yl-block { border-radius: 16px; background: rgba(245, 193, 92, .08); border-color: rgba(245, 193, 92, .3); }
+body[data-portal="yalla"] .yb-ico { background: linear-gradient(135deg, #F7CF7A, #F0B14C); }
+
+/* ------------------------------------------------------------- the board */
+body[data-portal="yalla"] .yl-col {
+  background: rgba(255, 255, 255, .025); border: 1px solid rgba(255, 255, 255, .06);
+  border-top-width: 3px; border-radius: 18px; padding: 13px 12px 12px;
+}
+body[data-portal="yalla"] .yl-col.can-drop { background: rgba(181, 220, 192, .06); border-color: rgba(181, 220, 192, .3); }
+body[data-portal="yalla"] .yl-col.over { box-shadow: var(--glow); }
+body[data-portal="yalla"] .yl-col-empty { border-color: rgba(255, 255, 255, .08); border-radius: 14px; }
+body[data-portal="yalla"] .yl-card {
+  background: var(--card-grad); border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 16px; box-shadow: var(--lift), var(--edge);
+}
+body[data-portal="yalla"] .yl-card:hover { border-color: rgba(181, 220, 192, .5); box-shadow: var(--glow), var(--lift); transform: translateY(-3px); }
+body[data-portal="yalla"] .yl-card.overdue { border-inline-start: 3px solid #FF7A7A; }
+body[data-portal="yalla"] .yl-card.blocked { border-inline-start: 3px solid #F5C15C; }
+body[data-portal="yalla"] .yl-id { font-size: 16px; }
+body[data-portal="yalla"] .yl-size { border-radius: 8px; background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .08); }
+body[data-portal="yalla"] .yl-sizes.lg .yl-size { border-radius: 10px; }
+body[data-portal="yalla"] .yl-card-foot { border-top-color: rgba(255, 255, 255, .06); }
+body[data-portal="yalla"] .yl-payout { color: var(--brand); }
+body[data-portal="yalla"] .yl-ss { border-radius: 14px; background: rgba(255, 255, 255, .03); border-color: rgba(255, 255, 255, .07); }
+body[data-portal="yalla"] .yl-ss.on { background: rgba(255, 255, 255, .06); box-shadow: var(--edge); }
+
+/* progress tracker */
+body[data-portal="yalla"] .track-node { border-radius: 999px; }
+body[data-portal="yalla"] .track-step.done .track-node { background: var(--mint-grad); border-color: transparent; }
+body[data-portal="yalla"] .track-step.now .track-node { box-shadow: 0 0 0 4px rgba(181, 220, 192, .18); }
+
+/* tables, badges, drawers, modals */
+body[data-portal="yalla"] .tbl th { color: var(--dim); letter-spacing: .08em; }
+body[data-portal="yalla"] .tbl td { border-bottom-color: rgba(255, 255, 255, .05); }
+body[data-portal="yalla"] tr.clickable:hover td { background: rgba(255, 255, 255, .03); }
+body[data-portal="yalla"] .badge { border-radius: 999px; font-weight: 700; }
+body[data-portal="yalla"] .badge.healthy { background: rgba(110, 231, 160, .14); color: #8EF0B6; border-color: rgba(110, 231, 160, .3); }
+body[data-portal="yalla"] .badge.tbc { background: rgba(245, 193, 92, .12); color: #F7CF7A; border-color: rgba(245, 193, 92, .3); }
+body[data-portal="yalla"] .badge.urgent, body[data-portal="yalla"] .badge.critical { background: rgba(255, 122, 122, .14); color: #FFA3A3; border-color: rgba(255, 122, 122, .3); }
+body[data-portal="yalla"] .drawer {
+  background: linear-gradient(180deg, #1C1938 0%, #15132A 100%);
+  border-inline-start: 1px solid rgba(255, 255, 255, .07);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, .45);
+}
+body[data-portal="yalla"] .drawer-head { background: transparent; border-bottom-color: rgba(255, 255, 255, .06); }
+body[data-portal="yalla"] .modal { background: linear-gradient(180deg, #1F1C3B, #17152D); border: 1px solid rgba(255, 255, 255, .07); border-radius: 20px; box-shadow: 0 30px 80px rgba(0, 0, 0, .5); }
+body[data-portal="yalla"] .modal-foot { background: rgba(255, 255, 255, .03); border-top-color: rgba(255, 255, 255, .06); border-radius: 0 0 20px 20px; }
+body[data-portal="yalla"] .inp { background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .1); border-radius: 12px; }
+body[data-portal="yalla"] .inp:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(181, 220, 192, .18); }
+body[data-portal="yalla"] .partner-note { border-radius: 12px; background: rgba(255, 255, 255, .03); }
+body[data-portal="yalla"] .ord-review { border-radius: 14px; background: rgba(255, 255, 255, .03); }
+
+/* messages thread */
+body[data-portal="yalla"] .yl-msg { border-radius: 16px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .06); }
+body[data-portal="yalla"] .yl-msg.mine { background: rgba(181, 220, 192, .08); border-color: rgba(181, 220, 192, .2); }
+
+/* the Telegram card */
+body[data-portal="yalla"] .tg-code-box { border-radius: 16px; background: rgba(181, 220, 192, .06); }
+body[data-portal="yalla"] .tg-code { color: var(--brand); }
+
+/* toasts and the speech-bubble panel pick up the rounder shape */
+body[data-portal="yalla"] .nt-panel { border-radius: 18px; background: #1F1C3B; border-color: rgba(255, 255, 255, .08); box-shadow: 0 24px 60px rgba(0, 0, 0, .5); }
+body[data-portal="yalla"] .nt-item.unread { background: rgba(181, 220, 192, .06); }
+
+/* ------------------------------------------------------------------ phone */
+@media (max-width: 720px) {
+  body[data-portal="yalla"] .view { padding-top: 16px; padding-inline: 14px; }
+  body[data-portal="yalla"] .page-head h1 { font-size: 26px; }
+  body[data-portal="yalla"] .stat { padding: 14px 14px 13px; border-radius: 14px; }
+  body[data-portal="yalla"] .stat .val { font-size: 26px; }
+  /* A floating pill bar instead of a flat strip. */
+  body[data-portal="yalla"] .tabbar {
+    inset-inline: 10px; bottom: 8px; border-radius: 22px;
+    background: rgba(17, 15, 38, .94); border: 1px solid rgba(255, 255, 255, .08);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, .5), var(--edge);
+    height: calc(var(--tabbar-h) - 6px); padding-bottom: max(2px, env(safe-area-inset-bottom, 0px));
+  }
+  body[data-portal="yalla"] .tabbtn { color: var(--dim); border-radius: 16px; margin: 4px 2px; min-height: 44px; }
+  body[data-portal="yalla"] .tabbtn.on { color: var(--brand-foreground); background: var(--mint-grad); box-shadow: 0 6px 16px rgba(181, 220, 192, .22); }
+  body[data-portal="yalla"] .tabbtn.on::before { display: none; }
+  body[data-portal="yalla"] .tabbtn .tb-txt { font-weight: 700; }
+  body[data-portal="yalla"] .topbar { background: rgba(20, 18, 42, .92); }
+}
+
+/* Room under the floating bar, and card heads that stack on a phone rather
+   than squeezing the title into two lines beside a long hint. */
+@media (max-width: 720px) {
+  body[data-portal="yalla"] .view { padding-bottom: calc(var(--tabbar-h) + 28px); }
+  body[data-portal="yalla"] .card-head { flex-wrap: wrap; row-gap: 4px; }
+  body[data-portal="yalla"] .card-head .card-actions.muted { flex-basis: 100%; margin-inline-start: 0; font-size: 11px; }
+  body[data-portal="yalla"] .drawer-body { padding-bottom: calc(var(--tabbar-h) + 20px); }
+}
+
+/* toasts pick up the portal's shape and accent too */
+body[data-portal="yalla"] .toast { border-radius: 14px; background: #1F1C3B; border: 1px solid rgba(255, 255, 255, .08); box-shadow: 0 16px 40px rgba(0, 0, 0, .5); }
+body[data-portal="yalla"] .toast.ok { border-inline-start: 3px solid var(--brand); }

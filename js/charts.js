@@ -7,6 +7,16 @@
 
 var Charts = (function () {
 
+  /* The accent is read off the page, not baked in: the shop's lime and the
+     partner portal's mint are the same token, --brand, on two bodies. */
+  function brandColor() {
+    try {
+      var v = getComputedStyle(document.body).getPropertyValue('--brand').trim();
+      if (v) return v;
+    } catch (e) { /* no DOM */ }
+    return '#C6FF00';
+  }
+
   var registry = {};   // canvasId -> Chart instance
 
   function has() { return typeof window.Chart !== 'undefined'; }
@@ -27,8 +37,8 @@ var Charts = (function () {
 
   /* Dark theme: lime leads, then a light-to-dark zinc ramp so slices stay
      separable against the near-black card. */
-  var RAMP = ['#C6FF00', '#FAFAFA', '#A1A1AA', '#7E8B99', '#5B5B66', '#3F3F46', '#8A6E3A', '#3A5478'];
-  var INK = '#C6FF00';        /* series colour */
+  var RAMP = [brandColor(), '#FAFAFA', '#A1A1AA', '#7E8B99', '#5B5B66', '#3F3F46', '#8A6E3A', '#3A5478'];
+  var INK = brandColor();        /* series colour */
   var LINE = '#27272A';       /* gridlines */
   var MUTED = '#A1A1AA';      /* tick labels */
   var SURFACE = '#141417';    /* card background, used for donut segment gaps */
@@ -111,7 +121,7 @@ var Charts = (function () {
        time series, and the labels already carry the categories. */
     labels.forEach(function (l, i) {
       var pct = Math.max(2, Math.round(values[i] / max * 100));
-      var col = values[i] === max ? '#C6FF00' : '#3F3F46';
+      var col = values[i] === max ? brandColor() : '#3F3F46';
       html += '<div class="fb-row"><span class="fb-label">' + l + '</span>' +
               '<span class="fb-track"><i class="fb-bar" style="width:' + pct + '%;background:' + col + '"></i></span>' +
               '<span class="fb-val">' + (fmt ? fmt(values[i]) : compact(values[i])) + '</span></div>';
@@ -175,8 +185,8 @@ var Charts = (function () {
           labels: labels,
           datasets: [{
             data: values,
-            backgroundColor: values.map(function (_, i) { return i === opts.highlight ? '#C6FF00' : '#52525B'; }),
-            hoverBackgroundColor: '#C6FF00',
+            backgroundColor: values.map(function (_, i) { return i === opts.highlight ? brandColor() : '#52525B'; }),
+            hoverBackgroundColor: brandColor(),
             borderWidth: 0,
             borderRadius: 4,
             barPercentage: .68,
