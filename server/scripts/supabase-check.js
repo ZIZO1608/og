@@ -166,6 +166,7 @@ if (QUICK || found === 0) {
 
 const DB = await import('../lib/db.js');
 const Vault = await import('../lib/credvault.js');
+const Lineage = await import('../lib/lineage.js');
 /* Read-only, and it matters: DB.open() applies every pending migration on the
    way in, so with an unfinished .sql sitting in server/migrations this check
    was a schema change on the live database that nobody asked for. It did
@@ -233,7 +234,7 @@ const cursorFor = (t) => {
 const PAGE = 1000;
 const keyCols = (t) =>
   db.prepare('SELECT name FROM pragma_table_info(?) WHERE pk > 0 ORDER BY pk').all(t).map((c) => c.name);
-const keyOf = (row, cols) => cols.map((c) => String(row[c])).join(' ');
+const keyOf = (row, cols) => cols.map((c) => String(row[c])).join('\u0000');
 async function remoteKeys(t, cols) {
   const out = [];
   for (let offset = 0; ; offset += PAGE) {
@@ -337,7 +338,7 @@ for (const t of tables) {
   let stranded = 0;
   if (cur && missing.length) {
     for (const k of missing) {
-      const parts = k.split(' ');
+      const parts = k.split('\u0000');
       if (cur.kind === 'id') { if (Number(parts[0]) <= cur.at) stranded++; continue; }
       const top = db.prepare('SELECT MAX(seq) AS m FROM change_log WHERE tbl = ? AND row_id = ?')
                     .get(t, parts.join(':')).m;
@@ -414,6 +415,33 @@ if (ahead.some((a) => WHOLE.has(a.t) && a.t !== 'users')) {
 }
 
 console.log(head('6. Sync bookmarks'));
+
+/* WHOSE MIRROR IS THIS — asked before the bookmarks are judged, because a
+   bookmark written by another database is not "stranded", it is somebody
+   else's. Read-only here: the check never claims. See lib/lineage.js. */
+try {
+  const lin = await Lineage.guard({ readOnly: true });
+  if (lin.ok && lin.mine && !lin.unclaimed) {
+    console.log(tick(`the mirror is this database's (lineage ${lin.mine.slice(0, 8)}…)`));
+  } else if (lin.unclaimed) {
+    /* Red, because the next sync from this machine is refused until a person
+       decides — a mirror that quietly stopped moving is the thing the whole
+       check exists to catch. */
+    console.log(cross('nobody has claimed this mirror yet — every sync is refused (exit 2) until one database does'));
+    console.log(`      If THIS machine is the shop:  ${BOLD}OG_SYNC_TAKEOVER=1 npm run supabase:sync${OFF}  once, then reconcile.`);
+    console.log('      If it is a dev or test copy:  OG_SYNC_MINUTES=0 in server/.env, or a project of its own.');
+    failed = true;
+  } else {
+    const since = String(lin.other.since || '?').slice(0, 16).replace('T', ' ');
+    console.log(cross(`the mirror belongs to ANOTHER database: ${lin.other.host}, since ${since} UTC`));
+    console.log('      Every sync and reconcile from this machine is refused (exit 2) until a person decides:');
+    console.log(`      this machine IS the shop   → ${BOLD}OG_SYNC_TAKEOVER=1 npm run supabase:sync${OFF}, then reconcile;`);
+    console.log('      this is a dev or test copy → OG_SYNC_MINUTES=0 in server/.env, or a project of its own.');
+    failed = true;
+  }
+} catch (e) {
+  console.log(warn(`lineage could not be read — ${String(e.message).slice(0, 80)}`));
+}
 
 /* A cursor ahead of its OWN table's last log entry can never move again — the
    next run asks for changes after a number nothing will ever reach, finds
@@ -496,8 +524,9 @@ if (!Vault.isEnabled()) {
                    foreign.map((r) => `${r.username}${r.active ? ' (active)' : ''}`).join(', ');
       if (live.length) { console.log(cross(line)); failed = true; }
       else console.log(warn(line));
-      console.log('      A restore would recreate them. They came from another database pushed');
-      console.log('      at this project. Delete them in Table Editor → users, or create them here.');
+      console.log('      A restore here would recreate them. They were pushed by ANOTHER database on');
+      console.log('      this project — see the lineage line in 6. If that machine is the shop, this');
+      console.log('      one must stop syncing here; if it was a test copy, delete them in Table Editor.');
     }
   } catch {
     console.log(warn('users.pw_enc is missing — run server/supabase/002_user_credentials.sql.'));

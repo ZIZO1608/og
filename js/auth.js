@@ -94,6 +94,15 @@ var Auth = (function () {
     return el;
   }
 
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function OG_LANG_AR() {
+    try { return (localStorage.getItem('og.lang') || '').indexOf('ar') === 0; } catch (e) { return false; }
+  }
+
   function shake(el) {
     var card = el.querySelector('.gate-card');
     card.classList.remove('shake');
@@ -139,7 +148,23 @@ var Auth = (function () {
       if (verdict !== 'up') {
         note.textContent = 'Cannot reach the server';
         note.className = 'gate-note gate-warn';
+        return;
       }
+      /* WHICH server. Two laptops each running their own copy are two
+         shops that will never see each other's orders, and nothing on the
+         screen said so. The address every other device must open is the
+         one line that stops that. */
+      API.get('/api/health').then(function (h) {
+        var here = location.host;
+        var lan = (h && h.lan || []).filter(function (u) { return u.indexOf(here) < 0; });
+        note.innerHTML = '<b>' + (h && h.shop ? esc(h.shop) : 'OG SYSTEM') + '</b> · ' +
+          (OG_LANG_AR() ? 'متصل بهذا الخادم' : 'connected to this server') + ': <span dir="ltr">' + esc(here) + '</span>' +
+          (lan.length
+            ? '<br>' + (OG_LANG_AR() ? 'على الأجهزة الأخرى افتح' : 'on other devices open') +
+              ' <span dir="ltr"><b>' + esc(lan[0]) + '</b></span>'
+            : '');
+        note.className = 'gate-note gate-ok';
+      }).catch(function () { /* the login still works without the line */ });
     });
 
     el.querySelector('#lgForm').addEventListener('submit', function (e) {

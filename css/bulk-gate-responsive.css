@@ -560,3 +560,7 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
   padding: 10px 2px; font-size: var(--fs-sm); color: var(--muted-foreground);
 }
 .more-row > .seg, .more-row > .btn { margin-inline-start: auto; }
+
+/* The login card's "which server" line. */
+.gate-note.gate-ok { color: #A1A1AA; font-weight: 500; line-height: 1.6; }
+.gate-note.gate-ok b { color: #FAFAFA; }

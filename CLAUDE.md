@@ -456,15 +456,23 @@ it rejects the **whole batch**, not the column:
   without it, which was an oversight rather than a decision, and its two tables are the shop's
   customer list joined to their behaviour — the one category `FORBIDDEN` in `server/lib/auth.js`
   refuses even to the print partner. Fixed; check for it when adding a table.
-- **One Supabase project, one database.** A throwaway test database that is pointed at the live
-  project pushes *itself*: its `users` land beside the shop's (upserted, never deleted), its run
-  writes its own — shorter — `change_log` seqs into every `sync_state` cursor, and its purge deletes
-  the shop's real rows from the mirror. That happened on 2026-08-30: five real invoices and their
-  deliveries vanished from the mirror, the cursors sat above those rows' seqs so no rewind could
-  ever look there again, and every later run died on the `deliveries → sales` foreign key before
-  the history, partner and drawer blocks ran. Test against a Supabase project of its own, or with no
-  Supabase configured at all. `npm run supabase:check` now goes red on an account the shop does not
-  have; `npm run supabase:reconcile` is the repair.
+- **One Supabase project, one database.** A second database pointed at the same project is not a
+  second copy, it is a second writer: its `users` land beside the first's (upserted, never
+  deleted), its run writes its own `change_log` seqs into every `sync_state` cursor, and because
+  invoice ids collide (INV-2106 is the next number on both tills) its purge of a demo invoice
+  deletes the other machine's real one. That happened on 2026-08-30 and again on 2026-09-03 — the
+  second database was not a throwaway test copy but **another live install with the same `.env`**
+  (its sealed passwords do not open with this machine's `OG_VAULT_KEY`; its retired accounts are
+  disabled the way the Accounts section above describes). Each side's run deleted the other's sales
+  and left the other's bookmarks stranded, and the local run then died on the `deliveries → sales`
+  foreign key before the history, partner and drawer blocks ran.
+  **`server/lib/lineage.js` is the guard**: the first database to sync writes a random id into
+  `sync_state` (`lineage`, with hostname and date) and keeps it in its own `config`; sync and
+  reconcile compare first and **refuse with exit 2** when the mirror belongs to another database.
+  `OG_SYNC_TAKEOVER=1` (or `--takeover`) claims it — a decision about which machine is the shop, made
+  by a person, once, and followed by a reconcile. A dev or test copy sets `OG_SYNC_MINUTES=0` or gets
+  its own project. `npm run supabase:check` names whose mirror it is and goes red on an account this
+  database does not have.
   Until they are run, the sync says so by name and pushes everything else — taking a whole run down
   because one table is missing would stop a day's sales being mirrored over a table nobody has
   created yet.
@@ -548,6 +556,19 @@ companies feel connected rather than merely sharing a table.
   Every new line from the OTHER company gets a toast, a short WebAudio chime and, when the tab is
   hidden, a browser Notification. `DB.hydrate` is never given a partial payload — it would
   empty the catalogue — so the pulse uses `hydratePartner` and refills the alert arrays in place.
+- **The partner portal has five screens**, not four: Today, Job queue, Invoices, Earnings and
+  **Reviews** (`viewReviews` in `js/yalla.js`) — the shop's rating and words on every finished
+  job, with the average, a tap-to-filter distribution, and the quote given the type size rather
+  than the metadata. Opening it marks those lines read through `markRead`'s **`kind` filter**,
+  so a delay note on the same job stays unread; the nav badge counts `DB.unreadReviews('yalla')`.
+  The phone tab bar drops the OG back button for a real partner account (`isPartnerAccount()`) —
+  `partner-view` refuses by role, so it was a dead sixth tab.
+- **What is new is decided before anything draws.** `Pulse.apply()` takes the unread list first
+  and announces it last: the job drawer and the Reviews page both mark messages read as part of
+  rendering, so a toast computed afterwards never fired for the line that had just arrived.
+- **Presence rides on every live event.** `Live.presence()` counts open tabs per side; the topbar
+  pill reads "Yalla Wear · online" and turns green. A join or a leave carries `who`, which the
+  browser uses to repaint the pill *without* refetching the bundle.
 - **Yalla Wear's unread lines are in the main bell too** (`partner_msg` in `alerts.js`, key
   `msg:<id>`, shop accounts with `print.read` only). Unread only, so opening the thread removes
   the row and the prune tidies its read mark; tapping one opens the job or invoice.

@@ -514,7 +514,7 @@ export function postMessage({ jobId = null, invoiceId = null, from, kind = 'note
 }
 
 /* Reading a thread on one side must never clear the other side's badge. */
-export function markRead({ side, jobId = null, invoiceId = null, userId = null }) {
+export function markRead({ side, jobId = null, invoiceId = null, kind = null, userId = null }) {
   if (side !== 'og' && side !== 'yalla') {
     throw Object.assign(new Error('side must be og or yalla'), { code: 'bad_request' });
   }
@@ -529,8 +529,12 @@ export function markRead({ side, jobId = null, invoiceId = null, userId = null }
        change entry pointing at a message that does not exist — the sync
        would look it up, find nothing, and quietly skip the read flags
        forever. A thread is a handful of messages; naming each is cheap. */
-    const ids = d.prepare(`SELECT id FROM job_messages WHERE ${where} AND ${col} = 0`)
-      .all(jobId || invoiceId).map((r) => r.id);
+    /* A kind narrows it further: the Reviews page marks the review lines
+       read, and nothing else on that job. Without it, opening a summary
+       screen quietly cleared unrelated messages nobody had looked at. */
+    const ids = d.prepare(
+      `SELECT id FROM job_messages WHERE ${where} AND ${col} = 0` + (kind ? ' AND kind = ?' : '')
+    ).all(...[jobId || invoiceId].concat(kind ? [kind] : [])).map((r) => r.id);
     if (!ids.length) return { marked: 0 };
 
     d.prepare(`UPDATE job_messages SET ${col} = 1 WHERE id IN (${ids.map(() => '?').join(',')})`)

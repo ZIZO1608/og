@@ -86,7 +86,15 @@ router.add('GET /api/health', (ctx) => {
   /* Touches the database rather than just returning 200, so a monitor notices
      a corrupt or missing file instead of reporting a healthy dead server. */
   const row = DB.get().prepare('SELECT COUNT(*) AS n FROM warehouses').get();
-  sendOk(ctx.res, { warehouses: row.n, time: DB.nowIso() });
+  /* Which server, and how the other devices reach it. The login screen
+     prints it, because two laptops each running their own copy are two
+     shops, and nothing else on screen would ever say so. */
+  const shop = DB.get().prepare("SELECT value FROM config WHERE key = 'shop.name'").get();
+  sendOk(ctx.res, {
+    warehouses: row.n, time: DB.nowIso(),
+    shop: shop ? shop.value : null,
+    lan: lanAddresses().filter((n) => !n.note).map((n) => `${n.address}:${PORT}`)
+  });
 });
 
 /* --- auth ------------------------------------------------------------------ */
@@ -1480,15 +1488,29 @@ function webJob(j) {
 /* The small poll. Has anything moved for the side asking? Cheap enough to ask
    every half minute from every open tab. */
 router.add('GET /api/partner/pulse', requirePerm(['print.read', 'partner.jobs'], (ctx) => {
-  sendOk(ctx.res, Partner.pulse(side(ctx)));
+  sendOk(ctx.res, { ...Partner.pulse(side(ctx)), presence: Live.presence() });
 }));
 
-router.add('POST /api/print-jobs', requirePerm('print.write', async (ctx) => {
+/* Two doors into the same room. A manager raises a job by hand on
+   print.write. A CASHIER raises one at the till on `sell` alone — the
+   customer is standing there with the shirt — but only that way: it must
+   name the sale it came from, and the sale must be theirs. Gated on
+   print.write alone, a cashier's sale went through and the print job behind
+   it was refused with a 403 the customer never saw. */
+router.add('POST /api/print-jobs', requirePerm(['print.write', 'sell'], async (ctx) => {
   const b = await readJson(ctx.req);
   try {
+    const canWrite = Auth.can(ctx.user, 'print.write');
+    if (!canWrite) {
+      const sale = b.saleId ? DB.get().prepare('SELECT id, cashier_id FROM sales WHERE id = ?').get(String(b.saleId)) : null;
+      if (!sale || Number(sale.cashier_id) !== Number(ctx.user.id)) {
+        return sendError(ctx.res, 403, 'forbidden',
+          'A print job can only be raised at the till, on a sale you rang up.');
+      }
+    }
     const job = Partner.create({
       ...b, userId: ctx.user.id,
-      source: b.source === 'till' ? 'till' : 'manual',
+      source: (b.source === 'till' || !canWrite) ? 'till' : 'manual',
       autoSend: !!b.autoSend
     });
     bump();
@@ -1586,7 +1608,8 @@ router.add('POST /api/messages/read', requirePerm(['print.read', 'partner.jobs']
   const b = await readJson(ctx.req);
   try {
     sendOk(ctx.res, Partner.markRead({
-      side: side(ctx), jobId: b.jobId || null, invoiceId: b.invoiceId || null, userId: ctx.user.id
+      side: side(ctx), jobId: b.jobId || null, invoiceId: b.invoiceId || null,
+      kind: b.kind || null, userId: ctx.user.id
     }));
   } catch (e) { partnerFail(ctx.res, e); }
 }));

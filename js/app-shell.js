@@ -378,7 +378,11 @@ function renderTopbar() {
     (typeof Notify !== 'undefined' ? Notify.bell() : '') +
     /* Green while the live line to the server is open; grey while it is
        reconnecting and the poll carries on. Pulse paints it. */
-    '<span class="live-dot' + (typeof Pulse !== 'undefined' && Pulse.isLive() ? ' on' : '') + '"></span>' +
+    (typeof Auth !== 'undefined' && Auth.can('print.read')
+      ? '<span class="live-who" title="' + esc(t('live_on')) + '">' +
+          '<span class="live-dot' + (typeof Pulse !== 'undefined' && Pulse.isLive() ? ' on' : '') + '"></span>' +
+          '<span class="live-txt">' + (typeof Pulse !== 'undefined' ? Pulse.presenceText() : '') + '</span></span>'
+      : '') +
     '<button class="icon-btn" data-act="bell" title="' + t('notifications') + '">' +
       '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M18 16V10a6 6 0 1 0-12 0v6l-2 3h16zM10 21h4"/></svg>' +
       /* Unread, not total — a badge that never moves is one people stop

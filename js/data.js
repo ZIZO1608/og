@@ -1556,6 +1556,9 @@ var DB = {
       if (m[f]) return;
       if (filter && filter.jobId && m.jobId !== filter.jobId) return;
       if (filter && filter.invoiceId && m.invoiceId !== filter.invoiceId) return;
+      /* One kind only, when asked: the Reviews page clears the reviews and
+         leaves anything else on that job still unread. */
+      if (filter && filter.kind && m.kind !== filter.kind) return;
       m[f] = true; n++;
     });
 
@@ -1564,7 +1567,8 @@ var DB = {
     if (n && filter && (filter.jobId || filter.invoiceId)) {
       pushPartner(function () {
         return Shop.markMsgRead({ jobId: filter.jobId || null,
-                                  invoiceId: filter.invoiceId || null });
+                                  invoiceId: filter.invoiceId || null,
+                                  kind: filter.kind || null });
       }, typeof t === 'function' ? t('messages') : 'Messages', true);
     }
     return n;
@@ -1573,6 +1577,14 @@ var DB = {
   unreadOnJob: function (side, jobId) {
     var f = side === 'og' ? 'readOg' : 'readYl';
     return jobMessages.filter(function (m) { return m.jobId === jobId && !m[f]; }).length;
+  },
+
+  /* Reviews the other side has written that this side has not opened yet.
+     Keyed on the message, not on a local flag, so reading one on the phone
+     is read on the laptop too. */
+  unreadReviews: function (side) {
+    var f = side === 'og' ? 'readOg' : 'readYl';
+    return jobMessages.filter(function (m) { return m.kind === 'review' && !m[f]; });
   },
 
   /* The shop's average verdict, out of five, over every reviewed job. */

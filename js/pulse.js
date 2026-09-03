@@ -38,6 +38,7 @@ var Pulse = (function () {
   var live = false;
   var announced = 0;            // highest message id already announced
   var audio = null;
+  var presence = null;          // { og: n, yalla: n } — open tabs per side
 
   function side() { return (typeof OG !== 'undefined' && OG.print.partner) ? 'yalla' : 'og'; }
   function me() { return side() === 'og' ? 'readOg' : 'readYl'; }
@@ -115,15 +116,20 @@ var Pulse = (function () {
     }
   }
 
-  function announce() {
-    var list = fresh();
-    if (!list.length) return;
-    list.forEach(function (m) { if (msgId(m) > announced) announced = msgId(m); });
+  /* The server's automatic lines start with their own English label
+     ('Order sent — P-1035 · 1 pcs'); beside the localised kind that read
+     twice. The label goes, the facts stay. */
+  function body(m) {
+    return String(m.text).replace(/^[A-Za-z][^—]{1,28} — /, '').slice(0, 90);
+  }
+
+  function announce(list) {
+    if (!list || !list.length) return;
     /* Three toasts at most; the rest are on the bubble. */
     list.slice(-3).forEach(function (m, i) {
       setTimeout(function () {
-        toast(who(m) + ' · ' + (m.jobId || m.invoiceId),
-              kindOf(m) + ' — ' + String(m.text).slice(0, 90), 'ok', 6000);
+        toast(who(m) + ' · ' + (m.jobId || m.invoiceId) + ' · ' + kindOf(m),
+              body(m), 'ok', 6000);
       }, i * 350);
     });
     chime();
@@ -150,16 +156,30 @@ var Pulse = (function () {
         (r[1].fullCards || []).forEach(function (id) { DB.fullCards.push(Number(id)); });
       }
 
+      /* WHAT IS NEW IS DECIDED HERE, before anything draws.
+
+         Two screens mark messages read as part of rendering themselves —
+         the job drawer and the Reviews page — so by the time the paint was
+         finished there was nothing left that counted as unread, and the
+         toast for the line that had just arrived never fired. The list is
+         taken first and announced last. */
+      var news = fresh();
+      news.forEach(function (m) { if (msgId(m) > announced) announced = msgId(m); });
+
       if (typeof Notify !== 'undefined') Notify.refresh();
       if (safeToRedraw()) {
         if (typeof renderSidebar === 'function') renderSidebar();
         if (typeof render === 'function') render();
-      } else if (typeof renderTopbar === 'function') {
-        /* The badges live in the topbar; it holds no unsaved state. */
-        renderTopbar();
+      } else {
+        /* Something is open on top. The shell around it holds no unsaved
+           state, so the badges, the sidebar counts and the phone tabs still
+           move — and a thread that is open gets its new lines in place. */
+        if (typeof renderTopbar === 'function') renderTopbar();
+        if (typeof renderSidebar === 'function') renderSidebar();
+        refreshOpenThreads();
       }
       paintLive();
-      announce();
+      announce(news);
     });
   }
 
@@ -169,6 +189,7 @@ var Pulse = (function () {
     if (inflight) { again = true; return; }
     inflight = true;
     Shop.pulse().then(function (p) {
+      if (p.presence) { presence = p.presence; paintLive(); }
       var stamp = p.stamp + '|' + p.unread + '|' + p.pending;
       if (last === null) {
         /* First look: nothing to announce yet, but remember what is
@@ -188,6 +209,21 @@ var Pulse = (function () {
     });
   }
 
+  /* A drawer showing a job thread is redrawn from the fresh messages, and
+     the reader is marked as having read them — they are looking right at
+     it. */
+  function refreshOpenThreads() {
+    if (typeof YALLA === 'undefined' || !YALLA.threadCard) return;
+    document.querySelectorAll('[data-thread-job]').forEach(function (host) {
+      var id = host.getAttribute('data-thread-job'), s = host.getAttribute('data-thread-side');
+      host.innerHTML = YALLA.threadCard(id, s);
+      DB.markRead(s, { jobId: id });
+      var box = host.querySelector('.yl-thread');
+      if (box && box.lastElementChild) box.lastElementChild.scrollIntoView({ block: 'nearest' });
+    });
+    if (typeof Notify !== 'undefined') Notify.refresh();
+  }
+
   /* ---- the live line ---------------------------------------------------- */
 
   function paintLive() {
@@ -195,6 +231,29 @@ var Pulse = (function () {
       el.classList.toggle('on', live);
       el.title = live ? t('live_on') : t('live_off');
     });
+    document.querySelectorAll('.live-txt').forEach(function (el) { el.textContent = presenceText(); });
+    document.querySelectorAll('.live-who').forEach(function (el) {
+      el.classList.toggle('other-on', otherOnline());
+    });
+  }
+
+  function otherOnline() {
+    if (!presence) return false;
+    return (side() === 'og' ? presence.yalla : presence.og) > 0;
+  }
+
+  /* "Yalla Wear · online" on the shop's screen, "OG · online" on the partner's. */
+  function presenceText() {
+    if (!live) return t('live_off');
+    var other = side() === 'og' ? 'Yalla Wear' : (typeof CONFIG !== 'undefined' ? CONFIG.SHOP_NAME : 'OG');
+    return other + ' · ' + t(otherOnline() ? 'live_other_on' : 'live_other_off');
+  }
+
+  function takePresence(ev) {
+    try {
+      var d = JSON.parse(ev.data || '{}');
+      if (d && d.presence) { presence = d.presence; paintLive(); }
+    } catch (e) { /* a line with no data */ }
   }
 
   function connect() {
@@ -202,8 +261,15 @@ var Pulse = (function () {
     try {
       es = new EventSource('/api/live');
     } catch (e) { es = null; return; }
-    es.addEventListener('hello', function () { live = true; paintLive(); });
-    es.addEventListener('change', function () { tick(); });
+    es.addEventListener('hello', function (ev) { live = true; takePresence(ev); paintLive(); });
+    es.addEventListener('change', function (ev) {
+      takePresence(ev);
+      /* Somebody arriving or leaving is not a data change — nothing to
+         refetch. Everything else is. */
+      var d = {};
+      try { d = JSON.parse(ev.data || '{}'); } catch (e) { /* ignore */ }
+      if (!d.who) tick();
+    });
     es.onerror = function () {
       /* The browser reconnects by itself (retry: 3000). Until it does, the
          dot goes grey and the poll carries on. */
@@ -232,6 +298,7 @@ var Pulse = (function () {
   return {
     start: start, tick: tick,
     isLive: function () { return live; },
+    presenceText: presenceText,
     settle: function () { last = null; }
   };
 })();

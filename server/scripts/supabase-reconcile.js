@@ -38,6 +38,7 @@ import { load } from '../lib/env.js';
 import * as DB from '../lib/db.js';
 import * as SB from '../lib/supabase.js';
 import { lagColumn } from '../lib/mirror-lag.js';
+import * as Lineage from '../lib/lineage.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -149,6 +150,21 @@ if (!reach.ok) { bad(`Cannot reach Supabase — ${reach.message}`); process.exit
 tick(`Connected to ${SB.projectUrl()}`);
 
 DB.open(process.env.OG_DB || resolve(HERE, '..', 'data', 'og.db'));
+
+/* Whose mirror is this? A reconcile from the wrong machine is the most
+   destructive thing in this folder — it deletes every row the other
+   database has that this one has not. Refused unless this database owns the
+   mirror, or --takeover says it should from now on. See lib/lineage.js. */
+{
+  const lin = await Lineage.guard({ takeover: Lineage.takeoverRequested() });
+  if (!lin.ok) {
+    head('Whose mirror is this?');
+    for (const line of Lineage.refusal(lin.other)) console.log(line);
+    process.exit(2);
+  }
+  if (lin.claimed) tick(`mirror claimed for this database (${lin.mine.slice(0, 8)}…)`);
+  if (lin.tookOver) warn(`mirror taken over from ${lin.tookOver.host} — its rows go below.`);
+}
 
 const plan = [];
 

@@ -32,11 +32,17 @@ export function subscribe(res, side, userId = null) {
   /* Tell the browser to reconnect quickly if the line drops, then say hello
      so the first byte arrives and the client knows it is on. */
   res.write('retry: 3000\n\n');
-  res.write(`event: hello\ndata: {"side":"${side}"}\n\n`);
 
   const c = { res, side, userId, since: Date.now() };
   clients.add(c);
-  const drop = () => { clients.delete(c); };
+  res.write(`event: hello\ndata: ${JSON.stringify({ side, presence: presence() })}\n\n`);
+  /* Everyone else learns somebody arrived — "Yalla Wear is online" is worth
+     a line on the shop's screen — and the same when they leave. */
+  notify('all', { presence: presence(), who: side });
+  const drop = () => {
+    if (!clients.delete(c)) return;
+    notify('all', { presence: presence(), who: side });
+  };
   res.on('close', drop);
   res.on('error', drop);
 
@@ -50,9 +56,17 @@ export function subscribe(res, side, userId = null) {
   }
 }
 
-/* `sides` — 'og', 'yalla', or 'all'. The payload is a hint only. */
+/* Who is on the line right now: open tabs per side. */
+export function presence() {
+  const p = { og: 0, yalla: 0 };
+  for (const c of clients) p[c.side] = (p[c.side] || 0) + 1;
+  return p;
+}
+
+/* `sides` — 'og', 'yalla', or 'all'. The payload is a hint only; presence
+   rides on every event so a tab always knows who else is there. */
 export function notify(sides = 'all', payload = {}) {
-  const body = `event: change\ndata: ${JSON.stringify({ at: new Date().toISOString(), ...payload })}\n\n`;
+  const body = `event: change\ndata: ${JSON.stringify({ at: new Date().toISOString(), presence: presence(), ...payload })}\n\n`;
   for (const c of clients) {
     if (sides !== 'all' && c.side !== sides) continue;
     try { c.res.write(body); sent++; } catch { clients.delete(c); }

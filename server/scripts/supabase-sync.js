@@ -38,6 +38,7 @@ import * as DB from '../lib/db.js';
 import * as SB from '../lib/supabase.js';
 import * as Vault from '../lib/credvault.js';
 import { lagColumn } from '../lib/mirror-lag.js';
+import * as Lineage from '../lib/lineage.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -60,6 +61,24 @@ DB.open(DB_FILE);
 const tick = (s) => `  \x1b[32m✓\x1b[0m ${s}`;
 const warn = (s) => `  \x1b[33m!\x1b[0m ${s}`;
 const head = (s) => `\n\x1b[1m${s}\x1b[0m`;
+
+/* FIRST, before a single row moves: is this mirror ours? See lib/lineage.js
+   for why a second machine on the same project is not a second copy but a
+   second writer, and what it cost. Exit 2 — distinct from a failed push — so
+   whatever ran this can tell "refused" from "broke". */
+{
+  const lin = await Lineage.guard({ takeover: Lineage.takeoverRequested() });
+  if (!lin.ok) {
+    console.log(head('Whose mirror is this?'));
+    for (const line of Lineage.refusal(lin.other)) console.log(line);
+    process.exit(2);
+  }
+  if (lin.claimed) console.log(tick(`mirror claimed for this database (${lin.mine.slice(0, 8)}…)`));
+  if (lin.tookOver) {
+    console.log(warn(`mirror taken over from ${lin.tookOver.host} — run npm run supabase:reconcile ` +
+                     'afterwards; its bookmarks and rows are not this database\'s.'));
+  }
+}
 
 /* -------------------------------------------------------------- reference
    Small, static, not logged to change_log. Upserted unconditionally on

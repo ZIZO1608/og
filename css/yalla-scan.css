@@ -1038,3 +1038,88 @@ body[data-portal="yalla"] .nav-item.active .nav-icon svg { stroke: var(--brand-f
   .drawer .track .track-arrow { min-width: 6px; height: 26px; }
   .drawer .track .track-step { gap: 4px; }
 }
+
+/* Who else is on the line: the dot plus "Yalla Wear · online". */
+.live-who {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0 10px 0 6px; height: 34px;
+  border-radius: var(--radius-full); border: 1px solid var(--border); background: var(--card);
+  font-size: 11.5px; font-weight: 600; color: var(--dim); white-space: nowrap;
+}
+.live-who .live-dot { margin-inline: 0; }
+.live-who.other-on { color: var(--foreground); border-color: rgba(61, 220, 132, .35); }
+.live-who.other-on .live-txt { color: #3ddc84; }
+@media (max-width: 720px) { .live-who .live-txt { display: none; } .live-who { padding: 0 6px; } }
+
+/* ============================================== REVIEWS (partner portal)
+   The shop's verdict on the printing, on its own screen. The score is the
+   headline, the spread underneath it doubles as a filter, and the words
+   themselves are the point — so the quote gets the size, not the metadata. */
+
+.rv-score { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; text-align: center; padding: 22px 16px 24px; }
+.rv-big { display: flex; align-items: baseline; gap: 6px; }
+.rv-big b { font-family: var(--font-head); font-weight: 900; font-size: 62px; line-height: 1;
+  letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+.rv-big i { font-style: normal; font-size: 17px; font-weight: 700; color: var(--dim); }
+.rv-count { font-size: 12.5px; color: var(--muted-foreground); font-weight: 600; }
+.rv-praise { margin-top: 4px; font-size: 12px; color: var(--dim); }
+.rv-praise b { color: var(--brand); font-weight: 800; }
+
+.rv-stars { display: inline-flex; gap: 3px; line-height: 1; }
+.rv-stars .rv-star { font-size: 15px; color: var(--border-strong); }
+.rv-stars .rv-star.on { color: var(--warning); }
+.rv-stars.lg .rv-star { font-size: 26px; }
+.rv-stars.xl .rv-star { font-size: 34px; }
+
+.rv-dist { display: flex; flex-direction: column; gap: 7px; }
+.rv-row { display: flex; align-items: center; gap: 11px; width: 100%;
+  border: 0; background: none; padding: 5px 6px; border-radius: var(--radius-sm);
+  transition: background var(--d-1) var(--e-std); }
+.rv-row:hover { background: var(--accent); }
+.rv-row.on { background: var(--accent); }
+.rv-row.empty { opacity: .45; }
+.rv-row-k { display: inline-flex; align-items: center; gap: 2px; width: 30px; flex: none;
+  font-size: 12.5px; font-weight: 800; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.rv-row-k i { font-style: normal; font-size: 11px; color: var(--warning); }
+.rv-bar { flex: 1; height: 9px; border-radius: 999px; background: var(--muted); overflow: hidden; }
+.rv-bar i { display: block; height: 100%; border-radius: 999px; background: var(--brand);
+  transition: width var(--d-3) var(--e-out); min-width: 0; }
+.rv-bar i.s3 { background: var(--warning); }
+.rv-bar i.s2, .rv-bar i.s1 { background: var(--destructive-solid); }
+.rv-row-n { width: 26px; flex: none; text-align: end; font-size: 12.5px; font-weight: 700;
+  font-variant-numeric: tabular-nums; }
+
+.rv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+.rv-item { position: relative; padding: 16px 17px 14px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card);
+  transition: border-color var(--t), transform var(--t), background var(--t); }
+.rv-item:hover { border-color: var(--brand); transform: translateY(-3px); background: var(--card-hover); }
+.rv-item.r5 { border-inline-start: 3px solid var(--brand); }
+.rv-item.r4 { border-inline-start: 3px solid var(--brand-border); }
+.rv-item.r3 { border-inline-start: 3px solid var(--warning-solid); }
+.rv-item.r2, .rv-item.r1 { border-inline-start: 3px solid var(--destructive-solid); }
+.rv-item-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.rv-when { margin-inline-start: auto; font-size: 11px; color: var(--dim); font-weight: 600; white-space: nowrap; }
+.rv-quote { margin: 0 0 13px; font-size: 14.5px; line-height: 1.55; font-weight: 500; color: var(--foreground); }
+.rv-quote.rv-quiet { color: var(--dim); font-size: 13px; font-style: italic; }
+.rv-item-foot { display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  border-top: 1px solid var(--border); padding-top: 11px; font-size: 11.5px; color: var(--dim); }
+.rv-job { font-family: var(--font-head); font-weight: 800; font-size: 12.5px; color: var(--muted-foreground); }
+.rv-design { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-pcs { flex: none; }
+.rv-new { position: absolute; top: -8px; inset-inline-end: 12px;
+  background: var(--brand); color: var(--brand-foreground);
+  font-size: 9.5px; font-weight: 800; letter-spacing: .1em; padding: 3px 8px; border-radius: 999px; }
+.rv-item.is-new { border-color: var(--brand); }
+
+.rv-empty { display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 46px 24px; text-align: center; }
+.rv-empty b { font-size: 16px; }
+.rv-empty span { font-size: 13px; color: var(--muted-foreground); max-width: 340px; line-height: 1.6; }
+
+@media (max-width: 720px) {
+  .yl-rv-top { grid-template-columns: minmax(0, 1fr) !important; }
+  .rv-big b { font-size: 52px; }
+  .rv-grid { grid-template-columns: minmax(0, 1fr); }
+  .rv-row { padding: 8px 6px; }
+}

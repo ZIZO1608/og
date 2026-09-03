@@ -306,3 +306,27 @@ body[data-portal="yalla"] .nt-item.unread { background: rgba(181, 220, 192, .06)
 /* toasts pick up the portal's shape and accent too */
 body[data-portal="yalla"] .toast { border-radius: 14px; background: #1F1C3B; border: 1px solid rgba(255, 255, 255, .08); box-shadow: 0 16px 40px rgba(0, 0, 0, .5); }
 body[data-portal="yalla"] .toast.ok { border-inline-start: 3px solid var(--brand); }
+
+/* ----------------------------------------------------------------- reviews */
+body[data-portal="yalla"] .rv-item {
+  background: var(--card-grad); border: 1px solid rgba(255, 255, 255, .07);
+  box-shadow: var(--lift), var(--edge);
+}
+body[data-portal="yalla"] .rv-item:hover { border-color: rgba(181, 220, 192, .5); box-shadow: var(--glow), var(--lift); }
+body[data-portal="yalla"] .rv-item.is-new { box-shadow: var(--glow), var(--lift); }
+body[data-portal="yalla"] .rv-new { background: var(--mint-grad); box-shadow: 0 4px 12px rgba(181, 220, 192, .3); }
+body[data-portal="yalla"] .rv-big b {
+  background: linear-gradient(160deg, #FFFFFF 0%, #DDF3E3 55%, #B5DCC0 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+body[data-portal="yalla"] .rv-stars .rv-star { color: rgba(255, 255, 255, .14); }
+body[data-portal="yalla"] .rv-stars .rv-star.on { color: #F5C15C; }
+body[data-portal="yalla"] .rv-bar { background: rgba(255, 255, 255, .07); }
+body[data-portal="yalla"] .rv-bar i { background: var(--mint-grad); }
+body[data-portal="yalla"] .rv-bar i.s3 { background: linear-gradient(90deg, #F7CF7A, #F0B14C); }
+body[data-portal="yalla"] .rv-bar i.s2, body[data-portal="yalla"] .rv-bar i.s1 { background: linear-gradient(90deg, #FF9A9A, #FF7A7A); }
+body[data-portal="yalla"] .rv-row:hover, body[data-portal="yalla"] .rv-row.on { background: rgba(255, 255, 255, .05); }
+body[data-portal="yalla"] .rv-item-foot { border-top-color: rgba(255, 255, 255, .06); }
+body[data-portal="yalla"] .rv-item.r5 { border-inline-start-color: var(--brand); }
+body[data-portal="yalla"] .rv-item.r3 { border-inline-start-color: #F5C15C; }
+body[data-portal="yalla"] .rv-item.r2, body[data-portal="yalla"] .rv-item.r1 { border-inline-start-color: #FF7A7A; }

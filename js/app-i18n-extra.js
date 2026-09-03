@@ -469,7 +469,20 @@ var EXTRA_EN = {
   tg_partner_note: 'Yalla Wear connects their own bot from their portal — this one is the shop’s.',
   al_partner_msg: 'Yalla Wear on {id}: {kind} — {text}',
   al_more_partner_msg: '{n} more messages from Yalla Wear',
-  live_on: 'Live — connected to the shop server', live_off: 'Reconnecting…'
+  live_on: 'Live — connected to the shop server', live_off: 'Reconnecting…',
+  live_other_on: 'online', live_other_off: 'away',
+
+  /* the reviews page */
+  yl_reviews: 'Reviews', yl_reviews_sub: 'What OG System says about your printing',
+  yl_rv_spread: 'How the ratings fall', yl_rv_spread_sub: 'tap a row to filter',
+  yl_rv_praise: 'gave you four stars or more',
+  yl_rv_with_words: 'With a comment', yl_rv_low: 'Three stars or less',
+  yl_rv_no_words: 'No comment left — just the rating.',
+  yl_rv_words: 'What they said', yl_rv_new: 'NEW',
+  yl_rv_none: 'No reviews yet',
+  yl_rv_none_sub: 'OG writes one once a job is finished and the shirts are in their hands.',
+  yl_rv_no_match: 'Nothing under that filter',
+  yl_rv_no_match_sub: 'Try another one, or show them all'
 };
 
 var EXTRA_AR = {
@@ -681,7 +694,19 @@ var EXTRA_AR = {
   tg_partner_note: 'يلا وير تربط بوتها من بوابتها — هذا بوت المحل.',
   al_partner_msg: 'يلا وير على {id}: {kind} — {text}',
   al_more_partner_msg: '{n} رسائل أخرى من يلا وير',
-  live_on: 'مباشر — متصل بخادم المحل', live_off: 'جارٍ إعادة الاتصال…'
+  live_on: 'مباشر — متصل بخادم المحل', live_off: 'جارٍ إعادة الاتصال…',
+  live_other_on: 'متصل الآن', live_other_off: 'غير متصل',
+
+  yl_reviews: 'التقييمات', yl_reviews_sub: 'ما يقوله OG System عن طباعتك',
+  yl_rv_spread: 'توزّع التقييمات', yl_rv_spread_sub: 'اضغط سطراً للتصفية',
+  yl_rv_praise: 'أعطتك أربع نجوم أو أكثر',
+  yl_rv_with_words: 'مع تعليق', yl_rv_low: 'ثلاث نجوم أو أقل',
+  yl_rv_no_words: 'بلا تعليق — التقييم فقط.',
+  yl_rv_words: 'ما قالوه', yl_rv_new: 'جديد',
+  yl_rv_none: 'لا تقييمات بعد',
+  yl_rv_none_sub: 'يكتب OG التقييم بعد انتهاء الطلب ووصول القمصان إليهم.',
+  yl_rv_no_match: 'لا شيء ضمن هذه التصفية',
+  yl_rv_no_match_sub: 'جرّب تصفية أخرى أو اعرضها كلها'
 };
 
 Object.keys(EXTRA_EN).forEach(function (k) { I18N.en[k] = EXTRA_EN[k]; });

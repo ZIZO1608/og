@@ -13,7 +13,7 @@
 
 var YALLA = (function () {
 
-  var S = { view: 'today', filter: 'open', mode: 'board', day: null, tab: 'money' };
+  var S = { view: 'today', filter: 'open', mode: 'board', day: null, tab: 'money', rvFilter: 'all' };
 
   var DAILY_CAPACITY = 60;          // pieces the partner can print per day
   var RADAR_DAYS = 14;              // how far the deadline radar looks ahead
@@ -22,7 +22,10 @@ var YALLA = (function () {
     { id: 'today',    key: 'yl_today',    icon: 'M3 12h4l2 6 4-13 2 7h6' },
     { id: 'queue',    key: 'yl_queue',    icon: 'M4 6h16M4 12h16M4 18h10' },
     { id: 'invoices', key: 'yl_invoices', icon: 'M6 2h9l5 5v15H6zM15 2v5h5M9 13h7M9 17h5' },
-    { id: 'earnings', key: 'yl_earnings', icon: 'M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' }
+    { id: 'earnings', key: 'yl_earnings', icon: 'M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
+    /* What OG thought of the work. Their own page, because a rating read
+       once in a job drawer is a rating nobody ever looks at again. */
+    { id: 'reviews',  key: 'yl_reviews',  icon: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2-5.5-2.9-5.5 2.9 1-6.2L3 9.6l6.2-.9z' }
   ];
 
   /* One icon per production stage, used by the line strip, the board columns
@@ -101,6 +104,15 @@ var YALLA = (function () {
 
   /* --------------------------------------------------------------- shell */
 
+  /* What each nav entry is shouting about: late work on the queue, reviews
+     nobody has opened yet. One rule, so the rail and the phone tabs cannot
+     disagree. */
+  function navBadgeFor(id) {
+    if (id === 'queue') return openJobs().filter(function (j) { return j.overdue; }).length;
+    if (id === 'reviews') return DB.unreadReviews('yalla').length;
+    return 0;
+  }
+
   function sidebar() {
     var h = '<div class="brand">' +
       '<div class="brand-mark"><img src="assets/yalla-mark.svg" alt="Yalla Wear"></div>' +
@@ -109,7 +121,7 @@ var YALLA = (function () {
 
     h += '<div class="nav-label">' + t('yl_production') + '</div>';
     NAV.forEach(function (n) {
-      var badge = n.id === 'queue' ? openJobs().filter(function (j) { return j.overdue; }).length : 0;
+      var badge = navBadgeFor(n.id);
       h += '<button class="nav-item' + (S.view === n.id ? ' active' : '') + '" data-yl="nav" data-view="' + n.id + '">' +
         '<span class="nav-icon"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg></span>' +
         '<span class="nav-txt">' + t(n.key) + '</span>' +
@@ -128,17 +140,24 @@ var YALLA = (function () {
   /* The partner's phone navigation. Four screens fit as four tabs, so unlike
      the OG side there is no More sheet. */
   function tabs() {
-    return NAV.map(function (n) {
-      var badge = n.id === 'queue' ? openJobs().filter(function (j) { return j.overdue; }).length : 0;
+    var h = NAV.map(function (n) {
+      var badge = navBadgeFor(n.id);
       return '<button class="tabbtn' + (S.view === n.id ? ' on' : '') + '" data-yl="nav" data-view="' + n.id + '">' +
         '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg>' +
           (badge ? '<i class="tb-dot"></i>' : '') + '</span>' +
         '<span class="tb-txt">' + t(n.key) + '</span></button>';
-    }).join('') +
-    '<button class="tabbtn" data-act="partner-view">' +
-      '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square">' +
-        '<path d="M10 19l-7-7 7-7M3 12h18"/></svg></span>' +
-      '<span class="tb-txt">OG</span></button>';
+    }).join('');
+
+    /* The way back to OG is a MANAGER's preview button. For Yalla Wear
+       themselves it does nothing — app-actions refuses it by role — so on a
+       real partner login it was a dead sixth tab taking a thumb's width from
+       the five that work. */
+    if (typeof isPartnerAccount === 'function' && isPartnerAccount()) return h;
+    return h +
+      '<button class="tabbtn" data-act="partner-view">' +
+        '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square">' +
+          '<path d="M10 19l-7-7 7-7M3 12h18"/></svg></span>' +
+        '<span class="tb-txt">OG</span></button>';
   }
 
   function topbar() {
@@ -156,7 +175,9 @@ var YALLA = (function () {
         '<button data-act="curr" data-val="USD" class="' + (OG.currency === 'USD' ? 'on' : '') + '">USD</button>' +
       '</div>' +
       (typeof Notify !== 'undefined' ? Notify.bell() : '') +
-      '<span class="live-dot' + (typeof Pulse !== 'undefined' && Pulse.isLive() ? ' on' : '') + '"></span>' +
+      '<span class="live-who" title="' + esc(t('live_on')) + '">' +
+        '<span class="live-dot' + (typeof Pulse !== 'undefined' && Pulse.isLive() ? ' on' : '') + '"></span>' +
+        '<span class="live-txt">' + (typeof Pulse !== 'undefined' ? Pulse.presenceText() : '') + '</span></span>' +
       '<div class="user-chip"><span class="user-avatar">Y</span><span>' + t('yl_operator') + '</span></div>';
   }
 
@@ -1045,6 +1066,147 @@ var YALLA = (function () {
     });
   }
 
+  /* ------------------------------------------------------------ reviews
+     What OG thought of the printing, on its own screen. Every rating the
+     shop has written, the average behind it and the words themselves —
+     because "4.7" is a number and "the numbers were slightly off-centre" is
+     the thing that changes what happens at the press tomorrow.
+
+     Nobody but Yalla Wear sees this page: it is inside their portal, and
+     the reviews are about their own work. */
+
+  function reviewed() {
+    return jobs(true).filter(function (j) { return j.review; })
+      .sort(function (a, b) { return new Date(b.review.at) - new Date(a.review.at); });
+  }
+
+  function stars(n, cls) {
+    var h = '<span class="rv-stars ' + (cls || '') + '" dir="ltr" aria-label="' + n + '/5">';
+    for (var i = 1; i <= 5; i++) h += '<span class="rv-star' + (i <= Math.round(n) ? ' on' : '') + '">★</span>';
+    return h + '</span>';
+  }
+
+  function viewReviews() {
+    var all = reviewed();
+    /* Read BEFORE the page marks them read, so a review that lands while
+       this screen is open still gets its one moment of standing out. */
+    var unread = {};
+    DB.unreadReviews('yalla').forEach(function (m) { unread[m.jobId] = true; });
+
+    var h = '<div class="page-head"><div><h1>' + t('yl_reviews') + '</h1>' +
+      '<div class="sub">' + t('yl_reviews_sub') + '</div></div>' +
+      '<div class="head-actions">' + exportButtons() + '</div></div>';
+
+    if (!all.length) {
+      return h + '<div class="card"><div class="rv-empty">' +
+        stars(0, 'xl') +
+        '<b>' + t('yl_rv_none') + '</b><span>' + t('yl_rv_none_sub') + '</span></div></div>';
+    }
+
+    var sum = all.reduce(function (a, j) { return a + j.review.rating; }, 0);
+    var avg = Math.round(sum / all.length * 10) / 10;
+    var dist = [0, 0, 0, 0, 0];
+    all.forEach(function (j) { dist[j.review.rating - 1]++; });
+    var top = Math.max.apply(null, dist) || 1;
+    var praised = dist[4] + dist[3];
+    var pct = Math.round(praised / all.length * 100);
+
+    /* the score, and what it is made of */
+    h += '<div class="grid mb yl-rv-top" style="grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);align-items:stretch">' +
+      '<div class="card"><div class="card-body rv-score">' +
+        '<div class="rv-big"><b>' + avg.toFixed(1) + '</b><i>/ 5</i></div>' +
+        stars(avg, 'lg') +
+        '<div class="rv-count">' + nf(all.length) + ' ' + t('yl_prod_reviews') + '</div>' +
+        '<div class="rv-praise"><b>' + pct + '%</b> ' + t('yl_rv_praise') + '</div>' +
+      '</div></div>' +
+      '<div class="card"><div class="card-head"><h3>' + t('yl_rv_spread') + '</h3>' +
+        '<div class="card-actions muted small">' + t('yl_rv_spread_sub') + '</div></div>' +
+        '<div class="card-body rv-dist">';
+    for (var r = 5; r >= 1; r--) {
+      var n = dist[r - 1];
+      h += '<button class="rv-row' + (S.rvFilter === r ? ' on' : '') + (n ? '' : ' empty') + '" ' +
+          'data-yl="rv-filter" data-r="' + (S.rvFilter === r ? 'all' : r) + '">' +
+        '<span class="rv-row-k">' + r + '<i>★</i></span>' +
+        '<span class="rv-bar"><i class="s' + r + '" style="width:' + Math.round(n / top * 100) + '%"></i></span>' +
+        '<span class="rv-row-n">' + n + '</span></button>';
+    }
+    h += '</div></div></div>';
+
+    /* the words */
+    var list = S.rvFilter && S.rvFilter !== 'all'
+      ? all.filter(function (j) { return j.review.rating === +S.rvFilter; })
+      : all;
+
+    h += '<div class="filters"><div class="chip-row">' +
+      '<button class="chip ' + (!S.rvFilter || S.rvFilter === 'all' ? 'on' : '') + '" data-yl="rv-filter" data-r="all">' +
+        t('all_word') + ' · ' + all.length + '</button>' +
+      '<button class="chip ' + (S.rvFilter === 'said' ? 'on' : '') + '" data-yl="rv-filter" data-r="said">' +
+        t('yl_rv_with_words') + '</button>' +
+      '<button class="chip ' + (S.rvFilter === 'low' ? 'on' : '') + '" data-yl="rv-filter" data-r="low">' +
+        t('yl_rv_low') + '</button>' +
+    '</div></div>';
+
+    if (S.rvFilter === 'said') list = all.filter(function (j) { return j.review.feedback; });
+    if (S.rvFilter === 'low') list = all.filter(function (j) { return j.review.rating <= 3; });
+
+    if (!list.length) {
+      h += '<div class="card"><div class="cart-empty"><b>' + t('yl_rv_no_match') + '</b>' +
+        t('yl_rv_no_match_sub') + '</div></div>';
+      return h;
+    }
+
+    h += '<div class="rv-grid">';
+    list.forEach(function (j) {
+      var isNew = !!unread[j.id];
+      h += '<article class="rv-item r' + j.review.rating + (isNew ? ' is-new' : '') + '" ' +
+          'data-yl="open" data-id="' + j.id + '">' +
+        (isNew ? '<span class="rv-new">' + t('yl_rv_new') + '</span>' : '') +
+        '<div class="rv-item-top">' + stars(j.review.rating) +
+          '<span class="rv-when">' + relDate(j.review.at) + '</span></div>' +
+        /* dir="auto" because the words are whoever's who typed them: an
+           English sentence inside the Arabic layout kept its full stop on
+           the wrong end without it. */
+        (j.review.feedback
+          ? '<p class="rv-quote" dir="auto">' + esc(j.review.feedback) + '</p>'
+          : '<p class="rv-quote rv-quiet">' + t('yl_rv_no_words') + '</p>') +
+        '<div class="rv-item-foot">' +
+          '<span class="rv-job">' + j.id + '</span>' +
+          '<span class="rv-design" dir="auto">' + esc(j.design.slice(0, 40)) + '</span>' +
+          '<span class="rv-pcs">' + j.qty + ' ' + t('pieces') + '</span>' +
+        '</div>' +
+      '</article>';
+    });
+    return h + '</div>';
+  }
+
+  /* Opening the page IS reading them. Marked per message kind, so a delay
+     note on the same job stays unread until somebody opens the job. */
+  function afterReviews() {
+    var byJob = {};
+    DB.unreadReviews('yalla').forEach(function (m) { if (m.jobId) byJob[m.jobId] = true; });
+    var ids = Object.keys(byJob);
+    if (!ids.length) return;
+    ids.forEach(function (id) { DB.markRead('yalla', { jobId: id, kind: 'review' }); });
+    renderSidebar();
+    if (typeof Notify !== 'undefined') Notify.refresh();
+  }
+
+  function reviewsSpec() {
+    var all = reviewed();
+    var sum = all.reduce(function (a, j) { return a + j.review.rating; }, 0);
+    return {
+      theme: 'yalla', name: 'yalla-reviews', sheet: 'Reviews',
+      title: t('yl_reviews'), subtitle: t('yl_reviews_sub') + ' · ' + fmtDate(TODAY),
+      columns: [{ label: t('yl_job') }, { label: t('date') }, { label: t('yl_rating'), num: true },
+                { label: t('design_note'), width: 30 }, { label: t('yl_rv_words'), width: 40 }],
+      rows: all.map(function (j) {
+        return [j.id, fmtDate(j.review.at), j.review.rating, j.design, j.review.feedback || ''];
+      }),
+      kpis: [{ label: t('yl_rating'), value: all.length ? (Math.round(sum / all.length * 10) / 10) + ' / 5' : '—' },
+             { label: t('yl_prod_reviews'), value: nf(all.length) }]
+    };
+  }
+
   /* ---------------------------------------------------------- job drawer */
 
   function openJob(id) {
@@ -1138,7 +1300,15 @@ var YALLA = (function () {
 
   /* The conversation on one job, rendered identically on both sides. `side`
      is who is looking, which decides what counts as "mine". */
+  /* Wrapped in a host that names the job, so Pulse can redraw just this
+     card while the drawer stays open — a reply arriving mid-read appears
+     under the last line instead of waiting for the drawer to be reopened. */
   function thread(jobId, side) {
+    return '<div class="yl-thread-host" data-thread-job="' + esc(jobId) + '" data-thread-side="' + side + '">' +
+      threadCard(jobId, side) + '</div>';
+  }
+
+  function threadCard(jobId, side) {
     var msgs = DB.messagesFor({ jobId: jobId });
     var h = '<div class="card mt"><div class="card-head"><h3>' + t('yl_thread') + '</h3>' +
       '<div class="card-actions muted small">' + msgs.length + ' ' + t('yl_messages') + '</div></div>';
@@ -1168,6 +1338,7 @@ var YALLA = (function () {
   function exportSpec() {
     if (S.view === 'today')    return todaySpec();
     if (S.view === 'queue')    return queueSpec();
+    if (S.view === 'reviews')  return reviewsSpec();
     if (S.view === 'invoices') return hasInv() ? YLINV.exportSpec() : earningsSpec();
     return earningsSpec();
   }
@@ -1259,7 +1430,7 @@ var YALLA = (function () {
   function hasInv() { return typeof YLINV !== 'undefined'; }
 
   var VIEWS = {
-    today: viewToday, queue: viewQueue, earnings: viewEarnings,
+    today: viewToday, queue: viewQueue, earnings: viewEarnings, reviews: viewReviews,
     invoices: function () { return hasInv() ? YLINV.view() : viewEarnings(); }
   };
 
@@ -1269,6 +1440,7 @@ var YALLA = (function () {
     if (S.view === 'earnings') afterEarnings();
     if (S.view === 'invoices' && hasInv() && YLINV.after) YLINV.after();
     if (S.view === 'queue' && S.mode === 'board') bindBoard();
+    if (S.view === 'reviews') afterReviews();
     if (S.view === 'today') telegramLoad();
   }
 
@@ -1277,6 +1449,11 @@ var YALLA = (function () {
   var ACT = {
     nav: function (el) { S.view = el.getAttribute('data-view'); S.day = null; closeDrawer(); repaint(); },
     etab: function (el) { S.tab = el.getAttribute('data-t'); repaint(); },
+    'rv-filter': function (el) {
+      var v = el.getAttribute('data-r');
+      S.rvFilter = (v === 'all') ? 'all' : (isFinite(+v) ? +v : v);
+      repaint();
+    },
 
     /* ---- the Telegram line. Shared by both portals: the server decides
        whose bot from the account, so the same three buttons serve OG's
@@ -1586,12 +1763,16 @@ var YALLA = (function () {
     thread: thread,
     /* The Telegram card, for OG's Settings fold — same card, their bot. */
     telegramLoad: telegramLoad,
+    threadCard: threadCard,
     go: function (v, id) {
       S.view = v; S.day = null;
       repaint();
       if (v === 'invoices' && id && hasInv()) YLINV.open(id);
       if (v === 'queue' && id) openJob(id);
     },
-    reset: function () { S.view = 'today'; S.filter = 'open'; S.mode = 'board'; S.day = null; }
+    reset: function () {
+      S.view = 'today'; S.filter = 'open'; S.mode = 'board'; S.day = null;
+      S.tab = 'money'; S.rvFilter = 'all';
+    }
   };
 })();
