@@ -652,6 +652,20 @@ function repPct(p, digits) {
   return out.length ? out.join(' · ') : '<span class="muted">—</span>';
 }
 
+/* "15 invoices" — a number and the noun it counts.
+
+   The noun is a COUNTED form (rp_n_*), not the column heading. Arabic has
+   different words for the two: `invoices` is الفواتير, "the invoices", which
+   is right at the top of a column and reads as "3 the-invoices" under a
+   number. Every count on this screen went through the heading key and every
+   one of them was wrong in Arabic.
+
+   The numeral is isolated so a digit run cannot reorder against the Arabic
+   beside it — the same reason tel() and moneyPair() carry a <bdi>. */
+function repCount(n, key) {
+  return '<bdi dir="ltr">' + nf(n) + '</bdi> ' + t(key);
+}
+
 /* One row of a table that has nothing in it. */
 function repNone(cols, msg) {
   return '<tr><td colspan="' + cols + '" class="muted" style="text-align:center;padding:28px">' +
@@ -742,8 +756,8 @@ function viewReports() {
 
   h += '<div class="card mb"><div class="card-head"><h3>' + t(label) + '</h3>' +
     '<div class="card-actions muted small">' +
-      (timeless ? esc(t('rp_as_of')) + ' <span dir="ltr">' + esc(fmtDate(new Date())) + '</span>'
-                : '<span dir="ltr">' + esc(repRangeLabel()) + '</span>') +
+      (timeless ? esc(t('rp_as_of')) + ' <span dir="auto">' + esc(fmtDate(new Date())) + '</span>'
+                : '<span dir="auto">' + esc(repRangeLabel()) + '</span>') +
     (OG.repLoading ? ' · ' + esc(t('loading')) : '') + '</div></div>' +
     '<div class="card-body"><div class="chart-box" style="height:250px">' +
       (repHasChart(tab) ? '<canvas id="repChart"></canvas>'
@@ -900,11 +914,15 @@ function repSales() {
   var h = repStats([
     [t('revenue'), repMoney(s.takings),
      nowBase || prevBase ? deltaTag(nowBase, prevBase, t('rp_vs_prev')) : '', true],
-    [t('invoices'), nf(s.count), s.units ? nf(s.units) + ' ' + t('pieces').toLowerCase() : ''],
+    [t('invoices'), nf(s.count), s.units ? repCount(s.units, 'pieces') : ''],
     [t('avg_basket'), repMoney(s.avgBasket),
-     s.count ? (Math.round(s.units / s.count * 10) / 10) + ' ' + t('rp_per_sale') : ''],
+     /* One decimal, and isolated like every other numeral here: "1.1" is a
+        digit run with a dot in it, which the bidi algorithm will happily
+        reorder against the Arabic word beside it. */
+     s.count ? '<bdi dir="ltr">' + (Math.round(s.units / s.count * 10) / 10) + '</bdi> ' +
+               t('rp_per_sale') : ''],
     [t('discount'), repMoney(s.discount),
-     s.discounted ? nf(s.discounted) + ' ' + t('invoices').toLowerCase() : t('none')],
+     s.discounted ? repCount(s.discounted, 'rp_n_invoice') : t('none')],
     s.voided.count ? [t('rp_voided'), nf(s.voided.count), repMoneyShort(s.voided.total)] : null
   ]);
 
@@ -926,7 +944,7 @@ function repSales() {
         usd: b.count && b.usd ? Math.round(b.usd / b.count) : 0
       };
       h += '<tr' + (b.count ? '' : ' class="dim"') + '>' +
-        '<td><b dir="ltr">' + esc(DB.repBucketLabel(b.bucket, grain)) + '</b></td>' +
+        '<td><b dir="auto">' + esc(DB.repBucketLabel(b.bucket, grain)) + '</b></td>' +
         '<td class="num">' + nf(b.count) + '</td>' +
         '<td class="num"><b>' + repMoney(b) + '</b></td>' +
         '<td class="num muted">' + (b.count ? repMoney(avg) : '—') + '</td>' +
@@ -966,7 +984,7 @@ function repProfit() {
     [t('revenue'), repMoney(tot.revenue), '', true],
     [t('cost'), repMoney(tot.cost), ''],
     [t('profit'), repMoney(tot.profit), ''],
-    [t('margin'), repPct(tot.margin), nf(tot.units) + ' ' + t('units').toLowerCase()]
+    [t('margin'), repPct(tot.margin), repCount(tot.units, 'rp_n_unit')]
   ]);
 
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
@@ -1010,11 +1028,11 @@ function repInventory() {
 
   var h = repStats([
     iv.hasCost ? [t('capital_in_stock'), repMoney(tot.cost),
-                  nf(tot.units) + ' ' + t('pieces').toLowerCase(), true] : null,
+                  repCount(tot.units, 'pieces'), true] : null,
     [t('retail_value'), repMoney(tot.retail),
-     iv.hasCost ? '' : nf(tot.units) + ' ' + t('pieces').toLowerCase(), !iv.hasCost],
+     iv.hasCost ? '' : repCount(tot.units, 'pieces'), !iv.hasCost],
     iv.hasCost ? [t('profit'), repMoney(tot.profit), t('if_sold_all')] : null,
-    [t('rp_lines'), nf(tot.skus), nf(rows.length) + ' ' + t('rp_types')]
+    [t('rp_lines'), nf(tot.skus), repCount(rows.length, 'rp_types')]
   ]);
 
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
@@ -1068,21 +1086,21 @@ function repPayments() {
   var best = rows.reduce(function (m, x) { return Math.max(m, DB.repBaseOf(x)); }, 0);
 
   var h = repStats([
-    [t('rp_taken'), repMoney(s.takings), nf(s.count) + ' ' + t('invoices').toLowerCase(), true],
+    [t('rp_taken'), repMoney(s.takings), repCount(s.count, 'rp_n_invoice'), true],
     [t('rp_owed_by_customers'), repMoney(p.debts),
      p.debts.invoices
-       ? nf(p.debts.invoices) + ' ' + t('invoices').toLowerCase() + ' · ' +
-         nf(p.debts.customers) + ' ' + t('rp_people') +
-         (p.debts.oldestDays !== null ? ' · ' + t('rp_oldest') + ' ' + nf(p.debts.oldestDays) + ' ' + t('days') : '')
+       ? repCount(p.debts.invoices, 'rp_n_invoice') + ' · ' +
+         repCount(p.debts.customers, 'rp_people') +
+         (p.debts.oldestDays !== null ? ' · ' + t('rp_oldest') + ' ' + repCount(p.debts.oldestDays, 'days') : '')
        : t('none')],
     [t('rp_owed_to_suppliers'), repMoney(p.suppliers),
-     p.suppliers.count ? nf(p.suppliers.count) + ' ' + t('tab_suppliers').toLowerCase() : t('none')],
+     p.suppliers.count ? repCount(p.suppliers.count, 'rp_n_supplier') : t('none')],
     [t('mn_expenses'), repMoney(p.expenses.total),
-     p.expenses.rows.length ? nf(p.expenses.rows.length) + ' ' + t('category').toLowerCase() : t('none')],
+     p.expenses.rows.length ? repCount(p.expenses.rows.length, 'rp_n_category') : t('none')],
     [t('discount'), repMoney(p.discounts.amount),
      p.discounts.overCap
        ? t('rp_over_cap').replace('{n}', nf(p.discounts.overCap)).replace('{p}', p.discounts.capPct + '%')
-       : nf(p.discounts.count) + ' ' + t('invoices').toLowerCase()]
+       : repCount(p.discounts.count, 'rp_n_invoice')]
   ]);
 
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
@@ -1153,9 +1171,9 @@ function repEmployees() {
   });
 
   var h = repStats([
-    [t('rp_payroll'), repMoney(e.salary), nf(e.count) + ' ' + t('rp_people'), true],
+    [t('rp_payroll'), repMoney(e.salary), repCount(e.count, 'rp_people'), true],
     [t('sales_made'), repMoney(soldTotal),
-     soldCount ? nf(soldCount) + ' ' + t('invoices').toLowerCase() + ' · ' + esc(repRangeLabel()) : t('none')]
+     soldCount ? repCount(soldCount, 'rp_n_invoice') + ' · ' + esc(repRangeLabel()) : t('none')]
   ]);
 
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
@@ -1170,7 +1188,7 @@ function repEmployees() {
     h += '<tr><td><div class="cell-prod">' +
         '<span class="cc-av" style="width:28px;height:28px;font-size:10px">' + esc(initialsOf(x.name)) + '</span>' +
         '<span><b>' + esc(x.name) + '</b>' +
-        (x.since ? '<small dir="ltr">' + esc(t('rp_since') + ' ' + fmtDate(x.since)) + '</small>' : '') +
+        (x.since ? '<small dir="auto">' + esc(t('rp_since') + ' ' + fmtDate(x.since)) + '</small>' : '') +
         '</span></div></td>' +
       '<td><span class="badge neutral">' + esc(x.role || '—') + '</span></td>' +
       '<td class="num">' + moneyIn(x.currency, x.salary) + '</td>' +
@@ -1178,7 +1196,7 @@ function repEmployees() {
                                       : '<span class="muted">' + esc(t('rp_no_login')) + '</span>') + '</b></td>' +
       '<td>' + (x.sold && x.sold.count ? repBar(DB.repBaseOf(x.sold), best, true) : '') + '</td>' +
       '<td class="num">' + (x.nextPayment
-          ? '<span dir="ltr">' + esc(fmtDate(x.nextPayment)) + '</span> <span class="muted">· ' + esc(relDate(x.nextPayment)) + '</span>'
+          ? '<span dir="auto">' + esc(fmtDate(x.nextPayment)) + '</span> <span class="muted">· ' + esc(relDate(x.nextPayment)) + '</span>'
           : '<span class="muted">—</span>') + '</td>' +
       '<td class="muted num">' + (x.phone ? tel(x.phone) : '—') + '</td></tr>';
   });
@@ -1205,8 +1223,8 @@ function repSuppliers() {
 
   var h = repStats([
     [t('outstanding'), repMoney(outstanding),
-     owing.length ? nf(owing.length) + ' / ' + nf(list.length) + ' ' + t('tab_suppliers').toLowerCase() : t('none'), true],
-    [t('rp_purchased'), repMoney(purchased), nf(list.length) + ' ' + t('tab_suppliers').toLowerCase()]
+     owing.length ? '<bdi dir="ltr">' + nf(owing.length) + ' / ' + nf(list.length) + '</bdi> ' + t('rp_n_supplier') : t('none'), true],
+    [t('rp_purchased'), repMoney(purchased), repCount(list.length, 'rp_n_supplier')]
   ]);
 
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
@@ -1228,7 +1246,7 @@ function repSuppliers() {
         moneyIn(s.currency, s.outstanding) + '</b></td>' +
       '<td>' + (s.outstanding
         ? (s.dueDate
-            ? '<span class="badge ' + (late ? 'critical' : (soon ? 'low' : 'neutral')) + '" dir="ltr">' +
+            ? '<span class="badge ' + (late ? 'critical' : (soon ? 'low' : 'neutral')) + '" dir="auto">' +
               esc(fmtDate(s.dueDate)) + ' · ' + esc(relDate(s.dueDate)) + '</span>'
             : '<span class="badge neutral">' + esc(t('rp_no_due')) + '</span>')
         : '<span class="badge healthy">' + t('none') + '</span>') + '</td>' +

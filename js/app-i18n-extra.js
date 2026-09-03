@@ -748,6 +748,12 @@ var REPORTS_EN = {
   rp_debt_note: 'What customers owe and what the shop owes suppliers are whole balances, ' +
     'not filtered by the date range above — a sale taken on credit in March is still owed today.',
   rp_collected: 'Debt collected',
+  /* COUNTED nouns — what follows a numeral, which in Arabic is not the same
+     word as the column heading above it. `invoices` is الفواتير, 'the invoices', which is
+     right at the top of a column and reads as '3 the-invoices' after a
+     number. Arabic takes the indefinite singular there. */
+  rp_n_invoice: 'invoices', rp_n_supplier: 'suppliers',
+  rp_n_category: 'categories', rp_n_unit: 'units', rp_n_line: 'lines',
   /* Column headings, not sentence fragments: rp_since reads 'since 3 Jan
      2020' under a name and is wrong at the top of a column. */
   rp_started: 'Started', rp_last_paid: 'Last payment',
@@ -788,6 +794,8 @@ var REPORTS_AR = {
   rp_debt_note: 'ديون الزبائن ومستحقّات الموردين أرصدة كاملة، غير مقيّدة بالمدة المختارة أعلاه — ' +
     'فاتورة بيعت بالدين في آذار ما زالت ديناً اليوم.',
   rp_collected: 'ديون محصّلة',
+  rp_n_invoice: 'فاتورة', rp_n_supplier: 'مورّد',
+  rp_n_category: 'فئة', rp_n_unit: 'قطعة', rp_n_line: 'صنف',
   rp_started: 'تاريخ المباشرة', rp_last_paid: 'آخر دفعة',
   rp_locked_note: 'الخانة المعلَّمة 🔒 لا يمكن تغييرها. المدير يحتفظ دائماً بالإعدادات وصلاحية ' +
     'الموظفين، وإلا لم يبقَ من يستطيع إعادتها؛ ويلا وير شركة أخرى، فلا تُمنح أبداً الزبائن ' +

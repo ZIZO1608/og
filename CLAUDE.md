@@ -687,6 +687,103 @@ and `Shop.reloadDashboard()` refetches only it for a scope chip.
 - `arrivals` counts `type = 'received'` only; the old browser figure counted any positive delta,
   so a transfer to the floor looked like a delivery.
 
+## The admin Reports screen
+
+`server/lib/reports.js`, `GET /api/reports?from=&to=&tz=`, gated `report.read`. The same job
+`/api/dashboard` does for the home screens, and it was added for the same reason. Until it existed
+the Reports screen was summed **in the browser** out of `DB.sales` and was wrong in two ways at once:
+
+- **THE WINDOW.** `DB.sales` is the last two hundred invoices. "Six months of revenue" meant
+  "whatever of the last two hundred fell in six months". The screen carried a `cappedNote` saying
+  the LIST was capped; the totals under it went on claiming to be the shop.
+- **THE CURRENCY.** It added `s.total` with no regard for `sales.currency` — the browser's sale
+  object did not carry one — so a $100 pair went into the month as 100 lira. Every revenue, profit
+  and margin figure on the screen was built on that sum.
+
+`DB.rep` is the snapshot, replaced whole on every load like `DB.dash`; `Shop.reloadReports()`
+refetches only it for a scope chip. **`DB.monthlySales`, `DB.salesByType`, `DB.profitByType` and
+`DB.inventoryValue` are gone** — nothing on this screen is derived locally any more.
+
+- **Six tabs, and a tab the account may not open is not drawn.** `repTabs()` is the browser half;
+  each block is gated on its own permission server-side and is **absent** rather than nulled —
+  `profit` needs `profit.read`, `payments`/`suppliers` need `money.read`, `employees` needs
+  `staff.read`, and `inventory`'s cost half needs `cost.read` (`hasCost: false`, every cost key
+  `null`). `repTab()` bounces a bookmarked or revoked tab back to Sales rather than onto a blank
+  card.
+- **Money is a pair and is drawn as a pair**, everywhere except the chart, which can only plot one
+  series and so plots the base currency.
+- **`repChartData(tab)` is the ONE description of the chart**, read by both the markup that decides
+  whether to put a canvas on the page and the hook that draws into it. They used to be separate and
+  disagreed: the Inventory canvas appeared whenever any type had PIECES, while the donut was fed
+  CAPITAL — so a shop with no cost prices got a legend, an empty ring and nothing else.
+- **The range is said out loud, and it is the range that was asked for.** The old card head printed
+  a hardcoded "179 days ago — today" over six calendar months of table, a present-tense inventory
+  total and a payroll with no dates in it at all. Stock, payroll and suppliers say `rp_as_of`
+  instead.
+- **`OG.repScope` is the Reports screen's own window**, deliberately not the dashboard's
+  `dashScope`: while one chip drove both, every visit to Reports reset the dashboard.
+  `scopeRange(scope, from, to)` grew `month`, `year` and `custom`; `ymdLocal()` reads a date box as
+  LOCAL midnight, because `new Date('2026-03-01')` is UTC midnight and in Aleppo that is the small
+  hours of the day before.
+- **The series carries its empty buckets.** A day the shop took nothing is a fact; closing the gap
+  draws a flat line over a hole. Day buckets up to 92 days, calendar months beyond, and the browser
+  is told which in `grain` rather than guessing from the string's length.
+- **Archived stock is not stock.** `p.hidden = 0` on every inventory query — the rule
+  `DB.liveVariants()` enforces everywhere else and which `inventoryValue()` never did. What is left
+  out is **named** (`archivedUnits`), because somebody who remembers a bigger number is owed the
+  reason it moved.
+- **Debt and supplier balances are NOT windowed by the chips.** A sale taken on credit in March is
+  still owed in September, and filtering it by "30 days" would understate the shop's exposure by
+  exactly the debts outstanding longest. The card says so.
+- **Counted nouns are their own keys** (`rp_n_invoice`, `rp_n_supplier`, …). `t('invoices')` is
+  الفواتير, "the invoices" — right at the top of a column, and "3 the-invoices" under a number.
+  Every count on the screen went through the heading key. Dates use `dir="auto"`, never `dir="ltr"`:
+  `fmtDate` puts an Arabic month name among the digits and forcing LTR reorders the phrase.
+
+## The exports, and the logo in the spreadsheet
+
+`js/export.js` writes both files by hand — a store-method ZIP plus the OOXML parts for XLSX, and
+HTML through the browser's Save-as-PDF for the document. `js/app-export.js` holds one spec per
+screen. **The column spec is what everything turns on**, and it decides both the Excel cell type and
+how the printed page draws it:
+
+| | |
+|---|---|
+| *(none)* | text |
+| `num` / `int` | a number, thousands separated |
+| `money: 'SYP'\|'USD'` | a number in that currency's own format — **never the same column** |
+| `pct` | the percent as a person says it (53.3); divided by 100 on the way in, because Excel's % format multiplies by 100 on the way out |
+| `date` | a real Excel serial, built from the LOCAL calendar date |
+
+A cell may be `null`, which is **blank and deliberately not zero**: a supplier billed in dollars has
+no lira balance, and somebody with no till login has not sold nothing.
+
+- **The sheet carries the real mark.** There is no PNG in the repo — the mark is `assets/logo.svg` —
+  so it is drawn into a canvas at export time and the bytes lifted out of the data URL, then written
+  as `xl/media/logo.png` with the drawing, rels and content-type parts that go with it. Cached per
+  mark. **Every failure path returns null** (no canvas, an image that will not load, a tainted
+  context) and the band renders with the word alone: a missing picture must never cost somebody
+  their spreadsheet. A one-column sheet has no B1 for the word to move into, so it goes without.
+- **The worksheet's child elements are in a FIXED schema order** — `sheetPr`, `dimension`,
+  `sheetViews`, `sheetFormatPr`, `cols`, `sheetData`, `autoFilter`, `mergeCells`, `printOptions`,
+  `pageMargins`, `pageSetup`, `headerFooter`, `drawing`. Excel refuses a workbook that gets it wrong,
+  with a repair dialog that names no element.
+- The header row is frozen, filtered (**never over the totals row** — a filter that hides rows while
+  the total stays put is how a spreadsheet lies), and repeated on every printed page via
+  `_xlnm.Print_Titles`. Wide reports go landscape, fit-to-width with no page limit. Arabic gets
+  `rightToLeft="1"` and a font that actually has Arabic glyphs — Montserrat has none.
+- **The PDF chart is REDRAWN for paper**, not lifted off the screen. `Charts.printSnapshot(id)`
+  rebuilds it from `Charts`' own record of what the chart was asked for: same type, same numbers,
+  same formatter, ink-on-paper colours, animation off, 2x into a detached canvas. The old
+  `toDataURL()` of the live canvas put a lime series and `#A1A1AA` axis labels on white A4 — an
+  empty box with a yellow squiggle in it.
+- `thead` repeats across pages and `tfoot` is forced to `table-row-group`, because a table footer
+  otherwise repeats too and prints the grand total once per page. The KPI underline is a border,
+  not the `box-shadow` it was — Chrome drops shadows from printed output entirely.
+- **An empty report is still a report.** `ACTIONS.export` used to refuse whenever `spec.rows` was
+  empty and say "Export failed · None" — two words that are both wrong. Only a spec that does not
+  exist is refused now.
+
 ## The bell
 
 `server/lib/alerts.js`. Computed on every request from the shop's current state — never stored,
