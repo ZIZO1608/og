@@ -791,6 +791,28 @@ var DB = {
      shop took nothing". */
   dash: null,
   hydrateDashboard: function (d) { DB.dash = d || null; },
+
+  /* The Reports screen's snapshot, GET /api/reports, replaced whole on every
+     load for the same reason `dash` is. null when the account has no
+     report.read or the request failed; every reader below is null-safe.
+
+     Before this existed the Reports screen was summed here in the browser out
+     of `sales` — the last two hundred invoices — with dollars added to lira as
+     though they were the same number. server/lib/reports.js has the full
+     account. Nothing on that screen is derived locally any more. */
+  rep: null,
+  hydrateReports: function (d) { DB.rep = d || null; },
+
+  /* One block of the snapshot, or null. `DB.repBlock('payments')` is
+     undefined for a manager without money.read, absent rather than empty,
+     because "not shown to you" and "the shop took nothing" are different
+     sentences and only one of them is ever true. */
+  repBlock: function (name) {
+    return (DB.rep && DB.rep[name] !== undefined && DB.rep[name] !== null) ? DB.rep[name] : null;
+  },
+
+  /* The shop's own currency, out of the report's pairs and the dashboard's. */
+  repBase: function () { return (DB.rep && DB.rep.base) || CONFIG.BASE_CURRENCY || 'SYP'; },
   /* The partner's production report, computed on the server in SQL over
      every finished job. Arrives with the partner bundle. */
   stats: null,
@@ -1801,67 +1823,74 @@ var DB = {
     return 'bronze';
   },
 
-  /* Sales aggregated by month for the dashboard line chart. */
-  monthlySales: function (months) {
-    months = months || 6;
-    var out = [];
-    for (var i = months - 1; i >= 0; i--) {
-      var d = new Date(TODAY.getFullYear(), TODAY.getMonth() - i, 1);
-      var end = new Date(TODAY.getFullYear(), TODAY.getMonth() - i + 1, 1);
-      var total = sales.reduce(function (s, x) { return (x.date >= d && x.date < end) ? s + x.total : s; }, 0);
-      var count = sales.filter(function (x) { return x.date >= d && x.date < end; }).length;
-      out.push({ date: d, label: d.toLocaleDateString('en-GB', { month: 'short' }), total: total, count: count });
+  /* ---- the Reports screen's rows ----------------------------------------
+     THREE FUNCTIONS USED TO LIVE HERE — monthlySales, salesByType and
+     profitByType — and one more, inventoryValue. All four walked the local
+     `sales` and `products` arrays, and all four were wrong in the same two
+     ways at once:
+
+       · they added `s.total` across every sale regardless of `sales.currency`
+         (which the local sale object did not even carry), so a $100 pair went
+         into the month as 100 lira — about seventy US cents; and
+
+       · `sales` is the last two hundred invoices the server sent, so "six
+         months of revenue" meant "whatever of the last two hundred fell in six
+         months". The screen carried a note saying the LIST was capped. The
+         totals under it went on claiming to be the shop.
+
+     inventoryValue had a third: it walked every product including the archived
+     ones, so lines the shop had stopped selling were counted as capital in
+     stock — the exact rule DB.liveVariants() exists to enforce everywhere
+     else.
+
+     They are now computed in SQL over every sale by server/lib/reports.js and
+     arrive in DB.rep. What is left here is the reading, not the arithmetic. */
+
+  /* One sales bucket's label, in the page's language. The server sends
+     'YYYY-MM-DD' or 'YYYY-MM' and says which in `rep.sales.grain`, so this
+     never has to guess from the string's length. */
+  repBucketLabel: function (bucket, grain) {
+    var s = String(bucket || '');
+    if (grain === 'day') {
+      var d = new Date(s + 'T00:00:00');
+      if (isNaN(d.getTime())) return s;
+      return d.getDate() + ' ' + (OG.lang === 'ar' ? MONTHS_AR : MONTHS_EN)[d.getMonth()];
     }
-    return out;
+    var mi = Number(s.slice(5, 7)) - 1;
+    var name = (OG.lang === 'ar' ? MONTHS_AR : MONTHS_EN)[mi];
+    return name ? name + ' ' + s.slice(0, 4) : s;
   },
 
-  salesByType: function () {
-    var map = {};
-    sales.forEach(function (s) {
-      s.items.forEach(function (it) {
-        map[it.type] = (map[it.type] || 0) + it.qty * it.unitPrice;
-      });
-    });
-    return Object.keys(map).map(function (k) {
-      return { type: k, label: TYPE_LABELS[k] || k, total: map[k] };
-    }).sort(function (a, b) { return b.total - a.total; });
+  /* A short one for a chart axis, where "3 Sep 2026" on thirty ticks is a
+     wall of ink. Days lose the month except on the first of one, which is the
+     only tick that still needs it to stay readable. */
+  repBucketTick: function (bucket, grain) {
+    var s = String(bucket || '');
+    if (grain !== 'day') return DB.repBucketLabel(s, grain);
+    var d = new Date(s + 'T00:00:00');
+    if (isNaN(d.getTime())) return s;
+    return d.getDate() === 1
+      ? d.getDate() + ' ' + (OG.lang === 'ar' ? MONTHS_AR : MONTHS_EN)[d.getMonth()]
+      : String(d.getDate());
   },
 
-  profitByType: function () {
-    var map = {};
-    sales.forEach(function (s) {
-      s.items.forEach(function (it) {
-        if (!map[it.type]) map[it.type] = { revenue: 0, cost: 0, units: 0 };
-        map[it.type].revenue += it.qty * it.unitPrice;
-        map[it.type].cost += it.qty * it.unitCost;
-        map[it.type].units += it.qty;
-      });
-    });
-    return Object.keys(map).map(function (k) {
-      var m = map[k];
-      return {
-        type: k, label: TYPE_LABELS[k] || k, revenue: m.revenue, cost: m.cost,
-        units: m.units, profit: m.revenue - m.cost,
-        margin: m.revenue ? (m.revenue - m.cost) / m.revenue * 100 : 0
-      };
-    }).sort(function (a, b) { return b.profit - a.profit; });
+  /* The half of a `{syp, usd}` pair the shop actually prices in, and the other
+     half. Every figure on the Reports screen is drawn as the pair; these two
+     exist for the chart, which can only plot one series of numbers and says in
+     its own label which currency it is showing. */
+  repBaseOf: function (p) {
+    if (!p) return 0;
+    return DB.repBase() === 'USD' ? (p.usd || 0) : (p.syp || 0);
   },
-
-  inventoryValue: function () {
-    var map = {};
-    products.forEach(function (p) {
-      var q = DB.totalQty(p.id);
-      if (!map[p.type]) map[p.type] = { units: 0, cost: 0, retail: 0 };
-      map[p.type].units += q;
-      map[p.type].cost += q * p.costPrice;
-      map[p.type].retail += q * p.sellingPrice;
-    });
-    return Object.keys(map).map(function (k) {
-      return {
-        type: k, label: TYPE_LABELS[k] || k, units: map[k].units,
-        cost: map[k].cost, retail: map[k].retail, locked: map[k].cost
-      };
-    }).sort(function (a, b) { return b.cost - a.cost; });
+  repOtherOf: function (p) {
+    if (!p) return 0;
+    return DB.repBase() === 'USD' ? (p.syp || 0) : (p.usd || 0);
+  },
+  /* True when any dollars were taken at all. A second column of zeros on every
+     row of a lira-only shop is noise; the column appears when it means
+     something and is left out when it does not. */
+  repHasOther: function (pairs) {
+    return (pairs || []).some(function (p) { return DB.repOtherOf(p) !== 0; });
   },
 
   /* Tiny 12-point series used for the sparkline in the product drawer. */
@@ -2918,6 +2947,7 @@ var DB = {
     /* Always assigned, even to null: a snapshot from an earlier scope or a
        different account must not survive a reload that did not carry one. */
     if ('dashboard' in payload) DB.dash = payload.dashboard || null;
+    if ('reports' in payload) DB.rep = payload.reports || null;
 
     purchaseOrders.length = 0;
     (payload.purchaseOrders || []).forEach(function (o) {

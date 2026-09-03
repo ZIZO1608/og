@@ -316,3 +316,9 @@ body.rtl .user-chip { padding: 0 5px 0 13px; }
   background: var(--destructive-soft); color: var(--destructive);
   font-size: 12px; font-weight: 600;
 }
+
+/* The portal switch in the sidebar: mint, so it reads as "another company's
+   door" rather than one more screen of the shop. */
+.nav-item.nav-partner { color: #B5DCC0; }
+.nav-item.nav-partner .nav-icon svg { stroke: #B5DCC0; }
+.nav-item.nav-partner:hover { background: rgba(181, 220, 192, .10); color: #DDF3E3; }

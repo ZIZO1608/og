@@ -569,177 +569,670 @@ function openPartnerInvoice(id) {
               body: YLINV.sheet(inv, false), foot: foot });
 }
 
-/* --------------------------------------------------------------- 12. REPORTS */
+/* --------------------------------------------------------------- 12. REPORTS
+
+   EVERY FIGURE ON THIS SCREEN COMES FROM THE SERVER, computed in SQL over
+   every sale — `DB.rep`, the snapshot GET /api/reports returned for the window
+   the scope chips name. Nothing here is summed from `DB.sales`, which is the
+   last two hundred invoices and was, until this rewrite, the only source this
+   screen had. It read as the shop; it was a window, and a window that added
+   dollars to lira on the way past. server/lib/reports.js has the full account.
+
+   Four rules follow from that and are visible in every function below:
+
+     - MONEY IS A PAIR `{ syp, usd }` and is drawn as a pair. Nothing here
+       converts one into the other and nothing adds them. The one place a
+       single number appears is the chart, which can only plot one series and
+       says in its own label which currency it is showing.
+
+     - A BLOCK THE ACCOUNT MAY NOT SEE IS ABSENT from the snapshot, so every
+       reader is null-safe and the TAB ITSELF is not drawn. A tab that opens
+       onto "0" is worse than no tab: zero is a claim about the shop.
+
+     - THE RANGE IS SAID OUT LOUD, and it is the range that was actually asked
+       for. The old card head printed "179 days ago — today" over a table of
+       six calendar months, an inventory total that was present-tense, and a
+       payroll that has no dates in it at all.
+
+     - AN EMPTY RANGE IS A SENTENCE, not a blank table. A shop that sold
+       nothing last Tuesday should read as a shop that sold nothing last
+       Tuesday.                                                              */
+
+/* Which tabs this account may actually open. Server-side each block is gated
+   on its own permission and simply not sent; this is the browser half of the
+   same rule, and the two are deliberately written to the same list. */
+function repTabs() {
+  var tabs = [['sales', 'tab_sales', null]];
+  if (allow('profit.read')) tabs.push(['profit', 'tab_profit', 'profit.read']);
+  tabs.push(['inventory', 'tab_inventory', null]);
+  if (allow('money.read')) tabs.push(['payments', 'rp_tab_payments', 'money.read']);
+  if (allow('staff.read')) tabs.push(['employees', 'tab_employees', 'staff.read']);
+  if (allow('money.read')) tabs.push(['suppliers', 'tab_suppliers', 'money.read']);
+  return tabs;
+}
+
+/* A bookmarked #reports, a permission revoked while somebody was looking at
+   the screen, or an export button pressed on a tab that has since gone: all
+   three land here rather than on a blank card. */
+function repTab() {
+  var tabs = repTabs(), want = OG.rep.tab;
+  for (var i = 0; i < tabs.length; i++) if (tabs[i][0] === want) return want;
+  OG.rep.tab = tabs[0][0];
+  return OG.rep.tab;
+}
+
+var REP_SCOPES = [['today', 'dash_scope_today'], ['7d', 'dash_scope_7d'],
+                  ['30d', 'dash_scope_30d'], ['month', 'rp_scope_month'],
+                  ['year', 'rp_scope_year'], ['custom', 'rp_scope_custom']];
+
+/* The window actually on screen, in words. Built from the same scopeRange()
+   the request was built from, so the label cannot drift from the figures —
+   which is exactly how the old fixed "179 days" came to sit over six calendar
+   months of table. */
+function repRangeLabel() {
+  var r = scopeRange(OG.repScope || '30d', OG.repFrom, OG.repTo);
+  var last = new Date(r.to.getTime() - 1);
+  var a = fmtDate(r.from), b = fmtDate(last);
+  return a === b ? a : a + ' — ' + b;
+}
+
+/* Money out of the report's pairs. `moneyPair` already draws each half in its
+   own bidi isolate and prints "—" when both halves are zero, which is the
+   honest reading of a day the shop took nothing. */
+function repMoney(p) { return moneyPair(p ? p.syp : 0, p ? p.usd : 0); }
+function repMoneyShort(p) { return moneyPair(p ? p.syp : 0, p ? p.usd : 0, true); }
+
+/* A percentage pair. null is "there was no revenue in that currency at all",
+   which is not 0% — 0% would say the shop sold at cost. */
+function repPct(p, digits) {
+  if (!p) return '<span class="muted">—</span>';
+  var out = [];
+  if (p.syp !== null && p.syp !== undefined) out.push('<bdi dir="ltr">' + pct(p.syp, digits === undefined ? 1 : digits) + '</bdi>');
+  if (p.usd !== null && p.usd !== undefined) out.push('<bdi dir="ltr">$ ' + pct(p.usd, digits === undefined ? 1 : digits) + '</bdi>');
+  return out.length ? out.join(' · ') : '<span class="muted">—</span>';
+}
+
+/* One row of a table that has nothing in it. */
+function repNone(cols, msg) {
+  return '<tr><td colspan="' + cols + '" class="muted" style="text-align:center;padding:28px">' +
+         esc(msg || t('rp_empty_range')) + '</td></tr>';
+}
+
+/* A bar whose width is a share of the biggest row. Guarded, because every
+   version of this on every screen has at some point divided by a zero total
+   and written `width:NaN%` — which the browser drops silently, so the column
+   goes blank and nobody can say when it stopped working. */
+function repBar(value, best, lime) {
+  var w = (best > 0 && value > 0) ? Math.max(3, Math.min(100, value / best * 100)) : 0;
+  return '<div class="bar-track"><i' + (lime ? ' class="lime"' : '') +
+         ' style="width:' + w.toFixed(1) + '%"></i></div>';
+}
+
+/* Refetch the snapshot for whatever window the chips and boxes now name.
+
+   A FAILURE PUTS THE OLD FIGURES BACK. Blanking DB.rep on a timeout would
+   draw an empty report over a shop that had a perfectly good month, and an
+   empty report is not silence — it is the claim that nothing was sold. The
+   toast says the range could not be read; the screen goes on showing the
+   last window that was. */
+function reloadReportsInto() {
+  OG.repLoading = true;
+  render();
+  var done = function () {
+    OG.repLoading = false;
+    if (OG.view === 'reports') render();
+  };
+  Shop.reloadReports().then(done, function (err) {
+    done();
+    toast(t('reports_title'), (err && err.message) || t('rp_unavailable'), 'err', 4000);
+  });
+}
 
 function viewReports() {
-  var tabs = [['sales', 'tab_sales'], ['profit', 'tab_profit'], ['inventory', 'tab_inventory'],
-              ['employees', 'tab_employees'], ['suppliers', 'tab_suppliers']];
+  OG.rep = OG.rep || { tab: 'sales' };
+  OG.repScope = OG.repScope || '30d';
+  var tabs = repTabs(), tab = repTab();
 
   var h = '<div class="page-head"><div><h1>' + t('reports_title') + '</h1>' +
     '<div class="sub">' + t('reports_sub') + '</div></div>' +
-    '<div class="head-actions">' +
-      exportButtons() +
-    '</div></div><div class="tabs">';
+    '<div class="head-actions">' + exportButtons() + '</div></div>';
 
+  /* ---- the window ----
+     Two date boxes only when Custom is chosen: a pair of empty inputs on
+     every visit is two more things to read past on a screen that is already
+     six tabs wide. */
+  h += '<div class="chip-row mb"><span class="lbl-lbl">' + t('dash_scope_label') + '</span>';
+  REP_SCOPES.forEach(function (o) {
+    h += '<button class="chip ' + (OG.repScope === o[0] ? 'on' : '') +
+         '" data-act="rep-scope" data-k="' + o[0] + '">' + t(o[1]) + '</button>';
+  });
+  if (OG.repScope === 'custom') {
+    h += '<span class="rp-dates">' +
+      '<input type="date" class="inp" id="repFrom" value="' + esc(OG.repFrom || '') + '" ' +
+        'aria-label="' + esc(t('rp_from')) + '" data-change="rep-dates">' +
+      '<span class="lbl-lbl">→</span>' +
+      '<input type="date" class="inp" id="repTo" value="' + esc(OG.repTo || '') + '" ' +
+        'aria-label="' + esc(t('rp_to')) + '" data-change="rep-dates">' +
+      '</span>';
+  }
+  h += '</div>';
+
+  h += '<div class="tabs">';
   tabs.forEach(function (tb) {
-    h += '<button class="tab ' + (OG.rep.tab === tb[0] ? 'on' : '') + '" data-act="rep-tab" data-tab="' + tb[0] + '">' + t(tb[1]) + '</button>';
+    h += '<button class="tab ' + (tab === tb[0] ? 'on' : '') +
+         '" data-act="rep-tab" data-tab="' + tb[0] + '">' + t(tb[1]) + '</button>';
   });
   h += '</div>';
 
-  h += '<div class="card mb"><div class="card-head"><h3>' + t(tabs.filter(function (x) { return x[0] === OG.rep.tab; })[0][1]) + '</h3>' +
-    '<div class="card-actions muted small">' + fmtDate(daysAgo(179)) + ' — ' + fmtDate(TODAY) + '</div></div>' +
-    '<div class="card-body"><div class="chart-box" style="height:250px"><canvas id="repChart"></canvas></div></div></div>';
-
-  /* The sales and profit tabs are BUILT from DB.sales — monthlySales(),
-     profitByType() and every total under them — and that array is the last
-     200 the server sent. On a shop with more, this page charts a window and
-     reads as the year. Say which. */
-  if (OG.rep.tab === 'sales' || OG.rep.tab === 'profit') {
-    h += cappedNote(DB.cap('sales'), t('invoices').toLowerCase());
-  }
-  if (OG.rep.tab === 'inventory') {
-    h += cappedNote(DB.cap('movements'), t('movement').toLowerCase());
+  /* The snapshot itself may be missing — no report.read, or the request
+     failed. Say which, and stop: drawing six tabs of dashes over a server
+     that is simply not answering sends somebody looking for a data problem
+     that is not there. */
+  if (!DB.rep) {
+    return h + '<div class="card"><div class="card-body">' +
+      '<div class="muted" style="text-align:center;padding:48px 20px">' +
+      esc(t('rp_unavailable')) + '</div></div></div>';
   }
 
-  h += repTable();
-  return h;
+  var label = tabs.filter(function (x) { return x[0] === tab; })[0][1];
+  /* Stock is a present-tense fact, so the date chips do not apply to it and
+     the card says so rather than letting "30 days" imply thirty days of
+     shelves. Same for the payroll, which has no dates on it at all. */
+  var timeless = (tab === 'inventory' || tab === 'employees' || tab === 'suppliers');
+
+  h += '<div class="card mb"><div class="card-head"><h3>' + t(label) + '</h3>' +
+    '<div class="card-actions muted small">' +
+      (timeless ? esc(t('rp_as_of')) + ' <span dir="ltr">' + esc(fmtDate(new Date())) + '</span>'
+                : '<span dir="ltr">' + esc(repRangeLabel()) + '</span>') +
+    (OG.repLoading ? ' · ' + esc(t('loading')) : '') + '</div></div>' +
+    '<div class="card-body"><div class="chart-box" style="height:250px">' +
+      (repHasChart(tab) ? '<canvas id="repChart"></canvas>'
+                        : '<div class="chart-empty">' + esc(t('rp_empty_range')) + '</div>') +
+    '</div></div></div>';
+
+  return h + repTable(tab);
 }
 
-function repTable() {
-  var h = '<div class="card table-wrap">';
+/* Is there anything to draw? afterReports() tests for the canvas, so this and
+   the markup above have to agree — an axis with no series on it reads as a
+   broken chart, not as a quiet week. */
+function repHasChart(tab) {
+  var r = DB.rep;
+  if (!r) return false;
+  if (tab === 'sales')     return !!(r.sales && r.sales.series.some(function (b) { return b.count > 0; }));
+  if (tab === 'profit')    return !!(r.profit && r.profit.rows.length);
+  if (tab === 'inventory') return !!(r.inventory && r.inventory.rows.some(function (x) { return x.units > 0; }));
+  if (tab === 'payments')  return !!(r.payments && r.payments.byPayment.length);
+  if (tab === 'employees') return !!(r.employees && r.employees.rows.length);
+  if (tab === 'suppliers') return !!(r.suppliers && r.suppliers.length);
+  return false;
+}
 
-  if (OG.rep.tab === 'sales') {
-    var m = DB.monthlySales(6);
-    var totalRev = m.reduce(function (a, x) { return a + x.total; }, 0);
-    var totalInv = m.reduce(function (a, x) { return a + x.count; }, 0);
-    h += '<table class="tbl"><thead><tr><th>Month</th><th class="num">' + t('invoices') + '</th>' +
-      '<th class="num">' + t('revenue') + '</th><th class="num">' + t('avg_basket') + '</th><th>' + t('vs_last_month') + '</th></tr></thead><tbody>';
-    m.forEach(function (x, i) {
-      var prev = i > 0 ? m[i - 1].total : 0;
-      var d = prev ? (x.total - prev) / prev * 100 : 0;
-      h += '<tr><td><b>' + x.label + ' ' + x.date.getFullYear() + '</b></td>' +
-        '<td class="num">' + x.count + '</td>' +
-        '<td class="num"><b>' + money(x.total) + '</b></td>' +
-        '<td class="num muted">' + money(x.count ? x.total / x.count : 0) + '</td>' +
-        '<td><span class="delta ' + (d >= 0 ? 'up' : 'down') + '">' + (d >= 0 ? '▲' : '▼') + ' ' + Math.abs(d).toFixed(1) + '%</span></td></tr>';
-    });
-    h += '</tbody><tfoot><tr><td>' + t('total') + '</td><td class="num">' + totalInv + '</td>' +
-      '<td class="num">' + money(totalRev) + '</td><td class="num">' + money(totalRev / totalInv) + '</td><td></td></tr></tfoot></table>';
+/* A row of stat cards above a table. */
+function repStats(cards) {
+  var h = '<div class="grid mb" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">';
+  cards.forEach(function (c) {
+    if (!c) return;
+    h += '<div class="stat"><span class="eyebrow">' + esc(c[0]) + '</span>' +
+      '<div class="val' + (c[3] ? ' accent' : '') + '">' + c[1] + '</div>' +
+      (c[2] ? '<div class="foot">' + c[2] + '</div>' : '') + '</div>';
+  });
+  return h + '</div>';
+}
 
-  } else if (OG.rep.tab === 'profit') {
-    var rows = DB.profitByType();
-    var tr = rows.reduce(function (a, x) { return a + x.revenue; }, 0);
-    var tc = rows.reduce(function (a, x) { return a + x.cost; }, 0);
-    h += '<table class="tbl"><thead><tr><th>' + t('type') + '</th><th class="num">' + t('units') + '</th>' +
-      '<th class="num">' + t('revenue') + '</th><th class="num">' + t('cost') + '</th>' +
-      '<th class="num">' + t('profit') + '</th><th class="num">' + t('margin') + '</th><th style="width:120px"></th></tr></thead><tbody>';
-    var best = rows[0] ? rows[0].profit : 1;
-    rows.forEach(function (x) {
-      h += '<tr><td><b>' + x.label + '</b></td>' +
-        '<td class="num">' + nf(x.units) + '</td>' +
-        '<td class="num">' + money(x.revenue) + '</td>' +
-        '<td class="num muted">' + money(x.cost) + '</td>' +
-        '<td class="num"><b>' + money(x.profit) + '</b></td>' +
-        '<td class="num">' + pct(x.margin, 1) + '</td>' +
-        '<td><div class="bar-track"><i class="lime" style="width:' + Math.max(3, x.profit / best * 100) + '%"></i></div></td></tr>';
-    });
-    h += '</tbody><tfoot><tr><td>' + t('total') + '</td><td></td><td class="num">' + money(tr) + '</td>' +
-      '<td class="num">' + money(tc) + '</td><td class="num">' + money(tr - tc) + '</td>' +
-      '<td class="num">' + pct((tr - tc) / tr * 100, 1) + '</td><td></td></tr></tfoot></table>';
+function repTable(tab) {
+  tab = tab || repTab();
+  if (!DB.rep) return '';
+  switch (tab) {
+    case 'profit':    return repProfit();
+    case 'inventory': return repInventory();
+    case 'payments':  return repPayments();
+    case 'employees': return repEmployees();
+    case 'suppliers': return repSuppliers();
+    default:          return repSales();
+  }
+}
 
-  } else if (OG.rep.tab === 'inventory') {
-    var inv = DB.inventoryValue();
-    var totalCost = inv.reduce(function (a, x) { return a + x.cost; }, 0);
-    var totalRetail = inv.reduce(function (a, x) { return a + x.retail; }, 0);
-    var totalUnits = inv.reduce(function (a, x) { return a + x.units; }, 0);
-    h = '<div class="grid mb" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
-      '<div class="stat"><span class="eyebrow">' + t('capital_in_stock') + '</span>' +
-        '<div class="val accent">' + money(totalCost) + '</div>' +
-        '<div class="foot">' + nf(totalUnits) + ' ' + t('total_pieces').toLowerCase() + '</div></div>' +
-      '<div class="stat"><span class="eyebrow">' + t('retail_value') + '</span><div class="val">' + money(totalRetail) + '</div>' +
-        '<div class="foot">' + t('profit') + ' ' + t('if_sold_all') + '</div></div>' +
-      '<div class="stat"><span class="eyebrow">' + t('profit') + '</span><div class="val">' + money(totalRetail - totalCost) + '</div>' +
-        '<div class="foot">' + pct((totalRetail - totalCost) / totalRetail * 100, 1) + ' ' + t('margin').toLowerCase() + '</div></div>' +
-    '</div><div class="card table-wrap">' +
-      '<table class="tbl"><thead><tr><th>' + t('type') + '</th><th class="num">' + t('units') + '</th>' +
-      '<th class="num">' + t('capital_in_stock') + '</th><th class="num">' + t('retail_value') + '</th>' +
-      '<th class="num">' + t('profit') + '</th><th style="width:130px"></th></tr></thead><tbody>';
-    inv.forEach(function (x) {
-      h += '<tr><td><b>' + x.label + '</b></td><td class="num">' + nf(x.units) + '</td>' +
-        '<td class="num"><b>' + money(x.cost) + '</b></td>' +
-        '<td class="num muted">' + money(x.retail) + '</td>' +
-        '<td class="num">' + money(x.retail - x.cost) + '</td>' +
-        '<td><div class="bar-track"><i style="width:' + Math.max(3, x.cost / totalCost * 100) + '%"></i></div></td></tr>';
-    });
-    h += '</tbody><tfoot><tr><td>' + t('total') + '</td><td class="num">' + nf(totalUnits) + '</td>' +
-      '<td class="num">' + money(totalCost) + '</td><td class="num">' + money(totalRetail) + '</td>' +
-      '<td class="num">' + money(totalRetail - totalCost) + '</td><td></td></tr></tfoot></table>';
+/* ---------------------------------------------------------------- SALES ---
+   One row per bucket — days up to about three months, calendar months beyond
+   — with the empty ones included, because a week the shop took nothing is a
+   fact and closing the gap would draw a flat line over a hole. */
+function repSales() {
+  var s = DB.rep.sales, grain = s.grain;
+  var series = s.series;
+  var base = DB.repBase();
 
-  } else if (OG.rep.tab === 'employees') {
-    h += '<table class="tbl"><thead><tr><th>' + t('name') + '</th><th>' + t('role') + '</th>' +
-      '<th class="num">' + t('salary') + '</th><th class="num">' + t('sales_made') + '</th>' +
-      '<th>' + t('next_payment') + '</th><th>' + t('phone') + '</th></tr></thead><tbody>';
-    var totalSal = 0;
-    DB.employees.forEach(function (e) {
-      totalSal += e.salary;
-      h += '<tr><td><div class="cell-prod"><span class="cc-av" style="width:28px;height:28px;font-size:10px">' +
-          esc(e.name.split(' ').map(function (w) { return w[0]; }).join('')) + '</span>' +
-          '<span><b>' + esc(e.name) + '</b><small>since ' + e.since + '</small></span></div></td>' +
-        '<td><span class="badge neutral">' + esc(e.role) + '</span></td>' +
-        '<td class="num">' + money(e.salary) + '</td>' +
-        '<td class="num"><b>' + (e.sales ? money(e.sales) : '—') + '</b></td>' +
-        '<td class="num">' + fmtDate(e.nextPayment) + ' <span class="muted">· ' + relDate(e.nextPayment) + '</span></td>' +
-        '<td class="muted num">' + tel(e.phone) + '</td></tr>';
-    });
-    h += '</tbody><tfoot><tr><td>' + t('total') + '</td><td></td><td class="num">' + money(totalSal) + '</td>' +
-      '<td class="num">' + money(DB.employees.reduce(function (a, e) { return a + e.sales; }, 0)) + '</td><td></td><td></td></tr></tfoot></table>';
+  /* Delta on the shop's OWN currency only, and the header says so. The two
+     halves of a pair cannot be added to make one number to compare, and
+     picking one silently would be the same mistake in a new coat. */
+  var deltaCur = base === 'USD' ? 'USD' : 'SYP';
 
+  var prev = s.previous;
+  var prevBase = DB.repBaseOf(prev.takings), nowBase = DB.repBaseOf(s.takings);
+
+  var h = repStats([
+    [t('revenue'), repMoney(s.takings),
+     nowBase || prevBase ? deltaTag(nowBase, prevBase, t('rp_vs_prev')) : '', true],
+    [t('invoices'), nf(s.count), s.units ? nf(s.units) + ' ' + t('pieces').toLowerCase() : ''],
+    [t('avg_basket'), repMoney(s.avgBasket),
+     s.count ? (Math.round(s.units / s.count * 10) / 10) + ' ' + t('rp_per_sale') : ''],
+    [t('discount'), repMoney(s.discount),
+     s.discounted ? nf(s.discounted) + ' ' + t('invoices').toLowerCase() : t('none')],
+    s.voided.count ? [t('rp_voided'), nf(s.voided.count), repMoneyShort(s.voided.total)] : null
+  ]);
+
+  h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
+    '<th>' + t(grain === 'day' ? 'rp_day' : 'rp_month') + '</th>' +
+    '<th class="num">' + t('invoices') + '</th>' +
+    '<th class="num">' + t('revenue') + '</th>' +
+    '<th class="num">' + t('avg_basket') + '</th>' +
+    '<th>' + t('rp_change') + ' <span class="muted" dir="ltr">(' + esc(deltaCur) + ')</span></th>' +
+    '</tr></thead><tbody>';
+
+  if (!series.length) {
+    h += repNone(5);
   } else {
-    h += '<table class="tbl"><thead><tr><th>' + t('supplier') + '</th><th>' + t('category') + '</th>' +
-      '<th class="num">Total purchased</th><th class="num">' + t('outstanding') + '</th>' +
-      '<th>' + t('due') + '</th><th>' + t('phone') + '</th></tr></thead><tbody>';
-    var totalOut = 0;
-    DB.suppliers.forEach(function (s) {
-      totalOut += s.outstanding;
-      /* null = no due date: neither late nor soon, whatever is owed. */
-      var due = DB.daysSince(s.dueDate);
-      var late = due !== null && due > 0 && s.outstanding > 0;
-      var soon = due !== null && due > -5 && s.outstanding > 0;
-      h += '<tr><td><b>' + esc(s.name) + '</b></td>' +
-        '<td class="muted">' + esc(s.category) + '</td>' +
-        '<td class="num muted">' + money(s.totalPurchased) + '</td>' +
-        '<td class="num"><b' + (s.outstanding ? '' : ' class="muted"') + '>' + money(s.outstanding) + '</b></td>' +
-        '<td>' + (s.outstanding
-          ? '<span class="badge ' + (late ? 'critical' : (soon ? 'low' : 'neutral')) + '">' + fmtDate(s.dueDate) + ' · ' + relDate(s.dueDate) + '</span>'
-          : '<span class="badge healthy">' + t('none') + '</span>') + '</td>' +
-        '<td class="muted num">' + tel(s.contact) + '</td></tr>';
+    series.forEach(function (b, i) {
+      var before = i > 0 ? DB.repBaseOf(series[i - 1]) : (i === 0 ? DB.repBaseOf(prev.takings) : 0);
+      var avg = {
+        syp: b.count && b.syp ? Math.round(b.syp / b.count) : 0,
+        usd: b.count && b.usd ? Math.round(b.usd / b.count) : 0
+      };
+      h += '<tr' + (b.count ? '' : ' class="dim"') + '>' +
+        '<td><b dir="ltr">' + esc(DB.repBucketLabel(b.bucket, grain)) + '</b></td>' +
+        '<td class="num">' + nf(b.count) + '</td>' +
+        '<td class="num"><b>' + repMoney(b) + '</b></td>' +
+        '<td class="num muted">' + (b.count ? repMoney(avg) : '—') + '</td>' +
+        '<td>' + (i === 0 && !before ? '<span class="muted">—</span>'
+                                     : deltaTag(DB.repBaseOf(b), before, '')) + '</td></tr>';
     });
-    h += '</tbody><tfoot><tr><td>' + t('total') + '</td><td></td><td></td><td class="num">' + money(totalOut) + '</td><td></td><td></td></tr></tfoot></table>';
   }
 
-  h += '</div>';
+  h += '</tbody><tfoot><tr><td>' + t('total') + '</td>' +
+    '<td class="num">' + nf(s.count) + '</td>' +
+    '<td class="num">' + repMoney(s.takings) + '</td>' +
+    '<td class="num">' + repMoney(s.avgBasket) + '</td><td></td></tr></tfoot></table></div>';
+
   return h;
 }
 
+/* --------------------------------------------------------------- PROFIT ---
+   Only ever drawn for profit.read — the tab is not offered otherwise and the
+   server does not compute the cost half either. `unit_price` and `unit_cost`
+   are both stored in the sale's own currency, so every row here is arithmetic
+   on one currency rather than a re-conversion at today's rate. */
+function repProfit() {
+  var p = DB.rep.profit, rows = p.rows, tot = p.totals;
+
+  if (!p.hasCost) {
+    /* Belt to the tab list's braces: a permission revoked between the load
+       and the render lands here rather than on a table of dashes. */
+    return '<div class="card"><div class="card-body"><div class="muted" ' +
+      'style="text-align:center;padding:48px 20px">' + esc(t('rp_no_profit')) + '</div></div></div>';
+  }
+
+  var best = rows.reduce(function (m, x) {
+    return Math.max(m, Math.abs(DB.repBaseOf(x.profit)));
+  }, 0);
+
+  var h = repStats([
+    [t('revenue'), repMoney(tot.revenue), '', true],
+    [t('cost'), repMoney(tot.cost), ''],
+    [t('profit'), repMoney(tot.profit), ''],
+    [t('margin'), repPct(tot.margin), nf(tot.units) + ' ' + t('units').toLowerCase()]
+  ]);
+
+  h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
+    '<th>' + t('type') + '</th><th class="num">' + t('units') + '</th>' +
+    '<th class="num">' + t('revenue') + '</th><th class="num">' + t('cost') + '</th>' +
+    '<th class="num">' + t('profit') + '</th><th class="num">' + t('margin') + '</th>' +
+    '<th style="width:120px"></th></tr></thead><tbody>';
+
+  if (!rows.length) h += repNone(7);
+  rows.forEach(function (x) {
+    h += '<tr><td><b>' + esc(DB.typeLabels[x.type] || x.type || '—') + '</b></td>' +
+      '<td class="num">' + nf(x.units) + '</td>' +
+      '<td class="num">' + repMoney(x.revenue) + '</td>' +
+      '<td class="num muted">' + repMoney(x.cost) + '</td>' +
+      '<td class="num"><b>' + repMoney(x.profit) + '</b></td>' +
+      '<td class="num">' + repPct(x.margin) + '</td>' +
+      '<td>' + repBar(Math.abs(DB.repBaseOf(x.profit)), best, true) + '</td></tr>';
+  });
+
+  h += '</tbody><tfoot><tr><td>' + t('total') + '</td>' +
+    '<td class="num">' + nf(tot.units) + '</td>' +
+    '<td class="num">' + repMoney(tot.revenue) + '</td>' +
+    '<td class="num">' + repMoney(tot.cost) + '</td>' +
+    '<td class="num">' + repMoney(tot.profit) + '</td>' +
+    '<td class="num">' + repPct(tot.margin) + '</td><td></td></tr></tfoot></table></div>';
+
+  return h;
+}
+
+/* ------------------------------------------------------------ INVENTORY ---
+   Present tense, and ARCHIVED LINES ARE NOT STOCK. A discontinued product
+   keeps its row so old invoices still resolve, and it used to keep its pieces
+   in this total too — so the shop's "capital in stock" counted goods it had
+   stopped selling. The server filters them and names what it left out, because
+   somebody who remembers a bigger number is owed the reason it moved. */
+function repInventory() {
+  var iv = DB.rep.inventory, rows = iv.rows, tot = iv.totals;
+  var best = rows.reduce(function (m, x) {
+    return Math.max(m, iv.hasCost ? DB.repBaseOf(x.cost) : x.units);
+  }, 0);
+
+  var h = repStats([
+    iv.hasCost ? [t('capital_in_stock'), repMoney(tot.cost),
+                  nf(tot.units) + ' ' + t('pieces').toLowerCase(), true] : null,
+    [t('retail_value'), repMoney(tot.retail),
+     iv.hasCost ? '' : nf(tot.units) + ' ' + t('pieces').toLowerCase(), !iv.hasCost],
+    iv.hasCost ? [t('profit'), repMoney(tot.profit), t('if_sold_all')] : null,
+    [t('rp_lines'), nf(tot.skus), nf(rows.length) + ' ' + t('rp_types')]
+  ]);
+
+  h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
+    '<th>' + t('type') + '</th><th class="num">' + t('pieces') + '</th>' +
+    '<th class="num">' + t('rp_lines') + '</th>' +
+    (iv.hasCost ? '<th class="num">' + t('capital_in_stock') + '</th>' : '') +
+    '<th class="num">' + t('retail_value') + '</th>' +
+    (iv.hasCost ? '<th class="num">' + t('profit') + '</th>' : '') +
+    '<th style="width:130px"></th></tr></thead><tbody>';
+
+  var cols = iv.hasCost ? 7 : 5;
+  if (!rows.length) h += repNone(cols, t('rp_empty_stock'));
+  rows.forEach(function (x) {
+    h += '<tr' + (x.units ? '' : ' class="dim"') + '>' +
+      '<td><b>' + esc(DB.typeLabels[x.type] || x.type || '—') + '</b></td>' +
+      '<td class="num">' + nf(x.units) + '</td>' +
+      '<td class="num muted">' + nf(x.skus) + '</td>' +
+      (iv.hasCost ? '<td class="num"><b>' + repMoney(x.cost) + '</b></td>' : '') +
+      '<td class="num' + (iv.hasCost ? ' muted' : '') + '">' + repMoney(x.retail) + '</td>' +
+      (iv.hasCost ? '<td class="num">' + repMoney({ syp: x.retail.syp - x.cost.syp,
+                                                    usd: x.retail.usd - x.cost.usd }) + '</td>' : '') +
+      '<td>' + repBar(iv.hasCost ? DB.repBaseOf(x.cost) : x.units, best) + '</td></tr>';
+  });
+
+  h += '</tbody><tfoot><tr><td>' + t('total') + '</td>' +
+    '<td class="num">' + nf(tot.units) + '</td>' +
+    '<td class="num">' + nf(tot.skus) + '</td>' +
+    (iv.hasCost ? '<td class="num">' + repMoney(tot.cost) + '</td>' : '') +
+    '<td class="num">' + repMoney(tot.retail) + '</td>' +
+    (iv.hasCost ? '<td class="num">' + repMoney(tot.profit) + '</td>' : '') +
+    '<td></td></tr></tfoot></table></div>';
+
+  if (iv.archivedUnits) {
+    h += '<div class="partner-note">' +
+      t('rp_archived_note').replace('{n}', '<b dir="ltr">' + nf(iv.archivedUnits) + '</b>') + '</div>';
+  }
+  return h;
+}
+
+/* ------------------------------------------------------------- PAYMENTS ---
+   How the money actually arrived, what was given away in discounts, what is
+   still owed to the shop and what the shop owes out. money.read.
+
+   The debt figure is deliberately NOT windowed by the chips: a sale taken on
+   credit in March is still owed in September, and a report that dropped it
+   because the chip says "30 days" would understate the shop's exposure by
+   exactly the debts that have been outstanding longest. The card says so. */
+function repPayments() {
+  var p = DB.rep.payments, s = DB.rep.sales;
+  var rows = p.byPayment;
+  var best = rows.reduce(function (m, x) { return Math.max(m, DB.repBaseOf(x)); }, 0);
+
+  var h = repStats([
+    [t('rp_taken'), repMoney(s.takings), nf(s.count) + ' ' + t('invoices').toLowerCase(), true],
+    [t('rp_owed_by_customers'), repMoney(p.debts),
+     p.debts.invoices
+       ? nf(p.debts.invoices) + ' ' + t('invoices').toLowerCase() + ' · ' +
+         nf(p.debts.customers) + ' ' + t('rp_people') +
+         (p.debts.oldestDays !== null ? ' · ' + t('rp_oldest') + ' ' + nf(p.debts.oldestDays) + ' ' + t('days') : '')
+       : t('none')],
+    [t('rp_owed_to_suppliers'), repMoney(p.suppliers),
+     p.suppliers.count ? nf(p.suppliers.count) + ' ' + t('tab_suppliers').toLowerCase() : t('none')],
+    [t('mn_expenses'), repMoney(p.expenses.total),
+     p.expenses.rows.length ? nf(p.expenses.rows.length) + ' ' + t('category').toLowerCase() : t('none')],
+    [t('discount'), repMoney(p.discounts.amount),
+     p.discounts.overCap
+       ? t('rp_over_cap').replace('{n}', nf(p.discounts.overCap)).replace('{p}', p.discounts.capPct + '%')
+       : nf(p.discounts.count) + ' ' + t('invoices').toLowerCase()]
+  ]);
+
+  h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
+    '<th>' + t('rp_method') + '</th><th class="num">' + t('invoices') + '</th>' +
+    '<th class="num">' + t('total') + '</th><th style="width:140px">' + t('rp_share') + '</th>' +
+    '</tr></thead><tbody>';
+
+  if (!rows.length) h += repNone(4);
+  rows.forEach(function (x) {
+    h += '<tr><td><b>' + esc(DB.payLabel(x.payment)) + '</b></td>' +
+      '<td class="num">' + nf(x.count) + '</td>' +
+      '<td class="num"><b>' + repMoney(x) + '</b></td>' +
+      '<td>' + repBar(DB.repBaseOf(x), best, true) + '</td></tr>';
+  });
+
+  h += '</tbody><tfoot><tr><td>' + t('total') + '</td>' +
+    '<td class="num">' + nf(s.count) + '</td>' +
+    '<td class="num">' + repMoney(s.takings) + '</td><td></td></tr></tfoot></table></div>';
+
+  /* Debt collected in the window is money that came IN against sales taken
+     earlier, so it belongs beside the takings and not inside them — adding it
+     would count the same sale twice, once when it was rung up and once when
+     it was paid for. */
+  if (p.collected.count) {
+    h += '<div class="partner-note">' +
+      t('rp_collected_note')
+        .replace('{n}', '<b dir="ltr">' + nf(p.collected.count) + '</b>')
+        .replace('{m}', '<b>' + repMoney(p.collected.total) + '</b>') + '</div>';
+  }
+
+  if (p.expenses.rows.length) {
+    var bestX = p.expenses.rows.reduce(function (m, x) { return Math.max(m, DB.repBaseOf(x)); }, 0);
+    h += '<div class="card table-wrap mt"><table class="tbl"><thead><tr>' +
+      '<th>' + t('mn_expenses') + '</th><th class="num">' + t('rp_entries') + '</th>' +
+      '<th class="num">' + t('total') + '</th><th style="width:140px">' + t('rp_share') + '</th>' +
+      '</tr></thead><tbody>';
+    p.expenses.rows.forEach(function (x) {
+      /* `expense.categories` lives in config so Settings can add one without
+         a deploy, which means a category can exist that has no translation
+         yet. t() returns the slug in that case, and the slug is what the
+         person typed — so print that rather than "mn_c_municipality". */
+      h += '<tr><td><b>' + esc(expenseLabel(x.category)) + '</b></td>' +
+        '<td class="num">' + nf(x.count) + '</td>' +
+        '<td class="num"><b>' + repMoney(x) + '</b></td>' +
+        '<td>' + repBar(DB.repBaseOf(x), bestX) + '</td></tr>';
+    });
+    h += '</tbody><tfoot><tr><td>' + t('total') + '</td><td></td>' +
+      '<td class="num">' + repMoney(p.expenses.total) + '</td><td></td></tr></tfoot></table></div>';
+  }
+
+  h += '<div class="partner-note">' + esc(t('rp_debt_note')) + '</div>';
+  return h;
+}
+
+/* ------------------------------------------------------------ EMPLOYEES ---
+   staff.read. An employee is matched to their sales through `user_id`, never
+   through a name — two people called Ahmad is a shop, not a bug. Somebody on
+   the payroll with no login has `sold: null`, and that is drawn as "no till
+   login" rather than as a zero: a tailor or a driver is not the worst
+   salesman in the shop. */
+function repEmployees() {
+  var e = DB.rep.employees, rows = e.rows;
+  var best = rows.reduce(function (m, x) { return Math.max(m, x.sold ? DB.repBaseOf(x.sold) : 0); }, 0);
+  var soldTotal = { syp: 0, usd: 0 }, soldCount = 0;
+  rows.forEach(function (x) {
+    if (!x.sold) return;
+    soldTotal.syp += x.sold.syp; soldTotal.usd += x.sold.usd; soldCount += x.sold.count;
+  });
+
+  var h = repStats([
+    [t('rp_payroll'), repMoney(e.salary), nf(e.count) + ' ' + t('rp_people'), true],
+    [t('sales_made'), repMoney(soldTotal),
+     soldCount ? nf(soldCount) + ' ' + t('invoices').toLowerCase() + ' · ' + esc(repRangeLabel()) : t('none')]
+  ]);
+
+  h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
+    '<th>' + t('name') + '</th><th>' + t('role') + '</th>' +
+    '<th class="num">' + t('salary') + '</th>' +
+    '<th class="num">' + t('sales_made') + '</th>' +
+    '<th style="width:120px"></th>' +
+    '<th>' + t('next_payment') + '</th><th>' + t('phone') + '</th></tr></thead><tbody>';
+
+  if (!rows.length) h += repNone(7, t('rp_no_employees'));
+  rows.forEach(function (x) {
+    h += '<tr><td><div class="cell-prod">' +
+        '<span class="cc-av" style="width:28px;height:28px;font-size:10px">' + esc(initialsOf(x.name)) + '</span>' +
+        '<span><b>' + esc(x.name) + '</b>' +
+        (x.since ? '<small dir="ltr">' + esc(t('rp_since') + ' ' + fmtDate(x.since)) + '</small>' : '') +
+        '</span></div></td>' +
+      '<td><span class="badge neutral">' + esc(x.role || '—') + '</span></td>' +
+      '<td class="num">' + moneyIn(x.currency, x.salary) + '</td>' +
+      '<td class="num"><b>' + (x.sold ? (x.sold.count ? repMoney(x.sold) : '<span class="muted">—</span>')
+                                      : '<span class="muted">' + esc(t('rp_no_login')) + '</span>') + '</b></td>' +
+      '<td>' + (x.sold && x.sold.count ? repBar(DB.repBaseOf(x.sold), best, true) : '') + '</td>' +
+      '<td class="num">' + (x.nextPayment
+          ? '<span dir="ltr">' + esc(fmtDate(x.nextPayment)) + '</span> <span class="muted">· ' + esc(relDate(x.nextPayment)) + '</span>'
+          : '<span class="muted">—</span>') + '</td>' +
+      '<td class="muted num">' + (x.phone ? tel(x.phone) : '—') + '</td></tr>';
+  });
+
+  h += '</tbody><tfoot><tr><td>' + t('total') + '</td><td></td>' +
+    '<td class="num">' + repMoney(e.salary) + '</td>' +
+    '<td class="num">' + repMoney(soldTotal) + '</td><td></td><td></td><td></td></tr></tfoot></table></div>';
+
+  return h;
+}
+
+/* ------------------------------------------------------------ SUPPLIERS ---
+   money.read. Each supplier is billed in ONE currency — it is a column on the
+   row, not a pair — so these are drawn in the currency the shop actually owes
+   and the totals are still folded into a pair. */
+function repSuppliers() {
+  var list = DB.rep.suppliers || [];
+  var outstanding = { syp: 0, usd: 0 }, purchased = { syp: 0, usd: 0 };
+  list.forEach(function (s) {
+    if (s.currency === 'USD') { outstanding.usd += s.outstanding; purchased.usd += s.totalPurchased; }
+    else { outstanding.syp += s.outstanding; purchased.syp += s.totalPurchased; }
+  });
+  var owing = list.filter(function (s) { return s.outstanding > 0; });
+  var best = list.reduce(function (m, s) {
+    return Math.max(m, s.currency === 'USD' ? 0 : s.outstanding);
+  }, 0);
+
+  var h = repStats([
+    [t('outstanding'), repMoney(outstanding),
+     owing.length ? nf(owing.length) + ' / ' + nf(list.length) + ' ' + t('tab_suppliers').toLowerCase() : t('none'), true],
+    [t('rp_purchased'), repMoney(purchased), nf(list.length) + ' ' + t('tab_suppliers').toLowerCase()]
+  ]);
+
+  h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
+    '<th>' + t('supplier') + '</th><th>' + t('category') + '</th>' +
+    '<th class="num">' + t('rp_purchased') + '</th>' +
+    '<th class="num">' + t('outstanding') + '</th>' +
+    '<th>' + t('due') + '</th><th>' + t('phone') + '</th></tr></thead><tbody>';
+
+  if (!list.length) h += repNone(6, t('rp_no_suppliers'));
+  list.forEach(function (s) {
+    /* null due date = neither late nor soon, whatever is owed. */
+    var due = DB.daysSince(s.dueDate);
+    var late = due !== null && due > 0 && s.outstanding > 0;
+    var soon = due !== null && due > -5 && s.outstanding > 0;
+    h += '<tr><td><b>' + esc(s.name) + '</b></td>' +
+      '<td class="muted">' + esc(s.category || '—') + '</td>' +
+      '<td class="num muted">' + moneyIn(s.currency, s.totalPurchased) + '</td>' +
+      '<td class="num"><b' + (s.outstanding ? '' : ' class="muted"') + '>' +
+        moneyIn(s.currency, s.outstanding) + '</b></td>' +
+      '<td>' + (s.outstanding
+        ? (s.dueDate
+            ? '<span class="badge ' + (late ? 'critical' : (soon ? 'low' : 'neutral')) + '" dir="ltr">' +
+              esc(fmtDate(s.dueDate)) + ' · ' + esc(relDate(s.dueDate)) + '</span>'
+            : '<span class="badge neutral">' + esc(t('rp_no_due')) + '</span>')
+        : '<span class="badge healthy">' + t('none') + '</span>') + '</td>' +
+      '<td class="muted num">' + (s.contact ? tel(s.contact) : '—') + '</td></tr>';
+  });
+
+  h += '</tbody><tfoot><tr><td>' + t('total') + '</td><td></td>' +
+    '<td class="num">' + repMoney(purchased) + '</td>' +
+    '<td class="num">' + repMoney(outstanding) + '</td><td></td><td></td></tr></tfoot></table></div>';
+
+  /* `best` is only ever used for a lira bar, so a dollars-only supplier list
+     would draw no bars at all — which is why there is no bar column here. The
+     badge carries the urgency instead, and it works in either currency. */
+  return h;
+}
+
+/* An expense category's label, or the category itself when nobody has
+   translated it. `expense.categories` is config, so a shop can add
+   "municipality" in Settings and it will never have a key here. */
+function expenseLabel(cat) {
+  var k = 'mn_c_' + cat;
+  var s = t(k);
+  return s === k ? String(cat || '—') : s;
+}
+
+/* Initials for the avatar block. `.split(' ')` on a name with a double space
+   yields an empty string whose [0] is undefined, and 'undefined' is what used
+   to be printed in the circle. */
+function initialsOf(name) {
+  return String(name || '').split(/\s+/).filter(Boolean)
+    .slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase() || '—';
+}
+
+/* ------------------------------------------------------------------ chart
+   ONE series, in the shop's own currency, and the axis label says which. A
+   chart cannot draw a pair, so rather than adding two currencies into one
+   misleading line it plots the base one and names it. Dollars taken as
+   dollars are in every table on the screen and in both exports. */
 function afterReports() {
   var c = document.getElementById('repChart');
-  var f = function (v) { return (OG.currency === 'USD' ? '$' : '') + Charts.compact(v); };
-  var conv = function (v) { return OG.currency === 'USD' ? v / CONFIG.EXCHANGE_RATE : v; };
+  if (!c || !DB.rep) return;
 
-  if (OG.rep.tab === 'sales') {
-    var m = DB.monthlySales(6);
-    Charts.line(c, m.map(function (x) { return x.label; }), m.map(function (x) { return conv(x.total); }), { fmt: f });
-  } else if (OG.rep.tab === 'profit') {
-    var rows = DB.profitByType();
-    Charts.bars(c, rows.map(function (x) { return x.label; }), rows.map(function (x) { return conv(x.profit); }), { highlight: 0, fmt: f });
-  } else if (OG.rep.tab === 'inventory') {
-    var inv = DB.inventoryValue();
-    Charts.donut(c, inv.map(function (x) { return x.label; }), inv.map(function (x) { return conv(x.cost); }), { fmt: f });
-  } else if (OG.rep.tab === 'employees') {
-    var e = DB.employees.slice().sort(function (a, b) { return b.sales - a.sales; });
-    Charts.bars(c, e.map(function (x) { return x.name.split(' ')[0]; }), e.map(function (x) { return conv(x.sales); }), { highlight: 0, fmt: f });
+  var base = DB.repBase();
+  var tab = repTab();
+  var f = function (v) { return (base === 'USD' ? '$' : '') + Charts.compact(v); };
+  var val = function (p) { return DB.repBaseOf(p); };
+
+  if (tab === 'sales') {
+    var s = DB.rep.sales;
+    Charts.line(c,
+      s.series.map(function (b) { return DB.repBucketTick(b.bucket, s.grain); }),
+      s.series.map(val), { fmt: f });
+
+  } else if (tab === 'profit') {
+    var rows = DB.rep.profit.rows;
+    Charts.bars(c,
+      rows.map(function (x) { return DB.typeLabels[x.type] || x.type || '—'; }),
+      rows.map(function (x) { return val(x.profit); }), { highlight: 0, fmt: f });
+
+  } else if (tab === 'inventory') {
+    var iv = DB.rep.inventory;
+    var live = iv.rows.filter(function (x) { return x.units > 0; });
+    Charts.donut(c,
+      live.map(function (x) { return DB.typeLabels[x.type] || x.type || '—'; }),
+      live.map(function (x) { return iv.hasCost ? val(x.cost) : x.units; }),
+      { fmt: iv.hasCost ? f : function (v) { return nf(v); } });
+
+  } else if (tab === 'payments') {
+    var pay = DB.rep.payments.byPayment;
+    Charts.donut(c,
+      pay.map(function (x) { return DB.payLabel(x.payment); }),
+      pay.map(val), { fmt: f });
+
+  } else if (tab === 'employees') {
+    var e = DB.rep.employees.rows.filter(function (x) { return x.sold && x.sold.count; })
+              .sort(function (a, b) { return val(b.sold) - val(a.sold); });
+    Charts.bars(c,
+      e.map(function (x) { return String(x.name).split(/\s+/)[0]; }),
+      e.map(function (x) { return val(x.sold); }), { highlight: 0, fmt: f });
+
   } else {
-    var s = DB.suppliers.slice().sort(function (a, b) { return b.outstanding - a.outstanding; });
-    Charts.bars(c, s.map(function (x) { return x.name.split(' ')[0]; }), s.map(function (x) { return conv(x.outstanding); }), { highlight: 0, fmt: f });
+    /* Suppliers: only the ones billed in the base currency can share an axis,
+       and the rest are named under it rather than silently rescaled. */
+    var sup = (DB.rep.suppliers || [])
+      .filter(function (x) { return x.currency === base && x.outstanding > 0; })
+      .sort(function (a, b) { return b.outstanding - a.outstanding; }).slice(0, 12);
+    Charts.bars(c,
+      sup.map(function (x) { return String(x.name).split(/\s+/)[0]; }),
+      sup.map(function (x) { return x.outstanding; }), { highlight: 0, fmt: f });
   }
 }

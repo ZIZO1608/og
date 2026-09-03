@@ -267,10 +267,38 @@ body.rtl .track-arrow::after { transform: translateY(-50%) scaleX(-1); }
 .pdf-kpi b {
   display: block; margin-top: 1.5mm; font-family: var(--font-head); font-weight: 800;
   font-size: 14pt; letter-spacing: -.03em; font-variant-numeric: tabular-nums;
-  box-shadow: inset 0 -3mm 0 var(--brand); width: fit-content;
+  width: fit-content;
+  /* A BORDER, not the inset box-shadow this used to be. Chrome drops
+     box-shadow from printed output entirely — the highlight under every KPI
+     was on screen in the preview and gone on the paper, which is the one
+     place the preview is supposed to be telling the truth about. A border
+     prints, and print-color-adjust keeps it lime rather than letting the
+     driver flatten it to grey. */
+  border-bottom: 1.1mm solid var(--brand);
+  padding-bottom: .4mm;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 
-.pdf-chart { display: block; width: 100%; height: auto; margin: 6mm 0; }
+/* The chart is capped so it cannot push the table it belongs to onto a second
+   page on its own. width:100% with height:auto let a wide donut render 90mm
+   tall and take the first page with it. */
+.pdf-chart { display: block; width: 100%; max-height: 78mm; height: auto; object-fit: contain; margin: 6mm 0; }
+/* The unconverted fallback — the live dark canvas, used only when the paper
+   redraw could not be produced. Knocked back so a near-black rectangle is not
+   the loudest thing on the sheet. */
+.pdf-chart-raw { opacity: .92; }
+
+/* A table with nothing in it says so, rather than being a ruled empty box. */
+.pdf-tbl td.pdf-none { text-align: center; padding: 10mm 3mm; color: #71717A; font-size: 9pt; }
+
+/* The sentence that says what the figures do NOT include — archived stock, a
+   debt balance that ignores the date range. It travels with the document
+   because the document outlives the screen it was taken from. */
+.pdf-note {
+  margin-top: 5mm; padding: 3mm 4mm; font-size: 8.5pt; line-height: 1.6; color: #52525B;
+  background: #FAFAFA; border-inline-start: .8mm solid #D4D4D8; border-radius: 0 1.5mm 1.5mm 0;
+  break-inside: avoid;
+}
 /* The CSS-bar fallback is cloned from a dark surface — repaint it for paper. */
 .pdf-chart-fb { margin: 6mm 0; }
 .pdf-chart-fb .fb-row { font-size: 9pt; margin-bottom: 2mm; }

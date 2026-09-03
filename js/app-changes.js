@@ -15,6 +15,27 @@ var CHANGES = {
     if (!host) return;
     host.innerHTML = attachResultsHTML(el.value, host.getAttribute('data-code'));
   },
+  /* The Reports screen's custom range. Debounced, because `input` fires on a
+     date box while the year is still being typed — "0202-03-01" is a valid
+     date the server will happily answer, and answering it is a round trip and
+     a repaint for a number the person is halfway through changing. Both boxes
+     must be complete before anything is asked for: one of them is not a range.
+
+     Not repainting on the keystroke is deliberate too. The boxes hold their
+     own values, and a render() mid-type would rebuild the input being typed
+     into and take the caret with it — the exact trick focusBack exists to
+     undo two lines below. */
+  'rep-dates': function () {
+    var a = document.getElementById('repFrom'), b = document.getElementById('repTo');
+    OG.repFrom = a ? a.value : '';
+    OG.repTo = b ? b.value : '';
+    clearTimeout(CHANGES._repTimer);
+    if (!(OG.repFrom && OG.repTo)) return;
+    CHANGES._repTimer = setTimeout(function () {
+      if (OG.view === 'reports') reloadReportsInto();
+    }, 400);
+  },
+
   'prod-q': function (el) { OG.prod.q = el.value; render(); focusBack('[data-change="prod-q"]', el.value.length); },
   'prod-type': function (el) { OG.prod.type = el.value; render(); },
   'prod-health': function (el) { OG.prod.health = el.value; render(); },

@@ -25,6 +25,36 @@
   #modal-root .modal-body { padding: 0; overflow: visible; }
   .invoice-sheet { padding: 0; border-radius: 0; }
 
+  /* ---- multi-page exported reports ---------------------------------------
+     A report is the one document here that routinely runs past one sheet of
+     A4, and until now it printed as though it never did: the column headers
+     appeared on page one and every page after it was an unlabelled grid of
+     numbers, with rows cut in half across the page break.
+
+     `thead` repeating is the whole fix, and it is one line. `tfoot` needs the
+     opposite treatment — by default a table footer ALSO repeats on every
+     page, which would print the grand total four times as though each page
+     had its own; table-row-group puts it once, after the last row, where a
+     total belongs. */
+  .pdf-sheet { padding: 0; border-radius: 0; }
+  .pdf-sheet table.pdf-tbl thead { display: table-header-group; }
+  .pdf-sheet table.pdf-tbl tfoot { display: table-row-group; }
+  .pdf-sheet table.pdf-tbl tr { break-inside: avoid; page-break-inside: avoid; }
+  /* Never leave the header stranded at the foot of a page with no rows under
+     it, and never break immediately after it either. */
+  .pdf-sheet table.pdf-tbl thead tr { break-after: avoid; page-break-after: avoid; }
+  .pdf-sheet .pdf-head, .pdf-sheet .pdf-kpis, .pdf-sheet .pdf-foot,
+  .pdf-sheet .pdf-chart, .pdf-sheet .pdf-chart-fb { break-inside: avoid; page-break-inside: avoid; }
+  .pdf-sheet .pdf-title, .pdf-sheet .pdf-sub { break-after: avoid; page-break-after: avoid; }
+
+  /* The zebra and the totals rule are the two things that make a long table
+     readable, and both are backgrounds a driver is free to drop. Asked for
+     explicitly, the same way the header band above already is. */
+  .pdf-sheet table.pdf-tbl tbody tr:nth-child(even),
+  .pdf-sheet .pdf-note, .pdf-sheet .pdf-kpi b {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+
   /* Labels keep their millimetre sizes and gain crop marks; the studio
      controls carry .no-print so only the sheet reaches paper. */
   .label-sheet { display: flex; flex-wrap: wrap; gap: 3mm; }

@@ -482,7 +482,8 @@ var EXTRA_EN = {
   yl_rv_none: 'No reviews yet',
   yl_rv_none_sub: 'OG writes one once a job is finished and the shirts are in their hands.',
   yl_rv_no_match: 'Nothing under that filter',
-  yl_rv_no_match_sub: 'Try another one, or show them all'
+  yl_rv_no_match_sub: 'Try another one, or show them all',
+  nav_partner: 'Yalla Wear portal'
 };
 
 var EXTRA_AR = {
@@ -706,10 +707,91 @@ var EXTRA_AR = {
   yl_rv_none: 'لا تقييمات بعد',
   yl_rv_none_sub: 'يكتب OG التقييم بعد انتهاء الطلب ووصول القمصان إليهم.',
   yl_rv_no_match: 'لا شيء ضمن هذه التصفية',
-  yl_rv_no_match_sub: 'جرّب تصفية أخرى أو اعرضها كلها'
+  yl_rv_no_match_sub: 'جرّب تصفية أخرى أو اعرضها كلها',
+  nav_partner: 'بوابة يلا وير'
+};
+
+/* ---- the admin Reports screen -------------------------------------------
+   `rp_` is the Reports namespace. Every key here exists in REPORTS_AR too —
+   a missing one does not throw, t() quietly returns the slug, so the screen
+   would read "rp_owed_by_customers" in the middle of an Arabic table and
+   nobody would notice until the meeting.
+
+   The two hardcoded English strings this replaces — 'Month' as a column head
+   and 'Total purchased' — had been sitting untranslated inside the RTL table
+   since the screen was written. */
+var REPORTS_EN = {
+  rp_tab_payments: 'Payments & debt',
+  rp_scope_month: 'This month', rp_scope_year: 'This year', rp_scope_custom: 'Custom',
+  rp_from: 'From', rp_to: 'To',
+  rp_as_of: 'as it stands',
+  rp_unavailable: 'These figures could not be read from the server.',
+  rp_empty_range: 'Nothing was sold in this period',
+  rp_empty_stock: 'Nothing on the shelves',
+  rp_day: 'Day', rp_month: 'Month',
+  rp_change: 'Change', rp_vs_prev: 'vs the period before',
+  rp_per_sale: 'pieces a sale',
+  rp_voided: 'Voided',
+  rp_no_profit: 'Your account does not have access to cost and profit figures.',
+  rp_lines: 'Lines', rp_types: 'types',
+  rp_archived_note: '{n} pieces sit on lines the shop has stopped selling. ' +
+    'They are not counted above — an archived product keeps its row so old invoices still resolve, ' +
+    'but it is not stock the shop is trying to sell.',
+  rp_taken: 'Taken', rp_owed_by_customers: 'Owed by customers',
+  rp_owed_to_suppliers: 'Owed to suppliers',
+  rp_people: 'people', rp_oldest: 'oldest',
+  rp_over_cap: '{n} above the {p} cap',
+  rp_method: 'How it was paid', rp_share: 'Share', rp_entries: 'Entries',
+  rp_collected_note: '{n} debt payments came in during this period, {m}. ' +
+    'Counted apart from takings: those sales were recorded when they were rung up, ' +
+    'and adding the money again here would count them twice.',
+  rp_debt_note: 'What customers owe and what the shop owes suppliers are whole balances, ' +
+    'not filtered by the date range above — a sale taken on credit in March is still owed today.',
+  rp_collected: 'Debt collected',
+  rp_payroll: 'Payroll', rp_purchased: 'Purchased',
+  rp_since: 'since', rp_no_login: 'no till login',
+  rp_no_employees: 'Nobody is on the payroll yet',
+  rp_no_suppliers: 'No suppliers yet',
+  rp_no_due: 'no date set'
+};
+
+var REPORTS_AR = {
+  rp_tab_payments: 'المدفوعات والديون',
+  rp_scope_month: 'هذا الشهر', rp_scope_year: 'هذه السنة', rp_scope_custom: 'مدة مخصّصة',
+  rp_from: 'من', rp_to: 'إلى',
+  rp_as_of: 'الوضع الآن',
+  rp_unavailable: 'تعذّرت قراءة هذه الأرقام من الخادم.',
+  rp_empty_range: 'لم يُبَع شيء في هذه المدة',
+  rp_empty_stock: 'لا شيء على الرفوف',
+  rp_day: 'اليوم', rp_month: 'الشهر',
+  rp_change: 'التغيّر', rp_vs_prev: 'مقارنةً بالمدة السابقة',
+  rp_per_sale: 'قطعة في الفاتورة',
+  rp_voided: 'ملغاة',
+  rp_no_profit: 'حسابك لا يملك صلاحية الاطّلاع على الكلفة والربح.',
+  rp_lines: 'الأصناف', rp_types: 'نوعاً',
+  rp_archived_note: '{n} قطعة على أصناف توقّف المحل عن بيعها، وهي غير محسوبة أعلاه. ' +
+    'الصنف المؤرشف يبقى في السجلّ كي تبقى الفواتير القديمة صحيحة، لكنه ليس بضاعة معروضة للبيع.',
+  rp_taken: 'المقبوض', rp_owed_by_customers: 'ديون على الزبائن',
+  rp_owed_to_suppliers: 'مستحقّات للموردين',
+  rp_people: 'شخصاً', rp_oldest: 'أقدمها',
+  rp_over_cap: '{n} فوق سقف {p}',
+  rp_method: 'طريقة الدفع', rp_share: 'الحصة', rp_entries: 'القيود',
+  rp_collected_note: 'وصلت {n} دفعة من الديون خلال هذه المدة، بقيمة {m}. ' +
+    'تُحسب منفصلةً عن المقبوض لأن تلك الفواتير سُجّلت يوم البيع، ' +
+    'وإضافتها هنا مرة ثانية تعني احتسابها مرتين.',
+  rp_debt_note: 'ديون الزبائن ومستحقّات الموردين أرصدة كاملة، غير مقيّدة بالمدة المختارة أعلاه — ' +
+    'فاتورة بيعت بالدين في آذار ما زالت ديناً اليوم.',
+  rp_collected: 'ديون محصّلة',
+  rp_payroll: 'الرواتب', rp_purchased: 'إجمالي المشتريات',
+  rp_since: 'منذ', rp_no_login: 'لا حساب على الصندوق',
+  rp_no_employees: 'لا أحد على كشف الرواتب بعد',
+  rp_no_suppliers: 'لا موردين بعد',
+  rp_no_due: 'بلا تاريخ'
 };
 
 Object.keys(EXTRA_EN).forEach(function (k) { I18N.en[k] = EXTRA_EN[k]; });
 Object.keys(EXTRA_AR).forEach(function (k) { I18N.ar[k] = EXTRA_AR[k]; });
 Object.keys(EXTRA_V3_EN).forEach(function (k) { I18N.en[k] = EXTRA_V3_EN[k]; });
 Object.keys(EXTRA_V3_AR).forEach(function (k) { I18N.ar[k] = EXTRA_V3_AR[k]; });
+Object.keys(REPORTS_EN).forEach(function (k) { I18N.en[k] = REPORTS_EN[k]; });
+Object.keys(REPORTS_AR).forEach(function (k) { I18N.ar[k] = REPORTS_AR[k]; });

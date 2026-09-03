@@ -61,7 +61,15 @@ if errorlevel 3 (
   echo.
   echo   The shop is already open. Opening it in your browser...
   echo.
-  start "" "http://localhost:8090"
+  REM  The secure address when a certificate has been made (npm run cert),
+  REM  because that is the one the browser lets have notifications and the
+  REM  camera. Plain HTTP redirects there anyway, but opening it directly
+  REM  saves a hop.
+  if exist "serverdatacertsog-cert.pem" (
+    start "" "https://localhost:8443"
+  ) else (
+    start "" "http://localhost:8090"
+  )
   timeout /t 3 >nul
   exit /b 0
 )

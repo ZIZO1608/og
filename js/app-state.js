@@ -34,6 +34,19 @@ var OG = {
           whId: null, shelfId: '' },
   dir:  null,                                           // page-transition direction
   rep:  { tab: 'sales' },
+  /* The Reports screen's own window, deliberately NOT shared with the
+     dashboard's `dashScope`. The two screens answer different questions —
+     "how is today going" against "what did this month look like" — and while
+     one chip drove both, every visit to Reports quietly reset the dashboard
+     to whatever range was last read there. Thirty days rather than today: a
+     report of a single day is a receipt.
+
+     repFrom / repTo are 'YYYY-MM-DD' as the date inputs give them, and are
+     only consulted when repScope is 'custom'. */
+  repScope: '30d',
+  repFrom: '',
+  repTo: '',
+  repLoading: false,
   print:{ partner: false },
   /* `size` is set by the product screen's "who wears this" link, and is the
      one customer filter that arrives from another screen. */

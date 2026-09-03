@@ -28,13 +28,60 @@
    and the morning's takings would sit at zero until somebody reloaded. The
    server is on UTC and knows nothing about where the shop is; these two
    instants are the only definition of "today" it ever gets. */
-function scopeRange(scope) {
+function scopeRange(scope, customFrom, customTo) {
   var start = new Date(); start.setHours(0, 0, 0, 0);
   var end = new Date(start); end.setDate(end.getDate() + 1);
   var from = new Date(start);
+
+  /* 'custom' is the Reports screen's two date boxes. Both are plain
+     'YYYY-MM-DD' as the input element gives them, read as LOCAL midnight —
+     new Date('2026-03-01') is UTC midnight, which in Aleppo is three in the
+     morning on the first and would drop the whole of the last day of a range
+     that ends on the 31st. `to` is pushed to the following midnight because
+     every window here is half-open and the server compares `at < to`; without
+     it a range ending today would silently exclude today. */
+  if (scope === 'custom') {
+    var a = ymdLocal(customFrom), b = ymdLocal(customTo);
+    if (a && b) {
+      if (b < a) { var swap = a; a = b; b = swap; }
+      var bTo = new Date(b); bTo.setDate(bTo.getDate() + 1);
+      return { from: a, to: bTo };
+    }
+    scope = '30d';                       /* half-filled boxes: fall back, never NaN */
+  }
+
   if (scope === '30d') from.setDate(from.getDate() - 29);
   else if (scope === '7d') from.setDate(from.getDate() - 6);
+  else if (scope === 'month') from = new Date(start.getFullYear(), start.getMonth(), 1);
+  else if (scope === 'year') {
+    from = new Date(start.getFullYear(), 0, 1);
+    /* The server refuses a span over 366 days, and 1 January to tomorrow on a
+       leap year is exactly 366 — but a clock that has drifted, or a machine
+       whose year has just turned, can push it past. Clamped here rather than
+       met with a 400 the shopkeeper cannot act on. */
+    var maxBack = new Date(end); maxBack.setDate(maxBack.getDate() - 366);
+    if (from < maxBack) from = maxBack;
+  }
   return { from: from, to: end };
+}
+
+/* 'YYYY-MM-DD' at LOCAL midnight, or null. Anything else — an empty box, a
+   half-typed year, a browser that hands back its own format — is null rather
+   than an Invalid Date that becomes NaN in the query string. */
+function ymdLocal(s) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '').trim());
+  if (!m) return null;
+  var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (isNaN(d.getTime()) || d.getMonth() !== Number(m[2]) - 1) return null;
+  return d;
+}
+
+/* The other direction, for putting today's date into a date box. */
+function ymdOf(d) {
+  d = new Date(d);
+  if (isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+         String(d.getDate()).padStart(2, '0');
 }
 
 /* One block of the snapshot, or null. Reads never throw on an account that

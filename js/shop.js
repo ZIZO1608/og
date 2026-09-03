@@ -67,11 +67,24 @@ var Shop = (function () {
      knows, so it goes up as two instants and a zone rather than a word. Role
      homes have no chips and always ask for today. */
   var DASH_PERMS = ['sell', 'stock.read', 'money.read', 'customer.read'];
-  function dashQuery() {
-    var r = scopeRange(OG.dashScope || 'today');
+
+  /* The Reports screen's window, the same shape and for the same reason. It
+     carries its OWN scope (`OG.repScope`) because the two screens answer
+     different questions: the dashboard is "how is today going", reports is
+     "what did this month look like", and making one chip drive both meant
+     every visit to Reports reset the dashboard to whatever was last read
+     there. Defaults to 30 days — a report of a single day is a receipt. */
+  function rangeQuery(r) {
     return 'from=' + encodeURIComponent(r.from.toISOString()) +
            '&to=' + encodeURIComponent(r.to.toISOString()) +
            '&tz=' + (-new Date().getTimezoneOffset());
+  }
+  function repQuery() {
+    return rangeQuery(scopeRange(OG.repScope || '30d', OG.repFrom, OG.repTo));
+  }
+
+  function dashQuery() {
+    return rangeQuery(scopeRange(OG.dashScope || 'today'));
   }
 
   /* Named, not positional.
@@ -123,7 +136,13 @@ var Shop = (function () {
     /* Every figure on the home screens, computed on the server over every
        sale. null when the account holds none of the four permissions, and
        the screens say "unavailable" rather than drawing zeros. */
-    dashboard: function () { return wantAny(DASH_PERMS, '/api/dashboard?' + dashQuery(), null); }
+    dashboard: function () { return wantAny(DASH_PERMS, '/api/dashboard?' + dashQuery(), null); },
+
+    /* The Reports screen, computed on the server over every sale for exactly
+       the same reasons as the dashboard above — see server/lib/reports.js.
+       null for an account without report.read, and the screen is not reachable
+       for them anyway (NAV_PERM), so this is the belt to that pair of braces. */
+    reports:  function () { return want('report.read', '/api/reports?' + repQuery(), null); }
   };
 
   function load() {
@@ -153,9 +172,21 @@ var Shop = (function () {
         notifications: r.alerts.notifications,
         /* The uncapped full-card ids that sit behind the capped bell. */
         fullCards: r.alerts.fullCards,
-        dashboard: r.dashboard
+        dashboard: r.dashboard,
+        reports: r.reports
       });
       return DB;
+    });
+  }
+
+  /* Just the reports, for a scope chip — same reasoning as reloadDashboard
+     below. Rejects rather than swallowing, so the chip can put the old figures
+     back and say the range could not be read instead of drawing zeros over a
+     shop that had a good month. */
+  function reloadReports() {
+    return REQUESTS.reports().then(function (d) {
+      DB.hydrateReports(d);
+      return d;
     });
   }
 
@@ -299,6 +330,7 @@ var Shop = (function () {
     load: load,
     reload: reload,
     reloadDashboard: reloadDashboard,
+    reloadReports: reloadReports,
     fail: fail,
     write: write,
 

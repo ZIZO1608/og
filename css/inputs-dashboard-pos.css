@@ -105,6 +105,22 @@ body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 .chip.on { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); font-weight: 700; }
 .chip:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 
+/* ---------------------------------------------------------------- REPORTS
+   The custom date range, which appears in the chip row only once Custom is
+   chosen. Sized to sit level with a 34px chip so the row does not grow a
+   second line the moment somebody opens it. */
+.rp-dates { display: inline-flex; align-items: center; gap: 6px; }
+.rp-dates .inp {
+  width: auto; min-width: 138px; height: 34px; padding-block: 0;
+  font-size: 12.5px; font-weight: 600;
+}
+/* A period the shop sold nothing in is still a row — the series carries its
+   empty buckets on purpose, because closing the gap draws a flat line over a
+   hole. Dimmed so the eye runs past them to the days that have figures on
+   them, and never hidden: a dead Tuesday is the point of the report. */
+.tbl tbody tr.dim > td { opacity: .5; }
+.tbl tbody tr.dim > td:first-child { opacity: .7; }
+
 /* -------------------------------------------------------------- DASHBOARD */
 
 .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) 366px; gap: 14px; align-items: start; }

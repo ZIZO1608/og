@@ -129,10 +129,18 @@ var YALLA = (function () {
       '</button>';
     });
 
+    /* The way out is a MANAGER'S PREVIEW control, not a door. For Yalla
+       Wear it does nothing at all — app-actions.js refuses partner-view by
+       role — so on a real partner login it was a button that looked like an
+       exit and was not one, at the bottom of every screen they use all day.
+       The credit line stays: that is branding, not a control. */
+    var previewing = !(typeof isPartnerAccount === 'function' && isPartnerAccount());
     h += '</nav>' +
-      '<div class="yl-leave">' +
+      '<div class="yl-leave' + (previewing ? '' : ' note-only') + '">' +
         '<div class="yl-leave-note">' + t('yl_partner_of') + '<b>OG SYSTEM</b></div>' +
-        '<button class="btn btn-ghost btn-block btn-sm" data-act="partner-view">' + t('yl_back_og') + '</button>' +
+        (previewing
+          ? '<button class="btn btn-ghost btn-block btn-sm" data-act="partner-view">' + t('yl_back_og') + '</button>'
+          : '') +
       '</div>';
     return h;
   }

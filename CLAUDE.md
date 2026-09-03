@@ -60,6 +60,35 @@ the server has zero dependencies by design, and the frontend has no build step a
 Publishing: **double-click `push.bat`** (add → commit → pull --rebase → push). CI then builds `dist/`
 and deploys to GitHub Pages.
 
+### HTTPS, and why the till needs it
+
+`cd server && npm run cert` once per machine, then restart. The server listens on
+**https://localhost:8443** (`OG_HTTPS_PORT`) and the plain HTTP port keeps working: it serves
+the API unchanged and **redirects only browser page requests** to the secure address. Machines —
+the print agent, the website's bearer-key calls, any local script — carry on over http, because
+a redirect to a self-signed origin fails certificate validation in Node with an error about
+nothing they did.
+
+**This is not cosmetic.** On `http://10.10.99.9:8090` a browser silently refuses three things
+the app needs, with no error a shopkeeper would recognise: `Notification` (the phone never
+buzzes for a new order), `getUserMedia` (the camera barcode scanner cannot open the camera) and
+`serviceWorker` (no offline shell, cannot be installed). `http://localhost` is exempt, which is
+exactly why this went unnoticed on the machine doing the testing.
+
+- The certificate is **self-signed** (`server/lib/tls.js` says why): each device shows one
+  "not a known authority" warning, somebody presses continue, and from then on the origin is
+  secure. A certificate the world trusts needs a public domain, which means exposing a till full
+  of real money to the internet.
+- `SECURE` sets itself when HTTPS is actually serving, so session cookies get the `Secure` flag
+  without anyone remembering `OG_SECURE`. Browsers still accept Secure cookies on
+  `http://localhost`, so the till on this machine is unaffected.
+- **`server/lib/net.js` is the one list of this machine's addresses** — the startup print,
+  `/api/health` (which the login screen reads) and the certificate's SANs all come from it. A
+  certificate that does not name the address somebody types is a page that will not open at all,
+  so the server compares the two at startup and says `npm run cert` by name when the IP has
+  moved. It also warns 30 days before expiry.
+- `server/data/certs/` is gitignored: it holds a private key, and it is one command to rebuild.
+
 ### Accounts
 
 There are no test accounts. The five that used to exist (`hussam`, `lubna`, `maher`, `talal`,

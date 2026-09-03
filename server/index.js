@@ -18,7 +18,7 @@
    ========================================================================== */
 
 import { createServer } from 'node:http';
-import { networkInterfaces } from 'node:os';
+import { createServer as createTlsServer } from 'node:https';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,6 +39,7 @@ import * as Partner from './lib/partner.js';
 import * as Purchasing from './lib/purchasing.js';
 import * as Alerts from './lib/alerts.js';
 import * as Dashboard from './lib/dashboard.js';
+import * as Reports from './lib/reports.js';
 import * as Money from './lib/money.js';
 import * as Counts from './lib/counts.js';
 import * as Receipt from './lib/receipt.js';
@@ -47,6 +48,8 @@ import * as Labels from './lib/labels.js';
 import * as SyncWorker from './lib/sync-worker.js';
 import * as Telegram from './lib/telegram.js';
 import * as Live from './lib/live.js';
+import * as TLS from './lib/tls.js';
+import { lanAddresses } from './lib/net.js';
 import { timingSafeEqual } from 'node:crypto';
 import {
   readJson, sendOk, sendError, sendErrorDetail, sendJson, parseCookies,
@@ -64,7 +67,14 @@ loadEnv();
 const PORT    = Number(process.env.OG_PORT || 8090);
 const DB_FILE = process.env.OG_DB || resolve(HERE, 'data', 'og.db');
 const STATIC  = resolve(process.env.OG_STATIC || resolve(HERE, '..'));
-const SECURE  = process.env.OG_SECURE === '1';
+/* '1' forces it; otherwise it turns itself on the moment this process is
+   actually serving HTTPS, which is the only thing the flag is really about.
+   A Secure cookie is still accepted over http://localhost by every browser,
+   so the till on this machine is unaffected either way. */
+let SECURE    = process.env.OG_SECURE === '1';
+let SECURE_SERVER = null;
+const HTTPS_PORT = Number(process.env.OG_HTTPS_PORT || 8443);
+const HTTPS_OFF  = process.env.OG_HTTPS === '0';
 const ORIGINS = (process.env.OG_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
@@ -90,10 +100,16 @@ router.add('GET /api/health', (ctx) => {
      prints it, because two laptops each running their own copy are two
      shops, and nothing else on screen would ever say so. */
   const shop = DB.get().prepare("SELECT value FROM config WHERE key = 'shop.name'").get();
+  /* Full URLs, scheme and all: the login screen prints these verbatim, and
+     "10.10.99.9:8443" without the https in front is a page that will not
+     load. */
+  const scheme = SECURE_SERVER ? 'https' : 'http';
+  const port = SECURE_SERVER ? HTTPS_PORT : PORT;
   sendOk(ctx.res, {
     warehouses: row.n, time: DB.nowIso(),
     shop: shop ? shop.value : null,
-    lan: lanAddresses().filter((n) => !n.note).map((n) => `${n.address}:${PORT}`)
+    https: !!SECURE_SERVER,
+    lan: lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`)
   });
 });
 
@@ -1250,6 +1266,29 @@ router.add('GET /api/dashboard',
     sendOk(ctx.res, out);
   }));
 
+/* ------------------------------------------------------------- the reports
+   Everything on the Reports screen, computed in SQL over EVERY sale — the
+   same job GET /api/dashboard does for the home screens, and added for the
+   same reason: the browser was summing it out of the last two hundred
+   invoices, adding dollars to lira as it went.
+
+   `report.read` opens the screen; each block inside is gated on its own
+   permission (profit.read, cost.read, money.read, staff.read) and is ABSENT
+   rather than nulled for an account that may not see it — see the header of
+   server/lib/reports.js.
+
+   NOT passed through scrubCost whole, for the same reason the dashboard is
+   not: COST_KEYS deletes a key literally named `margin`, which would blank
+   the profit block for a manager holding profit.read but not cost.read. There
+   are no sale line items in this payload, so there is nothing to scrub — the
+   cost figures that are here were withheld at the query, not at the door. */
+router.add('GET /api/reports', requirePerm('report.read', (ctx) => {
+  const q = ctx.url.searchParams;
+  const range = Reports.parseRange(q.get('from'), q.get('to'), q.get('tz'));
+  if (range.error) return sendError(ctx.res, 400, 'bad_range', range.error);
+  sendOk(ctx.res, Reports.build(ctx.user, range));
+}));
+
 /* One alert by key, or everything currently showing when no key is named.
    Keyed on what the alert is ABOUT, so counting down from "due in 3 days" to
    "due in 2 days" does not make a read alert come back unread. */
@@ -2017,8 +2056,7 @@ function clientIp(req) {
 
 /* ------------------------------------------------------------------- server */
 
-export function createApp() {
-  return createServer(async (req, res) => {
+async function handle(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const path = url.pathname;
 
@@ -2126,31 +2164,30 @@ export function createApp() {
         res.end();
       }
     }
-  });
 }
 
-/* Every address on this machine another device could reach it by.
+export function createApp() { return createServer(handle); }
 
-   Virtual adapters — VPN clients, WSL, Hyper-V — hand out addresses that look
-   exactly like a home network but are not the one the phone is on, and typing
-   one of those is a "the system is broken" phone call. They go last, named, so
-   the obvious candidate is the first line printed. */
-function lanAddresses() {
-  const VIRTUAL = /vpn|virtual|vethernet|hyper-v|wsl|tap|tun|loopback|docker/i;
-  const real = [];
-  const other = [];
+/* The plain-HTTP listener once HTTPS is up.
 
-  for (const [name, addrs] of Object.entries(networkInterfaces())) {
-    for (const a of addrs || []) {
-      if (a.family !== 'IPv4' || a.internal) continue;
-      /* 169.254.x is what Windows invents when DHCP failed. Nothing can
-         reach it, so offering it would only waste someone's time. */
-      if (a.address.startsWith('169.254.')) continue;
-      if (VIRTUAL.test(name)) other.push({ address: a.address, note: `${name} — probably not this one` });
-      else real.push({ address: a.address, note: '' });
-    }
-  }
-  return real.concat(other);
+   It sends a BROWSER to the secure address and leaves everything else alone.
+   Redirecting the API as well would have been tidier and wrong: the print
+   agent, the website's bearer-key calls and every script on this machine
+   speak http to localhost, and a redirect to a self-signed origin fails
+   certificate validation in Node with a message about nothing they did. So:
+   page requests move, machines carry on. */
+function httpHandler(req, res) {
+  const wantsPage = (req.method === 'GET' || req.method === 'HEAD') &&
+    String(req.headers.accept || '').includes('text/html');
+  const p = String(req.url || '/');
+  if (!wantsPage || p.startsWith('/api/') || p.startsWith('/i/')) return handle(req, res);
+
+  const host = String(req.headers.host || 'localhost').split(':')[0];
+  res.writeHead(302, {
+    Location: `https://${host}:${HTTPS_PORT}${p}`,
+    'Cache-Control': 'no-store'
+  });
+  res.end();
 }
 
 /* Only start listening when run directly, so the tests can import createApp
@@ -2188,19 +2225,43 @@ if (runDirectly) {
     try { Auth.sweep(); } catch (e) { console.error('sweep failed:', e.message); }
   }, 60 * 60 * 1000).unref();
 
-  const server = createApp();
+  /* HTTPS when a certificate has been made, which is what every device
+     other than this one needs before the browser will allow notifications,
+     the camera scanner or installing the app. lib/tls.js says why it is
+     self-signed and what that costs. */
+  const creds = HTTPS_OFF ? null : TLS.load();
+  if (creds) {
+    SECURE = true;
+    SECURE_SERVER = createTlsServer(creds, handle);
+    SECURE_SERVER.listen(HTTPS_PORT);
+    SECURE_SERVER.on('error', (e) => {
+      console.log(`  HTTPS could not start on ${HTTPS_PORT} — ${e.message}`);
+      SECURE_SERVER = null;
+    });
+  }
+
+  const server = createServer(SECURE_SERVER ? httpHandler : handle);
   server.listen(PORT, () => {
     const n = DB.get().prepare('SELECT COUNT(*) AS n FROM users').get().n;
     console.log('');
     console.log('  OG SYSTEM server');
-    console.log(`    listening : http://localhost:${PORT}`);
+    if (SECURE_SERVER) {
+      console.log(`    listening : https://localhost:${HTTPS_PORT}`);
+      console.log(`    plain http: :${PORT} — browsers are sent to the address above`);
+    } else {
+      console.log(`    listening : http://localhost:${PORT}`);
+    }
 
     /* The address a phone or a second laptop must type. Printed rather than
        left for someone to dig out of ipconfig, because "open it on your
        phone" is how this gets tested every single day. */
     for (const net of lanAddresses()) {
-      console.log(`    on wifi   : http://${net.address}:${PORT}` +
-                  (net.note ? `   (${net.note})` : ''));
+      /* The secure one when there is one — this is the line somebody types
+         into a second laptop, and handing them the plain-HTTP address is
+         handing them a browser with the notifications switched off. */
+      const url = SECURE_SERVER ? `https://${net.address}:${HTTPS_PORT}`
+                                : `http://${net.address}:${PORT}`;
+      console.log(`    on wifi   : ${url}` + (net.note ? `   (${net.note})` : ''));
     }
 
     console.log(`    database  : ${DB_FILE}`);
@@ -2258,6 +2319,30 @@ if (runDirectly) {
        nobody else is on, but it is exactly the setting people forget on the
        day they first reach the till from outside, which is also the day it
        starts to matter. Say so while the address is still on screen. */
+    /* The certificate: is it still valid, and does it still name the
+       address this machine answers on? An IP that moved is a browser that
+       refuses to connect at all, which reads as "the system is down". */
+    if (SECURE_SERVER) {
+      const missing = TLS.uncovered(lanAddresses().filter((x) => !x.note).map((x) => x.address));
+      const left = TLS.daysLeft();
+      if (missing.length) {
+        console.log('');
+        console.log(`    THIS MACHINE'S ADDRESS HAS CHANGED: ${missing.join(', ')}`);
+        console.log('    The certificate does not name it, so other devices cannot');
+        console.log('    open it. Run:  npm run cert   and restart.');
+      }
+      if (left !== null && left < 30) {
+        console.log('');
+        console.log(`    The certificate expires in ${left} days — npm run cert`);
+      }
+    } else if (!HTTPS_OFF) {
+      console.log('');
+      console.log('    No certificate, so this is plain HTTP. Other devices then');
+      console.log('    get no notifications, no camera scanner and cannot install');
+      console.log('    the app — browsers only allow those over HTTPS. Run:');
+      console.log('      npm run cert');
+    }
+
     if (!ORIGINS.length) {
       console.log('');
       console.log('    OG_ORIGINS is not set — any site your browser visits can');
@@ -2284,6 +2369,7 @@ if (runDirectly) {
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, () => {
       console.log('\n  shutting down');
+      if (SECURE_SERVER) { try { SECURE_SERVER.close(); } catch (e) { /* already down */ } }
       server.close(() => { DB.close(); process.exit(0); });
       /* If a connection refuses to drain, do not hang forever. */
       setTimeout(() => process.exit(0), 5000).unref();

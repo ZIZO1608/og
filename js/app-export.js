@@ -5,80 +5,342 @@
    app-util.js.
    ========================================================================== */
 
-function reportExportSpec() {
-  var tab = OG.rep.tab, s = { name: 'report-' + tab, chartId: 'repChart',
-                              docUrl: deepLink('report', tab),
-                              subtitle: fmtDate(daysAgo(179)) + ' — ' + fmtDate(TODAY) };
+/* ------------------------------------------------- THE REPORTS EXPORT
+   The same snapshot the screen was drawn from — DB.rep, computed on the
+   server over every sale — laid out for a spreadsheet rather than for a
+   table.
 
-  if (tab === 'sales') {
-    var m = DB.monthlySales(6);
-    var tot = m.reduce(function (a, x) { return a + x.total; }, 0);
-    var inv = m.reduce(function (a, x) { return a + x.count; }, 0);
-    s.title = t('tab_sales'); s.sheet = 'Sales';
-    s.columns = [{ label: 'Month' }, { label: t('invoices'), num: true },
-                 { label: exCol(t('revenue')), num: true }, { label: exCol(t('avg_basket')), num: true }];
-    s.rows = m.map(function (x) {
-      return [x.label + ' ' + x.date.getFullYear(), x.count, exMoney(x.total),
-              exMoney(x.count ? x.total / x.count : 0)];
-    });
-    s.totals = [t('total'), inv, exMoney(tot), exMoney(inv ? tot / inv : 0)];
-    s.kpis = [{ label: t('revenue'), value: money(tot) }, { label: t('invoices'), value: nf(inv) },
-              { label: t('avg_basket'), value: money(inv ? tot / inv : 0) }];
+   TWO THINGS THIS DOES DIFFERENTLY FROM THE SCREEN, both because a
+   spreadsheet is a different object from a page.
 
-  } else if (tab === 'profit') {
-    var rows = DB.profitByType();
-    var tr = rows.reduce(function (a, x) { return a + x.revenue; }, 0);
-    var tc = rows.reduce(function (a, x) { return a + x.cost; }, 0);
-    s.title = t('tab_profit'); s.sheet = 'Profit';
-    s.columns = [{ label: t('type') }, { label: t('units'), num: true },
-                 { label: exCol(t('revenue')), num: true }, { label: exCol(t('cost')), num: true },
-                 { label: exCol(t('profit')), num: true }, { label: t('margin') }];
-    s.rows = rows.map(function (x) {
-      return [x.label, x.units, exMoney(x.revenue), exMoney(x.cost), exMoney(x.profit), pct(x.margin, 1)];
-    });
-    s.totals = [t('total'), null, exMoney(tr), exMoney(tc), exMoney(tr - tc), pct((tr - tc) / tr * 100, 1)];
-    s.kpis = [{ label: t('revenue'), value: money(tr) }, { label: t('profit'), value: money(tr - tc) },
-              { label: t('margin'), value: pct((tr - tc) / tr * 100, 1) }];
+   1. MONEY BECOMES COLUMNS, NOT A PAIR. On screen "12,150 SYP + $40" is one
+      honest cell. In Excel it is a string, and a string cannot be summed,
+      sorted or charted — so each currency gets its own numeric column with
+      its own currency format, and the USD column only appears when dollars
+      were actually taken. What must never happen is the two being added,
+      which is what the old spec did by writing one `exMoney()` column.
 
-  } else if (tab === 'inventory') {
-    var inv2 = DB.inventoryValue();
-    var tCost = inv2.reduce(function (a, x) { return a + x.cost; }, 0);
-    var tRet = inv2.reduce(function (a, x) { return a + x.retail; }, 0);
-    var tU = inv2.reduce(function (a, x) { return a + x.units; }, 0);
-    s.title = t('tab_inventory'); s.sheet = 'Inventory';
-    s.columns = [{ label: t('type') }, { label: t('units'), num: true },
-                 { label: exCol(t('capital_in_stock')), num: true },
-                 { label: exCol(t('retail_value')), num: true }, { label: exCol(t('profit')), num: true }];
-    s.rows = inv2.map(function (x) {
-      return [x.label, x.units, exMoney(x.cost), exMoney(x.retail), exMoney(x.retail - x.cost)];
-    });
-    s.totals = [t('total'), tU, exMoney(tCost), exMoney(tRet), exMoney(tRet - tCost)];
-    s.kpis = [{ label: t('capital_in_stock'), value: money(tCost) },
-              { label: t('retail_value'), value: money(tRet) },
-              { label: t('total_pieces'), value: nf(tU) }];
+   2. FIGURES ARE NUMBERS, DATES ARE DATES. `money`, `pct`, `date` and `int`
+      columns arrive in Excel as their real types, so the shop can sort by
+      due date and filter by margin. They used to arrive as text.           */
 
-  } else if (tab === 'employees') {
-    s.title = t('tab_employees'); s.sheet = 'Employees';
-    s.columns = [{ label: t('name') }, { label: t('role') }, { label: exCol(t('salary')), num: true },
-                 { label: exCol(t('sales_made')), num: true }, { label: t('next_payment') }];
-    s.rows = DB.employees.map(function (e) {
-      return [e.name, e.role, exMoney(e.salary), exMoney(e.sales), fmtDate(e.nextPayment)];
-    });
-    s.totals = [t('total'), null, exMoney(DB.employees.reduce(function (a, e) { return a + e.salary; }, 0)),
-                exMoney(DB.employees.reduce(function (a, e) { return a + e.sales; }, 0)), null];
+/* USD is stored in cents and SYP in whole lira (minor_exp 2 and 0). A
+   spreadsheet wants the amount a person would write down. */
+function exSyp(v) { return Math.round(Number(v) || 0); }
+function exUsd(v) { return Math.round(Number(v) || 0) / 100; }
 
-  } else {
-    s.title = t('tab_suppliers'); s.sheet = 'Suppliers';
-    s.columns = [{ label: t('supplier') }, { label: t('category') },
-                 { label: exCol('Total purchased'), num: true },
-                 { label: exCol(t('outstanding')), num: true }, { label: t('due') }];
-    s.rows = DB.suppliers.map(function (x) {
-      return [x.name, x.category, exMoney(x.totalPurchased), exMoney(x.outstanding), fmtDate(x.dueDate)];
-    });
-    s.totals = [t('total'), null, exMoney(DB.suppliers.reduce(function (a, x) { return a + x.totalPurchased; }, 0)),
-                exMoney(DB.suppliers.reduce(function (a, x) { return a + x.outstanding; }, 0)), null];
+/* One money column per currency the shop actually used. `pairs` is every
+   pair that will appear in the column, so a lira-only shop never gets an
+   empty dollar column and a shop that took $40 once always does. */
+function exMoneyCols(label, pairs) {
+  var cols = [{ label: label + ' (SYP)', money: 'SYP' }];
+  if ((pairs || []).some(function (p) { return p && p.usd; })) {
+    cols.push({ label: label + ' (USD)', money: 'USD' });
   }
+  return cols;
+}
+function exMoneyVals(pair, cols) {
+  var out = [exSyp(pair ? pair.syp : 0)];
+  if (cols > 1) out.push(exUsd(pair ? pair.usd : 0));
+  return out;
+}
+
+/* A single-currency figure — a supplier's balance, an employee's salary —
+   into the two columns. The other one is left BLANK rather than zeroed: a
+   supplier billed in dollars has no lira balance, and a 0 in that column
+   would be summed by anybody who selects it. */
+function exOneCur(currency, v, cols) {
+  var out = [currency === 'USD' ? null : exSyp(v)];
+  if (cols > 1) out.push(currency === 'USD' ? exUsd(v) : null);
+  return out;
+}
+
+function reportExportSpec() {
+  var tab = typeof repTab === 'function' ? repTab() : (OG.rep && OG.rep.tab) || 'sales';
+  var r = DB.rep;
+
+  var s = {
+    name: 'report-' + tab,
+    chartId: 'repChart',
+    docUrl: deepLink('report', tab),
+    /* The range that was actually asked for, not a fixed 180 days printed
+       over whatever happened to be on screen. Stock and payroll are present
+       tense and say so. */
+    subtitle: (tab === 'inventory' || tab === 'employees' || tab === 'suppliers')
+      ? t('rp_as_of') + ' ' + fmtDate(new Date())
+      : (typeof repRangeLabel === 'function' ? repRangeLabel() : fmtDate(new Date()))
+  };
+
+  /* No snapshot means no report. An export of an empty grid, handed to
+     somebody as "the month", is worse than no file at all. */
+  if (!r) {
+    return {
+      name: 'report', sheet: 'Report', title: t('reports_title'),
+      subtitle: t('rp_unavailable'),
+      columns: [{ label: t('reports_title'), width: 60 }],
+      rows: [[t('rp_unavailable')]]
+    };
+  }
+
+  if (tab === 'profit')         profitExportSpec(s, r);
+  else if (tab === 'inventory') inventoryExportSpec(s, r);
+  else if (tab === 'payments')  paymentsExportSpec(s, r);
+  else if (tab === 'employees') employeesExportSpec(s, r);
+  else if (tab === 'suppliers') suppliersExportSpec(s, r);
+  else                          salesReportExportSpec(s, r);
+
   return s;
+}
+
+function salesReportExportSpec(s, r) {
+  var d = r.sales, series = d.series;
+  var pairs = series.concat([d.takings, d.avgBasket]);
+  var revCols = exMoneyCols(t('revenue'), pairs);
+  var avgCols = exMoneyCols(t('avg_basket'), pairs);
+
+  s.title = t('tab_sales'); s.sheet = 'Sales';
+  s.columns = [{ label: t(d.grain === 'day' ? 'rp_day' : 'rp_month'), width: 16 },
+               { label: t('invoices'), int: true }]
+              .concat(revCols, avgCols);
+
+  /* A day with no invoices has no average basket, and that is not the same
+     thing as an average basket of zero — there were no baskets. Revenue on
+     such a day IS zero and stays a zero, because the column is summed and a
+     gap in a sum is a different lie. */
+  var blankAvg = avgCols.map(function () { return null; });
+
+  s.rows = series.map(function (b) {
+    var avg = b.count ? {
+      syp: b.syp ? Math.round(b.syp / b.count) : 0,
+      usd: b.usd ? Math.round(b.usd / b.count) : 0
+    } : null;
+    return [DB.repBucketLabel(b.bucket, d.grain), b.count]
+      .concat(exMoneyVals(b, revCols.length), avg ? exMoneyVals(avg, avgCols.length) : blankAvg);
+  });
+
+  s.totals = [t('total'), d.count]
+    .concat(exMoneyVals(d.takings, revCols.length), exMoneyVals(d.avgBasket, avgCols.length));
+
+  s.kpis = [{ label: t('revenue'), value: moneyPairText(d.takings.syp, d.takings.usd) },
+            { label: t('invoices'), value: nf(d.count) },
+            { label: t('pieces'), value: nf(d.units) },
+            { label: t('avg_basket'), value: moneyPairText(d.avgBasket.syp, d.avgBasket.usd) },
+            { label: t('discount'), value: moneyPairText(d.discount.syp, d.discount.usd) }];
+}
+
+function profitExportSpec(s, r) {
+  var p = r.profit, rows = p.rows, tot = p.totals;
+  s.title = t('tab_profit'); s.sheet = 'Profit';
+
+  if (!p.hasCost) {
+    /* The account may open the screen but not see cost. The sheet carries
+       what it is allowed to carry rather than a column of blanks — a hidden
+       column in a spreadsheet is a column somebody will ask about. */
+    var rCols = exMoneyCols(t('revenue'), rows.map(function (x) { return x.revenue; }).concat([tot.revenue]));
+    s.columns = [{ label: t('type'), width: 22 }, { label: t('units'), int: true }].concat(rCols);
+    s.rows = rows.map(function (x) {
+      return [DB.typeLabels[x.type] || x.type || '—', x.units].concat(exMoneyVals(x.revenue, rCols.length));
+    });
+    s.totals = [t('total'), tot.units].concat(exMoneyVals(tot.revenue, rCols.length));
+    s.kpis = [{ label: t('revenue'), value: moneyPairText(tot.revenue.syp, tot.revenue.usd) },
+              { label: t('units'), value: nf(tot.units) }];
+    return;
+  }
+
+  var all = [];
+  rows.forEach(function (x) { all.push(x.revenue, x.cost, x.profit); });
+  all.push(tot.revenue, tot.cost, tot.profit);
+  var revC = exMoneyCols(t('revenue'), all), costC = exMoneyCols(t('cost'), all),
+      proC = exMoneyCols(t('profit'), all);
+
+  s.columns = [{ label: t('type'), width: 22 }, { label: t('units'), int: true }]
+    .concat(revC, costC, proC, [{ label: t('margin') + ' (SYP)', pct: true }]);
+  if (revC.length > 1) s.columns.push({ label: t('margin') + ' (USD)', pct: true });
+
+  s.rows = rows.map(function (x) {
+    var out = [DB.typeLabels[x.type] || x.type || '—', x.units]
+      .concat(exMoneyVals(x.revenue, revC.length), exMoneyVals(x.cost, costC.length),
+              exMoneyVals(x.profit, proC.length), [x.margin.syp]);
+    if (revC.length > 1) out.push(x.margin.usd);
+    return out;
+  });
+
+  s.totals = [t('total'), tot.units]
+    .concat(exMoneyVals(tot.revenue, revC.length), exMoneyVals(tot.cost, costC.length),
+            exMoneyVals(tot.profit, proC.length), [tot.margin.syp]);
+  if (revC.length > 1) s.totals.push(tot.margin.usd);
+
+  s.kpis = [{ label: t('revenue'), value: moneyPairText(tot.revenue.syp, tot.revenue.usd) },
+            { label: t('cost'), value: moneyPairText(tot.cost.syp, tot.cost.usd) },
+            { label: t('profit'), value: moneyPairText(tot.profit.syp, tot.profit.usd) },
+            { label: t('margin'), value: tot.margin.syp === null ? '—' : pct(tot.margin.syp, 1) }];
+}
+
+function inventoryExportSpec(s, r) {
+  var iv = r.inventory, rows = iv.rows, tot = iv.totals;
+  s.title = t('tab_inventory'); s.sheet = 'Inventory';
+
+  var all = [];
+  rows.forEach(function (x) { all.push(x.retail); if (iv.hasCost) all.push(x.cost); });
+  all.push(tot.retail); if (iv.hasCost) all.push(tot.cost);
+
+  var costC = iv.hasCost ? exMoneyCols(t('capital_in_stock'), all) : [];
+  var retC = exMoneyCols(t('retail_value'), all);
+  var proC = iv.hasCost ? exMoneyCols(t('profit'), all) : [];
+
+  s.columns = [{ label: t('type'), width: 22 }, { label: t('pieces'), int: true },
+               { label: t('rp_lines'), int: true }].concat(costC, retC, proC);
+
+  s.rows = rows.map(function (x) {
+    var out = [DB.typeLabels[x.type] || x.type || '—', x.units, x.skus];
+    if (iv.hasCost) out = out.concat(exMoneyVals(x.cost, costC.length));
+    out = out.concat(exMoneyVals(x.retail, retC.length));
+    if (iv.hasCost) {
+      out = out.concat(exMoneyVals({ syp: x.retail.syp - x.cost.syp,
+                                     usd: x.retail.usd - x.cost.usd }, proC.length));
+    }
+    return out;
+  });
+
+  var totals = [t('total'), tot.units, tot.skus];
+  if (iv.hasCost) totals = totals.concat(exMoneyVals(tot.cost, costC.length));
+  totals = totals.concat(exMoneyVals(tot.retail, retC.length));
+  if (iv.hasCost) totals = totals.concat(exMoneyVals(tot.profit, proC.length));
+  s.totals = totals;
+
+  s.kpis = [];
+  if (iv.hasCost) s.kpis.push({ label: t('capital_in_stock'), value: moneyPairText(tot.cost.syp, tot.cost.usd) });
+  s.kpis.push({ label: t('retail_value'), value: moneyPairText(tot.retail.syp, tot.retail.usd) },
+              { label: t('pieces'), value: nf(tot.units) },
+              { label: t('rp_lines'), value: nf(tot.skus) });
+
+  /* The pieces this sheet is NOT counting, on the sheet. A total somebody
+     remembers as bigger needs its reason travelling with it, or the file
+     starts an argument the next time it is opened. */
+  if (iv.archivedUnits) {
+    s.note = t('rp_archived_note').replace('{n}', nf(iv.archivedUnits));
+  }
+}
+
+function paymentsExportSpec(s, r) {
+  var p = r.payments, d = r.sales;
+  s.title = t('rp_tab_payments'); s.sheet = 'Payments';
+
+  var all = p.byPayment.slice().concat(p.expenses.rows, [d.takings, p.debts, p.suppliers,
+                                                         p.expenses.total, p.collected.total]);
+  var amtC = exMoneyCols(t('total'), all);
+
+  s.columns = [{ label: t('status'), width: 20 }, { label: t('rp_method'), width: 26 },
+               { label: t('invoices'), int: true }].concat(amtC);
+
+  var rows = [];
+  p.byPayment.forEach(function (x) {
+    rows.push([t('rp_taken'), DB.payLabel(x.payment), x.count].concat(exMoneyVals(x, amtC.length)));
+  });
+  p.expenses.rows.forEach(function (x) {
+    rows.push([t('mn_expenses'), expenseLabel(x.category), x.count].concat(exMoneyVals(x, amtC.length)));
+  });
+  if (p.collected.count) {
+    rows.push([t('rp_collected'), t('cu_take_payment'), p.collected.count]
+      .concat(exMoneyVals(p.collected.total, amtC.length)));
+  }
+  /* Balances, not takings — and marked as such in the first column, because a
+     column of money with no label is exactly how a debt gets added to a day's
+     cash. */
+  rows.push([t('rp_owed_by_customers'), nf(p.debts.customers) + ' ' + t('rp_people'),
+             p.debts.invoices].concat(exMoneyVals(p.debts, amtC.length)));
+  rows.push([t('rp_owed_to_suppliers'), nf(p.suppliers.count) + ' ' + t('tab_suppliers'),
+             null].concat(exMoneyVals(p.suppliers, amtC.length)));
+  rows.push([t('discount'), p.discounts.overCap
+              ? t('rp_over_cap').replace('{n}', nf(p.discounts.overCap)).replace('{p}', p.discounts.capPct + '%')
+              : t('discount'),
+             p.discounts.count].concat(exMoneyVals(p.discounts.amount, amtC.length)));
+
+  s.rows = rows;
+  s.totals = [t('rp_taken'), t('total'), d.count].concat(exMoneyVals(d.takings, amtC.length));
+  s.kpis = [{ label: t('rp_taken'), value: moneyPairText(d.takings.syp, d.takings.usd) },
+            { label: t('rp_owed_by_customers'), value: moneyPairText(p.debts.syp, p.debts.usd) },
+            { label: t('rp_owed_to_suppliers'), value: moneyPairText(p.suppliers.syp, p.suppliers.usd) },
+            { label: t('mn_expenses'), value: moneyPairText(p.expenses.total.syp, p.expenses.total.usd) }];
+  s.note = t('rp_debt_note');
+}
+
+function employeesExportSpec(s, r) {
+  var e = r.employees, rows = e.rows;
+  s.title = t('tab_employees'); s.sheet = 'Employees';
+
+  var sold = { syp: 0, usd: 0 }, soldN = 0;
+  rows.forEach(function (x) {
+    if (!x.sold) return;
+    sold.syp += x.sold.syp; sold.usd += x.sold.usd; soldN += x.sold.count;
+  });
+
+  var anyUsd = e.salary.usd || sold.usd ||
+               rows.some(function (x) { return x.currency === 'USD'; });
+  var pad = anyUsd ? [{ syp: 0, usd: 1 }] : [];
+  var salC = exMoneyCols(t('salary'), pad);
+  var solC = exMoneyCols(t('sales_made'), pad);
+
+  s.columns = [{ label: t('name'), width: 26 }, { label: t('role'), width: 18 }]
+    .concat(salC, [{ label: t('invoices'), int: true }], solC,
+            [{ label: t('rp_since'), date: true }, { label: t('next_payment'), date: true },
+             { label: t('phone'), width: 18 }]);
+
+  /* Somebody with no till login gets BLANK sales cells, not zeros. A zero
+     here is summed by anyone who selects the column, and it says a tailor
+     sold nothing when the truth is that a tailor does not use the till. */
+  var blanks = salC.length === solC.length ? solC.map(function () { return null; }) : [null];
+
+  s.rows = rows.map(function (x) {
+    return [x.name, x.role]
+      .concat(exOneCur(x.currency, x.salary, salC.length),
+              [x.sold ? x.sold.count : null],
+              x.sold ? exMoneyVals(x.sold, solC.length) : blanks,
+              [x.since || null, x.nextPayment || null, x.phone || '']);
+  });
+
+  s.totals = [t('total'), null]
+    .concat(exMoneyVals(e.salary, salC.length), [soldN], exMoneyVals(sold, solC.length),
+            [null, null, null]);
+
+  s.kpis = [{ label: t('rp_payroll'), value: moneyPairText(e.salary.syp, e.salary.usd) },
+            { label: t('rp_people'), value: nf(e.count) },
+            { label: t('sales_made'), value: moneyPairText(sold.syp, sold.usd) }];
+}
+
+function suppliersExportSpec(s, r) {
+  var list = r.suppliers || [];
+  s.title = t('tab_suppliers'); s.sheet = 'Suppliers';
+
+  var outstanding = { syp: 0, usd: 0 }, purchased = { syp: 0, usd: 0 };
+  list.forEach(function (x) {
+    if (x.currency === 'USD') { outstanding.usd += x.outstanding; purchased.usd += x.totalPurchased; }
+    else { outstanding.syp += x.outstanding; purchased.syp += x.totalPurchased; }
+  });
+
+  var pad = list.some(function (x) { return x.currency === 'USD'; }) ? [{ syp: 0, usd: 1 }] : [];
+  var purC = exMoneyCols(t('rp_purchased'), pad);
+  var outC = exMoneyCols(t('outstanding'), pad);
+
+  s.columns = [{ label: t('supplier'), width: 26 }, { label: t('category'), width: 18 }]
+    .concat(purC, outC, [{ label: t('due'), date: true },
+                         { label: t('rp_since'), date: true },
+                         { label: t('phone'), width: 18 }]);
+
+  s.rows = list.map(function (x) {
+    return [x.name, x.category || '']
+      .concat(exOneCur(x.currency, x.totalPurchased, purC.length),
+              exOneCur(x.currency, x.outstanding, outC.length),
+              [x.dueDate || null, x.lastPayment || null, x.contact || '']);
+  });
+
+  s.totals = [t('total'), null]
+    .concat(exMoneyVals(purchased, purC.length), exMoneyVals(outstanding, outC.length),
+            [null, null, null]);
+
+  s.kpis = [{ label: t('outstanding'), value: moneyPairText(outstanding.syp, outstanding.usd) },
+            { label: t('rp_purchased'), value: moneyPairText(purchased.syp, purchased.usd) },
+            { label: t('tab_suppliers'), value: nf(list.length) }];
 }
 
 /* An export is the same data with a different lid on it. A column hidden on
@@ -307,7 +569,12 @@ function handleDeepLink(hash) {
       YALLA.go('invoices', id);
       return true;
     case 'report':
-      if (['sales', 'profit', 'inventory', 'employees', 'suppliers'].indexOf(id) > -1) OG.rep.tab = id;
+      /* repTab() bounces an account that may not open the named tab back to
+         Sales, so a QR printed by a manager and scanned by a cashier lands on
+         a screen rather than on a blank card. */
+      if (['sales', 'profit', 'inventory', 'payments', 'employees', 'suppliers'].indexOf(id) > -1) {
+        OG.rep.tab = id;
+      }
       go('reports');
       return true;
     default:

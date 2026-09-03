@@ -233,6 +233,21 @@ function renderSidebar() {
     });
   });
 
+  /* The way INTO the partner's portal, for whoever may look at it. It
+     lived only on the Print screen's head and in the phone's More sheet,
+     which is to say a manager standing at the sidebar could not find it —
+     "OG cannot open the Yalla Wear portal" was the exact report. Not a view
+     and not a route: it is the same portal switch, drawn where the rest of
+     the navigation is. */
+  if (allow('partner.read') && !isPartnerAccount()) {
+    html += '<div class="nav-label">' + esc(CONFIG.PRINT_PARTNER) + '</div>' +
+      '<button class="nav-item nav-partner" data-act="partner-view" title="' + esc(t('partner_view')) + '">' +
+        '<span class="nav-icon"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
+          '<path d="M4 7l8-4 8 4v4c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10zM9 12l2 2 4-4"/></svg></span>' +
+        '<span class="nav-txt">' + t('nav_partner') + '</span>' +
+      '</button>';
+  }
+
   html += '</nav><div class="sidebar-foot">' + t('live') + ' · <b>v1.0</b></div>';
   document.getElementById('sidebar').innerHTML = html;
   /* The sliding indicator is positioned from the active item's own offset, so

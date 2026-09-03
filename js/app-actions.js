@@ -1464,7 +1464,35 @@ var ACTIONS = {
     go('products', function () { openProductDrawer(id); });
   },
 
+  /* Switching tab is free: one GET /api/reports carries every block the
+     account may see, so there is nothing to fetch and nothing to wait for. */
   'rep-tab': function (el) { OG.rep.tab = el.getAttribute('data-tab'); render(); },
+
+  /* The window, though, is a new question for the server. Same shape as
+     'dash-scope': paint the chips immediately so the press registers, then
+     refetch. A failure puts the OLD figures back with a toast rather than
+     drawing zeros over them — an empty report reads as "the shop sold
+     nothing", which is a claim, and the wrong one. */
+  'rep-scope': function (el) {
+    var k = el.getAttribute('data-k');
+    var prevScope = OG.repScope;
+    OG.repScope = k;
+
+    /* Custom opens two date boxes. Until BOTH are filled there is nothing new
+       to ask for, so it only paints — scopeRange falls back to 30 days on a
+       half-filled pair and refetching that would silently answer a question
+       nobody asked. */
+    if (k === 'custom' && !(OG.repFrom && OG.repTo)) {
+      if (!OG.repFrom && !OG.repTo) {
+        var r = scopeRange(prevScope || '30d', OG.repFrom, OG.repTo);
+        OG.repFrom = ymdOf(r.from);
+        OG.repTo = ymdOf(new Date(r.to.getTime() - 1));
+      }
+      render();
+      return;
+    }
+    reloadReportsInto();
+  },
 
   /* One scan entry point, used by the topbar, the tab bar, POS and the
      product pages, so the camera behaves identically everywhere — including

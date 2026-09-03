@@ -43,3 +43,10 @@ Desktop.ini
 *.log
 *.tmp
 .setup_backup/
+
+# ---- the till's own HTTPS certificate ---------------------------------------
+# Made by `cd server && npm run cert`, names this machine's addresses, and
+# carries a PRIVATE KEY. Regenerated in one command on any machine, so it is
+# not source — and committing the key would hand every checkout the ability to
+# impersonate the shop's till on its own network.
+server/data/certs/

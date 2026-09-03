@@ -330,3 +330,9 @@ body[data-portal="yalla"] .rv-item-foot { border-top-color: rgba(255, 255, 255, 
 body[data-portal="yalla"] .rv-item.r5 { border-inline-start-color: var(--brand); }
 body[data-portal="yalla"] .rv-item.r3 { border-inline-start-color: #F5C15C; }
 body[data-portal="yalla"] .rv-item.r2, body[data-portal="yalla"] .rv-item.r1 { border-inline-start-color: #FF7A7A; }
+
+/* With the preview button gone for a real partner login, the credit line is
+   on its own — centred and quiet, so the rail ends deliberately rather than
+   looking like something failed to render. */
+body[data-portal="yalla"] .yl-leave.note-only { padding: 16px; text-align: center; }
+body[data-portal="yalla"] .yl-leave.note-only .yl-leave-note { margin: 0; opacity: .75; }
