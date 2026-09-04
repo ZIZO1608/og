@@ -507,7 +507,7 @@ it rejects the **whole batch**, not the column:
   asks about the *data*; the shape question used to be answered by a day of missing sales instead of
   by a command. Both new branches were verified by breaking `mirror-lag.js` on purpose.
 
-- **Eleven schema files are run by hand in the Supabase dashboard**, `002` through `011` (`001` too,
+- **Twelve schema files are run by hand in the Supabase dashboard**, `002` through `013` (`001` too,
   on a new project). **`server/supabase/CATCH-UP.sql` is every outstanding one concatenated** — one
   paste instead of four visits; it is generated, every statement is `IF NOT EXISTS`, and re-running it
   is safe. `002`–`007` are applied on the live mirror. `008` (rooms, and which wall a rack hangs on)
@@ -515,8 +515,10 @@ it rejects the **whole batch**, not the column:
   and pushes `sections` without the three placement columns. `009` adds `print_log.kind` (local `027`);
   until it is run the print history block is rejected and retries every run, so nothing is lost, only
   late. `010` adds `loyalty_redemptions` and `wants` plus `print_jobs.customer_id` (local `031`/`032`).
-  `011` adds the three `customers` columns (local `033`). `002` adds `users.pw_enc` and is easy to
-  forget because the sync only needs it once `OG_VAULT_KEY` is set.
+  `011` adds the three `customers` columns (local `033`). `013` adds the four rack-size columns on
+  `sections` (local `036`); until it is run the sync pushes racks without their size and names the
+  file every run. `002` adds `users.pw_enc` and is easy to forget because the sync only needs it
+  once `OG_VAULT_KEY` is set.
 - **Running one of these files is only half the repair.** The sync pushed those rows with the missing
   columns *dropped* and its cursor is already past them, so the columns exist afterwards and stay
   NULL. **`npm run supabase:reconcile` is what refills them**, and it is not optional.
@@ -893,8 +895,10 @@ how big the room really is.
 - **Placement is patched as a unit** — `roomId`, `wall`, `wallPos` in one body. `updateSection`
   reads an omitted one as *clear it*, so a rack that moved rooms must not keep the old room's wall
   position. Send all three or none.
-- **The ghost only ever shows a place the rack can go.** It snaps to whole bays, stops at the end of
-  a measured wall, and slides to the nearest free slot rather than overlapping. `wallAt()` in
+- **The ghost only ever shows a place the rack can go.** It snaps to 5 cm, stops at the end of a
+  measured wall, and slides to the nearest free place rather than overlapping — the candidates are
+  the edges of everything already there, rounded AWAY from the neighbour (4.56 snapped to the
+  nearest 5 cm is 4.55, which is inside the rack it was meant to sit beside). `wallAt()` in
   `shelfroom.js` is the exact inverse of `placeOnWall()` and the two are written next to each other
   for that reason — change one and you must change the other. The browser runs the server's overlap
   arithmetic locally so the answer arrives while the rack is still in the air; **the server still
@@ -909,6 +913,50 @@ how big the room really is.
   a pull draws an outline of the room it would become and the real walls move once, on release.
   Width and depth are stored as a pair and so are saved as a pair — both are on the readout the
   whole time. **Height is not pulled**; it stays a number typed in Room settings.
+
+### Centimetres, rack sizes, and what a shrink does (036)
+
+- **Every number the room draws comes from the server.** `GEOMETRY` in `server/lib/shelves.js` is
+  the standard rack in centimetres and rides with `GET /api/sections` as `geometry`; each rack may
+  carry its own `bay_cm / level_cm / depth_cm` (NULL = the standard, never a measured zero) and the
+  list sends them applied as `size`. `js/shelfroom.js` used to own these as constants, which meant
+  the server was refusing overlaps in BAYS without knowing how wide a bay was.
+- **A rack's place on its wall is `wall_cm`.** `wall_pos` stays and is DERIVED (`round(wall_cm /
+  bay)`) so the mirror column and an older restore keep meaning what they meant; the API accepts
+  `wallCm` (the browser sends only this) and the legacy `wallPos`. Existing rows were converted with
+  114, the one number that was ever drawn, so nothing on screen moved.
+- **Overlap is a floor rectangle, not a bay count.** `footprint()` in `shelves.js` is the
+  centimetre twin of `placeOnWall()` in `shelfroom.js` — same four cases in the same order, and
+  changing one means changing the other. One rectangle per rack is what catches a corner (a rack's
+  depth eats the first centimetres of the wall beside it) and two racks nose to nose in a room too
+  shallow for both. An unmeasured room has no corners and tests only the racks on the same wall.
+- **Shrinking a room narrows the bays of any rack that no longer fits, never removes one.** A bay
+  may hold stock and printed labels, and `removeShelves` refuses exactly that. `fitRoom` floors the
+  bay at `BAY_MIN` (60 cm) and, below it, refuses the whole resize as `409 room_too_small` naming
+  the rack and the smallest room that would do — nothing is written unless everything fits. Facing
+  and corner conflicts are refused, not slid: moving a rack is the manager's decision. The wall
+  pull previews the shrink on the hand before release; the PATCH answers with `shrunk` and the map
+  says it in a toast; the room dialog keeps a refusal IN the dialog with a "use the minimum" button.
+- **Resizing a rack where it stands is refused if it would then overlap, naming the neighbour**;
+  adding a bay re-runs the same check one column wider. `MAX_ROOM_CM` is 100 m a side.
+- **Fullscreen re-parents the canvas wrapper to `<body>` first, then asks the API.** Refused
+  (an iPad, the headless harness) or absent, the same wrapper with `.sm-fs` is the whole feature
+  — one code path. While it is out there `detach()`/`attach()` are no-ops, `#smRoom` is drawn as a
+  placeholder, and the map writes DOM inside the wrapper in exactly one place (`paintOverlay`).
+  `#toasts`, `#modal-root`, the peek and the drag readout come inside for the duration because the
+  fullscreen top layer hides everything outside the element; Escape leaves both kinds the same way.
+- **Walk keys are taken at the document, gated on the hand having last touched the canvas or a
+  pad**, with `preventDefault`, so W never lands in the scan box — and a press anywhere else gives
+  the keys back. The wedge listens at the capture phase and buffers every key itself, so a scanner
+  gun is never in this conversation. The walk loop runs only while a key or pad is held; the
+  still-camera-schedules-no-frames rule holds and the harness asserts it after the walk.
+- **Shadows are baked** (`shadowMap.autoUpdate = false`, `needsUpdate` at the end of `rebuild()`
+  and `update()`): nothing moves but the camera. A machine whose first three frames average over
+  40 ms drops itself to the low tier (no shadows, no AA, DPR 1), says so, and remembers it in
+  `og_sm_quality`. The harness pins `high` because swiftshader would always drop.
+- **World matrices are updated at the end of `rebuild()` and after every camera move**, not left
+  to the next render: a press that arrives before the first frame after a rebuild used to raycast
+  against walls still standing at the origin, and the harness — which presses that fast — found it.
 
 ### Measured means measured
 

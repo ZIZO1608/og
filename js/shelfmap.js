@@ -100,17 +100,47 @@ var ShelfMap = (function () {
        mouse and a scanner has none — the person is holding a shoe. */
     chips: [],
     seq: 0,
-    sound: true
+    sound: true,
+
+    /* The standard rack in centimetres and the limits, straight from GET
+       /api/sections. The room draws from these; nothing here invents one. */
+    geometry: null,
+    limits: null,
+    /* The room's camera: 'orbit' (the planner's) or 'walk' (eye height,
+       keys and pads). Per machine, like the view. */
+    cam: 'orbit',
+    /* 'auto' | 'high' | 'low'. Auto starts high and drops itself after a
+       slow first room; the drop is remembered as 'low'. */
+    quality: 'auto',
+    /* Touch pads over the room while walking. On by default on a coarse
+       pointer, switchable either way. */
+    pads: null,
+    /* The room is fullscreen: the canvas wrapper is out on <body> and the
+       stage holds a placeholder. Set by ShelfRoom's fs hook, never here. */
+    fs: false,
+    fsKind: null
   };
 
   var CHIPS_SHOWN = 8;
   var SOUND_KEY = 'og_sm_sound';
   var COLOUR_KEY = 'og_sm_colour';
   var VIEW_KEY = 'og_sm_view';
+  var CAM_KEY = 'og_sm_cam';
+  var QUALITY_KEY = 'og_sm_quality';
+  var PADS_KEY = 'og_sm_pads';
   try { S.colour = localStorage.getItem(COLOUR_KEY) !== '0'; } catch (e) { S.colour = true; }
   /* Per machine, not per account: the office computer can sit on the room
      and the warehouse tablet on the plan, and neither has to keep choosing. */
   try { if (localStorage.getItem(VIEW_KEY) === 'room') S.view = 'room'; } catch (e) { S.view = '2d'; }
+  try { if (localStorage.getItem(CAM_KEY) === 'walk') S.cam = 'walk'; } catch (e) { S.cam = 'orbit'; }
+  try {
+    var q0 = localStorage.getItem(QUALITY_KEY);
+    if (q0 === 'high' || q0 === 'low') S.quality = q0;
+  } catch (e) { S.quality = 'auto'; }
+  try {
+    var p0 = localStorage.getItem(PADS_KEY);
+    if (p0 === '1' || p0 === '0') S.pads = p0 === '1';
+  } catch (e) { S.pads = null; }
 
   try {
     S.sound = localStorage.getItem(SOUND_KEY) !== '0';
@@ -129,6 +159,8 @@ var ShelfMap = (function () {
     return Shop.sections().then(function (res) {
       S.data = res.sections || [];
       S.rooms = res.rooms || [];
+      if (res.geometry) S.geometry = res.geometry;
+      if (res.limits) S.limits = res.limits;
       S.loading = false;
       if (!keepSel) S.sel = null;
       /* Keep the chosen room if it still exists; otherwise the first. */
@@ -354,7 +386,7 @@ var ShelfMap = (function () {
       if (r.wall && byWall[r.wall]) byWall[r.wall].push(r); else loose.push(r);
     });
     var order = function (list) {
-      return list.sort(function (a, b) { return (a.wall_pos || 0) - (b.wall_pos || 0); });
+      return list.sort(function (a, b) { return (a.wall_cm || 0) - (b.wall_cm || 0); });
     };
 
     var bar = function (r, vertical) {
@@ -474,31 +506,10 @@ var ShelfMap = (function () {
   }
 
   function topBar(sec) {
-    /* Name the warehouse only when more than one actually has rooms —
-       "M · المستودع" is noise while there is one building. */
-    var whs = {};
-    S.data.forEach(function (s) { whs[s.wh_id] = 1; });
-    S.rooms.forEach(function (r) { whs[r.wh_id] = 1; });
-    var manyWh = Object.keys(whs).length > 1;
-    var whOf = function (id) { return manyWh ? ' — ' + DB.whName(id, OG.lang === 'ar') : ''; };
-
-    /* One list, two kinds of entry: the rooms, then any rack not yet in a
-       room — drawn on its own until somebody places it. A rack IN a room is
-       reached through the room, never listed twice. */
+    /* The room list (roomSelect, shared with the fullscreen strip), then
+       the switches. */
     var h = '<div class="sm-top no-print">';
-    h += '<label class="field sm-roomsel"><span>' + t('sm_room') + '</span>' +
-         '<select class="inp" data-smv="room">';
-    S.rooms.forEach(function (r) {
-      var on = S.roomId === r.id;
-      h += '<option value="r:' + r.id + '"' + (on ? ' selected' : '') + '>' +
-           esc(r.name + whOf(r.wh_id)) + '</option>';
-    });
-    unplaced(null).forEach(function (s) {
-      var on = S.roomId == null && S.secId === s.id;
-      h += '<option value="s:' + s.id + '"' + (on ? ' selected' : '') + '>' +
-           esc(s.key + ' · ' + s.name + ' — ' + t('sm_not_placed') + whOf(s.wh_id)) + '</option>';
-    });
-    h += '</select></label>';
+    h += roomSelect();
 
     h += '<div class="sm-topbtns">';
 
@@ -527,10 +538,8 @@ var ShelfMap = (function () {
          '" data-sm="room-colour" aria-pressed="' + (S.colour ? 'true' : 'false') + '">' +
          t('sm_colour_by_type') + '</button>';
 
-    /* Only the room has a camera to lose. */
-    if (use3d()) {
-      h += '<button class="btn btn-ghost" data-sm="room-reset">' + t('sm_reset_view') + '</button>';
-    }
+    /* Only the room has a camera to lose, or a screen to fill. */
+    if (use3d()) h += camControls() + fullBtn();
 
     if (canEdit()) {
       h += '<button class="btn ' + (S.edit ? 'btn-primary' : '') + '" data-sm="edit">' +
@@ -591,9 +600,15 @@ var ShelfMap = (function () {
 
   function roomStage() {
     var room = S.roomId != null ? roomById(S.roomId) : null;
+    /* WHILE FULLSCREEN THE STAGE IS A PLACEHOLDER. The canvas wrapper is out
+       on <body>; this mount exists so the layout keeps its shape and so
+       leaving fullscreen has somewhere to come back to. mount3d() attaches
+       nothing into it while S.fs is set. */
     return '<div class="sm-stage sm-stage3d no-print">' +
-      '<div class="sm-room" id="smRoom">' +
-        '<div class="sm-room-wait muted">' + t('sm_room_loading') + '</div>' +
+      '<div class="sm-room' + (S.fs ? ' sm-room-away' : '') + '" id="smRoom">' +
+        (S.fs
+          ? '<div class="sm-room-wait muted">' + t('sm_room_is_full') + '</div>'
+          : '<div class="sm-room-wait muted">' + t('sm_room_loading') + '</div>') +
       '</div>' +
       '<div class="sm-room-foot">' +
         roomLegend(racksOnScreen()) +
@@ -606,10 +621,74 @@ var ShelfMap = (function () {
            hook rather than by this string, because the answer is only known
            once the room has been built. */
         '<div class="sm-fit" id="smFit" hidden></div>' +
-        '<div class="sm-room-hint muted">' +
-          t(S.edit && canEdit() ? 'sm_room_edit_hint' : 'sm_room_hint') + '</div>' +
+        qualityPick() +
+        '<div class="sm-room-hint muted">' + roomHint() + '</div>' +
       '</div>' +
     '</div>';
+  }
+
+  function roomHint() {
+    if (S.edit && canEdit()) return t('sm_room_edit_hint');
+    if (S.cam === 'walk') return t(showPads() ? 'sm_walk_hint_touch' : 'sm_walk_hint');
+    return t('sm_room_hint');
+  }
+
+  /* The two tiers, and auto. A machine that dropped itself shows 'low'
+     with the reason beside it. */
+  function qualityPick() {
+    return '<label class="field sm-quality"><span>' + t('sm_quality') + '</span>' +
+      '<select class="inp" data-smv="quality">' +
+      ['auto', 'high', 'low'].map(function (q) {
+        return '<option value="' + q + '"' + (S.quality === q ? ' selected' : '') + '>' +
+               esc(t('sm_quality_' + q)) + '</option>';
+      }).join('') + '</select></label>';
+  }
+
+  /* Pads are for fingers. Shown on a coarse pointer unless switched off,
+     and on any pointer when switched on. */
+  function showPads() {
+    if (S.cam !== 'walk') return false;
+    if (S.pads != null) return S.pads;
+    try { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); }
+    catch (e) { return false; }
+  }
+
+  /* The camera group: orbit or walk, and the four canned views. Drawn in
+     the top bar and again in the fullscreen strip, from one function so
+     the two can never disagree about which button does what. */
+  function camControls() {
+    var walk = S.cam === 'walk';
+    return '<div class="sm-camsw" role="group" aria-label="' + esc(t('sm_cam')) + '">' +
+        '<button class="sm-vw' + (walk ? '' : ' on') + '" data-sm="cam-orbit" aria-pressed="' + (walk ? 'false' : 'true') + '">' +
+          t('sm_cam_orbit') + '</button>' +
+        '<button class="sm-vw' + (walk ? ' on' : '') + '" data-sm="cam-walk" aria-pressed="' + (walk ? 'true' : 'false') + '">' +
+          t('sm_cam_walk') + '</button>' +
+      '</div>' +
+      '<div class="sm-views" role="group">' +
+        '<button class="btn btn-ghost btn-sm" data-sm="room-fit" title="' + esc(t('sm_fit_view')) + '">' + t('sm_fit_view') + '</button>' +
+        '<button class="btn btn-ghost btn-sm" data-sm="room-top" title="' + esc(t('sm_top_view')) + '">' + t('sm_top_view') + '</button>' +
+        '<button class="btn btn-ghost btn-sm" data-sm="room-front" title="' + esc(t('sm_front_view')) + '">' + t('sm_front_view') + '</button>' +
+        '<button class="btn btn-ghost btn-sm" data-sm="room-reset" title="' + esc(t('sm_reset_view')) + '">' + t('sm_reset_view') + '</button>' +
+      '</div>' +
+      (walk
+        ? '<button class="btn btn-ghost btn-sm sm-padbtn' + (showPads() ? ' on' : '') + '" data-sm="pad-toggle"' +
+          ' aria-pressed="' + (showPads() ? 'true' : 'false') + '">' + t('sm_pad_toggle') + '</button>'
+        : '');
+  }
+
+  function fullBtn() {
+    return '<button class="btn btn-ghost btn-sm sm-fullbtn" data-sm="room-full" aria-pressed="' +
+      (S.fs ? 'true' : 'false') + '">' + fullIcon() + '<span>' +
+      t(S.fs ? 'sm_exit_fullscreen' : 'sm_fullscreen') + '</span></button>';
+  }
+
+  function fullIcon() {
+    return '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      (S.fs
+        ? '<path d="M8 3v5H3M16 3v5h5M8 21v-5H3M16 21v-5h5"/>'
+        : '<path d="M3 8V3h5M21 8V3h-5M3 16v5h5M21 16v5h-5"/>') +
+      '</svg>';
   }
 
   /* The key to the colours, on the flat surface under the room — mandatory
@@ -664,15 +743,30 @@ var ShelfMap = (function () {
       sel: S.sel,
       racks: racksOnScreen().map(function (sec) {
         var g = geometry(sec);
+        var sz = rackSize(sec);
         return {
           id: sec.id, key: sec.key, name: sec.name,
           wall: room ? (sec.wall || null) : null,
-          pos: room && sec.wall ? (sec.wall_pos || 0) : 0,
+          /* centimetres along the wall on the server, metres in the room */
+          at: room && sec.wall ? (sec.wall_cm || 0) / 100 : 0,
+          bay: sz.bay / 100, level: sz.level / 100, depth: sz.depth / 100,
           cols: Math.max(1, g.maxCol), rows: Math.max(1, g.rows), origin: sec.grid_origin,
           bays: sec.shelves.map(function (sh) { return bayModel(sec, g, sh); })
         };
       })
     };
+  }
+
+  /* A rack's size in centimetres, defaults applied: what the server sends
+     as `size`, or worked out here from the geometry for a rack the list
+     has not been refetched for yet. */
+  function rackSize(sec) {
+    if (sec.size) return sec.size;
+    var g = S.geometry || { bay_cm: 114, level_cm: 46, depth_cm: 95 };
+    var cols = Math.max(1, geometry(sec).maxCol);
+    var bay = sec.bay_cm || g.bay_cm;
+    return { bay: bay, level: sec.level_cm || g.level_cm, depth: sec.depth_cm || g.depth_cm,
+             cols: cols, width: cols * bay };
   }
 
   function bayModel(sec, g, sh) {
@@ -712,6 +806,9 @@ var ShelfMap = (function () {
       var m = document.getElementById('smRoom');
       if (!m) return;
       ShelfRoom.attach(m);
+      /* The standard rack, before anything is drawn from it. */
+      if (S.geometry) ShelfRoom.setGeometry(S.geometry);
+      if (S.quality !== 'auto') ShelfRoom.setQuality(S.quality);
       /* Racks can only be picked up while the layout editor is open, and
          only by somebody allowed to change the layout. The server checks it
          again on the way in; this decides whether the hand does anything. */
@@ -720,9 +817,98 @@ var ShelfMap = (function () {
          about to hang racks on */
       var sec = current();
       if (S.roomId != null || (sec && sec.shelves.length)) ShelfRoom.sync(roomModel());
+      ShelfRoom.setMode(S.cam);
       if (wantIntro) { wantIntro = false; ShelfRoom.intro(S.secId); }
+      paintOverlay();
     });
   }
+
+  /* ---------------------------------------------------------- the overlay
+     THE ONLY DOM THIS FILE WRITES INSIDE THE CANVAS WRAPPER. Normally it
+     holds the walk pads and nothing else; fullscreen puts the controls a
+     person needs while the rest of the screen is gone into it — the room
+     selector, the camera group, the exit button along the top, and the
+     scan target, the undo strip, the sound toggle, the legend and the
+     overflow note along the bottom. Every id here that mirrors one on the
+     page is suffixed Fs so the two never collide; the handlers read
+     whichever exists. */
+  function paintOverlay() {
+    if (typeof ShelfRoom === 'undefined' || !ShelfRoom.ready()) return;
+    var host = ShelfRoom.overlayHost();
+    if (!host) return;
+    var h = '';
+    if (S.fs) {
+      var room = S.roomId != null ? roomById(S.roomId) : null;
+      var hit = S.sel == null ? null : shelfById(S.sel);
+      var arm = hit && canMove();
+      h += '<div class="sm-ov-top">' +
+        roomSelect() +
+        '<div class="sm-topbtns">' + camControls() +
+          (canEdit() ? '<button class="btn btn-sm ' + (S.edit ? 'btn-primary' : '') + '" data-sm="edit">' +
+                       (S.edit ? t('sm_done') : t('sm_edit')) + '</button>' : '') +
+          fullBtn() +
+        '</div></div>';
+      h += '<div class="sm-ov-bottom">' +
+        '<div class="sm-scanbox' + (arm ? ' armed' : '') + '">' +
+          '<input class="inp sm-scanin" id="smScanFs" type="text" autocomplete="off"' +
+            ' spellcheck="false" dir="ltr" placeholder="' + esc(t('sm_scan_ph')) + '"></div>' +
+        '<div class="sm-scanwhat">' +
+          (arm
+            ? '<b>' + esc(t('sm_target').replace('{code}', hit.sec.key + '-' + hit.sh.code)) + '</b>'
+            : '<b class="muted">' + esc(t('sm_no_target')) + '</b>') +
+          '<div class="sm-fit" id="smFitFs" hidden></div>' +
+        '</div>' +
+        '<button class="btn btn-ghost btn-sm sm-sound' + (S.sound ? ' on' : '') + '" data-sm="sound"' +
+          ' aria-pressed="' + (S.sound ? 'true' : 'false') + '">' + soundIcon(S.sound) + '</button>' +
+        roomLegend(racksOnScreen()) +
+        (room && !room.width_cm ? '<span class="muted sm-dz-note">' + t('sm_not_to_scale') + '</span>' : '') +
+        chipStrip() +
+      '</div>';
+    }
+    if (showPads()) {
+      h += '<div class="sm-pads" dir="ltr">' +
+        '<div class="sm-pad-move">' +
+          '<button class="sm-pad" data-walk="fwd" aria-label="' + esc(t('sm_pad_fwd')) + '">▲</button>' +
+          '<div class="sm-pad-row">' +
+            '<button class="sm-pad" data-walk="left" aria-label="' + esc(t('sm_pad_left')) + '">◀</button>' +
+            '<button class="sm-pad" data-walk="back" aria-label="' + esc(t('sm_pad_back')) + '">▼</button>' +
+            '<button class="sm-pad" data-walk="right" aria-label="' + esc(t('sm_pad_right')) + '">▶</button>' +
+          '</div></div>' +
+        '<div class="sm-look" data-look="1" aria-label="' + esc(t('sm_pad_look')) + '"><span>' + esc(t('sm_pad_look')) + '</span></div>' +
+      '</div>';
+    }
+    host.innerHTML = h;
+    if (S.fs) { paintFit(lastFit); keepFocus(); }
+  }
+
+  /* The room selector, shared by the top bar and the fullscreen strip. One
+     list, two kinds of entry: the rooms, then any rack not yet in a room —
+     drawn on its own until somebody places it. A rack IN a room is reached
+     through the room, never listed twice. The warehouse is named only when
+     more than one actually has rooms — "M · المستودع" is noise while there
+     is one building. */
+  function roomSelect() {
+    var whs = {};
+    S.data.forEach(function (s) { whs[s.wh_id] = 1; });
+    S.rooms.forEach(function (r) { whs[r.wh_id] = 1; });
+    var manyWh = Object.keys(whs).length > 1;
+    var whOf = function (id) { return manyWh ? ' — ' + DB.whName(id, OG.lang === 'ar') : ''; };
+    var h = '<label class="field sm-roomsel"><span>' + t('sm_room') + '</span>' +
+            '<select class="inp" data-smv="room">';
+    S.rooms.forEach(function (r) {
+      var on = S.roomId === r.id;
+      h += '<option value="r:' + r.id + '"' + (on ? ' selected' : '') + '>' +
+           esc(r.name + whOf(r.wh_id)) + '</option>';
+    });
+    unplaced(null).forEach(function (s) {
+      var on = S.roomId == null && S.secId === s.id;
+      h += '<option value="s:' + s.id + '"' + (on ? ' selected' : '') + '>' +
+           esc(s.key + ' · ' + s.name + ' — ' + t('sm_not_placed') + whOf(s.wh_id)) + '</option>';
+    });
+    return h + '</select></label>';
+  }
+
+  var lastFit = null;
 
   /* Set when somebody asks for the room, spent by mount3d once it is there. */
   var wantIntro = false;
@@ -747,24 +933,36 @@ var ShelfMap = (function () {
 
   function hideHud() { if (hudEl) hudEl.hidden = true; }
 
+  var cmOf = function (m) { return nf(Math.round(m * 100)); };
+
   function dragWords(info) {
     /* A wall being pulled reports BOTH measurements, always. They are stored
        as a pair and saved as a pair, so showing only the one under the hand
-       would hide half of what is about to be written down. */
+       would hide half of what is about to be written down. And what the pull
+       would do to the racks — narrowed to what, or refused — is said before
+       the hand lets go, not after. */
     if (info.kind === 'room') {
-      return t('sm_room_size')
+      var s = t('sm_room_size')
         .replace('{w}', nf(info.w.toFixed(2)))
         .replace('{d}', nf(info.d.toFixed(2)));
+      (info.shrunk || []).forEach(function (x) {
+        s += ' · ' + t('sm_shrink_preview').replace('{k}', x.key).replace('{n}', cmOf(x.to));
+      });
+      (info.stuck || []).forEach(function (x) {
+        s += ' · ' + t('sm_err_room_too_small_short').replace('{k}', x.key).replace('{n}', cmOf(x.need));
+      });
+      return s;
     }
     if (info.ok && info.wall) {
-      var span = info.cols > 1
-        ? t('sm_drag_span').replace('{a}', nf(info.pos)).replace('{b}', nf(info.pos + info.cols - 1))
-        : t('sm_drag_at').replace('{n}', nf(info.pos));
+      var span = t('sm_drag_span_cm')
+        .replace('{a}', cmOf(info.at)).replace('{b}', cmOf(info.at + info.width));
       return t('sm_wall_' + info.wall) + ' · ' + span +
-             (info.why === 'slid' ? ' · ' + t('sm_drag_slid') : '');
+             (info.why === 'slid' ? ' · ' + t(info.corner ? 'sm_drag_corner' : 'sm_drag_slid') : '');
     }
     if (info.ok) return t('sm_drag_floor');
-    if (info.why === 'short') return t('sm_drag_short').replace('{n}', nf(info.bays));
+    if (info.why === 'short') {
+      return t('sm_drag_short_cm').replace('{n}', cmOf(info.have)).replace('{w}', cmOf(info.width));
+    }
     if (info.why === 'full') {
       return info.by ? t('sm_drag_full').replace('{k}', info.by) : t('sm_drag_nofit');
     }
@@ -788,16 +986,43 @@ var ShelfMap = (function () {
      repaint: this fires from inside ShelfRoom.sync, which is itself called
      from inside repaint, and a repaint here would eat its own tail. */
   function paintFit(list) {
-    var host = document.getElementById('smFit');
-    if (!host) return;
-    if (!list || !list.length) { host.innerHTML = ''; host.hidden = true; return; }
-    host.hidden = false;
-    host.innerHTML = list.map(function (o) {
-      return esc(t('sm_overflow'))
-        .replace('{k}', '<b dir="ltr">' + esc(o.key) + '</b>')
-        .replace('{w}', esc(t('sm_wall_' + o.wall)))
-        .replace('{m}', '<span dir="ltr">' + nf(Math.round(o.over * 100)) + '</span>');
-    }).join(' · ');
+    lastFit = list;
+    ['smFit', 'smFitFs'].forEach(function (id) {
+      var host = document.getElementById(id);
+      if (!host) return;
+      if (!list || !list.length) { host.innerHTML = ''; host.hidden = true; return; }
+      host.hidden = false;
+      host.innerHTML = list.map(function (o) {
+        return esc(t('sm_overflow'))
+          .replace('{k}', '<b dir="ltr">' + esc(o.key) + '</b>')
+          .replace('{w}', esc(t('sm_wall_' + o.wall)))
+          .replace('{m}', '<span dir="ltr">' + nf(Math.round(o.over * 100)) + '</span>');
+      }).join(' · ');
+    });
+  }
+
+  /* A refusal from the layout routes, in the person's language. The server's
+     sentence is English; its `code` and the numbers riding on it are what
+     the Arabic is built from. Anything unmapped falls back to the sentence. */
+  function layoutError(err) {
+    var d = err && err.detail ? err.detail : (err || {});
+    var code = d.code || err.code;
+    if (code === 'wall_overlap') {
+      return t(d.corner ? 'sm_err_wall_corner' : 'sm_err_wall_overlap')
+        .replace('{k}', d.rack || '?')
+        .replace('{a}', nf(d.from || 0)).replace('{b}', nf(d.to || 0));
+    }
+    if (code === 'wall_short') {
+      return t('sm_err_wall_short').replace('{k}', d.rack || '?')
+        .replace('{w}', nf(d.need || 0)).replace('{n}', nf(d.have || 0));
+    }
+    if (code === 'room_too_small') {
+      var names = (d.racks || []).map(function (r) { return r.key; })
+        .filter(function (k, i, a) { return a.indexOf(k) === i; }).join(', ');
+      return t('sm_err_room_too_small').replace('{k}', names || '?')
+        .replace('{w}', nf(d.min_width_cm || 0)).replace('{d}', nf(d.min_depth_cm || 0));
+    }
+    return API.friendly(err);
   }
 
   /* THE DROP IS THE SAVE. Placement is patched as a unit — room, wall and
@@ -805,17 +1030,17 @@ var ShelfMap = (function () {
      "clear it", and a rack keeping the wall position of the room it just
      left is a rack standing inside a wall. A refusal is not corrected here:
      the reload puts the server's truth back and the toast says which rule
-     it was. */
-  function placeRack(id, wall, pos) {
+     it was. `at` arrives in metres from the room and leaves in centimetres. */
+  function placeRack(id, wall, at) {
     API.patch('/api/sections/' + id, {
       roomId: S.roomId,
       wall: wall || null,
-      wallPos: wall ? pos : null
+      wallCm: wall ? Math.round(at * 100) : null
     }).then(function () {
       focus(id);
       reload();
     }).catch(function (err) {
-      toast(API.friendly(err), '', 'warn', 6000);
+      toast(layoutError(err), '', 'warn', 6000);
       reload();
     });
   }
@@ -823,19 +1048,31 @@ var ShelfMap = (function () {
   /* A wall was let go. Width and depth go together because the server
      refuses one without the other — a room is measured across and deep, or
      it is not measured. Height is left exactly as it was; it is typed in
-     Room settings and a pull along the floor says nothing about it. */
+     Room settings and a pull along the floor says nothing about it.
+
+     The answer may carry `shrunk`: the racks the server narrowed to keep
+     them on their walls. Said out loud, because a bay that quietly got 20 cm
+     narrower is a bay somebody will measure a box against. */
   function sizeRoom(w, d) {
     var room = S.roomId != null ? roomById(S.roomId) : null;
     if (!room) return;
     API.patch('/api/rooms/' + room.id, {
       widthCm: Math.round(w * 100),
       depthCm: Math.round(d * 100)
-    }).then(function () {
+    }).then(function (res) {
+      sayShrunk(res && res.room ? res.room.shrunk : null);
       reload();
     }).catch(function (err) {
-      toast(API.friendly(err), '', 'warn', 6000);
+      toast(layoutError(err), '', 'warn', 7000);
       reload();
     });
+  }
+
+  function sayShrunk(list) {
+    if (!list || !list.length) return;
+    toast(t('sm_shrunk'), list.map(function (s) {
+      return t('sm_shrink_preview').replace('{k}', s.key).replace('{n}', nf(s.to));
+    }).join(' · '), '', 7000);
   }
 
   /* ------------------------------------------------------------ designer
@@ -859,7 +1096,15 @@ var ShelfMap = (function () {
       h += '<div class="muted sm-dz-note">' + t(S.rooms.length ? 'sm_not_placed' : 'sm_racks_first') + '</div>';
     }
     h += '<div class="sm-dz-row"><button class="btn btn-sm btn-ghost" data-sm="room-new">+ ' +
-         t('sm_new_room') + '</button></div></div>';
+         t('sm_new_room') + '</button>' +
+         /* PLACE MY RACKS: every rack in this building with shelves and no
+            room, along two facing walls of this one. Offered, never done on
+            its own — 026 says why a location nobody chose is worse than an
+            admitted gap — and shown as a plan before a single PATCH goes. */
+         (room && fillable(room).length
+           ? '<button class="btn btn-sm" data-sm="room-fill">' + t('sm_fill_racks') + '</button>'
+           : '') +
+         '</div></div>';
 
     /* the racks hanging in it */
     if (room) {
@@ -871,7 +1116,8 @@ var ShelfMap = (function () {
           '<button class="sm-dz-pick" data-sm="rack-focus" data-id="' + r.id + '"' + dragAttrs(r) +
           '><b>' + esc(r.key) + '</b> · ' +
           esc(r.name) + '<small class="muted">' + esc(wallLabel(r.wall)) +
-          (r.wall ? ' · ' + nf(r.wall_pos || 0) : '') + '</small></button>' +
+          (r.wall ? ' · <span dir="ltr">' + nf(r.wall_cm || 0) + ' ' + esc(t('sm_cm')) + '</span>' : '') +
+          '</small></button>' +
           '<button class="btn btn-sm btn-ghost" data-sm="rack-cfg" data-id="' + r.id + '">' +
           t('sm_rack_cfg') + '</button></div>';
       });
@@ -961,9 +1207,135 @@ var ShelfMap = (function () {
   function dragAttrs(r) {
     if (!use3d() || !S.edit || !canEdit() || !r.shelves.length) return '';
     if (S.roomId == null) return '';   /* nowhere to drop it: no room is open */
-    var g = geometry(r);
+    var g = geometry(r), sz = rackSize(r);
     return ' data-drag="' + r.id + '" data-cols="' + Math.max(1, g.maxCol) +
-           '" data-rows="' + Math.max(1, g.rows) + '"';
+           '" data-rows="' + Math.max(1, g.rows) + '" data-bay="' + sz.bay +
+           '" data-level="' + sz.level + '" data-depth="' + sz.depth + '"';
+  }
+
+  /* Racks that "Place my racks" would hang: in this room's building, with
+     shelves, in no room. */
+  function fillable(room) {
+    return unplaced(room.wh_id).filter(function (s) { return s.shelves.length > 0; })
+      .sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
+  }
+
+  /* The plan: racks by letter, alternating between the back wall and the
+     front, each wall filled from its left with a hand's width between
+     racks; when both are full, the two side walls; anything left stays
+     unplaced and is named. All in the browser, against the same footprint
+     arithmetic the room's drag uses, and nothing is sent until the person
+     has read it and pressed Go. */
+  function fillPlan(room) {
+    var list = fillable(room);
+    var W = room.width_cm || null, D = room.depth_cm || null;
+    var measured = W && D;
+    var GAP = 10;
+    var cursor = { n: 0, s: 0, e: 0, w: 0 };
+    var taken = [];   /* footprints in cm, for the corner test */
+    racksIn(room.id).forEach(function (r) {
+      if (!r.wall || !measured) { if (r.wall) cursor[r.wall] = Math.max(cursor[r.wall], (r.wall_cm || 0) + rackSize(r).width + GAP); return; }
+      var sz = rackSize(r);
+      taken.push(fpCm(r.wall, r.wall_cm || 0, sz, W, D));
+      cursor[r.wall] = Math.max(cursor[r.wall], (r.wall_cm || 0) + sz.width + GAP);
+    });
+    var out = [], left = [];
+    var order = ['n', 's', 'n', 's'];
+    list.forEach(function (sec, i) {
+      var sz = rackSize(sec);
+      var walls = [order[i % 2], order[(i + 1) % 2], 'e', 'w'];
+      var put = null;
+      for (var k = 0; k < walls.length && !put; k++) {
+        var wl = walls[k];
+        var len = !measured ? Infinity : (wl === 'n' || wl === 's' ? W : D);
+        var at = cursor[wl];
+        if (at + sz.width > len) continue;
+        if (measured) {
+          var fp = fpCm(wl, at, sz, W, D), hit = false;
+          for (var j = 0; j < taken.length; j++) {
+            var o = taken[j];
+            if (fp.x0 < o.x1 && o.x0 < fp.x1 && fp.z0 < o.z1 && o.z0 < fp.z1) { hit = true; break; }
+          }
+          if (hit) {
+            /* a corner is in the way: step past the deepest rack on the
+               adjacent walls and try once more */
+            at = Math.max(at, sz.depth + GAP);
+            if (at + sz.width > len) continue;
+            fp = fpCm(wl, at, sz, W, D);
+            hit = taken.some(function (o) { return fp.x0 < o.x1 && o.x0 < fp.x1 && fp.z0 < o.z1 && o.z0 < fp.z1; });
+            if (hit) continue;
+          }
+          taken.push(fp);
+        }
+        put = { sec: sec, wall: wl, at: at };
+        cursor[wl] = at + sz.width + GAP;
+      }
+      if (put) out.push(put); else left.push(sec);
+    });
+    return { place: out, left: left };
+  }
+
+  /* footprint() from server/lib/shelves.js, in centimetres */
+  function fpCm(wall, at, sz, W, D) {
+    var w = sz.width, dp = sz.depth;
+    switch (wall) {
+      case 'n': return { x0: at, x1: at + w, z0: 0, z1: dp };
+      case 's': return { x0: W - at - w, x1: W - at, z0: D - dp, z1: D };
+      case 'e': return { x0: W - dp, x1: W, z0: at, z1: at + w };
+      default:  return { x0: 0, x1: dp, z0: D - at - w, z1: D - at };
+    }
+  }
+
+  var fillPending = null;
+
+  function fillModal(room) {
+    var plan = fillPlan(room);
+    var b = '';
+    if (!plan.place.length) {
+      b += '<p class="muted">' + t('sm_fill_none_left') + '</p>';
+    } else {
+      b += '<ul class="sm-fill-list">' + plan.place.map(function (p) {
+        return '<li><b dir="ltr">' + esc(p.sec.key) + '</b> · ' + esc(p.sec.name) + ' → ' +
+          esc(t('sm_fill_line').replace('{w}', t('sm_wall_' + p.wall)).replace('{n}', nf(p.at))) + '</li>';
+      }).join('') + '</ul>';
+    }
+    if (plan.left.length) {
+      b += '<p class="muted">' + esc(t('sm_fill_partial').replace('{k}', plan.left.map(function (s) { return s.key; }).join(', '))) + '</p>';
+    }
+    fillPending = plan.place;
+    openModal({
+      title: t('sm_fill_title'),
+      size: 'narrow',
+      body: b,
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+        (plan.place.length
+          ? '<button class="btn btn-primary" data-sm="room-fill-go">' + t('sm_fill_go') + '</button>'
+          : ''),
+      onClose: function () { fillPending = null; }
+    });
+  }
+
+  /* One PATCH after another, in plan order, stopping at the first refusal
+     so a rack the server would not take does not leave the ones after it
+     placed around a hole. The reload puts the truth back either way. */
+  function fillGo() {
+    var plan = fillPending || [];
+    fillPending = null;
+    closeModal();
+    var room = S.roomId != null ? roomById(S.roomId) : null;
+    if (!room || !plan.length) return;
+    var i = 0;
+    var next = function () {
+      if (i >= plan.length) { reload(); return; }
+      var p = plan[i++];
+      API.patch('/api/sections/' + p.sec.id, { roomId: room.id, wall: p.wall, wallCm: p.at })
+        .then(next)
+        .catch(function (err) {
+          toast(layoutError(err), p.sec.key, 'warn', 7000);
+          reload();
+        });
+    };
+    next();
   }
 
   function wallLabel(w) { return w ? t('sm_wall_' + w) : t('sm_nowhere'); }
@@ -971,6 +1343,7 @@ var ShelfMap = (function () {
   function glFail(msg) {
     if (S.glDead) return;
     S.glDead = true;
+    leaveFullscreen();
     toast(msg, '', 'warn', 7000);
     repaint();
   }
@@ -978,8 +1351,14 @@ var ShelfMap = (function () {
   function setView(v) {
     S.view = v;
     try { localStorage.setItem(VIEW_KEY, v); } catch (e) {}
+    if (v !== 'room') leaveFullscreen();
     hidePeek();
     repaint();
+  }
+
+  /* Out of fullscreen, if in it. The room's fs hook does the repaint. */
+  function leaveFullscreen() {
+    if (S.fs && typeof ShelfRoom !== 'undefined') ShelfRoom.fullscreen(false);
   }
 
   /* ------------------------------------------------------------- the peek
@@ -1453,7 +1832,7 @@ var ShelfMap = (function () {
 
     mount3d();
 
-    if (hadId && hadId !== 'smScan') {
+    if (hadId && hadId !== 'smScan' && hadId !== 'smScanFs') {
       var back = document.getElementById(hadId);
       if (back) {
         back.focus();
@@ -1467,7 +1846,9 @@ var ShelfMap = (function () {
   /* The box takes the focus back after every repaint — and every scan is a
      repaint, so without this the caret is gone by the second box of the run. */
   function keepFocus() {
-    var box = document.getElementById('smScan');
+    /* Fullscreen has its own box inside the wrapper; the page's is behind
+       the top layer and a caret there is a caret nobody can see. */
+    var box = (S.fs && document.getElementById('smScanFs')) || document.getElementById('smScan');
     if (!box || modalOpen()) return;
     var a = document.activeElement;
     if (a && a !== box && a !== document.body) {
@@ -1806,7 +2187,7 @@ var ShelfMap = (function () {
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter') return;
       var box = e.target;
-      if (!box || box.id !== 'smScan') return;
+      if (!box || (box.id !== 'smScan' && box.id !== 'smScanFs')) return;
       var code = String(box.value || '').trim();
       box.value = '';
       if (!code) return;
@@ -1831,6 +2212,47 @@ var ShelfMap = (function () {
        a card stuck to the screen. */
     document.addEventListener('pointerdown', function () { hidePeek(); });
     window.addEventListener('scroll', function () { if (peekId != null) hidePeek(); }, true);
+
+    /* THE PADS. A press on a movement pad is a key held; the release, or a
+       release anywhere at all, lets it go — a pad repainted under a finger
+       never sends its own pointerup, so every pointerup on the document
+       releases everything. Capture phase, so the room's own listeners and
+       the drag tray cannot get in first. The look pad turns the head by
+       how far the finger has moved since the last event. */
+    var lookPtr = null, padDown = false;
+    document.addEventListener('pointerdown', function (e) {
+      if (typeof ShelfRoom === 'undefined' || !ShelfRoom.ready()) return;
+      var pad = e.target.closest ? e.target.closest('[data-walk]') : null;
+      if (pad) {
+        e.preventDefault();
+        try { pad.setPointerCapture(e.pointerId); } catch (x) {}
+        pad.classList.add('down');
+        padDown = true;
+        ShelfRoom.walkKey(pad.getAttribute('data-walk'), true);
+        return;
+      }
+      var lk = e.target.closest ? e.target.closest('[data-look]') : null;
+      if (lk) {
+        e.preventDefault();
+        try { lk.setPointerCapture(e.pointerId); } catch (x) {}
+        lookPtr = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      }
+    }, true);
+    document.addEventListener('pointermove', function (e) {
+      if (!lookPtr || e.pointerId !== lookPtr.id) return;
+      ShelfRoom.look((e.clientX - lookPtr.x) * 1.6, (e.clientY - lookPtr.y) * 1.6);
+      lookPtr.x = e.clientX; lookPtr.y = e.clientY;
+    }, true);
+    var padUp = function () {
+      lookPtr = null;
+      if (!padDown) return;
+      padDown = false;
+      if (typeof ShelfRoom !== 'undefined' && ShelfRoom.ready()) ShelfRoom.walkKey(null, false);
+      var down = document.querySelectorAll('.sm-pad.down');
+      for (var i = 0; i < down.length; i++) down[i].classList.remove('down');
+    };
+    document.addEventListener('pointerup', padUp, true);
+    document.addEventListener('pointercancel', padUp, true);
   }
 
   function register() {
@@ -1891,8 +2313,62 @@ var ShelfMap = (function () {
     };
 
     ACT['room-reset'] = function () {
-      if (typeof ShelfRoom !== 'undefined') ShelfRoom.resetView();
+      if (typeof ShelfRoom !== 'undefined') ShelfRoom.view('reset');
       keepFocus();
+    };
+    ACT['room-fit'] = function () { if (typeof ShelfRoom !== 'undefined') ShelfRoom.view('fit'); keepFocus(); };
+    ACT['room-top'] = function () { if (typeof ShelfRoom !== 'undefined') ShelfRoom.view('top'); keepFocus(); };
+    ACT['room-front'] = function () { if (typeof ShelfRoom !== 'undefined') ShelfRoom.view('front'); keepFocus(); };
+
+    /* -- the camera --------------------------------------------------
+       The switch persists per machine and the room is told; the room's
+       mode hook writes the same state back when a canned view hands the
+       walk over to the orbit, so the buttons never disagree with the eye. */
+    var setCam = function (m) {
+      if (S.cam === m) return;
+      S.cam = m;
+      try { localStorage.setItem(CAM_KEY, m); } catch (e) {}
+      if (typeof ShelfRoom !== 'undefined' && ShelfRoom.ready()) ShelfRoom.setMode(m);
+      repaint();
+    };
+    ACT['cam-orbit'] = function () { setCam('orbit'); };
+    ACT['cam-walk'] = function () { setCam('walk'); };
+    ACT['pad-toggle'] = function () {
+      S.pads = !showPads();
+      try { localStorage.setItem(PADS_KEY, S.pads ? '1' : '0'); } catch (e) {}
+      repaint();
+    };
+
+    /* -- fullscreen ---------------------------------------------------
+       The room does the moving; the fs hook below does the painting. */
+    ACT['room-full'] = function () {
+      if (typeof ShelfRoom === 'undefined' || !ShelfRoom.ready()) return;
+      ShelfRoom.fullscreen(!S.fs);
+    };
+
+    CHG['quality'] = function (el) {
+      var q = el.value === 'high' || el.value === 'low' ? el.value : 'auto';
+      S.quality = q;
+      try {
+        if (q === 'auto') localStorage.removeItem(QUALITY_KEY);
+        else localStorage.setItem(QUALITY_KEY, q);
+      } catch (e) {}
+      if (typeof ShelfRoom !== 'undefined' && ShelfRoom.ready() && q !== 'auto') ShelfRoom.setQuality(q);
+      toast(t('sm_quality_note'), '', '', 5000);
+      keepFocus();
+    };
+
+    /* -- place my racks ----------------------------------------------- */
+    ACT['room-fill'] = function () {
+      var room = S.roomId != null ? roomById(S.roomId) : null;
+      if (room) fillModal(room);
+    };
+    ACT['room-fill-go'] = function () { fillGo(); };
+    /* fills the room's size boxes with the minimum the last refusal named */
+    ACT['room-min'] = function (el) {
+      var w = document.getElementById('smRmW'), d = document.getElementById('smRmD');
+      if (w) w.value = el.getAttribute('data-w');
+      if (d) d.value = el.getAttribute('data-d');
     };
 
     /* Persisted per machine, like sound. A repaint re-sends the model with
@@ -1917,14 +2393,44 @@ var ShelfMap = (function () {
           if (id == null) hidePeek(); else showPeek(id, x, y);
         },
         lost: function () { glFail(t('sm_gl_lost')); },
-        /* A rack was let go somewhere legal. */
-        move: function (id, wall, pos) { placeRack(id, wall, pos); },
+        /* A rack was let go somewhere legal; `at` is metres along the wall. */
+        move: function (id, wall, at) { placeRack(id, wall, at); },
         /* A rack is in the air; info is null when it lands. */
         drag: function (info, x, y) { showHud(info, x, y); },
         /* What would not fit, once the room knows its own size. */
         fit: function (list) { paintFit(list); },
         /* A wall was pulled to a new size. */
-        room: function (w, d) { sizeRoom(w, d); }
+        room: function (w, d) { sizeRoom(w, d); },
+        /* In or out of fullscreen. The stage becomes a placeholder while
+           the wrapper is out on <body>, and the overlay carries the
+           controls; both are painted from here and nowhere else. */
+        fs: function (on, kind) {
+          var was = S.fs;
+          S.fs = !!on; S.fsKind = kind || null;
+          if (was !== S.fs) { hidePeek(); repaint(); } else paintOverlay();
+        },
+        /* The body-level nodes to bring inside the wrapper for fullscreen. */
+        fsNodes: function () {
+          return [hudNode(), peekNode(), document.getElementById('toasts'), document.getElementById('modal-root')];
+        },
+        /* May the room have the arrow keys right now? Not over a dialog. */
+        keys: function () { return OG.view === 'shelfmap' && !modalOpen(); },
+        /* The room changed its own mode (a canned view ends the walk). */
+        mode: function (m) {
+          if (S.cam === m) return;
+          S.cam = m;
+          try { localStorage.setItem(CAM_KEY, m); } catch (e) {}
+          repaint();
+        },
+        quality: function () { return S.quality; },
+        /* The room timed its first frames and gave up on the high tier. */
+        qualityAuto: function (q) {
+          S.quality = q;
+          try { localStorage.setItem(QUALITY_KEY, q); } catch (e) {}
+          toast(t('sm_quality_dropped'), '', '', 6000);
+          var sel = document.querySelector('[data-smv="quality"]');
+          if (sel) sel.value = q;
+        }
       });
     }
 
@@ -2021,17 +2527,20 @@ var ShelfMap = (function () {
       var id = el.getAttribute('data-id');
       var val = function (i) { var e = document.getElementById(i); return e ? e.value : ''; };
       var wall = val('smRkWall') || null;
+      var cmOrNull = function (i) { return val(i) === '' ? null : +val(i); };
       var body = {
         name: val('smRkName').trim(),
         gridOrigin: (document.querySelector('input[name="smRkOrigin"]:checked') || {}).value || 'left',
         roomId: val('smRkRoom') ? +val('smRkRoom') : null,
         wall: wall,
-        wallPos: wall ? (val('smRkPos') === '' ? 0 : +val('smRkPos')) : null
+        wallCm: wall ? (val('smRkPos') === '' ? 0 : +val('smRkPos')) : null,
+        /* blank means the standard rack; the server stores NULL */
+        bayCm: cmOrNull('smRkBay'), levelCm: cmOrNull('smRkLevel'), depthCm: cmOrNull('smRkDepth')
       };
       if (id) {
         API.patch('/api/sections/' + id, body)
           .then(function () { closeModal(); focus(+id); reload(); })
-          .catch(function (err) { toast(API.friendly(err), '', 'warn', 6000); });
+          .catch(function (err) { toast(layoutError(err), '', 'warn', 6000); });
       } else {
         body.whId = val('smRkWh');
         body.key = val('smRkKey').trim().toUpperCase();
@@ -2039,7 +2548,7 @@ var ShelfMap = (function () {
           closeModal();
           focus(res.section.id);
           reload();
-        }).catch(function (err) { toast(API.friendly(err), '', 'warn', 6000); });
+        }).catch(function (err) { toast(layoutError(err), '', 'warn', 6000); });
       }
     };
     ACT['rack-del'] = function (el) {
@@ -2062,19 +2571,43 @@ var ShelfMap = (function () {
       var val = function (i) { var e = document.getElementById(i); return e ? e.value : ''; };
       var cm = function (i) { return val(i) === '' ? null : +val(i); };
       var body = { name: val('smRmName').trim(), widthCm: cm('smRmW'), depthCm: cm('smRmD'), heightCm: cm('smRmH') };
+      /* A refusal for size stays IN the dialog, with the minimum the
+         server named and a button that fills it in — a toast over a
+         closed dialog leaves the person retyping three numbers from
+         memory. */
+      var refused = function (err) {
+        var d = err && err.detail;
+        var fit = document.getElementById('smRmFit');
+        if (fit && d && d.code === 'room_too_small') {
+          fit.hidden = false;
+          fit.innerHTML = esc(layoutError(err)) +
+            ' <button class="btn btn-sm btn-ghost" data-sm="room-min" data-w="' + (+d.min_width_cm || '') +
+            '" data-d="' + (+d.min_depth_cm || '') + '">' + t('sm_use_min') + '</button>';
+          return;
+        }
+        toast(layoutError(err), '', 'warn', 6000);
+      };
       if (id) {
         API.patch('/api/rooms/' + id, body)
-          .then(function () { closeModal(); reload(); })
-          .catch(function (err) { toast(API.friendly(err), '', 'warn', 6000); });
+          .then(function (res) {
+            closeModal();
+            sayShrunk(res && res.room ? res.room.shrunk : null);
+            reload();
+          })
+          .catch(refused);
       } else {
         body.whId = val('smRmWh');
         API.post('/api/rooms', body).then(function (res) {
           closeModal();
           /* the new room, empty, with the designer open on it — the next
-             thing anybody does is hang a rack in it */
+             thing anybody does is hang a rack in it. And if this building
+             has racks waiting, the offer to hang them is one press away. */
           S.roomId = res.room.id; S.secId = null; S.sel = null; S.edit = true;
-          reload();
-        }).catch(function (err) { toast(API.friendly(err), '', 'warn', 6000); });
+          reload().then(function () {
+            var room = roomById(res.room.id);
+            if (room && fillable(room).length) fillModal(room);
+          });
+        }).catch(refused);
       }
     };
     ACT['room-del'] = function (el) {
@@ -2141,7 +2674,7 @@ var ShelfMap = (function () {
       hideHud();
       if (!was.live) return;
       var put = ShelfRoom.drop(e.clientX, e.clientY);
-      if (put) placeRack(put.id, put.wall, put.pos);
+      if (put) placeRack(put.id, put.wall, put.at);
       else ShelfRoom.cancelDrag();
     };
 
@@ -2153,8 +2686,14 @@ var ShelfMap = (function () {
       if (!el) return;
       tray = {
         id: +el.getAttribute('data-drag'),
-        cols: +el.getAttribute('data-cols') || 1,
-        rows: +el.getAttribute('data-rows') || 1,
+        shape: {
+          cols: +el.getAttribute('data-cols') || 1,
+          rows: +el.getAttribute('data-rows') || 1,
+          /* centimetres on the row, metres in the room */
+          bay: (+el.getAttribute('data-bay') || 0) / 100,
+          level: (+el.getAttribute('data-level') || 0) / 100,
+          depth: (+el.getAttribute('data-depth') || 0) / 100
+        },
         x: e.clientX, y: e.clientY, live: false
       };
       try { el.setPointerCapture(e.pointerId); } catch (x) {}
@@ -2164,7 +2703,7 @@ var ShelfMap = (function () {
       if (!tray) return;
       if (!tray.live) {
         if (Math.abs(e.clientX - tray.x) + Math.abs(e.clientY - tray.y) < 8) return;
-        tray.live = ShelfRoom.grab(tray.id, tray.cols, tray.rows, true);
+        tray.live = ShelfRoom.grab(tray.id, tray.shape, true);
         if (!tray.live) { tray = null; return; }
         document.body.classList.add('sm-dragging');
       }
@@ -2263,9 +2802,29 @@ var ShelfMap = (function () {
         ['n', 'e', 's', 'w'].map(function (w) {
           return '<option value="' + w + '"' + (w === wall ? ' selected' : '') + '>' + esc(t('sm_wall_' + w)) + '</option>';
         }).join('') + '</select></label>' +
-      '<label class="field"><span>' + t('sm_wall_pos') + '</span>' +
-        '<input class="inp num" id="smRkPos" type="number" min="0" value="' + (sec && sec.wall_pos != null ? sec.wall_pos : 0) + '"></label>' +
+      '<label class="field"><span>' + t('sm_wall_cm') + '</span>' +
+        '<input class="inp num" id="smRkPos" type="number" min="0" step="5" value="' +
+          (sec && sec.wall_cm != null ? sec.wall_cm : 0) + '"></label>' +
     '</div>';
+
+    /* HOW BIG IT IS. Blank is the shop's standard rack — the placeholder
+       says what that is — and a number is this rack's own. The limits are
+       the server's (RACK_LIMITS), sent with the layout. */
+    var g = S.geometry || { bay_cm: 114, level_cm: 46, depth_cm: 95 };
+    var lim = (S.limits && S.limits.rack) || { bay: [60, 300], level: [10, 200], depth: [20, 200] };
+    var sizeBox = function (id, key, v, def, l) {
+      return '<label class="field"><span>' + t(key) + '</span>' +
+        '<input class="inp num" id="' + id + '" type="number" min="' + l[0] + '" max="' + l[1] + '" ' +
+          'placeholder="' + def + '" value="' + (v == null ? '' : v) + '"></label>';
+    };
+    b += '<div class="field"><span>' + t('sm_rack_size') + '</span></div>' +
+      '<div class="row3">' +
+        sizeBox('smRkBay', 'sm_rack_bay', sec ? sec.bay_cm : null, g.bay_cm, lim.bay) +
+        sizeBox('smRkLevel', 'sm_rack_level', sec ? sec.level_cm : null, g.level_cm, lim.level) +
+        sizeBox('smRkDepth', 'sm_rack_depth', sec ? sec.depth_cm : null, g.depth_cm, lim.depth) +
+      '</div><small class="muted">' +
+        esc(t('sm_rack_size_hint').replace('{b}', nf(g.bay_cm)).replace('{l}', nf(g.level_cm)).replace('{d}', nf(g.depth_cm))) +
+      '</small>';
 
     openModal({
       title: sec ? (sec.key + ' · ' + sec.name) : t('sm_new_rack'),
@@ -2288,15 +2847,19 @@ var ShelfMap = (function () {
     if (!room) b += whField('smRmWh', DB.warehouses[0].id);
     b += '<label class="field"><span>' + t('sm_room_name') + '</span>' +
          '<input class="inp" id="smRmName" type="text" value="' + esc(room ? room.name : '') + '"></label>';
+    var max = (S.limits && S.limits.room_max_cm) || 10000;
     var cm = function (id, key, v) {
       return '<label class="field"><span>' + t(key) + '</span>' +
-             '<input class="inp num" id="' + id + '" type="number" min="1" value="' + (v == null ? '' : v) + '"></label>';
+             '<input class="inp num" id="' + id + '" type="number" min="1" max="' + max + '" value="' + (v == null ? '' : v) + '"></label>';
     };
     b += '<div class="row3">' +
       cm('smRmW', 'sm_room_w', room ? room.width_cm : null) +
       cm('smRmD', 'sm_room_d', room ? room.depth_cm : null) +
       cm('smRmH', 'sm_room_h', room ? room.height_cm : null) +
-    '</div><small class="muted">' + t('sm_measure_hint') + '</small>';
+    '</div><small class="muted">' + t('sm_measure_hint') + ' ' +
+      esc(t('sm_room_max').replace('{n}', nf(max / 100))) + '</small>' +
+    /* filled in by room-save when the server says the racks would not fit */
+    '<div class="sm-fit" id="smRmFit" hidden></div>';
 
     openModal({
       title: room ? room.name : t('sm_new_room'),

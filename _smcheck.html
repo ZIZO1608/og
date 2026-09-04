@@ -44,6 +44,13 @@ function nf(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }
 var __toasts = [];
 function toast(title, msg, kind) { __toasts.push({ title: title, msg: msg, kind: kind }); }
 
+/* The room's high tier, pinned: swiftshader is slow enough to make the auto
+   tier drop itself, and the shadow paths are what this run has to exercise.
+   The camera starts in orbit whatever the last run left behind. */
+try { localStorage.setItem('og_sm_quality', 'high'); localStorage.removeItem('og_sm_cam'); localStorage.removeItem('og_sm_pads'); } catch (e) {}
+/* A <div id="toasts"> as the app has, so fullscreen has something to bring in. */
+(function () { var d = document.createElement('div'); d.id = 'toasts'; document.body.appendChild(d); })();
+
 var __allow = {};
 function allow(p) { return !!__allow[p]; }
 
@@ -153,7 +160,9 @@ var DB = {
 var SECTIONS = [
   { id: 11, key: 'M', name: 'مستودع الأحذية', wh_id: 'store', wh_code: 2,
     grid_origin: 'right', sort_index: 1,
-    room_id: 1, wall: 'n', wall_pos: 0,
+    room_id: 1, wall: 'n', wall_pos: 0, wall_cm: 0,
+    bay_cm: null, level_cm: null, depth_cm: null,
+    size: { bay: 114, level: 46, depth: 95, cols: 4, width: 456 },
     shelves: [
       { id: 101, code: 'A1', row_label: 'A', col_index: 1, product_id: 1,
         product_name: 'حذاء الاختبار', size_from: '39', size_to: '41', range: '39–41',
@@ -180,7 +189,11 @@ var SECTIONS = [
      rack at a time, so this is what proves the plan can reach the other. */
   { id: 13, key: 'N', name: 'الرفّ الجانبي', wh_id: 'store', wh_code: 2,
     grid_origin: 'left', sort_index: 2,
-    room_id: 1, wall: 'e', wall_pos: 1,
+    room_id: 1, wall: 'e', wall_pos: 1, wall_cm: 114,
+    /* A rack of its OWN size: 120 cm bays. The room has to draw it at that
+       and not at the standard 114. */
+    bay_cm: 120, level_cm: null, depth_cm: null,
+    size: { bay: 120, level: 46, depth: 95, cols: 1, width: 120 },
     /* Its one shelf sits on level C — no A, no B. The phantom-level case:
        geometry() must report ONE level, not three, or view mode draws two
        rows of empty floor and edit mode offers to grow the rack above its
@@ -193,7 +206,9 @@ var SECTIONS = [
     ] },
   { id: 12, key: 'F', name: 'واجهة المحل', wh_id: 'floor', wh_code: 1,
     grid_origin: 'left', sort_index: 1,
-    room_id: null, wall: null, wall_pos: null,
+    room_id: null, wall: null, wall_pos: null, wall_cm: null,
+    bay_cm: null, level_cm: null, depth_cm: null,
+    size: { bay: 114, level: 46, depth: 95, cols: 1, width: 114 },
     shelves: [
       { id: 201, code: 'A1', row_label: 'A', col_index: 1, product_id: 1,
         product_name: 'حذاء الاختبار', size_from: null, size_to: null, range: null,
@@ -207,9 +222,15 @@ var ROOMS = [
     width_cm: null, depth_cm: null, height_cm: null }
 ];
 
+/* The standard rack and the limits ride with the layout, as the server
+   sends them (GEOMETRY / RACK_LIMITS in server/lib/shelves.js). */
+var GEOMETRY = { bay_cm: 114, level_cm: 46, depth_cm: 95, upright_cm: 14, base_cm: 8, top_cm: 5, board_cm: 4 };
+var LIMITS = { rack: { bay: [60, 300], level: [10, 200], depth: [20, 200] }, room_max_cm: 10000, bay_min_cm: 60 };
+
 var Shop = { sections: function () {
   return Promise.resolve({ sections: JSON.parse(JSON.stringify(SECTIONS)),
-                           rooms: JSON.parse(JSON.stringify(ROOMS)) });
+                           rooms: JSON.parse(JSON.stringify(ROOMS)),
+                           geometry: GEOMETRY, limits: LIMITS });
 } };
 
 /* API stub: records calls; behaviour switched per scenario. */
@@ -229,6 +250,21 @@ var API = {
   },
   patch: function (p, b) {
     __calls.push(['PATCH', p, b]);
+    /* the room resize refusal and the auto-shrink answer, shaped as the
+       server shapes them (fitRoom in server/lib/shelves.js) */
+    if (__postMode === 'room_too_small') {
+      var e2 = new Error('rack N would not fit — this room needs at least 462 × 300 cm for what is in it');
+      e2.code = 'room_too_small';
+      e2.detail = { ok: false, code: 'room_too_small', error: e2.message,
+                    racks: [{ key: 'N', wall: 'e', need_cm: 462 }], min_width_cm: 462, min_depth_cm: 300 };
+      __postMode = 'ok';
+      return Promise.reject(e2);
+    }
+    if (__postMode === 'shrunk') {
+      __postMode = 'ok';
+      return Promise.resolve({ ok: true, room: { id: 1, width_cm: 500, depth_cm: 300,
+                               shrunk: [{ key: 'M', wall: 'n', from: 114, to: 92 }] } });
+    }
     if (__postMode === 'confirm') {
       var e = new Error('not empty');
       e.code = 'confirm_required';
@@ -402,16 +438,23 @@ function roomTests(finish) {
              it disturbs the canvas. */
           var handles = $$('[data-drag]');
           ok('drag: the editor turns each rack row into a handle', handles.length >= 2, handles.length);
-          ok('drag: a handle carries the shape the ghost needs',
+          ok('drag: a handle carries the shape the ghost needs — bays, levels AND its size',
              handles.every(function (h) {
-               return +h.getAttribute('data-cols') >= 1 && +h.getAttribute('data-rows') >= 1;
+               return +h.getAttribute('data-cols') >= 1 && +h.getAttribute('data-rows') >= 1 &&
+                      +h.getAttribute('data-bay') > 0 && +h.getAttribute('data-depth') > 0;
              }));
+          var nHandle = $('[data-drag="13"]');
+          ok('size: the row for N carries ITS bay, 120, not the standard 114',
+             !!nHandle && nHandle.getAttribute('data-bay') === '120', nHandle && nHandle.getAttribute('data-bay'));
+          ok('size: the designer names where N stands in centimetres  [' + OG.lang + ']',
+             !!nHandle && nHandle.textContent.indexOf('114') > -1 && nHandle.textContent.indexOf(t('sm_cm')) > -1,
+             nHandle && nHandle.textContent);
 
           var cvr = cv.getBoundingClientRect();
           var midX = cvr.left + cvr.width / 2, midY = cvr.top + cvr.height / 2;
 
           ok('drag: nothing is in the air to start with', ShelfRoom.dragging() === false);
-          var got = ShelfRoom.grab(13, 1, 3, false);
+          var got = ShelfRoom.grab(13, { cols: 1, rows: 3, bay: 1.2, level: 0.46, depth: 0.95 }, false);
           ok('drag: a rack in the room can be picked up', got === true);
           ok('drag: …and the room knows it is holding one', ShelfRoom.dragging() === true);
 
@@ -419,8 +462,10 @@ function roomTests(finish) {
           ok('drag: the ghost reports where it would land', !!info && typeof info.ok === 'boolean', info);
           ok('drag: …on a real wall or on the floor, never on nonsense',
              !!info && (info.wall === null || ['n', 'e', 's', 'w'].indexOf(info.wall) > -1), info && info.wall);
-          ok('drag: …at a whole number of bays from the left, never a fraction',
-             !!info && (info.pos === null || (info.pos >= 0 && info.pos === Math.floor(info.pos))), info && info.pos);
+          ok('drag: …at a whole number of 5 cm along the wall, never a fraction',
+             !!info && (info.at === null || (info.at >= 0 && Math.abs(Math.round(info.at * 20) - info.at * 20) < 1e-6)),
+             info && info.at);
+          ok('drag: …and it says how wide the rack is', !!info && Math.abs(info.width - 1.2) < 1e-9, info && info.width);
 
           ShelfRoom.cancelDrag();
           ok('drag: letting go of the idea puts it back', ShelfRoom.dragging() === false);
@@ -429,13 +474,34 @@ function roomTests(finish) {
              that matters most: the drop is the save, so a drop that should
              not save must not reach the server. */
           var before = __calls.length;
-          ShelfRoom.grab(13, 1, 3, false);
+          ShelfRoom.grab(13, { cols: 1, rows: 3, bay: 1.2 }, false);
           ShelfRoom.dragTo(-9999, -9999);
           var put = ShelfRoom.drop(-9999, -9999);
           ok('drag: a drop outside the room places nothing', put === null, put);
           ok('drag: …and sends nothing to the server', __calls.length === before, __calls.slice(before));
           ok('drag: …and leaves nothing in the air', ShelfRoom.dragging() === false);
           ok('drag: the canvas came through all of that', $('#smRoom canvas') === cv);
+
+          /* A drop somewhere legal writes centimetres, never bays: the
+             tray drag from the list is the path a person actually uses, so
+             it is the one driven here — pointer events on the handle, then
+             a release over the middle of the room. */
+          var b0 = __calls.length;
+          var hr = nHandle.getBoundingClientRect();
+          nHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 7, clientX: hr.left + 5, clientY: hr.top + 5 }));
+          document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 7, clientX: hr.left + 40, clientY: hr.top + 40 }));
+          var dbgLive = ShelfRoom.dragging();
+          document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 7, clientX: midX, clientY: midY }));
+          var dbgInfo = ShelfRoom.dragTo(midX, midY);
+          document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7, clientX: midX, clientY: midY }));
+          var dropCall = __calls.slice(b0).filter(function (c) { return c[0] === 'PATCH' && c[1] === '/api/sections/13'; })[0];
+          ok('drag: dropping the list row into the room saves it', !!dropCall,
+             { calls: __calls.slice(b0), live: dbgLive, info: dbgInfo, attached: document.contains(nHandle), hr: [hr.left, hr.top] });
+          ok('drag: …as roomId + wall + wallCm, never wallPos',
+             !!dropCall && dropCall[2].roomId === 1 && ('wallCm' in dropCall[2]) && !('wallPos' in dropCall[2]),
+             dropCall && dropCall[2]);
+          ok('drag: …in whole centimetres',
+             !!dropCall && (dropCall[2].wallCm === null || Number.isInteger(dropCall[2].wallCm)), dropCall && dropCall[2]);
 
           /* ---- PULLING A WALL -----------------------------------------
              Width and depth are stored as a pair and so are saved as a
@@ -472,8 +538,8 @@ function roomTests(finish) {
           ok('fit: an unmeasured room claims nothing', !!fit && fit.hidden);
           ShelfRoom.sync({
             roomId: 1, name: 'Fit test', w: 2, d: 2, h: 3, sel: null,
-            racks: [{ id: 13, key: 'N', name: 'N', wall: 'n', pos: 2, cols: 2, rows: 1,
-                      origin: 'left',
+            racks: [{ id: 13, key: 'N', name: 'N', wall: 'n', at: 2, cols: 2, rows: 1,
+                      origin: 'left', bay: 1.2, level: 0.46, depth: 0.95,
                       bays: [{ id: 901, code: 'A1', full: 'N-A1', row: 0, col: 1,
                                qty: 0, capacity: null, pid: null, name: '', fill: null, mark: null }] }]
           });
@@ -481,24 +547,284 @@ function roomTests(finish) {
           ok('fit: a rack past the end of a measured wall is named, not hidden',
              !!fit && !fit.hidden && fit.textContent.indexOf('N') > -1, fit && fit.textContent);
 
+          /* ---- A WALL TOO SHORT IS REFUSED IN THE AIR ------------------
+             In this 2 m room a 2.4 m rack fits on no wall: the ghost says
+             so, and letting go writes nothing — the refusal never has to
+             come back from the server. */
+          var s0 = __calls.length;
+          ShelfRoom.grab(99, { cols: 2, rows: 1, bay: 1.2, depth: 0.95 }, true);
+          var si = ShelfRoom.dragTo(midX, midY);
+          ok('short: a rack wider than every wall is refused while still in the air',
+             !!si && si.ok === false && si.why === 'short', si);
+          ok('short: …and the readout carries the wall\'s length in metres', !!si && si.have === 2, si && si.have);
+          var sput = ShelfRoom.drop(midX, midY);
+          ok('short: letting go places nothing', sput === null, sput);
+          ok('short: …and sends nothing', __calls.length === s0, __calls.slice(s0));
+
+          /* ---- PULLING A WALL PREVIEWS THE SHRINK ---------------------
+             N stands at 2 m with two 1.2 m bays on a wall the pull is
+             about to make 3 m: the server would narrow its bays to 50 cm,
+             which is under the floor of 60 — so the readout says N is
+             stuck and what it needs, before the hand lets go. */
+          ShelfRoom.grabWall('n');
+          var pw = ShelfRoom.dragWall(midX, midY);
+          ok('shrink: the wall readout carries the racks it would narrow or refuse',
+             !!pw && Array.isArray(pw.shrunk) && Array.isArray(pw.stuck), pw);
+          ShelfRoom.cancelWall();
+
           $('[data-sm="edit"]').click();
           ok('room: Done closes the designer and keeps the room', !$('.sm-designer') && !!$('#smRoom'));
           ok('drag: with the editor shut nothing is grabbable', $$('[data-drag]').length === 0);
           ok('room: …still the SAME canvas', $('#smRoom canvas') === cv);
         }
 
-        if (HOLD) { $('[data-sm="edit"]').click(); return finish(); }
-
-        /* context loss, last: it is permanent for the page */
-        __toasts.length = 0;
-        cv.dispatchEvent(new Event('webglcontextlost'));
-        ok('room: losing the context falls back to the flat rack', !!$('.sm-rack') && !$('#smRoom'));
-        ok('room: …and says so, once', __toasts.length === 1 && __toasts[0].title === t('sm_gl_lost'), __toasts);
-        ok('room: the flat rack is whole after the fall', $$('.sm-tile').length === 5, $$('.sm-tile').length);
-        finish();
+        /* the rest is asynchronous: server answers, fullscreen, the walk */
+        laterTests(cv, finish);
       }, 250);
     }, 40);
   }
+}
+
+/* The room's answers from the server, the fullscreen, the walk — each one
+   waits on something, so they run as a chain. */
+function laterTests(cv, finish) {
+  var steps = [];
+  var next = function () { var s = steps.shift(); if (s) s(next); };
+
+  /* ---- THE SERVER SAYS THE ROOM IS TOO SMALL ------------------------
+     A wall pull the server refuses names the rack and the minimum in a
+     toast, in the person's language, and the reload puts the walls back. */
+  steps.push(function (done) {
+    /* only the manager can pull a wall; for staff there is no editor */
+    if (!$('[data-sm="edit"]')) return done();
+    var reloads = 0, orig = Shop.sections;
+    Shop.sections = function () { reloads++; return orig.apply(this, arguments); };
+    __toasts.length = 0;
+    __postMode = 'room_too_small';
+    var cvr = cv.getBoundingClientRect();
+    var midX = cvr.left + cvr.width / 2, midY = cvr.top + cvr.height / 2;
+    $('[data-sm="edit"]').click();
+    /* A wall is pulled the way a hand pulls it: a press on bare wall, six
+       pixels of travel, a release. dropWall() on its own deliberately saves
+       nothing — the pointer path is what reaches the map's hook. The press
+       lands a third of the way down the canvas, on the back wall above
+       the racks. */
+    var pull = function () {
+      /* a point on the back wall, two metres up — above every rack */
+      var st = ShelfRoom.stats();
+      var pt = ShelfRoom.project(0, 2.0, -st.room.d / 2 + 0.02) || { x: midX, y: cvr.top + cvr.height * 0.32 };
+      cv.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 9, clientX: pt.x, clientY: pt.y, button: 0 }));
+      cv.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 9, clientX: pt.x, clientY: pt.y + 12, button: 0 }));
+      pull.live = ShelfRoom.dragging();
+      cv.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 9, clientX: pt.x, clientY: pt.y + 30, button: 0 }));
+      /* the readout is on the hand while the wall is held */
+      pull.hud = $('.sm-hud') && !$('.sm-hud').hidden ? $('.sm-hud').textContent : null;
+      cv.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 9, clientX: pt.x, clientY: pt.y + 30, button: 0 }));
+      pull.pt = pt;
+    };
+    var p0 = __calls.length;
+    pull();
+    var pulled = __calls.slice(p0).filter(function (c) { return c[0] === 'PATCH' && c[1] === '/api/rooms/1'; })[0];
+    ok('wall: pulling the back wall by hand saves the room as a width AND a depth, in whole centimetres',
+       !!pulled && Number.isInteger(pulled[2].widthCm) && Number.isInteger(pulled[2].depthCm),
+       { calls: __calls.slice(p0), live: pull.live, pt: pull.pt });
+    ok('wall: …after a readout on the hand with both measurements  [' + OG.lang + ']',
+       !!pull.hud && pull.hud.indexOf('×') > -1, pull.hud);
+    /* the hook runs the PATCH; the map's own handler let go of nothing */
+    setTimeout(function () {
+      var tt = __toasts[__toasts.length - 1];
+      ok('refusal: room_too_small becomes a toast naming the rack and the minimum  [' + OG.lang + ']',
+         !!tt && tt.title.indexOf('N') > -1 && tt.title.indexOf('462') > -1 && tt.title.indexOf('300') > -1, tt);
+      ok('refusal: …and the truth is reloaded', reloads >= 1, reloads);
+      ok('refusal: …in the words of the language, not the server\'s', !!tt && tt.title === t('sm_err_room_too_small')
+         .replace('{k}', 'N').replace('{w}', '462').replace('{d}', '300'), tt && tt.title);
+      /* the auto-shrink answer */
+      __toasts.length = 0;
+      __postMode = 'shrunk';
+      pull();
+      setTimeout(function () {
+        var st = __toasts[0];
+        ok('shrunk: a resize that narrowed a rack says so, naming the rack and the new bay',
+           !!st && st.title === t('sm_shrunk') && st.msg.indexOf('M') > -1 && st.msg.indexOf('92') > -1, st);
+        Shop.sections = orig;
+        $('[data-sm="edit"]').click();
+        ok('refusal: the canvas came through both answers', $('#smRoom canvas') === cv);
+        done();
+      }, 60);
+    }, 60);
+  });
+
+  /* ---- FULLSCREEN ----------------------------------------------------
+     The API is stubbed to REFUSE, which is what an iPad does and what the
+     headless harness does, so this is the fake path — and the fake path is
+     the whole path: the wrapper on <body>, the same canvas inside it, the
+     controls in the overlay, the stage left as a placeholder, and a scan
+     repaint that changes none of it. */
+  steps.push(function (done) {
+    var origReq = Element.prototype.requestFullscreen;
+    Element.prototype.requestFullscreen = function () { return Promise.reject(new Error('refused')); };
+    var btn = $('[data-sm="room-full"]');
+    ok('fs: a fullscreen button on the room', !!btn);
+    btn.click();
+    setTimeout(function () {
+      var wrap = $('.sm-gl.sm-fs');
+      ok('fs: the wrapper is out on <body> with .sm-fs', !!wrap && wrap.parentNode === document.body);
+      ok('fs: …holding the SAME canvas', !!wrap && wrap.contains(cv) && $$('canvas').length === 1);
+      ok('fs: the stage is left as a placeholder', !!$('#smRoom.sm-room-away'));
+      ok('fs: the overlay carries the room selector', !!$('.sm-gl .sm-ov-top [data-smv="room"]'));
+      ok('fs: …the camera switch', !!$('.sm-gl .sm-ov-top [data-sm="cam-walk"]'));
+      ok('fs: …the way out', !!$('.sm-gl .sm-ov-top [data-sm="room-full"]'));
+      ok('fs: …and its own scan box', !!$('.sm-gl #smScanFs'));
+      ok('fs: the scan box in the overlay has the caret', document.activeElement && document.activeElement.id === 'smScanFs',
+         document.activeElement && document.activeElement.id);
+      ok('fs: the body-level nodes came inside — toasts, the modal root, the peek, the hud',
+         !!wrap && wrap.contains($('#toasts')) && wrap.contains($('#modal-root')) &&
+         wrap.contains($('.sm-peek')) && wrap.contains($('.sm-hud')));
+      ok('fs: the page behind cannot scroll', document.body.classList.contains('sm-fs-on'));
+      if (OG.lang === 'ar') {
+        var pinned = $$('.sm-ov-top [dir="ltr"], .sm-ov-bottom [dir="ltr"]').filter(function (e) {
+          return e.id !== 'smScanFs' && !e.closest('.sm-fit');
+        });
+        ok('fs: the strips are not dir-pinned in Arabic, bar the scan input and the numbers  [ar]',
+           pinned.length === 0, pinned.map(function (e) { return e.outerHTML.slice(0, 60); }));
+      }
+
+      /* a scan is a repaint, in fullscreen too */
+      Wedge.feed('SH02MA2', 5);
+      setTimeout(function () {
+        ok('fs: a scan repaint keeps the wrapper out and the same canvas in it',
+           !!$('.sm-gl.sm-fs') && $('.sm-gl.sm-fs').contains(cv) && $$('canvas').length === 1);
+        ok('fs: …and the placeholder stage is redrawn, not the room', !!$('#smRoom.sm-room-away'));
+        ok('fs: …and the overlay says the new target', $('.sm-gl .sm-ov-bottom').textContent.indexOf('M-A2') > -1,
+           $('.sm-gl .sm-ov-bottom') && $('.sm-gl .sm-ov-bottom').textContent);
+
+        /* Escape leaves the fake fullscreen the way it leaves the real one */
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        setTimeout(function () {
+          ok('fs: Escape puts everything back — no .sm-fs, the stage is a stage again',
+             !$('.sm-gl.sm-fs') && !$('.sm-room-away') && !!$('#smRoom canvas'));
+          ok('fs: …the SAME canvas', $('#smRoom canvas') === cv);
+          ok('fs: …the body-level nodes are back on <body>',
+             $('#toasts').parentNode === document.body && $('#modal-root').parentNode === document.body);
+          ok('fs: …and the body scrolls again', !document.body.classList.contains('sm-fs-on'));
+          Element.prototype.requestFullscreen = origReq;
+          done();
+        }, 60);
+      }, 60);
+    }, 60);
+  });
+
+  /* ---- THE WALK -------------------------------------------------------
+     Keys move the eye only while held and only after the hand touched the
+     room; the frames stop when the key lifts; the letters never reach the
+     scan box; and the eye stays inside the walls however long the key is
+     down. */
+  /* The scan two steps up lit a flash ring that goes out 1.4 s later with
+     one frame of its own; the frame counts below must not see it. */
+  steps.push(function (done) { setTimeout(done, 1500); });
+
+  steps.push(function (done) {
+    var rafs = 0, origRaf = window.requestAnimationFrame, rafFrom = '';
+    var count = function () {
+      rafs = 0; rafFrom = '';
+      window.requestAnimationFrame = function (f) { rafs++; if (!rafFrom) rafFrom = String(new Error().stack).split('\n').slice(1, 4).join(' | '); return origRaf(f); };
+    };
+    var stop = function () { window.requestAnimationFrame = origRaf; };
+
+    $('[data-sm="cam-walk"]').click();
+    ok('walk: the switch persists per machine', localStorage.getItem('og_sm_cam') === 'walk');
+    ok('walk: the room is walking', ShelfRoom.mode() === 'walk');
+    ok('walk: …and the switch says so', $('[data-sm="cam-walk"]').getAttribute('aria-pressed') === 'true');
+    var box = $('#smScan');
+    box.value = '';
+
+    /* the hand on the room, then a key */
+    cv.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 3, clientX: 5, clientY: 5, button: 0 }));
+    cv.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 3, clientX: 5, clientY: 5, button: 0 }));
+    var e0 = ShelfRoom.stats().eye;
+    count();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true }));
+    setTimeout(function () {
+      ok('walk: a held key asks for frames', rafs > 0, rafs);
+      ok('walk: …and the eye moved', !!e0 && Math.hypot(ShelfRoom.stats().eye.x - e0.x, ShelfRoom.stats().eye.z - e0.z) > 0.01,
+         [e0, ShelfRoom.stats().eye]);
+      ok('walk: the letter never reached the scan box', box.value === '', box.value);
+      document.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', bubbles: true }));
+      setTimeout(function () {
+        count();
+        setTimeout(function () {
+          stop();
+          ok('walk: lifting the key stops the frames within 120 ms', rafs === 0, { rafs: rafs, from: rafFrom });
+
+          /* a press elsewhere takes the keys back */
+          document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 4, clientX: 1, clientY: 1 }));
+          count();
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true }));
+          setTimeout(function () {
+            stop();
+            ok('walk: after a press outside the room a key walks nothing', rafs === 0, rafs);
+            document.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', bubbles: true }));
+
+            /* a second held for a second: still inside the walls */
+            cv.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 5, clientX: 5, clientY: 5, button: 0 }));
+            cv.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 5, clientX: 5, clientY: 5, button: 0 }));
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true }));
+            setTimeout(function () {
+              document.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', bubbles: true }));
+              var st = ShelfRoom.stats();
+              ok('walk: a second of walking stays inside the room',
+                 Math.abs(st.eye.x) <= st.room.w / 2 && Math.abs(st.eye.z) <= st.room.d / 2, st);
+
+              /* pads: a press on one is a key held */
+              $('[data-sm="pad-toggle"]').click();
+              var pad = $('.sm-pad[data-walk="back"]');
+              ok('walk: the pads can be asked for on any pointer', !!pad);
+              if (pad) {
+                var eb = ShelfRoom.stats().eye;
+                pad.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 6, clientX: 1, clientY: 1 }));
+                setTimeout(function () {
+                  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 6, clientX: 1, clientY: 1 }));
+                  var ea = ShelfRoom.stats().eye;
+                  ok('walk: a pad moves the eye while pressed', Math.hypot(ea.x - eb.x, ea.z - eb.z) > 0.01, [eb, ea]);
+                  $('[data-sm="pad-toggle"]').click();
+                  afterPads();
+                }, 120);
+              } else afterPads();
+
+              function afterPads() {
+                /* a canned view ends the walk and lands — no frames after */
+                $('[data-sm="room-top"]').click();
+                ok('walk: a canned view hands back to the orbit', ShelfRoom.mode() === 'orbit');
+                ok('walk: …and the switch follows', localStorage.getItem('og_sm_cam') === 'orbit');
+                setTimeout(function () {
+                  count();
+                  setTimeout(function () {
+                    stop();
+                    ok('room: after the tween lands a still camera asks for no frames — still', rafs === 0, rafs);
+                    R.notes.push(' note draw calls ' + JSON.stringify(ShelfRoom.stats()));
+                    done();
+                  }, 200);
+                }, 700);
+              }
+            }, 1000);
+          }, 120);
+        }, 120);
+      }, 30);
+    }, 120);
+  });
+
+  steps.push(function () {
+    if (HOLD) return finish();
+    /* context loss, last: it is permanent for the page */
+    __toasts.length = 0;
+    cv.dispatchEvent(new Event('webglcontextlost'));
+    ok('room: losing the context falls back to the flat rack', !!$('.sm-rack') && !$('#smRoom'));
+    ok('room: …and says so, once', __toasts.length === 1 && __toasts[0].title === t('sm_gl_lost'), __toasts);
+    ok('room: the flat rack is whole after the fall', $$('.sm-tile').length === 5, $$('.sm-tile').length);
+    finish();
+  });
+
+  next();
 }
 
 ShelfMap.register();

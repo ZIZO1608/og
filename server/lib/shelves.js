@@ -250,6 +250,8 @@ export function list({ whId = null } = {}) {
         contents: onShelf.get(sh.id) || []
       };
     });
+    const cols = [...new Set(mine.map((s) => s.col_index))].sort((a, b) => a - b);
+    const size = rackSize(sec, cols.length ? cols[cols.length - 1] : 1);
     return {
       ...sec,
       /* The number that rides inside every shelf barcode, so the browser can
@@ -257,12 +259,16 @@ export function list({ whId = null } = {}) {
          own numbering. NULL for a warehouse added after 024 ran and never
          given one — the label printer refuses rather than emitting 'SHnullMA3'. */
       wh_code: whCodes[sec.wh_id] ?? null,
+      /* How big this rack is, defaults applied, and where it stands in
+         centimetres — so the map never owns a number the server does not. */
+      size,
+      wall_cm: wallCmOf(sec, size),
       shelves: mine,
       /* So the grid draws without anybody parsing a code. A missing shelf is
          simply a row that does not exist — a door where B4 would be — and
          these are the letters and numbers that actually do. */
       rows: [...new Set(mine.map((s) => s.row_label))].sort(),
-      cols: [...new Set(mine.map((s) => s.col_index))].sort((a, b) => a - b)
+      cols
     };
   });
 }
@@ -411,55 +417,227 @@ function labelExposure(d, shelfId) {
 
 /* A section is a RACK: one unit of shelving with a letter, levels (the row
    letters, A at the top) and bays (the columns). It may hang on one wall of a
-   room (026) or be nowhere yet. */
+   room (026) or be nowhere yet, and since 036 it has a SIZE. */
+
+/* ---------------------------------------------------------------- geometry
+   THE ONE SET OF NUMBERS. Every dimension the map draws a rack with comes
+   from here, in centimetres, and is sent to the browser with the layout
+   (`geometry` in GET /api/sections). It used to be a block of constants in
+   js/shelfroom.js, which meant the server was testing two racks for overlap
+   in BAYS without knowing how wide a bay was — and could never say whether a
+   rack fitted on a measured wall at all.
+
+     bay      one column of shelves, upright to upright (the pitch)
+     level    one row letter, board to board
+     depth    how far the rack stands out from its wall
+     upright  the post between two bays, inside the bay pitch
+     base     the plinth the bottom level sits on
+     top      the top board
+     board    a shelf board
+
+   A rack's width is cols × bay. Nothing else about it is a sum. */
+export const GEOMETRY = Object.freeze({
+  bay_cm: 114, level_cm: 46, depth_cm: 95,
+  upright_cm: 14, base_cm: 8, top_cm: 5, board_cm: 4
+});
+
+/* A room is at most a hundred metres a side — a typed 80000 is a slipped
+   finger, not a hangar, and the map would draw it as a dot on a plain. */
+export const MAX_ROOM_CM = 10000;
+
+/* The narrowest a bay can be MADE. When a room is shrunk under a rack the
+   rack's bays are scaled down to fit — never removed, because a bay may hold
+   stock and printed labels (removeShelves refuses exactly that) — and below
+   this the rack is not shelving any more, it is a bookcase. Then the resize
+   is refused instead, naming the rack. */
+export const BAY_MIN = 60;
+
+export const RACK_LIMITS = Object.freeze({
+  bay: [BAY_MIN, 300], level: [10, 200], depth: [20, 200]
+});
 
 const WALLS = new Set(['n', 'e', 's', 'w']);
+const WALL_NAME = { n: 'back', s: 'front', e: 'right', w: 'left' };
+
+/* How wide a rack is, in bays: its highest column. A rack with no shelves yet
+   is one bay wide, so it still claims a place on the wall. */
+function colsOf(d, id) {
+  return Math.max(1,
+    d.prepare('SELECT COALESCE(MAX(col_index), 1) AS m FROM shelves WHERE section_id = ?').get(id).m);
+}
+
+/* A rack's size with the defaults applied. NULL in a column means the shop's
+   standard rack, not a measured zero (036). */
+export function rackSize(sec, cols) {
+  const bay = sec.bay_cm ?? GEOMETRY.bay_cm;
+  const c = Math.max(1, Number(cols) || 1);
+  return {
+    bay,
+    level: sec.level_cm ?? GEOMETRY.level_cm,
+    depth: sec.depth_cm ?? GEOMETRY.depth_cm,
+    cols: c,
+    width: c * bay
+  };
+}
+
+/* Where along its wall a rack stands, in centimetres. `wall_cm` is the truth
+   since 036; a row restored from a mirror that predates 013 can still carry
+   only the bay count, and that is converted with the rack's own bay rather
+   than left as a hole in the wall. */
+function wallCmOf(sec, size) {
+  if (sec.wall_cm != null) return sec.wall_cm;
+  if (sec.wall_pos != null) return sec.wall_pos * size.bay;
+  return null;
+}
+
+function wallLen(wall, room) {
+  return wall === 'n' || wall === 's' ? room.width_cm : room.depth_cm;
+}
+
+/* The rectangle of floor a rack covers, in centimetres from the room's
+   north-west corner, x east and z south. THIS IS THE CM TWIN OF placeOnWall()
+   IN js/shelfroom.js — `at` is measured from the wall's left end AS YOU FACE
+   THE WALL, which is the west end of the back wall, the east end of the
+   front wall, the north end of the right wall and the south end of the left.
+   Change one and you must change the other.
+
+   One rectangle per rack is what lets a single test answer every way two
+   racks can collide: side by side on one wall, nose to nose across a room
+   too shallow for both, and in a corner, where a rack's depth eats the first
+   centimetres of the wall next to it. */
+export function footprint(wall, at, size, room) {
+  const W = room.width_cm, D = room.depth_cm, w = size.width, dp = size.depth;
+  switch (wall) {
+    case 'n': return { x0: at, x1: at + w, z0: 0, z1: dp };
+    case 's': return { x0: W - at - w, x1: W - at, z0: D - dp, z1: D };
+    case 'e': return { x0: W - dp, x1: W, z0: at, z1: at + w };
+    default:  return { x0: 0, x1: dp, z0: D - at - w, z1: D - at };
+  }
+}
+
+const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.z0 < b.z1 && b.z0 < a.z1;
+
+/* Every other rack standing on a wall of this room, with its size and where
+   it is. */
+function placedRacks(d, roomId, exceptId) {
+  return d.prepare('SELECT * FROM sections WHERE room_id = ? AND wall IS NOT NULL AND id <> ? ORDER BY key')
+    .all(roomId, exceptId ?? -1)
+    .map((s) => {
+      const cols = colsOf(d, s.id);
+      const size = rackSize(s, cols);
+      return { sec: s, cols, size, at: wallCmOf(s, size) };
+    })
+    .filter((r) => r.at != null);
+}
+
+/* Does a rack of this size fit at this place, in this room, beside what is
+   already there? Refused by name, because the one somebody walks to is the
+   one that is not drawn.
+
+   A measured room checks the rack against the wall's length and every other
+   rack's floor rectangle. An unmeasured room has no corners and no depth to
+   speak of, so it can only check the racks on the same wall, in centimetres
+   along it. */
+function checkFit(d, room, sec, place, size, selfId) {
+  const at = place.wall_cm, wall = place.wall;
+  const measured = room.width_cm != null && room.depth_cm != null;
+  const others = placedRacks(d, room.id, selfId);
+
+  if (measured) {
+    const len = wallLen(wall, room);
+    if (at + size.width > len) {
+      throw fail(`rack ${sec.key} is ${size.width} cm wide and the ${WALL_NAME[wall]} wall has ` +
+                 `${Math.max(0, len - at)} cm left from there`,
+                 'wall_short', { rack: sec.key, wall, need: size.width, have: Math.max(0, len - at) });
+    }
+    const mine = footprint(wall, at, size, room);
+    for (const o of others) {
+      const theirs = footprint(o.sec.wall, o.at, o.size, room);
+      if (!overlaps(mine, theirs)) continue;
+      const corner = o.sec.wall !== wall;
+      throw fail(corner
+        ? `rack ${o.sec.key} on the ${WALL_NAME[o.sec.wall]} wall stands in that corner`
+        : `rack ${o.sec.key} is already on that wall at ${o.at}–${o.at + o.size.width} cm`,
+        'wall_overlap', { rack: o.sec.key, wall: o.sec.wall, from: o.at, to: o.at + o.size.width, corner });
+    }
+    return;
+  }
+
+  for (const o of others) {
+    if (o.sec.wall !== wall) continue;
+    if (at < o.at + o.size.width && o.at < at + size.width) {
+      throw fail(`rack ${o.sec.key} is already on that wall at ${o.at}–${o.at + o.size.width} cm`,
+                 'wall_overlap', { rack: o.sec.key, wall: o.sec.wall, from: o.at, to: o.at + o.size.width, corner: false });
+    }
+  }
+}
 
 /* Where a rack sits: a room, a wall of it, a position along that wall — all
    three or none. Checked out loud, because the columns are independently
    nullable and a wall without a room is a rack drawn on the wall of nothing.
 
-   Overlap is refused by name. Two racks whose bay ranges cross on the same
-   wall would draw through each other, and the one somebody walks to is the
-   one that is not there. A rack's width is the highest column it has; a rack
-   with no shelves yet is one bay wide, so it still claims a place. */
-function checkPlacement(d, sec, { roomId, wall, wallPos }, selfId) {
+   The position is `wallCm` (centimetres, the truth) or the older `wallPos`
+   (bays, converted with this rack's own bay width). `wall_pos` is always
+   returned alongside, derived, so the mirror column and an older restore keep
+   meaning what they meant. */
+function checkPlacement(d, sec, { roomId, wall, wallPos, wallCm }, selfId, size) {
   const rid = roomId == null ? null : Number(roomId);
   const w = wall == null ? null : String(wall);
-  const pos = wallPos == null ? null : Number(wallPos);
+  const hasPos = wallCm != null || wallPos != null;
 
   if (rid == null) {
-    if (w != null || pos != null) throw fail('a wall needs a room', 'bad_wall');
-    return { room_id: null, wall: null, wall_pos: null };
+    if (w != null || hasPos) throw fail('a wall needs a room', 'bad_wall');
+    return { room_id: null, wall: null, wall_pos: null, wall_cm: null };
   }
   const room = d.prepare('SELECT * FROM rooms WHERE id = ?').get(rid);
   if (!room) throw fail('no such room', 'not_found');
   if (room.wh_id !== sec.wh_id) {
     throw fail(`that room is at ${room.wh_id} and rack ${sec.key} is at ${sec.wh_id}`, 'wrong_warehouse');
   }
-  if ((w == null) !== (pos == null)) throw fail('a wall needs a position along it, and a position needs a wall', 'bad_wall');
-  if (w == null) return { room_id: rid, wall: null, wall_pos: null };
+  if ((w == null) !== !hasPos) throw fail('a wall needs a position along it, and a position needs a wall', 'bad_wall');
+  if (w == null) return { room_id: rid, wall: null, wall_pos: null, wall_cm: null };
   if (!WALLS.has(w)) throw fail("a wall is 'n', 'e', 's' or 'w'", 'bad_wall');
-  if (!Number.isInteger(pos) || pos < 0) throw fail('position is a whole number of bays from the left', 'bad_wall');
 
-  const width = (id) => Math.max(1,
-    d.prepare('SELECT COALESCE(MAX(col_index), 1) AS m FROM shelves WHERE section_id = ?').get(id).m);
-  const mine = width(selfId);
-  const others = d.prepare(
-    'SELECT id, key, wall_pos FROM sections WHERE room_id = ? AND wall = ? AND id <> ?'
-  ).all(rid, w, selfId);
-  for (const o of others) {
-    const ow = width(o.id);
-    if (pos < o.wall_pos + ow && o.wall_pos < pos + mine) {
-      throw fail(`rack ${o.key} is already on that wall at ${o.wall_pos}–${o.wall_pos + ow - 1}`,
-                 'wall_overlap', { rack: o.key, from: o.wall_pos, to: o.wall_pos + ow - 1 });
+  let cm;
+  if (wallCm != null) {
+    const n = Number(wallCm);
+    if (!Number.isFinite(n) || n < 0) {
+      throw fail("position is a number of centimetres from the wall's left end", 'bad_wall');
     }
+    /* The browser snaps to 5 cm and sends metres × 100; 342.00000000004 is 342. */
+    cm = Math.round(n);
+  } else {
+    const pos = Number(wallPos);
+    if (!Number.isInteger(pos) || pos < 0) throw fail('position is a whole number of bays from the left', 'bad_wall');
+    cm = pos * size.bay;
   }
-  return { room_id: rid, wall: w, wall_pos: pos };
+
+  checkFit(d, room, sec, { wall: w, wall_cm: cm }, size, selfId);
+  return { room_id: rid, wall: w, wall_cm: cm, wall_pos: Math.round(cm / size.bay) };
+}
+
+/* A rack's measurements, typed. Undefined keeps what is there, null or blank
+   means the standard rack, anything else is a whole number of centimetres
+   inside RACK_LIMITS — a 5 cm bay or a 9 m one is a slipped finger. */
+function checkRackSize({ bayCm, levelCm, depthCm }, prev) {
+  const num = (v, was, lim, what) => {
+    if (v === undefined) return was;
+    if (v === null || v === '') return null;
+    const n = Number(v);
+    if (!Number.isInteger(n)) throw fail(`${what} is a whole number of centimetres`, 'bad_request');
+    if (n < lim[0] || n > lim[1]) throw fail(`${what} is between ${lim[0]} and ${lim[1]} cm`, 'bad_request');
+    return n;
+  };
+  return {
+    bay_cm:   num(bayCm,   prev.bay_cm,   RACK_LIMITS.bay,   'a bay'),
+    level_cm: num(levelCm, prev.level_cm, RACK_LIMITS.level, 'a level'),
+    depth_cm: num(depthCm, prev.depth_cm, RACK_LIMITS.depth, 'the depth')
+  };
 }
 
 export function createSection({ whId, key, name, sortIndex = null, gridOrigin = 'left',
-                                roomId = null, wall = null, wallPos = null, userId = null }) {
+                                roomId = null, wall = null, wallPos = null, wallCm = null,
+                                bayCm, levelCm, depthCm, userId = null }) {
   if (typeof whId !== 'string' || !whId.trim()) throw fail('which warehouse?', 'bad_request');
   const k = String(key ?? '').trim().toUpperCase();
   if (!/^[A-Z]$/.test(k)) {
@@ -495,13 +673,16 @@ export function createSection({ whId, key, name, sortIndex = null, gridOrigin = 
       : Number(sortIndex);
     if (!Number.isFinite(sort)) throw fail('order must be a number', 'bad_request');
 
-    const place = checkPlacement(d, { wh_id: whId, key: k }, { roomId, wall, wallPos }, -1);
+    const dims = checkRackSize({ bayCm, levelCm, depthCm }, { bay_cm: null, level_cm: null, depth_cm: null });
+    const place = checkPlacement(d, { wh_id: whId, key: k }, { roomId, wall, wallPos, wallCm }, -1,
+                                 rackSize(dims, 1));
 
     const info = d.prepare(
-      `INSERT INTO sections (wh_id, key, name, sort_index, grid_origin, room_id, wall, wall_pos,
-                             created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
-    ).run(whId, k, nm, sort, gridOrigin, place.room_id, place.wall, place.wall_pos, at, at);
+      `INSERT INTO sections (wh_id, key, name, sort_index, grid_origin, room_id, wall, wall_pos, wall_cm,
+                             bay_cm, level_cm, depth_cm, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(whId, k, nm, sort, gridOrigin, place.room_id, place.wall, place.wall_pos, place.wall_cm,
+          dims.bay_cm, dims.level_cm, dims.depth_cm, at, at);
 
     const id = Number(info.lastInsertRowid);
     DB.logChange('sections', id, 'insert', userId, null);
@@ -514,7 +695,8 @@ export function createSection({ whId, key, name, sortIndex = null, gridOrigin = 
    on the rack, so changing it would invalidate every label at once. Make a
    new rack. Moving a rack to another wall invalidates nothing — the barcode
    says which rack, not where it stands. */
-export function updateSection(id, { name, sortIndex, gridOrigin, roomId, wall, wallPos }, userId = null) {
+export function updateSection(id, { name, sortIndex, gridOrigin, roomId, wall, wallPos, wallCm,
+                                    bayCm, levelCm, depthCm }, userId = null) {
   return DB.tx((d) => {
     const sec = d.prepare('SELECT * FROM sections WHERE id = ?').get(id);
     if (!sec) throw fail('no such rack', 'not_found');
@@ -532,19 +714,43 @@ export function updateSection(id, { name, sortIndex, gridOrigin, roomId, wall, w
       throw fail("grid origin is 'left' or 'right'", 'bad_request');
     }
 
-    /* Placement is patched as a unit: any of the three given means all three
-       are being set, and an omitted one is "clear it", not "keep it" — a rack
-       moved to a new room must not keep the wall position of the old one. */
-    const moving = roomId !== undefined || wall !== undefined || wallPos !== undefined;
-    const place = moving
-      ? checkPlacement(d, sec, { roomId, wall, wallPos }, id)
-      : { room_id: sec.room_id, wall: sec.wall, wall_pos: sec.wall_pos };
+    const dims = checkRackSize({ bayCm, levelCm, depthCm }, sec);
+    const cols = colsOf(d, id);
+    const size = rackSize(dims, cols);
+    const resized = dims.bay_cm !== sec.bay_cm || dims.level_cm !== sec.level_cm ||
+                    dims.depth_cm !== sec.depth_cm;
+
+    /* Placement is patched as a unit: any of them given means all are being
+       set, and an omitted one is "clear it", not "keep it" — a rack moved to
+       a new room must not keep the wall position of the old one. */
+    const moving = roomId !== undefined || wall !== undefined ||
+                   wallPos !== undefined || wallCm !== undefined;
+    let place;
+    if (moving) {
+      place = checkPlacement(d, sec, { roomId, wall, wallPos, wallCm }, id, size);
+    } else {
+      const at = wallCmOf(sec, size);
+      place = {
+        room_id: sec.room_id, wall: sec.wall, wall_cm: at,
+        /* Re-derived: a wider bay is fewer bays along the same wall. */
+        wall_pos: at == null ? null : Math.round(at / size.bay)
+      };
+      /* A rack made bigger where it stands has to still fit where it
+         stands. Refused rather than slid along — the manager put it there,
+         and a rack that moves on its own is one somebody walks to twice. */
+      if (resized && sec.room_id != null && sec.wall != null && at != null) {
+        const room = d.prepare('SELECT * FROM rooms WHERE id = ?').get(sec.room_id);
+        if (room) checkFit(d, room, sec, { wall: sec.wall, wall_cm: at }, size, id);
+      }
+    }
 
     d.prepare(`UPDATE sections SET name = ?, sort_index = ?, grid_origin = ?,
-                                   room_id = ?, wall = ?, wall_pos = ?, updated_at = ?
+                                   room_id = ?, wall = ?, wall_pos = ?, wall_cm = ?,
+                                   bay_cm = ?, level_cm = ?, depth_cm = ?, updated_at = ?
                 WHERE id = ?`)
       .run(next.name, next.sort_index, next.grid_origin,
-           place.room_id, place.wall, place.wall_pos, DB.nowIso(), id);
+           place.room_id, place.wall, place.wall_pos, place.wall_cm,
+           dims.bay_cm, dims.level_cm, dims.depth_cm, DB.nowIso(), id);
     DB.logChange('sections', id, 'update', userId, null);
     return d.prepare('SELECT * FROM sections WHERE id = ?').get(id);
   });
@@ -587,6 +793,7 @@ function checkDims({ widthCm, depthCm, heightCm }, prev) {
     if (v === null || v === '') return null;
     const n = Number(v);
     if (!Number.isInteger(n) || n <= 0) throw fail('a measurement is a whole number of centimetres', 'bad_request');
+    if (n > MAX_ROOM_CM) throw fail(`a room is at most ${MAX_ROOM_CM / 100} m a side`, 'bad_request');
     return n;
   };
   const out = {
@@ -636,12 +843,103 @@ export function updateRoom(id, { name, sortIndex, widthCm, depthCm, heightCm }, 
     if (!Number.isFinite(sort)) throw fail('order must be a number', 'bad_request');
     const dims = checkDims({ widthCm, depthCm, heightCm }, room);
 
+    /* Only when the floor actually changes. A rename must not be refused for
+       a rack that was already hanging off the end of the wall. */
+    const floorMoved = dims.width_cm != null &&
+                       (dims.width_cm !== room.width_cm || dims.depth_cm !== room.depth_cm);
+    const shrunk = floorMoved ? fitRoom(d, room, dims, userId) : [];
+
     d.prepare(`UPDATE rooms SET name = ?, sort_index = ?, width_cm = ?, depth_cm = ?, height_cm = ?,
                                 updated_at = ? WHERE id = ?`)
       .run(nm, sort, dims.width_cm, dims.depth_cm, dims.height_cm, DB.nowIso(), id);
     DB.logChange('rooms', id, 'update', userId, null);
-    return d.prepare('SELECT * FROM rooms WHERE id = ?').get(id);
+    return { ...d.prepare('SELECT * FROM rooms WHERE id = ?').get(id), shrunk };
   });
+}
+
+/* Make the racks fit the room the room is about to become — or refuse.
+
+   A rack that no longer fits along its wall has its BAYS SCALED DOWN, never
+   removed: a bay may hold stock and carry printed labels, and removeShelves
+   refuses exactly that. Floored at BAY_MIN; a rack that cannot fit even at
+   the minimum stops the whole resize, naming itself and the smallest room
+   that would do. Nothing is written unless everything fits, so a refusal
+   leaves every rack exactly as it was — the caller's transaction sees to it.
+
+   Two racks that would then stand through each other — nose to nose across
+   a room now too shallow for both, or in a corner — are refused rather than
+   moved. Moving a rack is the manager's decision; this only ever makes one
+   narrower where it stands. */
+function fitRoom(d, room, dims, userId) {
+  const next = { ...room, ...dims };
+  const racks = placedRacks(d, room.id, null);
+  const shrunk = [], stuck = [];
+  let minW = next.width_cm, minD = next.depth_cm;
+  const wantW = (n) => { minW = Math.max(minW, n); };
+  const wantD = (n) => { minD = Math.max(minD, n); };
+  const want = (wall, n) => (wall === 'n' || wall === 's' ? wantW(n) : wantD(n));
+
+  for (const r of racks) {
+    const len = wallLen(r.sec.wall, next);
+    if (r.at + r.size.width <= len) continue;
+    const bayFit = Math.floor((len - r.at) / r.cols);
+    if (bayFit >= BAY_MIN) {
+      shrunk.push({ id: r.sec.id, key: r.sec.key, wall: r.sec.wall, from: r.size.bay, to: bayFit });
+      r.size = rackSize({ ...r.sec, bay_cm: bayFit }, r.cols);
+    } else {
+      const need = r.at + r.cols * BAY_MIN;
+      stuck.push({ key: r.sec.key, wall: r.sec.wall, need_cm: need });
+      want(r.sec.wall, need);
+    }
+  }
+
+  for (let i = 0; i < racks.length; i++) {
+    for (let j = i + 1; j < racks.length; j++) {
+      const a = racks[i], b = racks[j];
+      if (!overlaps(footprint(a.sec.wall, a.at, a.size, next), footprint(b.sec.wall, b.at, b.size, next))) continue;
+      const facing = (a.sec.wall === 'n' && b.sec.wall === 's') || (a.sec.wall === 's' && b.sec.wall === 'n') ||
+                     (a.sec.wall === 'e' && b.sec.wall === 'w') || (a.sec.wall === 'w' && b.sec.wall === 'e');
+      if (facing) {
+        /* Two depths, and a person has to walk between them. */
+        const need = a.size.depth + b.size.depth + 60;
+        if (a.sec.wall === 'n' || a.sec.wall === 's') wantD(need); else wantW(need);
+        stuck.push({ key: a.sec.key, wall: a.sec.wall, with: b.sec.key, need_cm: need });
+      } else if (a.sec.wall === b.sec.wall) {
+        /* Side by side and already crossing before this change; the wall
+           just has to be as long as both. */
+        const need = Math.max(a.at + a.size.width, b.at + b.size.width);
+        want(a.sec.wall, need);
+        stuck.push({ key: a.sec.key, wall: a.sec.wall, with: b.sec.key, need_cm: need });
+      } else {
+        /* A corner: the rack along the wall has to end before the other
+           rack's depth begins, on whichever wall it is on. */
+        const side = a.sec.wall === 'n' || a.sec.wall === 's' ? a : b;   /* on the width */
+        const end  = side === a ? b : a;                                 /* on the depth */
+        const sideEnd = side.at + side.size.width, endEnd = end.at + end.size.width;
+        wantW(sideEnd + end.size.depth);
+        wantD(endEnd + side.size.depth);
+        stuck.push({ key: side.sec.key, wall: side.sec.wall, with: end.sec.key, need_cm: sideEnd + end.size.depth });
+      }
+    }
+  }
+
+  if (stuck.length) {
+    const names = [...new Set(stuck.map((s) => s.key))];
+    throw fail(
+      `rack${names.length > 1 ? 's' : ''} ${names.join(', ')} would not fit — ` +
+      `this room needs at least ${minW} × ${minD} cm for what is in it`,
+      'room_too_small', { racks: stuck, min_width_cm: minW, min_depth_cm: minD }
+    );
+  }
+
+  const at = DB.nowIso();
+  for (const s of shrunk) {
+    const r = racks.find((x) => x.sec.id === s.id);
+    d.prepare('UPDATE sections SET bay_cm = ?, wall_pos = ?, updated_at = ? WHERE id = ?')
+      .run(s.to, Math.round(r.at / s.to), at, s.id);
+    DB.logChange('sections', s.id, 'update', userId, null);
+  }
+  return shrunk.map((s) => ({ key: s.key, wall: s.wall, from: s.from, to: s.to }));
 }
 
 /* A room with racks in it refuses, naming them: "M still has 0 shelves" is
@@ -793,6 +1091,15 @@ export function editCols(sectionId, { action, col = null }, userId = null) {
       const next = d.prepare('SELECT COALESCE(MAX(col_index), 0) AS m FROM shelves WHERE section_id = ?')
                     .get(sectionId).m + 1;
       if (next > MAX_COLS) throw fail(`${MAX_COLS} bays is the most`, 'too_many_cols');
+
+      /* A bay is a bay's width of wall. On a wall, the rack has to still fit
+         with one more — the same check as placing it, one column wider. */
+      if (sec.room_id != null && sec.wall != null) {
+        const room = d.prepare('SELECT * FROM rooms WHERE id = ?').get(sec.room_id);
+        const size = rackSize(sec, next);
+        const pos = wallCmOf(sec, size);
+        if (room && pos != null) checkFit(d, room, sec, { wall: sec.wall, wall_cm: pos }, size, sectionId);
+      }
 
       const at = DB.nowIso();
       const ins = d.prepare(

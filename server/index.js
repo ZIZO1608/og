@@ -525,7 +525,12 @@ router.add('GET /api/sections', requirePerm('stock.read', (ctx) => {
     rooms: Shelves.rooms({ whId: wh }),
     /* What arrived and has not been put away. Only answerable for one
        warehouse at a time, because "not put away" is a fact about a room. */
-    unshelved: wh ? Shelves.unshelved(wh) : null
+    unshelved: wh ? Shelves.unshelved(wh) : null,
+    /* The standard rack, in centimetres (036). The map draws every rack from
+       these and from each rack's own `size`, so the browser owns no number
+       the server has not got. */
+    geometry: Shelves.GEOMETRY,
+    limits: { rack: Shelves.RACK_LIMITS, room_max_cm: Shelves.MAX_ROOM_CM, bay_min_cm: Shelves.BAY_MIN }
   });
 }));
 
@@ -534,7 +539,8 @@ router.add('POST /api/sections', requirePerm('stock.move', async (ctx) => {
   shelfOp(ctx, () => ({ section: Shelves.createSection({
     whId: b.whId, key: b.key, name: b.name,
     sortIndex: b.sortIndex, gridOrigin: b.gridOrigin,
-    roomId: b.roomId, wall: b.wall, wallPos: b.wallPos, userId: ctx.user.id
+    roomId: b.roomId, wall: b.wall, wallPos: b.wallPos, wallCm: b.wallCm,
+    bayCm: b.bayCm, levelCm: b.levelCm, depthCm: b.depthCm, userId: ctx.user.id
   }) }));
 }));
 
@@ -542,7 +548,8 @@ router.add('PATCH /api/sections/:id', requirePerm('stock.move', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => ({ section: Shelves.updateSection(Number(ctx.params.id), {
     name: b.name, sortIndex: b.sortIndex, gridOrigin: b.gridOrigin,
-    roomId: b.roomId, wall: b.wall, wallPos: b.wallPos
+    roomId: b.roomId, wall: b.wall, wallPos: b.wallPos, wallCm: b.wallCm,
+    bayCm: b.bayCm, levelCm: b.levelCm, depthCm: b.depthCm
   }, ctx.user.id) }));
 }));
 
@@ -1966,6 +1973,8 @@ const SHELF_STATUS = {
   section_not_empty: 409,
   room_not_empty:    409,
   wall_overlap:      409,
+  wall_short:        409,
+  room_too_small:    409,
   no_letters_left:   409,
   duplicate_key:     409,
   duplicate_code:    409,

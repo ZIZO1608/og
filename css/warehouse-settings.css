@@ -408,9 +408,76 @@ body.rtl .toast { animation-name: toastInR; }
    which is how they survive the innerHTML a scan causes. */
 .sm-stage3d { padding: 0; overflow: hidden; }
 .sm-room { position: relative; height: 560px; max-height: 64vh; min-height: 340px; background: #0d0d0d; }
-.sm-room canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 .sm-room-wait { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12.5px; }
 .sm-room-hint { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 11.5px; text-align: center; }
+
+/* THE WRAPPER: the canvas, the tag layer and the overlay, as one node that
+   moves between parents. Inside the stage it fills the mount; out on <body>
+   with .sm-fs it fills the viewport, and the real fullscreen API — when the
+   browser grants it — shows this same node. The 560px pins above belong to
+   .sm-room and stop applying the moment the wrapper is not inside it, which
+   is the whole reason it is re-parented rather than styled in place. */
+.sm-gl { position: absolute; inset: 0; background: #0d0d0d; }
+.sm-gl canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.sm-gl.sm-fs { position: fixed; inset: 0; z-index: 150; }
+.sm-gl:fullscreen, .sm-gl:-webkit-full-screen { width: 100%; height: 100%; }
+/* The page behind a fake fullscreen must not scroll under it. */
+body.sm-fs-on { overflow: hidden; }
+/* The stage while the wrapper is away: keeps its height so the layout does
+   not jump, says where the room went. */
+.sm-room-away { background: #0a0a0a; border: 1px dashed #2a2a2e; }
+
+/* ---- the overlay -----------------------------------------------------------
+   What the map draws OVER the room: the walk pads, and in fullscreen the
+   controls the rest of the screen used to hold. pointer-events:none on the
+   layer and auto on its children, so a press between two buttons still
+   reaches the canvas. Logical properties only — the strips carry Arabic. */
+.sm-gl-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.sm-gl-overlay > * { pointer-events: auto; }
+.sm-ov-top, .sm-ov-bottom {
+  position: absolute; inset-inline: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; background: rgba(13, 13, 13, .82); backdrop-filter: blur(6px);
+}
+.sm-ov-top { inset-block-start: 0; border-bottom: 1px solid #26262b; }
+.sm-ov-bottom { inset-block-end: 0; border-top: 1px solid #26262b; }
+.sm-ov-top .sm-roomsel { margin: 0; }
+.sm-ov-top .sm-topbtns { margin-inline-start: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sm-ov-bottom .sm-scanbox { flex: 0 0 300px; min-width: 0; }
+.sm-ov-bottom .sm-scanin { font-size: 13.5px; }
+.sm-ov-bottom .sm-scanwhat { flex: 1 1 200px; min-width: 0; }
+.sm-ov-bottom .sm-scanwhat b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sm-ov-bottom .sm-chipstrip { border: 0; padding: 0; margin: 0; background: none; flex-basis: 100%; }
+.sm-ov-bottom .sm-legend { margin-inline-start: auto; }
+
+/* the camera group: orbit / walk, then the four views */
+.sm-camsw { display: inline-flex; gap: 3px; background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; }
+.sm-views { display: inline-flex; gap: 2px; flex-wrap: wrap; }
+.sm-fullbtn svg { margin-inline-end: 5px; vertical-align: -2px; }
+.sm-padbtn.on { border-color: #FFFFFF; }
+.sm-quality { margin: 0; }
+.sm-quality select { min-width: 0; height: 26px; padding: 0 6px; font-size: 11.5px; }
+
+/* the pads: a cross of four for the feet on one side, a look pad on the
+   other, thumb-sized and translucent so the room stays readable under them.
+   dir="ltr" on the block: the feet do not swap sides in Arabic. */
+.sm-pads { position: absolute; inset-inline: 14px; inset-block-end: 14px; display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none; }
+.sm-ov-bottom ~ .sm-pads { inset-block-end: 118px; }
+.sm-pad-move { display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: auto; }
+.sm-pad-row { display: flex; gap: 6px; }
+.sm-pad {
+  width: 54px; height: 54px; border-radius: 12px; border: 1px solid #3a3a42; background: rgba(23, 23, 27, .8);
+  color: #FFFFFF; font-size: 18px; cursor: pointer; touch-action: none; user-select: none;
+}
+.sm-pad.down { background: #FFFFFF; color: #0A0A0B; }
+.sm-look {
+  width: 120px; height: 120px; border-radius: 50%; border: 1px dashed #3a3a42; background: rgba(23, 23, 27, .55);
+  display: grid; place-items: center; color: var(--muted-foreground); font-size: 11px; touch-action: none;
+  user-select: none; cursor: move; pointer-events: auto;
+}
+body.sm-walking { cursor: crosshair; }
+
+/* the place-my-racks plan */
+.sm-fill-list { margin: 0 0 10px; padding-inline-start: 18px; font-size: 13px; line-height: 1.7; }
 
 /* pointer-events:none is not cosmetic. Without it the tag layer eats every
    click before the canvas sees it, and a bay that will not select gives no

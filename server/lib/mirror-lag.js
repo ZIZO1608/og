@@ -60,9 +60,13 @@ export const MIRROR_LAG = {
   stock:      { cols: ['shelf_id'],
                 file: 'server/supabase/006_shelves.sql', retriedBy: ['sync', 'reconcile'] },
 
-  /* 025 — which wall a rack hangs on, and in which room. */
-  sections:   { cols: ['room_id', 'wall', 'wall_pos'],
-                file: 'server/supabase/008_rooms.sql', retriedBy: ['sync', 'reconcile'] },
+  /* 026 — which wall a rack hangs on, and in which room (008); 036 — how big
+     the rack is and where on the wall it stands, in centimetres (013). A
+     restore without the second set hands back standard-size racks at
+     bay-count positions: walkable, but a layout somebody has to fix. */
+  sections:   { cols: ['room_id', 'wall', 'wall_pos', 'bay_cm', 'level_cm', 'depth_cm', 'wall_cm'],
+                file: 'server/supabase/008_rooms.sql then 013_rack_size.sql',
+                retriedBy: ['sync', 'reconcile'] },
 
   /* 017 — the shift a sale was rung up on. `sales` is likewise pushed outside
      the guard, which is why it had a fallback from the start. */
