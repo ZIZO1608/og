@@ -73,7 +73,12 @@ var ACTIONS = {
 
     API.post('/api/sync/push', {})
       .then(function (r) {
-        toast(t('sync_now'), t('sync_done').replace('{s}', r.seconds || 0), 'ok', 3500);
+        /* The mirror pushes by itself a couple of seconds after every
+           change, so most presses find nothing waiting — say so, rather
+           than "updated in 0s", which reads as if nothing happened. */
+        toast(t('sync_now'), r.pushed ? t('sync_done').replace('{s}', r.seconds || 0)
+                                      : t('sync_done_nothing'), 'ok', 3500);
+        if (typeof MirrorUI !== 'undefined') MirrorUI.fetchNow();
         /* The mirror changed, not the shop — nothing on screen is stale, so
            there is deliberately no re-render here. */
       })

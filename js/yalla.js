@@ -170,7 +170,186 @@ var YALLA = (function () {
       '<span class="live-who" title="' + esc(t('live_on')) + '">' +
         '<span class="live-dot' + (typeof Pulse !== 'undefined' && Pulse.isLive() ? ' on' : '') + '"></span>' +
         '<span class="live-txt">' + (typeof Pulse !== 'undefined' ? Pulse.presenceText() : '') + '</span></span>' +
-      '<div class="user-chip"><span class="user-avatar">Y</span><span>' + t('yl_operator') + '</span></div>';
+      acctButton();
+  }
+
+  /* ------------------------------------------------------------ account */
+
+  /* Who is signed in, from the session — never a fixed "Y". The chip is a
+     button on every screen size: on OG's side the chip hides on a phone
+     because the More sheet carries the account block, and the portal has
+     no More sheet. */
+  function me() { return (typeof Auth !== 'undefined') ? Auth.user() : null; }
+
+  function initials(name) {
+    var w = String(name || '').trim().split(/\s+/);
+    return ((w[0] || 'Y')[0] + (w[1] ? w[1][0] : (w[0] || '')[1] || '')).toUpperCase();
+  }
+
+  function acctButton() {
+    var u = me();
+    var name = u ? u.name : t('yl_operator');
+    return '<button class="yl-acct-btn' + (u && u.mustChange ? ' needs-pw' : '') + '" data-yl="acct" title="' + esc(t('my_account')) + '" aria-haspopup="dialog">' +
+      '<span class="user-avatar">' + esc(initials(name)) + '</span>' +
+      '<span class="yab-name">' + esc(name) + '</span>' +
+    '</button>';
+  }
+
+  /* The account sheet: a popover on a desk, a bottom sheet on a phone —
+     the same modal plumbing as everything else, so Escape, the backdrop
+     and the × all close it. */
+  function acctLine() {
+    var live = typeof Pulse !== 'undefined' && Pulse.isLive();
+    var unread = DB.unreadFor('yalla').length;
+    return '<div class="yl-acct-status">' +
+      '<span class="yas-dot' + (live ? ' on' : '') + '"></span>' +
+      '<span>' + t(live ? 'yl_acct_live' : 'yl_acct_poll') + '</span>' +
+      (unread ? '<span class="yas-unread"><b dir="ltr">' + unread + '</b> ' + t('yl_acct_unread') + '</span>' : '') +
+    '</div>';
+  }
+
+  function openAccount() {
+    var u = me();
+    if (!u) return;
+    openModal({
+      title: t('my_account'),
+      size: 'narrow',
+      sheet: window.innerWidth <= 720,
+      body:
+        '<div class="yl-acct">' +
+          '<div class="yl-acct-hero">' +
+            '<span class="yl-acct-avatar">' + esc(initials(u.name)) + '</span>' +
+            '<b>' + esc(u.name) + '</b>' +
+            '<span class="yl-acct-role">' + t('yl_acct_role') + '</span>' +
+            '<span class="yl-acct-user" dir="ltr">@' + esc(u.username || '') + '</span>' +
+          '</div>' +
+          (u.mustChange ? '<div class="yl-acct-warn">' + t('pw_must_change') + '</div>' : '') +
+          acctLine() +
+          '<div class="yl-acct-actions">' +
+            '<button class="yl-acct-item" data-yl="acct-pw">' +
+              '<span class="yai-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>' +
+              '<span class="yai-txt"><b>' + t('change_pw') + '</b><small>' + t('yl_pw_sub') + '</small></span>' +
+              '<span class="yai-go">›</span>' +
+            '</button>' +
+            '<button class="yl-acct-item danger" data-yl="acct-out">' +
+              '<span class="yai-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M15 17l5-5-5-5M20 12H9M12 3H5v18h7"/></svg></span>' +
+              '<span class="yai-txt"><b>' + t('sign_out') + '</b><small>' + t('yl_out_sub') + '</small></span>' +
+              '<span class="yai-go">›</span>' +
+            '</button>' +
+          '</div>' +
+        '</div>'
+    });
+  }
+
+  /* Change password. The rule is the server's — at least eight characters,
+     not only digits (lib/auth.js passwordProblem) — and it is said here
+     before the round trip, with a meter so a person can see "strong" rather
+     than guess. Success signs everyone out, this tab included, so the
+     screen says so and comes back to the login. */
+  function pwField(id, label, auto) {
+    return '<label class="field yl-pw-field"><span>' + label + '</span>' +
+      '<span class="yl-pw-wrap">' +
+        '<input class="inp" id="' + id + '" type="password" autocomplete="' + auto + '" autocapitalize="off" spellcheck="false">' +
+        '<button type="button" class="yl-pw-eye" data-yl="pw-eye" data-for="' + id + '" aria-label="' + esc(t('yl_pw_show')) + '">' +
+          '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>' +
+        '</button>' +
+      '</span></label>';
+  }
+
+  function pwScore(p) {
+    if (!p || p.length < 8 || /^\d+$/.test(p)) return 0;
+    var s = 1;
+    if (p.length >= 12) s++;
+    if (/[a-z]/.test(p) && /[A-Z]/.test(p)) s++;
+    if (/\d/.test(p) && /[^A-Za-z0-9]/.test(p)) s++;
+    return Math.min(4, s);
+  }
+
+  function pwPaint(root) {
+    var a = root.querySelector('#pwNew'), b = root.querySelector('#pwNew2');
+    var meter = root.querySelector('#ylPwMeter'), lbl = root.querySelector('#ylPwLabel'), match = root.querySelector('#ylPwMatch');
+    if (!a || !meter) return;
+    var p = a.value, s = pwScore(p);
+    meter.className = 'yl-pw-meter s' + s;
+    lbl.textContent = t(p ? 'yl_pw_s' + s : 'yl_pw_s_empty');
+    if (!b.value) { match.className = 'yl-pw-match'; match.textContent = ''; }
+    else if (b.value === p) { match.className = 'yl-pw-match ok'; match.textContent = '✓ ' + t('yl_pw_match'); }
+    else { match.className = 'yl-pw-match bad'; match.textContent = t('yl_pw_nomatch'); }
+  }
+
+  function openPassword() {
+    openModal({
+      title: t('change_pw'),
+      size: 'narrow',
+      sheet: window.innerWidth <= 720,
+      body:
+        '<div class="pw-form yl-pw">' +
+          pwField('pwCur', t('pw_current'), 'current-password') +
+          pwField('pwNew', t('pw_new'), 'new-password') +
+          '<div class="yl-pw-strength">' +
+            '<div class="yl-pw-meter s0" id="ylPwMeter"><i></i><i></i><i></i><i></i></div>' +
+            '<div class="yl-pw-line"><span id="ylPwLabel">' + t('yl_pw_s_empty') + '</span><span class="muted">' + t('yl_pw_hint') + '</span></div>' +
+          '</div>' +
+          pwField('pwNew2', t('pw_again'), 'new-password') +
+          '<div class="yl-pw-match" id="ylPwMatch"></div>' +
+          '<div class="pw-err" id="pwErr"></div>' +
+        '</div>',
+      foot: '<button class="btn" data-act="modal-close">' + t('cancel') + '</button>' +
+            '<button class="btn btn-primary" data-yl="pw-save">' + t('change_pw') + '</button>',
+      onOpen: function (root) {
+        root.addEventListener('input', function () { pwPaint(root); });
+        var f = root.querySelector('#pwCur');
+        if (f) setTimeout(function () { f.focus(); }, 80);
+      }
+    });
+  }
+
+  function savePassword(el) {
+    var cur = document.getElementById('pwCur'), a = document.getElementById('pwNew'), b = document.getElementById('pwNew2');
+    var err = document.getElementById('pwErr');
+    if (!cur || !a || !b) return;
+    var show = function (m) { if (err) err.textContent = m; };
+    if (!cur.value) { show(t('yl_pw_need_current')); cur.focus(); return; }
+    if (a.value.length < 8) { show(t('yl_pw_short')); a.focus(); return; }
+    if (/^\d+$/.test(a.value)) { show(t('yl_pw_digits')); a.focus(); return; }
+    if (a.value !== b.value) { show(t('pw_mismatch')); b.select(); return; }
+    el.disabled = true;
+    show('');
+    API.post('/api/auth/password', { current: cur.value, next: a.value })
+      .then(function () {
+        closeModal();
+        toast(t('pw_changed'), t('pw_reauth'), 'ok', 5000);
+        setTimeout(function () { location.reload(); }, 1800);
+      })
+      .catch(function (e) {
+        el.disabled = false;
+        show(API.friendly(e));
+      });
+  }
+
+  /* Signing out is two taps on purpose. The button sits under the thumb on a
+     phone, and a pocket tap that logs the printer out mid-shift is a call
+     to the shop. The first tap arms it and says so; four seconds later it
+     disarms itself. */
+  var outTimer = null;
+  function signOut(el) {
+    if (el.getAttribute('data-armed') !== '1') {
+      el.setAttribute('data-armed', '1');
+      el.classList.add('armed');
+      el.querySelector('.yai-txt b').textContent = t('yl_out_sure');
+      clearTimeout(outTimer);
+      outTimer = setTimeout(function () {
+        if (!document.body.contains(el)) return;
+        el.removeAttribute('data-armed');
+        el.classList.remove('armed');
+        el.querySelector('.yai-txt b').textContent = t('sign_out');
+      }, 4000);
+      return;
+    }
+    clearTimeout(outTimer);
+    closeModal();
+    toast(t('sign_out'), t('signing_out'), 'ok', 1500);
+    if (typeof Auth !== 'undefined') Auth.logout();
   }
 
   /* ------------------------------------------------------------- widgets */
@@ -1440,6 +1619,21 @@ var YALLA = (function () {
 
   var ACT = {
     nav: function (el) { S.view = el.getAttribute('data-view'); S.day = null; closeDrawer(); repaint(); },
+
+    /* ---- the account: who is signed in, a new password, the way out */
+    acct: function () { openAccount(); },
+    'acct-pw': function () { closeModal(); openPassword(); },
+    'acct-out': function (el) { signOut(el); },
+    'pw-save': function (el) { savePassword(el); },
+    'pw-eye': function (el) {
+      var inp = document.getElementById(el.getAttribute('data-for'));
+      if (!inp) return;
+      var hidden = inp.type === 'password';
+      inp.type = hidden ? 'text' : 'password';
+      el.classList.toggle('on', hidden);
+      el.setAttribute('aria-label', t(hidden ? 'yl_pw_hide' : 'yl_pw_show'));
+      inp.focus();
+    },
     etab: function (el) { S.tab = el.getAttribute('data-t'); repaint(); },
     'rv-filter': function (el) {
       var v = el.getAttribute('data-r');

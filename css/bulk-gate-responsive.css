@@ -90,7 +90,7 @@ html.gated body { overflow: hidden; }
 html.gated #app { filter: blur(6px); pointer-events: none; }
 
 .gate {
-  position: fixed; inset: 0; z-index: 900;
+  position: fixed; inset: 0; z-index: 900; overflow: hidden;
   background: rgb(10 10 11 / .96); backdrop-filter: blur(8px);
   display: grid; place-items: center; padding: 24px;
   animation: fade .2s ease both;
@@ -231,18 +231,50 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
 .gate-note.gate-warn { color: var(--warning); font-weight: 600; }
 
 
-/* ---- demo banner -----------------------------------------------------------
-   Shown when the app is served over http but no server answered — a static
-   host, or the shop's own server being down. Deliberately hard to ignore: the
-   risk it guards against is a cashier ringing real sales into data that
-   evaporates, and they must see that without reading anything. */
-  padding: 2px 8px; border-radius: 999px;
-  background: var(--warning); color: #1A1206;
-  font-size: 10.5px; font-weight: 800; letter-spacing: .08em;
+/* The mark as a watermark, low in the corner, at the opacity of a thing you
+   notice on the second visit. The artwork is white on a black tile, so on
+   this ground only the glyph survives — the tile disappears into the page. */
+.gate::after {
+  content: ''; position: absolute; width: 560px; height: 560px;
+  bottom: -150px; inset-inline-end: -140px; pointer-events: none;
+  background: url("../assets/logo.svg") center / contain no-repeat;
+  opacity: .032; filter: grayscale(1);
 }
+/* The splash hands the sign-in card a subtle lift as it appears. */
+.gate-card { box-shadow: var(--shadow-lg), 0 30px 80px -30px rgb(198 255 0 / .18); }
 
-/* Keep the banner off the last row of any scrolling list, and clear of the
-   phone tab bar, which is also fixed to the bottom. */
+/* ---- the boot splash --------------------------------------------------------
+   What is on screen between the page opening and the first paint: two round
+   trips on shop wifi, which used to be a black tab. js/app-boot.js mounts it
+   first thing and takes it down after the first render; the login gate sits
+   above it (z 900 over 800) and `html.gated` fades it so nothing shows
+   through the gate's glass. */
+.boot-splash {
+  position: fixed; inset: 0; z-index: 800;
+  background: var(--app); display: grid; place-items: center;
+  transition: opacity var(--d-3) var(--e-in);
+}
+.boot-splash::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(52% 40% at 50% 46%, rgb(198 255 0 / .07), transparent 70%);
+}
+html.gated .boot-splash { opacity: 0; }
+.boot-splash.out { opacity: 0; pointer-events: none; }
+.bs-inner { position: relative; display: grid; justify-items: center; gap: 14px; animation: gateIn .3s var(--e-out) both; }
+.bs-mark {
+  width: 76px; height: 76px; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 0 0 1px var(--border), 0 18px 40px -10px rgb(0 0 0 / .7);
+}
+.bs-mark img { width: 100%; height: 100%; display: block; }
+.bs-word { font-family: var(--font-head); font-weight: 800; font-size: 13px; letter-spacing: .22em; color: var(--muted-foreground); }
+/* A thin lime bar sweeping the width, not a spinner: it says "loading" in the
+   brand's own voice and makes no promise about a percentage it cannot know. */
+.bs-bar { width: 140px; height: 2px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 4px; }
+.bs-bar i { display: block; width: 40%; height: 100%; background: var(--brand); border-radius: 2px; animation: bsSweep 1.1s var(--e-std) infinite; }
+@keyframes bsSweep { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+body.rtl .bs-bar i { animation-name: bsSweepR; }
+@keyframes bsSweepR { from { transform: translateX(100%); } to { transform: translateX(-350%); } }
+@media (prefers-reduced-motion: reduce) { .bs-bar i { animation: none; width: 100%; opacity: .6; } }
 
 /* ---- the shop would not load ------------------------------------------------
    The counterpart to the demo banner, and the harsher one. The banner says
@@ -261,6 +293,7 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
   padding: 28px 30px; border: 1px solid var(--destructive-border);
   border-radius: var(--radius-lg); background: var(--card);
 }
+.boot-fail-card .gate-mark { width: 52px; height: 52px; margin: 0 0 18px; }
 .boot-fail-card h1 {
   margin: 0 0 12px; font-size: 19px; font-weight: 700; color: var(--destructive);
 }
@@ -272,8 +305,6 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
 .boot-fail-card ol {
   margin: 0 0 20px; padding-inline-start: 20px;
   font-size: 13px; line-height: 1.9; color: var(--muted-foreground);
-}
-@media (max-width: 900px) {
 }
 
 /* ------------------------------------------------------------------ MISC */
@@ -424,7 +455,10 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
   .pos-scanbar { padding: 12px 14px; }
   .scan-input { height: 50px; font-size: 16px; padding: 0 14px; }
   .scan-wrap .btn-lg { padding: 0 14px; }
-  .scan-meta .keys { display: none; }          /* no keyboard on a phone */
+  /* No keyboard on a phone, and the cart is a bottom sheet here, so the
+     collapse-the-products button has nothing to do either. The whole row
+     goes; it was drawing one empty square under the scan box. */
+  .scan-meta { display: none; }
   .pos-cats { padding: 10px 14px; }
   .pos-grid-wrap { padding: 14px 14px 24px; }
   .pos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

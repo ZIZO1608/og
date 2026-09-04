@@ -9,6 +9,19 @@
 
 function nf(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }
 
+/* "Nike · Sneakers · Black" — but only the parts that exist. A product with
+   no brand and no colourway used to print a lone "·" under its name, and
+   the size picker's eyebrow read "· Sneakers". Every caller passes strings
+   it has ALREADY escaped, so nothing is escaped here. */
+function dots() {
+  var out = [];
+  for (var i = 0; i < arguments.length; i++) {
+    var s = arguments[i];
+    if (s != null && String(s).trim() !== '') out.push(String(s));
+  }
+  return out.join(' · ');
+}
+
 /* Like nf(), but null and undefined print "—" rather than a confident 0.
 
    The distinction is real: a delivery driver's customer rows arrive without
@@ -166,7 +179,14 @@ function deltaTag(now, before, suffix) {
   if (Math.abs(d) < 0.5) { cls = 'flat'; arrow = '—'; }
   else if (d > 0) { cls = 'up'; arrow = '▲'; }
   else { cls = 'down'; arrow = '▼'; }
-  return '<div class="delta ' + cls + '">' + arrow + ' ' + Math.abs(d).toFixed(1) + '% ' + tail + '</div>';
+  /* One decimal while the number is small enough for it to mean something;
+     past 100 the tenth is noise ("▼ 100.0%" for a day with no sales yet).
+     Ten-thousands read as "×12" rather than a percentage nobody can picture. */
+  var a = Math.abs(d), txt;
+  if (a >= 1000) txt = '×' + (a / 100 + 1).toFixed(0);
+  else if (a >= 100) txt = a.toFixed(0) + '%';
+  else txt = a.toFixed(1) + '%';
+  return '<div class="delta ' + cls + '">' + arrow + ' ' + txt + ' ' + tail + '</div>';
 }
 
 /* Phone numbers, addresses and SKUs are latin runs. In RTL the bidi algorithm

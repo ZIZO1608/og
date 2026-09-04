@@ -129,16 +129,45 @@ export function tx(fn) {
   const d = get();
   if (inTx) throw new Error('tx() cannot be nested');
   inTx = true;
-  d.exec('BEGIN IMMEDIATE');
+  touched.clear();
+  let committed = null;
   try {
+    d.exec('BEGIN IMMEDIATE');
     const out = fn(d);
     d.exec('COMMIT');
+    committed = [...touched];
     return out;
   } catch (err) {
     try { d.exec('ROLLBACK'); } catch { /* already unwound */ }
     throw err;
   } finally {
     inTx = false;
+    touched.clear();
+    /* After the finally has released inTx, so a listener that opens its own
+       transaction is not refused as nested. A listener throwing must never
+       fail the request whose write has already committed. */
+    if (committed) fire(committed);
+  }
+}
+
+/* ---------------------------------------------------------- commit hook
+   Who wants to know that something was written. The Supabase mirror
+   (lib/sync-worker.js) is the one listener today: it hears the table names
+   logged during the transaction and pushes a couple of seconds later,
+   rather than discovering the change on a timer. The callback is
+   synchronous and must return at once — anything slow belongs behind a
+   setTimeout on the listener's side. */
+const listeners = new Set();
+const touched = new Set();
+
+export function onCommit(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function fire(tables) {
+  for (const fn of listeners) {
+    try { fn(tables); } catch (err) { console.log('  [db] commit listener failed — ' + err.message); }
   }
 }
 
@@ -160,4 +189,8 @@ export function logChange(tbl, rowId, op, userId, note = null, origin = null) {
     `INSERT INTO change_log (at, tbl, row_id, op, user_id, note, origin)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(nowIso(), tbl, String(rowId), op, userId ?? null, note ?? null, origin ?? null);
+  /* Inside a transaction the listeners hear about it at COMMIT; a bare
+     write outside one is already durable, so they hear about it now. */
+  if (inTx) touched.add(tbl);
+  else fire([tbl]);
 }

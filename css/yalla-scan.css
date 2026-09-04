@@ -1043,6 +1043,11 @@ body[data-portal="yalla"] .nav-item.active .nav-icon svg { stroke: var(--brand-f
   font-size: 11.5px; font-weight: 600; color: var(--dim); white-space: nowrap;
 }
 .live-who .live-dot { margin-inline: 0; }
+/* In THIS pill the dot follows the other company, not the channel. A green
+   dot beside the word "away" read as a contradiction — the channel being
+   open is the dot's title on hover and the sync button's business, and the
+   pill's one job is to say whether somebody is there. */
+.live-who:not(.other-on) .live-dot.on { background: var(--dim); box-shadow: none; }
 .live-who.other-on { color: var(--foreground); border-color: rgba(61, 220, 132, .35); }
 .live-who.other-on .live-txt { color: #3ddc84; }
 @media (max-width: 720px) { .live-who .live-txt { display: none; } .live-who { padding: 0 6px; } }

@@ -768,6 +768,7 @@ var DB = {
       days: Math.abs(Number(a.days) || 0),
       name: n.kind === 'po_late' ? '' : (a.name || ''), size: a.size || '', id: id,
       amount: amount, err: a.err ? ' — ' + a.err : '',
+      behind: a.behind,
       /* partner_msg: what Yalla Wear said, and what kind of line it was */
       text: a.text || '',
       kind: a.kind ? t('yl_msg_' + String(a.kind).replace(/-/g, '_')) : ''

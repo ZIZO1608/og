@@ -425,8 +425,15 @@ var POS = (function () {
     var h = '';
     list.forEach(function (p) {
       var q = DB.totalQty(p.id);
+      /* The photo when the warehouse has one, the coloured initials tile
+         when it has not. The tile used to draw initials regardless, so a
+         photo added in the Add-product form never reached the screen a
+         cashier actually picks from. */
+      var pic = (p.image && p.image.src)
+        ? '<span class="pcard-img has-img"><img src="' + p.image.src + '" alt="" loading="lazy">'
+        : '<span class="pcard-img" style="background:' + p.image.bg + '"><span class="pcard-ini">' + p.image.initials + '</span>';
       h += '<button class="pcard' + (q === 0 ? ' dead' : '') + '" data-pos="pick" data-id="' + p.id + '">' +
-        '<span class="pcard-img" style="background:' + p.image.bg + '">' + p.image.initials +
+        pic +
           '<span class="qty-tag' + (q <= CONFIG.STOCK_LOW ? ' low' : '') + '">' + q + '</span></span>' +
         '<span class="pcard-body"><b>' + esc(p.name) + '</b>' +
           '<span class="price">' + money(p.sellingPrice) + '</span>' +
@@ -845,6 +852,11 @@ var POS = (function () {
     if (lines) lines.innerHTML = linesHtml();
     var cnt = document.getElementById('cartCount');
     if (cnt) cnt.textContent = cartCount();
+    /* The phone sheet's handle carries the running total. It was written
+       once at render and never again, so it said "0 SYP" beside a badge
+       reading 2 — the one number a cashier holding a phone actually reads. */
+    var peek = document.querySelector('.cart-peek');
+    if (peek) peek.textContent = money(totals().total);
     paintFoot();
     if (S.flashSku) {
       var row = document.querySelector('.cart-line[data-sku="' + S.flashSku + '"]');
@@ -893,7 +905,7 @@ var POS = (function () {
     var p = DB.product(pid);
     var vs = DB.variantsOf(pid);
     var body = '<div style="display:flex;gap:12px;align-items:center;margin-bottom:14px">' +
-      thumb(p, 'lg') + '<div><span class="eyebrow">' + esc(p.brand) + ' · ' + DB.typeLabels[p.type] + '</span>' +
+      thumb(p, 'lg') + '<div><span class="eyebrow">' + dots(esc(p.brand), DB.typeLabels[p.type]) + '</span>' +
       '<h3 style="font-size:16px;margin:2px 0 3px">' + esc(p.name) + '</h3>' +
       '<div class="strong-num" style="font-size:17px">' + money(p.sellingPrice) + '</div></div></div>' +
       '<div class="lbl">' + t('pick_size') + '</div><div class="size-pop">';

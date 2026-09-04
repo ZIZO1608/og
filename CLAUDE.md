@@ -28,6 +28,7 @@ npm run supabase:check           # is the mirror a faithful copy of the DATA
 npm run supabase:drift           # can the next write even land — the SHAPE
 npm run hardware                 # printers and scanner: what is missing, and why
 npm run hardware:install         # installs what it can (asks for administrator)
+npm run cert:trust               # Windows trusts the self-signed certificate (asks for administrator once)
 ```
 
 ### The till's hardware
@@ -79,6 +80,18 @@ exactly why this went unnoticed on the machine doing the testing.
   "not a known authority" warning, somebody presses continue, and from then on the origin is
   secure. A certificate the world trusts needs a public domain, which means exposing a till full
   of real money to the internet.
+- **On the till itself that warning is gone**: `npm run cert:trust` (`scripts/trust-cert.js`)
+  puts the certificate in Windows' machine-wide trusted list through `certutil`, asking for
+  administrator once, and `start-og-system.bat` runs its free `--check` every morning and only
+  prompts when it is not there. Before this the launcher opened `https://localhost:8443` straight
+  onto a full-page red "not private" every day, and it was reported as "there is an error".
+  Phones still get the one warning: the certificate is deliberately not an authority (`CA:FALSE`),
+  because an authority that anyone with `server/data/certs/` could copy would sign for any site.
+  `cert:untrust` takes it out again after a re-run of `npm run cert`.
+- **The launcher opens the browser itself** (`scripts/open-when-ready.js`, started with
+  `start /b` just before `node index.js`, which blocks the window): it polls `/api/health` and
+  opens whichever address the health line says is actually serving. The "already open" branch
+  uses the same script rather than guessing https from a file on disk.
 - `SECURE` sets itself when HTTPS is actually serving, so session cookies get the `Secure` flag
   without anyone remembering `OG_SECURE`. Browsers still accept Secure cookies on
   `http://localhost`, so the till on this machine is unaffected.
@@ -375,10 +388,35 @@ exits non-zero when the mirror is not a faithful copy, so it can gate a deploy. 
 after the connection test. It opens the database through `DB.openReadOnly()`: `DB.open()` applies
 pending migrations, and a check that changes the schema it is checking is not read-only.
 
-The sync worker keeps the tail of each run and pulls the one line that names a failure out of it —
-`SyncWorker.status().lastError` — so the server log, the Sync button's toast and the manager's bell
-(after three failed runs in a row) all say *why*, not just "exit 1". Before that, a foreign key
-killed every run for a day and the only record was a line printed to nowhere.
+### The mirror is live, not on a ten-minute timer
+
+**`server/lib/mirror.js` is the one implementation**; `scripts/supabase-sync.js` is a thin CLI
+over it (one full run, printed, exit 0/1/2 as before) and `server/lib/sync-worker.js` runs it
+**in-process** inside the server. Three triggers, one lane:
+
+1. **The commit hook.** `DB.tx()` fires `DB.onCommit(fn)` listeners after COMMIT with the tables
+   `logChange` touched; the worker debounces two seconds and calls `Mirror.pushChanged()`.
+2. **A ten-second tick**, the backstop for writes outside a transaction and for the eight tables
+   nothing logs (`config`, `role_permissions`, `label_templates`, `clubs`, `notification_reads`,
+   `users`, `currencies`, `warehouses`) — those are detected by a content hash.
+3. **A full run every hour** (`OG_SYNC_MINUTES`, default 60, `0` = by hand only): settings
+   rewritten whole, every cursor walked, every guard exercised. The reconcile relies on this.
+
+`pushChanged()` asks SQLite locally which tables moved past their bookmark and walks only those,
+in the same FK order as the full run, so an idle shop makes **no request at all**. Bookmarks are
+read from `sync_state` once at boot (`loadCursors`) and held in memory — this process is the only
+writer, which is what the lineage guard guarantees. A foreign-key refusal naming a missing parent
+(`Key (sale_id)=(INV-2102) is not present in table "sales"`) **heals itself**: the parent is
+fetched locally, pushed with its children, and the batch retried once. Every request has a 30 s
+deadline (`supabase.js`), a failure backs off 10 s → 5 min, and one push runs at a time.
+
+`GET /api/sync/status` and the **Mirror fold in Settings** (`MirrorUI` in `js/app-settings.js`)
+show mode, rows waiting, last push and the reason it is stuck; the same object rides the live
+channel (`Live.notify('og', { mirror })`) so the fold repaints without polling, and the Sync
+button carries an amber/red dot. The bell fires on **time** (rows waiting and no success for
+15 min, or a refused mirror), not on "three failures" — at this cadence three failures is thirty
+seconds. Before all this, a foreign key killed every run for a day and the only record was a line
+printed to nowhere.
 
 It did not always do this. It used to check the connection and five table names, and printed
 "Connected. 5 of 5 core tables present" while five invoices and every delivery were missing —
@@ -596,6 +634,14 @@ companies feel connected rather than merely sharing a table.
   so a delay note on the same job stays unread; the nav badge counts `DB.unreadReviews('yalla')`.
   The phone tab bar is the five screens and nothing else — there is no OG behind the portal to go
   back to (see "Home screen is chosen by role").
+- **The partner's account lives behind the avatar in the topbar** (`acctButton` / `openAccount` in
+  `js/yalla.js`): a bottom sheet on a phone, a modal on a desk, with the name, the role, the live line
+  and two actions. **Change password** is the portal's own form over the same `POST /api/auth/password`
+  — the rule shown in the meter is the server's (`passwordProblem`: eight characters, not only
+  digits), a wrong current password is refused in the form, and success reloads to the login because
+  every session died. **Sign out is two taps**, armed for four seconds: the button is under the thumb
+  and a pocket tap that logs the printer out mid-shift is a phone call. Portal sheets sit at z 360,
+  above the floating tab bar (z 340), or the Save and Sign out buttons are behind it.
 - **What is new is decided before anything draws.** `Pulse.apply()` takes the unread list first
   and announces it last: the job drawer and the Reviews page both mark messages read as part of
   rendering, so a toast computed afterwards never fired for the line that had just arrived.

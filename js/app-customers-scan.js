@@ -309,7 +309,7 @@ function viewCustomers() {
   chips.push(['archived', 'bk_archived_only']);
 
   h += '<div class="filters">' +
-    '<input class="inp grow" type="text" placeholder="' + t('search_ph') + '" value="' + esc(OG.cust.q) + '" data-change="cust-q">' +
+    '<input class="inp grow" type="text" placeholder="' + t('search_customers') + '" value="' + esc(OG.cust.q) + '" data-change="cust-q">' +
     '<select class="inp" data-change="cust-sort" style="max-width:170px" aria-label="' + esc(t('cu_sort')) + '">' +
       sorts.map(function (s) {
         return '<option value="' + s + '"' + ((OG.cust.sort || 'recent') === s ? ' selected' : '') + '>' +
@@ -1218,7 +1218,7 @@ function openDuplicateGuard(name, dupes) {
   dupes.slice(0, 5).forEach(function (d) {
     var p = d.product;
     h += '<tr><td><div class="cell-prod">' + thumb(p) +
-        '<span><b>' + esc(p.name) + '</b><small>' + esc(p.brand) + ' · ' + esc(p.colorway) + '</small></span></div></td>' +
+        '<span><b>' + esc(p.name) + '</b><small>' + dots(esc(p.brand), esc(p.colorway)) + '</small></span></div></td>' +
       '<td class="num">' + healthBadge(DB.totalQty(p.id)) + ' ' + DB.totalQty(p.id) + '</td>' +
       '<td class="num">' + money(p.sellingPrice) + '</td>' +
       '<td class="num"><b>' + Math.round(d.score * 100) + '%</b></td>' +
@@ -1409,7 +1409,7 @@ function openScanResult(raw) {
   var h = '<div class="sc-hit">' +
     thumbBox(p, 'sc-photo') +
     '<div class="sc-hit-txt"><b>' + esc(p.name) + '</b>' +
-      '<span>' + esc(p.brand) + ' · ' + DB.typeLabels[p.type] + ' · ' + esc(p.colorway) + '</span>' +
+      '<span>' + dots(esc(p.brand), DB.typeLabels[p.type], esc(p.colorway)) + '</span>' +
       '<span class="num">' + esc(v.barcode) + '</span>' +
       '<span class="num sc-sku">' + esc(v.sku) + '</span></div>' +
     healthBadge(v.qty) +

@@ -105,6 +105,23 @@ body.rtl .mo-view[data-dir="back"] { animation-name: moView, moFwd; }
 .btn-block { width: 100%; }
 .btn:disabled { opacity: .4; pointer-events: none; }
 
+/* A square button holding one glyph — table-row actions, where the words
+   would be the widest thing in the row. The name lives in `title` and
+   `aria-label`; the icon inherits the button's colour so the ghost/primary
+   variants keep working. */
+.btn-icon { width: 34px; padding: 0; flex: none; }
+.btn-icon.btn-sm { width: 32px; }
+.btn-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; pointer-events: none; }
+.btn-ghost.btn-icon:hover { color: var(--brand); border-color: var(--brand-border); }
+table.tbl td.td-act { width: 1%; padding-inline: 8px 14px; text-align: end; }
+
+/* The primary button glows on hover — a lime cast on the black beneath it —
+   so the one real action on a screen answers the pointer before it is
+   pressed. The shadow transitions with the rest, not instantly. */
+.btn { transition: background var(--t), color var(--t), border-color var(--t), opacity var(--t), box-shadow var(--d-2) var(--e-std); }
+.btn-primary:hover { box-shadow: 0 8px 22px -8px rgb(198 255 0 / .55); }
+.btn-primary:active { box-shadow: none; }
+
 .keycap {
   display: inline-grid; place-items: center;
   min-width: 20px; height: 19px; padding: 0 5px;

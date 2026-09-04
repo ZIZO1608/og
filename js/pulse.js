@@ -256,8 +256,16 @@ var Pulse = (function () {
     } catch (e) { /* a line with no data */ }
   }
 
+  /* The line is also how the Supabase mirror reports itself, so a manager
+     who holds config.write and nothing on the print side still connects. */
+  function canConnect() {
+    if (canAsk()) return true;
+    return typeof Shop !== 'undefined' && Shop.live() &&
+           typeof Auth !== 'undefined' && Auth.can('config.write');
+  }
+
   function connect() {
-    if (es || !window.EventSource || !canAsk()) return;
+    if (es || !window.EventSource || !canConnect()) return;
     try {
       es = new EventSource('/api/live');
     } catch (e) { es = null; return; }
@@ -265,10 +273,12 @@ var Pulse = (function () {
     es.addEventListener('change', function (ev) {
       takePresence(ev);
       /* Somebody arriving or leaving is not a data change — nothing to
-         refetch. Everything else is. */
+         refetch. Neither is the mirror saying where it is up to: that
+         goes to its own painter. Everything else is. */
       var d = {};
       try { d = JSON.parse(ev.data || '{}'); } catch (e) { /* ignore */ }
-      if (!d.who) tick();
+      if (d.mirror) { if (typeof MirrorUI !== 'undefined') MirrorUI.paint(d.mirror); return; }
+      if (!d.who && canAsk()) tick();
     });
     es.onerror = function () {
       /* The browser reconnects by itself (retry: 3000). Until it does, the

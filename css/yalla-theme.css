@@ -328,3 +328,123 @@ body[data-portal="yalla"] .rv-item-foot { border-top-color: rgba(255, 255, 255, 
 body[data-portal="yalla"] .rv-item.r5 { border-inline-start-color: var(--brand); }
 body[data-portal="yalla"] .rv-item.r3 { border-inline-start-color: #F5C15C; }
 body[data-portal="yalla"] .rv-item.r2, body[data-portal="yalla"] .rv-item.r1 { border-inline-start-color: #FF7A7A; }
+
+
+/* ------------------------------------------------------------- account
+   The chip in the topbar is a button on every screen size — the portal has
+   no More sheet to carry a sign-out, so this is the one way to it. The
+   sheet it opens is the ordinary modal, styled to the portal. */
+body[data-portal="yalla"] .yl-acct-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px 0 4px;
+  border: 1px solid rgba(255, 255, 255, .07); border-radius: 12px;
+  background: rgba(255, 255, 255, .05); color: var(--foreground);
+  font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; position: relative;
+  transition: background .18s, border-color .18s, transform .18s;
+}
+body[data-portal="yalla"] .yl-acct-btn:hover { background: rgba(255, 255, 255, .09); border-color: rgba(181, 220, 192, .35); }
+body[data-portal="yalla"] .yl-acct-btn:active { transform: scale(.97); }
+body[data-portal="yalla"] .yl-acct-btn .user-avatar { width: 28px; height: 28px; font-size: 11px; }
+body[data-portal="yalla"] .yl-acct-btn.needs-pw::after {
+  content: ''; position: absolute; top: -3px; inset-inline-end: -3px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #F5C15C; border: 2px solid #14122A;
+}
+[dir="rtl"] body[data-portal="yalla"] .yl-acct-btn { padding: 0 4px 0 12px; }
+
+body[data-portal="yalla"] .yl-acct { display: grid; gap: 14px; }
+body[data-portal="yalla"] .yl-acct-hero {
+  display: grid; justify-items: center; text-align: center; gap: 4px; padding: 8px 0 4px;
+}
+body[data-portal="yalla"] .yl-acct-avatar {
+  width: 64px; height: 64px; border-radius: 22px; display: grid; place-items: center;
+  background: var(--mint-grad); color: var(--brand-foreground);
+  font-size: 22px; font-weight: 900; letter-spacing: .02em; margin-bottom: 6px;
+  box-shadow: 0 10px 30px rgba(181, 220, 192, .28), 0 0 0 6px rgba(181, 220, 192, .10);
+}
+body[data-portal="yalla"] .yl-acct-hero b { font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
+body[data-portal="yalla"] .yl-acct-role { font-size: 12px; color: var(--dim); }
+body[data-portal="yalla"] .yl-acct-user {
+  font-size: 11px; font-weight: 700; color: var(--brand);
+  background: rgba(181, 220, 192, .10); border-radius: 999px; padding: 3px 9px; margin-top: 4px;
+}
+body[data-portal="yalla"] .yl-acct-warn {
+  padding: 9px 11px; border-radius: 12px; font-size: 12px; font-weight: 600; line-height: 1.4;
+  background: rgba(245, 193, 92, .12); color: #F5C15C;
+}
+body[data-portal="yalla"] .yl-acct-status {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: 12px; font-size: 12px; color: var(--dim);
+  background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .06);
+}
+body[data-portal="yalla"] .yas-dot { width: 8px; height: 8px; border-radius: 50%; background: #6B6892; flex: none; }
+body[data-portal="yalla"] .yas-dot.on { background: #4ADE80; box-shadow: 0 0 0 4px rgba(74, 222, 128, .18); }
+body[data-portal="yalla"] .yas-unread { margin-inline-start: auto; color: var(--foreground); }
+body[data-portal="yalla"] .yas-unread b { color: var(--brand); }
+
+body[data-portal="yalla"] .yl-acct-actions { display: grid; gap: 8px; }
+body[data-portal="yalla"] .yl-acct-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, .07); border-radius: 14px;
+  background: rgba(255, 255, 255, .04); color: var(--foreground);
+  font: inherit; text-align: start; cursor: pointer;
+  transition: background .18s, border-color .18s, transform .18s;
+}
+body[data-portal="yalla"] .yl-acct-item:hover { background: rgba(255, 255, 255, .08); border-color: rgba(181, 220, 192, .35); }
+body[data-portal="yalla"] .yl-acct-item:active { transform: scale(.985); }
+body[data-portal="yalla"] .yai-ico {
+  width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex: none;
+  background: rgba(181, 220, 192, .12); color: var(--brand);
+}
+body[data-portal="yalla"] .yai-ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; }
+body[data-portal="yalla"] .yai-txt { display: grid; gap: 2px; min-width: 0; flex: 1; }
+body[data-portal="yalla"] .yai-txt b { font-size: 13.5px; font-weight: 800; }
+body[data-portal="yalla"] .yai-txt small { font-size: 11px; color: var(--dim); line-height: 1.35; }
+body[data-portal="yalla"] .yai-go { color: var(--dim); font-size: 20px; line-height: 1; }
+[dir="rtl"] body[data-portal="yalla"] .yai-go { transform: scaleX(-1); }
+body[data-portal="yalla"] .yl-acct-item.danger .yai-ico { background: rgba(255, 122, 122, .12); color: #FF7A7A; }
+body[data-portal="yalla"] .yl-acct-item.danger:hover { border-color: rgba(255, 122, 122, .4); }
+body[data-portal="yalla"] .yl-acct-item.danger.armed {
+  background: rgba(255, 122, 122, .14); border-color: #FF7A7A; color: #FFD3D3;
+  animation: ylArm .4s ease-out;
+}
+body[data-portal="yalla"] .yl-acct-item.danger.armed .yai-ico { background: #FF7A7A; color: #2A0F0F; }
+@keyframes ylArm { from { transform: scale(.97); } to { transform: none; } }
+
+/* the password form */
+body[data-portal="yalla"] .yl-pw { gap: 12px; }
+body[data-portal="yalla"] .yl-pw-wrap { position: relative; display: block; }
+body[data-portal="yalla"] .yl-pw-wrap .inp { width: 100%; padding-inline-end: 44px; font-size: 15px; letter-spacing: .04em; }
+body[data-portal="yalla"] .yl-pw-eye {
+  position: absolute; top: 50%; inset-inline-end: 6px; transform: translateY(-50%);
+  width: 34px; height: 34px; border: 0; border-radius: 10px; background: none; color: var(--dim); cursor: pointer;
+  display: grid; place-items: center;
+}
+body[data-portal="yalla"] .yl-pw-eye svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+body[data-portal="yalla"] .yl-pw-eye:hover, body[data-portal="yalla"] .yl-pw-eye.on { color: var(--brand); background: rgba(181, 220, 192, .10); }
+body[data-portal="yalla"] .yl-pw-strength { display: grid; gap: 6px; margin-top: -4px; }
+body[data-portal="yalla"] .yl-pw-meter { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+body[data-portal="yalla"] .yl-pw-meter i { height: 5px; border-radius: 999px; background: rgba(255, 255, 255, .08); transition: background .25s; }
+body[data-portal="yalla"] .yl-pw-meter.s1 i:nth-child(-n+1) { background: #FF7A7A; }
+body[data-portal="yalla"] .yl-pw-meter.s2 i:nth-child(-n+2) { background: #F5C15C; }
+body[data-portal="yalla"] .yl-pw-meter.s3 i:nth-child(-n+3) { background: #B5DCC0; }
+body[data-portal="yalla"] .yl-pw-meter.s4 i { background: #4ADE80; }
+body[data-portal="yalla"] .yl-pw-line { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; font-weight: 700; }
+body[data-portal="yalla"] .yl-pw-line .muted { font-weight: 500; color: var(--dim); }
+body[data-portal="yalla"] .yl-pw-match { font-size: 12px; font-weight: 700; min-height: 0; margin-top: -6px; }
+body[data-portal="yalla"] .yl-pw-match:empty { display: none; }
+body[data-portal="yalla"] .yl-pw-match.ok { color: #4ADE80; }
+body[data-portal="yalla"] .yl-pw-match.bad { color: #F5C15C; }
+
+@media (max-width: 720px) {
+  body[data-portal="yalla"] .yl-acct-btn { padding: 0 4px; gap: 0; }
+  body[data-portal="yalla"] .yl-acct-btn .yab-name { display: none; }
+  body[data-portal="yalla"] .yl-acct-item { min-height: 62px; }
+}
+
+/* A sheet is modal, so it rises ABOVE the floating tab bar (z 340): the
+   account sheet's Sign out and the password form's Save button were sitting
+   behind the bar, exactly where the thumb goes. The bar under a sheet must
+   not be tappable anyway. */
+@media (max-width: 720px) {
+  body[data-portal="yalla"] .modal-backdrop { z-index: 360; }
+}

@@ -238,7 +238,13 @@ function renderSidebar() {
      is decided by its role at login, and nothing in either shell flips it.
      What OG needs to know about a job — the thread, the stage, the invoice
      — is on the Print screen, on OG's own side. */
-  html += '</nav><div class="sidebar-foot">' + t('live') + ' · <b>v1.0</b></div>';
+  /* The foot used to read "Live demo data · v1.0" — a line written for the
+     seeded demo that outlived it, on a till holding real money. It now carries
+     the product's own mark: the shop's name is at the top of the rail, the
+     system's is at the bottom. */
+  html += '</nav><div class="sidebar-foot">' +
+    '<span class="sf-mark"><img src="assets/logo.svg" alt=""></span>' +
+    '<span class="sf-txt"><b>' + t('live') + '</b><small>v1.0</small></span></div>';
   document.getElementById('sidebar').innerHTML = html;
   /* The sliding indicator is positioned from the active item's own offset, so
      it has to be placed after the nav exists in the DOM. */
@@ -343,7 +349,7 @@ function renderTopbar() {
   document.getElementById('topbar').innerHTML =
     '<div class="search">' +
       '<svg viewBox="0 0 24 24" stroke-linecap="square"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
-      '<input id="globalSearch" type="text" placeholder="' + t('search_ph') + '" autocomplete="off">' +
+      '<input id="globalSearch" type="text" placeholder="' + t('search_top') + '" autocomplete="off">' +
       '<div id="searchResults"></div>' +
     '</div>' +
     '<div class="spacer"></div>' +

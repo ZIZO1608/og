@@ -145,12 +145,12 @@ if (!envFileExists()) {
   hint('Fill SUPABASE_URL and the secret key, then: npm run supabase:check');
 } else {
   const every = maybe('OG_SYNC_MINUTES');
-  const mins = (every === null || String(every).trim() === '') ? 10 : Number(every);
+  const mins = (every === null || String(every).trim() === '') ? 60 : Number(every);
   if (mins === 0) {
     ok(`Supabase configured — automatic mirroring is OFF (OG_SYNC_MINUTES=0).`);
     hint('Push by hand any time with:  npm run supabase:sync');
   } else {
-    ok(`Supabase configured — the mirror runs every ${mins} min once the server is up.`);
+    ok(`Supabase configured — every change is mirrored within seconds once the server is up (full pass every ${mins} min).`);
   }
   hint('Check it properly with:  npm run supabase:check');
 }
@@ -184,6 +184,7 @@ const busy = await new Promise((done) => {
 
    Asking /api/health is what separates them. Our server answers it with
    {ok:true}; a stray process on the same port does not. */
+let health = null;
 async function ourServerIsAnswering() {
   try {
     const ctl = new AbortController();
@@ -192,7 +193,10 @@ async function ourServerIsAnswering() {
     clearTimeout(bail);
     if (!res.ok) return false;
     const body = await res.json();
-    return body && body.ok === true;
+    /* Kept, so the hint below can name the address the running server is
+       actually serving rather than assuming plain http. */
+    if (body && body.ok === true) { health = body; return true; }
+    return false;
   } catch {
     /* Unreachable, timed out, or not JSON — whatever is on that port, it is
        not this server answering normally. Treat it as the fatal case. */
@@ -204,7 +208,14 @@ if (busy) {
   console.log('');
   if (await ourServerIsAnswering()) {
     ok('The shop is already open — the server is running in another window.');
-    hint(`Open it at:  http://localhost:${PORT}`);
+    /* The secure address when the running server has one. Saying http here
+       sent people to the address that then redirected them — and, before
+       the certificate was trusted, onto a warning page they read as an
+       error. */
+    const httpsPort = Number(process.env.OG_HTTPS_PORT || 8443);
+    hint(health && health.https
+      ? `Open it at:  https://localhost:${httpsPort}`
+      : `Open it at:  http://localhost:${PORT}`);
     hint('Nothing is wrong, and nothing needs restarting.');
     hint('To restart it anyway, close that other window first.');
     console.log('');

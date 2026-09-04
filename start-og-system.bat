@@ -48,42 +48,59 @@ REM  An empty users table used to show up only as "Wrong username or
 REM  password" on every attempt, which reads as a broken login rather than
 REM  an empty table. That afternoon is what this saves.
 node scripts\preflight.js
+set PRE=%errorlevel%
 
-REM  IMPORTANT: `if errorlevel N` means "N or more", so these must be tested
-REM  highest first. Written the other way round, exit 3 would match the
-REM  errorlevel 2 branch and the "already open" case would be reported as a
-REM  failure - which is the exact bug this replaced.
-
-REM  Exit 3: the port is held by THIS server, already running and already
-REM  serving the shop. That is not a failure, it is a double-click. Open the
-REM  app rather than telling somebody their shop is down when it is not.
-if errorlevel 3 (
-  echo.
-  echo   The shop is already open. Opening it in your browser...
-  echo.
-  REM  The secure address when a certificate has been made (npm run cert),
-  REM  because that is the one the browser lets have notifications and the
-  REM  camera. Plain HTTP redirects there anyway, but opening it directly
-  REM  saves a hop.
-  if exist "data\certs\og-cert.pem" (
-    start "" "https://localhost:8443"
-  ) else (
-    start "" "http://localhost:8090"
-  )
-  timeout /t 3 >nul
-  exit /b 0
-)
+REM  The exit code is kept in PRE because the certificate step below runs
+REM  node too, and `if errorlevel` would then be reading the wrong result.
+REM  Meanings: 3 = already open (a double-click), 2 = cannot start, 0 = go.
 
 REM  Exit 2: something ELSE holds the port and the server genuinely cannot
 REM  start. Node answers that with a stack trace that never names the window
 REM  you need to close, so stop here with the message preflight just printed
 REM  rather than letting it throw.
-if errorlevel 2 (
+if %PRE% EQU 2 (
   echo.
   echo   Not starting - see above.
   echo.
   pause
   exit /b 1
+)
+
+REM ===========================================================================
+REM  THE CERTIFICATE. `npm run cert` made one, and the browser is sent to the
+REM  secure address because that is the one that gets notifications, the
+REM  camera scanner and "install app". But Windows did not TRUST it, so the
+REM  first thing on screen every morning was a full-page red "Your connection
+REM  is not private" - read, every time, as the shop being broken.
+REM
+REM  The check is free and silent. Only when the certificate is not yet in
+REM  Windows' trusted list does it ask for administrator, once, and after
+REM  that the secure address opens with a padlock and nothing in between.
+REM  If there is no certificate at all it says so and carries on over http.
+REM  Refusing the prompt is fine too: the shop still opens, and the browser
+REM  shows its warning once - "Advanced", then "Proceed".
+REM ===========================================================================
+if exist "data\certs\og-cert.pem" (
+  node scripts\trust-cert.js --check
+  if errorlevel 4 (
+    echo.
+    node scripts\trust-cert.js
+  )
+)
+
+REM  Exit 3: the port is held by THIS server, already running and already
+REM  serving the shop. That is not a failure, it is a double-click. Open the
+REM  app rather than telling somebody their shop is down when it is not.
+REM  open-when-ready asks the running server which address it is actually
+REM  serving - https when the certificate is in use, http otherwise - rather
+REM  than guessing from a file on disk.
+if %PRE% GEQ 3 (
+  echo.
+  echo   The shop is already open. Opening it in your browser...
+  echo.
+  node scripts\open-when-ready.js
+  timeout /t 3 >nul
+  exit /b 0
 )
 
 REM ===========================================================================
@@ -131,6 +148,14 @@ if errorlevel 1 (
   echo   Press a key to carry on, or wait.
   timeout /t 15
 )
+
+REM  The browser opens ITSELF once the server answers. `node index.js` below
+REM  holds this window for as long as the shop is open, so nothing written
+REM  after it would ever run - and opening the browser before it would land
+REM  on "can't be reached". open-when-ready.js runs beside the server, waits
+REM  for /api/health, opens the secure address if that is what came up, and
+REM  quietly gives up after a minute if the server never did.
+start "" /b node scripts\open-when-ready.js
 
 REM  The server serves the app and the API, and - when server\.env has
 REM  Supabase credentials - pushes the mirror on a timer while it runs. See

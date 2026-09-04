@@ -93,10 +93,19 @@ export function list(user, { limit = MAX_ROWS } = {}) {
      on the last success, so reading it once does not hide the next outage. */
   if (can('config.write')) {
     const s = Sync.status();
-    if (s.configured && s.failures >= 3) {
+    /* Time, not a count of failures: the mirror now retries every few
+       seconds, so "three in a row" would fire thirty seconds into a bad
+       connection. What matters is rows sitting on this machine and nowhere
+       else for a quarter of an hour — or a mirror that refuses this machine
+       outright, which no amount of waiting fixes. */
+    const STALE_MS = 15 * 60 * 1000;
+    const stale = !s.lastOkAt || (Date.now() - new Date(s.lastOkAt).getTime()) > STALE_MS;
+    const stuck = s.mode === 'refused' || (s.behind > 0 && stale && s.failures > 0);
+    if (s.configured && s.mode !== 'off' && stuck) {
       out.push({
-        key: 'mirror:' + (s.lastOkAt || 'boot'), kind: 'mirror',
-        args: { n: s.failures, err: s.lastError ? String(s.lastError).slice(0, 140) : null },
+        key: 'mirror:' + (s.mode === 'refused' ? 'refused' : (s.lastOkAt || 'boot')), kind: 'mirror',
+        args: { n: s.failures, behind: s.behind || 0,
+                err: s.lastError ? String(s.lastError).slice(0, 140) : null },
         icon: '!', tone: 'red', view: 'settings'
       });
     }

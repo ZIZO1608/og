@@ -15,7 +15,7 @@ var I18N = {
     nav_dashboard: 'Dashboard', nav_pos: 'Point of Sale', nav_products: 'Products',
     nav_warehouse: 'Warehouse', nav_customers: 'Customers', nav_print: 'Print Jobs',
     nav_reports: 'Reports', nav_settings: 'Settings',
-    tagline: 'Sneakers & Streetwear', live: 'Live demo data',
+    tagline: 'Sneakers & Streetwear', live: 'OG System', search_top: 'Search the shop…', search_products: 'Search products…', search_customers: 'Search customers…',
 
     search_ph: 'Search products, customers, invoices…', admin: 'Admin',
     notifications: 'Notifications', view_all: 'View all', no_results: 'Nothing matched that search',
@@ -690,7 +690,7 @@ var I18N = {
     nav_dashboard: 'لوحة التحكم', nav_pos: 'نقطة البيع', nav_products: 'المنتجات',
     nav_warehouse: 'المستودع', nav_customers: 'الزبائن', nav_print: 'أعمال الطباعة',
     nav_reports: 'التقارير', nav_settings: 'الإعدادات',
-    tagline: 'أحذية وملابس ستريت وير', live: 'بيانات العرض التجريبي',
+    tagline: 'أحذية وملابس ستريت وير', live: 'نظام OG', search_top: 'ابحث في المحل…', search_products: 'ابحث عن منتج…', search_customers: 'ابحث عن زبون…',
 
     search_ph: 'ابحث عن منتج أو زبون أو فاتورة…', admin: 'المدير',
     notifications: 'التنبيهات', view_all: 'عرض الكل', no_results: 'لا توجد نتائج مطابقة',

@@ -75,6 +75,7 @@ function afterSettings() {
   loadRoleMatrix();
   loadStaffPresence();
   if (typeof YALLA !== 'undefined' && YALLA.telegramLoad) YALLA.telegramLoad('tgHost', 'tgMeta');
+  if (typeof MirrorUI !== 'undefined') MirrorUI.load();
 
   /* The shelf-assignment list — the same control the map's panel has,
      hitting the same route. Fetched here because the map's data is live
@@ -239,6 +240,16 @@ function render() {
   document.body.setAttribute('data-view', partner ? 'yalla' : OG.view);
   if (partner) document.body.setAttribute('data-portal', 'yalla');
   else document.body.removeAttribute('data-portal');
+
+  /* The tab says where you are. Every tab used to read "OG System — Retail
+     Operations", so a till with the POS and the Reports open side by side
+     showed two identical tabs. The screen first, then the shop, so the part
+     that differs is the part a narrow tab keeps. */
+  try {
+    var nav = partner ? null : NAV.filter(function (n) { return n.id === OG.view; })[0];
+    document.title = (partner ? 'Yalla Wear' : (nav ? t(nav.key) : 'OG System')) +
+      ' · ' + (typeof CONFIG !== 'undefined' && CONFIG.SHOP_NAME ? CONFIG.SHOP_NAME : 'OG System');
+  } catch (e) {}
 
   host.className = 'view' + (entering ? '' : ' fade-in') +
                    (!partner && OG.view === 'pos' ? ' pos-view' : '');

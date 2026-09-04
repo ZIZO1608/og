@@ -81,15 +81,30 @@ function headers(extra = {}) {
    thrown Error carrying what PostgREST actually said. The default fetch
    failure message ("fetch failed") names neither the table nor the reason,
    which turns a five-second fix into a twenty-minute hunt. */
+/* EVERY REQUEST HAS A DEADLINE. A connection that is accepted and then goes
+   quiet — a proxy that drops the shop's line, a phone hotspot that fades —
+   would otherwise hold a run open for ever, and the sync worker's "never
+   overlap yourself" rule then means the mirror never moves again with no
+   line in any log. Thirty seconds is generous for a batch of five hundred
+   rows and short enough that the next push is minutes away, not never. */
+const TIMEOUT_MS = 30 * 1000;
+
 async function call(path, opts = {}) {
   const { base } = config();
   const url = `${base}/rest/v1/${path}`;
 
   let res;
   try {
-    res = await fetch(url, { ...opts, headers: headers(opts.headers) });
+    res = await fetch(url, {
+      ...opts,
+      headers: headers(opts.headers),
+      signal: opts.signal || AbortSignal.timeout(opts.timeoutMs || TIMEOUT_MS)
+    });
   } catch (err) {
-    throw new Error(`Cannot reach Supabase at ${base} — ${err.message}`);
+    const timedOut = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    throw new Error(`Cannot reach Supabase at ${base} — ` +
+                    (timedOut ? `no answer within ${Math.round((opts.timeoutMs || TIMEOUT_MS) / 1000)} s`
+                              : (err.cause && err.cause.message) || err.message));
   }
 
   const text = await res.text();
@@ -174,8 +189,12 @@ export async function count(table) {
 
 /* ------------------------------------------------------------------ writes */
 
+/* return=minimal by default: the mirror never reads a pushed row back, and
+   with representation every upsert dragged the whole batch down the wire
+   again — 155 permission rows returned for nothing, on every run. Pass
+   { returning: true } to get the rows. */
 export async function insert(table, rows, opts = {}) {
-  const prefer = ['return=representation'];
+  const prefer = [opts.returning ? 'return=representation' : 'return=minimal'];
   if (opts.upsert) prefer.push('resolution=merge-duplicates');
 
   const { body } = await call(table, {

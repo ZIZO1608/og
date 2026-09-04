@@ -90,7 +90,7 @@ function viewProducts() {
     '</div></div>';
 
   h += '<div class="filters">' +
-    '<input class="inp grow" type="text" placeholder="' + t('search_ph') + '" value="' + esc(OG.prod.q) + '" data-change="prod-q">' +
+    '<input class="inp grow" type="text" placeholder="' + t('search_products') + '" value="' + esc(OG.prod.q) + '" data-change="prod-q">' +
     '<select class="inp" data-change="prod-type"><option value="">' + t('all_types') + '</option>';
   types.forEach(function (ty) {
     h += '<option value="' + ty + '"' + (OG.prod.type === ty ? ' selected' : '') + '>' + DB.typeLabels[ty] + '</option>';
@@ -142,8 +142,8 @@ function viewProducts() {
        see cost UNDER the heading "price", which is worse than showing it. */
     var cell = {
       name: '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
-        '<small>' + esc(r.p.brand) + ' · ' + esc(r.p.colorway) +
-        (gaps.length ? ' · <span style="color:var(--destructive);font-weight:600">' + t('size') + ' ' + gaps.join('/') + ' = 0</span>' : '') +
+        '<small>' + dots(esc(r.p.brand), esc(r.p.colorway),
+          (gaps.length ? '<span style="color:var(--destructive);font-weight:600">' + t('size') + ' ' + gaps.join('/') + ' = 0</span>' : '')) +
         '</small></span></div></td>',
       type: '<td><span class="badge neutral">' + DB.typeLabels[r.type] + '</span></td>',
       qty: '<td class="num"><b>' + nf(r.qty) + '</b> <span class="muted small">' + t('pieces') + '</span></td>',
@@ -167,8 +167,15 @@ function viewProducts() {
          never needed either: the dispatcher resolves e.target.closest('[data-act]'),
          which finds THIS button, not the open-product row around it. Same bug
          and same fix as the POS cart's Clear button. */
-      h += '<td><button class="btn btn-sm btn-ghost" ' +
-        'data-act="quick-label" data-id="' + r.p.id + '">' + t('print_labels') + '</button></td>';
+      /* An icon, not the words. "Print barcode labels" as text was the widest
+         thing in a nine-column table and pushed itself off the right edge on
+         a 1440 screen — the one button the shop uses most, hidden behind a
+         scrollbar. The label survives as the title and the accessible name. */
+      h += '<td class="td-act"><button class="btn btn-sm btn-ghost btn-icon" ' +
+        'data-act="quick-label" data-id="' + r.p.id + '" ' +
+        'title="' + esc(t('print_labels')) + '" aria-label="' + esc(t('print_labels')) + '">' +
+        '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
+          '<path d="M4 5v14M8 5v14M11 5v9M14 5v14M17 5v9M20 5v14"/></svg></button></td>';
     }
     h += '</tr>';
   });

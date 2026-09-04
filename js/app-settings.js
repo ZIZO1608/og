@@ -795,6 +795,138 @@ function remindersCard() {
    group. The card itself is drawn by YALLA.telegramCard, because the partner
    portal shows the very same card for their bot; only the words differ. The
    body loads in afterSettings, like the roles grid — a shut fold still binds. */
+/* ---- the Supabase mirror -------------------------------------------------
+   Where the copy of the shop is up to. The server pushes every change a
+   couple of seconds after it lands and reports itself on the live channel
+   after each push (pulse.js hands the payload to MirrorUI.paint), so the
+   fold is repainted without asking; a slow poll while Settings is open is
+   the backstop for a tab whose line is down. The same painter colours the
+   dot on the topbar's Sync button, so a stuck mirror is visible from every
+   screen without opening this one.
+
+   The sentences mix Arabic words with digits, so they sit in dir="auto" —
+   forcing LTR reorders the phrase, and forcing nothing lets a leading number
+   drift to the far end. */
+var MirrorUI = (function () {
+  var last = null;
+  var pollT = null;
+  var tickT = null;
+
+  function can() {
+    return typeof Auth !== 'undefined' && Auth.can('config.write') &&
+           typeof Shop !== 'undefined' && Shop.live();
+  }
+
+  function ago(iso) {
+    if (!iso) return null;
+    var s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+    if (s < 60) return t('mir_ago_s').replace('{n}', s);
+    if (s < 3600) return t('mir_ago_m').replace('{n}', Math.round(s / 60));
+    return t('mir_ago_h').replace('{n}', Math.round(s / 3600));
+  }
+
+  function until(iso) {
+    if (!iso) return 0;
+    return Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 1000));
+  }
+
+  /* One verdict for the head, the dot and the first line of the body. */
+  function verdict(s) {
+    if (!s || !s.configured) return { tone: 'off', text: t('mir_notconf') };
+    if (s.mode === 'off') return { tone: 'off', text: t('mir_off') };
+    if (s.mode === 'starting') return { tone: 'wait', text: t('mir_starting') };
+    if (s.mode === 'refused') {
+      return { tone: 'bad', text: t('mir_refused').replace('{host}', s.refusedBy || t('mir_nobody')) };
+    }
+    if (s.mode === 'offline') {
+      var w = until(s.nextRetryAt);
+      return { tone: 'bad', text: t('mir_offline').replace('{n}', w), why: s.lastError };
+    }
+    if (s.running) return { tone: 'wait', text: t('mir_pushing') };
+    if (s.lastError && s.failures > 0) {
+      return { tone: 'warn', text: t('mir_retry').replace('{n}', until(s.nextRetryAt)), why: s.lastError };
+    }
+    if (s.behind > 0) return { tone: 'warn', text: t('mir_waiting').replace('{n}', s.behind) };
+    var when = ago(s.lastPushAt || s.lastOkAt);
+    return { tone: 'ok', text: when ? t('mir_instep').replace('{ago}', when) : t('mir_instep_never') };
+  }
+
+  function paint(s) {
+    if (s) last = s;
+    s = last;
+    if (!s) return;
+    var v = verdict(s);
+
+    document.querySelectorAll('.sync-btn').forEach(function (b) {
+      b.setAttribute('data-mode', v.tone);
+      b.title = t('sync_now') + ' · ' + v.text;
+    });
+
+    var meta = document.getElementById('mirMeta');
+    if (meta) meta.innerHTML = '<span class="mir-dot ' + v.tone + '"></span><span dir="auto">' + esc(v.text) + '</span>';
+
+    var host = document.getElementById('mirHost');
+    if (!host) return;
+    var h = '<div class="mir-state ' + v.tone + '"><span class="mir-dot ' + v.tone + '"></span>' +
+      '<div><div class="mir-line"><span dir="auto">' + esc(v.text) + '</span></div>' +
+      (v.why ? '<div class="muted small mt-xs"><span dir="auto">' + esc(v.why) + '</span></div>' : '') +
+      '</div></div>';
+    h += '<div class="mir-facts">';
+    h += fact(t('mir_last_push'), s.lastPushAt ? ago(s.lastPushAt) : t('mir_never'));
+    h += fact(t('mir_behind'), s.behind === null || s.behind === undefined ? '—' : String(s.behind));
+    h += fact(t('mir_last_full'), s.lastFullAt
+      ? ago(s.lastFullAt) + (s.lastFullOk === false ? ' · ' + t('mir_full_skipped') : '')
+      : t('mir_never'));
+    h += fact(t('mir_full_every'), t('mir_minutes').replace('{n}', s.fullEveryMinutes));
+    h += '</div>';
+    h += '<div class="mt"><button class="btn btn-ghost btn-sm" data-act="sync-now">' + t('sync_now') + '</button> ' +
+         '<span class="muted small">' + t('mir_how') + '</span></div>';
+    host.innerHTML = h;
+  }
+
+  function fact(label, value) {
+    return '<div class="mir-fact"><div class="muted small">' + label + '</div>' +
+           '<div><span dir="auto">' + esc(value) + '</span></div></div>';
+  }
+
+  function load() {
+    var host = document.getElementById('mirHost');
+    stop();
+    if (!host) return;
+    if (!can()) { host.innerHTML = '<div class="muted">' + t('mir_notconf') + '</div>'; return; }
+    fetchNow();
+    /* The live channel does the real work; this only covers a tab whose
+       line is down, and the countdowns need a clock while the fold is open. */
+    pollT = setInterval(function () {
+      if (!document.getElementById('mirHost')) return stop();
+      fetchNow();
+    }, 15000);
+    tickT = setInterval(function () {
+      if (!document.getElementById('mirHost')) return stop();
+      paint();
+    }, 1000);
+  }
+
+  function fetchNow() {
+    API.get('/api/sync/status').then(function (r) { paint(r.status); }).catch(function () { /* the last known state stays */ });
+  }
+
+  function stop() {
+    if (pollT) { clearInterval(pollT); pollT = null; }
+    if (tickT) { clearInterval(tickT); tickT = null; }
+  }
+
+  return { paint: paint, load: load, stop: stop, fetchNow: fetchNow };
+})();
+
+function mirrorCard() {
+  var h = setFoldStart('mirror', t('mir_title'),
+    '<span id="mirMeta" class="muted">' + t('mir_loading') + '</span>');
+  h += '<div class="set-body"><div id="mirHost" class="mir-host">' + t('mir_loading') + '</div>' +
+    '<div class="muted small mt">' + t('mir_note') + '</div></div>';
+  return h + setFoldEnd();
+}
+
 function telegramCard() {
   var h = setFoldStart('telegram', t('tg_title'),
     '<span id="tgMeta" class="muted">' + t('tg_loading') + '</span>');
@@ -837,6 +969,7 @@ function viewSettings() {
   h += rolesCard();
 
   h += setSection(t('setg_system'));
+  if (allow('config.write')) h += mirrorCard();
   h += telegramCard();
   h += remindersCard();
   h += motionCard();

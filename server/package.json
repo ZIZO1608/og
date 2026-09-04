@@ -11,6 +11,8 @@
     "start": "node index.js",
     "preflight": "node scripts/preflight.js",
     "cert": "node scripts/make-cert.js",
+    "cert:trust": "node scripts/trust-cert.js",
+    "cert:untrust": "node scripts/trust-cert.js --remove",
     "hardware": "node scripts/hardware.js",
     "hardware:install": "node scripts/hardware.js --install",
     "dev": "node --watch index.js",

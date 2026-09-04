@@ -89,8 +89,36 @@
 }
 .nav-item.active .nav-badge { background: var(--brand-foreground); color: var(--brand); }
 
-.sidebar-foot { padding: 14px 22px 18px; border-top: 1px solid var(--sidebar-border); font-size: 11.5px; color: #52525B; }
-.sidebar-foot b { color: var(--brand); font-weight: 700; }
+/* The system's own mark at the foot of the rail. The shop's name is at the
+   top; this is who built the till. Kept quiet — dim text, a 22px mark — so it
+   reads as a maker's stamp rather than a second logo competing with the
+   first. */
+.sidebar-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 20px 16px; border-top: 1px solid var(--sidebar-border);
+  font-size: 11.5px; color: #52525B;
+}
+.sf-mark {
+  width: 24px; height: 24px; flex: none; border-radius: 6px; overflow: hidden;
+  background: #000; box-shadow: 0 0 0 1px var(--sidebar-border);
+  opacity: .85; transition: opacity var(--t), box-shadow var(--t);
+}
+.sf-mark img { width: 100%; height: 100%; display: block; }
+.sf-txt { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.sf-txt b { color: var(--muted-foreground); font-weight: 800; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.sf-txt small { font-size: 10.5px; color: var(--brand); font-weight: 700; }
+.sidebar-foot:hover .sf-mark { opacity: 1; box-shadow: 0 0 0 1px var(--brand-border); }
+
+/* A breath of lime behind the brand row — the only colour on an otherwise
+   pure-black rail, and faint enough that it registers as warmth rather than
+   as a shape. */
+.brand { position: relative; }
+.brand::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 140% at 0% 0%, var(--brand), transparent 60%); opacity: .07;
+}
+body.rtl .brand::before { background: radial-gradient(120% 140% at 100% 0%, var(--brand), transparent 60%); }
+.brand > * { position: relative; }
 
 /* ---- collapse to an icon rail -------------------------------------------
    The same shape the ≤900px breakpoint already produces, reached on purpose
@@ -140,6 +168,35 @@ body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-badge {
 .sync-btn.spinning svg { animation: syncSpin .9s linear infinite; transform-origin: 50% 50%; }
 @keyframes syncSpin { to { transform: rotate(360deg); } }
 
+/* The mirror's state, as a dot on the button's corner, painted by MirrorUI
+   from the live channel: a stuck mirror is visible from every screen
+   without opening Settings. Nothing is drawn while it is in step — a green
+   dot all day is a dot nobody looks at. */
+.sync-btn { position: relative; }
+.sync-btn[data-mode]::after {
+  content: ''; position: absolute; top: 5px; inset-inline-end: 5px;
+  width: 7px; height: 7px; border-radius: 50%; display: none;
+}
+.sync-btn[data-mode="warn"]::after { display: block; background: #f5b93e; }
+.sync-btn[data-mode="bad"]::after  { display: block; background: #ff5c5c; box-shadow: 0 0 0 3px rgba(255, 92, 92, .22); }
+.sync-btn[data-mode="wait"]::after { display: block; background: var(--dim); }
+
+/* ---- the Supabase mirror fold (Settings) --------------------------------- */
+.mir-host { min-height: 44px; }
+.mir-state { display: flex; align-items: flex-start; gap: 10px; }
+.mir-line { font-size: 13.5px; font-weight: 600; }
+.mir-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--dim); flex: 0 0 auto; margin-top: 4px; margin-inline-end: 6px;
+}
+.fold-meta .mir-dot { width: 8px; height: 8px; margin-top: 0; vertical-align: middle; }
+.mir-dot.ok   { background: #3ddc84; box-shadow: 0 0 0 3px rgba(61, 220, 132, .22); }
+.mir-dot.warn { background: #f5b93e; }
+.mir-dot.bad  { background: #ff5c5c; box-shadow: 0 0 0 3px rgba(255, 92, 92, .22); }
+.mir-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 16px; margin-top: 14px; }
+.mir-fact > div:last-child { font-size: 13.5px; }
+.mt-xs { margin-top: 4px; }
+
 /* Someone who has asked for less motion still needs to know it is working —
    they get a steady pulse instead of a spin. */
 @media (prefers-reduced-motion: reduce) {
@@ -170,8 +227,12 @@ body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-badge {
 .search input:focus { border-color: var(--brand); background: var(--muted); box-shadow: 0 0 0 3px rgb(198 255 0 / .12); }
 .search svg { position: absolute; inset-inline-start: 13px; top: 11px; width: 16px; height: 16px; stroke: var(--dim); fill: none; stroke-width: 2; }
 
+/* Wider than the box it hangs from. The box is squeezed to ~210px by the
+   controls beside it, and a result list that narrow wrapped "Puma Suede
+   Classic" onto two lines and split "9 pcs" in half. The phone block lets
+   it go back to the box's own width, where the box is the whole row. */
 .search-results {
-  position: absolute; top: 44px; inset-inline-start: 0; width: 100%;
+  position: absolute; top: 44px; inset-inline-start: 0; width: 100%; min-width: 400px;
   background: var(--popover); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow-lg);
   z-index: 60; max-height: 380px; overflow-y: auto; padding: 6px;
@@ -179,7 +240,10 @@ body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-badge {
 .sr-group { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); padding: 9px 10px 5px; }
 .sr-item { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; transition: background var(--t); }
 .sr-item:hover { background: var(--accent); }
-.sr-item small { color: var(--muted-foreground); margin-inline-start: auto; }
+.sr-item > span:not(.thumb):not(.cc-av) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-item > .thumb, .sr-item > .cc-av { flex: none; }
+.sr-item small { color: var(--muted-foreground); margin-inline-start: auto; white-space: nowrap; flex: none; }
+@media (max-width: 720px) { .search-results { min-width: 0; } }
 
 .spacer { flex: 1; }
 

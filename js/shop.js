@@ -233,6 +233,7 @@ var Shop = (function () {
     document.body.innerHTML =
       '<div class="boot-fail" dir="' + (ar ? 'rtl' : 'ltr') + '">' +
         '<div class="boot-fail-card">' +
+          '<div class="gate-mark"><img src="assets/logo.svg" alt="OG"></div>' +
           '<h1>' + (ar ? 'تعذّر تحميل بيانات المحل' : 'Could not load the shop') + '</h1>' +
           '<p class="boot-fail-why">' + esc(msg) + '</p>' +
           '<p>' + (ar

@@ -175,7 +175,7 @@ for (const { name, key } of TABLES) {
   catch { warn(`${name} — no such table locally, skipping`); continue; }
 
   let remote;
-  try { remote = await remoteAll(name); }
+  try { remote = await remoteAll(name, key); }
   catch (e) { warn(`${name} — could not read from Supabase (${e.message}), skipping`); continue; }
 
   const localKeys = new Set(local.map((r) => keyOf(r, key)));

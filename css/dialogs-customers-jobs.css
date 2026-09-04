@@ -24,6 +24,21 @@
   animation: pop .18s cubic-bezier(.4, 0, .2, 1) both;
 }
 @keyframes pop { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+/* The same lime hairline the sign-in card wears, along the top edge of every
+   dialog and drawer. It is the one brand cue a raised panel carries: a
+   dialog opened from a black page otherwise reads as a hole with a border.
+   No overflow:hidden here — a select list inside a dialog must still be
+   able to hang out past its edge. */
+.modal { position: relative; }
+.modal::before, .drawer::before {
+  content: ''; position: absolute; inset-inline: 24px; top: -1px; height: 1px; z-index: 1;
+  background: linear-gradient(90deg, transparent, var(--brand), transparent);
+  opacity: .45; pointer-events: none;
+}
+.drawer::before { top: 0; inset-inline: 0; }
+/* The drawer's line runs the full width because it has no rounded corners
+   for the fade to clear. Left at half strength so it does not read as a
+   top border. */
 .modal.wide { max-width: 940px; }
 .modal.narrow { max-width: 430px; }
 .modal-head { display: flex; align-items: center; gap: 12px; padding: 18px 20px 14px; }

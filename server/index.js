@@ -348,13 +348,21 @@ const CONFIG_WRITABLE = /^receipt\.|^customer\.|^loyalty\.|^shop\.(branch_name|p
    stop believing it. */
 router.add('POST /api/sync/push', requirePerm('config.write', async (ctx) => {
   const r = await SyncWorker.runNow();
-  if (r.ok) return sendOk(ctx.res, { seconds: r.seconds });
+  if (r.ok) return sendOk(ctx.res, { seconds: r.seconds, behind: r.behind, pushed: r.pushed });
 
   /* 409 for "already running" — the request was fine, the moment was not.
      503 for anything else, since the failure is the mirror being out of
      reach rather than the caller doing something wrong. */
   const status = r.reason === 'busy' ? 409 : 503;
   return sendError(ctx.res, status, r.reason, r.message);
+}));
+
+/* What the mirror is doing right now — mode, rows waiting, last push, the
+   reason it is stuck. The Settings fold draws it; the same object rides on
+   the live channel after every push so the fold repaints without polling.
+   config.write like the button: it names the machine the mirror belongs to. */
+router.add('GET /api/sync/status', requirePerm('config.write', (ctx) => {
+  return sendOk(ctx.res, { status: SyncWorker.status() });
 }));
 
 router.add('PUT /api/config', requirePerm('config.write', async (ctx) => {
@@ -1450,8 +1458,11 @@ function bump() {
 
 /* The live channel. One long GET per open tab; lib/live.js writes a one-line
    "change" event whenever bump() runs, and the browser refetches through the
-   ordinary gated routes. Which side a tab is on comes from the account. */
-router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs'], (ctx) => {
+   ordinary gated routes. Which side a tab is on comes from the account.
+   config.write too: the mirror's status rides on this channel, and a manager
+   who cannot see print jobs still owns the Settings fold that draws it. The
+   event carries no shop data either way. */
+router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write'], (ctx) => {
   Live.subscribe(ctx.res, side(ctx), ctx.user.id);
 }));
 
@@ -2353,9 +2364,9 @@ if (runDirectly) {
     }
 
     /* Started here rather than at import, so the mirror can only ever begin
-       once the till is actually listening. It runs the sync in a child
-       process and prints one line per run — see lib/sync-worker.js for why a
-       failed mirror must never be able to disturb a sale. */
+       once the till is actually listening. It pushes a couple of seconds
+       after every commit and prints one line per push — see
+       lib/sync-worker.js for why a failed mirror must never disturb a sale. */
     console.log('');
     SyncWorker.start();
 
