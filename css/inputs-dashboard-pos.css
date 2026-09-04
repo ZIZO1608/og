@@ -275,6 +275,12 @@ body.pos-resizing { cursor: col-resize; user-select: none; }
     radial-gradient(120% 90% at 8% 0%, rgb(255 255 255 / .18), transparent 55%),
     linear-gradient(160deg, transparent 40%, rgb(0 0 0 / .32) 100%);
 }
+/* The light comes from the reading edge, so it swaps sides with the text. */
+body.rtl .pcard-img::before {
+  background:
+    radial-gradient(120% 90% at 92% 0%, rgb(255 255 255 / .18), transparent 55%),
+    linear-gradient(200deg, transparent 40%, rgb(0 0 0 / .32) 100%);
+}
 .pcard-ini { position: relative; opacity: .92; text-shadow: 0 2px 10px rgb(0 0 0 / .35); transition: transform var(--d-3) var(--e-out); }
 .pcard:hover .pcard-ini { transform: scale(1.06); }
 /* The photo fills the tile; the fall of light stays on top of it so a white
