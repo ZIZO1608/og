@@ -277,20 +277,40 @@ var Shop = (function () {
     var msg = (typeof API !== 'undefined' && API.friendly)
       ? API.friendly(err) : (err && err.message) || '';
 
+    /* A 404 on a boot request is not a dead server, it is an OLD one: the
+       page on disk is newer than the process serving it, which happens every
+       time a change lands while the shop is open and the launcher's
+       "already open" branch simply opens the browser. "No such endpoint" sent
+       somebody to check the wifi; the fix is to restart the server. */
+    var stale = !!(err && err.code === 'not_found');
+    var title = stale
+      ? (ar ? 'خادم المحل يعمل بنسخة قديمة' : 'The shop server is out of date')
+      : (ar ? 'تعذّر تحميل بيانات المحل' : 'Could not load the shop');
+    var steps = stale
+      ? [ar ? 'أغلق نافذة الخادم السوداء (أو اضغط Ctrl+C فيها).' : 'Close the black server window (or press Ctrl+C in it).',
+         ar ? 'شغّل start-og-system.bat مرة أخرى.' : 'Double-click start-og-system.bat again.',
+         ar ? 'ثم أعد تحميل الصفحة.' : 'Then reload this page.']
+      : [ar ? 'تأكد أن خادم المحل يعمل.' : 'Check the shop server is running.',
+         ar ? 'تأكد من الواي فاي.' : 'Check the wifi.',
+         ar ? 'ثم أعد تحميل الصفحة.' : 'Then reload this page.'];
+    if (stale) {
+      msg = ar
+        ? 'الصفحة أحدث من الخادم الذي يقدّمها: طلبت شيئاً لا يعرفه.'
+        : 'The page is newer than the server serving it: it asked for something the server does not know.';
+    }
+
     document.body.innerHTML =
       '<div class="boot-fail" dir="' + (ar ? 'rtl' : 'ltr') + '">' +
         '<div class="boot-fail-card">' +
           '<div class="gate-mark"><img src="assets/logo.svg" alt="OG"></div>' +
-          '<h1>' + (ar ? 'تعذّر تحميل بيانات المحل' : 'Could not load the shop') + '</h1>' +
+          '<h1>' + title + '</h1>' +
           '<p class="boot-fail-why">' + esc(msg) + '</p>' +
           '<p>' + (ar
             ? 'التطبيق لن يعمل بدون الخادم. البيع الآن يعني بيعاً لا يُحفَظ في أي مكان.'
             : 'The app will not run without the server. Selling now would mean ' +
               'selling into nothing.') + '</p>' +
           '<ol>' +
-            '<li>' + (ar ? 'تأكد أن خادم المحل يعمل.' : 'Check the shop server is running.') + '</li>' +
-            '<li>' + (ar ? 'تأكد من الواي فاي.' : 'Check the wifi.') + '</li>' +
-            '<li>' + (ar ? 'ثم أعد تحميل الصفحة.' : 'Then reload this page.') + '</li>' +
+            steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') +
           '</ol>' +
           '<button class="btn btn-primary" onclick="location.reload()">' +
             (ar ? 'إعادة المحاولة' : 'Try again') + '</button>' +
