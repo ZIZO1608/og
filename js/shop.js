@@ -51,14 +51,26 @@ var Shop = (function () {
   }
 
   function want(perm, path, empty) {
-    return may(perm) ? soft(API.get(path), empty) : Promise.resolve(empty);
+    return may(perm) ? soft(API.get(path), empty) : Promise.resolve(notAsked(empty));
   }
 
   /* Any-of, for a route whose guard is a list. The dashboard unlocks on the
      first of four permissions the account holds; the partner holds none and
      is never asked for. */
   function wantAny(perms, path, empty) {
-    return perms.some(may) ? soft(API.get(path), empty) : Promise.resolve(empty);
+    return perms.some(may) ? soft(API.get(path), empty) : Promise.resolve(notAsked(empty));
+  }
+
+  /* An empty list the account was never allowed to ask for is not the same
+     as an empty list the server sent, and the loading screen must not say
+     "0 suppliers" to a cashier who simply may not see them. The mark is
+     non-enumerable, so hydrate and everything after it see the same plain
+     bundle they always did. */
+  function notAsked(empty) {
+    if (empty && typeof empty === 'object') {
+      try { Object.defineProperty(empty, 'notAsked', { value: true, enumerable: false }); } catch (e) {}
+    }
+    return empty;
   }
 
   /* The dashboard's window, as this machine's local day.
@@ -151,9 +163,20 @@ var Shop = (function () {
     labelTemplates: function () { return want('label.print', '/api/labels/templates', { templates: [] }); }
   };
 
-  function load() {
+  /* `onStep(name, value)` is called as EACH request resolves, in whatever
+     order the server answers — the loading screen docks a part of the system
+     per call, with the number it came back with. It is a courtesy to the
+     splash and nothing else: a throwing listener is swallowed, and a request
+     that fails still rejects the whole load exactly as before. */
+  function load(onStep) {
     var names = Object.keys(REQUESTS);
-    return Promise.all(names.map(function (n) { return REQUESTS[n](); })).then(function (list) {
+    return Promise.all(names.map(function (n) {
+      var p = REQUESTS[n]();
+      if (typeof onStep === 'function') {
+        p.then(function (v) { try { onStep(n, v); } catch (e) {} }, function () {});
+      }
+      return p;
+    })).then(function (list) {
       var r = {};
       names.forEach(function (n, i) { r[n] = list[i]; });
 
@@ -213,6 +236,19 @@ var Shop = (function () {
   /* Only 403 is swallowed. A timeout or a dead server must still reject, or a
      cashier on broken wifi gets an app that boots looking empty rather than
      one that says the server is unreachable. */
+  /* The names above, in order, for the loading screen to draw its chips
+     before any of them has answered. */
+  function steps() { return Object.keys(REQUESTS); }
+
+  /* The mirror's own word on itself — the last tick on the loading screen.
+     Only a manager may ask (`config.write`, the same gate as the Settings
+     fold); for everyone else it resolves to null and the chip docks quiet. */
+  function mirrorStatus() {
+    return want('config.write', '/api/sync/status', null).then(function (r) {
+      return r && r.status ? r.status : null;
+    });
+  }
+
   function soft(p, fallback) {
     return p.catch(function (err) {
       if (err && err.code === 'forbidden') return fallback;
@@ -340,6 +376,8 @@ var Shop = (function () {
 
   return {
     load: load,
+    steps: steps,
+    mirrorStatus: mirrorStatus,
     reload: reload,
     reloadDashboard: reloadDashboard,
     reloadReports: reloadReports,

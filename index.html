@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="css/yalla-scan.css">
 <link rel="stylesheet" href="css/yalla-invoice-tracker-labels.css">
 <link rel="stylesheet" href="css/bulk-gate-responsive.css">
+<link rel="stylesheet" href="css/splash.css">
 <link rel="stylesheet" href="css/print-hardware-receipt-newlabels.css">
 <link rel="stylesheet" href="css/yalla-theme.css">
 <!-- The OG skin. Last on purpose: it re-points tokens and overrides the
@@ -88,6 +89,9 @@
      come after it. Nothing it does runs at load time: app.js calls Shop.load()
      once, after sign-in, before the first paint. -->
 <script src="js/shop.js"></script>
+<!-- splash.js draws the loading screen the boot mounts; it needs Shop only
+     for the names of its requests, and talks to no server itself. -->
+<script src="js/splash.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/pos.js"></script>
 <script src="js/bulk.js"></script>

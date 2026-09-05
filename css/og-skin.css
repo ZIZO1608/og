@@ -270,8 +270,8 @@ body:not([data-portal="yalla"]) .gate-card button[type="submit"] { height: 46px;
 body:not([data-portal="yalla"]) .gate-card button[type="submit"]:hover { box-shadow: 0 12px 28px -12px rgb(198 255 0 / .6); }
 
 /* ------------------------------------------------------------ THE SPLASH */
-body:not([data-portal="yalla"]) .bs-mark { border-radius: 18px; }
-body:not([data-portal="yalla"]) .bs-word { font-weight: 700; letter-spacing: .2em; color: var(--dim); }
+body:not([data-portal="yalla"]) .sp-mark { border-radius: 22px; }
+body:not([data-portal="yalla"]) .sp-foot .sp-brand { font-weight: 700; letter-spacing: .2em; color: var(--dim); }
 
 /* ---------------------------------------------------------------- ARABIC */
 body.rtl:not([data-portal="yalla"]) .nav-label,
@@ -280,5 +280,5 @@ body.rtl:not([data-portal="yalla"]) .field > label,
 body.rtl:not([data-portal="yalla"]) .field > span,
 body.rtl:not([data-portal="yalla"]) .lbl,
 body.rtl:not([data-portal="yalla"]) .gate-field > span,
-body.rtl:not([data-portal="yalla"]) .bs-word,
+body.rtl:not([data-portal="yalla"]) .sp-foot .sp-brand,
 body.rtl:not([data-portal="yalla"]) table.tbl th { letter-spacing: 0; }

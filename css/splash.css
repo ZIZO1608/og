@@ -1,0 +1,182 @@
+/* ==========================================================================
+   OG SYSTEM — the loading screen  (js/splash.js)
+   --------------------------------------------------------------------------
+   The mark in the middle, a hairline orbit around it, and one chip per part
+   of the system waiting dimly outside the ring. A chip docks the moment its
+   request lands: it slides onto the orbit, lights up, and a lime dot marks
+   it as in. The arc around the mark is the count of what has landed. The
+   login gate sits above (z 900 over 800) and `html.gated` fades this so
+   nothing shows through the gate's glass.
+
+   Motion follows tokens.css: entering decelerates, leaving accelerates,
+   nothing overshoots. Lime is spent on the dock dot, the arc and the one
+   pulse at the end, and nowhere else.
+   ========================================================================== */
+
+.boot-splash {
+  position: fixed; inset: 0; z-index: 800; overflow: hidden;
+  background: var(--app); color: var(--foreground);
+  display: grid; place-items: center;
+}
+.boot-splash::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(52% 40% at 50% 46%, rgb(198 255 0 / .07), transparent 70%);
+}
+/* It comes back the instant the gate lifts and fades only on the way out:
+   a fade IN here is 260 ms of the shell — drawn underneath by a boot that
+   finished before the sequence did — showing through a half-there splash. */
+html.gated .boot-splash { opacity: 0; }
+.boot-splash.out { opacity: 0; pointer-events: none; transition: opacity var(--d-3) var(--e-in); }
+
+.sp-wrap {
+  position: relative; display: grid; justify-items: center; gap: 22px;
+  animation: gateIn .3s var(--e-out) both;
+}
+
+/* ---- the stage: orbit, sweep, mark -------------------------------------- */
+.sp-stage { position: relative; --sp-chip: 40px; }
+
+/* A faint radar sweep behind the chips while things are still arriving.
+   Masked to the band the chips sit in, so it never crosses the mark. */
+.sp-sweep {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0deg, transparent 300deg, rgb(198 255 0 / .07) 360deg);
+  -webkit-mask: radial-gradient(circle closest-side, transparent 44%, #000 50%, #000 96%, transparent 100%);
+          mask: radial-gradient(circle closest-side, transparent 44%, #000 50%, #000 96%, transparent 100%);
+  animation: spSweep 4.2s linear infinite;
+  transition: opacity .4s var(--e-in);
+}
+.boot-splash[dir="rtl"] .sp-sweep { animation-direction: reverse; }
+.sp-done .sp-sweep { opacity: 0; }
+@keyframes spSweep { to { transform: rotate(360deg); } }
+
+/* The orbit itself: a hairline the docked chips sit on. Its inset (and the
+   sweep's) is set by layout() in js/splash.js, from the orbit radius. */
+.sp-guide {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / .06); pointer-events: none;
+  transition: opacity .4s var(--e-in), transform .6s var(--e-in);
+}
+.sp-done .sp-guide { opacity: 0; transform: scale(.6); }
+
+.sp-center {
+  position: absolute; left: 50%; top: 50%; width: 128px; height: 128px;
+  transform: translate(-50%, -50%); display: grid; place-items: center;
+}
+.sp-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.boot-splash[dir="rtl"] .sp-ring { transform: scaleX(-1) rotate(-90deg); }
+.sp-track { fill: none; stroke: var(--border); stroke-width: 1.5; }
+.sp-arc {
+  fill: none; stroke: var(--brand); stroke-width: 2; stroke-linecap: round;
+  stroke-dasharray: 377 377; stroke-dashoffset: 377;
+  transition: stroke-dashoffset .5s var(--e-out);
+}
+
+.sp-mark {
+  position: relative; width: 88px; height: 88px; border-radius: 22px; overflow: hidden;
+  box-shadow: 0 0 0 1px var(--border), 0 22px 48px -14px rgb(0 0 0 / .8);
+  transition: transform .5s var(--e-out);
+}
+.sp-mark img { width: 100%; height: 100%; display: block; }
+/* The end: one lime pulse out of the mark, and a short lift of the artwork. */
+.sp-mark::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 0 rgb(198 255 0 / 0);
+}
+.sp-done .sp-mark { transform: scale(1.04); }
+.sp-done .sp-mark::after { animation: spMarkPing .9s var(--e-out) both; }
+.sp-done .sp-mark img { animation: spFlash .7s var(--e-std) both; }
+@keyframes spMarkPing {
+  0%   { box-shadow: 0 0 0 0 rgb(198 255 0 / .75); }
+  100% { box-shadow: 0 0 0 34px rgb(198 255 0 / 0); }
+}
+@keyframes spFlash { 0% { filter: brightness(1); } 30% { filter: brightness(1.7); } 100% { filter: brightness(1); } }
+
+/* ---- the chips ----------------------------------------------------------- */
+.sp-chip {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--sp-chip); height: var(--sp-chip);
+  margin: calc(var(--sp-chip) / -2) 0 0 calc(var(--sp-chip) / -2);
+  border-radius: 12px; background: var(--card); border: 1px solid var(--border);
+  display: grid; place-items: center; color: var(--dim);
+  opacity: 0; transform: translate(var(--x0), var(--y0)) scale(.7);
+  transition: transform .7s var(--e-out), opacity .5s var(--e-std),
+              color .3s var(--e-std), border-color .3s var(--e-std),
+              background-color .3s var(--e-std), box-shadow .3s var(--e-std);
+  will-change: transform, opacity;
+}
+.sp-chip svg {
+  width: 18px; height: 18px; fill: none; stroke: currentColor;
+  stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
+}
+/* Waiting: out in the halo, dim, breathing slowly with a stagger. */
+.sp-live .sp-chip { opacity: .3; transform: translate(var(--x1), var(--y1)) scale(.86); }
+.sp-live .sp-chip svg { animation: spBreathe 3.2s ease-in-out infinite; animation-delay: var(--dl); }
+@keyframes spBreathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* Docked: on the orbit, lit, with the dot. */
+.sp-live .sp-chip.on {
+  opacity: 1; transform: translate(var(--x), var(--y)) scale(1);
+  color: var(--foreground); border-color: var(--border-strong); background: #17171B;
+  box-shadow: 0 12px 28px -14px rgb(0 0 0 / .9);
+}
+.sp-live .sp-chip.on svg { animation: none; }
+.sp-chip.on::after {
+  content: ''; position: absolute; top: -3px; right: -3px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 2px var(--app);
+}
+.boot-splash[dir="rtl"] .sp-chip.on::after { right: auto; left: -3px; }
+.sp-chip.on::before {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  border: 1px solid var(--brand); animation: spPing .75s var(--e-out) both;
+}
+@keyframes spPing { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.7); } }
+/* Landed with nothing to count — a part this account does not use. In, but quiet. */
+.sp-live .sp-chip.on.sp-none { color: var(--muted-foreground); }
+.sp-chip.on.sp-none::after { background: var(--border-strong); }
+
+/* The end: everything pulls into the mark, in the order it arrived. */
+.sp-live.sp-done .sp-chip {
+  opacity: 0; transform: translate(0, 0) scale(.25);
+  transition-duration: .55s; transition-timing-function: var(--e-in);
+  transition-delay: var(--dd);
+}
+.sp-done .sp-chip::before { display: none; }
+
+/* ---- the words ----------------------------------------------------------- */
+.sp-cap { display: grid; justify-items: center; gap: 6px; min-height: 46px; text-align: center; padding: 0 16px; }
+.sp-cap-name {
+  font-family: var(--font-head); font-weight: 700; font-size: 13px;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--foreground);
+}
+.sp-cap-n { font-size: 12.5px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; min-height: 1.4em; }
+.sp-cap-n b { color: var(--brand); font-weight: 700; }
+.sp-cap-n .sp-dash { color: var(--dim); }
+/* Short, because docks come 95 ms apart and a longer fade would never reach
+   full opacity before the next restart — the caption was invisible. */
+.sp-swap { animation: spSwap .12s var(--e-out) both; }
+@keyframes spSwap { from { opacity: 0; transform: translateY(6px); } }
+
+.sp-foot {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--font-head); font-size: 11px; font-weight: 700;
+  letter-spacing: .22em; color: var(--dim);
+}
+.sp-sep { width: 1px; height: 10px; background: var(--border-strong); }
+.sp-count { letter-spacing: 0; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+
+.boot-splash[dir="rtl"] .sp-cap-name { letter-spacing: 0; text-transform: none; }
+
+/* ---- less motion --------------------------------------------------------- */
+/* No halo, no sweep, no pull-in: the chips sit on the orbit from the start
+   and simply light up as their data lands. */
+.sp-reduced .sp-sweep { display: none; }
+.sp-reduced .sp-chip,
+.sp-reduced .sp-live .sp-chip { transition: none; opacity: .3; transform: translate(var(--x), var(--y)) scale(1); }
+.sp-reduced .sp-live .sp-chip svg { animation: none; }
+.sp-reduced .sp-chip.on { opacity: 1; }
+.sp-reduced .sp-chip.on::before { animation: none; display: none; }
+.sp-reduced .sp-live.sp-done .sp-chip { opacity: 1; transform: translate(var(--x), var(--y)) scale(1); }
+.sp-reduced .sp-done .sp-mark::after, .sp-reduced .sp-done .sp-mark img { animation: none; }
+.sp-reduced .sp-guide, .sp-reduced .sp-done .sp-guide { opacity: 1; transform: none; }
+.sp-reduced .sp-wrap, .sp-reduced .sp-swap { animation: none; }

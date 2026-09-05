@@ -303,8 +303,10 @@ function boot() {
      nothing for an account that cannot read the print jobs. */
   if (typeof Pulse !== 'undefined') Pulse.start();
 
-  /* The shell is drawn; the splash has nothing left to cover. */
-  bootSplash(false);
+  /* The shell is drawn; the splash plays out what is still queued and
+     leaves. `hide` is the no-outro path, kept for anything that mounted
+     the screen without a Splash to take it down. */
+  if (typeof Splash !== 'undefined') Splash.done();
 }
 
 /* The login holds boot() back until someone is signed in, and the shop's data
@@ -317,43 +319,35 @@ function boot() {
 function start() {
   if (typeof Auth === 'undefined') return boot();
 
-  /* The mark, on black, while the server is asked. Between the page opening
-     and the first paint there are two round trips (is the cookie good, then
-     the whole shop) and on shop wifi that is long enough to look like a
-     dead tab. The login gate mounts OVER this and hides it; on sign-in the
-     gate fades and this shows through again while Shop.load runs. boot()
-     takes it down after the first render; Shop.fail replaces the body. */
-  bootSplash(true);
+  /* The loading screen (js/splash.js), on black, while the server is asked.
+     Between the page opening and the first paint there are two round trips
+     (is the cookie good, then the whole shop) and on shop wifi that is long
+     enough to look like a dead tab. The login gate mounts OVER this and
+     hides it; on sign-in the gate fades and this shows through again while
+     Shop.load runs, docking one part of the system per request that lands.
+     boot() takes it down after the first render; Shop.fail replaces the
+     body, which takes it with it. */
+  var splash = typeof Splash !== 'undefined';
+  if (splash) Splash.show(typeof Shop !== 'undefined' ? Shop.steps() : []);
 
   Auth.guard(function () {
     if (typeof Shop === 'undefined') return boot();
+    if (splash) Splash.begin();
     /* No fallback on failure — there is nothing to fall back TO now, which is
        the point. A till that boots anyway is a till that takes real money into
        memory nobody keeps. */
-    Shop.load().then(boot, Shop.fail);
+    Shop.load(splash ? Splash.step : null)
+      .then(function () {
+        /* The last tick: the cloud copy's own word on itself. Never allowed
+           to stop the shop opening — a mirror that will not answer is a
+           quiet chip, not a fail screen. */
+        if (!splash) return;
+        return Shop.mirrorStatus().then(
+          function (s) { Splash.step('mirror', s); },
+          function () { Splash.step('mirror', null); });
+      })
+      .then(boot, Shop.fail);
   });
-}
-
-function bootSplash(on) {
-  var el = document.getElementById('bootSplash');
-  if (!on) {
-    if (!el) return;
-    el.classList.add('out');
-    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
-    return;
-  }
-  if (el) return;
-  el = document.createElement('div');
-  el.id = 'bootSplash';
-  el.className = 'boot-splash';
-  el.setAttribute('aria-hidden', 'true');
-  el.innerHTML =
-    '<div class="bs-inner">' +
-      '<div class="bs-mark"><img src="assets/logo.svg" alt=""></div>' +
-      '<div class="bs-word">OG SYSTEM</div>' +
-      '<div class="bs-bar"><i></i></div>' +
-    '</div>';
-  document.body.appendChild(el);
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

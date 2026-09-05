@@ -341,6 +341,30 @@ Capped at `config.sale.max_discount_pct` (10). Enforced in `Sales.record` and mi
 the cashier is not made to look wrong in front of a customer. `discount.unlimited` lifts it. The server
 returns **403 `discount_too_big`** with the real ceiling in the message.
 
+### The loading screen
+
+`js/splash.js` + `css/splash.css`, mounted by `start()` in `js/app-boot.js` before the server is
+asked and taken down by `boot()` after the first render. The mark in the middle, a hairline orbit,
+and one chip per part of the system waiting in a dim halo outside it; a chip docks onto the orbit
+the moment its request lands, with the number it came back with ("Catalogue · 214 products"), and
+the arc around the mark is the count. At the end everything pulls into the mark and it pulses once.
+
+- **Progress is real, never a timer.** `Shop.load(onStep)` calls `onStep(name, value)` as each of
+  its requests resolves; `Splash.step` queues them and docks one every 95 ms so fifteen answers in
+  one frame still read as a sequence. `Shop.mirrorStatus()` is the last tick (the cloud copy's own
+  word on itself, `config.write` only). The floor is 1.5 s from `begin()`, zero under
+  `prefers-reduced-motion`, and a boot that never calls `done()` is taken down by a 30 s watchdog.
+- **A bundle the account may not ask for is marked `notAsked`** (non-enumerable, set by `want()` /
+  `wantAny()` in `js/shop.js`) and docks quiet with a dash. Without it a cashier was shown
+  "0 suppliers", which is a lie — the list exists, they may not see it.
+- **It snaps in and fades only on the way out.** A fade-in was 260 ms of the shell — drawn underneath
+  by a boot that finished before the sequence did — showing through a half-there splash.
+- **The stage box holds the halo, not the orbit**, or the waiting chips at the bottom sit on the
+  caption. RTL docks counter-clockwise, the arc is mirrored, the dot moves to the left.
+- Strings are `sp_*` in `I18N`; adding a request to `REQUESTS` means adding a row to `MODULES` in
+  `splash.js` (icon + how to read a number out of the answer) and its `sp_m_*` name, or the chip
+  docks with the boxes icon and its raw key.
+
 ## Gotchas that will bite you
 
 - **The service worker is cache-first with `ignoreSearch: true`.** After changing anything under `css/`,

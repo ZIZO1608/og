@@ -717,7 +717,33 @@ var I18N = {
     print_job: 'Print job', for_word: 'for', day_word: 'day',
     day_overdue: 'day overdue', days_overdue: 'days overdue',
     payment_overdue: 'payment overdue by', payment_due: 'payment due',
-    size_gap: 'Size gap', gap_only: 'Size gaps', pieces: 'pcs', all_new: 'all new'
+    size_gap: 'Size gap', gap_only: 'Size gaps', pieces: 'pcs', all_new: 'all new',
+
+    /* The loading screen (js/splash.js): one name per part of the system,
+       and the noun that follows the number it landed with. */
+    sp_loading: 'Loading the shop', sp_ready: 'Ready',
+    sp_m_config: 'Shop settings', sp_m_catalogue: 'Catalogue', sp_m_customers: 'Customers',
+    sp_m_sales: 'Sales', sp_m_movements: 'Stock', sp_m_partner: 'Print jobs',
+    sp_m_purchase: 'Purchase orders', sp_m_money: 'The drawer', sp_m_counts: 'Stock counts',
+    sp_m_suppliers: 'Suppliers', sp_m_employees: 'Staff', sp_m_alerts: 'Alerts',
+    sp_m_dashboard: 'Dashboard', sp_m_reports: 'Reports', sp_m_labelTemplates: 'Labels',
+    sp_m_mirror: 'Cloud copy',
+    sp_u_warehouse: 'warehouses', sp_u_warehouse_1: 'warehouse',
+    sp_u_product: 'products', sp_u_product_1: 'product',
+    sp_u_customer: 'customers', sp_u_customer_1: 'customer',
+    sp_u_invoice: 'invoices', sp_u_invoice_1: 'invoice',
+    sp_u_movement: 'stock movements', sp_u_movement_1: 'stock movement',
+    sp_u_job: 'jobs', sp_u_job_1: 'job',
+    sp_u_order: 'orders', sp_u_order_1: 'order',
+    sp_u_count: 'counts', sp_u_count_1: 'count',
+    sp_u_supplier: 'suppliers', sp_u_supplier_1: 'supplier',
+    sp_u_employee: 'people', sp_u_employee_1: 'person',
+    sp_u_alert: 'alerts', sp_u_alert_1: 'alert',
+    sp_u_template: 'templates', sp_u_template_1: 'template',
+    sp_u_row_waiting: 'rows waiting', sp_u_row_waiting_1: 'row waiting',
+    sp_shift_open: 'shift open', sp_shift_closed: 'no open shift',
+    sp_computed: 'computed', sp_mirror_ok: 'in step',
+    sp_mirror_off: 'not set up', sp_mirror_attention: 'needs attention'
   },
 
   ar: {
@@ -1399,7 +1425,32 @@ var I18N = {
     print_job: 'طلب طباعة', for_word: 'لـ', day_word: 'يوم',
     day_overdue: 'يوم تأخير', days_overdue: 'أيام تأخير',
     payment_overdue: 'الدفعة متأخرة', payment_due: 'دفعة مستحقة',
-    size_gap: 'فجوة قياس', gap_only: 'فجوات القياسات', pieces: 'قطعة', all_new: 'كلها جديدة'
+    size_gap: 'فجوة قياس', gap_only: 'فجوات القياسات', pieces: 'قطعة', all_new: 'كلها جديدة',
+
+    /* شاشة التحميل (js/splash.js) */
+    sp_loading: 'جارِ تحميل المحل', sp_ready: 'جاهز',
+    sp_m_config: 'إعدادات المحل', sp_m_catalogue: 'الكتالوج', sp_m_customers: 'العملاء',
+    sp_m_sales: 'المبيعات', sp_m_movements: 'المخزون', sp_m_partner: 'طلبات الطباعة',
+    sp_m_purchase: 'طلبات الشراء', sp_m_money: 'الصندوق', sp_m_counts: 'الجرد',
+    sp_m_suppliers: 'الموردون', sp_m_employees: 'الموظفون', sp_m_alerts: 'التنبيهات',
+    sp_m_dashboard: 'لوحة المتابعة', sp_m_reports: 'التقارير', sp_m_labelTemplates: 'الملصقات',
+    sp_m_mirror: 'النسخة السحابية',
+    sp_u_warehouse: 'مستودع', sp_u_warehouse_1: 'مستودع',
+    sp_u_product: 'منتج', sp_u_product_1: 'منتج',
+    sp_u_customer: 'عميل', sp_u_customer_1: 'عميل',
+    sp_u_invoice: 'فاتورة', sp_u_invoice_1: 'فاتورة',
+    sp_u_movement: 'حركة مخزون', sp_u_movement_1: 'حركة مخزون',
+    sp_u_job: 'طلب', sp_u_job_1: 'طلب',
+    sp_u_order: 'طلب شراء', sp_u_order_1: 'طلب شراء',
+    sp_u_count: 'جرد', sp_u_count_1: 'جرد',
+    sp_u_supplier: 'مورد', sp_u_supplier_1: 'مورد',
+    sp_u_employee: 'موظف', sp_u_employee_1: 'موظف',
+    sp_u_alert: 'تنبيه', sp_u_alert_1: 'تنبيه',
+    sp_u_template: 'قالب', sp_u_template_1: 'قالب',
+    sp_u_row_waiting: 'صف بانتظار الرفع', sp_u_row_waiting_1: 'صف بانتظار الرفع',
+    sp_shift_open: 'الوردية مفتوحة', sp_shift_closed: 'لا وردية مفتوحة',
+    sp_computed: 'محسوبة', sp_mirror_ok: 'متطابقة',
+    sp_mirror_off: 'غير مهيأة', sp_mirror_attention: 'تحتاج انتباهاً'
   }
 };
 
