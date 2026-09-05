@@ -55,47 +55,41 @@
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
 
-  /* Labels keep their millimetre sizes and gain crop marks; the studio
-     controls carry .no-print so only the sheet reaches paper. */
-  .label-sheet { display: flex; flex-wrap: wrap; gap: 3mm; }
-  .blabel { break-inside: avoid; border: .2mm dashed #999; border-radius: 0; }
-  .blabel .bl-bc svg, .blabel .bl-qr svg { shape-rendering: crispEdges; }
+  /* ---- product labels through this computer's dialog --------------------
+     The preview modal (js/labels.js) carries a hidden .lbl-print-sheet —
+     every sticker repeated by its quantity, the same server layout at the
+     same millimetres as the preview beside the qty boxes. On paper only the
+     sheet shows; the picker and the preview carry .no-print.
 
-  /* ---- thermal roll -----------------------------------------------------
-     A roll printer is not a small sheet printer. Each label IS a page: no
-     margin, no gap, no crop marks, one per page. The @page size itself is
-     injected at print time from the chosen dimensions, because @page cannot
-     read a CSS variable — see setRollPageSize() in js/app.js.
-
-     The dashed crop border has to go too: on a 50mm label it would print a
-     visible rectangle on every single sticker. */
-  body.roll-labels .label-sheet { display: block; gap: 0; }
-  body.roll-labels .blabel {
-    border: 0;
-    margin: 0;
-    page-break-after: always;
-    break-after: page;
-    /* The label fills its page exactly, so what the driver feeds is what
-       gets used. Any padding here shows up as drift down a long roll. */
-    box-sizing: border-box;
+     A roll printer is not a small sheet printer. With body.roll-labels each
+     sticker IS a page: no margin, no gap, no border, one per page, the
+     @page size injected at print time by setRollPageSize() because @page
+     cannot read a CSS variable. Without it (an A4 sticker sheet) they flow
+     with a gap and a faint cut line. */
+  .lbl-print-sheet { display: flex; flex-wrap: wrap; gap: 3mm; align-content: flex-start; }
+  .lbl-print-sheet .lbl-sticker {
+    box-shadow: none; border-radius: 0; border: .2mm dashed #999;
+    break-inside: avoid; page-break-inside: avoid; box-sizing: border-box;
   }
-  body.roll-labels .blabel:last-child { page-break-after: auto; break-after: auto; }
+  .lbl-print-sheet .lbl-sticker svg { shape-rendering: crispEdges; }
+  /* The preview's grey guide and the amber fallback note are for the screen. */
+  .lbl-print-sheet .lbl-fallback { display: none; }
+  body.roll-labels .lbl-print-sheet { display: block; gap: 0; }
+  body.roll-labels .lbl-print-sheet .lbl-sticker {
+    border: 0; margin: 0;
+    page-break-after: always; break-after: page;
+  }
+  body.roll-labels .lbl-print-sheet .lbl-sticker:last-child { page-break-after: auto; break-after: auto; }
 
   /* The calibration sheet: rulers that must measure what they claim. */
   .cal-sheet { display: block; }
   .cal-rule { background: #000 !important; }
 }
 
-/* Custom label size, in the millimetres the roll is actually sold in. */
-.lb-custom { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.lb-custom .inp { width: 88px; text-align: center; font-weight: 700; }
-.lb-custom .lb-x { color: var(--muted-foreground); font-weight: 700; }
-.lb-fit { margin-top: 10px; }
-
-/* A barcode whose bars fall under the print head's resolution. It still
-   renders — it just will not scan — so it is marked rather than hidden. */
-.blabel .bl-bc-tight { outline: .3mm dashed var(--destructive); outline-offset: .4mm; }
-@media print { .blabel .bl-bc-tight { outline: 0; } }
+/* On screen the print sheet is never shown — the preview with the qty boxes
+   is the thing to look at, and the sheet is the same stickers again. Scoped
+   to screen so it cannot outrank the print block above by source order. */
+@media screen { .lbl-print-sheet { display: none; } }
 
 /* ============================================================== HARDWARE
    The scanner test box and the scan sheet's action row.                    */
@@ -549,6 +543,14 @@
   border: 1px solid #D4D4D8; border-radius: 2px;
   box-shadow: 0 1px 4px rgb(0 0 0 / .3);
   flex: none;
+  /* Nothing draws past the edge of the sticker — on paper the printer would
+     lose it anyway, and on screen an overrun is a layout to fix, not a
+     wider label. */
+  overflow: hidden; box-sizing: border-box;
+  /* Every field is placed by a left offset the server computed; the sticker
+     is the same shape in Arabic. Arabic text fields carry dir="rtl" of
+     their own. */
+  direction: ltr;
 }
 .lbl-sticker * { color: #000000 !important; }
 .lbl-logo { position: absolute; object-fit: contain; filter: grayscale(1) contrast(1000%); }
@@ -557,8 +559,11 @@
   font-family: "Helvetica Neue", Arial, sans-serif; overflow: hidden;
 }
 .lbl-variant { position: absolute; font-weight: 800; font-size: 10pt; font-family: var(--font-head), Arial, sans-serif; }
-.lbl-barcode { position: absolute; text-align: center; }
-.lbl-barcode svg { width: 100%; height: 100%; }
+/* The box is the bars alone, at the printer's own bar width (js/labels.js
+   draws the SVG to it); the quiet zones are pulled out into the margin by
+   .lbl-bars, so nothing here may scale or clip the drawing. */
+.lbl-barcode { position: absolute; overflow: visible; line-height: 0; }
+.lbl-barcode .lbl-bars svg { display: block; }
 .lbl-fallback {
   display: block; font-size: 6pt; color: #B45309; background: #FEF3C7;
   border-radius: 2px; padding: 1px 3px; margin-top: 1px;
@@ -569,6 +574,16 @@
 .lbl-header { position: absolute; font-weight: 700; font-size: 6.5pt; font-family: var(--font-head), Arial, sans-serif; white-space: nowrap; }
 .lbl-price  { position: absolute; font-weight: 800; font-size: 9pt; font-family: var(--font-head), Arial, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lbl-date   { position: absolute; font-size: 5.5pt; color: #3F3F46; white-space: nowrap; }
+/* The shelf the pair goes back on — the one field the retired 60x40 browser
+   label had that the templates did not. Boxed like the rack's own label so
+   it reads as a place, not a second size. */
+.lbl-shelf  {
+  position: absolute; font-weight: 800; font-size: 9pt; font-family: var(--font-head), Arial, sans-serif;
+  /* The server has already moved xDots for the slot's alignment (alignX), so
+     the text starts where the box starts — never re-aligned here. */
+  white-space: nowrap; text-align: start; letter-spacing: .04em;
+}
+.lbl-shelf:empty { display: none; }
 
 /* ==================================================== 60 x 40 mm LABELS
    The roll actually loaded in the shop's XP-235B. Everything here is in real

@@ -1,12 +1,12 @@
 /* ==========================================================================
    OG SYSTEM — 60 x 40 mm thermal labels                       [labels60.js]
    --------------------------------------------------------------------------
-   Two labels on the roll that is actually loaded in the shop's XP-235B:
-
-     SHELF   — the room name in Arabic, the grid code big enough to read from
-               the far end of an aisle, what the shelf is FOR, and a barcode.
-     PRODUCT — the size big enough to pick by, the model, the colourway, and
-               the shelf the pair goes back on.
+   The SHELF label — the room name in Arabic, the grid code big enough to
+   read from the far end of an aisle, what the shelf is FOR, and a barcode.
+   It is about a rack, not a shoe, which is why it is not a row in
+   label_templates: there is no sku, size or price to resolve. (The product
+   label that used to share this file is now the 60x40 template, printed
+   through js/labels.js like every other product label.)
 
    WHY THIS PRINTS THROUGH THE BROWSER AND NOT THROUGH js/labels.js.
    The other label system builds TSPL bytes on the server and sends them to a
@@ -44,12 +44,12 @@ var Labels60 = (function () {
      millimetre it was derived from. */
   var MM_PX = 96 / 25.4;
 
-  /* The preset names these two record themselves under in label_print_log.
-     server/lib/labels.js holds the same two strings and server/lib/shelves.js
-     counts against the product one to work out how many stuck-on labels a
-     shelf reassignment has just made wrong. Change one, change all three. */
+  /* The preset name a shelf label records itself under in label_print_log.
+     server/lib/labels.js holds the same string. The product label that used
+     to live beside it here ('product-60x40') is gone: product labels come
+     from the server's templates now, whichever door they are printed from,
+     and the 60x40 template carries the shelf code this one used to. */
   var SHELF_PRESET = 'shelf-60x40';
-  var PRODUCT_PRESET = 'product-60x40';
 
   /* Arabic, Arabic Supplement, Extended-A and both Presentation Forms — the
      same test js/labels.js uses to decide a field needs the bitmap path. Here
@@ -140,23 +140,6 @@ var Labels60 = (function () {
     return label(body, payload);
   }
 
-  function productLabelHTML(p, r) {
-    var body =
-      '<div class="l60-top">' +
-        '<div class="l60-size">' + esc(r.size) + '</div>' +
-        '<div class="l60-meta">' +
-          run(p.name, 'l60-name') +
-          (p.colorway ? run(p.colorway, 'l60-colour') : '') +
-        '</div>' +
-      '</div>' +
-      /* Where the pair BELONGS, not where it happens to be — the point of
-         printing it is so somebody can put it back. Blank if the model has no
-         shelf yet, for the same reason as above. */
-      '<div class="l60-shelf">' + (r.shelf ? esc(r.shelf) : '') + '</div>';
-
-    return label(body, r.label_code);
-  }
-
   /* One sticker. `.l60` is exactly 60 x 40 mm on screen and on paper — the
      preview is the label, not a picture of one. */
   function label(body, payload) {
@@ -199,7 +182,7 @@ var Labels60 = (function () {
        the shop can honestly claim: a label was sent to the printer. The other
        path's 'done' means a print agent came back and said it wrote bytes. */
     API.post('/api/labels/record', {
-      preset: state.kind === 'shelf' ? SHELF_PRESET : PRODUCT_PRESET,
+      preset: SHELF_PRESET,
       station: 'browser',
       items: state.record
     }).catch(function (err) {
@@ -340,57 +323,11 @@ var Labels60 = (function () {
     return h + '</select></label>';
   }
 
-  /* ----------------------------------------------------- product labels */
-
-  /* One label per pair in stock, in size order. The count is what is actually
-     on hand at that warehouse: printing four labels for a size the shop has
-     one of leaves three stickers nobody has a shoe for. */
-  function openProductLabels(pid, whId) {
-    var wh = whId || DB.defaultWh;
-    API.get('/api/labels/product/' + pid + '?wh=' + encodeURIComponent(wh))
-      .then(function (res) {
-        var rows = (res.rows || []).filter(function (r) { return r.qty > 0; });
-        if (!rows.length) { toast(t('l60_no_stock')); return; }
-        state = {
-          kind: 'product', wh: wh, product: res.product, rows: rows,
-          perPair: true, items: [], record: []
-        };
-        buildProductItems();
-        previewModal(t('l60_product_title') + ' · ' + esc(res.product.name), productControls());
-      }).catch(function (err) { toast(API.friendly(err)); });
-  }
-
-  function buildProductItems() {
-    var p = state.product, items = [], record = [];
-    state.rows.forEach(function (r) {
-      var n = state.perPair ? r.qty : 1;
-      var one = productLabelHTML(p, r);
-      for (var i = 0; i < n; i++) items.push(one);
-      record.push({ subjectType: 'variant', subjectId: r.sku, qty: n });
-    });
-    state.items = items;
-    state.record = record;
-  }
-
-  function productControls() {
-    var missing = state.rows.filter(function (r) { return !r.shelf; }).length;
-    var h = '<label class="check"><input type="checkbox" data-change="l60-per-pair"' +
-            (state.perPair ? ' checked' : '') + '><span>' + t('l60_per_pair') + '</span></label>';
-    if (missing) {
-      h += '<div class="partner-note">' +
-           t('l60_no_shelf_yet').replace('{n}', String(missing)) + '</div>';
-    }
-    return h;
-  }
-
   /* --------------------------------------------------------------- wiring */
 
   function register() {
     ACTIONS['l60-shelf-labels'] = function (el) {
       openShelfLabels(el.getAttribute('data-wh') || null);
-    };
-    ACTIONS['l60-product-labels'] = function (el) {
-      openProductLabels(+el.getAttribute('data-id'), el.getAttribute('data-wh') || null);
     };
     ACTIONS['l60-print'] = doPrint;
 
@@ -403,19 +340,15 @@ var Labels60 = (function () {
     };
     CHANGES['l60-from'] = function (el) { state.from = el.value; buildShelfItems(); repaint(); };
     CHANGES['l60-to'] = function (el) { state.to = el.value; buildShelfItems(); repaint(); };
-    CHANGES['l60-per-pair'] = function (el) {
-      state.perPair = el.checked; buildProductItems(); repaint();
-    };
   }
 
   return {
     register: register,
     openShelfLabels: openShelfLabels,
-    openProductLabels: openProductLabels,
     /* Exposed for the calibration/ruler check and because phase 3's scan
        handler has to parse exactly what this writes. */
     shelfPayload: shelfPayload,
     barcodeWidthMm: barcodeWidthMm,
-    PRESETS: { shelf: SHELF_PRESET, product: PRODUCT_PRESET }
+    PRESETS: { shelf: SHELF_PRESET }
   };
 })();

@@ -197,46 +197,9 @@ body.rtl .track-arrow::after { transform: translateY(-50%) scaleX(-1); }
 .track.late .track-step.now .track-label,
 .track.late .track-step.now .track-time { color: var(--destructive); }
 
-/* ==================================================== LABEL STUDIO / SHEET */
-
-.lb-controls {
-  display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;
-  border: 1px solid var(--border); border-radius: var(--radius); background: var(--subtle);
-  padding: 15px 16px; margin-bottom: 16px;
-}
-.lb-group { min-width: 0; }
-.lb-group .lbl { margin-bottom: 8px; }
-.lb-preview-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-
-/* Real millimetres — what you see is the size that comes out of the printer. */
-.label-sheet { display: flex; flex-wrap: wrap; gap: 4mm; align-items: flex-start; }
-.blabel {
-  background: #FFFFFF; color: #09090B; border: 1px dashed #9CA3AF; border-radius: 1mm;
-  padding: 2mm 2.5mm; overflow: hidden;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: .8mm; text-align: center; box-sizing: border-box;
-}
-.blabel .bl-logo { height: 4mm; width: auto; opacity: .9; }
-.blabel .bl-name { font-size: 2.6mm; font-weight: 700; line-height: 1.15; max-width: 100%;
-  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.blabel .bl-meta { display: flex; gap: 2mm; align-items: baseline; }
-.blabel .bl-size { font-family: var(--font-head); font-weight: 800; font-size: 4mm; }
-.blabel .bl-shelf { font-size: 2.4mm; font-weight: 600; border: .3mm solid #09090B; border-radius: .8mm; padding: 0 1mm; }
-.blabel .bl-price { font-family: var(--font-head); font-weight: 800; font-size: 3.4mm; font-variant-numeric: tabular-nums; }
-.blabel .bl-bc svg, .blabel .bl-qr svg { display: block; max-width: 100%; height: auto; }
-.blabel.tpl-mini .bl-name { display: none; }
-
-/* With a QR the label goes two-column: text left, code right. Stacking a
-   14mm QR under the name overflows a 30mm-tall label and clips the price. */
-.blabel .bl-col {
-  flex: 1; min-width: 0; display: flex; flex-direction: column;
-  align-items: flex-start; justify-content: center; gap: .8mm; text-align: start;
-}
-.blabel.has-qr { flex-direction: row; align-items: center; gap: 2mm; }
-.blabel .bl-qr { flex: none; }
-.blabel .bl-qr svg { width: 16mm; height: 16mm; }
-.blabel[style*="70mm"] .bl-qr svg { width: 22mm; height: 22mm; }
-.blabel .bl-col .bl-name { -webkit-line-clamp: 3; }
+/* The browser Label Studio (.lb-controls / .label-sheet / .blabel) is gone —
+   product labels are the .lbl-sticker in css/print-hardware-receipt-newlabels.css,
+   printed from the server's templates whichever door they are printed from. */
 
 /* ====================================================== EXPORTED PDF SHEET
    A light A4 document living inside the dark app, same principle as the

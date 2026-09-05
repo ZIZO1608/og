@@ -1835,6 +1835,13 @@ router.add('POST /api/labels/print', requirePerm('label.print', async (ctx) => {
   }
 }));
 
+/* The one list the browser's template chips are drawn from — the same rows
+   the renderer reads and the mirror carries, not the config blob that used
+   to stand in for them. See Labels.templateSummaries. */
+router.add('GET /api/labels/templates', requirePerm('label.print', (ctx) => {
+  sendOk(ctx.res, { templates: Labels.templateSummaries() });
+}));
+
 router.add('POST /api/labels/preview', requirePerm('label.print', async (ctx) => {
   const b = await readJson(ctx.req);
   if (!Labels.isValidBarcodeType(b.barcodeType)) {

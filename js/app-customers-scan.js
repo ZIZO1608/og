@@ -1232,7 +1232,10 @@ function openDuplicateGuard(name, dupes) {
   openModal({
     title: t('dup_title'), size: 'wide', body: h,
     foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
-          '<button class="btn" data-act="dup-anyway">' + t('dup_anyway') + '</button>'
+          '<button class="btn" data-act="dup-anyway">' + t('dup_anyway') + '</button>',
+    /* Backing out of the guard is backing out of the save — and of the
+       "print labels afterwards" that "Save & print" had armed. */
+    onClose: function () { OG.wh.printAfter = false; }
   });
 }
 

@@ -101,7 +101,7 @@ var Bulk = (function () {
      gesture, it is what the shop actually means, and it persists. */
   var ACTIONS_FOR = {
     products: [
-      { id: 'labels', key: 'lb_studio', primary: true },
+      { id: 'labels', key: 'print_labels', primary: true },
       { id: 'show',   key: 'bk_show' },
       { id: 'hide',   key: 'bk_hide' },
       { id: 'price',  key: 'bk_price' },

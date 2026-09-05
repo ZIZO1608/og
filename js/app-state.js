@@ -51,15 +51,10 @@ var OG = {
   /* `size` is set by the product screen's "who wears this" link, and is the
      one customer filter that arrives from another screen. */
   cust: { q: '', filter: 'all', sort: 'recent', size: '' },
-  /* `sym` is what gets PRINTED on our own labels: 'c128' carries the SKU,
-     'ean13' is kept for anyone who wants the old numeric code. `mode` is the
-     paper: a thermal roll needs one label per page at exact size, an A4
-     sticker sheet needs them tiled. */
-  /* price:false by default — see LABEL_TEMPLATES.product. cw/ch are the
-     custom label size in mm, used when size === 'custom'. */
-  lb:   { pid: null, template: 'product', size: '30x30', cw: 30, ch: 30, max: 4,
-          sym: 'c128', mode: 'roll',
-          barcode: true, qr: true, price: false, size2: true, shelf: true, logo: true },
+  /* The browser Label Studio's state (`lb`) is gone with the studio. What a
+     label looks like is a server template; which template, which printer and
+     which paper this machine uses live in js/labels.js's own remembered
+     choice, not here. */
   /* Receipt paper. 80mm is the shop standard; 58mm rolls are common enough
      and cheap enough that the client may turn up with one. */
   rc:   { width: '80' },

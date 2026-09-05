@@ -371,19 +371,12 @@ function hardwareCard() {
   }
 
   /* -- printer -- */
+  /* The label printer's own choices — output, template, station — live in
+     the Labels fold below (thermalLabelsCard); this card keeps the two
+     things that prove the hardware: a test label and the ruler. */
   h += '<div class="hw-sep"></div>' +
     '<h4 class="hw-h">' + t('hw_printer') + '</h4>' +
     '<p class="small muted">' + t('hw_printer_note') + '</p>' +
-    '<div class="chip-row mt">' +
-      '<button class="chip ' + (OG.lb.mode === 'roll' ? 'on' : '') + '" data-act="lb-mode" data-k="roll">' + t('hw_roll') + '</button>' +
-      '<button class="chip ' + (OG.lb.mode === 'sheet' ? 'on' : '') + '" data-act="lb-mode" data-k="sheet">' + t('hw_sheet') + '</button>' +
-    '</div>' +
-    '<div class="chip-row mt">';
-  Object.keys(LABEL_SIZES).forEach(function (k) {
-    h += '<button class="chip ' + (OG.lb.size === k ? 'on' : '') + '" data-act="lb-size" data-k="' + k + '">' +
-      k.replace('x', ' × ') + ' mm</button>';
-  });
-  h += '</div>' +
     '<div class="chip-row mt">' +
       '<button class="btn btn-ghost" data-act="hw-test-label">' + t('hw_test_label') + '</button>' +
       '<button class="btn btn-ghost" data-act="hw-calibrate">' + t('hw_calibrate') + '</button>' +
@@ -566,19 +559,36 @@ function thermalLabelsCard() {
   if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
   else if (!canPrint) h += '<div class="partner-note note-warn mb">' + t('no_access') + '</div>';
 
-  h += '<div class="chip-row"><span class="lbl-lbl">' + t('lbl_station') + '</span>';
-  Labels.stationOptions().forEach(function (s) {
-    h += '<button class="chip ' + (Labels.lastChoice().station === s ? 'on' : '') + '"' + dis +
-      ' data-act="label-station" data-k="' + esc(s) + '">' + esc(s) + '</button>';
-  });
-  h += '</div>';
+  /* Where this machine's labels come out — the same choice the preview
+     offers, remembered per machine. */
+  var out = Labels.outputChoice();
+  h += '<div class="chip-row"><span class="lbl-lbl">' + t('lbl_output') + '</span>' +
+    '<button class="chip ' + (out === 'station' ? 'on' : '') + '"' + dis + ' data-act="label-output" data-k="station">' + t('lbl_out_station') + '</button>' +
+    '<button class="chip ' + (out === 'browser' ? 'on' : '') + '"' + dis + ' data-act="label-output" data-k="browser">' + t('lbl_out_browser') + '</button>' +
+    '</div>';
+
+  if (out === 'station') {
+    h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_station') + '</span>';
+    Labels.stationOptions().forEach(function (s) {
+      h += '<button class="chip ' + (Labels.lastChoice().station === s ? 'on' : '') + '"' + dis +
+        ' data-act="label-station" data-k="' + esc(s) + '">' + esc(s) + '</button>';
+    });
+    h += '</div>';
+  } else {
+    h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('hw_mode') + '</span>' +
+      '<button class="chip ' + (Labels.lastChoice().paper !== 'sheet' ? 'on' : '') + '"' + dis + ' data-act="label-paper" data-k="roll">' + t('hw_roll') + '</button>' +
+      '<button class="chip ' + (Labels.lastChoice().paper === 'sheet' ? 'on' : '') + '"' + dis + ' data-act="label-paper" data-k="sheet">' + t('hw_sheet') + '</button>' +
+      '</div>';
+  }
 
   h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_preset') + '</span>';
   Labels.presetOptions().forEach(function (p) {
     h += '<button class="chip ' + (Labels.lastChoice().preset === p.key ? 'on' : '') + '"' + dis +
-      ' data-act="label-preset" data-k="' + p.key + '">' + p.key + '</button>';
+      ' data-act="label-preset" data-k="' + esc(p.key) + '" title="' + esc(p.widthMm + ' × ' + p.heightMm + ' mm') + '">' +
+      esc(Labels.presetLabel(p)) + '</button>';
   });
   h += '</div>';
+  h += '<p class="small muted mt">' + t('lbl_templates_note') + '</p>';
 
   h += '<div class="mt"><button class="btn btn-ghost"' + dis + ' data-act="label-calibrate">' +
     t('hw_calibrate') + '</button></div>';

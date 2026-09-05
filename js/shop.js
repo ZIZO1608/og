@@ -142,7 +142,13 @@ var Shop = (function () {
        the same reasons as the dashboard above — see server/lib/reports.js.
        null for an account without report.read, and the screen is not reachable
        for them anyway (NAV_PERM), so this is the belt to that pair of braces. */
-    reports:  function () { return want('report.read', '/api/reports?' + repQuery(), null); }
+    reports:  function () { return want('report.read', '/api/reports?' + repQuery(), null); },
+
+    /* The label templates — the rows the server renders every product label
+       from, so the chips in the preview name exactly what can print. Only
+       for an account that can print; the list is empty for everyone else
+       and js/labels.js falls back to the config copy. */
+    labelTemplates: function () { return want('label.print', '/api/labels/templates', { templates: [] }); }
   };
 
   function load() {
@@ -175,6 +181,11 @@ var Shop = (function () {
         dashboard: r.dashboard,
         reports: r.reports
       });
+      /* Not part of the hydrated shop — a template is printer configuration,
+         not stock — so it lands on CONFIG beside the other label.* values. */
+      if (typeof CONFIG !== 'undefined') {
+        CONFIG.LABEL_TEMPLATES = (r.labelTemplates && r.labelTemplates.templates) || [];
+      }
       return DB;
     });
   }

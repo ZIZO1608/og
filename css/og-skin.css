@@ -1,0 +1,284 @@
+/* ==========================================================================
+   OG SYSTEM — stylesheet  ·  11/11: THE SKIN
+   --------------------------------------------------------------------------
+   Loads LAST. Everything before it is the base component system; this is
+   the look the shop settled on (2026-09-05, after a louder draft was turned
+   down): QUIET AND EXPENSIVE. Soft corners, one weight of type doing the
+   talking, hairlines where there used to be boxes, lime spent sparingly —
+   on the thing you are meant to press and the number you are meant to
+   read — and room around everything.
+
+   HOW IT IS SCOPED. Every rule is prefixed `body:not([data-portal="yalla"])`.
+   The partner portal re-skins the same base in mint (yalla-theme.css) and
+   is a different company's screen; this file must never touch it. The
+   prefix also gives every rule here (0,2,x) specificity, so it wins over a
+   plain `.card` in the base files without a single !important. A base rule
+   that already carries two classes (`.view.pos-view`, the phone `.topbar`)
+   is beaten too, and is restated in here where it matters.
+
+   HOW IT WORKS. Geometry comes from re-pointing the tokens on the OG body,
+   so the base rules that read var(--radius) follow on their own. What
+   follows is what tokens cannot reach: weights, spacing, what is a box and
+   what is a line.
+
+   ARABIC. The few tracked labels here are zeroed again under body.rtl at
+   the bottom — tracked Arabic pulls the joined letters apart.
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ TOKENS */
+body:not([data-portal="yalla"]) {
+  --radius:      9px;
+  --radius-sm:   7px;
+  --radius-lg:   14px;
+
+  --border:        #1E1E22;
+  --border-strong: #2E2E34;
+  --input:         #232328;
+  --card:          #101014;
+  --card-hover:    #141419;
+  --surface-1:     #101014;
+  --subtle:        #0D0D10;
+  --popover:       #16161A;
+  --muted:         #18181C;
+  --accent:        #1C1C21;
+}
+
+/* ------------------------------------------------------------- THE VIEW */
+body:not([data-portal="yalla"]) .view { padding: 30px 36px 96px; }
+body:not([data-portal="yalla"]) .view.pos-view { padding: 0; }
+
+/* The page title. One weight, no case games, tight, with the description
+   under it in a lighter grey. The head and the page are separated by air,
+   not a rule. */
+body:not([data-portal="yalla"]) .page-head { margin-bottom: 30px; align-items: flex-end; }
+body:not([data-portal="yalla"]) .page-head h1 { font-size: 28px; font-weight: 700; letter-spacing: -.035em; line-height: 1.1; }
+body:not([data-portal="yalla"]) .page-head .sub { font-size: 13.5px; margin-top: 6px; color: var(--dim); font-weight: 500; }
+body:not([data-portal="yalla"]) .page-head .head-actions { gap: 8px; }
+
+/* ---------------------------------------------------------------- SIDEBAR
+   No lime block. The active item is white text on a barely-there surface
+   with a short lime tick at its start; the icon carries the colour. */
+body:not([data-portal="yalla"]) .sidebar { border-inline-end: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .brand { padding: 20px 20px 18px; gap: 12px; border-bottom: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .brand::before { display: none; }
+body:not([data-portal="yalla"]) .brand-mark-inverse { width: 42px; height: 42px; border-radius: 10px; box-shadow: 0 0 0 1px var(--border); }
+body:not([data-portal="yalla"]) .brand-text b { font-size: 14px; font-weight: 700; letter-spacing: -.015em; text-transform: none; }
+body:not([data-portal="yalla"]) .brand-text span { font-size: 11.5px; font-weight: 500; color: var(--dim); }
+body:not([data-portal="yalla"]) .nav { padding: 14px 14px 10px; }
+body:not([data-portal="yalla"]) .nav-label {
+  padding: 18px 12px 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; color: #4A4A52;
+}
+body:not([data-portal="yalla"]) .nav-item {
+  padding: 10px 12px 10px 14px; margin-bottom: 2px; gap: 12px; border-radius: var(--radius);
+  font-size: 13.5px; font-weight: 500; color: #9A9AA3;
+}
+body:not([data-portal="yalla"]) .nav-item:hover { background: #111115; color: var(--foreground); }
+body:not([data-portal="yalla"]) .nav-item.active { color: var(--foreground); font-weight: 600; }
+body:not([data-portal="yalla"]) .nav-item.active .nav-icon svg { stroke: var(--brand); }
+body:not([data-portal="yalla"]) .nav-item.active .nav-badge { background: var(--brand); color: var(--brand-foreground); }
+body:not([data-portal="yalla"]) .nav-item.active::before {
+  content: ''; position: absolute; inset-inline-start: 0; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 18px; border-radius: 3px; background: var(--brand);
+}
+/* The travelling indicator stays (it is what makes the change feel like a
+   move rather than a swap) but it is now a soft surface, not a lime block. */
+body:not([data-portal="yalla"]) .nav-ind { background: #141419; border-radius: var(--radius); }
+body:not([data-portal="yalla"]) .nav-icon svg { stroke-width: 1.7; }
+body:not([data-portal="yalla"]) .nav-badge { font-weight: 700; }
+body:not([data-portal="yalla"]) .sidebar-foot { padding: 14px 20px 18px; }
+
+/* ----------------------------------------------------------------- TOPBAR
+   Nothing in it is boxed. The search is a soft field; the icon buttons are
+   bare glyphs that gain a surface on hover; the two switches are text with
+   the live choice in white. */
+body:not([data-portal="yalla"]) .topbar { padding: 0 24px; gap: 6px; border-bottom: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .search { max-width: 380px; }
+body:not([data-portal="yalla"]) .search input {
+  height: 38px; background: #111115; border-color: transparent; font-weight: 500;
+}
+body:not([data-portal="yalla"]) .search input:hover { background: #141419; }
+body:not([data-portal="yalla"]) .search input:focus { background: #141419; border-color: var(--border-strong); box-shadow: none; }
+body:not([data-portal="yalla"]) .icon-btn { border-color: transparent; background: transparent; }
+body:not([data-portal="yalla"]) .icon-btn:hover { background: #141419; border-color: transparent; }
+/* The partner-messages bubble is its own class with its own box; it joins
+   the bare glyphs so the bar reads as one row. Hover and "unread" keep the
+   lime the base gives them. */
+body:not([data-portal="yalla"]) .nt-bell { width: 38px; height: 38px; border-color: transparent; background: transparent; }
+body:not([data-portal="yalla"]) .nt-bell:hover { background: #141419; border-color: transparent; }
+body:not([data-portal="yalla"]) .icon-btn svg { stroke: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .icon-btn:hover svg { stroke: var(--foreground); }
+body:not([data-portal="yalla"]) .topbar .seg { background: transparent; border-color: transparent; padding: 2px; gap: 0; }
+body:not([data-portal="yalla"]) .topbar .seg button { padding: 6px 10px; font-size: 12px; font-weight: 600; color: var(--dim); }
+body:not([data-portal="yalla"]) .topbar .seg button.on { background: #1A1A1F; color: var(--foreground); font-weight: 700; }
+body:not([data-portal="yalla"]) .topbar .seg button:not(.on):hover { background: transparent; color: var(--foreground); }
+body:not([data-portal="yalla"]) .live-who { background: transparent; border-color: transparent; padding-inline: 8px; }
+body:not([data-portal="yalla"]) .user-chip { background: transparent; border-color: transparent; padding-inline: 10px 4px; }
+body:not([data-portal="yalla"]) .user-chip.is-btn:hover { background: #141419; border-color: transparent; }
+body:not([data-portal="yalla"]) .user-avatar { font-weight: 700; }
+body:not([data-portal="yalla"]) .bell-badge { border-color: var(--app); }
+body:not([data-portal="yalla"]) .notif-pop,
+body:not([data-portal="yalla"]) .acct-pop,
+body:not([data-portal="yalla"]) .search-results,
+body:not([data-portal="yalla"]) .sbx-panel {
+  border-color: var(--border-strong);
+  box-shadow: 0 24px 64px -16px rgb(0 0 0 / .9), 0 0 0 1px rgb(0 0 0 / .6);
+}
+
+/* ---------------------------------------------------------------- BUTTONS
+   One quiet grey, one lime. No borders on the filled ones; the ghost keeps a
+   hairline. Weight 600, normal case. */
+body:not([data-portal="yalla"]) .btn {
+  height: 38px; padding: 0 16px; font-size: 13px; font-weight: 600; letter-spacing: -.005em;
+  background: #1A1A1F; border-color: transparent; color: var(--foreground);
+}
+body:not([data-portal="yalla"]) .btn:hover { background: #232329; border-color: transparent; }
+body:not([data-portal="yalla"]) .btn-ghost { background: transparent; border-color: var(--border-strong); color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .btn-ghost:hover { background: #141419; color: var(--foreground); border-color: var(--border-strong); }
+body:not([data-portal="yalla"]) .btn-dark { background: var(--foreground); color: #000; }
+body:not([data-portal="yalla"]) .btn-dark:hover { background: #FFFFFF; }
+body:not([data-portal="yalla"]) .btn-primary { background: var(--brand); border-color: transparent; color: var(--brand-foreground); font-weight: 700; }
+body:not([data-portal="yalla"]) .btn-primary:hover { background: #D2FF33; border-color: transparent; box-shadow: 0 10px 24px -12px rgb(198 255 0 / .6); }
+body:not([data-portal="yalla"]) .btn-primary:active { transform: translateY(1px); box-shadow: none; }
+body:not([data-portal="yalla"]) .btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
+body:not([data-portal="yalla"]) .btn-lg { height: 46px; padding: 0 22px; font-size: 14px; }
+body:not([data-portal="yalla"]) .btn-icon { padding: 0; }
+body:not([data-portal="yalla"]) .pos-focus-btn { width: 30px; padding: 0; }
+
+/* ---------------------------------------------------------- CHIPS + TABS */
+body:not([data-portal="yalla"]) .chip {
+  height: 34px; padding: 0 14px; border-radius: var(--radius-full);
+  background: transparent; border-color: var(--border-strong); color: var(--muted-foreground);
+  font-size: 12.5px; font-weight: 600;
+}
+body:not([data-portal="yalla"]) .chip:hover { background: #141419; color: var(--foreground); }
+body:not([data-portal="yalla"]) .chip.on { background: var(--foreground); border-color: var(--foreground); color: #000; }
+body:not([data-portal="yalla"]) .seg-row .seg { border-color: var(--border-strong); background: transparent; }
+body:not([data-portal="yalla"]) .seg-row .seg.on { background: var(--foreground); border-color: var(--foreground); color: #000; }
+/* Tabs are a rule with the live one underlined — no box around the row. */
+body:not([data-portal="yalla"]) .tabs {
+  background: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0;
+  padding: 0; gap: 4px; margin-bottom: 26px;
+}
+body:not([data-portal="yalla"]) .tab {
+  height: 40px; padding: 0 14px; border-radius: 0; margin-bottom: -1px;
+  border-bottom: 2px solid transparent; font-size: 13px; font-weight: 600; color: var(--dim);
+}
+body:not([data-portal="yalla"]) .tab:hover { background: none; color: var(--foreground); }
+body:not([data-portal="yalla"]) .tab.on { background: none; color: var(--foreground); border-bottom-color: var(--brand); }
+
+/* ------------------------------------------------------------------ CARDS
+   A card is a slightly lighter surface with a hairline — never a shadow,
+   never a glow. The title is a normal sentence in the normal weight. */
+body:not([data-portal="yalla"]) .card { background: var(--card); border: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .card-head { padding: 20px 24px 12px; }
+body:not([data-portal="yalla"]) .card-head h3 { font-size: 15px; font-weight: 600; letter-spacing: -.015em; }
+body:not([data-portal="yalla"]) .card-body { padding: 8px 24px 24px; }
+body:not([data-portal="yalla"]) .kcol { background: var(--subtle); border-color: var(--border); }
+body:not([data-portal="yalla"]) .kcard { border-color: var(--border); }
+body:not([data-portal="yalla"]) .cust-card { border-color: var(--border); }
+body:not([data-portal="yalla"]) .cust-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+body:not([data-portal="yalla"]) .alert-row { padding: 15px 24px; }
+
+/* ------------------------------------------------------------------ STATS
+   The numbers are the point of the screen, so they are the biggest thing on
+   it and the only place lime is spent freely. */
+body:not([data-portal="yalla"]) .stat .eyebrow { color: var(--dim); font-weight: 600; letter-spacing: .08em; font-size: 10.5px; }
+body:not([data-portal="yalla"]) .stat .val { font-weight: 700; letter-spacing: -.045em; }
+body:not([data-portal="yalla"]) .dash-hero-val { font-size: 52px; font-weight: 700; letter-spacing: -.05em; }
+body:not([data-portal="yalla"]) .stat + .stat::before { background: var(--border); }
+
+/* ----------------------------------------------------------------- BADGES */
+body:not([data-portal="yalla"]) .badge { font-size: 11px; font-weight: 600; padding: 2px 9px; }
+
+/* ----------------------------------------------------------------- INPUTS */
+body:not([data-portal="yalla"]) .inp,
+body:not([data-portal="yalla"]) select.inp { height: 38px; background: #0D0D10; border-color: var(--input); font-weight: 500; }
+body:not([data-portal="yalla"]) textarea.inp { height: auto; }
+body:not([data-portal="yalla"]) .inp:focus { background: #0D0D10; border-color: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .10); }
+body:not([data-portal="yalla"]) .inp:read-only { background: #101014; }
+body:not([data-portal="yalla"]) .field { margin-bottom: 18px; }
+body:not([data-portal="yalla"]) .field > label,
+body:not([data-portal="yalla"]) .field > span,
+body:not([data-portal="yalla"]) .lbl { color: var(--dim); font-weight: 600; letter-spacing: .06em; }
+body:not([data-portal="yalla"]) .filters { margin-bottom: 18px; }
+body:not([data-portal="yalla"]) .stepper { border-color: var(--input); }
+
+/* ----------------------------------------------------------------- TABLES
+   Column headings are the one place capitals stay: small, dim, tracked, and
+   sitting on the same surface as the rows so the table reads as one sheet. */
+body:not([data-portal="yalla"]) table.tbl th {
+  padding: 13px 18px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
+  color: var(--dim); background: var(--card); border-bottom: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) table.tbl td { padding: 14px 18px; }
+body:not([data-portal="yalla"]) table.tbl tbody tr + tr td { box-shadow: inset 0 1px 0 var(--border); }
+body:not([data-portal="yalla"]) table.tbl tbody tr:hover { background: #141419; }
+body:not([data-portal="yalla"]) table.tbl tfoot td { background: var(--subtle); border-top: 1px solid var(--border-strong); }
+body:not([data-portal="yalla"]) .tbl-compact td { padding: 10px 16px; }
+body:not([data-portal="yalla"]) .tbl-compact th { padding: 11px 16px; }
+
+/* ------------------------------------------------------- DIALOGS + TOASTS */
+body:not([data-portal="yalla"]) .modal { background: #111115; border-color: var(--border-strong); }
+body:not([data-portal="yalla"]) .modal-head { padding: 22px 24px 14px; }
+body:not([data-portal="yalla"]) .modal-head h3 { font-size: 17px; font-weight: 700; letter-spacing: -.025em; }
+body:not([data-portal="yalla"]) .modal-body { padding: 0 24px 24px; }
+body:not([data-portal="yalla"]) .modal-foot { background: #0D0D10; padding: 16px 24px; }
+body:not([data-portal="yalla"]) .drawer-head { padding: 22px 24px; }
+body:not([data-portal="yalla"]) .toast { border-color: var(--border-strong); background: #141419; }
+
+/* ------------------------------------------------------------------- TILL */
+body:not([data-portal="yalla"]) .scan-input { height: 54px; font-size: 16px; font-weight: 500; background: #0D0D10; border-color: var(--input); }
+body:not([data-portal="yalla"]) .scan-input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .10); }
+body:not([data-portal="yalla"]) .pcard { border-color: var(--border); }
+body:not([data-portal="yalla"]) .pcard:hover { border-color: var(--border-strong); box-shadow: 0 16px 32px -18px rgb(0 0 0 / .9); transform: translateY(-3px); }
+body:not([data-portal="yalla"]) .pcard-body .price { font-weight: 700; font-size: 14px; }
+body:not([data-portal="yalla"]) .cart-head h3 { font-size: 15px; font-weight: 600; }
+body:not([data-portal="yalla"]) .totals .grand span:last-child { font-weight: 700; }
+body:not([data-portal="yalla"]) .pay-grid button { font-weight: 600; }
+body:not([data-portal="yalla"]) .pay-grid button.on { background: var(--brand); color: var(--brand-foreground); font-weight: 700; }
+
+/* --------------------------------------------------------------- SETTINGS */
+body:not([data-portal="yalla"]) .set-sec { color: #4A4A52; font-weight: 600; margin: 28px 2px 10px; }
+body:not([data-portal="yalla"]) .fold-title { font-size: 15px; font-weight: 600; letter-spacing: -.015em; }
+body:not([data-portal="yalla"]) .fold-btn { padding: 16px 22px; }
+
+/* ------------------------------------------------------------- THE PHONE */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .topbar { padding: 0 12px; gap: 4px; }
+  body:not([data-portal="yalla"]) .view { padding: 18px 16px calc(var(--tabbar-h) + 28px); }
+  body:not([data-portal="yalla"]) .page-head h1 { font-size: 24px; }
+  body:not([data-portal="yalla"]) .dash-hero-val { font-size: 42px; }
+  body:not([data-portal="yalla"]) .tabs { overflow-x: auto; flex-wrap: nowrap; }
+}
+
+/* ---------------------------------------------------------------- SIGN-IN
+   Centred and quiet: the mark, the name, two fields, one lime button. The
+   faint watermark in the corner and the hairline along the card's top edge
+   come from the base and stay; nothing is added. */
+body:not([data-portal="yalla"]) .gate { background: rgb(8 8 9 / .97); }
+body:not([data-portal="yalla"]) .gate-card {
+  max-width: 380px; padding: 40px 36px 28px;
+  background: #0F0F12; border-color: var(--border); box-shadow: 0 40px 90px -30px rgb(0 0 0 / .9);
+}
+body:not([data-portal="yalla"]) .gate-mark { width: 58px; height: 58px; border-radius: 14px; margin-bottom: 20px; }
+body:not([data-portal="yalla"]) .gate-card h1 { font-size: 21px; font-weight: 700; letter-spacing: -.025em; text-transform: none; }
+body:not([data-portal="yalla"]) .gate-card p { font-size: 12.5px; color: var(--dim); font-weight: 500; text-transform: none; letter-spacing: 0; margin: 6px 0 28px; }
+body:not([data-portal="yalla"]) .gate-field > span { color: var(--dim); font-weight: 600; letter-spacing: .06em; }
+body:not([data-portal="yalla"]) .gate-card input { height: 46px; background: #0D0D10; border: 1px solid var(--input); }
+body:not([data-portal="yalla"]) .gate-card input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .10); background: #0D0D10; }
+body:not([data-portal="yalla"]) .gate-card button[type="submit"] { height: 46px; font-size: 14px; font-weight: 700; letter-spacing: -.005em; text-transform: none; }
+body:not([data-portal="yalla"]) .gate-card button[type="submit"]:hover { box-shadow: 0 12px 28px -12px rgb(198 255 0 / .6); }
+
+/* ------------------------------------------------------------ THE SPLASH */
+body:not([data-portal="yalla"]) .bs-mark { border-radius: 18px; }
+body:not([data-portal="yalla"]) .bs-word { font-weight: 700; letter-spacing: .2em; color: var(--dim); }
+
+/* ---------------------------------------------------------------- ARABIC */
+body.rtl:not([data-portal="yalla"]) .nav-label,
+body.rtl:not([data-portal="yalla"]) .stat .eyebrow,
+body.rtl:not([data-portal="yalla"]) .field > label,
+body.rtl:not([data-portal="yalla"]) .field > span,
+body.rtl:not([data-portal="yalla"]) .lbl,
+body.rtl:not([data-portal="yalla"]) .gate-field > span,
+body.rtl:not([data-portal="yalla"]) .bs-word,
+body.rtl:not([data-portal="yalla"]) table.tbl th { letter-spacing: 0; }

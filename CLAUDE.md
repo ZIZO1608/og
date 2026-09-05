@@ -132,6 +132,18 @@ These are constraints, not preferences. Breaking one means rewriting a lot.
 - **No placeholder content.** No lorem ipsum, no "coming soon", no stock photos. Product images are CSS
   colour blocks. If a screen exists, it works.
 - Avoid `:has()` and very recent CSS — this runs on the shop's actual hardware.
+- **The shop's look lives in `css/og-skin.css`, loaded last.** Quiet and expensive: soft corners,
+  weight 600/700 doing the talking, hairlines where the base had boxes, lime spent only on the primary
+  action and the hero number, the active nav item marked by a short lime tick rather than a filled
+  block. A louder "streetwear" draft (hard corners, caps, lime blocks) was built and turned down the
+  same day. Every rule is prefixed `body:not([data-portal="yalla"])` — that is how the partner portal
+  keeps its mint skin, and it is also what gives the file (0,2,x) specificity over the base components
+  without `!important`. Two consequences: a base rule with two classes (`.view.pos-view`, the phone
+  `.topbar`) is *beaten* by this file and has to be restated inside it; and every `letter-spacing` set
+  there is zeroed again under `body.rtl` at the bottom, because tracked Arabic pulls the joined letters
+  apart. Restyle a component by adding to this file, not by editing the base rule it overrides. The two
+  `.seg` meanings (top-bar segmented control vs the warehouse's standalone pill) are told apart by
+  `.topbar .seg` / `.seg-row .seg`.
 
 > `README.md` is out of date on several points. There is a real server; the Pages deployment at
 > `https://zizo1608.github.io/og/` is a static host with no backend and so now shows only the
@@ -867,6 +879,57 @@ Two things it gets right that earlier versions did not:
   alert's **text** and kept it in `localStorage`. Both were wrong: the text changes on its own —
   "due in 3 days" becomes "due in 2 days" — so a read alert came back unread every morning; and
   `localStorage` is per machine, so reading it on the till left it bold in the office.
+
+## Product labels — one label, whichever door
+
+`server/lib/labels.js`, `js/labels.js`, migration `037_label_shelf_slot.sql`. Every "Print labels" in
+the app — the Print-labels screen, the Products row and drawer footer, the scan result, the warehouse
+form after a save, a bulk selection, the shelf map's reprint — ends in **the same preview**
+(`Labels.openPreviewModal`), drawn from the server's layout of a `label_templates` row.
+
+It did not always. There were **three** label engines that disagreed about what the bars carried:
+the server one (numeric `label_code` in Code 128), a browser "Label Studio" in `app-warehouse.js`
+(the SKU *text* in Code 128, twice as wide, and for an unsaved product an EAN-13 the browser had
+**invented** — `whBarcode()` — that the server would never issue), and a third 60x40 layout in
+`labels60.js`. Same shoe, three stickers. The studio and the 60x40 product label are gone;
+`labels60.js` keeps only the SHELF label, which is about a rack and has no variant to resolve.
+
+- **The bars carry the shop's own `label_code`, on every template.** `barcodeType` defaults to
+  `code128`, not `auto`: auto put an EAN-13 on a wide sticker and the label code on a narrow one,
+  so the same shoe carried different bars on two rolls. Six digits in Code 128 C is also the most
+  scannable thing the head can put down (6 dots a bar on the 60x40 roll). Auto and always-EAN stay
+  as chips. Scanning resolves `barcode`, `sku` and `label_code` alike, so nothing already stuck on
+  a box stopped working.
+- **Two ways out of the preview, per machine** (`lastChoice.output`): `station` queues the server's
+  TSPL for the label printer (agent or LAN); `browser` prints the **same layout at true
+  millimetres** through this computer's dialog (`printViaBrowser`) — one sticker per page on a
+  roll, flowing on an A4 sheet — and records it in `label_print_log` as `printed` through
+  `POST /api/labels/record`, the same route and the same honesty as the shelf labels
+  (`window.print()` cannot say whether paper moved). With `label.transport = tcp` and no host the
+  first choice defaults to `browser`, because that is the state this shop was in: ten failed jobs
+  and nothing on screen to say why.
+- **The template chips come from `GET /api/labels/templates`**, derived from the rows the renderer
+  reads (`templateSummaries`), never from `config.label.presets` — that blob was a second list nobody
+  kept in step, and is only the backstop now. `allowEan` is computed with the same arithmetic the
+  print uses, so the EAN chip is disabled exactly where a forced EAN-13 would be refused.
+- **`shelf` is a slot kind** — where the pair belongs, resolved server-side (`shelfCodeFor`) the way
+  `Shelves.labelRowsFor` does it; blank keeps its box. `shelves.js` already counted labels printed
+  from a template with an `on` shelf slot as ones a reassignment makes stale; 037 puts one on the
+  60x40 row (and re-lays that row out for the roll it is named after, price and date off).
+- **The preview draws barcodes at the printer's bar width** — `narrowDots` from the layout, the
+  SVG's quiet zone pulled into the margin — so preview, browser print and TSPL are the same width.
+  It used to squeeze the default SVG into the box with `width:100%`, 30 mm of bars where 51 mm
+  would print.
+- **The warehouse form invents nothing.** Sizes say "codes on save"; the button is **Save & print
+  labels**, which saves, then opens the preview on the SKUs the server minted with one label per
+  piece booked in (`OG.wh.printAfter`, carried through the duplicate guard and dropped if it is
+  cancelled). `label.print` gates the button.
+- The size tables on the Print-labels screen and the product drawer show all three codes by name —
+  SKU, EAN-13, **Label code** — because the sticker's digits are the label code and people were
+  holding stickers up against a column they never matched.
+
+Mirror side: `label_templates` is mirror-shape (pushed whole), `label_print_log` append-only, and no
+column changed — `npm run supabase:drift` stays green.
 
 ## Purchase orders
 

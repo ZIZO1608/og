@@ -339,7 +339,7 @@ var EXTRA_EN = {
   lbl_barcode_type: 'Barcode type',
   lbl_bt_auto: 'Auto',
   lbl_bt_ean13: 'Always EAN-13',
-  lbl_bt_code128: 'Always shop code',
+  lbl_bt_code128: 'Shop label code (same everywhere)',
   lbl_bt_ean_disabled: 'Too narrow for EAN-13 at this size',
   dash_scope_label: 'Showing',
   dash_scope_today: 'Today',
@@ -586,7 +586,7 @@ var EXTRA_AR = {
   lbl_barcode_type: 'نوع الباركود',
   lbl_bt_auto: 'تلقائي',
   lbl_bt_ean13: 'دائمًا EAN-13',
-  lbl_bt_code128: 'دائمًا كود المحل',
+  lbl_bt_code128: 'رمز ملصق المحل (نفسه بكل مكان)',
   lbl_bt_ean_disabled: 'ضيق جدًا لـ EAN-13 عند هذا المقاس',
   dash_scope_label: 'عرض',
   dash_scope_today: 'اليوم',
@@ -877,7 +877,45 @@ var REPORTS_AR = {
   rp_no_due: 'بلا تاريخ'
 };
 
+/* ---- one product label from every screen (2026-09-05) ---------------------
+   The preview's output choice, the warehouse form's honest "codes on save",
+   and the three named code columns. Every key in both. */
+var LABELS_EN = {
+  lbl_output: 'Print to',
+  lbl_out_station: 'Label printer (queue)',
+  lbl_out_browser: 'This computer',
+  lbl_same_everywhere: 'the same label from every screen',
+  lbl_sent_browser: 'Sent {n} labels to this computer’s printer',
+  lbl_templates_note: 'Every screen prints from these same templates. They are kept on the server and backed up with the rest of the shop.',
+  lbl_per_pair: 'One per pair',
+  ean13: 'EAN-13',
+  label_code: 'Label code',
+  wh_code_on_save: 'codes on save',
+  wh_save_print: 'Save & print labels',
+  wh_sizes_going_in: 'Sizes going in',
+  wh_no_sizes_yet: 'Enter a quantity per size',
+  wh_codes_note: 'The SKU, the EAN-13 and the label code are issued by the server when the product is saved, and the labels are printed from those. “Save & print labels” does both in one go.'
+};
+var LABELS_AR = {
+  lbl_output: 'الطباعة إلى',
+  lbl_out_station: 'طابعة الملصقات (الطابور)',
+  lbl_out_browser: 'هذا الجهاز',
+  lbl_same_everywhere: 'الملصق نفسه من كل شاشة',
+  lbl_sent_browser: 'أُرسل {n} ملصق إلى طابعة هذا الجهاز',
+  lbl_templates_note: 'كل الشاشات تطبع من هذه القوالب نفسها. محفوظة على الخادم ومنسوخة احتياطياً مع بقية المحل.',
+  lbl_per_pair: 'واحد لكل زوج',
+  ean13: 'EAN-13',
+  label_code: 'رمز الملصق',
+  wh_code_on_save: 'الرموز عند الحفظ',
+  wh_save_print: 'حفظ وطباعة الملصقات',
+  wh_sizes_going_in: 'المقاسات الداخلة',
+  wh_no_sizes_yet: 'أدخل الكمية لكل مقاس',
+  wh_codes_note: 'رمز الصنف وباركود EAN-13 ورمز الملصق يصدرها الخادم عند حفظ المنتج، والملصقات تُطبع منها. «حفظ وطباعة الملصقات» يقوم بالاثنين معاً.'
+};
+
 Object.keys(EXTRA_EN).forEach(function (k) { I18N.en[k] = EXTRA_EN[k]; });
+Object.keys(LABELS_EN).forEach(function (k) { I18N.en[k] = LABELS_EN[k]; });
+Object.keys(LABELS_AR).forEach(function (k) { I18N.ar[k] = LABELS_AR[k]; });
 Object.keys(EXTRA_AR).forEach(function (k) { I18N.ar[k] = EXTRA_AR[k]; });
 Object.keys(EXTRA_V3_EN).forEach(function (k) { I18N.en[k] = EXTRA_V3_EN[k]; });
 Object.keys(EXTRA_V3_AR).forEach(function (k) { I18N.ar[k] = EXTRA_V3_AR[k]; });

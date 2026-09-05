@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v111';
+var CACHE = 'og-system-v113';
 
 var SHELL = [
   './',
@@ -31,6 +31,7 @@ var SHELL = [
   'css/bulk-gate-responsive.css',
   'css/print-hardware-receipt-newlabels.css',
   'css/yalla-theme.css',
+  'css/og-skin.css',
   'assets/fonts/fonts.css',
   /* Cairo carries the Arabic on a 60x40 thermal label; Montserrat has no
      Arabic glyphs at all. Precached because the shop is regularly offline. */

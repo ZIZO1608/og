@@ -1,22 +1,21 @@
 /* ==========================================================================
-   OG SYSTEM — application shell  ·  8/17: WAREHOUSE tabs + old Label Studio
+   OG SYSTEM — application shell  ·  8/17: WAREHOUSE tabs
    --------------------------------------------------------------------------
    Split from the original js/app.js (lines 2802-3683). Loads after
-   app-products.js. Label Studio is kept in this file (not its own split)
-   because labelRows() calls whBarcode() defined earlier in the same file.
+   app-products.js. The browser Label Studio that used to share this file is
+   gone — see the note at the bottom.
    ========================================================================== */
 
 /* ------------------------------------------------------------- 9. WAREHOUSE */
 
-/* 12-digit body plus a real mod-10 check digit, so warehouse labels scan too. */
-function whBarcode(type, size, i) {
-  var typeCode = { sneakers: '11', boots: '12', tshirts: '21', jerseys: '22', shirts: '23',
-                   jackets: '24', jeans: '31', crocs: '13' }[type] || '99';
-  /* 3 + 2 + 3 + 4 = exactly 12 digits before the check digit */
-  var body = '621' + typeCode + pad(i, 3) +
-             pad((size.charCodeAt(0) * 37 + (size.charCodeAt(1) || 7) * 11) % 10000, 4);
-  return body + Codes.ean13Check(body);
-}
+/* There is deliberately no barcode generator here any more. The Add form
+   used to show a 13-digit EAN beside every size before the product existed,
+   computed in the browser from the type and the size — and the server, which
+   is the only thing that issues codes, issues a different one at save time
+   (Cat.nextBarcode is random, and label_code is a counter it alone holds).
+   A number that looks exactly like a barcode and scans to nothing is worse
+   than a blank, so the form now says the codes arrive on save, and the
+   labels are printed from the codes the server actually minted. */
 
 function viewWarehouse() {
   var h = '<div class="page-head"><div><h1>' + t('warehouse_title') + '</h1>' +
@@ -660,17 +659,26 @@ function whAddTab() {
   h += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">' +
     '<span class="lbl">' + t('size_matrix') + ' — ' + DB.typeLabels[OG.wh.type] + '</span>' +
     '<div class="size-matrix">';
-  sizes.forEach(function (s, i) {
+  /* The small line under each size used to carry an invented EAN-13 (see the
+     note at the top of this file). It now carries the SKU the server will
+     mint — the one thing about a size that is known before saving. */
+  sizes.forEach(function (s) {
     var q = OG.wh.sizes[s] || '';
     h += '<div class="size-cell' + (q ? ' filled' : '') + '"><b>' + s + '</b>' +
       '<input type="number" min="0" placeholder="0" value="' + q + '" data-change="wh-size" data-size="' + s + '">' +
-      '<small>' + (q ? whBarcode(OG.wh.type, s, i + 1) : '—') + '</small></div>';
+      '<small>' + (q ? t('wh_code_on_save') : '—') + '</small></div>';
   });
   h += '</div></div>';
 
+  /* "Save & print labels" rather than a print button beside Save: the codes
+     on the sticker are issued by the server when the product is saved, so
+     there is nothing true to print before that. One press saves, and the
+     preview opens on the sizes just created with the quantities just booked. */
   h += '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">' +
     '<button class="btn btn-primary btn-lg" data-act="wh-save">' + t('save_product') + '</button>' +
-    '<button class="btn btn-lg" data-act="wh-labels"' + (totalPieces ? '' : ' disabled') + '>' + t('print_labels') + '</button>' +
+    (allow('label.print')
+      ? '<button class="btn btn-lg" data-act="wh-save-print"' + (totalPieces ? '' : ' disabled') + '>' + t('wh_save_print') + '</button>'
+      : '') +
   '</div>';
 
   h += '</div></div>';
@@ -831,24 +839,22 @@ function whAddPreview(sizes, totalPieces) {
   totalRev = totalPieces * price;
 
   /* No wrapping <div> here: #whPreview in whAddTab IS this column. */
-  h += '<div class="card"><div class="card-head"><h3>' + t('barcode_preview') + '</h3></div>' +
+  h += '<div class="card"><div class="card-head"><h3>' + t('wh_sizes_going_in') + '</h3></div>' +
     '<div class="table-wrap" style="max-height:300px;overflow-y:auto"><table class="tbl tbl-compact"><thead><tr>' +
       '<th>' + t('size') + '</th><th class="num">' + t('qty') + '</th><th>' + t('barcode') + '</th></tr></thead><tbody>';
   var any = false;
-  sizes.forEach(function (s, i) {
+  sizes.forEach(function (s) {
     var q = Number(OG.wh.sizes[s] || 0);
     if (!q) return;
     any = true;
     h += '<tr><td><b>' + s + '</b></td><td class="num">' + q + '</td>' +
-         '<td class="num muted" style="letter-spacing:.04em">' + whBarcode(OG.wh.type, s, i + 1) + '</td></tr>';
+         '<td class="muted small">' + t('wh_code_on_save') + '</td></tr>';
   });
   if (!any) {
-    sizes.slice(0, 3).forEach(function (s, i) {
-      h += '<tr class="muted"><td><b>' + s + '</b></td><td class="num">0</td>' +
-           '<td class="num" style="letter-spacing:.04em">' + whBarcode(OG.wh.type, s, i + 1) + '</td></tr>';
-    });
+    h += '<tr><td colspan="3" class="muted small" style="text-align:center;padding:18px">' + t('wh_no_sizes_yet') + '</td></tr>';
   }
-  h += '</tbody><tfoot><tr><td>' + t('total_pieces') + '</td><td class="num">' + totalPieces + '</td><td></td></tr></tfoot></table></div></div>';
+  h += '</tbody><tfoot><tr><td>' + t('total_pieces') + '</td><td class="num">' + totalPieces + '</td><td></td></tr></tfoot></table></div>' +
+    '<div class="partner-note" style="margin:0 14px 14px">' + t('wh_codes_note') + '</div></div>';
 
   /* Expected revenue is selling price × pieces — no cost in it, so it stays
      for everyone. Total cost does not. */
@@ -879,8 +885,8 @@ function repaintWhAdd() {
   var total = 0;
   sizes.forEach(function (s) { total += Number(OG.wh.sizes[s] || 0); });
 
-  /* the cell's own highlight and barcode, without rebuilding its input */
-  sizes.forEach(function (s, i) {
+  /* the cell's own highlight and note, without rebuilding its input */
+  sizes.forEach(function (s) {
     var input = document.querySelector('[data-change="wh-size"][data-size="' + s + '"]');
     if (!input) return;
     var cell = input.parentNode;
@@ -888,7 +894,7 @@ function repaintWhAdd() {
     if (cell) {
       cell.classList.toggle('filled', !!q);
       var code = cell.querySelector('small');
-      if (code) code.textContent = q ? whBarcode(OG.wh.type, s, i + 1) : '—';
+      if (code) code.textContent = q ? t('wh_code_on_save') : '—';
     }
   });
 
@@ -896,7 +902,7 @@ function repaintWhAdd() {
   if (box) box.innerHTML = whAddPreview(sizes, total);
 
   /* Nothing to print until something has a quantity. */
-  var labels = document.querySelector('[data-act="wh-labels"]');
+  var labels = document.querySelector('[data-act="wh-save-print"]');
   if (labels) labels.disabled = !total;
 }
 
@@ -940,324 +946,16 @@ function whMovesTab() {
 }
 
 /* --------------------------------------------------------- LABEL STUDIO
-   Four templates, three physical sizes, real EAN-13 and real QR. The sheet
-   prints at true millimetre dimensions with crop marks; the controls carry
-   .no-print so only the labels reach paper. */
+   Gone. It laid product labels out in the browser with its own templates,
+   sizes and symbology, and put the SKU TEXT in the Code 128 — while the
+   Print-labels screen, the Products row and every bulk selection printed
+   the same shoe from a `label_templates` row with the numeric label_code in
+   the bars. Same product, two different stickers. For a product not yet
+   saved it went further and printed an EAN-13 the browser had invented
+   (whBarcode above, now only a memory in this comment) that the server would
+   never issue, so the sticker could not scan to anything.
 
-var LABEL_TEMPLATES = {
-  /* The default, and deliberately price-free: what goes on the shoe is its
-     IDENTITY. Prices move; a price printed on a sticker turns every price
-     change into a reprint of the whole shelf. */
-  product: { key: 'lb_product', barcode: 1, qr: 0, price: 0, size: 1, shelf: 0, logo: 1 },
-  price: { key: 'lb_price', barcode: 1, qr: 0, price: 1, size: 1, shelf: 0, logo: 1 },
-  shelf: { key: 'lb_shelf', barcode: 1, qr: 0, price: 0, size: 1, shelf: 1, logo: 0 },
-  hang:  { key: 'lb_hang',  barcode: 0, qr: 1, price: 1, size: 1, shelf: 0, logo: 1 },
-  mini:  { key: 'lb_mini',  barcode: 1, qr: 0, price: 0, size: 0, shelf: 0, logo: 0 }
-};
-
-var LABEL_SIZES = {
-  '30x30': { w: 30, h: 30 },
-  '50x30': { w: 50, h: 30 },
-  '40x30': { w: 40, h: 30 },
-  '70x40': { w: 70, h: 40 }
-};
-
-/* ---- fitting the barcode to the label ------------------------------------
-   The label is whatever roll the printer is loaded with, so the barcode has to
-   be generated TO that size rather than at a fixed pixel width and hoped for.
-
-   The old code used a constant `module: 1.1`. Code 128 of OG-001-42 is 134
-   modules, plus 20 for the quiet zones — 154 × 1.1px ≈ 169px, while a 40mm
-   label is only 151px wide at 96dpi. It overflowed, and because the SVG
-   carries max-width:100% the browser quietly scaled it DOWN to fit. Which is
-   worse than overflowing: the label looked perfect and the bars came out
-   narrower than the print head can resolve, so it simply would not scan.  */
-
-var MM_PX = 96 / 25.4;          /* CSS pixels per millimetre */
-var LABEL_PAD_MM = 5;           /* 2.5mm padding each side, from .blabel */
-
-/* The narrowest bar a thermal head can render cleanly. A 203dpi printer puts
-   down 8 dots/mm, so 0.25mm is two dots — the practical floor for Code 128.
-   Thinner than this and the bars blur into each other on the sticker. */
-var MIN_MODULE_MM = 0.25;
-
-/* The label the studio is currently set to, custom included. */
-function labelDim() {
-  if (OG.lb.size === 'custom') {
-    return {
-      w: Math.max(15, Math.min(200, +OG.lb.cw || 50)),
-      h: Math.max(10, Math.min(200, +OG.lb.ch || 30))
-    };
-  }
-  return LABEL_SIZES[OG.lb.size] || LABEL_SIZES['30x30'];
-}
-
-/* Work out the module width that makes this exact symbol span the usable
-   width of this exact label — and say plainly when it cannot. */
-function fitBarcode(text, dim, sym) {
-  var mods;
-  if (sym === 'ean13') {
-    mods = 11 + 95 + 7;                       /* quiet zones are asymmetric */
-  } else {
-    var m = Codes.code128(text);
-    if (!m) return null;
-    mods = m.length + 20;                     /* 10-module quiet zone each side */
-  }
-  var usableMm = Math.max(4, dim.w - LABEL_PAD_MM);
-  var moduleMm = usableMm / mods;
-  return {
-    mods: mods,
-    moduleMm: moduleMm,
-    modulePx: moduleMm * MM_PX,
-    /* Bar height, budgeted against everything else on the sticker rather than
-       picked to look good. A 30mm label has 26mm usable after padding, and the
-       logo, two lines of name, the size chip and the gaps already claim ~16mm.
-       code128SVG then adds its own human-readable line UNDER the bars (~2.4mm),
-       so at 0.30 the block came to 11.4mm and pushed the product name out of
-       the top of the label — clipped, on every sticker. 0.22 leaves it room. */
-    heightPx: Math.max(6, dim.h * 0.22) * MM_PX,
-    tooSmall: moduleMm < MIN_MODULE_MM
-  };
-}
-
-/* Any code on any current label that will not print readably. Drives the
-   warning in the label studio — better to be told before a roll is spent. */
-function labelFitWarnings() {
-  var dim = labelDim();
-  var bad = [];
-  labelRows().forEach(function (r) {
-    var f = fitBarcode(OG.lb.sym === 'ean13' ? r.code : r.sku, dim, OG.lb.sym);
-    if (f && f.tooSmall) bad.push({ sku: r.sku, mm: f.moduleMm });
-  });
-  return bad;
-}
-
-function labelRows() {
-  var rows = [];
-  /* pids is the bulk path — labels for every selected product in one sheet */
-  var pids = (OG.lb.pids && OG.lb.pids.length) ? OG.lb.pids : (OG.lb.pid ? [OG.lb.pid] : null);
-  if (pids) {
-    pids.forEach(function (pid) {
-      var p = DB.product(pid);
-      if (!p) return;
-      DB.variantsOf(pid).forEach(function (v) {
-        rows.push({ name: p.name, size: v.size, price: p.sellingPrice, code: v.barcode,
-                    shelf: v.shelf, sku: v.sku, variant: v, n: Math.max(1, Math.min(v.qty || 1, OG.lb.max)) });
-      });
-    });
-  } else {
-    var sizes = DB.sizeSets[OG.wh.type] || [];
-    var nameEl = document.getElementById('whName');
-    var priceEl = document.getElementById('whPrice');
-    var nm = (nameEl && nameEl.value) || OG.wh.name || 'OG Heavyweight Tee';
-    var pr = Number(priceEl && priceEl.value) || 2250;
-    sizes.forEach(function (s, i) {
-      var q = Number(OG.wh.sizes[s] || 0);
-      if (!q) return;
-      var code = whBarcode(OG.wh.type, s, i + 1);
-      rows.push({ name: nm, size: s, price: pr, code: code, shelf: 'D-09',
-                  sku: 'NEW-' + s, variant: null, n: Math.min(q, OG.lb.max) });
-    });
-  }
-  return rows;
-}
-
-/* A label QR must stay short. A 70-character payload becomes a 49-module
-   symbol, which at 17mm is 0.35mm per module — below what a phone camera
-   reliably resolves. The SKU alone is a 25-module symbol at 0.68mm. The
-   rich, human-readable payload stays on the invoice, where there is room.
-
-   url mode takes the same label from 25 modules to 41 — measured, not
-   guessed. That is fine on the 50mm sticker and marginal on the smallest
-   one, so leave QR_MODE on 'text' if he prints the small size. */
-function labelQrPayload(r) {
-  if (CONFIG.QR_MODE !== 'url') return r.sku;
-  return r.variant ? deepLink('product', r.variant.productId) : r.sku;
-}
-
-function labelHTML(r) {
-  var tpl = LABEL_TEMPLATES[OG.lb.template];
-  var dim = labelDim();
-  var big = dim.w >= 70;
-  var useQr = tpl.qr && OG.lb.qr && r.variant;
-
-  var txt = '';
-  if (tpl.logo && OG.lb.logo) txt += '<img class="bl-logo" src="assets/logo.svg" alt="OG">';
-  txt += '<b class="bl-name">' + esc(r.name) + '</b>';
-
-  var meta = [];
-  if (tpl.size && OG.lb.size2) meta.push('<span class="bl-size">' + r.size + '</span>');
-  if (tpl.shelf && OG.lb.shelf) meta.push('<span class="bl-shelf">' + r.shelf + '</span>');
-  if (meta.length) txt += '<div class="bl-meta">' + meta.join('') + '</div>';
-
-  if (tpl.barcode && OG.lb.barcode) {
-    /* Code 128 of the SKU on our own labels, not the EAN-13.
-       ------------------------------------------------------------------
-       The generated EAN-13s begin 621, which is GS1's real country prefix
-       for Syria — an OG code could collide with a genuine Syrian product.
-       Code 128 encodes text, so the label carries OG-001-42 itself: unique
-       by construction, readable by a human, and no registry involved.
-
-       Scanning it needs no new lookup either: resolveScan already falls back
-       to DB.variantBySku, so a Code 128 label resolves through a path that
-       has been there all along. EAN-13 stays readable for supplier goods. */
-    /* Generated to the label, not to a guess. fitBarcode divides the usable
-       width by this symbol's own module count, so the bars end exactly at the
-       edge of the sticker whatever roll is loaded and however long the SKU. */
-    var payload = OG.lb.sym === 'ean13' ? r.code : r.sku;
-    var fit = fitBarcode(payload, dim, OG.lb.sym);
-    if (fit) {
-      txt += '<div class="bl-bc' + (fit.tooSmall ? ' bl-bc-tight' : '') + '">' +
-        (OG.lb.sym === 'ean13'
-          ? Codes.ean13SVG(payload, { module: fit.modulePx, height: fit.heightPx })
-          : Codes.code128SVG(payload, { module: fit.modulePx, height: fit.heightPx })) +
-      '</div>';
-    }
-  }
-  /* Price is OFF by default and this is why: a price on a barcode sticker
-     means every price change is a reprint of every sticker. The barcode
-     identifies the shoe; the price lives at the till and on the shelf edge,
-     where changing it costs nothing. */
-  if (tpl.price && OG.lb.price) txt += '<div class="bl-price">' + money(r.price) + '</div>';
-
-  /* has-qr rather than a :has() selector — plain class, no CSS-support risk */
-  var h = '<div class="blabel tpl-' + OG.lb.template + (useQr ? ' has-qr' : '') +
-          '" style="width:' + dim.w + 'mm;height:' + dim.h + 'mm">';
-  if (useQr) {
-    /* QR beside the text, not stacked — stacking overflows a 30mm label. */
-    h += '<div class="bl-col">' + txt + '</div>' +
-         '<div class="bl-qr">' + qrSafe(labelQrPayload(r), r.sku,
-           { size: big ? 96 : 74, quiet: 2, style: 'square', dark: '#000000' }) + '</div>';
-  } else {
-    h += txt;
-  }
-  return h + '</div>';
-}
-
-function labelSheetHTML() {
-  var rows = labelRows(), total = 0, sheet = '';
-  rows.forEach(function (r) {
-    for (var k = 0; k < r.n; k++) { sheet += labelHTML(r); total++; }
-  });
-  return { html: '<div class="label-sheet">' + sheet + '</div>', count: total, rows: rows.length };
-}
-
-function labelControls() {
-  var h = '<div class="lb-controls no-print">';
-
-  h += '<div class="lb-group"><span class="lbl">' + t('lb_template') + '</span><div class="chip-row">';
-  Object.keys(LABEL_TEMPLATES).forEach(function (k) {
-    h += '<button class="chip ' + (OG.lb.template === k ? 'on' : '') + '" data-act="lb-tpl" data-k="' + k + '">' +
-      t(LABEL_TEMPLATES[k].key) + '</button>';
-  });
-  h += '</div></div>';
-
-  h += '<div class="lb-group"><span class="lbl">' + t('lb_size') + '</span><div class="chip-row">';
-  Object.keys(LABEL_SIZES).forEach(function (k) {
-    h += '<button class="chip ' + (OG.lb.size === k ? 'on' : '') + '" data-act="lb-size" data-k="' + k + '">' +
-      k.replace('x', ' × ') + ' mm</button>';
-  });
-  /* Whatever roll the printer is actually loaded with. Three fixed sizes were
-     a guess made before the hardware was chosen. */
-  h += '<button class="chip ' + (OG.lb.size === 'custom' ? 'on' : '') + '" data-act="lb-size" data-k="custom">' +
-    t('lb_custom') + '</button>';
-  h += '</div>';
-  if (OG.lb.size === 'custom') {
-    h += '<div class="lb-custom">' +
-      '<input class="inp num" id="lbCW" type="number" min="15" max="200" step="1" data-change="lb-cw" value="' + (OG.lb.cw || 50) + '">' +
-      '<span class="lb-x">×</span>' +
-      '<input class="inp num" id="lbCH" type="number" min="10" max="200" step="1" data-change="lb-ch" value="' + (OG.lb.ch || 30) + '">' +
-      '<span class="muted small">mm</span>' +
-    '</div>';
-  }
-  h += '</div>';
-
-  /* Paper. A thermal roll and an A4 sticker sheet need genuinely different
-     page rules, and printing one as the other wastes a whole roll. */
-  h += '<div class="lb-group"><span class="lbl">' + t('hw_mode') + '</span><div class="chip-row">' +
-    '<button class="chip ' + (OG.lb.mode === 'roll' ? 'on' : '') + '" data-act="lb-mode" data-k="roll">' +
-      t('hw_roll') + '</button>' +
-    '<button class="chip ' + (OG.lb.mode === 'sheet' ? 'on' : '') + '" data-act="lb-mode" data-k="sheet">' +
-      t('hw_sheet') + '</button>' +
-  '</div></div>';
-
-  /* Which symbology goes on our own stock. */
-  h += '<div class="lb-group"><span class="lbl">' + t('hw_symbology') + '</span><div class="chip-row">' +
-    '<button class="chip ' + (OG.lb.sym === 'c128' ? 'on' : '') + '" data-act="lb-sym" data-k="c128">' +
-      'Code 128 · SKU</button>' +
-    '<button class="chip ' + (OG.lb.sym === 'ean13' ? 'on' : '') + '" data-act="lb-sym" data-k="ean13">' +
-      'EAN-13</button>' +
-  '</div></div>';
-
-  var tpl = LABEL_TEMPLATES[OG.lb.template];
-  h += '<div class="lb-group"><span class="lbl">' + t('lb_show') + '</span><div class="chip-row">';
-  [['barcode', 'barcode'], ['qr', 'lb_qr'], ['price', 'price'], ['size2', 'size'], ['shelf', 'shelf'], ['logo', 'lb_logo']]
-    .forEach(function (pair) {
-      var field = pair[0];
-      var allowed = field === 'size2' ? tpl.size : (field === 'qr' ? tpl.qr : tpl[field]);
-      if (!allowed) return;
-      h += '<button class="chip ' + (OG.lb[field] ? 'on' : '') + '" data-act="lb-toggle" data-k="' + field + '">' +
-        t(pair[1]) + '</button>';
-    });
-  h += '</div></div>';
-
-  h += '<div class="lb-group"><span class="lbl">' + t('lb_copies') + '</span>' +
-    '<input class="inp num" type="number" min="1" max="24" value="' + OG.lb.max + '" data-change="lb-max" style="width:96px">' +
-    '<span class="muted small" style="margin-inline-start:10px">' + t('lb_copies_hint') + '</span></div>';
-
-  /* Whether the barcode actually fits this roll, said before the roll is
-     spent rather than after a scanner refuses the stickers. */
-  if (OG.lb.barcode && LABEL_TEMPLATES[OG.lb.template].barcode) {
-    var dim = labelDim();
-    var probe = labelRows()[0];
-    var bad = labelFitWarnings();
-    if (bad.length) {
-      h += '<div class="partner-note note-danger lb-fit">' +
-        t('lb_fit_warn').replace('{n}', bad.length)
-                        .replace('{mm}', (Math.round(bad[0].mm * 100) / 100)) + '</div>';
-    } else if (probe) {
-      var f = fitBarcode(OG.lb.sym === 'ean13' ? probe.code : probe.sku, dim, OG.lb.sym);
-      if (f) {
-        h += '<div class="partner-note note-ok lb-fit">' +
-          t('lb_fit_ok').replace('{mm}', (Math.round(f.moduleMm * 100) / 100)) + '</div>';
-      }
-    }
-  }
-
-  if (!LABEL_TEMPLATES[OG.lb.template].price) {
-    h += '<div class="partner-note lb-fit">' + t('lb_no_price_note') + '</div>';
-  }
-
-  return h + '</div>';
-}
-
-function openLabelSheet(pid) {
-  OG.lb.pid = pid || null;
-  if (pid) OG.lb.pids = null;              // a single product overrides a bulk selection
-  var s = labelSheetHTML();
-  if (!s.count) { toast(t('label_sheet'), t('lb_nothing'), 'warn'); return; }
-
-  openModal({
-    title: t('lb_studio'),
-    size: 'wide',
-    body: labelControls() +
-      '<div class="lb-preview-head no-print"><span class="eyebrow">' + t('lb_sheet') + '</span>' +
-        '<span class="badge accent">' + s.count + ' ' + t('lb_labels') + '</span>' +
-        '<span class="badge neutral">' + t('lb_scannable') + '</span></div>' +
-      '<div id="lbSheet">' + s.html + '</div>',
-    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
-          '<button class="btn btn-primary" data-act="print-now">' + t('print') + '</button>'
-  });
-}
-
-/* Re-render the sheet in place so the controls keep their scroll position. */
-function repaintLabels() {
-  var host = document.getElementById('lbSheet');
-  if (!host) return;
-  var s = labelSheetHTML();
-  host.innerHTML = s.html;
-  var ctrl = document.querySelector('.lb-controls');
-  if (ctrl) ctrl.outerHTML = labelControls();
-  var badge = document.querySelector('.lb-preview-head .badge.accent');
-  if (badge) badge.textContent = s.count + ' ' + t('lb_labels');
-}
+   Every "Print labels" button now opens the one template preview in
+   js/labels.js — the server's layout, the server's code — and that preview
+   can print through this computer's dialog as well as the label printer's
+   queue, which is the part of the studio worth keeping. */

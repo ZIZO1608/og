@@ -29,7 +29,8 @@ function labelVariantRows() {
         var q = f.q.toLowerCase();
         var hit = p.name.toLowerCase().indexOf(q) > -1 ||
                   v.sku.toLowerCase().indexOf(q) > -1 ||
-                  (v.barcode || '').toLowerCase().indexOf(q) > -1;
+                  (v.barcode || '').toLowerCase().indexOf(q) > -1 ||
+                  (v.labelCode || '').indexOf(q) > -1;
         if (!hit) return;
       }
       rows.push({ p: p, v: v, qty: f.wh === 'all' ? v.qty : DB.stockAt(v, f.wh) });
@@ -81,16 +82,19 @@ function viewPrintLabels() {
 
   h += '<span class="badge neutral">' + rows.length + '</span></div>';
 
+  /* The same three columns as the product drawer's size table, in the same
+     order — the label code is what the sticker's Code 128 carries, so it is
+     the one to hold a sticker up against. */
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
     '<th class="bk-col">' + Bulk.headBox('variants') + '</th>' +
     '<th>' + t('product') + '</th><th>' + t('size') + '</th>' +
     '<th class="num">' + t('qty') + '</th><th>' + t('sku') + '</th>' +
-    '<th>' + t('barcode') + '</th><th>' + t('status') + '</th>' +
+    '<th>' + t('ean13') + '</th><th>' + t('label_code') + '</th><th>' + t('status') + '</th>' +
     '<th class="num">' + t('lbl_print_qty') + '</th>' +
     '</tr></thead><tbody>';
 
   if (!rows.length) {
-    h += '<tr><td colspan="8" class="muted" style="text-align:center;padding:28px">' + t('none') + '</td></tr>';
+    h += '<tr><td colspan="9" class="muted" style="text-align:center;padding:28px">' + t('none') + '</td></tr>';
   }
 
   rows.forEach(function (r, ri) {
@@ -102,6 +106,7 @@ function viewPrintLabels() {
       '<td class="num">' + r.qty + '</td>' +
       '<td class="muted num nowrap">' + r.v.sku + '</td>' +
       '<td class="muted num nowrap">' + r.v.barcode + '</td>' +
+      '<td class="num nowrap"><b>' + esc(r.v.labelCode || '—') + '</b></td>' +
       '<td>' + healthBadge(r.v.qty) + '</td>' +
       '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' +
         (OG.lbQty[r.v.sku] || 1) + '" style="width:56px" data-change="lb-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
@@ -143,6 +148,7 @@ function quickPickerBodyHTML() {
   h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">' +
     '<span class="lbl">' + t('pick_size') + '</span>' +
     '<span><button class="btn btn-sm btn-ghost" data-act="qlp-all">' + t('lbl_pick_in_stock') + '</button> ' +
+    '<button class="btn btn-sm btn-ghost" data-act="qlp-per-pair" title="' + esc(t('l60_per_pair')) + '">' + t('lbl_per_pair') + '</button> ' +
     '<button class="btn btn-sm btn-ghost" data-act="qlp-clear">' + t('clear') + '</button></span></div>';
 
   /* Zero-stock sizes stay clickable — printing a sticker ahead of an
@@ -188,10 +194,17 @@ function quickPickerFootHTML() {
     '<button class="btn btn-primary" data-act="qlp-print"' + (c.sizes ? '' : ' disabled') + '>' + t('print_labels') + '</button>';
 }
 
-function openQuickLabelPicker(pid) {
+/* `opts.perPair` opens with every in-stock size already picked at its stock
+   count — one sticker per pair — which is what a reprint after a shelf
+   move needs (the shelf map's "reprint" toast) and what the old 60x40
+   product label did by default. A plain open starts empty. */
+function openQuickLabelPicker(pid, opts) {
   var p = DB.product(pid);
   if (!p) return;
   quickPick = { pid: pid, sel: {} };
+  if (opts && opts.perPair) {
+    DB.variantsOf(pid).forEach(function (v) { if (v.qty > 0) quickPick.sel[v.sku] = Math.min(99, v.qty); });
+  }
 
   openModal({
     title: t('print_labels') + ' · ' + esc(p.name),
@@ -203,7 +216,7 @@ function openQuickLabelPicker(pid) {
 }
 
 /* Re-render the grid/selected-list and the footer count in place — the
-   modal stays open, same pattern as repaintLabels() in app-warehouse.js. */
+   modal stays open, same pattern as the shelf labels' repaint() in js/labels60.js. */
 function repaintQuickLabelPicker() {
   if (!quickPick) return;
   var body = document.querySelector('.modal-body');

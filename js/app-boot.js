@@ -76,30 +76,27 @@ function bindGlobal() {
    variable or a class — the browser reads it from the stylesheet at print
    time, so the rule has to be WRITTEN with the numbers in it.
 
-   Called immediately before window.print(). In roll mode each label becomes a
-   page of exactly its own size with no margin; in sheet mode the A4 rule the
-   app has always used is restored.
+   Called immediately before window.print(). Given `{w, h}` in millimetres,
+   each label becomes a page of exactly its own size with no margin — the
+   roll. Given nothing, the roll rule is withdrawn and the A4 rule the app
+   has always used is back — a sticker sheet, or the calibration page.
 
-   `forced` is {w, h} in millimetres, passed by anything that prints a label of
-   a fixed size rather than whatever the Label Studio's controls are set to —
-   js/labels60.js does, for the 60x40 roll. With no argument the behaviour is
-   exactly what it has always been, driven by OG.lb. Giving it an argument
-   rather than having the caller mutate OG.lb keeps the two printers from
-   quietly resizing each other's controls. */
+   Every caller says which: js/labels.js passes the chosen template's size,
+   js/labels60.js the 60x40 shelf label's, and the calibration sheet whatever
+   template it was drawn for. There is no longer a studio setting to fall
+   back on, so a caller that says nothing gets A4, never a guess. */
 function setRollPageSize(forced) {
   var id = 'rollPageRule';
   var old = document.getElementById(id);
   if (old) old.parentNode.removeChild(old);
 
-  var roll = forced ? true : OG.lb.mode === 'roll';
+  var roll = !!(forced && forced.w && forced.h);
   document.body.classList.toggle('roll-labels', roll);
   if (!roll) return;
 
-  var dim = forced || labelDim();
   var st = document.createElement('style');
   st.id = id;
-  st.textContent = '@media print{@page{size:' + dim.w + 'mm ' + dim.h + 'mm;margin:0}' +
-                   'body.roll-labels .blabel{width:' + dim.w + 'mm;height:' + dim.h + 'mm}}';
+  st.textContent = '@media print{@page{size:' + forced.w + 'mm ' + forced.h + 'mm;margin:0}}';
   document.head.appendChild(st);
 }
 
@@ -128,7 +125,11 @@ function setRollPageSize(forced) {
    ten seconds, which is the whole point — no calculation, no arithmetic, just
    "do these line up". */
 function openCalibration() {
-  var dim = labelDim();
+  /* The size of the template this machine prints with — the same rows the
+     preview's chips come from — so the corner marks test the sticker the
+     app will actually lay a label out for. */
+  var tpl = (typeof Labels !== 'undefined') ? Labels.currentPreset() : null;
+  var dim = tpl ? { w: tpl.widthMm, h: tpl.heightMm } : { w: 30, h: 30 };
   var body =
     '<div class="cal-sheet" style="width:' + dim.w + 'mm">' +
       /* The corner marks, at the exact edges of the believed sticker. */
@@ -150,7 +151,7 @@ function openCalibration() {
       '<div class="partner-note mt no-print">' + t('hw_calibrate_note') + '</div>' +
       '<div class="partner-note no-print">' + t('hw_roll_note') + '</div>',
     foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
-          '<button class="btn btn-primary" data-act="print-now">' + t('print') + '</button>'
+          '<button class="btn btn-primary" data-act="print-now" data-w="' + dim.w + '" data-h="' + dim.h + '">' + t('print') + '</button>'
   });
 }
 

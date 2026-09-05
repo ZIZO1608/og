@@ -1,13 +1,25 @@
 /* ==========================================================================
    OG SYSTEM — thermal product labels (Xprinter XP-235B, TSPL)
    --------------------------------------------------------------------------
-   A separate system from the existing browser "Label Studio" elsewhere in
-   this app (LABEL_SIZES / openLabelSheet / labelHTML / hw-test-label /
-   hw-calibrate) — that one prints through the OS print dialog to whatever's
-   configured in Windows. This one talks to a USB thermal printer that is
-   not on the network, through a small agent process (agent/print-agent.js)
-   or, if configured, a direct LAN socket. No shared state, no shared
-   action names, no touched code between the two.
+   THE product label. Every "Print labels" in the app — the Print-labels
+   screen, the Products row and drawer, the scan result, the warehouse form
+   after a save, a bulk selection, the shelf map's reprint — ends in this
+   module's preview, drawn from the server's layout of a label_templates
+   row. There used to be a second browser-side "Label Studio" with its own
+   templates and the SKU text in the bars, and a third 60x40 layout; both
+   are gone, so the same shoe gets the same sticker whichever door it is
+   printed from.
+
+   Two ways out of the preview, chosen per machine (lastChoice.output):
+
+     station  the server builds TSPL and queues it for the label printer —
+              the print agent (agent/print-agent.js) on the laptop the USB
+              printer is plugged into, or a direct LAN socket;
+     browser  the very same layout, at true millimetres, through this
+              computer's own print dialog — the part of the old studio worth
+              keeping, and the only path that works on a machine with no
+              agent and no LAN printer. Recorded in label_print_log as
+              'printed' (see printViaBrowser).
 
    TSPL is generated on the SERVER — it resolves each variant's real name,
    size, and code itself, never trusting what a browser sends. The one
@@ -21,21 +33,56 @@
 var Labels = (function () {
 
   var DOTS_PER_MM = 8;
+  /* CSS pixels per millimetre: a CSS pixel is 1/96 inch by definition, so
+     this is exact rather than a calibration — the same constant
+     js/labels60.js uses to put a 60 mm label on screen at 60 mm. */
+  var MM_PX = 96 / 25.4;
 
-  var lastChoice = { station: null, preset: null, barcodeType: 'auto' };
+  /* Per MACHINE, like the sidebar rail: the warehouse laptop has the USB
+     printer and the office prints through Windows. `output` is which of the
+     two ways out of the preview this machine uses — 'station' hands the
+     server-built TSPL to the label printer's queue, 'browser' prints the
+     very same layout at true millimetres through this computer's own print
+     dialog. `paper` only matters to the browser path: one sticker per page
+     on a roll, or flowing across an A4 sticker sheet. */
+  /* `barcodeType` defaults to the shop's own label code, not 'auto'. Auto
+     puts an EAN-13 on a sticker wide enough for one and the label code on
+     one that is not, so the same shoe carried different bars on a 30 mm
+     roll and a 40 mm roll — both scanned, and both looked wrong side by
+     side. The label code is six digits in Code 128 C: the same bars on every
+     template, and at 6 dots a bar on the 60x40 roll the most scannable
+     thing the printer can put down. Auto and always-EAN stay as chips. */
+  var lastChoice = { station: null, preset: null, barcodeType: 'code128', output: null, paper: 'roll' };
   try {
     var saved = JSON.parse(localStorage.getItem('og_label_choice') || 'null');
     if (saved) lastChoice = saved;
   } catch (e) { /* ignore a corrupt/blocked localStorage */ }
-  if (!lastChoice.barcodeType) lastChoice.barcodeType = 'auto';
+  if (!lastChoice.barcodeType) lastChoice.barcodeType = 'code128';
+  if (lastChoice.paper !== 'sheet') lastChoice.paper = 'roll';
 
-  function remember(station, preset, barcodeType) {
+  function remember(station, preset, barcodeType, output, paper) {
     lastChoice = {
       station: station || lastChoice.station,
       preset: preset || lastChoice.preset,
-      barcodeType: barcodeType || lastChoice.barcodeType || 'auto'
+      barcodeType: barcodeType || lastChoice.barcodeType || 'code128',
+      output: output || lastChoice.output || null,
+      paper: paper || lastChoice.paper || 'roll'
     };
     try { localStorage.setItem('og_label_choice', JSON.stringify(lastChoice)); } catch (e) { /* private mode etc. */ }
+  }
+
+  /* Which way out of the preview this machine takes when nobody has chosen
+     yet. A transport of 'tcp' with no address is a label printer the server
+     cannot reach — the state this shop was in, with ten failed jobs in the
+     queue and nothing on screen to say why — so the first print goes through
+     the dialog that can actually put ink on paper. Once a station has been
+     picked here, that choice sticks. */
+  function outputChoice() {
+    if (lastChoice.output === 'station' || lastChoice.output === 'browser') return lastChoice.output;
+    if (typeof Auth === 'undefined') return 'browser';
+    var cfg = (typeof CONFIG !== 'undefined') ? CONFIG : {};
+    if (cfg.LABEL_TRANSPORT === 'tcp' && !cfg.LABEL_PRINTER_HOST) return 'browser';
+    return 'station';
   }
 
   var ARABIC_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
@@ -159,8 +206,25 @@ var Labels = (function () {
       return '<img class="lbl-logo" style="' + style + '" src="assets/logo.svg" alt="">';
     }
     if (f.type === 'barcode') {
+      /* Drawn at the printer's own bar width — `narrowDots` per module, the
+         number the TSPL BARCODE command is given — and the bar height the
+         slot reserved, so the preview and the browser print carry bars of
+         exactly the width the label printer would lay down. It used to be
+         the SVG's default module squeezed into the box with width:100%,
+         which drew a 51 mm barcode 30 mm wide and hid the quiet zones
+         inside it.
+
+         The SVG generators put a quiet zone either side of the bars; the
+         server's box is the bars alone (its slots are inset for the quiet
+         zone already), so the drawing is pulled left by that much and the
+         quiet zone falls in the margin, where it is on the printed label. */
+      var mod = ((f.narrowDots || 2) / DOTS_PER_MM) * MM_PX;
+      var barH = ((f.hDots || 80) / DOTS_PER_MM) * MM_PX;
+      var quiet = f.symbology === 'ean13' ? 11 : 10;
+      var opts = { module: mod, height: barH, text: f.showHri !== false };
+      var svg = f.symbology === 'ean13' ? Codes.ean13SVG(f.content, opts) : Codes.code128SVG(f.content, opts);
       return '<div class="lbl-barcode" style="' + style + '">' +
-        (f.symbology === 'ean13' ? Codes.ean13SVG(f.content) : Codes.code128SVG(f.content)) +
+        '<div class="lbl-bars" style="margin-left:-' + (quiet * mod) + 'px">' + svg + '</div>' +
         (f.fallbackReason ? '<small class="lbl-fallback">' + t('lbl_fallback') + '</small>' : '') +
         '</div>';
     }
@@ -176,14 +240,33 @@ var Labels = (function () {
       (f.arabic ? ' dir="rtl"' : '') + '>' + esc(raw || '') + '</div>';
   }
 
-  function labelPreviewHTML(line, presetObj) {
+  /* One sticker, at the millimetres it will be on the roll. This is the
+     preview AND the thing the browser path prints — the same boxes from the
+     same server layout, so what is approved on screen is what comes out of
+     either printer. */
+  function stickerHTML(line, presetObj) {
     var boxes = (line.layout.fields || []).map(function (f) { return fieldPreviewHTML(f, line); }).join('');
-    var sticker = '<div class="lbl-sticker" style="width:' + presetObj.widthMm + 'mm;height:' + presetObj.heightMm + 'mm">' + boxes + '</div>';
-    return '<div class="lbl-line">' + sticker +
+    return '<div class="lbl-sticker" style="width:' + presetObj.widthMm + 'mm;height:' + presetObj.heightMm + 'mm">' + boxes + '</div>';
+  }
+
+  function labelPreviewHTML(line, presetObj) {
+    return '<div class="lbl-line">' + stickerHTML(line, presetObj) +
       '<label class="lbl-line-qty"><span>' + t('lbl_qty') + '</span>' +
         '<input class="inp num" type="number" min="0" max="99" value="' + line.qty +
           '" data-change="lbl-line-qty" data-sku="' + esc(line.sku) + '"></label>' +
       '</div>';
+  }
+
+  /* The sheet the browser path prints: every sticker repeated by its qty, in
+     the order of the batch. Hidden on screen (the preview above is the one
+     with the qty boxes) and the only thing visible under @media print. */
+  function printSheetHTML(preview) {
+    var out = '';
+    preview.lines.forEach(function (l) {
+      var one = stickerHTML(l, preview.preset);
+      for (var i = 0; i < (Number(l.qty) || 0); i++) out += one;
+    });
+    return '<div class="lbl-print-sheet' + (lastChoice.paper === 'sheet' ? ' lbl-a4' : '') + '" id="lblPrintSheet">' + out + '</div>';
   }
 
   /* --------------------------------------------------------- Arabic bitmap
@@ -268,16 +351,71 @@ var Labels = (function () {
   }
 
   /* ------------------------------------------------------------- printing */
+
+  /* The preview the open modal was drawn from — the browser path prints
+     exactly this, so nothing is recomputed between approving and printing. */
+  var lastPreview = null;
+
+  /* Through this computer's own print dialog: the same server layout at true
+     millimetres, one sticker per page on a roll. Recorded AFTER the dialog
+     closes and recorded as 'printed', not 'done': window.print() returns
+     whether Print or Cancel was pressed and nothing can tell them apart, so
+     "sent to the printer" is the most the log can honestly claim — the same
+     rule js/labels60.js applies to the shelf labels. */
+  function printViaBrowser(lines, presetKey) {
+    var preview = lastPreview;
+    var fresh = (preview && preview.preset && preview.preset.key === presetKey)
+      ? Promise.resolve(preview)
+      : renderPreview(lines, presetKey, lastChoice.barcodeType);
+    return fresh.then(function (pv) {
+      var host = document.querySelector('.modal-body');
+      if (!host) throw new Error('no preview open');
+      var old = document.getElementById('lblPrintSheet');
+      if (old) old.parentNode.removeChild(old);
+      host.insertAdjacentHTML('beforeend', printSheetHTML(pv));
+
+      if (typeof setRollPageSize === 'function') {
+        setRollPageSize(lastChoice.paper === 'sheet' ? null : { w: pv.preset.widthMm, h: pv.preset.heightMm });
+      }
+      document.body.classList.add('printing-labels');
+      try { window.print(); } finally { document.body.classList.remove('printing-labels'); }
+
+      var items = pv.lines.map(function (l) { return { subjectType: 'variant', subjectId: l.sku, qty: l.qty }; });
+      var n = items.reduce(function (a, it) { return a + (Number(it.qty) || 0); }, 0);
+      return API.post('/api/labels/record', { preset: presetKey, station: 'browser', items: items })
+        .then(function (res) { return { labelCount: n, batchId: res.batchId, browser: true }; })
+        .catch(function (err) {
+          /* The paper has already come out. A missing audit row must not
+             read as a failed print. */
+          toast(t('lbl_title'), t('l60_not_logged') + ' — ' + API.friendly(err), 'warn', 6000);
+          return { labelCount: n, browser: true, unlogged: true };
+        });
+    });
+  }
+
   function doPrint(lines, presetKey, station, barcodeType) {
     if (typeof Auth === 'undefined') {
       toast(t('lbl_title'), t('lbl_demo_only'), 'info', 5000);
       return Promise.resolve(null);
     }
+    presetKey = presetKey || lastChoice.preset;
+    barcodeType = barcodeType || lastChoice.barcodeType || 'code128';
+
+    if (outputChoice() === 'browser') {
+      remember(null, presetKey, barcodeType);
+      return printViaBrowser(lines, presetKey).then(function (res) {
+        if (!res.unlogged) toast(t('lbl_title'), t('lbl_sent_browser').replace('{n}', res.labelCount), 'ok', 5000);
+        return res;
+      }).catch(function (err) {
+        toast(t('lbl_title'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 6000);
+        throw err;
+      });
+    }
+
     if (!station) {
       toast(t('lbl_title'), t('lbl_pick_station'), 'err', 4000);
       return Promise.resolve(null);
     }
-    barcodeType = barcodeType || lastChoice.barcodeType || 'auto';
     remember(station, presetKey, barcodeType);
     return renderPreview(lines, presetKey, barcodeType).then(function (preview) {
       var arabicBitmaps = buildArabicBitmaps(preview);
@@ -299,8 +437,26 @@ var Labels = (function () {
     var raw = (typeof CONFIG !== 'undefined' && CONFIG.LABEL_STATIONS) || 'warehouse-laptop,till-1';
     return raw.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
   }
+  /* The template chips: GET /api/labels/templates, fetched at boot into
+     CONFIG.LABEL_TEMPLATES — the same `label_templates` rows the server
+     renders from and the mirror carries. `config.label.presets` was a second
+     list of the same thing that nothing kept in step; it is only the backstop
+     now, for a session that booted before the route answered. */
   function presetOptions() {
-    return (typeof Auth === 'undefined') ? demoPresets() : ((typeof CONFIG !== 'undefined' && CONFIG.LABEL_PRESETS) || demoPresets());
+    if (typeof Auth === 'undefined') return demoPresets();
+    var cfg = (typeof CONFIG !== 'undefined') ? CONFIG : {};
+    if (cfg.LABEL_TEMPLATES && cfg.LABEL_TEMPLATES.length) return cfg.LABEL_TEMPLATES;
+    return cfg.LABEL_PRESETS || demoPresets();
+  }
+  function currentPreset() {
+    var pk = lastChoice.preset || (typeof CONFIG !== 'undefined' && CONFIG.LABEL_DEFAULT_PRESET) || '30x30';
+    return presetOptions().filter(function (p) { return p.key === pk; })[0] || presetOptions()[0] || demoPreset(pk);
+  }
+  /* A template's name in the language on screen, falling back to its key —
+     the chips used to show '30x30' and 'retail-price-tag' verbatim. */
+  function presetLabel(p) {
+    if (typeof OG !== 'undefined' && OG.lang === 'ar' && p.nameAr) return p.nameAr;
+    return p.name || p.key;
   }
 
   /* The batch modal's working copy of {sku, qty} — mutated by the qty
@@ -313,20 +469,37 @@ var Labels = (function () {
   function pickerHTML(lines) {
     var st = lastChoice.station || stationOptions()[0];
     var pk = lastChoice.preset || (typeof CONFIG !== 'undefined' && CONFIG.LABEL_DEFAULT_PRESET) || '30x30';
-    var bt = lastChoice.barcodeType || 'auto';
+    var bt = lastChoice.barcodeType || 'code128';
+    var out = outputChoice();
     var total = lines.reduce(function (a, l) { return a + (Number(l.qty) || 0); }, 0);
     var curPreset = presetOptions().filter(function (p) { return p.key === pk; })[0] || {};
 
-    var h = '<div class="lbl-picker">';
-    h += '<div class="lbl-batch-total"><b>' + total + '</b> ' + t('lbl_batch_total') + '</div>';
-    h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_station') + '</span>';
-    stationOptions().forEach(function (s) {
-      h += '<button class="chip ' + (s === st ? 'on' : '') + '" data-act="label-station" data-k="' + esc(s) + '">' + esc(s) + '</button>';
-    });
-    h += '</div>';
+    var h = '<div class="lbl-picker no-print">';
+    h += '<div class="lbl-batch-total"><b>' + total + '</b> ' + t('lbl_batch_total') +
+      ' <span class="muted">· ' + t('lbl_same_everywhere') + '</span></div>';
+
+    /* Where the labels come out. The station chips only appear for the
+       printer's queue; the paper chips only for the dialog. */
+    h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_output') + '</span>' +
+      '<button class="chip ' + (out === 'station' ? 'on' : '') + '" data-act="label-output" data-k="station">' + t('lbl_out_station') + '</button>' +
+      '<button class="chip ' + (out === 'browser' ? 'on' : '') + '" data-act="label-output" data-k="browser">' + t('lbl_out_browser') + '</button>' +
+      '</div>';
+    if (out === 'station') {
+      h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_station') + '</span>';
+      stationOptions().forEach(function (s) {
+        h += '<button class="chip ' + (s === st ? 'on' : '') + '" data-act="label-station" data-k="' + esc(s) + '">' + esc(s) + '</button>';
+      });
+      h += '</div>';
+    } else {
+      h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('hw_mode') + '</span>' +
+        '<button class="chip ' + (lastChoice.paper !== 'sheet' ? 'on' : '') + '" data-act="label-paper" data-k="roll">' + t('hw_roll') + '</button>' +
+        '<button class="chip ' + (lastChoice.paper === 'sheet' ? 'on' : '') + '" data-act="label-paper" data-k="sheet">' + t('hw_sheet') + '</button>' +
+        '</div>';
+    }
     h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_preset') + '</span>';
     presetOptions().forEach(function (p) {
-      h += '<button class="chip ' + (p.key === pk ? 'on' : '') + '" data-act="label-preset" data-k="' + esc(p.key) + '">' + p.key + '</button>';
+      h += '<button class="chip ' + (p.key === pk ? 'on' : '') + '" data-act="label-preset" data-k="' + esc(p.key) + '" title="' +
+        esc(p.widthMm + ' × ' + p.heightMm + ' mm') + '">' + esc(presetLabel(p)) + '</button>';
     });
     h += '</div>';
     if (curPreset.hasBarcode !== false) {
@@ -349,25 +522,32 @@ var Labels = (function () {
   function openPreviewModal(lines, presetKey, station, barcodeType) {
     presetKey = presetKey || lastChoice.preset || (typeof CONFIG !== 'undefined' && CONFIG.LABEL_DEFAULT_PRESET) || '30x30';
     station = station || lastChoice.station || stationOptions()[0];
-    barcodeType = barcodeType || lastChoice.barcodeType || 'auto';
+    barcodeType = barcodeType || lastChoice.barcodeType || 'code128';
     remember(station, presetKey, barcodeType);
-    activeLines = lines.filter(function (l) { return (Number(l.qty) || 0) > 0; });
-    if (!activeLines.length) { if (typeof closeModal === 'function') closeModal(); return; }
-    lines = activeLines;
+    lines = lines.filter(function (l) { return (Number(l.qty) || 0) > 0; });
+    if (!lines.length) { if (typeof closeModal === 'function') closeModal(); return; }
 
     renderPreview(lines, presetKey, barcodeType).then(function (preview) {
       var body = pickerHTML(lines) +
-        '<div class="lbl-preview-host">' +
+        '<div class="lbl-preview-host no-print">' +
         preview.lines.map(function (l) { return labelPreviewHTML(l, preview.preset); }).join('') +
         '</div>';
 
+      var out = outputChoice();
       openModal({
         title: t('lbl_preview_title'),
+        size: 'wide',
         body: body,
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-act="print-labels" data-lines=\'' + esc(JSON.stringify(lines)).replace(/'/g, '&#39;') +
-              '\'>' + t('lbl_print_now') + '</button>'
+              '\'>' + (out === 'browser' ? t('print') : t('lbl_print_now')) + '</button>',
+        onClose: function () { lastPreview = null; activeLines = null; }
       });
+      /* Set AFTER openModal: opening closes whatever was open first, and
+         that runs the previous modal's onClose above — which would wipe a
+         batch assigned any earlier. */
+      activeLines = lines;
+      lastPreview = preview;
     }).catch(function (err) {
       toast(t('lbl_title'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 6000);
     });
@@ -420,12 +600,22 @@ var Labels = (function () {
          was selected would leave an invalid choice stranded behind a chip
          that just vanished — downgrade back to Auto instead. */
       var np = presetOptions().filter(function (p) { return p.key === lastChoice.preset; })[0];
-      if (np && np.allowEan === false && lastChoice.barcodeType === 'ean13') remember(null, null, 'auto');
+      if (np && np.allowEan === false && lastChoice.barcodeType === 'ean13') remember(null, null, 'code128');
       if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
       else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
     };
     ACTIONS['label-barcode-type'] = function (el) {
       remember(null, null, el.getAttribute('data-k'));
+      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
+      else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
+    };
+    ACTIONS['label-output'] = function (el) {
+      remember(null, null, null, el.getAttribute('data-k'));
+      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
+      else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
+    };
+    ACTIONS['label-paper'] = function (el) {
+      remember(null, null, null, null, el.getAttribute('data-k'));
       if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
       else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
     };
@@ -492,7 +682,10 @@ var Labels = (function () {
     doPrint: doPrint,
     openPreviewModal: openPreviewModal,
     lastChoice: function () { return lastChoice; },
+    outputChoice: outputChoice,
     stationOptions: stationOptions,
-    presetOptions: presetOptions
+    presetOptions: presetOptions,
+    currentPreset: currentPreset,
+    presetLabel: presetLabel
   };
 })();

@@ -38,6 +38,10 @@
 import { get, nowIso, tx } from './db.js';
 import * as Cat from './catalogue.js';
 import * as LabelTcp from './label-transport-tcp.js';
+/* Circular with shelves.js (it imports PRODUCT_LABEL_PRESET from here) and
+   safe: both sides touch the other's binding only inside a function, never
+   while the module is being evaluated. */
+import { inRange, fullCode } from './shelves.js';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -85,11 +89,14 @@ export function isArabic(s) { return ARABIC_RE.test(String(s || '')); }
    print, and server/lib/shelves.js counts against it to work out how many
    stuck-on labels a shelf reassignment has just invalidated.
 
-   They are deliberately NOT rows in `label_templates`. That table describes
-   TSPL slot geometry in printer dots for the server-side renderer; these two
-   are laid out in CSS at real millimetres and never reach that code path.
-   Adding a row would put a template in the picker that the TSPL renderer
-   cannot draw. */
+   The shelf label is deliberately NOT a row in `label_templates`: that table
+   describes a label about a VARIANT, and a rack has no sku, no size and no
+   price to resolve. The product one no longer prints — every product label
+   now comes from a template (the 60x40 row carries a `shelf` slot since 037),
+   through either the TSPL queue or the browser's dialog (`record`, below).
+   Its key stays because the rows already in label_print_log carry it, and
+   shelves.js counts against it to work out how many stuck-on labels a
+   reassignment has made wrong. */
 export const SHELF_LABEL_PRESET = 'shelf-60x40';
 export const PRODUCT_LABEL_PRESET = 'product-60x40';
 
@@ -109,6 +116,36 @@ export function templates() {
   const rows = get().prepare('SELECT * FROM label_templates WHERE archived = 0 ORDER BY id').all();
   if (!rows.length) return [FALLBACK_TEMPLATE];
   return rows.map(normalizeTemplateRow);
+}
+
+/* What the browser's template chips are drawn from — GET /api/labels/templates.
+
+   The chip list used to come from `config.label.presets`, a JSON blob seeded
+   in 010 and never touched since, while the label itself was rendered from
+   `label_templates`. Two lists, one of them stale: a template added to the
+   table never appeared as a chip, and a chip could name a template that had
+   been archived. This is the one list now, derived from the same rows the
+   renderer reads and the mirror carries.
+
+   `allowEan` is DERIVED from the barcode slot by the same arithmetic
+   computeBarcodeWidth applies at print time — an EAN-13 needs 113 modules of
+   at least 2 dots — so the "Always EAN-13" chip is disabled exactly where a
+   forced EAN-13 would be refused, rather than by a flag somebody has to keep
+   in step. `hasBarcode` says whether the barcode-type row is shown at all. */
+export function templateSummaries() {
+  return templates().map((tpl) => {
+    const bc = (tpl.slots || []).find((s) => s && s.kind === 'barcode' && s.on !== false);
+    let allowEan = false;
+    if (bc) {
+      try { computeBarcodeWidth('ean13', '0000000000000', bc); allowEan = true; } catch { allowEan = false; }
+    }
+    const kinds = (tpl.slots || []).filter((s) => s && s.on !== false).map((s) => s.kind);
+    return {
+      key: tpl.key, name: tpl.name, nameAr: tpl.nameAr,
+      widthMm: tpl.widthMm, heightMm: tpl.heightMm, gapMm: tpl.gapMm,
+      hasBarcode: !!bc, allowEan, kinds
+    };
+  });
 }
 
 export function template(key) {
@@ -354,7 +391,41 @@ function resolveSlot(slot, variant, shopCfg, opts = {}) {
     return { kind: 'date', type: 'text', xDots: slot.xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots, font: '1', text: fit.text, overflow: fit.overflow };
   }
 
+  /* Where the pair BELONGS — the rack and bay whose size range this variant
+     falls in — so somebody can put it back. This used to exist only on the
+     browser-laid-out 60x40 product label (js/labels60.js); as a slot it is
+     available to any template, and shelves.js already counts labels printed
+     from a template with an `on` shelf slot as ones a reassignment makes
+     stale. Blank when the model has no shelf yet: the field keeps its box so
+     every label in a batch is the same shape, and a dash or "unassigned" on a
+     sticker read for years would be filler. A shelf code is A-Z0-9 and a
+     hyphen, so it never needs the bitmap path. */
+  if (slot.kind === 'shelf') {
+    const text = shelfCodeFor(variant) || '';
+    const fit = fitOneLine(text, font, slot.wDots);
+    const xDots = alignX(fit.text, font, slot.align, slot);
+    return { kind: 'shelf', type: 'text', xDots, yDots: slot.yDots, wDots: slot.wDots, hDots: slot.hDots, font, text: fit.text, overflow: fit.overflow };
+  }
+
   throw Object.assign(new Error(`unknown slot kind: ${slot.kind}`), { code: 'invalid' });
+}
+
+/* The shelf a variant belongs on, as the code printed on the rack
+   ('M-A3'): the first shelf assigned to its product whose size range takes
+   this size, walking warehouses in their own order and racks in theirs —
+   the same rule Shelves.labelRowsFor applies for one warehouse at a time.
+   Null when nothing has been assigned. */
+function shelfCodeFor(variant) {
+  const rows = get().prepare(
+    `SELECT se.key AS section_key, sh.code, sh.size_from, sh.size_to
+       FROM shelves sh
+       JOIN sections se ON se.id = sh.section_id
+       JOIN warehouses w ON w.id = se.wh_id
+      WHERE sh.product_id = ?
+      ORDER BY w.sort, w.id, se.sort_index, se.key, sh.row_label, sh.col_index`
+  ).all(variant.product_id);
+  const hit = rows.find((s) => inRange(variant.size, s.size_from, s.size_to));
+  return hit ? fullCode(hit.section_key, hit.code) : null;
 }
 
 /* -------------------------------------------------------------- layout

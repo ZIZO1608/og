@@ -439,7 +439,6 @@ body.rtl .bs-bar i { animation-name: bsSweepR; }
   .user-chip span { display: none; }
   .drawer { width: 100%; }
   .phone { border-width: 8px; height: 640px; border-radius: 32px; }
-  .label-sheet { grid-template-columns: repeat(2, 1fr); }
   .page-head h1 { font-size: 23px; }
 
   /* --- the two things that already lived at the bottom ------------------ */

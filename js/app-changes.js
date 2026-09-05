@@ -136,25 +136,6 @@ var CHANGES = {
     OG.wh.sizes[s] = el.value === '' ? '' : Math.max(0, parseInt(el.value, 10) || 0);
     repaintWhAdd();
   },
-  'lb-max': function (el) {
-    OG.lb.max = Math.max(1, Math.min(24, parseInt(el.value, 10) || 1));
-    repaintLabels();
-    focusBack('[data-change="lb-max"]', String(OG.lb.max).length);
-  },
-
-  /* The roll actually loaded in the printer. Clamped rather than validated on
-     blur, so a half-typed "5" never renders a 5mm label mid-keystroke. */
-  'lb-cw': function (el) {
-    OG.lb.cw = Math.max(15, Math.min(200, parseInt(el.value, 10) || 50));
-    repaintLabels();
-    focusBack('#lbCW', String(OG.lb.cw).length);
-  },
-  'lb-ch': function (el) {
-    OG.lb.ch = Math.max(10, Math.min(200, parseInt(el.value, 10) || 30));
-    repaintLabels();
-    focusBack('#lbCH', String(OG.lb.ch).length);
-  },
-
   'wh-recalc': function (el) {
     var id = el.id, caret = el.value.length;
     render();

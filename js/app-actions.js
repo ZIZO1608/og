@@ -231,14 +231,21 @@ var ACTIONS = {
   'modal-close': closeModal,
   'modal-backdrop': function (el, e) { if (e.target === el) closeModal(); },
   'drawer-close': closeDrawer,
-  'print-now': function () { setRollPageSize(); window.print(); },
+  /* The calibration sheet: printed at the size of whichever label template
+     is chosen, one sticker per page, so the corner marks measure the roll
+     the app believes is loaded. */
+  'print-now': function (el) {
+    var w = Number(el.getAttribute('data-w')), h = Number(el.getAttribute('data-h'));
+    setRollPageSize(w && h ? { w: w, h: h } : null);
+    window.print();
+  },
 
   /* Printing a DOCUMENT — a report, an export, an invoice — rather than a
      label or a till receipt.
 
      Separate from print-now because print-now exists to put the LABEL roll's
-     size on the page, and it does that from OG.lb.mode, which defaults to
-     'roll'. Sent through it, an A4 report asked for a 30mm square page; and
+     size on the page (the calibration sheet hands it the template's size).
+     Sent through it, an A4 report asked for a 30mm square page; and
      if a receipt had been opened first, an 80mm one. Neither is a document,
      and neither rule belonged to the screen that was actually open. */
   'print-doc': function () { setDocPageSize(); window.print(); },
@@ -350,6 +357,8 @@ var ACTIONS = {
 
   'open-product': function (el) { openProductDrawer(+el.getAttribute('data-id')); },
   'quick-label': function (el) { openQuickLabelPicker(+el.getAttribute('data-id')); },
+  /* The shelf map's "reprint" after a move: every in-stock size, one per pair. */
+  'quick-label-per-pair': function (el) { openQuickLabelPicker(+el.getAttribute('data-id'), { perPair: true }); },
 
   'qlp-toggle': function (el) {
     if (!quickPick) return;
@@ -362,6 +371,14 @@ var ACTIONS = {
     if (!quickPick) return;
     DB.variantsOf(quickPick.pid).forEach(function (v) {
       if (v.qty > 0) quickPick.sel[v.sku] = quickPick.sel[v.sku] || 1;
+    });
+    repaintQuickLabelPicker();
+  },
+  /* One sticker per pair on hand — a box of eight gets eight. */
+  'qlp-per-pair': function () {
+    if (!quickPick) return;
+    DB.variantsOf(quickPick.pid).forEach(function (v) {
+      if (v.qty > 0) quickPick.sel[v.sku] = Math.min(99, v.qty);
     });
     repaintQuickLabelPicker();
   },
@@ -917,7 +934,10 @@ var ACTIONS = {
       }
     );
   },
-  'labels-for': function (el) { openLabelSheet(+el.getAttribute('data-id')); },
+  /* Every "Print labels" that names a product opens the same size picker →
+     the same template preview. This one used to open the browser Label
+     Studio, a second layout with the SKU text in the bars. */
+  'labels-for': function (el) { openQuickLabelPicker(+el.getAttribute('data-id')); },
 
   'variant-attach-save': function (el) {
     var sku = el.getAttribute('data-sku');
@@ -949,17 +969,6 @@ var ACTIONS = {
   },
   'open-job': function (el) { openJobDrawer(el.getAttribute('data-jid')); },
 
-  'lb-tpl': function (el) {
-    OG.lb.template = el.getAttribute('data-k');
-    /* switching template re-enables its own fields so nothing looks broken */
-    var tpl = LABEL_TEMPLATES[OG.lb.template];
-    OG.lb.barcode = !!tpl.barcode; OG.lb.qr = !!tpl.qr;
-    OG.lb.price = !!tpl.price; OG.lb.size2 = !!tpl.size;
-    OG.lb.shelf = !!tpl.shelf; OG.lb.logo = !!tpl.logo;
-    repaintLabels();
-  },
-  'lb-size': function (el) { OG.lb.size = el.getAttribute('data-k'); repaintLabels(); },
-
   'rc-width': function (el) {
     OG.rc.width = el.getAttribute('data-k');
     /* Re-inject immediately rather than at the next print. If the rule only
@@ -968,10 +977,6 @@ var ACTIONS = {
        layout on a 58mm roll with the right-hand column shaved off. */
     setReceiptPageSize();
     if (OG.view === 'settings') render();
-  },
-  'lb-mode': function (el) {
-    OG.lb.mode = el.getAttribute('data-k');
-    if (OG.view === 'settings') { render(); } else { repaintLabels(); }
   },
 
   /* Network vs USB changes which fields the card even shows (host/port vs
@@ -1083,16 +1088,16 @@ var ACTIONS = {
   },
 
   /* One label, printed now, so the roll and the driver can be proved before
-     a hundred stickers are committed to it. */
+     a hundred stickers are committed to it — through the same preview as a
+     real batch, on the first size that has stock. */
   'hw-test-label': function () {
-    var v = DB.variants.filter(function (x) { return x.qty > 0; })[0] || DB.variants[0];
-    OG.lb.pids = null;
-    OG.lb.pid = v.productId;
-    openLabelSheet(v.productId);
+    var v = DB.liveVariants().filter(function (x) { return x.qty > 0; })[0] || DB.liveVariants()[0];
+    if (!v) { toast(t('lbl_title'), t('none'), 'warn'); return; }
+    if (typeof Labels !== 'undefined') {
+      Labels.openPreviewModal([{ sku: v.sku, qty: 1 }], Labels.lastChoice().preset, Labels.lastChoice().station);
+    }
   },
   'hw-calibrate': function () { openCalibration(); },
-  'lb-sym':  function (el) { OG.lb.sym  = el.getAttribute('data-k'); repaintLabels(); },
-  'lb-toggle': function (el) { var k = el.getAttribute('data-k'); OG.lb[k] = !OG.lb[k]; repaintLabels(); },
 
   /* ---- the order handshake, OG's actions -------------------------------- */
 
@@ -1265,7 +1270,13 @@ var ACTIONS = {
     render();
   },
 
-  'wh-labels': function () { openLabelSheet(null); },
+  /* Save, then print labels for what was just saved. The old button printed
+     BEFORE saving, from barcodes the browser had invented — see the note at
+     the top of js/app-warehouse.js. */
+  'wh-save-print': function () {
+    OG.wh.printAfter = true;
+    ACTIONS['wh-save']();
+  },
 
   'cu-new': function (el) {
     openNewCustomer(el.getAttribute('data-q') || '', null);
@@ -1355,15 +1366,24 @@ var ACTIONS = {
      away, which meant a picture the user had just chosen vanished with it —
      the same frustration as the upload not working. */
   'wh-save': function () {
+    /* Armed by 'wh-save-print' for exactly one save: the preview opens on the
+       SKUs the server has just minted, one label per piece booked in. Taken
+       off the state at once so a save that stops at validation cannot leave
+       it armed for the next plain Save. */
+    var printAfter = !!OG.wh.printAfter;
+    OG.wh.printAfter = false;
+
     var name = (document.getElementById('whName') || {}).value || OG.wh.name;
     var pieces = Object.keys(OG.wh.sizes).reduce(function (a, k) { return a + (Number(OG.wh.sizes[k]) || 0); }, 0);
     if (!name) { toast(t('product_name'), OG.lang === 'ar' ? 'اكتب اسم المنتج' : 'Enter a product name', 'err'); return; }
     if (!pieces) { toast(t('size_matrix'), OG.lang === 'ar' ? 'أدخل الكميات' : 'Enter quantities per size', 'err'); return; }
 
     /* Stop a second SKU for a shoe already in the catalogue — unless he has
-       looked at the match and said it really is a different product. */
+       looked at the match and said it really is a different product. The
+       guard carries the print intent through to "it really is different";
+       its own onClose drops it if he backs out. */
     var dupes = DB.similarProducts(name);
-    if (dupes.length && !OG.wh.dupeOk) { openDuplicateGuard(name, dupes); return; }
+    if (dupes.length && !OG.wh.dupeOk) { OG.wh.printAfter = printAfter; openDuplicateGuard(name, dupes); return; }
     OG.wh.dupeOk = false;
 
     var cost = Number((document.getElementById('whCost') || {}).value) || 0;
@@ -1441,6 +1461,18 @@ var ACTIONS = {
         OG.wh.shelfId = '';
         render();
 
+        /* The labels, from the codes the server actually issued — the same
+           preview every other "Print labels" button opens. The quantity per
+           size is the number of pieces just booked in: one sticker per box.
+           `made` carries only the sizes that had stock, which is exactly the
+           set that needs a label. */
+        if (printAfter && made.length && typeof Labels !== 'undefined') {
+          var labelLines = made.map(function (v) {
+            return { sku: v.sku, qty: Math.max(1, Number(sizes[v.size]) || 1) };
+          });
+          Labels.openPreviewModal(labelLines, Labels.lastChoice().preset, Labels.lastChoice().station);
+        }
+
         /* Take him to the thing he just made — a toast alone leaves you
            wondering whether it worked. */
         if (!(shelfId && made.length)) {
@@ -1475,7 +1507,11 @@ var ACTIONS = {
      the guard is back on for the next one. */
   'dup-anyway': function () {
     OG.wh.dupeOk = true;
+    /* closeModal runs the guard's onClose, which disarms the print intent —
+       carry it across so "Save & print" still prints after "it is different". */
+    var printAfter = OG.wh.printAfter;
     closeModal();
+    OG.wh.printAfter = printAfter;
     ACTIONS['wh-save']();
   },
 

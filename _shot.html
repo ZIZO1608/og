@@ -44,8 +44,8 @@ if(q.lang==='ar'){OG.lang='ar';applyLang();}
 refreshAll();
 if(q.portal){ACTIONS['partner-view']();if(q.yv)YALLA.state.view=q.yv;if(q.ym)YALLA.state.mode=q.ym;if(q.yf)YALLA.state.filter=q.yf;renderSidebar();render();}
 else if(q.v)go(q.v);
-if(q.lbsize){OG.lb.size=q.lbsize;}
-if(q.labels){openLabelSheet(1);if(q.tpl){OG.lb.template=q.tpl;OG.lb.qr=(q.tpl==='hang');repaintLabels();}}
+/* The browser Label Studio is gone (see CLAUDE.md, product labels); every label goes through the one preview. */
+if(q.labels){openQuickLabelPicker(1,{perPair:true});}
 if(q.job)YALLA.openJob(q.job);
 if(q.ogjob){go('print');openJobDrawer(q.ogjob);}
 if(q.ylaccept){var ab=document.querySelector('[data-yl="accept"][data-id="'+q.ylaccept+'"]');if(ab)ab.click();}

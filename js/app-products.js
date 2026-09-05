@@ -251,8 +251,13 @@ function openProductDrawer(pid) {
   var canLabel = allow('label.print');
   body += '<div class="card mb"><div class="card-head"><h3>' + t('per_size') + '</h3>' +
     '<div class="card-actions"><span class="badge neutral">' + vs.length + ' SKU</span></div></div>' +
+    /* Three codes per size, each named for what it is: the SKU a person
+       types, the EAN-13 a supplier's scanner reads, and the label code —
+       the number the shop's own Code 128 stickers carry, which is what a
+       scan of one of them sends. Showing only "barcode" left people
+       comparing a sticker's digits against a column they never matched. */
     '<div class="table-wrap"><table class="tbl tbl-compact"><thead><tr>' +
-      '<th>' + t('size') + '</th><th>' + t('sku') + '</th><th>' + t('barcode') + '</th>' +
+      '<th>' + t('size') + '</th><th>' + t('sku') + '</th><th>' + t('ean13') + '</th><th>' + t('label_code') + '</th>' +
       '<th class="num">' + t('qty') + '</th><th>' + t('shelf') + '</th><th>' + t('status') + '</th>' +
       (canLabel ? '<th class="num">' + t('lbl_qty') + '</th><th></th>' : '') +
     '</tr></thead><tbody>';
@@ -261,6 +266,7 @@ function openProductDrawer(pid) {
       '<td><b style="font-family:var(--font-head);font-size:14px">' + v.size + '</b></td>' +
       '<td class="muted num nowrap">' + v.sku + '</td>' +
       '<td class="num muted nowrap">' + v.barcode + '</td>' +
+      '<td class="num nowrap"><b>' + esc(v.labelCode || '—') + '</b></td>' +
       '<td class="num"><b>' + v.qty + '</b></td>' +
       '<td><span class="badge neutral">' + v.shelf + '</span></td>' +
       '<td>' + healthBadge(v.qty) + wearers(v) + '</td>' +
@@ -293,12 +299,15 @@ function openProductDrawer(pid) {
 
   body += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
     '<button class="btn btn-primary" data-act="nav-close" data-view="warehouse" data-tab="add">' + t('edit_product') + '</button>' +
-    '<button class="btn" data-act="labels-for" data-id="' + p.id + '">' + t('print_labels') + '</button>' +
-    /* The 60x40 roll the shop actually has loaded. Separate from the button
-       above rather than replacing it: that one drives the older studio and its
-       four smaller sizes, which are still what the other rolls are. */
-    '<button class="btn" data-act="l60-product-labels" data-id="' + p.id + '">' +
-      t('l60_product_title') + '</button>' +
+    /* ONE print button. There were two here — this one drove the browser
+       Label Studio (SKU text in the bars) and a second opened the 60x40
+       layout in js/labels60.js — beside the per-size buttons in the table
+       above, which printed a third way. All of them now open the same size
+       picker and the same template preview; the 60x40 template carries the
+       shelf slot the second button existed for. */
+    (allow('label.print')
+      ? '<button class="btn" data-act="labels-for" data-id="' + p.id + '">' + t('print_labels') + '</button>'
+      : '') +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="product" data-kind="pdf" data-id="' + p.id + '">' + t('rec_stock_sheet') + '</button>' +
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="product" data-kind="excel" data-id="' + p.id + '">' + t('export_excel') + '</button>' +
   '</div>';

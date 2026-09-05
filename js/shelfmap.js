@@ -2099,7 +2099,7 @@ var ShelfMap = (function () {
     API.patch('/api/shelves/' + shelfId, patch).then(function (res) {
       if (res.reprint && res.labels && res.labels.stale > 0 && res.shelf && res.shelf.product_id) {
         toast(t('sm_stale').replace('{n}', nf(res.labels.stale)), '', 'warn', 6000,
-              { attrs: 'data-act="l60-product-labels" data-id="' + res.shelf.product_id + '"',
+              { attrs: 'data-act="quick-label-per-pair" data-id="' + res.shelf.product_id + '"',
                 label: t('sm_reprint') });
       }
       reload();
@@ -2624,11 +2624,13 @@ var ShelfMap = (function () {
     /* Same mechanics, its own name: the row/column removal confirm. */
     ACT['remove-go'] = ACT['confirm-apply'];
     ACT['confirm-reprint'] = function (el) {
-      /* Labels60 opens its own modal on top; the confirm's pending apply is
-         dropped on purpose — reprinting first, then re-doing the change,
-         keeps every step deliberate. */
+      /* The label picker opens its own modal on top; the confirm's pending
+         apply is dropped on purpose — reprinting first, then re-doing the
+         change, keeps every step deliberate. One sticker per pair on hand,
+         through the same preview every other label goes through; the 60x40
+         template carries the shelf code. */
       pendingApply = null;
-      Labels60.openProductLabels(+el.getAttribute('data-id'));
+      openQuickLabelPicker(+el.getAttribute('data-id'), { perPair: true });
     };
 
     ACT['print-shelf'] = function (el) {

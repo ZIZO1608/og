@@ -425,16 +425,19 @@ function warehouseExportSpec() {
   if (OG.wh.tab !== 'moves') {
     var sizes = DB.sizeSets[OG.wh.type] || [];
     var rows = [];
-    sizes.forEach(function (s, i) {
+    /* Two columns, not three: the barcode column used to carry a number the
+       browser had made up. The codes exist once the product is saved and are
+       on the product's own stock sheet. */
+    sizes.forEach(function (s) {
       var q = Number(OG.wh.sizes[s] || 0);
-      rows.push([s, q, whBarcode(OG.wh.type, s, i + 1)]);
+      rows.push([s, q]);
     });
     return {
       name: 'new-product', sheet: 'New product', title: t('tab_add'),
       subtitle: (OG.wh.name || t('product_name')) + ' · ' + DB.typeLabels[OG.wh.type],
-      columns: [{ label: t('size') }, { label: t('qty'), num: true }, { label: t('barcode') }],
+      columns: [{ label: t('size') }, { label: t('qty'), num: true }],
       rows: rows,
-      totals: [t('total_pieces'), rows.reduce(function (a, r) { return a + r[1]; }, 0), null],
+      totals: [t('total_pieces'), rows.reduce(function (a, r) { return a + r[1]; }, 0)],
       kpis: [{ label: t('type'), value: DB.typeLabels[OG.wh.type] },
              { label: t('size_matrix'), value: sizes.length + ' ' + t('size').toLowerCase() }]
     };
