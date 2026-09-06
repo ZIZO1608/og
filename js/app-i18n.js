@@ -741,6 +741,7 @@ var I18N = {
     sp_u_alert: 'alerts', sp_u_alert_1: 'alert',
     sp_u_template: 'templates', sp_u_template_1: 'template',
     sp_u_row_waiting: 'rows waiting', sp_u_row_waiting_1: 'row waiting',
+    sp_u_row_pulled: 'rows pulled', sp_u_row_pulled_1: 'row pulled',
     sp_shift_open: 'shift open', sp_shift_closed: 'no open shift',
     sp_computed: 'computed', sp_mirror_ok: 'in step',
     sp_mirror_off: 'not set up', sp_mirror_attention: 'needs attention'
@@ -1448,6 +1449,7 @@ var I18N = {
     sp_u_alert: 'تنبيه', sp_u_alert_1: 'تنبيه',
     sp_u_template: 'قالب', sp_u_template_1: 'قالب',
     sp_u_row_waiting: 'صف بانتظار الرفع', sp_u_row_waiting_1: 'صف بانتظار الرفع',
+    sp_u_row_pulled: 'صف مسحوب من السحابة', sp_u_row_pulled_1: 'صف مسحوب من السحابة',
     sp_shift_open: 'الوردية مفتوحة', sp_shift_closed: 'لا وردية مفتوحة',
     sp_computed: 'محسوبة', sp_mirror_ok: 'متطابقة',
     sp_mirror_off: 'غير مهيأة', sp_mirror_attention: 'تحتاج انتباهاً'

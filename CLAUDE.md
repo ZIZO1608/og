@@ -408,11 +408,54 @@ manual run. It checks whether Pages is enabled and **skips cleanly rather than f
 Requires **Settings → Pages → Source → "GitHub Actions"**. Until that is set the workflow goes green and
 publishes nothing.
 
-## Supabase — a one-way mirror
+## Supabase — a one-way mirror, and the baton
 
-SQLite is the system of record. Supabase is a copy kept for the day this machine dies, and nothing
-reads from it in normal operation. `npm run supabase:sync` pushes; `npm run supabase:restore` pulls
-the whole shop back onto a clean machine.
+SQLite is the system of record. Supabase is a copy kept for the day this machine dies — and, since
+the baton, the way the shop moves between laptops. Nothing reads from it while the server is up.
+`npm run supabase:sync` pushes; `npm run supabase:restore` pulls the whole shop back onto a clean
+machine, and `npm run supabase:restore -- --wipe` runs the boot pull by hand.
+
+### The boot pull, and the baton
+
+The shop runs on **one laptop at a time**, but which laptop changes. `Restore.pullAtBoot()`
+(`server/lib/restore.js`) runs in `index.js` after `DB.open` and **before `listen()`** — nothing can
+see a database half-way through being replaced. When the mirror was last written by ANOTHER
+database it moves `og.db` into `backups/` (checkpointed, verified — `lib/backup.js`, with a rename
+retry because this repo lives under OneDrive), opens a fresh file, restores every table from the
+mirror in **one transaction**, mints a **new** lineage id and claims it, and resets the bookmarks.
+Booting means "I am the writer now".
+
+Four facts it is built on, all verified in source and all easy to break:
+
+- **A restore copies the lineage id** — `config` is mirrored whole and the id lives in it. Two
+  laptops restored from one mirror would share an id and `lineage.js` could not tell them apart.
+  The pull calls `Lineage.forget()` and mints. Do not "fix" that by inheriting.
+- **The worker checks lineage before EVERY push** (`run()` in `sync-worker.js`), not only at boot —
+  the laptop that lost the baton must stop the moment it next tries. It also beats
+  `sync_state.shop` every two minutes while live; `STALE_MS` (10 min) in `lineage.js` is five
+  missed beats, and it is what tells "closed last night" from "working right now".
+- **`Mirror.behind()` is meaningless against another laptop's bookmarks** — they sit in a different
+  `change_log` seq space and can read 0 while rows are stranded. `Mirror.unpushed()` counts against
+  `sync_local` (migration 038), the record of what THIS machine pushed, written by `advance()` and
+  filled in by `adoptCursorsLocally()` on the first boot under an owned lineage. **Never decide a
+  wipe on `behind()`.**
+- **A mirrored user with no sealed box comes back DISABLED** with random password bytes, so
+  `sales.cashier_id` holds; the wipe itself is refused unless an active manager's box opens.
+
+Every guard refuses to the local copy with a reason code, and **no path exits or opens an empty
+shop**: `sync_off` · `vault_off` · `unreachable` · `own_lineage` (the same laptop again — skipped:
+the mirror is its own copy and a pull would only empty the Telegram outbox) · `mirror_empty` ·
+`busy_elsewhere` · `unpushed_local` · `drift` (`lib/drift.js`, **both directions** — `ahead` means
+this laptop's code is behind the mirror) · `fetch_failed` · `accounts_unreadable` · `backup_failed`
+· `restore_failed` (the moved-aside file is put back). The result rides `GET /api/sync/status` as
+`pull` — `MirrorUI` draws it, `backup` is stripped from the live-channel copy, the splash's cloud
+chip says "N rows pulled", and `app-boot.js` toasts once per pull. `OG_PULL_AT_BOOT=0` on a dev
+copy; `OG_SYNC_MINUTES=0` refuses on its own. `open-when-ready.js` waits four minutes because of
+this.
+
+**Cursors after a pull are RESET explicitly** (`resetCursorsAfterPull`: seq cursors → 0, maxid
+cursors → local `MAX(id)`, one upsert), not left to the rewind — the rewind would fire one table
+at a time, each with a "reset underneath us" warning that is a lie after a deliberate pull.
 
 **`npm run supabase:check` is the one command that answers "is the mirror trustworthy".** It
 compares every mirrored table **by primary key** (eight here and eight there is not a match — five

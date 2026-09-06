@@ -38,6 +38,14 @@
    over the same cursor rows is exactly the race the lineage guard exists
    to refuse between machines, and it is not allowed inside one either.
 
+   IT ASKS WHOSE MIRROR IT IS BEFORE EVERY PUSH, not only at boot. The shop
+   moves between laptops now (lib/restore.js — the baton): the laptop that
+   boots next pulls the mirror and claims it, and THIS one, if still up,
+   must stop writing the moment it next tries. One small GET per push — and
+   a push only happens when something changed. While live it also beats the
+   `shop` heartbeat every two minutes, which is how the next laptop tells
+   "closed last night" from "working right now".
+
    Off in one case only: no Supabase configured (or OG_SYNC_MINUTES=0, which
    means "by hand only", as it always has). Then this file does nothing at
    all and says so once.
@@ -55,6 +63,7 @@ const FIRST_RUN_MS = 20 * 1000;      /* boot is the busiest second the machine h
 const DEBOUNCE_MS = 2 * 1000;
 const TICK_MS = 10 * 1000;
 const RECHECK_LINEAGE_MS = 10 * 60 * 1000;
+const HEARTBEAT_MS = 2 * 60 * 1000;   /* lib/lineage.js STALE_MS is five of these */
 const BACKOFF_MIN_MS = 10 * 1000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 
@@ -73,16 +82,18 @@ const state = {
   nextRetryAt: null,
   lastFullAt: null,
   lastFullOk: null,
-  refusedBy: null
+  refusedBy: null,
+  pull: null              /* what the boot pull did, or why it did not (lib/restore.js) */
 };
 
 let debounce = null;
 let tick = null;
 let fullTimer = null;
 let lineageTimer = null;
+let heartbeatTimer = null;
 let unhook = null;
 
-function fullMinutes() {
+export function fullMinutes() {
   const raw = maybe('OG_SYNC_MINUTES');
   if (raw === null || raw === undefined || String(raw).trim() === '') return DEFAULT_FULL_MINUTES;
   const n = Number(raw);
@@ -112,8 +123,12 @@ function pause() {
 
 function tell() {
   /* The payload carries no shop data — mode, counts and timestamps only —
-     and the manager's Settings fold repaints from it without a poll. */
-  Live.notify('og', { mirror: status() });
+     and the manager's Settings fold repaints from it without a poll. The
+     pull's backup path stays off the wire: it is a location on this disk,
+     and this goes to every open tab on the shop's side. */
+  const s = status();
+  if (s.pull) s.pull = { ...s.pull, backup: undefined, tables: undefined };
+  Live.notify('og', { mirror: s });
 }
 
 async function run(kind) {
@@ -124,6 +139,10 @@ async function run(kind) {
   const log = Mirror.tailLog();
   let out = null;
   try {
+    /* Still ours? Another laptop may have taken the baton since the last
+       push. A network failure here falls through to the ordinary catch. */
+    const lin = await Lineage.guard({ takeover: false });
+    if (!lin.ok) { refuseLineage(lin); return null; }
     out = kind === 'full'
       ? await Mirror.fullRun({ log })
       : await Mirror.pushChanged({ log });
@@ -191,19 +210,21 @@ function schedule(ms = DEBOUNCE_MS) {
    the reason is on the Settings fold, and it is asked again every ten
    minutes in case the other machine has stopped or somebody ran
    claim-mirror.bat. */
+/* The refused branch, shared by the boot check and the per-push check. */
+function refuseLineage(lin) {
+  state.mode = 'refused';
+  state.refusedBy = lin.other ? `${lin.other.host} (${String(lin.other.id).slice(0, 8)}…)` : null;
+  state.lastError = lin.other
+    ? `the mirror belongs to ${state.refusedBy} — run claim-mirror.bat if THIS machine is the shop`
+    : 'nobody has claimed this mirror yet — run claim-mirror.bat if THIS machine is the shop';
+  console.log(`  [mirror] refused: ${state.lastError}`);
+  tell();
+}
+
 async function checkLineage() {
   try {
     const lin = await Lineage.guard({ takeover: false });
-    if (!lin.ok) {
-      state.mode = 'refused';
-      state.refusedBy = lin.other ? `${lin.other.host} (${String(lin.other.id).slice(0, 8)}…)` : null;
-      state.lastError = lin.other
-        ? `the mirror belongs to ${state.refusedBy} — run claim-mirror.bat if THIS machine is the shop`
-        : 'nobody has claimed this mirror yet — run claim-mirror.bat if THIS machine is the shop';
-      console.log(`  [mirror] refused: ${state.lastError}`);
-      tell();
-      return false;
-    }
+    if (!lin.ok) { refuseLineage(lin); return false; }
     state.refusedBy = null;
     if (lin.claimed) console.log('  [mirror] claimed the mirror for this database');
     return true;
@@ -240,6 +261,11 @@ async function boot() {
     setTimeout(boot, state.pauseMs).unref();
     return;
   }
+  /* The mirror's bookmarks are ours, so record them as what this machine
+     has pushed — or unpushed() counts the whole history the first time a
+     long-running shop boots on this code. Bookkeeping; never fatal. */
+  try { await Mirror.adoptCursorsLocally(); }
+  catch (err) { console.log('  [mirror] could not record the bookmarks locally — ' + reason(err)); }
   state.mode = 'live';
   arm();
   /* The first thing after boot is a FULL run: it heals whatever the last
@@ -256,7 +282,19 @@ function arm() {
   const every = fullMinutes();
   fullTimer = setInterval(() => run('full'), every * 60 * 1000);
   fullTimer.unref();
+  heartbeatTimer = setInterval(beat, HEARTBEAT_MS);
+  heartbeatTimer.unref();
 }
+
+/* "Still here." Only while live and idle; a failure says nothing — the next
+   real push's own handling covers a line that has gone down. */
+function beat() {
+  if (state.mode !== 'live' || state.busy) return;
+  SB.update('sync_state', { id: 'shop' }, { last_push_at: new Date().toISOString() }).catch(() => {});
+}
+
+/* What the boot pull did, for the status line and the Settings fold. */
+export function notePull(result) { state.pull = result || null; }
 
 export function start() {
   if (state.mode !== 'off' || lineageTimer) return;
@@ -318,6 +356,7 @@ export function stop() {
   if (tick) { clearInterval(tick); tick = null; }
   if (fullTimer) { clearInterval(fullTimer); fullTimer = null; }
   if (lineageTimer) { clearInterval(lineageTimer); lineageTimer = null; }
+  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
   if (unhook) { unhook(); unhook = null; }
   state.mode = 'off';
 }
@@ -339,6 +378,7 @@ export function status() {
     fullEveryMinutes: fullMinutes(),
     lastFullAt: state.lastFullAt,
     lastFullOk: state.lastFullOk,
+    pull: state.pull,
     /* kept for anything that still reads the old name */
     everyMinutes: fullMinutes()
   };

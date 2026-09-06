@@ -881,6 +881,7 @@ var MirrorUI = (function () {
       '<div><div class="mir-line"><span dir="auto">' + esc(v.text) + '</span></div>' +
       (v.why ? '<div class="muted small mt-xs"><span dir="auto">' + esc(v.why) + '</span></div>' : '') +
       '</div></div>';
+    h += pullLine(s.pull);
     h += '<div class="mir-facts">';
     h += fact(t('mir_last_push'), s.lastPushAt ? ago(s.lastPushAt) : t('mir_never'));
     h += fact(t('mir_behind'), s.behind === null || s.behind === undefined ? '—' : String(s.behind));
@@ -897,6 +898,38 @@ var MirrorUI = (function () {
   function fact(label, value) {
     return '<div class="mir-fact"><div class="muted small">' + label + '</div>' +
            '<div><span dir="auto">' + esc(value) + '</span></div></div>';
+  }
+
+  /* The boot pull's own line: what this laptop did with the cloud copy when
+     the server started, or why it did not (lib/restore.js — the baton).
+     Absent on a server from before it, and silent when the pull is simply
+     off. Numbers sit in dir="ltr" or Arabic drags them to the far end. */
+  function pullLine(p) {
+    if (!p || p.reason === 'disabled' || p.reason === 'not_configured') return '';
+    var ltr = function (n) { return '<span dir="ltr">' + esc(String(n)) + '</span>'; };
+    var text, why = '', tone;
+    if (p.did) {
+      text = t('mir_pulled').replace('{n}', ltr(p.rows || 0)).replace('{ago}', ago(p.at) || '');
+      if (p.from && p.from.host) text += ' · ' + t('mir_pull_from').replace('{host}', esc(p.from.host));
+      if (p.warning) why = t('mir_pull_warning_' + p.warning);
+      tone = p.warning ? 'warn' : 'ok';
+    } else {
+      var d = p.detail || {};
+      var key = 'mir_pull_' + p.reason;
+      var w = t(key);
+      if (w === key) w = esc(p.message || p.reason);
+      w = w.replace('{host}', esc(d.host || (p.from && p.from.host) || ''))
+           .replace('{n}', ltr(d.n || 0))
+           .replace('{file}', esc((d.files && d.files[0]) || 'server/supabase/CATCH-UP.sql'));
+      text = t('mir_pull_none').replace('{why}', w);
+      tone = (p.reason === 'own_lineage' || p.reason === 'mirror_empty') ? 'ok' : 'warn';
+    }
+    return '<div class="mir-state mir-pull mt ' + tone + '"><span class="mir-dot ' + tone + '"></span><div>' +
+      '<div class="muted small">' + t('mir_pull') + '</div>' +
+      '<div class="mir-line"><span dir="auto">' + text + '</span></div>' +
+      (why ? '<div class="muted small mt-xs"><span dir="auto">' + esc(why) + '</span></div>' : '') +
+      (p.did && p.backup ? '<div class="muted small mt-xs">' + ltr(t('mir_pull_backup').replace('{file}', p.backup)) + '</div>' : '') +
+      '</div></div>';
   }
 
   function load() {

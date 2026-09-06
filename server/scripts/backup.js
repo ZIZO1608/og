@@ -1,13 +1,11 @@
 /* ==========================================================================
    Back up the database — and prove the backup is readable
    --------------------------------------------------------------------------
-   Uses SQLite's `VACUUM INTO`, not a file copy. Copying a live database while
-   the till is mid-sale can capture a torn file: the .db without the matching
-   -wal, or a page half written. VACUUM INTO takes a consistent snapshot of a
-   database that is actively being used, and compacts it on the way out.
-
-   Every backup is then REOPENED and checked. An untested backup is not a
-   backup, it is a file — and the day you find out is the day you needed it.
+   The work lives in lib/backup.js, which the boot pull (lib/restore.js)
+   uses too; this file prints. VACUUM INTO, not a file copy — a consistent
+   snapshot of a database that is actively being used — and every backup is
+   then REOPENED and checked. An untested backup is not a backup, it is a
+   file, and the day you find out is the day you needed it.
 
    Usage:
      npm run backup
@@ -16,14 +14,14 @@
    Restore:
      stop the server, replace data/og.db with the chosen backup file, and
      delete any leftover og.db-wal / og.db-shm beside it. Start the server.
-     `--verify-restore` below rehearses exactly that against a scratch copy.
    ========================================================================== */
 
-import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync, existsSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { argv, env, exit } from 'node:process';
+
+import * as Backup from '../lib/backup.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DB_FILE = env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
@@ -33,13 +31,8 @@ function flag(name, fallback) {
   return i > -1 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback;
 }
 
-const OUT_DIR = resolve(flag('out', resolve(HERE, '..', 'backups')));
+const OUT_DIR = resolve(flag('out', Backup.BACKUP_DIR));
 const KEEP = Number(flag('keep', 30));
-
-/* Tables that must contain rows in any healthy database. A backup that opens
-   cleanly but has lost the reference data is corrupt in a way `integrity_check`
-   will not notice. */
-const MUST_HAVE_ROWS = ['currencies', 'warehouses'];
 
 function main() {
   if (!existsSync(DB_FILE)) {
@@ -47,31 +40,16 @@ function main() {
     exit(1);
   }
 
-  mkdirSync(OUT_DIR, { recursive: true });
-
-  /* Colons are illegal in Windows filenames, so the ISO timestamp is
-     flattened rather than used raw. */
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('Z', '');
-  const target = join(OUT_DIR, `og-${stamp}.db`);
+  const target = join(OUT_DIR, `og-${Backup.stamp()}.db`);
 
   console.log('');
   console.log('  OG SYSTEM — backup');
   console.log(`    from : ${DB_FILE}`);
   console.log(`    to   : ${target}`);
 
-  /* ---- take the snapshot ------------------------------------------------ */
-  const src = new DatabaseSync(DB_FILE);
-  try {
-    /* Parameters are not allowed in VACUUM INTO, so the path is inlined. It
-       comes from a command-line flag, not from user input over the network,
-       and single quotes are escaped by doubling per SQL string rules. */
-    src.exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
-  } finally {
-    src.close();
-  }
+  Backup.snapshot(DB_FILE, target);
 
-  /* ---- prove it is readable --------------------------------------------- */
-  const check = verify(target);
+  const check = Backup.verify(target);
   if (!check.ok) {
     console.error(`\n  BACKUP FAILED VERIFICATION: ${check.reason}`);
     console.error('  The file has been left in place for inspection.\n');
@@ -86,8 +64,7 @@ function main() {
     console.log(`      ${String(n).padStart(7)}  ${t}`);
   }
 
-  /* ---- prune ------------------------------------------------------------- */
-  const removed = prune(OUT_DIR, KEEP);
+  const removed = Backup.prune(OUT_DIR, KEEP);
   if (removed.length) {
     console.log('');
     console.log(`    pruned ${removed.length} older backup(s), keeping ${KEEP}`);
@@ -100,59 +77,6 @@ function main() {
   console.log('  a mistake, not from a dead drive or a stolen machine. Copy');
   console.log('  these somewhere else as well.');
   console.log('');
-}
-
-/* Open the backup as a real database and confirm it is usable. */
-function verify(file) {
-  let db;
-  try {
-    db = new DatabaseSync(file);
-  } catch (e) {
-    return { ok: false, reason: `cannot open: ${e.message}` };
-  }
-
-  try {
-    const integrity = db.prepare('PRAGMA integrity_check').get();
-    const verdict = integrity && (integrity.integrity_check ?? Object.values(integrity)[0]);
-    if (verdict !== 'ok') return { ok: false, reason: `integrity_check said "${verdict}"` };
-
-    const fk = db.prepare('PRAGMA foreign_key_check').all();
-    if (fk.length) return { ok: false, reason: `${fk.length} broken foreign key(s)` };
-
-    const counts = {};
-    const tables = db.prepare(
-      `SELECT name FROM sqlite_master
-       WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
-    ).all().map(r => r.name);
-
-    for (const t of tables) {
-      counts[t] = db.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).get().n;
-    }
-
-    for (const t of MUST_HAVE_ROWS) {
-      if (!counts[t]) return { ok: false, reason: `${t} is empty` };
-    }
-
-    return { ok: true, counts };
-  } catch (e) {
-    return { ok: false, reason: e.message };
-  } finally {
-    db.close();
-  }
-}
-
-/* Keep the newest `keep` backups, delete the rest. */
-function prune(dir, keep) {
-  if (!Number.isFinite(keep) || keep < 1) return [];
-
-  const files = readdirSync(dir)
-    .filter(f => /^og-.*\.db$/.test(f))
-    .map(f => ({ f, t: statSync(join(dir, f)).mtimeMs }))
-    .sort((a, b) => b.t - a.t);
-
-  const doomed = files.slice(keep);
-  for (const { f } of doomed) unlinkSync(join(dir, f));
-  return doomed.map(d => d.f);
 }
 
 main();

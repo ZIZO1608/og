@@ -46,6 +46,8 @@ import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
 import * as SyncWorker from './lib/sync-worker.js';
+import * as Restore from './lib/restore.js';
+import * as Mirror from './lib/mirror.js';
 import * as Telegram from './lib/telegram.js';
 import * as Live from './lib/live.js';
 import * as TLS from './lib/tls.js';
@@ -2246,6 +2248,18 @@ if (runDirectly) {
 
   DB.open(DB_FILE);
 
+  /* THE BATON. The shop runs on one laptop at a time, and which laptop that
+     is changes. When the mirror was last written by ANOTHER database, the
+     whole shop is pulled down from it before anything listens — a verified
+     copy taken first, the old file moved aside, a fresh one restored in one
+     transaction, the mirror claimed with a new id. Every guard that could
+     lose data refuses and boots on the local copy instead; lib/restore.js
+     says which and why, and the status line below repeats it. Nothing
+     listens until this has settled, so no request can ever see a database
+     half-way through being replaced. */
+  const pull = await Restore.pullAtBoot({ dbFile: DB_FILE, log: Mirror.consoleLog() });
+  SyncWorker.notePull(pull);
+
   /* Expired sessions and stale login attempts, cleared hourly. unref() so this
      timer never holds the process open on shutdown. */
   setInterval(() => {
@@ -2292,6 +2306,10 @@ if (runDirectly) {
     }
 
     console.log(`    database  : ${DB_FILE}`);
+    if (pull && pull.reason !== 'disabled' && pull.reason !== 'not_configured') {
+      console.log(`    cloud     : ${pull.message}`);
+      if (pull.did && pull.backup) console.log(`    previous  : ${pull.backup}`);
+    }
     console.log(`    app files : ${STATIC}`);
     console.log(`    accounts  : ${n}`);
     if (n === 0) {

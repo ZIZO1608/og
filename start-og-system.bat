@@ -149,6 +149,14 @@ if errorlevel 1 (
   timeout /t 15
 )
 
+REM  If another laptop had the shop last, the server pulls the whole shop down
+REM  from the cloud before it opens - server\lib\restore.js, the baton. It
+REM  prints what it did, or why it did not, above the "OG SYSTEM server" lines.
+echo.
+echo   If another computer had the shop last, it is pulled from the cloud first.
+echo   This can take a minute.
+echo.
+
 REM  The browser opens ITSELF once the server answers. `node index.js` below
 REM  holds this window for as long as the shop is open, so nothing written
 REM  after it would ever run - and opening the browser before it would land

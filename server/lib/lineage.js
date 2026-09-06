@@ -30,6 +30,14 @@
    The id lives in `config`, so a restore onto a new machine carries it
    across and the rebuilt shop continues as the same lineage rather than
    being refused by its own mirror.
+
+   THE BATON (lib/restore.js) deliberately breaks that last rule. When the
+   shop moves between laptops, the boot pull restores the mirror — config
+   and the other laptop's id with it — and then calls forget() and claims a
+   FRESH id. Two databases under one id are two databases this guard cannot
+   tell apart, and the other laptop's moved-aside file still holds the old
+   one. The worker re-checks before every push (lib/sync-worker.js), so the
+   laptop that lost the baton stops writing the moment it tries.
    ========================================================================== */
 
 import { randomUUID } from 'node:crypto';
@@ -62,7 +70,7 @@ export async function remote() {
   return { id, host: rest.join(' ') || '(unknown machine)', since: r.last_push_at };
 }
 
-async function claim(id) {
+export async function claim(id) {
   const note = `${id} ${hostname()}`;
   const at = new Date().toISOString();
   const [r] = await SB.select('sync_state', { eq: { id: ROW } });
@@ -75,6 +83,26 @@ async function claim(id) {
 async function everSynced() {
   const [r] = await SB.select('sync_state', { eq: { id: 'shop' } });
   return !!(r && r.last_push_at);
+}
+
+/* The `shop` heartbeat itself: when the holder last pushed, or — since the
+   baton — last said it was alive (lib/sync-worker.js beats every two
+   minutes while live). lib/restore.js reads it to tell "closed last night"
+   from "working right now". */
+export async function heartbeat() {
+  const [r] = await SB.select('sync_state', { eq: { id: 'shop' } });
+  return { at: (r && r.last_push_at) || null, note: (r && r.note) || null };
+}
+
+/* Younger than this and somebody is on the mirror; older and they have
+   closed the laptop. Five missed two-minute beats of slack for a flaky line;
+   a laptop shut at night is stale ten minutes later. */
+export const STALE_MS = 10 * 60 * 1000;
+
+/* Drop this database's id so the next localId() mints a fresh one. The boot
+   pull calls this after restoring — see THE BATON in the header. */
+export function forget() {
+  DB.get().prepare('DELETE FROM config WHERE key = ?').run(KEY);
 }
 
 /* { ok: true, mine, claimed?, tookOver? }

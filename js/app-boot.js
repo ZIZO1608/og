@@ -333,6 +333,7 @@ function start() {
   Auth.guard(function () {
     if (typeof Shop === 'undefined') return boot();
     if (splash) Splash.begin();
+    var mirror = null;
     /* No fallback on failure — there is nothing to fall back TO now, which is
        the point. A till that boots anyway is a till that takes real money into
        memory nobody keeps. */
@@ -343,11 +344,24 @@ function start() {
            quiet chip, not a fail screen. */
         if (!splash) return;
         return Shop.mirrorStatus().then(
-          function (s) { Splash.step('mirror', s); },
+          function (s) { mirror = s; Splash.step('mirror', s); },
           function () { Splash.step('mirror', null); });
       })
-      .then(boot, Shop.fail);
+      .then(function () { boot(); announcePull(mirror); }, Shop.fail);
   });
+}
+
+/* Once per boot pull, on the first screen after it: the manager who started
+   the server on this laptop is told the shop came down from the cloud. Keyed
+   on the pull's own timestamp so a reload does not say it again. */
+function announcePull(s) {
+  var p = s && s.pull;
+  if (!p || !p.did || typeof toast !== 'function') return;
+  try {
+    if (localStorage.getItem('og.pull.seen') === p.at) return;
+    localStorage.setItem('og.pull.seen', p.at);
+  } catch (e) { /* storage refused — say it anyway */ }
+  toast(t('mir_title'), t('mir_pull_toast').replace('{n}', p.rows || 0), 'ok', 7000);
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

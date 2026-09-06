@@ -180,11 +180,12 @@ const db = DB.get();
    state, not shop data. A restored shop re-sending three months of "order
    accepted" to two phones would be a bug, so the sync leaves it out on
    purpose — and this list must agree, or the check reports the design as a
-   missing table every run. */
+   missing table every run. sync_local (038) is this machine's own record of
+   what it has pushed — bookkeeping about the mirror, never part of it. */
 const LOCAL_ONLY = new Set(['sessions', 'login_attempts', 'applied_ops',
                             'label_print_jobs', 'label_code_seq',
                             'schema_migrations', 'change_log',
-                            'partner_events']);
+                            'partner_events', 'sync_local']);
 
 /* Columns that exist here and MUST NOT exist there. The column check below
    would otherwise report the most important security property of this mirror

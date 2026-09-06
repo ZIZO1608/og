@@ -107,6 +107,9 @@ var Splash = (function () {
 
   function readMirror(s) {
     if (!s) return null;
+    /* The cloud copy came DOWN at startup — the one morning this chip has a
+       number of its own to say. */
+    if (s.pull && s.pull.did) return count(s.pull.rows, 'row_pulled');
     if (!s.configured || s.mode === 'off') return word('sp_mirror_off');
     if (s.mode === 'refused' || (s.failures > 0 && s.lastError)) return word('sp_mirror_attention');
     if (s.behind > 0) return count(s.behind, 'row_waiting');

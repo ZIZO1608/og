@@ -44,6 +44,7 @@
    ========================================================================== */
 
 import { createHash } from 'node:crypto';
+import { hostname } from 'node:os';
 
 import * as DB from './db.js';
 import * as SB from './supabase.js';
@@ -107,9 +108,28 @@ async function cursor(id, note) {
 async function advance(id, patch) {
   await SB.update('sync_state', { id }, patch);
   const c = cursors.get(id) || { last_seq: 0, rows_pushed: 0 };
-  if (patch.last_seq !== undefined) c.last_seq = patch.last_seq;
+  if (patch.last_seq !== undefined) { c.last_seq = patch.last_seq; noteLocal(id, patch.last_seq); }
   if (patch.rows_pushed !== undefined) c.rows_pushed = patch.rows_pushed;
   cursors.set(id, c);
+}
+
+/* ------------------------------------------- what THIS machine has pushed
+   sync_state says how far the mirror's bookmarks have moved; it does not say
+   WHO moved them. Once the shop can move between laptops (lib/restore.js,
+   the baton) that is the whole question: a bookmark the other laptop wrote
+   is a position in the other laptop's change_log, and this machine's seq
+   numbers mean nothing against it — measured that way, rows written here
+   can read as "already pushed" when they never left. So every advance is
+   also written locally (migration 038), and unpushed() counts against that
+   and nothing else. A bare write: it is bookkeeping about the log, and must
+   not itself land in the log. */
+function noteLocal(id, lastSeq) {
+  try {
+    DB.get().prepare(
+      `INSERT INTO sync_local (id, last_seq, at) VALUES (?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET last_seq = excluded.last_seq, at = excluded.at`
+    ).run(id, lastSeq, new Date().toISOString());
+  } catch { /* a database from before 038 — the migration lands on the next boot */ }
 }
 
 /* ------------------------------------------------- the unlogged tables
@@ -145,6 +165,7 @@ function wholeChanged(table) {
 function markPushed(table) {
   const h = hashOf(table);
   if (h !== null) hashes.set(table, h);
+  noteLocal('whole:' + table, 0);
 }
 
 /* -------------------------------------------------------------- reference
@@ -760,6 +781,99 @@ function detect() {
 export function behind() {
   const r = detect();
   return r ? r.behind : null;
+}
+
+/* Rows written on THIS machine after the last push THIS machine made —
+   counted against sync_local, never against the mirror's bookmarks (see
+   noteLocal). The question lib/restore.js asks before it wipes anything.
+   A table with no local record counts everything: conservative on purpose,
+   and adoptCursorsLocally() below fills the record in the first time a
+   machine syncs under its own lineage.
+
+   { total, byTable, outbox } — outbox is the Telegram queue, which is not
+   mirrored at all and would simply vanish with the wipe. */
+export function unpushed() {
+  const d = DB.get();
+  const local = new Map();
+  try { for (const r of d.prepare('SELECT id, last_seq, at FROM sync_local').all()) local.set(r.id, r); }
+  catch { /* pre-038: nothing recorded, everything counts */ }
+
+  const byTable = {};
+  let total = 0;
+  const maxes = new Map(d.prepare('SELECT tbl, MAX(seq) AS m FROM change_log GROUP BY tbl').all()
+                          .map((r) => [r.tbl, r.m]));
+  for (const t of CURSOR_TABLES) {
+    if (maxes.get(t) === undefined) continue;
+    const l = local.get('sync:' + t);
+    const n = d.prepare('SELECT COUNT(DISTINCT row_id) AS n FROM change_log WHERE tbl = ? AND seq > ?')
+               .get(t, l ? l.last_seq : 0).n;
+    if (n) { byTable[t] = n; total += n; }
+  }
+  for (const t of APPEND) {
+    let m;
+    try { m = d.prepare(`SELECT MAX(id) AS m FROM ${t}`).get().m; } catch { continue; }
+    if (m === null) continue;
+    const l = local.get(`sync:${t}:maxid`);
+    const n = d.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE id > ?`).get(l ? l.last_seq : 0).n;
+    if (n) { byTable[t] = n; total += n; }
+  }
+  /* The whole tables carry no log. Two of them carry a timestamp, which is
+     enough; the rest are settings a person can re-enter, and the moved-aside
+     file keeps them anyway. */
+  for (const t of ['config', 'users']) {
+    let m;
+    try { m = d.prepare(`SELECT MAX(updated_at) AS m FROM ${t}`).get().m; } catch { continue; }
+    const l = local.get('whole:' + t);
+    if (m && (!l || m > l.at)) { byTable[t] = 1; total += 1; }
+  }
+  let outbox = 0;
+  try { outbox = d.prepare('SELECT COUNT(*) AS n FROM partner_events WHERE sent_at IS NULL').get().n; }
+  catch { /* no outbox table */ }
+  return { total, byTable, outbox };
+}
+
+/* The mirror's bookmarks ARE this machine's when the lineage is ours — copy
+   them into sync_local so unpushed() stops counting months of history the
+   first time a long-running shop boots on this code. */
+export async function adoptCursorsLocally() {
+  if (!cursorsLoaded) await loadCursors();
+  for (const [id, c] of cursors) if (id.startsWith('sync:')) noteLocal(id, c.last_seq);
+}
+
+/* After the boot pull. The local change_log is empty and the restore wrote
+   outside it, so every seq bookmark points into a log that no longer exists
+   — the exact "cursor outlives its log" trap the rewind in syncTable()
+   catches, one table at a time, each with a warning that would be a lie
+   after a deliberate pull. Say what is true instead: nothing has been
+   logged (seq cursors → 0), and every append-only row up to the local
+   maximum came FROM the mirror (maxid cursors → MAX(id)). One upsert, so a
+   slow line costs one round trip rather than thirty. */
+export async function resetCursorsAfterPull({ log = tailLog() } = {}) {
+  if (!cursorsLoaded) await loadCursors();
+  const d = DB.get();
+  const now = new Date().toISOString();
+  const host = hostname();
+  const rows = [];
+  for (const t of CURSOR_TABLES) {
+    rows.push({ id: 'sync:' + t, last_seq: 0, last_push_at: now, note: `reset: pulled onto ${host}` });
+  }
+  for (const t of APPEND) {
+    let m;
+    try { m = d.prepare(`SELECT MAX(id) AS m FROM ${t}`).get().m; } catch { continue; }
+    rows.push({ id: `sync:${t}:maxid`, last_seq: m || 0, last_push_at: now, note: `reset: pulled onto ${host}` });
+  }
+  rows.push({ id: 'shop', last_seq: 0, last_push_at: now, note: `pulled onto ${host}` });
+  await SB.insert('sync_state', rows, { upsert: true });
+  for (const r of rows) {
+    if (r.id === 'shop') continue;
+    const c = cursors.get(r.id) || { last_seq: 0, rows_pushed: 0 };
+    c.last_seq = r.last_seq;
+    cursors.set(r.id, c);
+    noteLocal(r.id, r.last_seq);
+  }
+  /* The whole tables now equal the mirror, so "pushed as of now" is true. */
+  for (const t of WHOLE) noteLocal('whole:' + t, 0);
+  log.tick(`${rows.length - 1} bookmark(s) reset for ${host}`);
 }
 
 /* Everything, in order, the way the CLI has always done it. Settings and

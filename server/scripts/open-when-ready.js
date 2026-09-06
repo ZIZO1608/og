@@ -9,8 +9,10 @@
 
    HTTPS when a certificate exists (that is the address that gets
    notifications and the camera), plain HTTP otherwise. It gives up quietly
-   after a minute — if the server never came up, index.js has already said
-   why in the launcher window, and a second message here would only bury it.
+   after four minutes — long enough for the boot pull (lib/restore.js) to
+   bring the shop down from the cloud on a slow line before the server
+   listens. If the server never came up, index.js has already said why in
+   the launcher window, and a second message here would only bury it.
    ========================================================================== */
 
 import { spawn } from 'node:child_process';
@@ -43,7 +45,7 @@ function open(u) {
   else spawn(platform === 'darwin' ? 'open' : 'xdg-open', [u], { detached: true, stdio: 'ignore' }).unref();
 }
 
-const deadline = Date.now() + 60000;
+const deadline = Date.now() + 240000;
 (async function loop() {
   const h = await up();
   if (h) return open(h.https ? `https://localhost:${HTTPS}` : `http://localhost:${HTTP}`);
