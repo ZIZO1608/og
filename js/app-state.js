@@ -20,7 +20,7 @@ var OG = {
      dropdown, and that is how the storefront switch became a disappearing
      act: the switch set the very flag the list filtered on, so the row you
      had just edited left the screen with nothing to say where it went. */
-  prod: { type: '', health: '', arch: 'all', q: '', sort: 'name', dir: 1 },
+  prod: { type: '', health: '', arch: 'active', q: '', sort: 'name', dir: 1 },
   /* img = a colour block, imgSrc = a real photo as a data URL. Only one is
      ever set; imgSrc wins wherever both are checked. */
   /* `place` is which warehouse the Stock tab is showing: 'all' | a warehouse

@@ -1,0 +1,23 @@
+-- =============================================================================
+--  On the marketing website is not the same as still being sold.
+-- -----------------------------------------------------------------------------
+--  `products.hidden` means ARCHIVED: the shop has stopped selling the line. It
+--  is what DB.liveVariants(), every stock figure, the reports inventory block
+--  and the label printer all read, and it is right.
+--
+--  The products screen carried a switch labelled "On storefront" wired to that
+--  same column, so turning a product off the website archived it — the row left
+--  the table, its pieces left the stock totals, and nothing said where it went.
+--  One column cannot answer two questions.
+--
+--  This is the second question: does this product appear on the marketing
+--  website. Independent of `hidden` in both directions — a line can be sold in
+--  the shop and kept off the site, and an archived line is off the site
+--  whatever this says, because the site will read `hidden = 0 AND on_web = 1`.
+--
+--  DEFAULT 1: every product that exists today was showing as "on" in that
+--  switch unless it was archived, and a migration must not silently take a
+--  shop's whole catalogue off its website.
+-- =============================================================================
+
+ALTER TABLE products ADD COLUMN on_web INTEGER NOT NULL DEFAULT 1;

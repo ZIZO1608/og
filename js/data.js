@@ -2716,12 +2716,17 @@ var DB = {
         srcSellingPrice: p.selling_price,
         shelfZone: p.shelf_zone || '',
         hidden: !!p.hidden,
-        /* One flag, not two. The app grew `hidden` and `archived` meaning the
-           same thing in different screens; the server has one column, and it
-           is right. Mapped to both so the products screen's "Archived" filter
-           shows exactly what the shop has taken off sale — leaving `archived`
-           false would put discontinued goods back in the main list. */
+        /* `hidden` and `archived` are ONE server column and one idea: the shop
+           has stopped selling this line. Mapped to both names because both are
+           read across the app, and leaving `archived` false would put
+           discontinued goods back into every stock figure. */
         archived: !!p.hidden,
+        /* A SECOND, independent question (migration 039): does the marketing
+           website show it. These were the same column once, which made the
+           storefront switch archive the product — flip it and the row left the
+           table. Defaults to true so a server that predates 039 does not read
+           as a catalogue switched off. */
+        onWeb: p.on_web === undefined || p.on_web === null ? true : !!p.on_web,
         demo: !!p.demo,
         /* Never sold falls back to how long the shop has had it, which is the
            honest reading of "nothing has moved" and keeps the dead-stock

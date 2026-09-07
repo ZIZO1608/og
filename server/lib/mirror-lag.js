@@ -35,6 +35,13 @@
    reports on this list has to say which, or it tells somebody their rows are
    being retried when they are not. */
 export const MIRROR_LAG = {
+  /* 039 — does this product appear on the marketing website. `products` leads
+     the UNGUARDED core loop, so a rejection here takes variants, stock,
+     customers, sales and deliveries down with it — the same shape as the
+     customers entry below, and the reason that one is written out at length. */
+  products:   { cols: ['on_web'],
+                file: 'server/supabase/014_product_on_web.sql', retriedBy: ['sync', 'reconcile'] },
+
   /* 033 — the credit rules and where a merged customer went. Measured against
      the live mirror on 2026-09-02: rejected. `customers` is pushed in the
      UNGUARDED core loop, so this one took sales and deliveries with it. */

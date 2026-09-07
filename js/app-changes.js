@@ -82,30 +82,33 @@ var CHANGES = {
   },
 
   'toggle-visible': function (el) {
-    /* Marking a product hidden is editing the catalogue. The
-       column is not drawn without product.write, so reaching this is either a
-       stale screen or someone poking at it — either way, put the switch back
-       rather than letting the UI show a change the server will not keep. */
+    /* THE MARKETING WEBSITE, and only that. This switch used to write
+       `hidden`, which is the ARCHIVE flag — so turning a product off the site
+       took it out of the catalogue screen and out of every stock figure, and
+       the row vanished under the finger that had just moved it. Migration 039
+       gave the website a column of its own. Archiving is the Archive action in
+       the bulk bar, and it still means "the shop has stopped selling this".
+
+       The column is not drawn without product.write, so reaching this is
+       either a stale screen or someone poking at it — either way, put the
+       switch back rather than showing a change the server will not keep. */
     if (!allow('product.write')) { el.checked = !el.checked; return; }
     var p = DB.product(+el.getAttribute('data-id'));
-    p.hidden = !el.checked;
-    p.archived = p.hidden;
+    p.onWeb = !!el.checked;
     /* Optimistic: the switch has already moved under the finger, and waiting
-       for a round trip before it settles reads as a broken toggle. It pushed
-       nothing at all before, so the switch flicked back on the next reload. */
+       for a round trip before it settles reads as a broken toggle. */
     if (typeof Shop !== 'undefined' && Shop.live()) {
-      Shop.hideProduct(p.id, p.hidden)
+      Shop.setProductWeb(p.id, p.onWeb)
         .then(function () { return Shop.reload(); })
         .catch(function (err) {
           el.checked = !el.checked;
-          p.hidden = !p.hidden;
-          p.archived = p.hidden;
+          p.onWeb = !p.onWeb;
           toast(p.name, API.friendly(err), 'err', 6000);
         });
     }
-    toast(p.name, p.hidden
-      ? (OG.lang === 'ar' ? 'أُخفي عن المتجر' : 'Hidden from the storefront')
-      : (OG.lang === 'ar' ? 'ظاهر في المتجر' : 'Visible on the storefront'), 'ok', 2000);
+    toast(p.name, p.onWeb
+      ? (OG.lang === 'ar' ? 'ظاهر على الموقع' : 'Showing on the website')
+      : (OG.lang === 'ar' ? 'مخفي عن الموقع' : 'Hidden from the website'), 'ok', 2000);
   },
 
   'wh-type': function (el) { OG.wh.type = el.value; OG.wh.sizes = {}; render(); },

@@ -379,7 +379,7 @@ function productsExportSpec() {
       out.push(exMoney(r.price));
       if (profit) out.push(pct(r.margin, 0));
       out.push(t(r.health) + (DB.sizeGaps(r.p.id).length ? ' · ' + t('size_gap') : ''),
-               r.p.hidden ? t('no') : t('yes'));
+               r.p.onWeb ? t('yes') : t('no'));
       return out;
     }),
     /* One entry per column, or the totals row slides out of alignment with

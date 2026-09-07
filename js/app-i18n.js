@@ -310,7 +310,7 @@ var I18N = {
     served_by: 'Served by', bill_to: 'Bill to',
 
     products_title: 'Products', products_sub: 'Every item, every size, live stock',
-    health: 'Stock health', visible: 'On storefront', healthy: 'Healthy', low: 'Low',
+    health: 'Stock health', visible: 'On website', healthy: 'Healthy', low: 'Low',
     critical: 'Critical', out: 'Out', all_types: 'All types', all_health: 'All health',
     per_size: 'Stock per size', sales_trend: 'Sales trend — last 6 months',
     size_gap_warn: 'Size gap — good total stock, zero in the sizes people ask for',
@@ -1041,7 +1041,7 @@ var I18N = {
     served_by: 'بواسطة', bill_to: 'الفاتورة إلى',
 
     products_title: 'المنتجات', products_sub: 'كل صنف وكل قياس ومخزون لحظي',
-    health: 'حالة المخزون', visible: 'ظاهر بالمتجر', healthy: 'جيد', low: 'منخفض',
+    health: 'حالة المخزون', visible: 'ظاهر بالموقع', healthy: 'جيد', low: 'منخفض',
     critical: 'حرج', out: 'منتهي', all_types: 'كل الأنواع', all_health: 'كل الحالات',
     per_size: 'المخزون حسب القياس', sales_trend: 'حركة المبيعات — آخر ٦ أشهر',
     size_gap_warn: 'فجوة قياسات — الكمية جيدة لكن القياسات المطلوبة صفر',

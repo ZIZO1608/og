@@ -771,7 +771,9 @@ child rows pushed from a parent's `afterUpsert` used to miss the lagging-column 
   product (`Shop.addVariant`) and cancelling a purchase order (`Shop.cancelPO`). These are listed by
   name in the wiring test so they stay visible rather than becoming permanent.
 - **The website has an endpoint but no website.** `/api/ext/print-jobs` is live behind
-  `OG_WEB_API_KEY`; nothing calls it yet.
+  `OG_WEB_API_KEY`; nothing calls it yet. `products.on_web` (`039`) is now set from the Products
+  screen and mirrored, but there is no `GET /api/ext/products` for the site to read — the flag is
+  stored and waiting, not wired to anything.
 - **WhatsApp push is not built.** The outbox has a `channel` column for it; the WhatsApp Cloud API
   needs a Meta business account and approval before a transport can be written.
 - A **draft partner invoice** still lives only in the browser — `partner_invoices.issued` is
@@ -1128,6 +1130,41 @@ selling.
 `criticalVariants`, `floorOuts` and `reorderSuggestions` walk. `js/app-warehouse.js`,
 `js/stock.js` and `js/app-dashboard.js` use it too. `js/app-products.js` deliberately does
 not — its Archived filter is the one place they should appear.
+
+### Archived and on-the-website are TWO columns, and were one for too long
+
+`products.hidden` is **archived**: the shop has stopped selling the line, and it leaves every
+stock figure above. `products.on_web` (migration `039`, mirror file
+`server/supabase/014_product_on_web.sql`) is **whether the marketing website shows it** —
+a different question with a different answer, and the site will read `hidden = 0 AND on_web = 1`.
+
+They were one column, and the Products screen surfaced it twice under two names: a switch
+headed "On storefront" and a filter option called "Archived". So turning a product off the
+website archived it — the row left the table, its pieces left the stock totals, and nothing on
+screen said where it had gone. The bulk bar had the same collision three ways: Show, Hide and
+Archive all wrote `hidden`.
+
+Now: the switch and the bulk Show/Hide pair write `on_web` (`Shop.setProductWeb`); bulk Archive
+writes `hidden` (`Shop.hideProduct`). Both are in `EDITABLE` in `server/lib/catalogue.js`.
+`on_web` defaults to 1 in both schemas — a migration must not take a shop's whole catalogue off
+its website — and `js/data.js` hydrates it as `onWeb`, defaulting to true so a server older than
+`039` does not read as a catalogue switched off.
+
+**`products` leads the UNGUARDED core loop**, so until `014` is run in the Supabase dashboard a
+rejection there would take variants, stock, customers, sales and deliveries down with it. There
+is a `mirror-lag.js` entry for exactly that: the sync pushes products without the column and
+names the file every run. Verified against the live mirror — the run stays green and the rest of
+the loop lands. **Run `014`, then `npm run supabase:reconcile`**, or the flag stays NULL there and
+a restore hands the shop back a website showing everything. The boot pull (`lib/restore.js`)
+refuses with `drift` until that is done, which is the guard working.
+
+Lifecycle is also no longer jammed into the stock-health dropdown: `OG.prod.arch`
+(`all | active | archived`, default `active`) is its own control on the Products screen, gated on
+`product.write` because only that permission is sent archived rows at all. Stock health is a fact
+about quantity; archived is a decision about the line.
+
+Nothing reads `on_web` yet — see "The website has an endpoint but no website" under Known open
+work. The flag is stored, mirrored and editable; the products endpoint for the site is not built.
 
 `server/scripts/purge-demo.js` removes demo rows for good. Dry run by default; `--test-sales`
 additionally takes sales rung up by accounts that no longer work here, which is a judgement

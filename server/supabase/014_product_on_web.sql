@@ -1,0 +1,23 @@
+-- =============================================================================
+--  Mirror schema for the marketing-website flag.
+--  Run this in the Supabase SQL editor, like 002 through 013.
+-- -----------------------------------------------------------------------------
+--  Matches server/migrations/039_product_on_web.sql column for column.
+--
+--  `products` is pushed in the UNGUARDED core loop, so until this is run
+--  PostgREST rejects the whole batch — products, variants, stock, customers,
+--  sales and deliveries with it. lib/mirror-lag.js therefore declares the
+--  column, and the sync pushes products WITHOUT it and names this file on
+--  every run rather than letting a day of sales go unmirrored.
+--
+--  Afterwards, and this is not optional:
+--    npm run supabase:reconcile
+--  The sync's cursor has already moved past any product pushed with the column
+--  dropped, and no rewind will ever look there again — so the flag stays NULL
+--  in the mirror, and a restore would hand the shop back a website showing
+--  everything, until the reconcile refills it.
+--
+--  DEFAULT TRUE for the same reason the local migration uses DEFAULT 1.
+-- =============================================================================
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS on_web BOOLEAN NOT NULL DEFAULT TRUE;

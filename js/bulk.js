@@ -278,22 +278,26 @@ var Bulk = (function () {
         return;
       }
       if (a === 'show' || a === 'hide') {
-        var before = list.map(function (p) { return p.hidden; });
-        var now = (a === 'hide');
-        list.forEach(function (p) { p.hidden = now; p.archived = now; });
-        pushRows(list, function (p) { return Shop.hideProduct(p.id, now); });
+        /* The marketing website (migration 039). This pair and Archive below
+           used to write the same column, so all three buttons did one thing
+           and "hide from the site" quietly discontinued the line. */
+        var before = list.map(function (p) { return p.onWeb; });
+        var now = (a === 'show');
+        list.forEach(function (p) { p.onWeb = now; });
+        pushRows(list, function (p) { return Shop.setProductWeb(p.id, now); });
         stageUndo(n + ' ' + t(a === 'hide' ? 'bk_hidden' : 'bk_shown'), function () {
-          list.forEach(function (p, i) { p.hidden = before[i]; p.archived = before[i]; });
-          pushRows(list, function (p, i) { return Shop.hideProduct(p.id, before[i]); });
+          list.forEach(function (p, i) { p.onWeb = before[i]; });
+          pushRows(list, function (p, i) { return Shop.setProductWeb(p.id, before[i]); });
         });
         refreshAll(); paint(); return;
       }
       if (a === 'price')  { priceModal(); return; }
       if (a === 'export') { exportSelection(sc); return; }
       if (a === 'archive') {
-        /* One column, not two. `archived` and `hidden` mean the same thing on
-           a product — the server has a single `hidden` and it is right — so
-           archiving here is hiding there. */
+        /* ARCHIVE is `hidden`: the shop has stopped selling the line, and it
+           leaves every stock figure with it. `archived` and `hidden` are one
+           server column and one idea. The WEBSITE is a different question and
+           has had its own column since 039 — the Show/Hide pair above. */
         list.forEach(function (p) { p.archived = true; p.hidden = true; });
         pushRows(list, function (p) { return Shop.hideProduct(p.id, true); });
         clear(sc);

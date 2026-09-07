@@ -448,8 +448,15 @@ var Shop = (function () {
     addVariant: function (productId, size, shelf) {
       return API.post('/api/products/' + productId + '/variants', { size: size, shelf: shelf });
     },
+    /* ARCHIVE — the shop has stopped selling the line. Takes it out of every
+       stock figure. Not the same button as the one below. */
     hideProduct: function (id, hidden) {
       return API.patch('/api/products/' + id, { hidden: hidden ? 1 : 0 });
+    },
+    /* THE MARKETING WEBSITE, and nothing else. A product can be off the site
+       and still on the shelf, which is what the storefront switch means. */
+    setProductWeb: function (id, on) {
+      return API.patch('/api/products/' + id, { on_web: on ? 1 : 0 });
     },
 
     /* ---- customers ---- */

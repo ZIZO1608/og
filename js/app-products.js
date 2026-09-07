@@ -20,9 +20,9 @@ var PROD_COLS_ALL = [
   { k: 'price',  label: 'price', num: true },
   { k: 'margin', label: 'margin', num: true, need: 'profit.read' },
   { k: 'health', label: 'health', need: 'stock.read' },
-  /* Marking something hidden is editing the catalogue, not
-     browsing it. */
-  { k: 'hidden', label: 'visible', need: 'product.write' }
+  /* The marketing website, not the archive — migration 039. Editing the
+     catalogue, not browsing it, so it needs product.write. */
+  { k: 'onWeb', label: 'visible', need: 'product.write' }
 ];
 
 function prodCols() {
@@ -45,7 +45,7 @@ function productRows() {
     return {
       p: p, qty: qty, cost: p.costPrice, price: p.sellingPrice,
       margin: (p.sellingPrice - p.costPrice) / p.sellingPrice * 100,
-      health: DB.health(qty), name: p.name, type: p.type, hidden: p.hidden ? 0 : 1
+      health: DB.health(qty), name: p.name, type: p.type, onWeb: p.onWeb ? 1 : 0
     };
   });
 
@@ -175,8 +175,8 @@ function viewProducts() {
       margin: '<td class="num">' + pct(r.margin, 0) + '</td>',
       health: '<td class="nowrap">' + healthBadge(r.qty) +
         (gaps.length ? ' <span class="badge critical">' + t('size_gap') + '</span>' : '') + '</td>',
-      hidden: '<td onclick="event.stopPropagation()"><label class="switch"><input type="checkbox"' +
-        (r.p.hidden ? '' : ' checked') + ' data-change="toggle-visible" data-id="' + r.p.id + '"><i></i></label></td>'
+      onWeb: '<td onclick="event.stopPropagation()"><label class="switch"><input type="checkbox"' +
+        (r.p.onWeb ? ' checked' : '') + ' data-change="toggle-visible" data-id="' + r.p.id + '"><i></i></label></td>'
     };
 
     /* Dimmed, not dropped: the row stays where the finger left it so the

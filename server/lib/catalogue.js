@@ -378,7 +378,10 @@ function initialsFor(name) {
 
 const EDITABLE = new Set([
   'name', 'type', 'brand', 'made_in', 'colorway', 'image_bg', 'image_initials',
-  'currency', 'cost_price', 'selling_price', 'shelf_zone', 'hidden'
+  'currency', 'cost_price', 'selling_price', 'shelf_zone', 'hidden',
+  /* Whether the marketing website shows it. Deliberately NOT the same key as
+     `hidden`, which means archived — see migration 039. */
+  'on_web'
 ]);
 
 export function update(id, fields, userId) {

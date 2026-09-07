@@ -348,7 +348,8 @@ async function replaceChildren(log, table, col, parentId, rows) {
 }
 
 export const TABLES = {
-  products: { parseKey: numKey, fetchLocal: byId('products'), mapRow: (r) => ({ ...r, hidden: !!r.hidden }) },
+  products: { parseKey: numKey, fetchLocal: byId('products'),
+              mapRow: (r) => ({ ...r, hidden: !!r.hidden, on_web: !!r.on_web }) },
   variants: {
     parseKey: (rowId) => ({ sku: rowId }),
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM variants WHERE sku = ?').get(key.sku),
