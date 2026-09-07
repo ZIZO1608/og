@@ -360,6 +360,13 @@ function productsExportSpec() {
   columns.push({ label: t('health') }, { label: t('visible') });
 
   var pieces = rows.reduce(function (a, r) { return a + r.qty; }, 0);
+  /* The sheet can carry archived lines now, because the screen does. Their
+     pieces are real and belong in the column total — a total that skipped
+     rows the reader can see is the fastest way to make a spreadsheet lie —
+     but they are not stock the shop is selling, and a file that does not say
+     so is one somebody quotes back as "we hold N pieces". */
+  var archived = rows.filter(function (r) { return r.p.archived; });
+  var archivedPieces = archived.reduce(function (a, r) { return a + r.qty; }, 0);
 
   return {
     name: 'products', sheet: 'Products', title: t('products_title'),
@@ -382,7 +389,10 @@ function productsExportSpec() {
     }),
     kpis: [{ label: t('st_products'), value: nf(DB.products.length) },
            { label: t('total_pieces'), value: nf(pieces) },
-           { label: t('st_critical'), value: nf(DB.criticalVariants().length) }]
+           { label: t('st_critical'), value: nf(DB.criticalVariants().length) }],
+    note: archived.length
+      ? t('pr_archived_note').replace('{k}', nf(archived.length)).replace('{n}', nf(archivedPieces))
+      : null
   };
 }
 

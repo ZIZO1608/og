@@ -31,7 +31,15 @@ function prodCols() {
 
 function productRows() {
   var f = OG.prod;
-  var base = DB.products.filter(function (p) { return f.health === 'archived' ? p.archived : !p.archived; });
+  /* The catalogue screen shows the whole catalogue by default, archived lines
+     included and marked. This is the one screen carrying the storefront
+     switch, and a table that drops the row you just edited reads as broken:
+     the product is gone and nothing says where it went. Everything that
+     answers "how much stock has the shop got" filters archived out for itself
+     through DB.liveVariants(), so showing them here costs no figure anywhere. */
+  var base = DB.products.filter(function (p) {
+    return f.arch === 'archived' ? p.archived : (f.arch === 'active' ? !p.archived : true);
+  });
   var rows = base.map(function (p) {
     var qty = DB.totalQty(p.id);
     return {
@@ -43,7 +51,7 @@ function productRows() {
 
   if (f.type) rows = rows.filter(function (r) { return r.type === f.type; });
   if (f.health === 'gap') rows = rows.filter(function (r) { return DB.sizeGaps(r.p.id).length > 0; });
-  else if (f.health && f.health !== 'archived') rows = rows.filter(function (r) { return r.health === f.health; });
+  else if (f.health) rows = rows.filter(function (r) { return r.health === f.health; });
   if (f.q) {
     var q = f.q.toLowerCase();
     rows = rows.filter(function (r) {
@@ -102,10 +110,24 @@ function viewProducts() {
      reason. */
   if (allow('stock.read')) {
     h += '<select class="inp" data-change="prod-health"><option value="">' + t('all_health') + '</option>';
-    ['healthy', 'low', 'critical', 'out', 'gap', 'archived'].forEach(function (hh) {
+    ['healthy', 'low', 'critical', 'out', 'gap'].forEach(function (hh) {
       h += '<option value="' + hh + '"' + (OG.prod.health === hh ? ' selected' : '') + '>' +
-           t(hh === 'gap' ? 'gap_only' : (hh === 'archived' ? 'bk_archived_only' : hh)) + '</option>';
+           t(hh === 'gap' ? 'gap_only' : hh) + '</option>';
     });
+    h += '</select>';
+  }
+
+  /* Archived is not a stock level, so it gets a control of its own rather than
+     a line in the dropdown above. Gated exactly like the switch it undoes:
+     only product.write is sent archived rows at all (Cat.list includeHidden),
+     so for anyone else this would filter a view of nothing. */
+  if (allow('product.write')) {
+    h += '<select class="inp" data-change="prod-arch">';
+    [['all', 'prod_arch_all'], ['active', 'prod_arch_active'], ['archived', 'bk_archived_only']]
+      .forEach(function (o) {
+        h += '<option value="' + o[0] + '"' + (OG.prod.arch === o[0] ? ' selected' : '') + '>' +
+             t(o[1]) + '</option>';
+      });
     h += '</select>';
   }
 
@@ -142,6 +164,7 @@ function viewProducts() {
        see cost UNDER the heading "price", which is worse than showing it. */
     var cell = {
       name: '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
+        (r.p.archived ? ' <span class="badge neutral">' + t('bk_archived') + '</span>' : '') +
         '<small>' + dots(esc(r.p.brand), esc(r.p.colorway),
           (gaps.length ? '<span style="color:var(--destructive);font-weight:600">' + t('size') + ' ' + gaps.join('/') + ' = 0</span>' : '')) +
         '</small></span></div></td>',
@@ -156,7 +179,11 @@ function viewProducts() {
         (r.p.hidden ? '' : ' checked') + ' data-change="toggle-visible" data-id="' + r.p.id + '"><i></i></label></td>'
     };
 
-    h += '<tr class="clickable' + (bulk && Bulk.has('products', r.p.id) ? ' bk-on' : '') +
+    /* Dimmed, not dropped: the row stays where the finger left it so the
+       switch can be flipped straight back. .tbl tbody tr.dim is already in
+       the stylesheet. */
+    h += '<tr class="clickable' + (r.p.archived ? ' dim' : '') +
+         (bulk && Bulk.has('products', r.p.id) ? ' bk-on' : '') +
          '" data-act="open-product" data-id="' + r.p.id + '">' +
       (bulk ? '<td class="bk-col">' + Bulk.box('products', r.p.id, ri) + '</td>' : '');
     cols.forEach(function (c) { h += cell[c.k]; });

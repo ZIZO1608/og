@@ -14,7 +14,13 @@ var OG = {
   lang: 'en',
   currency: 'SYP',
   pending: null,                                        // action to run after a view renders
-  prod: { type: '', health: '', q: '', sort: 'name', dir: 1 },
+  /* `arch` is the LIFECYCLE filter and is deliberately NOT part of `health`.
+     Stock health is out/low/critical/healthy — a fact about quantity.
+     Archived is whether the shop still sells the line at all. They were one
+     dropdown, and that is how the storefront switch became a disappearing
+     act: the switch set the very flag the list filtered on, so the row you
+     had just edited left the screen with nothing to say where it went. */
+  prod: { type: '', health: '', arch: 'all', q: '', sort: 'name', dir: 1 },
   /* img = a colour block, imgSrc = a real photo as a data URL. Only one is
      ever set; imgSrc wins wherever both are checked. */
   /* `place` is which warehouse the Stock tab is showing: 'all' | a warehouse

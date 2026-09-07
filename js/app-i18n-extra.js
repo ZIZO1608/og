@@ -489,6 +489,12 @@ var EXTRA_EN = {
   bk_price: 'Change price', bk_price_pct: 'Adjust by percent',
   bk_price_hint: 'Applies to every selected product, rounded to the nearest 1,000.',
   bk_archive: 'Archive', bk_archived: 'archived', bk_archived_only: 'Archived',
+  /* The products screen's lifecycle filter. Archived is not a stock level, so
+     it has a control of its own rather than a line in the health dropdown. */
+  prod_arch_all: 'All products', prod_arch_active: 'On sale',
+  pr_archived_note: 'Archived lines on this sheet: {k}, holding {n} pieces. The shop has ' +
+    'stopped selling them, and although those pieces are inside the Stock total here, they ' +
+    'are not counted as stock anywhere else in the system.',
   bk_delete: 'Delete', bk_deleted: 'deleted', bk_delete_title: 'Delete permanently',
   bk_delete_q: 'Delete {n} records?',
   bk_delete_note: 'Archiving is usually what you want — it hides them but keeps the history. Delete cannot be undone once the Undo toast disappears.',
@@ -734,6 +740,9 @@ var EXTRA_AR = {
   bk_price: 'تعديل السعر', bk_price_pct: 'التعديل بالنسبة المئوية',
   bk_price_hint: 'يُطبّق على كل منتج محدد، مقرّباً لأقرب ١٠٠٠.',
   bk_archive: 'أرشفة', bk_archived: 'مؤرشف', bk_archived_only: 'المؤرشف',
+  prod_arch_all: 'كل المنتجات', prod_arch_active: 'المعروضة للبيع',
+  pr_archived_note: 'الأصناف المؤرشفة في هذه الورقة: {k}، وعليها {n} قطعة. توقّف المحل عن ' +
+    'بيعها، وهذه القطع داخلة في مجموع المخزون هنا لكنها لا تُحتسب مخزوناً في أي مكان آخر بالنظام.',
   bk_delete: 'حذف', bk_deleted: 'محذوف', bk_delete_title: 'حذف نهائي',
   bk_delete_q: 'حذف {n} سجل؟',
   bk_delete_note: 'الأرشفة غالباً هي المطلوب — تخفيها وتحتفظ بالسجل. الحذف لا يمكن التراجع عنه بعد اختفاء التنبيه.',
