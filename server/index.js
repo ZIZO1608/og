@@ -1524,6 +1524,25 @@ router.add('POST /api/ext/print-jobs', async (ctx) => {
   } catch (e) { partnerFail(ctx.res, e); }
 });
 
+/* ---- the website's catalogue -------------------------------------------
+   Behind the same bearer key as the print-job door above (the /api/ext/
+   prefix is gated in the request pipeline, so there is no session and
+   ctx.user is null). Cat.webList decides what a public page may know —
+   `hidden = 0 AND on_web = 1 AND demo = 0`, no cost, no stock counts.
+
+   The list is the whole published catalogue in one answer, deliberately:
+   see the note on webRow for why there is no incremental feed. */
+router.add('GET /api/ext/products', (ctx) => {
+  const products = Cat.webList();
+  sendOk(ctx.res, { products, count: products.length, generatedAt: new Date().toISOString() });
+});
+
+router.add('GET /api/ext/products/:id', (ctx) => {
+  const p = Cat.webById(Number(ctx.params.id));
+  if (!p) return sendError(ctx.res, 404, 'not_found', 'No such product.');
+  sendOk(ctx.res, { product: p });
+});
+
 router.add('GET /api/ext/print-jobs/:id', (ctx) => {
   const j = Partner.job(ctx.params.id);
   if (!j || j.source !== 'web') return sendError(ctx.res, 404, 'not_found', 'No such job.');

@@ -216,6 +216,102 @@ export function list({ includeHidden = false } = {}) {
   return rows.map(p => ({ ...p, variants: bySize[p.id] ?? [] }));
 }
 
+/* --------------------------------------------------- what the website sees
+
+   `products.on_web` (migration 039) has been stored, mirrored and editable
+   since the storefront switch was split off `hidden`, and nothing read it.
+   This is what reads it.
+
+   THE RULE IS BOTH COLUMNS: `hidden = 0 AND on_web = 1`. Archived means the
+   shop has stopped selling the line, and an archived product is off the site
+   whatever its own flag says — otherwise turning a line off in the shop would
+   leave it advertised. `demo = 0` as well: those are invented goods at
+   invented prices, hidden rather than deleted because sales reference them,
+   and a public page is the last place they should surface.
+
+   WHAT IS DELIBERATELY NOT HERE
+   -----------------------------
+   - cost_price, and anything derived from it. This answer is rendered on a
+     public page; margin is nobody's business but the shop's. The columns are
+     named explicitly rather than SELECT *, so a cost column added later
+     cannot arrive here by itself.
+   - stock QUANTITIES. A size is in stock or it is not — that is all a size
+     button needs to know. "Only 2 left" is a decision about pressuring
+     customers, and it hands a competitor the shop's turnover if it is ever
+     wanted, it can be added deliberately.
+   - shelf_zone, barcode, label_code, hidden, on_web. Internal, and of no use
+     to a page.
+
+   There is no `since` parameter on purpose. An incremental feed cannot say
+   "this product LEFT the site" — the row simply stops being returned — so a
+   site built on deltas would advertise withdrawn goods forever. A few hundred
+   products is a small answer; fetch the whole list and replace. */
+function webRow(p, sizes) {
+  return {
+    id: p.id,
+    name: p.name,
+    brand: p.brand ?? null,
+    type: p.type,
+    colorway: p.colorway ?? null,
+    madeIn: p.made_in ?? null,
+    /* The shop has no photographs — the app draws a colour block with the
+       product's initials, and that is the whole of its artwork. Sent as-is so
+       a site can draw the same placeholder rather than invent a different one. */
+    image: { bg: p.image_bg ?? null, initials: p.image_initials ?? null },
+    /* Minor units of `currency`, with the exponent, because SYP is whole lira
+       and USD is cents and a page that divides by 100 for both is wrong half
+       the time. Never converted here: the shop prices some goods in dollars,
+       and today's rate is not what it was priced at. */
+    price: p.selling_price,
+    currency: p.currency,
+    minorExp: minorExp(p.currency),
+    sizes: sizes.map((v) => ({ size: v.size, sku: v.sku, inStock: v.total > 0 })),
+    inStock: sizes.some((v) => v.total > 0),
+    updatedAt: p.updated_at
+  };
+}
+
+const WEB_COLS =
+  `p.id, p.name, p.brand, p.type, p.colorway, p.made_in, p.image_bg,
+   p.image_initials, p.currency, p.selling_price, p.updated_at`;
+
+function webSizes(productIds) {
+  if (!productIds.length) return {};
+  const marks = productIds.map(() => '?').join(',');
+  const rows = get().prepare(
+    `SELECT v.sku, v.product_id, v.size,
+            COALESCE((SELECT SUM(qty) FROM stock s WHERE s.sku = v.sku), 0) AS total
+       FROM variants v
+      WHERE v.product_id IN (${marks})
+      ORDER BY v.product_id, v.size`
+  ).all(...productIds);
+  const by = {};
+  for (const v of rows) (by[v.product_id] ??= []).push(v);
+  return by;
+}
+
+export function webList() {
+  const rows = get().prepare(
+    `SELECT ${WEB_COLS} FROM products p
+      WHERE p.hidden = 0 AND p.on_web = 1 AND p.demo = 0
+      ORDER BY p.name`
+  ).all();
+  const sizes = webSizes(rows.map((p) => p.id));
+  return rows.map((p) => webRow(p, sizes[p.id] ?? []));
+}
+
+/* Null for a product that is archived, off the site, demo or simply absent —
+   the site is told "no such product" for all four, because which one it is is
+   the shop's business. */
+export function webById(id) {
+  const p = get().prepare(
+    `SELECT ${WEB_COLS} FROM products p
+      WHERE p.id = ? AND p.hidden = 0 AND p.on_web = 1 AND p.demo = 0`
+  ).get(id);
+  if (!p) return null;
+  return webRow(p, webSizes([p.id])[p.id] ?? []);
+}
+
 export function byId(id) {
   const p = get().prepare('SELECT * FROM products WHERE id = ?').get(id);
   if (!p) return null;

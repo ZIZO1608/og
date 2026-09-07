@@ -732,12 +732,25 @@ companies feel connected rather than merely sharing a table.
 - **Yalla Wear's unread lines are in the main bell too** (`partner_msg` in `alerts.js`, key
   `msg:<id>`, shop accounts with `print.read` only). Unread only, so opening the thread removes
   the row and the prune tidies its read mark; tapping one opens the job or invoice.
-- **The website's door is `POST /api/ext/print-jobs` / `GET /api/ext/print-jobs/:id`**, no
-  session: a bearer key from `OG_WEB_API_KEY` in `server/.env`, compared in constant time in
-  the request pipeline, 503 when no key is configured. A `reference` (the site's order id) is an
-  idempotency key through `applied_ops`. It creates with `source:'web', autoSend:true`, prices
-  from `config` `print.unit_price` / `print.partner_unit_cost` (950 / 460 defaults, the till's
-  numbers), and the answer never carries the printer's cost.
+- **The website's door is the `/api/ext/` prefix**, no session: a bearer key from
+  `OG_WEB_API_KEY` in `server/.env`, compared in constant time in the request pipeline, 401 on a
+  wrong or missing key and **503 when no key is configured** — which is the state of a shop with
+  no website. Everything under the prefix is gated by that one check, so a new route there is
+  behind the key by existing rather than by remembering.
+  - `POST /api/ext/print-jobs` / `GET /api/ext/print-jobs/:id`. A `reference` (the site's order
+    id) is an idempotency key through `applied_ops`. It creates with `source:'web',
+    autoSend:true`, prices from `config` `print.unit_price` / `print.partner_unit_cost`
+    (950 / 460 defaults, the till's numbers), and the answer never carries the printer's cost.
+  - `GET /api/ext/products` / `GET /api/ext/products/:id` — the published catalogue
+    (`Cat.webList` / `Cat.webById`). **`hidden = 0 AND on_web = 1 AND demo = 0`**: archived beats
+    the website flag, so a line taken off sale cannot stay advertised, and invented demo goods at
+    invented prices never reach a public page. The columns are named explicitly rather than
+    `SELECT *`, so a cost column added later cannot arrive by itself; a size carries `inStock`
+    and never a quantity; money is minor units plus `currency` and `minorExp`, never converted.
+    A withdrawn product answers **404, not 403** — the same rule the deliveries use, because
+    "no such product" and "not published" are the shop's business to tell apart. There is no
+    `since` parameter on purpose: an incremental feed cannot express "this product LEFT the
+    site", so a site built on deltas would advertise withdrawn goods forever.
 - **A payment is a handshake.** `partner_invoice_payments.recorded_by_side` says who recorded it;
   `confirmed_at` is set by the OTHER side (`confirmPayment` refuses `own_side` with a 409).
   `DB.invoicePaid` counts confirmed money only; `DB.invoicePending` is what is waiting;
@@ -770,10 +783,10 @@ child rows pushed from a parent's `afterUpsert` used to miss the lagging-column 
   routes are live and tested; there is simply no screen. Same for adding one size to an existing
   product (`Shop.addVariant`) and cancelling a purchase order (`Shop.cancelPO`). These are listed by
   name in the wiring test so they stay visible rather than becoming permanent.
-- **The website has an endpoint but no website.** `/api/ext/print-jobs` is live behind
-  `OG_WEB_API_KEY`; nothing calls it yet. `products.on_web` (`039`) is now set from the Products
-  screen and mirrored, but there is no `GET /api/ext/products` for the site to read — the flag is
-  stored and waiting, not wired to anything.
+- **There are endpoints but no website.** `/api/ext/print-jobs` and `/api/ext/products` are both
+  live behind `OG_WEB_API_KEY`; nothing calls either yet. The catalogue side is complete — the
+  flag, the mirror column, the editor and the read door — so what is missing is the site itself,
+  not anything here.
 - **WhatsApp push is not built.** The outbox has a `channel` column for it; the WhatsApp Cloud API
   needs a Meta business account and approval before a transport can be written.
 - A **draft partner invoice** still lives only in the browser — `partner_invoices.issued` is
@@ -1163,8 +1176,10 @@ Lifecycle is also no longer jammed into the stock-health dropdown: `OG.prod.arch
 `product.write` because only that permission is sent archived rows at all. Stock health is a fact
 about quantity; archived is a decision about the line.
 
-Nothing reads `on_web` yet — see "The website has an endpoint but no website" under Known open
-work. The flag is stored, mirrored and editable; the products endpoint for the site is not built.
+`GET /api/ext/products` is what reads it — see "The website's door" in the partner section. The
+site's query is `hidden = 0 AND on_web = 1`, with `demo = 0` on top, and archived deliberately
+beats the website flag: a line the shop has stopped selling must not stay advertised because
+somebody left its site switch on.
 
 `server/scripts/purge-demo.js` removes demo rows for good. Dry run by default; `--test-sales`
 additionally takes sales rung up by accounts that no longer work here, which is a judgement
