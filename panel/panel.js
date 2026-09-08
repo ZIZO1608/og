@@ -21,7 +21,7 @@
 
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, createWriteStream } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,11 +59,13 @@ const state = {
   ready: null,     // the server's own ready line: addresses, accounts, shop name
   mirror: null,    // sync-worker status, straight off the pipe
   job: null,       // { name, label, started } while a one-shot is running
-  swCache: null    // the service worker's cache name, as it stands on disk
+  swCache: null,   // the service worker's cache name, as it stands on disk
+  stale: false     // server/ has been edited since the running shop started
 };
 
 let child = null;  // the shop
 let job = null;    // the running one-shot, if any
+let startedAt = 0; // when the shop was launched, for the staleness check below
 
 /* The terminal. A ring, because a full mirror check prints a few thousand
    lines and a panel left open all day must not grow without end. */
@@ -115,7 +117,13 @@ function push(event, data) {
   }
 }
 
-function pushState() { push('state', state); }
+function pushState() {
+  /* Recomputed on every push rather than watched: it is a handful of stat()
+     calls on a tree of about eighty files, and a watcher that misses an
+     editor's write-to-temp-then-rename would be worse than no watcher. */
+  state.stale = serverIsStale();
+  push('state', state);
+}
 
 /* -------------------------------------------------------------- the shop */
 
@@ -275,6 +283,10 @@ async function startServer() {
     windowsHide: true,
     env: { ...process.env, FORCE_COLOR: '0' }
   });
+  /* What this process could possibly have loaded. Hard refresh compares the
+     files against it, because a server started before an edit is running the
+     old code and no amount of reloading the BROWSER changes that. */
+  startedAt = Date.now();
 
   child.stdout.on('data', (b) => say(b.toString('utf8').replace(/\n$/, '')));
   child.stderr.on('data', (b) => say(b.toString('utf8').replace(/\n$/, ''), 'err'));
@@ -333,6 +345,40 @@ function stopServer() {
   }, 8000).unref();
 }
 
+/* Has anything the SERVER runs changed since it was started? Node reads a
+   module once, at import, so a server launched before an edit goes on running
+   the old code until it is restarted - and Hard refresh, which only ever
+   spoke to the browser, could not fix that. What it looked like from the shop
+   floor: a new route answering "No such endpoint" to a button that plainly
+   exists in the source.
+
+   Only the trees the process actually imports or executes. `data/` and
+   `backups/` change constantly and mean nothing here; `node_modules` does not
+   exist, by design. */
+const SERVER_TREES = ['lib', 'scripts', 'migrations'];
+
+function newestServerFileMs() {
+  let newest = 0;
+  const look = (full) => {
+    let st;
+    try { st = statSync(full); } catch { return; }
+    if (st.isDirectory()) {
+      let kids = [];
+      try { kids = readdirSync(full); } catch { return; }
+      for (const k of kids) look(join(full, k));
+      return;
+    }
+    if (/\.(js|mjs|json|sql)$/i.test(full) && st.mtimeMs > newest) newest = st.mtimeMs;
+  };
+  look(join(SERVER, 'index.js'));
+  for (const d of SERVER_TREES) look(join(SERVER, d));
+  return newest;
+}
+
+function serverIsStale() {
+  return !!child && startedAt > 0 && newestServerFileMs() > startedAt;
+}
+
 /* ----------------------------------------------------------- hard refresh */
 
 const SW = join(ROOT, 'sw.js');
@@ -375,13 +421,44 @@ function hardRefresh() {
     say('  Could not bump sw.js: ' + e.message, 'err');
   }
 
+  /* THE SERVER HALF. Editing server/ and pressing Hard refresh used to update
+     the browser and leave the shop running the code it was started with - so
+     a route added a minute ago answered "No such endpoint" to a button that
+     plainly existed. Restarted only when something it runs actually changed,
+     because a restart costs the boot pull and interrupts the till. */
+  if (serverIsStale()) {
+    say('  The server code changed since it started - restarting the shop too.', 'note');
+    const dying = child;
+    stopServer();
+    const wait = setInterval(() => {
+      if (child === dying) return;
+      clearInterval(wait);
+      startServer();
+      /* The tabs are told once it is answering again, or they reload into a
+         shop that is still pulling from the cloud and see the failure page. */
+      const upAgain = setInterval(() => {
+        if (state.server !== 'running') return;
+        clearInterval(upAgain);
+        tellTabs();
+      }, 500);
+      upAgain.unref();
+    }, 300);
+    wait.unref();
+    pushState();
+    return;
+  }
+
+  tellTabs();
+  pushState();
+}
+
+function tellTabs() {
   if (child) {
     try { child.send({ type: 'reload' }); } catch { /* gone */ }
     say('  Told every open tab to drop its cache and come back.', 'note');
   } else {
     say('  The shop is not running, so there are no open tabs to tell.', 'note');
   }
-  pushState();
 }
 
 /* --------------------------------------------------------------- the jobs */

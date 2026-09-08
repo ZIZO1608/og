@@ -275,3 +275,7 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 306px 1fr; 
   main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .rail { border-right: 0; border-bottom: 1px solid var(--border); max-height: 46vh; }
 }
+
+/* Server code newer than the running shop. Amber, because nothing is broken
+   yet - it is a thing to press a button about, not a failure. */
+.hint.stale { color: var(--warning); }

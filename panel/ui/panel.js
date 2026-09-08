@@ -97,9 +97,14 @@
     $('bSync').disabled = s !== 'running' || busy || !!(state.mirror && state.mirror.mode === 'refused');
     $('bPush').disabled = busy;
 
-    $('swLine').textContent = state.swCache
-      ? 'Service worker cache: ' + state.swCache
-      : '';
+    /* The one thing that used to be invisible: the shop is running code older
+       than the files on disk, so a change made a minute ago is not live. Hard
+       refresh restarts it; this is what says so before anything looks broken. */
+    var sw = state.swCache ? 'Service worker cache: ' + state.swCache : '';
+    $('swLine').textContent = state.stale
+      ? 'The server\u2019s code changed since it started \u2014 Hard refresh restarts it.'
+      : sw;
+    $('swLine').className = state.stale ? 'hint stale' : 'hint';
 
     $('running').hidden = !busy;
     if (busy) $('running').textContent = state.job.label + ' running';
