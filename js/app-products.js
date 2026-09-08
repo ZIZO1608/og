@@ -323,7 +323,7 @@ function openProductDrawer(pid) {
   '</dl></div></div>';
 
   body += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
-    '<button class="btn btn-primary" data-act="nav-close" data-view="warehouse" data-tab="add">' + t('edit_product') + '</button>' +
+    '<button class="btn btn-primary" data-act="prod-edit" data-id="' + p.id + '">' + t('edit_product') + '</button>' +
     /* ONE print button. There were two here — this one drove the browser
        Label Studio (SKU text in the bars) and a second opened the 60x40
        layout in js/labels60.js — beside the per-size buttons in the table
@@ -350,4 +350,109 @@ function openProductDrawer(pid) {
       });
     });
   } });
+}
+
+
+/* ---- edit a product, in place ---------------------------------------------
+   The drawer's Edit button used to send somebody to the Add-product page,
+   which is a form for a product that does not exist yet and therefore arrived
+   empty. This is a modal over the drawer with every field the server lets a
+   product change (EDITABLE in server/lib/catalogue.js), and the drawer is
+   reopened where it was once the save lands.
+
+   Prices are edited in the product's OWN currency (srcCurrency, in its minor
+   units): a dollar-priced shoe must save back as dollars, or one trip through
+   the editor silently repegs it at today's rate. USD is shown in dollars and
+   stored in cents; SYP is whole lira both ways. Sizes and stock are not here
+   on purpose — stock moves through the warehouse's own log, never by typing
+   over a number. */
+function openProductEditor(pid) {
+  var p = DB.product(pid);
+  if (!p) return;
+  if (!allow('product.write')) { toast(t('edit_product'), t('no_access'), 'err'); return; }
+
+  var cur = p.srcCurrency || CONFIG.BASE_CURRENCY || 'SYP';
+  var exp = cur === 'USD' ? 2 : 0;
+  var major = function (minor) {
+    return minor == null ? '' : (exp ? (minor / Math.pow(10, exp)).toFixed(exp) : String(minor));
+  };
+  var typeOpts = Object.keys(DB.typeLabels).map(function (k) {
+    return '<option value="' + k + '"' + (p.type === k ? ' selected' : '') + '>' + esc(DB.typeLabels[k]) + '</option>';
+  }).join('');
+  var curOpts = ['SYP', 'USD'].map(function (c) {
+    return '<option value="' + c + '"' + (cur === c ? ' selected' : '') + '>' + c + '</option>';
+  }).join('');
+  var step = exp ? '0.01' : '1';
+
+  openModal({
+    title: t('edit_product') + ' · ' + esc(p.name),
+    body:
+      '<label class="field"><span>' + t('product_name') + '</span>' +
+        '<input class="inp" id="peName" type="text" value="' + esc(p.name) + '"></label>' +
+      '<div class="pe-grid">' +
+        '<label class="field"><span>' + t('type') + '</span><select class="inp" id="peType">' + typeOpts + '</select></label>' +
+        '<label class="field"><span>' + t('brand') + '</span><input class="inp" id="peBrand" type="text" value="' + esc(p.brand || '') + '"></label>' +
+        '<label class="field"><span>' + t('made_in') + '</span><input class="inp" id="peMade" type="text" value="' + esc(p.madeIn || '') + '"></label>' +
+        '<label class="field"><span>' + t('colour') + '</span><input class="inp" id="peColour" type="text" value="' + esc(p.colorway || '') + '"></label>' +
+        '<label class="field"><span>' + t('currency') + '</span><select class="inp" id="peCur">' + curOpts + '</select></label>' +
+        '<label class="field"><span>' + t('shelf') + '</span><input class="inp" id="peShelf" type="text" value="' + esc(p.shelfZone || '') + '"></label>' +
+        (seesCost()
+          ? '<label class="field"><span>' + t('cost_price') + '</span><input class="inp num" id="peCost" type="number" min="0" step="' + step + '" value="' + major(p.srcCostPrice) + '"></label>'
+          : '') +
+        '<label class="field"><span>' + t('selling_price') + '</span><input class="inp num" id="pePrice" type="number" min="0" step="' + step + '" value="' + major(p.srcSellingPrice) + '"></label>' +
+      '</div>' +
+      '<label class="field pe-check"><input type="checkbox" id="peWeb"' + (p.onWeb !== false ? ' checked' : '') + '> <span>' + t('visible') + '</span></label>' +
+      '<div class="partner-note mt">' + t('pe_note') + '</div>',
+    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+          '<button class="btn btn-primary" data-act="prod-edit-save" data-id="' + p.id + '">' + t('save') + '</button>',
+    onOpen: function () {
+      /* Changing the currency changes what the price boxes MEAN, so the step
+         and the shown figure follow it: 2,250 lira is not $2,250. The boxes
+         are cleared rather than converted — a conversion at today's rate is
+         exactly the repeg the source figures exist to prevent. */
+      var sel = document.getElementById('peCur');
+      if (sel) sel.addEventListener('change', function () {
+        var e2 = sel.value === 'USD' ? 2 : 0;
+        ['peCost', 'pePrice'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          el.step = e2 ? '0.01' : '1';
+          if (sel.value !== cur) el.value = '';
+          else el.value = major(id === 'peCost' ? p.srcCostPrice : p.srcSellingPrice);
+        });
+      });
+      setTimeout(function () { var n = document.getElementById('peName'); if (n) { n.focus(); n.select(); } }, 30);
+    }
+  });
+}
+
+/* What the modal says, turned into the PATCH body. Prices go back as minor
+   units of the chosen currency; a blank cost is left alone rather than
+   written as zero, because zero is a claim about what the shop paid. */
+function readProductEditor() {
+  var g = function (id) { var el = document.getElementById(id); return el ? el.value : undefined; };
+  var cur = g('peCur') || 'SYP';
+  var exp = cur === 'USD' ? 2 : 0;
+  var minor = function (v) {
+    if (v === undefined || String(v).trim() === '') return null;
+    var n = Number(String(v).replace(',', '.'));
+    if (!isFinite(n) || n < 0) return null;
+    return Math.round(n * Math.pow(10, exp));
+  };
+  var web = document.getElementById('peWeb');
+  var body = {
+    name: String(g('peName') || '').trim(),
+    type: g('peType'),
+    brand: String(g('peBrand') || '').trim(),
+    made_in: String(g('peMade') || '').trim(),
+    colorway: String(g('peColour') || '').trim(),
+    shelf_zone: String(g('peShelf') || '').trim(),
+    currency: cur,
+    on_web: web && web.checked ? 1 : 0
+  };
+  var price = minor(g('pePrice'));
+  if (price !== null) body.selling_price = price;
+  var cost = minor(g('peCost'));
+  if (cost !== null) body.cost_price = cost;
+  return body;
 }

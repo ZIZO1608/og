@@ -1483,6 +1483,31 @@ runs each group twice — `phase: 'upsert'` in FK order, then `phase: 'delete'` 
 and only advances the cursor after the second. Doing both in one pass is what rejected the
 first demo purge halfway through.
 
+## Editing a product
+
+`openProductEditor` / `readProductEditor` in `js/app-products.js`, `prod-edit` and
+`prod-edit-save` in `js/app-actions.js`, `PATCH /api/products/:id`. The drawer's **Edit product**
+button used to be `data-act="nav-close" data-view="warehouse" data-tab="add"` — it navigated to the
+**Add-product form**, which is a form for a product that does not exist yet and so arrived blank,
+with the shop's product left behind on a screen nobody was on any more. It is a modal over the
+drawer now, and the drawer reopens on the same product when the save lands.
+
+- **Every field the server lets a product change**, and no others: the EDITABLE set in
+  `server/lib/catalogue.js` — name, type, brand, made in, colourway, currency, both prices, shelf
+  zone, and the website flag. Nothing new was opened server-side.
+- **Prices are edited in the product's OWN currency**, `srcCurrency` in its minor units, and USD is
+  shown in dollars while SYP is whole lira. A dollar-priced shoe saved back as lira is the silent
+  repeg `srcCostPrice` / `srcSellingPrice` exist to prevent. Changing the currency **clears** the
+  price boxes rather than converting them: a conversion at today's rate is that same repeg wearing
+  a helpful face.
+- **A blank cost is left alone, not written as zero** — zero is a claim about what the shop paid.
+  A blank name or selling price is refused before the request, and the modal stays open with what
+  was typed still in it.
+- **Sizes and stock are deliberately absent**, and the note in the modal says so: stock moves
+  through the warehouse's movement log, and a screen that lets somebody type over a quantity is a
+  screen that puts a number in the database with no movement behind it.
+- Cost price is drawn only for `seesCost()`, so a cashier editing a name never sees what it cost.
+
 ## Product pictures
 
 Migration `040` (`products.image_url`), `server/lib/storage.js`, `POST /api/products/:id/image`,

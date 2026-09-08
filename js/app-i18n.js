@@ -317,6 +317,9 @@ var I18N = {
     size_gap_warn: 'Size gap — good total stock, zero in the sizes people ask for',
     total_stock: 'Total stock', stock_value: 'Stock value at cost', last_sold: 'Last sold',
     edit_product: 'Edit product', reorder: 'Create reorder',
+    pe_note: 'Sizes and stock are not edited here: book stock in and out through the warehouse, so every change is on the movement log.',
+    name_required: 'A name is required.', price_required: 'A selling price is required.',
+    pe_saved: 'Saved',
 
     warehouse_title: 'Warehouse', warehouse_sub: 'Nothing moves without a trace',
     tab_add: 'Add product', tab_moves: 'Stock movements',
@@ -1053,6 +1056,9 @@ var I18N = {
     size_gap_warn: 'فجوة قياسات — الكمية جيدة لكن القياسات المطلوبة صفر',
     total_stock: 'إجمالي المخزون', stock_value: 'قيمة المخزون بالتكلفة', last_sold: 'آخر بيع',
     edit_product: 'تعديل المنتج', reorder: 'طلب توريد',
+    pe_note: 'القياسات والمخزون لا تُعدَّل هنا: أدخِل البضاعة وأخرِجها من المستودع، حتى يبقى كل تغيير في سجل الحركات.',
+    name_required: 'الاسم مطلوب.', price_required: 'سعر البيع مطلوب.',
+    pe_saved: 'تم الحفظ',
 
     warehouse_title: 'المستودع', warehouse_sub: 'لا تتحرك قطعة دون أثر',
     tab_add: 'إضافة منتج', tab_moves: 'حركات المخزون',

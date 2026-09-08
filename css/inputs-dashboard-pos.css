@@ -508,3 +508,10 @@ body.pos-resizing-v { cursor: row-resize; user-select: none; }
 .pr-seg { display: flex; width: 100%; height: 38px; }
 .pr-seg button { flex: 1; }
 .pr-seg button.urg.on { background: var(--destructive-solid); color: #FFFFFF; font-weight: 700; }
+
+
+/* The product editor: two columns of fields on a desk, one on a phone. */
+.pe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+@media (max-width: 720px) { .pe-grid { grid-template-columns: 1fr; } }
+.pe-check { display: flex; align-items: center; gap: 8px; }
+.pe-check input { accent-color: var(--brand); width: 16px; height: 16px; }

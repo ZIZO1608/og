@@ -1289,6 +1289,27 @@ var ACTIONS = {
   /* The product drawer's picture: pick a file, shrink it, send it. Same
      reader as the Add-product form, so what the bucket gets is the same
      420 px picture either way. */
+  'prod-edit': function (el) { openProductEditor(+el.getAttribute('data-id')); },
+  'prod-edit-save': function (el) {
+    var id = +el.getAttribute('data-id');
+    var body = readProductEditor();
+    if (!body.name) { toast(t('edit_product'), t('name_required'), 'err'); return; }
+    if (body.selling_price === undefined) { toast(t('edit_product'), t('price_required'), 'err'); return; }
+    var p = DB.product(id);
+    Shop.write(
+      function () { return Shop.updateProduct(id, body); },
+      function () {
+        if (p) { p.name = body.name; p.type = body.type; p.brand = body.brand; p.madeIn = body.made_in; p.colorway = body.colorway; p.onWeb = !!body.on_web; }
+      },
+      function () {
+        closeModal();
+        /* Back to the drawer, where the person was, now showing what was saved. */
+        openProductDrawer(id);
+        toast(t('edit_product'), t('pe_saved'), 'ok', 2000);
+      }
+    );
+  },
+
   'prod-image': function () {
     var input = document.getElementById('prodFile');
     if (input) input.click();
