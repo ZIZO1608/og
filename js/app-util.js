@@ -134,6 +134,20 @@ function fmtDate(d) {
   return d.getDate() + ' ' + m + ' ' + d.getFullYear();
 }
 
+/* Just the clock. The movement log shows the date on one line and the time
+   under it, and fmtDateTime's full string would wrap the column. Same ص/م
+   rule as below, for the same reason. */
+function fmtTimeOnly(d) {
+  if (d === null || d === undefined || d === '') return '';
+  d = new Date(d);
+  if (isNaN(d.getTime())) return '';
+  var hh = d.getHours(), mm = String(d.getMinutes()).padStart(2, '0');
+  var ar = OG.lang === 'ar';
+  var suffix = ar ? (hh < 12 ? ' ص' : ' م') : (hh < 12 ? ' am' : ' pm');
+  var h12 = hh % 12 === 0 ? 12 : hh % 12;
+  return h12 + ':' + mm + suffix;
+}
+
 function fmtDateTime(d) {
   if (d === null || d === undefined || d === '') return '—';
   d = new Date(d);

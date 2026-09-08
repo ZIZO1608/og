@@ -64,6 +64,18 @@ var CHANGES = {
      after ticking the bulk checkbox. No render() call, same reasoning as
      qlp-qty right below: a full table repaint mid-keystroke would rebuild
      this input and drop focus. */
+  'ms-from': function (el) { if (moveScan) { moveScan.from = el.value; moveScanRepaint(); } },
+  'ms-to':   function (el) { if (moveScan) { moveScan.to = el.value; moveScanRepaint(); } },
+  /* Typed over, not scanned: clamped to something sane, and 0 means remove. */
+  'ms-qty': function (el) {
+    if (!moveScan) return;
+    var sku = el.getAttribute('data-sku');
+    var n = Math.max(0, Math.min(99, parseInt(el.value, 10) || 0));
+    if (!n) moveScan.lines = moveScan.lines.filter(function (l) { return l.sku !== sku; });
+    else moveScan.lines.forEach(function (l) { if (l.sku === sku) l.qty = n; });
+    moveScanRepaint();
+  },
+
   'lb-qty': function (el) {
     OG.lbQty = OG.lbQty || {};
     OG.lbQty[el.getAttribute('data-sku')] = Math.max(1, Math.min(99, parseInt(el.value, 10) || 1));

@@ -226,6 +226,11 @@ function bindWedge() {
       return;
     }
 
+    /* Move-by-scan owns the scanner while its panel is open: every code is a
+       piece being carried to the floor, and opening the product sheet on top
+       of the list somebody is building would bury it. */
+    if (typeof moveScanOwns === 'function' && moveScanOwns()) { moveScanned(code); return; }
+
     /* The warehouse map owns the scanner while it is on screen — a shelf
        scan selects the shelf, a product scan files onto it, and its own
        handler (registered by ShelfMap.register) has already acted. Opening

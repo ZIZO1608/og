@@ -55,7 +55,11 @@ var Bulk = (function () {
          "silently grab the whole table" this function exists to prevent. */
       case 'customers': return customerRowsShown().map(function (c) { return String(c.id); });
       case 'jobs':      return DB.printJobs.map(function (j) { return j.id; });
-      case 'movements': return DB.stockMovements.slice(0, 90).map(function (m) { return m.id; });
+      /* The same window whMovesTab draws — the pair rule, as on the products
+         grid: select-all must never reach a row nobody can see. */
+      case 'movements': return DB.stockMovements
+        .slice(0, typeof MOVES_SHOWN === 'number' ? MOVES_SHOWN : 90)
+        .map(function (m) { return m.id; });
       case 'variants':  return labelVariantRows().map(function (r) { return r.v.sku; });
       default:          return [];
     }

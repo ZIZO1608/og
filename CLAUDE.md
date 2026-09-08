@@ -1597,6 +1597,61 @@ Verified by `_smcheck.html` — `?gl=force` runs the room suite (needs
 context-loss test** so the finished room can be looked at, which is the one check that cannot be
 written as an assertion.
 
+## The warehouse: moving stock, and the log of it
+
+### Move by scan
+
+`openMoveScan` / `moveScanned` / `moveScanCommit` in `js/app-warehouse.js`, the `ms-*` actions and
+changes, `POST /api/stock/transfer`. The commonest job in that room — carrying pairs out of the
+back and onto the floor — had no button: it was the per-product transfer dialog, once per item.
+Now a button in the warehouse header (gated `stock.move`) opens a panel that takes barcodes.
+
+- **It collects first and moves on confirm, and that is not a preference.** `Shop.write` has a
+  one-write-at-a-time gate that **silently drops** a second write while the first is in flight —
+  right for a button somebody double-taps, fatal for a scanner gun, which puts three codes in
+  before one round trip finishes. Scanning into a local list loses nothing; the list then goes as
+  one confirmed action. The stock count batches for the same reason.
+- **The commit chains one transfer per line inside a single `Shop.write`**, so the gate is held
+  for the batch. Chained, not fired together: each is its own transaction on the server and a
+  queue of them against one SQLite file is how a `busy_timeout` becomes a failed move. **It is not
+  atomic and does not pretend to be** — a refusal partway names what moved and what did not, because
+  the alternative is rolling back shelf work somebody has already done with their hands.
+- **Availability is recomputed on every repaint, never stored on the line.** The stock at the FROM
+  place moves under this panel (a sale, another till), and a number captured at scan time would be
+  the one thing on screen that was true a minute ago. Scanning more than the place holds is a real
+  accident — the same box counted twice — so it is flagged on the row and the move clamps, rather
+  than being refused at the end.
+- **The panel owns the scanner while it is open**, through the same early return in
+  `js/app-boot.js`'s wedge router that the shelf map and the label picker use. Repaints patch the
+  modal body directly and never call `render()`: the panel holds a list being built and a caret in
+  the scan box, and a repaint underneath would take both.
+- A size with none at the FROM place is refused **by place name** ("There are none in Back
+  storage"), not "out of stock" — it may be on the floor already, and that sentence says which.
+
+### The movement log
+
+**`.pos` was the bug, and it is worth knowing why.** The quantity cell carried
+`class="mv-delta pos"`, and `.pos` is the **Point-of-Sale screen's own layout class**
+(`css/inputs-dashboard-pos.css`): `display:grid`, three columns, `height: calc(100vh -
+var(--topbar-h))`. So every positive quantity in the log became a full-height POS grid — each row
+**770px** tall, the quantity column 465px wide, the table 27,000px long inside a 564px box. The
+page looked like a rendering fault with no cause; it was one three-letter class name shared by a
+modifier and a screen. They are `.mv-up` / `.mv-down` now, namespaced so they cannot collide, and
+that is the rule for any modifier that could read as a noun.
+
+- **Seven columns, not ten.** SKU, balance, user and note each had their own, so the table was
+  1,557px wide inside a 1,154px card and scrolled sideways — the balance and the reason, the two
+  things an argument about stock turns on, were off the right edge. The SKU sits under the product
+  name where somebody comparing a sticker reads it, and the person sits under the reason they gave.
+- **The inline `max-height` is gone.** It put a second scrollbar inside a page that already
+  scrolls, so the wheel did one thing over the table and another beside it.
+- **It says it is a window.** It drew the most recent rows and claimed nothing — the mistake this
+  codebase has made most often. `MOVES_SHOWN` is the one number, read by `Bulk.visibleIds` too so
+  select-all can never reach a row nobody can see.
+- **A signed number needs `dir="ltr"`.** `+2` rendered as `2+` in Arabic — the sign dragged to the
+  far end by bidi, the same trap the Settings `meta` line documents. All three places that draw a
+  movement delta are isolated.
+
 ## The bulk bar
 
 `js/bulk.js`. One selection per screen, a floating bar of what can be done to it.

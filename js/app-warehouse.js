@@ -26,6 +26,13 @@ function viewWarehouse() {
       /* The map is its own screen — it takes over the scanner and keeps the
          focus in a scan box, which is not something to do inside a tab of a
          screen that has four other jobs. */
+      /* The commonest job in this room, and it had no button: carry pairs out
+         of the back and onto the floor. In the header rather than inside a
+         tab because it is done from wherever somebody happens to be standing
+         in this screen. */
+      (allow('stock.move')
+        ? '<button class="btn btn-primary" data-act="ms-open">' + t('ms_title') + '</button>'
+        : '') +
       ifNav('shelfmap', '<button class="btn" data-act="nav" data-view="shelfmap">' +
         t('nav_shelfmap') + '</button>') +
       exportButtons() +
@@ -871,7 +878,7 @@ function whAddPreview(sizes, totalPieces) {
     h += '<div class="alert-row"><span class="alert-ico ' + (mv.delta > 0 ? 'green' : 'grey') + '">' + (mv.delta > 0 ? '+' : '−') + '</span>' +
       '<span class="alert-txt">' + esc(p ? p.name : mv.sku) + ' · ' + mv.size +
       '<small>' + esc(mv.note) + ' · ' + relDate(mv.date) + '</small></span>' +
-      '<b class="mv-delta ' + (mv.delta > 0 ? 'pos' : 'neg') + '">' + (mv.delta > 0 ? '+' : '') + mv.delta + '</b></div>';
+      '<b class="mv-delta ' + (mv.delta > 0 ? 'mv-up' : 'mv-down') + '" dir="ltr">' + (mv.delta > 0 ? '+' : '') + mv.delta + '</b></div>';
   });
   h += '</div>';
 
@@ -906,42 +913,352 @@ function repaintWhAdd() {
   if (labels) labels.disabled = !total;
 }
 
-function whMovesTab() {
-  var h = '<div class="card table-wrap" id="mvTable" style="max-height:calc(100vh - 240px);overflow-y:auto">' +
-    '<table class="tbl"><thead><tr>' +
-      '<th class="bk-col">' + Bulk.headBox('movements') + '</th>' +
-      '<th>' + t('date') + '</th><th>' + t('movement') + '</th><th>' + t('product') + '</th>' +
-      '<th>' + t('sku') + '</th><th>' + t('wh_location') + '</th><th class="num">' + t('qty') + '</th>' +
-      '<th class="num">' + t('balance') + '</th><th>' + t('user') + '</th><th>' + t('notes') + '</th>' +
+/* THE MOVEMENT LOG. Seven columns, not ten.
+
+   It had one column each for SKU, balance, user and note beside the six that
+   matter, so the table was 1,557px wide inside a 1,154px card and scrolled
+   sideways — the balance and the reason, which are the two things an argument
+   about stock turns on, were off the right edge. The SKU now sits under the
+   product name where somebody comparing a sticker reads it, and the person is
+   under the reason they gave.
+
+   It also had `max-height: calc(100vh - 240px); overflow-y: auto` inline,
+   which put a second scrollbar inside a page that already scrolls: the wheel
+   did one thing over the table and another beside it, and the "cannot be
+   deleted" note under it could only be reached by scrolling the OUTER bar
+   past a box that was swallowing the wheel. The page scrolls. */
+/* ---- MOVE BY SCAN ---------------------------------------------------------
+   The job this screen was missing: somebody carries pairs out of the back
+   room and onto the shop floor, and the system should learn about it by being
+   shown the same barcodes he is already holding. Until now that was the
+   per-product transfer dialog — find the product, pick the size, type a
+   quantity, once per item.
+
+   IT COLLECTS FIRST AND MOVES ON CONFIRM, and that is not a preference.
+   `Shop.write` has a one-write-at-a-time gate (`if (busy) return`) that
+   SILENTLY drops a second write while the first is in flight — right for a
+   button somebody double-taps, fatal for a scanner gun, which can put three
+   codes in before one round trip finishes. Scanning into a local list costs
+   nothing and loses nothing; the whole list then goes as one confirmed
+   action. It is also how the stock count works, and for the same reason.
+
+   Module-scoped, one session at a time, the same shape as `quickPick` in
+   js/app-print-labels.js. */
+var moveScan = null;   // { from, to, lines: [{ sku, qty }] }
+
+function moveScanOwns() { return !!moveScan; }
+
+function openMoveScan() {
+  if (!allow('stock.move')) { toast(t('wh_move'), t('no_access'), 'err'); return; }
+  moveScan = { from: DB.intakeWh, to: DB.defaultWh, lines: [] };
+  openModal({
+    title: t('ms_title'),
+    /* Wide: this is a working surface with a table on it, not a question.
+       At the default width the product name wrapped to three lines and each
+       row stood three deep, which on a list of a dozen sizes is a scroll. */
+    size: 'wide',
+    body: moveScanBody(),
+    foot: moveScanFoot(),
+    onClose: function () { moveScan = null; }
+  });
+  moveScanFocus();
+}
+
+/* Everything about one scanned size, recomputed rather than stored: the stock
+   at the FROM place moves under this panel (a sale, another till), and a
+   number captured when it was scanned would be the one thing on screen that
+   was true a minute ago. */
+function moveScanRows() {
+  if (!moveScan) return [];
+  return moveScan.lines.map(function (l) {
+    var v = DB.variantBySku(l.sku);
+    var p = v ? DB.product(v.productId) : null;
+    return { line: l, v: v, p: p, have: v ? DB.stockAt(v, moveScan.from) : 0 };
+  }).filter(function (r) { return r.v && r.p; });
+}
+
+function moveScanTotal() {
+  return moveScanRows().reduce(function (n, r) { return n + Math.min(r.line.qty, r.have); }, 0);
+}
+
+function moveScanBody() {
+  var ar = OG.lang === 'ar';
+  var opts = function (sel) {
+    return DB.warehouses.map(function (w) {
+      return '<option value="' + w.id + '"' + (w.id === sel ? ' selected' : '') + '>' +
+        esc(DB.whName(w.id, ar)) + '</option>';
+    }).join('');
+  };
+
+  var h = '<div class="ms-route">' +
+      '<label class="field"><span>' + t('wh_from') + '</span>' +
+        '<select class="inp" data-change="ms-from">' + opts(moveScan.from) + '</select></label>' +
+      '<button class="btn btn-ghost ms-swap" data-act="ms-swap" title="' + esc(t('ms_swap')) + '">&#8646;</button>' +
+      '<label class="field"><span>' + t('wh_to') + '</span>' +
+        '<select class="inp" data-change="ms-to">' + opts(moveScan.to) + '</select></label>' +
+    '</div>';
+
+  /* The box is here for a typed SKU and to hold the caret; the scanner gun
+     does not need it — js/wedge.js reads the keys at the document and this
+     panel is given them by the router in app-boot.js. */
+  h += '<div class="ms-input">' +
+      '<input class="inp" id="msCode" autocomplete="off" spellcheck="false" ' +
+        'placeholder="' + esc(t('ms_scan_hint')) + '">' +
+      '<button class="btn" data-act="ms-camera">' + t('ms_camera') + '</button>' +
+    '</div>';
+
+  var rows = moveScanRows();
+  if (!rows.length) {
+    h += '<div class="ms-empty"><b>' + t('ms_empty') + '</b><small>' + t('ms_empty_sub') + '</small></div>';
+    return h;
+  }
+
+  h += '<div class="table-wrap ms-list"><table class="tbl tbl-compact"><thead><tr>' +
+      '<th>' + t('product') + '</th><th>' + t('size') + '</th>' +
+      '<th class="num">' + t('ms_available') + '</th>' +
+      '<th class="num">' + t('ms_moving') + '</th><th></th>' +
     '</tr></thead><tbody>';
 
-  DB.stockMovements.slice(0, 90).forEach(function (mv, mi) {
-    var p = DB.product(mv.productId);
-    h += '<tr' + (Bulk.has('movements', mv.id) ? ' class="bk-on"' : '') + '>' +
-      '<td class="bk-col">' + Bulk.box('movements', mv.id, mi) + '</td>' +
-      '<td class="nowrap muted num">' + fmtDate(mv.date) + '</td>' +
-      '<td><span class="badge ' + (mv.delta > 0 ? 'healthy' : (mv.type === 'damaged' ? 'critical' : 'neutral')) + '">' + t(mv.type) + '</span></td>' +
-      '<td><div class="cell-prod">' + (p ? thumb(p) : '') + '<span><b>' + esc(p ? p.name : '—') + '</b>' +
-        '<small>' + t('size') + ' ' + mv.size + '</small></span></div></td>' +
-      '<td class="muted num">' + mv.sku + '</td>' +
-      /* Historical rows written before places existed have no wh; show a dash
-         rather than inventing a location they were never recorded in. */
-      '<td>' + (mv.wh
-        ? '<span class="badge neutral">' + esc(DB.whName(mv.wh, OG.lang === 'ar')) + '</span>'
-        : '<span class="muted">—</span>') + '</td>' +
-      '<td class="num"><span class="mv-delta ' + (mv.delta > 0 ? 'pos' : 'neg') + '">' + (mv.delta > 0 ? '+' : '') + mv.delta + '</span></td>' +
-      '<td class="num"><b>' + mv.balance + '</b></td>' +
-      '<td class="muted">' + esc(mv.user) + '</td>' +
-      '<td class="muted small">' + esc(mv.note) + '</td>' +
+  rows.forEach(function (r) {
+    /* More scanned than the place holds is a real thing to do by accident —
+       the same box counted twice. Said on the row rather than refused at the
+       end, and the move clamps to what is there. */
+    var over = r.line.qty > r.have;
+    h += '<tr' + (over ? ' class="row-danger"' : '') + '>' +
+      '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
+        '<small dir="ltr">' + esc(r.v.sku) + '</small></span></div></td>' +
+      '<td><b>' + esc(r.v.size) + '</b></td>' +
+      '<td class="num' + (over ? ' mv-delta mv-down' : ' muted') + '">' + r.have + '</td>' +
+      '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' + r.line.qty +
+        '" style="width:64px" data-change="ms-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
+      '<td><button class="btn btn-sm btn-ghost" data-act="ms-drop" data-sku="' + esc(r.v.sku) + '" ' +
+        'title="' + esc(t('remove')) + '">&times;</button></td>' +
     '</tr>';
   });
 
-  h += '</tbody></table></div>' +
-    '<div class="partner-note" style="margin-top:12px">' +
-    (OG.lang === 'ar'
-      ? 'كل حركة مسجّلة باسم المستخدم والتاريخ والرصيد بعدها. لا يمكن حذف سطر — فقط إضافة حركة تصحيح.'
-      : 'Every movement is stamped with a user, a date and the balance after it. Rows cannot be deleted — only corrected with a new movement.') +
-    '</div>';
+  h += '</tbody></table></div>';
+
+  var over = rows.filter(function (r) { return r.line.qty > r.have; }).length;
+  if (over) h += '<div class="partner-note note-warn mt">' + t('ms_over').replace('{n}', over) + '</div>';
+  return h;
+}
+
+function moveScanFoot() {
+  var n = moveScanTotal();
+  return '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+    '<button class="btn btn-primary" data-act="ms-go"' + (n ? '' : ' disabled') + '>' +
+      t('ms_move_n').replace('{n}', n) + '</button>';
+}
+
+/* Patched in place, never through render(): the panel holds a list somebody
+   is building and a caret in the scan box, and a repaint of the screen
+   underneath would take both away mid-scan. */
+function moveScanRepaint() {
+  var root = document.getElementById('modal-root');
+  if (!root || !moveScan) return;
+  var body = root.querySelector('.modal-body');
+  var foot = root.querySelector('.modal-foot');
+  if (body) body.innerHTML = moveScanBody();
+  if (foot) foot.innerHTML = moveScanFoot();
+  moveScanFocus();
+}
+
+function moveScanFocus() {
+  setTimeout(function () {
+    var el = document.getElementById('msCode');
+    if (!el) return;
+    el.focus();
+    /* Bound on the element each repaint rather than delegated: the box is
+       replaced by moveScanRepaint, and Enter here means "take what I typed",
+       which is not a data-act on a button anywhere. */
+    if (!el.__wired) {
+      el.__wired = true;
+      el.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var code = el.value.trim();
+        el.value = '';
+        if (code) moveScanned(code);
+      });
+    }
+  }, 30);
+}
+
+/* One scanned code. Adds a piece, or a second piece of a size already on the
+   list — a warehouse worker scans the same box twice because he is moving two
+   of them, not because he made a mistake. */
+function moveScanned(raw) {
+  if (!moveScan) return false;
+  var code = String(raw || '').trim();
+  if (!code) return false;
+
+  var v = DB.variantByBarcode(code) || DB.variantBySku(code) ||
+          (DB.variantByLabelCode ? DB.variantByLabelCode(code) : null);
+  if (!v) { toast(t('ms_title'), t('sc_unknown') + ' · ' + code.slice(0, 24), 'err', 3000); return false; }
+
+  var p = DB.product(v.productId);
+  var have = DB.stockAt(v, moveScan.from);
+  if (have <= 0) {
+    /* Named, not "out of stock": it may be sitting on the floor already, and
+       "there are none in the back" is the sentence that tells him which. */
+    toast(p ? p.name : t('ms_title'),
+          t('ms_none_at').replace('{place}', DB.whName(moveScan.from, OG.lang === 'ar')), 'err', 4000);
+    return false;
+  }
+
+  var found = null;
+  for (var i = 0; i < moveScan.lines.length; i++) {
+    if (moveScan.lines[i].sku === v.sku) { found = moveScan.lines[i]; break; }
+  }
+  if (found) found.qty += 1;
+  /* Newest first: the thing just scanned is the thing to check. */
+  else moveScan.lines.unshift({ sku: v.sku, qty: 1 });
+
+  var qty = found ? found.qty : 1;
+  moveScanRepaint();
+  toast((p ? p.name : v.sku) + ' · ' + t('size') + ' ' + v.size,
+        t('ms_on_list').replace('{n}', qty), 'ok', 1400);
+  return true;
+}
+
+/* The whole list, in one confirmed action.
+
+   Sent one transfer per line INSIDE a single Shop.write, so the busy gate is
+   held for the batch rather than dropping the second line on the floor. They
+   are chained rather than fired together because each is its own transaction
+   on the server and a queue of them against one SQLite file is how a
+   `busy_timeout` becomes a failed move.
+
+   NOT atomic, and it does not pretend to be: if line four is refused, the
+   three before it have moved and the report names what did and what did not.
+   The alternative — a bulk endpoint that rolls the lot back — would undo real
+   shelf work somebody has already done with their hands. */
+function moveScanCommit() {
+  if (!moveScan) return;
+  var from = moveScan.from, to = moveScan.to;
+  if (from === to) { toast(t('ms_title'), t('wh_from') + ' = ' + t('wh_to'), 'err'); return; }
+
+  var plan = moveScanRows().map(function (r) {
+    return { sku: r.v.sku, name: r.p.name, size: r.v.size, qty: Math.min(r.line.qty, r.have) };
+  }).filter(function (x) { return x.qty > 0; });
+  if (!plan.length) { toast(t('ms_title'), t('out_of_stock'), 'err'); return; }
+
+  var note = t('ms_note');
+  var moved = [], failed = [];
+
+  Shop.write(
+    function () {
+      return plan.reduce(function (chain, x) {
+        return chain.then(function () {
+          return Shop.transfer(x.sku, from, to, x.qty, note)
+            .then(function () { moved.push(x); })
+            .catch(function (err) { failed.push({ x: x, err: err }); });
+        });
+      }, Promise.resolve());
+    },
+    function () {
+      plan.forEach(function (x) {
+        var v = DB.variantBySku(x.sku);
+        if (v) { DB.transfer(v, from, to, x.qty, t('admin')); moved.push(x); }
+      });
+    },
+    function () {
+      closeModal();
+      var pieces = moved.reduce(function (n, x) { return n + x.qty; }, 0);
+      if (pieces) {
+        toast(t('wh_move_done'),
+              pieces + ' ' + t('pieces') + ' · ' +
+                DB.whName(from, OG.lang === 'ar') + ' → ' + DB.whName(to, OG.lang === 'ar'),
+              'ok', 4000);
+      }
+      if (failed.length) {
+        toast(t('ms_some_failed').replace('{n}', failed.length),
+              (API.friendly ? API.friendly(failed[0].err) : String(failed[0].err.message || '')),
+              'err', 9000);
+      }
+      render();
+    }
+  );
+}
+
+/* How many rows the log draws. Read by js/bulk.js's select-all too — the day
+   those two disagreed on the Products screen, one tick box put five thousand
+   invisible rows a click from an action. */
+var MOVES_SHOWN = 90;
+
+function whMovesTab() {
+  var ar = OG.lang === 'ar';
+  var cap = DB.cap('movements');
+  var rows = DB.stockMovements.slice(0, MOVES_SHOWN);
+
+  var h = '<div class="card table-wrap"><table class="tbl tbl-moves"><thead><tr>' +
+      '<th class="bk-col">' + Bulk.headBox('movements') + '</th>' +
+      '<th>' + t('date') + '</th>' +
+      '<th>' + t('movement') + '</th>' +
+      '<th>' + t('product') + '</th>' +
+      '<th>' + t('wh_location') + '</th>' +
+      '<th class="num">' + t('qty') + '</th>' +
+      '<th class="num">' + t('balance') + '</th>' +
+      '<th>' + t('notes') + '</th>' +
+    '</tr></thead><tbody>';
+
+  if (!rows.length) {
+    h += '<tr><td colspan="8" class="muted" style="text-align:center;padding:28px">' + t('none') + '</td></tr>';
+  }
+
+  rows.forEach(function (mv, mi) {
+    var p = DB.product(mv.productId);
+    /* A transfer writes two rows — one leaving, one arriving — so the sign is
+       what says which end of it this is. An arrow beside the place reads at a
+       glance where a wall of them is mostly going. */
+    var arrow = mv.type === 'transfer' ? (mv.delta > 0 ? '→ ' : '← ') : '';
+
+    h += '<tr' + (Bulk.has('movements', mv.id) ? ' class="bk-on"' : '') + '>' +
+      '<td class="bk-col">' + Bulk.box('movements', mv.id, mi) + '</td>' +
+
+      '<td class="nowrap"><div class="mv-when"><b>' + fmtDate(mv.date) + '</b>' +
+        '<small dir="ltr">' + fmtTimeOnly(mv.date) + '</small></div></td>' +
+
+      '<td><span class="badge ' +
+        (mv.type === 'damaged' ? 'critical' : mv.delta > 0 ? 'healthy' : 'neutral') +
+        '">' + t(mv.type) + '</span></td>' +
+
+      /* Name, then size and SKU on one quiet line: the sticker on the box
+         carries the SKU and somebody holding it needs to match the two. */
+      '<td><div class="cell-prod">' + (p ? thumb(p) : '') +
+        '<span><b>' + esc(p ? p.name : '—') + '</b>' +
+        '<small class="nowrap">' + t('size') + ' ' + esc(mv.size) +
+          ' · <span dir="ltr">' + esc(mv.sku) + '</span></small></span></div></td>' +
+
+      /* Rows written before places existed carry no wh; a dash, never a
+         location they were not recorded in. */
+      '<td class="nowrap">' + (mv.wh
+        ? '<span class="badge neutral">' + esc(arrow + DB.whName(mv.wh, ar)) + '</span>'
+        : '<span class="muted">—</span>') + '</td>' +
+
+      '<td class="num"><span class="mv-delta ' + (mv.delta > 0 ? 'mv-up' : 'mv-down') + '" dir="ltr">' +
+        (mv.delta > 0 ? '+' : '') + mv.delta + '</span></td>' +
+
+      '<td class="num"><b>' + mv.balance + '</b></td>' +
+
+      '<td class="mv-why"><span>' + esc(mv.note || '—') + '</span>' +
+        '<small>' + esc(mv.user || '') + '</small></td>' +
+    '</tr>';
+  });
+
+  h += '</tbody></table></div>';
+
+  /* THE WINDOW, said out loud. This drew the most recent rows and claimed
+     nothing, which is the mistake this codebase has made most often. Two caps
+     stack here: the server sends a window of the log, and this table draws a
+     window of that. */
+  var shown = rows.length;
+  var total = cap && cap.total ? cap.total : DB.stockMovements.length;
+  if (shown < total || (cap && cap.capped)) {
+    h += cappedNote({ shown: shown, total: total, capped: true }, t('tab_moves').toLowerCase());
+  }
+
+  h += '<div class="partner-note mt">' + t('wh_moves_note') + '</div>';
   return h;
 }
 

@@ -1528,7 +1528,7 @@ function openScanResult(raw) {
         '<td><span class="badge ' + (mv.delta > 0 ? 'healthy' : (mv.type === 'damaged' ? 'critical' : 'neutral')) +
           '">' + t(mv.type) + '</span></td>' +
         '<td>' + (mv.wh ? esc(DB.whName(mv.wh, OG.lang === 'ar')) : '<span class="muted">—</span>') + '</td>' +
-        '<td class="num"><span class="mv-delta ' + (mv.delta > 0 ? 'pos' : 'neg') + '">' +
+        '<td class="num"><span class="mv-delta ' + (mv.delta > 0 ? 'mv-up' : 'mv-down') + '" dir="ltr">' +
           (mv.delta > 0 ? '+' : '') + mv.delta + '</span></td>' +
         '<td class="num"><b>' + mv.balance + '</b></td>' +
         '<td class="muted small">' + esc(mv.user) + '</td>' +

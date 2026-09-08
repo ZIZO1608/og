@@ -1294,6 +1294,27 @@ var ACTIONS = {
     );
   },
 
+  /* ---- move by scan ---- */
+  'ms-open': function () { openMoveScan(); },
+  'ms-swap': function () {
+    if (!moveScan) return;
+    var f = moveScan.from;
+    moveScan.from = moveScan.to;
+    moveScan.to = f;
+    moveScanRepaint();
+  },
+  'ms-drop': function (el) {
+    if (!moveScan) return;
+    var sku = el.getAttribute('data-sku');
+    moveScan.lines = moveScan.lines.filter(function (l) { return l.sku !== sku; });
+    moveScanRepaint();
+  },
+  'ms-camera': function () {
+    /* Continuous: he is emptying a shelf, not looking one thing up. */
+    Scan.open({ title: t('ms_title'), continuous: true, onHit: function (code) { moveScanned(code); } });
+  },
+  'ms-go': function () { moveScanCommit(); },
+
   /* Per-product transfer: choose a size, a direction and a quantity. */
   'wh-transfer': function (el) { openTransfer(+el.getAttribute('data-id')); },
 
