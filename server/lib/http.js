@@ -211,15 +211,35 @@ export function serveStatic(req, res, root, urlPath) {
 
   const type = TYPES[extname(full).toLowerCase()] || 'application/octet-stream';
 
-  /* index.html and the service worker must never be cached by the browser, or
-     a new deploy is invisible until someone clears their history. Everything
-     else is content-addressed enough by the sw cache name to be safe. */
-  const noCache = base === 'index.html' || base === 'sw.js';
+  /* EVERYTHING revalidates, and an ETag is what makes that cheap.
+
+     This used to hand js/, css/ and assets/ `public, max-age=3600` with no
+     ETag and no Last-Modified — an hour in which the browser would not even
+     ASK, and could not have revalidated if it wanted to. Edit a file, reload,
+     and get the old one back, with nothing on screen to say why. The panel's
+     Hard refresh cannot work through that, and neither could anybody's F5.
+
+     `no-cache` does not mean "do not store". It means "store it, but ask
+     before using it". The answer here is a 304 with no body, on a LAN, in
+     about a millisecond — and offline is the service worker's job anyway,
+     which is a cache this header has no say over.
+
+     The tag is mtime and size, not a hash of the bytes: a hash means reading
+     every file twice on every request to save a browser from re-fetching one
+     it already has. */
+  const etag = `W/"${st.size.toString(16)}-${st.mtimeMs.toString(16)}"`;
+
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache', ...securityHeaders() });
+    res.end();
+    return true;
+  }
 
   res.writeHead(200, {
     'Content-Type': type,
     'Content-Length': st.size,
-    'Cache-Control': noCache ? 'no-cache' : 'public, max-age=3600',
+    'Cache-Control': 'no-cache',
+    ETag: etag,
     ...securityHeaders()
   });
 

@@ -534,6 +534,8 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
   .modal { max-height: 92vh; }
   .toasts { inset-inline: 12px; top: 12px; }
   .toast { min-width: 0; max-width: none; width: 100%; }
+  /* A thumb, not a mouse pointer — and the swipe is the other way out. */
+  .toast-x { width: 32px; height: 32px; font-size: 19px; }
 }
 
 /* ------------------------------------------------------------ BOTTOM SHEET

@@ -355,21 +355,90 @@ function qrSafe(text, fallback, opts) {
 /* ------------------------------------------------------------ 4. FEEDBACK */
 
 /* `action` = { label, attrs } renders a button inside the toast — used by the
-   bulk Undo. The toast container is pointer-events:none, so a toast carrying
-   an action has to re-enable them on itself. */
+   bulk Undo. The container is pointer-events:none so the gaps between toasts
+   stay click-through; each toast re-enables them on itself, because there is
+   now something to press on every one of them. */
 function toast(title, msg, kind, ms, action) {
   var host = document.getElementById('toasts');
   var el = document.createElement('div');
   el.className = 'toast ' + (kind || '');
   el.innerHTML = '<div style="flex:1"><b>' + esc(title) + '</b>' +
                  (msg ? '<small>' + esc(msg) + '</small>' : '') + '</div>' +
-                 (action ? '<button class="toast-act" ' + action.attrs + '>' + esc(action.label) + '</button>' : '');
-  if (action) el.style.pointerEvents = 'auto';
+                 (action ? '<button class="toast-act" ' + action.attrs + '>' + esc(action.label) + '</button>' : '') +
+                 '<button class="toast-x" data-act="toast-x" aria-label="' + esc(t('close')) + '">&times;</button>';
   host.appendChild(el);
-  setTimeout(function () {
+  bindToastGestures(host);
+  el._t = setTimeout(function () { dismissToast(el); }, ms || 3000);
+}
+
+/* One way out for all four of them — the ×, a swipe, the timer, and a second
+   dismissal arriving on a toast already on its way off. `dir` is +1/-1 when a
+   hand threw it, so it leaves in the direction it was thrown rather than
+   snapping back to the middle to fade. */
+function dismissToast(el, dir) {
+  if (!el || el._gone) return;
+  el._gone = true;
+  if (el._t) clearTimeout(el._t);
+  if (dir) {
+    el.style.transition = 'transform .18s ease, opacity .18s ease';
+    el.style.transform = 'translateX(' + (dir * 115) + '%)';
+    el.style.opacity = '0';
+  } else {
     el.classList.add('out');
-    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 220);
-  }, ms || 3000);
+  }
+  setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 220);
+}
+
+/* One listener set on the host, bound the first time a toast exists — a toast
+   lives three seconds and there may be four of them at once, so per-element
+   handlers would be bound and thrown away all day.
+   Only the OUTWARD direction dismisses: the toast sits against the inline-end
+   edge, so it leaves the way it came in — right in English, left in Arabic.
+   Dragging the other way rubber-bands, which is what tells a hand "not that
+   way" without putting a word on screen. */
+var toastBound = false;
+function bindToastGestures(host) {
+  if (toastBound) return;
+  toastBound = true;
+
+  var el = null, x0 = 0, y0 = 0, d = 0, live = false;
+  function outward() { return document.body.classList.contains('rtl') ? -1 : 1; }
+
+  host.addEventListener('pointerdown', function (e) {
+    var hit = e.target.closest ? e.target.closest('.toast') : null;
+    /* A press on Undo or on the × is a press on that button, never a swipe. */
+    if (!hit || hit._gone || e.target.closest('button')) return;
+    el = hit; x0 = e.clientX; y0 = e.clientY; d = 0; live = false;
+    el.style.transition = 'none';
+  });
+
+  host.addEventListener('pointermove', function (e) {
+    if (!el) return;
+    var mx = e.clientX - x0, my = e.clientY - y0;
+    if (!live) {
+      /* Six pixels, and horizontal has to beat vertical — the same threshold
+         the shelf map uses, so a tap is still a tap and the page still scrolls. */
+      if (Math.abs(mx) < 6 || Math.abs(mx) <= Math.abs(my)) return;
+      live = true;
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+    d = mx * outward();
+    if (d < 0) d /= 4;
+    el.style.transform = 'translateX(' + (d * outward()) + 'px)';
+    el.style.opacity = String(Math.max(.25, 1 - Math.max(0, d) / 220));
+  });
+
+  function release() {
+    if (!el) return;
+    var me = el, went = live && d > Math.max(56, me.offsetWidth * .28);
+    el = null; live = false;
+    if (went) { dismissToast(me, outward()); return; }
+    me.style.transition = 'transform .16s ease, opacity .16s ease';
+    me.style.transform = '';
+    me.style.opacity = '';
+  }
+  host.addEventListener('pointerup', release);
+  host.addEventListener('pointercancel', release);
 }
 
 /* `sheet: true` makes it rise from the bottom edge instead of sitting in the

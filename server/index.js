@@ -51,6 +51,7 @@ import * as Mirror from './lib/mirror.js';
 import * as Telegram from './lib/telegram.js';
 import * as Live from './lib/live.js';
 import * as TLS from './lib/tls.js';
+import * as PanelLink from './lib/panel-link.js';
 import { lanAddresses } from './lib/net.js';
 import { timingSafeEqual } from 'node:crypto';
 import {
@@ -2427,16 +2428,74 @@ if (runDirectly) {
        timer and long-polls each bot for a link code. Off with no token. */
     Telegram.start();
 
+    /* The panel is watching a pipe, not this window. Everything it needs to
+       stop saying "starting…" and start drawing the shop: the addresses to
+       make clickable, whether the padlock is real, and how many people can
+       actually sign in. Same numbers as the banner above, so the panel can
+       never disagree with the window. */
+    PanelLink.tell('ready', {
+      http: `http://localhost:${PORT}`,
+      https: SECURE_SERVER ? `https://localhost:${HTTPS_PORT}` : null,
+      lan: lanAddresses().filter((a) => !a.note)
+        .map((a) => (SECURE_SERVER ? `https://${a.address}:${HTTPS_PORT}` : `http://${a.address}:${PORT}`)),
+      secure: !!SECURE_SERVER,
+      accounts: n,
+      shop: (() => {
+        try {
+          const r = DB.get().prepare("SELECT value FROM config WHERE key = 'shop.name'").get();
+          return r ? r.value : null;
+        } catch (e) { return null; }
+      })(),
+      db: DB_FILE,
+      pid: process.pid
+    });
+
     console.log('');
   });
 
-  for (const sig of ['SIGINT', 'SIGTERM']) {
-    process.on(sig, () => {
-      console.log('\n  shutting down');
-      if (SECURE_SERVER) { try { SECURE_SERVER.close(); } catch (e) { /* already down */ } }
-      server.close(() => { DB.close(); process.exit(0); });
-      /* If a connection refuses to drain, do not hang forever. */
-      setTimeout(() => process.exit(0), 5000).unref();
-    });
+  /* One shutdown, three ways in: Ctrl-C in a terminal, a SIGTERM from
+     whatever supervises this, and the panel's Stop button. Guarded because
+     pressing Stop twice meant two server.close() callbacks racing DB.close(),
+     and the second one closes a database the first already shut. */
+  let stopping = false;
+  function shutdown(why) {
+    if (stopping) return;
+    stopping = true;
+    console.log(`\n  shutting down${why ? ' \u2014 ' + why : ''}`);
+    PanelLink.tell('stopping');
+    if (SECURE_SERVER) { try { SECURE_SERVER.close(); } catch (e) { /* already down */ } }
+    server.close(() => { DB.close(); process.exit(0); });
+    /* If a connection refuses to drain, do not hang forever. The live SSE
+       streams are exactly that: a response that never ends on its own. */
+    setTimeout(() => process.exit(0), 5000).unref();
   }
+
+  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => shutdown(sig));
+
+  /* THE CONTROL PANEL. None of this exists unless the process was spawned
+     with an IPC channel — lib/panel-link.js says why the conversation is a
+     pipe and not another route. */
+  PanelLink.onAsk((type) => {
+    if (type === 'stop') { shutdown('the control panel'); return; }
+
+    /* HARD REFRESH. The panel has already bumped the service worker's cache
+       name; this is the half that reaches a browser ALREADY OPEN, instead of
+       somebody being told to press Ctrl-Shift-R. It goes to the tabs on
+       /api/live — the manager's and the developer's, deliberately not a
+       cashier halfway through a sale. */
+    if (type === 'reload') {
+      Live.notify('all', { reload: true });
+      console.log('  [panel] told the open tabs to reload');
+      return;
+    }
+
+    /* The panel's Sync now, without a session. The same run POST
+       /api/sync/push makes; the worker's own lock stops the two overlapping. */
+    if (type === 'sync') {
+      SyncWorker.runNow('full')
+        .then(() => console.log('  [panel] sync finished'))
+        .catch((e) => console.log('  [panel] sync failed: ' + e.message));
+      return;
+    }
+  });
 }

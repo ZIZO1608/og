@@ -1,0 +1,277 @@
+/* ==========================================================================
+   OG SYSTEM — control panel  ·  the window
+   --------------------------------------------------------------------------
+   The shop's own tokens, copied rather than imported: this window is served
+   by the panel process and must draw with the server stopped, which is
+   exactly when css/tokens.css is not being served by anything. A launcher
+   that goes blank the moment the thing it launches is down would be a poor
+   launcher.
+
+   Same quiet-and-expensive rules as css/og-skin.css: soft corners, weight
+   600/700 doing the talking, hairlines rather than boxes, and lime spent
+   only on the one primary action.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+  --app: #0A0A0B;
+  --card: #141417;
+  --popover: #1B1B1F;
+  --muted: #1E1E22;
+  --accent: #232327;
+  --foreground: #FAFAFA;
+  --muted-foreground: #A1A1AA;
+  --dim: #71717A;
+  --border: #27272A;
+  --border-strong: #3F3F46;
+  --brand: #C6FF00;
+  --brand-dim: #A8DA00;
+  --brand-foreground: #0A0A0B;
+  --brand-soft: #1C2600;
+  --brand-border: #4A6600;
+  --destructive: #F87171;
+  --destructive-soft: #2B1416;
+  --destructive-border: #7F2226;
+  --warning: #FBBF24;
+  --success: #4ADE80;
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+  --t: .16s cubic-bezier(.4, 0, .2, 1);
+}
+
+* { box-sizing: border-box; }
+
+/* The browser's own [hidden] rule loses to any author rule that sets display,
+   and half the things on this page set one - the confirm overlay is
+   display:flex, the address block is a flex column. Without this line the
+   overlay, with its 74% black backdrop, sat over the whole window from the
+   first paint: every colour at a quarter of its brightness and every button
+   behind a sheet of glass. Found by measuring a screenshot, not by looking
+   at one. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--app);
+  color: var(--foreground);
+  font: 400 13px/1.5 Montserrat, system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  /* The window has no address bar and no tabs, so nothing here should read
+     as a web page — text selection off everywhere except the terminal. */
+  user-select: none;
+}
+
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+/* ------------------------------------------------------------------ header */
+
+.bar {
+  flex: none; height: 62px; display: flex; align-items: center; gap: 13px;
+  padding: 0 18px; background: #000; border-bottom: 1px solid var(--border);
+}
+.mark { width: 30px; height: 30px; flex: none; }
+.titles { flex: 1; min-width: 0; }
+.titles h1 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
+.titles p { margin: 1px 0 0; font-size: 11.5px; color: var(--dim); }
+
+/* The one thing somebody looks at from across the counter. */
+.lamp {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px 7px 12px; border-radius: 9999px;
+  background: var(--muted); border: 1px solid var(--border);
+  font-size: 12px; font-weight: 600; color: var(--muted-foreground);
+}
+.lamp .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+.lamp.on { color: var(--brand); border-color: var(--brand-border); background: var(--brand-soft); }
+.lamp.on .dot { background: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .18); }
+.lamp.busy { color: var(--warning); border-color: #7C5410; background: #2A2110; }
+.lamp.busy .dot { background: var(--warning); animation: beat 1s ease-in-out infinite; }
+@keyframes beat { 50% { opacity: .25; } }
+
+/* -------------------------------------------------------------------- body */
+
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: 306px 1fr; }
+
+.rail {
+  min-height: 0; overflow-y: auto; padding: 16px;
+  background: var(--app); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 18px;
+}
+
+.block { display: flex; flex-direction: column; gap: 8px; }
+.block h2 {
+  margin: 0 0 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dim);
+}
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hint { margin: 2px 0 0; font-size: 11px; color: var(--dim); }
+
+/* ----------------------------------------------------------------- buttons */
+
+.btn {
+  padding: 9px 12px; border-radius: var(--radius-sm);
+  background: var(--muted); border: 1px solid var(--border);
+  font-size: 12.5px; font-weight: 600; text-align: center;
+  transition: background var(--t), border-color var(--t), color var(--t), opacity var(--t);
+}
+.btn:hover:not(:disabled) { background: var(--accent); border-color: var(--border-strong); }
+.btn:disabled { opacity: .38; cursor: not-allowed; }
+.btn.wide { width: 100%; }
+
+/* Lime is spent here and on the hero lamp, nowhere else. */
+.btn.go { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); font-weight: 700; }
+.btn.go:hover:not(:disabled) { background: var(--brand-dim); border-color: var(--brand-dim); }
+
+.btn.stop { color: var(--destructive); }
+.btn.stop:hover:not(:disabled) { background: var(--destructive-soft); border-color: var(--destructive-border); }
+
+.btn.hot { color: var(--brand); border-color: var(--brand-border); }
+.btn.hot:hover:not(:disabled) { background: var(--brand-soft); }
+
+.in {
+  width: 100%; padding: 9px 11px; border-radius: var(--radius-sm);
+  background: var(--card); border: 1px solid var(--border); outline: none;
+  font-size: 12.5px; user-select: text;
+}
+.in:focus { border-color: var(--brand-border); box-shadow: 0 0 0 3px rgb(198 255 0 / .1); }
+.in::placeholder { color: var(--dim); }
+
+/* ------------------------------------------------------------------- links */
+
+/* The addresses. The whole point of this block is that they are clickable —
+   nobody should be typing 10.10.99.9:8443 off a console window. */
+.url {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 9px 11px; border-radius: var(--radius-sm);
+  background: var(--card); border: 1px solid var(--border);
+  font-size: 12px; text-align: left; color: var(--foreground);
+  transition: background var(--t), border-color var(--t);
+}
+.url + .url { margin-top: 6px; }
+.url:hover { background: var(--accent); border-color: var(--brand-border); }
+.url .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.url .go { flex: none; font-size: 15px; color: var(--brand); line-height: 1; }
+.url .tag {
+  flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--dim);
+}
+
+/* ------------------------------------------------------------------ mirror */
+
+.mirror {
+  padding: 11px 12px; border-radius: var(--radius-sm);
+  background: var(--card); border: 1px solid var(--border);
+}
+.mirror .top { display: flex; align-items: center; gap: 8px; }
+.mirror .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
+.mirror .pip.ok { background: var(--success); }
+.mirror .pip.warn { background: var(--warning); }
+.mirror .pip.bad { background: var(--destructive); }
+.mirror .mode { font-size: 12px; font-weight: 700; }
+.mirror .num { margin-inline-start: auto; font-size: 11px; color: var(--muted-foreground); }
+.mirror .why { margin: 6px 0 0; font-size: 11px; color: var(--muted-foreground); line-height: 1.45; }
+.mirror .why.bad { color: var(--destructive); }
+
+/* ------------------------------------------------------------------- tools */
+
+.tools { display: flex; flex-direction: column; gap: 6px; }
+.tool {
+  display: block; width: 100%; text-align: left;
+  padding: 8px 11px; border-radius: var(--radius-sm);
+  background: transparent; border: 1px solid var(--border);
+  transition: background var(--t), border-color var(--t);
+}
+.tool:hover:not(:disabled) { background: var(--card); border-color: var(--border-strong); }
+.tool:disabled { opacity: .38; cursor: not-allowed; }
+.tool b { display: block; font-size: 12px; font-weight: 600; }
+.tool small { display: block; margin-top: 2px; font-size: 10.5px; color: var(--dim); line-height: 1.4; }
+/* A job that can lose a day's work is marked before it is pressed, not after. */
+.tool.danger b { color: var(--destructive); }
+.tool.danger { border-color: var(--destructive-border); }
+.tool.shut b::after {
+  content: 'shop must be closed'; float: right; font-size: 9px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--dim); margin-top: 2px;
+}
+
+/* ---------------------------------------------------------------- terminal */
+
+.term { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #060607; }
+.termbar {
+  flex: none; display: flex; align-items: center; gap: 12px;
+  padding: 0 14px; height: 38px; border-bottom: 1px solid var(--border);
+}
+.tlabel { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.running {
+  font-size: 11px; font-weight: 600; color: var(--warning);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.running::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--warning); animation: beat 1s ease-in-out infinite;
+}
+.follow { margin-inline-start: auto; font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 5px; }
+.follow input { accent-color: var(--brand); }
+.tbtn {
+  padding: 4px 10px; border-radius: var(--radius-sm);
+  background: transparent; border: 1px solid var(--border);
+  font-size: 11px; font-weight: 600; color: var(--muted-foreground);
+  transition: background var(--t), color var(--t);
+}
+.tbtn:hover { background: var(--muted); color: var(--foreground); }
+#bQuit:hover { background: var(--destructive-soft); border-color: var(--destructive-border); color: var(--destructive); }
+
+.out {
+  flex: 1; min-height: 0; margin: 0; padding: 12px 16px 20px;
+  overflow: auto; user-select: text;
+  font: 400 12px/1.55 "Cascadia Mono", Consolas, "Courier New", monospace;
+  color: #C9C9CF; white-space: pre-wrap; word-break: break-word;
+  outline: none;
+}
+.out .l { display: block; }
+.out .l.err { color: #FCA5A5; }
+.out .l.note { color: var(--brand); }
+
+/* ------------------------------------------------------- the typed confirm */
+
+.ask {
+  position: fixed; inset: 0; z-index: 40; display: flex;
+  align-items: center; justify-content: center; padding: 24px;
+  background: rgb(0 0 0 / .74);
+}
+.ask .box {
+  width: 100%; max-width: 430px; padding: 22px;
+  background: var(--popover); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: 0 24px 56px -14px rgb(0 0 0 / .85);
+}
+.ask h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+.ask p { margin: 0 0 14px; font-size: 12.5px; color: var(--muted-foreground); line-height: 1.55; }
+.ask .word { color: var(--destructive); font-weight: 700; }
+.ask .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.ask .foot .btn { min-width: 92px; }
+.ask .btn.doit { background: var(--destructive-soft); border-color: var(--destructive-border); color: var(--destructive); }
+.ask .btn.doit:hover:not(:disabled) { background: #3A181B; }
+.ask .grid { display: flex; flex-direction: column; gap: 8px; }
+.ask label { font-size: 11px; font-weight: 600; color: var(--dim); }
+
+/* ---------------------------------------------------------------- scrollbar */
+
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #2E2E34; border-radius: 9999px; border: 3px solid transparent; background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: #3F3F46; background-clip: content-box; border: 3px solid transparent; }
+::selection { background: var(--brand); color: var(--brand-foreground); }
+
+/* A narrow window is a real case: this sits beside the editor as often as it
+   sits alone. Below 820 the rail goes over the terminal rather than crushing
+   both into columns too thin to read. */
+@media (max-width: 820px) {
+  main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .rail { border-right: 0; border-bottom: 1px solid var(--border); max-height: 46vh; }
+}

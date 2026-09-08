@@ -264,6 +264,41 @@ var Pulse = (function () {
            typeof Auth !== 'undefined' && Auth.can('config.write');
   }
 
+  /* HARD REFRESH, from the control panel's button.
+
+     A plain location.reload() is not enough and never was. The service worker
+     is cache-first with ignoreSearch (see sw.js), so it answers for js/ and
+     css/ out of its own store and the network is never asked — no query
+     string defeats that, and neither does F5. So: throw the caches away,
+     take the update to the worker itself if the panel bumped its name, and
+     only then reload. The reload is left until last on purpose; a page that
+     reloads before its caches are gone comes straight back on the old files.
+
+     It arrives only on tabs holding /api/live, which is the manager's and the
+     developer's. That is deliberate — a till reloading itself under a
+     cashier's hands mid-sale is a bug, not a feature. */
+  function hardRefresh() {
+    var done = function () { location.reload(); };
+    var jobs = [];
+
+    if (window.caches && caches.keys) {
+      jobs.push(caches.keys().then(function (keys) {
+        return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      }));
+    }
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+        return Promise.all(regs.map(function (r) { return r.update(); }));
+      }));
+    }
+
+    if (!jobs.length) return done();
+    /* Never let a refusing cache API strand the page on the old build — the
+       reload is the point and it happens either way. */
+    Promise.all(jobs).then(done, done);
+    setTimeout(done, 2500);
+  }
+
   function connect() {
     if (es || !window.EventSource || !canConnect()) return;
     try {
@@ -278,6 +313,7 @@ var Pulse = (function () {
       var d = {};
       try { d = JSON.parse(ev.data || '{}'); } catch (e) { /* ignore */ }
       if (d.mirror) { if (typeof MirrorUI !== 'undefined') MirrorUI.paint(d.mirror); return; }
+      if (d.reload) { hardRefresh(); return; }
       if (!d.who && canAsk()) tick();
     });
     es.onerror = function () {

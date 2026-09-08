@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OG System</title>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<link rel="stylesheet" href="/ui/panel.css">
+</head>
+<body>
+
+<!-- The key the panel minted at boot. It is put here rather than left in the
+     address bar alone so a reload inside the window keeps working, and it
+     never leaves this machine. -->
+<script>window.OG_KEY = '__KEY__';</script>
+
+<header class="bar">
+  <img class="mark" src="/assets/logo.svg" alt="">
+  <div class="titles">
+    <h1>OG System</h1>
+    <p id="sub">Control panel</p>
+  </div>
+  <div class="lamp" id="lamp"><span class="dot"></span><span id="lampText">Closed</span></div>
+</header>
+
+<main>
+  <aside class="rail">
+
+    <section class="block">
+      <h2>The shop</h2>
+      <div class="row2">
+        <button class="btn go" data-do="start" id="bStart">Start</button>
+        <button class="btn stop" data-do="stop" id="bStop">Stop</button>
+      </div>
+      <div class="row2">
+        <button class="btn" data-do="restart" id="bRestart">Restart</button>
+        <button class="btn hot" data-do="refresh" id="bRefresh" title="Bump the service worker and make every open tab fetch the new files">Hard refresh</button>
+      </div>
+      <p class="hint" id="swLine"></p>
+    </section>
+
+    <section class="block" id="urlBlock" hidden>
+      <h2>Open in the browser</h2>
+      <div id="urls"></div>
+    </section>
+
+    <section class="block">
+      <h2>Cloud mirror</h2>
+      <div class="mirror" id="mirror"><p class="hint">Waiting for the shop to start.</p></div>
+      <button class="btn wide" data-do="sync" id="bSync">Sync now</button>
+    </section>
+
+    <section class="block">
+      <h2>Publish</h2>
+      <input id="msg" class="in" placeholder="What did you change?" autocomplete="off">
+      <div class="row2">
+        <button class="btn" data-job="push" id="bPush">Publish</button>
+        <button class="btn" data-job="deploy">Build dist</button>
+      </div>
+    </section>
+
+    <section class="block" id="tools">
+      <h2>Tools</h2>
+      <div class="tools" id="toolList"></div>
+    </section>
+
+  </aside>
+
+  <section class="term">
+    <div class="termbar">
+      <span class="tlabel">Terminal</span>
+      <span class="running" id="running" hidden></span>
+      <label class="follow"><input type="checkbox" id="follow" checked> Follow</label>
+      <button class="tbtn" data-do="clear">Clear</button>
+      <button class="tbtn" data-do="quit" id="bQuit">Quit</button>
+    </div>
+    <pre id="out" class="out" tabindex="0"></pre>
+  </section>
+</main>
+
+<div id="ask" class="ask" hidden></div>
+
+<script src="/ui/panel.js"></script>
+</body>
+</html>

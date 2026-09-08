@@ -15,7 +15,7 @@ this in meetings. The owner keeps his records on paper today.
 
 ```bash
 # The real thing — serves the app AND the API from one origin on :8090
-cd server && npm start          # or double-click start-og-system.bat
+cd server && npm start          # or double-click "OG System.exe" - the panel, see below
 
 # serve.ps1 and double-clicking index.html no longer show an app — there is
 # nothing to draw without the server. Both now say so rather than inventing a shop.
@@ -33,8 +33,9 @@ npm run cert:trust               # Windows trusts the self-signed certificate (a
 
 ### The till's hardware
 
-`server/scripts/hardware.js`, run by `start-og-system.bat` after the port check — so a
-double-click while the shop is already open does nothing. It exits **4** when something is
+`server/scripts/hardware.js`, run by the panel's first Start of the session (`morning()` in
+`panel/panel.js`) after the port check — so a double-click while the shop is already open
+does nothing. It exits **4** when something is
 missing that it can install (the launcher then installs and asks again), **1** when a person
 is needed, **0** otherwise. **It never stops the shop opening**: a till that cannot print can
 still sell shoes, same rule as `preflight.js`.
@@ -58,7 +59,8 @@ receipt printer all morning. Two candidates means it stops and prints the list.
 **Node 22.5+ required** (`node:sqlite` is used, which arrived in 22.5). There is **no `npm install`** —
 the server has zero dependencies by design, and the frontend has no build step at all.
 
-Publishing: **double-click `push.bat`** (add → commit → pull --rebase → push). CI then builds `dist/`
+Publishing: **the Publish button in the panel** (add → commit → pull --rebase → push, the message
+typed into the box; `push.bat` is gone). CI then builds `dist/`
 and deploys to GitHub Pages.
 
 ### HTTPS, and why the till needs it
@@ -82,8 +84,8 @@ exactly why this went unnoticed on the machine doing the testing.
   of real money to the internet.
 - **On the till itself that warning is gone**: `npm run cert:trust` (`scripts/trust-cert.js`)
   puts the certificate in Windows' machine-wide trusted list through `certutil`, asking for
-  administrator once, and `start-og-system.bat` runs its free `--check` every morning and only
-  prompts when it is not there. Before this the launcher opened `https://localhost:8443` straight
+  administrator once, and the panel runs its free `--check` on the first Start of the day and
+  only prompts when it is not there. Before this the launcher opened `https://localhost:8443` straight
   onto a full-page red "not private" every day, and it was reported as "there is an error".
   Phones still get the one warning: the certificate is deliberately not an authority (`CA:FALSE`),
   because an authority that anyone with `server/data/certs/` could copy would sign for any site.
@@ -112,6 +114,139 @@ hashes replaced by random bytes** — deleting them would have taken the invoice
 
 **Their old password is still in git history.** The server and `npm run preflight` both warn if one
 of those usernames is ever `active = 1` again. Make new accounts with `npm run createuser`.
+
+## The launcher: `OG System.exe` and the control panel
+
+One thing to double-click. It replaced four `.bat` files — `start-og-system.bat` (now a one-line
+shim, kept only because the shop laptop has a desktop icon and a pinned taskbar entry pointing
+at it), `push.bat`, `claim-mirror.bat` and `make-deploy.bat` (deleted; in git history if ever
+wanted back). The old window printed the addresses as text somebody retyped, could not be
+stopped except by closing it, and said the mirror's state once at 8 am and never again.
+
+```
+OG System.exe               the icon. Starts panel/panel.js, opens a window onto it, sits in the tray
+panel/panel.js              the supervisor: holds the server as a child, streams its output, runs the jobs
+panel/jobs.js               the button table — every job is a command plus the two sentences before it
+panel/ui/                   the window: same tokens and Montserrat as the shop, served by the panel itself
+panel/launcher/OGSystem.cs  the .exe's source. panel/build-exe.ps1 compiles it; panel/make-icon.js the icon
+```
+
+- **The `.exe` is built with the `csc.exe` that ships inside Windows**
+  (`C:\Windows\Microsoft.NET\Framework64\v4.0.30319\`), so it needs nothing installed — the same
+  reason the server has no dependencies and the frontend no build step. Electron needs npm and
+  200 MB, Tauri needs Rust, a Node SEA needs postject. **Rebuild only when `OGSystem.cs`
+  changes**: `powershell -ExecutionPolicy Bypass -File panel/build-exe.ps1`. Everything else in
+  `panel/` is read off disk at run time. The 36 KB `.exe` is committed because it is the thing a
+  fresh clone double-clicks; `make-deploy.ps1` and CI use allow-lists, so neither it nor `panel/`
+  ever reaches the published site. **`OGSystem.cs` and `build-exe.ps1` stay pure ASCII** —
+  `csc` and PowerShell 5.1 both read a file without a BOM as ANSI, and an em-dash in a
+  MessageBox string arrives as two wrong characters.
+- **The window is Edge in `--app` mode** (Chrome second, the default browser as a plain tab
+  third): no address bar, its own taskbar button, our icon. The panel is HTML because the shop
+  is HTML — one design system, and Arabic that already works. A WinForms UI would have been the
+  second design system, and the ugly one.
+- **The panel binds `127.0.0.1` and every request carries a key minted at boot**, handed to the
+  window in its URL. Localhost-only is not a defence by itself: any page in any browser on the
+  machine can POST to a local port, and this one has a Stop button for the till. One instance
+  only (a named mutex in the launcher; the second says so and exits). Env: `OG_PANEL_PORT`
+  (8099), `OG_PANEL_KEY` (set it to drive the panel from a script), `OG_PANEL_AUTOSTART=0`
+  (open without starting the shop), `OG_PANEL_PARENT=1` (set by the launcher — the panel then
+  treats end-of-file on stdin as "quit"; **gated on the flag, not on stdin merely not being a
+  TTY**, because a background job or a test harness hands over a stdin that is already at the
+  end, and the first version quit a moment after it started).
+
+### The pipe to the server — `server/lib/panel-link.js`
+
+The panel spawns `node index.js` with an IPC channel, and that channel is the whole
+conversation. With no channel — `npm start`, a terminal, a scheduled task — every call is a
+no-op and nothing behaves differently. It is not a door: no port, no origin, no cookie; a
+message can only come from the parent that spawned the process.
+
+- **Stopping.** Windows has no SIGINT to send a child; `child.kill()` there is
+  `TerminateProcess`, uncatchable, so the shutdown handler never runs and `DB.close()` never
+  happens. `{type:'stop'}` is the only graceful stop the platform has. `shutdown()` in
+  `index.js` is one function with three ways in (Ctrl-C, SIGTERM, the message), guarded so a
+  second Stop cannot race the first into closing a database already shut. The panel waits 8 s
+  and only then `taskkill /T /F`, which leaves the WAL to replay on the next open.
+- **Asking without signing in.** `GET /api/sync/status` is rightly gated on `config.write`.
+  The panel is not a browser on the wifi, it is the process that started this one, and making
+  somebody log into their own launcher to see whether the mirror is stuck is the wrong answer.
+  `tell()` in `sync-worker.js` sends the same status object up the pipe (backup path included —
+  it is this machine) alongside `Live.notify`. The server sends `ready` (addresses, padlock,
+  accounts, shop name) once listening, and `stopping`.
+- **`{type:'sync'}`** runs `SyncWorker.runNow('full')` — the same call `POST /api/sync/push`
+  makes; the worker's own lock stops the two overlapping.
+
+### Hard refresh
+
+The button that makes an edit reach the copy already open in a browser. Two halves, and it is
+only a hard refresh with both:
+
+1. **The file half bumps `CACHE` in `sw.js`** (`og-system-v119` → `v120`). The Gotchas section
+   below has said to do this by hand on every change to `css/`, `js/` or `index.html` since long
+   before the panel; one integer in one file is better kept by a button than by a paragraph.
+2. **The tab half** sends `{type:'reload'}` up the pipe → `Live.notify('all', { reload: true })`
+   → `hardRefresh()` in `js/pulse.js`, which deletes every cache, asks the worker registration
+   to update, and only then reloads. `location.reload()` alone never worked: `sw.js` is
+   cache-first with `ignoreSearch`, so it answered out of the old store however hard anyone
+   pressed F5. **It reaches the tabs on `/api/live` — the manager's and the developer's — and
+   deliberately not a cashier's**, because a till reloading itself under somebody's hands
+   mid-sale is a lost sale, not a refresh.
+
+It also needed **`serveStatic` to stop sending `public, max-age=3600`** on `js/`, `css/` and
+`assets/`. That was an hour in which the browser would not even ask, with no ETag and no
+Last-Modified, so it could not have revalidated if it wanted to. Everything is `no-cache` with a
+weak ETag from size+mtime now, answered with a bodiless 304 on a LAN in about a millisecond.
+`no-cache` means "store it, but ask first", not "do not store"; offline is the service worker's
+job, which this header has no say over.
+
+### Start, and what runs before it
+
+`startServer()` first binds a probe to the shop's port, the way `preflight.js` always has.
+Busy and `/api/health` answers → **the shop is already open somewhere else**: the panel adopts
+it (addresses drawn from its health line, Stop greyed out with the reason) rather than
+reporting a failure. Busy and no answer → the `netstat`/`taskkill` lines, not the `EADDRINUSE`
+stack trace that names `node:internal` and never the window to close — that trace went straight
+into the terminal pane the first time the panel was driven, which is how the check got written.
+
+Then **`morning()`**, once per panel session and not on Restart: `preflight.js` (prints only),
+`trust-cert.js --check` (a 4 leads to the trust run and its one permission prompt), and
+`hardware.js` (a 4 leads to `--install` and a re-check; a 1 is said and left on screen). **None
+of it may stop the shop opening** — the .bat's loudest rule, kept to the letter. Once per
+session because two of these can raise a UAC prompt, right at 8 am and wrong on the ninth
+restart of an afternoon's editing.
+
+### The jobs — `panel/jobs.js`
+
+One entry per button: a command plus `label`, `blurb`, `while` and `danger`. **`while: 'shut'`
+is enforced in `runJob`, not in the window** — a disabled button is a suggestion, and two writers
+on one set of mirror bookmarks is the exact failure `lineage.js` exists to prevent. `danger` is a
+word the person types before it runs; three of these can lose a day's work (`restore` moves
+`og.db` aside, `mirrorReconcile` deletes in the mirror, `claim` takes the baton off the other
+laptop), and `claim-mirror.bat` had that protection in a comment above the line that did it
+anyway. `push` stops at the first failing step, as `push.bat` did — pushing after a failed
+rebase is how a conflict becomes a force-push conversation. `createuser` passes name, username
+and role as flags and pipes only the password, so no line can be silently read as the wrong
+prompt. The window draws its tool list from the table, so a job added there appears without
+`panel/ui/panel.js` being touched.
+
+### Things that bit while building it
+
+- **`[hidden] { display: none !important }` is in `panel.css` for a reason.** The browser's
+  own `[hidden]` rule loses to any author rule that sets `display`, and the confirm overlay is
+  `display:flex` with a 74% black backdrop. It sat over the whole window from the first paint —
+  every colour at a quarter of its brightness, every button behind glass — and was found by
+  measuring a screenshot's brightest pixel (`#334200` where `#C6FF00` should have been), not by
+  looking at one.
+- **ANSI is stripped in `say()`**, not in the server, which is right to keep colouring a terminal
+  it may be running in. The tick and the dot are text and survive.
+- **Two logs in `%LOCALAPPDATA%\OGSystem\`**, each truncated at every start: `launcher.log` (what the
+  `.exe` did — root, node, every line the panel printed, which browser opened, the quit) and
+  `panel.log` (the terminal pane, verbatim). A tray application has no console, so "it did not
+  open" is the whole of what anybody can report about it; these are the answer. The first line
+  in the terminal names the file.
+- **A screenshot of the panel cannot be taken with `--screenshot`**: the page holds an SSE
+  stream open and the load never finishes. Drive it over CDP (`Page.captureScreenshot`).
 
 ## Hard constraints
 
@@ -368,8 +503,8 @@ the arc around the mark is the count. At the end everything pulls into the mark 
 ## Gotchas that will bite you
 
 - **The service worker is cache-first with `ignoreSearch: true`.** After changing anything under `css/`,
-  `js/` or `index.html`, **bump `CACHE` in `sw.js`** (`og-system-v15` → `v16`) *and* add any new JS file
-  to its precache list. Skip this and nobody who has already opened the app ever receives the change —
+  `js/` or `index.html`, **bump `CACHE` in `sw.js`** (`og-system-v15` → `v16`) — the panel's Hard refresh
+  button does exactly this and tells the open tabs — *and* add any new JS file to its precache list. Skip this and nobody who has already opened the app ever receives the change —
   no query-string cache-buster will help.
 - **The server sends `X-Frame-Options: DENY`**, so a test harness cannot load the app in an iframe. Drive
   it top-level with a persistent Chrome profile instead (log in on one launch, inspect on the next; the

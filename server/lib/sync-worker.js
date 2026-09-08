@@ -55,6 +55,7 @@ import { maybe } from './env.js';
 import * as DB from './db.js';
 import * as SB from './supabase.js';
 import * as Live from './live.js';
+import * as PanelLink from './panel-link.js';
 import * as Lineage from './lineage.js';
 import * as Mirror from './mirror.js';
 
@@ -127,6 +128,10 @@ function tell() {
      pull's backup path stays off the wire: it is a location on this disk,
      and this goes to every open tab on the shop's side. */
   const s = status();
+  /* The panel gets the whole thing, backup path included: it is the process
+     that started this one, on this machine, and "which file was moved aside"
+     is exactly what somebody standing at the laptop needs. */
+  PanelLink.tell('mirror', { mirror: s });
   if (s.pull) s.pull = { ...s.pull, backup: undefined, tables: undefined };
   Live.notify('og', { mirror: s });
 }

@@ -228,6 +228,10 @@ var ACTIONS = {
     if (s) openInvoice(s);
   },
 
+  /* The toast's own ×. It carries no id — the row it dismisses is the one
+     the press landed in, which is also what the swipe uses. */
+  'toast-x': function (el) { dismissToast(el.closest('.toast')); },
+
   'modal-close': closeModal,
   'modal-backdrop': function (el, e) { if (e.target === el) closeModal(); },
   'drawer-close': closeDrawer,
