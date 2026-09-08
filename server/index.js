@@ -1800,12 +1800,16 @@ router.add('GET /api/telegram/status', requirePerm(tgGate, (ctx) => {
 }));
 
 router.add('POST /api/telegram/link', requirePerm(tgGate, (ctx) => {
-  try { sendOk(ctx.res, Telegram.linkCode(tgSide(ctx))); }
+  /* Who pressed Connect rides with the code, so the chat it links carries the
+     name of the person who added it. */
+  try { sendOk(ctx.res, Telegram.linkCode(tgSide(ctx), ctx.user.name || ctx.user.username || null)); }
   catch (e) { partnerFail(ctx.res, e); }
 }));
 
-router.add('POST /api/telegram/unlink', requirePerm(tgGate, (ctx) => {
-  try { sendOk(ctx.res, Telegram.unlink(tgSide(ctx))); }
+/* `chatId` in the body disconnects that one chat; without it, all of them. */
+router.add('POST /api/telegram/unlink', requirePerm(tgGate, async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, Telegram.unlink(tgSide(ctx), b && b.chatId)); }
   catch (e) { partnerFail(ctx.res, e); }
 }));
 

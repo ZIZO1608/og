@@ -862,6 +862,20 @@ companies feel connected rather than merely sharing a table.
   `phone`, `customer_id`, `price` never reach Yalla Wear's bot, the same list `GET /api/partner`
   applies. For the shop's own chat the event carries job id, design and quantity only — a staff
   group is wider than `customer.read`.
+- **Each side sends to a LIST of chats, not one.** It was one chat per side
+  (`telegram.<side>_chat_id`), which is one phone: the manager linked his own and the person on the
+  till heard nothing. `telegram.<side>_chats` is a JSON array of `{ id, title, type, at, by }` —
+  `by` being the account that pressed Connect, because "who added this group" is the first question
+  asked about a chat nobody recognises. Kept in `config` rather than a table of its own on purpose:
+  config is mirrored whole, so a laptop restored from the cloud keeps its links, and a new table
+  would need a hand-run schema file in the dashboard first. The old single keys are **read forward**
+  (a shop upgrading keeps the phone it had) and **written in step** for anything still reading them.
+  One event goes to every chat and is marked sent when **at least one** landed — retrying to reach a
+  failure would send a second copy to everyone who already has it, and a duplicate "order accepted"
+  is worse than a missing one. **A 403 drops that chat from the list**: Telegram is being definite
+  (blocked, or kicked from the group), so it would otherwise fail for ever and burn a request per
+  event. `POST /api/telegram/unlink` takes a `chatId` for one, or nothing for all; the card's
+  Disconnect always names the row it sits on.
 - **Two bots, two tokens, in `server/.env`** (`OG_TELEGRAM_TOKEN_OG`, `OG_TELEGRAM_TOKEN_YALLA`).
   Never in `config` — `GET /api/config` hands that table to every login including the partner.
   Chat ids do live in `config` (`telegram.<side>_chat_id`), written by the lib, not by `PUT
@@ -1431,10 +1445,46 @@ Verified by `_smcheck.html` — `?gl=force` runs the room suite (needs
 context-loss test** so the finished room can be looked at, which is the one check that cannot be
 written as an assertion.
 
+## The bulk bar
+
+`js/bulk.js`. One selection per screen, a floating bar of what can be done to it.
+
+- **Ticking a box does NOT re-render.** It used to call `render()`, which rewrites the whole of
+  `#view` — so on a long catalogue the scroll snapped back to the top and the row being ticked moved
+  out from under the hand. `markRows(sc)` walks the boxes already drawn and sets two things: the
+  box's `checked` and the row's `bk-on`. Nothing about a tick changes which ROWS exist, only which
+  are marked. The Print-labels screen's product rows are repainted the same way (their tick, their
+  indeterminate state and the "5 sizes · 3 ticked" cell, through `labelCountCell`). **No tick path
+  may call `render()`** — that is the whole fix, and it is easy to undo by accident.
+- **The bar is centred with `inset-inline: 0; margin-inline: auto`, not `left: 50%`.** With
+  `left:50%` the box's available width runs from the middle of the screen to the right edge — half
+  the viewport — so seven buttons wrapped onto three lines on a 1500px monitor with room to spare,
+  and Delete took a line of its own looking like the main action. Groups are `flex-wrap: nowrap`
+  inside and the bar wraps only between them.
+- **Destructive actions sit behind a hairline, last.** `{ danger: true }` in `ACTIONS_FOR` puts an
+  action in the second group. **`.bk-danger` is restated in `css/og-skin.css`**: it is one class, and
+  that file's two-class `body:not([data-portal="yalla"]) .btn` beats it, so Delete drew as an
+  ordinary white-on-dark button and read like Export. Found by reading its computed colour, not by
+  looking at it. The same file redefines `--border` to `#1E1E22`, which is invisible on the bar's
+  own `--popover`, so `.bk-rule` is restated there too.
+
 ## Archived is not deleted, and not stock either
 
-A product is never deleted — a discontinued line still has to resolve on every invoice that
-named it — so archiving sets `products.hidden` and the row stays with whatever stock it had.
+Archiving is the shop's gesture for a line it has stopped selling: it sets `products.hidden` and the
+row stays with whatever stock it had, so every invoice that named it still resolves.
+
+**There is also a real delete now** — `DELETE /api/products/:id` → `Cat.remove`, and the bulk bar's
+Delete — for the row typed in by mistake, which archiving leaves in the way for ever. It **refuses
+by name** the moment it would cost history: sold, moved, ordered, counted, labelled, or wanted. Two
+different reasons underneath, and both are asked before the delete rather than discovered during it:
+`sale_items` freezes the name and both prices and carries **no** foreign key to products, so an old
+invoice survives — what does not survive is answering "what did we sell" by product; while
+`stock_movements`, `po_lines`, `stock_count_lines`, `label_print_log` and `wants` all reference
+`variants(sku)` with **no cascade**, so SQLite would refuse anyway, with a constraint name instead of
+a sentence. `stock` and `variants` do cascade, which is right — they are the product, not a record
+about it. **Every removed row calls `logChange`**, or it disappears here and lives in the mirror for
+ever. The bulk action is the one with **no undo**, is not all-or-nothing, and reports what went and
+what stayed.
 `/api/catalogue` even sends hidden rows to anyone with `product.write`, deliberately, so a
 manager can bring one back.
 

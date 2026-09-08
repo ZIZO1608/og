@@ -32,6 +32,9 @@ import { maybe } from './env.js';
 import * as DB from './db.js';
 
 const SIDES = ['og', 'yalla'];
+/* Telegram messages are two lines, Arabic then English. Named so the string
+   literals around them stay free of escapes. */
+const BR = String.fromCharCode(10);
 const TOKEN_KEY = { og: 'OG_TELEGRAM_TOKEN_OG', yalla: 'OG_TELEGRAM_TOKEN_YALLA' };
 
 const TICK_MS = 5 * 1000;
@@ -74,7 +77,76 @@ function setCfg(pairs) {
   });
 }
 
-function chatId(side) { return cfg(`telegram.${side}_chat_id`); }
+/* WHERE EACH SIDE'S MESSAGES GO — a list, not a single chat.
+
+   It was one chat per side, in telegram.<side>_chat_id. That is one phone:
+   the manager linked his own, and the person on the till or the second owner
+   heard nothing. A shop is more than one person and a printer is more than
+   one phone, so each side now holds a LIST and every message goes to all of
+   them.
+
+   Kept in `config` as JSON under one key rather than in a table of its own,
+   deliberately: config is already mirrored whole, so a laptop restored from
+   the cloud comes back with its links intact, and a new table would need a
+   hand-run schema file in the Supabase dashboard before the first sync could
+   land. The list is a handful of rows of a few dozen bytes.
+
+   Each entry carries what somebody needs to recognise it months later and
+   decide whether to cut it off: { id, title, type, at, by }. `by` is the
+   account that pressed Connect, because "who added this group" is the first
+   question asked about a chat nobody recognises. */
+function chats(side) {
+  const raw = cfg(`telegram.${side}_chats`);
+  if (raw) {
+    try {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) return list.filter((c) => c && c.id);
+    } catch { /* unreadable: fall through to the old single key */ }
+  }
+  /* The single chat this used to hold, read forward so an upgrade keeps
+     sending to the phone it was already sending to. Written back into the
+     list the first time anything changes it. */
+  const one = cfg(`telegram.${side}_chat_id`);
+  if (!one) return [];
+  return [{ id: String(one), title: cfg(`telegram.${side}_chat_title`) || String(one),
+            type: 'unknown', at: null, by: null }];
+}
+
+function setChats(side, list) {
+  const clean = list.filter((c) => c && c.id).map((c) => ({
+    id: String(c.id), title: c.title || String(c.id), type: c.type || 'unknown',
+    at: c.at || null, by: c.by || null
+  }));
+  setCfg({
+    [`telegram.${side}_chats`]: JSON.stringify(clean),
+    /* The old keys are kept in step so anything still reading them — an older
+       copy of the app on a phone that has not refreshed — sees the first
+       chat rather than nothing at all. */
+    [`telegram.${side}_chat_id`]: clean.length ? clean[0].id : null,
+    [`telegram.${side}_chat_title`]: clean.length ? clean[0].title : null
+  });
+  return clean;
+}
+
+function addChat(side, chat, by) {
+  const list = chats(side);
+  const id = String(chat.id);
+  const entry = { id, title: chatTitle(chat), type: chat.type || 'unknown', at: nowIso(), by: by || null };
+  const at = list.findIndex((c) => String(c.id) === id);
+  /* Sending the code again from a chat that is already on the list is a
+     person checking it still works, not a request for a second copy of every
+     message. Refreshed in place, never appended twice. */
+  if (at >= 0) { list[at] = { ...list[at], title: entry.title, type: entry.type }; return { list: setChats(side, list), already: true }; }
+  list.push(entry);
+  return { list: setChats(side, list), already: false };
+}
+
+function removeChat(side, id) {
+  const before = chats(side);
+  const after = before.filter((c) => String(c.id) !== String(id));
+  setChats(side, after);
+  return { removed: before.length - after.length, chats: after };
+}
 
 /* ------------------------------------------------------------------- api */
 
@@ -185,38 +257,61 @@ async function drain() {
 
     for (const row of rows) {
       const side = row.audience;
-      const chat = chatId(side);
+      const list = chats(side);
       /* Not configured is not a failure: the row waits, unbumped, for the
          day somebody links a chat. */
-      if (!token(side) || !chat) continue;
+      if (!token(side) || !list.length) continue;
 
       let args = {};
       try { args = JSON.parse(row.args_json); } catch { /* an unreadable row still gets a line */ }
+      const text = render(row.kind, args);
 
-      try {
-        await call(side, 'sendMessage', {
-          chat_id: chat, text: render(row.kind, args), disable_web_page_preview: true
-        });
+      /* EVERY linked chat gets it, and one refusing does not rob the others.
+         The row is marked sent when at least one landed: retrying the whole
+         row to reach the one that failed would send a SECOND copy to every
+         chat that already has it, and a duplicate "order accepted" is worse
+         than a missing one on a phone that has blocked the bot. */
+      let landed = 0;
+      const failures = [];
+      for (const c of list) {
+        try {
+          await call(side, 'sendMessage', { chat_id: c.id, text, disable_web_page_preview: true });
+          landed++;
+        } catch (e) {
+          failures.push(`${c.title}: ${e.message}`);
+          /* 403 is Telegram being definite — the bot was blocked, or kicked
+             from the group. That chat will never accept another message, so
+             it comes off the list rather than failing for ever and burning a
+             request per event. Anything else is left to retry. */
+          if (e.status === 403) {
+            removeChat(side, c.id);
+            console.log(`  Telegram: ${side} dropped ${c.title} — the bot was blocked or removed there`);
+          }
+          if (e.retryAfter) await new Promise((r) => setTimeout(r, (Number(e.retryAfter) + 1) * 1000).unref());
+        }
+      }
+
+      if (landed) {
         DB.tx((db) => {
-          db.prepare('UPDATE partner_events SET sent_at = ?, error = NULL WHERE id = ?')
-            .run(nowIso(), row.id);
+          db.prepare('UPDATE partner_events SET sent_at = ?, error = ? WHERE id = ?')
+            .run(nowIso(), failures.length ? failures.join('; ').slice(0, 300) : null, row.id);
         });
-        last.okAt = nowIso(); last.sent++; last.error = null;
-        if (bots[side]) { bots[side].lastOkAt = last.okAt; bots[side].lastError = null; }
-      } catch (e) {
+        last.okAt = nowIso(); last.sent += landed;
+        last.error = failures.length ? `${side}: ${failures[0]}` : null;
+        if (bots[side]) { bots[side].lastOkAt = last.okAt; bots[side].lastError = failures[0] || null; }
+      } else {
         const attempts = row.attempts + 1;
-        const waitS = e.retryAfter ? Number(e.retryAfter) + 1 : Math.min(3600, 5 * 2 ** attempts);
+        const waitS = Math.min(3600, 5 * 2 ** attempts);
         const next = new Date(Date.now() + waitS * 1000).toISOString();
         DB.tx((db) => {
           db.prepare(
             'UPDATE partner_events SET attempts = ?, next_try_at = ?, error = ? WHERE id = ?'
-          ).run(attempts, next, String(e.message).slice(0, 300), row.id);
+          ).run(attempts, next, (failures.join('; ') || 'no chat accepted it').slice(0, 300), row.id);
         });
-        last.error = `${side}: ${e.message}`;
-        if (bots[side]) bots[side].lastError = e.message;
-        /* A chat that refuses the bot (blocked, kicked from the group) means
-           every later row would fail the same way — stop this batch here. */
-        if (e.status === 403 || e.status === 400) break;
+        last.error = `${side}: ${failures[0] || 'not delivered'}`;
+        if (bots[side]) bots[side].lastError = failures[0] || null;
+        /* Nothing landed anywhere: the next row would fail the same way. */
+        break;
       }
     }
   } catch (e) {
@@ -237,21 +332,29 @@ function newCode() {
   return s;
 }
 
-export function linkCode(side) {
+export function linkCode(side, byName) {
   if (!SIDES.includes(side)) throw Object.assign(new Error('side must be og or yalla'), { code: 'bad_request' });
   if (!token(side)) throw Object.assign(new Error('no bot token is set for this side'), { code: 'not_configured' });
   const live = codes[side];
   if (live && live.expires > Date.now()) {
     return { code: live.code, expires: new Date(live.expires).toISOString(), bot: bots[side] && bots[side].username };
   }
-  codes[side] = { code: newCode(), expires: Date.now() + CODE_TTL_MS };
+  codes[side] = { code: newCode(), expires: Date.now() + CODE_TTL_MS, by: byName || null };
   return { code: codes[side].code, expires: new Date(codes[side].expires).toISOString(),
            bot: bots[side] && bots[side].username };
 }
 
-export function unlink(side) {
+/* One chat off the list, or - with no id - every one of them. The id is
+   asked for so "disconnect" on a card with four chats on it cannot mean all
+   four by accident; the no-id form stays for a real "stop sending anywhere". */
+export function unlink(side, chatIdToDrop) {
   if (!SIDES.includes(side)) throw Object.assign(new Error('side must be og or yalla'), { code: 'bad_request' });
-  setCfg({ [`telegram.${side}_chat_id`]: null, [`telegram.${side}_chat_title`]: null });
+  if (chatIdToDrop) {
+    const r = removeChat(side, chatIdToDrop);
+    if (!r.removed) throw Object.assign(new Error('That chat is not linked.'), { code: 'not_found' });
+  } else {
+    setChats(side, []);
+  }
   return status()[side];
 }
 
@@ -271,13 +374,21 @@ async function handleUpdate(side, u) {
   const m = text.match(/^\/start(?:@\w+)?\s+([A-Z0-9]{6})$/i) || text.match(/^([A-Z0-9]{6})$/i);
   const live = codes[side];
   if (m && live && live.expires > Date.now() && m[1].toUpperCase() === live.code) {
-    setCfg({ [`telegram.${side}_chat_id`]: String(chat.id), [`telegram.${side}_chat_title`]: chatTitle(chat) });
+    /* ADDED to the list, not put in place of it - this is how a second phone
+       or a second group joins. The code is spent either way, so two people
+       cannot ride one code; each asks for their own. */
+    const r = addChat(side, chat, live.by);
     delete codes[side];
+    const n = r.list.length;
     await call(side, 'sendMessage', {
       chat_id: chat.id,
-      text: side === 'og'
-        ? '✅ تم الربط — ستصل تنبيهات نظام OG إلى هنا.\nLinked — OG System notifications will arrive here.'
-        : '✅ تم الربط — ستصل طلبات OG وتحديثاتها إلى هنا.\nLinked — orders and updates from OG will arrive here.'
+      text: r.already
+        ? '✅ هذه المحادثة مرتبطة أصلاً.' + BR + 'This chat is already linked.'
+        : (side === 'og'
+            ? '✅ تم الربط — ستصل تنبيهات نظام OG إلى هنا. (' + n + ')' + BR +
+              'Linked - OG System notifications will arrive here. (' + n + ' linked)'
+            : '✅ تم الربط — ستصل طلبات OG وتحديثاتها إلى هنا. (' + n + ')' + BR +
+              'Linked - orders and updates from OG will arrive here. (' + n + ' linked)')
     }).catch(() => {});
     return;
   }
@@ -329,8 +440,11 @@ export function start() {
     bots[side] = { username: null, polling: true, offset: 0, lastError: null, lastOkAt: null };
     call(side, 'getMe').then((me) => {
       bots[side].username = me.username;
+      const cs = chats(side);
       console.log(`  Telegram: ${side} bot @${me.username} ` +
-                  (chatId(side) ? `→ ${cfg(`telegram.${side}_chat_title`) || chatId(side)}` : '(no chat linked yet)'));
+                  (cs.length
+                    ? `→ ${cs.map((c) => c.title).join(', ')}`
+                    : '(no chat linked yet)'));
     }).catch((e) => {
       bots[side].lastError = e.message;
       console.log(`  Telegram: ${side} bot could not be reached — ${e.message}`);
@@ -351,15 +465,26 @@ export function stop() {
 export async function sendTest(side) {
   if (!SIDES.includes(side)) throw Object.assign(new Error('side must be og or yalla'), { code: 'bad_request' });
   if (!token(side)) throw Object.assign(new Error('no bot token is set for this side'), { code: 'not_configured' });
-  const chat = chatId(side);
-  if (!chat) throw Object.assign(new Error('no chat is linked yet'), { code: 'not_linked' });
-  await call(side, 'sendMessage', { chat_id: chat, text: render('test', {}) });
-  return { ok: true };
+  const list = chats(side);
+  if (!list.length) throw Object.assign(new Error('no chat is linked yet'), { code: 'not_linked' });
+  /* Every linked chat, because "does this work" means all of them - and the
+     one that fails is named, since that is the one to fix. */
+  const bad = [];
+  for (const c of list) {
+    try { await call(side, 'sendMessage', { chat_id: c.id, text: render('test', {}) }); }
+    catch (e) { bad.push(`${c.title}: ${e.message}`); }
+  }
+  if (bad.length === list.length) throw Object.assign(new Error(bad.join('; ')), { code: 'send_failed' });
+  return { ok: true, sent: list.length - bad.length, failed: bad };
 }
 
 /* Kick the queue now rather than on the next tick — called after a request
    that just queued something, so a phone buzzes within a second of the tap. */
 export function nudge() { if (timer) drain().catch(() => {}); }
+
+/* Drain once and WAIT for it — nudge() is fire-and-forget and only runs when
+   the timer is up, which a test harness has no reason to start. */
+export function drainNow() { return drain(); }
 
 export function status() {
   const d = DB.get();
@@ -375,8 +500,11 @@ export function status() {
     out[s] = {
       configured: !!token(s),
       bot: bots[s] ? bots[s].username : null,
-      linked: !!chatId(s),
-      chatTitle: cfg(`telegram.${s}_chat_title`),
+      /* `linked` and `chatTitle` are the first chat, kept for anything still
+         reading the old shape; `chats` is the truth. */
+      linked: chats(s).length > 0,
+      chatTitle: (chats(s)[0] || {}).title || null,
+      chats: chats(s),
       queued: (byAud[s] && byAud[s].queued) || 0,
       failed: (byAud[s] && byAud[s].failed) || 0,
       lastError: bots[s] ? bots[s].lastError : null,

@@ -41,15 +41,25 @@ tr.bk-on td { border-bottom-color: var(--brand-border); }
 /* Centre-anchored, so it never collides with a control pinned to either
    bottom corner. */
 .bk-bar {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  /* Centred with auto margins, NOT left:50%. With left:50% the box's available
+     width runs from the middle of the screen to the right edge — half the
+     viewport — so the bar wrapped onto three lines on a 1500px monitor with
+     room to spare, and the count and Delete each took a line of their own.
+     inset-inline + margin auto gives it the whole width to lay out in and
+     centres it in the same breath, RTL included. */
+  position: fixed; bottom: 24px; inset-inline: 16px; margin-inline: auto;
+  width: fit-content;
   z-index: 320; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   background: var(--popover); border: 1px solid var(--brand-border);
-  border-radius: var(--radius-full); padding: 9px 10px 9px 18px;
+  /* Not a full pill: this bar wraps to two lines on a narrow window, and a
+     9999px radius on a two-line box draws a lozenge with the buttons rattling
+     around inside it. */
+  border-radius: var(--radius-lg); padding: 9px 10px 9px 18px;
   box-shadow: var(--shadow-lg); max-width: calc(100vw - 32px);
   animation: bkUp .18s cubic-bezier(.4, 0, .2, 1) both;
 }
 body.rtl .bk-bar { padding: 9px 18px 9px 10px; }
-@keyframes bkUp { from { opacity: 0; transform: translateX(-50%) translateY(14px); } to { opacity: 1; transform: translateX(-50%); } }
+@keyframes bkUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 .bk-count {
   font-size: 12.5px; color: var(--muted-foreground); white-space: nowrap;
   display: inline-flex; align-items: baseline; gap: 5px;
@@ -61,7 +71,10 @@ body.rtl .bk-bar { padding: 9px 18px 9px 10px; }
 /* The routine actions in one run, the irreversible ones behind a hairline.
    Wrapping happens per group, so a narrow window never leaves Delete sitting
    alone on a line looking like the primary thing to do. */
-.bk-acts { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* nowrap INSIDE a group, wrap only BETWEEN groups. Wrapping inside let the
+   run break anywhere, and the first thing to fall onto a line of its own was
+   Delete — the one button that must never look like the main action. */
+.bk-acts { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
 .bk-rule { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--border); flex: none; }
 .bk-bar .btn-sm { border-radius: var(--radius-full); padding: 6px 13px; font-size: 12.5px; }
 .bk-bar .btn-ghost { background: var(--muted); border-color: transparent; }

@@ -492,7 +492,7 @@ var Shop = (function () {
     /* ---- the Telegram line ---- */
     telegramStatus: function ()           { return API.get('/api/telegram/status'); },
     telegramLink:   function ()           { return API.post('/api/telegram/link', {}); },
-    telegramUnlink: function ()           { return API.post('/api/telegram/unlink', {}); },
+    telegramUnlink: function (chatId) { return API.post('/api/telegram/unlink', chatId ? { chatId: chatId } : {}); },
     telegramTest:   function ()           { return API.post('/api/telegram/test', {}); },
     saveSupplier:  function (body)        { return API.post('/api/suppliers', body); },
     saveEmployee:  function (body)        { return API.post('/api/employees', body); },

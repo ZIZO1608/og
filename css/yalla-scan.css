@@ -828,7 +828,22 @@ tr.row-late td { background: color-mix(in srgb, var(--destructive-solid) 7%, tra
 .tg-dot.off { background: var(--dim); }
 .tg-txt b { display: block; font-size: 13.5px; }
 .tg-txt small { color: var(--muted-foreground); font-size: var(--fs-xs); }
-.tg-acts { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.tg-acts { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+
+/* MORE THAN ONE CHAT. Each linked chat is its own row with its own
+   Disconnect, so the word means the row it sits on rather than everything.
+   Rows are separated by a hairline instead of a card each: four phones is a
+   list, and four cards is a wall. */
+.tg-list { display: flex; flex-direction: column; }
+.tg-list .tg-row { padding: 9px 0; border-bottom: 1px solid var(--border); }
+.tg-list .tg-row:last-child { border-bottom: 0; }
+.tg-list .tg-txt { flex: 1; min-width: 0; }
+.tg-list .tg-txt b, .tg-list .tg-txt small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+/* Quiet until wanted: cutting a phone off is not the thing to reach for. */
+.tg-cut { flex: none; opacity: .6; transition: opacity var(--t), color var(--t); }
+.tg-row:hover .tg-cut, .tg-cut:focus-visible { opacity: 1; }
+.tg-cut:hover { color: var(--destructive); border-color: var(--destructive-border); }
+.tg-foot { margin-top: 8px; color: var(--muted-foreground); }
 .tg-off b { display: block; font-size: 13.5px; }
 .tg-off small { display: block; color: var(--muted-foreground); margin-top: 3px; line-height: 1.5; }
 .tg-code-box {

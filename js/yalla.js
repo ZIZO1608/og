@@ -634,6 +634,25 @@ var YALLA = (function () {
      is live so "linked" appears without anyone pressing anything. */
   var TG = { status: null, code: null, watching: false };
 
+  /* A ROW PER LINKED CHAT, each with its own Disconnect. It used to be one
+     chat and one Disconnect, so a shop was one phone: the manager linked his
+     own and nobody else heard anything. Connect stays available while chats
+     are linked, because adding the second one is the point. */
+  function tgChatRow(c, s) {
+    var when = c.at ? relDate(c.at) : '';
+    var kind = c.type === 'private' ? t('tg_kind_private')
+             : (c.type === 'group' || c.type === 'supergroup') ? t('tg_kind_group')
+             : c.type === 'channel' ? t('tg_kind_channel') : '';
+    /* Everything known about this chat, in the order somebody months later
+       would ask it: what it is, when it joined, who added it. */
+    var bits = [kind, when, c.by ? t('tg_added_by') + ' ' + esc(c.by) : ''].filter(Boolean);
+    return '<div class="tg-row on"><span class="tg-dot"></span>' +
+      '<div class="tg-txt"><b>' + esc(c.title || c.id) + '</b>' +
+        '<small>' + bits.join(' · ') + '</small></div>' +
+      '<button class="btn btn-sm btn-ghost tg-cut" data-yl="tg-unlink" data-chat="' + esc(c.id) + '" ' +
+        'title="' + esc(t('tg_unlink')) + '">' + t('tg_unlink') + '</button></div>';
+  }
+
   function tgCardHtml(s) {
     if (!s) return '<div class="muted small">' + t('tg_loading') + '</div>';
     var h = '';
@@ -641,18 +660,23 @@ var YALLA = (function () {
       return '<div class="tg-off"><b>' + t('tg_no_token') + '</b><small>' +
         (Notify.side() === 'og' ? t('tg_no_token_how') : t('tg_no_token_partner')) + '</small></div>';
     }
-    if (s.linked) {
-      h += '<div class="tg-row on"><span class="tg-dot"></span><div class="tg-txt"><b>' + t('tg_linked_to') +
-        ' ' + esc(s.chatTitle || '') + '</b><small>' + (s.bot ? '@' + esc(s.bot) + ' · ' : '') +
+
+    var list = s.chats || [];
+    if (list.length) {
+      h += '<div class="tg-list">';
+      list.forEach(function (c) { h += tgChatRow(c, s); });
+      h += '</div>';
+      /* The queue is about the BOT, not any one chat, so it is said once
+         under the list rather than repeated on every row. */
+      h += '<div class="tg-foot"><small>' + (s.bot ? '@' + esc(s.bot) + ' · ' : '') +
         (s.queued ? s.queued + ' ' + t('tg_queued') : t('tg_all_sent')) +
         (s.failed ? ' · <span style="color:var(--destructive)">' + s.failed + ' ' + t('tg_failed') + '</span>' : '') +
-        (s.lastError ? ' · ' + esc(String(s.lastError).slice(0, 80)) : '') + '</small></div></div>' +
-        '<div class="tg-acts"><button class="btn btn-sm" data-yl="tg-test">' + t('tg_test') + '</button>' +
-        '<button class="btn btn-sm btn-ghost" data-yl="tg-unlink">' + t('tg_unlink') + '</button></div>';
-      return h;
+        (s.lastError ? ' · ' + esc(String(s.lastError).slice(0, 80)) : '') + '</small></div>';
+    } else {
+      h += '<div class="tg-row"><span class="tg-dot off"></span><div class="tg-txt"><b>' + t('tg_not_linked') +
+        '</b><small>' + (s.bot ? '@' + esc(s.bot) : '') + '</small></div></div>';
     }
-    h += '<div class="tg-row"><span class="tg-dot off"></span><div class="tg-txt"><b>' + t('tg_not_linked') +
-      '</b><small>' + (s.bot ? '@' + esc(s.bot) : '') + '</small></div></div>';
+
     if (TG.code && new Date(TG.code.expires) > Date.now()) {
       var link = s.bot ? 'https://t.me/' + encodeURIComponent(s.bot) + '?start=' + TG.code.code : null;
       h += '<div class="tg-code-box"><span class="eyebrow">' + t('tg_code_hint') + '</span>' +
@@ -661,18 +685,23 @@ var YALLA = (function () {
                   t('tg_open_bot') + '</a>' : '') +
         '<small class="muted">' + t('tg_waiting') + '</small></div>';
     } else {
-      h += '<div class="tg-acts"><button class="btn btn-primary" data-yl="tg-link">' + t('tg_connect') + '</button></div>';
+      h += '<div class="tg-acts">' +
+        '<button class="btn btn-primary" data-yl="tg-link">' +
+          (list.length ? t('tg_connect_more') : t('tg_connect')) + '</button>' +
+        (list.length ? '<button class="btn btn-sm" data-yl="tg-test">' + t('tg_test') + '</button>' : '') +
+        '</div>';
     }
     return h;
   }
-
   function tgPaint() {
     var host = document.getElementById('tgHost');
     if (host) host.innerHTML = tgCardHtml(TG.status);
     var meta = document.getElementById('tgMeta');
     if (meta && TG.status) {
+      var cs = TG.status.chats || [];
       meta.innerHTML = !TG.status.configured ? t('tg_no_token')
-        : TG.status.linked ? t('tg_linked_to') + ' ' + esc(TG.status.chatTitle || '')
+        : cs.length === 1 ? t('tg_linked_to') + ' ' + esc(cs[0].title || '')
+        : cs.length ? t('tg_n_linked').replace('{n}', cs.length)
         : t('tg_not_linked');
     }
   }
@@ -1658,9 +1687,14 @@ var YALLA = (function () {
       Shop.telegramTest().then(function () { toast(t('tg_title'), t('tg_test_sent'), 'ok', 3500); })
         .catch(function (e) { toast(t('tg_title'), API.friendly ? API.friendly(e) : String(e), 'err', 6000); });
     },
-    'tg-unlink': function () {
+    'tg-unlink': function (el) {
       if (typeof Shop === 'undefined' || !Shop.live()) return;
-      Shop.telegramUnlink().then(function () {
+      /* The chat this button sits on, never all of them: a card can hold four
+         and the word "disconnect" must mean the one being pointed at. */
+      var id = el && el.getAttribute ? el.getAttribute('data-chat') : null;
+      var who = ((TG.status && TG.status.chats) || []).filter(function (c) { return String(c.id) === String(id); })[0];
+      if (who && !confirm(t('tg_unlink_confirm').replace('{name}', who.title || who.id))) return;
+      Shop.telegramUnlink(id).then(function () {
         TG.code = null;
         toast(t('tg_title'), t('tg_unlinked'), 'ok', 3000);
         telegramLoad();

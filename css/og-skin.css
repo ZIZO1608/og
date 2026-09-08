@@ -138,6 +138,21 @@ body:not([data-portal="yalla"]) .btn-dark { background: var(--foreground); color
 body:not([data-portal="yalla"]) .btn-dark:hover { background: #FFFFFF; }
 body:not([data-portal="yalla"]) .btn-primary { background: var(--brand); border-color: transparent; color: var(--brand-foreground); font-weight: 700; }
 body:not([data-portal="yalla"]) .btn-primary:hover { background: #D2FF33; border-color: transparent; box-shadow: 0 10px 24px -12px rgb(198 255 0 / .6); }
+
+/* THE BULK BAR'S DESTRUCTIVE ACTION. Restated here for the reason the header
+   of this file gives: `.bk-danger` is one class, and the two-class
+   `body:not([data-portal="yalla"]) .btn` above beats it — so Delete drew as
+   an ordinary white-on-dark button and read like Export. Measured, not
+   guessed: its computed colour was rgb(250,250,250) on rgb(26,26,31).
+   The hairline beside it is restated too: this file redefines --border to
+   #1E1E22, which is invisible against the bar's own --popover. */
+body:not([data-portal="yalla"]) .bk-danger {
+  background: var(--destructive-soft); border-color: var(--destructive-border); color: var(--destructive); font-weight: 600;
+}
+body:not([data-portal="yalla"]) .bk-danger:hover {
+  background: var(--destructive-solid); border-color: var(--destructive-solid); color: #FFFFFF;
+}
+body:not([data-portal="yalla"]) .bk-rule { background: var(--border-strong); }
 body:not([data-portal="yalla"]) .btn-primary:active { transform: translateY(1px); box-shadow: none; }
 body:not([data-portal="yalla"]) .btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
 body:not([data-portal="yalla"]) .btn-lg { height: 46px; padding: 0 22px; font-size: 14px; }
