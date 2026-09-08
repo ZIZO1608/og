@@ -464,6 +464,18 @@ var Bulk = (function () {
       paint();
     },
 
+    /* The product row's tick on the Print-labels screen: every size of that
+       product the filter shows, on or off together. Off if they are all on,
+       on otherwise - so a half-ticked product fills up rather than empties,
+       which is what a person reaching for "all of it" means. */
+    group: function (el) {
+      var sc = el.getAttribute('data-sc'), pid = +el.getAttribute('data-pid');
+      if (sc !== 'variants') return;
+      var skus = labelVariantRows().filter(function (r) { return r.p.id === pid; }).map(function (r) { return r.v.sku; });
+      var allOn = skus.length && skus.every(function (k) { return has(sc, k); });
+      setMany(sc, skus, !allOn);
+      render(); paint();
+    },
     clear: function (el) { clear(el.getAttribute('data-sc')); render(); paint(); },
     run: function (el) { run(el.getAttribute('data-sc'), el.getAttribute('data-a')); },
     undo: runUndo,

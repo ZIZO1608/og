@@ -395,7 +395,7 @@ function runJob(name, args = {}) {
      suggestion. Two writers on one set of mirror bookmarks is the exact
      failure lineage.js exists to prevent, and it must not depend on which
      buttons happened to be greyed out when somebody pressed one. */
-  if (spec.while === 'shut' && child) {
+  if (spec.while === 'shut' && child && !spec.aroundShop) {
     say('');
     say('  "' + spec.label + '" needs the shop closed first. Press Stop, then try again.', 'err');
     return;
@@ -409,6 +409,11 @@ function runJob(name, args = {}) {
   say('  -- ' + spec.label + ' ' + '-'.repeat(Math.max(2, 56 - spec.label.length)), 'note');
 
   let i = 0;
+  /* Whether the shop was open when this began, so it is put back the way it
+     was found - including after a refusal. A handover that fails leaves the
+     local copy exactly as it was (lib/restore.js puts the file back), and a
+     shop left closed over a refusal reads as a crash. */
+  const reopen = !!(spec.aroundShop && child);
 
   const done = (code) => {
     job = null;
@@ -418,7 +423,17 @@ function runJob(name, args = {}) {
     state.swCache = readCacheName();
     pushState();
     say(code ? '  ' + spec.label + ' stopped.' : '  ' + spec.label + ' - done.', code ? 'err' : 'note');
+    /* The two refusals a person can act on, said in the panel's own words
+       under the script's - 2 is busy_elsewhere by contract, and 1 with
+       "never reached the cloud" is unpushed_local. */
+    if (spec.aroundShop && code === 2) {
+      say('  The other laptop is still open. Quit OG System there, wait a minute, then try again.', 'err');
+    }
     push('done', { name, code });
+    if (reopen || (spec.aroundShop && code === 0)) {
+      say('  Opening the shop again...', 'note');
+      startServer();
+    }
   };
 
   const next = () => {
@@ -449,7 +464,20 @@ function runJob(name, args = {}) {
     });
   };
 
-  next();
+  if (!reopen) return next();
+
+  /* Close the shop, and only then begin - waiting for the exit rather than
+     a fixed pause, because a shutdown drains open connections first and the
+     wipe refuses while anything still answers on the port. */
+  say('  Closing the shop first...', 'note');
+  const dying = child;
+  stopServer();
+  const wait = setInterval(() => {
+    if (child === dying) return;
+    clearInterval(wait);
+    next();
+  }, 300);
+  wait.unref();
 }
 
 /* --------------------------------------------------------------- the door */
@@ -566,6 +594,12 @@ function act(action, args) {
 
   if (action === 'sync') {
     if (!child) return say('  The shop is not running, so there is nothing to sync from.', 'err');
+    if (state.mirror && state.mirror.mode === 'refused') {
+      say('  This machine is not the shop, so it cannot push to the cloud copy.', 'err');
+      say('  Take the shop here (pull the cloud copy down), or Claim the mirror if THIS', 'err');
+      say('  machine holds the truth. Either way, close the shop on the other laptop first.', 'err');
+      return;
+    }
     try { child.send({ type: 'sync' }); } catch { /* gone */ }
     return say('  Asked the shop for a full sync.', 'note');
   }

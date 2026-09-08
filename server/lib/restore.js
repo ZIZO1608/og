@@ -519,7 +519,7 @@ export async function pull({ dbFile, log = Mirror.consoleLog(), takeover = false
                   unpushed.outbox ? `${unpushed.outbox} unsent message(s)` : null].filter(Boolean).join(' and ');
     return refuse('unpushed_local',
       `${what} on this machine never reached the cloud, and the cloud now belongs to ${who}. Nothing was wiped — ` +
-      'run claim-mirror.bat to keep them, or npm run supabase:restore -- --wipe --force to discard them.',
+      'Claim the mirror in the panel to keep them, or npm run supabase:restore -- --wipe --force to discard them.',
       { n: unpushed.total, outbox: unpushed.outbox, byTable: unpushed.byTable, host: who });
   }
 
@@ -605,7 +605,7 @@ export async function pull({ dbFile, log = Mirror.consoleLog(), takeover = false
     log.tick(`mirror claimed for ${host} (${id.slice(0, 8)}…)` + (other ? `, taken over from ${other.host}` : ''));
   } catch (e) {
     warnings.push('claim_failed');
-    log.warn(`could not claim the mirror — ${e.message}. Run claim-mirror.bat.`);
+    log.warn(`could not claim the mirror — ${e.message}. Use Claim the mirror in the panel.`);
   }
   try {
     await Mirror.loadCursors();

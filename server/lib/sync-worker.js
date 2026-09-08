@@ -214,14 +214,14 @@ function schedule(ms = DEBOUNCE_MS) {
 /* Is this mirror ours? Refused is a mode, not an error: nothing is pushed,
    the reason is on the Settings fold, and it is asked again every ten
    minutes in case the other machine has stopped or somebody ran
-   claim-mirror.bat. */
+   the panel's Claim the mirror. */
 /* The refused branch, shared by the boot check and the per-push check. */
 function refuseLineage(lin) {
   state.mode = 'refused';
   state.refusedBy = lin.other ? `${lin.other.host} (${String(lin.other.id).slice(0, 8)}…)` : null;
   state.lastError = lin.other
-    ? `the mirror belongs to ${state.refusedBy} — run claim-mirror.bat if THIS machine is the shop`
-    : 'nobody has claimed this mirror yet — run claim-mirror.bat if THIS machine is the shop';
+    ? `the mirror belongs to ${state.refusedBy} — Take the shop here in the panel, or Claim the mirror if THIS machine holds the truth`
+    : 'nobody has claimed this mirror yet — Claim the mirror in the panel if THIS machine is the shop';
   console.log(`  [mirror] refused: ${state.lastError}`);
   tell();
 }

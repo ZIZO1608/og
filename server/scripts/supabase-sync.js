@@ -20,7 +20,7 @@
 
    OG_SYNC_TAKEOVER=1 (or --takeover) claims the mirror for this database
    when it belongs to another — a decision made by a person, once, and
-   followed by npm run supabase:reconcile. claim-mirror.bat in the repo
+   followed by npm run supabase:reconcile. Claim the mirror in the panel
    root does exactly that sequence.
    ========================================================================== */
 

@@ -733,3 +733,28 @@
   body.roll-labels .l60:last-child { page-break-after: auto; break-after: auto; }
   .l60 svg { shape-rendering: crispEdges; }
 }
+
+
+/* ------------------------------------------------ PRINT LABELS: folded rows
+   One row per product, its sizes underneath only once the row is opened.
+   The chevron is drawn, not typed, for the same reason the customer caret
+   is; it turns when open. Size rows are quieter so the product rows read
+   as the list and the sizes as what is inside one. */
+.lb-prod { cursor: pointer; }
+.lb-prod:hover td { background: var(--card-hover); }
+.lb-chev {
+  flex: none; width: 8px; height: 8px; margin-inline-end: 4px;
+  border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim);
+  transform: rotate(-45deg); transition: transform .16s ease;
+}
+body.rtl .lb-chev { transform: rotate(135deg); }
+.lb-prod.open .lb-chev, body.rtl .lb-prod.open .lb-chev { transform: rotate(45deg); }
+.lb-size td { background: var(--subtle); }
+.lb-size td:nth-child(2)::before {
+  content: ''; display: inline-block; width: 14px; height: 10px; margin-inline-start: 26px;
+  border-inline-start: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong);
+  vertical-align: top; opacity: .7;
+}
+/* A product with some sizes ticked, not all: the tick shows it is half-way
+   rather than pretending nothing is picked. */
+.bk-box input[data-some="1"] { opacity: .55; }

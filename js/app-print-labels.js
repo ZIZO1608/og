@@ -97,24 +97,78 @@ function viewPrintLabels() {
     h += '<tr><td colspan="9" class="muted" style="text-align:center;padding:28px">' + t('none') + '</td></tr>';
   }
 
-  rows.forEach(function (r, ri) {
-    h += '<tr' + (Bulk.has('variants', r.v.sku) ? ' class="bk-on"' : '') + '>' +
-      '<td class="bk-col">' + Bulk.box('variants', r.v.sku, ri) + '</td>' +
-      '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
-        '<small>' + esc(r.p.brand) + '</small></span></div></td>' +
-      '<td><b style="font-family:var(--font-head)">' + r.v.size + '</b></td>' +
-      '<td class="num">' + r.qty + '</td>' +
-      '<td class="muted num nowrap">' + r.v.sku + '</td>' +
-      '<td class="muted num nowrap">' + r.v.barcode + '</td>' +
-      '<td class="num nowrap"><b>' + esc(r.v.labelCode || '—') + '</b></td>' +
-      '<td>' + healthBadge(r.v.qty) + '</td>' +
-      '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' +
-        (OG.lbQty[r.v.sku] || 1) + '" style="width:56px" data-change="lb-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
+  /* ONE ROW PER PRODUCT, sizes folded underneath. The flat list drew every
+     size as its own row - five lines of "Ahmad jersey" for one jersey - and
+     the person printing a whole line had to tick five boxes. The product row
+     carries a tick that means all of its sizes, the count and the total, and
+     a Print-all button; a click anywhere else on it opens the sizes, which
+     keep the per-size tick and the per-size print quantity they always had.
+     Which products are open lives in OG.lbOpen for the session, like the
+     filters do. */
+  OG.lbOpen = OG.lbOpen || {};
+  var groups = [], byPid = {};
+  rows.forEach(function (r) {
+    var g = byPid[r.p.id];
+    if (!g) { g = byPid[r.p.id] = { p: r.p, rows: [] }; groups.push(g); }
+    g.rows.push(r);
+  });
+
+  var ri = 0;
+  groups.forEach(function (g) {
+    var skus = g.rows.map(function (r) { return r.v.sku; });
+    var sel = skus.filter(function (k) { return Bulk.has('variants', k); }).length;
+    var all = sel === skus.length;
+    var open = !!OG.lbOpen[g.p.id];
+    var total = g.rows.reduce(function (n, r) { return n + (r.qty || 0); }, 0);
+    /* The family part of the SKU - OG-051 of OG-051-XL - so a row still
+       reads as the product it is while its sizes are folded away. */
+    var fam = (g.rows[0].v.sku || '').replace(/-[^-]+$/, '');
+
+    h += '<tr class="lb-prod' + (all ? ' bk-on' : '') + (open ? ' open' : '') +
+           '" data-act="lb-open" data-pid="' + g.p.id + '">' +
+      '<td class="bk-col"><label class="bk-box" title="' + esc(t('bk_select')) + '">' +
+        '<input type="checkbox" data-bk="group" data-sc="variants" data-pid="' + g.p.id + '"' +
+        (all ? ' checked' : '') + (sel && !all ? ' data-some="1"' : '') + '></label></td>' +
+      '<td><div class="cell-prod"><span class="lb-chev"></span>' + thumb(g.p) + '<span><b>' + esc(g.p.name) + '</b>' +
+        '<small>' + esc(g.p.brand) + '</small></span></div></td>' +
+      '<td class="muted nowrap">' + t('lb_sizes').replace('{n}', g.rows.length) +
+        (sel ? ' <span class="badge neutral">' + t('lb_sel').replace('{n}', sel) + '</span>' : '') + '</td>' +
+      '<td class="num"><b>' + total + '</b></td>' +
+      '<td class="muted num nowrap">' + esc(fam) + '</td>' +
+      '<td></td><td></td><td></td>' +
+      '<td class="num"><button class="btn btn-sm" data-act="lb-print-all" data-pid="' + g.p.id + '">' +
+        t('lb_print_all') + '</button></td>' +
     '</tr>';
+
+    if (!open) { ri += g.rows.length; return; }
+
+    g.rows.forEach(function (r) {
+      h += '<tr class="lb-size' + (Bulk.has('variants', r.v.sku) ? ' bk-on' : '') + '">' +
+        '<td class="bk-col">' + Bulk.box('variants', r.v.sku, ri++) + '</td>' +
+        '<td class="muted"></td>' +
+        '<td><b style="font-family:var(--font-head)">' + r.v.size + '</b></td>' +
+        '<td class="num">' + r.qty + '</td>' +
+        '<td class="muted num nowrap">' + r.v.sku + '</td>' +
+        '<td class="muted num nowrap">' + r.v.barcode + '</td>' +
+        '<td class="num nowrap"><b>' + esc(r.v.labelCode || '—') + '</b></td>' +
+        '<td>' + healthBadge(r.v.qty) + '</td>' +
+        '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' +
+          (OG.lbQty[r.v.sku] || 1) + '" style="width:56px" data-change="lb-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
+      '</tr>';
+    });
   });
 
   h += '</tbody></table></div>';
   return h;
+}
+
+/* The lines a whole product prints as: every size the current filter shows,
+   at the quantity typed beside it (or one). Shared by the product row's
+   button and nothing else - the bulk bar builds its own from the ticks. */
+function labelLinesForProduct(pid) {
+  return labelVariantRows().filter(function (r) { return r.p.id === pid; }).map(function (r) {
+    return { sku: r.v.sku, qty: (OG.lbQty && OG.lbQty[r.v.sku]) || 1 };
+  });
 }
 
 /* ---- quick per-product size picker ----------------------------------------

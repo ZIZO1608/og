@@ -361,6 +361,24 @@ var ACTIONS = {
 
   'open-product': function (el) { openProductDrawer(+el.getAttribute('data-id')); },
   'quick-label': function (el) { openQuickLabelPicker(+el.getAttribute('data-id')); },
+
+  /* The Print-labels screen's product rows. A click on the row opens its
+     sizes - unless it landed on the tick box, which is a selection, not a
+     request to look. */
+  'lb-open': function (el, e) {
+    if (e && e.target.closest && e.target.closest('.bk-box')) return;
+    OG.lbOpen = OG.lbOpen || {};
+    var pid = el.getAttribute('data-pid');
+    OG.lbOpen[pid] = !OG.lbOpen[pid];
+    render();
+  },
+  /* The whole product, every size the filter shows, straight into the same
+     preview the bulk bar and the drawer use. */
+  'lb-print-all': function (el) {
+    var lines = labelLinesForProduct(+el.getAttribute('data-pid'));
+    if (!lines.length) { toast(t('labels_title'), t('none'), 'warn'); return; }
+    Labels.openPreviewModal(lines, Labels.lastChoice().preset, Labels.lastChoice().station);
+  },
   /* The shelf map's "reprint" after a move: every in-stock size, one per pair. */
   'quick-label-per-pair': function (el) { openQuickLabelPicker(+el.getAttribute('data-id'), { perPair: true }); },
 

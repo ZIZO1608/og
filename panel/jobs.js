@@ -149,6 +149,29 @@ export const JOBS = {
     blurb: 'Moves this machine\u2019s og.db aside and rebuilds the whole shop from the cloud copy. Everything here that never reached the mirror is gone.',
     danger: 'RESTORE',
     while: 'shut',
+    aroundShop: true,
+    cwd: 'server',
+    steps: () => [['node', ['scripts/supabase-restore.js', '--wipe']]]
+  },
+
+  /* THE HANDOVER. The same command as `restore`, offered from the mirror card
+     with the words the situation actually calls for. The shop runs on one
+     laptop at a time (lib/lineage.js, lib/restore.js); when the cloud copy
+     belongs to the other one, this is how it comes here: the whole shop is
+     pulled down, this machine mints a new lineage and claims the mirror, and
+     the other laptop is refused the moment it next tries. The panel closes
+     the shop here first and opens it again after, so nobody has to know that
+     the wipe refuses while a server is answering on the port.
+     Two refusals worth knowing by name, because they are the two a person can
+     fix: busy_elsewhere (the other laptop is open - quit the panel there,
+     wait a minute) and unpushed_local (rows here never reached the cloud -
+     Claim the mirror keeps them instead, if this machine is the truth). */
+  takeShop: {
+    label: 'Take the shop here',
+    blurb: 'Pulls the whole shop down from the cloud onto this machine and makes this the laptop that owns the mirror. Close the shop on the other laptop first. Whatever is on this machine that never reached the cloud is replaced by the cloud copy.',
+    danger: 'TAKE',
+    while: 'shut',
+    aroundShop: true,
     cwd: 'server',
     steps: () => [['node', ['scripts/supabase-restore.js', '--wipe']]]
   },

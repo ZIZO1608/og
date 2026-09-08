@@ -139,11 +139,11 @@ function viewProducts() {
      who cannot act on the selection. */
   var bulk = allow('product.write');
 
-  /* One-click "just this size" printing, right from the row — the bulk
-     Print labels screen is for a batch; this is for the one sticker that
-     fell off a shoe on the shelf. Opens straight to that product's own
-     sizes, no drawer in between. */
-  var canLabel = allow('label.print');
+  /* There used to be a barcode button at the end of every row — one-click
+     label printing for a single product. It never worked reliably at the
+     shop and was taken out on request; labels are printed from the product
+     drawer, the Print-labels screen and the shelf map, which all reach the
+     same preview. */
 
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>';
   if (bulk) h += '<th class="bk-col">' + Bulk.headBox('products') + '</th>';
@@ -152,7 +152,6 @@ function viewProducts() {
     h += '<th class="sortable' + (c.num ? ' num' : '') + '" data-act="prod-sort" data-k="' + c.k + '">' +
          t(c.label) + '<span class="arrow">' + arrow + '</span></th>';
   });
-  if (canLabel) h += '<th></th>';
   h += '</tr></thead><tbody>';
 
   rows.forEach(function (r, ri) {
@@ -187,23 +186,6 @@ function viewProducts() {
          '" data-act="open-product" data-id="' + r.p.id + '">' +
       (bulk ? '<td class="bk-col">' + Bulk.box('products', r.p.id, ri) + '</td>' : '');
     cols.forEach(function (c) { h += cell[c.k]; });
-    if (canLabel) {
-      /* No onclick="event.stopPropagation()" here. It used to carry one, which
-         killed the click before it reached the delegated [data-act] dispatcher
-         on `document` — so this button had never once printed a label. It was
-         never needed either: the dispatcher resolves e.target.closest('[data-act]'),
-         which finds THIS button, not the open-product row around it. Same bug
-         and same fix as the POS cart's Clear button. */
-      /* An icon, not the words. "Print barcode labels" as text was the widest
-         thing in a nine-column table and pushed itself off the right edge on
-         a 1440 screen — the one button the shop uses most, hidden behind a
-         scrollbar. The label survives as the title and the accessible name. */
-      h += '<td class="td-act"><button class="btn btn-sm btn-ghost btn-icon" ' +
-        'data-act="quick-label" data-id="' + r.p.id + '" ' +
-        'title="' + esc(t('print_labels')) + '" aria-label="' + esc(t('print_labels')) + '">' +
-        '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
-          '<path d="M4 5v14M8 5v14M11 5v9M14 5v14M17 5v9M20 5v14"/></svg></button></td>';
-    }
     h += '</tr>';
   });
 

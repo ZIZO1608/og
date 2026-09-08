@@ -230,6 +230,31 @@ and role as flags and pipes only the password, so no line can be silently read a
 prompt. The window draws its tool list from the table, so a job added there appears without
 `panel/ui/panel.js` being touched.
 
+### The handover — "Take the shop here"
+
+The shop runs on **one laptop at a time** and moves to whichever boots with the other closed
+(the boot pull, under Supabase below). When the mirror belongs to the other laptop the worker
+sits in `refused`, and the panel's mirror card is where somebody learns what that means: it
+draws **the boot pull's own sentence** (`pull.message` — "Ahmad_Sabagh is working on the shop
+right now (seen 43 s ago)", "3 change(s) on this machine never reached the cloud", "OG_VAULT_KEY
+is not set"), one line saying the shop is elsewhere, and **one button** — `takeShop` in
+`panel/jobs.js`, the same `supabase-restore.js --wipe` as `restore`, framed for the situation
+and typed-confirmed with `TAKE`. Sync now is greyed while refused, and pressing it anyway says
+why: a machine that is not the shop cannot push.
+
+`aroundShop: true` on a job makes `runJob` **close the shop first and reopen it after** — the
+wipe refuses while anything answers on the port, and telling a person "press Stop, then try"
+was the old `.bat`'s way. It waits for the child's exit rather than a fixed pause, and reopens
+**even after a refusal**: `lib/restore.js` puts the file back untouched, and a shop left closed
+over a refusal reads as a crash. Exit `2` is `busy_elsewhere` by contract and the panel says so
+in its own words ("the other laptop is still open — quit OG System there, wait a minute"); the
+other refusal a person can act on is `unpushed_local`, whose answer is **Claim the mirror**
+instead, if this machine's rows are the truth. Verified on a scratch copy with a foreign lineage
+id: refused → stop → wipe (refused `vault_off`, so it claimed nothing) → reopen, and the real
+mirror never saw a write. **`claim-mirror.bat` is gone**; every message that named it — the
+worker's refusal line, `restore.js`, the app's `mir_*` strings in both languages — now names the
+two panel buttons.
+
 ### Things that bit while building it
 
 - **`[hidden] { display: none !important }` is in `panel.css` for a reason.** The browser's
@@ -1262,6 +1287,14 @@ the server one (numeric `label_code` in Code 128), a browser "Label Studio" in `
   labels**, which saves, then opens the preview on the SKUs the server minted with one label per
   piece booked in (`OG.wh.printAfter`, carried through the duplicate guard and dropped if it is
   cancelled). `label.print` gates the button.
+- **The Print-labels screen is one row per product, sizes folded underneath** (`viewPrintLabels`,
+  `OG.lbOpen` for the session). The product row's tick (`data-bk="group"` in `js/bulk.js`) means every
+  size the filter shows — off only when all are on, so a half-ticked product fills up — and its
+  **Print all sizes** (`lb-print-all`, `labelLinesForProduct`) goes into the same preview the bulk bar
+  uses, one line per size at the quantity typed beside it. A click on the row opens it; a click on
+  the tick does not (`lb-open` checks for `.bk-box`). Select-all in the header still means every
+  filtered size, folded or not, and the row says "5 sizes · 3 ticked" so nothing is hidden by the
+  fold. The Products table's per-row barcode button is gone at the shop's request.
 - The size tables on the Print-labels screen and the product drawer show all three codes by name —
   SKU, EAN-13, **Label code** — because the sticker's digits are the label code and people were
   holding stickers up against a column they never matched.

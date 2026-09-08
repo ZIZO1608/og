@@ -94,7 +94,7 @@
     $('bStart').disabled = s !== 'stopped' || busy;
     $('bStop').disabled = s === 'stopped' || s === 'stopping';
     $('bRestart').disabled = s === 'starting' || s === 'stopping' || busy;
-    $('bSync').disabled = s !== 'running' || busy;
+    $('bSync').disabled = s !== 'running' || busy || !!(state.mirror && state.mirror.mode === 'refused');
     $('bPush').disabled = busy;
 
     $('swLine').textContent = state.swCache
@@ -184,6 +184,35 @@
       p.className = 'why' + (m.mode === 'refused' || m.lastError ? ' bad' : '');
       p.textContent = why;
       host.appendChild(p);
+    }
+
+    /* REFUSED means this laptop is not the shop. The shop runs on one at a
+       time and moves to whichever boots with the other closed; this card is
+       where somebody learns that, and where the move is one button. The boot
+       pull already tried at start-up and said, in one sentence, why it did
+       not take the shop - the other laptop was open, rows here never reached
+       the cloud, no vault key - and that sentence is the whole answer, so it
+       is drawn rather than left in a terminal nobody scrolls back through. */
+    if (m.mode === 'refused') {
+      var pull = m.pull;
+      if (pull && !pull.did && pull.message && pull.reason !== 'own_lineage') {
+        var q = document.createElement('p');
+        q.className = 'why';
+        q.textContent = 'At start-up this machine did not take the shop: ' + pull.message;
+        host.appendChild(q);
+      }
+      var h = document.createElement('p');
+      h.className = 'why';
+      h.textContent = 'The shop runs on one laptop at a time. To work here, close it there and bring it over:';
+      host.appendChild(h);
+      if (JOBS.takeShop && !state.job) {
+        var b = document.createElement('button');
+        b.className = 'btn hot wide';
+        b.setAttribute('data-job', 'takeShop');
+        b.textContent = JOBS.takeShop.label;
+        b.style.marginTop = '8px';
+        host.appendChild(b);
+      }
     }
   }
 
