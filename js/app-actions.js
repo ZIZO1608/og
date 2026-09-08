@@ -59,6 +59,54 @@ var ACTIONS = {
     renderSidebar();
   },
 
+  /* ---- the reminders (041) ------------------------------------------------
+     Preview computes every rule and renders the message WITHOUT queueing one,
+     which is the only way to read a nine-o'clock digest at two in the
+     afternoon — and the only way to try this on the real shop without
+     somebody's phone buzzing. */
+  'rem-preview': function (el) {
+    if (el.disabled || typeof RemindersUI === 'undefined') return;
+    el.disabled = true; el.classList.add('spinning');
+    RemindersUI.preview()
+      .then(function (r) {
+        toast(t('reminders'), r.rows.length
+          ? t('rem_preview_n').replace('{n}', r.rows.length) : t('rem_preview_none'), 'ok', 3000);
+      })
+      .catch(function (e) { toast(t('reminders'), API.friendly(e), 'err', 5000); })
+      .then(function () { el.disabled = false; el.classList.remove('spinning'); });
+  },
+
+  /* And the same thing for real. It says how many it queued rather than
+     "sent": the outbox is what this writes to, and whether a phone got it is
+     the Telegram card's business one fold up. */
+  'rem-run': function (el) {
+    if (el.disabled) return;
+    el.disabled = true; el.classList.add('spinning');
+    API.post('/api/reminders/run', {})
+      .then(function (r) {
+        toast(t('reminders'), r.rows.length
+          ? t('rem_queued_n').replace('{n}', r.rows.length) : t('rem_queued_none'), 'ok', 3500);
+        if (typeof RemindersUI !== 'undefined') RemindersUI.load();
+      })
+      .catch(function (e) { toast(t('reminders'), API.friendly(e), 'err', 5000); })
+      .then(function () { el.disabled = false; el.classList.remove('spinning'); });
+  },
+
+  /* The shop's clock, taken from the machine somebody is standing at. Offered
+     only when the two disagree — a wrong offset is otherwise invisible until
+     the nightly close has been arriving at four in the morning for a week. */
+  'rem-tz-device': function (el) {
+    var tz = parseInt(el.getAttribute('data-tz'), 10);
+    if (!isFinite(tz) || Math.abs(tz) > 840) return;
+    API.put('/api/config', { updates: { 'shop.tz_minutes': String(tz) } })
+      .then(function () {
+        CONFIG.TZ_MINUTES = tz;
+        toast(t('reminders'), t('rem_tz_saved'), 'ok', 2500);
+        render();
+      })
+      .catch(function (e) { toast(t('reminders'), API.friendly(e), 'err', 5000); });
+  },
+
   /* Push everything to Supabase now. The timer already does this every ten
      minutes; this is for the moment somebody has just finished a stock count
      and wants to see it land.

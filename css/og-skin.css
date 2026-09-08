@@ -252,10 +252,30 @@ body:not([data-portal="yalla"]) .totals .grand span:last-child { font-weight: 70
 body:not([data-portal="yalla"]) .pay-grid button { font-weight: 600; }
 body:not([data-portal="yalla"]) .pay-grid button.on { background: var(--brand); color: var(--brand-foreground); font-weight: 700; }
 
-/* --------------------------------------------------------------- SETTINGS */
+/* --------------------------------------------------------------- SETTINGS
+
+   The head is meant to be nothing but the button — warehouse-settings.css
+   takes the padding off .card-head for exactly that reason. This file's own
+   .card-head rule two lines up put it straight back, at (0,2,1) against that
+   file's (0,2,0), so every fold head carried BOTH paddings: a 46px dead
+   gutter down the left of the list that looked clickable and was not, 32px of
+   dead height, and a title that started 43px to the right of the body under
+   it. Restated here, at this file's own weight, so the reset holds.
+
+   --fold-pad is the one number: the button's inline padding, and the base the
+   accordion derives every body's left edge from. */
 body:not([data-portal="yalla"]) .set-sec { color: #4A4A52; font-weight: 600; margin: 28px 2px 10px; }
 body:not([data-portal="yalla"]) .fold-title { font-size: 15px; font-weight: 600; letter-spacing: -.015em; }
-body:not([data-portal="yalla"]) .fold-btn { padding: 16px 22px; }
+body:not([data-portal="yalla"]) .fold { --fold-pad: 22px; }
+body:not([data-portal="yalla"]) .fold > .fold-head { padding: 0; }
+body:not([data-portal="yalla"]) .fold-btn { padding: 15px 22px; }
+
+/* A fold's body is padded by the accordion, which puts its left edge under
+   the title. This file's flat .card-body rule would otherwise win and pull it
+   back to 24px — the same two-class collision as the head above. */
+body:not([data-portal="yalla"]) .fold > .fold-body > .card-body {
+  padding: 16px 22px 24px var(--fold-inset);
+}
 
 /* ------------------------------------------------------------- THE PHONE */
 @media (max-width: 720px) {
@@ -264,6 +284,13 @@ body:not([data-portal="yalla"]) .fold-btn { padding: 16px 22px; }
   body:not([data-portal="yalla"]) .page-head h1 { font-size: 24px; }
   body:not([data-portal="yalla"]) .dash-hero-val { font-size: 42px; }
   body:not([data-portal="yalla"]) .tabs { overflow-x: auto; flex-wrap: nowrap; }
+  /* The fold's gutter, and with it every body's left edge — 44px of it is a
+     ninth of a phone screen, and these cards are mostly full-width inputs. */
+  body:not([data-portal="yalla"]) .fold { --fold-pad: 14px; }
+  body:not([data-portal="yalla"]) .fold-btn { padding: 14px; }
+  body:not([data-portal="yalla"]) .fold > .fold-body > .card-body {
+    padding: 14px 14px 20px var(--fold-inset);
+  }
 }
 
 /* ---------------------------------------------------------------- SIGN-IN
@@ -296,4 +323,7 @@ body.rtl:not([data-portal="yalla"]) .field > span,
 body.rtl:not([data-portal="yalla"]) .lbl,
 body.rtl:not([data-portal="yalla"]) .gate-field > span,
 body.rtl:not([data-portal="yalla"]) .sp-foot .sp-brand,
+body.rtl:not([data-portal="yalla"]) .mir-fact > div:first-child,
+body.rtl:not([data-portal="yalla"]) .mir-state .muted.small:first-child,
+body.rtl:not([data-portal="yalla"]) .rem-prev > .muted,
 body.rtl:not([data-portal="yalla"]) table.tbl th { letter-spacing: 0; }

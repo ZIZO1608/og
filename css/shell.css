@@ -181,20 +181,73 @@ body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-badge {
 .sync-btn[data-mode="bad"]::after  { display: block; background: #ff5c5c; box-shadow: 0 0 0 3px rgba(255, 92, 92, .22); }
 .sync-btn[data-mode="wait"]::after { display: block; background: var(--dim); }
 
-/* ---- the Supabase mirror fold (Settings) --------------------------------- */
+/* ---- the Supabase mirror fold (Settings) ---------------------------------
+
+   Two verdicts stacked — where the push is up to, and what the boot pull did
+   — then the four numbers, then the button. They were four runs of body text
+   with a dot in front of each and nothing between them, so the sentence that
+   matters and the paragraph that explains what a mirror IS carried the same
+   weight. The verdicts get a surface tinted by their own tone; the numbers
+   get a hairline above them and a label small enough to be read past. */
 .mir-host { min-height: 44px; }
-.mir-state { display: flex; align-items: flex-start; gap: 10px; }
-.mir-line { font-size: 13.5px; font-weight: 600; }
-.mir-dot {
-  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
-  background: var(--dim); flex: 0 0 auto; margin-top: 4px; margin-inline-end: 6px;
+.mir-state {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--muted);
 }
-.fold-meta .mir-dot { width: 8px; height: 8px; margin-top: 0; vertical-align: middle; }
+.mir-state + .mir-state { margin-top: 8px; }
+.mir-state.ok   { border-color: rgba(61, 220, 132, .28);  background: rgba(61, 220, 132, .05); }
+.mir-state.warn { border-color: rgba(245, 185, 62, .30);  background: rgba(245, 185, 62, .05); }
+.mir-state.bad  { border-color: rgba(255, 92, 92, .32);   background: rgba(255, 92, 92, .05); }
+.mir-line { font-size: 13.5px; font-weight: 600; line-height: 1.5; }
+.mir-state > div { min-width: 0; }
+
+/* The eyebrow over the pull's own sentence — "Cloud copy at startup". */
+.mir-state .muted.small:first-child {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 3px;
+}
+
+/* THE REMINDER PREVIEW — the message itself, not a rule's name.
+
+   A monospace-ish block quote rather than a table row: what is being judged
+   here is a sentence somebody is about to receive on a telephone, and it
+   should be read as one. Arabic and English arrive on separate lines from the
+   server, so the whole thing sits in dir="auto" and wraps. */
+.rem-prev {
+  margin-top: 8px; padding: 10px 12px;
+  border-inline-start: 2px solid var(--border);
+  background: var(--muted); border-radius: var(--radius);
+  font-size: 13px; line-height: 1.65;
+}
+.rem-prev > .muted {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; margin-bottom: 4px;
+}
+
+.mir-dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--dim); flex: 0 0 auto; margin-top: 6px;
+}
+.fold-meta .mir-dot { width: 8px; height: 8px; margin-top: 0; margin-inline-end: 6px; vertical-align: middle; }
 .mir-dot.ok   { background: #3ddc84; box-shadow: 0 0 0 3px rgba(61, 220, 132, .22); }
 .mir-dot.warn { background: #f5b93e; }
 .mir-dot.bad  { background: #ff5c5c; box-shadow: 0 0 0 3px rgba(255, 92, 92, .22); }
-.mir-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 16px; margin-top: 14px; }
-.mir-fact > div:last-child { font-size: 13.5px; }
+
+.mir-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px 16px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+.mir-fact > div:first-child {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--dim);
+}
+.mir-fact > div:last-child { font-size: 13.5px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+/* The button and the sentence that says what pressing it is for. */
+.mir-act { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.mir-act .muted { flex: 1; min-width: 200px; line-height: 1.5; }
+
 .mt-xs { margin-top: 4px; }
 
 /* Someone who has asked for less motion still needs to know it is working —

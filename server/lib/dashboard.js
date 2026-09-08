@@ -94,6 +94,33 @@ function tzModifier(tz) {
   return (tz >= 0 ? '+' : '-') + Math.abs(tz) + ' minutes';
 }
 
+/* ---- the money in a window, on its own -------------------------------------
+   build() computes this as its first act, but it takes a `user` and answers
+   with the whole permissioned dashboard — six months of charts included. The
+   nightly Telegram close needs two numbers and has no user to speak of;
+   synthesising a fake manager to get them would be worse than lifting the
+   query out, so it is lifted and build() calls it. Still one copy. */
+function takingsRows(from, to) {
+  return DB.get().prepare(
+    `SELECT currency, COUNT(*) AS n, COALESCE(SUM(total), 0) AS total,
+            SUM(CASE WHEN discount > 0 THEN 1 ELSE 0 END) AS discounted
+       FROM sales
+      WHERE voided = 0 AND at >= ? AND at < ?
+      GROUP BY currency`
+  ).all(from, to);
+}
+
+/* A PAIR, never a sum: the shop genuinely prices some goods in dollars, and
+   adding cents to lira is the mistake this whole file was rewritten to end.
+   Named `takingsIn` rather than `takings` because build() has a local of that
+   name three lines down, and a shadowed export is a footgun. */
+export function takingsIn(from, to) {
+  const rows = takingsRows(from, to);
+  const money = pair(rows, 'total');
+  const countBy = pair(rows, 'n');
+  return { takings: money, countBy, count: countBy.syp + countBy.usd };
+}
+
 export function build(user, { from, to, tz, monthsFrom }) {
   const d = DB.get();
   const can = (p) => Auth.can(user, p);
@@ -110,13 +137,7 @@ export function build(user, { from, to, tz, monthsFrom }) {
 
   /* ---- takings, per currency, and how they were paid --------------------- */
   if (sellish) {
-    const byCur = d.prepare(
-      `SELECT currency, COUNT(*) AS n, COALESCE(SUM(total), 0) AS total,
-              SUM(CASE WHEN discount > 0 THEN 1 ELSE 0 END) AS discounted
-         FROM sales
-        WHERE voided = 0 AND at >= ? AND at < ?
-        GROUP BY currency`
-    ).all(...args);
+    const byCur = takingsRows(from, to);
 
     const takings = pair(byCur, 'total');
     const countBy = pair(byCur, 'n');

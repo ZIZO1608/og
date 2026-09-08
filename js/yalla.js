@@ -623,7 +623,45 @@ var YALLA = (function () {
       '<div class="card-actions muted small">' + t('tg_sub') + '</div></div>' +
       '<div class="card-body"><div id="tgHost" class="tg-host">' + t('tg_loading') + '</div></div></div>';
 
+    h += remindersCard();
     return h;
+  }
+
+  /* ---- what their bot is allowed to nag them about --------------------------
+     Their five switches, and only their five. They hold partner.jobs, not
+     config.write, so these write through PUT /api/reminders/config, whose
+     allow-list for a partner account is ^reminders\.yl_ and nothing else — not
+     an hour, not the master switch, and not the pause.
+
+     The SAME KEY the shop's Settings fold writes, deliberately, rather than a
+     second set that could disagree about one switch: last change wins. What is
+     not shared is the pause, which is OG's, and which is shown here because a
+     switch that reads ON while nothing ever arrives is worse than a switch
+     that says why. */
+  var YL_RULES = ['yl_order_waiting', 'yl_due', 'yl_blocked', 'yl_digest', 'yl_pay_wait'];
+
+  function remindersCard() {
+    var rem = (typeof CONFIG !== 'undefined' && CONFIG.REMINDERS) || {};
+    var paused = rem.yalla_paused === '1' || rem.enabled === '0';
+    var h = '<div class="card mt"><div class="card-head"><h3>' + t('reminders') + '</h3>' +
+      '<div class="card-actions muted small">' + t('rem_yl_card_sub') + '</div></div>' +
+      '<div class="card-body">';
+    if (paused) {
+      h += '<div class="mir-state warn"><span class="mir-dot warn"></span><div>' +
+        '<div class="mir-line"><span dir="auto">' + t('rem_yl_paused_notice') + '</span></div>' +
+        '</div></div>';
+    }
+    /* rem_p_* — the same rules said TO them. The shop's Settings copy is
+       written about them ("tells THEM the press is waiting on names from THIS
+       side"), which in their own portal reads like a description of somebody
+       else's bot. */
+    YL_RULES.forEach(function (id) {
+      h += '<div class="rule-row"><div class="rr-txt"><b>' + t('rem_p_' + id) + '</b>' +
+        '<small>' + t('rem_p_' + id + '_sub') + '</small></div>' +
+        '<label class="switch"><input type="checkbox"' + (rem[id] !== '0' ? ' checked' : '') +
+          ' data-change="set-reminder-yl" data-k="' + id + '"><i></i></label></div>';
+    });
+    return h + '</div></div>';
   }
 
   /* ---- the Telegram line ----------------------------------------------------
@@ -685,10 +723,13 @@ var YALLA = (function () {
                   t('tg_open_bot') + '</a>' : '') +
         '<small class="muted">' + t('tg_waiting') + '</small></div>';
     } else {
+      /* Lime is the primary action of the screen, and once a phone is linked
+         the card's job is done — adding a second is ordinary work. Linking
+         the FIRST one is the whole point of the card, so that one keeps it. */
       h += '<div class="tg-acts">' +
-        '<button class="btn btn-primary" data-yl="tg-link">' +
+        '<button class="btn ' + (list.length ? 'btn-ghost' : 'btn-primary') + '" data-yl="tg-link">' +
           (list.length ? t('tg_connect_more') : t('tg_connect')) + '</button>' +
-        (list.length ? '<button class="btn btn-sm" data-yl="tg-test">' + t('tg_test') + '</button>' : '') +
+        (list.length ? '<button class="btn btn-ghost" data-yl="tg-test">' + t('tg_test') + '</button>' : '') +
         '</div>';
     }
     return h;

@@ -94,8 +94,9 @@
 /* ============================================================== HARDWARE
    The scanner test box and the scan sheet's action row.                    */
 
-.hw-h { font-size: var(--fs-lg); font-weight: 700; margin: 0 0 4px; }
-.hw-sep { height: 1px; background: var(--border); margin: 20px 0 16px; }
+/* The sub-heading and the rule between groups moved to css/warehouse-settings.css
+   as .set-h / .set-sep: the receipt and label cards want the same two things,
+   and a heading called "hw" over "The gift slip" is a name that lies. */
 
 .hw-test { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .hw-read {

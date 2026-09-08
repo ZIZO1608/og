@@ -284,6 +284,61 @@ var CHANGES = {
     }, 600);
   },
 
+  /* ---- the automatic reminders (041) -------------------------------------
+     Seventeen switches, five hours and a time zone, all writing config keys
+     through the allowlist the same way the at-risk window does.
+
+     NO render() ON A TOGGLE. Half this fold holds typed-but-unsaved numbers
+     and a repaint takes them back to what the server last said, mid-sentence
+     — the accordion's own rule. The head's count is patched in place instead.
+
+     wait = 0 for a switch: it settles the moment it moves, and a tick that
+     takes six hundred milliseconds to be believed feels broken. */
+  'set-reminder': function (el) {
+    var k = el.getAttribute('data-k');
+    if (!k) return;
+    var v = el.checked ? '1' : '0';
+    CONFIG.REMINDERS[k] = v;
+    if (typeof remMetaText === 'function') {
+      var m = document.getElementById('remMeta');
+      if (m) m.innerHTML = remMetaText();
+    }
+    saveConfig('reminders.' + k, v, t('reminders'), 0);
+  },
+
+  'set-reminder-num': function (el) {
+    var k = el.getAttribute('data-k');
+    if (!k) return;
+    var v = parseInt(el.value, 10);
+    var min = Number(el.getAttribute('min')), max = Number(el.getAttribute('max'));
+    /* Out of range is a half-typed number, not a value: "1" on the way to
+       "18" must not be saved and must not toast. */
+    if (!isFinite(v) || v < min || v > max) return;
+    CONFIG.REMINDERS[k] = String(v);
+    saveConfig('reminders.' + k, v, t('reminders'));
+  },
+
+  /* The same switch, written from the partner's portal. A route of its own
+     because their allow-list is narrower than the permission: they may move
+     their own five and nothing else, and the server enforces that from the
+     account's role rather than from the body. */
+  'set-reminder-yl': function (el) {
+    var k = el.getAttribute('data-k');
+    if (!k || typeof API === 'undefined' || !API.live) return;
+    var v = el.checked ? '1' : '0';
+    CONFIG.REMINDERS[k] = v;
+    var updates = {};
+    updates['reminders.' + k] = v;
+    API.put('/api/reminders/config', { updates: updates })
+      .catch(function (err) {
+        /* Put the switch back where the server thinks it is: a tick that
+           stays down after a refusal is a promise the shop's bot did not make. */
+        CONFIG.REMINDERS[k] = el.checked ? '0' : '1';
+        el.checked = !el.checked;
+        toast(t('reminders'), API.friendly(err), 'err', 5000);
+      });
+  },
+
   'set-rate': function (el) {
     var v = parseInt(el.value, 10);
     if (v > 0) {

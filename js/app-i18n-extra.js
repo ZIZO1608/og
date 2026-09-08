@@ -972,6 +972,232 @@ var LABELS_AR = {
   wh_codes_note: 'رمز الصنف وباركود EAN-13 ورمز الملصق يصدرها الخادم عند حفظ المنتج، والملصقات تُطبع منها. «حفظ وطباعة الملصقات» يقوم بالاثنين معاً.'
 };
 
+/* ---- the automatic reminders (041) ----------------------------------------
+   One `rem_<id>` and one `rem_<id>_sub` per rule in server/lib/reminders.js,
+   and the ids match on purpose: adding a rule server-side means adding a row
+   to REMINDER_RULES and these two strings, and nothing else.
+
+   Every key is in BOTH tables. A missing Arabic key falls back to English
+   mid-sentence inside an RTL layout and reads as a bug, not as a translation
+   that has not been done yet. */
+var REMINDERS_EN = {
+  rem_g_day: 'The day and the drawer',
+  rem_g_stock: 'Stock',
+  rem_g_print: 'Print jobs and Yalla Wear',
+  rem_g_yl: "Yalla Wear's own bot",
+
+  /* Not "Automatic reminders" — that is the fold's own title, three
+     centimetres above it, and a row that repeats its heading reads as a
+     rendering mistake rather than as the master switch. */
+  rem_enabled: 'Send them at all',
+  rem_enabled_sub: 'The master switch. Off, and neither bot says anything of its own.',
+  rem_yalla_paused: "Pause Yalla Wear's bot",
+  rem_yalla_paused_sub: 'Silences all of their reminders, whatever they have switched on.',
+
+  rem_tz: "The shop's clock",
+  rem_tz_sub: 'It is {clock} in the shop. Every daily reminder is timed by this, not by the browser.',
+  rem_tz_ok: 'matches this device',
+  rem_tz_use_device: "Use this device's",
+  rem_tz_saved: 'Shop clock set.',
+
+  rem_day_close: 'Day close',
+  rem_day_close_sub: "The day's takings, the invoice count and what should be in the drawer.",
+  rem_shift_open: 'Shift left open',
+  rem_shift_open_sub: 'If the drawer is still open at closing time — or the next morning.',
+  rem_cash_variance: 'Drawer difference',
+  rem_cash_variance_sub: 'When a shift closes short or over by more than the amount below.',
+
+  rem_stock_out: 'Out of stock',
+  rem_stock_out_sub: 'A size with nothing left in either warehouse.',
+  rem_stock_critical: 'Nearly out',
+  rem_stock_critical_sub: 'How many sizes are down to their last few pieces.',
+  rem_po_late: 'Purchase order late',
+  rem_po_late_sub: 'Sent to the supplier, with nothing received after two weeks.',
+  rem_wants_back: 'A wanted size landed',
+  rem_wants_back_sub: 'A size somebody asked for is back on the shelf.',
+
+  rem_order_no_answer: 'Order not answered',
+  rem_order_no_answer_sub: 'Yalla Wear has not accepted or declined an order you sent.',
+  rem_job_late: 'Past its deadline',
+  rem_job_late_sub: 'A print job whose date has gone by and is not done.',
+  rem_partner_unread: 'Unread messages',
+  rem_partner_unread_sub: 'A line from Yalla Wear that nobody here has opened.',
+  rem_job_stuck: 'Stuck on the way',
+  rem_job_stuck_sub: 'A job that left the printer and has not arrived.',
+  rem_pay_wait: 'Payment waiting on you',
+  rem_pay_wait_sub: 'Recorded by Yalla Wear and not confirmed on this side yet.',
+
+  rem_yl_order_waiting: 'Nudge an unanswered order',
+  rem_yl_order_waiting_sub: 'Keeps asking until they accept or decline, for up to a week.',
+  rem_yl_due: 'Deadline countdown',
+  rem_yl_due_sub: 'Two days out, one day out, due today, then daily once it is late.',
+  rem_yl_blocked: 'Blocked with no names',
+  rem_yl_blocked_sub: 'Tells them the press is waiting on names from this side.',
+  rem_yl_digest: 'Morning digest',
+  rem_yl_digest_sub: 'Work in hand, what is due today, what is overdue. Silent on an empty week.',
+  rem_yl_pay_wait: 'Payment waiting on them',
+  rem_yl_pay_wait_sub: 'Recorded here and not confirmed by Yalla Wear yet.',
+
+  rem_n_quiet_from: 'Quiet from',
+  rem_n_quiet_to: 'Quiet until',
+  rem_n_day_close_hour: 'Day close at',
+  rem_n_shift_open_hour: 'Shift nudge at',
+  rem_n_variance_min: 'Smallest difference worth a message',
+  rem_n_stock_repeat_days: 'Repeat stock warnings after (days)',
+  rem_n_order_wait_hours: 'No answer after (hours)',
+  rem_n_unread_hours: 'Unread after (hours)',
+  rem_n_delivery_stuck_hours: 'Stuck on the way after (hours)',
+  rem_n_pay_confirm_hours: 'Payment unconfirmed after (hours)',
+  rem_n_yl_digest_hour: 'Morning digest at',
+
+  rem_quiet_note: 'No reminder is sent between these hours. Real news — an order accepted, a payment, a message — still arrives at any time; this holds back reminders only, and what is held goes out when the quiet ends.',
+  rem_yl_note: "These are Yalla Wear's own switches. They can change the same ones from their portal, and the last change wins. The pause above is yours alone.",
+
+  rem_loading: 'Loading…',
+  rem_notconf: 'Reminders need a connection to the server.',
+  rem_preview: 'What would go out right now',
+  rem_preview_btn: 'Preview',
+  rem_preview_none: 'Nothing to say right now.',
+  rem_preview_n: '{n} message(s) ready',
+  rem_run: 'Send now',
+  rem_queued_n: '{n} message(s) queued.',
+  rem_queued_none: 'Nothing new — everything standing has already been said.',
+  rem_next_close: 'Next day close',
+  rem_next_digest: 'Next morning digest',
+
+  /* THE SAME FIVE RULES, ADDRESSED TO THE OTHER COMPANY. The `rem_yl_*`
+     strings above are written for the shop's Settings — "tells THEM the press
+     is waiting on names from THIS side" — and putting those in front of Yalla
+     Wear describes them in the third person, in their own portal, about their
+     own bot. One rule, two audiences, two sentences. */
+  rem_p_yl_order_waiting: 'Orders waiting on you',
+  rem_p_yl_order_waiting_sub: 'We keep reminding you until you accept or decline, for up to a week.',
+  rem_p_yl_due: 'Deadline countdown',
+  rem_p_yl_due_sub: 'Two days out, one day out, due today, then daily once a job is late.',
+  rem_p_yl_blocked: 'Jobs blocked with no names',
+  rem_p_yl_blocked_sub: 'When a job you accepted is still waiting on names from OG.',
+  rem_p_yl_digest: 'Morning digest',
+  rem_p_yl_digest_sub: 'Each morning: work in hand, what is due today, what is overdue.',
+  rem_p_yl_pay_wait: 'Payments waiting on you',
+  rem_p_yl_pay_wait_sub: 'A payment OG recorded that you have not confirmed yet.',
+
+  rem_yl_card_sub: 'What your bot reminds you about',
+  rem_yl_paused_notice: 'OG has paused these for now, so nothing will arrive whatever is switched on here.',
+
+  rem_side_og: "The shop's bot",
+  rem_side_yl: "Yalla Wear's bot",
+  rem_skip_off: 'Reminders are switched off.',
+  rem_skip_paused: "Yalla Wear's bot is paused.",
+  rem_skip_muted: '{side}: muted for now.',
+  rem_skip_no_chat: '{side}: no chat is linked, so nothing is queued.',
+  rem_skip_quiet: '{side}: quiet hours — anything waiting goes out when they end.'
+};
+
+var REMINDERS_AR = {
+  rem_g_day: 'اليوم والصندوق',
+  rem_g_stock: 'المخزون',
+  rem_g_print: 'طلبات الطباعة ويلا وير',
+  rem_g_yl: 'بوت يلا وير',
+
+  rem_enabled: 'إرسال التذكيرات',
+  rem_enabled_sub: 'المفتاح العام. إذا أُغلق فلا يرسل أي بوت تذكيرة من عنده.',
+  rem_yalla_paused: 'إيقاف بوت يلا وير مؤقتاً',
+  rem_yalla_paused_sub: 'يُسكت كل تذكيراتهم مهما كانت مفاتيحهم مفتوحة.',
+
+  rem_tz: 'توقيت المحل',
+  rem_tz_sub: 'الساعة في المحل الآن {clock}. كل تذكيرة يومية تُحسب على هذه الساعة، لا على ساعة المتصفح.',
+  rem_tz_ok: 'مطابق لهذا الجهاز',
+  rem_tz_use_device: 'استخدم توقيت هذا الجهاز',
+  rem_tz_saved: 'تم ضبط توقيت المحل.',
+
+  rem_day_close: 'إغلاق اليوم',
+  rem_day_close_sub: 'مبيعات اليوم وعدد الفواتير وما يجب أن يكون في الصندوق.',
+  rem_shift_open: 'وردية لم تُغلق',
+  rem_shift_open_sub: 'إذا بقي الصندوق مفتوحاً عند وقت الإغلاق — أو في صباح اليوم التالي.',
+  rem_cash_variance: 'فرق في الصندوق',
+  rem_cash_variance_sub: 'عند إغلاق وردية بنقص أو زيادة أكبر من المبلغ أدناه.',
+
+  rem_stock_out: 'نفاد مقاس',
+  rem_stock_out_sub: 'مقاس لم يبقَ منه شيء في أي مستودع.',
+  rem_stock_critical: 'على وشك النفاد',
+  rem_stock_critical_sub: 'عدد المقاسات التي لم يبقَ منها إلا القليل.',
+  rem_po_late: 'طلب شراء متأخر',
+  rem_po_late_sub: 'أُرسل إلى المورّد ولم يصل منه شيء بعد أسبوعين.',
+  rem_wants_back: 'وصل مقاس مطلوب',
+  rem_wants_back_sub: 'مقاس سأل عنه زبون وعاد إلى الرف.',
+
+  rem_order_no_answer: 'طلب بلا رد',
+  rem_order_no_answer_sub: 'يلا وير لم تقبل ولم ترفض طلباً أرسلته.',
+  rem_job_late: 'تجاوز موعد التسليم',
+  rem_job_late_sub: 'طلب طباعة مرّ موعده ولم يكتمل.',
+  rem_partner_unread: 'رسائل بلا قراءة',
+  rem_partner_unread_sub: 'رسالة من يلا وير لم يفتحها أحد هنا.',
+  rem_job_stuck: 'عالق في الطريق',
+  rem_job_stuck_sub: 'طلب غادر المطبعة ولم يصل بعد.',
+  rem_pay_wait: 'دفعة تنتظر تأكيدك',
+  rem_pay_wait_sub: 'سجّلتها يلا وير ولم تُؤكَّد من هذا الطرف بعد.',
+
+  rem_yl_order_waiting: 'تذكير بطلب بلا رد',
+  rem_yl_order_waiting_sub: 'يستمر بالسؤال حتى يقبلوا أو يرفضوا، لمدة أسبوع.',
+  rem_yl_due: 'قرب موعد التسليم',
+  rem_yl_due_sub: 'قبل يومين، ثم قبل يوم، ثم في يومه، ثم كل يوم بعد التأخر.',
+  rem_yl_blocked: 'طلب متوقف بلا أسماء',
+  rem_yl_blocked_sub: 'يخبرهم أن المكبس ينتظر أسماء من هذا الطرف.',
+  rem_yl_digest: 'ملخص الصباح',
+  rem_yl_digest_sub: 'العمل في اليد، وما يُسلَّم اليوم، وما تأخّر. يصمت في أسبوع فارغ.',
+  rem_yl_pay_wait: 'دفعة تنتظر تأكيدهم',
+  rem_yl_pay_wait_sub: 'سُجّلت هنا ولم تؤكّدها يلا وير بعد.',
+
+  rem_n_quiet_from: 'بداية فترة الصمت',
+  rem_n_quiet_to: 'نهاية فترة الصمت',
+  rem_n_day_close_hour: 'ساعة إغلاق اليوم',
+  rem_n_shift_open_hour: 'ساعة تذكير الوردية',
+  rem_n_variance_min: 'أقل فرق يستحق رسالة',
+  rem_n_stock_repeat_days: 'تكرار تنبيه المخزون بعد (أيام)',
+  rem_n_order_wait_hours: 'بلا رد بعد (ساعات)',
+  rem_n_unread_hours: 'بلا قراءة بعد (ساعات)',
+  rem_n_delivery_stuck_hours: 'عالق في الطريق بعد (ساعات)',
+  rem_n_pay_confirm_hours: 'دفعة بلا تأكيد بعد (ساعات)',
+  rem_n_yl_digest_hour: 'ساعة ملخص الصباح',
+
+  rem_quiet_note: 'لا تُرسل أي تذكيرة بين هاتين الساعتين. الأخبار الحقيقية — قبول طلب، دفعة، رسالة — تصل في أي وقت؛ هذا يؤخّر التذكيرات وحدها، وما تأخّر يخرج فور انتهاء فترة الصمت.',
+  rem_yl_note: 'هذه مفاتيح بوت يلا وير. يستطيعون تعديل المفاتيح نفسها من بوابتهم، وآخر تعديل هو الذي يسري. أما الإيقاف المؤقت فوقه فهو لكم وحدكم.',
+
+  rem_loading: 'جارٍ التحميل…',
+  rem_notconf: 'التذكيرات تحتاج اتصالاً بالخادم.',
+  rem_preview: 'ما سيُرسَل الآن',
+  rem_preview_btn: 'اعرض ما سيُرسَل',
+  rem_preview_none: 'لا شيء يستحق الإرسال الآن.',
+  rem_preview_n: '{n} رسالة جاهزة',
+  rem_run: 'أرسل الآن',
+  rem_queued_n: 'أُضيفت {n} رسالة إلى قائمة الإرسال.',
+  rem_queued_none: 'لا جديد — كل ما هو قائم قيل من قبل.',
+  rem_next_close: 'إغلاق اليوم القادم',
+  rem_next_digest: 'ملخص الصباح القادم',
+
+  rem_p_yl_order_waiting: 'طلبات تنتظر ردكم',
+  rem_p_yl_order_waiting_sub: 'نُذكّركم حتى تقبلوا أو ترفضوا، لمدة أسبوع.',
+  rem_p_yl_due: 'قرب موعد التسليم',
+  rem_p_yl_due_sub: 'قبل يومين، ثم قبل يوم، ثم في يومه، ثم كل يوم بعد التأخر.',
+  rem_p_yl_blocked: 'طلبات متوقفة بلا أسماء',
+  rem_p_yl_blocked_sub: 'عندما ينتظر طلب قبلتموه أسماءً من OG.',
+  rem_p_yl_digest: 'ملخص الصباح',
+  rem_p_yl_digest_sub: 'كل صباح: العمل في اليد، وما يُسلَّم اليوم، وما تأخّر.',
+  rem_p_yl_pay_wait: 'دفعات تنتظر تأكيدكم',
+  rem_p_yl_pay_wait_sub: 'دفعة سجّلها OG ولم تؤكّدوها بعد.',
+
+  rem_yl_card_sub: 'بماذا يذكّركم البوت',
+  rem_yl_paused_notice: 'أوقفها OG مؤقتاً، فلن يصلكم شيء مهما كانت المفاتيح هنا مفتوحة.',
+
+  rem_side_og: 'بوت المحل',
+  rem_side_yl: 'بوت يلا وير',
+  rem_skip_off: 'التذكيرات مُغلقة.',
+  rem_skip_paused: 'بوت يلا وير موقوف مؤقتاً.',
+  rem_skip_muted: '{side}: مكتوم مؤقتاً.',
+  rem_skip_no_chat: '{side}: لا توجد محادثة مرتبطة، فلا يُرسَل شيء.',
+  rem_skip_quiet: '{side}: فترة صمت — ما ينتظر يخرج فور انتهائها.'
+};
+
 Object.keys(EXTRA_EN).forEach(function (k) { I18N.en[k] = EXTRA_EN[k]; });
 Object.keys(LABELS_EN).forEach(function (k) { I18N.en[k] = LABELS_EN[k]; });
 Object.keys(LABELS_AR).forEach(function (k) { I18N.ar[k] = LABELS_AR[k]; });
@@ -980,3 +1206,5 @@ Object.keys(EXTRA_V3_EN).forEach(function (k) { I18N.en[k] = EXTRA_V3_EN[k]; });
 Object.keys(EXTRA_V3_AR).forEach(function (k) { I18N.ar[k] = EXTRA_V3_AR[k]; });
 Object.keys(REPORTS_EN).forEach(function (k) { I18N.en[k] = REPORTS_EN[k]; });
 Object.keys(REPORTS_AR).forEach(function (k) { I18N.ar[k] = REPORTS_AR[k]; });
+Object.keys(REMINDERS_EN).forEach(function (k) { I18N.en[k] = REMINDERS_EN[k]; });
+Object.keys(REMINDERS_AR).forEach(function (k) { I18N.ar[k] = REMINDERS_AR[k]; });

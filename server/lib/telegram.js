@@ -30,6 +30,7 @@
 import { randomBytes } from 'node:crypto';
 import { maybe } from './env.js';
 import * as DB from './db.js';
+import * as Commands from './telegram-commands.js';
 
 const SIDES = ['og', 'yalla'];
 /* Telegram messages are two lines, Arabic then English. Named so the string
@@ -181,6 +182,11 @@ const fmtDate = (iso) => {
   if (isNaN(d)) return String(iso);
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
+/* Money on the shop's side is a PAIR — the shop genuinely prices some goods
+   in dollars — and the two are never added. Dollars appear only when there
+   were any, so an ordinary lira day reads as one number. */
+const fmtPair = (syp, usd) =>
+  fmtMoney(syp || 0, 'SYP') + (Number(usd) ? ' + ' + fmtMoney(usd, 'USD') : '');
 const STAGE_AR = { design: 'التصميم', sent: 'استلمتها المطبعة', printing: 'قيد الطباعة', delivery: 'في الطريق', done: 'مكتمل' };
 const STAGE_EN = { design: 'Design', sent: 'Taken by the printer', printing: 'Printing', delivery: 'On its way', done: 'Done' };
 const KIND_AR = { note: 'ملاحظة', nudge: 'تذكير', delay: 'تأخير', 'name-request': 'طلب أسماء', reply: 'رد', reminder: 'تذكير', invoice: 'فاتورة' };
@@ -231,6 +237,136 @@ const TEMPLATES = {
   test: () => ({
     ar: '🔔 رسالة تجريبية من نظام OG — التنبيهات تعمل.',
     en: 'Test message from OG System — notifications are working.'
+  }),
+
+  /* ---- the reminders ------------------------------------------------------
+     Everything above is NEWS: something happened, here it is. Everything
+     below is a STANDING CONDITION that lib/reminders.js found still true —
+     an order nobody answered, a shift nobody closed, a size nobody reordered.
+     Same table, same drain, same plain text; only the producer is different.
+
+     Each one says the thing and, where there is one, the action. A reminder
+     that only states a fact is a reminder people stop reading. */
+
+  rem_day_close: (a) => ({
+    ar: `📊 إغلاق اليوم ${a.day}` +
+        `${BR}المبيعات: ${fmtPair(a.syp, a.usd)}` +
+        `${BR}${a.invoices} فاتورة` +
+        (a.expected == null ? '' : `${BR}المتوقع في الدرج: ${fmtMoney(a.expected, a.currency)}`) +
+        (a.shiftOpen ? `${BR}الوردية ${a.shift} ما زالت مفتوحة.` : ''),
+    en: `Day close ${a.day}` +
+        `${BR}Sales: ${fmtPair(a.syp, a.usd)}` +
+        `${BR}${a.invoices} invoice(s)` +
+        (a.expected == null ? '' : `${BR}Expected in the drawer: ${fmtMoney(a.expected, a.currency)}`) +
+        (a.shiftOpen ? `${BR}Shift ${a.shift} is still open.` : '')
+  }),
+  rem_shift_open: (a) => ({
+    ar: `🕙 الوردية ${a.id} ما زالت مفتوحة منذ ${a.hours} ساعة` + (a.by ? ` — ${a.by}` : '') + '.' +
+        `${BR}عُدّ الصندوق وأغلقها.`,
+    en: `Shift ${a.id} has been open for ${a.hours}h` + (a.by ? ` — ${a.by}` : '') + '.' +
+        `${BR}Count the drawer and close it.`
+  }),
+  rem_cash_variance: (a) => ({
+    ar: `⚠️ فرق في الصندوق على الوردية ${a.id}: ${a.diff > 0 ? '+' : ''}${fmtMoney(a.diff, a.currency)}` +
+        `${BR}عُدّ ${fmtMoney(a.counted, a.currency)}، والمتوقع ${fmtMoney(a.expected, a.currency)}.`,
+    en: `Drawer difference on shift ${a.id}: ${a.diff > 0 ? '+' : ''}${fmtMoney(a.diff, a.currency)}` +
+        `${BR}Counted ${fmtMoney(a.counted, a.currency)}, expected ${fmtMoney(a.expected, a.currency)}.`
+  }),
+  rem_stock_out: (a) => ({
+    ar: `🚫 نفد المخزون: ${a.name} — مقاس ${a.size}` +
+        (a.n > 1 ? `${BR}و${a.n - 1} مقاس آخر نفد أيضاً.` : ''),
+    en: `Out of stock: ${a.name} — size ${a.size}` +
+        (a.n > 1 ? `${BR}and ${a.n - 1} other size(s) with none left.` : '')
+  }),
+  rem_stock_critical: (a) => ({
+    ar: `🔻 ${a.n} مقاس على وشك النفاد (${a.low} قطعة أو أقل).`,
+    en: `${a.n} size(s) nearly out (${a.low} pieces or fewer).`
+  }),
+  rem_po_late: (a) => ({
+    ar: `📦 طلب الشراء ${a.id}` + (a.name ? ` — ${a.name}` : '') +
+        ` مُرسل منذ ${a.days} يوماً ولم يصل شيء.`,
+    en: `Purchase order ${a.id}` + (a.name ? ` — ${a.name}` : '') +
+        ` was sent ${a.days} days ago and nothing has arrived.`
+  }),
+  rem_wants_back: (a) => ({
+    ar: `↺ عاد للمخزون: ${a.name} — مقاس ${a.size}` +
+        `${BR}${a.n} زبون كان يسأل عنه.`,
+    en: `Back in stock: ${a.name} — size ${a.size}` +
+        `${BR}${a.n} customer(s) asked for it.`
+  }),
+  rem_order_no_answer: (a) => ({
+    ar: `⏳ الطلب ${a.id} عند يلا وير منذ ${a.hours} ساعة بلا رد — ${a.qty} قطعة.`,
+    en: `Order ${a.id} has been with Yalla Wear ${a.hours}h with no answer — ${a.qty} pcs.`
+  }),
+  rem_job_late: (a) => ({
+    ar: `🔴 الطلب ${a.id} تجاوز موعد التسليم بـ ${a.days} يوم — ${STAGE_AR[a.stage] || a.stage}.`,
+    en: `Job ${a.id} is ${a.days} day(s) past its deadline — ${STAGE_EN[a.stage] || a.stage}.`
+  }),
+  rem_partner_unread: (a) => ({
+    ar: `✉️ ${a.n} رسالة من يلا وير بلا قراءة، أقدمها منذ ${a.hours} ساعة.` +
+        (a.text ? `${BR}«${a.text}»` : ''),
+    en: `${a.n} unread message(s) from Yalla Wear, the oldest ${a.hours}h old.` +
+        (a.text ? `${BR}"${a.text}"` : '')
+  }),
+  rem_job_stuck: (a) => ({
+    ar: `🚚 الطلب ${a.id} في مرحلة «في الطريق» منذ ${a.hours} ساعة ولم يُسلَّم.`,
+    en: `Job ${a.id} has been "on its way" for ${a.hours}h and is not delivered.`
+  }),
+  rem_pay_wait: (a) => ({
+    ar: `💵 دفعة ${fmtMoney(a.amount, a.currency)} على ${a.invoiceId} سجّلتها يلا وير منذ ${a.hours} ساعة.` +
+        `${BR}بانتظار تأكيدك.`,
+    en: `A payment of ${fmtMoney(a.amount, a.currency)} on ${a.invoiceId} was recorded by Yalla Wear ${a.hours}h ago.` +
+        `${BR}Waiting for your confirmation.`
+  }),
+
+  /* --- Yalla Wear's own bot. Never a customer, never a price: emitEvent
+         strips those at the door, and these templates never name them. --- */
+
+  rem_yl_order_waiting: (a) => ({
+    ar: `⏳ الطلب ${a.id} بانتظار ردكم منذ ${a.hours} ساعة — ${a.qty} قطعة` +
+        (a.deadline ? `، التسليم ${fmtDate(a.deadline)}` : '') +
+        (a.priority === 'urgent' ? ' — مستعجل' : '') + '.' +
+        `${BR}افتحوا البوابة للقبول أو الرفض.`,
+    en: `Order ${a.id} has been waiting ${a.hours}h for your answer — ${a.qty} pcs` +
+        (a.deadline ? `, due ${fmtDate(a.deadline)}` : '') +
+        (a.priority === 'urgent' ? ' — URGENT' : '') + '.' +
+        `${BR}Open the portal to accept or decline.`
+  }),
+  rem_yl_due: (a) => ({
+    ar: a.days < 0
+      ? `🔴 الطلب ${a.id} — ${a.qty} قطعة — متأخر ${-a.days} يوم (كان ${fmtDate(a.due)}).`
+      : a.days === 0
+        ? `📅 الطلب ${a.id} — ${a.qty} قطعة — التسليم اليوم.`
+        : `📅 الطلب ${a.id} — ${a.qty} قطعة — التسليم بعد ${a.days} يوم (${fmtDate(a.due)}).`,
+    en: a.days < 0
+      ? `Job ${a.id} — ${a.qty} pcs — ${-a.days} day(s) overdue (was ${fmtDate(a.due)}).`
+      : a.days === 0
+        ? `Job ${a.id} — ${a.qty} pcs — due today.`
+        : `Job ${a.id} — ${a.qty} pcs — due in ${a.days} day(s) (${fmtDate(a.due)}).`
+  }),
+  rem_yl_blocked: (a) => ({
+    ar: `✍️ الطلب ${a.id} متوقف: ${a.tbc} قميص بلا اسم من أصل ${a.qty}.` +
+        `${BR}لا تحجزوا وقت المكبس — سنرسل الأسماء فور اكتمالها.`,
+    en: `Job ${a.id} is blocked: ${a.tbc} of ${a.qty} shirts still have no name.` +
+        `${BR}Don't hold press time — the names follow as soon as they are in.`
+  }),
+  rem_yl_digest: (a) => ({
+    ar: `☀️ صباح الخير — عمل اليوم ${a.day}` +
+        `${BR}طلبات في اليد: ${a.jobs} (${a.pieces} قطعة)` +
+        `${BR}تسليم اليوم: ${a.dueToday}` +
+        `${BR}متأخر: ${a.overdue}` +
+        (a.pending ? `${BR}بانتظار ردكم: ${a.pending}` : ''),
+    en: `Good morning — today's work ${a.day}` +
+        `${BR}Jobs in hand: ${a.jobs} (${a.pieces} pcs)` +
+        `${BR}Due today: ${a.dueToday}` +
+        `${BR}Overdue: ${a.overdue}` +
+        (a.pending ? `${BR}Waiting on your answer: ${a.pending}` : '')
+  }),
+  rem_yl_pay_wait: (a) => ({
+    ar: `💵 دفعة ${fmtMoney(a.amount, a.currency)} على ${a.invoiceId} سجّلها OG منذ ${a.hours} ساعة.` +
+        `${BR}بانتظار تأكيدكم.`,
+    en: `A payment of ${fmtMoney(a.amount, a.currency)} on ${a.invoiceId} was recorded by OG ${a.hours}h ago.` +
+        `${BR}Waiting for your confirmation.`
   })
 };
 
@@ -393,6 +529,16 @@ async function handleUpdate(side, u) {
     return;
   }
 
+  /* PHASE 2's DOOR. The router is a stub that returns false, so nothing
+     changes today; what is settled now is where it is called from and what it
+     is handed — including `linked`, because the linked-chat list is the whole
+     authorisation story for a channel that carries no session. */
+  try {
+    if (await Commands.handle({ side, chat, text, msg, linked: isLinked(side, chat.id) })) return;
+  } catch (e) {
+    if (bots[side]) bots[side].lastError = e.message;
+  }
+
   if (/^\/start/i.test(text)) {
     await call(side, 'sendMessage', {
       chat_id: chat.id,
@@ -408,7 +554,11 @@ async function pollLoop(side) {
   while (b.polling) {
     try {
       const updates = await call(side, 'getUpdates',
-        { offset: b.offset, timeout: POLL_TIMEOUT_S, allowed_updates: ['message', 'channel_post'] },
+        /* callback_query is asked for now and used by nothing: a button in a
+           phase-2 reply is otherwise silently undelivered, and the bug looks
+           like the button rather than the poll. */
+        { offset: b.offset, timeout: POLL_TIMEOUT_S,
+          allowed_updates: ['message', 'channel_post', 'callback_query'] },
         (POLL_TIMEOUT_S + 10) * 1000);
       for (const u of updates) {
         b.offset = u.update_id + 1;
@@ -427,6 +577,35 @@ async function pollLoop(side) {
 /* --------------------------------------------------------------- lifecycle */
 
 export function isConfigured() { return SIDES.some((s) => !!token(s)); }
+
+/* Is this chat one of the ones this side sends to? THE LINKED LIST IS THE
+   AUTHORISATION — a Telegram chat carries no session, so there is nothing
+   else to check a command against. Exported for lib/telegram-commands.js. */
+export function isLinked(side, chatId) {
+  return chats(side).some((c) => String(c.id) === String(chatId));
+}
+
+/* One rendered message to one chat, for a reply rather than a broadcast.
+   Goes through render() so a phase-2 command inherits the plain-text,
+   Arabic-first rule instead of growing a second formatter. */
+export function send(side, chatId, kind, args) {
+  return call(side, 'sendMessage', {
+    chat_id: chatId, text: render(kind, args), disable_web_page_preview: true
+  });
+}
+
+/* The words a queued row would turn into, without queueing it. What the
+   reminder preview draws — a list of rule names is not something anybody can
+   judge, and the whole point of the preview is reading the message before the
+   shop does. */
+export function renderFor(kind, args) { return render(kind, args); }
+
+/* Whether anything queued for this side could actually leave the building.
+   The scheduler asks before it does a night's work computing rows that would
+   sit unread in a table — and says so, rather than looking healthy. */
+export function canReach(side) {
+  return !!token(side) && chats(side).length > 0;
+}
 
 export function start() {
   if (timer) return;

@@ -67,6 +67,15 @@ var CONFIG = {
   QUIET_MULTIPLIER_TENTHS: 15,
   QUIET_FLOOR_DAYS: 21,
 
+  /* The reminder switches and hours (041_reminders), filled wholesale in
+     hydrate from every config key under `reminders.`. Empty here rather than
+     a copy of the server's defaults: an unhydrated app must not draw a row of
+     switches that claim to be on when nothing has said so. The shop's own
+     clock, in minutes east of UTC, is the one number the scheduler's day is
+     built from — Syria is UTC+3 and has had no DST since 2022. */
+  REMINDERS: {},
+  TZ_MINUTES: 180,
+
   /* How many points come off a sale in one go (031_loyalty_stamps), and
      whether voiding a sale takes back the points it earned. Read through
      DB.redeemBlock(); the reversal is enforced on the server. */
@@ -2621,6 +2630,21 @@ var DB = {
     if (cfg['shop.city']) CONFIG.SHOP_CITY = cfg['shop.city'];
     if (cfg['shop.branch_name']) CONFIG.SHOP_BRANCH = cfg['shop.branch_name'];
     if (cfg['shop.phone']) CONFIG.SHOP_PHONE = cfg['shop.phone'];
+
+    /* 041_reminders: seventeen switches, five hours and a time zone. Copied
+       wholesale rather than a hand-written line per key — a rule added on the
+       server would otherwise need an edit here too, and the one that gets
+       forgotten is a switch that silently does nothing. The values stay
+       STRINGS, exactly as the config table holds them, so a missing key and a
+       key set to '0' stay tellable apart. */
+    CONFIG.REMINDERS = {};
+    Object.keys(cfg).forEach(function (k) {
+      if (k.indexOf('reminders.') === 0) CONFIG.REMINDERS[k.slice(10)] = cfg[k];
+    });
+    /* The shop's own clock. The scheduler's day is built from this, and the
+       Settings fold shows what it makes of it — a silently wrong offset is a
+       digest arriving at the wrong hour every day with nothing saying why. */
+    CONFIG.TZ_MINUTES = num('shop.tz_minutes', 180);
 
     /* ---- the 80mm receipt ------------------------------------------------ */
     function bool(key, fallback) {

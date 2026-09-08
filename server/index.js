@@ -49,6 +49,7 @@ import * as SyncWorker from './lib/sync-worker.js';
 import * as Restore from './lib/restore.js';
 import * as Mirror from './lib/mirror.js';
 import * as Telegram from './lib/telegram.js';
+import * as Reminders from './lib/reminders.js';
 import * as Live from './lib/live.js';
 import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
@@ -339,8 +340,14 @@ router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
    loyalty.* opened in Stage D, and only then: it stayed shut for two stages
    because the loyalty fold wrote to CONFIG in memory and nothing else, so
    opening the keys first would have let half a change persist — the earn
-   rate saved, the tiers not. The fold saves properly now. */
-const CONFIG_WRITABLE = /^receipt\.|^customer\.|^loyalty\.|^shop\.(branch_name|phone)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|logo_asset|code_source|max_batch|lease_minutes|calibrate_cmd)$/;
+   rate saved, the tiers not. The fold saves properly now.
+
+   reminders.* and shop.tz_minutes opened with 041. A reminder switch is a
+   plain value with no side effect, unlike Telegram's link code, which mints
+   in-memory state and therefore earned a route of its own. Note what this
+   does NOT open: the partner writes reminders.yl_* through
+   PUT /api/reminders/config, whose allow-list is narrower than this one. */
+const CONFIG_WRITABLE = /^receipt\.|^customer\.|^loyalty\.|^reminders\.|^shop\.(branch_name|phone|tz_minutes)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|logo_asset|code_source|max_batch|lease_minutes|calibrate_cmd)$/;
 
 /* ---- the Sync button in the topbar --------------------------------------
    The mirror already runs on a timer, but somebody who has just finished a
@@ -1818,6 +1825,67 @@ router.add('POST /api/telegram/test', requirePerm(tgGate, async (ctx) => {
   catch (e) { partnerFail(ctx.res, e); }
 }));
 
+/* ---- the reminders -------------------------------------------------------
+   Status and the preview are the manager's. `preview` is the important one:
+   it evaluates every rule and returns what WOULD be queued, rendered, without
+   writing a row — the only honest way to look at a nine-o'clock digest at two
+   in the afternoon, and the only way to try this on a real shop without a
+   phone buzzing. `at` moves the clock for exactly that. */
+router.add('GET /api/reminders/status', requirePerm('config.write', (ctx) => {
+  sendOk(ctx.res, { status: Reminders.status() });
+}));
+
+router.add('POST /api/reminders/preview', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, Reminders.runNow({ at: (b && b.at) || null, dry: true })); }
+  catch (e) { partnerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/reminders/run', requirePerm('config.write', (ctx) => {
+  try { sendOk(ctx.res, Reminders.runNow({})); }
+  catch (e) { partnerFail(ctx.res, e); }
+}));
+
+/* Yalla Wear turning their own bot up or down.
+
+   A ROUTE OF ITS OWN because the allow-list is narrower than the permission.
+   They hold partner.jobs, not config.write, and PUT /api/config would be the
+   whole config table; here the key must be one of their own five switches —
+   never an hour, never reminders.enabled, and never yalla_paused, which is
+   OG's override on them and would be no override at all if the paused side
+   could unpause itself.
+
+   The switch itself stays ONE KEY WITH TWO WRITERS rather than two keys that
+   could disagree: OG's manager writes the same reminders.yl_* through
+   PUT /api/config, and the pause is ANDed with it in the scheduler. */
+const YL_SWITCH = /^reminders\.yl_[a-z_]+$/;
+router.add('PUT /api/reminders/config', requirePerm(['config.write', 'partner.jobs'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  const updates = b && b.updates && typeof b.updates === 'object' ? b.updates : {};
+  const keys = Object.keys(updates);
+  if (!keys.length) return sendError(ctx.res, 400, 'invalid', 'Nothing to save.');
+
+  /* The audience is the account's role, never the body's — the same rule the
+     Telegram routes are built on. */
+  const partner = ctx.user.role === 'partner';
+  for (const k of keys) {
+    const ok = partner ? YL_SWITCH.test(k) : CONFIG_WRITABLE.test(k) && k.startsWith('reminders.');
+    if (!ok) return sendError(ctx.res, 400, 'invalid', `${k} cannot be changed here.`);
+  }
+
+  const at = DB.nowIso();
+  DB.tx((d) => {
+    const stmt = d.prepare(
+      `INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    );
+    for (const k of keys) stmt.run(k, String(updates[k]), at);
+  });
+  const config = {};
+  for (const r of DB.get().prepare('SELECT key, value FROM config').all()) config[r.key] = r.value;
+  sendOk(ctx.res, { config, status: Reminders.status() });
+}));
+
 router.add('POST /api/suppliers', requirePerm('money.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try { sendOk(ctx.res, { supplier: Partner.saveSupplier(b, ctx.user.id) }); }
@@ -2479,6 +2547,13 @@ if (runDirectly) {
        timer and long-polls each bot for a link code. Off with no token. */
     Telegram.start();
 
+    /* And the other half of it: the standing conditions nothing else would
+       ever mention, queued into the same outbox on a one-minute tick. After
+       Telegram.start() because it queues into what that drains, and inside
+       this callback for the reason SyncWorker is — nothing may begin before
+       the boot pull has settled and the till is answering. */
+    Reminders.start();
+
     /* The panel is watching a pipe, not this window. Everything it needs to
        stop saying "starting…" and start drawing the shop: the addresses to
        make clickable, whether the padlock is real, and how many people can
@@ -2514,6 +2589,14 @@ if (runDirectly) {
     stopping = true;
     console.log(`\n  shutting down${why ? ' \u2014 ' + why : ''}`);
     PanelLink.tell('stopping');
+    /* Stopped by name rather than left to unref(). None of these hold the
+       process open, so this is not a hang fix: it is that the panel's Stop
+       otherwise leaves a 25-second getUpdates long-poll and a live mirror push
+       racing the five-second hard exit below — and a reminder queued DURING a
+       shutdown is a message about a shop that is closing. */
+    try { Reminders.stop(); } catch (e) { /* already down */ }
+    try { Telegram.stop(); } catch (e) { /* already down */ }
+    try { SyncWorker.stop(); } catch (e) { /* already down */ }
     if (SECURE_SERVER) { try { SECURE_SERVER.close(); } catch (e) { /* already down */ } }
     server.close(() => { DB.close(); process.exit(0); });
     /* If a connection refuses to drain, do not hang forever. The live SSE

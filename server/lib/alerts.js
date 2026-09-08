@@ -64,6 +64,116 @@ function daysUntil(iso) {
   return Math.round((then - today) / 86400000);
 }
 
+/* ---- the questions, on their own ------------------------------------------
+   These were inline inside list(), as named SQL constants, and lib/reminders.js
+   needs the same five answers to decide what to say on a phone. Lifted out
+   rather than copied: one SQL string per question, in the file that already
+   owns the question. list() below calls them and behaves exactly as it did —
+   same LIMITs, same defaults, same columns.
+
+   The reminder passes options the bell never does (an age cutoff, a different
+   basis for "late"); the DEFAULTS are the bell's, so a careless call site
+   cannot quietly move what the shop sees in its own browser. */
+
+const OUT_SQL = `FROM variants v
+     JOIN products p ON p.id = v.product_id
+    WHERE p.hidden = 0
+      AND COALESCE((SELECT SUM(qty) FROM stock s WHERE s.sku = v.sku), 0) = 0`;
+
+/* Sizes with nothing on the shelf anywhere. Archived products are out — the
+   rule DB.liveVariants() enforces everywhere else. */
+export function stockOut({ limit = 3 } = {}) {
+  return DB.get().prepare(
+    `SELECT v.sku, v.size, p.name ${OUT_SQL} ORDER BY p.name, v.size LIMIT ?`
+  ).all(limit);
+}
+export function stockOutCount() {
+  return DB.get().prepare(`SELECT COUNT(*) AS n ${OUT_SQL}`).get().n;
+}
+
+/* How few pieces counts as critical. Config, because a shop that sells one
+   pair a week and one that sells thirty do not mean the same thing by "low". */
+export function criticalLevel() {
+  return Number(
+    (DB.get().prepare("SELECT value FROM config WHERE key = 'stock.critical'").get() || {}).value
+  ) || 2;
+}
+export function criticalCount(low = criticalLevel()) {
+  return DB.get().prepare(
+    `SELECT COUNT(*) AS n FROM variants v
+      JOIN products p ON p.id = v.product_id
+     WHERE p.hidden = 0
+       AND COALESCE((SELECT SUM(qty) FROM stock s WHERE s.sku = v.sku), 0) BETWEEN 1 AND ?`
+  ).get(low).n;
+}
+
+const PO_SQL = `FROM purchase_orders
+    WHERE status = 'sent' AND sent_at IS NOT NULL AND sent_at <= ?`;
+const poCutoff = (days) => {
+  const c = new Date(); c.setDate(c.getDate() - days); return c.toISOString();
+};
+
+/* Sent and nothing has arrived. The age is in the query, before the LIMIT, so
+   two very old orders cannot hide a third. */
+export function poLate({ limit = 2, days = 14 } = {}) {
+  return DB.get().prepare(
+    `SELECT id, supplier_name, sent_at ${PO_SQL} ORDER BY sent_at ASC LIMIT ?`
+  ).all(poCutoff(days), limit);
+}
+export function poLateCount({ days = 14 } = {}) {
+  return DB.get().prepare(`SELECT COUNT(*) AS n ${PO_SQL}`).get(poCutoff(days)).n;
+}
+
+/* Print jobs past their date.
+
+   `basis` is the whole reason this takes an option. The bell says 'deadline'
+   — what the SHOP promised its customer — and that is what the shop is owed a
+   warning about. A reminder pointed at Yalla Wear says 'promise', which is
+   COALESCE(order_promised_at, deadline): their own word first, and the same
+   ladder Partner.stats scores their on-time percentage on. Nagging another
+   company against a number they are not measured on is how a bot gets muted. */
+const LATE_BASIS = {
+  deadline: 'j.deadline',
+  promise: 'COALESCE(j.order_promised_at, j.deadline)'
+};
+export function jobsLate({ limit = 3, basis = 'deadline', acceptedOnly = false } = {}) {
+  const due = LATE_BASIS[basis] || LATE_BASIS.deadline;
+  const accepted = acceptedOnly ? " AND j.order_state = 'accepted'" : '';
+  return DB.get().prepare(
+    `SELECT j.id, ${due} AS due, j.stage, j.order_state FROM print_jobs j
+      WHERE j.stage <> 'done' AND ${due} IS NOT NULL AND ${due} < ?${accepted}
+      ORDER BY due ASC LIMIT ?`
+  ).all(nowIso(), limit);
+}
+export function jobsLateCount({ basis = 'deadline', acceptedOnly = false } = {}) {
+  const due = LATE_BASIS[basis] || LATE_BASIS.deadline;
+  const accepted = acceptedOnly ? " AND j.order_state = 'accepted'" : '';
+  return DB.get().prepare(
+    `SELECT COUNT(*) AS n FROM print_jobs j
+      WHERE j.stage <> 'done' AND ${due} IS NOT NULL AND ${due} < ?${accepted}`
+  ).get(nowIso()).n;
+}
+
+/* Lines from Yalla Wear nobody on this side has opened. `olderThanIso` is the
+   reminder's: a message that arrived ninety seconds ago is not neglected. */
+const unreadWhere = (olderThanIso) =>
+  `FROM job_messages WHERE from_side = 'yalla' AND read_og = 0` +
+  (olderThanIso ? ' AND at <= ?' : '');
+export function unreadFromYalla({ limit = 5, olderThanIso = null, oldestFirst = false } = {}) {
+  const a = olderThanIso ? [olderThanIso, limit] : [limit];
+  /* The bell wants the newest — it is showing what just came in. A reminder
+     wants the OLDEST, because the one nobody has opened for six hours is the
+     one being neglected, and it is what the reminder keys itself on. */
+  return DB.get().prepare(
+    `SELECT id, job_id, invoice_id, kind, body, at ${unreadWhere(olderThanIso)}
+      ORDER BY id ${oldestFirst ? 'ASC' : 'DESC'} LIMIT ?`
+  ).all(...a);
+}
+export function unreadFromYallaCount({ olderThanIso = null } = {}) {
+  const a = olderThanIso ? [olderThanIso] : [];
+  return DB.get().prepare(`SELECT COUNT(*) AS n ${unreadWhere(olderThanIso)}`).get(...a).n;
+}
+
 /* Ordered by what it costs to ignore: a sale being lost right now, then a
    promise already broken, then money, then what is merely coming. */
 export function list(user, { limit = MAX_ROWS } = {}) {
@@ -81,9 +191,7 @@ export function list(user, { limit = MAX_ROWS } = {}) {
     }
   };
 
-  const low = Number(
-    (d.prepare("SELECT value FROM config WHERE key = 'stock.critical'").get() || {}).value
-  ) || 2;
+  const low = criticalLevel();
 
   /* THE MIRROR HAS STOPPED. Computed like everything else here — from the
      sync worker's memory of its last runs, never a stored row — and shown only
@@ -113,21 +221,12 @@ export function list(user, { limit = MAX_ROWS } = {}) {
 
   /* Out of stock, not merely low — somebody is at the counter holding it. */
   if (can('stock.read') || can('product.read')) {
-    const OUT_SQL = `FROM variants v
-         JOIN products p ON p.id = v.product_id
-        WHERE p.hidden = 0
-          AND COALESCE((SELECT SUM(qty) FROM stock s WHERE s.sku = v.sku), 0) = 0`;
-    const rows = d.prepare(
-      `SELECT v.sku, v.size, p.name ${OUT_SQL} ORDER BY p.name, v.size LIMIT 3`
-    ).all();
+    const rows = stockOut({ limit: 3 });
     rows.forEach((r) => {
       out.push({ key: 'stock:' + r.sku, kind: 'stock_out', args: { name: r.name, size: r.size },
                  icon: '!', tone: 'red', view: 'products' });
     });
-    if (rows.length === 3) {
-      more('stock_out', d.prepare(`SELECT COUNT(*) AS n ${OUT_SQL}`).get().n, rows.length,
-           '!', 'red', 'products');
-    }
+    if (rows.length === 3) more('stock_out', stockOutCount(), rows.length, '!', 'red', 'products');
   }
 
   /* WHAT YALLA WEAR SAID. The speech bubble already lists the thread; this
@@ -136,10 +235,7 @@ export function list(user, { limit = MAX_ROWS } = {}) {
      is gone and the prune below tidies its read mark. Never for the partner
      account, whose bubble is its own inbox. */
   if (can('print.read') && user.role !== 'partner') {
-    const MSG_SQL = `FROM job_messages WHERE from_side = 'yalla' AND read_og = 0`;
-    const rows = d.prepare(
-      `SELECT id, job_id, invoice_id, kind, body ${MSG_SQL} ORDER BY id DESC LIMIT 5`
-    ).all();
+    const rows = unreadFromYalla({ limit: 5 });
     rows.forEach((m) => {
       out.push({
         key: 'msg:' + m.id, kind: 'partner_msg',
@@ -149,27 +245,17 @@ export function list(user, { limit = MAX_ROWS } = {}) {
       });
     });
     if (rows.length === 5) {
-      more('partner_msg', d.prepare(`SELECT COUNT(*) AS n ${MSG_SQL}`).get().n, rows.length,
-           '✉', 'amber', 'print');
+      more('partner_msg', unreadFromYallaCount(), rows.length, '✉', 'amber', 'print');
     }
   }
 
   if (can('print.read')) {
-    const rows = d.prepare(
-      `SELECT id, deadline FROM print_jobs
-        WHERE stage <> 'done' AND deadline IS NOT NULL AND deadline < ?
-        ORDER BY deadline ASC LIMIT 3`
-    ).all(nowIso());
+    const rows = jobsLate({ limit: 3 });
     rows.forEach((r) => {
-      out.push({ key: 'job:' + r.id, kind: 'job_late', args: { id: r.id, days: -daysUntil(r.deadline) },
+      out.push({ key: 'job:' + r.id, kind: 'job_late', args: { id: r.id, days: -daysUntil(r.due) },
                  icon: '!', tone: 'red', view: 'print' });
     });
-    if (rows.length === 3) {
-      more('job_late', d.prepare(
-        `SELECT COUNT(*) AS n FROM print_jobs
-          WHERE stage <> 'done' AND deadline IS NOT NULL AND deadline < ?`
-      ).get(nowIso()).n, rows.length, '!', 'red', 'print');
-    }
+    if (rows.length === 3) more('job_late', jobsLateCount(), rows.length, '!', 'red', 'print');
   }
 
   /* Somebody asked for a size the shop did not have, and now it does. The
@@ -219,12 +305,7 @@ export function list(user, { limit = MAX_ROWS } = {}) {
   }
 
   if (can('stock.read')) {
-    const crit = d.prepare(
-      `SELECT COUNT(*) AS n FROM variants v
-        JOIN products p ON p.id = v.product_id
-       WHERE p.hidden = 0
-         AND COALESCE((SELECT SUM(qty) FROM stock s WHERE s.sku = v.sku), 0) BETWEEN 1 AND ?`
-    ).get(low).n;
+    const crit = criticalCount(low);
     if (crit) {
       out.push({ key: 'critical', kind: 'critical', args: { n: crit },
                  icon: '~', tone: 'amber', view: 'warehouse' });
@@ -310,21 +391,13 @@ export function list(user, { limit = MAX_ROWS } = {}) {
      planning around. Only worth saying once it is genuinely late — and the
      14 days is in the query, so the LIMIT cannot eat the late ones. */
   if (can('stock.read')) {
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
-    const PO_SQL = `FROM purchase_orders
-        WHERE status = 'sent' AND sent_at IS NOT NULL AND sent_at <= ?`;
-    const rows = d.prepare(
-      `SELECT id, supplier_name, sent_at ${PO_SQL} ORDER BY sent_at ASC LIMIT 2`
-    ).all(cutoff.toISOString());
+    const rows = poLate({ limit: 2 });
     rows.forEach((r) => {
       out.push({ key: 'po:' + r.id, kind: 'po_late',
                  args: { id: r.id, name: r.supplier_name || null, days: -daysUntil(r.sent_at) },
                  icon: '~', tone: 'amber', view: 'warehouse' });
     });
-    if (rows.length === 2) {
-      more('po_late', d.prepare(`SELECT COUNT(*) AS n ${PO_SQL}`).get(cutoff.toISOString()).n,
-           rows.length, '~', 'amber', 'warehouse');
-    }
+    if (rows.length === 2) more('po_late', poLateCount(), rows.length, '~', 'amber', 'warehouse');
   }
 
   const seen = new Set(

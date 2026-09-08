@@ -58,14 +58,48 @@ const other = (side) => (side === 'og' ? 'yalla' : 'og');
    every call site, because the call site that forgets is the leak. */
 const PARTNER_STRIP = ['customer', 'phone', 'customer_id', 'customerId', 'price'];
 
-function emitEvent(d, { kind, refType, refId, audience, args = {} }) {
+function emitEvent(d, { kind, refType, refId, audience, args = {}, dedupe = null }) {
   const a = { ...args };
   if (audience === 'yalla') for (const k of PARTNER_STRIP) delete a[k];
-  d.prepare(
-    `INSERT INTO partner_events (at, kind, ref_type, ref_id, audience, args_json)
-     VALUES (?,?,?,?,?,?)`
-  ).run(nowIso(), kind, refType, String(refId), audience, JSON.stringify(a));
+  /* OR IGNORE ONLY ON THE DEDUPED PATH. It would also swallow a CHECK
+     failure — an audience typo would vanish instead of throwing — so the
+     real-time events above keep the plain INSERT that has always thrown, and
+     queueEvent checks the audience itself before it gets here. */
+  const sql = `INSERT ${dedupe ? 'OR IGNORE ' : ''}INTO partner_events
+                 (at, kind, ref_type, ref_id, audience, args_json, dedupe)
+               VALUES (?,?,?,?,?,?,?)`;
+  return d.prepare(sql).run(nowIso(), kind, refType, String(refId), audience,
+                            JSON.stringify(a), dedupe).changes;
 }
+
+/* THE SAME DOOR, opened for lib/reminders.js — and it is the only way in.
+   emitEvent is private on purpose (the call site that forgets is the leak),
+   so a scheduler writing its own INSERT would be a second door past
+   PARTNER_STRIP: one reminder carrying a customer name or the shop's price
+   onto another company's phone. Going through here it cannot happen, because
+   there is nothing else to call.
+
+   `dedupe` is required. A reminder without one is a message that repeats
+   every minute for ever, and the unique index is the only thing that stops
+   it; a caller that forgot would look fine in testing and be unbearable by
+   the second hour. Returns 1 if the row was queued, 0 if it had already been
+   said — which is what the caller counts. */
+export function queueEvent(d, opts) {
+  if (opts.audience !== 'og' && opts.audience !== 'yalla') {
+    throw Object.assign(new Error('audience must be og or yalla'), { code: 'bad_request' });
+  }
+  if (!opts.dedupe) {
+    throw Object.assign(new Error('a queued reminder needs a dedupe key'), { code: 'bad_request' });
+  }
+  return emitEvent(d, opts);
+}
+
+/* Pieces on a job, in SQL. Hoisted out of stats() so the reminders can ask
+   "how many shirts are due today" with the same arithmetic the production
+   report scores them on, rather than a third copy of the CASE. */
+export const PIECES_SQL = `CASE WHEN j.kind = 'kit'
+      THEN (SELECT COALESCE(SUM(l.qty), 0) FROM print_job_lines l WHERE l.job_id = j.id)
+      ELSE j.qty END`;
 
 /* Pieces on a job — summed from the lines for a kit, stored for a bulk run. */
 function jobQty(d, row) {
@@ -853,9 +887,7 @@ export function stats(tzMinutes = 0, { money = true } = {}) {
   const tz = Number.isInteger(tzMinutes) && Math.abs(tzMinutes) <= 840 ? tzMinutes : 0;
   const mod = (tz >= 0 ? '+' : '-') + Math.abs(tz) + ' minutes';
 
-  const PIECES = `CASE WHEN j.kind = 'kit'
-      THEN (SELECT COALESCE(SUM(l.qty), 0) FROM print_job_lines l WHERE l.job_id = j.id)
-      ELSE j.qty END`;
+  const PIECES = PIECES_SQL;
   const COST = `CASE WHEN j.kind = 'kit'
       THEN (SELECT COALESCE(SUM(l.qty * l.unit_cost), 0) FROM print_job_lines l WHERE l.job_id = j.id)
       ELSE COALESCE(j.cost, 0) END`;

@@ -114,9 +114,21 @@ var I18N = {
     rc3_gift_policy_ar: 'Gift slip wording (Arabic)',
     rc3_gift_policy_en: 'Gift slip wording (English)',
     rc3_show_barcode: 'Barcode', rc3_show_loyalty: 'Loyalty lines',
+    rc3_show_barcode_hint: 'The invoice number as bars, so a return can be scanned instead of typed.',
+    rc3_show_loyalty_hint: 'Points earned and the balance, printed under the total for customers on the scheme.',
     rc3_footer_ar: 'Footer (Arabic)', rc3_footer_en: 'Footer (English)',
     rc3_policy_ar: 'Return policy (Arabic)', rc3_policy_en: 'Return policy (English)',
     rc3_save: 'Save receipt settings', rc3_saved: 'Receipt settings saved',
+
+    /* The five subjects this card holds, as headings over their own group. */
+    rc3_g_printer: 'Which printer',
+    rc3_g_head: 'What prints at the top',
+    rc3_g_head_note: 'The header of every slip. The street address is not printed — the customer is standing in the shop.',
+    rc3_g_how: 'How it prints',
+    rc3_g_how_note: 'When the slip comes out, how many, and how hard the head burns it.',
+    rc3_g_slip: 'What appears on the slip',
+    rc3_g_slip_note: 'Both blocks print bilingual: the Arabic above the English, in the order the paper reads.',
+    rc3_g_gift: 'The gift slip',
     rc3_demo_note: 'No server here — these are shown for reference and cannot be saved.',
 
     /* --- thermal product labels (XP-235B) — separate from the browser
@@ -860,9 +872,20 @@ var I18N = {
     rc3_gift_policy_ar: 'نص قسيمة الهدية (عربي)',
     rc3_gift_policy_en: 'نص قسيمة الهدية (إنجليزي)',
     rc3_show_barcode: 'الباركود', rc3_show_loyalty: 'سطور نقاط الولاء',
+    rc3_show_barcode_hint: 'رقم الفاتورة كباركود، ليُمسح عند الإرجاع بدل كتابته باليد.',
+    rc3_show_loyalty_hint: 'النقاط المكتسبة والرصيد، تُطبع تحت المجموع لزبائن برنامج الولاء.',
     rc3_footer_ar: 'التذييل (عربي)', rc3_footer_en: 'التذييل (إنجليزي)',
     rc3_policy_ar: 'سياسة الاستبدال (عربي)', rc3_policy_en: 'سياسة الاستبدال (إنجليزي)',
     rc3_save: 'حفظ إعدادات الفاتورة', rc3_saved: 'تم حفظ إعدادات الفاتورة',
+
+    rc3_g_printer: 'أي طابعة',
+    rc3_g_head: 'ما يُطبع في الأعلى',
+    rc3_g_head_note: 'ترويسة كل فاتورة. عنوان المحل لا يُطبع — الزبون واقف في المحل أصلاً.',
+    rc3_g_how: 'كيف تُطبع',
+    rc3_g_how_note: 'متى تخرج الفاتورة، وكم نسخة، وبأي قتامة تحرقها الرأس.',
+    rc3_g_slip: 'ما يظهر على الفاتورة',
+    rc3_g_slip_note: 'النصّان يُطبعان بلغتين: العربي فوق الإنجليزي، بالترتيب الذي تُقرأ به الورقة.',
+    rc3_g_gift: 'قسيمة الهدية',
     rc3_demo_note: 'لا يوجد خادم هنا — هذه القيم للعرض فقط ولا يمكن حفظها.',
 
     lbl_title: 'ملصقات حرارية',

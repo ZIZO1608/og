@@ -1000,6 +1000,118 @@ Mirror side: `server/supabase/012_partner_link.sql` (also in `CATCH-UP.sql`), `m
 for `print_jobs.source` and the three payment columns, and `insertChildren` in `supabase-sync.js` —
 child rows pushed from a parent's `afterUpsert` used to miss the lagging-column fallback entirely.
 
+## The reminders — the half that speaks when nothing has happened
+
+`server/lib/reminders.js`, migration `041_reminders.sql`. Everything above is **news**: something
+changed, `emitEvent` wrote a row inside the same transaction, the drain sent it. Nothing chased
+anybody, because **the absence of a response is not an event** — an order could sit `pending` at
+Yalla Wear for three days and neither side heard a word, and the shop could close with the shift
+open and the only record was a bell in a browser nobody had open at nine at night.
+
+A one-minute tick evaluates a declarative rule table and queues into **the same
+`partner_events` outbox**. `drain()` already is the retry engine — batching, `attempts < 12`,
+`min(3600, 5*2**attempts)` backoff, 429, 403-drops-the-chat — and a second outbox would be a
+second copy of that, with the 403 handling wrong.
+
+- **`041` rebuilds `partner_events`** to drop the `ref_type` CHECK (a stock or shift reminder is
+  neither a job nor an invoice) and add `dedupe`. Cheap, because the table is deliberately
+  unmirrored: no `server/supabase/` file, no `mirror-lag.js` entry, no drift window, and
+  `supabase:drift` stays green. **The CHECK went rather than growing a longer list**, for the
+  reason `kind` never had one — it is a routing label, not a foreign key, and widening it to eight
+  values just moves the next rebuild to the next family of reminders. A synthetic ref
+  (`ref_type='job', ref_id='shift:SH-0042'`) was rejected: it lies in a column a bot command will
+  query.
+- **"Already said" is a partial UNIQUE index, not a variable.**
+  `dedupe = rem:<ruleId>:<ref>:<occasion>`, so **the row that was sent IS the record that it was
+  said** — a restart, a laptop taking the baton, or a dev copy on the same file cannot double-send.
+  The occasion is a shop-local **day key** (the nightly close), a **step** off an instant the row
+  already carries (`6h` since `order_sent_at`), or a **calendar bucket** only where there is no
+  start instant, which is stock alone. A step is better than a bucket: a server that was off at
+  hour four fires **late and once** rather than skipping or repeating. Repeating and once-only are
+  the same mechanism — one occasion or several — and every repeating rule has a cap, because a
+  reminder nobody acts on stops being read.
+- **`Partner.queueEvent` is the only way in**, and it requires a `dedupe`. `emitEvent` is private
+  on purpose (the strip is done once at the door), so a scheduler writing its own INSERT would be
+  a second door past `PARTNER_STRIP` — one reminder carrying a customer name or the shop's price
+  onto another company's phone. Verified: a `yl_*` reminder handed `customer`, `phone`, `price`
+  and `customerId` stores none of them.
+- **It never opens a transaction to decide.** Candidates are pre-filtered with an indexed read;
+  `DB.tx` fires the commit hook and `sync-worker.js` schedules a mirror push on it, so a tick that
+  opened one every minute would wake the mirror every minute for nothing.
+- **Quiet hours are enforced at the insert, never in `drain()`** — `drain` also carries the real
+  events, and an order accepted at two in the morning is news that goes out at two in the morning.
+  A suppressed reminder keeps its key and lands on the first tick after eight. Quiet defaults to
+  **midnight–08:00, not 23:00**: with quiet at 23 the close (21) and the shift nudge (22) shared
+  one hour, and a night the server was busy at ten past ten swallowed both, because the day key had
+  rolled by the time quiet lifted.
+- **`shift_open` has two ways in**, and the second is the one that matters: the set hour, and *any*
+  hour once the drawer has been open since an earlier shop day. That is not a late evening, it is a
+  shift somebody forgot, and it must not depend on the server being awake for one hour of the night.
+- **Nothing is queued for a side with no bot or no linked chat.** Those rows would all arrive the
+  day somebody links a phone — February's "the shift is still open" delivered in March.
+- **`BURST` is six per audience per tick.** `partner_events` is unmirrored, so a laptop that takes
+  the baton starts with an empty ledger and re-says everything still true; six a minute is a
+  catch-up rather than thirty at once.
+- **`shop.tz_minutes` (180) is the first server-side notion of the shop's day.** Everywhere else
+  the day belongs to the browser — the dashboard and the reports are handed two instants and a zone
+  — but a scheduler has no browser to ask. A `Date` shifted by the offset has UTC fields that *are*
+  shop-local, the trick `Partner.stats` already uses. The fold shows the resulting clock and offers
+  the device's offset when the two disagree, because a wrong offset is otherwise invisible until
+  the nightly close has been arriving at four in the morning for a week.
+- **Five queries were lifted out of `alerts.js`, not copied**: `stockOut`, `criticalCount`,
+  `poLate`, `jobsLate({basis})`, `unreadFromYalla({olderThanIso, oldestFirst})`. `list()` calls
+  them and the bell's behaviour is unchanged — same SQL, same LIMITs, the bell's values as the
+  defaults. `Dashboard.takingsIn` came out of `build()` the same way. **`jobsLate`'s `basis` is why
+  it takes options**: the bell says `deadline`, what the shop promised its customer; a reminder
+  pointed at Yalla Wear says `promise` — `COALESCE(order_promised_at, deadline)`, their own word
+  first, and the ladder `Partner.stats` scores their on-time percentage on. Nagging another company
+  against a number they are not measured on is how a bot gets muted.
+- **`job_late` counts calendar days and will not say "0 days late".** Keyed on hours it disagreed
+  with itself across midnight — the row said "1 day past" under a key that had already gone out
+  saying "0 days past" — and the bell counts a job late from the first moment of its own due date,
+  because a bare `YYYY-MM-DD` deadline compares as text against a full instant. Right for a badge
+  meaning "look at this today"; wrong for a sentence claiming the shop broke a promise.
+- **Two rules stay silent on an empty day.** `day_close` skips a day with no invoices *and* no
+  shift opened (Friday, a holiday); `yl_digest` skips a morning with no work at all. Zero takings
+  on a day somebody *did* open the drawer still goes out — that is a fact worth having.
+- **17 rules, one config key each, and the ids are shared.** `reminders.<id>` is the switch,
+  `RULE_IDS` is the server's list and `REMINDER_RULES` in `js/app-settings.js` is the browser's;
+  adding a rule means one row there and two i18n strings (`rem_<id>`, `rem_<id>_sub`) in **both**
+  tables. `CONFIG_WRITABLE` opened `^reminders\.` and `shop.tz_minutes`.
+- **A switch is ONE key with two writers, never two keys.** Yalla Wear moves their own five from
+  their portal through `PUT /api/reminders/config` — a route of its own because their allow-list
+  (`^reminders\.yl_`) is narrower than the permission they hold — and OG's manager writes the same
+  keys through `PUT /api/config`. Last write wins. What is *not* shared is `reminders.yalla_paused`,
+  OG's master override, ANDed with each `yl_*` switch and refused to a partner account.
+  **The portal has its own strings** (`rem_p_*`): the Settings copy is written *about* them ("tells
+  THEM the press is waiting on names from THIS side") and reads in their own portal as a
+  description of somebody else's bot.
+- **`POST /api/reminders/preview` is the whole test strategy.** It evaluates every rule and returns
+  the rendered Arabic and English **without queueing a row**, and `at` moves the clock, so the
+  nine-o'clock digest can be read at two in the afternoon and the whole thing tried on the real
+  shop with nobody's phone buzzing. It is also a permanent part of the fold — a list of rule names
+  is not something anybody can judge; the sentence is.
+- **The phase-2 seam is in, the router is not.** `lib/telegram-commands.js` returns `false` for
+  every message; what is settled is the call site in `handleUpdate` and its arguments —
+  `Telegram.isLinked(side, chatId)` (**the linked-chat list IS the authorisation**, since a chat
+  carries no session), `Telegram.send`, `renderFor`, `callback_query` already in `allowed_updates`,
+  `partner_events_ref (audience, kind, ref_id)` as the index `/job P-1043` will use, and the two
+  `reminders.muted_until_*` keys honoured from day one so `/mute 2h` needs no new state. Every
+  command planned is a READ: a command that changes shop state from a chat is a second write door
+  past `requirePerm`, and needs its own decision.
+- `shutdown()` now calls `Reminders.stop()`, `Telegram.stop()` (written long ago, never called) and
+  `SyncWorker.stop()` by name. Not a hang fix — `.unref()` already covered that — but the panel's
+  Stop otherwise left a 25 s `getUpdates` long-poll and a live mirror push racing the 5 s hard exit,
+  and a reminder queued *during* a shutdown is a message about a shop that is closing.
+
+**Testing it without spamming the shop.** A scratch copy of `og.db`, a bogus `OG_TELEGRAM_TOKEN_*`
+(**not an empty one — PowerShell deletes an env var set to `""`, and the server then reads the real
+token out of `.env` and long-polls the live bots**) and a fake chat id in `telegram.<side>_chats`.
+`canReach()` only asks whether a token and a chat exist, so that opens the queue path with no
+network at all, and any row that did try to send is refused with "chat not found". A UI check must
+click `.fold-btn`, not `.fold-head` — the delegation uses `closest()`, which walks up — and must
+**hit-test** the result, because clicking the head left the preview blocks in the DOM at 0×0.
+
 ## Known open work
 
 - The **supplier and payroll editors do not exist**. `Shop.saveSupplier` / `saveEmployee` and their
@@ -1010,6 +1122,11 @@ child rows pushed from a parent's `afterUpsert` used to miss the lagging-column 
   live behind `OG_WEB_API_KEY`; nothing calls either yet. The catalogue side is complete — the
   flag, the mirror column, the editor and the read door — so what is missing is the site itself,
   not anything here.
+- **The bots do not yet ANSWER.** `lib/telegram-commands.js` is a stub returning `false`, and the
+  seam around it is finished (see "The reminders"): `/help`, `/queue`, `/today`, `/job P-1043`,
+  `/status` and `/mute 2h` are a router away, all of them reads. A command that WRITES shop state
+  from a chat is a second door past `requirePerm` with no session behind it and is deliberately not
+  designed yet.
 - **WhatsApp push is not built.** The outbox has a `channel` column for it; the WhatsApp Cloud API
   needs a Meta business account and approval before a transport can be written.
 - A **draft partner invoice** still lives only in the browser — `partner_invoices.issued` is

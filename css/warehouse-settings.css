@@ -142,8 +142,20 @@
    you scroll; folded, with a heading over each run of them, it is a list you
    read. The head is the whole switch — padding moves off .card-head and onto
    the button inside it, so the inch of card either side of the words is not
-   dead space that looks clickable. */
+   dead space that looks clickable.
+
+   ONE LEFT EDGE. The head's caret sits in a gutter and its title starts at
+   --fold-inset; every body under it starts there too, so a fold open reads as
+   one column rather than a title that steps right and a body that steps back.
+   Both numbers are derived from --fold-pad, which og-skin.css owns, so the
+   two halves cannot drift: change the padding there and the bodies follow. */
 .set-list { max-width: 1040px; }
+
+.fold {
+  /* --fold-pad is the button's own inline padding (og-skin sets the value).
+     The caret's box is 10px once rotated, and --s-3 is the gap after it. */
+  --fold-inset: calc(var(--fold-pad, var(--s-5)) + 10px + var(--s-3));
+}
 
 /* A signpost over a run of folds, not a title: the heads under it carry the
    weight, so this is small, quiet and set in caps to read as a divider. */
@@ -157,7 +169,7 @@
 .fold-h { flex: 1; min-width: 0; margin: 0; }
 .fold-btn {
   display: flex; align-items: center; gap: var(--s-3); width: 100%;
-  padding: var(--s-4) var(--s-5);
+  padding: var(--s-4) var(--fold-pad, var(--s-5));
   background: none; border: 0; border-radius: var(--radius-lg);
   font: inherit; color: inherit; text-align: start; cursor: pointer;
   transition: background var(--t);
@@ -166,20 +178,31 @@
 .fold[data-open="1"] .fold-btn { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
 .fold-title { font-size: var(--fs-lg); font-weight: 700; letter-spacing: -.015em; }
 
-/* The one line the head carries while the body is shut — the shop name, the
+/* The one line the head carries WHILE THE BODY IS SHUT — the shop name, the
    rate, how many people are online. It is why a folded page still says
    something. Truncated rather than wrapped: a head that grows to two lines
-   breaks the rhythm of the list it belongs to. */
+   breaks the rhythm of the list it belongs to.
+
+   Gone once the fold is open, because open it is the body's first line said
+   twice: the mirror's head and the mirror's first row were the same sentence
+   character for character, and the Telegram head named the same chat the row
+   under it named.
+
+   display:none rather than visibility:hidden, and that is not a preference —
+   the meta is nowrap and pushed to the end, so a merely hidden one still holds
+   its width, and on a phone "Supabase mirror" wrapped to two lines behind an
+   invisible "In step · pushed 1 min ago". */
 .fold-meta {
   margin-inline-start: auto; padding-inline-start: var(--s-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.fold[data-open="1"] .fold-meta { display: none; }
 
 /* Drawn rather than typed: a chevron glyph would need a font carrying it in
    both scripts, and would sit differently in each. Physical borders, flipped
    by hand for RTL — the logical ones rotate into the wrong quadrant. */
 .fold-caret {
-  width: 7px; height: 7px; flex: none; margin-inline-start: 2px;
+  width: 7px; height: 7px; flex: none;
   border-right: 2px solid var(--muted-foreground);
   border-bottom: 2px solid var(--muted-foreground);
   transform: rotate(-45deg);
@@ -187,6 +210,7 @@
 }
 body.rtl .fold[data-open="0"] .fold-caret { transform: rotate(135deg); }
 .fold[data-open="1"] .fold-caret { transform: rotate(45deg); }
+.fold[data-open="1"] .fold-caret { border-color: var(--foreground); }
 
 /* Shut is hidden, not absent: everything inside a closed section is still in
    the page, so the scanner probe binds and the roles grid loads behind it. */
@@ -194,8 +218,60 @@ body.rtl .fold[data-open="0"] .fold-caret { transform: rotate(135deg); }
 .fold[data-open="1"] > .fold-body { border-top: 1px solid var(--border); }
 .fold-body > .perm-hint:first-child { margin-top: 0; padding-top: 10px; }
 
+/* Every body lines up under the title. There is one wrapper for this and it
+   is .card-body: the mirror and Telegram cards used to write .set-body, which
+   appeared in no stylesheet at all, so those two ran edge to edge and out of
+   their own card while the other twelve were padded. */
+.fold > .fold-body > .card-body {
+  padding: var(--s-4) var(--fold-pad, var(--s-5)) var(--s-5) var(--fold-inset);
+}
+.fold > .fold-body > .card-body > :first-child { margin-top: 0; }
+
 .fold-body.fold-in { animation: foldIn var(--d-3) var(--e-out); }
 @keyframes foldIn { from { opacity: 0; transform: translateY(-6px); } }
+
+/* ---------------------------------------------- GROUPS INSIDE ONE FOLD
+
+   A fold is not always one job. The receipt card alone holds the connection,
+   what prints at the top of the slip, how hard the head burns, what appears
+   on the paper and the gift slip's own separate wording — five subjects that
+   read as one undifferentiated column of forty fields without a heading over
+   each. These two were born in the hardware card as .hw-h / .hw-sep, which is
+   the shape the receipt and label cards both wanted; renamed here because a
+   heading class called "hw" over "The gift slip" is a name that lies. */
+.set-h { font-size: var(--fs-lg); font-weight: 700; margin: 0 0 12px; }
+.set-sep { height: 1px; background: var(--border); margin: 26px 0 20px; }
+/* The line under a heading belongs to it, so it sits tight under the words
+   and carries the space to whatever the group starts with. */
+.set-h + .set-note { margin: -8px 0 16px; max-width: 72ch; }
+/* A field label straight under a heading otherwise reads as a second deck of
+   the same heading — "Which printer" over "CONNECTION" with 4px between. */
+.set-h + .field, .set-h + .row2, .set-h + .rule-row, .set-h + .chip-row { margin-top: 14px; }
+
+/* The quiet line under a control that says what it is for. `.faint` was
+   written on four of these and defined in no stylesheet at all, so the
+   scanner's "Optional. If you program your scanner…" and the print head's
+   "How hard the printer burns each dot…" rendered as ordinary body text at
+   full brightness, next to and the same weight as the thing they explain. */
+.faint, .set-note {
+  display: block; margin-top: 8px;
+  font-size: 12px; line-height: 1.6; color: var(--muted-foreground);
+  text-transform: none; letter-spacing: 0; font-weight: 500;
+}
+.chip-row + .faint { margin-top: 10px; }
+
+/* A grid has a gap; its items must not also carry margins, or the space
+   between two rows of one .row2 is the gap PLUS a field's bottom margin PLUS
+   a note's top margin. That was 43px between the printer share and the line
+   explaining it — far enough that the explanation read as belonging to the
+   field BELOW it. Scoped to the folds so no other screen's rhythm moves. */
+.fold .card-body .row2 { margin-bottom: 15px; }
+.fold .card-body .row2 > .field { margin-bottom: 0; }
+.fold .card-body .row2 > .partner-note { margin-top: 0; align-self: start; }
+
+/* A lone narrow field in a two-column row leaves a hole beside it; the
+   sentence that explains the field goes in the hole rather than under it. */
+.set-aside { align-self: center; }
 
 /* A sentence and a button on one line inside a body. */
 .fold-row { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; margin-bottom: 12px; }
@@ -203,10 +279,46 @@ body.rtl .fold[data-open="0"] .fold-caret { transform: rotate(135deg); }
 
 .rule-row { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .rule-row:last-child { border-bottom: 0; }
+
+/* A run of switch rows straight in a fold body (reminders, motion) has no
+   .card-body to inset it, so it takes the inset itself and keeps its
+   card-wide hairlines — they are what make it read as a list. Inside a body
+   the padding is already there: adding it again indented the receipt card's
+   switches 44px past every label around them. */
+.fold > .fold-body > .rule-row,
+.fold > .fold-body > .alert-row,
+.fold > .fold-body > .perm-hint {
+  padding-inline: var(--fold-inset) var(--fold-pad, var(--s-5));
+}
+.fold > .fold-body > .card-body > .rule-row { padding-inline: 0; }
+.fold > .fold-body > .card-body > .rule-row + :not(.rule-row) { margin-top: 18px; }
+
+/* A table fills the card, as a table should — but its first column starts on
+   the same line as every other body, or the permission names sit 20px left of
+   the sentence explaining them. The TRAILING edge is deliberately left alone:
+   the lock badge on a pinned cell is positioned against its own td, and
+   widening the last one walks it away from the tick box it belongs to. */
+.fold .perm-tbl th:first-child,
+.fold .perm-tbl td:first-child,
+.fold .perm-tbl tr.perm-group td { padding-inline-start: var(--fold-inset); }
+
+/* A table INSIDE a padded body is already inset by the body; its own edge
+   cell padding is then a second step, and the label queue's station names sat
+   14px right of the "Print queue" heading over them. */
+.fold > .fold-body > .card-body .tbl th:first-child,
+.fold > .fold-body > .card-body .tbl td:first-child { padding-inline-start: 0; }
+.fold > .fold-body > .card-body .tbl th:last-child,
+.fold > .fold-body > .card-body .tbl td:last-child { padding-inline-end: 0; }
 .rule-row .rr-txt { flex: 1; }
 .rule-row .rr-txt b { font-size: 13px; display: block; font-weight: 600; }
 .rule-row .rr-txt small { color: var(--dim); font-size: 11.5px; }
-.swatch-row { display: flex; gap: 10px; flex-wrap: wrap; }
+/* The mark and the name field on one line, the label above both. */
+.set-brand-row { display: flex; align-items: center; gap: var(--s-3); }
+.set-brand-row .brand-mark { width: 38px; height: 38px; border-radius: var(--radius); }
+
+/* The hex under a swatch is positioned outside its box, so the row needs the
+   room reserved rather than borrowed from whatever follows it. */
+.swatch-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 26px; }
 .swatch { width: 54px; height: 54px; border: 1px solid var(--border); border-radius: var(--radius); position: relative; }
 .swatch span { position: absolute; bottom: -20px; inset-inline-start: 0; font-size: 9.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
 
