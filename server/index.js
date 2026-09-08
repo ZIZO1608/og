@@ -433,6 +433,20 @@ router.add('PATCH /api/products/:id', requirePerm('product.write', async (ctx) =
   }
 }));
 
+/* Delete a product for good. Refused with a reason the moment it would cost
+   the shop history — Cat.remove says which. `product.write` is the same
+   permission archiving needs; the guard is what it can and cannot remove,
+   not who is asking. */
+router.add('DELETE /api/products/:id', requirePerm('product.write', (ctx) => {
+  try {
+    sendOk(ctx.res, Cat.remove(Number(ctx.params.id), ctx.user.id));
+  } catch (e) {
+    if (e.code === 'not_found') return sendError(ctx.res, 404, 'not_found', e.message);
+    if (e.code === 'has_history') return sendErrorDetail(ctx.res, 409, 'has_history', e.message, e.detail);
+    sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
 /* A product's photograph. The browser sends the picture it already shrank
    (a data URL, tens of KB); this puts the bytes in the public bucket and the
    address on the row. `{ clear: true }` takes it off. The old file is

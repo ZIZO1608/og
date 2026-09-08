@@ -1547,6 +1547,15 @@ a visual.
   (housekeeping; a failed remove is not an error, the row is what the shop reads) — **the CDN goes
   on answering for a deleted object for a while**, which is why a test must check the bucket
   listing rather than fetching the URL, and why nothing may depend on a picture disappearing.
+- **A picture is POSITIONED against its frame, never centred as a grid item.** `.thumb`,
+  `.thumb-box` and `.pcard-img` are `display:grid; place-items:center` for the initials block, and a
+  centred grid item does not stretch — `height:100%` on the `<img>` went unresolved, so a 200x400
+  photo drew 36x72 inside a 36x36 box, overflowed downward, and `overflow:hidden` clipped it to its
+  TOP edge. Every portrait picture in the shop showed its top and called it the middle. The
+  `has-img` rules make the box `position:relative; display:block` and the image
+  `position:absolute; inset:0` with `object-fit:cover`, which crops from the centre. A landscape
+  photo hid this completely, which is why it survived a look at the screen — it was found by
+  measuring the rendered rectangles, not by looking at them.
 - **Only the route writes `image_url`** — `Cat.setImage`, never `update()`'s `EDITABLE` list. A client
   that could put any URL into an `<img>` on every till is not a feature.
 - **The product is saved either way.** The Add-product form uploads *after* the row exists (the path

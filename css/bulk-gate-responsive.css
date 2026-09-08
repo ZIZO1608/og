@@ -50,8 +50,22 @@ tr.bk-on td { border-bottom-color: var(--brand-border); }
 }
 body.rtl .bk-bar { padding: 9px 18px 9px 10px; }
 @keyframes bkUp { from { opacity: 0; transform: translateX(-50%) translateY(14px); } to { opacity: 1; transform: translateX(-50%); } }
-.bk-count { font-size: 13px; color: var(--muted-foreground); white-space: nowrap; margin-inline-end: 4px; }
+.bk-count {
+  font-size: 12.5px; color: var(--muted-foreground); white-space: nowrap;
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding-inline-end: 12px; margin-inline-end: 2px;
+  border-inline-end: 1px solid var(--border);
+}
 .bk-count b { font-family: var(--font-head); font-weight: 800; font-size: 15px; color: var(--brand); }
+
+/* The routine actions in one run, the irreversible ones behind a hairline.
+   Wrapping happens per group, so a narrow window never leaves Delete sitting
+   alone on a line looking like the primary thing to do. */
+.bk-acts { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bk-rule { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--border); flex: none; }
+.bk-bar .btn-sm { border-radius: var(--radius-full); padding: 6px 13px; font-size: 12.5px; }
+.bk-bar .btn-ghost { background: var(--muted); border-color: transparent; }
+.bk-bar .btn-ghost:hover { background: var(--accent); border-color: var(--border-strong); }
 .bk-danger { background: var(--destructive-soft); border: 1px solid var(--destructive-border); color: var(--destructive); font-weight: 600; }
 .bk-danger:hover { background: var(--destructive-solid); border-color: var(--destructive-solid); color: #FFFFFF; }
 .bk-x {
@@ -73,7 +87,11 @@ body.rtl .bk-bar { padding: 9px 18px 9px 10px; }
      it, because it is the only place that knows how tall the bar is. Setting
      it in two places is how the bulk bar ends up buried under the navigation. */
   .bk-bar { padding: 8px 8px 8px 14px; gap: 6px; }
-  .bk-count { width: 100%; margin: 0 0 2px; }
+  /* The count becomes a heading over the buttons rather than a column beside
+     them, so the rule that separates it goes with it. */
+  .bk-count { width: 100%; margin: 0 0 2px; padding-inline-end: 0; border-inline-end: 0; }
+  .bk-rule { display: none; }
+  .bk-acts { gap: 5px; }
 }
 
 /* ============================================================ THE SIGN-IN

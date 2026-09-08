@@ -67,10 +67,22 @@
 .btn.mt-xs, .mt-xs { margin-top: 5px; }
 
 /* A photographed product wherever a colour block would otherwise sit. cover,
-   not contain — a portrait photo must fill the square rather than letterbox. */
-.thumb.has-img, .thumb-box.has-img { overflow: hidden; padding: 0; background: var(--muted); }
+   not contain — a portrait photo must fill the square rather than letterbox.
+
+   POSITIONED, not a grid item. `.thumb` is `display:grid; place-items:center`
+   for the initials, and a centred grid item does not stretch: `height:100%`
+   on the <img> went unresolved, so a 200x400 photo drew 36x72 inside a 36x36
+   box, overflowed downward, and `overflow:hidden` clipped it to the TOP —
+   every portrait picture in the shop showed its top edge and called it the
+   middle. Absolute inset:0 makes the box the frame in every case, and
+   object-fit:cover then centres the crop, which is what object-position
+   already defaults to. Measured, not reasoned about: _thumbcheck.html. */
+.thumb.has-img, .thumb-box.has-img {
+  overflow: hidden; padding: 0; background: var(--muted); position: relative; display: block;
+}
 .thumb.has-img img, .thumb-box.has-img img {
-  width: 100%; height: 100%; object-fit: cover; display: block;
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: cover; object-position: center; display: block;
 }
 
 .size-matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 9px; }

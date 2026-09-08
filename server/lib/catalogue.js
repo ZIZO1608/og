@@ -329,6 +329,73 @@ export function bySku(sku) {
   ).get(sku) ?? null;
 }
 
+/* Delete a product for good — and refuse the moment that would cost history.
+
+   Archiving is the right gesture for a line the shop has stopped selling, and
+   it stays the default (see the header of js/bulk.js). But a product typed in
+   by mistake, or a test row, has nothing behind it and archiving leaves it in
+   the way forever. So: delete what is genuinely empty, refuse the rest by
+   name, and never make a person guess which they have.
+
+   WHAT WOULD BE LOST, and why each is a refusal rather than a cascade:
+
+   - `sale_items` freezes the name, the size and both prices on the line, and
+     carries NO foreign key to products — so an old invoice survives this
+     perfectly. What does not survive is the shop's ability to answer "what
+     did we sell" by product, so a product that has ever been sold is refused.
+   - `stock_movements`, `po_lines`, `stock_count_lines`, `label_print_log` and
+     `wants` all REFERENCE variants(sku) with no cascade, so SQLite would
+     refuse the delete itself — with a foreign-key error that names a
+     constraint rather than a reason. Asked first, so the answer is a sentence.
+   - `stock` and `variants` DO cascade, which is right: they are the product,
+     not a record about it.
+
+   Every row removed is logged. A delete that skips logChange is a row that
+   disappears here and lives in the mirror for ever — the demo purge did
+   exactly that once, with nineteen products. */
+export function remove(id, userId) {
+  const d = get();
+  const p = d.prepare('SELECT id, name FROM products WHERE id = ?').get(id);
+  if (!p) { const e = new Error(`No product with id ${id}.`); e.code = 'not_found'; throw e; }
+
+  const skus = d.prepare('SELECT sku FROM variants WHERE product_id = ?').all(id).map((v) => v.sku);
+  const inList = skus.length ? skus.map(() => '?').join(',') : "''";
+
+  /* Asked in the order a person would care about them. */
+  const holds = [
+    ['sold', 'SELECT COUNT(*) AS n FROM sale_items WHERE product_id = ?', [id]],
+    ['movements', `SELECT COUNT(*) AS n FROM stock_movements WHERE sku IN (${inList})`, skus],
+    ['orders', `SELECT COUNT(*) AS n FROM po_lines WHERE sku IN (${inList})`, skus],
+    ['counts', `SELECT COUNT(*) AS n FROM stock_count_lines WHERE sku IN (${inList})`, skus],
+    ['labels', `SELECT COUNT(*) AS n FROM label_print_log WHERE sku IN (${inList})`, skus],
+    ['wants', `SELECT COUNT(*) AS n FROM wants WHERE variant_sku IN (${inList})`, skus]
+  ];
+  for (const [why, sql, args] of holds) {
+    let n = 0;
+    try { n = d.prepare(sql).get(...args).n; } catch { n = 0; }   /* a table this database has not got yet */
+    if (n > 0) {
+      const e = new Error(`${p.name} cannot be deleted — it has ${n} ${why} on record. Archive it instead.`);
+      e.code = 'has_history';
+      e.detail = { why, n, name: p.name };
+      throw e;
+    }
+  }
+
+  return tx((db) => {
+    /* Children first and logged one by one, because the mirror replays
+       change_log and a cascade writes no log line of its own. */
+    for (const sku of skus) {
+      db.prepare('DELETE FROM stock WHERE sku = ?').run(sku);
+      logChange('stock', sku, 'delete', userId, 'product deleted');
+      logChange('variants', sku, 'delete', userId, 'product deleted');
+    }
+    db.prepare('DELETE FROM variants WHERE product_id = ?').run(id);
+    db.prepare('DELETE FROM products WHERE id = ?').run(id);
+    logChange('products', id, 'delete', userId, 'deleted by hand');
+    return { id, name: p.name, variants: skus.length };
+  });
+}
+
 /* The picture's address, set by the upload route only - never through
    `update()`'s EDITABLE list, because a client that could write any URL into
    an <img> on every till is not a feature. NULL clears it. */

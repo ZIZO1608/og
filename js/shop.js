@@ -449,6 +449,8 @@ var Shop = (function () {
       return API.post('/api/products/' + id + '/image', dataUrl ? { dataUrl: dataUrl } : { clear: true });
     },
     updateProduct: function (id, fields) { return API.patch('/api/products/' + id, fields); },
+    /* Refused with `has_history` when it would cost the shop a record. */
+    deleteProduct: function (id) { return API.del('/api/products/' + id); },
     addVariant: function (productId, size, shelf) {
       return API.post('/api/products/' + productId + '/variants', { size: size, shelf: shelf });
     },

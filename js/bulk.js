@@ -93,12 +93,15 @@ var Bulk = (function () {
 
   /* There is no Delete.
 
-     There used to be, and it did nothing: it spliced the rows out of the
+     There used to be one that did nothing: it spliced the rows out of the
      local arrays, showed an undo bar, and the next reload brought every one
-     of them back. There is no delete route to wire it to either, and that is
-     deliberate — a deleted product breaks every past sale that references it,
-     which is why server/lib/catalogue.js hides instead. Archive is the same
-     gesture, it is what the shop actually means, and it persists. */
+     of them back.
+
+     There is a real one now (DELETE /api/products/:id), and it is the one
+     action here with NO undo, because the rows are gone. The server refuses
+     any product with history — sold, moved, ordered, counted, labelled or
+     wanted — and names which, so Archive stays the answer for a line the shop
+     has stopped selling and Delete is for the row typed in by mistake. */
   var ACTIONS_FOR = {
     products: [
       { id: 'labels', key: 'print_labels', primary: true },
@@ -106,7 +109,8 @@ var Bulk = (function () {
       { id: 'hide',   key: 'bk_hide' },
       { id: 'price',  key: 'bk_price' },
       { id: 'export', key: 'export_excel' },
-      { id: 'archive', key: 'bk_archive' }
+      { id: 'archive', key: 'bk_archive' },
+      { id: 'delete',  key: 'bk_delete', danger: true }
     ],
     customers: [
       { id: 'message', key: 'bk_message', primary: true },
@@ -134,11 +138,28 @@ var Bulk = (function () {
     if (!n) return '';
 
     var acts = ACTIONS_FOR[sc] || [];
-    var h = '<div class="bk-bar"><span class="bk-count"><b>' + n + '</b> ' + t('bk_selected') + '</span>';
+    /* The count first, then what to DO, then a hairline, then what cannot be
+       undone. The bar used to be one flat run of buttons where Archive sat
+       between Export and the close X and read like another export; a rule and
+       a colour is how somebody's eye stops before the last two. */
+    var h = '<div class="bk-bar">' +
+      '<span class="bk-count"><b>' + n + '</b> ' + t('bk_selected') + '</span>' +
+      '<span class="bk-acts">';
+    var danger = [];
     acts.forEach(function (a) {
-      h += '<button class="btn btn-sm ' + (a.primary ? 'btn-primary' : (a.danger ? 'bk-danger' : 'btn-ghost')) +
+      if (a.danger) { danger.push(a); return; }
+      h += '<button class="btn btn-sm ' + (a.primary ? 'btn-primary' : 'btn-ghost') +
            '" data-bk="run" data-sc="' + sc + '" data-a="' + a.id + '">' + t(a.key) + '</button>';
     });
+    h += '</span>';
+    if (danger.length) {
+      h += '<span class="bk-rule"></span><span class="bk-acts">';
+      danger.forEach(function (a) {
+        h += '<button class="btn btn-sm bk-danger" data-bk="run" data-sc="' + sc +
+             '" data-a="' + a.id + '">' + t(a.key) + '</button>';
+      });
+      h += '</span>';
+    }
     h += '<button class="bk-x" data-bk="clear" data-sc="' + sc + '" title="' + esc(t('bk_clear')) + '">&times;</button></div>';
     return h;
   }
@@ -155,6 +176,49 @@ var Bulk = (function () {
       var vis = visibleIds(sc);
       var sel = vis.filter(function (i) { return has(sc, i); }).length;
       head.indeterminate = sel > 0 && sel < vis.length;
+    }
+  }
+
+  /* Every tick box on screen, and the row around it, brought into line with
+     the selection - WITHOUT rebuilding the view.
+
+     Ticking used to call render(), which rewrites the whole of #view. On a
+     table of two hundred products that threw the scroll position back to the
+     top on every tick, so selecting a row near the bottom moved it out from
+     under the hand. Nothing about a tick changes the ROWS, only which of them
+     are marked, so this walks the boxes already drawn and sets two things.
+     The header's indeterminate state is set by paint(), which runs beside it. */
+  function markRows(sc) {
+    var boxes = document.querySelectorAll('[data-bk="tog"][data-sc="' + sc + '"]');
+    for (var i = 0; i < boxes.length; i++) {
+      var b = boxes[i];
+      var on = has(sc, b.getAttribute('data-id'));
+      b.checked = on;
+      var row = b.closest ? (b.closest('tr') || b.closest('.cust-card') || b.closest('.card')) : null;
+      if (row) row.classList.toggle('bk-on', on);
+    }
+
+    /* The Print-labels screen's product rows: one tick meaning every size,
+       and a cell saying how many are on. Both follow from the same selection,
+       so they are brought into line here rather than by a render. */
+    if (sc !== 'variants' || typeof labelVariantRows === 'undefined') return;
+    var groups = document.querySelectorAll('[data-bk="group"][data-sc="variants"]');
+    if (!groups.length) return;
+    var bySku = {};
+    labelVariantRows().forEach(function (r) {
+      (bySku[r.p.id] = bySku[r.p.id] || []).push(r.v.sku);
+    });
+    for (var g = 0; g < groups.length; g++) {
+      var box = groups[g];
+      var pid = box.getAttribute('data-pid');
+      var skus = bySku[pid] || [];
+      var on2 = skus.filter(function (k) { return has(sc, k); }).length;
+      box.checked = skus.length > 0 && on2 === skus.length;
+      box.indeterminate = on2 > 0 && on2 < skus.length;
+      var prow = box.closest ? box.closest('tr') : null;
+      if (prow) prow.classList.toggle('bk-on', box.checked);
+      var cell = document.querySelector('.lb-cnt[data-pid="' + pid + '"]');
+      if (cell && typeof labelCountCell === 'function') cell.innerHTML = labelCountCell(skus.length, on2);
     }
   }
 
@@ -307,6 +371,47 @@ var Bulk = (function () {
         });
         refreshAll(); paint(); return;
       }
+
+      /* DELETE, which archiving is not. A product typed in by mistake has
+         nothing behind it and archiving leaves it in the way for ever; a
+         product that has been sold, counted, ordered or moved has history
+         that outlives it, and the server refuses those by name.
+
+         So this is deliberately NOT all-or-nothing and NOT undoable: it asks
+         for each one, keeps the refusals, and says at the end exactly what
+         went and what stayed and why. An undo bar over a delete would be a
+         promise this cannot keep - the rows are gone. */
+      if (a === 'delete') {
+        var names = list.slice(0, 3).map(function (p) { return p.name; }).join(', ');
+        var more = list.length > 3 ? ' + ' + (list.length - 3) : '';
+        if (!confirm(t('bk_del_confirm').replace('{n}', n).replace('{names}', names + more))) return;
+
+        if (typeof Shop === 'undefined' || !Shop.live()) return;
+        var gone = [], kept = [];
+        Promise.all(list.map(function (p) {
+          return Shop.deleteProduct(p.id)
+            .then(function () { gone.push(p); })
+            .catch(function (err) {
+              kept.push({ p: p, why: (err && err.detail && err.detail.why) || null, err: err });
+            });
+        })).then(function () {
+          clear(sc);
+          return Shop.reload();
+        }).then(function () {
+          render(); paint();
+          if (gone.length) toast(t('bulk_title'), t('bk_deleted').replace('{n}', gone.length), 'ok', 4000);
+          if (kept.length) {
+            /* Named, not counted: "3 could not be deleted" sends somebody
+               hunting. The first reason is the one that will repeat. */
+            var first = kept[0];
+            toast(t('bk_del_kept').replace('{n}', kept.length),
+                  (typeof API !== 'undefined' && API.friendly) ? API.friendly(first.err)
+                                                               : String(first.err && first.err.message || ''),
+                  'warn', 9000);
+          }
+        });
+        return;
+      }
     }
 
     /* ---- customers ---- */
@@ -451,7 +556,7 @@ var Bulk = (function () {
         if (has(sc, id)) delete SEL[sc][id]; else SEL[sc][id] = true;
       }
       if (idx !== null) lastIdx[sc] = idx;
-      render();
+      markRows(sc);
       paint();
     },
 
@@ -460,7 +565,7 @@ var Bulk = (function () {
       var allOn = vis.length && vis.every(function (i) { return has(sc, i); });
       setMany(sc, vis, !allOn);
       lastIdx[sc] = null;
-      render();
+      markRows(sc);
       paint();
     },
 
@@ -474,9 +579,15 @@ var Bulk = (function () {
       var skus = labelVariantRows().filter(function (r) { return r.p.id === pid; }).map(function (r) { return r.v.sku; });
       var allOn = skus.length && skus.every(function (k) { return has(sc, k); });
       setMany(sc, skus, !allOn);
-      render(); paint();
+      markRows(sc);
+      paint();
     },
-    clear: function (el) { clear(el.getAttribute('data-sc')); render(); paint(); },
+    clear: function (el) {
+      var sc = el.getAttribute('data-sc');
+      clear(sc);
+      markRows(sc);
+      paint();
+    },
     run: function (el) { run(el.getAttribute('data-sc'), el.getAttribute('data-a')); },
     undo: runUndo,
 
@@ -547,7 +658,8 @@ var Bulk = (function () {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
         e.preventDefault();
         setMany(sc, visibleIds(sc), true);
-        render(); paint();
+        markRows(sc);
+        paint();
       }
     });
   }

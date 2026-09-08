@@ -131,8 +131,7 @@ function viewPrintLabels() {
         (all ? ' checked' : '') + (sel && !all ? ' data-some="1"' : '') + '></label></td>' +
       '<td><div class="cell-prod"><span class="lb-chev"></span>' + thumb(g.p) + '<span><b>' + esc(g.p.name) + '</b>' +
         '<small>' + esc(g.p.brand) + '</small></span></div></td>' +
-      '<td class="muted nowrap">' + t('lb_sizes').replace('{n}', g.rows.length) +
-        (sel ? ' <span class="badge neutral">' + t('lb_sel').replace('{n}', sel) + '</span>' : '') + '</td>' +
+      '<td class="muted nowrap lb-cnt" data-pid="' + g.p.id + '">' + labelCountCell(g.rows.length, sel) + '</td>' +
       '<td class="num"><b>' + total + '</b></td>' +
       '<td class="muted num nowrap">' + esc(fam) + '</td>' +
       '<td></td><td></td><td></td>' +
@@ -160,6 +159,15 @@ function viewPrintLabels() {
 
   h += '</tbody></table></div>';
   return h;
+}
+
+/* "5 sizes - 3 ticked", as its own function because js/bulk.js repaints this
+   cell when a tick changes rather than rebuilding the table: a full render
+   throws the scroll back to the top, which on a long catalogue moves the row
+   out from under the hand that just ticked it. */
+function labelCountCell(total, sel) {
+  return t('lb_sizes').replace('{n}', total) +
+    (sel ? ' <span class="badge neutral">' + t('lb_sel').replace('{n}', sel) + '</span>' : '');
 }
 
 /* The lines a whole product prints as: every size the current filter shows,
