@@ -193,6 +193,21 @@ only a hard refresh with both:
    deliberately not a cashier's**, because a till reloading itself under somebody's hands
    mid-sale is a lost sale, not a refresh.
 
+3. **The server half, when the server's own code moved.** Node reads a module once, at import, so a
+   shop started before an edit goes on running the old code — and Hard refresh, which only ever
+   spoke to the browser, could not fix that. `serverIsStale()` compares the newest mtime under
+   `server/index.js`, `lib/`, `scripts/` and `migrations/` against when the child was launched
+   (`startedAt`); when it is newer, Hard refresh **stops and restarts the shop first**, waits for it
+   to answer, and only then tells the tabs — reloading into a server still doing its boot pull shows
+   the failure page. Restarted only when something it runs actually changed, because a restart costs
+   the boot pull and interrupts the till. The panel shows it in amber under the buttons before
+   anything looks broken, and `snapshot()` recomputes it for the hello frame as well as every push,
+   so a window opened after an edit does not say the server is current when it is not. `data/` and
+   `backups/` are excluded: they change constantly and mean nothing here. **What this cost before it
+   existed:** the new `POST /api/products/:id/image` answered "No such endpoint" to a button that
+   plainly existed in the source, and the app now names that cause (`img_stale_server`) rather than
+   repeating the 404.
+
 It also needed **`serveStatic` to stop sending `public, max-age=3600`** on `js/`, `css/` and
 `assets/`. That was an hour in which the browser would not even ask, with no ETag and no
 Last-Modified, so it could not have revalidated if it wanted to. Everything is `no-cache` with a
@@ -1517,6 +1532,8 @@ POS tile — already drew `image.src` when present, so hydrating `image_url` int
 picture appear everywhere at once; the colour block stays the fallback and nothing is ever without
 a visual.
 
+- **A code change needs the server restarted**, and Hard refresh does it — see that section. This
+  was the feature's first failure in the shop, and it was not a bug in the feature.
 - **The browser shrinks first, the server stores.** `readImageFile` (`js/app-util.js`) turns a 3–6 MB
   phone photo into a ≤ 420 px data URL before anything is sent, so a picture is tens of kilobytes on
   the wire and in the bucket. The route decodes only `image/jpeg|png|webp` and refuses anything
@@ -1527,7 +1544,9 @@ a visual.
   Tuesday reads as the shop being broken). Objects are `products/<id>/<time>.<ext>` — **a new path
   on every replace**, because the upload sends `Cache-Control: max-age` of a year and the CDN keeps
   serving an old path after it is deleted. The old object is removed on replace and on clear
-  (housekeeping; a failed remove is not an error, the row is what the shop reads).
+  (housekeeping; a failed remove is not an error, the row is what the shop reads) — **the CDN goes
+  on answering for a deleted object for a while**, which is why a test must check the bucket
+  listing rather than fetching the URL, and why nothing may depend on a picture disappearing.
 - **Only the route writes `image_url`** — `Cat.setImage`, never `update()`'s `EDITABLE` list. A client
   that could put any URL into an `<img>` on every till is not a feature.
 - **The product is saved either way.** The Add-product form uploads *after* the row exists (the path

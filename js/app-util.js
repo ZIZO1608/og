@@ -301,8 +301,17 @@ function uploadProductImage(id, dataUrl, then) {
     if (then) then();
     toast(t('image'), t('img_saved'), 'ok', 2500);
   }).catch(function (err) {
-    /* The product is there; the picture is not. Said with the server's own
-       reason, which names Supabase or the network rather than "error". */
+    /* "No such endpoint" from a route that plainly exists means one thing:
+       this server was started before the code that added it, and Node reads a
+       module once. Saying that is worth more than repeating the 404 - it was
+       the first thing this feature did in the shop, and the message it gave
+       sent somebody looking for a bug that was not there. */
+    if (err && (err.code === 'not_found' || err.status === 404)) {
+      toast(t('image'), t('img_stale_server'), 'err', 10000);
+      return;
+    }
+    /* Otherwise the server's own reason, which names Supabase or the network
+       rather than "error". */
     toast(t('image'), t('img_fail') + ' ' + (typeof API !== 'undefined' && API.friendly ? API.friendly(err) : (err && err.message || '')), 'err', 8000);
   });
 }

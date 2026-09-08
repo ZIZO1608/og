@@ -117,13 +117,20 @@ function push(event, data) {
   }
 }
 
-function pushState() {
-  /* Recomputed on every push rather than watched: it is a handful of stat()
-     calls on a tree of about eighty files, and a watcher that misses an
-     editor's write-to-temp-then-rename would be worse than no watcher. */
+/* The state as it is RIGHT NOW. `stale` is derived from the disk, so it is
+   recomputed here rather than stored - and both the hello frame and every
+   push go through this one function, because they must agree. They did not,
+   briefly: hello sent whatever `stale` was at the last push, so a window
+   opened after an edit said the server was current when it was not.
+   Recomputed rather than watched: it is a handful of stat() calls over about
+   eighty files, and a watcher that misses an editor's write-to-temp-then-
+   rename would be worse than no watcher at all. */
+function snapshot() {
   state.stale = serverIsStale();
-  push('state', state);
+  return state;
 }
+
+function pushState() { push('state', snapshot()); }
 
 /* -------------------------------------------------------------- the shop */
 
@@ -628,7 +635,7 @@ const server = createServer(async (req, res) => {
       Connection: 'keep-alive'
     });
     res.write('retry: 2000\n\n');
-    res.write('event: hello\ndata: ' + JSON.stringify({ state, lines: LINES, jobs: catalogue() }) + '\n\n');
+    res.write('event: hello\ndata: ' + JSON.stringify({ state: snapshot(), lines: LINES, jobs: catalogue() }) + '\n\n');
     watchers.add(res);
     const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* gone */ } }, 20000);
     beat.unref();
