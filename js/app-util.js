@@ -287,6 +287,26 @@ function takeProductImage(file) {
   });
 }
 
+/* The picture to the bucket, and the row to match. One place for the three
+   toasts - sending, saved, did not land - so the Add-product form and the
+   drawer cannot describe the same failure two ways. `then` runs after the
+   catalogue has been reloaded with the new address, so whatever is on screen
+   can redraw with the picture in it. */
+function uploadProductImage(id, dataUrl, then) {
+  toast(t('image'), t('img_uploading'), null, 2500);
+  Shop.setProductImage(id, dataUrl).then(function () {
+    return Shop.reload();
+  }).then(function () {
+    render();
+    if (then) then();
+    toast(t('image'), t('img_saved'), 'ok', 2500);
+  }).catch(function (err) {
+    /* The product is there; the picture is not. Said with the server's own
+       reason, which names Supabase or the network rather than "error". */
+    toast(t('image'), t('img_fail') + ' ' + (typeof API !== 'undefined' && API.friendly ? API.friendly(err) : (err && err.message || '')), 'err', 8000);
+  });
+}
+
 function healthBadge(qty) {
   var h = DB.health(qty);
   return '<span class="badge ' + h + '"><i class="dot ' + h + '"></i>' + t(h) + '</span>';

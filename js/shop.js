@@ -444,6 +444,10 @@ var Shop = (function () {
 
     /* ---- catalogue ---- */
     newProduct: function (body) { return API.post('/api/products', body); },
+    /* The picture, already shrunk by readImageFile, to the bucket; null clears. */
+    setProductImage: function (id, dataUrl) {
+      return API.post('/api/products/' + id + '/image', dataUrl ? { dataUrl: dataUrl } : { clear: true });
+    },
     updateProduct: function (id, fields) { return API.patch('/api/products/' + id, fields); },
     addVariant: function (productId, size, shelf) {
       return API.post('/api/products/' + productId + '/variants', { size: size, shelf: shelf });

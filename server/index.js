@@ -52,6 +52,8 @@ import * as Telegram from './lib/telegram.js';
 import * as Live from './lib/live.js';
 import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
+import * as Storage from './lib/storage.js';
+import * as SB from './lib/supabase.js';
 import { lanAddresses } from './lib/net.js';
 import { timingSafeEqual } from 'node:crypto';
 import {
@@ -428,6 +430,37 @@ router.add('PATCH /api/products/:id', requirePerm('product.write', async (ctx) =
     sendOk(ctx.res, { product: Cat.update(Number(ctx.params.id), b, ctx.user.id) });
   } catch (e) {
     sendError(ctx.res, 400, 'invalid', e.message);
+  }
+}));
+
+/* A product's photograph. The browser sends the picture it already shrank
+   (a data URL, tens of KB); this puts the bytes in the public bucket and the
+   address on the row. `{ clear: true }` takes it off. The old file is
+   removed on a replace so the bucket holds one picture per product, and a
+   remove that fails is not an error - the row is what the shop reads.
+   503 not_configured is the honest answer on a server with no Supabase:
+   the product is saved either way, only the picture has nowhere to go. */
+router.add('POST /api/products/:id/image', requirePerm('product.write', async (ctx) => {
+  const id = Number(ctx.params.id);
+  const b = await readJson(ctx.req);
+  try {
+    if (b && b.clear) {
+      const r = Cat.setImage(id, null, ctx.user.id);
+      if (r.previous) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
+      return sendOk(ctx.res, { imageUrl: null });
+    }
+    if (!SB.isConfigured()) return sendError(ctx.res, 503, 'not_configured', 'Pictures need Supabase, which is not set up on this server.');
+    const pic = Storage.decodeDataUrl(b && b.dataUrl);
+    const url = await Storage.putObject(Storage.pathFor(id, pic.ext), pic.bytes, pic.type);
+    const r = Cat.setImage(id, url, ctx.user.id);
+    if (r.previous && r.previous !== url) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
+    sendOk(ctx.res, { imageUrl: url });
+  } catch (e) {
+    if (e.code === 'not_found') return sendError(ctx.res, 404, 'not_found', e.message);
+    if (e.code === 'bad_image' || e.code === 'too_large') return sendError(ctx.res, 400, e.code, e.message);
+    /* Unreachable, refused, a bucket that could not be made: the shop keeps
+       selling and the person is told the picture did not land. */
+    sendError(ctx.res, 503, 'storage_failed', e.message);
   }
 }));
 

@@ -5,7 +5,8 @@
 --  and regenerate. Built 2026-09-02 against wsuqoippcxcwoszcgagc, where
 --  npm run supabase:drift reported 008, 009, 010 and 011 all outstanding;
 --  012 (2026-09-02, the Yalla Wear line) appended the same day;
---  013 (2026-09-04, rack sizes in centimetres) appended after it.
+--  013 (2026-09-04, rack sizes in centimetres) appended after it;
+--  014 (the website flag) and 015 (the product photograph) appended 2026-09-08.
 --
 --  Paste the whole thing into the Supabase SQL editor and run it once.
 --  Every statement is CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS,
@@ -371,3 +372,54 @@ ALTER TABLE sections ADD COLUMN IF NOT EXISTS bay_cm   INTEGER;
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS level_cm INTEGER;
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS depth_cm INTEGER;
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS wall_cm  INTEGER;
+
+-- ---- 014_product_on_web.sql (2026-09-07, the website flag; was never appended here) ----
+-- =============================================================================
+--  Mirror schema for the marketing-website flag.
+--  Run this in the Supabase SQL editor, like 002 through 013.
+-- -----------------------------------------------------------------------------
+--  Matches server/migrations/039_product_on_web.sql column for column.
+--
+--  `products` is pushed in the UNGUARDED core loop, so until this is run
+--  PostgREST rejects the whole batch — products, variants, stock, customers,
+--  sales and deliveries with it. lib/mirror-lag.js therefore declares the
+--  column, and the sync pushes products WITHOUT it and names this file on
+--  every run rather than letting a day of sales go unmirrored.
+--
+--  Afterwards, and this is not optional:
+--    npm run supabase:reconcile
+--  The sync's cursor has already moved past any product pushed with the column
+--  dropped, and no rewind will ever look there again — so the flag stays NULL
+--  in the mirror, and a restore would hand the shop back a website showing
+--  everything, until the reconcile refills it.
+--
+--  DEFAULT TRUE for the same reason the local migration uses DEFAULT 1.
+-- =============================================================================
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS on_web BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- ---- 015_product_image.sql (2026-09-08, the product photograph) ----
+-- =============================================================================
+--  Mirror schema for a product's photograph.
+--  Run this in the Supabase SQL editor, like 002 through 014.
+-- -----------------------------------------------------------------------------
+--  Matches server/migrations/040_product_image.sql column for column: the
+--  public URL of the picture in the `product-images` Storage bucket, NULL when
+--  the product has none.
+--
+--  `products` is pushed in the UNGUARDED core loop, so until this is run
+--  PostgREST rejects the whole batch — products, variants, stock, customers,
+--  sales and deliveries with it. lib/mirror-lag.js declares the column, and
+--  the sync pushes products WITHOUT it and names this file on every run.
+--
+--  Afterwards, and this is not optional:
+--    npm run supabase:reconcile
+--  — the cursor is already past any product pushed with the column dropped,
+--  so the mirror's copy stays NULL until the reconcile refills it, and a
+--  restore would hand the shop back a catalogue with no pictures.
+--
+--  The bucket itself is not SQL: lib/storage.js creates it (public, so the
+--  URL works in a plain <img>) through the Storage API with the service key.
+-- =============================================================================
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT;

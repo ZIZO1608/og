@@ -1286,6 +1286,21 @@ var ACTIONS = {
     if (input) input.click();
   },
 
+  /* The product drawer's picture: pick a file, shrink it, send it. Same
+     reader as the Add-product form, so what the bucket gets is the same
+     420 px picture either way. */
+  'prod-image': function () {
+    var input = document.getElementById('prodFile');
+    if (input) input.click();
+  },
+  'prod-image-clear': function (el) {
+    var id = +el.getAttribute('data-id');
+    Shop.setProductImage(id, null).then(function () {
+      return Shop.reload();
+    }).then(function () { openProductDrawer(id); toast(t('image'), t('img_removed'), 'ok', 2000); })
+      .catch(function (err) { toast(t('image'), API.friendly(err), 'err', 6000); });
+  },
+
   'wh-image-clear': function () {
     OG.wh.imgSrc = null;
     OG.wh.img = null;
@@ -1422,18 +1437,6 @@ var ACTIONS = {
     var skus = Object.keys(sizes).filter(function (k) { return sizes[k]; }).length;
     var imgSrc = OG.wh.imgSrc, bg = OG.wh.img;
 
-    /* A photo has nowhere to go on the server yet — the products table stores
-       a colour block, which is what every screen draws. Said out loud rather
-       than dropped, because he just chose the file and would otherwise watch
-       it disappear with no explanation. */
-    if (imgSrc && Shop.live()) {
-      toast(t('save_product'),
-            OG.lang === 'ar'
-              ? 'الصورة لا تُحفظ بعد على الخادم — سيُستخدم المربّع اللوني.'
-              : 'Photos are not stored on the server yet — the colour block is used.',
-            'warn', 6000);
-    }
-
     Shop.write(
       function () {
         return Shop.newProduct({
@@ -1463,6 +1466,13 @@ var ACTIONS = {
       },
       function (res) {
         var id = res && (res.productId !== undefined ? res.productId : res.id);
+
+        /* The picture goes up AFTER the row exists, because the bucket path
+           is keyed on the product id. Fire-and-report: the product is saved
+           either way, and a picture that did not land (no internet, no
+           Supabase on this server) is said, not silently dropped - he can
+           add it later from the product drawer. */
+        if (imgSrc && id !== undefined && Shop.live()) uploadProductImage(id, imgSrc);
 
         /* createWithVariants answers { productId, variants:[{sku,size,barcode}] },
            so the SKUs the server has just minted are already here — nothing

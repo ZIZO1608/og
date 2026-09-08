@@ -257,7 +257,7 @@ function webRow(p, sizes) {
     /* The shop has no photographs — the app draws a colour block with the
        product's initials, and that is the whole of its artwork. Sent as-is so
        a site can draw the same placeholder rather than invent a different one. */
-    image: { bg: p.image_bg ?? null, initials: p.image_initials ?? null },
+    image: { bg: p.image_bg ?? null, initials: p.image_initials ?? null, url: p.image_url ?? null },
     /* Minor units of `currency`, with the exponent, because SYP is whole lira
        and USD is cents and a page that divides by 100 for both is wrong half
        the time. Never converted here: the shop prices some goods in dollars,
@@ -273,7 +273,7 @@ function webRow(p, sizes) {
 
 const WEB_COLS =
   `p.id, p.name, p.brand, p.type, p.colorway, p.made_in, p.image_bg,
-   p.image_initials, p.currency, p.selling_price, p.updated_at`;
+   p.image_initials, p.image_url, p.currency, p.selling_price, p.updated_at`;
 
 function webSizes(productIds) {
   if (!productIds.length) return {};
@@ -327,6 +327,20 @@ export function bySku(sku) {
        FROM variants v JOIN products p ON p.id = v.product_id
       WHERE v.sku = ?`
   ).get(sku) ?? null;
+}
+
+/* The picture's address, set by the upload route only - never through
+   `update()`'s EDITABLE list, because a client that could write any URL into
+   an <img> on every till is not a feature. NULL clears it. */
+export function setImage(id, url, userId) {
+  const d = get();
+  const row = d.prepare('SELECT id, image_url FROM products WHERE id = ?').get(id);
+  if (!row) { const e = new Error(`No product with id ${id}.`); e.code = 'not_found'; throw e; }
+  tx(() => {
+    d.prepare('UPDATE products SET image_url = ?, updated_at = ? WHERE id = ?').run(url, nowIso(), id);
+    logChange('products', id, 'update', userId, url ? 'picture' : 'picture removed');
+  });
+  return { id, previous: row.image_url || null, imageUrl: url || null };
 }
 
 /* The lookup a scan performs. Barcode first because that is what a scanner

@@ -289,8 +289,9 @@ These are constraints, not preferences. Breaking one means rewriting a lot.
   exactly like the truth. There is now no way to run the app without `cd server && npm start`.
 - **Dark mode only. Montserrat. English and Arabic with real RTL** — the layouts are built for both, not
   a mirrored stylesheet.
-- **No placeholder content.** No lorem ipsum, no "coming soon", no stock photos. Product images are CSS
-  colour blocks. If a screen exists, it works.
+- **No placeholder content.** No lorem ipsum, no "coming soon", no stock photos. A product shows the
+  shop's own photograph when one has been taken (see "Product pictures") and a CSS colour block with
+  its initials when not — never a stock image. If a screen exists, it works.
 - Avoid `:has()` and very recent CSS — this runs on the shop's actual hardware.
 - **The shop's look lives in `css/og-skin.css`, loaded last.** Quiet and expensive: soft corners,
   weight 600/700 doing the talking, hairlines where the base had boxes, lime spent only on the primary
@@ -1481,6 +1482,39 @@ a customer cannot be removed while a sale still points at them. `supabase-sync.j
 runs each group twice — `phase: 'upsert'` in FK order, then `phase: 'delete'` in reverse —
 and only advances the cursor after the second. Doing both in one pass is what rejected the
 first demo purge halfway through.
+
+## Product pictures
+
+Migration `040` (`products.image_url`), `server/lib/storage.js`, `POST /api/products/:id/image`,
+mirror file `server/supabase/015_product_image.sql`. **The bytes live in a public Supabase Storage
+bucket, `product-images`; the row holds the address.** Every renderer — `thumb`, `thumbBox`, the
+POS tile — already drew `image.src` when present, so hydrating `image_url` into it is what made the
+picture appear everywhere at once; the colour block stays the fallback and nothing is ever without
+a visual.
+
+- **The browser shrinks first, the server stores.** `readImageFile` (`js/app-util.js`) turns a 3–6 MB
+  phone photo into a ≤ 420 px data URL before anything is sent, so a picture is tens of kilobytes on
+  the wire and in the bucket. The route decodes only `image/jpeg|png|webp` and refuses anything
+  else by name (`bad_image`); 2 MB is a backstop, not a budget.
+- **`storage.js` is three plain HTTP calls with the service key** — no SDK, same as PostgREST. It
+  creates the bucket the first time it is needed (public, so the URL works in an `<img>` on a phone
+  on the shop wifi and on the website; a signed URL expires, and a picture that stops loading on
+  Tuesday reads as the shop being broken). Objects are `products/<id>/<time>.<ext>` — **a new path
+  on every replace**, because the upload sends `Cache-Control: max-age` of a year and the CDN keeps
+  serving an old path after it is deleted. The old object is removed on replace and on clear
+  (housekeeping; a failed remove is not an error, the row is what the shop reads).
+- **Only the route writes `image_url`** — `Cat.setImage`, never `update()`'s `EDITABLE` list. A client
+  that could put any URL into an `<img>` on every till is not a feature.
+- **The product is saved either way.** The Add-product form uploads *after* the row exists (the path
+  is keyed on the id) and reports the three outcomes with one helper, `uploadProductImage`: sending,
+  saved, did not land — the last with the server's own reason (no internet, `503 not_configured` on
+  a server with no Supabase). The product drawer's picture is a button: press it to change it; the
+  address is a link beneath the name, with Remove.
+- **The mirror.** `products` is in the UNGUARDED core loop, so `mirror-lag.js` declares `image_url`
+  and the sync pushes products without it, naming `015`, until it is run in the dashboard — then
+  `npm run supabase:reconcile` (the Reconcile button) refills it, or a restore hands back a catalogue
+  with no pictures. `014` had never been appended to `CATCH-UP.sql`; it is now, with `015`.
+- The website row (`GET /api/ext/products`) carries `image.url` beside the block.
 
 ## The drawer
 

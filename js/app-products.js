@@ -223,12 +223,28 @@ function openProductDrawer(pid) {
   var trend = DB.productTrend(pid);
   var max = Math.max.apply(null, trend.concat([1]));
 
+  /* The picture is the button: press it to change it. Below the name, the
+     address it lives at in the bucket - the one thing somebody wiring the
+     website, or checking the mirror, actually asks for. */
+  var canPic = allow('product.write') && typeof Shop !== 'undefined' && Shop.live();
   var head =
     '<div style="display:flex;gap:12px;align-items:flex-start;flex:1">' +
-      thumb(p, 'lg') +
+      (canPic
+        ? '<button class="thumb-btn" data-act="prod-image" title="' + esc(t('img_change')) + '">' + thumb(p, 'lg') + '</button>' +
+          '<input type="file" id="prodFile" accept="image/*" hidden>'
+        : thumb(p, 'lg')) +
       '<div><span class="eyebrow">' + DB.typeLabels[p.type] + ' · ' + esc(p.brand) + '</span>' +
       '<h3 style="font-size:18px;margin:3px 0 4px">' + esc(p.name) + '</h3>' +
-      healthBadge(total) + ' <span class="badge neutral">' + esc(p.colorway) + '</span></div>' +
+      healthBadge(total) + ' <span class="badge neutral">' + esc(p.colorway) + '</span>' +
+      (canPic
+        ? '<div class="pic-line">' +
+            (p.image && p.image.src
+              ? '<a href="' + esc(p.image.src) + '" target="_blank" rel="noopener" dir="ltr">' + esc(t('img_open')) + '</a>' +
+                ' · <button class="link" data-act="prod-image-clear" data-id="' + p.id + '">' + esc(t('img_remove')) + '</button>'
+              : '<button class="link" data-act="prod-image">' + esc(t('img_add')) + '</button>') +
+          '</div>'
+        : '') +
+      '</div>' +
     '</div>';
 
   var body = '';
@@ -321,5 +337,17 @@ function openProductDrawer(pid) {
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="product" data-kind="excel" data-id="' + p.id + '">' + t('export_excel') + '</button>' +
   '</div>';
 
-  openDrawer({ head: head, body: body });
+  openDrawer({ head: head, body: body, onOpen: function (root) {
+    var input = root.querySelector('#prodFile');
+    if (!input) return;
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      readImageFile(file, function (src, err) {
+        if (err) { toast(t('image'), t('up_err_' + err), 'err', 4000); return; }
+        uploadProductImage(p.id, src, function () { openProductDrawer(p.id); });
+      });
+    });
+  } });
 }

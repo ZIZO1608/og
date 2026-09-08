@@ -261,3 +261,13 @@ tr.row-danger { background: var(--destructive-soft) !important; }
 .dot.critical { background: var(--destructive); }
 .dot.out { background: #FFFFFF; }
 .dot.offline { background: var(--dim); }
+
+
+/* The product drawer's picture is a button (press to change it). Reset so it
+   draws exactly like the thumb it wraps, with the cursor saying it is live. */
+.thumb-btn { padding: 0; border: 0; background: none; cursor: pointer; line-height: 0; border-radius: var(--radius); }
+.thumb-btn:hover .thumb, .thumb-btn:focus-visible .thumb { outline: 2px solid var(--brand-border); outline-offset: 2px; }
+.pic-line { margin-top: 6px; font-size: 11.5px; color: var(--dim); }
+.pic-line a { color: var(--muted-foreground); }
+.pic-line .link { border: 0; background: none; padding: 0; color: var(--muted-foreground); font: inherit; cursor: pointer; }
+.pic-line .link:hover, .pic-line a:hover { color: var(--brand); }

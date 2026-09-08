@@ -2703,7 +2703,9 @@ var DB = {
            screen was the same grey square — two of them with the same
            initials. A colour from a column the row already carries is not a
            photo, and it is not a guess either. */
-        image: { bg: p.image_bg || typeColour(p.type), initials: p.image_initials || '??', src: null },
+        /* `src` is the picture's public address in the bucket (040) when the
+           shop has photographed it; the block stays the fallback. */
+        image: { bg: p.image_bg || typeColour(p.type), initials: p.image_initials || '??', src: p.image_url || null },
         colorway: p.colorway || '',
         costPrice: toBase(p.cost_price, p.currency),
         sellingPrice: toBase(p.selling_price, p.currency),

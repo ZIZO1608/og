@@ -77,6 +77,13 @@ function headers(extra = {}) {
   };
 }
 
+/* The same key for the Storage API (lib/storage.js), minus the JSON content
+   type, because there the body is the picture itself. */
+export function authHeaders(extra = {}) {
+  const { key } = config();
+  return { apikey: key, Authorization: `Bearer ${key}`, ...extra };
+}
+
 /* One place where every Supabase response is turned into either data or a
    thrown Error carrying what PostgREST actually said. The default fetch
    failure message ("fetch failed") names neither the table nor the reason,

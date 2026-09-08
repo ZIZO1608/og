@@ -39,8 +39,8 @@ export const MIRROR_LAG = {
      the UNGUARDED core loop, so a rejection here takes variants, stock,
      customers, sales and deliveries down with it — the same shape as the
      customers entry below, and the reason that one is written out at length. */
-  products:   { cols: ['on_web'],
-                file: 'server/supabase/014_product_on_web.sql', retriedBy: ['sync', 'reconcile'] },
+  products:   { cols: ['on_web', 'image_url'],
+                file: 'server/supabase/014_product_on_web.sql and 015_product_image.sql', retriedBy: ['sync', 'reconcile'] },
 
   /* 033 — the credit rules and where a merged customer went. Measured against
      the live mirror on 2026-09-02: rejected. `customers` is pushed in the

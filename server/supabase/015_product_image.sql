@@ -1,0 +1,24 @@
+-- =============================================================================
+--  Mirror schema for a product's photograph.
+--  Run this in the Supabase SQL editor, like 002 through 014.
+-- -----------------------------------------------------------------------------
+--  Matches server/migrations/040_product_image.sql column for column: the
+--  public URL of the picture in the `product-images` Storage bucket, NULL when
+--  the product has none.
+--
+--  `products` is pushed in the UNGUARDED core loop, so until this is run
+--  PostgREST rejects the whole batch — products, variants, stock, customers,
+--  sales and deliveries with it. lib/mirror-lag.js declares the column, and
+--  the sync pushes products WITHOUT it and names this file on every run.
+--
+--  Afterwards, and this is not optional:
+--    npm run supabase:reconcile
+--  — the cursor is already past any product pushed with the column dropped,
+--  so the mirror's copy stays NULL until the reconcile refills it, and a
+--  restore would hand the shop back a catalogue with no pictures.
+--
+--  The bucket itself is not SQL: lib/storage.js creates it (public, so the
+--  URL works in a plain <img>) through the Storage API with the service key.
+-- =============================================================================
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT;
