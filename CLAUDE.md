@@ -352,17 +352,15 @@ card by writing one that returns `setFoldStart(…) + … + setFoldEnd()` and ca
   rail: the till wants the printer open and the office wants the roles grid, on the same account. Only
   open ones are stored, so a card added later starts shut.
 
-### The seeded generator — call order is load-bearing
+### What is left of the seeded generator
 
-`js/data.js` builds the whole dataset from an LCG so every launch tells an identical story:
-
-```js
-seed = (seed * 1664525 + 1013904223) % 4294967296
-```
-
-Inserting one extra `rand()` call shifts every value drawn after it and silently rewrites unrelated
-parts of the dataset. **If you need new randomness, add a separate generator with its own seed** — the
-warehouse code already does this.
+The dataset generator is gone (see above), but its helpers are not: `rnd()`, `ri()`, `pick()`,
+`chance()`, the private `whRnd()` and the `splitAcrossWarehouses()` IIFE still sit in `js/data.js`,
+and the IIFE still runs at boot — over collections that are now empty, so it does nothing. The old
+rule ("one extra `rand()` call shifts every value drawn after it") described data that no longer
+exists. **Do not build on these**: a new screen that draws from `rnd()` is a screen inventing
+numbers, which is the thing the server-only mode was introduced to end. Deleting them is a separate,
+safe decision that nobody has taken yet.
 
 ## Permissions — the model to understand before touching any screen
 
@@ -931,12 +929,135 @@ child rows pushed from a parent's `afterUpsert` used to miss the lagging-column 
 - Bulk catalogue entry; an offline write queue. (The Yalla Wear portal now runs against real data —
   what remains is exposing the server to them: Tailscale or a tunnel, and `OG_ORIGINS` listing the
   address they use.)
-- **Old vs redenominated Syrian lira has never been settled.** The seed assumes old lira — 1 USD = 13,000,
-  salaries in millions. If the shop is on new lira, the entire dataset is wrong by three orders of magnitude.
+- **The lira question is settled by the data**: `fx_rates` holds 1 USD = 130 SYP (set 2026-08-24) and
+  every real sale was frozen at it — the shop is on the redenominated lira. The seed that assumed
+  13,000 is gone, so nothing in the repo asserts the old scale any more.
 - `flutter_app/` fails to build on an Android NDK/`sdkmanager` crash.
-- The demo catalogue rows are hidden, not deleted — all five had been sold, so removing them would
-  have broken the invoices referencing them. `products.demo` and `customers.demo` still exist for that
-  reason, but nothing sets them any more.
+- **The demo rows are gone** (`server/scripts/purge-demo.js`; the live database holds zero rows with
+  `demo = 1`). `products.demo` and `customers.demo` remain as columns, `GET /api/ext/products` still
+  filters on `demo = 0`, and nothing sets either any more.
+- **Customers, still open**: the printed loyalty card (held on the ruler test — the app believes a
+  sticker is 30 × 30 mm and `labels60.js` was built for 60 × 40), a lint for the cap family, merge
+  with no undo, a one-currency credit limit, a wants tab with no "arrived" filter. The full list
+  with reasons is `CUSTOMERS.md` → "Still open".
+
+## Customers
+
+`server/lib/customers.js` (`list`, `byId`, `historyFor`, `create`, `update`, `merge`, `archive`,
+`adjustPoints`), `server/lib/text.js` (`normPhone`, `foldName`), `server/lib/loyalty.js`,
+`server/lib/wants.js`, `server/lib/capped.js`; the screen, the profile and the drawer are
+`js/app-customers-scan.js`; migrations `028` to `034`. Built in stages over 31 Aug – 3 Sep 2026 —
+**`CUSTOMERS.md` is the record**: the owner's decisions, what each stage built, how it was proved,
+and what is still open. This section is how it works now.
+
+- **Money on a customer is a pair**, like everywhere else: `spent_syp` / `spent_usd`, plus
+  `spent_usd_equiv` — sort-only, each sale converted at its own frozen rate — and `debt_syp` /
+  `debt_usd` / `open_debts` from `Money.openDebts()`, never a second SQL copy. `total_spent` was
+  `SUM(total)` across currencies (cents added to lira) and is gone; nothing may bring back a single
+  spend figure.
+- **A shared phone number is not a duplicate.** `create` and `update` save the row and answer
+  **200 with a `warning`** (`phone_taken`, naming the holder and whether they are archived) — never
+  a 409 after a write, because a 409 on a row already committed turns every retry into a second
+  row. The browser toasts it with an Open button. `phoneHolder(phone, exceptId)` is the one lookup;
+  a live holder wins over an archived one.
+- **Identity is `foldName` + `normPhone`** — Arabic diacritics, tatweel and the alef/ta-marbuta/ya
+  variants folded; `0933…` and `+963 933…` the same number — with **twins in `js/data.js`** that
+  carry a "keep in step" comment and a nineteen-row parity table in `CUSTOMERS.md`. `custSearch()`
+  is the one "which customer does this text mean" rule; the attach, merge and job-link pickers all
+  use it. It had been written three times before it was one.
+- **The grid caps at 60 cards** (`CUST_RENDER_CAP`), and `customerRowsShown()` is what **both** the
+  grid and `Bulk.visibleIds('customers')` read. They are a pair: the day they disagreed, one tick
+  box put 5,000 invisible customers a click from Archive. Every capped reader in the system returns
+  `{ rows, shown, total, capped }` from `server/lib/capped.js` with `capped = total > shown` (never
+  `shown === limit` — a table of exactly 200 rows is not truncated), and the screen says so through
+  `cappedNote` / `cappedCount`. A number derived from a truncated set is the mistake this codebase
+  has made most often; the sweep that closed seven of them is in `CUSTOMERS.md`.
+- **Quiet is per customer, computed on the server** beside `sizes`: `median_gap_days` is the
+  median gap between non-voided purchases (`null` under three — never `0`, which reads as "comes in
+  daily"), quiet after `median × customer.quiet_multiplier_tenths / 10` floored at
+  `customer.quiet_floor_days`, falling back to `customer.at_risk_days`. `DB.quietCustomers()` feeds
+  the card state, the bell and the export — one answer, never derived from `DB.sales`, which is
+  200 invoices and would give a different rhythm on a machine that had been open longer. Card
+  states are three different things: `.quiet` amber (a nudge), `.fresh` dashed and neutral
+  (never-bought is a sale that has not closed, not a warning), ordinary gets nothing.
+- **The profile is a second routing layer**, `#customers/<id>` — `parseHash` / `hashFor` /
+  `applyRouteParam` in `js/app-routing.js`; every slash-less hash behaves as before. An unknown id
+  and a forbidden one draw the same "no such customer" panel, so the page never confirms that
+  somebody exists. Back goes to the list. **The timeline is one request** —
+  `GET /api/customers/:id/history` carries sales, deliveries (`null` without `delivery.read`, not
+  `[]`), print jobs (`null` without `print.read`), wants, redemptions and debts — and every kind is
+  one mapper into `{ at, kind, title, sub, tone, act, id, lead }`; 40 rows drawn, the rest behind
+  "show older".
+- **A driver is scoped in the SQL, by role**, to the customers on the run he is carrying, through a
+  narrower SELECT that never computes spend or debt — not stripped afterwards. His history request
+  is 404, not 403. What he is not sent hydrates to **`null`, never `0`** (`amountOrNull`,
+  `nfOrDash`): zero is a customer who owes nothing, null is a question this account cannot ask.
+  The screen is off his navigation by a `navAllowed` rule, not a permission change — `customer.read`
+  is what lets his board show names and addresses at all.
+- **Two things are decided and must stay so.** `customers.note` is visible to anyone with
+  `customer.read`, every cashier included, and the edit form says so on its face. `sales.customer_name`
+  is **frozen** — a receipt is a record of that moment; renaming somebody rewrites no invoice, and
+  attaching a customer to an old walk-in sale leaves it printed "Walk-in". `invoiceHtml` and
+  `receiptHtml` read `sale.customerName`; they used to read the live record, which was the bug.
+- **Attaching a customer to a sale after the fact** (`Sales.attachCustomer`) is the only
+  `UPDATE sales` beyond the void flag: one transaction, the points earned **at the rate stored on
+  the sale**, `points_earned` written onto the row, stamps following with no code because they are
+  derived. A cashier may fix a sale in her own open shift; older is the manager's, through the
+  **`void`** permission — the first attempt gated on `sale.void`, a name that does not exist, and
+  failed silently, which is why `server/lib/permcheck.js` now checks every literal at boot and
+  **stops the server** on one that does not exist. Moving a sale between customers is refused.
+- **Loyalty** (`server/lib/loyalty.js`; `loyalty.mode` is `points` | `stamps` | `both` | `off`,
+  `points` today). **Stamps are derived, never stored**: `SUM(qty)` over non-voided sales minus
+  `SUM(stamps_used)` from `loyalty_redemptions` — "items since the last redemption" cannot express
+  carry-over and was wrong. A full card is a **state with a button**, not an automatic reward; the
+  person at the counter records what was handed over, and `required_then` is frozen onto the row like
+  `sales.fx_rate`. Redeeming carries an `opId`, recomputes inside the transaction, and is refused
+  `stamps_off` when the mode does not include stamps — the count stays readable, it is arithmetic.
+  The bell keys `stamps:<id>`, five named then `stamps:more:<total>` inside its own eight-row budget;
+  `DB.fullCardIds()` reads those keys rather than counting again. **Voiding a sale reverses its
+  points**, clamped at zero rather than refused (the goods are back on the shelf either way), under
+  `loyalty.void_reverses_points`. The 500-point block is `loyalty.redeem_block`. `loyalty.*` is in
+  `CONFIG_WRITABLE` only because the Settings fold saves — one debounced writer per config key —
+  and stayed shut for two stages while it wrote to memory.
+- **The wants list is captured without a habit**: a size looked up at the till while out of stock
+  everywhere, with a customer on the basket, is the record (`addVariant`'s genuinely-out branch,
+  fire-and-forget). The server drops a same-day repeat and a size that is on the shelf. Answered
+  wants are closed, never deleted. The tab is in the warehouse — green when the size has landed —
+  and `wants_back` in the bell opens it. Duplicates fold on merge (earliest ask, any answer).
+- **Debt and credit.** `debt.collect` is what a cashier holds to take a payment without
+  `money.read`; it is named **by name** in `FORBIDDEN`, because the partner ban is
+  `startsWith('money.')` and would sail past it. `Money.debtsForCustomer` gives each open debt what
+  it was worth *then* (frozen rate) and *now*, both only ever beside the real amount owed. The
+  payment path is `Money.payDebt` with its three guards (`opId` minted **before** the send, balance
+  recomputed inside the transaction, a part-paid sale refuses to be voided). `credit_limit` is
+  **USD cents**, compared by converting each open debt at its own frozen rate; `NULL` is no opinion,
+  `0` is no credit at all — they are kept out of `FIELDS` because `clean()` turns `''` into null,
+  right for an address and catastrophic for a flag. A credit sale to nobody is refused
+  (`credit_needs_customer`), `no_credit` refuses, the limit **warns and lets it through** —
+  `sale.warning` rides back on the sale, nine seconds of amber at the till, because a till that
+  refuses a regular on a Thursday teaches cashiers to stop attaching customers.
+- **Merge** (manager): the user picks the survivor; sales, print jobs and wants repoint, points
+  **add**, the stricter credit rule and the lower limit win, the loser is archived with
+  `merged_into`, one `logChange` per repointed row — and the ids are captured **before** the
+  UPDATE, because read afterwards they were the survivor's whole history. `already_merged` on a
+  second attempt. There is no undo.
+- **The loyalty card is `CU-` + the zero-padded id**, derived, nothing stored, resolved **first**
+  in `resolveScan` so no looser parser can shadow it. At the till with a sale open it attaches and
+  **does not navigate** (`POS.refresh()`, not `render()`, which would lose a half-typed discount);
+  with an empty basket it opens the profile. `POS.saleOpen()` (a basket with a line) is the same
+  guard `#open/customer/<id>` uses. **Printing the card is held** on the ruler test — see
+  `CUSTOMERS.md`.
+- `print_jobs.customer_id` is set by the till and backfilled **only where a `sale_id` proves it**,
+  never by name or phone; a person links the rest from the job drawer. Yalla Wear receives no
+  customer field on any job — that route stripped `price` alone for a while, and it was live.
+- **Config keys**: `customer.at_risk_days`, `customer.quiet_multiplier_tenths` (tenths, because
+  "1,5" is a thing somebody types), `customer.quiet_floor_days`, `loyalty.mode`,
+  `loyalty.stamps.*`, `loyalty.redeem_block`, `loyalty.void_reverses_points`. `CONFIG_WRITABLE`
+  admits `customer.*` and `loyalty.*`.
+- **`logChange(tbl, rowId, op, userId, note, origin)`** since `034`: the fifth parameter is the
+  human note every caller was already passing (`points +250: goodwill`, `merged from customer 84`);
+  `origin` — a device id, for echo-skipping nothing implements yet — moved to sixth so those notes
+  never become bogus origins the day something reads it.
 
 ## The dashboard
 
