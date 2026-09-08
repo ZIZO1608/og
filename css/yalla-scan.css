@@ -384,6 +384,19 @@ tr.is-tbc { background: var(--warning-soft); }
   overflow: hidden; animation: ntIn .16s ease;
 }
 @keyframes ntIn { from { opacity: 0; transform: translateY(-6px); } }
+
+/* On a phone it is not a popover hanging off a 36px button — there is not
+   room. The slot stops being the anchor (position: static) so the panel is
+   measured against the whole bar instead, and it spans the screen with a
+   thumb's margin either side. Before this it was anchored to the bubble's
+   right edge at 366px wide and ran 38px off the left of a 390px screen.
+   The list is capped against the viewport too, so a phone held sideways
+   does not put the newest message under the tab bar. */
+@media (max-width: 720px) {
+  .nt-slot { position: static; }
+  .nt-panel { inset-inline: 10px; width: auto; top: calc(100% + 8px); }
+  .nt-list { max-height: min(400px, 46vh); }
+}
 .nt-head { display: flex; align-items: center; gap: 9px; padding: 13px 15px; border-bottom: 1px solid var(--border); }
 .nt-head b { font-size: 12.5px; font-weight: 700; }
 .nt-pill {
@@ -401,6 +414,15 @@ tr.is-tbc { background: var(--warning-soft); }
 
 /* Padded, rounded rows separated by space — the same shape the shop's own
    notifications popup uses, instead of full-bleed rows divided by rules. */
+/* "Showing the newest 14 of 62 messages." — the line that admits the badge
+   counts more than the list shows. It was written with a class and never
+   given a rule, so it came out at body size, hard against both edges, and
+   read as a sentence that had fallen out of the panel. */
+.nt-more {
+  padding: 8px 15px; font-size: 11px; line-height: 1.45; color: var(--dim);
+  border-bottom: 1px solid var(--border);
+}
+
 .nt-list { max-height: 400px; overflow-y: auto; padding: 6px; }
 .nt-item {
   width: 100%; display: flex; gap: 10px; align-items: flex-start; text-align: start;

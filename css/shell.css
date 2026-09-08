@@ -209,10 +209,27 @@ body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-badge {
 
 /* ----------------------------------------------------------------- TOPBAR */
 
+/* The z-index is not decoration. It is what keeps the popovers that hang
+   BELOW this bar — messages, alerts, the account menu, the search results —
+   in front of the page.
+
+   Two things conspire against them. The .mo-view class leaves a FILLING
+   opacity animation on #view, and an element mid-animation on opacity is a
+   stacking context: one at level 0 that outlives the movement. The portal
+   bar then carries a backdrop-filter, which makes the bar a stacking context
+   of its own — so a child's z-index: 60 no longer competes with the page,
+   the whole bar does, at level 0, and #view comes after it in the DOM. The
+   messages panel opened at the right size holding the right rows and was
+   painted underneath the screen behind it: invisible, and reported as "the
+   notification is broken". OG's bar has no backdrop-filter, which is the
+   only reason its own popovers were not broken too. Naming a level here
+   settles it for every popover the bar will ever hold, on both sides, and
+   stays well under the drawer (190), the modals (200) and the tab bar. */
 .topbar {
   height: var(--topbar-h); flex: none;
   background: var(--app); border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 10px; padding: 0 20px; position: relative;
+  z-index: 20;
 }
 
 .search { flex: 1; max-width: 440px; position: relative; }

@@ -136,15 +136,37 @@ panel/launcher/OGSystem.cs  the .exe's source. panel/build-exe.ps1 compiles it; 
   reason the server has no dependencies and the frontend no build step. Electron needs npm and
   200 MB, Tauri needs Rust, a Node SEA needs postject. **Rebuild only when `OGSystem.cs`
   changes**: `powershell -ExecutionPolicy Bypass -File panel/build-exe.ps1`. Everything else in
-  `panel/` is read off disk at run time. The 36 KB `.exe` is committed because it is the thing a
+  `panel/` is read off disk at run time. The 66 KB `.exe` is committed because it is the thing a
   fresh clone double-clicks; `make-deploy.ps1` and CI use allow-lists, so neither it nor `panel/`
   ever reaches the published site. **`OGSystem.cs` and `build-exe.ps1` stay pure ASCII** —
   `csc` and PowerShell 5.1 both read a file without a BOM as ANSI, and an em-dash in a
   MessageBox string arrives as two wrong characters.
+- **The icon is drawn, not exported** — `panel/make-icon.js` writes `panel/og.ico` (the `.exe`,
+  the tray) and `panel/ui/icon.png` (the window's favicon) from one description in fractions of
+  the icon's own side: a lime `#C6FF00` ring on the shop's near-black tile, circles and a rounded
+  square with exact distance functions so a pixel's coverage is arithmetic and needs no image
+  library. It used to repackage `assets/icon-512.png`, which is the brush-drawn OG mark on a black
+  square **with black padding around it** — right on a phone at 192px, a dark smudge at the 16px
+  the taskbar actually asks for. **A taskbar icon is a different job from an app icon**; the
+  shop's own mark in `assets/` is untouched and is still what a phone home screen and every screen
+  in the app show.
+  - **Only the 256 is a PNG entry; 64 and below are BMP.** `System.Drawing.Icon` on the .NET
+    Framework — which is how `LoadIcon` in `OGSystem.cs` gets the tray icon — **cannot decode a
+    PNG entry at all**: it throws `Requested range extends past the end of the array`, and at 64
+    it quietly hands back a blank. The shell is perfectly happy with PNG, so nothing looks wrong
+    until something asks in code. Measured, not assumed: the first draft had PNG down to 64.
+    **A PNG entry at or below 48 puts a blank in the tray.** 128 is left out on purpose — 66 KB
+    of BMP for a size Windows scales from the 256 indistinguishably.
+  - The small sizes get a **heavier ring** (`SMALL_HALF`): below about 32px the stroke is under
+    two pixels and the anti-aliasing spends most of it, so the lime greys out.
 - **The window is Edge in `--app` mode** (Chrome second, the default browser as a plain tab
   third): no address bar, its own taskbar button, our icon. The panel is HTML because the shop
   is HTML — one design system, and Arabic that already works. A WinForms UI would have been the
   second design system, and the ugly one.
+  **Edge takes the PAGE's icon for that taskbar button**, and `panel/ui/index.html` carried no
+  `<link rel="icon">` at all, so the launcher's own window sat in the taskbar as the browser's
+  grey globe — looking like somebody's stray tab. The comment above claiming "our icon" had been
+  wrong since it was written.
 - **The panel binds `127.0.0.1` and every request carries a key minted at boot**, handed to the
   window in its URL. Localhost-only is not a defence by itself: any page in any browser on the
   machine can POST to a local port, and this one has a Stop button for the till. One instance
@@ -545,6 +567,19 @@ the arc around the mark is the count. At the end everything pulls into the mark 
   `js/` or `index.html`, **bump `CACHE` in `sw.js`** (`og-system-v15` → `v16`) — the panel's Hard refresh
   button does exactly this and tells the open tabs — *and* add any new JS file to its precache list. Skip this and nobody who has already opened the app ever receives the change —
   no query-string cache-buster will help.
+- **Anything that hangs below the topbar depends on `.topbar { z-index: 20 }`** (`css/shell.css`). Two
+  invisible stacking contexts fight over it. `.mo-view` leaves a *filling* opacity animation on `#view`,
+  and an element mid-animation on opacity is a stacking context — one at level 0 that outlives the
+  movement. The partner portal's bar carries `backdrop-filter`, which makes the bar a stacking context
+  too, so a child's `z-index: 60` stops competing with the page and the whole bar competes instead, at
+  level 0, against a `#view` that comes later in the DOM. The messages panel therefore opened at the
+  right size, holding the right rows, and was painted **behind the screen**: nothing appeared, and a tap
+  where a message should be went to whatever the page had at that spot. OG's bar has no backdrop-filter,
+  which is the only reason its alert bell, account menu and search results were not broken as well.
+  Naming a level on the bar settles it for all four. **Test a popover by hit-testing it**
+  (`document.elementFromPoint` over its own rectangle), not by checking it exists in the DOM — it existed
+  the whole time. And screenshot it *after* its 0.16s fade, or the shot shows a half-transparent panel and
+  sends you looking for a second bug.
 - **The server sends `X-Frame-Options: DENY`**, so a test harness cannot load the app in an iframe. Drive
   it top-level with a persistent Chrome profile instead (log in on one launch, inspect on the next; the
   session cookie is `HttpOnly` and cannot be forged).

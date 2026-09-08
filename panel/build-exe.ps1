@@ -46,9 +46,11 @@ if (-not $csc) {
 }
 Write-Host "  compiler : $csc" -ForegroundColor DarkGray
 
-# --- the icon, rebuilt from assets\icon-512.png ------------------------------
-# Kept generated rather than committed twice: the mark lives in assets\ and one
-# copy of it is enough to keep in step.
+# --- the icon, drawn by panel\make-icon.js -----------------------------------
+# The O, in the shop's lime. Generated rather than committed as artwork: it is
+# arithmetic, it has to exist at six sizes, and a picture somebody exports by
+# hand is a picture that drifts. It also writes panel\ui\icon.png, which is the
+# panel window's favicon and therefore its taskbar button.
 $ico = Join-Path $here 'og.ico'
 $node = (Get-Command node -ErrorAction SilentlyContinue)
 if ($node) {
