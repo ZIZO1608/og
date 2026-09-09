@@ -310,6 +310,25 @@ router.add('GET /api/config', (ctx) => {
     config[r.key] = r.value;
   }
 
+  /* THE LINKED-CHAT LISTS ARE NOT SETTINGS, they are a list of people's phone
+     numbers by another name — chat ids, titles, who added them, and now whose
+     account each belongs to. This route has no permission gate at all, so
+     until now every signed-in account read both sides' lists, Yalla Wear
+     included: another company holding the shop's staff group ids.
+
+     Stripped here rather than moved out of `config`, because config is
+     mirrored whole and that is the whole reason the links survive a restore
+     onto another laptop. GET /api/telegram/status is the way to read them, and
+     it scopes to the caller. */
+  if (!Auth.can(ctx.user, 'config.write')) {
+    delete config['telegram.og_chats'];
+    delete config['telegram.yalla_chats'];
+    delete config['telegram.og_chat_id'];
+    delete config['telegram.yalla_chat_id'];
+    delete config['telegram.og_chat_title'];
+    delete config['telegram.yalla_chat_title'];
+  }
+
   sendOk(ctx.res, {
     warehouses: d.prepare('SELECT * FROM warehouses ORDER BY sort').all(),
     currencies: Cat.currencies(),
@@ -1811,32 +1830,125 @@ router.add('POST /api/partner-invoices/:id/payments/:pid/confirm',
 const tgSide = (ctx) => (ctx.user.role === 'partner' ? 'yalla' : 'og');
 const tgGate = ['config.write', 'partner.jobs'];
 
-router.add('GET /api/telegram/status', requirePerm(tgGate, (ctx) => {
+/* LINKING YOUR OWN PHONE IS ACCOUNT SELF-SERVICE, like changing your own
+   password: no permission, any signed-in account, scoped to the caller. What
+   makes it safe is not this gate — it is that a linked chat answers a command
+   only as far as the account behind it may (see telegram-commands.js). Before
+   that, Connect would have been a way past requirePerm to the day's takings.
+
+   Managing OTHER people's chats stays on config.write throughout. */
+const tgManages = (ctx) => Auth.can(ctx.user, 'config.write');
+const tgMine = (ctx, chat) => Number(chat.person) === Number(ctx.user.id) ||
+                              Number(chat.userId) === Number(ctx.user.id);
+
+router.add('GET /api/telegram/status', (ctx) => {
   const s = Telegram.status();
   const mine = tgSide(ctx);
-  sendOk(ctx.res, { side: mine, ...s[mine], running: s.running,
+  const half = s[mine] || {};
+  /* ONLY YOUR OWN ROW unless you run the shop. A cashier looking at this card
+     has one question — is my phone connected — and no business reading the
+     titles of the owner's groups or who added them. */
+  const all = half.chats || [];
+  const chats = tgManages(ctx) ? all : all.filter((c) => tgMine(ctx, c));
+  sendOk(ctx.res, { side: mine, ...half, chats,
+                    linked: chats.length > 0,
+                    chatTitle: (chats[0] || {}).title || null,
+                    manages: tgManages(ctx),
+                    meId: ctx.user.id,
+                    running: s.running,
+                    /* The kinds a chat can be subscribed to, and how they group.
+                       Forwarded explicitly: this route answers with ONE side's
+                       object, and these live above it — leaving them out is what
+                       drew a picker with no boxes in it. */
+                    groups: s.groups, allKinds: s.allKinds, defaultRules: s.defaultRules,
+                    kindPerm: s.kindPerm, presets: s.presets,
                     /* The manager may also see whether the partner's line is up. */
-                    other: mine === 'og' ? { linked: s.yalla.linked, configured: s.yalla.configured } : undefined });
-}));
+                    other: mine === 'og' && tgManages(ctx)
+                      ? { linked: s.yalla.linked, configured: s.yalla.configured } : undefined });
+});
 
-router.add('POST /api/telegram/link', requirePerm(tgGate, (ctx) => {
+router.add('POST /api/telegram/link', (ctx) => {
   /* Who pressed Connect rides with the code, so the chat it links carries the
-     name of the person who added it. */
-  try { sendOk(ctx.res, Telegram.linkCode(tgSide(ctx), ctx.user.name || ctx.user.username || null)); }
-  catch (e) { partnerFail(ctx.res, e); }
-}));
+     name of the person who added it — and, for a private chat, belongs to
+     them. The code is minted per account, so two people linking at once do
+     not end up sharing one. */
+  try {
+    sendOk(ctx.res, Telegram.linkCode(tgSide(ctx),
+      ctx.user.name || ctx.user.username || null, ctx.user.id));
+  } catch (e) { partnerFail(ctx.res, e); }
+});
 
-/* `chatId` in the body disconnects that one chat; without it, all of them. */
-router.add('POST /api/telegram/unlink', requirePerm(tgGate, async (ctx) => {
+/* WHAT ONE CHAT IS SENT. Every message used to go to every linked chat, which
+   was right when a side had one phone on it. Now each carries its own list of
+   kinds: the warehouse phone hears about stock, the owner's hears the day's
+   takings, and nobody has to read past four notifications to find theirs.
+
+   `rules: null` means everything — what every chat linked before this was,
+   so nothing already working changed. An empty array means nothing, which is
+   a real and different answer.
+
+   WHO MAY WRITE IT is narrower than who may link a phone. A cashier connecting
+   her own phone must not be able to tick the day's takings onto it — that
+   would be the escalation the split gate exists to avoid — so choosing what a
+   chat receives stays with whoever runs the shop, and everybody else's phone
+   follows their role's preset.
+
+   `rules: undefined` (the key absent) means "go back to the role's default";
+   null means everything; an array means exactly that. */
+router.add('PUT /api/telegram/chat', requirePerm(tgGate, async (ctx) => {
   const b = await readJson(ctx.req);
-  try { sendOk(ctx.res, Telegram.unlink(tgSide(ctx), b && b.chatId)); }
+  if (!b || !b.chatId) return sendError(ctx.res, 400, 'invalid', 'Which chat?');
+  const rules = b.preset === 'role'
+    ? undefined
+    : (b.rules === null || b.rules === undefined
+        ? null
+        : (Array.isArray(b.rules) ? b.rules.map(String) : []));
+  try { sendOk(ctx.res, Telegram.setChatRules(tgSide(ctx), b.chatId, rules)); }
   catch (e) { partnerFail(ctx.res, e); }
 }));
 
-router.add('POST /api/telegram/test', requirePerm(tgGate, async (ctx) => {
-  try { sendOk(ctx.res, await Telegram.sendTest(tgSide(ctx))); }
+/* `chatId` in the body disconnects that one chat; without it, all of them —
+   and THAT form is the manager's alone, because "stop sending anywhere" is
+   not something one person should be able to do to everybody else's phone. */
+router.add('POST /api/telegram/unlink', async (ctx) => {
+  const b = await readJson(ctx.req);
+  const side = tgSide(ctx);
+  if (!b || !b.chatId) {
+    if (!Auth.can(ctx.user, 'config.write')) {
+      return sendError(ctx.res, 403, 'forbidden', 'Only a manager can disconnect every chat.');
+    }
+    try { return sendOk(ctx.res, Telegram.unlink(side)); }
+    catch (e) { return partnerFail(ctx.res, e); }
+  }
+  const chat = (Telegram.status()[side].chats || [])
+    .find((c) => String(c.id) === String(b.chatId));
+  /* Somebody else's chat answers "not linked", not "forbidden" — the same rule
+     the deliveries follow: a person must not learn that a chat exists by being
+     told they may not touch it. */
+  if (!chat || (!tgManages(ctx) && !tgMine(ctx, chat))) {
+    return sendError(ctx.res, 404, 'not_found', 'That chat is not linked.');
+  }
+  try { sendOk(ctx.res, Telegram.unlink(side, b.chatId)); }
   catch (e) { partnerFail(ctx.res, e); }
-}));
+});
+
+/* Test ONE chat. It used to message every chat on the side, which was right
+   while only a manager could press it and wrong the moment anybody can: a
+   cashier checking her own phone would buzz the owner and every staff group. */
+router.add('POST /api/telegram/test', async (ctx) => {
+  const b = await readJson(ctx.req).catch(() => null);
+  const side = tgSide(ctx);
+  const all = Telegram.status()[side].chats || [];
+  const mine = all.filter((c) => tgMine(ctx, c));
+  const wanted = b && b.chatId
+    ? all.find((c) => String(c.id) === String(b.chatId))
+    : (mine[0] || (tgManages(ctx) ? all[0] : null));
+  if (!wanted || (!tgManages(ctx) && !tgMine(ctx, wanted))) {
+    return sendError(ctx.res, 404, 'not_found', 'That chat is not linked.');
+  }
+  try { sendOk(ctx.res, await Telegram.sendTest(side, wanted.id)); }
+  catch (e) { partnerFail(ctx.res, e); }
+});
 
 /* ---- the reminders -------------------------------------------------------
    Status and the preview are the manager's. `preview` is the important one:
@@ -2464,11 +2576,37 @@ if (runDirectly) {
     }
     console.log(`    app files : ${STATIC}`);
     console.log(`    accounts  : ${n}`);
-    if (n === 0) {
-      console.log('');
-      console.log('    No accounts yet. Create the first manager with:');
-      console.log('      npm run createuser');
-    }
+    /* ONE LIST, TWO READERS.
+       -----------------------------------------------------------------
+       Everything from here down is a STANDING CONDITION — something true
+       about this shop right now that nothing else would ever mention. They
+       were eight separate blocks of console.log, which meant the only way to
+       learn any of them was to read a terminal, in English, while it scrolled.
+       The launcher now draws them as cards a shopkeeper can act on, and it
+       draws them in Arabic, so they have to arrive as DATA.
+
+       So each one is collected once, carrying both its code and the exact
+       lines it has always printed, and then read twice: the loop below prints
+       them in the same order and the same words as before, and the panel gets
+       {code, level, args} with the sentences left off — the launcher writes
+       its own, from its own dictionary, which is how the same notice can read
+       correctly in two languages.
+
+       Two copies of a fact drift; mirror-lag.js is the file in this repo that
+       exists because of it. Hence one list. Adding a notice means one entry
+       here and two strings in panel/ui/i18n.js — never a ninth console.log. */
+    const notices = [];
+    const note = (code, level, args, lines) => notices.push({ code, level, args, lines });
+
+    /* The banner already shouts on a secure server; kept exactly as it was so
+       the printed text does not move. */
+    const WARN = SECURE ? '*** WARNING ***  ' : '';
+
+    if (n === 0) note('no_accounts', 'warn', {}, [
+      '',
+      '    No accounts yet. Create the first manager with:',
+      '      npm run createuser'
+    ]);
 
     /* The test accounts are gone, but three of them had rung up real sales,
        so their rows survive — disabled, with their passwords replaced by
@@ -2482,12 +2620,12 @@ if (runDirectly) {
           AND username IN ('hussam','lubna','maher','talal','yalla')`
     ).all().map(r => r.username);
 
-    if (demo.length) {
-      console.log('');
-      console.log(`    ${SECURE ? '*** WARNING ***  ' : ''}A RETIRED TEST ACCOUNT IS ACTIVE AGAIN: ${demo.join(', ')}`);
-      console.log('    Its old password is in this repository' + "'" + 's history.');
-      console.log('    Give it a new one, or set active = 0 in Settings.');
-    }
+    if (demo.length) note('retired_account', 'warn', { users: demo }, [
+      '',
+      `    ${WARN}A RETIRED TEST ACCOUNT IS ACTIVE AGAIN: ${demo.join(', ')}`,
+      '    Its old password is in this repository' + "'" + 's history.',
+      '    Give it a new one, or set active = 0 in Settings.'
+    ]);
 
     /* Same reasoning, and the more expensive one to miss: a seeded price is a
        price a cashier can charge a real customer. Counted rather than assumed,
@@ -2497,19 +2635,19 @@ if (runDirectly) {
               (SELECT COUNT(*) FROM customers WHERE demo = 1 AND archived = 0) AS c`
     ).get();
 
-    if (seeded.p || seeded.c) {
-      console.log('');
-      console.log(`    ${SECURE ? '*** WARNING ***  ' : ''}DEMO CATALOGUE IS LOADED: ` +
-                  `${seeded.p} product(s), ${seeded.c} customer(s).`);
-      console.log('    Invented goods at invented prices — the till will sell them.');
-      console.log('    Hide or delete them in Products before the shop opens.');
-    }
+    if (seeded.p || seeded.c) note('demo_catalogue', 'warn', { products: seeded.p, customers: seeded.c }, [
+      '',
+      `    ${WARN}DEMO CATALOGUE IS LOADED: ` +
+        `${seeded.p} product(s), ${seeded.c} customer(s).`,
+      '    Invented goods at invented prices — the till will sell them.',
+      '    Hide or delete them in Products before the shop opens.'
+    ]);
 
-    if (!SECURE) {
-      console.log('');
-      console.log('    OG_SECURE is not set — cookies are being sent without');
-      console.log('    the Secure flag. Fine locally, wrong behind HTTPS.');
-    }
+    if (!SECURE) note('cookies_insecure', 'info', {}, [
+      '',
+      '    OG_SECURE is not set — cookies are being sent without',
+      '    the Secure flag. Fine locally, wrong behind HTTPS.'
+    ]);
 
     /* The CSRF check passes everything when the list is empty — see
        originAllowed() in lib/http.js. That is deliberate for a shop network
@@ -2522,32 +2660,36 @@ if (runDirectly) {
     if (SECURE_SERVER) {
       const missing = TLS.uncovered(lanAddresses().filter((x) => !x.note).map((x) => x.address));
       const left = TLS.daysLeft();
-      if (missing.length) {
-        console.log('');
-        console.log(`    THIS MACHINE'S ADDRESS HAS CHANGED: ${missing.join(', ')}`);
-        console.log('    The certificate does not name it, so other devices cannot');
-        console.log('    open it. Run:  npm run cert   and restart.');
-      }
-      if (left !== null && left < 30) {
-        console.log('');
-        console.log(`    The certificate expires in ${left} days — npm run cert`);
-      }
-    } else if (!HTTPS_OFF) {
-      console.log('');
-      console.log('    No certificate, so this is plain HTTP. Other devices then');
-      console.log('    get no notifications, no camera scanner and cannot install');
-      console.log('    the app — browsers only allow those over HTTPS. Run:');
-      console.log('      npm run cert');
-    }
+      if (missing.length) note('cert_address', 'warn', { addresses: missing }, [
+        '',
+        `    THIS MACHINE'S ADDRESS HAS CHANGED: ${missing.join(', ')}`,
+        '    The certificate does not name it, so other devices cannot',
+        '    open it. Run:  npm run cert   and restart.'
+      ]);
+      if (left !== null && left < 30) note('cert_expiring', 'warn', { days: left }, [
+        '',
+        `    The certificate expires in ${left} days — npm run cert`
+      ]);
+    } else if (!HTTPS_OFF) note('no_cert', 'info', {}, [
+      '',
+      '    No certificate, so this is plain HTTP. Other devices then',
+      '    get no notifications, no camera scanner and cannot install',
+      '    the app — browsers only allow those over HTTPS. Run:',
+      '      npm run cert'
+    ]);
 
-    if (!ORIGINS.length) {
-      console.log('');
-      console.log('    OG_ORIGINS is not set — any site your browser visits can');
-      console.log('    send writes here while you are logged in. Fine on a shop');
-      console.log('    network you control. Set it before reaching this from');
-      console.log('    outside the shop, e.g.');
-      console.log('      OG_ORIGINS=http://og-shop:8090');
-    }
+    if (!ORIGINS.length) note('no_origins', 'info', {}, [
+      '',
+      '    OG_ORIGINS is not set — any site your browser visits can',
+      '    send writes here while you are logged in. Fine on a shop',
+      '    network you control. Set it before reaching this from',
+      '    outside the shop, e.g.',
+      '      OG_ORIGINS=http://og-shop:8090'
+    ]);
+
+    /* Reader one: the terminal, in the order and the words it has always
+       used. Reader two is the ready line further down. */
+    for (const nt of notices) for (const line of nt.lines) console.log(line);
 
     /* Started here rather than at import, so the mirror can only ever begin
        once the till is actually listening. It pushes a couple of seconds
@@ -2586,7 +2728,12 @@ if (runDirectly) {
         } catch (e) { return null; }
       })(),
       db: DB_FILE,
-      pid: process.pid
+      pid: process.pid,
+      /* The sentences are left behind on purpose. The panel writes its own,
+         in the language the person reading it chose; shipping the English
+         here as well would be the same fact in two places, which is the
+         thing the list above exists to avoid. */
+      notices: notices.map((nt) => ({ code: nt.code, level: nt.level, args: nt.args }))
     });
 
     console.log('');
@@ -2642,6 +2789,25 @@ if (runDirectly) {
       SyncWorker.runNow('full')
         .then(() => console.log('  [panel] sync finished'))
         .catch((e) => console.log('  [panel] sync failed: ' + e.message));
+      return;
+    }
+
+    /* WHO HAS THE SHOP OPEN. The panel asks this before it closes the till,
+       because it supervises a PROCESS and has no idea whether anybody is
+       standing at one — and stopping the server under a cashier's hands is a
+       lost sale, not a restart.
+
+       Live.presence() is what the topbar pill already reads, so this adds no
+       query: the accounts holding /api/live open, deduplicated per person, so
+       one person with a phone and a laptop counts once. It answers "Lubna has
+       the shop open" and deliberately not "Lubna is mid-sale" — that is a
+       thing this server does not know, and the panel's wording says only what
+       is in this object. */
+    if (type === 'who') {
+      const p = Live.presence();
+      PanelLink.tell('who', {
+        who: { people: p.people.og, tabs: p.tabs.og, at: new Date().toISOString() }
+      });
       return;
     }
   });

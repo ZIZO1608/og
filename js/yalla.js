@@ -681,12 +681,179 @@ var YALLA = (function () {
              : c.type === 'channel' ? t('tg_kind_channel') : '';
     /* Everything known about this chat, in the order somebody months later
        would ask it: what it is, when it joined, who added it. */
-    var bits = [kind, when, c.by ? t('tg_added_by') + ' ' + esc(c.by) : ''].filter(Boolean);
+    /* WHOSE phone comes first, because it is the thing the list is now
+       organised by. A chat with no account behind it says so — re-linking is
+       what gives it one, and until then it answers commands on the strength of
+       having been connected back when only a manager could. */
+    var who = c.personName
+      ? esc(c.personName) + (c.personRole ? ' · ' + t('role_' + c.personRole) : '') +
+        (c.personActive === false ? ' · ' + t('tg_person_off') : '')
+      : (c.type === 'private' ? t('tg_no_owner') : t('tg_shared_room'));
+    var bits = [who, kind, when, c.by ? t('tg_added_by') + ' ' + esc(c.by) : ''].filter(Boolean);
+    var canEdit = !s || s.manages !== false;
     return '<div class="tg-row on"><span class="tg-dot"></span>' +
       '<div class="tg-txt"><b>' + esc(c.title || c.id) + '</b>' +
-        '<small>' + bits.join(' · ') + '</small></div>' +
+        '<small>' + bits.join(' · ') + '</small>' +
+        '<small class="tg-gets">' + tgRulesSummary(c, s) + '</small></div>' +
+      (canEdit
+        ? '<button class="btn btn-sm btn-ghost" data-yl="tg-rules" data-chat="' + esc(c.id) + '">' +
+          t('tg_choose') + '</button>'
+        : '') +
       '<button class="btn btn-sm btn-ghost tg-cut" data-yl="tg-unlink" data-chat="' + esc(c.id) + '" ' +
         'title="' + esc(t('tg_unlink')) + '">' + t('tg_unlink') + '</button></div>';
+  }
+
+  /* WHICH GROUPS THIS PHONE IS ON, in one line under its name. Without it the
+     list is four identical rows and the only way to learn that the warehouse
+     phone is getting the day's takings is to open each one. */
+  function tgRulesSummary(c, s) {
+    var groups = (s && s.groups) || {};
+    /* WHAT IT RESOLVES TO, not what is stored. A chat following its role has
+       `rules: null`, which stored means "everything" and resolved means "what
+       a warehouse hears" — reading the raw field would print the opposite of
+       the truth. The server sends `effective` for exactly this reason. */
+    var eff = c.effective !== undefined ? c.effective : c.rules;
+    var lead = c.preset === 'role' ? t('tg_by_role') + ' · ' : '';
+    if (!eff) return lead + t('tg_gets_all');
+    if (!eff.length) return lead + t('tg_gets_none');
+    var names = [];
+    Object.keys(groups).forEach(function (g) {
+      var kinds = groups[g] || [];
+      var on = kinds.filter(function (k) { return eff.indexOf(k) > -1; }).length;
+      if (!on) return;
+      names.push(t('tg_g_' + g) + (on < kinds.length ? ' (' + on + '/' + kinds.length + ')' : ''));
+    });
+    return lead + (names.length ? names.join(' · ') : t('tg_gets_none'));
+  }
+
+  /* The picker. A sheet on a phone and a modal on a desk, like everything
+     else here — and it writes on Save rather than on every tick, because a
+     round trip per checkbox on a shop wifi is how a list of seventeen ends up
+     half saved. */
+  function openChatRules(id) {
+    var s = TG.status || {};
+    var c = (s.chats || []).filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!c) return;
+    var groups = s.groups || {};
+    /* The boxes open on what this chat ACTUALLY receives, whether that comes
+       from its own list or from its role — so the first thing somebody does
+       after switching off the preset is not un-tick a screen full of boxes
+       that were never true. */
+    var eff = c.effective !== undefined ? c.effective : c.rules;
+    var picked = eff ? eff.slice() : (s.allKinds || []).slice();
+    var perms = s.kindPerm || {};
+
+    var h = '<div class="tg-rules-body">';
+    h += '<p class="muted small">' + t('tg_choose_note').replace('{name}', esc(c.title || c.id)) + '</p>';
+
+    /* FOLLOWING A ROLE, OR CHOSEN BY HAND — said at the top, because it
+       decides what every box below means. Ticking anything ends the preset
+       (the server clears it on any explicit write), so the switch is the way
+       back rather than a second thing to keep in step. */
+    if (c.person != null) {
+      h += '<div class="tg-preset' + (c.preset === 'role' ? ' on' : '') + '">' +
+        '<div class="rule-row"><div class="rr-txt"><b>' + t('tg_preset') + '</b>' +
+          /* SPLIT/JOIN, not replace: `{role}` appears twice and
+             String.replace with a string pattern only ever changes the
+             first — which printed a literal "{role}" on screen. */
+          '<small>' + t('tg_preset_sub')
+            .split('{role}').join(c.personRole ? t('role_' + c.personRole) : '?')
+            .split('{name}').join(esc(c.personName || '')) + '</small></div>' +
+          '<label class="switch"><input type="checkbox" data-tgp="1"' +
+            (c.preset === 'role' ? ' checked' : '') + '><i></i></label></div></div>';
+    }
+    Object.keys(groups).forEach(function (g) {
+      var kinds = groups[g] || [];
+      if (!kinds.length) return;
+      var on = kinds.filter(function (k) { return picked.indexOf(k) > -1; }).length;
+      h += '<div class="tg-grp" data-g="' + g + '">' +
+        '<div class="rule-row"><div class="rr-txt"><b>' + t('tg_g_' + g) + '</b>' +
+          '<small>' + t('tg_g_' + g + '_sub') + '</small></div>' +
+          '<label class="switch"><input type="checkbox" data-tgg="' + g + '"' +
+            (on ? ' checked' : '') + (on && on < kinds.length ? ' data-part="1"' : '') +
+            '><i></i></label></div>';
+      h += '<div class="tg-kinds">';
+      kinds.forEach(function (k) {
+        /* A reminder kind IS its own i18n key — `rem_day_close` is already
+           named for the Settings fold, so naming it twice would be two
+           strings to keep in step and one of them would drift. Only the
+           live-event kinds need a label of their own. */
+        var label = k.indexOf('rem_') === 0 ? t(k) : t('tgk_' + k);
+        /* THE PERMISSION THIS KIND IMPLIES, said beside the box when the
+           account behind the chat could not see the same thing on a screen.
+           It WARNS and still allows — the linked chats are the owner's — but
+           it can no longer happen by accident, and it can be seen afterwards
+           by whoever is wondering why the warehouse knows the takings. */
+        var need = perms[k];
+        var mismatch = need && c.personName &&
+          !(c.personPerms && c.personPerms.indexOf(need) > -1);
+        h += '<label class="tg-kind' + (mismatch ? ' tg-warn' : '') + '">' +
+          '<input type="checkbox" data-tgk="' + k + '"' +
+          (picked.indexOf(k) > -1 ? ' checked' : '') + '><span>' + label +
+          (mismatch ? '<em>' + t('tg_cant_see').replace('{name}', esc(c.personName)) + '</em>' : '') +
+          '</span></label>';
+      });
+      h += '</div></div>';
+    });
+    h += '</div>';
+
+    openModal({
+      title: t('tg_choose') + ' — ' + esc(c.title || c.id),
+      size: 'narrow',
+      sheet: window.innerWidth <= 720,
+      body: h,
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+            '<button class="btn btn-primary" data-yl="tg-rules-save" data-chat="' + esc(c.id) + '">' +
+            t('save') + '</button>',
+      onOpen: function (root) { wireChatRules(root); }
+    });
+  }
+
+  /* A group tick is a shortcut for its own kinds, nothing more — the stored
+     unit stays the KIND, so "stock but not the purchase orders" survives a
+     round trip. The header box shows indeterminate when only some are on,
+     which is the only way a collapsed group can tell the truth. */
+  function wireChatRules(root) {
+    var host = root.querySelector('.tg-rules-body');
+    if (!host) return;
+    function retick(grp) {
+      var kids = grp.querySelectorAll('[data-tgk]').length;
+      var lit = grp.querySelectorAll('[data-tgk]:checked').length;
+      var head = grp.querySelector('[data-tgg]');
+      head.checked = lit > 0;
+      head.indeterminate = lit > 0 && lit < kids;
+    }
+    /* Following the role means the boxes below are not this chat's to set, so
+       they are shown disabled rather than hidden — somebody deciding whether
+       to take manual control needs to see what the role is giving them. */
+    function paintPreset() {
+      var p = host.querySelector('[data-tgp]');
+      var on = !!(p && p.checked);
+      var wrap = host.querySelector('.tg-preset');
+      if (wrap) wrap.classList.toggle('on', on);
+      Array.prototype.forEach.call(host.querySelectorAll('[data-tgk],[data-tgg]'), function (b) {
+        b.disabled = on;
+      });
+      host.classList.toggle('by-role', on);
+    }
+    if (host.querySelector('[data-tgp]')) paintPreset();
+
+    host.addEventListener('change', function (e) {
+      var el = e.target;
+      if (!el.getAttribute) return;
+      if (el.getAttribute('data-tgp')) { paintPreset(); return; }
+      var g = el.getAttribute('data-tgg');
+      if (g) {
+        var box = host.querySelector('.tg-grp[data-g="' + g + '"]');
+        Array.prototype.forEach.call(box.querySelectorAll('[data-tgk]'), function (b) {
+          b.checked = el.checked;
+        });
+        el.indeterminate = false;
+        return;
+      }
+      if (el.getAttribute('data-tgk')) retick(el.closest('.tg-grp'));
+    });
+    Array.prototype.forEach.call(host.querySelectorAll('.tg-grp'), retick);
   }
 
   function tgCardHtml(s) {
@@ -719,7 +886,14 @@ var YALLA = (function () {
         '<div class="tg-code" dir="ltr">' + TG.code.code + '</div>' +
         (link ? '<a class="btn btn-primary btn-block" href="' + link + '" target="_blank" rel="noopener">' +
                   t('tg_open_bot') + '</a>' : '') +
-        '<small class="muted">' + t('tg_waiting') + '</small></div>';
+        '<small class="muted">' + t('tg_waiting') + '</small>' +
+        /* The group case is a different gesture, not a footnote: the code
+           must be sent as "/start CODE" or a bot with privacy mode on never
+           receives it. The exact text to send is written out, because that
+           is the whole of the instruction. */
+        '<small class="muted tg-grouphint" dir="auto">' +
+          esc(t('tg_group_hint')).replace('{code}', '<span dir="ltr">' + TG.code.code + '</span>') +
+        '</small></div>';
     } else {
       /* Lime is the primary action of the screen, and once a phone is linked
          the card's job is done — adding a second is ordinary work. Linking
@@ -1746,6 +1920,48 @@ var YALLA = (function () {
       Shop.telegramTest().then(function () { toast(t('tg_title'), t('tg_test_sent'), 'ok', 3500); })
         .catch(function (e) { toast(t('tg_title'), API.friendly ? API.friendly(e) : String(e), 'err', 6000); });
     },
+    'tg-rules': function (el) {
+      openChatRules(el.getAttribute('data-chat'));
+    },
+
+    /* Read the boxes on Save, not on every tick: a round trip per checkbox on
+       a shop wifi is how a list of seventeen ends up half written. */
+    'tg-rules-save': function (el) {
+      if (typeof Shop === 'undefined' || !Shop.live()) return;
+      var id = el.getAttribute('data-chat');
+      var host = document.querySelector('.tg-rules-body');
+      if (!host) return;
+      /* Still following the role: send that and nothing else, so the server
+         puts the chat back on its preset rather than freezing today's
+         resolution into an explicit list that would stop tracking it. */
+      var pres = host.querySelector('[data-tgp]');
+      if (pres && pres.checked) {
+        Shop.telegramChatPreset(id).then(function () {
+          closeModal();
+          toast(t('tg_title'), t('tg_choose_saved'), 'ok', 2500);
+          telegramLoad();
+        }).catch(function (e) {
+          toast(t('tg_title'), API.friendly ? API.friendly(e) : String(e), 'err', 6000);
+        });
+        return;
+      }
+      var picked = Array.prototype.map.call(
+        host.querySelectorAll('[data-tgk]:checked'),
+        function (b) { return b.getAttribute('data-tgk'); });
+      /* Everything ticked is stored as `null` — "everything", which keeps
+         meaning everything when a new kind is added later. An explicit list
+         of today's kinds would silently exclude tomorrow's. */
+      var all = ((TG.status || {}).allKinds || []);
+      var rules = (all.length && picked.length === all.length) ? null : picked;
+      Shop.telegramChatRules(id, rules).then(function () {
+        closeModal();
+        toast(t('tg_title'), t('tg_choose_saved'), 'ok', 2500);
+        telegramLoad();
+      }).catch(function (e) {
+        toast(t('tg_title'), API.friendly ? API.friendly(e) : String(e), 'err', 6000);
+      });
+    },
+
     'tg-unlink': function (el) {
       if (typeof Shop === 'undefined' || !Shop.live()) return;
       /* The chat this button sits on, never all of them: a card can hold four

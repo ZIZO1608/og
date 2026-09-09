@@ -856,6 +856,27 @@ tr.row-late td { background: color-mix(in srgb, var(--destructive-solid) 7%, tra
    Disconnect, so the word means the row it sits on rather than everything.
    Rows are separated by a hairline instead of a card each: four phones is a
    list, and four cards is a wall. */
+/* WHAT THIS PHONE IS ON, under its name. Tinted rather than muted like the
+   line above it: it is the one thing on the row somebody is scanning for when
+   they open the card, and in the same grey as "Private · 8 Sept" it reads as
+   more metadata and gets skipped. */
+.tg-txt small.tg-gets {
+  display: block; margin-top: 2px;
+  color: var(--brand); font-weight: 600;
+}
+/* The picker. Groups as switches, their kinds as ordinary boxes underneath —
+   indented so the shortcut and the things it is a shortcut FOR are legible
+   as one nesting rather than as ten unrelated rows. */
+.tg-rules-body .tg-grp + .tg-grp { margin-top: 14px; border-top: 1px solid var(--border); }
+.tg-rules-body .tg-grp > .rule-row { padding-inline: 0; border-bottom: 0; }
+.tg-kinds {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 2px 0 10px; margin-inline-start: 14px;
+  border-inline-start: 2px solid var(--border); padding-inline-start: 12px;
+}
+.tg-kind { display: flex; align-items: center; gap: 9px; font-size: 13px; cursor: pointer; }
+.tg-kind input { width: 15px; height: 15px; flex: none; accent-color: var(--brand); }
+
 .tg-list { display: flex; flex-direction: column; }
 .tg-list .tg-row { padding: 9px 0; border-bottom: 1px solid var(--border); }
 .tg-list .tg-row:last-child { border-bottom: 0; }
@@ -883,7 +904,28 @@ tr.row-late td { background: color-mix(in srgb, var(--destructive-solid) 7%, tra
   font-family: var(--font-head); font-weight: 800; font-size: 34px; letter-spacing: .28em;
   color: var(--brand); margin: 6px 0 10px; font-variant-numeric: tabular-nums;
 }
+/* The preset switch sits above the groups because it decides what they mean.
+   While it is on, the boxes below are shown but not editable — somebody
+   deciding whether to take manual control needs to see what the role gives
+   them, and hiding it would make the switch a leap in the dark. */
+.tg-preset { border-bottom: 1px solid var(--border); margin-bottom: 10px; padding-bottom: 4px; }
+.tg-rules-body.by-role .tg-grp { opacity: .55; }
+.tg-rules-body.by-role .tg-kind { cursor: default; }
+
+/* A kind whose account could not open the same thing on a screen. Amber, not
+   red: this warns and still allows — the linked chats are the owner's. */
+.tg-kind.tg-warn > span { color: var(--warning, #E8B339); }
+.tg-kind.tg-warn em {
+  display: block; font-style: normal; font-size: 11px; opacity: .8; margin-top: 1px;
+}
+
 .tg-code-box small { display: block; margin-top: 8px; }
+/* The group instruction sits under the waiting line as a quieter second
+   sentence — it applies to one of the two ways in, not to both. */
+.tg-code-box small.tg-grouphint {
+  margin-top: 6px; opacity: .72; line-height: 1.5;
+  border-top: 1px solid var(--border); padding-top: 8px;
+}
 
 /* the by-hand job form */
 .pj-form .field span { font-size: var(--fs-xs); }

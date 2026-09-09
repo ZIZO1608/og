@@ -60,7 +60,9 @@ const state = {
   mirror: null,    // sync-worker status, straight off the pipe
   job: null,       // { name, label, started } while a one-shot is running
   swCache: null,   // the service worker's cache name, as it stands on disk
-  stale: false     // server/ has been edited since the running shop started
+  stale: false,    // server/ has been edited since the running shop started
+  steps: [],       // opening the shop, one row per real thing that happens
+  who: null        // who has the shop open, asked for before Stop
 };
 
 let child = null;  // the shop
@@ -132,6 +134,83 @@ function snapshot() {
 
 function pushState() { push('state', snapshot()); }
 
+/* ------------------------------------------------------------- the steps */
+
+/* What opening the shop actually CONSISTS of, in the order this file does it.
+   The window draws these where the terminal used to be, so the person opening
+   up can watch the shop open and see which part went wrong, instead of a wall
+   of output with the answer somewhere in the middle of it.
+
+   Every one is a real signal — an exit code, a spawn, a message off the pipe.
+   Nothing here is a timer pretending to be progress; that is the rule
+   js/splash.js states for the shop's own boot and the only reason that screen
+   can be believed.
+
+   A step carries a CODE and its values, never a sentence. The words are
+   written in the window from its own dictionary, so the same step reads
+   correctly in Arabic — server/lib/alerts.js's rule, for alerts.js's reason. */
+const STEPS = ['port', 'checks', 'padlock', 'printers', 'server', 'cloud', 'open'];
+
+/* The three the .bat ran once a morning. morning() is guarded so they do not
+   run again on a Restart — and a tick for a check that did not run is exactly
+   the kind of lie this screen exists to stop telling. On a restart they are
+   drawn as SKIPPED, carrying the time they were really done. */
+const MORNING_STEPS = new Set(['checks', 'padlock', 'printers']);
+let checkedThisSession = false;
+let checkedAt = 0;
+
+function resetSteps() {
+  state.steps = STEPS.map((id) => {
+    const skipped = checkedThisSession && MORNING_STEPS.has(id);
+    return {
+      id,
+      state: skipped ? 'skip' : 'wait',
+      detail: skipped ? { code: 'checked_at', at: checkedAt } : null,
+      at: Date.now()
+    };
+  });
+  push('steps', state.steps);
+}
+
+/* One step moves. Kept in `state` as well as pushed, because a window can
+   arrive — or come back from a dropped connection — halfway through a boot,
+   and the hello frame has to redraw what has already happened rather than
+   start a second sequence underneath the first. */
+function step(id, st, detail) {
+  const row = state.steps.find((s) => s.id === id);
+  if (!row) return;
+  row.state = st;
+  row.detail = detail || null;
+  row.at = Date.now();
+  push('step', row);
+}
+
+/* The mirror answers whenever it feels like it — SyncWorker.start() reports
+   'starting' and the first real run lands seconds later — so the cloud step
+   is resolved by the frame rather than waited for. `configured: false` is a
+   finished answer, not a missing one: this shop has no Supabase, and saying
+   so is better than a row that spins for ever. */
+function stepFromMirror(m) {
+  if (!m) return;
+  if (!m.configured) return step('cloud', 'skip', { code: 'cloud_none' });
+  if (m.mode === 'off') return step('cloud', 'skip', { code: 'cloud_manual' });
+  if (m.mode === 'starting') return step('cloud', 'run');
+  if (m.mode === 'refused') {
+    return step('cloud', 'warn', {
+      code: 'cloud_refused',
+      by: m.refusedBy || null,
+      why: (m.pull && m.pull.message) || null
+    });
+  }
+  if (m.mode === 'offline') return step('cloud', 'warn', { code: 'cloud_offline', why: m.lastError || null });
+  step('cloud', 'ok', {
+    code: 'cloud_live',
+    behind: m.behind == null ? null : m.behind,
+    at: m.lastOkAt || null,
+    pulled: m.pull && m.pull.did ? (m.pull.tables ? m.pull.tables.length : true) : 0
+  });
+}
+
 /* -------------------------------------------------------------- the shop */
 
 /* ------------------------------------------------------------ the morning */
@@ -163,23 +242,41 @@ function runQuiet(argv, cwd = SERVER) {
 
    Once per panel session, not on every Restart: these take a few seconds and
    two of them can raise a Windows permission prompt, which is right at eight
-   in the morning and wrong on the ninth restart of an afternoon's editing. */
-let checkedThisSession = false;
+   in the morning and wrong on the ninth restart of an afternoon's editing.
 
+   Every one of the three reports its own exit code as a step, and NOT ONE OF
+   THEM MAY FAIL THE BOOT. That was the .bat's loudest rule and it is kept to
+   the letter here: a warn is drawn amber and the shop opens anyway. */
 async function morning() {
   if (checkedThisSession) return;
   checkedThisSession = true;
 
   say('  Readiness...', 'note');
-  await runQuiet(['scripts/preflight.js']);
+  step('checks', 'run');
+  /* preflight speaks in its own codes: 0 fine, 3 the shop is already open
+     (impossible here — the port was free a moment ago), 2 the port is held by
+     something that is not the shop. */
+  const pf = await runQuiet(['scripts/preflight.js']);
+  step('checks', pf === 0 || pf === 3 ? 'ok' : 'warn',
+    pf === 0 || pf === 3 ? null : { code: 'preflight_exit', exit: pf });
 
   /* The certificate, and whether Windows trusts it. --check is free and
      silent; only a 4 - made, not yet trusted - leads to the prompt, once. */
   if (existsSync(join(SERVER, 'data', 'certs', 'og-cert.pem'))) {
+    step('padlock', 'run');
     if (await runQuiet(['scripts/trust-cert.js', '--check']) === 4) {
       say('');
-      await runQuiet(['scripts/trust-cert.js']);
+      const trusted = await runQuiet(['scripts/trust-cert.js']);
+      step('padlock', trusted === 0 ? 'ok' : 'warn',
+        { code: trusted === 0 ? 'padlock_now' : 'padlock_untrusted' });
+    } else {
+      step('padlock', 'ok', { code: 'padlock_trusted' });
     }
+  } else {
+    /* Not a failure. It means every device other than this one gets no
+       notifications, no camera scanner and cannot install the app — worth
+       saying, never worth stopping for. */
+    step('padlock', 'warn', { code: 'padlock_none' });
   }
 
   /* The printers and the scanner. 4 means something is missing that can be
@@ -187,7 +284,9 @@ async function morning() {
      worked. 1 means a person is needed - it is said, and the shop opens
      anyway. */
   say('');
+  step('printers', 'run');
   let hw = await runQuiet(['scripts/hardware.js']);
+  const installed = hw === 4;
   if (hw === 4) {
     say('');
     say('  Setting up the printers. This may ask for permission.', 'note');
@@ -201,6 +300,11 @@ async function morning() {
     say('  The shop still opens and still takes money - it is the PRINTING that', 'err');
     say('  will not work until the above is sorted out.', 'err');
   }
+  step('printers', hw === 0 ? 'ok' : 'warn',
+    hw === 0 ? (installed ? { code: 'printers_installed' } : null)
+             : { code: hw === 1 ? 'printers_person' : 'printers_exit', exit: hw });
+
+  checkedAt = Date.now();
   say('');
 }
 
@@ -236,8 +340,11 @@ async function askTheShop() {
 async function startServer() {
   if (child || state.server === 'starting') return;
   state.server = 'starting';
+  resetSteps();
+  state.who = null;
   pushState();
 
+  step('port', 'run');
   if (await whatHoldsThePort()) {
     const health = await askTheShop();
     state.server = 'stopped';
@@ -245,16 +352,29 @@ async function startServer() {
     if (health) {
       /* Not a failure — a second press, or a shop started from a terminal.
          The addresses are filled in from its own health line so the URL
-         buttons work on a server this panel did not start. */
+         buttons work on a server this panel did not start.
+
+         `https` is THIS MACHINE's secure address and the window labels it so.
+         It used to be filled with health.lan[0], which is a wifi address: the
+         same url was then printed twice, once under "this computer" and once
+         under "on the wifi", and the first was wrong. The health line says
+         whether HTTPS is on; the port is ours to know. */
+      const httpsPort = Number(process.env.OG_HTTPS_PORT || 8443);
       state.ready = {
         http: 'http://localhost:' + SHOP_PORT,
-        https: health.https ? (health.lan[0] || null) : null,
+        https: health.https ? 'https://localhost:' + httpsPort : null,
         lan: health.lan || [],
         secure: !!health.https,
         shop: health.shop,
         accounts: null,
         foreign: true
       };
+      /* Adopted, not started. Every check this panel would have run belongs to
+         whoever DID start it, so they are skipped rather than claimed. */
+      step('port', 'ok', { code: 'port_adopted' });
+      for (const id of ['checks', 'padlock', 'printers', 'cloud']) step(id, 'skip', { code: 'foreign' });
+      step('server', 'skip', { code: 'foreign' });
+      step('open', 'ok', { code: 'open_foreign', shop: health.shop || null });
       pushState();
       say('');
       say('  The shop is already open - started somewhere else, not from here.', 'note');
@@ -263,6 +383,7 @@ async function startServer() {
       return;
     }
 
+    step('port', 'fail', { code: 'port_held', port: SHOP_PORT });
     pushState();
     say('');
     say('  Port ' + SHOP_PORT + ' is held by something that is not the shop, so the', 'err');
@@ -271,12 +392,14 @@ async function startServer() {
     say('    taskkill /PID <the number at the end> /F', 'err');
     return;
   }
+  step('port', 'ok', { code: 'port_free', port: SHOP_PORT });
 
   await morning();
   if (child) return;   /* somebody pressed Start twice during the checks */
 
   state.server = 'starting';
   state.ready = null;
+  step('server', 'run');
   pushState();
   say('');
   say('  Starting the shop...', 'note');
@@ -300,8 +423,20 @@ async function startServer() {
 
   child.on('message', (m) => {
     if (!m || !m.type) return;
-    if (m.type === 'ready') { state.ready = m; state.server = 'running'; return pushState(); }
-    if (m.type === 'mirror') { state.mirror = m.mirror; return pushState(); }
+    if (m.type === 'ready') {
+      state.ready = m;
+      state.server = 'running';
+      step('server', 'ok', { code: 'server_up' });
+      step('open', 'ok', {
+        code: 'open_here',
+        shop: m.shop || null,
+        accounts: m.accounts == null ? null : m.accounts,
+        secure: !!m.secure
+      });
+      return pushState();
+    }
+    if (m.type === 'mirror') { state.mirror = m.mirror; stepFromMirror(m.mirror); return pushState(); }
+    if (m.type === 'who') { state.who = m.who || null; return pushState(); }
     if (m.type === 'stopping') { state.server = 'stopping'; return pushState(); }
     if (m.type === 'log') say(m.line);
   });
@@ -311,10 +446,12 @@ async function startServer() {
     child = null;
     state.server = 'stopped';
     state.ready = null;
+    step('server', 'fail', { code: 'server_spawn', why: e.message });
     pushState();
   });
 
   child.on('exit', (code, signal) => {
+    const wasStopping = state.server === 'stopping';
     child = null;
     state.server = 'stopped';
     state.ready = null;
@@ -322,6 +459,21 @@ async function startServer() {
        closed shop it goes on saying "Live, pushed 4m ago" for as long as the
        panel is open, which is a lie that gets truer-looking with age. */
     state.mirror = null;
+    state.who = null;
+    /* A shop that STOPS BY ITSELF is the one thing this screen must never
+       show as a tick. Somebody asked for it — Stop, Restart, a job that
+       closes the shop around itself — and it is finished; nobody asked, and
+       it fell over, which is a failure and is drawn as one. */
+    if (wasStopping) resetSteps();
+    else {
+      step('server', 'fail', { code: 'server_died', exit: code == null ? null : code, signal: signal || null });
+      /* And "Open for business" stops being true the moment it stops being
+         true. Left alone it went on carrying its tick UNDER the row that had
+         just gone red — the boot's own record contradicting itself, with the
+         reassuring half at the bottom where the eye finishes. */
+      step('open', 'wait');
+      step('cloud', 'wait');
+    }
     pushState();
     say('');
     const how = code ? '  (exit ' + code + ')' : signal ? '  (' + signal + ')' : '';
@@ -470,10 +622,22 @@ function tellTabs() {
 
 /* --------------------------------------------------------------- the jobs */
 
+/* A refusal has to reach somebody who is NOT reading the terminal. POST /act
+   answers {"ok":true} before the action runs — deliberately, it is fire and
+   forget — so until now the only trace of "that button did nothing, and here
+   is why" was a red line in the log. Demoting the log means saying these out
+   loud instead. */
+function refuse(name, code, extra) {
+  push('refused', { name, code, ...(extra || {}) });
+}
+
 function runJob(name, args = {}) {
-  if (job) { say('  Something is already running - wait for it to finish.', 'err'); return; }
+  if (job) {
+    say('  Something is already running - wait for it to finish.', 'err');
+    return refuse(name, 'job_busy', { running: state.job ? state.job.label : null });
+  }
   const spec = JOBS[name];
-  if (!spec) { say('  No such job: ' + name, 'err'); return; }
+  if (!spec) { say('  No such job: ' + name, 'err'); return refuse(name, 'job_unknown'); }
 
   /* The reason this check is here and not in the UI: a disabled button is a
      suggestion. Two writers on one set of mirror bookmarks is the exact
@@ -482,7 +646,7 @@ function runJob(name, args = {}) {
   if (spec.while === 'shut' && child && !spec.aroundShop) {
     say('');
     say('  "' + spec.label + '" needs the shop closed first. Press Stop, then try again.', 'err');
-    return;
+    return refuse(name, 'needs_shut', { label: spec.label });
   }
 
   const steps = spec.steps(args);
@@ -513,7 +677,7 @@ function runJob(name, args = {}) {
     if (spec.aroundShop && code === 2) {
       say('  The other laptop is still open. Quit OG System there, wait a minute, then try again.', 'err');
     }
-    push('done', { name, code });
+    push('done', { name, code, label: spec.label });
     if (reopen || (spec.aroundShop && code === 0)) {
       say('  Opening the shop again...', 'note');
       startServer();
@@ -524,6 +688,11 @@ function runJob(name, args = {}) {
     if (i >= steps.length) return done(0);
     const [bin, argv] = steps[i++];
     const exe = EXE[bin] || bin;
+    /* Which of how many. A publish is four git calls and Claim the mirror is
+       three scripts; without this the window can only say "running" for two
+       minutes, and the only place the truth existed was the terminal this
+       screen was built to stop making people read. */
+    push('job', { name, label: spec.label, step: i, of: steps.length, argv: bin + ' ' + argv.join(' ') });
     say('  > ' + bin + ' ' + argv.join(' '), 'note');
 
     const p = spawn(exe, argv, {
@@ -588,7 +757,18 @@ function catalogue() {
   for (const [k, v] of Object.entries(JOBS)) {
     out[k] = {
       label: v.label, blurb: v.blurb, danger: v.danger || null,
-      needs: v.needs || null, while: v.while
+      needs: v.needs || null, while: v.while,
+      /* `group` is what lets the window draw the list from the table rather
+         than from a hand-kept list of names beside it, which is what it did
+         and which quietly dropped any job added afterwards.
+
+         `aroundShop` was missing and the window was WRONG for it: restore and
+         takeShop are while:'shut', so they were greyed out while the shop was
+         open — but runJob closes it, runs them and opens it again. The mirror
+         card only worked because it drew its own un-greyed copy of the
+         button. Sent now, so the enablement rule can match the real one. */
+      group: v.group || 'shop',
+      aroundShop: !!v.aroundShop
     };
   }
   return out;
@@ -612,9 +792,21 @@ const server = createServer(async (req, res) => {
 
   /* The panel's own assets, plus the shop's mark and fonts, so the window is
      the same product rather than a lookalike. */
-  if (path.startsWith('/ui/') || path.startsWith('/assets/')) {
-    const base = path.startsWith('/ui/') ? UI : join(ROOT, 'assets');
-    const rel = path.replace(/^\/(ui|assets)\//, '');
+  /* /shop/ is the shop's own js/, and it exists for exactly one file:
+     js/codes.js, which already holds a complete ISO 18004 QR encoder. The
+     address card draws the wifi url as a code somebody points a phone at, and
+     writing a SECOND encoder next to a working one is how two things that
+     must agree stop agreeing. It is self-contained — no DB, no I18N, not even
+     document — so it loads here unchanged.
+
+     Served by the PANEL, not by the shop, so the card still draws with the
+     shop stopped. That is the same reason panel.css copies the design tokens
+     rather than importing them. */
+  if (path.startsWith('/ui/') || path.startsWith('/assets/') || path.startsWith('/shop/')) {
+    const base = path.startsWith('/ui/') ? UI
+      : path.startsWith('/assets/') ? join(ROOT, 'assets')
+        : join(ROOT, 'js');
+    const rel = path.replace(/^\/(ui|assets|shop)\//, '');
     const full = resolve(base, rel);
     if (!full.startsWith(base) || !existsSync(full) || !statSync(full).isFile()) {
       res.writeHead(404); return res.end();
@@ -677,15 +869,36 @@ function act(action, args) {
   if (action === 'refresh') return hardRefresh();
 
   if (action === 'sync') {
-    if (!child) return say('  The shop is not running, so there is nothing to sync from.', 'err');
+    if (!child) {
+      say('  The shop is not running, so there is nothing to sync from.', 'err');
+      return refuse('sync', 'sync_no_shop');
+    }
     if (state.mirror && state.mirror.mode === 'refused') {
       say('  This machine is not the shop, so it cannot push to the cloud copy.', 'err');
       say('  Take the shop here (pull the cloud copy down), or Claim the mirror if THIS', 'err');
       say('  machine holds the truth. Either way, close the shop on the other laptop first.', 'err');
-      return;
+      return refuse('sync', 'sync_refused');
     }
     try { child.send({ type: 'sync' }); } catch { /* gone */ }
     return say('  Asked the shop for a full sync.', 'note');
+  }
+
+  /* WHO IS USING THE SHOP. Asked before Stop, because closing the till under
+     somebody's hands is a lost sale, and the panel has no way of knowing on
+     its own — it holds a process, not a session.
+
+     Fire and forget like everything else here: the answer comes back up the
+     pipe as `who` and lands in state, so the dialog can open at once and fill
+     the names in when they arrive rather than blocking on a round trip.
+
+     It is worth being exact about what this proves. Live.presence() counts
+     the accounts holding /api/live open, deduplicated per person. That is
+     "Lubna has the shop open", which is true and useful. It is NOT "Lubna is
+     halfway through a sale", and the wording must not claim to be. */
+  if (action === 'who') {
+    if (!child) { state.who = null; return pushState(); }
+    try { child.send({ type: 'who' }); } catch { /* gone */ }
+    return;
   }
 
   if (action === 'open') return openBrowser(args.url);

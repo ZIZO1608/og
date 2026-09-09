@@ -1,54 +1,85 @@
 /* ==========================================================================
-   OG SYSTEM — control panel  ·  the window
+   OG SYSTEM — control panel  ·  the look
    --------------------------------------------------------------------------
-   The shop's own tokens, copied rather than imported: this window is served
-   by the panel process and must draw with the server stopped, which is
-   exactly when css/tokens.css is not being served by anything. A launcher
-   that goes blank the moment the thing it launches is down would be a poor
-   launcher.
+   The shop's own skin, because a launcher that looks like a different product
+   reads as a different product. Same Montserrat, same near-black, same rule
+   about lime: it is spent on the one thing you are meant to press and the one
+   number you are meant to read, and nowhere else.
 
-   Same quiet-and-expensive rules as css/og-skin.css: soft corners, weight
-   600/700 doing the talking, hairlines rather than boxes, and lime spent
-   only on the one primary action.
+   THE TOKENS ARE COPIED, NOT IMPORTED, and they have to stay that way. This
+   window's whole job is to be there when the shop is not — a stylesheet
+   fetched from a server that is stopped is a window with no design on it at
+   the exact moment somebody needs to read what went wrong. The values below
+   are css/tokens.css as re-pointed by css/og-skin.css, which is the shop as
+   it actually looks.
+
+   RIGHT-TO-LEFT IS REAL HERE, not a mirrored stylesheet: every edge that
+   depends on direction is a logical property (inset-inline, margin-inline,
+   border-inline-start), and all letter-spacing is zeroed again under .rtl at
+   the bottom, because tracked Arabic pulls the joined letters apart.
    ========================================================================== */
 
 :root {
   color-scheme: dark;
-  --app: #0A0A0B;
-  --card: #141417;
-  --popover: #1B1B1F;
-  --muted: #1E1E22;
-  --accent: #232327;
-  --foreground: #FAFAFA;
+
+  /* surfaces — og-skin's darker, tighter set */
+  --app:            #0A0A0B;
+  --card:           #101014;
+  --card-hover:     #141419;
+  --popover:        #16161A;
+  --muted:          #18181C;
+  --accent:         #1C1C21;
+  --raise:          #1A1A1F;
+  --raise-hover:    #232329;
+
+  /* text */
+  --foreground:       #FAFAFA;
   --muted-foreground: #A1A1AA;
-  --dim: #71717A;
-  --border: #27272A;
-  --border-strong: #3F3F46;
-  --brand: #C6FF00;
-  --brand-dim: #A8DA00;
+  --dim:              #71717A;
+
+  /* lines */
+  --border:        #1E1E22;
+  --border-strong: #2E2E34;
+
+  /* brand — lime, spent sparingly */
+  --brand:            #C6FF00;
+  --brand-hover:      #D2FF33;
+  --brand-dim:        #A8DA00;
   --brand-foreground: #0A0A0B;
-  --brand-soft: #1C2600;
-  --brand-border: #4A6600;
-  --destructive: #F87171;
-  --destructive-soft: #2B1416;
+  --brand-soft:       #1C2600;
+  --brand-border:     #4A6600;
+
+  --destructive:        #F87171;
+  --destructive-soft:   #2B1416;
   --destructive-border: #7F2226;
-  --warning: #FBBF24;
-  --success: #4ADE80;
-  --radius: 10px;
+  --warning:            #FBBF24;
+  --warning-soft:       #2A2110;
+  --warning-border:     #7C5410;
+  --success:            #4ADE80;
+
+  --radius:    9px;
   --radius-sm: 7px;
   --radius-lg: 14px;
-  --t: .16s cubic-bezier(.4, 0, .2, 1);
+
+  --d-1: 120ms;
+  --d-2: 180ms;
+  --d-3: 260ms;
+  --e-out: cubic-bezier(.16, 1, .3, 1);
+  --e-in:  cubic-bezier(.4, 0, 1, 1);
+  --e-std: cubic-bezier(.4, 0, .2, 1);
+  --t: var(--d-1) var(--e-std);
+
+  --bar-h: 58px;
 }
 
 * { box-sizing: border-box; }
 
 /* The browser's own [hidden] rule loses to any author rule that sets display,
-   and half the things on this page set one - the confirm overlay is
-   display:flex, the address block is a flex column. Without this line the
-   overlay, with its 74% black backdrop, sat over the whole window from the
-   first paint: every colour at a quarter of its brightness and every button
-   behind a sheet of glass. Found by measuring a screenshot, not by looking
-   at one. */
+   and half the things on this page set one - the overlay is display:flex, the
+   screens are display:grid. Without this line the overlay, with its black
+   backdrop, sat over the whole window from the first paint: every colour at a
+   quarter of its brightness and every button behind a sheet of glass. Found
+   by measuring a screenshot, not by looking at one. It has to stay. */
 [hidden] { display: none !important; }
 
 html, body { height: 100%; }
@@ -57,225 +88,533 @@ body {
   margin: 0;
   background: var(--app);
   color: var(--foreground);
-  font: 400 13px/1.5 Montserrat, system-ui, -apple-system, "Segoe UI", sans-serif;
-  display: flex; flex-direction: column;
+  font: 500 13px/1.5 Montserrat, 'Segoe UI', system-ui, -apple-system, sans-serif;
+  letter-spacing: -.005em;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  /* The window has no address bar and no tabs, so nothing here should read
-     as a web page — text selection off everywhere except the terminal. */
+  /* A launcher is a set of buttons, not a document. Selection comes back on
+     the two things anybody ever wants to copy: an input and the log. */
   user-select: none;
 }
 
-button, input { font: inherit; color: inherit; }
-button { cursor: pointer; }
+button, input, select { font: inherit; color: inherit; letter-spacing: inherit; }
+button { cursor: pointer; border: 0; background: none; }
+h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -.025em; }
+p { margin: 0; }
 
-/* ------------------------------------------------------------------ header */
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: var(--radius-sm); }
+::selection { background: var(--brand); color: var(--brand-foreground); }
+
+/* ============================================================== the bar */
 
 .bar {
-  flex: none; height: 62px; display: flex; align-items: center; gap: 13px;
-  padding: 0 18px; background: #000; border-bottom: 1px solid var(--border);
+  flex: none;
+  height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-inline: 16px;
+  background: #000;
+  border-bottom: 1px solid var(--border);
 }
-.mark { width: 30px; height: 30px; flex: none; }
-.titles { flex: 1; min-width: 0; }
-.titles h1 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
-.titles p { margin: 1px 0 0; font-size: 11.5px; color: var(--dim); }
+.bar .mark { width: 26px; height: 26px; border-radius: 6px; flex: none; }
+.bar h1 { font-size: 13.5px; letter-spacing: -.01em; }
+.bar .spacer { margin-inline-start: auto; }
 
-/* The one thing somebody looks at from across the counter. */
+/* The lamp. The one place besides the primary button where lime is spent. */
 .lamp {
-  flex: none; display: flex; align-items: center; gap: 8px;
-  padding: 7px 14px 7px 12px; border-radius: 9999px;
-  background: var(--muted); border: 1px solid var(--border);
-  font-size: 12px; font-weight: 600; color: var(--muted-foreground);
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px; border-radius: 9999px;
+  border: 1px solid var(--border);
+  font-size: 11.5px; font-weight: 600; color: var(--muted-foreground);
+  transition: color var(--t), background var(--t), border-color var(--t);
 }
-.lamp .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
-.lamp.on { color: var(--brand); border-color: var(--brand-border); background: var(--brand-soft); }
+.lamp .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); transition: background var(--t), box-shadow var(--t); }
+.lamp.on { color: var(--brand); background: var(--brand-soft); border-color: var(--brand-border); }
 .lamp.on .dot { background: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .18); }
-.lamp.busy { color: var(--warning); border-color: #7C5410; background: #2A2110; }
+.lamp.busy { color: var(--warning); background: var(--warning-soft); border-color: var(--warning-border); }
 .lamp.busy .dot { background: var(--warning); animation: beat 1s ease-in-out infinite; }
+.lamp.bad { color: var(--destructive); background: var(--destructive-soft); border-color: var(--destructive-border); }
+.lamp.bad .dot { background: var(--destructive); }
 @keyframes beat { 50% { opacity: .25; } }
 
-/* -------------------------------------------------------------------- body */
-
-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 306px 1fr; }
-
-.rail {
-  min-height: 0; overflow-y: auto; padding: 16px;
-  background: var(--app); border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 18px;
+/* Square ghost buttons at the end of the bar: the language and the gear. */
+.icon-btn {
+  width: 32px; height: 32px; flex: none;
+  display: grid; place-items: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  color: var(--muted-foreground);
+  transition: background var(--t), color var(--t), border-color var(--t);
 }
+.icon-btn:hover { background: var(--card-hover); color: var(--foreground); }
+.icon-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.lang-btn { width: auto; padding: 0 11px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; }
 
-.block { display: flex; flex-direction: column; gap: 8px; }
-.block h2 {
-  margin: 0 0 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--dim);
+/* =========================================================== the screens */
+
+main { flex: 1; min-height: 0; position: relative; }
+
+.screen {
+  position: absolute; inset: 0;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
 }
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.hint { margin: 2px 0 0; font-size: 11px; color: var(--dim); }
+/* CENTRED WHEN THERE IS ROOM, SCROLLED FROM THE TOP WHEN THERE IS NOT.
+   `justify-content: center` on a scrolling flex column clips the overflow at
+   BOTH ends and puts it out of reach — the mark loses its top and the last
+   notice its bottom, with no way to scroll to either. Auto margins centre the
+   same way while there is spare space and simply collapse when there is not,
+   which is the behaviour anybody actually wants. Three notices on a 760px
+   window is not a rare case; it is what this shop looks like today. */
+.screen.center { align-items: center; justify-content: flex-start; padding: 20px 24px 28px; }
+.screen.center > .hero { margin-block: auto; }
 
-/* ----------------------------------------------------------------- buttons */
-
-.btn {
-  padding: 9px 12px; border-radius: var(--radius-sm);
-  background: var(--muted); border: 1px solid var(--border);
-  font-size: 12.5px; font-weight: 600; text-align: center;
-  transition: background var(--t), border-color var(--t), color var(--t), opacity var(--t);
+/* The head that Tools and Log share. */
+.head {
+  flex: none;
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 22px 12px;
 }
-.btn:hover:not(:disabled) { background: var(--accent); border-color: var(--border-strong); }
-.btn:disabled { opacity: .38; cursor: not-allowed; }
-.btn.wide { width: 100%; }
-
-/* Lime is spent here and on the hero lamp, nowhere else. */
-.btn.go { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); font-weight: 700; }
-.btn.go:hover:not(:disabled) { background: var(--brand-dim); border-color: var(--brand-dim); }
-
-.btn.stop { color: var(--destructive); }
-.btn.stop:hover:not(:disabled) { background: var(--destructive-soft); border-color: var(--destructive-border); }
-
-.btn.hot { color: var(--brand); border-color: var(--brand-border); }
-.btn.hot:hover:not(:disabled) { background: var(--brand-soft); }
-
-.in {
-  width: 100%; padding: 9px 11px; border-radius: var(--radius-sm);
-  background: var(--card); border: 1px solid var(--border); outline: none;
-  font-size: 12.5px; user-select: text;
-}
-.in:focus { border-color: var(--brand-border); box-shadow: 0 0 0 3px rgb(198 255 0 / .1); }
-.in::placeholder { color: var(--dim); }
-
-/* ------------------------------------------------------------------- links */
-
-/* The addresses. The whole point of this block is that they are clickable —
-   nobody should be typing 10.10.99.9:8443 off a console window. */
-.url {
-  display: flex; align-items: center; gap: 9px; width: 100%;
-  padding: 9px 11px; border-radius: var(--radius-sm);
-  background: var(--card); border: 1px solid var(--border);
-  font-size: 12px; text-align: left; color: var(--foreground);
-  transition: background var(--t), border-color var(--t);
-}
-.url + .url { margin-top: 6px; }
-.url:hover { background: var(--accent); border-color: var(--brand-border); }
-.url .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.url .go { flex: none; font-size: 15px; color: var(--brand); line-height: 1; }
-.url .tag {
-  flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--dim);
-}
-
-/* ------------------------------------------------------------------ mirror */
-
-.mirror {
-  padding: 11px 12px; border-radius: var(--radius-sm);
-  background: var(--card); border: 1px solid var(--border);
-}
-.mirror .top { display: flex; align-items: center; gap: 8px; }
-.mirror .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
-.mirror .pip.ok { background: var(--success); }
-.mirror .pip.warn { background: var(--warning); }
-.mirror .pip.bad { background: var(--destructive); }
-.mirror .mode { font-size: 12px; font-weight: 700; }
-.mirror .num { margin-inline-start: auto; font-size: 11px; color: var(--muted-foreground); }
-.mirror .why { margin: 6px 0 0; font-size: 11px; color: var(--muted-foreground); line-height: 1.45; }
-.mirror .why.bad { color: var(--destructive); }
-
-/* ------------------------------------------------------------------- tools */
-
-.tools { display: flex; flex-direction: column; gap: 6px; }
-.tool {
-  display: block; width: 100%; text-align: left;
-  padding: 8px 11px; border-radius: var(--radius-sm);
-  background: transparent; border: 1px solid var(--border);
-  transition: background var(--t), border-color var(--t);
-}
-.tool:hover:not(:disabled) { background: var(--card); border-color: var(--border-strong); }
-.tool:disabled { opacity: .38; cursor: not-allowed; }
-.tool b { display: block; font-size: 12px; font-weight: 600; }
-.tool small { display: block; margin-top: 2px; font-size: 10.5px; color: var(--dim); line-height: 1.4; }
-/* A job that can lose a day's work is marked before it is pressed, not after. */
-.tool.danger b { color: var(--destructive); }
-.tool.danger { border-color: var(--destructive-border); }
-.tool.shut b::after {
-  content: 'shop must be closed'; float: right; font-size: 9px; font-weight: 700;
-  letter-spacing: .05em; text-transform: uppercase; color: var(--dim); margin-top: 2px;
-}
-
-/* ---------------------------------------------------------------- terminal */
-
-.term { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #060607; }
-.termbar {
-  flex: none; display: flex; align-items: center; gap: 12px;
-  padding: 0 14px; height: 38px; border-bottom: 1px solid var(--border);
-}
-.tlabel { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
-.running {
-  font-size: 11px; font-weight: 600; color: var(--warning);
-  display: inline-flex; align-items: center; gap: 6px;
-}
-.running::before {
-  content: ''; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--warning); animation: beat 1s ease-in-out infinite;
-}
-.follow { margin-inline-start: auto; font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 5px; }
-.follow input { accent-color: var(--brand); }
-.tbtn {
-  padding: 4px 10px; border-radius: var(--radius-sm);
-  background: transparent; border: 1px solid var(--border);
-  font-size: 11px; font-weight: 600; color: var(--muted-foreground);
+.head h2 { font-size: 16px; }
+.head .spacer { margin-inline-start: auto; }
+.back {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 30px; padding-inline: 11px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  color: var(--muted-foreground);
+  font-size: 12px; font-weight: 600;
   transition: background var(--t), color var(--t);
 }
-.tbtn:hover { background: var(--muted); color: var(--foreground); }
-#bQuit:hover { background: var(--destructive-soft); border-color: var(--destructive-border); color: var(--destructive); }
+.back:hover { background: var(--card-hover); color: var(--foreground); }
+.back svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* The arrow is a glyph that points somewhere, so it turns with the language. */
+body.rtl .back svg { transform: scaleX(-1); }
 
+/* ============================================================== the hero */
+
+.hero { width: 100%; max-width: 620px; display: grid; justify-items: center; gap: 0; }
+
+/* The mark inside its progress ring. The shop's own splash does this and it
+   is deliberately the same picture: one product, one idea of what "starting"
+   looks like. */
+.stage { position: relative; width: 116px; height: 116px; display: grid; place-items: center; margin-bottom: 18px; }
+.ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+body.rtl .ring { transform: rotate(-90deg) scaleY(-1); }
+.ring .track { fill: none; stroke: var(--border); stroke-width: 1.5; }
+.ring .arc {
+  fill: none; stroke: var(--brand); stroke-width: 2; stroke-linecap: round;
+  stroke-dasharray: 339 339; stroke-dashoffset: 339;
+  transition: stroke-dashoffset .5s var(--e-out);
+}
+.stage .mark {
+  position: relative; width: 84px; height: 84px; border-radius: 20px; overflow: hidden;
+  box-shadow: 0 0 0 1px var(--border), 0 20px 44px -14px rgb(0 0 0 / .8);
+  transition: transform .5s var(--e-out);
+}
+.stage .mark img { width: 100%; height: 100%; display: block; object-fit: cover; }
+/* The one pulse when the shop is open. Everything else on this screen is
+   still; a thing that moves is a thing that just happened. */
+.stage.done .mark { transform: scale(1.04); }
+.stage.done .mark::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  animation: markPing .9s var(--e-out) both;
+}
+@keyframes markPing {
+  0%   { box-shadow: 0 0 0 0 rgb(198 255 0 / .7); }
+  100% { box-shadow: 0 0 0 30px rgb(198 255 0 / 0); }
+}
+
+.hero h2 { font-size: 26px; letter-spacing: -.035em; text-align: center; }
+.hero .sub {
+  margin-top: 7px; font-size: 12.5px; color: var(--muted-foreground); text-align: center;
+  min-height: 1.4em;
+}
+
+/* ---------------------------------------------------------- the actions */
+
+.acts { margin-top: 22px; display: grid; justify-items: center; gap: 10px; width: 100%; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  height: 38px; padding: 0 16px;
+  border: 1px solid transparent; border-radius: var(--radius);
+  background: var(--raise); color: var(--foreground);
+  font-size: 13px; font-weight: 600; letter-spacing: -.005em; white-space: nowrap;
+  transition: background var(--t), color var(--t), border-color var(--t), opacity var(--t), box-shadow var(--t);
+}
+.btn:hover { background: var(--raise-hover); }
+.btn:active:not(:disabled) { transform: scale(.985); }
+.btn:disabled { opacity: .38; pointer-events: none; }
+.btn svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.btn-primary { background: var(--brand); color: var(--brand-foreground); font-weight: 700; }
+.btn-primary:hover { background: var(--brand-hover); box-shadow: 0 10px 24px -12px rgb(198 255 0 / .6); }
+.btn-primary:active:not(:disabled) { box-shadow: none; }
+.btn-lg { height: 46px; padding: 0 26px; font-size: 14px; border-radius: var(--radius); }
+.btn-ghost { background: transparent; border-color: var(--border-strong); color: var(--muted-foreground); }
+.btn-ghost:hover { background: var(--card-hover); color: var(--foreground); }
+.btn-sm { height: 31px; padding: 0 12px; font-size: 12px; border-radius: var(--radius-sm); }
+.btn-block { width: 100%; }
+.btn-hot { background: transparent; border-color: var(--brand-border); color: var(--brand); }
+.btn-hot:hover { background: var(--brand-soft); border-color: var(--brand); }
+.btn-danger { background: transparent; border-color: var(--destructive-border); color: var(--destructive); }
+.btn-danger:hover { background: var(--destructive-soft); }
+
+/* Closing the till is not the thing anybody came here to do, so it does not
+   look like it. Quiet, underlined on hover, nowhere near the thumb. */
+.quiet {
+  background: none; border: 0; padding: 6px 10px;
+  color: var(--dim); font-size: 12px; font-weight: 600;
+  border-radius: var(--radius-sm);
+  transition: color var(--t), background var(--t);
+}
+.quiet:hover { color: var(--foreground); background: var(--card-hover); }
+.quiet:disabled { opacity: .4; pointer-events: none; }
+
+/* ============================================================= the steps */
+
+.steps { margin-top: 26px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 1px; }
+
+.step {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center; gap: 11px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px; font-weight: 600;
+  color: var(--dim);
+  transition: color var(--d-3) var(--e-std), background var(--d-3) var(--e-std);
+}
+.step .ic { width: 22px; height: 22px; display: grid; place-items: center; }
+.step .ic svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.step .why { font-size: 11px; font-weight: 500; color: var(--dim); text-align: end; }
+
+.step.run { color: var(--foreground); background: var(--card); }
+.step.run .ic { color: var(--brand); }
+.step.run .ic svg { animation: spin 1.1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.step.ok   { color: var(--foreground); }
+.step.ok .ic { color: var(--brand); }
+.step.warn { color: var(--foreground); }
+.step.warn .ic { color: var(--warning); }
+.step.warn .why { color: var(--warning); }
+.step.fail { color: var(--foreground); background: var(--destructive-soft); }
+.step.fail .ic { color: var(--destructive); }
+.step.fail .why { color: var(--destructive); }
+.step.skip { color: var(--dim); }
+.step.wait { opacity: .5; }
+
+/* The finish: the list falls away rather than being swapped out from under
+   the eye. Same idea as the shop's splash pulling its chips into the mark. */
+.steps.gone { animation: stepsOut .5s var(--e-in) both; }
+@keyframes stepsOut { to { opacity: 0; transform: translateY(-6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .step.run .ic svg, .lamp.busy .dot { animation: none; }
+  .stage.done .mark::after { animation: none; }
+  .steps.gone { animation: none; opacity: 0; }
+  .btn:active:not(:disabled) { transform: none; }
+}
+
+/* ========================================================== the verdict */
+
+.verdict {
+  margin-top: 20px;
+  display: inline-flex; align-items: center; gap: 9px;
+  font-size: 12.5px; font-weight: 600; color: var(--muted-foreground);
+}
+.verdict svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.verdict.ok { color: var(--success); }
+.verdict.warn { color: var(--warning); }
+.verdict.bad { color: var(--destructive); }
+
+/* ======================================================== the addresses */
+
+.addrs {
+  margin-top: 24px; width: 100%;
+  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: stretch;
+}
+.addrs.solo { grid-template-columns: 1fr; }
+
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 15px 17px;
+}
+.card h3 {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 9px;
+}
+
+.addr { display: flex; align-items: center; gap: 9px; }
+.addr + .addr { margin-top: 8px; }
+.addr .url {
+  flex: 1; min-width: 0;
+  font-size: 13px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.addr .tag { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+.addr .go {
+  flex: none; width: 28px; height: 28px; display: grid; place-items: center;
+  border-radius: var(--radius-sm); border: 1px solid transparent;
+  color: var(--brand);
+  transition: background var(--t), border-color var(--t);
+}
+.addr .go:hover { background: var(--brand-soft); border-color: var(--brand-border); }
+.addr .go svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* An arrow means "out of here", which is the other way round in Arabic — and
+   it is marked `.ic-dir` at the point it is drawn rather than mirrored by
+   where it happens to sit, so the tick and the cross beside it stay put and a
+   future icon in a button is not flipped for being in the wrong place. */
+body.rtl svg.ic-dir { transform: scaleX(-1); }
+.addr .cp {
+  flex: none; height: 26px; padding: 0 9px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); color: var(--muted-foreground);
+  font-size: 11px; font-weight: 600;
+  transition: background var(--t), color var(--t), border-color var(--t);
+}
+.addr .cp:hover { background: var(--card-hover); color: var(--foreground); }
+.addr .cp.done { color: var(--brand); border-color: var(--brand-border); background: var(--brand-soft); }
+
+.hint { font-size: 11px; color: var(--dim); line-height: 1.45; }
+.addr-hint { margin-top: 10px; }
+
+/* The QR. White because a code has to be dark-on-light to scan; it is the
+   one white rectangle in the whole window and it earns it.
+
+   NOT `.qr` — js/codes.js puts class="qr" on the <svg> it returns, and a
+   container sharing that name would hand the picture a grid, a card
+   background and 13px of padding. That is the `.pos` collision this codebase
+   already paid for once, in CSS instead of JavaScript. */
+.qrcard {
+  display: grid; place-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 13px;
+}
+.qrcard .paper { background: #FAFAFA; border-radius: var(--radius-sm); padding: 6px; line-height: 0; }
+.qrcard .paper svg { display: block; width: 118px; height: 118px; }
+.qrcard .cap { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); text-align: center; }
+
+/* ========================================================== the notices */
+
+.notices { margin-top: 16px; width: 100%; display: flex; flex-direction: column; gap: 8px; }
+
+.notice {
+  display: grid; grid-template-columns: 18px 1fr auto; gap: 11px; align-items: start;
+  background: var(--card); border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--warning);
+  border-radius: var(--radius); padding: 12px 14px;
+  text-align: start;
+}
+.notice.info { border-inline-start-color: var(--border-strong); }
+.notice.bad  { border-inline-start-color: var(--destructive); }
+.notice .ic { color: var(--warning); padding-top: 1px; }
+.notice.info .ic { color: var(--muted-foreground); }
+.notice.bad .ic { color: var(--destructive); }
+.notice .ic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.notice b { display: block; font-size: 12.5px; font-weight: 700; margin-bottom: 3px; }
+.notice small { font-size: 11.5px; color: var(--muted-foreground); line-height: 1.5; }
+.notice .act { align-self: center; }
+
+/* ========================================================= the cloud row */
+
+.cloudline {
+  margin-top: 14px; width: 100%;
+  display: flex; align-items: center; gap: 9px;
+  font-size: 11.5px; color: var(--dim);
+}
+.cloudline .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); flex: none; }
+.cloudline.ok  .pip { background: var(--success); }
+.cloudline.warn .pip { background: var(--warning); }
+.cloudline.bad  .pip { background: var(--destructive); }
+.cloudline .what { font-weight: 600; color: var(--muted-foreground); }
+.cloudline .spacer { margin-inline-start: auto; }
+
+/* ============================================================== the foot */
+
+.foot {
+  margin-top: 22px; display: flex; align-items: center; justify-content: center; gap: 14px;
+}
+.link {
+  background: none; border: 0; padding: 5px 8px; border-radius: var(--radius-sm);
+  color: var(--dim); font-size: 11.5px; font-weight: 600;
+  transition: color var(--t), background var(--t);
+}
+.link:hover { color: var(--foreground); background: var(--card-hover); }
+
+/* ============================================================== the tools */
+
+.pad { padding: 4px 22px 28px; }
+.groups { display: flex; flex-direction: column; gap: 20px; max-width: 880px; margin-inline: auto; }
+
+.gh {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 9px;
+}
+.glist { display: flex; flex-direction: column; gap: 6px; }
+
+.tool {
+  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+  width: 100%; text-align: start;
+  padding: 10px 14px;
+  background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
+  transition: background var(--t), border-color var(--t), opacity var(--t);
+}
+.tool:hover:not(:disabled) { background: var(--card); border-color: var(--border-strong); }
+.tool:disabled { opacity: .42; pointer-events: none; }
+.tool b { display: block; font-size: 12.5px; font-weight: 600; }
+.tool small { display: block; margin-top: 2px; font-size: 11px; color: var(--dim); line-height: 1.45; }
+.tool .tags { display: flex; gap: 6px; align-items: center; flex: none; }
+.tool.danger b { color: var(--destructive); }
+.tool.danger { border-color: var(--destructive-border); }
+.tool.busy { border-color: var(--brand-border); background: var(--brand-soft); }
+
+.tag-pill {
+  font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--dim); border: 1px solid var(--border-strong);
+  border-radius: 9999px; padding: 3px 8px; white-space: nowrap;
+}
+.tag-pill.hot { color: var(--brand); border-color: var(--brand-border); }
+.tag-pill.warn { color: var(--warning); border-color: var(--warning-border); }
+
+/* Publish keeps its message box, because a commit without one is a commit
+   nobody can read a year later. */
+.pubrow { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 6px; }
+
+.in {
+  height: 36px; padding: 0 12px;
+  background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--foreground); font-size: 12.5px; font-weight: 500;
+  user-select: text;
+  transition: border-color var(--t), box-shadow var(--t);
+}
+.in::placeholder { color: var(--dim); }
+.in:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .10); }
+select.in { padding-inline-end: 28px; }
+
+/* ================================================================ the log */
+
+.term { flex: 1; min-height: 0; display: flex; flex-direction: column; background: #060607; border-top: 1px solid var(--border); }
+.termbar {
+  flex: none; display: flex; align-items: center; gap: 12px;
+  padding: 0 16px; height: 38px; border-bottom: 1px solid var(--border);
+}
+.termbar .spacer { margin-inline-start: auto; }
+.follow { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted-foreground); }
+.follow input { accent-color: var(--brand); }
 .out {
-  flex: 1; min-height: 0; margin: 0; padding: 12px 16px 20px;
+  flex: 1; min-height: 0; margin: 0; padding: 12px 16px 22px;
   overflow: auto; user-select: text;
-  font: 400 12px/1.55 "Cascadia Mono", Consolas, "Courier New", monospace;
+  font: 400 12px/1.55 'Cascadia Mono', Consolas, 'Courier New', monospace;
   color: #C9C9CF; white-space: pre-wrap; word-break: break-word;
-  outline: none;
+  /* The log is machine output. It is left-to-right in every language, and
+     forcing it otherwise turns a stack trace into a puzzle. */
+  direction: ltr; text-align: left;
 }
 .out .l { display: block; }
-.out .l.err { color: #FCA5A5; }
+.out .l .t { color: #4B4B52; user-select: none; }
+.out .l.err  { color: #FCA5A5; }
 .out .l.note { color: var(--brand); }
 
-/* ------------------------------------------------------- the typed confirm */
+/* ============================================================= the asks */
 
 .ask {
-  position: fixed; inset: 0; z-index: 40; display: flex;
-  align-items: center; justify-content: center; padding: 24px;
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center; padding: 26px;
   background: rgb(0 0 0 / .74);
+  animation: fade .14s ease both;
 }
+@keyframes fade { from { opacity: 0; } }
 .ask .box {
+  position: relative;
   width: 100%; max-width: 430px; padding: 22px;
   background: var(--popover); border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg); box-shadow: 0 24px 56px -14px rgb(0 0 0 / .85);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 56px -14px rgb(0 0 0 / .85);
+  animation: pop .18s var(--e-std) both;
+  text-align: start;
 }
-.ask h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
-.ask p { margin: 0 0 14px; font-size: 12.5px; color: var(--muted-foreground); line-height: 1.55; }
-.ask .word { color: var(--destructive); font-weight: 700; }
-.ask .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
-.ask .foot .btn { min-width: 92px; }
-.ask .btn.doit { background: var(--destructive-soft); border-color: var(--destructive-border); color: var(--destructive); }
-.ask .btn.doit:hover:not(:disabled) { background: #3A181B; }
-.ask .grid { display: flex; flex-direction: column; gap: 8px; }
-.ask label { font-size: 11px; font-weight: 600; color: var(--dim); }
+@keyframes pop { from { opacity: 0; transform: scale(.96) translateY(6px); } }
+/* The lime hairline the shop puts on every raised panel: a dialog opened from
+   a black page otherwise reads as a hole with a border round it. */
+.ask .box::before {
+  content: ''; position: absolute; inset-inline: 24px; top: -1px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brand), transparent);
+  opacity: .45; pointer-events: none;
+}
+.ask h3 { font-size: 15px; margin-bottom: 8px; }
+.ask p { font-size: 12.5px; color: var(--muted-foreground); line-height: 1.55; }
+.ask .field { margin-top: 15px; display: flex; flex-direction: column; gap: 6px; }
+.ask label { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.ask .word { color: var(--destructive); font-weight: 700; letter-spacing: .04em; }
+.ask .foot2 { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
+.ask .foot2 .btn { min-width: 92px; }
 
-/* ---------------------------------------------------------------- scrollbar */
+/* ============================================================ the toasts */
+
+.toasts {
+  position: fixed; top: 14px; inset-inline-end: 14px; z-index: 80;
+  display: flex; flex-direction: column; gap: 9px;
+  pointer-events: none;
+}
+.toast {
+  min-width: 268px; max-width: 380px;
+  background: var(--popover); border: 1px solid var(--border-strong);
+  border-inline-start: 3px solid var(--border-strong);
+  border-radius: var(--radius-lg); padding: 12px 14px;
+  box-shadow: 0 24px 56px -14px rgb(0 0 0 / .85);
+  font-size: 12px; color: var(--muted-foreground);
+  animation: toastIn .2s var(--e-std) both;
+  pointer-events: auto; text-align: start;
+}
+.toast.ok  { border-inline-start-color: var(--brand); }
+.toast.warn { border-inline-start-color: var(--warning); }
+.toast.err { border-inline-start-color: var(--destructive); }
+.toast b { display: block; color: var(--foreground); font-size: 12.5px; font-weight: 700; margin-bottom: 2px; }
+@keyframes toastIn { from { opacity: 0; transform: translateX(16px) scale(.97); } }
+body.rtl .toast { animation-name: toastInR; }
+@keyframes toastInR { from { opacity: 0; transform: translateX(-16px) scale(.97); } }
+
+/* ========================================================== the scrollbar */
 
 ::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: #2E2E34; border-radius: 9999px; border: 3px solid transparent; background-clip: content-box;
-}
-::-webkit-scrollbar-thumb:hover { background: #3F3F46; background-clip: content-box; border: 3px solid transparent; }
-::selection { background: var(--brand); color: var(--brand-foreground); }
+::-webkit-scrollbar-thumb { background: #2E2E34; border: 3px solid transparent; background-clip: content-box; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #3F3F46; border: 3px solid transparent; background-clip: content-box; }
 
-/* A narrow window is a real case: this sits beside the editor as often as it
-   sits alone. Below 820 the rail goes over the terminal rather than crushing
-   both into columns too thin to read. */
-@media (max-width: 820px) {
-  main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .rail { border-right: 0; border-bottom: 1px solid var(--border); max-height: 46vh; }
+/* ======================================================== small windows */
+
+@media (max-height: 700px) {
+  .stage { width: 92px; height: 92px; margin-bottom: 14px; }
+  .stage .mark { width: 66px; height: 66px; border-radius: 16px; }
+  .hero h2 { font-size: 22px; }
+  .steps { margin-top: 18px; }
+  .addrs { margin-top: 16px; }
+}
+@media (max-width: 720px) {
+  .addrs { grid-template-columns: 1fr; }
+  .qrcard { justify-self: start; }
 }
 
-/* Server code newer than the running shop. Amber, because nothing is broken
-   yet - it is a thing to press a button about, not a failure. */
-.hint.stale { color: var(--warning); }
+/* ============================================================== Arabic */
+
+/* Tracked capitals are an English typographic device. Arabic is a joined
+   script and letter-spacing pulls the joins apart, so every one of them is
+   zeroed here rather than being avoided one rule at a time. */
+body.rtl {
+  font-family: Montserrat, 'Segoe UI', Tahoma, sans-serif;
+  letter-spacing: 0;
+}
+body.rtl h1, body.rtl h2, body.rtl h3,
+body.rtl .card h3, body.rtl .gh, body.rtl .qrcard .cap, body.rtl .addr .tag,
+body.rtl .tag-pill, body.rtl .ask label, body.rtl .ask .word,
+body.rtl .lang-btn, body.rtl .hero h2 { letter-spacing: 0; }
+
+/* Numbers, addresses and codes stay left-to-right wherever they are drawn.
+   Without this the bidi algorithm drags a leading digit or a sign to the far
+   end of the line: "+2" renders "2+", and an address becomes unreadable. */
+[dir='ltr'] { unicode-bidi: isolate; }

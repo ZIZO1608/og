@@ -227,6 +227,54 @@ function decorate(row, debts, sizes, rhythm) {
   };
 }
 
+/* WHO HAS GONE QUIET, by their OWN rhythm — the one server-side answer, so the
+   morning reminder and any screen that asks later cannot disagree.
+
+   The rule is the browser's, moved here rather than copied: quiet after their
+   median gap times `customer.quiet_multiplier_tenths`, floored at
+   `customer.quiet_floor_days`, and falling back to the shop-wide
+   `customer.at_risk_days` for anybody with too little history to have a
+   rhythm at all. Archived customers are left out — somebody the shop has
+   deliberately closed is not a regular who stopped coming.
+
+   Ordered by how far past their own rhythm they are, not by how long it has
+   been: three months is nothing from somebody who visits twice a year and a
+   great deal from somebody who came every fortnight. */
+export function quietList({ limit = 5 } = {}) {
+  const cfg = (k, d) => {
+    const r = get().prepare('SELECT value FROM config WHERE key = ?').get(k);
+    const n = Number(r && r.value);
+    return Number.isFinite(n) && n > 0 ? n : d;
+  };
+  const mult = cfg('customer.quiet_multiplier_tenths', 15) / 10;
+  const floor = cfg('customer.quiet_floor_days', 21);
+  const fallback = cfg('customer.at_risk_days', 60);
+
+  const rhythm = rhythmByCustomer();
+  const rows = get().prepare(
+    `SELECT c.id, c.name, MAX(s.at) AS last_at, COUNT(s.id) AS visits
+       FROM customers c
+       JOIN sales s ON s.customer_id = c.id AND s.voided = 0
+      WHERE c.archived = 0
+      GROUP BY c.id
+     HAVING last_at IS NOT NULL`
+  ).all();
+
+  const now = Date.now();
+  const out = [];
+  for (const r of rows) {
+    const since = (now - Date.parse(r.last_at)) / 86400000;
+    if (!Number.isFinite(since)) continue;
+    const med = rhythm.get(r.id);
+    const after = med == null ? fallback : Math.max(floor, med * mult);
+    if (since <= after) continue;
+    out.push({ id: r.id, name: r.name, days: Math.floor(since),
+               after: Math.round(after), over: since / after });
+  }
+  out.sort((a, b) => b.over - a.over);
+  return { rows: out.slice(0, limit), total: out.length };
+}
+
 /* ---- the delivery driver -------------------------------------------------
    A driver holds customer.read — he has to, or he cannot see who he is
    delivering to — and that used to hand him the WHOLE customer table with

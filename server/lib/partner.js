@@ -72,7 +72,8 @@ function actorName(d, userId) {
   return r && r.name ? String(r.name).trim().split(/\s+/)[0] : null;
 }
 
-function emitEvent(d, { kind, refType, refId, audience, args = {}, dedupe = null, userId = null }) {
+function emitEvent(d, { kind, refType, refId, audience, args = {}, dedupe = null,
+                       userId = null, toUser = null }) {
   const a = { ...args };
   if (audience === 'yalla') for (const k of PARTNER_STRIP) delete a[k];
   /* Never overwrite an actor a caller set deliberately. */
@@ -82,10 +83,10 @@ function emitEvent(d, { kind, refType, refId, audience, args = {}, dedupe = null
      real-time events above keep the plain INSERT that has always thrown, and
      queueEvent checks the audience itself before it gets here. */
   const sql = `INSERT ${dedupe ? 'OR IGNORE ' : ''}INTO partner_events
-                 (at, kind, ref_type, ref_id, audience, args_json, dedupe)
-               VALUES (?,?,?,?,?,?,?)`;
+                 (at, kind, ref_type, ref_id, audience, args_json, dedupe, to_user)
+               VALUES (?,?,?,?,?,?,?,?)`;
   return d.prepare(sql).run(nowIso(), kind, refType, String(refId), audience,
-                            JSON.stringify(a), dedupe).changes;
+                            JSON.stringify(a), dedupe, toUser).changes;
 }
 
 /* THE SAME DOOR, opened for lib/reminders.js — and it is the only way in.
@@ -106,6 +107,23 @@ export function queueEvent(d, opts) {
   }
   if (!opts.dedupe) {
     throw Object.assign(new Error('a queued reminder needs a dedupe key'), { code: 'bad_request' });
+  }
+  if (opts.toUser != null) {
+    /* AN ADDRESSED ROW MAY NEVER BE AIMED AT THE PARTNER. PARTNER_STRIP takes
+       out the customer, the phone and the price — it does not take out a STAFF
+       name, and an addressed message names the person it is about. So an
+       addressed yalla row would put one of the shop's employees on another
+       company's phone, past the door that exists to stop exactly that. */
+    if (opts.audience === 'yalla') {
+      throw Object.assign(new Error('a yalla reminder cannot be addressed to a person'),
+                          { code: 'bad_request' });
+    }
+    /* SQLite is loosely typed and would store the string 'lubna' in an INTEGER
+       column without complaint. It would then match no chat, and the row would
+       be quietly delivered to nobody — the worst shape a bug can take here. */
+    if (!Number.isInteger(opts.toUser)) {
+      throw Object.assign(new Error('toUser must be a user id'), { code: 'bad_request' });
+    }
   }
   return emitEvent(d, opts);
 }

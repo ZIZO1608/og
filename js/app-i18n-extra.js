@@ -554,7 +554,12 @@ var EXTRA_EN = {
   tg_no_token_partner: 'OG has not set up your bot yet — ask them to add the token on the server.',
   tg_linked_to: 'Linked to', tg_not_linked: 'Not connected', tg_connect: 'Connect', tg_test: 'Send a test',
   tg_unlink: 'Disconnect', tg_code_hint: 'Send this code to the bot', tg_open_bot: 'Open the bot in Telegram',
-  tg_waiting: 'Waiting for the code to arrive… (you can also add the bot to a group and send the code there)',
+  tg_waiting: 'Waiting for the code to arrive…',
+  /* THE SLASH IS NOT A DETAIL. A bot in a group has privacy mode on by
+     default and is handed only messages that start with "/", so a bare code
+     typed into a group is never delivered and the card waits for ever. This
+     line used to say "add the bot to a group and send the code there". */
+  tg_group_hint: 'In a group: add the bot, then send /start {code} — with the slash. A bot cannot see ordinary messages in a group.',
   tg_added_by: 'added by', tg_connect_more: 'Connect another chat',
   tg_kind_private: 'Private chat', tg_kind_group: 'Group', tg_kind_channel: 'Channel',
   tg_n_linked: '{n} chats linked',
@@ -802,7 +807,8 @@ var EXTRA_AR = {
   tg_no_token_partner: 'لم يجهّز OG البوت الخاص بك بعد — اطلب منهم إضافة الرمز على الخادم.',
   tg_linked_to: 'مرتبط بـ', tg_not_linked: 'غير متصل', tg_connect: 'اتصال', tg_test: 'أرسل رسالة تجريبية',
   tg_unlink: 'فصل', tg_code_hint: 'أرسل هذا الرمز إلى البوت', tg_open_bot: 'افتح البوت في تيليغرام',
-  tg_waiting: 'بانتظار وصول الرمز… (يمكنك أيضاً إضافة البوت إلى مجموعة وإرسال الرمز فيها)',
+  tg_waiting: 'بانتظار وصول الرمز…',
+  tg_group_hint: 'في مجموعة: أضف البوت، ثم أرسل ‎/start {code}‎ — مع الشرطة المائلة. البوت لا يرى الرسائل العادية داخل المجموعات.',
   tg_added_by: 'أضافها', tg_connect_more: 'ربط محادثة أخرى',
   tg_kind_private: 'محادثة خاصة', tg_kind_group: 'غروب', tg_kind_channel: 'قناة',
   tg_n_linked: '{n} محادثات مرتبطة',
@@ -984,11 +990,120 @@ var LABELS_AR = {
    Every key is in BOTH tables. A missing Arabic key falls back to English
    mid-sentence inside an RTL layout and reads as a bug, not as a translation
    that has not been done yet. */
+/* ---- what each linked chat is sent ----------------------------------------
+   The groups are the screen's unit; the stored unit is still the kind. The
+   reminder kinds reuse their own `rem_*` labels from the Settings fold — one
+   string, one place — so only the live events need naming here. */
+var TGRULES_EN = {
+  tg_choose: 'Choose',
+  tg_choose_note: 'What {name} is sent. Everything else stays out of that chat.',
+  tg_choose_saved: 'Saved.',
+  tg_gets_all: 'Everything',
+  tg_gets_none: 'Nothing yet',
+
+  /* Whose phone, and what decides what it hears. */
+  tg_by_role: 'Follows the role',
+  tg_no_owner: 'No account behind it',
+  tg_shared_room: 'A shared room',
+  tg_person_off: 'account disabled',
+  tg_preset: 'Follow this person\'s role',
+  tg_preset_sub: 'Whatever a {role} hears. Change what that is once and every {role}\'s phone follows. Switch this off to choose for {name} alone.',
+  tg_cant_see: '{name} cannot see this in the app',
+
+  tg_g_day: 'The day and the drawer',
+  tg_g_day_sub: 'Takings, the shift, cash differences. Money — think before adding a phone.',
+  tg_g_stock: 'Stock',
+  tg_g_stock_sub: 'Sizes that ran out, purchase orders, a wanted size landing.',
+  tg_g_print: 'Print jobs and Yalla Wear',
+  tg_g_print_sub: 'Unanswered orders, deadlines, unread messages.',
+  tg_g_runs: 'Deliveries',
+  tg_g_runs_sub: 'A run nobody marked, and cash a driver is still holding.',
+  tg_g_people: 'Customers',
+  tg_g_people_sub: 'Regulars who have gone quiet for longer than their own usual gap.',
+  tg_g_yl: "Yalla Wear's reminders",
+  tg_g_yl_sub: 'The nudges their own bot sends them.',
+  tg_g_live: 'As it happens',
+  tg_g_live_sub: 'Orders, stage changes, messages, invoices and payments, the moment they occur.',
+
+  tgk_order_new: 'A new order is sent',
+  tgk_order_accepted: 'An order is accepted',
+  tgk_order_declined: 'An order is declined',
+  tgk_stage: 'A job moves stage',
+  tgk_names_ready: 'The last name is filled in',
+  tgk_message: 'A message on a job',
+  tgk_invoice_new: 'An invoice is issued',
+  tgk_payment_recorded: 'A payment is recorded',
+  tgk_payment_confirmed: 'A payment is confirmed',
+  tgk_review: 'A finished job is rated'
+};
+
+var TGRULES_AR = {
+  tg_choose: 'اختر',
+  tg_choose_note: 'ما يصل إلى {name}. كل ما عداه لا يُرسل إلى تلك المحادثة.',
+  tg_choose_saved: 'تم الحفظ.',
+  tg_gets_all: 'كل شيء',
+  tg_gets_none: 'لا شيء بعد',
+
+  tg_by_role: 'حسب الدور',
+  tg_no_owner: 'لا حساب خلفها',
+  tg_shared_room: 'غرفة مشتركة',
+  tg_person_off: 'الحساب معطّل',
+  tg_preset: 'اتبع دور هذا الشخص',
+  tg_preset_sub: 'ما يصل إلى {role}. غيّره مرة واحدة فيتبعه هاتف كل {role}. أطفئه لتختار لـ{name} وحده.',
+  tg_cant_see: '{name} لا يرى هذا داخل التطبيق',
+
+  tg_g_day: 'اليوم والصندوق',
+  tg_g_day_sub: 'المبيعات والوردية وفروق الصندوق. مال — فكّر قبل إضافة أي هاتف.',
+  tg_g_stock: 'المخزون',
+  tg_g_stock_sub: 'المقاسات التي نفدت، طلبات الشراء، وصول مقاس مطلوب.',
+  tg_g_print: 'طلبات الطباعة ويلا وير',
+  tg_g_print_sub: 'طلبات بلا رد، مواعيد التسليم، رسائل بلا قراءة.',
+  tg_g_runs: 'التوصيل',
+  tg_g_runs_sub: 'توصيلة لم يعلّمها أحد، ونقود ما زالت مع السائق.',
+  tg_g_people: 'الزبائن',
+  tg_g_people_sub: 'زبائن غابوا أطول من فاصلهم المعتاد.',
+  tg_g_yl: 'تذكيرات يلا وير',
+  tg_g_yl_sub: 'ما يرسله بوتهم إليهم.',
+  tg_g_live: 'فور حدوثه',
+  tg_g_live_sub: 'الطلبات وتغيّر المراحل والرسائل والفواتير والدفعات، لحظة وقوعها.',
+
+  tgk_order_new: 'إرسال طلب جديد',
+  tgk_order_accepted: 'قبول طلب',
+  tgk_order_declined: 'رفض طلب',
+  tgk_stage: 'انتقال طلب إلى مرحلة',
+  tgk_names_ready: 'اكتمال الأسماء',
+  tgk_message: 'رسالة على طلب',
+  tgk_invoice_new: 'إصدار فاتورة',
+  tgk_payment_recorded: 'تسجيل دفعة',
+  tgk_payment_confirmed: 'تأكيد دفعة',
+  tgk_review: 'تقييم عمل منجز'
+};
+
 var REMINDERS_EN = {
   rem_g_day: 'The day and the drawer',
   rem_g_stock: 'Stock',
   rem_g_print: 'Print jobs and Yalla Wear',
+  rem_g_runs: 'Deliveries',
+  rem_g_people: 'Customers',
   rem_g_yl: "Yalla Wear's own bot",
+
+  /* 043 — the shelves, the runs, the regulars, the morning. */
+  rem_og_digest: 'Your morning digest',
+  rem_og_digest_sub: 'One message at nine: yesterday\'s takings, what is due today, what the shelves need, who has gone quiet. Silent on a morning with nothing in it.',
+  rem_floor_empty: 'Empty on the floor, full in the back',
+  rem_floor_empty_sub: 'A size at zero in the shop with pieces still in storage — the fastest-selling one first. Somebody walks to the back and the sale is not lost.',
+  rem_reorder_due: 'Worth reordering',
+  rem_reorder_due_sub: 'Running low against how fast it actually sells here, with the weeks of cover left. Sizes already at zero are Out of stock\'s business, not this one\'s.',
+  rem_size_run_broken: 'Broken size run',
+  rem_size_run_broken_sub: 'The sizes that sell here are gone and the odd ends are left. It reads as in stock in every total and cannot be sold. A judgement — read the preview before switching it on.',
+  rem_dead_stock: 'Dead stock',
+  rem_dead_stock_sub: 'Pieces that have not moved at all, and the money standing in them at cost. A judgement — read the preview before switching it on.',
+  rem_run_out_long: 'A run nobody has marked',
+  rem_run_out_long_sub: 'A delivery sitting "out" for hours with nobody marking it delivered or failed.',
+  rem_driver_cash: 'Cash a driver is still holding',
+  rem_driver_cash_sub: 'Money collected on today\'s runs that was never handed in. Goes to the driver as well as to you.',
+  rem_customer_quiet: 'Regulars who have gone quiet',
+  rem_customer_quiet_sub: 'Longer than their OWN usual gap, not a fixed number of days — somebody who comes twice a year is not late at ninety days.',
 
   /* Not "Automatic reminders" — that is the fold's own title, three
      centimetres above it, and a row that repeats its heading reads as a
@@ -1052,6 +1167,11 @@ var REMINDERS_EN = {
   rem_n_unread_hours: 'Unread after (hours)',
   rem_n_delivery_stuck_hours: 'Stuck on the way after (hours)',
   rem_n_pay_confirm_hours: 'Payment unconfirmed after (hours)',
+  rem_n_og_digest_hour: 'Your digest at',
+  rem_n_cover_weeks: 'Reorder under (weeks of cover)',
+  rem_n_dead_days: 'Dead after (days with no sale)',
+  rem_n_run_hours: 'A run is late after (hours)',
+  rem_n_quiet_repeat_days: 'Repeat the quiet list after (days)',
   rem_n_yl_digest_hour: 'Morning digest at',
 
   rem_quiet_note: 'No reminder is sent between these hours. Real news — an order accepted, a payment, a message — still arrives at any time; this holds back reminders only, and what is held goes out when the quiet ends.',
@@ -1101,7 +1221,26 @@ var REMINDERS_AR = {
   rem_g_day: 'اليوم والصندوق',
   rem_g_stock: 'المخزون',
   rem_g_print: 'طلبات الطباعة ويلا وير',
+  rem_g_runs: 'التوصيل',
+  rem_g_people: 'الزبائن',
   rem_g_yl: 'بوت يلا وير',
+
+  rem_og_digest: 'ملخّص صباحك',
+  rem_og_digest_sub: 'رسالة واحدة عند التاسعة: مبيعات أمس، ما يُسلَّم اليوم، ما تحتاجه الرفوف، ومن غاب من الزبائن. ولا تُرسل في صباح لا شيء فيه.',
+  rem_floor_empty: 'نفد من الرفّ وموجود في المستودع',
+  rem_floor_empty_sub: 'مقاس صفر في المحل وله قطع في المستودع — الأسرع بيعاً أولاً. أحدهم يمشي إلى المستودع فلا تضيع البيعة.',
+  rem_reorder_due: 'يستحق إعادة الطلب',
+  rem_reorder_due_sub: 'أوشك على النفاد قياساً بسرعة بيعه هنا فعلاً، مع عدد الأسابيع المتبقية. المقاسات التي وصلت الصفر شأن «نفد المخزون» لا هذا.',
+  rem_size_run_broken: 'مقاسات مكسورة',
+  rem_size_run_broken_sub: 'نفدت المقاسات التي تُباع هنا وبقيت الأطراف. يظهر في كل الأرقام كأنه متوفّر ولا يمكن بيعه. حكم لا حقيقة — اقرأ المعاينة قبل تشغيله.',
+  rem_dead_stock: 'بضاعة راكدة',
+  rem_dead_stock_sub: 'قطع لم تتحرّك إطلاقاً، والمال الواقف فيها بالكلفة. حكم لا حقيقة — اقرأ المعاينة قبل تشغيله.',
+  rem_run_out_long: 'توصيلة لم يعلّمها أحد',
+  rem_run_out_long_sub: 'توصيلة بقيت «خارجة» ساعات دون أن يعلّمها أحد مسلَّمة أو فاشلة.',
+  rem_driver_cash: 'نقود ما زالت مع السائق',
+  rem_driver_cash_sub: 'مال حُصّل في توصيلات اليوم ولم يُسلَّم. تصل السائق وتصلك أنت أيضاً.',
+  rem_customer_quiet: 'زبائن غابوا',
+  rem_customer_quiet_sub: 'أطول من فاصلهم المعتاد هم أنفسهم، لا رقماً ثابتاً — من يأتي مرتين في السنة ليس متأخراً بعد تسعين يوماً.',
 
   rem_enabled: 'إرسال التذكيرات',
   rem_enabled_sub: 'المفتاح العام. إذا أُغلق فلا يرسل أي بوت تذكيرة من عنده.',
@@ -1162,6 +1301,11 @@ var REMINDERS_AR = {
   rem_n_unread_hours: 'بلا قراءة بعد (ساعات)',
   rem_n_delivery_stuck_hours: 'عالق في الطريق بعد (ساعات)',
   rem_n_pay_confirm_hours: 'دفعة بلا تأكيد بعد (ساعات)',
+  rem_n_og_digest_hour: 'ساعة ملخّصك',
+  rem_n_cover_weeks: 'أعد الطلب تحت (أسابيع تغطية)',
+  rem_n_dead_days: 'راكد بعد (أيام بلا بيع)',
+  rem_n_run_hours: 'التوصيلة متأخرة بعد (ساعات)',
+  rem_n_quiet_repeat_days: 'تكرار قائمة الغائبين بعد (أيام)',
   rem_n_yl_digest_hour: 'ساعة ملخص الصباح',
 
   rem_quiet_note: 'لا تُرسل أي تذكيرة بين هاتين الساعتين. الأخبار الحقيقية — قبول طلب، دفعة، رسالة — تصل في أي وقت؛ هذا يؤخّر التذكيرات وحدها، وما تأخّر يخرج فور انتهاء فترة الصمت.',
@@ -1212,3 +1356,5 @@ Object.keys(REPORTS_EN).forEach(function (k) { I18N.en[k] = REPORTS_EN[k]; });
 Object.keys(REPORTS_AR).forEach(function (k) { I18N.ar[k] = REPORTS_AR[k]; });
 Object.keys(REMINDERS_EN).forEach(function (k) { I18N.en[k] = REMINDERS_EN[k]; });
 Object.keys(REMINDERS_AR).forEach(function (k) { I18N.ar[k] = REMINDERS_AR[k]; });
+Object.keys(TGRULES_EN).forEach(function (k) { I18N.en[k] = TGRULES_EN[k]; });
+Object.keys(TGRULES_AR).forEach(function (k) { I18N.ar[k] = TGRULES_AR[k]; });

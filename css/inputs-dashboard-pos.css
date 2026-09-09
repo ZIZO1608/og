@@ -89,6 +89,17 @@ select.inp.sbx-open { border-color: var(--brand); box-shadow: 0 0 0 3px rgb(198 
 .switch input:checked + i::after { transform: translateX(18px); background: var(--brand-foreground); }
 body.rtl .switch input:checked + i::after { transform: translateX(-18px); }
 
+/* HALF ON. A group switch over a list of things — "Stock", with three of its
+   four ticked — sets `indeterminate`, which is not `checked`, so without this
+   it drew identically to fully OFF and the head lied about its own contents.
+   The knob stops in the middle and the track is a dimmer lime: the same
+   colour as ON, because it IS partly on, and unmistakably not the same state. */
+/* A literal, not color-mix(): that is Chrome 111 and this runs on the shop's
+   actual hardware. It is the lime and the off-track blended by hand. */
+.switch input:indeterminate + i { background: #6E7A1E; }
+.switch input:indeterminate + i::after { transform: translateX(9px); background: var(--brand-foreground); }
+body.rtl .switch input:indeterminate + i::after { transform: translateX(-9px); }
+
 .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
 .filters .inp { width: auto; min-width: 160px; }
 .filters .grow { flex: 1; min-width: 220px; }

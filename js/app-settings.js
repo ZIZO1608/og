@@ -340,11 +340,15 @@ function saveRolePermissions(role) {
    [ id, group ]. Audience is implied by the `yl_` prefix, which is also what
    the partner's own copy of this list filters on. */
 var REMINDER_RULES = [
-  ['day_close', 'day'], ['shift_open', 'day'], ['cash_variance', 'day'],
-  ['stock_out', 'stock'], ['stock_critical', 'stock'], ['po_late', 'stock'],
-  ['wants_back', 'stock'],
+  ['og_digest', 'day'], ['day_close', 'day'], ['shift_open', 'day'], ['cash_variance', 'day'],
+  ['stock_out', 'stock'], ['stock_critical', 'stock'],
+  ['floor_empty', 'stock'], ['reorder_due', 'stock'],
+  ['size_run_broken', 'stock'], ['dead_stock', 'stock'],
+  ['po_late', 'stock'], ['wants_back', 'stock'],
   ['order_no_answer', 'print'], ['job_late', 'print'], ['partner_unread', 'print'],
   ['job_stuck', 'print'], ['pay_wait', 'print'],
+  ['run_out_long', 'runs'], ['driver_cash', 'runs'],
+  ['customer_quiet', 'people'],
   ['yl_order_waiting', 'yl'], ['yl_due', 'yl'], ['yl_blocked', 'yl'],
   ['yl_digest', 'yl'], ['yl_pay_wait', 'yl']
 ];
@@ -352,10 +356,16 @@ var REMINDER_RULES = [
 /* The numbers each group owns: [ config key without the prefix, min, max ].
    Hours are 0-23 in the SHOP's clock, not the browser's. */
 var REMINDER_NUMS = {
-  day:   [['day_close_hour', 0, 23], ['shift_open_hour', 0, 23], ['variance_min', 0, 99999999]],
-  stock: [['stock_repeat_days', 1, 365]],
+  day:   [['og_digest_hour', 0, 23], ['day_close_hour', 0, 23], ['shift_open_hour', 0, 23],
+          ['variance_min', 0, 99999999]],
+  stock: [['stock_repeat_days', 1, 365], ['cover_weeks', 1, 52], ['dead_days', 7, 730]],
   print: [['order_wait_hours', 1, 168], ['unread_hours', 1, 168],
+          /* delivery_stuck_hours belongs to the PRINT rule job_stuck, not to
+             the delivery runs — see 043, which deliberately named the other
+             one run_hours rather than sharing this key. */
           ['delivery_stuck_hours', 1, 720], ['pay_confirm_hours', 1, 720]],
+  runs:  [['run_hours', 1, 72]],
+  people: [['quiet_repeat_days', 1, 90]],
   yl:    [['yl_digest_hour', 0, 23]]
 };
 
@@ -926,6 +936,8 @@ function remindersCard() {
   h += remGroup('day');
   h += remGroup('stock');
   h += remGroup('print');
+  h += remGroup('runs');
+  h += remGroup('people');
 
   /* Yalla Wear's five, with OG's master pause above them. The switches
      themselves are ONE key each and the partner writes the same ones from

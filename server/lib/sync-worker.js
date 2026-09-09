@@ -304,18 +304,29 @@ export function notePull(result) { state.pull = result || null; }
 export function start() {
   if (state.mode !== 'off' || lineageTimer) return;
 
+  /* Both early returns say so out loud now. "Off, because there is no
+     Supabase in server/.env" is a FINISHED answer and the panel draws it as
+     one; before this the worker simply never spoke on these two paths, so the
+     launcher's mirror card sat on "No word from the mirror yet." for as long
+     as the window stayed open — which reads as a thing that is still loading
+     rather than a thing that was switched off on purpose. */
   if (!SB.isConfigured()) {
     console.log('  Supabase: not configured — running on local SQLite only.');
+    tell();
     return;
   }
   if (fullMinutes() === 0) {
     console.log('  Supabase: configured, automatic sync off (OG_SYNC_MINUTES=0).');
+    tell();
     return;
   }
 
   console.log(`  Supabase: live mirror → ${SB.projectUrl()}` +
               ` (every change within seconds; full run every ${fullMinutes()} min)`);
   state.mode = 'starting';
+  /* Said before the first run, so the boot has something true to show while
+     the mirror is still waking up rather than an empty row. */
+  tell();
   setTimeout(boot, FIRST_RUN_MS).unref();
 
   lineageTimer = setInterval(async () => {

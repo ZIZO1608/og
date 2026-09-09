@@ -493,7 +493,17 @@ var Shop = (function () {
     telegramStatus: function ()           { return API.get('/api/telegram/status'); },
     telegramLink:   function ()           { return API.post('/api/telegram/link', {}); },
     telegramUnlink: function (chatId) { return API.post('/api/telegram/unlink', chatId ? { chatId: chatId } : {}); },
-    telegramTest:   function ()           { return API.post('/api/telegram/test', {}); },
+    telegramTest:   function (chatId) { return API.post('/api/telegram/test', chatId ? { chatId: chatId } : {}); },
+    /* What one chat is sent. `null` means everything — see lib/telegram.js. */
+    telegramChatRules: function (chatId, rules) {
+      return API.put('/api/telegram/chat', { chatId: chatId, rules: rules });
+    },
+    /* Back to whatever this person's role hears. Sent as its own call rather
+       than as a rules list, so the chat goes on TRACKING the role instead of
+       freezing today's answer into an explicit list. */
+    telegramChatPreset: function (chatId) {
+      return API.put('/api/telegram/chat', { chatId: chatId, preset: 'role' });
+    },
     saveSupplier:  function (body)        { return API.post('/api/suppliers', body); },
     saveEmployee:  function (body)        { return API.post('/api/employees', body); },
 

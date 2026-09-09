@@ -76,6 +76,8 @@ import * as Alerts from './alerts.js';
 import * as Dashboard from './dashboard.js';
 import * as Money from './money.js';
 import * as Wants from './wants.js';
+import * as Stockwatch from './stockwatch.js';
+import * as Customers from './customers.js';
 
 const TICK_MS = 60 * 1000;
 /* Boot is the busiest second the machine has — the same reason the mirror
@@ -112,6 +114,19 @@ const num = (k, fb) => {
    a rule added after this shop's database was seeded — is ON, because a rule
    worth writing is worth hearing, and turning it off is one tap. */
 const on = (k) => cfg(k) !== '0';
+
+/* Minor units as a person reads them. USD carries two decimal places and SYP
+   none, and the two are NEVER added — a day that took both took both, and one
+   number covering the pair would be a made-up conversion at today's rate. */
+const fmt = (n, cur) => {
+  const v = Number(n) || 0;
+  return (cur === 'USD' ? (v / 100).toFixed(2) : Math.round(v).toLocaleString('en-US')) +
+         ' ' + (cur || 'SYP');
+};
+const moneyPair = (m) => [
+  m && m.syp ? fmt(m.syp, 'SYP') : null,
+  m && m.usd ? fmt(m.usd, 'USD') : null
+].filter(Boolean).join(' + ') || fmt(0, 'SYP');
 
 /* --------------------------------------------------------------- the clock
 
@@ -235,6 +250,57 @@ function unconfirmedPayments(recordedBy, ms) {
 const RULES = [
   /* ---- the shop's day ---------------------------------------------------- */
   {
+    /* THE OWNER'S MORNING. Yalla Wear have had a digest since the day this
+       file was written and the shop has had none — so the one person who most
+       needs to know what the day looks like was the one nobody told.
+
+       Four sections, each dropped when it is empty, and the whole thing silent
+       on a morning with nothing in any of them. A digest of four zeroes is how
+       a daily message stops being read, which is the same rule day_close and
+       yl_digest already follow.
+
+       It reports YESTERDAY's money, deliberately: at nine in the morning today
+       has no takings and saying "0 today" would be true and useless. */
+    id: 'og_digest', audience: 'og', kind: 'rem_og_digest', refType: 'day',
+    run: (c) => {
+      if (c.hour < num('reminders.og_digest_hour', 9)) return [];
+      const args = { day: c.dayKey };
+
+      const yest = dayKeyOf(c.ms - 86400000, c.tz);
+      const y = dayRange(yest, c.tz);
+      const t = Dashboard.takingsIn(y.from, y.to);
+      const open = Money.currentShift();
+      const s = open ? Money.shift(open.id) : null;
+      if (t.count) {
+        args.money = { text: moneyPair(t.takings), count: t.count,
+                       drawer: s ? fmt(s.expected, s.currency) : null };
+      }
+
+      const late = Alerts.jobsLateCount({ basis: 'deadline' });
+      const due = DB.get().prepare(
+        `SELECT COUNT(*) AS n FROM print_jobs
+          WHERE stage <> 'done' AND deadline IS NOT NULL AND SUBSTR(deadline,1,10) = ?`
+      ).get(c.dayKey).n;
+      const pending = DB.get().prepare(
+        "SELECT COUNT(*) AS n FROM print_jobs WHERE order_state = 'pending'"
+      ).get().n;
+      if (due || late || pending) args.work = { due, late, pending };
+
+      const out = Alerts.stockOutCount();
+      const floor = Stockwatch.floorEmptyCount();
+      const reorder = Stockwatch.reorderDue({ limit: 20 }).length;
+      if (out || floor || reorder) args.shelves = { out, floor, reorder };
+
+      const quiet = Customers.quietList({ limit: 1 }).total;
+      const wants = Wants.backInStock({ limit: 20 }).length;
+      if (quiet || wants) args.people = { quiet, wants };
+
+      /* Nothing to say about any of the four. */
+      if (!args.money && !args.work && !args.shelves && !args.people) return [];
+      return [{ refId: c.dayKey, occasion: '', args }];
+    }
+  },
+  {
     id: 'day_close', audience: 'og', kind: 'rem_day_close', refType: 'day',
     run: (c) => {
       if (c.hour < num('reminders.day_close_hour', 21)) return [];
@@ -277,10 +343,14 @@ const RULES = [
       const stale = dayKeyOf(Date.parse(s.opened_at), c.tz) !== c.dayKey;
       if (!stale && c.hour < num('reminders.shift_open_hour', 22)) return [];
       const h = hoursSince(s.opened_at, c.ms);
-      /* Keyed on the day, so a drawer left open over three days says so three
-         times — once each — and not once a minute. */
-      return [{ refId: s.id, occasion: c.dayKey,
-                args: { id: s.id, hours: round1(h), by: s.user_name || null } }];
+      /* ADDRESSED TO WHOEVER OPENED IT. The person who can close the drawer is
+         the person standing next to it; telling only the owner at ten at night
+         is telling the one person who cannot act. `person` goes in the args so
+         the sentence names them — one rendered text that reads correctly to
+         both the cashier and the owner, who also hears it. */
+      return [{ refId: s.id, occasion: c.dayKey, toUser: s.user_id || null,
+                args: { id: s.id, hours: round1(h), by: s.user_name || null,
+                        person: s.user_name || null } }];
     }
   },
   {
@@ -288,7 +358,8 @@ const RULES = [
     run: (c) => {
       const min = num('reminders.variance_min', 1000);
       const last = DB.get().prepare(
-        'SELECT id, closed_at FROM shifts WHERE closed_at IS NOT NULL ORDER BY closed_at DESC LIMIT 1'
+        'SELECT id, closed_at, user_id, user_name FROM shifts ' +
+        'WHERE closed_at IS NOT NULL ORDER BY closed_at DESC LIMIT 1'
       ).get();
       if (!last) return [];
       /* Only a shift closed in the last two days. Without this a laptop
@@ -297,9 +368,13 @@ const RULES = [
       if (age == null || age > 48) return [];
       const s = Money.shift(last.id);
       if (!s || s.diff == null || Math.abs(s.diff) < min) return [];
-      return [{ refId: s.id, occasion: '',
+      /* The person who counted the box is the one who can say what happened to
+         it, so they are told as well as the owner — and the money guard means
+         this only reaches their phone if somebody deliberately allowed it. */
+      return [{ refId: s.id, occasion: '', toUser: last.user_id || null,
                 args: { id: s.id, diff: s.diff, counted: s.counted,
-                        expected: s.expected, currency: s.currency } }];
+                        expected: s.expected, currency: s.currency,
+                        person: last.user_name || null } }];
     }
   },
 
@@ -330,6 +405,60 @@ const RULES = [
                 args: { n, low } }];
     }
   },
+  /* EMPTY ON THE FLOOR, FULL IN THE BACK. Ranked above the buying questions
+     on purpose: this one has a customer standing in the shop attached to it,
+     and it is fixed by walking twenty metres rather than by a purchase order.
+     A two-day bucket because the answer changes as fast as the shelf does. */
+  {
+    id: 'floor_empty', audience: 'og', kind: 'rem_floor_empty', refType: 'sku',
+    run: (c) => {
+      const rows = Stockwatch.floorEmpty({ limit: 1 });
+      if (!rows.length) return [];
+      return [{ refId: rows[0].sku, occasion: c.bucket(2),
+                args: { name: rows[0].name, size: rows[0].size,
+                        back: rows[0].back, n: Stockwatch.floorEmptyCount() } }];
+    }
+  },
+  {
+    id: 'reorder_due', audience: 'og', kind: 'rem_reorder_due', refType: 'sku',
+    run: (c) => {
+      const rows = Stockwatch.reorderDue({ limit: 3, coverWeeks: num('reminders.cover_weeks', 2) });
+      if (!rows.length) return [];
+      return [{ refId: rows[0].sku, occasion: c.bucket(num('reminders.stock_repeat_days', 7)),
+                args: { name: rows[0].name, size: rows[0].size,
+                        have: rows[0].have, cover: rows[0].cover, n: rows.length } }];
+    }
+  },
+  /* A judgement rather than a fact, so it ships OFF and is keyed on the
+     product: fix one broken run and the next tick names a different product,
+     which is a different key, which is the next message. */
+  {
+    id: 'size_run_broken', audience: 'og', kind: 'rem_size_run_broken', refType: 'product',
+    run: (c) => {
+      const rows = Stockwatch.brokenRuns({ limit: 1 });
+      if (!rows.length) return [];
+      const r = rows[0];
+      return [{ refId: String(r.id), occasion: c.bucket(num('reminders.stock_repeat_days', 7)),
+                args: { name: r.name, gone: r.gone, left: r.left, pieces: r.pieces } }];
+    }
+  },
+  /* THE MOST EXPENSIVE QUERY IN THE TABLE, and the least urgent thing in the
+     shop — so it is gated on ONE HOUR before the query runs, not filtered
+     afterwards. Every other rule here is an indexed, LIMITed read; this is a
+     scan, and a scan on a sixty-second tick is a different kind of object. */
+  {
+    id: 'dead_stock', audience: 'og', kind: 'rem_dead_stock', refType: 'product',
+    run: (c) => {
+      if (c.hour !== num('reminders.og_digest_hour', 9)) return [];
+      const days = num('reminders.dead_days', 90);
+      const d = Stockwatch.deadStock({ limit: 1, days });
+      if (!d.rows.length) return [];
+      const r = d.rows[0];
+      return [{ refId: String(r.id), occasion: c.bucket(30),
+                args: { name: r.name, pieces: r.pieces, capital: r.capital,
+                        currency: r.currency, days, n: d.n, allPieces: d.pieces } }];
+    }
+  },
   {
     id: 'po_late', audience: 'og', kind: 'rem_po_late', refType: 'po',
     run: (c) => Alerts.poLate({ limit: 3 }).map((r) => {
@@ -341,6 +470,73 @@ const RULES = [
                args: { id: r.id, name: r.supplier_name || null, days } };
     }).filter(Boolean)
   },
+  /* ---- the runs ----------------------------------------------------------
+     A delivery goes out and somebody forgets to mark it. Nothing in the system
+     notices, and at the end of the day the board says three runs are still on
+     the road when two are long since delivered. */
+  {
+    id: 'run_out_long', audience: 'og', kind: 'rem_run_out_long', refType: 'delivery',
+    run: (c) => {
+      const cut = new Date(c.ms - num('reminders.run_hours', 4) * 3600000).toISOString();
+      const rows = DB.get().prepare(
+        `SELECT d.id, d.out_at, u.name AS driver
+           FROM deliveries d
+           LEFT JOIN users u ON u.id = d.driver_id
+          WHERE d.status = 'out' AND d.out_at IS NOT NULL AND d.out_at <= ?
+          ORDER BY d.out_at LIMIT 3`
+      ).all(cut);
+      if (!rows.length) return [];
+      const r = rows[0];
+      const h = hoursSince(r.out_at, c.ms);
+      /* Steps then daily, capped at three days: a run nobody has marked in
+         three days is a conversation, not a notification. */
+      const occ = elapsedOccasion(h, { steps: [num('reminders.run_hours', 4), 12],
+                                       daily: true, capDays: 3 });
+      if (!occ) return [];
+      return [{ refId: String(r.id), occasion: occ,
+                args: { id: r.id, hours: round1(h), driver: r.driver || null, n: rows.length } }];
+    }
+  },
+  /* ADDRESSED TO THE DRIVER. The money is his to hand in and nobody else can
+     do it for him; the owner hears it too, which is the point of addressing
+     rather than redirecting. Once a day, at closing time. */
+  {
+    id: 'driver_cash', audience: 'og', kind: 'rem_driver_cash', refType: 'user',
+    run: (c) => {
+      if (c.hour < num('reminders.day_close_hour', 21)) return [];
+      const rows = DB.get().prepare(
+        `SELECT d.driver_id AS id, u.name,
+                SUM(d.collected) AS amount, COUNT(*) AS n
+           FROM deliveries d
+           JOIN users u ON u.id = d.driver_id
+          WHERE d.status = 'delivered' AND d.collected > 0
+            AND SUBSTR(d.assigned_at, 1, 10) = ?
+          GROUP BY d.driver_id HAVING amount > 0`
+      ).all(c.dayKey);
+      return rows.map((r) => ({
+        refId: String(r.id), occasion: c.dayKey, toUser: r.id,
+        args: { person: r.name || null, amount: r.amount, n: r.n,
+                currency: cfg('shop.base_currency') || 'SYP' }
+      }));
+    }
+  },
+
+  /* ---- the regulars ------------------------------------------------------
+     Quiet is already computed per customer on the server — the median gap
+     between their own purchases times their own multiplier — so this asks the
+     question the bell asks and never a second version of it. */
+  {
+    id: 'customer_quiet', audience: 'og', kind: 'rem_customer_quiet', refType: 'cust',
+    run: (c) => {
+      /* A scan, like dead_stock: gated on the hour before it runs. */
+      if (c.hour !== num('reminders.og_digest_hour', 9)) return [];
+      const q = Customers.quietList({ limit: 5 });
+      if (!q.rows.length) return [];
+      return [{ refId: 'quiet', occasion: c.bucket(num('reminders.quiet_repeat_days', 7)),
+                args: { names: q.rows.map((r) => r.name), n: q.total } }];
+    }
+  },
+
   {
     id: 'wants_back', audience: 'og', kind: 'rem_wants_back', refType: 'wants',
     run: (c) => Wants.backInStock({ limit: 3 }).map((r) => ({
@@ -518,8 +714,19 @@ export const RULE_IDS = RULES.map((r) => r.id);
 
 /* ------------------------------------------------------------------ the tick */
 
-const dedupeKey = (ruleId, refId, occasion) =>
-  ['rem', ruleId, String(refId), occasion].filter((s) => s !== '' && s != null).join(':');
+/* THE ADDRESSEE IS PART OF THE KEY, AND ONLY WHEN THERE IS ONE.
+
+   Without it a rule keyed on something two people share — driver_cash on the
+   day key, say — makes ONE key for three drivers, and the second and third are
+   dropped before the insert, at the `seen` check, so even INSERT OR IGNORE
+   never reports it. Nobody would be told, and the count would say three.
+
+   Appended only when the row is addressed, because adding it unconditionally
+   would change the key of every row already in the table and re-say every
+   standing condition once on upgrade. */
+const dedupeKey = (ruleId, refId, occasion, toUser) =>
+  ['rem', ruleId, String(refId), occasion, toUser == null ? null : 'u' + toUser]
+    .filter((s) => s !== '' && s != null).join(':');
 
 /* Is this side allowed to hear anything at all right now, and if not, why?
    The reasons are ordered by how permanent they are, so the panel and the
@@ -582,13 +789,33 @@ export function evaluate({ at = null, dry = false } = {}) {
     info.fired = rows.length;
 
     for (const r of rows) {
-      const key = dedupeKey(rule.id, r.refId, r.occasion);
+      /* ADDRESSED ONLY IF THERE IS SOMEBODY TO ADDRESS. A rule naming a person
+         who has not linked a phone falls back to the whole side rather than
+         being aimed at nobody: a standing fact about the shop must not vanish
+         because one cashier never set up Telegram. The name stays in the
+         sentence either way, so whoever runs the shop still learns whose
+         shift it is. */
+      const toUser = (r.toUser != null && Telegram.canAddress(rule.audience, r.toUser))
+        ? Number(r.toUser) : null;
+
+      /* Nobody subscribes to this kind — do not queue it. Left to drain() the
+         row would be marked sent with "no chat is subscribed", and the row IS
+         the ledger, so the occasion would be spent before anybody could ask
+         for it. Skipped here, the key survives and lands the day somebody
+         ticks the box. Not applied to a dry run: the preview must show what
+         WOULD fire on a shop that has not linked a phone yet. */
+      if (!dry && !Telegram.canReach(rule.audience, { kind: rule.kind, toUser })) continue;
+
+      const key = dedupeKey(rule.id, r.refId, r.occasion, toUser);
       if (seen.get(key)) continue;
       perSide[rule.audience].push({
         rule: rule.id, kind: rule.kind, refType: rule.refType, refId: String(r.refId),
-        audience: rule.audience, args: r.args, dedupe: key,
+        audience: rule.audience, args: r.args, dedupe: key, toUser,
         /* The preview shows the MESSAGE, not the rule's name. Nobody can judge
-           "yl_due fired"; everybody can judge the sentence it would send. */
+           "yl_due fired"; everybody can judge the sentence it would send. And
+           once a message can be addressed, WHO it is for is half of what the
+           preview is for. */
+        toName: toUser != null ? (r.args && r.args.person) || null : null,
         text: dry ? Telegram.renderFor(rule.kind, r.args) : undefined
       });
       info.queued++;
@@ -617,7 +844,8 @@ export function runNow({ at = null, dry = false } = {}) {
     for (const row of r.rows) {
       Partner.queueEvent(d, {
         kind: row.kind, refType: row.refType, refId: row.refId,
-        audience: row.audience, args: row.args, dedupe: row.dedupe
+        audience: row.audience, args: row.args, dedupe: row.dedupe,
+        toUser: row.toUser == null ? null : row.toUser
       });
     }
   });
@@ -698,9 +926,13 @@ function nextDaily() {
   const tz = tzMinutes();
   const now = Date.now();
   const out = {};
-  for (const [id, key] of [['day_close', 'reminders.day_close_hour'],
-                           ['yl_digest', 'reminders.yl_digest_hour']]) {
-    const h = num(key, id === 'day_close' ? 21 : 9);
+  /* Every rule that fires once a day at an hour. A daily rule left out of this
+     list cannot tell anybody when it next fires, which is the one number that
+     proves the time zone is right. */
+  for (const [id, key, dflt] of [['og_digest', 'reminders.og_digest_hour', 9],
+                                 ['day_close', 'reminders.day_close_hour', 21],
+                                 ['yl_digest', 'reminders.yl_digest_hour', 9]]) {
+    const h = num(key, dflt);
     const local = shopNow(now, tz);
     const fired = local.getUTCHours() >= h;
     const at = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(),

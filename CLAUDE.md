@@ -28,6 +28,8 @@ npm run supabase:check           # is the mirror a faithful copy of the DATA
 npm run supabase:drift           # can the next write even land — the SHAPE
 npm run hardware                 # printers and scanner: what is missing, and why
 npm run hardware:install         # installs what it can (asks for administrator)
+npm run test-print               # sends real bytes so paper comes out (--receipt / --label)
+npm run test-print:dry           # says where it would go, spends no paper
 npm run cert:trust               # Windows trusts the self-signed certificate (asks for administrator once)
 ```
 
@@ -127,7 +129,8 @@ stopped except by closing it, and said the mirror's state once at 8 am and never
 OG System.exe               the icon. Starts panel/panel.js, opens a window onto it, sits in the tray
 panel/panel.js              the supervisor: holds the server as a child, streams its output, runs the jobs
 panel/jobs.js               the button table — every job is a command plus the two sentences before it
-panel/ui/                   the window: same tokens and Montserrat as the shop, served by the panel itself
+panel/ui/                   the window: three screens, same tokens and Montserrat as the shop
+panel/ui/i18n.js            its own English and Arabic — the shop's I18N needs a server to exist
 panel/launcher/OGSystem.cs  the .exe's source. panel/build-exe.ps1 compiles it; panel/make-icon.js the icon
 ```
 
@@ -253,6 +256,48 @@ of it may stop the shop opening** — the .bat's loudest rule, kept to the lette
 session because two of these can raise a UAC prompt, right at 8 am and wrong on the ninth
 restart of an afternoon's editing.
 
+### The window is three screens, and it opens on the one a shopkeeper needs
+
+It used to open on a 306px rail of five cards beside a **full-height black terminal**, which was
+the largest thing on screen and the first thing the owner saw at eight in the morning. He keeps
+his records on paper. A wall of scrolling monospace reads as a fault, not as a working shop, and
+that is how it was reported.
+
+- **Shop** is the default, every single time. The mark in a progress ring, one sentence, one lime
+  button, the address with a QR beside it, and anything wrong as a card. The last screen is
+  deliberately **not** remembered: the one morning somebody opened the log out of curiosity would
+  otherwise become every morning after it.
+- **Tools** (the gear) is all sixteen jobs under four headings, drawn from `group` in `jobs.js`.
+- **Log** is the terminal, given the whole window — a place you go to, not the room you arrive in.
+
+**The boot is seven steps, and every one is a real signal** — an exit code, a spawn, a message off
+the pipe. `STEPS` in `panel.js`: `port · checks · padlock · printers · server · cloud · open`, each
+pushed as `event: step` carrying a **code and its values, never a sentence**, so the window writes
+the words from `panel/ui/i18n.js` and the same step reads correctly in Arabic. That is
+`server/lib/alerts.js`'s rule, for alerts.js's reason. Nothing here is a timer pretending to be
+progress, which is what `js/splash.js` says and the only reason either screen can be believed.
+
+Three things it is easy to break, all of them the same mistake:
+
+- **`morning()` runs once a session, so on a Restart those three steps are `skip`** — "checked at
+  08:04" — never fresh ticks. A tick for a check that did not run is the exact lie this screen
+  exists to stop telling.
+- **A shop this window did not start has not been checked BY it.** The foreign branch marks every
+  check `skip` and the verdict line is not drawn at all: "Everything is ready" over a shop whose
+  ready line carries no notices would be a clean bill of health signed on no evidence.
+- **A shop that stops by itself is not a shop that failed to open.** `server_died` gets its own
+  headline, and `open`/`cloud` are pushed back to `wait` — left alone they went on carrying their
+  ticks *underneath* the row that had just gone red.
+
+The steps live in `state` and ride in `snapshot()`, so the `hello` frame redraws a boot already in
+progress rather than starting a second sequence under the first.
+
+**Refusals are pushed, not just printed.** `POST /act` answers `{"ok":true}` before the action
+runs, so every refusal used to exist only as a red line in a pane this window no longer opens on.
+`refuse()` pushes `event: refused` with a code and the window toasts it. Job progress goes the same
+way (`event: job`, `{step, of}`), and the long-emitted-but-ignored `event: done` is now the
+completion toast.
+
 ### The jobs — `panel/jobs.js`
 
 One entry per button: a command plus `label`, `blurb`, `while` and `danger`. **`while: 'shut'`
@@ -264,8 +309,46 @@ laptop), and `claim-mirror.bat` had that protection in a comment above the line 
 anyway. `push` stops at the first failing step, as `push.bat` did — pushing after a failed
 rebase is how a conflict becomes a force-push conversation. `createuser` passes name, username
 and role as flags and pipes only the password, so no line can be silently read as the wrong
-prompt. The window draws its tool list from the table, so a job added there appears without
-`panel/ui/panel.js` being touched.
+prompt.
+
+**`group` (`shop` · `cloud` · `machine` · `dev`) is what makes "the window draws its tool list
+from the table" true.** It was not: `panel/ui/panel.js` held a hand-written array of thirteen job
+NAMES and drew only those, so a job added to `jobs.js` appeared nowhere at all while this
+paragraph claimed otherwise. A second copy of a fact drifts from the first — the same lesson as
+`mirror-lag.js`, in a smaller place.
+
+**`catalogue()` sends `aroundShop` too, and the window was wrong without it.** `restore` and
+`takeShop` are `while: 'shut'`, so the window greyed them out whenever the shop was open — but
+`runJob` closes the shop around them and opens it again, so the restriction it was drawing did not
+exist. The mirror card only worked because it drew its own un-greyed copy of the button.
+
+**`pull` — "Get the latest code" — is the other half of Publish**, because the shop is worked on
+from more than one machine and taking what the other one pushed should not need a terminal. Three
+steps, not one: `git fetch`, then `git log HEAD..@{u}` listing what is **about to** land, then
+`git pull --rebase --autostash`. Reading it back off the reflog afterwards was the other option and
+it lies — with nothing new to take, `HEAD@{1}` is wherever HEAD happened to be last time and the
+list names commits that did not just arrive. `--autostash` for the reason `push` has it, and the
+chain stops at the first failure so a conflict is left standing rather than half-resolved by a
+button. Nothing needs restarting by hand afterwards: a pull that touched `server/` is picked up by
+`serverIsStale()` within the second and the Shop screen raises its amber card.
+
+**`testPrint` answers what `hardware` cannot.** That check proves a queue exists, is shared under
+the right name and sits on Generic / Text Only — all three stay true of a printer that is switched
+off, out of paper, or on a different port than Windows believes. `server/scripts/test-print.js`
+sends the real bytes through the shop's own transports (`lib/printer.js`,
+`lib/label-transport-tcp.js`), reading the receipt's queue from `config` and the label's from
+`agent/agent-config.json` — the same two places `hardware.js` reads, rather than a second copy.
+The database is opened **read-only**: the till is usually running while somebody stands at a quiet
+printer, and `DB.open()` would apply migrations underneath a live shop.
+
+It is deliberately plain ESC/POS text mode, not the till's real receipt — that one is a canvas
+rasterised by `js/escpos.js` because Arabic needs shaping no thermal font can do, and none of it is
+what is being tested. **A readable slip IS the pass condition**: with the manufacturer's driver on
+the queue the command bytes come back as printed gibberish, which is the exact failure
+`lib/printer.js` was written about and the one thing no exit code can report. The label's size
+comes from the shop's default `label_templates` row, because a test label at the wrong size feeds
+through the gap sensor wrong and wastes the next one too. `--dry` says where it would go and sends
+nothing, so checking the settings costs no paper and no mystery slip at a busy counter.
 
 ### The handover — "Take the shop here"
 
@@ -300,8 +383,20 @@ two panel buttons.
   every colour at a quarter of its brightness, every button behind glass — and was found by
   measuring a screenshot's brightest pixel (`#334200` where `#C6FF00` should have been), not by
   looking at one.
+- **`.qr` was nearly the `.pos` collision again.** `js/codes.js` puts `class="qr"` on the `<svg>`
+  it returns, so a container class of the same name hands the picture a grid, a card background
+  and 13px of padding. The container is `.qrcard`. **Grep for a class name before defining one**,
+  exactly as for a global function name — this is the third time in this repo.
+- **`justify-content: center` on a scrolling column clips BOTH ends.** The Shop screen with three
+  notices is taller than a 760px window, and centring put the mark's top and the last card's
+  bottom out of reach with no way to scroll to either. `justify-content: flex-start` plus
+  `margin-block: auto` on the child centres while there is room and collapses when there is not.
 - **ANSI is stripped in `say()`**, not in the server, which is right to keep colouring a terminal
   it may be running in. The tick and the dot are text and survive.
+- **The QR is drawn for the WIFI address, never `localhost`** — a phone pointed at a code for
+  `https://localhost:8443` opens the phone's own machine and finds nothing, which reads as the
+  shop being broken. `js/codes.js` is served to the window under `/shop/` and is the ONE encoder;
+  writing a second one beside a working one is how two things that must agree stop agreeing.
 - **Two logs in `%LOCALAPPDATA%\OGSystem\`**, each truncated at every start: `launcher.log` (what the
   `.exe` did — root, node, every line the panel printed, which browser opened, the quit) and
   `panel.log` (the terminal pane, verbatim). A tray application has no console, so "it did not
@@ -512,6 +607,28 @@ Conventions that are non-negotiable and easy to break:
 - Passwords: scrypt (N=32768, r=8, keylen=64). Sessions: `HttpOnly` `SameSite=Lax` cookies, 14-day
   sliding expiry. Login is throttled per username and hashes even for unknown users, so timing does not
   leak which accounts exist.
+
+### The startup notices are one list with two readers
+
+The eight standing conditions the server prints after its address block — no accounts · a retired
+test account is active · the demo catalogue is loaded · `OG_SECURE` unset · the certificate no
+longer names this address · it expires in N days · there is no certificate · `OG_ORIGINS` unset —
+are collected once into `notices[]` as `{ code, level, args, lines }` and then read twice.
+
+`lines` is printed exactly as before, in the same order, so **the terminal output is byte-identical**;
+`{code, level, args}` rides on the `PanelLink.tell('ready', …)` payload and the launcher writes its
+own sentence from `panel/ui/i18n.js`, which is how the same warning can appear in Arabic. Shipping
+the English along with it would be the same fact in two places, which is what the list exists to
+avoid. **Adding a notice is one entry here and two strings there — never a ninth `console.log`.**
+
+`SyncWorker.start()` also `tell()`s on both of its early returns now. "Off, because there is no
+Supabase in `server/.env`" is a finished answer; before this the worker simply never spoke on those
+paths and the launcher's mirror card sat on "No word from the mirror yet." for as long as the
+window stayed open, which reads as still loading rather than switched off on purpose.
+
+`PanelLink.onAsk` also answers `who` with `Live.presence()`, which is what the launcher asks before
+it closes the till. It proves who has the shop OPEN, not who is mid-sale, and the wording says only
+that.
 
 ### `scrubCost`
 
@@ -1148,6 +1265,271 @@ second copy of that, with the 403 handling wrong.
   Stop otherwise left a 25 s `getUpdates` long-poll and a live mirror push racing the 5 s hard exit,
   and a reminder queued *during* a shutdown is a message about a shop that is closing.
 
+## Each chat gets only what that person asked for
+
+Every message went to every linked chat, which was right when a side had one phone on it and wrong
+the moment it had three: the person in the back room wants to hear that a size hit zero and has no
+business being told the day's takings, and the owner does not want a notification every time a
+shirt gets a name.
+
+So a chat entry in `config['telegram.<side>_chats']` carries **`rules`** — the list of kinds it
+accepts — and **`userId`**, the account that pressed Connect. No migration and no schema change:
+`config` is mirrored whole, so the routing survives the laptop baton for free.
+
+- **`rules: null` means EVERYTHING**, and that is what every chat linked before this exists as, so
+  nothing already working changed. An empty array means nothing, which is a real and different
+  answer — hence `Array.isArray`, never a truthiness test.
+- **Every kind is routable, not only the reminders.** Filtering the nudges and not the live events
+  would be strange, and both already pass through the same place. `KIND_GROUPS` in `telegram.js`
+  is the one list: **day · stock · print · yl · live** (the ten real-time `emitEvent` kinds). It
+  rides out on `GET /api/telegram/status` so the browser draws the tick boxes from THAT list and
+  not a second copy — a kind added there appears on screen with two i18n strings and no other edit.
+  `test` is deliberately in no group: the Test button means "does this chat work", and a test
+  message that silently went nowhere would be the worst possible answer.
+- **The filter is one line in `drain()`**, inside the chat loop — the single point both reminders
+  and events pass through, so there is exactly one copy of the rule.
+- **A row nobody subscribed to is marked SENT, not retried.** Left to the existing branch,
+  `landed === 0` backs off and tries again until the twelfth attempt: a request every few seconds
+  for a message no chat has asked for. It is stamped with `error: 'no chat on this side is
+  subscribed to <kind>'` so the card can say so rather than showing a mysterious backlog.
+- **A new chat gets everything EXCEPT the money kinds** (`rem_day_close`, `rem_cash_variance` —
+  `DEFAULT_RULES`). Somebody in the warehouse links their phone to hear about stock and must not be
+  handed the day's takings because nobody remembered to untick it. Turning them on is a deliberate
+  act on a screen that names the chat it is doing it to. **Re-linking keeps the rules a chat
+  already had**, or checking that the bot still works would silently reset somebody's choices.
+- **The screen** is the Telegram card, in Settings and in the partner's portal — the same component.
+  Each row grows a summary line ("Everything", "Stock (3/4) · As it happens") and a **Choose**
+  button opening a picker: five group switches, their kinds indented underneath. The group tick is
+  a shortcut for its own kinds and nothing more — **the stored unit stays the kind**, so "stock but
+  not the purchase orders" survives a round trip. It writes on **Save**, not on every tick: a round
+  trip per checkbox on a shop wifi is how a list of seventeen ends up half written.
+- **Everything ticked is stored as `null`**, not as a list of today's kinds — an explicit list would
+  silently exclude a kind added next month.
+- **`PUT /api/telegram/chat`**, gated `['config.write','partner.jobs']`, side from the account's
+  role and never the body. The manager owns the shop's chats; Yalla Wear owns theirs.
+- **`.switch input:indeterminate + i` had to be written.** A half-ticked group sets `indeterminate`,
+  which is *not* `checked`, so the head drew identically to fully OFF and lied about its own
+  contents. The knob now stops at 9px between the two ends on a dimmed lime track. A literal
+  `#6E7A1E` rather than `color-mix()`, which is Chrome 111 and this runs on the shop's hardware.
+
+## The bots answer, and two buttons act
+
+`server/lib/telegram-commands.js`. `/help` `/queue` `/today` `/late` `/job P-1043` `/status`
+`/mute 2h` `/unmute`, on both bots, each answering only its own side.
+
+- **The linked-chat list IS the authorisation.** A Telegram chat carries no session and no account;
+  there is nothing else to check against. `linked` is computed in `telegram.js` and handed in. An
+  unlinked chat gets the ordinary "send your link code" line and **never a hint the command
+  exists** — not "you are not allowed", which confirms there is something behind it.
+- **The side comes from the bot, never the message**, exactly as `tgSide()` decides it from the
+  role on the HTTP side. `/job` proves it: the shop is told the customer, Yalla Wear is not — the
+  same strip `GET /api/partner` applies, restated because this is a different door into the row.
+- **`/mute 2h` needed no new state** — it writes `reminders.muted_until_<side>`, which the
+  scheduler has honoured since the day it was written.
+- **`keyboardFor()` decides the buttons**, and it is deliberately small. An unanswered order on
+  Yalla's bot gets **Accept / Decline**; any reminder gets **Mute 2h**; a live event gets nothing.
+  Accept is the one write in the whole file: it is a decision the partner side is entitled to make,
+  it is refused unless the order is actually `pending`, and the **Telegram name that pressed it
+  goes into `order_note`** — which is the only reason it is allowed to be a button. Money, stage
+  moves and voids get none, because a chat is a room whose membership nobody in this system
+  controls.
+- **A button press is not a message.** It arrives as `callback_query` with its own id and Telegram
+  spins the button until that id is answered, so `answerCallbackQuery` goes out whatever happens,
+  including on the way out of a throw.
+- **Error codes are on `.code`, not `.message`** — `respondToOrder` throws
+  `Error('no order is waiting on a reply')` with `code: 'not_pending'`. Matching the message caught
+  nothing and put the raw sentence in a toast.
+
+## Eight more reminders — the shelves, the runs, the regulars, the morning
+
+Migration `043`, `server/lib/stockwatch.js`. Twenty-five rules now; `REMINDER_RULES` in
+`js/app-settings.js` and `RULE_IDS` on the server are still the two lists, and adding one is still
+a row in each plus `rem_<id>` / `rem_<id>_sub` in **both** i18n tables.
+
+**`stockwatch.js` is where the four questions about stock live**, and two of them had only ever been
+answered in the browser: `DB.floorOuts()` and `DB.reorderSuggestions()` (`js/data.js`) run over
+`DB.liveVariants()`, which is whatever the last hydrate loaded — the last-200 problem in miniature.
+In SQL they can be asked at nine in the morning by something with no browser. Four rules apply to
+every query there: `p.hidden = 0` (an archived line is not stock), every query capped and ordered,
+money as minor units plus a currency and never summed, and **what counts as normal is read from
+this shop's own sales** — a size it has never sold is not a gap.
+
+| id | what it says | why it earns a message |
+|---|---|---|
+| `floor_empty` | zero on the shop floor, pieces still in the back, fastest-selling size first | The only one with a customer standing in the shop attached to it — fixed by walking twenty metres, not by a purchase order. Ranked above the buying questions for that reason. |
+| `reorder_due` | running low against how fast it actually sells here, with weeks of cover | **`have > 0` is deliberate**: a size at zero is `stock_out`'s business, and "0 left, 0 weeks of cover" is a sentence that tells nobody anything. The two rules are kept disjoint. |
+| `size_run_broken` | the sizes that sell here are gone, the odd ends remain | Reads as in stock in every total and cannot be sold. Ships **off** — it is a judgement, and the threshold will be wrong until somebody has read the preview. |
+| `dead_stock` | pieces that have not moved at all, and the money in them at cost | Ships **off**, same reason. |
+| `run_out_long` | a delivery `out` for hours that nobody has marked | |
+| `driver_cash` | cash collected today and never handed in | **Addressed to the driver**, so the name leads the sentence. |
+| `customer_quiet` | regulars quiet past their **own** usual gap | `Customers.quietList()` — the browser's rule moved to the server rather than copied, so one answer. |
+| `og_digest` | the owner's morning: yesterday's money, today's work, the shelves, the people | |
+
+- **`dead_stock` and `customer_quiet` are the only table scans in the table**, so both are gated on
+  **one hour of the day before the query runs**, the way `day_close` gates on `c.hour` — not
+  filtered afterwards. Every other rule is an indexed, `LIMIT`ed read, and a scan on a
+  sixty-second tick is a different kind of object.
+- **A zero inside a digest section is noise.** "0 worth reordering" is true and tells nobody
+  anything, and three of them in a row teaches the eye to skip the line — so each part appears only
+  when it has something to say, which is the whole-message rule applied one level down. The digest
+  reports **yesterday's** takings: at nine in the morning "0 today" would be true and useless.
+- **`run_hours`, not `delivery_stuck_hours`.** That key already belongs to the **print** rule
+  `job_stuck`, and one name for two rules means editing an hour here silently retunes a job on the
+  other side of the shop.
+- **A missing config key reads as ON** (`on()` in `reminders.js`), so `043` names every one of the
+  eight explicitly — a rule shipped without its row would be live on the day it landed.
+- **`nextDaily()` had to learn the third daily rule.** It hardcoded `day_close` and `yl_digest`; a
+  daily rule left out of that list cannot say when it next fires, which is the one number that
+  proves the time zone is right.
+- **Rule order is load-bearing twice**: `BURST` is six per side per tick and the severity sort
+  follows table order, so a rule appended at the end ranks last and a cold start takes days to
+  reach it. The new rules are inserted at their proper severity.
+- **Two new kind groups**, `runs` and `people`, so the Telegram picker and the Settings fold both
+  gain a heading from one edit. `KIND_SINCE` marks all eight as version 2 — see `rulesV` below,
+  which is why they reach a chat linked before they existed.
+
+## Who a message is for — roles, people, and the phone in somebody's pocket
+
+Migration `042`. Every reminder used to be aimed at an **audience** — `og` or `yalla` — and nothing
+narrowed below that, so "the shift is still open" went to the owner at ten at night rather than to
+the cashier who left it open, and a phone was configured by a manager ticking seventeen boxes
+rather than by the fact that its owner is the warehouse.
+
+- **`partner_events.to_user` is one nullable column, and NULL still means the whole side.** No
+  foreign key: `foreign_keys = ON`, and a three-month-old delivery record must not be why a user
+  row cannot be deleted — the same call `041` made for `ref_type`, and for the same reason. No
+  index either; `drain()` reads twenty rows and filters in JS.
+- **`chat.userId` IS PROVENANCE AND NOT IDENTITY**, and confusing the two breaks the whole feature.
+  It is *who pressed Connect* (`telegram.js` says so where it is written), so a manager who links
+  the warehouse **group** stamps that group with his own id. Reading it as "whose phone this is"
+  would have given the shop floor the manager's preset — money included — and every message
+  addressed to any person. Identity is **`person`**, set only for a `type === 'private'` chat, at
+  link time, and never inferred. **A group has no person**, which is the honest answer for a room
+  whose membership nobody in this system controls.
+  - The one exception is a **grandfather clause**, scoped to `type === 'private'` and nothing else:
+    a private chat linked before any of this recorded an account still answers commands, because
+    until this change the routes were gated on `config.write` and it could only have been put there
+    by somebody who runs the shop. The live shop's only linked chat is exactly that. `status()`
+    reports `ownerless` so the card can say "reconnect this to give it an owner".
+- **The owner clause asks `Auth.can(user, 'config.write')`, never `role === 'manager'`.** The
+  permission table is the authority and is cache-invalidated on every write path, `PINNED`
+  guarantees a manager cannot lose it, and `Auth.can` returns false for an **inactive** account —
+  which closes the departed-employee hole in the same line that answers the question.
+- **A chat follows its role until somebody chooses by hand.** `preset: 'role'` resolves through
+  `config['reminders.preset.<role>']`; ticking any box writes an explicit list and clears the
+  preset, because "the manager can override and the override sticks" is the whole decision. An
+  account that is gone, disabled, or whose preset will not parse resolves to **nothing** —
+  explicitly, and never by falling through to the `rules`-is-not-an-array convention, which means
+  *everything*. Getting that backwards would make a departed employee's phone receive more.
+- **`rulesV` is why a rule added next month reaches a chat linked today.** An explicit `rules` array
+  is frozen at the moment somebody chose it and can never contain a kind that did not exist yet, so
+  a saved list carries the version it was written against and a newer kind is accepted until the
+  person next chooses — *they said no to what they were shown, not to what nobody could show them*.
+  **The exception is money**, which is never granted by a default, an upgrade, or anything but a
+  deliberate tick.
+- **`queueEvent` refuses `toUser` on the `yalla` audience.** `PARTNER_STRIP` removes the customer,
+  the phone and the price — it does **not** remove a staff name, and an addressed message names the
+  person it is about. It also refuses a non-integer: SQLite stores `'lubna'` in an INTEGER column
+  without complaint, and the row would then be delivered to nobody.
+- **The addressee is part of the dedupe key, and only when there is one.** `…:u<id>` — without it,
+  two cashiers with an open shift on the same day collide on one key and the second is dropped at
+  the `seen` check, before `INSERT OR IGNORE` could even report it. Appended conditionally, or the
+  key of every existing row would change and every standing condition would be re-said on upgrade.
+- **The name leads the sentence.** One rendered text goes to the person and to the owner, so it has
+  to read as both "you left this open" and "she left this open" — a name at the front does that.
+  **Not `args.actor`**, which `render()` prints as a trailing signature and therefore means the
+  opposite.
+- **`canReach(side, {kind, toUser})` decides at the INSERT.** Queueing a row nobody subscribes to
+  and letting `drain()` mark it sent spends the occasion for ever, because the row *is* the ledger.
+  A rule addressed to somebody with no phone is queued **unaddressed** instead, so the shop still
+  hears it — a standing fact must not vanish because one person never set up Telegram.
+
+**Mute is per chat, and a muted row PARKS rather than being marked sent.** One phone tapping
+Mute 2h used to write `reminders.muted_until_og` and silence everybody. Now it writes the chat's
+own entry, enforced in `drain()` — the opposite of quiet hours, which are a property of the shop's
+night and apply to everyone equally, while a mute belongs to one chat and the row still has to
+reach the others. Three things the filter must keep right: it applies only to `rem_*` kinds
+(`/mute` promises real events still arrive); a row whose every target is muted gets `next_try_at`
+set to the earliest expiry with **`sent_at` untouched and `attempts` not bumped** (bumping would
+burn the twelve-attempt wall in three hours against a mute that may run seventy-two, and the row
+would then read as `failed`); and nothing may `break` the batch, because rows are `ORDER BY id`
+across **both** audiences and one unreachable OG chat would otherwise stall Yalla Wear's queue.
+
+**Everyone links their own phone, and that is safe only because of the command gate.** Linking is
+account self-service like `POST /api/auth/password`, but a linked chat carries no session — so
+being on the list is the whole *authentication* and can no longer be the whole *authorisation*.
+`Commands.handle` resolves the chat's owning account and asks `Auth.can` per command: `/today`
+needs `money.read`, `/queue` and `/late` need `print.read`, and `/job` names the customer only on
+`customer.read`. Without that, Connect would have been a way past `requirePerm` to the day's
+takings for any cashier. Managing *other people's* chats stays on `config.write` throughout, and
+a non-manager may never write rules at all — their phone follows their role.
+
+**Two live bugs found on the way:**
+
+- **`linkCode` kept one code per SIDE.** A second person pressing Connect inside ten minutes was
+  handed **the first person's code**, and `addChat` then stamped their chat with the first person's
+  name and id. Merely confusing while a chat's owner was a subtitle; a mis-attributed preset once
+  the owner decides what the phone receives. Keyed per `(side, userId)` now, and spent by whoever
+  actually sends it.
+- **`GET /api/config` has no permission gate** and returned the whole config table — including
+  `telegram.og_chats` and `telegram.yalla_chats` — to every signed-in account, **Yalla Wear
+  included**: another company holding the shop's staff group ids. The six chat keys are stripped
+  for callers without `config.write`. Not moved out of `config`, because config is mirrored whole
+  and that is the entire reason the links survive a restore onto another laptop.
+
+**What this still cannot answer** is "did Lubna actually get it". A row is marked sent when **one**
+target lands, so there is no per-recipient delivery record. Said in the migration comment rather
+than implied away by a screen.
+
+## The bot explains itself, and BotFather is not where it is written
+
+A bot that only ever buzzes is read as spam and muted. Three things now say what it is, and none of
+them is typed into @BotFather by hand.
+
+- **The tutorial is pushed at the moment of linking**, as a second message right after the "it
+  worked" line — `Commands.welcomeText(side, true)`, sent from the link branch in `telegram.js`.
+  That is the one moment somebody is certainly holding the phone and looking at it; a bot that
+  explains itself a week later explains itself to nobody. It is also what `/start` and `/help`
+  return, so there is one text and it cannot drift. It says **what arrives without being asked**
+  (the live events, then the reminders) before it lists the commands — a person shown only a
+  command list assumes the bot is a search box.
+- **`/start` and `/help` are the two doorway commands and answer an UNLINKED chat**, with the
+  joining instructions and nothing else — no job, no number, no other command. This is a
+  deliberate softening of "an unlinked chat is told nothing": a Start button that does nothing
+  reads as a broken bot, and the person pressing it is nearly always the owner with the code on
+  his other screen. Every other command keeps the plain link-code line.
+- **Arabic and English are two BLOCKS, not two halves of every line.** The first draft put
+  `الطلبات عند المطبعة · what the printer has` on each command in both blocks, so the English
+  reader skipped an Arabic phrase eight times. `COMMAND_MENU` carries `[name, arg, ar, en]` and
+  each block is rendered in one language. The example argument lives in its own column because a
+  Telegram command NAME may only be `[a-z0-9_]`, so `/job P-1043` cannot be the name.
+
+**The command menu is published per LINKED CHAT, never the default scope.** `syncCommands()` in
+`telegram.js` calls `setMyCommands` with `scope: {type:'chat'}` for every linked chat, in English
+and again with `language_code: 'ar'` — a phone set to Arabic gets an Arabic menu, which is the
+common case here and something BotFather cannot do at all. The default scope holds `/start` and
+`/help` only (`PUBLIC_MENU`), so a stranger who finds the bot is not handed a map of the shop.
+Republished on **every boot**, not only at link time: the list changes when the code does, and a
+chat linked before a command existed would otherwise never be offered it. `unlink` calls
+`deleteMyCommands` for **both** language sets — a `language_code` set is its own record, and
+deleting only the default leaves an Arabic phone with a menu for a chat that no longer answers.
+
+**`npm run botfather`** (`server/scripts/botfather.js`) writes the rest: `setMyDescription` — the
+text filling the empty chat *before* anybody presses Start, which was blank — `setMyShortDescription`
+(the About line) and the public menu, each in both languages, for both bots. `--dry` prints every
+call and sends nothing. Length is checked locally first, because the API refuses the whole call
+with a description that names no number. It reads `BOT_IDENTITY` and `COMMAND_MENU` out of
+`telegram-commands.js`, so the shop's own words and the bot's face are one source of truth.
+**What is genuinely left for BotFather is the profile photo and the name**, both pictures rather
+than text; the script prints them at the end, with `/setprivacy` and `/setjoingroups` to check once.
+
+**PRIVACY MODE IS WHY A LINK CODE MUST BE `/start CODE` IN A GROUP.** A bot in a group has privacy
+mode on by default and is handed only messages beginning with `/` — so the bare six-letter code,
+which is what the card told people to send, is **never delivered** and the card waits for ever.
+Privacy stays ON (every command starts with a slash anyway, and the alternative is the bot reading
+a staff group's whole conversation); the instruction changed instead, on the card (`tg_group_hint`,
+with the actual code written into it) and in the bot's own joining message.
+
 **Testing it without spamming the shop.** A scratch copy of `og.db`, a bogus `OG_TELEGRAM_TOKEN_*`
 (**not an empty one — PowerShell deletes an env var set to `""`, and the server then reads the real
 token out of `.env` and long-polls the live bots**) and a fake chat id in `telegram.<side>_chats`.
@@ -1155,6 +1537,24 @@ token out of `.env` and long-polls the live bots**) and a fake chat id in `teleg
 network at all, and any row that did try to send is refused with "chat not found". A UI check must
 click `.fold-btn`, not `.fold-head` — the delegation uses `closest()`, which walks up — and must
 **hit-test** the result, because clicking the head left the preview blocks in the DOM at 0×0.
+
+**`handleUpdate` is private, so drive the POLL LOOP instead of calling it.** Intercept
+`globalThis.fetch`, answer `getUpdates` with a crafted update and `getMe` with a username, and
+every reply — `sendMessage`, `setMyCommands`, `deleteMyCommands` — is read back off the wire with
+its true body, including `reply_markup` and `language_code`. That is the whole path the shop runs,
+not a re-implementation of it. Wait on the call appearing rather than on a sleep: the loop is a
+real async loop and a fixed pause is a guess about it.
+
+To watch the outbox without a network, replace **`globalThis.fetch`** — `call()` uses the global,
+so an interceptor sees the real request body including `reply_markup`, and an ES module namespace
+is frozen so the export cannot be stubbed anyway.
+
+**`getComputedStyle` LIES IN HEADLESS ABOUT ANY TRANSITIONED PROPERTY.** `.switch i` transitions
+`background` and the knob's `transform`; a headless page with no visible frame never advances the
+transition, so the computed value stays at the START for ever. Three switches in three genuinely
+different states all measured as the same lime over a DOM that was demonstrably correct. Inject
+`*{transition:none!important;animation:none!important}` and force a reflow before measuring — the
+same family as screenshotting a popover mid-fade.
 
 ## Known open work
 
@@ -1166,11 +1566,13 @@ click `.fold-btn`, not `.fold-head` — the delegation uses `closest()`, which w
   live behind `OG_WEB_API_KEY`; nothing calls either yet. The catalogue side is complete — the
   flag, the mirror column, the editor and the read door — so what is missing is the site itself,
   not anything here.
-- **The bots do not yet ANSWER.** `lib/telegram-commands.js` is a stub returning `false`, and the
-  seam around it is finished (see "The reminders"): `/help`, `/queue`, `/today`, `/job P-1043`,
-  `/status` and `/mute 2h` are a router away, all of them reads. A command that WRITES shop state
-  from a chat is a second door past `requirePerm` with no session behind it and is deliberately not
-  designed yet.
+- **Yalla Wear's bot has never been linked.** `telegram.yalla_chats` does not exist, so all five
+  `yl_*` rules are skipped with `no_chat` and nothing is queued for them. They link it from their
+  portal's Telegram card: Connect → a six-letter code → send it to the bot.
+- **Write commands past Accept/Decline are not designed.** A stage move, a payment or a void from a
+  chat is a second door past `requirePerm` with no session behind it, in a room whose membership
+  nobody in this system controls. Accept/Decline earned its button by being refused unless the
+  order is pending and by recording who pressed it; nothing else has that shape yet.
 - **WhatsApp push is not built.** The outbox has a `channel` column for it; the WhatsApp Cloud API
   needs a Meta business account and approval before a transport can be written.
 - A **draft partner invoice** still lives only in the browser — `partner_invoices.issued` is
