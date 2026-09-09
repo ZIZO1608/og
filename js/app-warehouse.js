@@ -33,8 +33,6 @@ function viewWarehouse() {
       (allow('stock.move')
         ? '<button class="btn btn-primary" data-act="ms-open">' + t('ms_title') + '</button>'
         : '') +
-      ifNav('shelfmap', '<button class="btn" data-act="nav" data-view="shelfmap">' +
-        t('nav_shelfmap') + '</button>') +
       exportButtons() +
     '</div></div>';
 
@@ -47,15 +45,19 @@ function viewWarehouse() {
      got it in a 42", and that is all. Receiving, moving, ordering and counting
      are somebody else's work, and a tab that opens onto a form the server will
      refuse is worse than no tab. */
+  /* In the order the room works, left to right: what moved, what is where,
+     what is worth ordering, then the rarer jobs. Set by the shop, not by
+     frequency of use in the code. */
   var tabs = [
-    { id: 'stock', label: t('wh_stock'), dot: !!floorGaps },
-    { id: 'add',   label: t('tab_add'),  need: 'product.write' },
     /* The movement log is the audit trail for receiving, transferring and
        counting. You get the history of the thing you can do — for a cashier
        looking up whether a 42 is in the back, it is a wall of somebody else's
        paperwork. */
     { id: 'moves', label: t('tab_moves'), need: 'stock.move' },
-    { id: 'po',    label: t('po_title'), dot: !!openPOs, need: 'stock.move' },
+    { id: 'stock', label: t('wh_stock'), dot: !!floorGaps },
+    /* Purchase orders, under the name of the question the tab answers. */
+    { id: 'po',    label: t('tab_reorder'), dot: !!openPOs, need: 'stock.move' },
+    { id: 'add',   label: t('tab_add'),  need: 'product.write' },
     { id: 'count', label: t('st_count'), dot: !!Stock.active(), need: 'stock.count' },
     /* Who is waiting for something the shop did not have. This is the tab a
        manager opens when a shipment lands — the wants were recorded by the
@@ -267,7 +269,6 @@ function whStockTab() {
         '<th>' + t('product') + '</th>' +
         '<th class="num">' + t('qty') + '</th>' +
         '<th>' + t('per_size') + '</th>' +
-        '<th></th>' +
       '</tr></thead><tbody>';
 
     g.rows.forEach(function (r) {
@@ -293,10 +294,7 @@ function whStockTab() {
       });
 
       h += '</div></td>' +
-        '<td>' + (allow('stock.move')
-          ? '<button class="btn btn-sm btn-ghost" data-act="wh-transfer" data-id="' + r.p.id + '">' +
-            t('wh_transfer') + '</button>'
-          : '') + '</td></tr>';
+        '</tr>';
     });
 
     h += '</tbody></table></div></div>';
@@ -483,7 +481,7 @@ function whSuggestCard() {
     '<div class="table-wrap"><table class="tbl"><thead><tr>' +
       '<th>' + t('product') + '</th><th>' + t('size') + '</th>' +
       '<th class="num">' + t('wh_here') + '</th><th class="num">' + t('wh_in_the_back') + '</th>' +
-      '<th class="num">' + t('po_rate') + '</th><th class="num">' + t('wh_move') + '</th><th></th>' +
+      '<th class="num">' + t('po_rate') + '</th><th class="num">' + t('wh_move') + '</th>' +
     '</tr></thead><tbody>';
 
   sug.forEach(function (s) {
@@ -497,9 +495,7 @@ function whSuggestCard() {
       /* One decimal. A single size sells a fraction of a pair per week and the
          raw figure prints as 0.375, which reads like a bug rather than a rate. */
       '<td class="num muted">' + (Math.round(s.rate * 10) / 10) + '/' + t('po_week') + '</td>' +
-      '<td class="num"><b>' + s.qty + '</b></td>' +
-      '<td><button class="btn btn-sm btn-primary" data-act="wh-move-now" ' +
-        'data-sku="' + s.sku + '" data-n="' + s.qty + '">' + t('wh_move') + '</button></td></tr>';
+      '<td class="num"><b>' + s.qty + '</b></td></tr>';
   });
 
   return h + '</tbody></table></div></div>';
@@ -872,15 +868,6 @@ function whAddPreview(sizes, totalPieces) {
     '<div class="stat"><span class="eyebrow">' + t('expected_revenue') + '</span><div class="val accent">' + moneyShort(totalRev) + '</div></div>' +
   '</div>';
 
-  h += '<div class="card mt"><div class="card-head"><h3>' + t('tab_moves') + '</h3></div>';
-  DB.stockMovements.slice(0, 5).forEach(function (mv) {
-    var p = DB.product(mv.productId);
-    h += '<div class="alert-row"><span class="alert-ico ' + (mv.delta > 0 ? 'green' : 'grey') + '">' + (mv.delta > 0 ? '+' : '−') + '</span>' +
-      '<span class="alert-txt">' + esc(p ? p.name : mv.sku) + ' · ' + mv.size +
-      '<small>' + esc(mv.note) + ' · ' + relDate(mv.date) + '</small></span>' +
-      '<b class="mv-delta ' + (mv.delta > 0 ? 'mv-up' : 'mv-down') + '" dir="ltr">' + (mv.delta > 0 ? '+' : '') + mv.delta + '</b></div>';
-  });
-  h += '</div>';
 
   return h;
 }

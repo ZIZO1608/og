@@ -1269,52 +1269,6 @@ var ACTIONS = {
   },
   'wh-place': function (el) { OG.wh.place = el.getAttribute('data-w'); render(); },
 
-  /* One tap on a suggested move: carry it out of the back and onto the wall. */
-  'wh-move-now': function (el) {
-    var v = DB.variantBySku(el.getAttribute('data-sku'));
-    var n = parseInt(el.getAttribute('data-n'), 10) || 1;
-    if (!v) return;
-
-    /* Refused here rather than sent and refused there, so the message names
-       the place instead of quoting a server error at a warehouse worker. */
-    var have = DB.stockAt(v, DB.intakeWh);
-    if (have <= 0) { toast(t('wh_none_here'), '', 'err'); return; }
-    var want = Math.min(n, have);
-
-    var p = DB.product(v.productId);
-    Shop.write(
-      function () { return Shop.transfer(v.sku, DB.intakeWh, DB.defaultWh, want, t('wh_move_done')); },
-      function () { DB.transfer(v, DB.intakeWh, DB.defaultWh, want, t('admin')); },
-      function () {
-        toast(t('wh_move_done'),
-              p.name + ' · ' + t('size') + ' ' + v.size + ' — ' + want + ' ' + t('pieces'),
-              'ok');
-        render();
-      }
-    );
-  },
-
-  /* ---- move by scan ---- */
-  'ms-open': function () { openMoveScan(); },
-  'ms-swap': function () {
-    if (!moveScan) return;
-    var f = moveScan.from;
-    moveScan.from = moveScan.to;
-    moveScan.to = f;
-    moveScanRepaint();
-  },
-  'ms-drop': function (el) {
-    if (!moveScan) return;
-    var sku = el.getAttribute('data-sku');
-    moveScan.lines = moveScan.lines.filter(function (l) { return l.sku !== sku; });
-    moveScanRepaint();
-  },
-  'ms-camera': function () {
-    /* Continuous: he is emptying a shelf, not looking one thing up. */
-    Scan.open({ title: t('ms_title'), continuous: true, onHit: function (code) { moveScanned(code); } });
-  },
-  'ms-go': function () { moveScanCommit(); },
-
   /* Per-product transfer: choose a size, a direction and a quantity. */
   'wh-transfer': function (el) { openTransfer(+el.getAttribute('data-id')); },
 

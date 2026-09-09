@@ -430,40 +430,180 @@ function customersExportSpec() {
   };
 }
 
-function warehouseExportSpec() {
-  /* Tab-aware: exporting from "Add product" must not hand back the movement log. */
-  if (OG.wh.tab !== 'moves') {
-    var sizes = DB.sizeSets[OG.wh.type] || [];
-    var rows = [];
-    /* Two columns, not three: the barcode column used to carry a number the
-       browser had made up. The codes exist once the product is saved and are
-       on the product's own stock sheet. */
-    sizes.forEach(function (s) {
-      var q = Number(OG.wh.sizes[s] || 0);
-      rows.push([s, q]);
-    });
-    return {
-      name: 'new-product', sheet: 'New product', title: t('tab_add'),
-      subtitle: (OG.wh.name || t('product_name')) + ' · ' + DB.typeLabels[OG.wh.type],
-      columns: [{ label: t('size') }, { label: t('qty'), num: true }],
-      rows: rows,
-      totals: [t('total_pieces'), rows.reduce(function (a, r) { return a + r[1]; }, 0)],
-      kpis: [{ label: t('type'), value: DB.typeLabels[OG.wh.type] },
-             { label: t('size_matrix'), value: sizes.length + ' ' + t('size').toLowerCase() }]
-    };
-  }
+/* ONE SHEET PER TAB. Exporting hands back what is on screen, and nothing else.
 
+   It did not. warehouseExportSpec() had two branches — `moves`, and everything
+   else — and "everything else" was the Add-product form: its size list and
+   whatever quantities were typed into it, which on any other tab is a page of
+   sizes at 0. So Export on Stock by place, Worth reordering, Stock count and
+   Wants all produced a file titled "Add product" with seven zeros in it, and
+   the shop reported the buttons as not working, which from where they stood
+   was exactly right. The comment on the old branch said "exporting from Add
+   product must not hand back the movement log"; it fixed that by handing the
+   Add-product sheet to every tab instead. A switch on the tab, like the Print
+   screen's, is the shape that cannot drift this way. */
+function warehouseExportSpec() {
+  switch (OG.wh.tab) {
+    case 'add':   return whNewProductExportSpec();
+    case 'moves': return whMovementsExportSpec();
+    case 'po':    return whReorderExportSpec();
+    case 'wants': return whWantsExportSpec();
+    /* A count in progress is its own document (Stock.exportSpec, the sheet he
+       signs off); with none running the tab shows the stock to count, so that
+       is what leaves. */
+    case 'count': return Stock.active() ? Stock.exportSpec() : whStockExportSpec();
+    default:      return whStockExportSpec();
+  }
+}
+
+/* The form as typed — the one tab where the export is a plan, not a record. */
+function whNewProductExportSpec() {
+  var sizes = DB.sizeSets[OG.wh.type] || [];
+  var rows = [];
+  /* Two columns, not three: the barcode column used to carry a number the
+     browser had made up. The codes exist once the product is saved and are
+     on the product's own stock sheet. */
+  sizes.forEach(function (s) {
+    var q = Number(OG.wh.sizes[s] || 0);
+    rows.push([s, q]);
+  });
+  return {
+    name: 'new-product', sheet: 'New product', title: t('tab_add'),
+    subtitle: (OG.wh.name || t('product_name')) + ' · ' + DB.typeLabels[OG.wh.type],
+    columns: [{ label: t('size') }, { label: t('qty'), num: true }],
+    rows: rows,
+    totals: [t('total_pieces'), rows.reduce(function (a, r) { return a + r[1]; }, 0)],
+    kpis: [{ label: t('type'), value: DB.typeLabels[OG.wh.type] },
+           { label: t('size_matrix'), value: sizes.length + ' ' + t('size').toLowerCase() }]
+  };
+}
+
+/* Stock by place: every live size, with the place the screen is showing. On
+   "Everywhere" the floor and the back get their own columns, because the
+   whole point of that view is the split, not the total. */
+function whStockExportSpec() {
+  var ar = OG.lang === 'ar';
+  var whId = OG.wh.place || 'all';
+  var everywhere = whId === 'all';
+  var placeName = everywhere ? t('all_warehouses') : DB.whName(whId, ar);
+  var cost = seesCost();
+
+  var columns = [{ label: t('product'), width: 30 }, { label: t('type') }, { label: t('size') },
+                 { label: t('sku') }, { label: t('shelf') }];
+  if (everywhere) {
+    DB.warehouses.forEach(function (w) { columns.push({ label: DB.whName(w.id, ar), num: true }); });
+  }
+  columns.push({ label: everywhere ? t('total_pieces') : t('qty'), num: true });
+  if (cost) columns.push({ label: exCol(t('cost')), num: true });
+  columns.push({ label: t('health') });
+
+  var rows = [];
+  var pieces = 0;
+  DB.products.filter(function (p) { return !p.archived; }).forEach(function (p) {
+    DB.variantsOf(p.id).forEach(function (v) {
+      var here = everywhere ? v.qty : DB.stockAt(v, whId);
+      pieces += here;
+      var out = [p.name, DB.typeLabels[p.type], v.size, v.sku, v.shelf || ''];
+      if (everywhere) DB.warehouses.forEach(function (w) { out.push(DB.stockAt(v, w.id)); });
+      out.push(here);
+      if (cost) out.push(exMoney(p.costPrice * here));
+      out.push(t(DB.health(here)));
+      rows.push(out);
+    });
+  });
+
+  var qtyCol = columns.findIndex(function (c) { return c.label === (everywhere ? t('total_pieces') : t('qty')); });
+  return {
+    name: 'stock-' + (everywhere ? 'all' : whId), sheet: 'Stock', title: t('wh_stock'),
+    subtitle: placeName + ' · ' + fmtDate(TODAY),
+    columns: columns,
+    rows: rows,
+    totals: columns.map(function (c, i) { return i === 0 ? t('total') : (i === qtyCol ? pieces : null); }),
+    kpis: [{ label: t('wh_location'), value: placeName },
+           { label: t('total_pieces'), value: nf(pieces) },
+           { label: 'SKU', value: nf(rows.length) }]
+  };
+}
+
+/* The purchase orders, as the tab draws them: one row per order, cost only
+   for an account that may see cost — the same gate whPoTab uses. */
+function whReorderExportSpec() {
+  var money = seesCost();
+  var columns = [{ label: t('po_title') }, { label: t('supplier'), width: 26 }, { label: t('date') },
+                 { label: t('total_pieces'), num: true }];
+  if (money) columns.push({ label: exCol(t('total')), num: true });
+  columns.push({ label: t('status') }, { label: t('notes'), width: 30 });
+
+  var pieces = 0;
+  var rows = DB.purchaseOrders.map(function (po) {
+    var sup = DB.supplier(po.supplierId);
+    var n = DB.poPieces(po);
+    pieces += n;
+    var out = [po.id, sup ? sup.name : '—', fmtDate(po.created), n];
+    if (money) out.push(exMoney(DB.poTotal(po)));
+    out.push(t('po_' + po.status), po.note || '');
+    return out;
+  });
+  var open = DB.purchaseOrders.filter(function (p) { return p.status !== 'received'; }).length;
+
+  return {
+    name: 'purchase-orders', sheet: 'Orders', title: t('tab_reorder'),
+    subtitle: rows.length + ' · ' + open + ' ' + t('po_open').toLowerCase(),
+    columns: columns,
+    rows: rows,
+    totals: columns.map(function (c, i) { return i === 0 ? t('total') : (i === 3 ? pieces : null); }),
+    kpis: [{ label: t('po_title'), value: nf(rows.length) },
+           { label: t('po_open'), value: nf(open) },
+           { label: t('total_pieces'), value: nf(pieces) }]
+  };
+}
+
+/* Who is waiting for what — the rows the tab has already loaded. Names and
+   numbers leave on this sheet, which is why the TAB is gated customer.read
+   and this inherits that gate by only existing when the tab does. */
+function whWantsExportSpec() {
+  var list = wantRows || [];
+  var rows = list.map(function (w) {
+    var v = w.variant_sku ? DB.variantBySku(w.variant_sku) : null;
+    return [w.product_name || '', w.size || '', w.customer_name || '', w.customer_phone || '',
+            fmtDate(w.at), v ? v.qty : 0, w.note || ''];
+  });
+  var back = rows.filter(function (r) { return r[5] > 0; }).length;
+  return {
+    name: 'wants', sheet: 'Wants', title: t('wa_wants'),
+    subtitle: cappedCount(wantCap) + ' · ' + fmtDate(TODAY),
+    columns: [{ label: t('product'), width: 26 }, { label: t('size') }, { label: t('customer'), width: 22 },
+              { label: t('phone') }, { label: t('date') }, { label: t('in_stock'), num: true },
+              { label: t('notes'), width: 26 }],
+    rows: rows,
+    kpis: [{ label: t('wa_wants'), value: cappedCount(wantCap) },
+           { label: t('in_stock'), value: nf(back) }]
+  };
+}
+
+/* The movement log — and it SAYS it is a window. The old sheet sliced 200
+   and put that number in the subtitle as if it were the whole log. */
+function whMovementsExportSpec() {
+  var cap = DB.cap('movements');
   var mv = DB.stockMovements.slice(0, 200);
+  var total = cap && cap.total ? cap.total : DB.stockMovements.length;
+  var window = mv.length < total;
   return {
     name: 'stock-movements', sheet: 'Movements', title: t('tab_moves'),
-    subtitle: mv.length + ' ' + t('movement').toLowerCase(),
-    columns: [{ label: t('date') }, { label: t('movement') }, { label: t('product'), width: 30 },
-              { label: t('size') }, { label: t('sku') }, { label: t('qty'), num: true },
-              { label: t('balance'), num: true }, { label: t('user') }, { label: t('notes'), width: 34 }],
+    subtitle: (window
+      ? t('cap_of').replace('{a}', nf(mv.length)).replace('{b}', nf(total))
+      : mv.length + ' ' + t('tab_moves').toLowerCase()) + ' · ' + fmtDate(TODAY),
+    columns: [{ label: t('date') }, { label: t('type') }, { label: t('product'), width: 30 },
+              { label: t('size') }, { label: t('sku') }, { label: t('wh_location') },
+              { label: t('qty'), num: true }, { label: t('balance'), num: true },
+              { label: t('user') }, { label: t('notes'), width: 34 }],
     rows: mv.map(function (m) {
       var p = DB.product(m.productId);
-      return [fmtDate(m.date), t(m.type), p ? p.name : '—', m.size, m.sku, m.delta, m.balance, m.user, m.note];
-    })
+      return [fmtDateTime(m.date), t(m.type), p ? p.name : m.sku, m.size, m.sku,
+              m.wh ? DB.whName(m.wh, OG.lang === 'ar') : '', m.delta, m.balance, m.user || '', m.note || ''];
+    }),
+    kpis: [{ label: t('tab_moves'), value: window ? cappedCount({ shown: mv.length, capped: true }) : nf(mv.length) },
+           { label: t('wh_stock'), value: nf(DB.liveVariants().reduce(function (a, v) { return a + v.qty; }, 0)) }]
   };
 }
 

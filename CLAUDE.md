@@ -1599,6 +1599,47 @@ written as an assertion.
 
 ## The warehouse: moving stock, and the log of it
 
+### The tabs, in the order the room works
+
+Left to right: **Stock movements, Stock by place, Worth reordering (the purchase orders, under the
+name of the question the tab answers), Add product, Stock count, Asked for and not in stock** — set
+by the shop, and `OG.wh.tab` lands on `moves` so the leftmost tab is the one that opens; an account
+without `stock.move` falls to the first tab it does have (the fallback in `viewWarehouse`). The
+Shelf map button left the header (the map has its own nav entry), and **nothing on Stock by place
+carries stock to the floor any more** — the per-row Transfer button and the Move column on the
+"bring these out" card are gone, because that is the scan panel's job now; the card stays as the
+list of what to go and fetch. The five-movement card inside Add product is gone too: movements have
+a tab.
+
+### Export hands back the tab you are on
+
+`warehouseExportSpec()` in `js/app-export.js` is a **switch on `OG.wh.tab`**, one sheet per tab:
+`whStockExportSpec` (a column per warehouse on "Everywhere", cost only under `seesCost()`),
+`whReorderExportSpec`, `whWantsExportSpec` (from the tab's own `wantRows`, so it inherits the
+`customer.read` gate by only existing when the tab does), `whNewProductExportSpec`,
+`whMovementsExportSpec`, and a count tab with no count running exports the stock sheet.
+
+It was two branches — `moves`, and everything else — and "everything else" was the **Add-product
+form**: its size list and whatever had been typed into it, which on any other tab is seven sizes
+at 0. So Export on Stock by place, Worth reordering, Stock count and Wants each produced a file
+titled "Add product" with a green "Export ready" toast, and the shop reported the buttons as not
+working, which from where they stood was exactly right. The old comment said "exporting from Add
+product must not hand back the movement log" — it fixed that by handing the Add-product sheet to
+every tab instead. Verified by clicking the real buttons on every tab in a browser: the Excel and
+PDF machinery had never been the problem.
+
+Two things found beside it: **`I18N.en` defined `movement` twice** — `'Movement'` for the column
+head and, three hundred lines later in the counting family, `'movements'` — and the later literal
+wins in an object, so every column headed `t('movement')` read "movements". The second is gone.
+And the movements sheet sliced 200 rows and put that number in the subtitle as the whole log; it
+now says `of N in total`.
+
+**A scratch copy of `og.db` carries the shop's `config` — including its linked Telegram chats — and
+`.env` supplies the real tokens**, so a scratch server on another port has a live reminder tick
+aimed at the owner's phone. The "Testing it without spamming the shop" note under the reminders
+already says to set a bogus `OG_TELEGRAM_TOKEN_*`; this is the reminder that it applies to *every*
+scratch run, not only the ones about Telegram.
+
 ### Move by scan
 
 `openMoveScan` / `moveScanned` / `moveScanCommit` in `js/app-warehouse.js`, the `ms-*` actions and

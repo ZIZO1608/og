@@ -36,7 +36,7 @@ var OG = {
      which is long after this line runs. Resolved where it is read, so the
      shop's own setting wins. shelfId '' is "not put away yet", which is a
      real and permanent state — stock.shelf_id is nullable on purpose. */
-  wh:   { tab: 'stock', place: 'all', type: 'sneakers', sizes: {}, name: '', img: null, imgSrc: null,
+  wh:   { tab: 'moves', place: 'all', type: 'sneakers', sizes: {}, name: '', img: null, imgSrc: null,
           whId: null, shelfId: '' },
   dir:  null,                                           // page-transition direction
   rep:  { tab: 'sales' },
