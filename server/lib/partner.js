@@ -58,9 +58,25 @@ const other = (side) => (side === 'og' ? 'yalla' : 'og');
    every call site, because the call site that forgets is the leak. */
 const PARTNER_STRIP = ['customer', 'phone', 'customer_id', 'customerId', 'price'];
 
-function emitEvent(d, { kind, refType, refId, audience, args = {}, dedupe = null }) {
+/* The first name of whoever did the thing, for the other company's chat.
+
+   Resolved HERE rather than at the eight call sites, for the same reason
+   the strip list lives here: the call site that forgets is the one that
+   ships. A first name because "Zaven accepted P-1043" is a sentence and
+   "Zaven Yalla accepted P-1043" is a database row. Null for anything the
+   server did on its own — the reminders have no actor, and inventing one
+   would be a lie in somebody's pocket at nine in the morning. */
+function actorName(d, userId) {
+  if (!userId) return null;
+  const r = d.prepare('SELECT name FROM users WHERE id = ?').get(userId);
+  return r && r.name ? String(r.name).trim().split(/\s+/)[0] : null;
+}
+
+function emitEvent(d, { kind, refType, refId, audience, args = {}, dedupe = null, userId = null }) {
   const a = { ...args };
   if (audience === 'yalla') for (const k of PARTNER_STRIP) delete a[k];
+  /* Never overwrite an actor a caller set deliberately. */
+  if (userId && a.actor == null) a.actor = actorName(d, userId);
   /* OR IGNORE ONLY ON THE DEDUPED PATH. It would also swallow a CHECK
      failure — an audience typo would vanish instead of throwing — so the
      real-time events above keep the plain INSERT that has always thrown, and
@@ -146,7 +162,21 @@ export function all({ includeArchived = false } = {}) {
   const lineMap = byJob(lines);
   const stageMap = byJob(stages);
 
+  /* Everyone these rows point at, and nobody else. Not "the staff list":
+     that would hand another company every account the shop has, which is
+     what FORBIDDEN's staff.* ban is about. Just the names behind the
+     user_id columns already in this payload — messages, stage stamps,
+     payments and reviews — so both sides can read a thread as people. */
+  const people = peopleFor([].concat(
+    messages.map((m) => m.user_id),
+    stages.map((s) => s.user_id),
+    payments.map((p) => p.user_id),
+    payments.map((p) => p.confirmed_by),
+    d.prepare('SELECT user_id FROM job_reviews').all().map((r) => r.user_id)
+  ));
+
   return {
+    people,
     jobs: jobs.map((j) => shapeJob(j, lineMap.get(j.id) || [], stageMap.get(j.id) || [])),
     invoices: invoices.map((v) => ({
       ...v,
@@ -162,6 +192,25 @@ export function all({ includeArchived = false } = {}) {
     employees: employees({ includeArchived }),
     waMessages: d.prepare('SELECT * FROM wa_messages ORDER BY at DESC LIMIT 200').all()
   };
+}
+
+/* id → { name, side } for a list of user ids, deduplicated, missing ones
+   skipped. `side` is derived from the role rather than stored: it is what
+   decides which company's colour a name is drawn in, and a partner is the
+   only role on the other side of the line. */
+function peopleFor(ids) {
+  const list = [...new Set(ids.filter((n) => n != null))];
+  if (!list.length) return {};
+  const q = list.map(() => '?').join(',');
+  const rows = DB.get().prepare(
+    `SELECT id, name, role FROM users WHERE id IN (${q})`
+  ).all(...list);
+
+  const out = {};
+  for (const r of rows) {
+    out[r.id] = { id: r.id, name: r.name, side: r.role === 'partner' ? 'yalla' : 'og' };
+  }
+  return out;
 }
 
 /* The shape the screens already draw. Derived values are computed here rather
@@ -333,7 +382,7 @@ export function setStage(id, stage, side, userId = null) {
     }
     /* Whichever side moved it, the other one hears. */
     emitEvent(d, {
-      kind: 'stage', refType: 'job', refId: id, audience: other(side || 'og'),
+      kind: 'stage', refType: 'job', refId: id, audience: other(side || 'og'), userId,
       args: { ...jobBrief(d, row), stage, qty, by: side || 'og' }
     });
 
@@ -376,7 +425,7 @@ function placeOrder(d, row, userId = null) {
     body: `Order sent — ${id} · ${qty} pcs`, userId
   });
   emitEvent(d, {
-    kind: 'order_new', refType: 'job', refId: id, audience: 'yalla',
+    kind: 'order_new', refType: 'job', refId: id, audience: 'yalla', userId,
     args: { ...jobBrief(d, row), qty }
   });
 }
@@ -430,7 +479,7 @@ export function respondToOrder(id, accept, { promisedAt = null, note = null, use
       userId
     });
     emitEvent(d, {
-      kind: accept ? 'order_accepted' : 'order_declined', refType: 'job', refId: id, audience: 'og',
+      kind: accept ? 'order_accepted' : 'order_declined', refType: 'job', refId: id, audience: 'og', userId,
       args: { ...jobBrief(d, row), promisedAt: accept ? promisedAt : null, note }
     });
 
@@ -487,7 +536,7 @@ export function setLines(id, lines = [], userId = null, side = 'og') {
           body: `All names in — ${id}`, userId
         });
         emitEvent(d, {
-          kind: 'names_ready', refType: 'job', refId: id, audience: other(side),
+          kind: 'names_ready', refType: 'job', refId: id, audience: other(side), userId,
           args: jobBrief(d, jobRow)
         });
       }
@@ -540,7 +589,7 @@ export function postMessage({ jobId = null, invoiceId = null, from, kind = 'note
     const id = insertMessage(d, { jobId, invoiceId, from, kind, reason, body, userId });
     emitEvent(d, {
       kind: 'message', refType: jobId ? 'job' : 'invoice', refId: jobId || invoiceId,
-      audience: other(from),
+      audience: other(from), userId,
       args: { id: jobId, invoiceId, kind, reason, text: body.slice(0, 200) }
     });
     return d.prepare('SELECT * FROM job_messages WHERE id = ?').get(id);
@@ -606,7 +655,7 @@ export function createInvoice({ id, issued, due, note = null, currency = 'SYP', 
       body: `Invoice ${id} — ${total} ${currency}`, userId
     });
     emitEvent(d, {
-      kind: 'invoice_new', refType: 'invoice', refId: id, audience: 'og',
+      kind: 'invoice_new', refType: 'invoice', refId: id, audience: 'og', userId,
       args: { invoiceId: id, total, currency, due, jobs: jobIds.length }
     });
 
@@ -666,7 +715,7 @@ export function recordPayment({ invoiceId, amount, method, at = null, side = 'og
       body: `Payment recorded — ${amt} ${inv.currency} · ${invoiceId}`, userId
     });
     emitEvent(d, {
-      kind: 'payment_recorded', refType: 'invoice', refId: invoiceId, audience: other(side),
+      kind: 'payment_recorded', refType: 'invoice', refId: invoiceId, audience: other(side), userId,
       args: { invoiceId, paymentId: info.lastInsertRowid, amount: amt, currency: inv.currency,
               method: method || 'cash', by: side }
     });
@@ -715,7 +764,7 @@ export function confirmPayment({ invoiceId, paymentId, side, userId = null }) {
       body: `Payment confirmed — ${p.amount} ${inv.currency} · ${invoiceId}`, userId
     });
     emitEvent(d, {
-      kind: 'payment_confirmed', refType: 'invoice', refId: invoiceId, audience: other(side),
+      kind: 'payment_confirmed', refType: 'invoice', refId: invoiceId, audience: other(side), userId,
       args: { invoiceId, paymentId: p.id, amount: p.amount, currency: inv.currency, by: side }
     });
 
@@ -861,7 +910,7 @@ export function reviewJob(id, { rating, feedback = null, userId = null } = {}) {
       body: stars + (text ? ' — ' + text : ''), userId
     });
     emitEvent(d, {
-      kind: 'review', refType: 'job', refId: id, audience: 'yalla',
+      kind: 'review', refType: 'job', refId: id, audience: 'yalla', userId,
       args: { ...jobBrief(d, row), rating: r, feedback: text ? text.slice(0, 200) : null }
     });
     return job(id);

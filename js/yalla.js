@@ -167,9 +167,7 @@ var YALLA = (function () {
         '<button data-act="curr" data-val="USD" class="' + (OG.currency === 'USD' ? 'on' : '') + '">USD</button>' +
       '</div>' +
       (typeof Notify !== 'undefined' ? Notify.bell() : '') +
-      '<span class="live-who" title="' + esc(t('live_on')) + '">' +
-        '<span class="live-dot' + (typeof Pulse !== 'undefined' && Pulse.isLive() ? ' on' : '') + '"></span>' +
-        '<span class="live-txt">' + (typeof Pulse !== 'undefined' ? Pulse.presenceText() : '') + '</span></span>' +
+      livePill() +
       acctButton();
   }
 
@@ -1411,6 +1409,14 @@ var YALLA = (function () {
           ? '<p class="rv-quote" dir="auto">' + esc(j.review.feedback) + '</p>'
           : '<p class="rv-quote rv-quiet">' + t('yl_rv_no_words') + '</p>') +
         '<div class="rv-item-foot">' +
+          (function () {
+            var who = (typeof DB !== 'undefined' && DB.person) ? DB.person(j.review.by) : null;
+            if (!who) return '';
+            var c = personTint(who.id);
+            return '<span class="rv-by" title="' + esc(who.name) + '">' +
+              '<span class="who-face sm" style="color:' + c.fg + ';background:' + c.bg + '">' +
+                esc(personFace(who.name)) + '</span>' + esc(personFirst(who.name)) + '</span>';
+          })() +
           '<span class="rv-job">' + j.id + '</span>' +
           '<span class="rv-design" dir="auto">' + esc(j.design.slice(0, 40)) + '</span>' +
           '<span class="rv-pcs">' + j.qty + ' ' + t('pieces') + '</span>' +
@@ -1561,8 +1567,20 @@ var YALLA = (function () {
     h += '<div class="yl-thread">';
     msgs.forEach(function (m) {
       var mine = m.from === side;
+      /* The company still labels the line — it is a conversation between two
+         of them — but the PERSON leads it when the row knows one. With two
+         partners at Yalla Wear, "YALLA WEAR said" no longer answers "who do
+         I reply to". Anything the server did on its own has no person and
+         keeps the company's name alone, rather than borrowing somebody. */
+      var who = (typeof DB !== 'undefined' && DB.person) ? DB.person(m.by) : null;
+      var co = m.from === 'og' ? CONFIG.SHOP_NAME.toUpperCase() : 'YALLA WEAR';
+      var tint = who ? personTint(who.id) : null;
       h += '<div class="yl-msg' + (mine ? ' mine' : '') + '">' +
-        '<div class="ym-head"><b>' + (m.from === 'og' ? CONFIG.SHOP_NAME.toUpperCase() : 'YALLA WEAR') + '</b>' +
+        '<div class="ym-head">' +
+          (who ? '<span class="ym-face" style="color:' + tint.fg + ';background:' + tint.bg + '">' +
+                   esc(personFace(who.name)) + '</span>' : '') +
+          '<b>' + esc(who ? who.name : co) + '</b>' +
+          (who ? '<span class="ym-co">' + esc(co) + '</span>' : '') +
           '<span class="ym-kind k-' + m.kind + '">' + t('yl_msg_' + m.kind.replace(/-/g, '_')) + '</span>' +
           (m.reason ? '<span class="ym-reason">' + t('yl_reason_' + m.reason.replace(/-/g, '_')) + '</span>' : '') +
           '<span class="ym-ago">' + agoShort(m.at) + '</span></div>' +

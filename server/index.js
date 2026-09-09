@@ -1466,7 +1466,13 @@ router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx)
       messages: bundle.messages.filter((m) => !m.job_id || mine.has(m.job_id)),
       /* The shop's verdict on their work is theirs to read; who on the
          shop's staff wrote it is not. */
-      reviews: bundle.reviews.map(({ user_id, ...rest }) => rest),
+      reviews: bundle.reviews,
+      /* Who wrote, sent, accepted or moved each thing — both ways, by the
+         owner's decision. It is a name and nothing else (never a username,
+         never a role, never an account anyone could sign in as), and only
+         for the people these very rows already point at. A conversation
+         between two companies reads as people or it reads as two logos. */
+      people: bundle.people,
       stats,
       clubs: bundle.clubs,
       suppliers: [], employees: [], waMessages: []
@@ -1486,6 +1492,10 @@ router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx)
     invoices: bundle.invoices,
     messages: bundle.messages,
     reviews: bundle.reviews,
+    /* The same names the partner branch carries: who wrote, sent, accepted,
+       moved or paid for each row. Yalla Wear is two partners, so the shop
+       asking "which of them accepted this" is the whole point of it. */
+    people: bundle.people,
     stats,
     clubs: bundle.clubs,
     waMessages: bundle.waMessages
@@ -1527,7 +1537,10 @@ function bump() {
    who cannot see print jobs still owns the Settings fold that draws it. The
    event carries no shop data either way. */
 router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write'], (ctx) => {
-  Live.subscribe(ctx.res, side(ctx), ctx.user.id);
+  /* The name rides along so the other company's screen can say who is
+     here. Yalla Wear is two people and the shop wants the one who is
+     actually reading, not the company. */
+  Live.subscribe(ctx.res, side(ctx), ctx.user.id, ctx.user.name);
 }));
 
 /* ---- the website ----------------------------------------------------------

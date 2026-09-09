@@ -327,3 +327,11 @@ body.rtl:not([data-portal="yalla"]) .mir-fact > div:first-child,
 body.rtl:not([data-portal="yalla"]) .mir-state .muted.small:first-child,
 body.rtl:not([data-portal="yalla"]) .rem-prev > .muted,
 body.rtl:not([data-portal="yalla"]) table.tbl th { letter-spacing: 0; }
+
+
+/* The live pill is a button now (it opens "who is on the line"), and this
+   file's own .btn-shaped rules must not reach it — it is not a button in
+   the visual sense, it is a status lamp you may press. */
+body:not([data-portal="yalla"]) .live-who { border-color: transparent; background: #111115; }
+body:not([data-portal="yalla"]) .live-who:hover { background: #141419; border-color: var(--border); }
+body:not([data-portal="yalla"]) .live-faces .who-face { box-shadow: 0 0 0 2px #111115; }

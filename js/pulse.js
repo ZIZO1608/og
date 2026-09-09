@@ -38,7 +38,7 @@ var Pulse = (function () {
   var live = false;
   var announced = 0;            // highest message id already announced
   var audio = null;
-  var presence = null;          // { og: n, yalla: n } — open tabs per side
+  var presence = null;          // { og, yalla, people: { og: [], yalla: [] } }
 
   function side() { return (typeof OG !== 'undefined' && OG.print.partner) ? 'yalla' : 'og'; }
   function me() { return side() === 'og' ? 'readOg' : 'readYl'; }
@@ -232,9 +232,15 @@ var Pulse = (function () {
       el.title = live ? t('live_on') : t('live_off');
     });
     document.querySelectorAll('.live-txt').forEach(function (el) { el.textContent = presenceText(); });
+    document.querySelectorAll('.live-faces').forEach(function (el) { el.innerHTML = facesHtml(); });
     document.querySelectorAll('.live-who').forEach(function (el) {
       el.classList.toggle('other-on', otherOnline());
     });
+    /* An open panel is a live thing, not a snapshot: somebody watching it to
+       see whether the other partner has come back must not have to shut it
+       and open it again. */
+    var pop = document.getElementById('whoPop');
+    if (pop && pop.parentNode) pop.outerHTML = whoPanelHtml();
   }
 
   function otherOnline() {
@@ -242,11 +248,115 @@ var Pulse = (function () {
     return (side() === 'og' ? presence.yalla : presence.og) > 0;
   }
 
-  /* "Yalla Wear · online" on the shop's screen, "OG · online" on the partner's. */
+  function otherSide() { return side() === 'og' ? 'yalla' : 'og'; }
+  function sideName(s) {
+    if (typeof CONFIG === 'undefined') return s === 'yalla' ? 'Yalla Wear' : 'OG';
+    return s === 'yalla' ? (CONFIG.PRINT_PARTNER || 'Yalla Wear') : CONFIG.SHOP_NAME;
+  }
+
+  /* Who is on the line, per side, from the last event the server sent. */
+  function peopleOn(s) {
+    return (presence && presence.people && presence.people[s]) || [];
+  }
+
+  /* personFace lives in app-util.js, beside the colour it is drawn in. */
+  function face(name) { return personFace(name); }
+
+  /* "Zaven · online" while one of them is reading, "Zaven + Zohrab" while
+     both are. The company name is the fallback for a connection with no
+     name behind it, and for nobody at all. */
   function presenceText() {
     if (!live) return t('live_off');
-    var other = side() === 'og' ? 'Yalla Wear' : (typeof CONFIG !== 'undefined' ? CONFIG.SHOP_NAME : 'OG');
-    return other + ' · ' + t(otherOnline() ? 'live_other_on' : 'live_other_off');
+    var them = peopleOn(otherSide());
+    if (!them.length) return sideName(otherSide()) + ' · ' + t('live_other_off');
+
+    var names = them.map(function (p) { return personFirst(p.name) || sideName(otherSide()); });
+    if (names.length === 1) return names[0] + ' · ' + t('live_other_on');
+    if (names.length === 2) return names[0] + ' + ' + names[1];
+    return names[0] + ' +' + (names.length - 1);
+  }
+
+  /* The faces inside the pill, newest company first. Drawn only for the
+     OTHER side: a row of your own colleagues tells you nothing you did not
+     know, and the pill has a phone's width to live in. */
+  function facesHtml() {
+    return peopleOn(otherSide()).slice(0, 3).map(function (p) {
+      var c = personTint(p.id == null ? p.name : p.id);
+      return '<span class="who-face" title="' + esc(p.name || '') + '" ' +
+        'style="color:' + c.fg + ';background:' + c.bg + '">' + esc(face(p.name)) + '</span>';
+    }).join('');
+  }
+
+  /* ---- the who panel ----------------------------------------------------
+     Everyone this browser has a name for, both companies, with the ones
+     who are reading right now lit. The roster is the people the partner
+     payload already named (DB.people — whoever wrote, sent, moved or paid
+     for anything) plus anyone connected this second, so somebody who has
+     signed in but not yet touched a job still appears the moment they do
+     connect. It is not the staff list and cannot become one: nothing here
+     is a login, a role or an account anybody could reach. */
+  function roster() {
+    var out = { og: {}, yalla: {} };
+    var add = function (s, p, on) {
+      if (!p) return;
+      var key = String(p.id == null ? 'n:' + p.name : p.id);
+      var row = out[s][key] || (out[s][key] = { id: p.id, name: p.name, online: false });
+      if (p.name && !row.name) row.name = p.name;
+      if (on) row.online = true;
+    };
+
+    if (typeof DB !== 'undefined' && DB.people) {
+      Object.keys(DB.people).forEach(function (k) {
+        var p = DB.people[k];
+        if (p && (p.side === 'og' || p.side === 'yalla')) add(p.side, p, false);
+      });
+    }
+    ['og', 'yalla'].forEach(function (s) {
+      peopleOn(s).forEach(function (p) { add(s, p, true); });
+    });
+
+    var list = function (s) {
+      return Object.keys(out[s]).map(function (k) { return out[s][k]; })
+        .sort(function (a, b) {
+          if (a.online !== b.online) return a.online ? -1 : 1;
+          return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+    };
+    return { og: list('og'), yalla: list('yalla') };
+  }
+
+  function whoPanelHtml() {
+    var r = roster();
+    var mine = side();
+    var order = [otherSide(), mine];   /* the other company first: it is the question */
+
+    var h = '<div class="who-pop" id="whoPop">' +
+      '<div class="who-head"><b>' + t('who_title') + '</b>' +
+        '<span class="who-line' + (live ? ' on' : '') + '">' + t(live ? 'live_on' : 'live_off') + '</span></div>';
+
+    order.forEach(function (s) {
+      var rows = r[s];
+      h += '<div class="who-side"><div class="who-co">' + esc(sideName(s)) +
+        (s === mine ? ' <span class="who-you">' + t('who_you') + '</span>' : '') + '</div>';
+
+      if (!rows.length) {
+        h += '<div class="who-none">' + t('who_nobody') + '</div></div>';
+        return;
+      }
+      rows.forEach(function (p) {
+        var c = personTint(p.id == null ? p.name : p.id);
+        h += '<div class="who-row' + (p.online ? ' on' : '') + '">' +
+          '<span class="who-face" style="color:' + c.fg + ';background:' + c.bg + '">' + esc(face(p.name)) + '</span>' +
+          '<span class="who-name">' + esc(p.name || '—') + '</span>' +
+          '<span class="who-state">' +
+            (p.online ? '<i class="who-dot" style="background:' + c.dot + '"></i>' + t('who_online')
+                      : t('who_offline')) +
+          '</span></div>';
+      });
+      h += '</div>';
+    });
+
+    return h + '</div>';
   }
 
   function takePresence(ev) {
@@ -345,6 +455,9 @@ var Pulse = (function () {
     start: start, tick: tick,
     isLive: function () { return live; },
     presenceText: presenceText,
+    facesHtml: facesHtml,
+    whoPanelHtml: whoPanelHtml,
+    peopleOn: peopleOn,
     settle: function () { last = null; }
   };
 })();

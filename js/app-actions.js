@@ -207,6 +207,17 @@ var ACTIONS = {
     toast(t('notifications'), t('nt_all_read'), 'ok', 1800);
   },
 
+  /* Who is on the line. Hangs off the topbar like the bell and the account
+     menu, and is closed by the same document click in app-boot.js. */
+  who: function (el, e) {
+    e.stopPropagation();
+    var open = document.getElementById('whoPop');
+    if (open) { open.remove(); return; }
+    if (typeof Pulse === 'undefined') return;
+    var bar = document.getElementById('topbar');
+    if (bar) bar.insertAdjacentHTML('beforeend', Pulse.whoPanelHtml());
+  },
+
   /* --- account ------------------------------------------------------------ */
 
   acct: function (el, e) {

@@ -448,3 +448,14 @@ body[data-portal="yalla"] .yl-pw-match.bad { color: #F5C15C; }
 @media (max-width: 720px) {
   body[data-portal="yalla"] .modal-backdrop { z-index: 360; }
 }
+
+
+/* ---- who is on the line, in the portal's colours ---------------------- */
+body[data-portal="yalla"] .live-who { border-radius: 12px; background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .07); height: 38px; }
+body[data-portal="yalla"] .live-who:hover { background: rgba(255, 255, 255, .09); border-color: rgba(181, 220, 192, .35); }
+body[data-portal="yalla"] .live-faces .who-face { box-shadow: 0 0 0 2px #14122A; }
+body[data-portal="yalla"] .who-pop {
+  background: linear-gradient(180deg, #1F1C3B, #17152D); border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 18px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+}
+body[data-portal="yalla"] .who-side + .who-side { border-top-color: rgba(255, 255, 255, .06); }

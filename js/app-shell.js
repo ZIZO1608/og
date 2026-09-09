@@ -382,11 +382,7 @@ function renderTopbar() {
     (typeof Notify !== 'undefined' ? Notify.bell() : '') +
     /* Green while the live line to the server is open; grey while it is
        reconnecting and the poll carries on. Pulse paints it. */
-    (typeof Auth !== 'undefined' && Auth.can('print.read')
-      ? '<span class="live-who" title="' + esc(t('live_on')) + '">' +
-          '<span class="live-dot' + (typeof Pulse !== 'undefined' && Pulse.isLive() ? ' on' : '') + '"></span>' +
-          '<span class="live-txt">' + (typeof Pulse !== 'undefined' ? Pulse.presenceText() : '') + '</span></span>'
-      : '') +
+    (typeof Auth !== 'undefined' && Auth.can('print.read') ? livePill() : '') +
     '<button class="icon-btn" data-act="bell" title="' + t('notifications') + '">' +
       '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M18 16V10a6 6 0 1 0-12 0v6l-2 3h16zM10 21h4"/></svg>' +
       /* Unread, not total — a badge that never moves is one people stop
@@ -420,6 +416,19 @@ function roleLabel(role) {
   var k = { manager: 'role_manager', cashier: 'role_cashier', warehouse: 'role_warehouse',
             delivery: 'role_delivery', partner: 'role_partner' }[role];
   return k ? t(k) : role;
+}
+
+/* The live pill: the lamp, who from the other company is reading, and their
+   faces. A BUTTON, because it now has something to say when pressed — the
+   two partners at Yalla Wear are not interchangeable, and "which of them is
+   on" is a question worth one tap. */
+function livePill() {
+  var on = typeof Pulse !== 'undefined' && Pulse.isLive();
+  return '<button class="live-who" data-act="who" aria-haspopup="dialog" title="' + esc(t('who_title')) + '">' +
+      '<span class="live-dot' + (on ? ' on' : '') + '"></span>' +
+      '<span class="live-faces">' + (typeof Pulse !== 'undefined' ? Pulse.facesHtml() : '') + '</span>' +
+      '<span class="live-txt">' + (typeof Pulse !== 'undefined' ? Pulse.presenceText() : '') + '</span>' +
+    '</button>';
 }
 
 function accountChip() {

@@ -580,6 +580,16 @@ the arc around the mark is the count. At the end everything pulls into the mark 
   (`document.elementFromPoint` over its own rectangle), not by checking it exists in the DOM — it existed
   the whole time. And screenshot it *after* its 0.16s fade, or the shot shows a half-transparent panel and
   sends you looking for a second bug.
+- **A global function name is a namespace of one, and the second definition wins silently.**
+  `js/app-dashboard.js` has owned `firstName()` — no argument, returns the SIGNED-IN person's
+  first name — since the greeting was written. A second `firstName(name)` added to
+  `js/app-util.js` for the partner presence work was simply replaced by it at load time, so every
+  name in the pill and the thread came out as whoever was looking: "Test" printed beside Zaven's
+  own face, with his real name still in the tooltip. It is now `personFirst(name)`, and the same
+  search found `app-jobs-reports.js` calling `firstName(x.name)` for the Reports chart labels —
+  passing an argument to the function that ignores it, so every bar on the employees and suppliers
+  charts was labelled with the viewer's own first name. Fixed with it. **Grep for a name before
+  defining a global one**; this is the `.pos` class collision from the movement log, in JavaScript.
 - **The server sends `X-Frame-Options: DENY`**, so a test harness cannot load the app in an iframe. Drive
   it top-level with a persistent Chrome profile instead (log in on one launch, inspect on the next; the
   session cookie is `HttpOnly` and cannot be forged).
@@ -946,6 +956,40 @@ companies feel connected rather than merely sharing a table.
   every session died. **Sign out is two taps**, armed for four seconds: the button is under the thumb
   and a pocket tap that logs the printer out mid-shift is a phone call. Portal sheets sit at z 360,
   above the floating tab bar (z 340), or the Save and Sign out buttons are behind it.
+- **Yalla Wear is TWO people, and the app says which one.** They are partners, not a company
+  login: `zaven` and `zohrab`, both on the `partner` role, so "same access" needs no code — the
+  permissions are per role. What needed building is everything downstream of that.
+  - **Presence is people, not tabs.** `Live.subscribe` carries the account's name, and
+    `Live.presence()` returns `{ og, yalla, people: { og: [...], yalla: [...] }, tabs }` with the
+    counts deduplicated per account — one person with the portal open on a phone and a laptop is
+    one person online, and counting connections said two. The topbar pill reads "Zaven · online",
+    "Zaven + Zohrab", or the company name when nobody is there, and pressing it opens **who is on
+    the line**: both companies, everyone this browser has a name for, the ones reading right now
+    lit. It repaints itself while open (`paintLive` re-renders `#whoPop`), because somebody
+    watching for the other partner to come back should not have to close it.
+  - **`GET /api/partner` carries `people`** — `{ id, name, side }` for the ids the payload's own
+    rows point at (messages, stage stamps, payments, reviews) and nobody else. Not the staff list:
+    that is what `FORBIDDEN`'s `staff.*` ban is about, and this is a name, never a username, a
+    role or anything anyone could sign in as. **Both directions**, by the owner's decision — Yalla
+    Wear sees which of the shop's people wrote a line, and `reviews` stopped stripping `user_id`
+    for them, because a rating with a name on it is feedback and an anonymous one is a score.
+  - **The thread, the order timeline and the reviews name the person**, with the company still
+    beside them. Every one of those user ids has been in the database since the feature was
+    written and was drawn nowhere. The timeline takes the stage stamps for the stages and the
+    MESSAGE for the two order rows: "sent" there means the shop posted the job, while the `sent`
+    STAGE means the printer took it (the partner rules explain why those differ), so reading the
+    stage stamp put Zaven's name against the line about the shop pressing Send.
+  - **A person's colour is derived from their account id** (`personTint` / `personHue` in
+    `js/app-util.js`, golden-angle hue) and their face is **two letters of the FIRST name**
+    (`personFace`) — because Zaven Yalla and Zohrab Yalla have the same initials, so "ZY" on both
+    avatars is the one thing a face must never do. `initialsOf()` is untouched: it names an
+    account in its own menu, where there is only one person and the surname is worth having.
+  - **Telegram names the actor.** `emitEvent` resolves the first name from `userId` at the door —
+    the same place the partner strip list lives, for the same reason — and `render()` adds one
+    signature line, so a template written later gets it without anyone remembering. Two kinds say
+    it inline instead ("Zaven at Yalla Wear accepted order P-1043"), and anything the server did
+    by itself (every reminder) has no actor and keeps the company's sentence: a name invented for
+    those would be a lie in somebody's pocket at nine in the morning.
 - **What is new is decided before anything draws.** `Pulse.apply()` takes the unread list first
   and announces it last: the job drawer and the Reviews page both mark messages read as part of
   rendering, so a toast computed afterwards never fired for the line that had just arrived.

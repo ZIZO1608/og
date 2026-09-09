@@ -5,6 +5,56 @@
    app-i18n.js.
    ========================================================================== */
 
+/* --------------------------------------------------------------- PEOPLE
+   Two partners at Yalla Wear, and their names are Zaven Yalla and Zohrab
+   Yalla — so the initials both read "ZY" and an avatar alone cannot tell
+   them apart. Colour can. The hue is derived from the account id (stable
+   across a rename, and the same on both companies' screens), spun by the
+   golden angle so neighbouring ids land far apart rather than in the same
+   corner of the wheel. Kept off the two colours this app has already spent:
+   lime is the shop's primary action and mint is the partner's brand.
+
+   Deterministic on purpose — a colour that changed on reload would be
+   decoration; this one is identity. */
+function personHue(id) {
+  var n = Number(id);
+  if (!isFinite(n)) {
+    n = 0;
+    String(id || '').split('').forEach(function (ch, i) { n += ch.charCodeAt(0) * (i + 1); });
+  }
+  return Math.round((n * 137.508) % 360);
+}
+
+function personTint(id) {
+  var h = personHue(id);
+  return { fg: 'hsl(' + h + ' 72% 76%)', bg: 'hsl(' + h + ' 62% 30% / .38)', dot: 'hsl(' + h + ' 70% 62%)' };
+}
+
+/* The first name OF A GIVEN NAME, for anywhere a sentence reads better than
+   a record: "Zaven accepted" rather than "Zaven Yalla accepted".
+
+   NOT called firstName. js/app-dashboard.js already owns that name for a
+   different job — the SIGNED-IN person's first name, taking no argument —
+   and it loads after this file, so the two silently became one function:
+   every name in the presence pill and the thread came out as whoever was
+   looking ("Test" printed beside Zaven's own face, with his name still in
+   the tooltip). The same shape of bug as the .pos class the movement log
+   once shared with the till, and just as invisible on screen. */
+function personFirst(name) {
+  return String(name || '').trim().split(/\s+/)[0] || '';
+}
+
+/* TWO LETTERS OF THE FIRST NAME, not the usual first-plus-last initials.
+   Yalla Wear is Zaven Yalla and Zohrab Yalla, so initialsOf() gives "ZY"
+   for both of them — the one thing a face must never do. "Za" and "Zo"
+   tell them apart at any size, and the colour underneath does the rest.
+   initialsOf() is untouched: it names an ACCOUNT in its own menu, where
+   there is only ever one person and the surname is worth having. */
+function personFace(name) {
+  var f = personFirst(name);
+  return f ? (f.charAt(0).toUpperCase() + f.charAt(1).toLowerCase()) : '?';
+}
+
 /* ------------------------------------------------------------ 3. FORMATTING */
 
 function nf(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }

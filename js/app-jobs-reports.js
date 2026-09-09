@@ -403,28 +403,61 @@ function orderBlock(job) {
    already being recorded, so it costs nothing to keep and cannot be fudged. */
 function orderTimeline(job) {
   var o = DB.order(job);
-  var rows = [{ label: t('or_tl_created'), at: job.created, by: 'og' }];
 
-  if (o.sentAt) rows.push({ label: t('or_tl_sent'), at: o.sentAt, by: 'og' });
+  /* Who did each step.
+
+     Two sources, because the timeline mixes two kinds of row. The stage
+     stamps carry a user_id and answer "who moved it to printing". The two
+     ORDER rows do not: "sent" on this list means the shop posted the job,
+     while the `sent` STAGE means the printer took it — a deliberate
+     distinction (see the partner rules: the shop cannot assert that another
+     company started work), so reading the stage stamp there put Zaven's
+     name against the line about Hussam pressing Send. Those two borrow the
+     id from the message written in the same transaction as the act. */
+  var stageWho = {};
+  (job.history || []).forEach(function (h) { if (h.who && !stageWho[h.stage]) stageWho[h.stage] = h.who; });
+
+  var sentBy = null, answered = null;
+  if (typeof DB.messagesFor === 'function') {
+    DB.messagesFor({ jobId: job.id }).forEach(function (m) {
+      if (!m.by) return;
+      if (m.from === 'og' && m.kind === 'order') sentBy = m.by;
+      if (m.from === 'yalla' && (m.kind === 'accepted' || m.kind === 'declined')) answered = m.by;
+    });
+  }
+
+  var rows = [{ label: t('or_tl_created'), at: job.created, by: 'og', who: stageWho.design || null }];
+
+  if (o.sentAt) rows.push({ label: t('or_tl_sent'), at: o.sentAt, by: 'og', who: sentBy });
   if (o.state === 'accepted' && o.respondedAt) {
-    rows.push({ label: t('or_tl_accepted'), at: o.respondedAt, by: 'yalla' });
+    rows.push({ label: t('or_tl_accepted'), at: o.respondedAt, by: 'yalla', who: answered });
   }
   if (o.state === 'declined' && o.respondedAt) {
-    rows.push({ label: t('or_tl_declined'), at: o.respondedAt, by: 'yalla' });
+    rows.push({ label: t('or_tl_declined'), at: o.respondedAt, by: 'yalla', who: answered });
   }
   ['printing', 'delivery', 'done'].forEach(function (s) {
     var at = DB.stageAt(job, s);
-    if (at) rows.push({ label: t('print_' + s), at: at, by: 'yalla' });
+    if (at) rows.push({ label: t('print_' + s), at: at, by: 'yalla', who: stageWho[s] || null });
   });
 
   if (rows.length < 2) return '';
 
   var h = '<div class="ord-tl"><div class="lbl">' + t('or_timeline') + '</div>';
   rows.forEach(function (r) {
+    /* The person when the row knows one, the company when it does not —
+       an old job stamped before any of this, or a step the server took by
+       itself. Never both spelled out: "Accepted by Yalla Wear · Yalla Wear"
+       was what the line said before, and it said nothing twice. */
+    var p = r.who && DB.person ? DB.person(r.who) : null;
+    var tint = p ? personTint(p.id) : null;
     h += '<div class="ord-tl-row">' +
       '<span class="ord-tl-dot"></span>' +
       '<span class="ord-tl-txt">' + esc(r.label) + '</span>' +
-      '<span class="ord-tl-by">' + t(r.by === 'og' ? 'or_by_og' : 'or_by_yalla') + '</span>' +
+      '<span class="ord-tl-by">' +
+        (p ? '<span class="who-face sm" style="color:' + tint.fg + ';background:' + tint.bg + '">' +
+               esc(personFace(p.name)) + '</span>' + esc(personFirst(p.name))
+           : t(r.by === 'og' ? 'or_by_og' : 'or_by_yalla')) +
+      '</span>' +
       '<span class="ord-tl-at">' + fmtDateTime(r.at) + '</span>' +
     '</div>';
   });
@@ -830,7 +863,7 @@ function repChartData(tab) {
       .sort(function (a, b) { return DB.repBaseOf(b.sold) - DB.repBaseOf(a.sold); });
     return {
       kind: 'bars', fmt: money, highlight: 0,
-      labels: sold.map(function (x) { return firstName(x.name); }),
+      labels: sold.map(function (x) { return personFirst(x.name); }),
       values: sold.map(function (x) { return DB.repBaseOf(x.sold); })
     };
   }
@@ -845,7 +878,7 @@ function repChartData(tab) {
       .sort(function (a, b) { return b.outstanding - a.outstanding; }).slice(0, 12);
     return {
       kind: 'bars', fmt: money, highlight: 0,
-      labels: sup.map(function (x) { return firstName(x.name); }),
+      labels: sup.map(function (x) { return personFirst(x.name); }),
       values: sup.map(function (x) { return x.outstanding; })
     };
   }

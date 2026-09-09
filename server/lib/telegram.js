@@ -199,12 +199,12 @@ const TEMPLATES = {
         (a.priority === 'urgent' ? ' — URGENT' : '') + `\n${a.design || ''}\nOpen the portal to accept or decline.`
   }),
   order_accepted: (a) => ({
-    ar: `✅ يلا وير قبلت الطلب ${a.id}` + (a.promisedAt ? ` — الوعد بالتسليم ${fmtDate(a.promisedAt)}` : '') + (a.note ? `\n${a.note}` : ''),
-    en: `Yalla Wear accepted order ${a.id}` + (a.promisedAt ? ` — promised for ${fmtDate(a.promisedAt)}` : '') + (a.note ? `\n${a.note}` : '')
+    ar: `✅ ${a.actor ? a.actor + ' من يلا وير قبل الطلب' : 'يلا وير قبلت الطلب'} ${a.id}` + (a.promisedAt ? ` — الوعد بالتسليم ${fmtDate(a.promisedAt)}` : '') + (a.note ? `\n${a.note}` : ''),
+    en: `${a.actor ? a.actor + ' at Yalla Wear accepted order' : 'Yalla Wear accepted order'} ${a.id}` + (a.promisedAt ? ` — promised for ${fmtDate(a.promisedAt)}` : '') + (a.note ? `\n${a.note}` : '')
   }),
   order_declined: (a) => ({
-    ar: `❌ يلا وير رفضت الطلب ${a.id}` + (a.note ? `\nالسبب: ${a.note}` : ''),
-    en: `Yalla Wear declined order ${a.id}` + (a.note ? `\nReason: ${a.note}` : '')
+    ar: `❌ ${a.actor ? a.actor + ' من يلا وير رفض الطلب' : 'يلا وير رفضت الطلب'} ${a.id}` + (a.note ? `\nالسبب: ${a.note}` : ''),
+    en: `${a.actor ? a.actor + ' at Yalla Wear declined order' : 'Yalla Wear declined order'} ${a.id}` + (a.note ? `\nReason: ${a.note}` : '')
   }),
   stage: (a) => ({
     ar: `📦 ${a.id} — ${STAGE_AR[a.stage] || a.stage} · ${a.qty} قطعة`,
@@ -370,11 +370,24 @@ const TEMPLATES = {
   })
 };
 
+/* Kinds whose sentence already names the person, so a signature under it
+   would say it twice. */
+const ACTOR_INLINE = new Set(['order_accepted', 'order_declined']);
+
 function render(kind, args) {
+  const a = args || {};
   const fn = TEMPLATES[kind];
-  const t = fn ? fn(args || {}) : { ar: kind, en: JSON.stringify(args || {}) };
+  const t = fn ? fn(a) : { ar: kind, en: JSON.stringify(a) };
   const link = cfg('shop.public_url');
-  return t.ar + '\n' + t.en + (link ? `\n${link}` : '');
+
+  /* Who did it, on its own line. Both companies are more than one person —
+     Yalla Wear is Zaven and Zohrab, the shop is whoever is at the till — and
+     a chat that only ever says "Yalla Wear" cannot be replied to. Absent for
+     anything the server did by itself: the reminders have no actor, and a
+     name invented for them would be a lie in somebody's pocket. */
+  const sig = a.actor && !ACTOR_INLINE.has(kind) ? `\n— ${a.actor}` : '';
+
+  return t.ar + '\n' + t.en + sig + (link ? `\n${link}` : '');
 }
 
 /* ---------------------------------------------------------------- sending */

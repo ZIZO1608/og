@@ -17,11 +17,11 @@
 
 const HEARTBEAT_MS = 25 * 1000;
 
-let clients = new Set();     // { res, side, userId, since }
+let clients = new Set();     // { res, side, userId, name, since }
 let timer = null;
 let sent = 0;
 
-export function subscribe(res, side, userId = null) {
+export function subscribe(res, side, userId = null, name = null) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'private, no-cache, no-transform',
@@ -33,7 +33,7 @@ export function subscribe(res, side, userId = null) {
      so the first byte arrives and the client knows it is on. */
   res.write('retry: 3000\n\n');
 
-  const c = { res, side, userId, since: Date.now() };
+  const c = { res, side, userId, name, since: Date.now() };
   clients.add(c);
   res.write(`event: hello\ndata: ${JSON.stringify({ side, presence: presence() })}\n\n`);
   /* Everyone else learns somebody arrived — "Yalla Wear is online" is worth
@@ -56,11 +56,33 @@ export function subscribe(res, side, userId = null) {
   }
 }
 
-/* Who is on the line right now: open tabs per side. */
+/* Who is on the line right now — PEOPLE, not tabs.
+
+   Yalla Wear is two partners, so "Yalla Wear · online" was the wrong
+   sentence: the shop wants to know whether it is Zaven or Zohrab reading
+   this. Each side carries the names, deduplicated by account, because one
+   person with the portal open on a phone and a laptop is one person online
+   and counting the tabs said two. The tab count is kept beside it for
+   /api/live's own status line, where "how many streams are open" is the
+   actual question.
+
+   An account with no id (there is no such caller today) counts as its own
+   anonymous person rather than collapsing every one of them into one. */
 export function presence() {
-  const p = { og: 0, yalla: 0 };
-  for (const c of clients) p[c.side] = (p[c.side] || 0) + 1;
-  return p;
+  const people = { og: [], yalla: [] };
+  const tabs = { og: 0, yalla: 0 };
+  const seen = { og: new Set(), yalla: new Set() };
+
+  for (const c of clients) {
+    const side = c.side === 'yalla' ? 'yalla' : 'og';
+    tabs[side]++;
+    const key = c.userId == null ? 'anon:' + [...seen[side]].length : String(c.userId);
+    if (seen[side].has(key)) continue;
+    seen[side].add(key);
+    people[side].push({ id: c.userId, name: c.name || null });
+  }
+
+  return { og: people.og.length, yalla: people.yalla.length, people, tabs };
 }
 
 /* `sides` — 'og', 'yalla', or 'all'. The payload is a hint only; presence

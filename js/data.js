@@ -612,6 +612,9 @@ function hoursAgo(n) { return new Date(Date.now() - n * 3600000); }
 var _msgSeq = 0;
 var jobMessages = [];
 
+/* id → { id, name, side } for everyone the partner payload names. */
+var PEOPLE = {};
+
 /* ---- customer indexes ---------------------------------------------------
    id → customer, and normalised phone → [customers]. hydrate() used to build
    the first of these to link sales to people and then throw it away, while
@@ -1538,6 +1541,13 @@ var DB = {
   /* ---- messages ----------------------------------------------------------
      One array, both portals. `from` is the author; a sender has by definition
      already read their own message. */
+
+  /* The people behind the user_id columns. `person` is null for anything
+     the server did by itself, and every caller draws the company in that
+     case rather than inventing somebody. */
+  people: PEOPLE,
+  person: function (id) { return (id && PEOPLE[id]) || null; },
+  personName: function (id) { var p = PEOPLE[id]; return p ? p.name : null; },
 
   messagesFor: function (opts) {
     return jobMessages.filter(function (m) {
@@ -3112,7 +3122,12 @@ function hydratePartner(p) {
     /* The shop's verdict, keyed by job so the drawer finds it in one step. */
     var reviewOf = {};
     (p.reviews || []).forEach(function (r) {
-      reviewOf[r.job_id] = { rating: r.rating, feedback: r.feedback || '', at: date(r.at) };
+      /* by: which of the shop's people wrote it. Yalla Wear receives this
+         now — a rating with a name on it is feedback from a person you can
+         answer, and an anonymous star out of five is a score. */
+      reviewOf[r.job_id] = {
+        rating: r.rating, feedback: r.feedback || '', at: date(r.at), by: r.user_id || null
+      };
     });
 
     printJobs.length = 0;
@@ -3144,7 +3159,12 @@ function hydratePartner(p) {
         review: reviewOf[j.id] || null,
         lines: j.kind === 'kit' ? lines : null,
         history: (j.history || []).map(function (h) {
-          return { stage: h.stage, at: date(h.at), by: h.by_side };
+          /* `who` is the person; `by` stays the SIDE, because half the app
+             asks which company moved it and the answer must not change
+             shape. The id has been stamped on every stage since 015 and
+             was thrown away here, which is why the order timeline could
+             only ever say "Yalla Wear". */
+          return { stage: h.stage, at: date(h.at), by: h.by_side, who: h.user_id || null };
         }),
         order: {
           state: j.order_state || 'draft',
@@ -3203,6 +3223,13 @@ function hydratePartner(p) {
     });
   }
 
+  /* Who the rows point at. Replaced whole, like DB.dash: it is a snapshot
+     of the people named by THIS payload, not a directory anyone holds. */
+  if (p.people) {
+    Object.keys(PEOPLE).forEach(function (k) { delete PEOPLE[k]; });
+    Object.keys(p.people).forEach(function (k) { PEOPLE[k] = p.people[k]; });
+  }
+
   if (p.messages) {
     jobMessages.length = 0;
     p.messages.forEach(function (m) {
@@ -3210,6 +3237,10 @@ function hydratePartner(p) {
         id: 'M' + m.id, jobId: m.job_id, invoiceId: m.invoice_id,
         from: m.from_side, kind: m.kind, reason: m.reason,
         text: m.body, at: date(m.at),
+        /* The author has been in the database since the beginning and was
+           never once drawn. With two partners on the other side, "YALLA
+           WEAR said" is no longer enough to answer "who do I reply to". */
+        by: m.user_id || null,
         readOg: !!m.read_og, readYl: !!m.read_yl
       });
     });

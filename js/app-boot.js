@@ -24,6 +24,8 @@ function bindGlobal() {
        being clicked is removed before its own handler runs. */
     var ap = document.getElementById('acctPop');
     if (ap && !ap.contains(e.target) && (!el || el.getAttribute('data-act') !== 'acct')) ap.remove();
+    var wp = document.getElementById('whoPop');
+    if (wp && !wp.contains(e.target) && (!el || el.getAttribute('data-act') !== 'who')) wp.remove();
 
     /* close the global search dropdown */
     var sr = document.getElementById('searchResults');

@@ -566,6 +566,8 @@ var EXTRA_EN = {
   al_more_partner_msg: '{n} more messages from Yalla Wear',
   live_on: 'Live — connected to the shop server', live_off: 'Reconnecting…',
   live_other_on: 'online', live_other_off: 'away',
+  who_title: 'Who is on the line', who_you: 'you', who_online: 'reading now',
+  who_offline: 'not connected', who_nobody: 'Nobody from here is connected',
 
   /* the reviews page */
   yl_reviews: 'Reviews', yl_reviews_sub: 'What OG System says about your printing',
@@ -812,6 +814,8 @@ var EXTRA_AR = {
   al_more_partner_msg: '{n} رسائل أخرى من يلا وير',
   live_on: 'مباشر — متصل بخادم المحل', live_off: 'جارٍ إعادة الاتصال…',
   live_other_on: 'متصل الآن', live_other_off: 'غير متصل',
+  who_title: 'من على الخط الآن', who_you: 'أنت', who_online: 'يتابع الآن',
+  who_offline: 'غير متصل', who_nobody: 'لا أحد من هنا متصل',
 
   yl_reviews: 'التقييمات', yl_reviews_sub: 'ما يقوله OG System عن طباعتك',
   yl_rv_spread: 'توزّع التقييمات', yl_rv_spread_sub: 'اضغط سطراً للتصفية',
