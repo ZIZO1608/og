@@ -447,6 +447,33 @@
     var here = r.https || r.http;
     var lan = (r.lan || [])[0] || null;
 
+    /* WHEN THERE IS A PUBLIC ADDRESS, IT IS THE ONLY ONE WORTH PRINTING.
+       A shop reachable through the tunnel is reachable the same way from the
+       counter, the office and the owner's phone at home, so the two local
+       addresses stop being two useful facts and become a decision nobody
+       should have to make. One address, one code, and the same one everybody
+       is told.
+
+       The local address stays as a HINT rather than a row, and it is not
+       decoration: the tunnel needs the internet, the till does not. On a
+       morning when the line is down, that dim line is the entire difference
+       between a shop that opens and a panel that offers an address which
+       times out. It is deliberately not given a Copy button — it is the
+       answer to a bad day, not the address anyone should be handing out. */
+    if (r.public) {
+      var ph = '<div class="card">';
+      ph += '<h3>' + esc(t('fromAnywhere')) + '</h3>';
+      ph += addrRow(r.public);
+      if (here) ph += '<p class="hint addr-hint">' + esc(t('localFallback')) + ': ' + ltr(here) + '</p>';
+      ph += '</div>';
+
+      var pqr = qrFor(r.public);
+      box.className = 'addrs' + (pqr ? '' : ' solo');
+      box.innerHTML = ph + pqr;
+      box.hidden = false;
+      return;
+    }
+
     var h = '<div class="card">';
     h += '<h3>' + esc(t('onThisComputer')) + '</h3>';
     if (here) h += addrRow(here);

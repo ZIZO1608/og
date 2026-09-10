@@ -70,6 +70,8 @@ var PI18N = (function () {
     /* ------------------------------------------------------ the addresses */
     onThisComputer: 'On this computer',
     onAPhone: 'On a phone or another computer',
+    fromAnywhere: 'From anywhere, on any device',
+    localFallback: 'If the internet is down, on this computer',
     pointCamera: 'Point the camera at this code',
     noWifi: 'This computer is not on a network, so nothing else can reach the shop.',
     plainNoPadlock: 'without the padlock',
@@ -272,6 +274,8 @@ var PI18N = (function () {
     /* ------------------------------------------------------ the addresses */
     onThisComputer: 'على هذا الكمبيوتر',
     onAPhone: 'على الهاتف أو كمبيوتر آخر',
+    fromAnywhere: 'من أي مكان، على أي جهاز',
+    localFallback: 'إذا انقطع الإنترنت، على هذا الكمبيوتر',
     pointCamera: 'وجّه الكاميرا إلى هذا الرمز',
     noWifi: 'هذا الكمبيوتر ليس على شبكة، لذلك لا يستطيع أي جهاز آخر الوصول إلى المحل.',
     plainNoPadlock: 'بدون القفل',

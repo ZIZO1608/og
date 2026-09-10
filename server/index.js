@@ -81,6 +81,25 @@ let SECURE    = process.env.OG_SECURE === '1';
 let SECURE_SERVER = null;
 const HTTPS_PORT = Number(process.env.OG_HTTPS_PORT || 8443);
 const HTTPS_OFF  = process.env.OG_HTTPS === '0';
+
+/* THE ADDRESS THE WORLD TYPES. Set when this shop is reachable from outside
+   through a Cloudflare tunnel — scripts/cloudflare.js and the panel's Check
+   Cloudflare button are the other half of it.
+
+   It is a fact about DNS and a tunnel, not about this process, so nothing
+   here can verify it and nothing here should: the server cannot see its own
+   public name, and a boot that tried to would be asking Cloudflare to call
+   back into itself before the first sale of the day. It is passed on to the
+   panel to DISPLAY, and `npm run cloudflare` is what actually tests it.
+
+   The scheme is added rather than accepted, because the tunnel terminates
+   TLS at Cloudflare's edge and there is no arrangement in which this address
+   is correctly plain http. A pasted "https://shop.example.com/" survives. */
+const PUBLIC_URL = (() => {
+  const h = String(process.env.OG_CF_HOSTNAME || '')
+    .trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return h ? `https://${h}` : null;
+})();
 const ORIGINS = (process.env.OG_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
@@ -115,7 +134,13 @@ router.add('GET /api/health', (ctx) => {
     warehouses: row.n, time: DB.nowIso(),
     shop: shop ? shop.value : null,
     https: !!SECURE_SERVER,
-    lan: lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`)
+    lan: lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`),
+    /* The tunnel address, for the same reason `lan` is here: a device asking
+       this server how to be reached should get every answer, not the ones
+       that only work on the wifi. It is also what lets the panel print the
+       right address for a shop it ADOPTED rather than started — that branch
+       has no pipe to read a ready message from and this line is all it has. */
+    public: PUBLIC_URL
   });
 });
 
@@ -2719,6 +2744,12 @@ if (runDirectly) {
       https: SECURE_SERVER ? `https://localhost:${HTTPS_PORT}` : null,
       lan: lanAddresses().filter((a) => !a.note)
         .map((a) => (SECURE_SERVER ? `https://${a.address}:${HTTPS_PORT}` : `http://${a.address}:${PORT}`)),
+      /* The address the world types. When it is set the panel prints it
+         INSTEAD of the two local ones, because a shop on the tunnel is
+         reached the same way from the counter and from a phone in another
+         city, and two addresses on that card is a choice nobody should have
+         to make. Null here and the panel falls back to what it always drew. */
+      public: PUBLIC_URL,
       secure: !!SECURE_SERVER,
       accounts: n,
       shop: (() => {

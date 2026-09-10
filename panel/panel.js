@@ -364,6 +364,12 @@ async function startServer() {
         http: 'http://localhost:' + SHOP_PORT,
         https: health.https ? 'https://localhost:' + httpsPort : null,
         lan: health.lan || [],
+        /* Straight off the health line rather than out of this process's own
+           environment: the shop being adopted may have been started with a
+           different .env than this panel can see, and printing OUR tunnel
+           address over THEIR server is how somebody ends up typing an address
+           that reaches a different shop. */
+        public: health.public || null,
         secure: !!health.https,
         shop: health.shop,
         accounts: null,
