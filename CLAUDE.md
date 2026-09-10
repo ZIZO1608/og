@@ -106,6 +106,39 @@ exactly why this went unnoticed on the machine doing the testing.
   moved. It also warns 30 days before expiry.
 - `server/data/certs/` is gitignored: it holds a private key, and it is one command to rebuild.
 
+### The way in from outside — Cloudflare
+
+`server/scripts/cloudflare.js`, the panel's **Check Cloudflare** button, and one Cloudflare
+tunnel. The shop listens on one laptop; a phone on the shop wifi reaches it by IP and nobody
+else can, because there is no public address and nothing is going to open a port on a router in
+Aleppo. `cloudflared` runs as a Windows service, makes an **outbound** connection to Cloudflare
+and holds it open; Cloudflare answers for `shop.ogsports1.com` and passes each request back down
+it to `http://localhost:8090`. No inbound port, no fixed IP, and the padlock is Cloudflare's real
+certificate rather than the one `lib/tls.js` apologises for.
+
+- **`npm run cert` BREAKS THIS, and nothing says so at the time.** `index.js` is
+  `createServer(SECURE_SERVER ? httpHandler : handle)`, and `httpHandler` sends any browser
+  asking for a page to `https://<host>:8443`. Through the tunnel that is a redirect to
+  `shop.ogsports1.com:8443`, a port Cloudflare does not carry, so the public address dies with
+  no error a shopkeeper could read. The check looks for `server/data/certs/` and says so; the
+  panel's Make certificate blurb warns before the fact. If the local certificate is ever genuinely
+  needed, the tunnel must be repointed at `https://localhost:8443` with **No TLS Verify** on.
+- **The id is public, the token is the secret.** `OG_CF_TUNNEL_ID` names the tunnel and
+  authorises nothing; `OG_CF_TUNNEL_TOKEN` is what lets a machine join it and lives in
+  `server/.env`. Once `cloudflared service install <token>` has run, Windows keeps its own copy
+  at `C:\ProgramData\cloudflared\token`, **administrator-only** — so nothing here ever reads it,
+  and the check reports the service's command line instead. Its existence is the only fact needed.
+- **The hostname mapping lives in the dashboard, not on this machine.** A token-based tunnel has
+  no `config.yml` to write, which is why the connect pass is one call and there is no local file
+  to drift.
+- **One button that checks and fixes**, unlike `hardware` / `hardwareInstall` which are a pair.
+  On a client's machine the only useful answer to "is Cloudflare set up" is "it is now". A machine
+  already connected raises no permission prompt, which is what makes it safe to press twice.
+- **`OG_ORIGINS` must list the tunnel hostname** the moment the shop is reachable from outside.
+  Blank does not mean "allow the shop", it means allow everything — `originAllowed()` in
+  `lib/http.js` returns true on an empty list. `OG_TRUST_PROXY=1` belongs with it, or every remote
+  visitor shares one address for login throttling because they all arrive from localhost.
+
 ### Accounts
 
 There are no test accounts. The five that used to exist (`hussam`, `lubna`, `maher`, `talal`,

@@ -149,11 +149,33 @@ export const JOBS = {
     steps: () => [['node', ['scripts/hardware.js', '--install']]]
   },
 
+  /* ------------------------------------------- the door from outside in */
+
+  /* ONE button that both checks and fixes, which is not the shape the rest
+     of this table uses and is deliberate. `hardware` reports and
+     `hardwareInstall` acts, because a printer driver is a decision about
+     this machine somebody may want to read before taking. The connector is
+     not that: on a client's machine the only useful answer to "is Cloudflare
+     set up" is "it is now".
+
+     So it runs the check first, prints everything it found, and then puts
+     right whatever it can. A machine already connected raises no permission
+     prompt at all, which is what makes it safe to press twice — and pressing
+     it twice is exactly what somebody will do. */
+  cloudflare: {
+    label: 'Check Cloudflare',
+    group: 'machine',
+    blurb: 'Whether this computer is connected to the tunnel that puts the shop on its web address. Downloads and connects it if it is not, asking Windows for permission once.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/cloudflare.js', '--connect']]]
+  },
+
   /* --------------------------------------------------------- the padlock */
   cert: {
     label: 'Make certificate',
     group: 'machine',
-    blurb: 'A new self-signed certificate for this machine\u2019s addresses. Every phone shows its warning once more afterwards, and the shop needs a restart.',
+    blurb: 'A new self-signed certificate for this machine\u2019s addresses. Every phone shows its warning once more afterwards, and the shop needs a restart. If this shop is reached from outside through Cloudflare, this button BREAKS that \u2014 the web address stops loading until the certificate is removed again.',
     danger: 'NEW CERT',
     while: 'any',
     cwd: 'server',
