@@ -313,11 +313,77 @@ async function check({ quiet = false } = {}) {
   /* 6. the whole thing, end to end. Last, because it is the only question
         whose answer depends on all the others being right. */
   const pub = await ask(`https://${HOSTNAME}/api/health`, 10000);
+
+  /* CLOUDFLARE'S OWN ERROR PAGE IS JSON, and that is how the first version of
+     this check went permanently green. Its body carries `status: 502`, the
+     first draft accepted any object with a `status` field as proof of life,
+     and so a gateway error read as "the shop is answering". Measured, not
+     reasoned about: the page came back with content-type application/json and
+     parsed cleanly.
+
+     `cloudflare_error: true` is Cloudflare saying the page is its own rather
+     than the origin's, and it is checked FIRST so nothing below can mistake
+     one for the other. The shop's own health line is then required to be a
+     200 carrying `ok` and the `lan` array — fields Cloudflare has no reason
+     to invent — rather than merely being JSON. */
+  const cfPage = pub.reached && pub.json && pub.json.cloudflare_error === true;
+  const shopLine = pub.reached && pub.status === 200 && pub.json &&
+                   pub.json.ok === true && Array.isArray(pub.json.lan);
+
   if (!pub.reached) {
     warn(`https://${HOSTNAME} did not answer (${pub.error}).`);
     if (!local.reached) hint('Expected while the shop is closed — the tunnel has nothing to carry.');
-  } else if (pub.json && (pub.json.ok !== undefined || pub.json.status !== undefined || pub.json.shop !== undefined)) {
-    ok(`https://${HOSTNAME} is answering, and it is this shop.`);
+  } else if (cfPage) {
+    warn(`https://${HOSTNAME} did not reach the shop — Cloudflare answered ${pub.status} itself.`);
+    if (pub.json.error_name) hint(`Cloudflare calls it: ${pub.json.error_name}`);
+
+    if (pub.status === 530) {
+      hint('Nothing is attached to this tunnel at all — no connector is connected.');
+      humans.push('No connector is attached to the tunnel.');
+    } else if (local.reached) {
+      /* The shop IS up here and the tunnel still cannot see it. That is a
+         real fault: the wrong port in the tunnel, or a connector attached to
+         a different machine. Worth stopping a person for. */
+      hint(`The shop is running here on port ${PORT}, so the tunnel is pointed somewhere else.`);
+      hint('Check the tunnel’s public hostname sends traffic to http://localhost:' + PORT);
+      humans.push('The tunnel is up but is not reaching the shop on this machine.');
+    } else {
+      /* Expected. The connector is fine, there is simply nothing behind it. */
+      hint('The connector is up and the shop behind it is closed. Start the shop and try again.');
+    }
+  } else if (shopLine) {
+
+    /* ANSWERING IS NOT THE SAME AS ANSWERING FROM HERE, and the difference
+       is the whole reason this branch exists.
+
+       A second machine that copies server/.env inherits this hostname, so
+       its check would ask the tunnel, get a perfectly healthy shop back, and
+       report success — while the shop it reached is somebody else's laptop.
+       Two connectors on one tunnel do the same thing intermittently:
+       Cloudflare treats them as a high-availability pair and hands each
+       request to whichever it likes, so the answer changes between runs.
+
+       `lan` is what tells them apart. It is the list of addresses the
+       answering server found on ITS OWN network cards, so two machines
+       cannot produce the same one. Comparing the shop NAME would not do —
+       both copies are called OG Sports, which is exactly how this hides. */
+    const mine = local.reached && local.json ? JSON.stringify(local.json.lan || []) : null;
+    const theirs = JSON.stringify(pub.json.lan || []);
+
+    if (mine !== null && mine !== theirs) {
+      warn(`https://${HOSTNAME} is answering, but NOT from this computer.`);
+      hint(`it reaches a shop on ${(pub.json.lan || []).join(', ') || 'an unknown machine'}`);
+      hint(`this computer is ${(local.json.lan || []).join(', ') || 'not on a network'}`);
+      hint('Either the tunnel points at another laptop, or two machines are running');
+      hint('the same tunnel token and Cloudflare is splitting requests between them.');
+      humans.push('The public address reaches a different computer than this one.');
+    } else if (mine === null) {
+      ok(`https://${HOSTNAME} is answering.`);
+      hint('The shop is closed here, so there is no way to tell whether it is THIS computer answering.');
+    } else {
+      ok(`https://${HOSTNAME} is answering, and it is this computer.`);
+    }
+
   } else if (pub.status >= 300 && pub.status < 400) {
     warn(`https://${HOSTNAME} answered ${pub.status} and sent us somewhere else.`);
     hint('That is what Cloudflare Access looks like from a script. A browser would be asked to sign in.');
@@ -471,9 +537,33 @@ async function connect() {
 
 /* ---------------------------------------------------------------- dispatch */
 
-if (CONNECT) {
-  exit(await connect());
-} else {
-  const { code } = await check();
-  exit(code);
+/* CALLING exit() STRAIGHT AFTER A fetch() CRASHES NODE ON WINDOWS.
+
+       Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)
+       file src\win\async.c, line 76
+
+   and the process leaves with 127 instead of the code this script decided
+   on. Which matters more than it looks: 127 is not one of the three codes
+   the panel understands, so a check that had just printed a clean report
+   would be drawn as a job that failed.
+
+   The cause is the keep-alive sockets behind the global fetch. They are
+   still open when exit() tears the loop down mid-close. So: close them
+   first, then set the code and RETURN, and let Node leave on its own with
+   an empty loop. That is a real exit rather than a forced one, and it
+   cannot race anything.
+
+   The timer is the safety net for the day something else holds the loop
+   open. It is unref'd, so its own existence never delays the exit. */
+async function leave(code) {
+  try {
+    const d = globalThis[Symbol.for('undici.globalDispatcher.1')];
+    if (d && typeof d.close === 'function') await d.close();
+  } catch { /* best effort — a socket that will not close must not change the verdict */ }
+
+  process.exitCode = code;
+  setTimeout(() => exit(code), 2000).unref();
 }
+
+if (CONNECT) await leave(await connect());
+else await leave((await check()).code);
