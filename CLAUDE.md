@@ -993,13 +993,23 @@ it rejects the **whole batch**, not the column:
 - **The schema files are run by hand in the Supabase dashboard**, `002` through `018` (`001` too,
   on a new project). **`server/supabase/CATCH-UP.sql` is every outstanding one concatenated** — one
   paste instead of four visits; it is generated, every statement is `IF NOT EXISTS`, and re-running it
-  is safe. **Measured against the live mirror on 2026-09-12, three are still outstanding**: `016`
-  (`print_jobs.design_image_url`), `017` and `018` — six tables do not exist there at all
-  (`order_payments`, `handovers`, `handover_lines`, `order_returns`, `order_return_lines`,
-  `customer_credit`) and `deliveries` is short of all thirteen of its columns. `supabase:drift` names
-  them, and it is **read-only and lineage-free, so it answers from any machine** — including one that
-  is refused from syncing. The backfill afterwards is not: `supabase:reconcile` writes, so only the
-  laptop that owns the lineage may run it. `002`–`007` are applied on the live mirror. `008` (rooms, and which wall a rack hangs on)
+  is safe. **`016`, `017` and `018` were applied on 2026-09-12** — `supabase:drift` reads green, all
+  45 pushed tables column for column, and the six new tables (`order_payments`, `handovers`,
+  `handover_lines`, `order_returns`, `order_return_lines`, `customer_credit`) are there with RLS on
+  and no policies. `supabase:drift` is the check that answers this, and it is **read-only and
+  lineage-free, so it works from any machine** — including one refused from syncing. The data
+  backfill is not: `supabase:reconcile` writes, so only the laptop owning the lineage may run it.
+- **"DDL cannot be run over the API" WAS WRONG, and it cost this project four hand-run visits.**
+  What is true is narrower: PostgREST exposes no SQL function (`exec_sql`, `exec`, `query`, `sql`,
+  `run_sql` — all `PGRST202`), and the **service key is not an account credential**, so the
+  Management API answers it `401 JWT could not be decoded`. But
+  `POST https://api.supabase.com/v1/projects/<ref>/database/query` with a **personal access token**
+  (`sbp_…`, from supabase.com/dashboard/account/tokens) runs arbitrary SQL, DDL included — plain
+  `fetch`, no dependency, which is the only reason it could belong here. `CATCH-UP.sql` went up that
+  way in one pass, 65 statements, HTTP 201. **A personal access token is account-wide**, not
+  project-scoped: it manages every project on the account, so it is made for the job, kept out of
+  `.env` afterwards, and revoked. That is why this is written down as a route rather than wired into
+  a button — the dashboard paste stays the default, and nothing in this repo stores such a token. `002`–`007` are applied on the live mirror. `008` (rooms, and which wall a rack hangs on)
   must be run before the shelf map's rooms mirror at all — until then the sync skips `rooms` by name
   and pushes `sections` without the three placement columns. `009` adds `print_log.kind` (local `027`);
   until it is run the print history block is rejected and retries every run, so nothing is lost, only
