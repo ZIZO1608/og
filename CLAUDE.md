@@ -990,10 +990,16 @@ it rejects the **whole batch**, not the column:
   asks about the *data*; the shape question used to be answered by a day of missing sales instead of
   by a command. Both new branches were verified by breaking `mirror-lag.js` on purpose.
 
-- **Twelve schema files are run by hand in the Supabase dashboard**, `002` through `013` (`001` too,
+- **The schema files are run by hand in the Supabase dashboard**, `002` through `018` (`001` too,
   on a new project). **`server/supabase/CATCH-UP.sql` is every outstanding one concatenated** — one
   paste instead of four visits; it is generated, every statement is `IF NOT EXISTS`, and re-running it
-  is safe. `002`–`007` are applied on the live mirror. `008` (rooms, and which wall a rack hangs on)
+  is safe. **Measured against the live mirror on 2026-09-12, three are still outstanding**: `016`
+  (`print_jobs.design_image_url`), `017` and `018` — six tables do not exist there at all
+  (`order_payments`, `handovers`, `handover_lines`, `order_returns`, `order_return_lines`,
+  `customer_credit`) and `deliveries` is short of all thirteen of its columns. `supabase:drift` names
+  them, and it is **read-only and lineage-free, so it answers from any machine** — including one that
+  is refused from syncing. The backfill afterwards is not: `supabase:reconcile` writes, so only the
+  laptop that owns the lineage may run it. `002`–`007` are applied on the live mirror. `008` (rooms, and which wall a rack hangs on)
   must be run before the shelf map's rooms mirror at all — until then the sync skips `rooms` by name
   and pushes `sections` without the three placement columns. `009` adds `print_log.kind` (local `027`);
   until it is run the print history block is rejected and retries every run, so nothing is lost, only
