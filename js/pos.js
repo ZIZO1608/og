@@ -529,8 +529,10 @@ var POS = (function () {
   /* Sham Cash, Fuad, Haram and a card terminal each hand back a reference for
      the transfer. Cash, COD and on-credit do not, so asking for one there
      would be a box that can only ever be wrong. */
-  var TXN_METHODS = { sham: 1, fuad: 1, haram: 1, card: 1 };
-  function wantsTxnRef() { return !!TXN_METHODS[S.payment]; }
+  /* Which methods hand back a reference is the owner's list now (045,
+     pay.methods `ref`), so a transfer company added in Settings asks for its
+     number here with no edit to this file. */
+  function wantsTxnRef() { return !!S.payment && DB.payNeedsRef(S.payment); }
 
   function payGridHtml() {
     var h = '<span class="lbl">' + t('payment_method') + '</span><div class="pay-grid" id="payGrid">';

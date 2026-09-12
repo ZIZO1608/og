@@ -7,11 +7,24 @@
 
 /* --------------------------------------------------------------- 15. INVOICE */
 
-function invoiceHtml(sale) {
+/* `order` is the delivery office's payload for this sale (GET
+   /api/orders/by-sale) when there is one. With it, every figure on the page
+   comes from the server in the order's own currency and minor units — an A4
+   invoice for a dollar order priced through money(), which assumes lira,
+   would be wrong by a factor of a hundred and thirty. */
+function invoiceHtml(sale, order) {
   var cust = sale.customerId ? DB.customer(sale.customerId) : null;
   /* What the sale actually earned, frozen on the row — not today's rate
      re-run over the total. This goes on paper. */
   var earned = sale.pointsEarned || 0;
+
+  var ocur = order ? order.sale.currency : null;
+  /* One formatter for the whole page: the order's own currency when this is
+     an order, the shop's display currency when it is an ordinary sale. */
+  var om = function (minor, fallbackBase) {
+    return order ? Desk.fmt(minor, ocur) : money(fallbackBase);
+  };
+  var od = order ? order.delivery : null;
 
   var h = '<div class="invoice-sheet">' +
     '<div class="inv-top"><div class="inv-logo"><div class="brand-mark"><img src="assets/logo.svg" alt="OG"></div>' +
@@ -29,6 +42,17 @@ function invoiceHtml(sale) {
          come from the record as it stands. */
       '<div><div class="lbl">' + t('bill_to') + '</div><b>' + esc(sale.customerName || (cust ? cust.name : t('walk_in'))) + '</b>' +
         (cust ? '<br><span class="num">' + esc(cust.phone) + '</span><br>' + esc(cust.city) : '') + '</div>' +
+      /* Where it is going. The third column is what turns an invoice into a
+         despatch note, and it only exists for a delivery order. */
+      (od ? '<div><div class="lbl">' + t('rc2_ship_to') + '</div><b>' +
+          esc(od.recipient || sale.customerName || (cust ? cust.name : '')) + '</b>' +
+          (od.phone ? '<br><span class="num" dir="ltr">' + esc(od.phone) + '</span>' : '') +
+          ((od.city || od.country) ? '<br>' + esc([od.city, od.country].filter(Boolean).join(' · ')) : '') +
+          (od.address ? '<br>' + esc(od.address) : '') +
+          '<br><span style="font-size:11px;color:#71717A">' + t('dk_m_' + (od.method || 'driver')) +
+            (od.companyName ? ' · ' + esc(od.companyName) : '') +
+            (od.trackingNo ? ' · <span dir="ltr">' + esc(od.trackingNo) + '</span>' : '') +
+          '</span></div>' : '') +
       '<div style="text-align:end"><div class="lbl">' + t('served_by') + '</div><b>' + esc(sale.cashier) + '</b><br>' +
         esc(CONFIG.SHOP_ADDRESS) + '<br>' + tel(CONFIG.SHOP_PHONE) + '</div>' +
     '</div>' +
@@ -36,10 +60,13 @@ function invoiceHtml(sale) {
     '<table class="inv-tbl"><thead><tr><th>' + t('product') + '</th><th>' + t('size') + '</th>' +
       '<th class="num">' + t('qty') + '</th><th class="num">' + t('unit_price') + '</th>' +
       '<th class="num">' + t('line_total') + '</th></tr></thead><tbody>';
-  sale.items.forEach(function (it) {
-    h += '<tr><td>' + esc(it.name) + '</td><td>' + it.size + '</td>' +
-      '<td class="num">' + it.qty + '</td><td class="num">' + money(it.unitPrice) + '</td>' +
-      '<td class="num">' + money(it.qty * it.unitPrice) + '</td></tr>';
+  /* An order's lines come from the server with their prices in the order's
+     own minor units; a till sale's come from the browser's copy in the
+     display currency. `om` knows which it is looking at. */
+  (order ? order.items : sale.items).forEach(function (it) {
+    h += '<tr><td>' + esc(it.name) + '</td><td>' + esc(it.size) + '</td>' +
+      '<td class="num">' + it.qty + '</td><td class="num">' + om(it.unitPrice, it.unitPrice) + '</td>' +
+      '<td class="num">' + om(it.qty * it.unitPrice, it.qty * it.unitPrice) + '</td></tr>';
   });
   h += '</tbody></table>';
 
@@ -49,16 +76,34 @@ function invoiceHtml(sale) {
       '</div>' +
       '<div style="font-size:9px;color:#71717A;margin-top:4px;letter-spacing:.08em">' + sale.id + '</div></div>' +
     '<div class="inv-totals">' +
-      '<div class="tr"><span>' + t('subtotal') + '</span><span>' + money(sale.subtotal) + '</span></div>' +
-      (sale.discount ? '<div class="tr"><span>' + t('discount') + (sale.couponCode ? ' (' + sale.couponCode + ')' : '') +
-        '</span><span>− ' + money(sale.discount) + '</span></div>' : '') +
+      '<div class="tr"><span>' + t('subtotal') + '</span><span>' +
+        om(order ? order.sale.subtotal : 0, sale.subtotal) + '</span></div>' +
+      ((order ? order.sale.discount : sale.discount)
+        ? '<div class="tr"><span>' + t('discount') + (sale.couponCode ? ' (' + sale.couponCode + ')' : '') +
+          '</span><span>− ' + om(order ? order.sale.discount : 0, sale.discount) + '</span></div>' : '') +
       (sale.pointsUsed ? '<div class="tr"><span>' + t('loyalty') + ' (' + sale.pointsUsed + ' ' + t('points') + ')</span>' +
         '<span>− ' + money(sale.pointsUsed * CONFIG.LOYALTY_POINT_VALUE) + '</span></div>' : '') +
-      '<div class="tr"><span>' + t('payment_method') + '</span><span>' + DB.payLabel(sale.payment) + '</span></div>' +
-      (sale.txnRef ? '<div class="tr"><span>' + t('txn_ref') + '</span>' +
+      /* The shipping the shop charges — or the line saying the courier takes
+         it from the customer instead, which is not the shop's money. */
+      (od && od.feeMode === 'invoice' && od.fee
+        ? '<div class="tr"><span>' + t('dk_shipping') + '</span><span>' + om(od.fee, 0) + '</span></div>' : '') +
+      (od && od.feeMode === 'courier'
+        ? '<div class="tr"><span>' + t('dk_shipping') + '</span><span>' + t('dk_fee_courier') + '</span></div>' : '') +
+      (order ? '' : '<div class="tr"><span>' + t('payment_method') + '</span><span>' + DB.payLabel(sale.payment) + '</span></div>') +
+      (sale.txnRef && !order ? '<div class="tr"><span>' + t('txn_ref') + '</span>' +
         '<span class="num" dir="ltr">' + esc(sale.txnRef) + '</span></div>' : '') +
-      '<div class="tr grand"><span>' + t('total') + '</span><span>' + money(sale.total) + '</span></div>' +
-      (OG.currency === 'SYP' ? '<div class="tr" style="color:#666;font-size:11px"><span></span><span>≈ $' +
+      '<div class="tr grand"><span>' + t(order ? 'dk_due' : 'total') + '</span><span>' +
+        om(od ? od.due : 0, sale.total) + '</span></div>' +
+      /* Every payment with its reference, then what is still owed: the two
+         numbers a customer and a driver argue about at a door. */
+      (order ? (order.payments || []).map(function (p) {
+        return '<div class="tr"><span>' + esc(DB.payLabel(p.method)) +
+          (p.txnRef ? ' <span class="num" dir="ltr">' + esc(p.txnRef) + '</span>' : '') + '</span>' +
+          '<span>' + (p.kind === 'refund' ? '− ' : '') + Desk.fmt(p.amount, p.currency) + '</span></div>';
+      }).join('') : '') +
+      (order ? '<div class="tr"><span>' + t('dk_paid_now') + '</span><span>' + om(od.paid, 0) + '</span></div>' +
+        '<div class="tr grand"><span>' + t('dk_remaining') + '</span><span>' + om(od.remaining, 0) + '</span></div>' : '') +
+      (!order && OG.currency === 'SYP' ? '<div class="tr" style="color:#666;font-size:11px"><span></span><span>≈ $' +
         nf(sale.total / CONFIG.EXCHANGE_RATE) + '</span></div>' : '') +
     '</div>' +
   '</div>';
@@ -325,7 +370,9 @@ function openInvoice(sale, opts) {
   openModal({
     title: t('invoice') + ' ' + sale.id,
     size: 'wide',
-    body: invoiceHtml(sale),
+    /* The delivery office hands its own order payload in, so the page prints
+       in the order's currency with its destination and payments on it. */
+    body: invoiceHtml(sale, opts.order),
     foot:
           /* The customer's name on an invoice was dead text. It is the
              commonest place somebody wants to go from here — "who was this,

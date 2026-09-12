@@ -34,6 +34,8 @@ var VIEWS = {
   warehouse: viewWarehouse,
   shelfmap:   ShelfMap.view,
   deliveries: function () { return Deliveries.view(); },
+  /* The delivery office: a till for orders that do not walk in. */
+  desk: function () { return Desk.view(); },
   /* A chooser, like `dashboard` above: `#customers` is the list and
      `#customers/81` is one person's page. Both are the same VIEWS entry so
      navAllowed, NAV_PERM and the sidebar's idea of "which screen am I on"
@@ -57,6 +59,7 @@ var AFTER = {
     afterDashboard();
   },
   deliveries: function () { return Deliveries.after(); },
+  desk: function () { return Desk.after(); },
   customers: function () { if (OG.custId) afterCustomerProfile(OG.custId); },
   pos: function () { POS.after(); },
   reports: afterReports,

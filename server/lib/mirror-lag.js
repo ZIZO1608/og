@@ -51,8 +51,8 @@ export const MIRROR_LAG = {
   /* 032 — attaching an old print job to the person who ordered it (010), and
      035 — where the job was raised, till or by hand (012). Two files because
      they arrived months apart; the retry names whichever column was refused. */
-  print_jobs: { cols: ['customer_id', 'source'],
-                file: 'server/supabase/010_loyalty_and_wants.sql then 012_partner_link.sql',
+  print_jobs: { cols: ['customer_id', 'source', 'design_image_url'],
+                file: 'server/supabase/010_loyalty_and_wants.sql then 012_partner_link.sql then 016_job_design_image.sql',
                 retriedBy: ['sync', 'reconcile'] },
 
   /* 035 — the payment handshake. These rows ride on partner_invoices'
@@ -79,6 +79,17 @@ export const MIRROR_LAG = {
      the guard, which is why it had a fallback from the start. */
   sales:      { cols: ['shift_id'],
                 file: 'server/supabase/005_money_and_counts.sql', retriedBy: ['sync', 'reconcile'] },
+
+  /* 045 — the delivery office: how an order travels, where to, what the
+     shipping costs and how it is being paid (017). `deliveries` is the LAST
+     table of the UNGUARDED core loop, so without this a mirror that has not
+     had 017 run would refuse every delivery written from the day it landed. */
+  deliveries: { cols: ['method', 'company_id', 'company_name', 'country', 'city', 'recipient',
+                       'fee', 'fee_mode', 'fee_source', 'plan', 'channel', 'tracking_no',
+                       /* 046 — which handover sheet the parcel left on. */
+                       'handover_id'],
+                file: 'server/supabase/017_delivery_office.sql then 018_the_road.sql',
+                retriedBy: ['sync', 'reconcile'] },
 
   /* 027 — gift receipts. NOTE: the sync deliberately does NOT apply this one.
      print_log is append-only, bookmarked by the highest id already sent, so

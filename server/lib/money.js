@@ -85,24 +85,59 @@ export function shifts({ limit = 60 } = {}) {
    real thing, but it is not 100 lira, and it is not what the cashier is asked
    to count against `expected`. Nothing already frozen changes: every till
    sale to date settled in the base currency. */
+/* Which payment methods put paper in the box: the configured list
+   (pay.methods, `drawer: true`) plus the two that always did. Every sale rung
+   up before the list existed says cash or cod, and a shift still open across
+   the upgrade must count them. A list that will not parse costs the new
+   methods, never the old ones. */
+export function drawerMethods(d = DB.get()) {
+  const ids = new Set(['cash', 'cod']);
+  try {
+    const list = JSON.parse(cfg(d, 'pay.methods', '[]'));
+    for (const m of Array.isArray(list) ? list : []) {
+      if (m && m.drawer && typeof m.id === 'string') ids.add(m.id);
+    }
+  } catch { /* the legacy pair still counts */ }
+  return [...ids];
+}
+
 function summary(d, s) {
-  const drawer = "('cash','cod')";
+  const methods = drawerMethods(d);
+  const marks = methods.map(() => '?').join(',');
   const sales = d.prepare(
     `SELECT COALESCE(SUM(total), 0) AS n FROM sales
-      WHERE shift_id = ? AND voided = 0 AND payment IN ${drawer} AND currency = ?`
-  ).get(s.id, s.currency).n;
+      WHERE shift_id = ? AND voided = 0 AND payment IN (${marks}) AND currency = ?`
+  ).get(s.id, ...methods, s.currency).n;
   const collected = d.prepare(
     `SELECT COALESCE(SUM(amount), 0) AS n FROM debt_payments
-      WHERE shift_id = ? AND method IN ${drawer} AND currency = ?`
-  ).get(s.id, s.currency).n;
+      WHERE shift_id = ? AND method IN (${marks}) AND currency = ?`
+  ).get(s.id, ...methods, s.currency).n;
   const paidOut = d.prepare(
     `SELECT COALESCE(SUM(amount), 0) AS n FROM expenses
-      WHERE shift_id = ? AND method IN ${drawer} AND currency = ?`
+      WHERE shift_id = ? AND method IN (${marks}) AND currency = ?`
+  ).get(s.id, ...methods, s.currency).n;
+
+  /* THE DELIVERY OFFICE. An order's sale is written with payment = 'order',
+     which is never a drawer method, so the sales figure above counts nothing
+     for it. What counts is cash that actually reached this drawer — taken at
+     the office, paid at a pickup, or handed in by a driver — stamped with
+     this shift when it arrived. Refunds come back out. */
+  const orders = d.prepare(
+    `SELECT COALESCE(SUM(CASE WHEN kind = 'in' THEN amount ELSE -amount END), 0) AS n
+       FROM order_payments WHERE shift_id = ? AND drawer = 1 AND currency = ?`
   ).get(s.id, s.currency).n;
 
-  const expected = s.float_amount + sales + collected - paidOut;
+  /* Dollar notes handed in to a lira drawer are real, and they are not lira.
+     Said beside the count, never added into it. */
+  const ordersOther = d.prepare(
+    `SELECT currency, SUM(CASE WHEN kind = 'in' THEN amount ELSE -amount END) AS amount
+       FROM order_payments WHERE shift_id = ? AND drawer = 1 AND currency <> ?
+      GROUP BY currency`
+  ).all(s.id, s.currency);
+
+  const expected = s.float_amount + sales + collected + orders - paidOut;
   return {
-    sales, collected, paidOut,
+    sales, collected, orders, ordersOther, paidOut,
     /* A closed shift keeps the figure it was signed off against. Recomputing
        it would let a void a week later rewrite last Tuesday's variance. */
     expected: s.closed_at ? s.expected : expected,
@@ -354,6 +389,15 @@ export function all() {
     currentShift: open ? shift(open.id) : null,
     expenses: expenses({ limit: 200 }),
     debtPayments: debtPayments({ limit: 200 }),
+    /* Cash the delivery office put into the drawers listed above, so the
+       Money screen's own expected figure (DB.shiftSummary) agrees with
+       summary() here. Drawer cash only: a transfer is not in any box. */
+    orderPayments: d.prepare(
+      `SELECT id, sale_id, kind, at, amount, currency, method, shift_id
+         FROM order_payments
+        WHERE drawer = 1 AND shift_id IN (SELECT id FROM shifts ORDER BY opened_at DESC LIMIT 60)
+        ORDER BY at`
+    ).all(),
     creditSales: openDebts(),
     categories: categories(d)
   };

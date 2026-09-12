@@ -50,7 +50,15 @@
 }
 .modal-head .x:hover { background: var(--accent); color: var(--foreground); }
 .modal-body { padding: 0 20px 20px; overflow-y: auto; }
-.modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 9px; justify-content: flex-end; background: var(--subtle); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+/* WRAP. A dialog's footer is a row until it is not: the order view carries
+   Close, two WhatsApp messages, the tracking link, the slip, Take a payment
+   and the board — and with `flex` alone they overflowed the dialog itself,
+   the first button hanging off the edge of the screen with half its label
+   cut off. Measured on a 390px phone, and it is not only a phone: a narrow
+   window does the same on a desk. */
+.modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap;
+              gap: 9px; justify-content: flex-end; background: var(--subtle);
+              border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 
 .drawer-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / .70); z-index: 190; animation: fade .15s ease both; }
 .drawer {
@@ -94,6 +102,17 @@ table.inv-tbl td.num, table.inv-tbl th.num { text-align: end; }
 .inv-loyalty { margin-top: 18px; border: 1px dashed #A1A1AA; border-radius: var(--radius); padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
 .inv-loyalty b { font-family: var(--font-head); font-size: 15px; font-weight: 800; }
 .inv-foot { margin-top: 18px; padding-top: 13px; border-top: 1px solid #E4E4E7; text-align: center; color: #71717A; font-size: 11px; }
+
+/* The handover sheet (js/road.js) is the same printed sheet with a different
+   body, so it reuses everything above and adds only what an invoice has never
+   needed: two places for a person to sign. THAT is why this document exists
+   on paper at all — a driver with eleven bags signs once for all of them. */
+.inv-sign { display: flex; gap: 40px; margin-top: 26px; }
+.inv-sign > div { flex: 1; }
+.inv-sign .lbl { font-size: 10.5px; margin-bottom: 26px; }
+.inv-line { border-bottom: 1px solid #09090B; }
+.inv-sign small { display: block; margin-top: 5px; color: #71717A; font-size: 11px; }
+.inv-note { margin-top: 18px; color: #71717A; font-size: 11px; line-height: 1.6; }
 
 /* -------------------------------------------------------------- CUSTOMERS */
 
@@ -235,3 +254,15 @@ table.inv-tbl td.num, table.inv-tbl th.num { text-align: end; }
    a "waiting" banner and an "all clear" note both rendered as plain body text. */
 .note-warn { border-color: var(--warning-border); background: var(--warning-soft); color: var(--warning); }
 .note-ok   { border-color: var(--success-border); background: var(--success-soft); color: var(--success); }
+
+/* THE DESIGN, AS A PICTURE. Positioned against its frame rather than centred
+   as a grid item — the trap the product thumbnails documented: a centred grid
+   item does not stretch, so `height:100%` goes unresolved and a portrait photo
+   is clipped to its top edge and calls that the middle. Here the frame simply
+   takes the picture's own aspect ratio, capped, because a design is looked at
+   rather than fitted into a row. */
+.job-design {
+  display: block; width: 100%; max-height: 320px;
+  object-fit: contain; object-position: center;
+  border-radius: 10px; background: var(--muted, #14141A);
+}

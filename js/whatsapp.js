@@ -19,10 +19,12 @@ var WA = (function () {
      stored as "+963 933 447 210" has to become "963933447210" or the link
      opens WhatsApp on a blank chat, which looks like the feature is broken. */
   function digits(phone) {
-    var d = String(phone || '').replace(/[^\d]/g, '');
-    /* Local 09xx xxx xxx -> drop the leading 0, prepend the country code. */
-    if (d.indexOf('0') === 0 && d.length === 10) d = '963' + d.slice(1);
-    return d;
+    /* DB.normPhone is the one rule — the server's twin, and what the
+       customer search matches on. This used to be a third copy that only knew
+       Syria, so a Jordanian 07… number opened WhatsApp on a Syrian number
+       nobody had given the shop. */
+    if (typeof DB !== 'undefined' && DB.normPhone) return DB.normPhone(phone);
+    return String(phone || '').replace(/[^\d]/g, '');
   }
 
   function link(phone, text) {

@@ -35,6 +35,7 @@ import * as Wants from './lib/wants.js';
 import * as PermCheck from './lib/permcheck.js';
 import * as Cap from './lib/capped.js';
 import * as Deliveries from './lib/deliveries.js';
+import * as Orders from './lib/orders.js';
 import * as Partner from './lib/partner.js';
 import * as Purchasing from './lib/purchasing.js';
 import * as Alerts from './lib/alerts.js';
@@ -352,6 +353,16 @@ router.add('GET /api/config', (ctx) => {
     delete config['telegram.yalla_chat_id'];
     delete config['telegram.og_chat_title'];
     delete config['telegram.yalla_chat_title'];
+    /* The shop's own transfer accounts: the numbers a customer is told to pay
+       into. The delivery office reads them through /api/orders/bootstrap,
+       which asks for delivery.desk rather than handing them to every login. */
+    delete config['pay.accounts'];
+  }
+  /* Couriers, the shipping price list and where orders are packed are the
+     shop's business, not Yalla Wear's — the same reason delivery.* is
+     FORBIDDEN to that role. */
+  if (ctx.user && ctx.user.role === 'partner') {
+    for (const k of Object.keys(config)) if (k.startsWith('delivery.')) delete config[k];
   }
 
   sendOk(ctx.res, {
@@ -1091,6 +1102,11 @@ router.add('POST /api/sales/:id/void', requirePerm('void', async (ctx) => {
       result: Sales.voidSale(ctx.params.id, { reason: b.reason, userId: ctx.user.id })
     });
   } catch (e) {
+    /* Both are the world, not the request: money has been taken against the
+       sale, or the order has already left the shop. */
+    if (e.code === 'has_payments' || e.code === 'on_road') {
+      return sendError(ctx.res, 409, e.code, e.message);
+    }
     sendError(ctx.res, 400, 'invalid', e.message);
   }
 }));
@@ -1155,22 +1171,21 @@ router.add('POST /api/print', requirePerm('sale.reprint', async (ctx) => {
    caller for reading — there is no query parameter that widens the view. */
 
 router.add('GET /api/deliveries', requirePerm('delivery.read', (ctx) => {
-  const limit = Number(ctx.url.searchParams.get('limit')) || 100;
-  const status = ctx.url.searchParams.get('status') || null;
-  const rows = Deliveries.list(ctx.user, { status, limit });
+  const p = ctx.url.searchParams;
 
-  /* whoCell on the board counts a customer's FAILED deliveries across this
-     array (Stage E), so a failure older than the window reads as a clean
-     record. The count repeats the reader's own scoping — a driver's board is
-     his run, and a total over the whole table would be a number about
-     somebody else's work. */
-  const where = [];
-  const args = [];
-  if (ctx.user.role === 'delivery') { where.push('driver_id = ?'); args.push(ctx.user.id); }
-  if (status) { where.push('status = ?'); args.push(status); }
-  const cap = Cap.withCap(rows, limit,
-    `SELECT COUNT(*) AS n FROM deliveries${where.length ? ' WHERE ' + where.join(' AND ') : ''}`,
-    ...args);
+  /* Every filter is answered by the database — status, how it travels, who
+     owes what, a search — so "owes money" is every order that owes money and
+     not the ones that happened to be in the last hundred. whoCell on the
+     board counts a customer's FAILED deliveries across this array (Stage E),
+     which is why the truncation travels with it. A driver's scope is applied
+     inside Deliveries.board, by role, whatever the query asks for. */
+  const cap = Deliveries.board(ctx.user, {
+    status: p.get('status') || null,
+    method: p.get('method') || null,
+    money: p.get('money') || null,
+    q: p.get('q') || null,
+    limit: Number(p.get('limit')) || 100
+  });
 
   sendOk(ctx.res, {
     deliveries: cap.rows,
@@ -1189,6 +1204,279 @@ router.add('GET /api/deliveries/:id', requirePerm('delivery.read', (ctx) => {
      by telling a 403 from a 404. */
   if (!d) return sendError(ctx.res, 404, 'not_found', 'No such delivery.');
   sendOk(ctx.res, { delivery: d });
+}));
+
+/* --- the delivery office ----------------------------------------------------
+   Orders taken by phone, Instagram and WhatsApp. lib/orders.js holds the
+   rules; these routes read the body and map the refusals. */
+
+/* 409 when the request is fine and the world is not — the stock just sold,
+   the order is already paid, a parcel cannot leave yet; 400 when the request
+   itself is wrong. The amounts ride in the body, where js/api.js reads them
+   as err.detail. */
+function orderFail(res, e) {
+  if (e.code === 'insufficient_stock') {
+    return sendErrorDetail(res, 409, 'insufficient_stock',
+      `Only ${e.available} of ${e.sku} left — the other till may have just sold it.`,
+      { available: e.available, sku: e.sku });
+  }
+  if (e.code === 'discount_too_big') {
+    return sendErrorDetail(res, 403, 'discount_too_big', e.message,
+      { maxPct: e.maxPct, ceiling: e.ceiling });
+  }
+  if (['overpaid', 'plan_full_unpaid', 'unpaid_before_send'].includes(e.code)) {
+    return sendErrorDetail(res, 409, e.code, e.message,
+      { remaining: e.remaining ?? null, currency: e.currency ?? null });
+  }
+  if (e.code === 'bad_settings') {
+    return sendErrorDetail(res, 400, 'bad_settings', e.message, { path: e.path ?? null });
+  }
+  /* A sheet that cannot go names every parcel holding it up, so the person at
+     the counter takes those off the pile rather than guessing. */
+  if (e.code === 'handover_blocked') {
+    return sendErrorDetail(res, 409, e.code, e.message, { blocked: e.blocked || [] });
+  }
+  if (['refund_too_big', 'no_credit', 'too_many'].includes(e.code)) {
+    return sendErrorDetail(res, 409, e.code, e.message,
+      { held: e.held ?? null, have: e.have ?? null, left: e.left ?? null,
+        currency: e.currency ?? null });
+  }
+  const status = e.code === 'not_found' ? 404
+               : e.code === 'forbidden' ? 403
+               : ['voided', 'already_settled', 'nothing_pending', 'bad_status',
+                  'unknown_customer', 'no_rate', 'on_another_sheet', 'empty',
+                  'already_linked', 'not_on_order'].includes(e.code) ? 409
+               : 400;
+  sendError(res, status, e.code || 'invalid', e.message);
+}
+
+router.add('GET /api/orders/bootstrap', requirePerm(['delivery.desk', 'delivery.read'], (ctx) => {
+  sendOk(ctx.res, Orders.bootstrap({
+    withAccounts: Auth.can(ctx.user, 'delivery.desk') || Auth.can(ctx.user, 'config.write'),
+    withDrivers: Auth.can(ctx.user, 'delivery.write')
+  }));
+}));
+
+/* Note what is NOT taken from the body, exactly as at the till: prices. The
+   office sends what was scanned; the server prices it. The fee is the one
+   number typed here, and the row says so (fee_source 'manual'). */
+router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  const str = (v) => (typeof v === 'string' && v ? v : null);
+  try {
+    const out = Orders.create({
+      lines: Array.isArray(b.lines) ? b.lines : [],
+      whId: str(b.whId),
+      customerId: b.customerId ? Number(b.customerId) : null,
+      currency: str(b.currency),
+      discount: Number(b.discount) || 0,
+      channel: str(b.channel),
+      note: str(b.note),
+      dest: b.dest && typeof b.dest === 'object' ? b.dest : {},
+      method: b.method,
+      companyId: str(b.companyId),
+      driverId: b.driverId ? Number(b.driverId) : null,
+      trackingNo: str(b.trackingNo),
+      feeMode: str(b.feeMode),
+      fee: b.fee === undefined || b.fee === null || b.fee === '' ? null : Number(b.fee),
+      plan: b.plan,
+      payments: Array.isArray(b.payments) ? b.payments : [],
+      userId: ctx.user.id,
+      /* Read from the caller's role, never from the request. */
+      unlimitedDiscount: Auth.can(ctx.user, 'discount.unlimited'),
+      opId: str(b.opId)
+    });
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, {
+      sale: scrubCost(out.sale, ctx.user),
+      order: Deliveries.bySale(out.sale.id, ctx.user),
+      money: out.money,
+      replayed: !!out.replayed
+    });
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+router.add('GET /api/orders/by-sale/:id', requirePerm(['delivery.read', 'delivery.desk'], (ctx) => {
+  const order = Deliveries.bySale(ctx.params.id, ctx.user);
+  if (!order) return sendError(ctx.res, 404, 'not_found', 'No such order.');
+  sendOk(ctx.res, { order });
+}));
+
+router.add('POST /api/orders/:id/payments', requirePerm(['delivery.desk', 'debt.collect'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  const str = (v) => (typeof v === 'string' && v ? v : null);
+  try {
+    const out = Orders.pay(ctx.params.id, {
+      amount: Number(b.amount), currency: str(b.currency), method: b.method,
+      txnRef: str(b.txnRef), stage: str(b.stage), note: str(b.note), opId: str(b.opId)
+    }, ctx.user);
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, { ...out, order: Deliveries.bySale(ctx.params.id, ctx.user) });
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+router.add('POST /api/orders/:id/handin', requirePerm(['delivery.desk', 'debt.collect'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const out = Orders.handIn(ctx.params.id, ctx.user, typeof b.opId === 'string' ? b.opId : null);
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, { ...out, order: Deliveries.bySale(ctx.params.id, ctx.user) });
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+router.add('GET /api/orders/last-destination/:id', requirePerm('delivery.desk', (ctx) => {
+  sendOk(ctx.res, { dest: Orders.lastDestination(Number(ctx.params.id)) });
+}));
+
+/* ------------------------------------------------------------ the handover
+   One sheet, many parcels, one signature.
+
+   THE SHEET BELONGS TO THE OFFICE. Every write here is `delivery.desk` and
+   nothing else — the owner's decision, and a correction: these were also
+   open to `delivery.write`, which a DRIVER holds, so on his own phone he
+   could open a sheet in anybody's name, scan any parcel in the shop onto it,
+   and send it out. Reading stays wider, because the checklist a driver works
+   through during the day IS the sheet the office built for him. */
+
+
+router.add('GET /api/handovers', requirePerm(['delivery.desk', 'delivery.write', 'delivery.read'], (ctx) => {
+  const u = new URL(ctx.req.url, 'http://x');
+  sendOk(ctx.res, {
+    handovers: Orders.handoverList({
+      status: u.searchParams.get('status'),
+      limit: Number(u.searchParams.get('limit')) || 20
+    })
+  });
+}));
+
+router.add('GET /api/handovers/:id', requirePerm(['delivery.desk', 'delivery.write', 'delivery.read'], (ctx) => {
+  const h = Orders.handover(ctx.params.id);
+  if (!h) return sendError(ctx.res, 404, 'not_found', 'No such handover.');
+  sendOk(ctx.res, { handover: h });
+}));
+
+router.add('POST /api/handovers', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      handover: Orders.openHandover({
+        kind: b.kind,
+        driverId: b.driverId ? Number(b.driverId) : null,
+        companyId: typeof b.companyId === 'string' && b.companyId ? b.companyId : null,
+        userId: ctx.user.id, userName: ctx.user.name
+      })
+    });
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* The scan. The body carries an invoice id; which parcel that is, is the
+   server's answer. */
+router.add('POST /api/handovers/:id/lines', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { handover: Orders.addToHandover(ctx.params.id, String(b.saleId || ''), ctx.user) });
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+router.add('DELETE /api/handovers/:id/lines/:delivery', requirePerm('delivery.desk', (ctx) => {
+  try {
+    sendOk(ctx.res, {
+      handover: Orders.removeFromHandover(ctx.params.id, Number(ctx.params.delivery), ctx.user)
+    });
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+router.add('POST /api/handovers/:id/hand', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const out = Orders.handOver(ctx.params.id, ctx.user, typeof b.opId === 'string' ? b.opId : null);
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, out);
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+router.add('POST /api/handovers/:id/cancel', requirePerm('delivery.desk', (ctx) => {
+  try { sendOk(ctx.res, { handover: Orders.cancelHandover(ctx.params.id, ctx.user) }); }
+  catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* ------------------------------------------------------- the driver's cash */
+router.add('GET /api/driver-cash', requirePerm(['delivery.desk', 'money.read', 'debt.collect'], (ctx) => {
+  const u = new URL(ctx.req.url, 'http://x');
+  const asked = Number(u.searchParams.get('driverId')) || null;
+  /* A driver may only ever ask about his own pockets. */
+  const who = ctx.user.role === 'delivery' ? ctx.user.id : asked;
+  sendOk(ctx.res, Orders.driverCash(who));
+}));
+
+router.add('POST /api/driver-cash/handin', requirePerm(['delivery.desk', 'debt.collect'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const out = Orders.handInFor(Number(b.driverId), {
+      saleIds: Array.isArray(b.saleIds) ? b.saleIds : null,
+      opId: typeof b.opId === 'string' ? b.opId : null
+    }, ctx.user);
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, out);
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* ------------------------------------------------------------- the returns */
+router.add('GET /api/orders/:id/returns', requirePerm(['delivery.desk', 'delivery.read'], (ctx) => {
+  sendOk(ctx.res, {
+    lines: Orders.returnable(ctx.params.id),
+    returns: Orders.returnsFor(ctx.params.id)
+  });
+}));
+
+router.add('POST /api/orders/:id/returns', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  const str = (v) => (typeof v === 'string' && v ? v : null);
+  try {
+    const out = Orders.takeBack(ctx.params.id, {
+      outcome: b.outcome,
+      lines: Array.isArray(b.lines) ? b.lines : [],
+      whId: str(b.whId), reason: str(b.reason), note: str(b.note),
+      amount: b.amount === undefined || b.amount === null || b.amount === '' ? null : Number(b.amount),
+      currency: str(b.currency), method: str(b.method) || 'cash', txnRef: str(b.txnRef),
+      opId: str(b.opId)
+    }, ctx.user);
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, { ...out, order: Deliveries.bySale(ctx.params.id, ctx.user) });
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* Money the shop is holding for somebody. Behind customer.read as well as the
+   desk's own permission: it is a fact about a customer. */
+router.add('GET /api/customers/:id/credit', requirePerm(['delivery.desk', 'customer.read'], (ctx) => {
+  sendOk(ctx.res, Orders.credit(Number(ctx.params.id)));
+}));
+
+router.add('PUT /api/delivery/settings', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { settings: Orders.saveSettings(b) }); }
+  catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* A WhatsApp message the office opened for a customer. wa.me cannot say
+   whether it was sent — the person presses send in WhatsApp — so this records
+   that it was OPENED, from which order, by whom. wa_messages has had a table
+   and a writer (Partner.logWhatsApp) since 015 and nothing had ever called it. */
+router.add('POST /api/wa-messages', requirePerm(['delivery.desk', 'customer.write'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  const phone = typeof b.phone === 'string' ? b.phone.replace(/\D/g, '').slice(0, 20) : '';
+  const body = typeof b.body === 'string' ? b.body.slice(0, 4000) : '';
+  if (!phone || !body) {
+    return sendError(ctx.res, 400, 'invalid', 'A WhatsApp record needs a number and the message.');
+  }
+  Partner.logWhatsApp({
+    phone, body,
+    kind: typeof b.kind === 'string' ? b.kind.slice(0, 40) : null,
+    refType: typeof b.refType === 'string' ? b.refType.slice(0, 20) : null,
+    refId: typeof b.refId === 'string' ? b.refId.slice(0, 40) : null,
+    userId: ctx.user.id
+  });
+  sendOk(ctx.res, {});
 }));
 
 /* ----------------------------------------------------------------- money
@@ -1579,8 +1867,14 @@ function bump() {
    ordinary gated routes. Which side a tab is on comes from the account.
    config.write too: the mirror's status rides on this channel, and a manager
    who cannot see print jobs still owns the Settings fold that draws it. The
-   event carries no shop data either way. */
-router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write'], (ctx) => {
+   event carries no shop data either way.
+
+   delivery.read and delivery.desk since 046: the board is a screen two people
+   watch at once — the office scanning a sheet and whoever is answering the
+   phone — and a parcel that left five minutes ago showing as waiting is how
+   the same parcel gets handed to two carriers. The event still carries
+   nothing but a flag; the board refetches through its own gated route. */
+router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write', 'delivery.read', 'delivery.desk'], (ctx) => {
   /* The name rides along so the other company's screen can say who is
      here. Yalla Wear is two people and the shop wants the one who is
      actually reading, not the company. */
@@ -1710,6 +2004,42 @@ router.add('POST /api/print-jobs', requirePerm(['print.write', 'sell'], async (c
 
 /* What the shop thought of the finished shirts. The shop's move only, and
    only once the job is done — refused otherwise, in lib/partner.js. */
+/* THE DESIGN PICTURE. Same shape as POST /api/products/:id/image and for the
+   same reasons: the browser shrinks the photograph before it is sent, the
+   bytes go to a public bucket, the row holds the address, and a replace writes
+   a NEW path because the CDN goes on answering for a deleted one.
+
+   The shop attaches it — it is the shop taking the order — so print.write,
+   not the partner gate. Yalla Wear SEE it, in the payload and in the picture
+   their bot now sends with a new order. */
+router.add('POST /api/print-jobs/:id/image', requirePerm('print.write', async (ctx) => {
+  const id = String(ctx.params.id);
+  const b = await readJson(ctx.req);
+  try {
+    if (b && b.clear) {
+      const r = Partner.setDesignImage(id, null, ctx.user.id);
+      if (r.previous) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
+      bump();
+      return sendOk(ctx.res, { imageUrl: null, job: r.job });
+    }
+    if (!SB.isConfigured()) {
+      return sendError(ctx.res, 503, 'not_configured',
+        'Pictures need Supabase, which is not set up on this server.');
+    }
+    const pic = Storage.decodeDataUrl(b && b.dataUrl);
+    const url = await Storage.putObject(Storage.pathForJob(id, pic.ext), pic.bytes, pic.type);
+    const r = Partner.setDesignImage(id, url, ctx.user.id);
+    if (r.previous && r.previous !== url) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
+    /* So the portal on the other side sees it without a refresh. */
+    bump();
+    sendOk(ctx.res, { imageUrl: url, job: r.job });
+  } catch (e) {
+    if (e.code === 'not_found') return sendError(ctx.res, 404, 'not_found', e.message);
+    if (e.code === 'bad_image' || e.code === 'too_large') return sendError(ctx.res, 400, e.code, e.message);
+    sendError(ctx.res, 503, 'storage_failed', e.message);
+  }
+}));
+
 router.add('POST /api/print-jobs/:id/review', requirePerm('print.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
@@ -2070,18 +2400,28 @@ router.add('POST /api/deliveries', requirePerm('delivery.write', async (ctx) => 
 router.add('PATCH /api/deliveries/:id', requirePerm('delivery.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
-    sendOk(ctx.res, {
-      delivery: Deliveries.update(Number(ctx.params.id), {
-        status: b.status,
-        collected: b.collected,
-        reason: b.reason,
-        driverId: b.driverId === undefined ? undefined : (b.driverId ? Number(b.driverId) : null),
-        address: b.address,
-        phone: b.phone
-      }, ctx.user)
-    });
+    const delivery = Deliveries.update(Number(ctx.params.id), {
+      status: b.status,
+      collected: b.collected,
+      reason: b.reason,
+      driverId: b.driverId === undefined ? undefined : (b.driverId ? Number(b.driverId) : null),
+      /* Handing it to a transport office, a courier or a shipment abroad. */
+      companyId: b.companyId === undefined ? undefined
+        : (typeof b.companyId === 'string' && b.companyId ? b.companyId : null),
+      trackingNo: b.trackingNo === undefined ? undefined : String(b.trackingNo || ''),
+      /* "The cash is in my hand" — honoured only for somebody marking a
+         driver's run; lib/deliveries.js ignores it from the driver. */
+      handedIn: b.handedIn === true,
+      address: b.address,
+      phone: b.phone
+    }, ctx.user);
+    /* The board is a screen two people watch at once. */
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, { delivery });
   } catch (e) {
-    sendError(ctx.res, 400, 'invalid', e.message);
+    /* The office's map: a parcel that cannot leave yet is a 409 carrying what
+       is still owed, not a bare 400. */
+    orderFail(ctx.res, e);
   }
 }));
 
@@ -2442,7 +2782,14 @@ async function handle(req, res) {
       if (path.startsWith('/i/') && (req.method === 'GET' || req.method === 'HEAD')) {
         const inv = /^\/i\/([0-9a-f]{32})$/.exec(path);
         const sale = inv ? Receipt.byToken(inv[1]) : null;
-        const body = sale ? Receipt.render(sale) : Receipt.notFound();
+        /* Arabic unless ?lang=en asks otherwise — the shop's own language,
+           and the language of the WhatsApp message that hands out the link.
+           The switch is a plain link on the page: it carries no JavaScript
+           by design, and `dir`/`lang` belong on <html>, where no CSS toggle
+           can put them. */
+        const body = sale
+          ? Receipt.render(sale, url.searchParams.get('lang'))
+          : Receipt.notFound(url.searchParams.get('lang'));
         res.writeHead(sale ? 200 : 404, {
           'Content-Type': 'text/html; charset=utf-8',
           'Content-Length': Buffer.byteLength(body),
@@ -2499,6 +2846,23 @@ function httpHandler(req, res) {
     String(req.headers.accept || '').includes('text/html');
   const p = String(req.url || '/');
   if (!wantsPage || p.startsWith('/api/') || p.startsWith('/i/')) return handle(req, res);
+
+  /* ALREADY SECURE, ARRIVING THROUGH THE TUNNEL. Cloudflare terminates TLS
+     itself and forwards to plain http on this port, so the request has been
+     over HTTPS for its whole public life — and redirecting it to
+     shop.ogsports1.com:8443 sends the visitor to a port Cloudflare does not
+     carry. The public address died the moment `npm run cert` was run, with no
+     error a shopkeeper could read, and the documented workaround was to
+     repoint the tunnel and turn off certificate verification. This is the
+     better half of that trade: believe the proxy header when we are trusting
+     the proxy anyway — OG_TRUST_PROXY, which the login throttle already needs
+     or every remote visitor shares one address).
+
+     Yalla Wear work in a different building and every message their bot sends
+     now carries a link to this hostname, so this is the difference between a
+     tap that opens the job and a tap that opens nothing. */
+  const fwd = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  if (process.env.OG_TRUST_PROXY === '1' && fwd === 'https') return handle(req, res);
 
   const host = String(req.headers.host || 'localhost').split(':')[0];
   res.writeHead(302, {

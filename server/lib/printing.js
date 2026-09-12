@@ -22,6 +22,7 @@
 
 import { get, nowIso } from './db.js';
 import * as Printer from './printer.js';
+import * as Orders from './orders.js';
 
 /* ------------------------------------------------------------------ data */
 
@@ -76,6 +77,43 @@ export function data(saleId) {
   sale.delivery = get().prepare(
     `SELECT status, to_collect, collected FROM deliveries WHERE sale_id = ?`
   ).get(saleId) || null;
+
+  /* A delivery-office order prints where it is going, what the shipping
+     costs, every payment with its reference, and what is still owed. All of
+     it derived here — a slip that states a remaining balance the browser
+     worked out is a slip that can be wrong in the customer's hand. Names of
+     countries and payment methods ride along in both languages, so the slip
+     reads the same as the settings said on the day it printed. */
+  if (sale.payment === 'order') {
+    const o = get().prepare(
+      `SELECT d.method, d.company_name, d.country, d.city, d.address, d.recipient, d.phone,
+              d.fee, d.fee_mode, d.plan, d.status, d.tracking_no, c.minor_exp
+         FROM deliveries d JOIN currencies c ON c.code = ?
+        WHERE d.sale_id = ?`
+    ).get(sale.currency, saleId);
+    if (o) {
+      const set = Orders.settings();
+      const m = Orders.money(get(), saleId);
+      const country = set.countries.find((c) => c && c.id === o.country) || null;
+      const label = (id) => set.methods.find((x) => x && x.id === id) || null;
+      sale.order = {
+        ...o,
+        currency: sale.currency,
+        country_en: country ? country.en : null,
+        country_ar: country ? country.ar : null,
+        due: m.due,
+        paid: m.paid,
+        remaining: m.remaining,
+        payments: get().prepare(
+          `SELECT at, kind, amount, currency, amount_order, method, txn_ref, stage
+             FROM order_payments WHERE sale_id = ? ORDER BY at, id`
+        ).all(saleId).map((p) => {
+          const lm = label(p.method);
+          return { ...p, method_en: lm ? lm.en : p.method, method_ar: lm ? lm.ar : p.method };
+        })
+      };
+    }
+  }
 
   Object.assign(sale, configBlock());
   return sale;

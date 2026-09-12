@@ -130,7 +130,39 @@ certificate rather than the one `lib/tls.js` apologises for.
   and the check reports the service's command line instead. Its existence is the only fact needed.
 - **The hostname mapping lives in the dashboard, not on this machine.** A token-based tunnel has
   no `config.yml` to write, which is why the connect pass is one call and there is no local file
-  to drift.
+  to drift. **It can still be read here, and the check reads it**: cloudflared runs a metrics
+  server on localhost (20241 upwards, or whatever `--metrics` names), and `/diag/tunnel` says
+  which tunnel it actually joined while `/config` carries the ingress rules the dashboard handed
+  it. Read-only, localhost-only, no credential — the token file is still never opened. So "which
+  tunnel is this laptop on" and "where does it send the hostname" are facts now, not guesses, and
+  a build too old to answer prints nothing rather than inventing it.
+- **A 502 IS ANSWERED BY WHOEVER CLOUDFLARE GAVE THE REQUEST TO, AND THAT NEED NOT BE THIS
+  LAPTOP.** 530 means no connector is attached at all; 502 means one is, and it failed — but not
+  necessarily the one here. `cloudflared_tunnel_total_requests` on the metrics page is read either
+  side of the check's own public request, and that bracket answers the question no amount of
+  reading configuration can: *did that request come through this computer*. Measured on
+  12 Sep 2026 — the connector here was on the right tunnel, its rule already read
+  `http://localhost:8090`, and across nineteen public requests its counter never moved once.
+  Every one was being answered elsewhere. The check used to report this as "the tunnel is pointed
+  somewhere else", sending somebody to change a setting that was already correct; it now
+  distinguishes the two and names the second machine as the cause. Two connectors on one tunnel
+  are a high-availability pair to Cloudflare, which hands each request to whichever it likes — so
+  a second install sharing `OG_CF_TUNNEL_TOKEN` takes the shop off the internet without touching
+  it. Same shape as the `lineage.js` problem, one layer down; see the Supabase section.
+- **`Get-CimInstance Win32_Service` does not return on the shop's laptop**, and a `try/catch`
+  around a call that never returns protects nothing. It was how the service's command line was
+  read, so its hang took the whole probe's 60-second timeout with it and *all four* answers were
+  lost — the check told the owner his running service was "not installed", and then that his
+  tunnel token was missing, which followed from the first. One slow call, four wrong sentences,
+  a minute each time the panel's button was pressed. The registry holds the same string
+  (`HKLM:\SYSTEM\CurrentControlSet\Services\cloudflared` → `ImagePath`) and answers in
+  milliseconds. **Nothing there may use WMI for a fact readable another way**, the probe's
+  timeout is 15 s, and `asked` now separates "Windows says there is no service" from "Windows did
+  not say" — printing the second as the first is what made the advice wrong.
+- **The service's command line can carry the token**, because `cloudflared service install
+  <token>` writes it into `ImagePath`. The check prints that line, to the terminal and into its
+  log file, so it is redacted on the way out. This laptop uses `--token-file` and never showed
+  one, which is exactly why it went unnoticed.
 - **One button that checks and fixes**, unlike `hardware` / `hardwareInstall` which are a pair.
   On a client's machine the only useful answer to "is Cloudflare set up" is "it is now". A machine
   already connected raises no permission prompt, which is what makes it safe to press twice.
@@ -671,7 +703,10 @@ carried `unit_cost` for every line. `COST_KEYS` is an explicit list; a new cost 
 
 ### Deliveries
 
-`server/lib/deliveries.js`. Status moves one way: `waiting → out → delivered | failed`.
+`server/lib/deliveries.js`. Status moves one way: `waiting → out → delivered | failed`. Migration 045
+extended all of this for the delivery office — how a parcel travels, what it costs, what is still
+owed, and the board's buttons; `046`/`047` added the sheet it left on and what came back. See **The
+delivery office** and **The road** below before changing anything here.
 
 - **A driver is scoped to his own runs in the SQL query**, by role, not by what the request asks for.
 - **Someone else's delivery returns 404, not 403** — a driver must not learn that a delivery to that
@@ -1610,8 +1645,13 @@ same family as screenshotting a popover mid-fade.
   needs a Meta business account and approval before a transport can be written.
 - A **draft partner invoice** still lives only in the browser — `partner_invoices.issued` is
   `NOT NULL`, so there is nowhere to put one. Issuing it reaches the server; saving a draft does not.
-- Delivery **cash reconciliation** is designed and the schema carries it (`to_collect`, `collected`,
-  `Deliveries.driverDay()`), but the end-of-day settle-up screen is not built.
+- Delivery **cash reconciliation** is built — the Cash back tab on the deliveries board, over
+  pending `order_payments` (see **The road**). What is still not built is the **orders block on the
+  dashboard and in Reports**: money received in the window, what is outstanding, and what is in
+  drivers' pockets. Nothing there counts an order's balance today.
+- **Telegram says nothing about an order.** The reminders know about runs and a driver's cash; a
+  deposit that never turned into the rest, or a parcel a customer has not collected, is not a rule
+  yet.
 - Bulk catalogue entry; an offline write queue. (The Yalla Wear portal now runs against real data —
   what remains is exposing the server to them: Tailscale or a tunnel, and `OG_ORIGINS` listing the
   address they use.)
@@ -1744,6 +1784,283 @@ and what is still open. This section is how it works now.
   human note every caller was already passing (`points +250: goodwill`, `merged from customer 84`);
   `origin` — a device id, for echo-skipping nothing implements yet — moved to sixth so those notes
   never become bogus origins the day something reads it.
+
+## The delivery office
+
+`server/lib/orders.js`, `js/desk.js`, migration `045_delivery_office.sql`, mirror file
+`server/supabase/017_delivery_office.sql`. The shop sells by phone, Instagram and WhatsApp and sends
+parcels five ways — its own driver, a transport office, a courier company, abroad (Jordan, Turkey),
+or the customer collects. None of that fitted: a delivery could only begin as a **till sale**, the
+till knew one method, and the board had **no buttons at all** (the till wrote `driverId: null` and
+nothing could assign one).
+
+**AN ORDER IS A SALE, ITS DELIVERY AND ITS PAYMENTS, WRITTEN AS ONE.** `sales.payment = 'order'`
+(stock leaves with it — the shoes are in the bag), the 1:1 `deliveries` row extended with how it
+travels, and `order_payments`. At the till a delivery is written *after* the sale on purpose — the
+money is in the drawer and a failed delivery write must not unwind it. Here nothing has changed
+hands before Save, and a sale with no destination would be invisible to the board, so
+`Orders.create` is one transaction: `Sales.recordIn` (the body of `record()`, extracted so a caller
+holding a transaction can use it — `DB.tx` refuses to nest), the delivery row, the first payments,
+`applied_ops`.
+
+- **What is owed is derived.** due = `sales.total` + the fee when `fee_mode = 'invoice'`; paid = the
+  order-currency value of every payment in, less every refund. No stored balance, for the reason
+  `Money.openDebts` has none.
+- **Not the debt machinery.** `openDebts` feeds the dashboard, Reports, the customer badge and the
+  credit limit, so every parcel in a van would read as customer debt and a `no_credit` customer
+  could not order at all; `payDebt` takes one currency and has nowhere for a transfer reference.
+- **A payment keeps what arrived**: `amount` + `currency`, the frozen `fx_rate` (USD → that
+  currency, the meaning `sales.fx_rate` has), and `amount_order` — the same money in the order's
+  currency, rounded once. A lira deposit against a dollar order is ordinary here.
+- **Other cities and abroad are PAID BEFORE SENDING** (`unpaid_before_send`, 409). Only `driver`
+  and `pickup` may be paid on receipt; a pickup never goes `out`, it goes straight to delivered.
+- **The drawer counts order cash when it is PAID**, not when the sale is written: `Money.summary`
+  adds `order_payments WHERE shift_id = ? AND drawer = 1 AND currency = ?`, and the browser's twin
+  `DB.shiftSummary` does the same from `DB.orderPayments` — two figures for one cash box that
+  disagree is worse than either alone. Dollar cash in a lira drawer is reported beside the count,
+  never added into it. A driver's door cash is `handed_in_at IS NULL` until somebody says it
+  reached the shop (`POST /api/orders/:id/handin`).
+- **Takings stay invoice-based.** The goods left at print and cost is booked then; what the office
+  adds is a balance, not a second revenue figure.
+
+**Three bugs this uncovered, all fixed here:**
+
+- **`convert()` multiplies in one direction only** (`sales.js`), and a dollar sale has
+  `rate = 1` — so a 450,000-lira pair in a **dollar** order became **$450,000.00**. The till never
+  sent a currency, so nothing had tripped over it. Line prices now convert through USD both ways.
+- **`js/wedge.js` reads `e.key`**, so on an Arabic keyboard layout a scanned `INV-2105` arrives with
+  its letters replaced and only the digits intact. The desk and the board match a slip by its
+  **digits** (`^\D{0,4}-?(\d{3,})$`). A global `e.code` fix is a separate decision.
+- **`normPhone` knew only Syria**, turning a Jordanian `07…` into a Syrian number — a WhatsApp link
+  to a stranger. Jordan, Turkey, `00` prefixes and trunk zeros now; the parity table in
+  `CUSTOMERS.md` is the test, and `js/whatsapp.js` no longer keeps a third copy.
+
+**The owner's lists live in `config` as JSON** — `pay.methods`, `pay.accounts`,
+`delivery.companies`, `delivery.countries`, `delivery.prices`, `delivery.wh`, `delivery.print` —
+because config is mirrored whole: no Supabase file, no drift window, no restore order (the idiom
+`telegram.og_chats` uses). Ids are never deleted, only `active: false`, and a row freezes what it
+needs (`company_name`, the method id and its `drawer` flag). **`pay.methods` replaced the hardcoded
+`PAYMENT_METHODS`** in `js/data.js`: `hydrate` fills `PAYMENT_METHODS`, both label maps and
+`DRAWER_METHODS` **in place**, because they are held by reference (`DB.paymentMethods`,
+`js/receipt.js` reads the maps as globals). `Sales.record` checks a payment method **exists**, not
+that it is a till method — a browser serving yesterday's cached list must not have its sales
+refused. `pay.accounts` is stripped from `GET /api/config` for anyone without `config.write`, and
+every `delivery.*` key is stripped for the partner.
+
+**The screens.** `js/desk.js` (global `Desk`, classes `.dk-*`) is the office: scan into the order,
+customer and destination, the five methods, the fee from the price list, the payment plan
+(full / deposit / on receipt) with split payments in either currency, then Save & print. The draft
+lives in `localStorage` with its `opId`, so a refresh loses nothing and a retried Save returns the
+same order. Panels repaint one at a time (`#dkItems`, `#dkWho`, `#dkSum`) and never through
+`render()`. `js/deliveries.js` is the board: every filter answered by the database (status, method,
+money, search), money badges, and the buttons that were missing — assign a driver **or** a company,
+send out, delivered, failed, take a payment, open the order. A cancelled order stays on the board,
+dimmed. Settings gains four folds (`Desk.settingsCards`): methods, companies, price list, transfer
+accounts, each saving on its own button.
+
+**What prints.** The 80 mm slip carries a ship-to block, the shipping line, TOTAL DUE, every payment
+with its reference and a large REMAINING, and its barcode is always on for an order — that barcode
+is how the office and the board find it again. The A4 invoice gains a third "Ship to" column and the
+same money block, drawn in the order's own currency (`money()` assumes lira). The customer's public
+page `/i/<token>` gains one line saying where the parcel is and what is left to pay — **never the
+address, the phone or the shop's transfer details**, because that link gets forwarded.
+
+**The mirror.** `deliveries`' twelve new columns are declared in `mirror-lag.js` (it leads the
+unguarded core loop); `order_payments` is **cursor-shape** — a payment is updated when cash is
+handed in, which a highest-id bookmark would never see — and is pushed behind **its own guarded
+block**, because the partner/drawer block is one `try` and a missing table there would take
+`expenses`, `debt_payments` and the read marks with it. **Run `server/supabase/017_delivery_office.sql`
+in the dashboard, then `npm run supabase:reconcile`**; until it is run the sync names the file every
+run and the boot pull refuses with `drift`, which is the guard working.
+
+**Step 2 is below** — the handover sheet, the driver's cash, and the four returns. What is still
+not built: Telegram nudges aimed at orders, and the orders block on the dashboard and in Reports.
+
+## The road — the handover, the cash, and what comes back
+
+`server/lib/orders.js` (the second half), `js/road.js`, migrations `046_the_road.sql` and
+`047_return_lines.sql`, mirror file `server/supabase/018_the_road.sql`. Step 1 got a parcel as far
+as the counter. This is everything after it.
+
+**THREE TABS ON THE DELIVERIES BOARD, not three entries in the navigation** — one desk, one person,
+the same day asked about at three moments. `Road.tab()` is `parcels | handover | cash`, kept per
+machine in `localStorage` like the sidebar rail; `Deliveries.boardView` draws the bar and hands the
+body to `Road.view()`. The board is the only writer of `#view` on that screen, so `Road` repaints
+through `Deliveries.repaint`.
+
+### The sheet somebody signs
+
+A driver or a courier is at the counter with an armful of bags. The office picks the carrier, scans
+each slip onto a sheet, prints it, they sign, and **every parcel on it leaves in ONE transaction**.
+
+- **It is all or nothing, and that is the kind thing.** `Orders.handOver` asks
+  `blockedReason()` of every line first — the same three rules `Deliveries.update` enforces — and
+  refuses the whole sheet with **409 `handover_blocked`** naming each parcel and why. Handing over
+  half a sheet and telling somebody afterwards which half is how a parcel reaches Damascus unpaid.
+  The browser toasts the server's own sentence.
+- **`handover_lines.to_collect` is frozen as it leaves.** The sheet is a receipt for a person
+  carrying money; a payment tomorrow must not rewrite what they signed for. A company sheet freezes
+  zero — companies never collect for the shop.
+- **One open sheet per carrier.** `openHandover` returns the existing open one rather than making a
+  second: two half-filled sheets for one driver is how a parcel ends up on neither.
+- **The scan box owns the scanner** while the tab is on screen and nothing is open over it
+  (`Road.owns()`, wired in `js/app-boot.js` beside the office's). A slip is matched by its
+  **digits** (`^\D{0,4}-?(\d{3,})$`), for `js/wedge.js`'s Arabic-layout reason; scanning the same
+  slip twice is one parcel (`UNIQUE (handover_id, delivery_id)`), and the second scan is answered
+  with the sheet it is already on.
+- The printed sheet is the invoice document with a different body — same `.inv-*` classes, plus
+  `.inv-sign`, which is the whole reason it is paper.
+
+### The driver's cash
+
+`Orders.driverCash()` / `handInFor()`, `GET /api/driver-cash`, `POST /api/driver-cash/handin`.
+Door cash is `drawer = 1, handed_in_at IS NULL` from the moment it is taken — the shop's way of
+saying the money is real and not here yet. The tab lists it **per driver and per currency**: a
+driver carrying 400,000 lira and $60 is carrying two things, and one number for both would
+disagree with the notes on the counter. Handing in stamps every row with the open shift in one
+transaction, and says so plainly when no drawer is open rather than refusing.
+
+### A return is four decisions and one mechanism
+
+`order_returns` + `order_return_lines`, `Orders.takeBack`. The owner uses all four —
+exchange · keep as credit · refund · keep the shipping — and they differ only in **where the money
+goes** and **whether the shipping stays owed**. Underneath:
+
+1. The pieces go back through the ordinary movement log (`Stock.apply`, type `returned`), to the
+   place the sale was packed from unless somebody says otherwise.
+2. **`due_minor` is what this return takes off the bill** — the shelf price of what came back *as
+   it was sold*, plus the shipping unless it is being kept. Stored, never recomputed: a price edit
+   next month must not make a settled order owe money again.
+3. Money the shop is then holding above what is still owed leaves through a **refund row** — cash,
+   a transfer, or `store_credit`, which is the same money staying where it is with the customer's
+   name on it. So `paid` falls with `due` and **every outcome lands the order at nil**.
+
+- **Credit is a ledger, not a balance** (`customer_credit`, grant/spend): a stored balance is a
+  second source of truth about money and the first part-spend makes it wrong. It is spent on a
+  later order through the ordinary payment path — `store_credit` is a payment method like any
+  other, checked against the ledger inside the transaction that writes it.
+- **`store_credit` is written in code, not seeded** (`SYSTEM_METHODS` + the injection in
+  `settings()`), so every shop that already has 045's list gets it with no config migration.
+- An exchange grants the credit and `linkExchange` points the return at the order that replaced it;
+  there is one way money moves between two orders and one ledger to read.
+- A partly returned order is ordinary: `returnable()` answers per size, which is why the lines
+  table exists at all.
+
+### The rest
+
+- **The board is live.** Every order and delivery route ends in `Live.notify('og', {deliveries:true})`
+  and `js/pulse.js` refetches **only** when the board (or a driver's home) is the screen on show and
+  no modal is open. The event carries no data — the reload goes through the same gated route as any
+  other read — and `/api/live` gained `delivery.read`/`delivery.desk` so a driver and the office can
+  hold the line at all. A parcel that left five minutes ago still showing as waiting is how it gets
+  handed to two carriers.
+- **The tracking page grew a timeline.** `/i/<token>` lists what has actually happened, stamped:
+  placed, each payment, handed over, came back, delivered. A single status pill cannot answer the
+  question a tracking link is opened to ask — *has anything moved since I last looked*. Money only
+  as amounts and dates: no method, no reference, no account number, because the link gets forwarded.
+- **Two reminders were wrong and are fixed.** `driver_cash` now reads pending `order_payments` (per
+  driver, per currency, keyed `dayKey:currency` so both messages go out) instead of a day's
+  `deliveries.collected`, and no longer says "today" — it is money still in a pocket whichever day
+  it was collected. `run_out_long` now has **two clocks**: four hours for our own driver, five days
+  (`reminders.ship_days`) for a transport office or a courier, because nagging about a shipment to
+  Amman after four hours is how a bot gets muted.
+- **The office screen was polished twice over.** Each step head trades its number for a lime tick
+  the moment its own condition is met — the same conditions `reasons()` refuses on, so the tick
+  cannot lie — and below 860px, where the three columns stack and Save is a screen and a half under
+  the scan box, a fixed bar carries the total and Save above the tab bar. Both are the panel's own
+  delegated actions: one Save in the code, two on the glass.
+
+**The mirror.** `handovers` (its lines ride on its `afterUpsert`, like `sale_items`), `order_returns`
+(same, for `order_return_lines`) and `customer_credit` are cursor-shape and pushed in the guarded
+ROAD block beside `order_payments` — every one of them is UPDATED after it is written, which a
+highest-id bookmark would never see. **Run `server/supabase/018_the_road.sql` in the dashboard after
+017, then `npm run supabase:reconcile`.**
+
+**046 had already run on the shop's own database when the returns were written**, which is why
+`due_minor` and `order_return_lines` are in `047` instead. A migration that has been applied is
+finished: editing the file would leave this machine on one schema and every other on another, with
+`schema_migrations` claiming they match.
+
+### The polish pass (12 Sep 2026), and the audit behind it
+
+Ten readers were sent over the whole delivery system — the office, the board, the three road tabs,
+Arabic and RTL, the phone layout, the wiring between screens, refusals and races, the server's
+money and guards, everything that prints, and what is missing entirely — and each one's findings
+were then checked back against the source by a second agent that refuses by default. **93 findings,
+91 confirmed, none refuted**, plus ten more that all ten had missed. The owner picked the scope:
+UI and overlapping first, the shipping price list made compulsory, the handover sheet made the
+office's, the tracking page rebuilt in Arabic. **The rest of that list is not done** and is the
+best map of this system's remaining faults.
+
+What landed:
+
+- **`body[data-overlay]` — while a dialog is open, the floating furniture steps out of the way.**
+  Set by `openModal`/`openDrawer`/`closeModal`/`closeDrawer` (`syncOverlay` in `js/app-util.js`),
+  **read off the two roots and never counted**: there are four ways out of a modal and a counter
+  that one of them forgets leaves the phone's whole navigation hidden for the session. The rule is
+  in `css/bulk-gate-responsive.css` beside the tab bar. It fixes three overlaps at once, and none
+  of them were cosmetic: the tab bar (z 340) painted over every dialog (backdrop z 200) and was
+  **tappable through it** — open Take payment, press Products, and the shop navigated underneath a
+  dialog that was still mounted — and it covered the footer of every bottom sheet, which is where
+  Save lives. The bulk bar and the office bar joined it there. The partner portal had already met
+  this and raised its own sheets to 360; OG's side never did.
+- **`.modal-foot` wraps.** The order view carries seven buttons now; with `flex` alone the first
+  one hung off the edge of the screen with half its label cut off. On a phone they share the width
+  at 44px tall.
+- **A scanned pair is a flex row, not five rigid grid tracks.** Measured on the shop's own
+  1366×768 laptop: the product-name cell was **0px wide** and the row **326px tall**, one character
+  per line — four of the five tracks were `auto` and could not give. Now 228px and 92px, one row at
+  1920 and two below that, with no breakpoint to keep in step.
+- **Save is on the glass at every width.** `position: sticky` only sticks while the element is
+  shorter than the scrollport, and the money panel is ~780px against 610px, so it never stuck:
+  Save sat below the bottom edge. Above 1240 the panel is its own scroller with `.dk-close` (Save
+  plus the reasons it is disabled) stuck to its bottom; below 1240 — where the panel is drawn full
+  width *underneath* both other columns and Save measured 824px below the fold — the fixed
+  `.dk-bar` carries it. That bar used to switch on only under 860px.
+- **A comma is a decimal point here.** `Desk.toMinor` stripped everything but digits and dots, so
+  `12,50` — how everybody in this shop writes twelve and a half — became `1250` and a $12.50
+  deposit was recorded as **$1,250**. Three digits after the last separator is a thousands group,
+  anything else is the decimal; when both kinds appear the last one wins. Seventeen cases, from
+  `2,250` to `1.250,75`, are checked in the harness.
+- **The board is cards on a phone — through the mechanism the app already had.**
+  `labelWideTables()` (`js/app-routing.js`) gives any table of five columns or more the
+  `.tbl-cards` class and copies each header's word onto its cells. The board never got it because
+  it repaints itself and so never passed through `render()`; measured, 305px of a 695px table was
+  off the right edge, including every button. Fixed by calling that hook from
+  `Deliveries.repaint`, **not** by writing a second card-table in `og-skin.css`.
+- **The customer's page is Arabic first**, with English one tap away (`?lang=en`, server-side —
+  `dir` and `lang` belong on `<html>`, and this page carries no JavaScript by design). It grew a
+  four-step **rail** (ordered · payment · on the way · arrived; an arrived parcel is four filled
+  dots and no ring, because the ring means "still moving"), and its money is now the server's
+  arithmetic — it worked the balance out itself and knew nothing about a parcel that came back, so
+  a fully refunded order went on telling its customer they owed the whole amount.
+- **The sheet belongs to the office.** Every handover write is `delivery.desk` alone; they were
+  also open to `delivery.write`, which a **driver** holds — on his own phone he could open a sheet
+  in anybody's name, scan any parcel in the shop onto it and send it out. He also could not be
+  stopped from rewriting the address and phone on his own run (the tracking number was guarded and
+  these were not). His phone now shows the office's sheet as a **checklist**, grouped by `HO-xxxx`
+  with "4 of 11 done".
+- **Shipping has to be answered.** The price list ships empty, so every order was saving with no
+  shipping on it and the money panel never mentioned it — the shop was giving away the carriage
+  without deciding to. Three answers count: a row in the price list (even a zero one), a figure
+  typed, or "the customer pays the courier". Silence does not.
+- Smaller: the four step heads trade their number for a lime tick when their own condition is met;
+  New order asks before throwing away a half-typed order; the WhatsApp messages and the tracking
+  link moved into the **order view**, so they are reachable for any order rather than living for
+  as long as nobody scans the next customer's shoes; choosing a courier brings its own amount box;
+  the scan box is 16px and no longer auto-focuses on a coarse pointer (it threw the keyboard up
+  over the screen on arrival); the stepper and ✕ are 38px under a thumb.
+
+**How it is verified.** Seven suites, 271 checks, all green: `verify-046` (migrations, handover,
+cash, returns, credit, mirror wiring — on a `VACUUM INTO` copy of the live database),
+`smoke-orders` (70 API checks, **not idempotent** — rebuild the base with `make-base.mjs` first),
+and five browser suites over CDP — `ui-office` (measures the line, the row height and where Save
+is at seven widths from 1366 to 390), `ui-board`, `ui-overlap` (hit-tests what is painted on top
+of a dialog), `ui-road`, `ui-track` (both languages). Two harness facts worth keeping: **a browser
+spawned by the test script cannot bind its debugging port under the sandbox** — the shell opens it
+and the script attaches — and **every tab left behind holds an SSE stream open**, so after six runs
+the seventh page never loads at all (six connections per host on HTTP/1.1). Both are in the
+scripts' own comments.
 
 ## The dashboard
 

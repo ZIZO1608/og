@@ -114,8 +114,13 @@ export const ORDER = [
   'wa_messages', 'notification_reads',
 
   /* the drawer: a shift before the sales that stamp it, the payments after
-     the sales they are against */
-  'shifts', 'expenses', 'debt_payments',
+     the sales they are against — and after the shift a driver's cash was
+     handed in to */
+  'shifts', 'expenses', 'debt_payments', 'order_payments',
+
+  /* the road: a sheet before its lines, a return after the sale it undoes,
+     and the credit it may have granted after the customer it belongs to */
+  'handovers', 'handover_lines', 'order_returns', 'order_return_lines', 'customer_credit',
   'stock_counts', 'stock_count_lines',
 
   /* what was printed, which the mirror has always had room for */

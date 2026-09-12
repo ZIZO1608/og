@@ -208,6 +208,55 @@ function pendingOrders(ms) {
    COALESCE(order_promised_at, deadline) is THEIR OWN PROMISE FIRST — the same
    ladder Partner.stats scores their on-time percentage on. Nagging another
    company against a number they are not measured on is how a bot gets muted. */
+/* WHAT THE PRINTER'S WEEK WAS WORTH — jobs FINISHED in the window, by their
+   own `done` stamp rather than by when they were raised, because that is the
+   work they did. Pieces and payout come from the same CASE the production
+   report scores them on (Partner.PIECES_SQL and the lines, since a kit job
+   never stores its own cost), so the bot and the Earnings screen cannot
+   disagree about what they are owed.
+
+   MONEY IS A PAIR. Some jobs are priced in dollars and some in lira, and one
+   number covering both would be a conversion nobody asked for. On time is
+   measured against their OWN promise first — COALESCE(order_promised_at,
+   deadline) — the same ladder Partner.stats uses, because nagging or praising
+   somebody against a number they are not measured on is worthless either
+   way. */
+function weekForPartner(fromIso, toIso) {
+  const rows = DB.get().prepare(
+    `SELECT j.id, j.currency,
+            ${Partner.PIECES_SQL} AS pieces,
+            CASE WHEN j.kind = 'kit'
+                 THEN (SELECT COALESCE(SUM(l.unit_cost * l.qty), 0)
+                         FROM print_job_lines l WHERE l.job_id = j.id)
+                 ELSE COALESCE(j.cost, 0) END AS payout,
+            (SELECT MAX(st.at) FROM print_job_stages st
+              WHERE st.job_id = j.id AND st.stage = 'done') AS done_at,
+            COALESCE(j.order_promised_at, j.deadline) AS due
+       FROM print_jobs j
+      WHERE j.stage = 'done'
+        AND EXISTS (SELECT 1 FROM print_job_stages st
+                     WHERE st.job_id = j.id AND st.stage = 'done'
+                       AND st.at >= ? AND st.at < ?)`
+  ).all(fromIso, toIso);
+
+  const payout = { syp: 0, usd: 0 };
+  let pieces = 0, onTimeN = 0, judged = 0;
+  for (const r of rows) {
+    pieces += Number(r.pieces) || 0;
+    const cur = r.currency === 'USD' ? 'usd' : 'syp';
+    payout[cur] += Number(r.payout) || 0;
+    if (r.due && r.done_at) {
+      judged++;
+      /* A bare YYYY-MM-DD due date means the end of that day, not its first
+         moment — the same trap job_late documents. */
+      const end = String(r.due).length === 10 ? r.due + 'T23:59:59.999Z' : r.due;
+      if (Date.parse(r.done_at) <= Date.parse(end)) onTimeN++;
+    }
+  }
+  return { jobs: rows.length, pieces, payout,
+           onTime: judged ? Math.round((onTimeN / judged) * 100) : null };
+}
+
 function acceptedOpen() {
   return DB.get().prepare(
     `SELECT j.id, j.stage, j.order_responded_at,
@@ -477,24 +526,40 @@ const RULES = [
   {
     id: 'run_out_long', audience: 'og', kind: 'rem_run_out_long', refType: 'delivery',
     run: (c) => {
-      const cut = new Date(c.ms - num('reminders.run_hours', 4) * 3600000).toISOString();
+      /* A RUN AND A SHIPMENT ARE NOT THE SAME CLOCK. Our own driver is back
+         within the afternoon, so four hours unmarked is worth a word. A
+         parcel handed to a transport office for Damascus, or a courier for
+         Amman, is DAYS on the road by design — nagging about it after four
+         hours is how a bot gets muted, taking the useful half with it. */
+      const runCut  = new Date(c.ms - num('reminders.run_hours', 4) * 3600000).toISOString();
+      const shipCut = new Date(c.ms - num('reminders.ship_days', 5) * 86400000).toISOString();
       const rows = DB.get().prepare(
-        `SELECT d.id, d.out_at, u.name AS driver
+        `SELECT d.id, d.out_at, d.method, d.city, d.company_name, u.name AS driver,
+                CASE WHEN d.method IN ('office','courier','abroad') THEN 1 ELSE 0 END AS ship
            FROM deliveries d
            LEFT JOIN users u ON u.id = d.driver_id
-          WHERE d.status = 'out' AND d.out_at IS NOT NULL AND d.out_at <= ?
+           JOIN sales s ON s.id = d.sale_id
+          WHERE d.status = 'out' AND d.out_at IS NOT NULL AND s.voided = 0
+            AND ((d.method IN ('office','courier','abroad') AND d.out_at <= ?)
+              OR ((d.method IS NULL OR d.method NOT IN ('office','courier','abroad'))
+                   AND d.out_at <= ?))
           ORDER BY d.out_at LIMIT 3`
-      ).all(cut);
+      ).all(shipCut, runCut);
       if (!rows.length) return [];
       const r = rows[0];
       const h = hoursSince(r.out_at, c.ms);
       /* Steps then daily, capped at three days: a run nobody has marked in
-         three days is a conversation, not a notification. */
-      const occ = elapsedOccasion(h, { steps: [num('reminders.run_hours', 4), 12],
-                                       daily: true, capDays: 3 });
+         three days is a conversation, not a notification. A shipment is
+         already days old when it first qualifies, so it steps straight to
+         the daily cadence. */
+      const occ = r.ship
+        ? elapsedOccasion(h, { steps: [num('reminders.ship_days', 5) * 24], daily: true, capDays: 3 })
+        : elapsedOccasion(h, { steps: [num('reminders.run_hours', 4), 12], daily: true, capDays: 3 });
       if (!occ) return [];
       return [{ refId: String(r.id), occasion: occ,
-                args: { id: r.id, hours: round1(h), driver: r.driver || null, n: rows.length } }];
+                args: { id: r.id, hours: round1(h), days: Math.floor(h / 24),
+                        ship: !!r.ship, where: r.company_name || r.city || null,
+                        driver: r.driver || null, n: rows.length } }];
     }
   },
   /* ADDRESSED TO THE DRIVER. The money is his to hand in and nobody else can
@@ -504,19 +569,41 @@ const RULES = [
     id: 'driver_cash', audience: 'og', kind: 'rem_driver_cash', refType: 'user',
     run: (c) => {
       if (c.hour < num('reminders.day_close_hour', 21)) return [];
+      /* PER CURRENCY, never one number. A driver carrying 400,000 lira and
+         $60 is carrying two things, and adding them at today's rate would
+         make the sentence disagree with the notes in his hand.
+
+         Two sources, because there are two kinds of door cash. 046's order
+         payments carry a hand-in stamp, so "still in his pocket" is a fact
+         the database holds. A till COD delivery never had one — it is the old
+         path, kept here so those drivers are not silently dropped — and the
+         best that can be said of it is that it was collected today. */
       const rows = DB.get().prepare(
-        `SELECT d.driver_id AS id, u.name,
-                SUM(d.collected) AS amount, COUNT(*) AS n
-           FROM deliveries d
-           JOIN users u ON u.id = d.driver_id
-          WHERE d.status = 'delivered' AND d.collected > 0
-            AND SUBSTR(d.assigned_at, 1, 10) = ?
-          GROUP BY d.driver_id HAVING amount > 0`
+        `SELECT id, name, currency, SUM(amount) AS amount, SUM(n) AS n FROM (
+           SELECT p.received_by AS id, u.name AS name, p.currency AS currency,
+                  SUM(p.amount) AS amount, COUNT(*) AS n
+             FROM order_payments p JOIN users u ON u.id = p.received_by
+            WHERE p.kind = 'in' AND p.drawer = 1 AND p.handed_in_at IS NULL
+              AND p.received_by IS NOT NULL
+            GROUP BY p.received_by, p.currency
+           UNION ALL
+           SELECT d.driver_id AS id, u.name AS name, d.currency AS currency,
+                  SUM(d.collected) AS amount, COUNT(*) AS n
+             FROM deliveries d
+             JOIN users u ON u.id = d.driver_id
+             JOIN sales s ON s.id = d.sale_id
+            WHERE d.status = 'delivered' AND d.collected > 0 AND s.payment = 'cod'
+              AND SUBSTR(d.assigned_at, 1, 10) = ?
+            GROUP BY d.driver_id, d.currency
+         ) GROUP BY id, name, currency HAVING amount > 0`
       ).all(c.dayKey);
       return rows.map((r) => ({
-        refId: String(r.id), occasion: c.dayKey, toUser: r.id,
+        refId: String(r.id),
+        /* The currency is in the key: both messages have to go out, and one
+           key for two of them drops the second before the insert. */
+        occasion: `${c.dayKey}:${r.currency}`, toUser: r.id,
         args: { person: r.name || null, amount: r.amount, n: r.n,
-                currency: cfg('shop.base_currency') || 'SYP' }
+                currency: r.currency || cfg('shop.base_currency') || 'SYP' }
       }));
     }
   },
@@ -693,6 +780,52 @@ const RULES = [
       return [{ refId: c.dayKey, occasion: '',
                 args: { day: c.dayKey, jobs: s.open.jobs, pieces: s.open.pieces,
                         dueToday, overdue, pending } }];
+    }
+  },
+  {
+    /* TONIGHT, WHAT IS DUE TOMORROW. yl_digest is a morning list, and by the
+       morning the day it is describing has started — a printer decides what
+       goes on the press first the evening before. Different hour, different
+       question, so it is a different rule rather than a longer digest.
+
+       Keyed on the day it is ABOUT, not the day it is sent, so a server that
+       was off at seven says it at eight and never twice. */
+    id: 'yl_due_tomorrow', audience: 'yalla', kind: 'rem_yl_due_tomorrow', refType: 'day',
+    run: (c) => {
+      if (c.hour < num('reminders.yl_evening_hour', 19)) return [];
+      const target = dayNum(c.ms, c.tz) + 1;
+      const rows = acceptedOpen().filter((j) => dayNumOf(j.due, c.tz) === target);
+      if (!rows.length) return [];
+      const pieces = rows.reduce((a, j) => a + (Number(j.qty) || 0), 0);
+      const tomorrow = dayKeyOf(c.ms + 86400000, c.tz);
+      return [{ refId: tomorrow, occasion: '',
+                args: { day: tomorrow, jobs: rows.length, pieces,
+                        ids: rows.slice(0, 5).map((j) => j.id) } }];
+    }
+  },
+  {
+    /* MONDAY MORNING, WHAT LAST WEEK WAS WORTH. They have an Earnings screen
+       and nobody opens a screen to be told they did well. This is the one
+       message in the table that is not a nudge about something wrong, which
+       is most of why it is worth sending: a bot that only ever complains gets
+       muted, and the mute is side-wide.
+
+       Money IS included here, and it is theirs — what OG owes the printer for
+       their own work, which their portal already shows them. It is not the
+       shop's takings, and PARTNER_STRIP has taken the customer price out. */
+    id: 'yl_week', audience: 'yalla', kind: 'rem_yl_week', refType: 'day',
+    run: (c) => {
+      const shop = new Date(c.ms + c.tz * 60000);
+      if (shop.getUTCDay() !== num('reminders.yl_week_day', 1)) return [];
+      if (c.hour < num('reminders.yl_digest_hour', 9)) return [];
+      const from = new Date(c.ms - 7 * 86400000).toISOString();
+      const to = new Date(c.ms).toISOString();
+      const w = weekForPartner(from, to);
+      /* A week with nothing printed is a week not worth a summary. */
+      if (!w.jobs) return [];
+      return [{ refId: c.dayKey, occasion: '',
+                args: { jobs: w.jobs, pieces: w.pieces, onTime: w.onTime,
+                        money: moneyPair(w.payout) } }];
     }
   },
   {

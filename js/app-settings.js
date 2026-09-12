@@ -349,8 +349,8 @@ var REMINDER_RULES = [
   ['job_stuck', 'print'], ['pay_wait', 'print'],
   ['run_out_long', 'runs'], ['driver_cash', 'runs'],
   ['customer_quiet', 'people'],
-  ['yl_order_waiting', 'yl'], ['yl_due', 'yl'], ['yl_blocked', 'yl'],
-  ['yl_digest', 'yl'], ['yl_pay_wait', 'yl']
+  ['yl_order_waiting', 'yl'], ['yl_due', 'yl'], ['yl_due_tomorrow', 'yl'],
+  ['yl_blocked', 'yl'], ['yl_digest', 'yl'], ['yl_week', 'yl'], ['yl_pay_wait', 'yl']
 ];
 
 /* The numbers each group owns: [ config key without the prefix, min, max ].
@@ -366,7 +366,7 @@ var REMINDER_NUMS = {
           ['delivery_stuck_hours', 1, 720], ['pay_confirm_hours', 1, 720]],
   runs:  [['run_hours', 1, 72]],
   people: [['quiet_repeat_days', 1, 90]],
-  yl:    [['yl_digest_hour', 0, 23]]
+  yl:    [['yl_digest_hour', 0, 23], ['yl_evening_hour', 0, 23]]
 };
 
 function remOn(id) { return CONFIG.REMINDERS[id] !== '0'; }

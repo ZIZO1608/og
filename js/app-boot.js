@@ -233,6 +233,16 @@ function bindWedge() {
        of the list somebody is building would bury it. */
     if (typeof moveScanOwns === 'function' && moveScanOwns()) { moveScanned(code); return; }
 
+    /* The delivery office owns the scanner while it is on screen: a product
+       code is a line in the order being built, and the barcode on a printed
+       slip opens the order it belongs to. Opening the product sheet over
+       either would bury what the scan was for. */
+    if (typeof Desk !== 'undefined' && Desk.owns()) { Desk.scanned(code); return; }
+
+    /* The handover sheet owns it on the board: every beep is a slip going
+       onto the sheet somebody is about to sign for. */
+    if (typeof Road !== 'undefined' && Road.owns()) { Road.scanned(code); return; }
+
     /* The warehouse map owns the scanner while it is on screen — a shelf
        scan selects the shelf, a product scan files onto it, and its own
        handler (registered by ShelfMap.register) has already acted. Opening
@@ -268,6 +278,8 @@ function boot() {
      boot rather than at load time because ACTIONS is a var in this file and
      script order should not decide whether the buttons work. */
   if (typeof Deliveries !== 'undefined') Deliveries.register();
+  if (typeof Desk !== 'undefined') Desk.register();
+  if (typeof Road !== 'undefined') Road.register();
   if (typeof Receipt !== 'undefined') Receipt.register();
   if (typeof Labels !== 'undefined') Labels.register();
   if (typeof Labels60 !== 'undefined') Labels60.register();

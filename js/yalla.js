@@ -636,7 +636,8 @@ var YALLA = (function () {
      not shared is the pause, which is OG's, and which is shown here because a
      switch that reads ON while nothing ever arrives is worse than a switch
      that says why. */
-  var YL_RULES = ['yl_order_waiting', 'yl_due', 'yl_blocked', 'yl_digest', 'yl_pay_wait'];
+  var YL_RULES = ['yl_order_waiting', 'yl_due', 'yl_due_tomorrow', 'yl_blocked',
+                  'yl_digest', 'yl_week', 'yl_pay_wait'];
 
   function remindersCard() {
     var rem = (typeof CONFIG !== 'undefined' && CONFIG.REMINDERS) || {};
@@ -690,7 +691,13 @@ var YALLA = (function () {
         (c.personActive === false ? ' · ' + t('tg_person_off') : '')
       : (c.type === 'private' ? t('tg_no_owner') : t('tg_shared_room'));
     var bits = [who, kind, when, c.by ? t('tg_added_by') + ' ' + esc(c.by) : ''].filter(Boolean);
-    var canEdit = !s || s.manages !== false;
+    /* A PARTNER MAY ALWAYS EDIT THEIR OWN SIDE. `manages` is about seeing
+       other people's chats, and on the yalla side there are no other people:
+       tgSide() scopes the list to Yalla Wear and their audience carries no
+       money to tick on by accident. The route already allows it — tgGate is
+       ['config.write','partner.jobs'] — so hiding the button was the browser
+       taking away something the server was perfectly willing to do. */
+    var canEdit = !s || s.manages !== false || s.side === 'yalla';
     return '<div class="tg-row on"><span class="tg-dot"></span>' +
       '<div class="tg-txt"><b>' + esc(c.title || c.id) + '</b>' +
         '<small>' + bits.join(' · ') + '</small>' +

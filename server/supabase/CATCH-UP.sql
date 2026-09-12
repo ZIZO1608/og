@@ -6,7 +6,9 @@
 --  npm run supabase:drift reported 008, 009, 010 and 011 all outstanding;
 --  012 (2026-09-02, the Yalla Wear line) appended the same day;
 --  013 (2026-09-04, rack sizes in centimetres) appended after it;
---  014 (the website flag) and 015 (the product photograph) appended 2026-09-08.
+--  014 (the website flag) and 015 (the product photograph) appended 2026-09-08;
+--  016 (a print job's design picture) and 017 (the delivery office, 2026-09-11)
+--  appended after them.
 --
 --  Paste the whole thing into the Supabase SQL editor and run it once.
 --  Every statement is CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS,
@@ -423,3 +425,187 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS on_web BOOLEAN NOT NULL DEFAULT TR
 -- =============================================================================
 
 ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT;
+
+
+-- ===== 016_job_design_image.sql =====
+-- =============================================================================
+--  016 — print_jobs.design_image_url   (local migration 044)
+-- -----------------------------------------------------------------------------
+--  Run this in the Supabase SQL editor. Until it is run, lib/mirror-lag.js
+--  makes the sync push print_jobs WITHOUT this column and name this file on
+--  every run — nothing is lost, only late. Afterwards run
+--  `npm run supabase:reconcile`, or the column exists here and stays NULL for
+--  every job pushed in the meantime, and a restore hands back a queue with no
+--  designs on it.
+--
+--  RLS is already on for print_jobs from 003; a column needs no policy.
+-- =============================================================================
+
+ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS design_image_url text;
+
+
+-- ===== 017_delivery_office.sql =====
+-- =============================================================================
+--  017 — the delivery office   (local migration 045)
+-- -----------------------------------------------------------------------------
+--  Run this in the Supabase SQL editor. Until it is run:
+--
+--    * lib/mirror-lag.js makes the sync push deliveries WITHOUT the twelve new
+--      columns and name this file on every run. deliveries is in the unguarded
+--      core loop, so without that fallback every delivery would be refused.
+--    * order_payments is skipped by name behind a guard of its own, and the
+--      day's sales and deliveries still go up.
+--
+--  Nothing is lost, only late. Afterwards, in this order:
+--    npm run supabase:drift       -- should go green
+--    npm run supabase:reconcile   -- REQUIRED: the cursor is already past every
+--                                    delivery pushed with the columns dropped,
+--                                    and they stay NULL here until it refills
+--                                    them
+--
+--  The local schema carries the CHECK constraints; they are not repeated here,
+--  so a sixth delivery method is a local migration and not a rejected batch.
+--  `drawer` is SMALLINT (0/1) rather than boolean so the row pushes as it is.
+-- =============================================================================
+
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS method       TEXT;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS company_id   TEXT;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS company_name TEXT;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS country      TEXT;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS city         TEXT;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS recipient    TEXT;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS fee          BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS fee_mode     TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS fee_source   TEXT;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS plan         TEXT;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS channel      TEXT;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS tracking_no  TEXT;
+
+CREATE INDEX IF NOT EXISTS deliveries_method ON deliveries (method, status);
+
+CREATE TABLE IF NOT EXISTS order_payments (
+  id           BIGINT PRIMARY KEY,
+  sale_id      TEXT NOT NULL REFERENCES sales(id),
+  kind         TEXT NOT NULL DEFAULT 'in',
+  at           TIMESTAMPTZ NOT NULL,
+  amount       BIGINT NOT NULL,
+  currency     TEXT NOT NULL REFERENCES currencies(code),
+  fx_rate      DOUBLE PRECISION NOT NULL,
+  amount_order BIGINT NOT NULL,
+  method       TEXT NOT NULL,
+  drawer       SMALLINT NOT NULL DEFAULT 0,
+  txn_ref      TEXT,
+  stage        TEXT,
+  received_by  BIGINT,
+  shift_id     TEXT,
+  handed_in_at TIMESTAMPTZ,
+  handed_in_by BIGINT,
+  note         TEXT,
+  user_id      BIGINT,
+  created_at   TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_pay_sale  ON order_payments (sale_id);
+CREATE INDEX IF NOT EXISTS idx_order_pay_shift ON order_payments (shift_id);
+
+--  On, with no policies: the service key still works and nothing else can.
+--  This table is who paid the shop how much, and by which transfer.
+ALTER TABLE order_payments ENABLE ROW LEVEL SECURITY;
+
+
+-- ===== 018_the_road.sql =====
+-- =============================================================================
+--  018 — the road: handovers, returns, customer credit  (local 046 and 047)
+-- -----------------------------------------------------------------------------
+--  Run this in the Supabase SQL editor, after 017. Until it is run the four
+--  tables are skipped by name behind the delivery office's own guarded block
+--  and everything else still mirrors; `deliveries.handover_id` is dropped by
+--  lib/mirror-lag.js and this file is named on every run.
+--
+--  Afterwards: npm run supabase:drift, then npm run supabase:reconcile — the
+--  cursor is already past every delivery pushed without its handover.
+--
+--  The local schema carries the CHECK constraints. RLS on, no policies: the
+--  service key works and nothing else does, which is the whole security model
+--  of the mirror.
+-- =============================================================================
+
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS handover_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_deliveries_ho ON deliveries (handover_id);
+
+CREATE TABLE IF NOT EXISTS handovers (
+  id           TEXT PRIMARY KEY,
+  kind         TEXT NOT NULL,
+  driver_id    BIGINT,
+  company_id   TEXT,
+  company_name TEXT,
+  status       TEXT NOT NULL DEFAULT 'open',
+  opened_at    TIMESTAMPTZ NOT NULL,
+  handed_at    TIMESTAMPTZ,
+  note         TEXT,
+  user_id      BIGINT,
+  user_name    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS handover_lines (
+  id          BIGINT PRIMARY KEY,
+  handover_id TEXT NOT NULL REFERENCES handovers(id) ON DELETE CASCADE,
+  delivery_id BIGINT NOT NULL REFERENCES deliveries(id),
+  sale_id     TEXT NOT NULL REFERENCES sales(id),
+  to_collect  BIGINT NOT NULL DEFAULT 0,
+  currency    TEXT NOT NULL REFERENCES currencies(code),
+  at          TIMESTAMPTZ NOT NULL,
+  UNIQUE (handover_id, delivery_id)
+);
+
+CREATE TABLE IF NOT EXISTS order_returns (
+  id           BIGINT PRIMARY KEY,
+  sale_id      TEXT NOT NULL REFERENCES sales(id),
+  delivery_id  BIGINT,
+  at           TIMESTAMPTZ NOT NULL,
+  outcome      TEXT NOT NULL,
+  reason       TEXT,
+  restocked    INTEGER NOT NULL DEFAULT 0,
+  wh_id        TEXT REFERENCES warehouses(id),
+  due_minor    BIGINT NOT NULL DEFAULT 0,
+  refund_minor BIGINT NOT NULL DEFAULT 0,
+  kept_minor   BIGINT NOT NULL DEFAULT 0,
+  credit_minor BIGINT NOT NULL DEFAULT 0,
+  new_sale_id  TEXT,
+  user_id      BIGINT,
+  note         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS order_return_lines (
+  id         BIGINT PRIMARY KEY,
+  return_id  BIGINT NOT NULL REFERENCES order_returns(id) ON DELETE CASCADE,
+  sku        TEXT NOT NULL,
+  name       TEXT,
+  size       TEXT,
+  qty        INTEGER NOT NULL,
+  unit_price BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS customer_credit (
+  id          BIGINT PRIMARY KEY,
+  customer_id BIGINT NOT NULL REFERENCES customers(id),
+  at          TIMESTAMPTZ NOT NULL,
+  kind        TEXT NOT NULL,
+  amount      BIGINT NOT NULL,
+  currency    TEXT NOT NULL REFERENCES currencies(code),
+  sale_id     TEXT,
+  note        TEXT,
+  user_id     BIGINT,
+  created_at  TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_handover_lines_ho  ON handover_lines (handover_id);
+CREATE INDEX IF NOT EXISTS idx_order_returns_sale ON order_returns (sale_id);
+CREATE INDEX IF NOT EXISTS idx_customer_credit_who ON customer_credit (customer_id, currency);
+CREATE INDEX IF NOT EXISTS idx_order_return_lines ON order_return_lines (return_id);
+
+ALTER TABLE handovers       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE handover_lines  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_returns   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_return_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customer_credit ENABLE ROW LEVEL SECURITY;

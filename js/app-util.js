@@ -356,9 +356,21 @@ function takeProductImage(file) {
    drawer cannot describe the same failure two ways. `then` runs after the
    catalogue has been reloaded with the new address, so whatever is on screen
    can redraw with the picture in it. */
+/* A PRINT JOB’S DESIGN, through the same three outcomes and the same stale-
+   server diagnosis. Written as a wrapper rather than a copy because the
+   interesting part of this function is the error handling, and that is the
+   half a second copy always ends up missing. */
+function uploadJobDesign(id, dataUrl, then) {
+  return uploadImageThrough(function () { return Shop.setJobImage(id, dataUrl); }, then);
+}
+
 function uploadProductImage(id, dataUrl, then) {
+  return uploadImageThrough(function () { return Shop.setProductImage(id, dataUrl); }, then);
+}
+
+function uploadImageThrough(send, then) {
   toast(t('image'), t('img_uploading'), null, 2500);
-  Shop.setProductImage(id, dataUrl).then(function () {
+  return send().then(function () {
     return Shop.reload();
   }).then(function () {
     render();
@@ -549,6 +561,10 @@ function openModal(o) {
         (o.foot ? '<div class="modal-foot">' + o.foot + '</div>' : '') +
       '</div>' +
     '</div>';
+  /* BEFORE onOpen, and after closeModal() above has already cleared it — this
+     function opens by clearing first, so the flag has to be re-raised here or
+     it is only ever set by the drawer. */
+  syncOverlay();
   if (o.onOpen) o.onOpen(root);
   /* Held on the module, not on the DOM, because closeModal() wipes innerHTML
      and there are four ways out of a modal — the ×, the backdrop, Escape, and
@@ -564,8 +580,33 @@ function closeModal() {
   modalOnClose = null;
   if (fn) { try { fn(); } catch (e) { console.warn('modal onClose', e); } }
   document.getElementById('modal-root').innerHTML = '';
+  syncOverlay();
 }
 function modalOpen() { return !!document.getElementById('modal-root').firstChild; }
+
+/* ------------------------------------------------------- SOMETHING IS OVER
+   `body[data-overlay]` says a dialog or a drawer is on screen, and the
+   floating furniture gets out of its way (see the rule in
+   css/bulk-gate-responsive.css).
+
+   IT IS READ OFF THE DOM, NEVER COUNTED. There are four ways out of a modal —
+   the ×, the backdrop, Escape, and another modal opening on top — and a
+   counter that one of them forgets leaves the flag stuck on for the rest of
+   the session, with the phone's whole navigation hidden. Asking the two roots
+   whether they hold anything cannot drift.
+
+   What it fixes: the phone tab bar is z-index 340 and a modal's backdrop is
+   200, so the bar sat ON TOP of every dialog — tappable. You could open Take
+   payment, tap Products, and end up on another screen with the dialog still
+   mounted over it. A bottom sheet was worse: it rises to the bottom edge, so
+   its Save button was behind the bar. The partner portal had already met this
+   and raised its own sheets to 360; OG's side never did. */
+function syncOverlay() {
+  var on = !!document.getElementById('modal-root').firstChild ||
+           !!document.getElementById('drawer-root').firstChild;
+  if (on) document.body.setAttribute('data-overlay', '1');
+  else document.body.removeAttribute('data-overlay');
+}
 
 function openDrawer(o) {
   closeDrawer();
@@ -578,10 +619,11 @@ function openDrawer(o) {
       '</div>' +
       '<div class="drawer-body">' + o.body + '</div>' +
     '</aside>';
+  syncOverlay();
   if (o.onOpen) o.onOpen(root);
 }
 
-function closeDrawer() { document.getElementById('drawer-root').innerHTML = ''; }
+function closeDrawer() { document.getElementById('drawer-root').innerHTML = ''; syncOverlay(); }
 
 /* ------------------------------------------------------------ EXPORT SPECS
    Money leaves as a raw number in the active currency so Excel can sum it —

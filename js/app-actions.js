@@ -523,7 +523,9 @@ var ACTIONS = {
           '<input class="inp num" id="cuPayAmt" type="number" min="1" inputmode="numeric"></label>' +
         '<label class="field mt"><span>' + t('payment_method') + '</span>' +
           '<select class="inp" id="cuPayMethod">' +
-            ['cash', 'sham', 'fuad', 'haram', 'card'].map(function (m) {
+            (DB.payMethodsFor('debt').length
+              ? DB.payMethodsFor('debt').map(function (x) { return x.id; })
+              : ['cash', 'sham', 'fuad', 'haram', 'card']).map(function (m) {
               return '<option value="' + m + '">' + esc(DB.payLabel(m)) + '</option>';
             }).join('') +
           '</select></label>' +
@@ -581,6 +583,19 @@ var ACTIONS = {
      nobody is offered a button that will refuse. */
   /* Linking an old print job to a customer by hand. Reuses the same picker
      shape as the attach-a-sale one — one idea, one interaction. */
+  /* The file picker lives in the drawer, hidden; this is the button that
+     opens it. Same two-step as the product drawer’s picture. */
+  'job-pic': function () {
+    var i = document.getElementById('jobFile');
+    if (i) i.click();
+  },
+  'job-pic-clear': function (el) {
+    if (typeof Shop === 'undefined' || !Shop.live()) return;
+    var jid = el.getAttribute('data-jid');
+    Shop.setJobImage(jid, null).then(function () { return Shop.reload(); })
+      .then(function () { openJobDrawer(jid); })
+      .catch(function (e) { toast(t('image'), API.friendly ? API.friendly(e) : String(e), 'err', 6000); });
+  },
   'job-link': function (el) {
     var jid = el.getAttribute('data-jid');
     OG.linkJob = jid;

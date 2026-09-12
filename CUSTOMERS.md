@@ -181,6 +181,36 @@ proved by reintroducing `sale.void` and watching it refuse; the bell cap by push
 
 ---
 
+## Phone parity table
+
+`normPhone` exists twice — `server/lib/text.js` and `DB.normPhone` in `js/data.js` — and this table
+is the test for the pair. Rebuilt on 2026-09-11 for the delivery office (migration 045), when the shop
+began sending to Jordan and Turkey and the Syria-only rule turned a Jordanian `07…` into a Syrian
+number. Every row runs through both copies and they agree. `js/whatsapp.js` no longer carries a third
+copy; it calls `DB.normPhone`.
+
+| Typed | Normalised | |
+|---|---|---|
+| `0933 111 222` | `963933111222` | Syrian mobile |
+| `+963 933 111 222` | `963933111222` | |
+| `00963933111222` | `963933111222` | the long prefix |
+| `+963 0933 111 222` | `963933111222` | a trunk zero kept after the country code |
+| `021 234 5678` | `963212345678` | Aleppo landline |
+| `0791 234 567` | `962791234567` | Jordanian mobile — no Syrian area code starts with 7 |
+| `+962 79 123 4567` | `962791234567` | |
+| `00962791234567` | `962791234567` | |
+| `+962 0791 234 567` | `962791234567` | |
+| `0532 123 45 67` | `905321234567` | Turkish mobile — eleven digits, `05…` |
+| `+90 532 123 45 67` | `905321234567` | |
+| `0090 532 123 45 67` | `905321234567` | |
+| `+90 0532 123 45 67` | `905321234567` | |
+| `933111222` | `933111222` | no zero and no code: a known gap, left as typed |
+| `+1 555 010 9999` | `15550109999` | anywhere else: its digits |
+| `''`, `null`, `abc` | `''` | |
+
+No backfill: there is deliberately no stored `phone_norm` column (`server/lib/customers.js`), so a
+number is normalised when it is compared and every existing one follows the new rule at once.
+
 ## Still open
 
 Each of these is a real gap named by the stage that found it. None is started unless `CLAUDE.md`

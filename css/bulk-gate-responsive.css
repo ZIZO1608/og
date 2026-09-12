@@ -390,6 +390,32 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
 
 .tabbar { display: none; }
 
+/* ---- WHILE A DIALOG IS OPEN, THE FLOATING FURNITURE STEPS OUT OF THE WAY
+   `body[data-overlay]` is set by openModal/openDrawer (js/app-util.js,
+   syncOverlay) whenever either root holds anything.
+
+   Three things float above the page on a phone and all three were drawn ON
+   TOP of a dialog, because a modal's backdrop is z-index 200 and they sit at
+   320-340. That is not a cosmetic overlap:
+
+     the tab bar (340)  was tappable through the backdrop — open Take payment,
+                        press Products, and the shop navigates underneath a
+                        dialog that is still mounted over it. It also covered
+                        the footer of every bottom sheet, which is where Save
+                        lives; the partner portal had already hit this and
+                        raised its own sheets to 360 instead.
+     the bulk bar (320) floated undimmed over the confirm dialog for the very
+                        action it had just started.
+     the office bar (330) put a second Save & print over the dialog's own.
+
+   Hiding beats raising: while a dialog is open none of the three can be
+   acted on anyway, and a raised bar would still have to be dodged by the
+   sheet. The selectors are (0,2,1) so they beat each element's own display
+   rule wherever it is declared, whatever the file order. */
+body[data-overlay] .tabbar,
+body[data-overlay] .bk-bar,
+body[data-overlay] .dk-bar { display: none; }
+
 @media (max-width: 720px) {
   :root { --tabbar-h: calc(58px + env(safe-area-inset-bottom, 0px)); }
 
@@ -563,6 +589,11 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
   .stat { padding: var(--s-3) var(--s-2) var(--s-3) 0; }
 
   .modal { max-height: 92vh; }
+  /* On a phone the footer's buttons share the width rather than huddling at
+     the end — and a wrapped row of half-width buttons is a thumb target
+     rather than three words squeezed into 60px. */
+  .modal-foot { justify-content: stretch; }
+  .modal-foot .btn { flex: 1 1 auto; min-height: 44px; }
   .toasts { inset-inline: 12px; top: 12px; }
   .toast { min-width: 0; max-width: none; width: 100%; }
   /* A thumb, not a mouse pointer — and the swipe is the other way out. */

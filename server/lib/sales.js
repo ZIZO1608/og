@@ -107,20 +107,21 @@ export function record({
      defaults to false, so a new caller that forgets it gets the cap, not a
      hole. Failing closed is the whole point of a default. */
   unlimitedDiscount = false
-}) {
+}, outer = null) {
   if (!Array.isArray(lines) || !lines.length) throw new Error('a sale needs at least one line');
   if (!whId) throw new Error('a sale must say which place it came out of');
 
   /* Already done? Hand back exactly what was returned the first time. This is
-     what makes a retry after a dropped connection safe. */
-  if (opId) {
+     what makes a retry after a dropped connection safe. A caller that holds
+     its own transaction (recordIn) checks its own opId instead. */
+  if (opId && !outer) {
     const seen = get().prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
     if (seen) return { ...JSON.parse(seen.result), replayed: true };
   }
 
   const ref = String(txnRef ?? '').trim().slice(0, 64) || null;
 
-  return tx((d) => {
+  const run = (d) => {
     const at = nowIso();
     const saleId = nextInvoiceId();
 
@@ -134,6 +135,22 @@ export function record({
     const rate = currentRate(base, settle);
     if (rate === null) {
       throw new Error(`no exchange rate for ${base}/${settle} — set one in Settings`);
+    }
+
+    /* The payment method has to be one the shop actually has (045). Checked
+       by EXISTENCE, not by the `till` flag: a browser still serving
+       yesterday's cached list must not have its sales refused, and `cod` and
+       `credit` are switched OFF in that list rather than removed. A shop
+       whose list will not parse is not told what it may sell for. */
+    if (payment) {
+      const row = d.prepare("SELECT value FROM config WHERE key = 'pay.methods'").get();
+      let ids = [];
+      try { ids = JSON.parse(row ? row.value : '[]').map((m) => m && m.id); } catch { ids = []; }
+      if (ids.length && !ids.includes(payment)) {
+        const e = new Error(`there is no '${payment}' payment method`);
+        e.code = 'bad_method';
+        throw e;
+      }
     }
 
     /* ---- who is buying ----------------------------------------------------
@@ -207,6 +224,24 @@ export function record({
     const priced = [];
     let subtotal = 0;
 
+    /* How many units of the SALE's currency one unit of `from` is worth, at
+       this sale's rates.
+
+       THE RATE HAS A DIRECTION. `rate` above is USD -> settle, which is the
+       right multiplier only for a dollar-priced product. A lira-priced pair
+       in a DOLLAR sale used to be multiplied by 1 (USD -> USD), and 450,000
+       lira became $450,000.00. The till never sends a currency, so nothing
+       tripped over it until the delivery office let an order be priced in
+       dollars. Through USD both ways: out of the product's currency, then
+       into the sale's. */
+    const lineRate = (from) => {
+      if (from === settle) return 1;
+      if (from === base) return rate;
+      const toFrom = currentRate(base, from);
+      if (!toFrom) throw new Error(`no exchange rate for ${base}/${from} — set one in Settings`);
+      return rate / toFrom;
+    };
+
     for (const l of lines) {
       const v = d.prepare(
         `SELECT v.sku, v.size, v.product_id, p.name, p.currency,
@@ -224,8 +259,9 @@ export function record({
 
       /* Converted into the settle currency at the frozen rate, so a basket
          mixing dollar and lira goods still adds up to one number. */
-      const unitPrice = convert(v.selling_price, v.currency, settle, rate);
-      const unitCost = convert(v.cost_price, v.currency, settle, rate);
+      const unitRate = lineRate(v.currency);
+      const unitPrice = convert(v.selling_price, v.currency, settle, unitRate);
+      const unitCost = convert(v.cost_price, v.currency, settle, unitRate);
 
       priced.push({
         sku: v.sku, productId: v.product_id, name: v.name, size: v.size,
@@ -465,7 +501,18 @@ export function record({
     }
 
     return result;
-  });
+  };
+
+  return outer ? run(outer) : tx(run);
+}
+
+/* The sale itself, for a caller that already holds a transaction. The
+   delivery office writes the sale, its delivery and the deposit as ONE
+   (lib/orders.js), and tx() refuses to nest. Everything record() promises is
+   true here too — the stock, the frozen rate, the points — except the retry
+   check, which belongs to whoever owns the transaction. */
+export function recordIn(d, args) {
+  return record(args, d);
 }
 
 /* ------------------------------------------------------------------ reading */
@@ -666,12 +713,30 @@ export function voidSale(id, { reason, userId }) {
        paid against and leave the money unexplained in every report. Refund
        the payments first, then void. */
     const paid = d.prepare(
-      'SELECT COUNT(*) AS n FROM debt_payments WHERE sale_id = ?'
-    ).get(id).n;
+      `SELECT (SELECT COUNT(*) FROM debt_payments  WHERE sale_id = ?) +
+              (SELECT COUNT(*) FROM order_payments WHERE sale_id = ?) AS n`
+    ).get(id, id).n;
     if (paid) {
       throw Object.assign(
         new Error('that sale has been part-paid — refund the payments before voiding it'),
         { code: 'has_payments' });
+    }
+
+    /* A delivery-office order that has left the shop cannot be cancelled
+       from here. The shoes are in a van or on somebody's feet, and voiding
+       would put them back on the shelf in the stock figures. It comes back
+       first. Till sales keep the path they always had. */
+    if (s.payment === 'order') {
+      const onRoad = d.prepare(
+        "SELECT status FROM deliveries WHERE sale_id = ? AND status IN ('out','delivered')"
+      ).get(id);
+      if (onRoad) {
+        throw Object.assign(
+          new Error(onRoad.status === 'out'
+            ? 'that order is on its way — it has to come back before it can be cancelled'
+            : 'that order was delivered — it has to come back before it can be cancelled'),
+          { code: 'on_road' });
+      }
     }
 
     const items = d.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(id);
@@ -724,6 +789,16 @@ export function voidSale(id, { reason, userId }) {
     d.prepare('UPDATE sales SET voided = 1, void_reason = ? WHERE id = ?')
      .run(reason ?? null, id);
     logChange('sales', id, 'update', userId, null);
+
+    /* The board reads a cancelled order off the sale's own flag. The delivery
+       row is closed as well, so anything reading the row alone — a driver's
+       day, the run reminders — stops counting it as on its way. */
+    const run = d.prepare(
+      'SELECT id FROM deliveries WHERE sale_id = ? AND closed_at IS NULL').get(id);
+    if (run) {
+      d.prepare('UPDATE deliveries SET closed_at = ? WHERE id = ?').run(nowIso(), run.id);
+      logChange('deliveries', String(run.id), 'update', userId, `sale ${id} voided`);
+    }
 
     /* Stamps need no handling at all: they are counted from non-voided sales,
        so this UPDATE has already taken them back. That is the whole argument

@@ -370,8 +370,11 @@ var Pulse = (function () {
      who holds config.write and nothing on the print side still connects. */
   function canConnect() {
     if (canAsk()) return true;
-    return typeof Shop !== 'undefined' && Shop.live() &&
-           typeof Auth !== 'undefined' && Auth.can('config.write');
+    if (typeof Shop === 'undefined' || !Shop.live() || typeof Auth === 'undefined') return false;
+    /* config.write for the mirror's own status line; delivery.read since the
+       board became live — a driver and the office both need the line, and
+       neither of them can read a print job. */
+    return Auth.can('config.write') || Auth.can('delivery.read');
   }
 
   /* HARD REFRESH, from the control panel's button.
@@ -424,6 +427,21 @@ var Pulse = (function () {
       try { d = JSON.parse(ev.data || '{}'); } catch (e) { /* ignore */ }
       if (d.mirror) { if (typeof MirrorUI !== 'undefined') MirrorUI.paint(d.mirror); return; }
       if (d.reload) { hardRefresh(); return; }
+      /* A parcel moved. The board is a screen two people watch at once — the
+         office scanning a sheet and whoever is answering the phone — and a
+         parcel that left five minutes ago still showing as waiting is how it
+         gets handed to two carriers. Only the board refetches, and only while
+         it is the screen on show: this event carries no data, and the reload
+         goes through the same gated route as any other read. */
+      if (d.deliveries) {
+        var onBoard = OG.view === 'deliveries' ||
+                      (OG.view === 'dashboard' && roleOf() === 'delivery');
+        if (typeof Deliveries !== 'undefined' && onBoard && !modalOpen()) {
+          Deliveries.load();
+          if (typeof Road !== 'undefined' && roleOf() !== 'delivery') Road.load(true);
+        }
+        return;
+      }
       if (!d.who && canAsk()) tick();
     });
     es.onerror = function () {

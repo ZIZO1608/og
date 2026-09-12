@@ -14,14 +14,31 @@
    every search box, and `0933 111 222` never matched `+963933111222`.
    ========================================================================== */
 
-/* The bare digits of a Syrian number, with the local form promoted to the
-   international one: 0933 111 222 → 963933111222. The rule is lifted from
-   js/whatsapp.js, where it already worked: the +, the spaces and the dashes
-   are presentation, and the identity is the digits. Anything that is not
-   ten digits starting with 0 is returned as its digits, untouched. */
+/* The bare digits of a phone number, with the local forms promoted to the
+   international one. The +, the spaces and the dashes are presentation; the
+   identity is the digits.
+
+     0933 111 222        → 963933111222   Syria
+     0791 234 567        → 962791234567   Jordan: no Syrian area code starts
+                                           with 7, and a Jordanian mobile does
+     0532 123 45 67      → 905321234567   Turkey: eleven digits, 05…
+     00963…, +963 0933…  → 963933111222   the long prefix, and a trunk zero
+                                           kept after the country code
+
+   The shop ships to Jordan and Turkey (the delivery office, 045), and the
+   Syria-only rule turned a Jordanian number into a Syrian one — a WhatsApp
+   link that opened a stranger's chat, and a customer who could never be
+   found by the number they gave. Anything else comes back as its digits,
+   untouched. The parity table in CUSTOMERS.md is the test for this pair. */
 export function normPhone(s) {
   var d = String(s == null ? '' : s).replace(/\D/g, '');
-  if (d.length === 10 && d.charAt(0) === '0') d = '963' + d.slice(1);
+  if (d.indexOf('00') === 0) d = d.slice(2);
+  d = d.replace(/^(963|962|90)0(?=\d)/, '$1');
+  if (d.length === 10 && d.charAt(0) === '0') {
+    d = (d.charAt(1) === '7' ? '962' : '963') + d.slice(1);
+  } else if (d.length === 11 && d.slice(0, 2) === '05') {
+    d = '90' + d.slice(1);
+  }
   return d;
 }
 

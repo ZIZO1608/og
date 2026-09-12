@@ -551,8 +551,16 @@ var Receipt = (function () {
     if (R.pointsValue) {
       y = rowLR(ctx, y, both('rc2_points_used'), '− ' + fmtMoney(R.pointsValue, R.currency, true), { size: 19 });
     }
+    /* A delivery order's shipping, when the shop is the one charging it. */
+    if (R.order && R.order.feeMode === 'invoice' && R.order.fee) {
+      y = rowLR(ctx, y, both('rc2_shipping'), fmtMoney(R.order.fee, R.currency, true), { size: 19 });
+    } else if (R.order && R.order.feeMode === 'courier') {
+      y = rowLR(ctx, y, both('rc2_shipping'), both('rc2_ship_courier'), { size: 18, leftSize: 18 });
+    }
+
     y = solidRule(ctx, y + 4);
-    y = rowLR(ctx, y, both('rc2_total'), fmtMoney(R.total, R.currency, true),
+    y = rowLR(ctx, y, both(R.order ? 'rc2_total_due' : 'rc2_total'),
+      fmtMoney(R.order ? R.order.due : R.total, R.currency, true),
       { size: 32, weight: '800', leftWeight: '800' });
 
     if (R.secondCurrency) {
@@ -568,7 +576,40 @@ var Receipt = (function () {
     return y + 6;
   }
 
+  /* A delivery order is not one payment method. It is a list of what has come
+     in — each with the transfer reference somebody will read back over the
+     phone weeks later — and one line, the largest on the slip, saying what is
+     still owed. Every figure was worked out on the server: a remaining
+     balance the browser added up itself is a number that can be wrong in the
+     customer's hand. */
+  function drawOrderMoney(ctx, y, R) {
+    var o = R.order;
+
+    o.payments.forEach(function (p) {
+      var lbl = (OG.lang === 'ar' ? p.methodAr : p.methodEn) || p.methodEn || p.methodAr || p.method;
+      y = rowLR(ctx, y, lbl + (p.txnRef ? ' · ' + p.txnRef : ''),
+        (p.kind === 'refund' ? '− ' : '') + fmtMoney(p.amount, p.currency, true),
+        { size: 18, leftSize: 18 });
+    });
+    if (o.payments.length) y = dashRule(ctx, y + 4, 14);
+
+    y = rowLR(ctx, y, both('rc2_paid'), fmtMoney(o.paid, R.currency, true), { size: 19 });
+    y = rowLR(ctx, y, L('rc2_remaining').ar, fmtMoney(o.remaining, R.currency, true),
+      { size: 26, weight: '800', leftWeight: '800' });
+    y = centerText(ctx, L('rc2_remaining').en, y, { size: 18, dir: 'ltr' });
+
+    var note = !o.remaining ? 'rc2_paid_in_full'
+      : (o.method === 'driver' || o.method === 'pickup') ? 'rc2_collect_door'
+      : 'rc2_pay_before_ship';
+    y = dashRule(ctx, y + 2, 14);
+    wrapText(ctx, both(note), CW, 18).forEach(function (ln) {
+      y = centerText(ctx, ln, y, { size: 18, dir: 'rtl' });
+    });
+    return y + 6;
+  }
+
   function drawPayment(ctx, y, R) {
+    if (R.order) return drawOrderMoney(ctx, y, R);
     var lbl = payLabel(R.payment);
     y = rowLR(ctx, y, both('rc2_payment'), lbl.ar + ' · ' + lbl.en, { size: 19, leftSize: 19 });
 
@@ -591,6 +632,35 @@ var Receipt = (function () {
       y = rowLR(ctx, y, both('rc2_points_earned'), '+' + western(R.pointsEarned), { size: 18 });
     }
     return y + 6;
+  }
+
+  /* Where the parcel is going, on the copy that travels with it: the person
+     who receives it when that is somebody other than the buyer, the phone to
+     ring at the door, the place, the address as it was written, and who is
+     carrying it. */
+  function drawShipTo(ctx, y, R) {
+    var o = R.order;
+    var ship = L('rc2_ship_to');
+    y = centerText(ctx, ship.ar, y, { size: 20, weight: '700', dir: 'rtl' });
+    y = centerText(ctx, ship.en, y, { size: 16, dir: 'ltr' });
+
+    if (o.recipient) y = centerText(ctx, o.recipient, y, { size: 22, weight: '600', dir: 'rtl' });
+    if (o.phone) y = centerText(ctx, o.phone, y, { size: 20, dir: 'ltr' });
+
+    var place = [o.city, OG.lang === 'ar' ? o.countryAr : o.countryEn].filter(Boolean).join(' · ');
+    if (place) y = centerText(ctx, place, y, { size: 20, weight: '600', dir: 'rtl' });
+
+    if (o.address) {
+      wrapText(ctx, o.address, CW, 19).forEach(function (ln) {
+        y = centerText(ctx, ln, y, { size: 19, dir: 'rtl' });
+      });
+    }
+
+    var via = L('rc2_m_' + (o.method || 'driver'));
+    var viaTxt = (OG.lang === 'ar' ? via.ar : via.en) + (o.company ? ' · ' + o.company : '');
+    y = centerText(ctx, viaTxt, y, { size: 19, dir: 'rtl' });
+    if (o.trackingNo) y = centerText(ctx, o.trackingNo, y, { size: 18, dir: 'ltr' });
+    return y + 4;
   }
 
   function drawCodes(ctx, y, R) {
@@ -712,6 +782,9 @@ var Receipt = (function () {
          slip. It is the buyer's record, not the recipient's, and the points
          balance is a number about somebody else's money. */
       if (R.customer && !gift) { y = dashRule(ctx, y); y = drawCustomer(ctx, y, R); }
+      /* A delivery order's destination, on the copy that travels with it.
+         Never on a gift slip: that one is for the person opening the box. */
+      if (R.order && !gift) { y = dashRule(ctx, y); y = drawShipTo(ctx, y, R); }
       y = dashRule(ctx, y);
       y = drawItems(ctx, y, R, gift);
       y = dashRule(ctx, y);
@@ -759,8 +832,35 @@ var Receipt = (function () {
 
   /* From GET /api/sales/:id/receipt — amounts are minor units, straight off
      the sales row. */
+  /* The delivery-office block from server/lib/printing.js — minor units in,
+     whole units out, like everything else on this slip. Every figure here
+     was worked out on the server; nothing on paper is the browser's sum. */
+  function orderFromServer(o, div) {
+    if (!o) return null;
+    return {
+      method: o.method || 'driver',
+      company: o.company_name || '',
+      countryAr: o.country_ar || '', countryEn: o.country_en || '', country: o.country || '',
+      city: o.city || '', address: o.address || '', recipient: o.recipient || '', phone: o.phone || '',
+      fee: (o.fee || 0) / div, feeMode: o.fee_mode || 'none', plan: o.plan || '',
+      status: o.status || '', trackingNo: o.tracking_no || '',
+      due: (o.due || 0) / div, paid: (o.paid || 0) / div, remaining: (o.remaining || 0) / div,
+      payments: (o.payments || []).map(function (p) {
+        var pdiv = Math.pow(10, MINOR_EXP[p.currency] || 0);
+        return {
+          kind: p.kind, amount: p.amount / pdiv, currency: p.currency,
+          amountOrder: p.amount_order / div, methodAr: p.method_ar, methodEn: p.method_en,
+          txnRef: p.txn_ref || '', stage: p.stage || ''
+        };
+      })
+    };
+  }
+
   function fromServer(payload) {
-    var exp = MINOR_EXP[payload.currency] || 0;
+    /* An order carries its currency's exponent, so a currency added one day
+       prints right without the table above knowing about it. */
+    var exp = payload.order && payload.order.minor_exp !== undefined && payload.order.minor_exp !== null
+      ? payload.order.minor_exp : (MINOR_EXP[payload.currency] || 0);
     var div = Math.pow(10, exp);
     var cfg = receiptCfgFromConfig();
 
@@ -808,8 +908,11 @@ var Receipt = (function () {
       giftPolicyAr: payload.receipt.gift_policy_ar,
       giftPolicyEn: payload.receipt.gift_policy_en,
       giftExchangeHours: Number(payload.receipt.gift_exchange_hours) || 0,
-      showBarcode: payload.receipt.show_barcode === '1',
-      showLoyalty: payload.receipt.show_loyalty === '1'
+      /* An order's slip always carries its invoice barcode: the delivery
+         office and the board find the order again by scanning the slip. */
+      showBarcode: payload.receipt.show_barcode === '1' || !!payload.order,
+      showLoyalty: payload.receipt.show_loyalty === '1',
+      order: orderFromServer(payload.order, div)
     };
   }
 

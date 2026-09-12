@@ -73,7 +73,12 @@ export function load() {
 
   const vars = parse(readFileSync(ENV_FILE, 'utf8'));
   for (const [k, v] of Object.entries(vars)) {
-    if (process.env[k] === undefined) process.env[k] = v;
+    /* A BLANK inherited value is not an override, it is this same file read
+       earlier. The panel reads .env once when it opens and hands that copy to
+       every button it runs, so a token pasted into a blank line afterwards was
+       ignored until OG System was quit and reopened. A value set on purpose
+       (a scratch run with a bogus token) is not blank, and still wins. */
+    if (process.env[k] === undefined || process.env[k] === '') process.env[k] = v;
   }
 }
 

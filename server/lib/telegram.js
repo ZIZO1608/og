@@ -123,8 +123,8 @@ const KIND_GROUPS = {
           'rem_job_stuck', 'rem_pay_wait'],
   runs:  ['rem_run_out_long', 'rem_driver_cash'],
   people: ['rem_customer_quiet'],
-  yl:    ['rem_yl_order_waiting', 'rem_yl_due', 'rem_yl_blocked',
-          'rem_yl_digest', 'rem_yl_pay_wait'],
+  yl:    ['rem_yl_order_waiting', 'rem_yl_due', 'rem_yl_due_tomorrow', 'rem_yl_blocked',
+          'rem_yl_digest', 'rem_yl_week', 'rem_yl_pay_wait'],
   live:  ['order_new', 'order_accepted', 'order_declined', 'stage', 'names_ready',
           'message', 'invoice_new', 'payment_recorded', 'payment_confirmed', 'review']
 };
@@ -154,12 +154,13 @@ export function kindGroups() { return KIND_GROUPS; }
    THE ONE EXCEPTION IS MONEY. A kind that carries takings is never granted by
    a default, an upgrade, or anything but somebody ticking it deliberately on a
    screen that names the chat. Same instinct as DEFAULT_RULES, same reason. */
-const RULES_VERSION = 2;
+const RULES_VERSION = 3;
 /* kind -> the version that introduced it. A chat whose saved list predates a
    kind accepts it; a chat saved since then said no to it deliberately. */
 const KIND_SINCE = {
   rem_og_digest: 2, rem_floor_empty: 2, rem_reorder_due: 2, rem_size_run_broken: 2,
-  rem_dead_stock: 2, rem_run_out_long: 2, rem_driver_cash: 2, rem_customer_quiet: 2
+  rem_dead_stock: 2, rem_run_out_long: 2, rem_driver_cash: 2, rem_customer_quiet: 2,
+  rem_yl_due_tomorrow: 3, rem_yl_week: 3
 };
 
 function newerThanChoice(chat, kind) {
@@ -368,8 +369,17 @@ function addChat(side, chat, by, userId) {
                   person: isPrivate && userId != null ? Number(userId) : null,
                   preset: isPrivate && userId != null ? 'role' : null,
                   mutedUntil: null,
-                  /* A new group hears everything but the money — see DEFAULT_RULES. */
-                  rules: isPrivate && userId != null ? null : DEFAULT_RULES.slice(),
+                  /* A new group hears everything but the money — see
+                     DEFAULT_RULES — EXCEPT on the partner side, where a group
+                     is the normal case rather than the awkward one. Yalla Wear
+                     is two people and their bot talks to one shared room, so a
+                     group there starts on the partner preset instead of being
+                     handed a generic list and left for somebody to tick. There
+                     is nothing to withhold: their audience carries no takings.
+                     A group on the SHOP side keeps the cautious default. */
+                  rules: isPrivate && userId != null ? null
+                       : (side === 'yalla' ? (presetMap().partner || DEFAULT_RULES).slice()
+                                           : DEFAULT_RULES.slice()),
                   rulesV: RULES_VERSION };
   const at = list.findIndex((c) => String(c.id) === id);
   /* Sending the code again from a chat that is already on the list is a
@@ -598,21 +608,34 @@ const TEMPLATES = {
   }),
 
   /* ---- the runs --------------------------------------------------------- */
+  /* One row, two clocks: a run is counted in hours and a shipment in days —
+     "out for 137h" is a true sentence nobody reads as five days. */
   rem_run_out_long: (a) => ({
-    ar: `🛵 التوصيلة ${a.id} خارجة منذ ${a.hours} ساعة ولم تُعلَّم بعد` +
+    ar: a.ship
+      ? `📦 الشحنة ${a.id} على الطريق منذ ${a.days} يوم ولم تُعلَّم بعد` +
+        (a.where ? ` — ${a.where}` : '') + '.' +
+        (a.n > 1 ? `${BR}و${a.n - 1} شحنة أخرى بنفس الحال.` : '')
+      : `🛵 التوصيلة ${a.id} خارجة منذ ${a.hours} ساعة ولم تُعلَّم بعد` +
         (a.driver ? ` — ${a.driver}` : '') + '.' +
         (a.n > 1 ? `${BR}و${a.n - 1} توصيلة أخرى بنفس الحال.` : ''),
-    en: `Delivery ${a.id} has been out for ${a.hours}h and is still not marked` +
+    en: a.ship
+      ? `Parcel ${a.id} has been on the road ${a.days} day(s) and is still not marked` +
+        (a.where ? ` — ${a.where}` : '') + '.' +
+        (a.n > 1 ? `${BR}and ${a.n - 1} other parcel(s) the same.` : '')
+      : `Delivery ${a.id} has been out for ${a.hours}h and is still not marked` +
         (a.driver ? ` — ${a.driver}` : '') + '.' +
         (a.n > 1 ? `${BR}and ${a.n - 1} other run(s) the same.` : '')
   }),
-  /* Addressed to the driver, so the name leads — see rem_shift_open. */
+  /* Addressed to the driver, so the name leads — see rem_shift_open. It no
+     longer says "today": 046 knows what has actually been handed in, so this
+     is money still in somebody's pocket whichever day it was collected, and
+     that is a stronger sentence than a daily total. */
   rem_driver_cash: (a) => ({
     ar: (a.person ? `${a.person} — ` : '') +
-        `💵 معك ${fmtMoney(a.amount, a.currency)} من ${a.n} توصيلة اليوم.` + BR +
+        `💵 معك ${fmtMoney(a.amount, a.currency)} من ${a.n} توصيلة لم تُسلَّم بعد.` + BR +
         'سلّمها قبل إغلاق الصندوق.',
     en: (a.person ? `${a.person} — ` : '') +
-        `you are holding ${fmtMoney(a.amount, a.currency)} from ${a.n} delivery(ies) today.` + BR +
+        `you are still holding ${fmtMoney(a.amount, a.currency)} from ${a.n} delivery(ies).` + BR +
         'Hand it in before the drawer is counted.'
   }),
 
@@ -760,6 +783,25 @@ const TEMPLATES = {
         `${BR}Overdue: ${a.overdue}` +
         (a.pending ? `${BR}Waiting on your answer: ${a.pending}` : '')
   }),
+  /* Tonight, for tomorrow. Names up to five and counts the rest, the same
+     shape every list-bearing reminder uses. */
+  rem_yl_due_tomorrow: (a) => ({
+    ar: `📅 غداً (${a.day}): ${a.jobs} طلب · ${a.pieces} قطعة` +
+        ((a.ids || []).length ? `${BR}${(a.ids || []).join('، ')}` : '') +
+        ((a.jobs || 0) > (a.ids || []).length ? `${BR}و${a.jobs - (a.ids || []).length} غيرها.` : ''),
+    en: `Due tomorrow (${a.day}): ${a.jobs} job(s) · ${a.pieces} pcs` +
+        ((a.ids || []).length ? `${BR}${(a.ids || []).join(', ')}` : '') +
+        ((a.jobs || 0) > (a.ids || []).length ? `${BR}and ${a.jobs - (a.ids || []).length} more.` : '')
+  }),
+  /* The only message in the table that is not about something wrong. */
+  rem_yl_week: (a) => ({
+    ar: `📊 أسبوعكم: ${a.jobs} طلب · ${a.pieces} قطعة` +
+        (a.onTime != null ? `${BR}في الموعد: ${a.onTime}%` : '') +
+        `${BR}المستحق: ${a.money}`,
+    en: `Your week: ${a.jobs} job(s) · ${a.pieces} pcs` +
+        (a.onTime != null ? `${BR}On time: ${a.onTime}%` : '') +
+        `${BR}Earned: ${a.money}`
+  }),
   rem_yl_pay_wait: (a) => ({
     ar: `💵 دفعة ${fmtMoney(a.amount, a.currency)} على ${a.invoiceId} سجّلها OG منذ ${a.hours} ساعة.` +
         `${BR}بانتظار تأكيدكم.`,
@@ -772,11 +814,54 @@ const TEMPLATES = {
    would say it twice. */
 const ACTOR_INLINE = new Set(['order_accepted', 'order_declined']);
 
+/* WHERE TO TAP. A message that names a job and gives no way to open it makes
+   somebody find it by hand on a phone, which is most of the reason the portal
+   went unused. #open/job/<id> already exists and already knows which side of
+   the line the reader is on, so this only has to build the address.
+
+   The base is shop.public_url, and FALLS BACK TO THE TUNNEL HOSTNAME in
+   server/.env — there is no sense in having a public address configured and a
+   config row somebody has to remember to fill in with the same string. A LAN
+   IP is deliberately never used: Yalla Wear are in a different building. */
+/* Where a design picture is worth more than its name. Deliberately short:
+   every stage move carrying the artwork again would be the same image four
+   times down one chat. */
+const PHOTO_KINDS = ['order_new', 'rem_yl_order_waiting'];
+
+const JOB_LINK_KINDS = [
+  'order_new', 'order_accepted', 'order_declined', 'stage', 'names_ready',
+  'message', 'review', 'rem_yl_order_waiting', 'rem_yl_due', 'rem_yl_due_tomorrow',
+  'rem_yl_blocked', 'rem_order_no_answer', 'rem_job_late', 'rem_job_stuck'];
+
+function publicBase() {
+  const set = cfg('shop.public_url');
+  if (set) {
+    let b = String(set).trim();
+    while (b.length && (b[b.length - 1] === '/' || b[b.length - 1] === '#')) b = b.slice(0, -1);
+    return b;
+  }
+  const host = maybe('OG_CF_HOSTNAME');
+  if (!host) return null;
+  let h = String(host).trim();
+  if (h.indexOf('://') > -1) h = h.slice(h.indexOf('://') + 3);
+  while (h.length && h[h.length - 1] === '/') h = h.slice(0, -1);
+  return h ? 'https://' + h : null;
+}
+
+function linkFor(kind, a) {
+  const base = publicBase();
+  if (!base) return null;
+  if (a && a.id && JOB_LINK_KINDS.indexOf(kind) > -1) {
+    return base + '/#open/job/' + encodeURIComponent(a.id);
+  }
+  return base;
+}
+
 function render(kind, args) {
   const a = args || {};
   const fn = TEMPLATES[kind];
   const t = fn ? fn(a) : { ar: kind, en: JSON.stringify(a) };
-  const link = cfg('shop.public_url');
+  const link = linkFor(kind, a);
 
   /* Who did it, on its own line. Both companies are more than one person —
      Yalla Wear is Zaven and Zohrab, the shop is whoever is at the till — and
@@ -803,13 +888,59 @@ function render(kind, args) {
 
    callback_data is capped at 64 bytes by Telegram, so it is a verb and an id
    and nothing else. */
+/* THE JOB QUEUE, WALKED FROM THE CHAT.
+
+   The stage a job is on decides the button, so this reads the job LIVE rather
+   than trusting args — a row queued an hour ago knows the stage it had then,
+   and offering "start printing" on a job already out for delivery is worse
+   than offering nothing. One indexed read per row.
+
+   Only ONE button, always: the next step. A row of four stages is a row of
+   three ways to get it wrong with a thumb, and going backwards is a decision
+   that belongs on a screen where you can see the history you are about to
+   drop. setStage refuses the rest anyway.
+
+   reminders.chat_stage_moves is the way to close this door again without a
+   deploy, because it IS a write door on a channel with no session behind it. */
+const STAGE_FLOW = { sent: 'printing', printing: 'delivery', delivery: 'done' };
+const STAGE_BTN = {
+  printing: '🖨 ابدأ الطباعة · Start printing',
+  delivery: '🚚 خرج للتسليم · Out for delivery',
+  done:     '✅ تم · Done'
+};
+const JOB_KINDS = [
+  'order_new', 'rem_yl_order_waiting', 'rem_yl_due', 'rem_yl_blocked',
+  'stage', 'names_ready', 'message'];
+
+export function stageKeyboardFor(jobId) {
+  if (cfg('reminders.chat_stage_moves') === '0') return null;
+  let row = null;
+  try {
+    row = DB.get().prepare(
+      'SELECT id, stage, order_state FROM print_jobs WHERE id = ?').get(String(jobId));
+  } catch { return null; }
+  if (!row) return null;
+
+  /* Still unanswered: that is Accept/Decline’s job, not a stage move. */
+  if (row.order_state === 'pending') {
+    return { inline_keyboard: [[
+      { text: '✅ قبول · Accept', callback_data: 'ok:' + row.id },
+      { text: '✖ رفض · Decline', callback_data: 'no:' + row.id }
+    ]] };
+  }
+  if (row.order_state !== 'accepted') return null;
+  const next = STAGE_FLOW[row.stage];
+  if (!next) return null;
+  return { inline_keyboard: [[
+    { text: STAGE_BTN[next], callback_data: 'st:' + row.id + ':' + next }
+  ]] };
+}
+
 function keyboardFor(side, kind, args) {
   const a = args || {};
-  if (side === 'yalla' && (kind === 'order_new' || kind === 'rem_yl_order_waiting') && a.id) {
-    return { inline_keyboard: [[
-      { text: '✅ قبول · Accept', callback_data: 'ok:' + a.id },
-      { text: '✖ رفض · Decline', callback_data: 'no:' + a.id }
-    ]] };
+  if (side === 'yalla' && a.id && JOB_KINDS.indexOf(kind) > -1) {
+    const k = stageKeyboardFor(a.id);
+    if (k) return k;
   }
   if (kind.indexOf('rem_') === 0) {
     return { inline_keyboard: [[{ text: '🔕 ساعتين · Mute 2h', callback_data: 'mute:2' }]] };
@@ -893,6 +1024,18 @@ async function drain() {
       try { args = JSON.parse(row.args_json); } catch { /* an unreadable row still gets a line */ }
       const text = render(row.kind, args);
       const markup = keyboardFor(side, row.kind, args);
+      /* A PICTURE WHERE THERE IS ONE. Telegram fetches the URL itself, which
+         is why the bucket is public — and why this is a photo with a caption
+         rather than a link the reader has to decide to open. Only where the
+         picture is the point: an order being placed, and the nudge that it is
+         still unanswered. A caption is capped at 1024 characters, comfortably
+         above anything TEMPLATES writes.
+
+         If sendPhoto fails the row falls back to the words on the next
+         attempt, because a design that will not load must not cost them the
+         order. */
+      const photo = (args && args.image && PHOTO_KINDS.indexOf(row.kind) > -1)
+        ? String(args.image) : null;
 
       /* EVERY linked chat gets it, and one refusing does not rob the others.
          The row is marked sent when at least one landed: retrying the whole
@@ -903,9 +1046,15 @@ async function drain() {
       const failures = [];
       for (const c of targets) {
         try {
-          await call(side, 'sendMessage', Object.assign(
-            { chat_id: c.id, text, disable_web_page_preview: true },
-            markup ? { reply_markup: markup } : null));
+          if (photo && row.attempts === 0) {
+            await call(side, 'sendPhoto', Object.assign(
+              { chat_id: c.id, photo, caption: text },
+              markup ? { reply_markup: markup } : null));
+          } else {
+            await call(side, 'sendMessage', Object.assign(
+              { chat_id: c.id, text, disable_web_page_preview: true },
+              markup ? { reply_markup: markup } : null));
+          }
           landed++;
         } catch (e) {
           failures.push(`${c.title}: ${e.message}`);
@@ -1050,7 +1199,11 @@ async function handleUpdate(side, u) {
     try {
       note = await Commands.press({
         side, chat, data: String(q.data || ''), from: q.from,
-        linked: isLinked(side, chat.id)
+        linked: isLinked(side, chat.id),
+        /* So a stage move can advance the button it was pressed on, rather
+           than leaving "Start printing" sitting under a job that is now
+           printing — a stale button is an invitation to press it again. */
+        msgId: q.message && q.message.message_id
       });
     } catch (e) {
       note = e.message;
@@ -1208,6 +1361,18 @@ export function sendPlain(side, chatId, text) {
     { chat_id: chatId, text: String(text), disable_web_page_preview: true });
 }
 
+/* Replace the buttons under a message already sent. Telegram takes a missing
+   reply_markup as "clear them", which is exactly what a finished job wants.
+   Failure is swallowed by the caller: the move already happened, and a chat
+   that cannot be edited (too old, deleted) must not turn a successful write
+   into an error message. */
+export function editKeyboard(side, chatId, messageId, markup) {
+  return call(side, 'editMessageReplyMarkup', {
+    chat_id: chatId, message_id: messageId,
+    reply_markup: markup || { inline_keyboard: [] }
+  });
+}
+
 export function send(side, chatId, kind, args) {
   return call(side, 'sendMessage', {
     chat_id: chatId, text: render(kind, args), disable_web_page_preview: true
@@ -1282,11 +1447,24 @@ export function ownerCan(owner, perm) {
    safe by default. `status()` reports `ownerless` so the card can say
    "reconnect this chat to give it an owner" rather than leaving it a mystery. */
 export function chatAuth(side, chatId) {
-  if (!SIDES.includes(side)) return { owner: null, legacy: false };
+  if (!SIDES.includes(side)) return { owner: null, legacy: false, partner: false };
   const c = chats(side).find((x) => String(x.id) === String(chatId));
-  if (!c) return { owner: null, legacy: false };
+  if (!c) return { owner: null, legacy: false, partner: false };
   const owner = personOf(c);
-  return { owner, legacy: !owner && c.type === 'private' };
+  /* ON THE PARTNER'S SIDE THE SIDE IS THE AUTHORISATION, and it always was.
+     Every partner account holds exactly the same three permissions, and
+     FORBIDDEN in auth.js guarantees none of them can ever be granted money,
+     cost, customer or staff; the audience split has already taken the price
+     and the customer out of anything queued for them. So there is no gradient
+     left for an owning account to narrow — and asking for one broke two things
+     at once: a partner holds no print.read, so /queue and /late were refused
+     on their own bot, and a GROUP has no person at all, so the shared Yalla
+     Wear room could not run a single command.
+
+     The shop's own side keeps the owner check, because there the gradient is
+     real — a cashier’s phone must not be told the day’s takings — and an OG
+     group is a room that could hold anybody. */
+  return { owner, legacy: !owner && c.type === 'private', partner: side === 'yalla' };
 }
 
 /* Whether this chat has silenced itself, and until when — for /status, which

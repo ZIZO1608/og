@@ -335,3 +335,394 @@ body.rtl:not([data-portal="yalla"]) table.tbl th { letter-spacing: 0; }
 body:not([data-portal="yalla"]) .live-who { border-color: transparent; background: #111115; }
 body:not([data-portal="yalla"]) .live-who:hover { background: #141419; border-color: var(--border); }
 body:not([data-portal="yalla"]) .live-faces .who-face { box-shadow: 0 0 0 2px #111115; }
+
+/* ---------------------------------------------------- THE DELIVERY OFFICE
+   js/desk.js (045). `.dk-*` is the screen, `.dks-*` its Settings folds —
+   names that exist nowhere else, so unlike the rules above these are not
+   fighting a base component for specificity and carry no portal prefix. The
+   few that DO restyle a shared class (.inp, .seg, .chip inside the office)
+   keep it, for exactly the reason the top of this file gives. */
+.dk { display: grid; gap: 16px; align-items: start;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) 360px; }
+.dk-col, .dk-sum { padding: 18px 20px 20px; }
+
+/* THE MONEY PANEL HAS TO KEEP ITS OWN BOTTOM ON SCREEN.
+
+   `position: sticky` only sticks while the element is SHORTER than the
+   scrollport. The panel is around 780px tall — step head, totals, discount,
+   plan, a payment row, paid/remaining, note, four print chips, Save and the
+   reasons list — and the scrollport on the shop's 1366x768 laptop is 610px.
+   So it never stuck, and Save sat a couple of hundred pixels below the bottom
+   edge: to press it you scrolled away from the total you had just agreed.
+
+   Above 1240 the panel becomes its own scroller with a maximum height, and
+   .dk-close — Save plus the list of reasons it is disabled — sticks to the
+   bottom of it. Below 1240 the layout is no longer three columns and the
+   fixed .dk-bar carries the figure and the button instead. */
+@media (min-width: 1241px) {
+  .dk-sum { position: sticky; top: 16px;
+            max-height: calc(100vh - var(--topbar-h) - 34px);
+            overflow-y: auto; overscroll-behavior: contain; }
+  .dk-close { position: sticky; bottom: -20px; margin: 14px -20px -20px; padding: 12px 20px 20px;
+              background: var(--card); border-top: 1px solid var(--border); }
+  .dk-close .dk-save { margin-top: 0; }
+}
+@media (max-width: 1240px) {
+  .dk { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .dk-sum { grid-column: 1 / -1; position: static; }
+}
+@media (max-width: 860px) { .dk { grid-template-columns: minmax(0, 1fr); } }
+
+.dk-step { display: flex; align-items: center; gap: 10px; margin: 2px 0 14px; }
+.dk-step h3 { font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
+.dk-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+        font-size: 11.5px; font-weight: 700; background: var(--muted); color: var(--muted-foreground);
+        border: 1px solid var(--border); }
+.dk-meta { margin-inline-start: auto; font-size: 12px; color: var(--muted-foreground); }
+
+/* ---- the scan box: one focus ring around the icon and the field together */
+.dk-scan { display: flex; align-items: center; gap: 10px; padding: 4px 12px; background: #0F0F12;
+           border: 1px solid var(--border-strong); border-radius: var(--radius); }
+.dk-scan:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .12); }
+body:not([data-portal="yalla"]) .dk-scan .inp,
+body:not([data-portal="yalla"]) .dk-scan .inp:focus { border: 0; background: transparent; box-shadow: none; padding: 9px 0; }
+.dk-ico { width: 20px; height: 20px; flex: none; fill: none; stroke: var(--dim); stroke-width: 1.7; }
+.dk-ico.big { width: 38px; height: 38px; }
+
+.dk-hits:not(:empty) { display: grid; gap: 8px; margin-top: 10px; }
+.dk-hit { display: flex; gap: 10px; align-items: center; padding: 8px;
+          border: 1px solid var(--border); border-radius: var(--radius); }
+.dk-hit-txt b { display: block; font-size: 13px; font-weight: 600; }
+.dk-sizes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.dk-size { display: inline-flex; gap: 5px; align-items: baseline; padding: 5px 9px; cursor: pointer;
+           border: 1px solid var(--border-strong); border-radius: 999px; background: transparent;
+           color: var(--foreground); font-size: 12px; font-weight: 600; }
+.dk-size i { font-style: normal; font-size: 11px; color: var(--dim); }
+.dk-size:hover { border-color: var(--brand); }
+.dk-size.is-out { opacity: .45; }
+.dk-hit-none, .dks-none { padding: 10px 2px; font-size: 12.5px; color: var(--muted-foreground); }
+
+.dk-wh { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 0 2px; }
+.dk-row { margin-top: 14px; }
+.dk-row .lbl, .dk-wh .lbl, .dk-fee .lbl { display: block; margin-bottom: 6px; }
+
+.dk-empty { display: grid; gap: 6px; justify-items: center; text-align: center; margin-top: 14px;
+            padding: 26px 16px; border: 1px dashed var(--border-strong); border-radius: var(--radius); }
+.dk-empty b { font-size: 14px; }
+.dk-empty span { max-width: 34ch; font-size: 12.5px; color: var(--muted-foreground); }
+
+.dk-lines { display: grid; gap: 8px; margin-top: 12px; }
+
+/* A SCANNED PAIR IS A FLEX ROW, NOT FIVE RIGID TRACKS.
+
+   It was `grid-template-columns: 40px minmax(0,1fr) auto auto 26px`, and four
+   of those five tracks cannot give: the thumbnail, the ± stepper, the money
+   and the ✕ are all `auto`. So `minmax(0,1fr)` — the product name — was the
+   only track that could absorb a narrow column, and it absorbed all of it.
+   Measured against the real stylesheet on the shop's own 1366x768 laptop: the
+   name cell came out **0 pixels wide** and the row **326px tall**, one
+   character per line. It only looked like the row it was drawn as at 1920.
+
+   Flex with wrap has no such cliff. The name asks for 150px and takes the
+   rest; when the controls no longer fit beside it they wrap to a second line
+   and sit at the end of it (the auto margin still applies on the line it
+   lands on). One row at 1920, two compact rows on the shop's laptop, and
+   nothing to keep in step with a breakpoint. It also fixes the
+   product-is-gone row, which emits four children into a five-track grid. */
+.dk-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px;
+           background: #0F0F12; border: 1px solid var(--border); border-radius: var(--radius); }
+.dk-line > .dk-thumb { flex: none; }
+.dk-line > .dk-l-txt { flex: 1 1 150px; min-width: 0; }
+.dk-line > .dk-qty { flex: none; margin-inline-start: auto; }
+.dk-line > .dk-l-money { flex: none; min-width: 72px; }
+.dk-line > .dk-x { flex: none; }
+/* The two empty spans the gone-product row emits must not eat a flex line. */
+.dk-line > span:empty { display: none; }
+.dk-line.is-new { border-color: var(--brand-border); animation: dkIn .22s ease; }
+@keyframes dkIn { from { transform: translateY(-4px); opacity: .35; } to { transform: none; opacity: 1; } }
+.dk-line.is-short { border-color: var(--warning-border); }
+.dk-l-txt b { display: block; font-size: 13px; font-weight: 600; }
+/* A long SKU must break rather than force the row wider than its column. */
+.dk-l-txt small { display: block; font-size: 11.5px; color: var(--muted-foreground);
+                  overflow-wrap: anywhere; }
+.dk-short { color: var(--warning); }
+.dk-qty { display: flex; align-items: center; gap: 8px; }
+.dk-qty button { width: 26px; height: 26px; border-radius: 8px; cursor: pointer; line-height: 1;
+                 border: 1px solid var(--border-strong); background: transparent;
+                 color: var(--foreground); font-size: 15px; }
+.dk-qty button:hover { border-color: var(--brand); }
+.dk-l-money { text-align: end; }
+.dk-l-money b { font-size: 13px; }
+.dk-l-money small { display: block; font-size: 11px; color: var(--dim); }
+.dk-x { width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent;
+        color: var(--dim); font-size: 18px; line-height: 1; cursor: pointer; }
+.dk-x:hover { color: var(--destructive); background: var(--destructive-soft); }
+.dk-thumb { width: 40px; height: 40px; font-size: 11px; }
+
+.dk-cust { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px;
+           background: #0F0F12; border: 1px solid var(--border); border-radius: var(--radius); }
+.dk-cust-txt { flex: 1; min-width: 140px; }
+.dk-cust-txt b { display: block; font-size: 13.5px; }
+.dk-cust-txt small { font-size: 11.5px; color: var(--muted-foreground); }
+.dk-find { display: flex; gap: 8px; }
+.dk-find .inp { flex: 1; }
+.dk-cust-hits:not(:empty) { display: grid; gap: 6px; margin-top: 8px; }
+.dk-cust-hit { text-align: start; padding: 8px 10px; cursor: pointer; color: var(--foreground);
+               border: 1px solid var(--border); border-radius: var(--radius); background: transparent; }
+.dk-cust-hit:hover { border-color: var(--brand); }
+.dk-cust-hit b { display: block; font-size: 13px; }
+.dk-cust-hit small { font-size: 11.5px; color: var(--muted-foreground); }
+
+.dk-methods { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(94px, 1fr)); }
+.dk-method { display: grid; gap: 3px; justify-items: center; text-align: center; cursor: pointer;
+             padding: 10px 6px; border: 1px solid var(--border); border-radius: var(--radius);
+             background: transparent; color: var(--foreground); }
+.dk-method svg { width: 20px; height: 20px; fill: none; stroke: var(--muted-foreground); stroke-width: 1.6; }
+.dk-method b { font-size: 12px; font-weight: 600; }
+.dk-method small { font-size: 10.5px; line-height: 1.3; color: var(--dim); }
+.dk-method:hover { border-color: var(--border-strong); }
+.dk-method.on { border-color: var(--brand); background: var(--brand-soft); }
+.dk-method.on svg { stroke: var(--brand); }
+
+.dk-2 { display: grid; gap: 0 12px; grid-template-columns: 1fr 1fr; }
+@media (max-width: 560px) { .dk-2 { grid-template-columns: 1fr; } }
+.dk-else { margin: 2px 0 10px; }
+.dk-fee { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.dk-fee-line { margin-bottom: 8px; font-size: 13px; }
+.dk-fee-ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dk-fee-ctl .inp { max-width: 140px; }
+.dk-hint { margin-top: 6px; font-size: 11.5px; color: var(--muted-foreground); }
+.dk-hint.warn { color: var(--warning); }
+body:not([data-portal="yalla"]) .seg.is-off { opacity: .5; }
+
+.dk-tot { padding: 12px; background: #0F0F12; border: 1px solid var(--border); border-radius: var(--radius); }
+.dk-sr, .dk-due, .dk-remain { display: flex; align-items: center; justify-content: space-between;
+                              gap: 10px; padding: 3px 0; font-size: 12.5px; }
+.dk-sr span, .dk-due span, .dk-remain span { color: var(--muted-foreground); }
+.dk-sr b { font-weight: 600; }
+body:not([data-portal="yalla"]) .dk-disc .inp { max-width: 112px; padding: 6px 8px; text-align: end; }
+.dk-due { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; }
+.dk-due b { font-size: 20px; font-weight: 800; letter-spacing: -.03em; color: var(--brand); }
+.dk-pays { display: grid; gap: 10px; margin-top: 12px; }
+.dk-pay { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); }
+.dk-pay-top { display: flex; gap: 8px; align-items: center; }
+.dk-pay-top .inp { flex: 1; }
+body:not([data-portal="yalla"]) .dk-pay-cur { max-width: 84px; }
+.dk-pay-methods { display: flex; flex-wrap: wrap; gap: 6px; }
+.dk-pay-conv { font-size: 11.5px; color: var(--muted-foreground); }
+.dk-split { margin-top: 8px; }
+.dk-paid { margin-top: 12px; }
+.dk-remain b { font-size: 15px; font-weight: 700; }
+.dk-remain.owes b { color: var(--warning); }
+.dk-remain.clear b { color: var(--success); }
+body:not([data-portal="yalla"]) .dk-save { width: 100%; margin-top: 14px; padding: 12px; font-size: 14px; }
+body:not([data-portal="yalla"]) .dk-save[disabled] { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.dk-why { display: grid; gap: 3px; margin: 8px 0 0; padding-inline-start: 18px;
+          font-size: 11.5px; color: var(--muted-foreground); }
+
+.dk-done { display: grid; justify-items: center; gap: 4px; text-align: center; padding: 8px 0 14px; }
+.dk-tick { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+           background: var(--brand-soft); color: var(--brand); font-size: 22px; font-weight: 700; }
+.dk-done b { font-size: 16px; }
+.dk-done span { max-width: 32ch; font-size: 12px; color: var(--muted-foreground); }
+.dk-acts { display: grid; gap: 8px; margin-top: 14px; }
+body:not([data-portal="yalla"]) .dk-acts .btn { width: 100%; }
+
+.dk-ord-top { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.dk-ord-top b { display: block; font-size: 15px; }
+.dk-ord-top small { font-size: 12px; color: var(--muted-foreground); }
+.dk-ord-top .badge { margin-inline-start: auto; }
+.dk-ord-where { margin-bottom: 10px; font-size: 12.5px; }
+.dk-ord-where small { display: block; font-size: 11.5px; color: var(--muted-foreground); }
+.dk-ord-items { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+                font-size: 12px; color: var(--muted-foreground); }
+.dk-ord-pays { display: grid; gap: 4px; margin-top: 10px; font-size: 12px; }
+.dk-ord-pays div { display: flex; justify-content: space-between; gap: 10px; }
+
+.dks-list { display: grid; gap: 10px; }
+.dks-row { display: grid; gap: 10px; align-items: center; padding: 10px;
+           grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+           border: 1px solid var(--border); border-radius: var(--radius); }
+.dks-price { grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); }
+@media (max-width: 700px) { .dks-row { grid-template-columns: minmax(0, 1fr); } }
+.dks-names { display: grid; gap: 6px; }
+.dks-names small { font-size: 11px; }
+.dks-flags { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+             font-size: 11.5px; color: var(--muted-foreground); }
+.dks-flags span { display: inline-flex; align-items: center; gap: 6px; }
+.dks-acc { display: grid; gap: 6px; }
+.dks-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
+
+/* ---- the deliveries board ---------------------------------------------- */
+.dlb-filters { margin-bottom: 14px; }
+.dlb-filters .card-body { display: grid; gap: 10px; padding-top: 16px; }
+.dlb-f { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.dlb-f .lbl { min-width: 82px; margin: 0; }
+body:not([data-portal="yalla"]) .dlb-search .inp { max-width: 340px; }
+.dlb-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.dlb-owes { color: var(--warning); }
+.dlb-pending { color: var(--warning); font-size: 11px; }
+/* A cancelled order stays on the board, dimmed: it is a fact about the day,
+   and hiding it is how somebody asks where an invoice went. */
+tr.dlb-void { opacity: .55; }
+
+/* ---- the board on a phone ------------------------------------------------
+   A six-column table on a 390px screen measured 695px wide: 305px of it off
+   the right edge, including the money, the status and every button.
+
+   THE APP ALREADY HAD THE ANSWER AND THE BOARD HAD OPTED OUT OF IT.
+   labelWideTables() in js/app-routing.js gives any table of five columns or
+   more the `.tbl-cards` class and copies each header's word onto its cells,
+   and the phone rules in css/bulk-gate-responsive.css restack those into
+   cards — every wide table in the shop does this. The board never got it
+   because it repaints itself (Deliveries.repaint writes #view directly) and
+   so never passed through render(), which is where that call lives. Fixed
+   there, not here: a second card-table in this file would be the third time
+   this codebase grew two mechanisms for one job.
+
+   What is left below is the two things the shared rule cannot know: this
+   table's row of buttons, and a filter bar three rows deep. */
+@media (max-width: 720px) {
+  /* Buttons share the width instead of huddling at the end under a thumb. */
+  .dlb-acts { justify-content: stretch; gap: 8px; }
+  .dlb-acts .btn { flex: 1 1 auto; min-height: 40px; }
+  /* The actions cell labels itself with nothing, so it needs no label gap. */
+  .tbl-cards td.dlb-actions { display: block; padding-top: 10px; }
+
+  /* THE FILTERS WERE 516px OF AN 844px SCREEN before the first parcel. Each
+     row scrolls sideways on its own instead of wrapping onto three lines. */
+  .dlb-filters .card-body { padding: 12px 14px; gap: 8px; }
+  .dlb-f { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .dlb-f::-webkit-scrollbar { display: none; }
+  .dlb-f .lbl { min-width: 0; flex: none; }
+  .dlb-f .seg-row { flex-wrap: nowrap; }
+  .dlb-f .seg { white-space: nowrap; }
+  .dlb-search { overflow: visible; }
+  body:not([data-portal="yalla"]) .dlb-search .inp { max-width: none; }
+}
+
+/* ---- the office, polished ------------------------------------------------
+   Two additions, both answering the same question from two distances: what is
+   still missing before this order can be printed. */
+
+/* A step whose condition is actually met trades its number for a tick. The
+   conditions are reasons()' own — see stepHead() in js/desk.js. */
+.dk-step.is-done .dk-n { background: var(--brand-soft); border-color: var(--brand-border);
+                         color: var(--brand); font-size: 12px; }
+
+/* THE BAR THAT CARRIES THE TOTAL AND SAVE.
+
+   It used to appear only below 860px, on the argument that the money panel is
+   a sticky column above that. It is not: between 861 and 1240 the panel is
+   full width UNDERNEATH both other columns, ~780px tall in a ~540px
+   scrollport, so Save was measured 824px below the fold on a 1100px window —
+   a screen and a half — with this bar switched off. It now covers everything
+   that is not the three-column layout.
+
+   It starts after the sidebar, which is 256px, then a 70px rail below 900,
+   and gone below 720. `inset-inline-start` rather than `left`, so it is the
+   same rule in Arabic. It sits ON the tab bar's line (--tabbar-h is 0 where
+   there is no tab bar) and one level under it, like the POS cart sheet — and
+   out of the way entirely while a dialog is open (see body[data-overlay] in
+   css/bulk-gate-responsive.css). */
+.dk-bar { display: none; }
+@media (max-width: 1240px) {
+  .dk { margin-bottom: 78px; }
+  .dk-bar {
+    display: flex; align-items: center; gap: 12px;
+    position: fixed; inset-inline-start: var(--sidebar-w); inset-inline-end: 0;
+    bottom: var(--tabbar-h); z-index: 330;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface-3); border-top: 1px solid var(--border-strong);
+    box-shadow: 0 -14px 40px -12px rgb(0 0 0 / .7);
+  }
+  .dk-bar-sum { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .dk-bar-sum b { font-size: 17px; font-weight: 800; letter-spacing: -.03em; color: var(--brand); }
+  .dk-bar-sum span { font-size: 11.5px; color: var(--muted-foreground);
+                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body:not([data-portal="yalla"]) .dk-bar .btn { padding: 11px 20px; font-size: 13.5px; }
+  body:not([data-portal="yalla"]) .dk-bar .btn[disabled] { opacity: .45; box-shadow: none; }
+}
+/* Below 720 the sidebar is gone entirely, so the bar starts at the edge —
+   --sidebar-w keeps its 70px there and would leave a dead strip. */
+@media (max-width: 720px) { .dk-bar { inset-inline-start: 0; } }
+
+/* ---- a finger, not a mouse ---------------------------------------------
+   The phone block in css/bulk-gate-responsive.css grows the app's small
+   controls to 38px, and it names them one by one — the office's stepper and
+   its remove button were written afterwards and were never in that list, so
+   they stayed at 26 and 24px under a thumb. The scan boxes are the other
+   half: any input under 16px makes iOS zoom the whole page in on focus, and
+   the office focuses its box the moment the screen opens. */
+@media (max-width: 720px) {
+  .dk-qty button { width: 38px; height: 38px; font-size: 17px; }
+  .dk-x { width: 38px; height: 38px; font-size: 22px; }
+  body:not([data-portal="yalla"]) .dk-scan .inp,
+  body:not([data-portal="yalla"]) .rd-scan .inp { font-size: 16px; }
+  .dk-line { padding: 10px; }
+  .rd-acts .btn, .dk-acts .btn { min-height: 44px; }
+}
+
+/* ---- the road: the handover, the day's cash ------------------------------
+   js/road.js. Three tabs on the deliveries board, because they are the same
+   day asked about at three moments. `.rd-*` exists nowhere else. */
+.dlb-tabs { margin-bottom: 12px; }
+
+.rd-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline;
+           justify-content: space-between; margin-bottom: 12px; }
+.rd-head b { font-size: 15px; }
+.rd-sum { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* The scan box is the reason this screen exists, so it is the largest thing
+   on it — the same focus ring as the office's, for the same reason. */
+.rd-scan { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px;
+           background: #0F0F12; border: 1px solid var(--border-strong); border-radius: var(--radius); }
+.rd-scan:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgb(198 255 0 / .12); }
+body:not([data-portal="yalla"]) .rd-scan .inp,
+body:not([data-portal="yalla"]) .rd-scan .inp:focus {
+  border: 0; background: transparent; box-shadow: none; padding: 11px 0; font-size: 15px;
+}
+
+.rd-empty { display: grid; gap: 6px; justify-items: center; text-align: center; margin-top: 14px;
+            padding: 26px 16px; border: 1px dashed var(--border-strong); border-radius: var(--radius); }
+.rd-empty b { font-size: 14px; }
+.rd-empty span { max-width: 40ch; font-size: 12.5px; color: var(--muted-foreground); }
+
+.rd-sheet .table-wrap { margin-top: 12px; }
+.rd-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+/* Hand over is the end of the gesture, so it is the only lime thing here and
+   it sits last — under the thumb on a phone, at the end of the line on a desk. */
+.rd-acts .btn-primary { margin-inline-start: auto; }
+/* A lime button that cannot be pressed must not look like the one that can —
+   an empty sheet's Hand over was full brightness and read as the next step. */
+body:not([data-portal="yalla"]) .rd-acts .btn[disabled] { opacity: .45; box-shadow: none; cursor: not-allowed; }
+@media (max-width: 560px) {
+  .rd-acts { display: grid; }
+  .rd-acts .btn-primary { margin-inline-start: 0; }
+  body:not([data-portal="yalla"]) .rd-acts .btn { width: 100%; }
+}
+
+/* ---- a return ---------------------------------------------------------- */
+.rd-lines { display: grid; gap: 8px; margin-top: 8px; }
+.rd-line { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+           justify-content: space-between; padding: 10px; background: #0F0F12;
+           border: 1px solid var(--border); border-radius: var(--radius); }
+.rd-line b { font-size: 13px; font-weight: 600; }
+.rd-line .sz { margin-inline-start: 7px; padding: 1px 7px; border-radius: 5px;
+               background: var(--muted); font-size: 11px; color: var(--muted-foreground); }
+.rd-qty { display: flex; align-items: center; gap: 9px; }
+.rd-qty b { min-width: 18px; text-align: center; font-size: 14px; }
+.rd-qty .muted { font-size: 12px; }
+/* What the shop is about to hand back, in one number, right under the choice
+   that changes it — the four outcomes differ mostly in this figure. */
+.rd-back { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+           margin-top: 12px; padding: 11px 13px; border-radius: var(--radius);
+           background: var(--brand-soft); border: 1px solid var(--brand-border); font-size: 12.5px; }
+.rd-back b { font-size: 18px; font-weight: 800; letter-spacing: -.03em; color: var(--brand); }
+
+/* The sheet heading on a driver's phone — the paper he signed for, as a
+   checklist he works down. Quiet: it is a label on a group, not a card. */
+.rc-sheet { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+            margin: 14px 2px 8px; font-size: 12px; color: var(--muted-foreground); }
+.rc-sheet b { font-size: 13px; color: var(--foreground); letter-spacing: .04em; }
+.rc-sheet:first-child { margin-top: 0; }

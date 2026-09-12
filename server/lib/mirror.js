@@ -382,16 +382,45 @@ export const TABLES = {
       const items = DB.get().prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(localRow.id);
       await replaceChildren(log, 'sale_items', 'sale_id', localRow.id, items);
     },
-    /* The mirror's print_log and debt_payments point at a sale WITHOUT a
-       cascade and neither has a delete path of its own, so a sale purged
-       here is refused there unless the children go first. */
+    /* The mirror's print_log, debt_payments and order_payments point at a
+       sale WITHOUT a cascade, so a sale purged here is refused there unless
+       the children go first. order_payments does have a delete path of its
+       own, but it runs after the core loop — the sale's delete gets there
+       before it. */
     beforeDelete: async (key) => {
-      for (const t of ['print_log', 'debt_payments']) {
+      for (const t of ['print_log', 'debt_payments', 'order_payments',
+                       'order_returns', 'handover_lines', 'customer_credit']) {
         await SB.remove(t, { sale_id: key.id }).catch(() => {});
       }
     }
   },
   deliveries: { parseKey: numKey, fetchLocal: byId('deliveries'), mapRow: (r) => r },
+
+  /* CURSOR shape, not append-only like debt_payments: a driver's cash is
+     UPDATED when it is handed in, and a highest-id bookmark would never see
+     that. Pushed behind a guard of its own after the core loop — see walk(). */
+  order_payments: { parseKey: numKey, fetchLocal: byId('order_payments'), mapRow: (r) => r },
+
+  /* 046 — the road. A handover is the sheet somebody signed for, its lines
+     are the parcels on it, a return is what happened when one came back, and
+     customer_credit is money the shop owes a person. All cursor-shape: every
+     one of them is updated after it is written (a sheet is handed over, a
+     credit is spent), which a highest-id bookmark would never see. */
+  handovers: {
+    parseKey: textKey, fetchLocal: byId('handovers'), mapRow: (r) => r,
+    afterUpsert: async (log, localRow) => {
+      const rows = DB.get().prepare('SELECT * FROM handover_lines WHERE handover_id = ?').all(localRow.id);
+      await replaceChildren(log, 'handover_lines', 'handover_id', localRow.id, rows);
+    }
+  },
+  order_returns: {
+    parseKey: numKey, fetchLocal: byId('order_returns'), mapRow: (r) => r,
+    afterUpsert: async (log, localRow) => {
+      const rows = DB.get().prepare('SELECT * FROM order_return_lines WHERE return_id = ?').all(localRow.id);
+      await replaceChildren(log, 'order_return_lines', 'return_id', localRow.id, rows);
+    }
+  },
+  customer_credit: { parseKey: numKey, fetchLocal: byId('customer_credit'), mapRow: (r) => r },
 
   print_jobs: {
     parseKey: textKey, fetchLocal: byId('print_jobs'), mapRow: (r) => r,
@@ -595,7 +624,11 @@ const APPEND  = ['fx_rates', 'stock_movements', 'print_log', 'label_print_log',
 const WHOLE   = Object.keys(WHOLE_KEYS);
 
 /* Every table this library pushes, for the check and the status. */
-export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', ...PARTNER, ...DRAWER];
+/* handover_lines and order_return_lines are not here on purpose: each rides
+   on its parent's afterUpsert, the way sale_items ride on their sale. */
+export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants',
+                              'order_payments', 'handovers', 'order_returns', 'customer_credit',
+                              ...PARTNER, ...DRAWER];
 export const APPEND_TABLES = APPEND;
 export const WHOLE_TABLES = WHOLE;
 
@@ -707,6 +740,35 @@ async function walk(log, only) {
       await syncTable(log, 'wants', { phase: 'upsert' });
       await syncTable(log, 'wants', { phase: 'delete' });
     });
+    await breathe();
+  }
+
+  /* The delivery office's payments — who paid how much towards an order, and
+     which driver is still holding the cash. After the core loop, because a
+     payment names its sale; and behind a guard of its own rather than inside
+     the partner block below, which is one try — a project that has not had
+     017 run would otherwise lose expenses, debt payments and the read marks
+     along with it. */
+  const ROAD = ['order_payments', 'handovers', 'order_returns', 'customer_credit'];
+  if (ROAD.some(want)) {
+    log.head('Delivery office');
+    /* ONE GUARD PER TABLE, not one around the block: a project that has had
+       017 run but not 018 must still mirror its payments, and the layout
+       guard above exists because that lesson cost seventy shelves once. */
+    for (const name of ROAD.filter(want)) {
+      try {
+        await syncTable(log, name, { phase: 'upsert' });
+        await syncTable(log, name, { phase: 'delete' });
+        touched.push(name);
+      } catch (e) {
+        if (MISSING_TABLE.test(String(e.message))) {
+          log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
+          log.line('    Run server/supabase/' +
+            (name === 'order_payments' ? '017_delivery_office.sql' : '018_the_road.sql') +
+            ' in the SQL editor.');
+        } else throw e;
+      }
+    }
     await breathe();
   }
 

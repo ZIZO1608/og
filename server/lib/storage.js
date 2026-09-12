@@ -99,6 +99,15 @@ export function pathOfUrl(url) {
    cached the old picture for a year (see the Cache-Control above) shows the
    new one the moment the row's URL changes — the address changes, not the
    bytes behind an old one. */
+/* A JOB'S DESIGN, in the same bucket under its own prefix rather than a second
+   bucket. The bucket is public and holds the shop’s pictures; a print job’s
+   artwork is one of them, and a second bucket would be a second thing to
+   create, a second RLS decision and a second place to look. Same new-path-on-
+   every-replace rule as a product, for the same CDN reason. */
+export function pathForJob(jobId, ext) {
+  return `jobs/${String(jobId).replace(/[^A-Za-z0-9_-]/g, '')}/${Date.now().toString(36)}.${ext}`;
+}
+
 export function pathFor(productId, ext) {
   return `products/${productId}/${Date.now().toString(36)}.${ext}`;
 }

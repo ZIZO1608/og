@@ -136,7 +136,20 @@ function powershell(script, { timeout = 60000 } = {}) {
 /* Everything Windows knows about this, asked once. PowerShell costs the best
    part of a second to start and four calls would be four of those. Each
    question is wrapped on its own so a machine that cannot answer one still
-   answers the rest. */
+   answers the rest.
+
+   A TRY/CATCH DOES NOT PROTECT AGAINST A CALL THAT NEVER RETURNS, which is
+   how the comment above came to be false on the shop's own laptop. The
+   service's command line used to be read with `Get-CimInstance
+   Win32_Service`, and WMI there does not answer at all: measured at over a
+   minute, so the whole probe hit its timeout, every one of these four
+   answers was lost with it, and the check told the owner his running service
+   was "not installed" — and then, following from that, that his tunnel token
+   was missing. One slow call, four wrong sentences, sixty seconds each time
+   the panel's button was pressed.
+
+   The registry holds the same string and answers in milliseconds. Nothing
+   here may use WMI for a fact that can be read another way. */
 const PROBE = `
 $ErrorActionPreference = 'SilentlyContinue'
 $out = [ordered]@{ admin = $false; exe = ''; service = ''; serviceState = ''; servicePath = '' }
@@ -153,17 +166,46 @@ try {
   if ($s) { $out.service = [string]$s.Name; $out.serviceState = [string]$s.Status }
 } catch { }
 try {
-  $w = Get-CimInstance Win32_Service -Filter "Name='${SERVICE}'" -ErrorAction SilentlyContinue
-  if ($w) { $out.servicePath = [string]$w.PathName }
+  /* THE BACKSLASHES ARE DOUBLED BECAUSE THIS IS A TEMPLATE LITERAL. Written
+     once each, JavaScript eats them as escape sequences before PowerShell
+     ever sees the string — HKLM:\SYSTEM\... arrives as HKLM:SYSTEM... , the
+     read fails under SilentlyContinue, and the line below simply never
+     prints. Nothing reports it, which is what made it worth a comment. */
+  $k = Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\${SERVICE}' -Name ImagePath -ErrorAction SilentlyContinue
+  if ($k) { $out.servicePath = [string]$k.ImagePath }
 } catch { }
 $out | ConvertTo-Json -Compress -Depth 4
 `;
 
+const NOTHING = { admin: false, exe: '', service: '', serviceState: '', servicePath: '', asked: false };
+
+/* Fifteen seconds rather than the default sixty. These are four cheap
+   questions, and a machine that cannot answer them in fifteen has something
+   wrong that this check is not going to put right by waiting another
+   forty-five with the panel's button spinning.
+
+   `asked` is the distinction the old version could not draw: "Windows says
+   there is no service" and "Windows did not say" arrived here as the same
+   empty string, and reporting the second as the first is precisely how this
+   check came to tell the shop its running connector was missing. */
 function probe() {
-  if (platform !== 'win32') return { admin: false, exe: '', service: '', serviceState: '', servicePath: '' };
-  const r = powershell(PROBE);
-  try { return JSON.parse(r.out); }
-  catch { return { admin: false, exe: '', service: '', serviceState: '', servicePath: '' }; }
+  if (platform !== 'win32') return { ...NOTHING };
+  const r = powershell(PROBE, { timeout: 15000 });
+  try { return { ...NOTHING, ...JSON.parse(r.out), asked: true }; }
+  catch { return { ...NOTHING }; }
+}
+
+/* THE SERVICE'S COMMAND LINE CAN CARRY THE TOKEN ITSELF.
+   `cloudflared service install <token>` writes it straight into ImagePath, so
+   on a machine registered that way the whole secret sits in the string
+   printed below — to the terminal, and when this runs elevated into a log
+   file on disk that the parent then prints again. The shop's own laptop uses
+   --token-file and so never showed it, which is exactly why this went
+   unnoticed. Anything long enough to be a credential does not get printed. */
+function redact(line) {
+  return String(line)
+    .replace(/(--token[= ]+)\S+/gi, '$1(hidden)')
+    .replace(/\beyJ[A-Za-z0-9_\-=+/.]{16,}/g, '(token hidden)');
 }
 
 /* Where is the program. PATH first because that is what a person who
@@ -222,6 +264,117 @@ async function ask(url, ms = 8000) {
   }
 }
 
+/* ------------------------------------------- what the connector is carrying
+
+   THE ONE THING THIS CHECK USED TO GUESS AT, and it guessed wrong on the day
+   it mattered. Everything else can be right — the program installed, the
+   service running, the shop answering on its port — and the public address
+   can still fail, because what decides where a request goes is the tunnel's
+   own configuration, and for a token-based tunnel that is written in the
+   dashboard and never on this machine. So a 502 was reported as "the tunnel
+   is pointed somewhere else", which sends somebody to change a setting that
+   may already be correct. On 12 Sep 2026 it was correct, and the fault was
+   somewhere this script had never looked.
+
+   It does not have to guess. cloudflared runs a small metrics server bound
+   to localhost, and it will simply say: `/diag/tunnel` names the tunnel it
+   actually joined and how many live connections it holds, and `/config`
+   carries the ingress rules the dashboard handed it. Both are read-only,
+   localhost-only, and carry no credential — the administrator-only token
+   file is still never read, and nothing here needs it.
+
+   A build too old to answer returns null and the section is not printed at
+   all, which is the honest report for "this cannot be told from here".
+
+   THE PORT IS FOUND BY ASKING, NOT BY LOOKING IT UP. cloudflared takes the
+   first free port from 20241 upwards unless it is told otherwise, so the
+   range is tried in order and an explicit --metrics on the service's command
+   line goes first. Windows can of course say which port a process holds, but
+   `Get-NetTCPConnection` inside -NoProfile -NonInteractive does not return —
+   the first draft of this used it and hung the whole check on its 60-second
+   timeout, which reported the running service as "not installed". A refused
+   connection on localhost comes back instantly, so five of them cost nothing
+   and cannot hang. */
+
+const METRICS_FALLBACK = [20241, 20242, 20243, 20244, 20245];
+
+/* `ask` slices the body at 400 characters, which is right for a health line
+   and useless for a metrics page, so this one keeps the whole text. */
+async function localGet(url, ms = 2500) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    const text = await res.text().catch(() => '');
+    return { ok: res.status === 200, status: res.status, text };
+  } catch {
+    return { ok: false, status: 0, text: '' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function metricsPorts(fromProbe) {
+  const out = [];
+  /* An explicit --metrics on the service's command line is the one certain
+     answer, and it is free: the command line is already in hand. */
+  const m = String((fromProbe && fromProbe.servicePath) || '').match(/--metrics\s+"?([^\s"]+)/i);
+  if (m) {
+    const n = Number(String(m[1]).split(':').pop());
+    if (n > 0) out.push(n);
+  }
+  for (const p of METRICS_FALLBACK) { if (!out.includes(p)) out.push(p); }
+  return out;
+}
+
+async function connector(fromProbe) {
+  for (const port of metricsPorts(fromProbe)) {
+    const diag = await localGet(`http://127.0.0.1:${port}/diag/tunnel`);
+    if (!diag.ok) continue;
+
+    let d = null;
+    try { d = JSON.parse(diag.text); } catch { continue; }
+    if (!d || !d.tunnelID) continue;       /* something else is on that port */
+
+    let ingress = null;
+    const cfg = await localGet(`http://127.0.0.1:${port}/config`);
+    if (cfg.ok) {
+      try {
+        const c = JSON.parse(cfg.text);
+        if (c && c.config && Array.isArray(c.config.ingress)) ingress = c.config.ingress;
+      } catch { /* no rules readable, which the caller reports as such */ }
+    }
+
+    const live = Array.isArray(d.connections) ? d.connections.filter(c => c && c.isConnected).length : 0;
+    return { port, tunnelId: String(d.tunnelID), live, ingress };
+  }
+  return null;
+}
+
+/* The rule that would match this hostname. The last entry of an ingress list
+   is the catch-all with an empty hostname — it matches everything and tells
+   us nothing, so a blank one is never a match. */
+function ruleFor(ingress, host) {
+  if (!Array.isArray(ingress)) return null;
+  const want = String(host).toLowerCase();
+  for (const r of ingress) {
+    const h = String((r && r.hostname) || '').toLowerCase();
+    if (h && h === want) return r;
+  }
+  return null;
+}
+
+/* HOW MANY REQUESTS THIS CONNECTOR HAS BEEN GIVEN since it started. The
+   number is meaningless on its own; the DIFFERENCE across one public request
+   is the whole point, because it answers the question no amount of reading
+   configuration can — did that request come through this computer at all. */
+async function served(port) {
+  const r = await localGet(`http://127.0.0.1:${port}/metrics`, 2500);
+  if (!r.ok || !r.text) return null;
+  const m = r.text.match(/^cloudflared_tunnel_total_requests\s+([0-9]+)/m);
+  return m ? Number(m[1]) : null;
+}
+
 /* ------------------------------------------------------------------- check */
 
 async function check({ quiet = false } = {}) {
@@ -253,7 +406,13 @@ async function check({ quiet = false } = {}) {
   /* 2. the service. Running it in a window would mean the tunnel dies with
         the window, which on a shop laptop means it dies when somebody tidies
         up. A service starts with Windows and outlives every login. */
-  if (p.service) {
+  if (!p.asked) {
+    /* NOT "there is no service". Windows was asked and did not answer, and
+       the two must never print the same sentence — the second one sends
+       somebody to reinstall a service that is sitting there running. */
+    warn('Windows did not answer in time, so the service cannot be reported either way.');
+    hint('Nothing below depends on it: those answers come from cloudflared and from the network.');
+  } else if (p.service) {
     if (String(p.serviceState).toLowerCase() === 'running') ok('The Windows service is installed and running.');
     else {
       warn(`The Windows service is installed but ${p.serviceState || 'not running'}.`);
@@ -265,13 +424,54 @@ async function check({ quiet = false } = {}) {
        administrator-only, which is right — so the command line is the only
        honest evidence available without a permission prompt, and it is
        enough to tell "connected to something" from "connected to ours". */
-    if (p.servicePath) hint(`runs: ${String(p.servicePath).replace(/^"[^"]*"\s*/, '')}`);
+    if (p.servicePath) hint(`runs: ${redact(String(p.servicePath).replace(/^"[^"]*"\s*/, ''))}`);
   } else {
     warn('The Windows service is not installed, so nothing reconnects after a reboot.');
     actions.push({ what: 'install-service', why: 'the connector is not registered as a service' });
   }
 
-  /* 3. the token, but only when there is something it would be needed for */
+  /* 3. WHICH TUNNEL, AND WHERE IT SENDS THIS HOSTNAME — asked of cloudflared
+        itself rather than assumed. See the block above for why this is worth
+        two localhost requests. */
+  const conn = await connector(p);
+  let ruleOk = false;          /* read again by the end-to-end step below */
+
+  if (conn) {
+    if (conn.tunnelId === TUNNEL_ID) {
+      ok(`Joined the shop’s tunnel, with ${conn.live} live connection(s) to Cloudflare.`);
+    } else {
+      warn('This computer is connected to a DIFFERENT tunnel than the shop expects.');
+      hint(`joined:   ${conn.tunnelId}`);
+      hint(`expected: ${TUNNEL_ID}`);
+      hint(`Requests for ${HOSTNAME} go to the expected one, so nothing here will ever carry them.`);
+      humans.push('The connector on this computer is joined to the wrong tunnel.');
+    }
+
+    const rule = ruleFor(conn.ingress, HOSTNAME);
+    const want = `http://localhost:${PORT}`;
+
+    if (!conn.ingress) {
+      hint('This build does not report its rules, so where it sends traffic cannot be read here.');
+    } else if (!rule) {
+      warn(`The tunnel carries no rule for ${HOSTNAME}, so it answers 502 without trying.`);
+      hint(`Add a public hostname for ${HOSTNAME} pointing at ${want}.`);
+      humans.push(`The tunnel has no public hostname for ${HOSTNAME}.`);
+    } else {
+      const svc = String(rule.service || '');
+      const rightPort = new RegExp(`:${PORT}(?:/|$)`).test(svc);
+      if (rightPort && /^http:\/\//i.test(svc)) {
+        ruleOk = true;
+        ok(`${HOSTNAME} → ${svc}`);
+      } else {
+        warn(`${HOSTNAME} → ${svc}, which is not where this shop is listening.`);
+        hint(`It should be ${want}, unless it has deliberately been pointed at the HTTPS`);
+        hint('port — in which case see the certificate note below.');
+        humans.push(`The tunnel sends ${HOSTNAME} to ${svc} instead of ${want}.`);
+      }
+    }
+  }
+
+  /* 4. the token, but only when there is something it would be needed for */
   if (actions.some(a => a.what === 'install-service')) {
     if (tok) ok(`A tunnel token is set — ${Env.mask(tok)}`);
     else {
@@ -285,7 +485,7 @@ async function check({ quiet = false } = {}) {
     }
   }
 
-  /* 4. the shop itself */
+  /* 5. the shop itself */
   const local = await ask(`http://127.0.0.1:${PORT}/api/health`, 4000);
   if (local.reached) ok(`The shop is answering on this machine — port ${PORT}.`);
   else {
@@ -293,7 +493,7 @@ async function check({ quiet = false } = {}) {
     hint('The tunnel carries whatever is on that port, so start the shop before judging the result below.');
   }
 
-  /* 5. THE CERTIFICATE TRAP. See the header. A local certificate turns port
+  /* 6. THE CERTIFICATE TRAP. See the header. A local certificate turns port
         8090 into a redirector aimed at a port the tunnel does not carry. */
   const certDir = join(SERVER, 'data', 'certs');
   let hasCert = false;
@@ -310,9 +510,19 @@ async function check({ quiet = false } = {}) {
     humans.push('A local certificate is present and conflicts with the tunnel.');
   }
 
-  /* 6. the whole thing, end to end. Last, because it is the only question
-        whose answer depends on all the others being right. */
+  /* 7. the whole thing, end to end. Last, because it is the only question
+        whose answer depends on all the others being right.
+
+        THE COUNTER IS READ EITHER SIDE OF THE REQUEST, and that bracket is
+        what turns a guess into a measurement: if the connector on this
+        computer was handed the request we just made, its total goes up by
+        one. If the public address fails and that number did NOT move, the
+        request was answered by something else entirely, and no amount of
+        looking at this machine would ever have found it. */
+  const before = conn ? await served(conn.port) : null;
   const pub = await ask(`https://${HOSTNAME}/api/health`, 10000);
+  const after = conn ? await served(conn.port) : null;
+  const cameHere = (before !== null && after !== null) ? after > before : null;
 
   /* CLOUDFLARE'S OWN ERROR PAGE IS JSON, and that is how the first version of
      this check went permanently green. Its body carries `status: 502`, the
@@ -341,12 +551,46 @@ async function check({ quiet = false } = {}) {
       hint('Nothing is attached to this tunnel at all — no connector is connected.');
       humans.push('No connector is attached to the tunnel.');
     } else if (local.reached) {
-      /* The shop IS up here and the tunnel still cannot see it. That is a
-         real fault: the wrong port in the tunnel, or a connector attached to
-         a different machine. Worth stopping a person for. */
-      hint(`The shop is running here on port ${PORT}, so the tunnel is pointed somewhere else.`);
-      hint('Check the tunnel’s public hostname sends traffic to http://localhost:' + PORT);
-      humans.push('The tunnel is up but is not reaching the shop on this machine.');
+      /* THE SHOP IS UP HERE AND THE TUNNEL STILL CANNOT SEE IT. There are two
+         quite different faults behind that and they need opposite answers, so
+         this used to name the likelier one and hope. The bracket around the
+         request above tells them apart outright.
+
+         Measured on 12 Sep 2026: the connector here was on the right tunnel,
+         its rule already read http://localhost:8090, the shop answered that
+         port — and across nineteen public requests its counter never moved
+         once. Every one of them was being answered by a second machine
+         running cloudflared on the same token, which had no shop on its own
+         port. Following this script's old advice would have meant editing a
+         setting that was already correct. */
+      if (cameHere === false && conn && conn.tunnelId === TUNNEL_ID) {
+        hint('That request never arrived here — this computer’s connector was not given it.');
+        /* Only claimed when it was actually checked and passed. Saying "its
+           rule is right" under a NOTE above saying the rule is wrong is two
+           sentences that disagree, which is worse than the shorter one. */
+        if (ruleOk) hint('It is joined to the right tunnel and its rule for this hostname is correct.');
+        else hint('It is joined to the right tunnel and holds live connections to Cloudflare.');
+        blank();
+        hint('So ANOTHER computer is connected to this same tunnel and is answering');
+        hint('instead — Cloudflare treats two connectors as a pair and hands each request');
+        hint('to whichever it likes. That one has no shop on its own port, so everything');
+        hint('it takes comes back 502, and this machine never sees any of it.');
+        blank();
+        hint('The tunnel’s page in the dashboard lists its connectors and will show two.');
+        hint('On the other computer:  cloudflared service uninstall');
+        hint('If that page shows only this one, then the hostname has been handed to a');
+        hint('different tunnel instead — check which tunnel its DNS record points at.');
+        humans.push('A second computer is connected to this tunnel and is answering instead of this one.');
+      } else if (cameHere === true) {
+        hint(`The request DID arrive here, and the connector could not pass it to port ${PORT}.`);
+        hint('That is a fault on this machine rather than at Cloudflare — the certificate');
+        hint('note above is the usual cause.');
+        humans.push('The connector here received the request and could not reach the shop.');
+      } else {
+        hint(`The shop is running here on port ${PORT}, so the tunnel is pointed somewhere else.`);
+        hint('Check the tunnel’s public hostname sends traffic to http://localhost:' + PORT);
+        humans.push('The tunnel is up but is not reaching the shop on this machine.');
+      }
     } else {
       /* Expected. The connector is fine, there is simply nothing behind it. */
       hint('The connector is up and the shop behind it is closed. Start the shop and try again.');

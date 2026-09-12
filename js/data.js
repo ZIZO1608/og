@@ -838,6 +838,25 @@ var DB = {
   payLabel: function (k) {
     return (OG.lang === 'ar' ? PAYMENT_LABELS_AR[k] : null) || PAYMENT_LABELS[k] || k;
   },
+
+  /* 045: the owner's list of payment methods, as the server sent it (filled
+     by hydrate). Empty before a hydrate, which is exactly when nothing can be
+     paid anyway. */
+  payMethodList: [],
+  payMethod: function (id) {
+    return DB.payMethodList.filter(function (m) { return m.id === id; })[0] || null;
+  },
+  /* 'till' | 'desk' | 'debt' — the active methods offered in that place. */
+  payMethodsFor: function (where) {
+    return DB.payMethodList.filter(function (m) { return m.active !== false && m[where]; });
+  },
+  /* Whether a method hands back a transfer reference. Falls back to the four
+     the till always asked about, for a server from before 045. */
+  payNeedsRef: function (id) {
+    var m = DB.payMethod(id);
+    if (m) return !!m.ref;
+    return ['sham', 'fuad', 'haram', 'card'].indexOf(id) > -1;
+  },
   paymentMethods: PAYMENT_METHODS,
   printStages: PRINT_STAGES,
   printStageLabels: PRINT_STAGE_LABELS,
@@ -2050,11 +2069,21 @@ var DB = {
       return DRAWER_METHODS.indexOf(e.method) > -1 ? a + e.amount : a;
     }, 0);
 
-    var expected = s.float + drawerSales + settled - cashOut;
+    /* 045: what the delivery office and the drivers put into THIS drawer, in
+       the shop's own currency. The server counts it in `expected` (summary in
+       server/lib/money.js), so this has to as well — two figures for one cash
+       box that disagree is worse than either of them alone. */
+    var base = CONFIG.BASE_CURRENCY || 'SYP';
+    var orders = (DB.orderPayments || []).reduce(function (a, p) {
+      if (p.shiftId !== s.id || p.currency !== base) return a;
+      return a + (p.kind === 'refund' ? -p.amount : p.amount);
+    }, 0);
+
+    var expected = s.float + drawerSales + settled + orders - cashOut;
 
     return {
       byMethod: byMethod, revenue: revenue, drawerSales: drawerSales,
-      settled: settled, cashOut: cashOut, expected: expected,
+      settled: settled, orders: orders, cashOut: cashOut, expected: expected,
       count: DB.shiftSales(s).length,
       /* Anything that is revenue but is NOT in the drawer, listed so the
          cashier can see why expected is lower than the day's takings. */
@@ -2409,12 +2438,20 @@ var DB = {
      foldName is an open question flagged in the Stage A report; product
      behaviour is deliberately untouched here. */
 
-  /* The bare digits of a Syrian number, with the local form promoted to the
-     international one: 0933 111 222 → 963933111222. The rule is lifted from
-     js/whatsapp.js, where it already worked. */
+  /* The bare digits of a phone number, with the local forms promoted to the
+     international one: Syria 0… → 963, Jordan 07… → 962, Turkey 05…
+     (eleven digits) → 90, and a 00 prefix or a trunk zero kept after the
+     country code dropped. server/lib/text.js says why at length; the parity
+     table in CUSTOMERS.md is the test for the pair. */
   normPhone: function (s) {
     var d = String(s == null ? '' : s).replace(/\D/g, '');
-    if (d.length === 10 && d.charAt(0) === '0') d = '963' + d.slice(1);
+    if (d.indexOf('00') === 0) d = d.slice(2);
+    d = d.replace(/^(963|962|90)0(?=\d)/, '$1');
+    if (d.length === 10 && d.charAt(0) === '0') {
+      d = (d.charAt(1) === '7' ? '962' : '963') + d.slice(1);
+    } else if (d.length === 11 && d.slice(0, 2) === '05') {
+      d = '90' + d.slice(1);
+    }
     return d;
   },
 
@@ -2655,6 +2692,32 @@ var DB = {
        Settings fold shows what it makes of it — a silently wrong offset is a
        digest arriving at the wrong hour every day with nothing saying why. */
     CONFIG.TZ_MINUTES = num('shop.tz_minutes', 180);
+
+    /* 045: the payment methods are the owner's list, not a constant.
+       Filled IN PLACE — PAYMENT_METHODS, both label maps and DRAWER_METHODS
+       are held by reference (DB.paymentMethods, DB.drawerMethods, and
+       js/receipt.js reads the maps as globals), so new arrays would leave
+       every holder reading the old list. The till shows active till methods;
+       the labels keep EVERY method, switched off or not, because an old
+       receipt still says "Fuad". A list that will not parse leaves the
+       built-in one exactly as it was. */
+    if (cfg['pay.methods']) {
+      try {
+        var pm = JSON.parse(cfg['pay.methods']);
+        if (Array.isArray(pm) && pm.length) {
+          DB.payMethodList = pm.filter(function (m) { return m && m.id; });
+          PAYMENT_METHODS.length = 0;
+          DRAWER_METHODS.length = 0;
+          DRAWER_METHODS.push('cash', 'cod');
+          DB.payMethodList.forEach(function (m) {
+            PAYMENT_LABELS[m.id] = m.en || m.id;
+            PAYMENT_LABELS_AR[m.id] = m.ar || m.en || m.id;
+            if (m.active !== false && m.till) PAYMENT_METHODS.push(m.id);
+            if (m.drawer && DRAWER_METHODS.indexOf(m.id) === -1) DRAWER_METHODS.push(m.id);
+          });
+        }
+      } catch (e) { /* keep the built-in list */ }
+    }
 
     /* ---- the 80mm receipt ------------------------------------------------ */
     function bool(key, fallback) {
@@ -3096,6 +3159,16 @@ function hydrateMoney(m) {
     });
   });
 
+  /* 045: cash the delivery office put into a drawer. The server counts it in
+     a shift's `expected` (server/lib/money.js), so DB.shiftSummary has to as
+     well — two figures for the same box that disagree is worse than one. */
+  DB.orderPayments = (m.orderPayments || []).map(function (p) {
+    return {
+      id: p.id, saleId: p.sale_id, kind: p.kind, at: date(p.at), amount: p.amount,
+      currency: p.currency, method: p.method, shiftId: p.shift_id
+    };
+  });
+
 
   if (m.categories && m.categories.length) {
     EXPENSE_CATEGORIES.length = 0;
@@ -3156,6 +3229,9 @@ function hydratePartner(p) {
         /* Where it was raised — the till, a person on the Print screen, or
            one day the website — and what the shop thought of it once done. */
         source: j.source || 'manual',
+        /* The artwork itself, where a picture has been taken. Both sides see
+           it — it is the printer's own design, not customer data. */
+        image: j.design_image_url || null,
         review: reviewOf[j.id] || null,
         lines: j.kind === 'kit' ? lines : null,
         history: (j.history || []).map(function (h) {

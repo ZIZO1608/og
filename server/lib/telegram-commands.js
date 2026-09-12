@@ -28,17 +28,24 @@
       asking for the shop's takings is answered as Yalla Wear — which is to
       say, not at all.
 
-   READS, AND EXACTLY ONE WRITE
-   ----------------------------
-   Everything here is a read except accepting or declining an order, which is
-   the one thing where the answer is one tap and the alternative is opening a
-   portal on a phone. It is a decision the partner side is entitled to make,
-   it is recorded in the job's own history with the Telegram name that pressed
-   it, and it is refused unless the order is actually pending.
+   READS, AND THE PRINTER’S OWN QUEUE
+   ----------------------------------
+   Everything here is a read except the two things Yalla Wear do to their own
+   work: answering an order, and moving it along the stages they own. Both
+   earn a button the same way — the partner side is entitled to make the
+   decision, the server refuses it unless the job is actually in a state where
+   it makes sense (pending, to answer; accepted with every shirt named, to
+   move), and the Telegram name that pressed it goes into the job's own
+   history, which is the only reason a sessionless tap may write at all.
 
-   Nothing else writes. No stage moves, no money, no voids — a chat is a room
-   whose membership nobody in this system controls, and the blast radius of a
-   wrong tap has to stay at "an order was answered a bit early".
+   They are a printer with ink on their hands and a phone in their pocket. A
+   notification they can only act on by finding a portal is a notification
+   they act on later.
+
+   NOTHING ELSE WRITES. No money, no voids, and no stage move from the SHOP
+   side — the shop asserting a step about another company is rule 3 in
+   partner.js. reminders.chat_stage_moves shuts the stage door again without a
+   deploy, because a chat is a room whose membership nobody here controls.
 
    All replies go out through Telegram.send / sendPlain, so they inherit the
    plain-text, Arabic-then-English rule. No Markdown, ever: a job id like
@@ -491,7 +498,28 @@ export async function handle({ side, chat, text, msg, linked } = {}) {
      no resolvable, active account — a group, a legacy row, somebody who has
      left — answers nothing but the doorway commands. */
   const auth = Telegram.chatAuth(side, chat.id);
-  const may = (perm) => (auth.legacy ? true : Telegram.ownerCan(auth.owner, perm));
+  /* THREE WAYS A CHAT IS ALLOWED SOMETHING, and they are not the same thing.
+
+     `partner` — this is Yalla Wear's own bot. Their side is the whole
+     authorisation: every partner account holds the same three permissions,
+     FORBIDDEN can never widen them, and the audience strip has already run.
+     So the question is asked of the ROLE, which is also what the HTTP routes
+     do — they are gated ['print.read','partner.jobs'] any-of for exactly this
+     reason. Without this a partner holds no print.read and their own /queue
+     answered "not allowed", and a shared group answered nothing at all.
+
+     `legacy` — a private OG chat linked before an account was recorded. It
+     could only have been put there by somebody with config.write, which was
+     the gate at the time.
+
+     Otherwise the owning account decides, which is what keeps a cashier from
+     asking her phone for the day’s takings. */
+  const PARTNER_MAY = ['print.read', 'partner.jobs', 'partner.respond', 'partner.invoice'];
+  const may = (perm) => {
+    if (auth.partner) return PARTNER_MAY.indexOf(perm) > -1;
+    if (auth.legacy) return true;
+    return Telegram.ownerCan(auth.owner, perm);
+  };
   const refuse = () => pair(
     'هذه المحادثة غير مخوّلة بهذا. اسأل المدير.',
     'This chat is not allowed that. Ask the manager.');
@@ -506,7 +534,12 @@ export async function handle({ side, chat, text, msg, linked } = {}) {
     case 'queue':  out = may('print.read') ? queueText(side) : refuse(); break;
     case 'late':   out = may('print.read') ? lateText(side) : refuse(); break;
     /* The one that carries the drawer. */
-    case 'today':  out = may('money.read') ? todayText(side) : refuse(); break;
+    /* The drawer is the shop's question. On Yalla Wear's bot /today is what
+       they deliver today and carries no money at all, so it is asked as a job
+       question there — gating it on money.read refused a partner their own
+       schedule. */
+    case 'today':  out = may(side === 'yalla' ? 'partner.jobs' : 'money.read')
+                     ? todayText(side) : refuse(); break;
     case 'job':
       if (!may('print.read')) { out = refuse(); break; }
       out = arg ? jobText(side, arg.toUpperCase(), may('customer.read'))
@@ -518,14 +551,72 @@ export async function handle({ side, chat, text, msg, linked } = {}) {
   return true;
 }
 
+/* What each move is called when the bot says it out loud. Kept beside the
+   button rather than in TEMPLATES because it is a reply to a press, not a
+   queued event, and it has no args to render. */
+const STAGE_SAID = {
+  printing: { ar: '🖨 بدأت الطباعة', en: 'Printing started' },
+  delivery: { ar: '🚚 خرج للتسليم', en: 'Out for delivery' },
+  done:     { ar: '✅ تم التسليم', en: 'Done' }
+};
+
 /* ------------------------------------------------------------------ the buttons
 
    Telegram spins the button until the callback id is answered, so this
    returns a SHORT line for the toast and telegram.js answers with it either
    way — including when this throws. */
-export async function press({ side, chat, data, from, linked } = {}) {
+export async function press({ side, chat, data, from, linked, msgId } = {}) {
   if (!linked) return 'This chat is not linked.';
-  const [verb, rest] = String(data || '').split(':');
+  const parts = String(data || '').split(':');
+  const verb = parts[0];
+  const rest = parts[1];
+
+  /* Whoever pressed it, as Telegram knows them. There is no account behind a
+     button, so this name is the entire audit trail and it goes into the job
+     history — the same reason Accept is allowed to be a button at all. */
+  const presser = () =>
+    [from && from.first_name, from && from.last_name].filter(Boolean).join(' ') ||
+    (from && from.username) || 'Telegram';
+
+  /* ---- WALKING THE JOB ALONG -------------------------------------------
+     The one write besides Accept, and it earns a button for the same three
+     reasons: the partner side is entitled to make the move, setStage refuses
+     it unless the order is actually accepted and every shirt has a name, and
+     the Telegram name that pressed it lands in the job history.
+
+     Only Yalla Wear presses these. The shop moving its own printer’s job
+     from a chat would be the shop asserting something about another company,
+     which is rule 3 in partner.js. */
+  if (verb === 'st') {
+    if (side !== 'yalla') return 'Only Yalla Wear can move a job along.';
+    if (cfg('reminders.chat_stage_moves') === '0') return 'Moving jobs from chat is switched off.';
+    const id = String(rest || '').toUpperCase();
+    const stage = String(parts[2] || '');
+    const who = presser();
+    let job = null;
+    try {
+      job = Partner.setStage(id, stage, 'yalla', null, 'from Telegram by ' + who);
+    } catch (e) {
+      if (e.code === 'not_found') return 'No such order.';
+      if (e.code === 'names_missing') return 'Some shirts still have no name on them.';
+      if (e.code === 'not_accepted') return 'Accept the order first.';
+      if (e.code === 'bad_stage') return 'That is not a stage.';
+      return e.message;
+    }
+    const label = STAGE_SAID[stage] || stage;
+    await reply(side, chat.id, pair(
+      label.ar + ' — ' + id + ' · ' + who,
+      label.en + ' — ' + id + ' · ' + who));
+    /* MOVE THE BUTTON ON. Left alone, "Start printing" sits under a job that
+       is already printing, and a stale button is an invitation to press it
+       again — which setStage would refuse, so the person learns the bot is
+       broken rather than that they already did it. */
+    if (msgId) {
+      const next = Telegram.stageKeyboardFor(id);
+      await Telegram.editKeyboard(side, chat.id, msgId, next).catch(() => {});
+    }
+    return label.en;
+  }
 
   if (verb === 'mute') {
     /* The chat that pressed it, and only that chat. */
@@ -560,6 +651,15 @@ export async function press({ side, chat, data, from, linked } = {}) {
     await reply(side, chat.id, verb === 'ok'
       ? pair(`✅ قُبل الطلب ${id} — ${who}`, `Order ${id} accepted — ${who}`)
       : pair(`✖ رُفض الطلب ${id} — ${who}`, `Order ${id} declined — ${who}`));
+    /* THE BUTTONS UNDER THAT MESSAGE ARE NOW WRONG. Left alone, Accept and
+       Decline sit under an order that has been answered, and pressing either
+       again earns an "already answered" toast that reads as the bot being
+       broken. Accepted becomes the next step — Start printing — so the same
+       message walks the job along; declined becomes nothing. */
+    if (msgId) {
+      await Telegram.editKeyboard(side, chat.id, msgId,
+        verb === 'ok' ? Telegram.stageKeyboardFor(id) : null).catch(() => {});
+    }
     return verb === 'ok' ? 'Accepted' : 'Declined';
   }
 

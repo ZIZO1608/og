@@ -490,6 +490,12 @@ var Shop = (function () {
     partnerBundle: function ()            { return REQUESTS.partner(); },
 
     /* ---- the Telegram line ---- */
+    /* The design a print job is for. print.write on the server; the partner
+       sees it in their payload and their bot sends it with a new order. */
+    setJobImage: function (id, dataUrl) {
+      return API.post('/api/print-jobs/' + encodeURIComponent(id) + '/image',
+        dataUrl === null ? { clear: true } : { dataUrl: dataUrl });
+    },
     telegramStatus: function ()           { return API.get('/api/telegram/status'); },
     telegramLink:   function ()           { return API.post('/api/telegram/link', {}); },
     telegramUnlink: function (chatId) { return API.post('/api/telegram/unlink', chatId ? { chatId: chatId } : {}); },

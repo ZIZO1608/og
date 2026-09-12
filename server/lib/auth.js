@@ -72,6 +72,12 @@ export const ALL_PERMISSIONS = [
 
   { perm: 'delivery.read',   group: 'delivery',  label: 'See deliveries' },
   { perm: 'delivery.write',  group: 'delivery',  label: 'Send out and mark delivered' },
+  /* The delivery office: a till for orders taken by phone, Instagram and
+     WhatsApp. Not folded into delivery.write, which the cashier holds so she
+     can tick "send this out" at the till — taking a remote order is a sale
+     with a destination and a payment plan, and who does that is the
+     manager's decision. */
+  { perm: 'delivery.desk',   group: 'delivery',  label: 'Take remote orders at the delivery office' },
 
   { perm: 'cost.read',       group: 'money',     label: 'See what things cost' },
   { perm: 'profit.read',     group: 'money',     label: 'See profit' },

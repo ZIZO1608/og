@@ -148,7 +148,12 @@ function jobQty(d, row) {
 function jobBrief(d, row) {
   return {
     id: row.id, design: row.design, kind: row.kind, qty: jobQty(d, row),
-    priority: row.priority, deadline: row.deadline, stage: row.stage
+    priority: row.priority, deadline: row.deadline, stage: row.stage,
+    /* THE DESIGN ITSELF, so the bot can send the picture rather than only its
+       name. Not customer data and not a price, so it crosses to the printer
+       untouched — it is their own artwork, and seeing it is most of what
+       deciding whether to accept an order means. */
+    image: row.design_image_url || null
   };
 }
 
@@ -355,7 +360,12 @@ export function create({
 
 /* Returns the job. Refuses with a reason rather than a boolean, because
    "false" told the browser nothing it could show a person. */
-export function setStage(id, stage, side, userId = null) {
+/* `note` names whoever moved it when there is no account to name — a button
+   pressed in a Telegram group has a person behind it and no session, exactly
+   like respondToOrder, and the job history has to say who or the button is
+   not defensible. Optional and trailing, so every existing caller is
+   unchanged. */
+export function setStage(id, stage, side, userId = null, note = null) {
   const to = STAGES.indexOf(stage);
   if (to < 0) throw Object.assign(new Error(`no such stage: ${stage}`), { code: 'bad_stage' });
 
@@ -395,7 +405,8 @@ export function setStage(id, stage, side, userId = null) {
     if (side && STAGE_MESSAGE[stage]) {
       insertMessage(d, {
         jobId: id, from: side, kind: STAGE_MESSAGE[stage],
-        body: `${STAGE_LABEL[stage]} — ${id} · ${qty} pcs`, userId
+        body: `${STAGE_LABEL[stage]} — ${id} · ${qty} pcs` + (note ? ` (${note})` : ''),
+        userId
       });
     }
     /* Whichever side moved it, the other one hears. */
@@ -445,6 +456,23 @@ function placeOrder(d, row, userId = null) {
   emitEvent(d, {
     kind: 'order_new', refType: 'job', refId: id, audience: 'yalla', userId,
     args: { ...jobBrief(d, row), qty }
+  });
+}
+
+/* The design picture. Only this writes the column — never a general update
+   path — for the reason Cat.setImage is the only writer of products.image_url:
+   a client that could put any address into an <img> on every till, and into a
+   Telegram sendPhoto, is not a feature. Returns the previous URL so the
+   caller can tidy the old object up. */
+export function setDesignImage(id, url, userId = null) {
+  return DB.tx(() => {
+    const d = DB.get();
+    const row = d.prepare('SELECT id, design_image_url FROM print_jobs WHERE id = ?').get(id);
+    if (!row) throw Object.assign(new Error('no such job'), { code: 'not_found' });
+    d.prepare('UPDATE print_jobs SET design_image_url = ?, updated_at = ? WHERE id = ?')
+      .run(url || null, nowIso(), id);
+    DB.logChange('print_jobs', id, 'update', userId, url ? 'design picture' : 'design picture removed');
+    return { previous: row.design_image_url || null, job: job(id) };
   });
 }
 

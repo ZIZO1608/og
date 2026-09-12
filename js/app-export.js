@@ -707,6 +707,12 @@ function handleDeepLink(hash) {
       go('reports', function () { if (s) openInvoice(s); else toast(t('invoice'), id, 'err'); });
       return true;
     case 'job':
+      /* WHICH SIDE OF THE LINE, decided by who is signed in — the same rule
+         ywinvoice follows below. Yalla Wear's bot now sends a link with every
+         message about a job, and for them there is no Print screen to go to:
+         go('print') would bounce off navAllowed and land them on their Today
+         page, which reads as the link being broken. */
+      if (OG.print.partner) { YALLA.go('queue', id); return true; }
       go('print', function () { openJobDrawer(id); });
       return true;
     /* The same bill has a view on each side of the line. Which one opens

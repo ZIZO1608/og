@@ -502,8 +502,24 @@ function openJobDrawer(id) {
       : t('deadline') + ' ' + relDate(j.deadline)) + '</div></div>' +
     '<div class="card-body">' + stepper(j.stage, { history: j.history, overdue: over }) + '</div></div>';
 
-  body += '<div class="card mb"><div class="card-head"><h3>' + t('design_note') + '</h3></div>' +
-    '<div class="card-body"><p style="margin:0;font-size:14px;line-height:1.6">' + esc(j.design) + '</p></div></div>';
+  /* THE DESIGN, AND THE DESIGN. The note is what somebody typed; the picture
+     is what is actually going on the shirt — and it is the one thing Yalla
+     Wear want to see before they accept, so their bot sends it with the order.
+     A job with no picture says so and offers the button rather than leaving a
+     hole: the shop has always worked from the words, and this is an addition
+     to that, not a replacement. */
+  var canPic = allow('print.write') && typeof Shop !== 'undefined' && Shop.live();
+  body += '<div class="card mb"><div class="card-head"><h3>' + t('design_note') + '</h3>' +
+    (canPic ? '<div class="card-actions"><button class="btn btn-sm" data-act="job-pic">' +
+      t(j.image ? 'pj_pic_change' : 'pj_pic_add') + '</button>' +
+      (j.image ? ' <button class="btn btn-sm btn-ghost" data-act="job-pic-clear" data-jid="' +
+        esc(j.id) + '">' + t('remove') + '</button>' : '') + '</div>' : '') +
+    '</div>' +
+    '<div class="card-body">' +
+      (j.image ? '<img class="job-design" src="' + esc(j.image) + '" alt="' + esc(j.design || '') + '">' : '') +
+      '<p style="margin:' + (j.image ? '10px 0 0' : '0') + ';font-size:14px;line-height:1.6">' + esc(j.design) + '</p>' +
+      (canPic ? '<input type="file" id="jobFile" accept="image/*" hidden>' : '') +
+    '</div></div>';
 
   /* A kit job shows its print list, editable. This is OG's half of the
      confirmation loop — the only place a missing name can be filled in,
@@ -576,7 +592,19 @@ function openJobDrawer(id) {
     '<button class="btn btn-ghost" data-act="export-rec" data-rec="job" data-kind="pdf" data-id="' + j.id + '">' + t('yl_work_order') + '</button>' +
     '</div>';
 
-  openDrawer({ head: head, body: body });
+  openDrawer({ head: head, body: body, onOpen: function (root) {
+    var input = root.querySelector('#jobFile');
+    if (!input) return;
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      readImageFile(file, function (src, err) {
+        if (err) { toast(t('image'), t('up_err_' + err), 'err', 4000); return; }
+        uploadJobDesign(j.id, src, function () { openJobDrawer(j.id); });
+      });
+    });
+  } });
 }
 
 /* OG's view of a partner invoice — their bill to pay, so it lives in OG,

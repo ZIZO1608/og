@@ -48,7 +48,8 @@ export const PUSHED = [
   'print_jobs', 'print_job_lines', 'print_job_stages', 'job_reviews',
   'partner_invoices', 'partner_invoice_refs', 'partner_invoice_payments',
   'job_messages', 'purchase_orders', 'purchase_order_lines',
-  'wa_messages', 'shifts', 'expenses', 'debt_payments',
+  'wa_messages', 'shifts', 'expenses', 'debt_payments', 'order_payments',
+  'handovers', 'handover_lines', 'order_returns', 'order_return_lines', 'customer_credit',
   'stock_counts', 'stock_count_lines',
   'loyalty_redemptions', 'wants',
   'config', 'role_permissions', 'label_templates', 'clubs', 'notification_reads'

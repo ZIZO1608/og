@@ -113,6 +113,10 @@ const debtPayments = saleIds.length
   ? one(`SELECT COUNT(*) AS n FROM debt_payments
           WHERE sale_id IN (${saleIds.map(() => '?').join(',')})`, ...saleIds).n
   : 0;
+const orderPayments = saleIds.length
+  ? one(`SELECT COUNT(*) AS n FROM order_payments
+          WHERE sale_id IN (${saleIds.map(() => '?').join(',')})`, ...saleIds).n
+  : 0;
 
 /* ---------------------------------------------------------------- report */
 
@@ -142,6 +146,7 @@ console.log(`  ${bold('to delete')}                    ${String(saleIds.length).
 console.log(`  their line items             ${String(saleItems).padStart(5)}`);
 if (deliveries) console.log(`  their deliveries             ${String(deliveries).padStart(5)}`);
 if (debtPayments) console.log(`  their debt payments          ${String(debtPayments).padStart(5)}`);
+if (orderPayments) console.log(`  their order payments         ${String(orderPayments).padStart(5)}`);
 
 /* ---- what SURVIVES, said out loud. The point of this run is what is left. */
 const keepProducts = many('SELECT id, name FROM products WHERE demo = 0');
@@ -210,6 +215,27 @@ const removed = DB.tx(() => {
 
     d.prepare(`DELETE FROM sale_items WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
     d.prepare(`DELETE FROM debt_payments WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
+    /* order_payments is a cursor table, so each delete is logged — for the
+       reason the deliveries above are. */
+    const paysGone = many(
+      `SELECT id FROM order_payments WHERE sale_id IN (${inList(saleIds)})`, ...saleIds
+    ).map((r) => r.id);
+    d.prepare(`DELETE FROM order_payments WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
+    for (const id of paysGone) DB.logChange('order_payments', id, 'delete', null, null);
+    out.orderPayments = paysGone.length;
+
+    /* 046: a return and a handover line both point at the sale with no
+       cascade on the Supabase side either, so they go first and each delete
+       is logged — the same reason the deliveries above are. */
+    for (const tbl of ['order_returns', 'handover_lines', 'customer_credit']) {
+      const gone2 = many(
+        `SELECT id FROM ${tbl} WHERE sale_id IN (${inList(saleIds)})`, ...saleIds
+      ).map((r) => r.id);
+      if (!gone2.length) continue;
+      d.prepare(`DELETE FROM ${tbl} WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
+      for (const id of gone2) DB.logChange(tbl, id, 'delete', null, null);
+      out[tbl] = gone2.length;
+    }
     /* print_log too: it references the sale with no cascade here (009), so a
        demo sale that ever had a receipt printed made this whole transaction
        fail on the foreign key — and a purge that fails on the one shop that
