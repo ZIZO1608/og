@@ -9,8 +9,9 @@
                    is standing on a scooter in the sun, not at a desk.
 
      the manager  "what is out, with whom, what has not come back, and who
-                   still owes us?" — a table with the filters answered by the
-                   database, and the buttons that move a parcel along.
+                   still owes us?" — four live tiles, the parcels in lanes (or
+                   a table for searching), and the buttons that move a parcel
+                   along.
 
    Which one you get is decided by your role, on the server, in the query. The
    driver's list is filtered by driver_id before it leaves the database — this
@@ -22,20 +23,34 @@
    delivered, record a payment: all of it is here now, and all of it is
    refused by the server when it should be — a parcel does not go to a
    transport office while money is owed on it (server/lib/deliveries.js).
+
+   THE TILES ARE THE SHOP, NOT THE LIST. They come from the server's own
+   summary (Deliveries.summary), because the list under them is filtered and
+   capped — four numbers derived from it would change every time somebody
+   typed in the search box, which is the mistake this codebase has made most
+   often.
    ========================================================================== */
 
 var Deliveries = (function () {
 
   var rows = [];          /* what the server last told us */
   var cap = { shown: 0, total: 0, capped: false };
-  var day = null;         /* his own totals for today, drivers only */
+  var summary = null;     /* the four tiles, for the whole shop */
   var loaded = false;
   var failed = null;
   var drivers = [];       /* for the Assign dialog, from the office bootstrap */
+  var cos = [];           /* the transport companies, from the same request */
 
   /* The filters live here rather than in OG: they are this screen's own
      question, and every one of them is answered by the database. */
   var F = { status: 'open', method: '', money: '', q: '' };
+
+  /* Lanes or a table, per MACHINE like the sidebar rail: the office wants the
+     lanes on the big screen, whoever is hunting for last month's invoice
+     wants the table. */
+  var LAYOUT_KEY = 'og.dl.layout';
+  var layout = 'lanes';
+  try { if (localStorage.getItem(LAYOUT_KEY) === 'list') layout = 'list'; } catch (e) { /* private window */ }
 
   function isDriver() { return roleOf() === 'delivery'; }
 
@@ -47,6 +62,70 @@ var Deliveries = (function () {
   function fmt(minor, currency) {
     if (typeof Desk !== 'undefined' && Desk.fmt) return Desk.fmt(minor, currency || 'SYP');
     return money(Number(minor) || 0);
+  }
+
+  function fmtText(minor, currency) {
+    if (typeof Desk !== 'undefined' && Desk.moneyText) return Desk.moneyText(minor, currency || 'SYP');
+    return String(minor);
+  }
+
+  /* A pair of currencies is drawn as a pair: the first large, the rest under
+     it. Never added — 400,000 lira and $60 are two things in a pocket. */
+  function moneyStack(list, none) {
+    if (!list || !list.length) return '<b class="dlb-t-zero">' + (none || '—') + '</b>';
+    return list.map(function (m, i) {
+      return i === 0 ? '<b>' + fmt(m.amount, m.currency) + '</b>'
+                     : '<small class="dlb-t-more">+ ' + fmt(m.amount, m.currency) + '</small>';
+    }).join('');
+  }
+
+  /* ---------------------------------------------------------------- pictures
+     The method icons, the progress rail and a person's face are drawn by the
+     office (js/desk.js) and shared, so a parcel looks the same on the board,
+     in the order dialog and on the handover sheet. */
+
+  function methodIcon(m) {
+    return (typeof Desk !== 'undefined' && Desk.methodIcon) ? Desk.methodIcon(m || 'driver') : '';
+  }
+  function rail(d, labels) {
+    return (typeof Desk !== 'undefined' && Desk.rail) ? Desk.rail(d, labels) : '';
+  }
+  function face(id, name) {
+    return (typeof Desk !== 'undefined' && Desk.face) ? Desk.face(id, name) : '';
+  }
+
+  function svg(path, cls) {
+    return '<svg' + (cls ? ' class="' + cls + '"' : '') + ' viewBox="0 0 24 24" aria-hidden="true"><path d="' + path + '"/></svg>';
+  }
+
+  var ICON = {
+    waiting:  'M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8',
+    out:      'M2 6h12v9H2zM14 9h4l3 3v3h-7M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4M17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4',
+    owed:     'M12 3v18M16.5 7H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H7',
+    cash:     'M3 7h18v10H3zM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5M6.5 10v4M17.5 10v4',
+    handover: 'M9 3.5h6v3H9zM7.5 5H5v15.5h14V5h-2.5M8.5 13l2.5 2.5 4.5-5',
+    search:   'M10.5 18a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15M16 16l5 5',
+    refresh:  'M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4',
+    bell:     'M6 16v-5a6 6 0 1 1 12 0v5l2 2H4l2-2zM10 20a2 2 0 0 0 4 0',
+    wa:       'M3.5 20.5l1.3-4A8.5 8.5 0 1 1 8.2 19.4l-4.7 1.1zM9 8.6c.2 3.4 2.9 6.2 6.4 6.4l1-1.6-2.1-1-.9.8a4.4 4.4 0 0 1-1.9-1.9l.8-.9-1-2.1L9 8.6z',
+    lanes:    'M4 4h4v16H4zM10 4h4v10h-4zM16 4h4v13h-4z',
+    list:     'M4 6h16M4 12h16M4 18h16',
+    check:    'M5 12.5l4.2 4.2L19 7',
+    flag:     'M5 21V4M5 4h11l-2 4 2 4H5'
+  };
+
+  /* How long ago, the way it is said at a counter — "40 min", "3 h". Drawn
+     once per paint; a board that ticks every second is a board that moves
+     under the hand. */
+  function ago(iso) {
+    var at = new Date(iso || '').getTime();
+    if (!isFinite(at)) return '';
+    var mins = Math.floor((Date.now() - at) / 60000);
+    if (mins < 1) return t('dlp_ago_now');
+    if (mins < 60) return t('dlp_ago_m').replace('{n}', nf(mins));
+    var hours = Math.floor(mins / 60);
+    if (hours < 24) return t('dlp_ago_h').replace('{n}', nf(hours));
+    return t('dlp_ago_d').replace('{n}', nf(Math.floor(hours / 24)));
   }
 
   /* ------------------------------------------------------------------ links */
@@ -75,23 +154,28 @@ var Deliveries = (function () {
     return '<span class="badge ' + (TONE[d.status] || 'neutral') + '">' + t('dl_' + d.status) + '</span>';
   }
 
+  /* When the rest of the money is due — which depends on how it travels. */
+  function whenPaid(d) {
+    return d.method === 'pickup' ? t('dl_at_pickup')
+      : d.method === 'driver' || d.fromTill ? t('dl_at_door') : t('dl_before_send');
+  }
+
+  function pendingLine(d) {
+    if (!(d.pending > 0)) return '';
+    return esc(t('dl_with_driver_n').replace('{a}', fmtText(d.pending, d.currency)));
+  }
+
   /* What this row is worth to the shop right now, in one badge. */
   function moneyCell(d) {
     var h = '';
     if (d.voided) return '<span class="muted">—</span>';
     if (d.remaining > 0) {
       h += '<b class="dlb-owes">' + fmt(d.remaining, d.currency) + '</b>' +
-        '<small class="muted" style="display:block">' +
-          (d.method === 'pickup' ? t('dl_at_pickup')
-            : d.method === 'driver' || d.fromTill ? t('dl_at_door') : t('dl_before_send')) + '</small>';
+        '<small class="muted" style="display:block">' + whenPaid(d) + '</small>';
     } else {
       h += '<span class="badge healthy">' + t('dl_paid_badge') + '</span>';
     }
-    if (d.pending > 0) {
-      h += '<small class="dlb-pending" style="display:block">' +
-        t('dl_with_driver_n').replace('{a}', Desk && Desk.moneyText ? Desk.moneyText(d.pending, d.currency) : d.pending) +
-        '</small>';
-    }
+    if (d.pending > 0) h += '<small class="dlb-pending" style="display:block">' + pendingLine(d) + '</small>';
     return h;
   }
 
@@ -102,7 +186,8 @@ var Deliveries = (function () {
     var head = bits.join(' · ') || nm(d.address || '—');
     var via = t('dk_m_' + (d.method || 'driver')) +
       (d.companyName ? ' · ' + esc(d.companyName) : d.driverName ? ' · ' + nm(d.driverName) : '');
-    return '<div>' + head + '</div><small class="muted" style="display:block">' + via + '</small>' +
+    return '<div>' + head + '</div><small class="muted dlb-via" style="display:block">' +
+        methodIcon(d.method) + '<span>' + via + '</span></small>' +
       (d.trackingNo ? '<small class="muted" style="display:block"><bdi dir="ltr">' +
         esc(d.trackingNo) + '</bdi></small>' : '') +
       (d.city && d.address ? '<small class="muted" style="display:block">' + nm(d.address) + '</small>' : '');
@@ -132,15 +217,22 @@ var Deliveries = (function () {
 
   /* ------------------------------------------------------------- the driver */
 
-  function runCard(d) {
-    var done = d.status === 'delivered' || d.status === 'failed';
-    var h = '<div class="run-card' + (done ? ' is-done' : '') + (d.status === 'out' ? ' is-out' : '') + '">';
+  function isClosed(d) { return d.status === 'delivered' || d.status === 'failed'; }
+
+  function runCard(d, stop, next) {
+    var done = isClosed(d);
+    var h = '<div class="run-card' + (done ? ' is-done' : '') + (d.status === 'out' ? ' is-out' : '') +
+      (next ? ' is-next' : '') + '">';
+
+    if (next) h += '<div class="rc-next">' + t('dlp_next_up') + '</div>';
 
     h += '<div class="rc-top">' +
-      '<div class="rc-who"><b>' + esc(d.customerName || t('walk_in')) + '</b>' +
-        '<small>' + esc(d.saleId) + '</small></div>' + statusBadge(d) + '</div>';
+      '<span class="rc-stop' + (d.status === 'failed' ? ' is-fail' : '') + '">' +
+        (done ? svg(d.status === 'delivered' ? ICON.check : ICON.flag) : nf(stop)) + '</span>' +
+      '<div class="rc-who"><b>' + nm(d.customerName || t('walk_in')) + '</b>' +
+        '<small><bdi dir="ltr">' + esc(d.saleId) + '</bdi></small></div>' + statusBadge(d) + '</div>';
 
-    h += '<div class="rc-addr">' + esc(d.address) + '</div>';
+    h += '<div class="rc-addr">' + esc(d.address || (d.method === 'pickup' ? t('dk_m_pickup') : '—')) + '</div>';
 
     if (d.items && d.items.length) {
       h += '<div class="rc-items">';
@@ -153,7 +245,7 @@ var Deliveries = (function () {
 
     h += '<div class="rc-money">' + (d.toCollect > 0
       ? '<span class="rc-collect"><i>' + t('dl_to_collect') + '</i><b>' + fmt(d.toCollect, d.currency) + '</b></span>'
-      : '<span class="rc-paid">' + t('dl_nothing_owed') + '</span>') + '</div>';
+      : '<span class="rc-paid">' + svg(ICON.check) + t('dl_nothing_owed') + '</span>') + '</div>';
 
     h += '<div class="rc-acts">' + callLink(d.phone, t('dl_call')) + mapLink(d.address, t('dl_map'));
     if (d.status === 'waiting') {
@@ -167,25 +259,44 @@ var Deliveries = (function () {
     return h + '</div></div>';
   }
 
+  /* The progress ring on his phone: done out of today's runs. */
+  function ring(done, all) {
+    var c = 119.38;                 /* 2π × 19 */
+    var p = all ? done / all : 0;
+    return '<div class="rc-ring">' +
+      '<svg viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="19"/>' +
+        '<circle class="fg" cx="22" cy="22" r="19" stroke-dasharray="' + c + '" stroke-dashoffset="' +
+        (c * (1 - p)).toFixed(2) + '"/></svg>' +
+      '<b>' + nf(done) + '<small>/' + nf(all) + '</small></b></div>';
+  }
+
   function driverView() {
     var open = rows.filter(function (d) { return d.status === 'waiting' || d.status === 'out'; });
-    var shut = rows.filter(function (d) { return d.status === 'delivered' || d.status === 'failed'; });
+    var shut = rows.filter(isClosed);
 
     var h = '<div class="page-head"><div><h1>' + t('dl_my_runs') + '</h1>' +
-      '<div class="sub">' + t('dl_my_runs_sub') + ' · ' + fmtDate(TODAY) + '</div></div></div>';
+      '<div class="sub">' + t('dl_my_runs_sub') + ' · ' + fmtDate(new Date()) + '</div></div></div>';
 
-    if (day) {
-      h += '<div class="grid stat-row">' +
-        '<div class="stat"><span class="eyebrow">' + t('dl_runs') + '</span>' +
-          '<div class="val">' + nf(day.runs) + '</div>' +
-          '<div class="foot">' + nf(day.delivered) + ' ' + t('dl_delivered').toLowerCase() + '</div></div>' +
-        '<div class="stat"><span class="eyebrow">' + t('dl_owed') + '</span>' +
-          '<div class="val accent">' + money(day.owed) + '</div>' +
-          '<div class="foot">' + t('dl_collected').toLowerCase() + ' ' + money(day.collected) + '</div></div>' +
-        '<div class="stat"><span class="eyebrow">' + t('dl_to_hand_in') + '</span>' +
-          '<div class="val' + (day.collected > 0 ? ' warn' : '') + '">' + money(Math.max(0, day.collected)) + '</div>' +
-          '<div class="foot">' + nf(day.delivered) + ' ' + t('dl_delivered').toLowerCase() +
-            (day.failed ? ' · ' + nf(day.failed) + ' ' + t('dl_failed').toLowerCase() : '') + '</div></div>' +
+    /* THE DAY IN ONE CARD. Counted off his own rows — today's, which is what
+       the query asked for — and the money still to collect PER CURRENCY. The
+       stat cards this replaces summed every run's to_collect into one lira
+       figure, so a $60 parcel read as 60 lira. */
+    var owe = {}, order = [];
+    open.forEach(function (d) {
+      if (!(d.remaining > 0)) return;
+      var c = d.currency || 'SYP';
+      if (!(c in owe)) { owe[c] = 0; order.push(c); }
+      owe[c] += d.remaining;
+    });
+    var oweList = order.map(function (c) { return { currency: c, amount: owe[c] }; });
+
+    if (rows.length) {
+      h += '<div class="rc-hero">' + ring(shut.length, rows.length) +
+        '<div class="rc-hero-txt"><span class="eyebrow">' + t('dlp_today') + '</span>' +
+          '<b>' + (open.length ? t('dlp_left_n').replace('{n}', nf(open.length)) : t('dlp_all_done')) + '</b>' +
+          '<small>' + t('dl_sheet_done').replace('{n}', nf(shut.length)).replace('{of}', nf(rows.length)) + '</small></div>' +
+        '<div class="rc-hero-money"><span class="eyebrow">' + t('dl_to_collect') + '</span>' +
+          moneyStack(oweList, t('dl_nothing_owed')) + '</div>' +
       '</div>';
     }
 
@@ -202,7 +313,9 @@ var Deliveries = (function () {
        question this screen has already had answered. */
     h += '<div class="run-list mt">';
     if (!open.length) {
-      h += '<div class="card"><div class="cart-empty"><b>' + t('dl_none') + '</b>' + t('dl_none_sub') + '</div></div>';
+      h += '<div class="card rc-empty"><div class="cart-empty">' +
+        '<span class="rc-empty-ico">' + svg(shut.length ? ICON.check : ICON.waiting) + '</span>' +
+        '<b>' + (shut.length ? t('dlp_all_done') : t('dl_none')) + '</b>' + t('dl_none_sub') + '</div></div>';
     } else {
       var sheets = [];
       var bySheet = {};
@@ -211,24 +324,28 @@ var Deliveries = (function () {
         if (!bySheet[key]) { bySheet[key] = []; sheets.push(key); }
         bySheet[key].push(d);
       });
+      var stop = 0;
       sheets.forEach(function (key) {
         var list = bySheet[key];
         if (key) {
           /* Done counts the whole sheet, not the part still open — "4 of 11"
              has to mean the sheet, or it reads as the work growing. */
           var all = rows.filter(function (d) { return d.handoverId === key; });
-          var done = all.filter(function (d) { return d.status === 'delivered' || d.status === 'failed'; }).length;
+          var done = all.filter(isClosed).length;
+          var pct = all.length ? Math.round(done / all.length * 100) : 0;
           h += '<div class="rc-sheet"><b><bdi dir="ltr">' + esc(key) + '</bdi></b>' +
-            '<span>' + t('dl_sheet_done').replace('{n}', nf(done)).replace('{of}', nf(all.length)) + '</span></div>';
+            '<span>' + t('dl_sheet_done').replace('{n}', nf(done)).replace('{of}', nf(all.length)) + '</span>' +
+            '<span class="rc-sheet-bar"><span style="width:' + pct + '%"></span></span></div>';
         }
-        list.forEach(function (d) { h += runCard(d); });
+        list.forEach(function (d) { stop++; h += runCard(d, stop, stop === 1); });
       });
     }
     h += '</div>';
 
     if (shut.length) {
-      h += '<div class="run-list run-done mt">';
-      shut.forEach(function (d) { h += runCard(d); });
+      h += '<div class="rc-sheet rc-sheet-done"><b>' + t('dlp_done_today') + '</b><span>' + nf(shut.length) + '</span></div>' +
+        '<div class="run-list run-done">';
+      shut.forEach(function (d) { h += runCard(d, 0, false); });
       h += '</div>';
     }
     return h;
@@ -236,36 +353,79 @@ var Deliveries = (function () {
 
   /* ------------------------------------------------------------ the manager */
 
-  function chips(act, current, list) {
-    return '<div class="seg-row">' + list.map(function (o) {
-      return '<button type="button" class="seg' + (current === o.id ? ' on' : '') + '" data-act="' + act +
-        '" data-id="' + esc(o.id) + '">' + o.label + '</button>';
-    }).join('') + '</div>';
+  function tile(id, label, value, foot, on, extra) {
+    return '<button type="button" class="dlb-tile is-' + id + (on ? ' on' : '') + '" data-act="dl-tile" ' +
+      'data-id="' + id + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
+      '<span class="dlb-t-head">' + svg(ICON[id]) + '<span>' + label + '</span>' + (extra || '') + '</span>' +
+      '<span class="dlb-t-val">' + value + '</span>' +
+      '<span class="dlb-t-foot">' + foot + '</span></button>';
   }
 
+  function tiles() {
+    if (!summary) return '';
+    var s = summary;
+    var owedN = 0, drv = 0;
+    (s.owed || []).forEach(function (r) { owedN += r.n || 0; });
+    /* A driver holding lira and dollars is one driver, not two. */
+    (s.cash || []).forEach(function (r) { drv = Math.max(drv, r.drivers || 0); });
+    var tab = typeof Road !== 'undefined' ? Road.tab() : 'parcels';
+    return '<div class="dlb-tiles">' +
+      tile('waiting', t('dl_waiting'), '<b>' + nf(s.waiting) + '</b>', t('dlp_t_waiting_sub'),
+           tab === 'parcels' && F.status === 'waiting') +
+      tile('out', t('dl_out'), '<b>' + nf(s.out) + '</b>', t('dlp_t_out_sub'),
+           tab === 'parcels' && F.status === 'out',
+           s.out ? '<i class="dlb-live" aria-hidden="true"></i>' : '') +
+      tile('owed', t('dlp_t_owed'), moneyStack(s.owed, t('dlp_none_short')),
+           owedN === 1 ? t('dlp_t_owed_sub_1')
+             : owedN ? t('dlp_t_owed_sub').replace('{n}', nf(owedN)) : t('dlp_t_owed_none'),
+           tab === 'parcels' && F.money === 'owes') +
+      tile('cash', t('dlp_t_cash'), moneyStack(s.cash, t('dlp_none_short')),
+           drv === 1 ? t('dlp_t_cash_sub_1')
+             : drv ? t('dlp_t_cash_sub').replace('{n}', nf(drv)) : t('dlp_t_cash_none'),
+           tab === 'cash') +
+    '</div>';
+  }
+
+  function opt(value, current, label) {
+    return '<option value="' + esc(value) + '"' + (value === current ? ' selected' : '') + '>' + esc(label) + '</option>';
+  }
+
+  function viewBtn(id) {
+    return '<button type="button" class="dlb-vbtn' + (layout === id ? ' on' : '') + '" data-act="dl-layout" ' +
+      'data-id="' + id + '" aria-pressed="' + (layout === id ? 'true' : 'false') + '">' +
+      svg(ICON[id]) + '<span>' + t('dlp_v_' + id) + '</span></button>';
+  }
+
+  /* ONE ROW. It was three rows of chips — 516px of an 844px phone before the
+     first parcel — and the three questions it asks are each answered by one
+     choice, which is what a select is for. */
   function filterBar() {
     var statuses = [
-      { id: 'open', label: t('dl_f_open') }, { id: 'waiting', label: t('dl_waiting') },
-      { id: 'out', label: t('dl_out') }, { id: 'delivered', label: t('dl_delivered') },
-      { id: 'failed', label: t('dl_failed') }, { id: 'cancelled', label: t('dk_cancelled') },
-      { id: 'all', label: t('dl_f_all') }
+      ['open', t(layout === 'lanes' ? 'dlp_f_today' : 'dl_f_open')], ['waiting', t('dl_waiting')],
+      ['out', t('dl_out')], ['delivered', t('dl_delivered')], ['failed', t('dl_failed')],
+      ['cancelled', t('dk_cancelled')], ['all', t('dl_f_all')]
     ];
-    var methods = [{ id: '', label: t('dl_f_all') }].concat(
-      ['driver', 'office', 'courier', 'abroad', 'pickup'].map(function (m) {
-        return { id: m, label: t('dk_m_' + m) };
-      }));
-    var monies = [
-      { id: '', label: t('dl_f_all') }, { id: 'owes', label: t('dl_owes') },
-      { id: 'paid', label: t('dl_paid_badge') }, { id: 'with_driver', label: t('dl_with_driver') }
-    ];
+    var methods = [['', t('dlp_any_method')]].concat(
+      ['driver', 'office', 'courier', 'abroad', 'pickup'].map(function (m) { return [m, t('dk_m_' + m)]; }));
+    var monies = [['', t('dlp_any_money')], ['owes', t('dl_owes')], ['paid', t('dl_paid_badge')],
+                  ['with_driver', t('dl_with_driver')]];
+    var dirty = F.status !== 'open' || F.method || F.money || F.q;
 
-    return '<div class="card dlb-filters"><div class="card-body">' +
-      '<div class="dlb-f"><span class="lbl">' + t('status') + '</span>' + chips('dl-f-status', F.status, statuses) + '</div>' +
-      '<div class="dlb-f"><span class="lbl">' + t('dl_f_method') + '</span>' + chips('dl-f-method', F.method, methods) + '</div>' +
-      '<div class="dlb-f"><span class="lbl">' + t('dl_f_money') + '</span>' + chips('dl-f-money', F.money, monies) + '</div>' +
-      '<div class="dlb-f dlb-search"><input class="inp" type="search" data-change="dl-q" value="' + esc(F.q) + '" ' +
-        'placeholder="' + esc(t('dl_search_ph')) + '"></div>' +
-    '</div></div>';
+    function sel(change, current, list, aria, on) {
+      return '<select class="inp dlb-sel' + (on ? ' on' : '') + '" data-change="' + change + '" aria-label="' + esc(aria) + '">' +
+        list.map(function (o) { return opt(o[0], current, o[1]); }).join('') + '</select>';
+    }
+
+    return '<div class="dlb-bar">' +
+      '<label class="dlb-search">' + svg(ICON.search) +
+        '<input class="inp" type="search" data-change="dl-q" value="' + esc(F.q) + '" ' +
+        'placeholder="' + esc(t('dl_search_ph')) + '" aria-label="' + esc(t('dl_search_ph')) + '"></label>' +
+      sel('dl-f-status', F.status, statuses, t('status'), F.status !== 'open') +
+      sel('dl-f-method', F.method, methods, t('dl_f_method'), !!F.method) +
+      sel('dl-f-money', F.money, monies, t('dl_f_money'), !!F.money) +
+      (dirty ? '<button type="button" class="btn btn-ghost btn-sm dlb-clear" data-act="dl-f-reset">' + t('dlp_clear') + '</button>' : '') +
+      '<div class="dlb-view" role="group" aria-label="' + esc(t('dlp_view')) + '">' + viewBtn('lanes') + viewBtn('list') + '</div>' +
+    '</div>';
   }
 
   function rowActions(d) {
@@ -294,6 +454,14 @@ var Deliveries = (function () {
       h += '<button class="btn btn-sm" data-act="rd-return" data-id="' + esc(d.saleId) + '">' +
            t('rd_return') + '</button>';
     }
+    /* The tracking link, on WhatsApp, from the card itself — "where is my
+       order?" is asked of the board, not of the office's saved card. Only an
+       order has a page to send, and a cancelled one has nothing to follow. */
+    if (d.order && d.publicToken && allow('delivery.desk')) {
+      h += '<button class="btn btn-sm dlb-wa" data-act="dl-wa-track" data-id="' + esc(d.saleId) + '" title="' +
+           esc(t('dl_wa_track_title')) + '" aria-label="' + esc(t('dl_wa_track_title')) + '">' +
+           svg(ICON.wa) + '<span>' + t('dl_wa_track') + '</span></button>';
+    }
     h += '<button class="btn btn-sm btn-ghost" data-act="dl-open" data-id="' + esc(d.saleId) + '">' + t('dl_open') + '</button>';
     return h + '</div>';
   }
@@ -306,65 +474,240 @@ var Deliveries = (function () {
     var on = Road.tab();
     var open = Road.sheetOpen() ? Road.sheetCount() : 0;
     var tabs = [
-      { id: 'parcels', label: t('dl_tab_parcels'), n: 0 },
-      { id: 'handover', label: t('dl_tab_handover'), n: open },
-      { id: 'cash', label: t('dl_tab_cash'), n: Road.pending() }
+      { id: 'parcels', label: t('dl_tab_parcels'), n: 0, icon: ICON.waiting },
+      { id: 'handover', label: t('dl_tab_handover'), n: open, icon: ICON.handover },
+      { id: 'cash', label: t('dl_tab_cash'), n: Road.pending(), icon: ICON.cash }
     ];
-    return '<div class="seg-row dlb-tabs">' + tabs.map(function (x) {
-      return '<button type="button" class="seg' + (on === x.id ? ' on' : '') +
-        '" data-act="rd-tab" data-id="' + x.id + '">' + x.label +
-        (x.n ? ' <span class="badge accent">' + nf(x.n) + '</span>' : '') + '</button>';
+    return '<div class="tabs dlb-tabs" role="tablist">' + tabs.map(function (x) {
+      return '<button type="button" role="tab" aria-selected="' + (on === x.id ? 'true' : 'false') + '" ' +
+        'class="tab' + (on === x.id ? ' on' : '') + '" data-act="rd-tab" data-id="' + x.id + '">' +
+        svg(x.icon) + '<span>' + x.label + '</span>' +
+        (x.n ? '<em class="dlb-tab-n">' + nf(x.n) + '</em>' : '') + '</button>';
     }).join('') + '</div>';
   }
 
-  function boardView() {
-    var out = rows.filter(function (d) { return d.status === 'out' && !d.voided; }).length;
-    var owed = rows.filter(function (d) { return d.remaining > 0 && !d.voided; }).length;
+  /* ---- the lanes ---------------------------------------------------------- */
 
-    var h = '<div class="page-head"><div><h1>' + t('dl_title') + '</h1>' +
-      '<div class="sub">' + t('dl_sub') + '</div></div>' +
-      '<div class="head-actions">' +
-        (out ? '<span class="badge accent">' + nf(out) + ' ' + t('dl_out').toLowerCase() + '</span>' : '') +
-        (owed ? '<span class="badge low">' + nf(owed) + ' ' + t('dl_owes').toLowerCase() + '</span>' : '') +
-        ifNav('desk', '<button class="btn btn-primary btn-sm" data-act="nav" data-view="desk">+ ' + t('dk_new') + '</button>') +
-        '<button class="btn btn-ghost btn-sm" data-act="dl-reload">' + t('retry') + '</button>' +
-      '</div></div>';
-
-    h += tabBar();
-    if (typeof Road !== 'undefined' && Road.tab() !== 'parcels') return h + Road.view();
-
-    h += filterBar();
-
-    if (!rows.length) {
-      return h + '<div class="card"><div class="cart-empty"><b>' + t('dl_none_board') + '</b>' +
-        (F.status !== 'open' || F.method || F.money || F.q ? t('dl_none_filter') : t('dl_none_board_sub')) +
-        '</div></div>';
+  function cardMoney(d) {
+    if (d.voided) return '<span class="dlb-money is-void">' + t('dk_cancelled') + '</span>';
+    if (d.remaining > 0) {
+      return '<span class="dlb-money is-owes"><b>' + fmt(d.remaining, d.currency) + '</b>' +
+        '<small>' + whenPaid(d) + '</small></span>';
     }
+    return '<span class="dlb-money is-paid">' + svg(ICON.check) + t('dl_paid_badge') + '</span>';
+  }
+
+  function carrierChip(d) {
+    if (d.companyName) {
+      return '<span class="dlb-c-via">' + '<span class="dlb-c-ico">' + methodIcon(d.method) + '</span>' +
+        '<span>' + esc(d.companyName) + '</span></span>';
+    }
+    if (d.driverName) {
+      return '<span class="dlb-c-via">' + face(d.driverId, d.driverName) + '<span>' + nm(d.driverName) + '</span></span>';
+    }
+    if (d.method === 'pickup') {
+      return '<span class="dlb-c-via">' + '<span class="dlb-c-ico">' + methodIcon('pickup') + '</span>' +
+        '<span>' + t('dk_m_pickup') + '</span></span>';
+    }
+    return '<span class="dlb-c-via is-none"><span class="dlb-c-ico">' + methodIcon(d.method) + '</span>' +
+      '<span>' + t('dl_unassigned') + '</span></span>';
+  }
+
+  function laneCard(d) {
+    var closed = isClosed(d);
+    var when = ago(closed ? d.closedAt : d.status === 'out' ? (d.outAt || d.assignedAt) : (d.assignedAt || d.saleAt));
+    var place = [d.city ? nm(d.city) : '', d.country && d.country !== 'SY' ? esc(d.country) : '']
+      .filter(Boolean).join(' · ');
+    var addr = d.address ? nm(d.address) : '';
+
+    /* The whole card opens the order, when there is one — the buttons and the
+       customer's name inside it carry their own data-act, and the delegation
+       walks up from what was pressed, so they win. */
+    return '<article class="dlb-card is-' + (d.voided ? 'void' : d.status) + (d.order ? ' is-link' : '') + '"' +
+        (d.order ? ' data-act="dl-open" data-id="' + esc(d.saleId) + '"' : '') + '>' +
+      '<div class="dlb-c-top">' +
+        '<span class="dlb-mi" title="' + esc(t('dk_m_' + (d.method || 'driver'))) + '">' + methodIcon(d.method) + '</span>' +
+        '<div class="dlb-c-id"><b><bdi dir="ltr">' + esc(d.saleId) + '</bdi></b>' +
+          '<small>' + (d.channel ? t('dk_ch_' + d.channel) : t('dk_m_' + (d.method || 'driver'))) +
+            (when ? ' · <span dir="auto">' + when + '</span>' : '') + '</small></div>' +
+        cardMoney(d) +
+      '</div>' +
+      '<div class="dlb-c-who">' + whoCell(d) + '</div>' +
+      (place || addr
+        ? '<div class="dlb-c-where">' + (place ? '<b>' + place + '</b>' : '') + (place && addr ? ' · ' : '') +
+          (addr ? '<span>' + addr + '</span>' : '') + '</div>' : '') +
+      '<div class="dlb-c-mid">' + carrierChip(d) + rail(d, false) + '</div>' +
+      (d.pending > 0 ? '<div class="dlb-c-pend">' + svg(ICON.cash) + pendingLine(d) + '</div>' : '') +
+      (d.status === 'failed' && d.failReason ? '<div class="dlb-c-why">' + svg(ICON.flag) + esc(d.failReason) + '</div>' : '') +
+      '<div class="dlb-c-acts">' + rowActions(d) + '</div>' +
+    '</article>';
+  }
+
+  function lanesView() {
+    var today = F.status === 'open';
+    var lanes = [
+      { id: 'waiting', label: t('dl_waiting'), rows: [] },
+      { id: 'out', label: t('dl_out'), rows: [] },
+      { id: 'done', label: t(today ? 'dlp_done_today' : 'dlp_done'), rows: [] },
+      { id: 'void', label: t('dk_cancelled'), rows: [] }
+    ];
+    rows.forEach(function (d) {
+      var i = d.voided ? 3 : d.status === 'waiting' ? 0 : d.status === 'out' ? 1 : 2;
+      lanes[i].rows.push(d);
+    });
+    /* The day's three lanes are always drawn, empty or not — an empty "On the
+       road" is an answer. Under any other filter only the lanes with parcels
+       in them are. */
+    var shown = lanes.filter(function (l) { return l.rows.length || (today && l.id !== 'void'); });
+    if (!shown.length) return emptyBoard();
+
+    var h = '<div class="dlb-lanes n' + shown.length + '">';
+    shown.forEach(function (l) {
+      h += '<section class="dlb-lane is-' + l.id + '">' +
+        '<header class="dlb-l-head"><i class="dlb-l-dot" aria-hidden="true"></i><h3>' + l.label + '</h3>' +
+          '<span class="dlb-l-n">' + nf(l.rows.length) + '</span></header>' +
+        '<div class="dlb-l-body">';
+      if (!l.rows.length) {
+        h += '<div class="dlb-l-empty">' + svg(ICON[l.id === 'done' ? 'check' : l.id]) +
+          '<span>' + t('dlp_lane_empty_' + l.id) + '</span></div>';
+      } else {
+        l.rows.forEach(function (d) { h += laneCard(d); });
+      }
+      h += '</div></section>';
+    });
+    return h + '</div>';
+  }
+
+  /* ---- the table ---------------------------------------------------------- */
+
+  function listView() {
+    if (!rows.length) return emptyBoard();
 
     /* .dlb-tbl is what lets the stylesheet turn these rows into cards on a
        phone without touching every other table in the app. The six cells
        below are addressed by position there — invoice, customer, where,
        money, status, actions — so if a column is ever inserted, the rule in
        css/og-skin.css has to move with it. */
-    h += '<div class="card table-wrap"><table class="tbl dlb-tbl"><thead><tr>' +
+    var h = '<div class="card table-wrap"><table class="tbl dlb-tbl"><thead><tr>' +
       '<th>' + t('invoice') + '</th><th>' + t('customer') + '</th>' +
       '<th>' + t('dl_where') + '</th><th class="num">' + t('dl_money') + '</th>' +
       '<th>' + t('status') + '</th><th></th>' +
     '</tr></thead><tbody>';
 
     rows.forEach(function (d) {
-      h += '<tr' + (d.status === 'failed' ? ' class="row-late"' : '') + (d.voided ? ' class="dlb-void"' : '') + '>' +
+      var cls = d.voided ? 'dlb-void' : d.status === 'failed' ? 'row-late' : '';
+      h += '<tr' + (cls ? ' class="' + cls + '"' : '') + '>' +
         '<td><b><bdi dir="ltr">' + esc(d.saleId) + '</bdi></b>' +
           (d.channel ? '<small style="display:block" class="muted">' + t('dk_ch_' + d.channel) + '</small>' : '') + '</td>' +
         '<td>' + whoCell(d) + (d.phone ? '<small style="display:block" class="muted">' + tel(d.phone) + '</small>' : '') + '</td>' +
         '<td class="muted">' + whereCell(d) + '</td>' +
         '<td class="num">' + moneyCell(d) + '</td>' +
-        '<td>' + statusBadge(d) +
+        '<td>' + statusBadge(d) + rail(d, false) +
           (d.failReason ? '<small style="display:block" class="muted">' + esc(d.failReason) + '</small>' : '') + '</td>' +
         '<td class="dlb-actions">' + rowActions(d) + '</td></tr>';
     });
 
-    return h + '</tbody></table></div>' + cappedNote(cap, t('nav_deliveries').toLowerCase());
+    return h + '</tbody></table></div>';
+  }
+
+  function emptyBoard() {
+    var filtered = F.status !== 'open' || F.method || F.money || F.q;
+    return '<div class="card dlb-empty"><div class="cart-empty">' +
+      '<span class="dlb-empty-ico">' + svg(ICON.waiting) + '</span>' +
+      '<b>' + t('dl_none_board') + '</b>' +
+      (filtered ? t('dl_none_filter') : t('dl_none_board_sub')) +
+      (filtered ? '<button class="btn btn-sm mt" data-act="dl-f-reset">' + t('dlp_clear') + '</button>' : '') +
+      '</div></div>';
+  }
+
+  function boardView() {
+    var h = '<div class="page-head"><div><h1>' + t('dl_title') + '</h1>' +
+      '<div class="sub">' + t('dl_sub') + '</div></div>' +
+      '<div class="head-actions">' + pushButton() +
+        '<button class="btn btn-ghost btn-sm dlb-refresh" data-act="dl-reload" title="' + esc(t('dlp_refresh')) + '" ' +
+          'aria-label="' + esc(t('dlp_refresh')) + '">' + svg(ICON.refresh) + '</button>' +
+        ifNav('desk', '<button class="btn btn-primary btn-sm" data-act="nav" data-view="desk">+ ' + t('dk_new') + '</button>') +
+      '</div></div>';
+
+    h += tiles();
+    h += tabBar();
+    if (typeof Road !== 'undefined' && Road.tab() !== 'parcels') return h + Road.view();
+
+    h += filterBar();
+    h += layout === 'lanes' ? lanesView() : listView();
+    return h + cappedNote(cap, t('nav_deliveries').toLowerCase());
+  }
+
+  /* --------------------------------------------------- the office's alerts
+     Web Push to THIS browser whenever an order moves, even with the app
+     closed — server/lib/tracking.js decides what is news, sw.js shows it.
+     The state comes from the browser's own subscription CONFIRMED by the
+     server, because a subscription the server has dropped (the vendor said
+     410) must not go on looking lit. The bell repaints itself alone and never
+     through render(), which would take the board's scroll with it. */
+  var push = { state: 'unknown', busy: false };
+
+  function pushSupported() {
+    return !!(window.isSecureContext && 'serviceWorker' in navigator &&
+      'PushManager' in window && 'Notification' in window);
+  }
+  function pushTitle() { return t(push.state === 'on' ? 'dlp_push_title_on' : 'dlp_push_title_off'); }
+  function pushButton() {
+    if (typeof Auth !== 'undefined' && !Auth.can('delivery.desk')) return '';
+    return '<button class="btn btn-ghost btn-sm dlb-push' + (push.state === 'on' ? ' is-on' : '') +
+      '" data-act="dl-push"' + (push.busy ? ' disabled' : '') +
+      ' title="' + esc(pushTitle()) + '" aria-label="' + esc(pushTitle()) + '"' +
+      ' aria-pressed="' + (push.state === 'on' ? 'true' : 'false') + '">' + svg(ICON.bell) +
+      '<span>' + esc(t(push.state === 'on' ? 'dlp_push_on' : 'dlp_push_off')) + '</span></button>';
+  }
+  function pushPaint() {
+    var b = document.querySelector('.dlb-push');
+    if (b) b.outerHTML = pushButton();
+  }
+  /* The app's own worker, registered by index.html. Raced against a timer: a
+     worker that never installed would otherwise leave the bell disabled. */
+  function pushReg() {
+    return Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise(function (res, rej) {
+        setTimeout(function () { rej(new Error('the service worker is not running')); }, 8000);
+      })
+    ]);
+  }
+  function pushBytes(b64) {
+    var pad = new Array((4 - b64.length % 4) % 4 + 1).join('=');
+    var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    var out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  /* Made with a key the server no longer holds (a restored laptop mints its
+     own): undeliverable for ever, so it is replaced rather than reused. */
+  function pushSameKey(sub, key) {
+    try {
+      var k = sub.options && sub.options.applicationServerKey;
+      if (!k) return true;
+      var a = new Uint8Array(k), b = pushBytes(key);
+      if (a.length !== b.length) return false;
+      for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    } catch (e) { return true; }
+  }
+  function pushInit() {
+    if (push.state !== 'unknown') return;
+    if (!pushSupported()) { push.state = 'unsupported'; return; }
+    push.state = 'off';
+    if (Notification.permission !== 'granted') return;
+    pushReg().then(function (reg) { return reg.pushManager.getSubscription(); })
+      .then(function (sub) { return sub ? API.post('/api/push/state', sub.toJSON()) : null; })
+      .then(function (r) { push.state = r && r.on ? 'on' : 'off'; pushPaint(); })
+      ['catch'](function () { /* it stays off */ });
+  }
+  function pushAsk() {
+    return new Promise(function (resolve) {
+      var r = Notification.requestPermission(function (p) { resolve(p); });
+      if (r && r.then) r.then(resolve);
+    });
   }
 
   /* -------------------------------------------------------------- the shell */
@@ -376,8 +719,8 @@ var Deliveries = (function () {
         '<button class="btn btn-sm mt" data-act="dl-reload">' + t('retry') + '</button></div></div>';
     }
     if (!loaded) {
-      return '<div class="page-head"><div><h1>' + t('dl_title') + '</h1></div></div>' +
-             '<div class="card"><div class="cart-empty"><b>' + t('loading') + '</b></div></div>';
+      return '<div class="page-head"><div><h1>' + (isDriver() ? t('dl_my_runs') : t('dl_title')) + '</h1></div></div>' +
+        '<div class="dlb-skel" aria-busy="true"><i></i><i></i><i></i><i></i></div>';
     }
     return isDriver() ? driverView() : boardView();
   }
@@ -387,18 +730,37 @@ var Deliveries = (function () {
     load();
     /* Whichever tab the board was left on fills itself in. */
     if (typeof Road !== 'undefined' && !isDriver()) Road.load();
+    if (!isDriver()) pushInit();
     /* Who can be given a run. Only for the board, and only for an account
        that may assign one. */
     if (!isDriver() && !drivers.length && typeof Auth !== 'undefined' && Auth.can('delivery.write')) {
-      API.get('/api/orders/bootstrap').then(function (b) { drivers = b.drivers || []; })
-        .catch(function () { /* the Assign dialog says so if the list is empty */ });
+      API.get('/api/orders/bootstrap').then(function (b) {
+        drivers = b.drivers || [];
+        cos = ((b.settings && b.settings.companies) || []).filter(function (c) { return c && c.active !== false; });
+      }).catch(function () { /* the Assign dialog says so if the list is empty */ });
     }
+  }
+
+  /* The reader's own midnight, as an instant — see status=today on the
+     server. A fresh Date, never the boot-frozen TODAY: the board stays open
+     across midnight on the office screen. */
+  function midnightIso() {
+    var d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
   }
 
   function query() {
     var p = [];
-    if (F.status && F.status !== 'open') p.push('status=' + encodeURIComponent(F.status));
-    else p.push('status=open');
+    var st = F.status || 'open';
+    /* The lanes and the driver's phone are about TODAY: what is still open,
+       and what closed since midnight — so the third lane and the driver's
+       "done" list have something in them. The table's "open" stays open. */
+    if (st === 'open' && (isDriver() || layout === 'lanes')) {
+      p.push('status=today', 'since=' + encodeURIComponent(midnightIso()));
+    } else {
+      p.push('status=' + encodeURIComponent(st));
+    }
     if (F.method) p.push('method=' + encodeURIComponent(F.method));
     if (F.money) p.push('money=' + encodeURIComponent(F.money));
     if (F.q) p.push('q=' + encodeURIComponent(F.q));
@@ -411,7 +773,7 @@ var Deliveries = (function () {
       .then(function (d) {
         rows = d.deliveries || [];
         cap = { shown: rows.length, total: d.deliveriesTotal || rows.length, capped: !!d.deliveriesCapped };
-        day = d.day || null;
+        summary = d.summary || null;
         failed = null;
         loaded = true;
         repaint();
@@ -461,24 +823,33 @@ var Deliveries = (function () {
   function assignDialog(id) {
     var d = byId(id);
     if (!d) return;
-    var companies = (typeof Desk !== 'undefined' && Desk.companies) ? Desk.companies() : [];
+    /* Its own copy first: Desk.companies() is empty until the office screen
+       has been opened, which on a board reached straight from the menu it
+       never has — the same trap the handover picker fell into. */
+    var desk = typeof Desk !== 'undefined' && Desk.companiesLoaded && Desk.companiesLoaded();
+    var companies = desk ? Desk.companies() : cos;
 
     var body = '<div class="lbl">' + t('dl_pick_driver') + '</div>';
     body += drivers.length
-      ? '<div class="seg-row">' + drivers.map(function (u) {
-          return '<button type="button" class="seg' + (d.driverId === u.id ? ' on' : '') +
-            '" data-act="dl-assign-pick" data-kind="driver" data-id="' + u.id + '">' + nm(u.name) + '</button>';
+      ? '<div class="dl-picks">' + drivers.map(function (u) {
+          return '<button type="button" class="dl-pick' + (d.driverId === u.id ? ' on' : '') +
+            '" data-act="dl-assign-pick" data-kind="driver" data-id="' + u.id + '">' +
+            face(u.id, u.name) + '<b>' + nm(u.name) + '</b><small>' + t('dk_m_driver') + '</small></button>';
         }).join('') + '</div>'
       : '<div class="partner-note">' + t('dl_no_drivers') + '</div>';
 
     body += '<div class="lbl mt">' + t('dl_pick_company') + '</div>';
     body += companies.length
-      ? '<div class="seg-row">' + companies.map(function (c) {
-          return '<button type="button" class="seg' + (d.companyId === c.id ? ' on' : '') +
+      ? '<div class="dl-picks">' + companies.map(function (c) {
+          return '<button type="button" class="dl-pick' + (d.companyId === c.id ? ' on' : '') +
             '" data-act="dl-assign-pick" data-kind="company" data-id="' + esc(c.id) + '">' +
-            esc(OG.lang === 'ar' ? (c.ar || c.en) : (c.en || c.ar)) + ' · ' + t('dk_m_' + c.kind) + '</button>';
+            '<span class="dl-pick-ico">' + methodIcon(c.kind) + '</span>' +
+            '<b>' + esc(OG.lang === 'ar' ? (c.ar || c.en) : (c.en || c.ar)) + '</b>' +
+            '<small>' + t('dk_m_' + c.kind) + '</small></button>';
         }).join('') + '</div>'
-      : '<div class="partner-note">' + t('dl_no_companies_yet') + '</div>';
+      : '<div class="partner-note">' + t('dl_no_companies_yet') +
+          (allow('config.write') ? ' <span class="clickable" data-act="dk-goto-companies">' +
+            t('dk_add_in_settings') + '</span>' : '') + '</div>';
 
     body += '<label class="field mt"><span>' + t('dl_tracking') + '</span>' +
       '<input class="inp" id="dlTrack" type="text" dir="ltr" maxlength="64" value="' + esc(d.trackingNo || '') + '"></label>';
@@ -498,8 +869,9 @@ var Deliveries = (function () {
 
     var body = '';
     if (owed > 0 && collects) {
-      body += '<div class="partner-note">' + t('dl_collect_hint').replace('{a}',
-        (typeof Desk !== 'undefined' ? Desk.moneyText(owed, d.currency) : String(owed))) + '</div>' +
+      body += '<div class="dl-hero"><span>' + t('dl_to_collect') + '</span><b>' + fmt(owed, d.currency) + '</b>' +
+        '<small>' + nm(d.customerName || t('walk_in')) + ' · <bdi dir="ltr">' + esc(d.saleId) + '</bdi></small></div>' +
+        '<div class="partner-note mt">' + esc(t('dl_collect_hint').replace('{a}', fmtText(owed, d.currency))) + '</div>' +
         '<label class="field mt"><span>' + t('dl_collected') + '</span>' +
           '<input class="inp num" id="dlGot" type="text" inputmode="decimal" dir="ltr" value="' +
           esc(typeof Desk !== 'undefined' ? Desk.plain(owed, d.currency) : String(owed)) + '"></label>';
@@ -507,7 +879,8 @@ var Deliveries = (function () {
         body += '<label class="check"><input type="checkbox" id="dlInHand"><span>' + t('dl_in_my_hand') + '</span></label>';
       }
     } else {
-      body += '<div class="partner-note">' + t('dl_nothing_to_collect') + '</div>';
+      body += '<div class="dl-hero is-clear">' + svg(ICON.check) + '<b>' + t('dl_nothing_to_collect') + '</b>' +
+        '<small>' + nm(d.customerName || t('walk_in')) + ' · <bdi dir="ltr">' + esc(d.saleId) + '</bdi></small></div>';
     }
 
     openModal({
@@ -517,13 +890,108 @@ var Deliveries = (function () {
     });
   }
 
+  /* The five things that actually happen at a door, one tap each — typed on a
+     phone in the sun, "nobody home" is the sentence that gets skipped. The
+     box stays editable: a chip is a start, not a category. */
+  var WHY = ['nobody', 'phone', 'address', 'refused', 'later'];
+
   function register() {
     if (typeof ACTIONS === 'undefined') return;
 
     ACTIONS['dl-reload'] = function () { failed = null; loaded = false; repaint(); load(); };
-    ACTIONS['dl-f-status'] = function (el) { F.status = el.getAttribute('data-id'); load(); };
-    ACTIONS['dl-f-method'] = function (el) { F.method = el.getAttribute('data-id'); load(); };
-    ACTIONS['dl-f-money'] = function (el) { F.money = el.getAttribute('data-id'); load(); };
+    ACTIONS['dl-wa-track'] = function (el) {
+      if (typeof Desk !== 'undefined' && Desk.sendTrack) Desk.sendTrack(el.getAttribute('data-id'));
+    };
+
+    /* The bell. On → off unsubscribes this browser; off → on asks for
+       permission, subscribes with the server's key and registers the device,
+       and the server sends a first notification at once as proof. */
+    ACTIONS['dl-push'] = function () {
+      if (push.busy) return;
+      if (push.state === 'unknown') pushInit();
+      if (push.state === 'unsupported') {
+        toast(t('dl_title'), t('dlp_push_unsupported'), 'err', 10000);
+        return;
+      }
+      push.busy = true;
+      pushPaint();
+      var finish = function () { push.busy = false; pushPaint(); };
+
+      if (push.state === 'on') {
+        pushReg().then(function (reg) { return reg.pushManager.getSubscription(); })
+          .then(function (sub) {
+            if (!sub) return null;
+            return API.post('/api/push/unsubscribe', { endpoint: sub.endpoint })
+              .then(function () { return sub.unsubscribe(); });
+          })
+          .then(function () {
+            push.state = 'off';
+            finish();
+            toast(t('dl_title'), t('dlp_push_turned_off'), 'ok', 3500);
+          })
+          ['catch'](function (e) { finish(); toast(t('dl_title'), API.friendly(e), 'err', 8000); });
+        return;
+      }
+
+      pushAsk().then(function (p) {
+        if (p !== 'granted') throw { perm: p };
+        return Promise.all([pushReg(), API.post('/api/push/state', {})]);
+      }).then(function (both) {
+        var reg = both[0], key = both[1] && both[1].key;
+        if (!key) throw new Error('the server has no push key');
+        return reg.pushManager.getSubscription().then(function (sub) {
+          if (sub && !pushSameKey(sub, key)) return sub.unsubscribe().then(function () { return null; });
+          return sub;
+        }).then(function (sub) {
+          return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushBytes(key) });
+        });
+      }).then(function (sub) {
+        var body = sub.toJSON();
+        body.lang = OG.lang === 'ar' ? 'ar' : 'en';
+        return API.post('/api/push/subscribe', body);
+      }).then(function () {
+        push.state = 'on';
+        finish();
+        toast(t('dl_title'), t('dlp_push_turned_on'), 'ok', 5000);
+      })['catch'](function (e) {
+        finish();
+        if (e && e.perm) {
+          toast(t('dl_title'), t(e.perm === 'denied' ? 'dlp_push_blocked' : 'dlp_push_not_allowed'), 'err', 10000);
+          return;
+        }
+        toast(t('dl_title'), t('dlp_push_failed').replace('{e}',
+          (e && e.message) ? e.message : API.friendly(e)), 'err', 10000);
+      });
+    };
+
+    /* A status tile narrows the parcels; "still owed" filters on money; the
+       cash tile goes to where that cash is dealt with. Pressing a lit tile
+       again puts the board back. */
+    ACTIONS['dl-tile'] = function (el) {
+      var id = el.getAttribute('data-id');
+      if (id === 'cash') {
+        if (typeof Road !== 'undefined') Road.setTab(Road.tab() === 'cash' ? 'parcels' : 'cash');
+        return;
+      }
+      if (id === 'waiting' || id === 'out') F.status = F.status === id ? 'open' : id;
+      else if (id === 'owed') F.money = F.money === 'owes' ? '' : 'owes';
+      if (typeof Road !== 'undefined' && Road.tab() !== 'parcels') Road.setTab('parcels');
+      load();
+    };
+
+    ACTIONS['dl-layout'] = function (el) {
+      var next = el.getAttribute('data-id') === 'list' ? 'list' : 'lanes';
+      if (next === layout) return;
+      layout = next;
+      try { localStorage.setItem(LAYOUT_KEY, layout); } catch (e) { /* private window */ }
+      repaint();
+      load();
+    };
+
+    ACTIONS['dl-f-reset'] = function () {
+      F = { status: 'open', method: '', money: '', q: '' };
+      load();
+    };
 
     ACTIONS['dl-go'] = function (el) {
       move(+el.getAttribute('data-id'), { status: 'out' }, t('dl_sent'));
@@ -552,9 +1020,14 @@ var Deliveries = (function () {
 
     ACTIONS['dl-fail'] = function (el) {
       var id = +el.getAttribute('data-id');
+      var d = byId(id);
       openModal({
-        title: t('dl_fail'), size: 'narrow',
-        body: '<label class="field"><span>' + t('dl_why') + '</span>' +
+        title: t('dl_fail') + (d ? ' · ' + d.saleId : ''), size: 'narrow',
+        body: '<div class="dl-whys">' + WHY.map(function (k) {
+                return '<button type="button" class="chip" data-act="dl-why-pick" data-id="' + k + '">' +
+                  t('dlp_why_' + k) + '</button>';
+              }).join('') + '</div>' +
+              '<label class="field"><span>' + t('dl_why') + '</span>' +
               '<input class="inp" id="dlWhy" type="text" placeholder="' + esc(t('dl_why_ph')) + '"></label>',
         foot: '<button class="btn" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-act="dl-fail-go" data-id="' + id + '">' + t('dl_fail') + '</button>',
@@ -563,6 +1036,16 @@ var Deliveries = (function () {
           if (f) setTimeout(function () { f.focus(); }, 60);
         }
       });
+    };
+
+    ACTIONS['dl-why-pick'] = function (el) {
+      var f = document.getElementById('dlWhy');
+      if (!f) return;
+      f.value = t('dlp_why_' + el.getAttribute('data-id'));
+      Array.prototype.forEach.call(document.querySelectorAll('.dl-whys .chip'), function (c) {
+        c.classList.toggle('on', c === el);
+      });
+      f.focus();
     };
 
     ACTIONS['dl-fail-go'] = function (el) {
@@ -612,6 +1095,9 @@ var Deliveries = (function () {
         load().then(function () { focusBack('[data-change="dl-q"]', String(F.q).length); });
       }, 350);
     };
+    CHANGES['dl-f-status'] = function (el) { F.status = el.value || 'open'; load(); };
+    CHANGES['dl-f-method'] = function (el) { F.method = el.value || ''; load(); };
+    CHANGES['dl-f-money'] = function (el) { F.money = el.value || ''; load(); };
   }
 
   return {

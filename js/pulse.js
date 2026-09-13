@@ -377,6 +377,34 @@ var Pulse = (function () {
     return Auth.can('config.write') || Auth.can('delivery.read');
   }
 
+  /* FULL REFRESH, the moment before the shop closes (panel/panel.js).
+     The tab covers itself — the mark, a ring, one sentence — instead of
+     showing a failing page while the shop is down, and remembers it was told:
+     the next hello it hears on /api/live is from the FRESH server, and that
+     is when it reloads, even if the panel's reload message went out before
+     this tab had reconnected. A tab that never reconnects reloads anyway. */
+  var refreshing = false;
+  function refreshCover(text) {
+    var el = document.getElementById('ogRefresh');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'ogRefresh';
+      el.className = 'og-refresh';
+      el.setAttribute('role', 'status');
+      el.innerHTML = '<div class="ring"><i></i><img src="assets/logo.svg" alt=""></div>' +
+        '<b></b><span></span><div class="bar"></div>';
+      document.body.appendChild(el);
+    }
+    el.querySelector('b').textContent = t('rf_app_title');
+    el.querySelector('span').textContent = text || t('rf_app_sub');
+  }
+  function beginRefresh() {
+    if (refreshing) return;
+    refreshing = true;
+    refreshCover();
+    setTimeout(hardRefresh, 90000);
+  }
+
   /* HARD REFRESH, from the control panel's button.
 
      A plain location.reload() is not enough and never was. The service worker
@@ -391,6 +419,7 @@ var Pulse = (function () {
      developer's. That is deliberate — a till reloading itself under a
      cashier's hands mid-sale is a bug, not a feature. */
   function hardRefresh() {
+    refreshCover(t('rf_app_load'));
     var done = function () { location.reload(); };
     var jobs = [];
 
@@ -417,7 +446,11 @@ var Pulse = (function () {
     try {
       es = new EventSource('/api/live');
     } catch (e) { es = null; return; }
-    es.addEventListener('hello', function (ev) { live = true; takePresence(ev); paintLive(); });
+    es.addEventListener('hello', function (ev) {
+      /* Told a refresh was coming, and now talking to the new server. */
+      if (refreshing) { hardRefresh(); return; }
+      live = true; takePresence(ev); paintLive();
+    });
     es.addEventListener('change', function (ev) {
       takePresence(ev);
       /* Somebody arriving or leaving is not a data change — nothing to
@@ -426,6 +459,7 @@ var Pulse = (function () {
       var d = {};
       try { d = JSON.parse(ev.data || '{}'); } catch (e) { /* ignore */ }
       if (d.mirror) { if (typeof MirrorUI !== 'undefined') MirrorUI.paint(d.mirror); return; }
+      if (d.refreshing) { beginRefresh(); return; }
       if (d.reload) { hardRefresh(); return; }
       /* A parcel moved. The board is a screen two people watch at once — the
          office scanning a sheet and whoever is answering the phone — and a

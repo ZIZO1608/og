@@ -173,14 +173,39 @@ certificate rather than the one `lib/tls.js` apologises for.
 
 ### Accounts
 
-There are no test accounts. The five that used to exist (`hussam`, `lubna`, `maher`, `talal`,
-`yalla`, all on a password published in the repo) were retired, and the scripts that created them
-deleted. `maher` and `yalla` referenced nothing and were removed outright; `hussam`, `lubna` and
-`talal` had rung up real sales and deliveries, so their rows survive **disabled, with their password
-hashes replaced by random bytes** — deleting them would have taken the invoices that name them.
+There are no test accounts. Five used to exist — `hussam`, `lubna`, `maher`, `talal`, `yalla` — all
+on one password published in the repo, each with `pw_hint = 'the test one'`, which the login screen
+hands to anyone who types the username. **That password is still in git history and cannot be
+taken out of it.** The scripts that created them are deleted. Make new accounts with
+`npm run createuser`.
 
-**Their old password is still in git history.** The server and `npm run preflight` both warn if one
-of those usernames is ever `active = 1` again. Make new accounts with `npm run createuser`.
+**Retiring them is a fact about ONE DATABASE, and it did not happen on every copy.** This section
+used to say all five were retired — `maher` and `yalla` deleted, the other three disabled with their
+hashes replaced by random bytes. That describes another install's database (Ahmad's, which holds the
+mirror's lineage; not verified from this laptop). On this laptop's `server/data/og.db` all five were
+still `active = 1` with the hint, and because the paragraph said otherwise nobody looked — including
+while this laptop was on the public internet through the Cloudflare tunnel. **Check the database, not
+this file:** `SELECT id, username, active, pw_hint FROM users`.
+
+- **2026-09-05, the attempt that undid itself.** A session disabled the five with raw SQL, found no
+  manager left who could sign in, was refused the raw-SQL undo, created **`owner` ("Shop Owner",
+  manager, id 7)** with `npm run createuser` as a way back in, and signed in as it to switch the five
+  back ON through `POST /api/users/:id/active`. That is why all five carry the same `updated_at` and
+  why `owner` exists. Its password is in that session's transcript on this laptop, not in the repo.
+  It is kept on purpose — a development partner may sign in with it.
+- **2026-09-13, this laptop.** The five are `active = 0` with `pw_hint = NULL` and every session
+  deleted — what the app's own disable route does, plus the hint. The rows stay: invoices and
+  deliveries name them. **Their hashes are unchanged, so the published password still matches**:
+  switching one back on re-opens it. Replacing `pw_hash`/`pw_salt` with random bytes is the step that
+  makes re-enabling harmless, and has not been taken here.
+- Also on this copy: `mirrortest` (id 6, disabled), `zaven` and `zohrab` (Yalla Wear — see the
+  partner half), `zaren` (id 10, manager, created 2026-09-13).
+
+Done with raw SQL, which is acceptable on a dev copy only. On the shop machine use Settings (the
+`staff.write`-gated route), which also ends the sessions. The server's startup notice
+(`retired_account`) and `npm run preflight` both name any of the five usernames that is
+`active = 1` — which is exactly the warning that was printed on this laptop every morning and read
+as noise because this section said the accounts were already gone.
 
 ## The launcher: `OG System.exe` and the control panel
 
@@ -267,36 +292,49 @@ message can only come from the parent that spawned the process.
 - **`{type:'sync'}`** runs `SyncWorker.runNow('full')` — the same call `POST /api/sync/push`
   makes; the worker's own lock stops the two overlapping.
 
-### Hard refresh
+### Hard refresh — now the Full refresh
 
-The button that makes an edit reach the copy already open in a browser. Two halves, and it is
-only a hard refresh with both:
+The button that makes an edit, or anything else that moved, reach every copy of the shop already
+open. It was two halves plus a server restart only when server code had changed; the owner asked
+(13 Sep 2026) for "a full server refresh, with new data", so it is now **one sequence, every
+time** — `hardRefresh()` in `panel/panel.js`, six steps pushed to the window as `event: refresh`
+(`state.refresh`, ids and states only; the words are `rf_*` in `panel/ui/i18n.js`):
 
-1. **The file half bumps `CACHE` in `sw.js`** (`og-system-v119` → `v120`). The Gotchas section
-   below has said to do this by hand on every change to `css/`, `js/` or `index.html` since long
-   before the panel; one integer in one file is better kept by a button than by a paragraph.
-2. **The tab half** sends `{type:'reload'}` up the pipe → `Live.notify('all', { reload: true })`
-   → `hardRefresh()` in `js/pulse.js`, which deletes every cache, asks the worker registration
-   to update, and only then reloads. `location.reload()` alone never worked: `sw.js` is
-   cache-first with `ignoreSearch`, so it answered out of the old store however hard anyone
-   pressed F5. **It reaches the tabs on `/api/live` — the manager's and the developer's — and
-   deliberately not a cashier's**, because a till reloading itself under somebody's hands
-   mid-sale is a lost sale, not a refresh.
+1. **files** — bump `CACHE` in `sw.js` (`og-system-v119` → `v120`). The Gotchas section below has
+   said to do this by hand on every change to `css/`, `js/` or `index.html` since long before the
+   panel; one integer in one file is better kept by a button than by a paragraph.
+2. **warn** — `{type:'refreshing'}` up the pipe → `Live.notify('all', { refreshing: true })`. Every
+   open tab covers itself with the mark, a ring and "Updating OG System…" (`.og-refresh`,
+   `beginRefresh()` in `js/pulse.js`) instead of a failing page while the shop is down.
+3. **stop** — the graceful `{type:'stop'}`, after 800 ms so the warning lands first.
+4. **start** and 5. **answer** — the ordinary start (boot pull included), then the wait for `ready`,
+   up to five minutes.
+6. **tabs** — `{type:'reload'}` → `hardRefresh()` in `js/pulse.js`: every cache deleted, the worker
+   registration updated, then reload. `location.reload()` alone never worked: `sw.js` is cache-first
+   with `ignoreSearch`, so it answered out of the old store however hard anyone pressed F5.
 
-3. **The server half, when the server's own code moved.** Node reads a module once, at import, so a
-   shop started before an edit goes on running the old code — and Hard refresh, which only ever
-   spoke to the browser, could not fix that. `serverIsStale()` compares the newest mtime under
-   `server/index.js`, `lib/`, `scripts/` and `migrations/` against when the child was launched
-   (`startedAt`); when it is newer, Hard refresh **stops and restarts the shop first**, waits for it
-   to answer, and only then tells the tabs — reloading into a server still doing its boot pull shows
-   the failure page. Restarted only when something it runs actually changed, because a restart costs
-   the boot pull and interrupts the till. The panel shows it in amber under the buttons before
-   anything looks broken, and `snapshot()` recomputes it for the hello frame as well as every push,
-   so a window opened after an edit does not say the server is current when it is not. `data/` and
-   `backups/` are excluded: they change constantly and mean nothing here. **What this cost before it
-   existed:** the new `POST /api/products/:id/image` answered "No such endpoint" to a button that
-   plainly existed in the source, and the app now names that cause (`img_stale_server`) rather than
-   repeating the 404.
+- **A warned tab reloads on the next `hello` it hears**, which can only come from the fresh server —
+  so a tab that reconnected after the reload message went out is not left on old code. One that
+  never reconnects reloads after 90 s anyway.
+- **It reaches the tabs on `/api/live` — the manager's and the developer's — and deliberately not a
+  cashier's**, because a till reloading itself under somebody's hands mid-sale is a lost sale. The
+  restart does close the shop for those seconds, which is why the window **asks first** and shows
+  who has the shop open (the Stop question's `who` line).
+- **The window draws a progress sheet** (`#refresh`, `paintRefresh()`): the mark in a lime ring that
+  fills per step, the steps ticking (with the new cache name, and how long the answer took), seconds
+  counting. Success closes itself after 4.5 s; a failure (`start_failed`, `no_answer`) stays red
+  with Show log. A window opened more than 15 s after the result does not replay it.
+- **A shop this panel did not start gets the file step only** (`rf_code_foreign`) — somebody else's
+  process is theirs to restart. A second press while one runs is refused `refresh_busy`; a running
+  job refuses it `job_busy`.
+- **`serverIsStale()` still draws the amber card**, whose button is this one. Node reads a module
+  once, at import, so a shop started before an edit runs the old code: the new
+  `POST /api/products/:id/image` once answered "No such endpoint" to a button that plainly existed in
+  the source, and the app names that cause (`img_stale_server`). `data/` and `backups/` are excluded
+  from the check.
+- Verified against a stand-in panel serving the real `panel/ui` files (the question, six steps,
+  success, failure), and a scratch server held over IPC the way the panel holds it — warned,
+  stopped, started, and the open tab covered, then back by itself and still signed in.
 
 It also needed **`serveStatic` to stop sending `public, max-age=3600`** on `js/`, `css/` and
 `assets/`. That was an hour in which the browser would not even ask, with no ETag and no
@@ -2045,7 +2083,8 @@ What landed:
   off the right edge, including every button. Fixed by calling that hook from
   `Deliveries.repaint`, **not** by writing a second card-table in `og-skin.css`.
 - **The customer's page is Arabic first**, with English one tap away (`?lang=en`, server-side —
-  `dir` and `lang` belong on `<html>`, and this page carries no JavaScript by design). It grew a
+  `dir` and `lang` belong on `<html>`; the page had no script then, and still works without one
+  — see **The tracking page is live** below). It grew a
   four-step **rail** (ordered · payment · on the way · arrived; an arrived parcel is four filled
   dots and no ring, because the ring means "still moving"), and its money is now the server's
   arithmetic — it worked the balance out itself and knew nothing about a parcel that came back, so
@@ -2077,6 +2116,294 @@ spawned by the test script cannot bind its debugging port under the sandbox** �
 and the script attaches — and **every tab left behind holds an SSE stream open**, so after six runs
 the seventh page never loads at all (six connections per host on HTTP/1.1). Both are in the
 scripts' own comments.
+
+### The look (12 Sep 2026, later the same day)
+
+The owner asked for the delivery screens to be "something cool" for the admin and the office, and
+chose, from four questions: premium-but-alive over a louder control room, **lanes + live tiles**
+for the board, **a rail + a receipt ticket** for the office (replaced the same evening by five steps — see
+below), and all four places (office, board,
+driver's phone, the dialogs). No new features and no money logic moved; what changed on the server
+is two read-only additions below.
+
+- **The four tiles are `Deliveries.summary()`, never the list.** To take out · On the road · Still
+  owed · Cash with drivers ride on `GET /api/deliveries` as `summary` (not for a driver), computed
+  for the whole shop. The list under them is filtered and capped; tiles derived from it would change
+  with the search box. Owed uses the board's own `owes` arithmetic; cash uses **exactly
+  `Orders.driverCash`'s WHERE**, so the tile and the Cash back tab count the same notes. Money is a
+  pair per currency, drawn stacked, never added. A status tile narrows the parcels, "Still owed"
+  sets the money filter, the cash tile switches to the Cash back tab; a lit tile pressed again
+  resets.
+- **`status=today&since=<browser midnight>`** is what the lanes and the driver's phone ask for:
+  everything open, plus what closed since the reader's own midnight (the server is UTC; the day is
+  the browser's, as on the dashboard). That is what fills the third lane and the driver's "Done
+  today". The table's "Open" still means open. An old server ignores the unknown status and
+  returns everything — degraded, not broken.
+- **Lanes or List is per machine** (`og.dl.layout`). The filters became one row of three selects
+  and a search (they were 516px of chips on a phone). The table keeps its six columns — the phone
+  card rules address them by position.
+- **One rail, one face, one icon.** `Desk.rail(d, labels)` is the browser twin of the tracking
+  page's rail in `server/lib/receipt.js` — same four steps, same on/now rule, green not lime,
+  `.is-back` red — and the board cards, the table, the order dialog and the saved card all draw it.
+  `Desk.face(id, name)` (personFace/personTint) and `Desk.methodIcon(m)` are shared by the board,
+  the handover sheet and the cash cards. **Change the rail's rule in both places or neither.**
+- **The office is five steps in one centred panel** (`stageHtml()` in `js/desk.js`), asked for the
+  same evening after seeing the three-column version: Bag → Customer → Travels by → Address →
+  Payment, a rail over it, Back · running total · Next under it, and the saved card in its place
+  after Save. `S.step` and `S.maxStep` live in the draft, so a refresh returns to the step it was on
+  (clamped back by `canReach()` if a product or customer has gone since).
+  - **A scan never moves the step** — orders are often several pairs, and the owner chose "stay on
+    the bag until Next". Enter on the empty scan box is Next; a scan while another step is on screen
+    still lands in the bag and says so in a toast.
+  - **What stops a step is `stepReason(i)`**: reasons()'s own refusals filed under the step they
+    belong to, the last step taking whatever reasons() still has — so Next and Save can never
+    disagree. The rail's buttons are disabled unless `canReach()`; a pickup has no address step and
+    `goStep()` skips it in both directions.
+  - **`paint(part)` repaints the body only when that part's step is on screen** (`PART_STEP`), and
+    the rail and foot always. The CHANGES handlers still call `paint('sum')` on every keystroke;
+    without the filter, typing an address would rebuild the textarea under the caret.
+  - The last step **reads the order back** (`.dk-rv`, each row a button to its step) above the
+    ticket. **The stamp** (`stampKind`) thumps only when its answer changes (`lastStamp`); **the
+    saved card** animates once per order (`celebrated`), because recording the rest of a deposit
+    repaints it.
+- **The scan box is also a product picker** (`pick`, `dropHtml()`, `paintDrop()` in `js/desk.js`).
+  A click, a keystroke or ↓ opens a list under the box — **never focus**, because the box is
+  refocused after every line lands and a list springing open each time would bury the bag. An empty
+  box lists what is in stock at the packed-from place, most first (everything, saying so, when
+  nothing is); typing narrows on name, brand, colourway, size, SKU, barcode and label code, every
+  word having to match, and a word that is a size lights that size ("samba 43"). Sizes are the
+  options: ↑ ↓ walk them, Enter or a click adds, Esc closes and a second Esc empties the box, a
+  mousedown outside closes. A code typed in full + Enter is still a scan; the gun goes through
+  `scanned()` and `addVariant()` closes the list whatever added the line. The list is capped at
+  `PICK_MAX` (30) **and the head says so**. Only `#dkDrop` repaints while typing, never the input.
+  **The ▾ is `dk-browse`, never `dk-drop`** — `dk-drop` is the ✕ on a bag line, and `ACTIONS` is one
+  object: the picker's handler was added under the same key, replaced the remove button, and every ✕
+  opened the product list instead. The same trap as a global function name — **grep for a
+  `data-act` name before adding one.**
+- **The customer box is the same control** (`cpick`, `custDropHtml()`, `paintCust()`), and its
+  search is **`custSearch()` and nothing else** — the one "which customer does this text mean" rule
+  the attach, merge and job-link pickers share, so archived and merged-away people are never offered
+  and a phone matches in any spelling. An empty box lists most recent buyers first; each row carries
+  the face, phone · city, "last bought", and an amber *owes* when `debtSyp`/`debtUsd` > 0 (null for
+  an account that may not see debt, so the tag never lies). **+ New customer stays beside the box**,
+  and nothing matching also offers "Add '…' as a new customer" with what was typed prefilled.
+  **Change reopens the list** — it means "somebody else". The box is rebuilt with its step, so it is
+  listened to at the document (`click`/`keydown` on `#dkCust`) rather than wired per element; both
+  lists share `lightOpt()` for the lit row and one outside-mousedown listener closes either.
+- **The Delivery section of Settings was never on the page.** `Desk.settingsCards()` — payment
+  methods, transport offices and couriers, the shipping price list, where customers send the money —
+  was written with the office and exported, and nothing in `viewSettings()` called it, so every
+  "add one in Settings" hint sent the shop to a page with no such list. It is drawn after Warehouse
+  now (it brings its own heading, gates itself on `config.write`, and on a first visit fetches the
+  office's settings and redraws). Every such hint — the office's travel step, the Assign dialog, the
+  handover picker — is `dk-goto-companies`, which opens that fold and scrolls to it **after** the
+  page has settled (navigating resets the view's scroll once the screen is in, so a first-frame
+  scroll was undone). A save redraws Settings through `renderKeepScroll()` rather than jumping to
+  the top; a nameless row is refused in words before the request; number boxes carry `dir="ltr"`.
+  **The board and the handover picker now prefer `Desk.companies()` once `Desk.companiesLoaded()`**,
+  because that is the copy a Settings save updates — a courier added a minute ago was otherwise
+  missing from their own earlier fetch.
+- **"It did not print" was a save the server refused.** The office let a size with none at the
+  packed-from place reach Save (the picker dims it, the line said "only 0 here" in amber), and
+  `Orders.create` refused the whole order with `insufficient_stock` — so nothing was saved and
+  there was nothing to print. Now `shortLines()` is one of `reasons()`'s refusals and stops the bag
+  step: a red `.dk-shortbar` names what is short, each line says where there is some
+  (`bestElsewhere`), and **Pack from … instead** appears only when one place covers the WHOLE bag
+  (`coveringPlace` — an order is packed from one place). **Refresh stock** reloads a stale count.
+  The browser's count can still be behind another till, so the Save refusal is handled too: the
+  person is told in their language that the order was NOT saved and nothing printed, the stock is
+  reloaded, and they are put back on the bag step. Printing itself was never broken — "Both" sends
+  the slip to the receipt printer (`Receipt.printSale`, no dialog) and opens the A4 invoice with its
+  Print button, which is what verified on a scratch copy whose printer share is deliberately
+  `\\127.0.0.1\NOWHERE` (so the slip reports "could not reach" there, and nowhere else).
+- **The foot is sticky with a NEGATIVE offset** — `bottom: -84px` on a desk, `-20px` on a phone.
+  `.view` is the scroller, and a sticky element sticks inside its scroller's PADDING (96px on a desk,
+  the tab bar + 28px on a phone): with `bottom: 0` the bar floated 96px up the screen with the step
+  showing again beneath it. **Change `.view`'s bottom padding and these must move with it.** A
+  page-coloured `::after` skirt fills the few pixels under a stuck foot. The step transition fills
+  `backwards`, not `both` — a filling transform left `matrix(1,0,0,1,0,0)` on the body, which is a
+  stacking context and a containing block for anything fixed inside it.
+- **Motion is feedback, never idle**: a scan sweeps its row, a beeped slip flashes on the sheet
+  (`justAdded`, cleared on a timer so an unrelated repaint does not replay it), the stamp lands, the
+  tick draws. The only things that move by themselves are the "on the road" dot and the scanner
+  beam on an empty bag. The lane cards deliberately have **no entry animation**: the board repaints
+  on every live push and every action, and a board that re-animates is a board that flickers.
+- **Two bugs found while testing, both older than the look.** *Take a payment* on the board read
+  `boot.currencies` from the office's bootstrap, which is only fetched when the office screen has
+  been opened — so after a fresh sign-in it died with a TypeError in a toast. `ensureBoot()` fetches
+  it on demand. The **Assign** dialog had the same trap for companies ("No companies yet" with one
+  configured) and now keeps its own copy, as the handover picker already did. The driver's stat
+  cards that summed dollars into a lira figure were replaced by the day card, which counts his own
+  rows and keeps money per currency.
+- **Phone:** the tab icons hide under 720px (three tabs with counts were 394px of a 358px row), the
+  refresh button is not stretched by the head's share-the-width rule, and the tab row has
+  `overflow-y: hidden` — its tabs' −1px underline margin made it 1px taller than itself, which drew
+  a vertical scrollbar as a thin lime bar at the end of the row.
+- **Verified** on a scratch copy with real orders made through the API (7 orders, a signed sheet
+  with one delivered for cash and one failed, an open sheet): every section at 1366×768, 390×844 and
+  in Arabic, sideways scroll measured, every dialog's primary button hit-tested, zero runtime errors.
+  **A hash-only navigation does not reload the page** — a harness that signs in as a second account
+  and navigates to the same URL with a different `#` is still looking at the first account's
+  screen; add a changing query string.
+
+### The tracking page is live, branded, and can buzz a phone (13 Sep 2026)
+
+`server/lib/receipt.js` (lookups, `events()`, `pushText()`, `render()`), `track-page-css.js`,
+`track-page-client.js`, `track-page-words.js`, `server/lib/tracking.js`, `server/lib/webpush.js`,
+migration `048_push.sql`. The owner asked for `/i/<token>` to be "more branded, real time, and send a
+notification to the mobile and laptop", and chose: **Web Push that arrives with the page closed**,
+**to the customer AND the shop's staff**, **always dark**.
+
+- **The page is no longer script-free, and still works without one.** Everything a customer needs
+  is in the server's HTML; the one inline script ADDS the live refresh, relative times and Notify
+  me. Every place that said "no JavaScript by design" meant a page with nothing that moves. The
+  look, the script and the two-language words are three modules so the renderer stays readable —
+  and the words are shared with the notifications, so a phone is told the page's own sentence.
+- **Live = a data-less nudge + a refetch of the same public page.** `GET /i/<token>/live` is a
+  SEPARATE set in `lib/live.js` (`subscribeTrack`/`notifyTrack`), never counted in `presence()` —
+  a customer watching a parcel is not "online" on the shop's side. Capped at 12 per order and 600
+  in all; past the cap, or with no EventSource, the page polls every 45 s. The script swaps the
+  `[data-live]` regions by id and **reloads when the set of regions changes** (a cancelled order
+  loses its money card). There is deliberately no JSON feed: this HTML is the one shape of the data
+  a stranger may see.
+- **What counts as news is a KEY, not a route.** `events(sale)` gives every public event a stable
+  key (`placed`, `pay:<id>`, `out:<out_at>`, `ret:<id>`, `closed:<status>:<closed_at>`, `void`);
+  `push_seen` holds the keys already announced per order. Routes just call
+  `Tracking.moved(saleIds, actorId)` after committing — create, payment, hand-in, handover, return,
+  PATCH delivery, void — and a change the customer cannot see (cash handed in) says nothing, two
+  routes on one order say it once, a restart repeats nothing. An order with no `push_seen` row
+  treats only events from the last 3 minutes as news, so old orders are not re-announced.
+- **Staff alerts skip the person who pressed the button**, and are gated on `delivery.desk` at
+  subscribe and again at send (skipped, not deleted, when the permission is gone); the customer's
+  name is added only for an account with `customer.read`. The bell is on the Deliveries board
+  (`dl-push`, `.dlb-push`), subscribes through the app's own `sw.js`, and the server sends a first
+  notification at once as proof — both audiences get that "hello".
+- **`webpush.js` is RFC 8291 + VAPID on `node:crypto`, no package.** The endpoint is a URL a
+  stranger's browser sends, so **only the vendors' push hosts are ever called** (FCM, Mozilla,
+  WNS, Apple), https on 443. The VAPID key pair lives in `push_keys` — not `config` (handed to every
+  login), not `.env`. `push_subscriptions` and `push_seen` are **not mirrored**, for
+  `partner_events`' reason; `drift.js` checks only its PUSHED list, so it stays green. A 404/410 from
+  a vendor deletes every row on that endpoint; eight other failures in a row delete the one row.
+- **A SCRATCH COPY MUST NOT PUSH.** A copy of `og.db` carries real customers' subscriptions — the
+  Telegram-token trap again. Set `OG_PUSH=0`, or `OG_PUSH_TEST_HOST=127.0.0.1:9311`, which allows
+  that one plain-http receiver and **refuses every real push service**. That is how it was tested:
+  a local receiver that verifies the ES256 signature against `k=` and decrypts the body.
+- **iPhones get push only from a page added to the Home Screen** (Apple's rule), so each order
+  page links `/i/<token>/manifest.webmanifest` (scope `/i/`, start_url that order) and the card
+  says how, instead of a button that cannot work. The page's worker is `/i/sw.js`, served from
+  `Tracking.WORKER` with `Service-Worker-Allowed: /i/`; the app's `sw.js` carries the same push
+  handlers — **keep the two in step**. Push also needs a secure page: the public
+  `https://shop.ogsports1.com/i/…` link works, the Wi-Fi IP does not, and both screens say so.
+- **The Home Screen guide.** The owner asked for install steps in the notifications card and for
+  iPhone notifications "from the top". The second is Apple's own banner, which exists only for a
+  Home Screen page, so the first is the way to it. The card SHOWS what installing buys — a drawn
+  phone with this shop's notification dropping in from the top — then the three taps, and **Show me
+  how** opens a three-slide sheet with the phone drawn at each tap (Share lit on Safari's bar, "Add
+  to Home Screen" lit in the share sheet, the mark on a Home Screen as a notification lands). All
+  CSS: no screenshot of Apple's interface, which changes every September.
+  - **The user agent chooses WORDS only**: Safari (the bar at the bottom, or inside ••• on newer
+    iPhones), iPad (the top), Chrome/Edge on iOS (the address bar), Firefox/Opera (the menu). An app's
+    own browser — Instagram, Facebook, TikTok, Google (`inapp`) — cannot add to the Home Screen at
+    all and is told to open Safari, with Copy link. iOS below 16.4 (`old`) is told to update rather
+    than walked through something that cannot work. What the page can DO is still asked of the
+    browser (`supported()`).
+  - **Opened from the Home Screen with permission not yet asked, the card is `ready`** — "added, one
+    tap left" with a pulsing Notify me, because iOS only asks for permission from a tap.
+  - **Chrome's own `beforeinstallprompt` becomes "Install as an app"** under Notify me.
+  - **With notifications on in a Home Screen iPhone, the page's banner stands down for live
+    updates** (`nativeTop`): iOS drops its own banner for the same news, and two stacked is noise.
+  - **`.sheet` is `touch-action: pan-y`.** A sideways swipe turns the sheet (towards the reading
+    direction); left to the browser it was taken as Back, and the order page went with it — found
+    by the harness, not by reading.
+  - Verified with emulated user agents in `guide.mjs` (PushManager deleted, as an iPhone Safari tab
+    has none). An emulated iPhone is not an iPhone: the real banner has only been seen through the
+    local push receiver, never on Apple's service.
+- **"WhatsApp: tracking link"** (`waTrack` / `kind: 'track'` in `js/desk.js`, `Desk.sendTrack`) is
+  the third order message beside confirm and how-to-pay: the link, where the order is right now,
+  what is left to pay, and a pointer to Notify me — in both languages (below). It is on the saved card, the order dialog
+  and **every order card on the Deliveries board** (`dl-wa-track`, which fetches the order and the
+  bootstrap because the board has neither). Unlike the money messages it opens with an empty number
+  box when the order has none, and it refuses with words when the shop has no public address
+  (`publicBase()` null), because a link only the shop's wifi can open is not worth sending.
+  `WA.compose`'s message box is `dir="auto"` now — it was forced rtl and turned "Hi Nour," into
+  ",Hi Nour". Verified by `wa.mjs` in both languages: the button on the cards, the composer's
+  text, the link opening the page, and the `wa.me` URL (window.open caught).
+- **EVERY WhatsApp message is both languages — the owner's standing rule ("in all things").**
+  `WA.both(arLines, enLines)` in `js/whatsapp.js` is the one shape: the Arabic block, a `━━━` rule,
+  then the English block, whichever language the screen is in, and it starts any Arabic line that
+  begins with a Latin letter with U+200F by itself. Its users: the three order messages (`waBoth()`
+  in `js/desk.js` delegates to it), the win-back and back-in-stock templates, the end-of-day
+  summary, the purchase order to a supplier (`po-whatsapp`), the print order to Yalla Wear
+  (`or-wa`), the debt reminder (`money.js`) and the bulk customer message (`bulk.js`). That box
+  starts bilingual with `{name}`, and each customer's Send reads the box AS IT STANDS — every row
+  used to carry its own fixed Arabic sentence in its link, so what was typed was never what was
+  sent. `WA.cash` / `WA.lira` / `WA.day` / `WA.hi` write money, dates and the greeting in each
+  half's own words. **A new WhatsApp message goes through `WA.both`, never one language**;
+  `waall.mjs` checks every one (two halves, one rule, bold closed, no left-to-right Arabic line).
+  For the order messages the customer reads their half and nobody chooses before Send. It
+  replaces "no emoji, no Markdown", which was Telegram's rule copied across (Telegram's parse mode is
+  why it exists; WhatsApp has none): `*bold*` headings and the figures a customer acts on, one emoji
+  per heading, Western digits. The Arabic half links the Arabic page and the English half `?lang=en`.
+  An Arabic line that would begin with a Latin letter (a product name, a city typed in English)
+  starts with U+200F, or WhatsApp left-aligns it. The method is worded for a sentence (`WA_VIA` —
+  "via our own driver", or the company's name), not the office's button caption ("via Our driver").
+  The composer is `unicode-bidi: plaintext`, each line taking its own direction as WhatsApp draws it.
+  **`openOrder()` fetches the office bootstrap first**: the dialog's tracking button and every
+  message's link read `boot.publicBase`, and a dialog opened from the board straight after sign-in
+  (office screen never visited) had no tracking button and a confirmation with no link.
+- **Heard, not only seen.** A web page cannot choose a notification's sound — the phone plays its
+  own — so pushes are `silent: false` with a `vibrate` pattern, and an arrival that asks for a
+  review is `requireInteraction`. On the OPEN page an update drops a banner from the top
+  (`#tpBanner`) with a two-note WebAudio chime, a sound button beside LIVE (`og.track.sound`,
+  per device), and a buzz only after the person has touched the page (Chrome logs every refused
+  vibrate). A browser plays no audio before a first tap, so the chime is unlocked by one. **The
+  page's worker skips the system notification when that very order is open and focused** — the
+  page's banner is the same news — except on Safari, which withdraws push from a site that
+  receives one without showing anything; the "notifications are on" proof carries `always`.
+- **When several events land at once, the biggest news leads** (`weight()` in
+  `tracking.announce`): arrival or cancellation, then out, return, payment. A driver marking a
+  parcel delivered with the cash writes the payment a moment AFTER the arrival, and "Payment
+  received · +1 more" was what the phone said — with the review request, which hangs off the
+  arrival, never sent.
+
+### Delivery reviews (13 Sep 2026)
+
+`server/lib/reviews.js`, migration `049_order_reviews.sql`, mirror file
+`server/supabase/019_order_reviews.sql`, `js/reviews.js` (the Reviews page, its own menu entry).
+The owner chose: stars + quick tags + a comment; its own page; a review reaches the website only
+when **the customer allowed it AND the shop switched it on**; and the arrival asks for it.
+
+- **The form appears on the tracking page once the order is DELIVERED**, right under the status
+  on a phone. `POST /i/<token>/review` — the sale is the token's, one row per order, editable by
+  whoever holds the link. Six tags (`TAGS`/`TAG_WORDS` on the server, `rv_tag_*` in the app —
+  keep the ids in step), 600 characters, a permission tick naming the website. The card is
+  `data-keep`, not `data-live`: the live refresh swaps live cards and must not wipe a half-typed
+  comment, and `regionIds()` counts kept cards so one appearing (the parcel just arrived) reloads.
+- **The arrival asks.** The customer's "Delivered" push gets "· Rate your delivery", a **Rate it**
+  action whose `links.rate` opens `#review`, and stays until tapped — only while no review exists.
+- **Two switches.** `allow_web` is the customer's, `on_web` the shop's (`PATCH /api/reviews/:id`,
+  `config.write`, refused `no_permission` without the customer's). **Changing the stars, tags or
+  words takes it off the website** — the shop approved what it read. `show_name` is frozen as
+  first name + initial.
+- **`GET /api/ext/reviews`** (the website's bearer key) returns only both-switches-on, non-voided
+  reviews: an opaque id (never the invoice number), stars, tags in both languages, words, name,
+  city, date, plus the count and average. Ready for the e-commerce site.
+- **The Reviews page** (`#reviews`, gated `delivery.desk` — a driver holds `delivery.read` and has
+  no business reading every customer's words): the shop's average (the lime number), the 1–5
+  spread as bars that filter, what they liked, the share of delivered orders reviewed, then a card
+  per review with its order (opens it), carrier, words and the website switch or the lock line.
+  The summary is the whole shop's, never the filtered list's. Search repaints `#rvwList` only, so
+  the caret stays. The office hears each review as a push ("New review ★★★★☆ · name · words").
+- **Mirrored**, cursor shape like `job_reviews`: `order_reviews` sits in the ROAD guarded block,
+  `CURSOR_TABLES`, `restore.js ORDER`, `drift.js PUSHED`, reconcile `TABLES` (key `sale_id`) and the
+  sale-purge list, and `019` is appended to `CATCH-UP.sql`. **Run `019` in the Supabase dashboard,
+  then reconcile** — until then the sync skips it by name and the boot pull refuses with `drift`,
+  which is the guard working.
+
+- **Verified** on a scratch copy: `pushcrypto` (25 — endpoints, encryption, JWT, 410, off switch),
+  `trackflow` (41 — page, worker, manifest, live stream, follow, staff bell, who is told what) and
+  `trackui` (the look at 390/820/1366 in both languages, the Live pill, a payment taken elsewhere
+  landing on the open page without a reload, Notify me on and off).
 
 ## The dashboard
 

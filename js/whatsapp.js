@@ -47,27 +47,104 @@ var WA = (function () {
     });
   }
 
+  /* ------------------------------------------------ both languages, always
+
+     EVERY MESSAGE THIS APP HANDS TO WHATSAPP IS ARABIC, A RULE, THEN ENGLISH —
+     the customer, the supplier, Yalla Wear and the owner each read the half
+     that is theirs, and nobody at the counter chooses a language before Send.
+     Build the two halves as arrays of lines and pass them to both(); never
+     write a one-language message again.
+
+     WhatsApp's own formatting: *bold* for headings and the figures somebody
+     acts on, one emoji a heading, Western digits in both halves. WhatsApp
+     takes each LINE's direction from its first strong letter, so an Arabic
+     line that begins with a Latin word (a product name, an invoice number, a
+     city typed in English) is started with U+200F here, or it sits
+     left-aligned in the middle of the Arabic. Links are left alone. */
+  var RULE = '━━━━━━━━━━━━━━';
+  var RLM = '‏';
+
+  function rtlLine(s) {
+    s = String(s == null ? '' : s);
+    if (!s || s.charAt(0) === RLM || /^\s*https?:\/\//i.test(s)) return s;
+    return /^[^A-Za-z؀-ۿ]*[A-Za-z]/.test(s) ? RLM + s : s;
+  }
+  function lines(x) {
+    return (Array.isArray(x) ? x.join('\n') : String(x == null ? '' : x)).split('\n');
+  }
+  function both(ar, en) {
+    return lines(ar).map(rtlLine).join('\n') + '\n\n' + RULE + '\n\n' + lines(en).join('\n');
+  }
+
+  /* An amount the way the screen counts it (money()'s rule: the shop's
+     dollar view converts), written in each half's own words. */
+  function cash(syp, ar) {
+    if (typeof OG !== 'undefined' && OG.currency === 'USD') {
+      return '$' + nf((Number(syp) || 0) / CONFIG.EXCHANGE_RATE);
+    }
+    return nf(syp) + (ar ? ' ل.س' : ' SYP');
+  }
+  /* Always lira, whatever the screen shows — the loyalty value is lira. */
+  function lira(syp, ar) { return nf(syp) + (ar ? ' ل.س' : ' SYP'); }
+  function day(d, ar) {
+    d = new Date(d);
+    if (isNaN(d.getTime())) return '—';
+    return d.getDate() + ' ' + (ar ? MONTHS_AR : MONTHS_EN)[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  function first(name) {
+    if (typeof personFirst === 'function') return personFirst(name) || '';
+    return String(name || '').trim().split(/\s+/)[0] || '';
+  }
+  function hi(name, ar) {
+    var n = first(name);
+    return (ar ? 'مرحباً' : 'Hi') + (n ? ' ' + n : '') + ' 👋';
+  }
+
   /* ---------------------------------------------------------- templates */
 
   var T = {
     /* A customer who has not bought in a while. */
     winback: function (c) {
-      return 'مرحباً ' + String(c.name).split(' ')[0] + '، اشتقنالك! 🖤\n\n' +
-        'وصلتنا موديلات جديدة، وعندك ' + nf(c.loyaltyPoints) + ' نقطة ولاء ' +
-        'تعادل ' + nf(c.loyaltyPoints * CONFIG.LOYALTY_POINT_VALUE) + ' ل.س جاهزة للاستخدام.\n\n' +
-        'مرّ علينا قبل ما تخلص المقاسات.\n— ' + CONFIG.SHOP_NAME + ' · ' + CONFIG.SHOP_ADDRESS;
+      var n = first(c.name);
+      var pts = Number(c.loyaltyPoints) || 0;
+      var worth = pts * CONFIG.LOYALTY_POINT_VALUE;
+      var shop = CONFIG.SHOP_NAME;
+      return both([
+        'مرحباً' + (n ? ' ' + n : '') + '، اشتقنالك! 🖤',
+        '',
+        pts ? 'وصلتنا موديلات جديدة 🔥 وعندك *' + nf(pts) + ' نقطة ولاء* تعادل *' + lira(worth, true) + '* جاهزة للاستخدام.'
+            : 'وصلتنا موديلات جديدة 🔥',
+        'مرّ علينا قبل ما تخلص المقاسات 👟',
+        '',
+        '📍 *' + shop + '* · ' + (CONFIG.SHOP_ADDRESS_AR || CONFIG.SHOP_ADDRESS)
+      ], [
+        'Hi' + (n ? ' ' + n : '') + ', we miss you! 🖤',
+        '',
+        pts ? 'New styles just landed 🔥 and you have *' + nf(pts) + ' loyalty points* worth *' + lira(worth, false) + '* ready to use.'
+            : 'New styles just landed 🔥',
+        'Drop by before the sizes run out 👟',
+        '',
+        '📍 *' + shop + '* · ' + CONFIG.SHOP_ADDRESS
+      ]);
     },
 
-    /* The size he asked about is back on the shelf. */
+    /* The size they asked about is back on the shelf. */
     backInStock: function (c, product, size) {
-      return 'مرحباً ' + String(c.name).split(' ')[0] + '،\n\n' +
-        'رجع ' + product + ' مقاس ' + size + ' عالرف.\n' +
-        'احجزه قبل ما يخلص.\n— ' + CONFIG.SHOP_NAME;
-    },
-
-    /* The day, to himself or a partner. Built by dayText() below. */
-    daily: function (body) {
-      return '📊 ' + CONFIG.SHOP_NAME + ' · ' + fmtDate(TODAY) + '\n\n' + body;
+      return both([
+        hi(c.name, true),
+        '',
+        'رجع *' + product + '* مقاس *' + size + '* عالرف ✅',
+        'احجزه قبل ما يخلص.',
+        '',
+        '— ' + CONFIG.SHOP_NAME
+      ], [
+        hi(c.name, false),
+        '',
+        'Good news: *' + product + '* in size *' + size + '* is back on the shelf ✅',
+        'Reserve yours before it goes.',
+        '',
+        '— ' + CONFIG.SHOP_NAME
+      ]);
     }
   };
 
@@ -105,18 +182,39 @@ var WA = (function () {
 
   function dayText() {
     var d = dayStats();
-    var lines = [];
-    lines.push('المبيعات: ' + money(d.total) + ' · ' + d.count + ' فاتورة · ' + d.pieces + ' قطعة');
-
-    Object.keys(d.byPay).forEach(function (k) {
-      lines.push('• ' + (DB.payLabel(k)) + ': ' + money(d.byPay[k]));
-    });
-
-    if (d.best) lines.push('\nالأكثر مبيعاً: ' + d.best + ' (' + d.bestQty + ')');
-    if (d.critical) lines.push('⚠ ' + d.critical + ' مقاس وصل حد الخطر');
-    if (d.overdueJobs) lines.push('⚠ ' + d.overdueJobs + ' طلب طباعة متأخر');
-
-    return T.daily(lines.join('\n'));
+    var plural = function (n, one, many) { return n + ' ' + (n === 1 ? one : many); };
+    function part(ar) {
+      var L = [];
+      L.push('📊 *' + CONFIG.SHOP_NAME + '* — ' + (ar ? 'ملخّص اليوم' : 'Today’s summary'));
+      L.push('🗓️ ' + day(TODAY, ar));
+      L.push('');
+      L.push((ar ? '💰 المبيعات: *' : '💰 Sales: *') + cash(d.total, ar) + '*');
+      L.push('🧾 ' + (ar ? d.count + ' فاتورة · ' + d.pieces + ' قطعة'
+                          : plural(d.count, 'invoice', 'invoices') + ' · ' + plural(d.pieces, 'piece', 'pieces')));
+      var pays = Object.keys(d.byPay);
+      if (pays.length) {
+        L.push('');
+        L.push(ar ? '💳 *طرق الدفع*' : '💳 *How it was paid*');
+        pays.forEach(function (k) {
+          var label = ar ? ((DB.paymentLabelsAr || {})[k] || (DB.paymentLabels || {})[k] || k)
+                         : ((DB.paymentLabels || {})[k] || k);
+          L.push('▫️ ' + label + ': ' + cash(d.byPay[k], ar));
+        });
+      }
+      if (d.best) {
+        L.push('');
+        L.push((ar ? '🔥 الأكثر مبيعاً: ' : '🔥 Best seller: ') + d.best + ' (' + d.bestQty + ')');
+      }
+      if (d.critical || d.overdueJobs) L.push('');
+      if (d.critical) {
+        L.push('⚠️ ' + (ar ? d.critical + ' مقاس وصل حد الخطر' : plural(d.critical, 'size', 'sizes') + ' at the danger level'));
+      }
+      if (d.overdueJobs) {
+        L.push('⚠️ ' + (ar ? d.overdueJobs + ' طلب طباعة متأخر' : plural(d.overdueJobs, 'print job', 'print jobs') + ' overdue'));
+      }
+      return L;
+    }
+    return both(part(true), part(false));
   }
 
   /* ------------------------------------------------------------- compose
@@ -134,7 +232,12 @@ var WA = (function () {
         '<label class="field"><span>' + t('phone') + '</span>' +
           '<input class="inp num" id="waPhone" dir="ltr" type="text" value="' + esc(phone) + '"></label>' +
         '<label class="field mt"><span>' + t('whatsapp_msg') + '</span>' +
-          '<textarea class="inp" id="waText" dir="rtl" rows="9" style="line-height:1.7">' +
+          /* Each LINE finds its own direction (unicode-bidi: plaintext): the
+             order messages are Arabic then English in one box, and a box forced
+             either way draws the other half with every full stop at the wrong
+             end — "Hi Nour," came out as ",Hi Nour". WhatsApp itself reads
+             direction per paragraph, so the box now looks like the message. */
+          '<textarea class="inp" id="waText" dir="auto" rows="12" style="line-height:1.7;unicode-bidi:plaintext;text-align:start">' +
             esc(text) + '</textarea></label>' +
         (o.note ? '<div class="partner-note mt">' + o.note + '</div>' : '') +
         '<div class="partner-note mt">' + t('wa_handoff') + '</div>',
@@ -179,6 +282,7 @@ var WA = (function () {
 
   return {
     link: link, digits: digits, compose: compose, log: log,
-    templates: T, dayText: dayText, dayStats: dayStats
+    templates: T, dayText: dayText, dayStats: dayStats,
+    both: both, cash: cash, lira: lira, day: day, first: first, hi: hi, RULE: RULE
   };
 })();

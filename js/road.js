@@ -37,6 +37,7 @@ var Road = (function () {
   var cos = [];               /* the transport companies, from the same call */
   var busy = false;
   var loadedFor = null;       /* which tab the data on hand belongs to */
+  var justAdded = null;       /* the slip that just beeped, so its row can say so */
 
   try { tab = localStorage.getItem(TAB) || 'parcels'; } catch (e) { /* private window */ }
   if (['parcels', 'handover', 'cash'].indexOf(tab) < 0) tab = 'parcels';
@@ -59,6 +60,22 @@ var Road = (function () {
     return String(minor);
   }
 
+  /* The office draws the faces and the method icons; the road borrows them so
+     a driver looks the same on the board, the sheet and the cash card. */
+  function face(id, name) {
+    return (typeof Desk !== 'undefined' && Desk.face) ? Desk.face(id, name) : '';
+  }
+  function methodIcon(m) {
+    return (typeof Desk !== 'undefined' && Desk.methodIcon) ? Desk.methodIcon(m || 'courier') : '';
+  }
+
+  function scanArt(big) {
+    return '<span class="dk-laser' + (big ? '' : ' is-small') + '">' +
+      '<svg class="dk-ico' + (big ? ' big' : '') + '" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>' +
+      (big ? '<i></i>' : '') + '</span>';
+  }
+
   /* THE OFFICE SCREEN MAY NEVER HAVE BEEN OPENED. Desk.companies() reads the
      office's own bootstrap, which is fetched when that screen loads — so on a
      board opened straight from the navigation the carrier picker offered
@@ -66,13 +83,19 @@ var Road = (function () {
      could not be given a sheet. This keeps its own copy from the same
      request, and prefers whichever list has something in it. */
   function companies() {
-    var mine = cos.filter(function (c) { return c && c.active !== false; });
-    if (mine.length) return mine;
-    return (typeof Desk !== 'undefined' && Desk.companies) ? Desk.companies() : [];
+    /* The office's copy first once it is loaded: it is the one a Settings
+       save updates, so a courier added a minute ago is offered here too. */
+    if (typeof Desk !== 'undefined' && Desk.companiesLoaded && Desk.companiesLoaded()) return Desk.companies();
+    return cos.filter(function (c) { return c && c.active !== false; });
   }
 
   function coName(c) {
     return esc(OG.lang === 'ar' ? (c.ar || c.en || c.id) : (c.en || c.ar || c.id));
+  }
+
+  function coKind(id) {
+    var c = companies().filter(function (x) { return x && x.id === id; })[0];
+    return (c && c.kind) || 'courier';
   }
 
   /* The sheet is the office's — `delivery.desk` and nothing else, matching
@@ -179,10 +202,17 @@ var Road = (function () {
     if (!sheet || !saleId) return;
     var already = (sheet.lines || []).filter(function (l) { return l.sale_id === saleId; })[0];
     post('/api/handovers/' + encodeURIComponent(sheet.id) + '/lines', { saleId: saleId },
-      already ? null : null,
+      null,
       function (r) {
         sheet = r.handover;
-        if (!already) beep();
+        if (!already) {
+          beep();
+          /* The row that just landed glows once, so somebody scanning eleven
+             bags sees each one arrive without reading the list. Cleared on a
+             timer, or the next unrelated repaint would flash it again. */
+          justAdded = saleId;
+          setTimeout(function () { if (justAdded === saleId) justAdded = null; }, 1400);
+        }
         repaint();
         focusScan();
       });
@@ -302,27 +332,34 @@ var Road = (function () {
 
   /* ---------------------------------------------------------- the handover */
 
+  /* WHO IS AT THE COUNTER, AS PEOPLE. A row of name chips read as a filter;
+     a face per driver and an icon per company reads as "pick the person
+     standing in front of you", which is the question. */
   function carrierPicker() {
     var co = companies();
-    var h = '<div class="card"><div class="card-body">' +
-      '<div class="rd-empty"><b>' + t('rd_pick_carrier') + '</b>' +
-      '<span>' + t('rd_pick_carrier_sub') + '</span></div>';
+    var h = '<div class="card rd-pickcard"><div class="card-body">' +
+      '<div class="rd-pick-head">' + scanArt(false) +
+        '<div><b>' + t('rd_pick_carrier') + '</b><span>' + t('rd_pick_carrier_sub') + '</span></div></div>';
 
     h += '<div class="lbl mt">' + t('rd_our_drivers') + '</div>';
     h += drivers.length
-      ? '<div class="seg-row">' + drivers.map(function (u) {
-          return '<button type="button" class="seg" data-act="rd-open" data-kind="driver" ' +
-            'data-id="' + u.id + '">' + nm(u.name) + '</button>';
+      ? '<div class="dl-picks">' + drivers.map(function (u) {
+          return '<button type="button" class="dl-pick" data-act="rd-open" data-kind="driver" ' +
+            'data-id="' + u.id + '">' + face(u.id, u.name) + '<b>' + nm(u.name) + '</b>' +
+            '<small>' + t('rd_k_driver') + '</small></button>';
         }).join('') + '</div>'
       : '<div class="partner-note">' + t('dl_no_drivers') + '</div>';
 
     h += '<div class="lbl mt">' + t('rd_companies') + '</div>';
     h += co.length
-      ? '<div class="seg-row">' + co.map(function (c) {
-          return '<button type="button" class="seg" data-act="rd-open" data-kind="company" ' +
-            'data-id="' + esc(c.id) + '">' + coName(c) + ' · ' + t('dk_m_' + c.kind) + '</button>';
+      ? '<div class="dl-picks">' + co.map(function (c) {
+          return '<button type="button" class="dl-pick" data-act="rd-open" data-kind="company" ' +
+            'data-id="' + esc(c.id) + '"><span class="dl-pick-ico">' + methodIcon(c.kind) + '</span>' +
+            '<b>' + coName(c) + '</b><small>' + t('dk_m_' + c.kind) + '</small></button>';
         }).join('') + '</div>'
-      : '<div class="partner-note">' + t('dl_no_companies_yet') + '</div>';
+      : '<div class="partner-note">' + t('dl_no_companies_yet') +
+          (allow('config.write') ? ' <span class="clickable" data-act="dk-goto-companies">' +
+            t('dk_add_in_settings') + '</span>' : '') + '</div>';
 
     return h + '</div></div>';
   }
@@ -336,11 +373,14 @@ var Road = (function () {
     return t('rd_why_moved').replace('{s}', t('dl_' + String(why).replace('already_', '')));
   }
 
-  function lineRow(l, open) {
+  function lineRow(l, open, n) {
     var why = null;
     (sheet.blocked || []).forEach(function (b) { if (b.saleId === l.sale_id) why = b.why; });
-    return '<tr' + (why ? ' class="row-late"' : '') + '>' +
-      '<td><b><bdi dir="ltr">' + esc(l.sale_id) + '</bdi></b>' +
+    var cls = [];
+    if (why) cls.push('row-late');
+    if (l.sale_id === justAdded) cls.push('rd-new');
+    return '<tr' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '>' +
+      '<td><span class="rd-n">' + nf(n) + '</span><b><bdi dir="ltr">' + esc(l.sale_id) + '</bdi></b>' +
         (why ? '<small style="display:block" class="critical">' + esc(whyText(why, l)) + '</small>' : '') + '</td>' +
       '<td>' + esc(l.customer_name || '') + '</td>' +
       '<td class="muted">' + esc([l.city, l.address].filter(Boolean).join(' — ')) + '</td>' +
@@ -349,7 +389,8 @@ var Road = (function () {
         : (l.remaining ? '<b>' + fmt(l.remaining, l.currency) + '</b>'
                        : '<span class="badge healthy">' + t('dl_paid_badge') + '</span>')) + '</td>' +
       '<td>' + (open
-        ? '<button class="btn btn-sm btn-ghost" data-act="rd-drop" data-id="' + l.delivery_id + '">✕</button>'
+        ? '<button class="btn btn-sm btn-ghost" data-act="rd-drop" data-id="' + l.delivery_id + '" ' +
+          'aria-label="' + esc(t('dk_remove')) + '">✕</button>'
         : '') + '</td></tr>';
   }
 
@@ -358,34 +399,46 @@ var Road = (function () {
     var blocked = (sheet.blocked || []).length;
     var totals = sheet.collect || {};
     var sum = Object.keys(totals).map(function (c) {
-      return '<span class="badge accent">' + fmt(totals[c], c) + '</span>';
-    }).join(' ');
+      return '<b>' + fmt(totals[c], c) + '</b>';
+    }).join('');
 
+    var who = sheet.kind === 'driver'
+      ? face(sheet.driver_id || carrierOf(sheet), carrierOf(sheet))
+      : '<span class="dl-pick-ico">' + methodIcon(coKind(sheet.company_id)) + '</span>';
+
+    /* THE MANIFEST HEAD: who is carrying, which sheet, and the two numbers
+       they are signing for — as large as the scan box, because they are what
+       is read out loud before anybody signs. */
     var h = '<div class="card rd-sheet"><div class="card-body">' +
-      '<div class="rd-head">' +
-        '<div><b><bdi dir="ltr">' + esc(sheet.id) + '</bdi></b>' +
-          '<span class="muted"> · ' + esc(carrierOf(sheet)) + '</span></div>' +
-        '<div class="rd-sum">' + (lines.length
-          ? '<span class="badge neutral">' + nf(lines.length) + ' ' + t('rd_parcels').toLowerCase() + '</span> ' + sum
-          : '') + '</div>' +
+      '<div class="rd-man">' +
+        '<div class="rd-man-who">' + who +
+          '<div><b>' + esc(carrierOf(sheet)) + '</b>' +
+          '<small><bdi dir="ltr">' + esc(sheet.id) + '</bdi> · ' +
+            t(sheet.kind === 'driver' ? 'rd_k_driver' : 'rd_k_company') +
+            (sheet.opened_at ? ' · ' + fmtDateTime(new Date(sheet.opened_at)) : '') + '</small></div></div>' +
+        '<div class="rd-man-stats">' +
+          '<div><span>' + t('rd_parcels') + '</span><b>' + nf(lines.length) + '</b></div>' +
+          (sheet.kind === 'company' ? '' :
+            '<div><span>' + t('rd_to_collect') + '</span>' + (sum || '<b>—</b>') + '</div>') +
+        '</div>' +
       '</div>';
 
     /* The scan box: the whole reason this screen exists. */
-    h += '<div class="rd-scan">' +
+    h += '<div class="rd-scan">' + scanArt(false) +
       '<input class="inp" id="rdScan" type="text" dir="ltr" autocomplete="off" ' +
         'placeholder="' + esc(t('rd_scan_ph')) + '">' +
       '<button class="btn" data-act="rd-add">' + t('rd_add') + '</button>' +
     '</div>';
 
     if (!lines.length) {
-      h += '<div class="rd-empty"><b>' + t('rd_scan_first') + '</b>' +
+      h += '<div class="rd-empty">' + scanArt(true) + '<b>' + t('rd_scan_first') + '</b>' +
            '<span>' + t('rd_scan_first_sub') + '</span></div>';
     } else {
       h += '<div class="table-wrap"><table class="tbl"><thead><tr>' +
         '<th>' + t('invoice') + '</th><th>' + t('customer') + '</th>' +
         '<th>' + t('dl_where') + '</th><th class="num">' + t('rd_to_collect') + '</th><th></th>' +
         '</tr></thead><tbody>' +
-        lines.map(function (l) { return lineRow(l, true); }).join('') +
+        lines.map(function (l, i) { return lineRow(l, true, i + 1); }).join('') +
         '</tbody></table></div>';
     }
 
@@ -430,34 +483,51 @@ var Road = (function () {
   /* --------------------------------------------------------- the day's cash */
 
   function cashView() {
-    if (!cash) return '<div class="card"><div class="cart-empty"><b>' + t('loading') + '</b></div></div>';
+    if (!cash) return '<div class="dlb-skel" aria-busy="true"><i></i><i></i></div>';
     if (!cash.totals.length) {
-      return '<div class="card"><div class="cart-empty"><b>' + t('rd_cash_none') + '</b>' +
-             t('rd_cash_none_sub') + '</div></div>';
+      return '<div class="card dlb-empty"><div class="cart-empty">' +
+        '<span class="dlb-empty-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>' +
+        '<b>' + t('rd_cash_none') + '</b>' + t('rd_cash_none_sub') + '</div></div>';
     }
 
     /* One card per driver, one line per currency — a driver carrying lira and
        dollars is carrying two things, and one number for both would disagree
        with the notes on the counter. */
-    var byDriver = {};
+    var byDriver = {}, order = [];
+    var all = {}, curs = [];
     cash.totals.forEach(function (r) {
       var k = String(r.driverId);
-      (byDriver[k] = byDriver[k] || { name: r.driverName, id: r.driverId, cur: [] }).cur.push(r);
+      if (!byDriver[k]) { byDriver[k] = { name: r.driverName, id: r.driverId, cur: [] }; order.push(k); }
+      byDriver[k].cur.push(r);
+      if (!(r.currency in all)) { all[r.currency] = 0; curs.push(r.currency); }
+      all[r.currency] += r.amount;
     });
 
-    var h = '';
+    /* The whole pile across every driver, per currency — adding lira to lira
+       is arithmetic; adding lira to dollars is not, and is not done. */
+    var h = '<div class="rd-cash-sum">' +
+      '<span class="eyebrow">' + t('dlp_t_cash') + '</span>' +
+      '<div class="rd-cash-sum-val">' + curs.map(function (c) { return '<b>' + fmt(all[c], c) + '</b>'; }).join('') + '</div>' +
+      '<small>' + (order.length === 1 ? t('dlp_t_cash_sub_1')
+        : t('dlp_t_cash_sub').replace('{n}', nf(order.length))) + '</small>' +
+    '</div>';
+
     if (!cash.shift) h += '<div class="partner-note mt">' + t('rd_no_shift') + '</div>';
 
-    Object.keys(byDriver).forEach(function (k) {
+    order.forEach(function (k) {
       var dv = byDriver[k];
       var rows = cash.rows.filter(function (r) { return String(r.driverId) === k; });
-      h += '<div class="card mt"><div class="card-body">' +
-        '<div class="rd-head"><div><b>' + nm(dv.name || t('rd_driver')) + '</b>' +
-          '<span class="muted"> · ' + t('rd_since').replace('{d}',
-            fmtDateTime(new Date(dv.cur[0].since))) + '</span></div>' +
-        '<div class="rd-sum">' + dv.cur.map(function (c) {
-          return '<span class="badge low">' + fmt(c.amount, c.currency) + '</span>';
-        }).join(' ') + '</div></div>' +
+      var parcels = {};
+      rows.forEach(function (r) { parcels[r.saleId] = 1; });
+      h += '<div class="card mt rd-cash-card"><div class="card-body">' +
+        '<div class="rd-cash-head">' + face(dv.id, dv.name || t('rd_driver')) +
+          '<div class="rd-cash-who"><b>' + nm(dv.name || t('rd_driver')) + '</b>' +
+            '<small>' + t('rd_since').replace('{d}', fmtDateTime(new Date(dv.cur[0].since))) + ' · ' +
+              (Object.keys(parcels).length === 1 ? t('dlp_n_parcels_1')
+                : t('dlp_n_parcels').replace('{n}', nf(Object.keys(parcels).length))) + '</small></div>' +
+          '<div class="rd-cash-amt">' + dv.cur.map(function (c) {
+            return '<b>' + fmt(c.amount, c.currency) + '</b>';
+          }).join('') + '</div></div>' +
 
         '<div class="table-wrap"><table class="tbl"><thead><tr>' +
           '<th>' + t('invoice') + '</th><th>' + t('customer') + '</th>' +
@@ -508,11 +578,22 @@ var Road = (function () {
     }).catch(function (e) { toast(t('rd_return'), API.friendly(e), 'err'); });
   }
 
+  var OUTCOME_ICON = {
+    refund:   'M20 12H5M11 6l-6 6 6 6',
+    credit:   'M3 7h18v10H3zM3 11h18M7 15h3',
+    exchange: 'M4 8h14l-3-3M20 16H6l3 3',
+    keep_fee: 'M2 6h12v9H2zM14 9h4l3 3v3h-7M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4M17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4'
+  };
+
+  /* Four option cards, each carrying its own sentence — the choice and what
+     it means are read together, not a chip here and its explanation below. */
   function outcomeChips() {
-    return ['refund', 'credit', 'exchange', 'keep_fee'].map(function (o) {
-      return '<button type="button" class="seg' + (R.outcome === o ? ' on' : '') +
-        '" data-act="rd-outcome" data-id="' + o + '">' + t('rd_o_' + o) + '</button>';
-    }).join('');
+    return '<div class="rd-opts">' + ['refund', 'credit', 'exchange', 'keep_fee'].map(function (o) {
+      return '<button type="button" class="rd-opt' + (R.outcome === o ? ' on' : '') +
+        '" data-act="rd-outcome" data-id="' + o + '" aria-pressed="' + (R.outcome === o ? 'true' : 'false') + '">' +
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + OUTCOME_ICON[o] + '"/></svg>' +
+        '<b>' + t('rd_o_' + o) + '</b><small>' + t('rd_o_' + o + '_sub') + '</small></button>';
+    }).join('') + '</div>';
   }
 
   function payMethods() {
@@ -534,27 +615,33 @@ var Road = (function () {
     return Math.max(0, o.delivery.paid - dueAfter);
   }
 
+  function lineThumb(sku) {
+    if (typeof DB === 'undefined' || !DB.variantBySku) return '';
+    var v = DB.variantBySku(sku);
+    var p = v ? DB.product(v.productId) : null;
+    return p && typeof thumb === 'function' ? thumb(p, 'dk-thumb') : '';
+  }
+
   function returnBody() {
     var cur = R.order ? R.order.sale.currency : 'SYP';
     var back = backEstimate();
 
     var h = '<div class="lbl">' + t('rd_which_back') + '</div><div class="rd-lines">';
     R.lines.forEach(function (l, i) {
-      h += '<div class="rd-line">' +
-        '<div><b>' + esc(l.name) + '</b>' + (l.size ? '<span class="sz">' + esc(l.size) + '</span>' : '') +
-          '<small class="muted" style="display:block">' + fmt(l.price, cur) + '</small></div>' +
+      h += '<div class="rd-line' + (Number(l.qty) > 0 ? ' is-on' : '') + '">' +
+        '<div class="rd-l-main">' + lineThumb(l.sku) +
+          '<div><b>' + esc(l.name) + '</b>' + (l.size ? '<span class="sz">' + esc(l.size) + '</span>' : '') +
+          '<small class="muted" style="display:block">' + fmt(l.price, cur) + '</small></div></div>' +
         '<div class="rd-qty">' +
-          '<button type="button" class="btn btn-sm" data-act="rd-q" data-i="' + i + '" data-d="-1">−</button>' +
+          '<button type="button" class="btn btn-sm" data-act="rd-q" data-i="' + i + '" data-d="-1" aria-label="−">−</button>' +
           '<b>' + nf(l.qty) + '</b>' +
-          '<button type="button" class="btn btn-sm" data-act="rd-q" data-i="' + i + '" data-d="1">+</button>' +
+          '<button type="button" class="btn btn-sm" data-act="rd-q" data-i="' + i + '" data-d="1" aria-label="+">+</button>' +
           '<span class="muted">/ ' + nf(l.left) + '</span>' +
         '</div></div>';
     });
     h += '</div>';
 
-    h += '<div class="lbl mt">' + t('rd_what_money') + '</div>' +
-         '<div class="seg-row">' + outcomeChips() + '</div>' +
-         '<div class="partner-note">' + t('rd_o_' + R.outcome + '_sub') + '</div>';
+    h += '<div class="lbl mt">' + t('rd_what_money') + '</div>' + outcomeChips();
 
     h += '<div class="rd-back">' + t('rd_goes_back') +
          ' <b dir="ltr">' + fmt(back, cur) + '</b></div>';
@@ -649,7 +736,12 @@ var Road = (function () {
     ACTIONS['rd-handin'] = function (el) {
       var id = +el.getAttribute('data-id');
       post('/api/driver-cash/handin', { driverId: id, opId: 'dc-' + id + '-' + Date.now() },
-        t('rd_handed_in'), function () { loadedFor = null; load(true); });
+        t('rd_handed_in'), function () {
+          loadedFor = null;
+          load(true);
+          /* The board's cash tile counts the same notes. */
+          if (typeof Deliveries !== 'undefined') Deliveries.load();
+        });
     };
 
     ACTIONS['rd-return'] = function (el) { openReturn(el.getAttribute('data-id')); };

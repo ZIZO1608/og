@@ -609,3 +609,25 @@ ALTER TABLE handover_lines  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_returns   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_return_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customer_credit ENABLE ROW LEVEL SECURITY;
+
+-- ===== 019_order_reviews.sql =====  (local 049: what a customer thought of their delivery)
+
+CREATE TABLE IF NOT EXISTS order_reviews (
+  sale_id    TEXT PRIMARY KEY REFERENCES sales(id),
+  rating     INTEGER NOT NULL,
+  tags       TEXT,
+  comment    TEXT,
+  allow_web  INTEGER NOT NULL DEFAULT 0,
+  on_web     INTEGER NOT NULL DEFAULT 0,
+  show_name  TEXT,
+  city       TEXT,
+  method     TEXT,
+  lang       TEXT,
+  at         TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  web_by     BIGINT,
+  web_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_order_reviews_at ON order_reviews (at);
+
+ALTER TABLE order_reviews ENABLE ROW LEVEL SECURITY;

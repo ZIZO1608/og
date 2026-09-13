@@ -107,6 +107,7 @@ const TABLES = [
   { name: 'order_returns',            key: 'id' },
   { name: 'order_return_lines',       key: 'id' },
   { name: 'customer_credit',          key: 'id' },
+  { name: 'order_reviews',            key: 'sale_id' },
   { name: 'stock_counts',             key: 'id' },
   { name: 'stock_count_lines',        key: 'id' }
 ];

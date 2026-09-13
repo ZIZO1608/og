@@ -52,6 +52,9 @@ import * as Mirror from './lib/mirror.js';
 import * as Telegram from './lib/telegram.js';
 import * as Reminders from './lib/reminders.js';
 import * as Live from './lib/live.js';
+import * as Tracking from './lib/tracking.js';
+import * as Push from './lib/webpush.js';
+import * as Reviews from './lib/reviews.js';
 import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
 import * as Storage from './lib/storage.js';
@@ -1098,9 +1101,10 @@ router.add('GET /api/sales/:id', requirePerm('sell', (ctx) => {
 router.add('POST /api/sales/:id/void', requirePerm('void', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
-    sendOk(ctx.res, {
-      result: Sales.voidSale(ctx.params.id, { reason: b.reason, userId: ctx.user.id })
-    });
+    const result = Sales.voidSale(ctx.params.id, { reason: b.reason, userId: ctx.user.id });
+    /* A cancelled order says so on the customer's page. Not an order: a no-op. */
+    Tracking.moved(ctx.params.id, ctx.user.id);
+    sendOk(ctx.res, { result });
   } catch (e) {
     /* Both are the world, not the request: money has been taken against the
        sale, or the order has already left the shop. */
@@ -1184,6 +1188,7 @@ router.add('GET /api/deliveries', requirePerm('delivery.read', (ctx) => {
     method: p.get('method') || null,
     money: p.get('money') || null,
     q: p.get('q') || null,
+    since: p.get('since') || null,
     limit: Number(p.get('limit')) || 100
   });
 
@@ -1191,6 +1196,10 @@ router.add('GET /api/deliveries', requirePerm('delivery.read', (ctx) => {
     deliveries: cap.rows,
     deliveriesTotal: cap.total,
     deliveriesCapped: cap.capped,
+    /* The board's tiles: the whole shop, whatever the filters say. Not for a
+       driver — his phone is his own run, and a count of everybody else's
+       parcels is a number about somebody else's work. */
+    summary: ctx.user.role === 'delivery' ? null : Deliveries.summary(),
     /* His own day when he is a driver, so the phone can show a running
        count without a second request. */
     day: ctx.user.role === 'delivery' ? Deliveries.driverDay(ctx.user.id) : null
@@ -1287,6 +1296,7 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       opId: str(b.opId)
     });
     Live.notify('og', { deliveries: true });
+    if (!out.replayed) Tracking.moved(out.sale.id, ctx.user.id);
     sendOk(ctx.res, {
       sale: scrubCost(out.sale, ctx.user),
       order: Deliveries.bySale(out.sale.id, ctx.user),
@@ -1311,6 +1321,7 @@ router.add('POST /api/orders/:id/payments', requirePerm(['delivery.desk', 'debt.
       txnRef: str(b.txnRef), stage: str(b.stage), note: str(b.note), opId: str(b.opId)
     }, ctx.user);
     Live.notify('og', { deliveries: true });
+    Tracking.moved(ctx.params.id, ctx.user.id);
     sendOk(ctx.res, { ...out, order: Deliveries.bySale(ctx.params.id, ctx.user) });
   } catch (e) { orderFail(ctx.res, e); }
 }));
@@ -1320,6 +1331,7 @@ router.add('POST /api/orders/:id/handin', requirePerm(['delivery.desk', 'debt.co
   try {
     const out = Orders.handIn(ctx.params.id, ctx.user, typeof b.opId === 'string' ? b.opId : null);
     Live.notify('og', { deliveries: true });
+    Tracking.moved(ctx.params.id, ctx.user.id);
     sendOk(ctx.res, { ...out, order: Deliveries.bySale(ctx.params.id, ctx.user) });
   } catch (e) { orderFail(ctx.res, e); }
 }));
@@ -1391,6 +1403,7 @@ router.add('POST /api/handovers/:id/hand', requirePerm('delivery.desk', async (c
   try {
     const out = Orders.handOver(ctx.params.id, ctx.user, typeof b.opId === 'string' ? b.opId : null);
     Live.notify('og', { deliveries: true });
+    Tracking.moved(Tracking.salesOnHandover(ctx.params.id), ctx.user.id);
     sendOk(ctx.res, out);
   } catch (e) { orderFail(ctx.res, e); }
 }));
@@ -1398,6 +1411,50 @@ router.add('POST /api/handovers/:id/hand', requirePerm('delivery.desk', async (c
 router.add('POST /api/handovers/:id/cancel', requirePerm('delivery.desk', (ctx) => {
   try { sendOk(ctx.res, { handover: Orders.cancelHandover(ctx.params.id, ctx.user) }); }
   catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* ------------------------------------------------------ delivery reviews
+   The Reviews page. Reading is the delivery office's; putting a review on the
+   public website is a manager's decision (config.write), and the server
+   refuses it for a review the customer did not allow (lib/reviews.js). The
+   summary is the whole shop's, never the filtered list's. */
+router.add('GET /api/reviews', requirePerm('delivery.desk', (ctx) => {
+  const sp = new URL(ctx.req.url, 'http://x').searchParams;
+  const out = Reviews.list({
+    stars: sp.get('stars') || '', show: sp.get('show') || '', q: sp.get('q') || '', limit: sp.get('limit')
+  });
+  sendOk(ctx.res, { ...out, summary: Reviews.summary(), tags: Reviews.TAGS });
+}));
+
+router.add('PATCH /api/reviews/:id', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const review = Reviews.setWeb(ctx.params.id, b.onWeb === true, ctx.user);
+    Live.notify('og', { reviews: true });
+    sendOk(ctx.res, { review });
+  } catch (e) {
+    sendError(ctx.res, e.status || 400, e.code || 'invalid', e.message);
+  }
+}));
+
+/* -------------------------------------------- the office's order alerts
+   The Deliveries board's bell: Web Push to this browser whenever an order
+   moves (lib/tracking.js). Gated on the desk, because the message names the
+   order and — for an account that may read customers — the customer. */
+router.add('POST /api/push/state', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  sendOk(ctx.res, Tracking.shopState(ctx.user, b));
+}));
+
+router.add('POST /api/push/subscribe', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, Tracking.followShop(ctx.user, b)); }
+  catch (e) { sendError(ctx.res, e.status || 400, e.code || 'invalid', e.message); }
+}));
+
+router.add('POST /api/push/unsubscribe', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  sendOk(ctx.res, Tracking.unfollowShop(ctx.user, b));
 }));
 
 /* ------------------------------------------------------- the driver's cash */
@@ -1442,6 +1499,7 @@ router.add('POST /api/orders/:id/returns', requirePerm('delivery.desk', async (c
       opId: str(b.opId)
     }, ctx.user);
     Live.notify('og', { deliveries: true });
+    Tracking.moved(ctx.params.id, ctx.user.id);
     sendOk(ctx.res, { ...out, order: Deliveries.bySale(ctx.params.id, ctx.user) });
   } catch (e) { orderFail(ctx.res, e); }
 }));
@@ -1938,6 +1996,15 @@ router.add('POST /api/ext/print-jobs', async (ctx) => {
 
    The list is the whole published catalogue in one answer, deliberately:
    see the note on webRow for why there is no incremental feed. */
+/* The delivery reviews the website may show: the customer allowed it AND the
+   shop switched it on. A first name and initial, a city, stars, tags in both
+   languages and the words — never the invoice number, phone or address.
+   ?limit= up to 200. */
+router.add('GET /api/ext/reviews', (ctx) => {
+  const sp = new URL(ctx.req.url, 'http://x').searchParams;
+  sendOk(ctx.res, { ...Reviews.webList({ limit: sp.get('limit') }), generatedAt: new Date().toISOString() });
+});
+
 router.add('GET /api/ext/products', (ctx) => {
   const products = Cat.webList();
   sendOk(ctx.res, { products, count: products.length, generatedAt: new Date().toISOString() });
@@ -2417,6 +2484,8 @@ router.add('PATCH /api/deliveries/:id', requirePerm('delivery.write', async (ctx
     }, ctx.user);
     /* The board is a screen two people watch at once. */
     Live.notify('og', { deliveries: true });
+    /* And the customer's page is a third, with a phone in a pocket behind it. */
+    Tracking.moved(Tracking.saleOfDelivery(ctx.params.id), ctx.user.id);
     sendOk(ctx.res, { delivery });
   } catch (e) {
     /* The office's map: a parcel that cannot leave yet is a 409 carrying what
@@ -2779,6 +2848,73 @@ async function handle(req, res) {
          mistyped code has to answer "receipt not found" — if only the valid
          shape were caught, /i/INV-2101 would fall through to the static
          handler below and hand a customer the shop's login screen. */
+      /* --- the tracking page's live parts ---------------------------------
+         Four doors under the same token and nothing else: the page's own
+         service worker (scoped to /i/ so it can never touch the app), a
+         data-less "your order moved" stream, the manifest that lets an iPhone
+         keep the page on its home screen (Apple's only way to allow a push),
+         and follow / unfollow / "am I following". Every one resolves the sale
+         from the token alone, and only an ORDER has any of them — a till
+         receipt has nothing that moves. lib/tracking.js says why. */
+      if (path === '/i/sw.js' && (req.method === 'GET' || req.method === 'HEAD')) {
+        res.writeHead(200, {
+          'Content-Type': 'text/javascript; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'Service-Worker-Allowed': '/i/',
+          'X-Content-Type-Options': 'nosniff'
+        });
+        return res.end(req.method === 'HEAD' ? undefined : Tracking.WORKER);
+      }
+      const part = /^\/i\/([0-9a-f]{32})\/(live|push|review|manifest\.webmanifest)$/.exec(path);
+      if (part) {
+        const sale = Receipt.byToken(part[1]);
+        if (!sale || !sale.order) return sendError(res, 404, 'not_found', 'Not found.');
+        if (part[2] === 'live' && req.method === 'GET') {
+          if (!Live.subscribeTrack(res, sale.id)) {
+            return sendError(res, 429, 'busy', 'Too many pages are open on this order.');
+          }
+          return;
+        }
+        if (part[2] === 'manifest.webmanifest' && req.method === 'GET') {
+          const body = JSON.stringify(Tracking.manifest(sale, part[1], url.searchParams.get('lang')));
+          res.writeHead(200, {
+            'Content-Type': 'application/manifest+json; charset=utf-8',
+            'Content-Length': Buffer.byteLength(body),
+            'Cache-Control': 'no-cache',
+            'X-Content-Type-Options': 'nosniff'
+          });
+          return res.end(body);
+        }
+        if (part[2] === 'push' && req.method === 'POST') {
+          if (!originAllowed(req, ORIGINS)) return sendError(res, 403, 'bad_origin', 'Request rejected.');
+          const b = await readJson(req);
+          try {
+            const out = b.action === 'follow' ? Tracking.followOrder(sale, b)
+              : b.action === 'unfollow' ? Tracking.unfollowOrder(sale, b)
+              : Tracking.followingOrder(sale, b);
+            return sendOk(res, out);
+          } catch (e) {
+            return sendError(res, e.status || 400, e.code || 'invalid', e.message);
+          }
+        }
+        /* The customer's review of a delivery that arrived (lib/reviews.js).
+           The sale is the token's; one review per order, editable by whoever
+           holds the link — the same person the link was sent to. */
+        if (part[2] === 'review' && req.method === 'POST') {
+          if (!originAllowed(req, ORIGINS)) return sendError(res, 403, 'bad_origin', 'Request rejected.');
+          const b = await readJson(req);
+          try {
+            const out = Reviews.submit(sale, b);
+            Live.notify('og', { reviews: true });
+            Tracking.reviewed(sale, out);
+            return sendOk(res, { review: out.review, first: out.first });
+          } catch (e) {
+            return sendError(res, e.status || 400, e.code || 'invalid', e.message);
+          }
+        }
+        return sendError(res, 405, 'method_not_allowed', 'Method not allowed.');
+      }
+
       if (path.startsWith('/i/') && (req.method === 'GET' || req.method === 'HEAD')) {
         const inv = /^\/i\/([0-9a-f]{32})$/.exec(path);
         const sale = inv ? Receipt.byToken(inv[1]) : null;
@@ -2788,7 +2924,12 @@ async function handle(req, res) {
            by design, and `dir`/`lang` belong on <html>, where no CSS toggle
            can put them. */
         const body = sale
-          ? Receipt.render(sale, url.searchParams.get('lang'))
+          ? Receipt.render(sale, url.searchParams.get('lang'), {
+              /* Only an order that can still move offers "Notify me". A key
+                 that cannot be read (a half-migrated database) just leaves the
+                 button off; the page itself must never fail over it. */
+              vapidKey: sale.order && !sale.voided ? (() => { try { return Push.publicKey(); } catch { return null; } })() : null
+            })
           : Receipt.notFound(url.searchParams.get('lang'));
         res.writeHead(sale ? 200 : 404, {
           'Content-Type': 'text/html; charset=utf-8',
@@ -3097,6 +3238,9 @@ if (runDirectly) {
        this callback for the reason SyncWorker is — nothing may begin before
        the boot pull has settled and the till is answering. */
     Reminders.start();
+    /* Who a push service writes to when something is wrong with our pushes:
+       the shop's own https address when it has one. */
+    try { Push.setContact(Orders.publicBase()); } catch { /* the default stands */ }
 
     /* The panel is watching a pipe, not this window. Everything it needs to
        stop saying "starting…" and start drawing the shop: the addresses to
@@ -3175,6 +3319,15 @@ if (runDirectly) {
     if (type === 'reload') {
       Live.notify('all', { reload: true });
       console.log('  [panel] told the open tabs to reload');
+      return;
+    }
+
+    /* FULL REFRESH, the moment before the shop closes: the open tabs cover
+       themselves with "Updating…" rather than showing a failing page while
+       it is down, and reload when they reach the fresh server (js/pulse.js). */
+    if (type === 'refreshing') {
+      Live.notify('all', { refreshing: true });
+      console.log('  [panel] told the open tabs a full refresh is coming');
       return;
     }
 

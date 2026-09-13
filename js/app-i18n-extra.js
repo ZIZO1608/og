@@ -500,7 +500,8 @@ var EXTRA_EN = {
   bk_delete_note: 'Archiving is usually what you want — it hides them but keeps the history. Delete cannot be undone once the Undo toast disappears.',
   bk_undo: 'Undo', bk_undo_hint: 'Undo available for a few seconds',
   bk_restored: 'Restored', bk_hidden: 'hidden from the website', bk_shown: 'showing on the website',
-  bk_message: 'Send WhatsApp', bk_message_hint: 'Each opens WhatsApp with the message ready to send.',
+  bk_message: 'Send WhatsApp', bk_message_hint: 'Each opens WhatsApp with the message ready to send, in Arabic and English.',
+  bk_message_name: 'becomes each customer’s first name.',
   bk_log_all: 'Mark all as sent', bk_logged: 'logged as sent',
   bk_points: '+250 points', bk_advance: 'Move to next stage', bk_done: 'Mark done',
   bk_moved: 'jobs moved', bk_sent: 'orders sent to Yalla Wear',
@@ -763,7 +764,8 @@ var EXTRA_AR = {
   bk_delete_note: 'الأرشفة غالباً هي المطلوب — تخفيها وتحتفظ بالسجل. الحذف لا يمكن التراجع عنه بعد اختفاء التنبيه.',
   bk_undo: 'تراجع', bk_undo_hint: 'التراجع متاح لثوانٍ',
   bk_restored: 'تمت الاستعادة', bk_hidden: 'أُخفيت عن الموقع', bk_shown: 'ظاهرة على الموقع',
-  bk_message: 'إرسال واتساب', bk_message_hint: 'كل زر يفتح واتساب والرسالة جاهزة للإرسال.',
+  bk_message: 'إرسال واتساب', bk_message_hint: 'كل زر يفتح واتساب والرسالة جاهزة للإرسال، بالعربي والإنجليزي.',
+  bk_message_name: 'يُستبدل بالاسم الأول لكل زبون.',
   bk_log_all: 'اعتبارها مُرسلة', bk_logged: 'سُجّلت كمُرسلة',
   bk_points: '+٢٥٠ نقطة', bk_advance: 'نقل للمرحلة التالية', bk_done: 'إنهاء',
   bk_moved: 'طلب تم نقله', bk_sent: 'طلب أُرسل ليلا وير',
@@ -1918,3 +1920,403 @@ var ROAD_AR = {
 };
 Object.keys(ROAD_EN).forEach(function (k) { I18N.en[k] = ROAD_EN[k]; });
 Object.keys(ROAD_AR).forEach(function (k) { I18N.ar[k] = ROAD_AR[k]; });
+
+/* ---- the delivery polish (12 Sep): the board's tiles and lanes, the
+   driver's day, the office's rail and ticket, the dialogs. `dlp_` is the
+   board and the road, `dkp_` the office. */
+var DPOLISH_EN = {
+  dlp_ago_now: 'just now', dlp_ago_m: '{n} min', dlp_ago_h: '{n} h', dlp_ago_d: '{n} d',
+  dlp_next_up: 'Next up',
+  dlp_today: 'Today',
+  dlp_left_n: '{n} still to go',
+  dlp_all_done: 'All done for today',
+  dlp_done_today: 'Done today',
+  dlp_done: 'Done',
+  dlp_t_waiting_sub: 'packed, waiting for a carrier',
+  dlp_t_out_sub: 'with a driver or a company',
+  dlp_t_owed: 'Still owed',
+  dlp_t_owed_sub: 'on {n} orders',
+  dlp_t_owed_sub_1: 'on one order',
+  dlp_t_owed_none: 'every order is paid',
+  dlp_t_cash: 'Cash with drivers',
+  dlp_t_cash_sub: 'with {n} drivers, not handed in yet',
+  dlp_t_cash_sub_1: 'with one driver, not handed in yet',
+  dlp_n_parcels_1: 'one parcel',
+  dlp_t_cash_none: 'all of it is in the shop',
+  dlp_none_short: 'Nothing',
+  dlp_f_today: 'Today',
+  dlp_any_method: 'Any way it travels',
+  dlp_any_money: 'Paid or not',
+  dlp_clear: 'Clear filters',
+  dlp_view: 'How the parcels are shown',
+  dlp_v_lanes: 'Lanes',
+  dlp_v_list: 'List',
+  dlp_lane_empty_waiting: 'Nothing waiting at the counter',
+  dlp_lane_empty_out: 'Nothing on the road right now',
+  dlp_lane_empty_done: 'Nothing finished yet today',
+  dlp_lane_empty_void: 'Nothing cancelled',
+  dlp_refresh: 'Refresh',
+  dlp_why_nobody: 'Nobody home',
+  dlp_why_phone: 'Phone off, no answer',
+  dlp_why_address: 'Wrong address',
+  dlp_why_refused: 'Refused the parcel',
+  dlp_why_later: 'Asked for another day',
+  dlp_r_placed: 'Ordered',
+  dlp_r_paid: 'Payment',
+  dlp_r_road: 'On the way',
+  dlp_r_counter: 'Ready at the shop',
+  dlp_r_arrived: 'Arrived',
+  dlp_n_parcels: '{n} parcels',
+
+  dkp_rail: 'Order progress',
+  dkp_s_bag: 'In the bag',
+  dkp_s_customer: 'Customer',
+  dkp_s_route: 'Route & shipping',
+  dkp_s_money: 'Money',
+  dkp_rail_n: '{n} of 4 ready',
+  dkp_rail_ready: 'Ready to save',
+  dkp_rail_saved: 'Saved',
+  dkp_ticket: 'Order ticket',
+  dkp_st_paid: 'Paid in full',
+  dkp_st_first: 'Pay before sending',
+  dkp_st_pickup: 'Pay at pickup',
+  dkp_st_door: 'Collect at the door',
+  dkp_st_deposit: 'Deposit · rest on receipt',
+  dkp_st_saved: 'Saved',
+  dkp_in_bag: 'In the bag',
+  dkp_payments: 'Payments',
+  dkp_refund: 'refund',
+  dkp_fill_all: 'All of it',
+  dkp_fill_half: 'Half'
+};
+var DPOLISH_AR = {
+  dlp_ago_now: 'الآن', dlp_ago_m: '{n} د', dlp_ago_h: '{n} س', dlp_ago_d: '{n} ي',
+  dlp_next_up: 'التالي',
+  dlp_today: 'اليوم',
+  dlp_left_n: 'باقي {n}',
+  dlp_all_done: 'خلصت توصيلات اليوم',
+  dlp_done_today: 'أُنجز اليوم',
+  dlp_done: 'منتهية',
+  dlp_t_waiting_sub: 'جاهزة وتنتظر من يأخذها',
+  dlp_t_out_sub: 'مع سائق أو شركة شحن',
+  dlp_t_owed: 'مبالغ لم تُدفع',
+  dlp_t_owed_sub: 'على {n} طلب',
+  dlp_t_owed_sub_1: 'على طلب واحد',
+  dlp_t_owed_none: 'كل الطلبات مدفوعة',
+  dlp_t_cash: 'نقود مع السائقين',
+  dlp_t_cash_sub: 'مع {n} سائق، لم تُسلَّم بعد',
+  dlp_t_cash_sub_1: 'مع سائق واحد، لم تُسلَّم بعد',
+  dlp_n_parcels_1: 'طرد واحد',
+  dlp_t_cash_none: 'كلها وصلت إلى المحل',
+  dlp_none_short: 'لا شيء',
+  dlp_f_today: 'اليوم',
+  dlp_any_method: 'كل طرق الشحن',
+  dlp_any_money: 'مدفوع أو لا',
+  dlp_clear: 'مسح الفلاتر',
+  dlp_view: 'طريقة عرض الطرود',
+  dlp_v_lanes: 'مسارات',
+  dlp_v_list: 'قائمة',
+  dlp_lane_empty_waiting: 'لا شيء ينتظر عند الكاونتر',
+  dlp_lane_empty_out: 'لا شيء في الطريق الآن',
+  dlp_lane_empty_done: 'لم يُنجز شيء اليوم بعد',
+  dlp_lane_empty_void: 'لا شيء ملغى',
+  dlp_refresh: 'تحديث',
+  dlp_why_nobody: 'لا أحد في البيت',
+  dlp_why_phone: 'الهاتف مغلق، لا يرد',
+  dlp_why_address: 'العنوان خاطئ',
+  dlp_why_refused: 'رفض الاستلام',
+  dlp_why_later: 'طلب يوماً آخر',
+  dlp_r_placed: 'تم الطلب',
+  dlp_r_paid: 'الدفع',
+  dlp_r_road: 'في الطريق',
+  dlp_r_counter: 'جاهز في المحل',
+  dlp_r_arrived: 'وصل',
+  dlp_n_parcels: '{n} طرود',
+
+  dkp_rail: 'تقدّم الطلب',
+  dkp_s_bag: 'الأغراض',
+  dkp_s_customer: 'الزبون',
+  dkp_s_route: 'الوجهة والشحن',
+  dkp_s_money: 'المبلغ',
+  dkp_rail_n: '{n} من 4 جاهزة',
+  dkp_rail_ready: 'جاهز للحفظ',
+  dkp_rail_saved: 'حُفظ',
+  dkp_ticket: 'تذكرة الطلب',
+  dkp_st_paid: 'مدفوع بالكامل',
+  dkp_st_first: 'الدفع قبل الشحن',
+  dkp_st_pickup: 'الدفع عند الاستلام',
+  dkp_st_door: 'التحصيل عند الباب',
+  dkp_st_deposit: 'عربون · الباقي عند الاستلام',
+  dkp_st_saved: 'تم الحفظ',
+  dkp_in_bag: 'في الكيس',
+  dkp_payments: 'الدفعات',
+  dkp_refund: 'مُرتجع',
+  dkp_fill_all: 'كامل المبلغ',
+  dkp_fill_half: 'النصف'
+};
+Object.keys(DPOLISH_EN).forEach(function (k) { I18N.en[k] = DPOLISH_EN[k]; });
+Object.keys(DPOLISH_AR).forEach(function (k) { I18N.ar[k] = DPOLISH_AR[k]; });
+
+/* ---- the office as five steps (12 Sep, evening). `dkw_` = the wizard. */
+var DWIZ_EN = {
+  dkw_step_n: 'Step {n} of 5',
+  dkw_t_bag: 'What is in the bag?',
+  dkw_d_bag: 'Scan every pair, or pick them from the list — each one goes in the bag. Then press Next.',
+  dkw_t_customer: 'Who is it for?',
+  dkw_d_customer: 'Pick the customer from the list, search by name or phone, or add a new one — and say where the order came from.',
+  dkw_t_method: 'How does it travel?',
+  dkw_d_method: 'Our driver and pickup can be paid on receipt. Companies and abroad are paid before sending.',
+  dkw_t_address: 'Where to, and the shipping',
+  dkw_d_address: 'The address the driver will read at the door, and who pays the carriage.',
+  dkw_t_pay: 'Check it, and take the money',
+  dkw_d_pay: 'Read the order back, record what was paid, and save.',
+  dkw_r_bag: 'Bag',
+  dkw_r_customer: 'Customer',
+  dkw_r_method: 'Travels by',
+  dkw_r_address: 'Address',
+  dkw_r_pay: 'Payment',
+  dkw_next: 'Next',
+  dkw_back: 'Back',
+  dkw_enter_hint: 'Enter for Next',
+  dkw_added: 'Added to the bag — {n} pieces now',
+  dkw_edit: 'Edit',
+  dkw_pickup_skip: 'No address needed',
+  dkw_one_piece: 'one piece'
+};
+var DWIZ_AR = {
+  dkw_step_n: 'الخطوة {n} من 5',
+  dkw_t_bag: 'ماذا في الكيس؟',
+  dkw_d_bag: 'امسح كل قطعة، أو اخترها من القائمة — كل واحدة تدخل الكيس. ثم اضغط التالي.',
+  dkw_t_customer: 'لمن الطلب؟',
+  dkw_d_customer: 'اختر الزبون من القائمة، أو ابحث بالاسم أو الهاتف، أو أضف زبوناً جديداً — ومن أين وصل الطلب.',
+  dkw_t_method: 'كيف سيصل؟',
+  dkw_d_method: 'سائقنا والاستلام من المحل يمكن دفعهما عند الاستلام. الشركات والخارج تُدفع قبل الشحن.',
+  dkw_t_address: 'إلى أين، وأجرة الشحن',
+  dkw_d_address: 'العنوان الذي سيقرؤه السائق عند الباب، ومن يدفع أجرة الشحن.',
+  dkw_t_pay: 'راجِع، واستلم المبلغ',
+  dkw_d_pay: 'راجع الطلب، سجّل ما دُفع، ثم احفظ.',
+  dkw_r_bag: 'الكيس',
+  dkw_r_customer: 'الزبون',
+  dkw_r_method: 'طريقة الشحن',
+  dkw_r_address: 'العنوان',
+  dkw_r_pay: 'الدفع',
+  dkw_next: 'التالي',
+  dkw_back: 'رجوع',
+  dkw_enter_hint: 'Enter للتالي',
+  dkw_added: 'أُضيف إلى الكيس — صار فيه {n} قطعة',
+  dkw_edit: 'تعديل',
+  dkw_pickup_skip: 'لا حاجة لعنوان',
+  dkw_one_piece: 'قطعة واحدة'
+};
+Object.keys(DWIZ_EN).forEach(function (k) { I18N.en[k] = DWIZ_EN[k]; });
+Object.keys(DWIZ_AR).forEach(function (k) { I18N.ar[k] = DWIZ_AR[k]; });
+
+/* ---- the office's scan box as a product picker. `dkc_` = combo. */
+var DCOMBO_EN = {
+  dkc_ph: 'Scan a barcode, or search the products…',
+  dkc_browse: 'Show the products',
+  dkc_instock: 'In stock at {wh}',
+  dkc_none_here: 'Nothing in stock at {wh} — every product',
+  dkc_found: '{n} found',
+  dkc_shown: 'first {n} shown — keep typing to narrow',
+  dkc_have: '{n} here',
+  dkc_in_bag: '{n} in the bag',
+  dkc_keys: '↑ ↓ choose · Enter add · Esc close',
+  dkc_no_match: 'Nothing matches “{q}”'
+};
+var DCOMBO_AR = {
+  dkc_ph: 'امسح الباركود، أو ابحث في المنتجات…',
+  dkc_browse: 'عرض المنتجات',
+  dkc_instock: 'المتوفر في {wh}',
+  dkc_none_here: 'لا شيء متوفر في {wh} — كل المنتجات',
+  dkc_found: 'النتائج: {n}',
+  dkc_shown: 'أول {n} معروضة — تابع الكتابة للتضييق',
+  dkc_have: '{n} هنا',
+  dkc_in_bag: '{n} في الكيس',
+  dkc_keys: '↑ ↓ اختيار · Enter إضافة · Esc إغلاق',
+  dkc_no_match: 'لا شيء يطابق «{q}»'
+};
+/* The customer picker's own lines (the list head's counts are shared). */
+DCOMBO_EN.dkc_cust_browse = 'Show the customers';
+DCOMBO_EN.dkc_cust_recent = 'Most recent buyers first';
+DCOMBO_EN.dkc_cust_empty = 'No customers yet';
+DCOMBO_EN.dkc_cust_none_q = 'No customer matches “{q}”';
+DCOMBO_EN.dkc_cust_add_q = 'Add “{q}” as a new customer';
+DCOMBO_EN.dkc_cust_last = 'last bought {d}';
+DCOMBO_EN.dkc_cust_never = 'never bought';
+DCOMBO_EN.dkc_cust_nophone = 'no phone';
+DCOMBO_EN.dkc_cust_owes = 'owes';
+DCOMBO_EN.dkc_keys_c = '↑ ↓ choose · Enter select · Esc close';
+DCOMBO_EN.dkp_r_short = 'Not enough in stock at {wh} — see the red lines';
+DCOMBO_EN.dkp_short_head = 'Not enough in stock at {wh}';
+DCOMBO_EN.dkp_pack_from = 'Pack from {wh} instead';
+DCOMBO_EN.dkp_restock = 'Refresh stock';
+DCOMBO_EN.dkp_restocking = 'Refreshing the stock…';
+DCOMBO_EN.dkp_there = '{wh} has {n}';
+DCOMBO_EN.dkp_n_here = '{n} here';
+DCOMBO_EN.dkp_sold_meanwhile = '{item}: only {n} left at {wh} — it may have just been sold. The order was NOT saved and nothing printed; the bag is open so you can change it.';
+DCOMBO_AR.dkp_r_short = 'الكمية غير كافية في {wh} — انظر الأسطر الحمراء';
+DCOMBO_AR.dkp_short_head = 'الكمية غير كافية في {wh}';
+DCOMBO_AR.dkp_pack_from = 'جهّز من {wh} بدلاً من ذلك';
+DCOMBO_AR.dkp_restock = 'تحديث المخزون';
+DCOMBO_AR.dkp_restocking = 'جارٍ تحديث المخزون…';
+DCOMBO_AR.dkp_there = 'في {wh}: {n}';
+DCOMBO_AR.dkp_n_here = '{n} هنا';
+DCOMBO_AR.dkp_sold_meanwhile = '{item}: بقي {n} فقط في {wh} — ربما بيعت للتو. لم يُحفظ الطلب ولم يُطبع شيء؛ الكيس مفتوح لتعديله.';
+DCOMBO_EN.dks_need_name_c = 'Every company needs a name before the list can be saved.';
+DCOMBO_EN.dks_need_name_m = 'Every payment method needs a name before the list can be saved.';
+DCOMBO_AR.dks_need_name_c = 'كل شركة تحتاج اسماً قبل حفظ القائمة.';
+DCOMBO_AR.dks_need_name_m = 'كل طريقة دفع تحتاج اسماً قبل حفظ القائمة.';
+DCOMBO_AR.dkc_cust_browse = 'عرض الزبائن';
+DCOMBO_AR.dkc_cust_recent = 'الأحدث شراءً أولاً';
+DCOMBO_AR.dkc_cust_empty = 'لا يوجد زبائن بعد';
+DCOMBO_AR.dkc_cust_none_q = 'لا يوجد زبون يطابق «{q}»';
+DCOMBO_AR.dkc_cust_add_q = 'إضافة «{q}» كزبون جديد';
+DCOMBO_AR.dkc_cust_last = 'آخر شراء {d}';
+DCOMBO_AR.dkc_cust_never = 'لم يشترِ بعد';
+DCOMBO_AR.dkc_cust_nophone = 'بلا هاتف';
+DCOMBO_AR.dkc_cust_owes = 'عليه دين';
+DCOMBO_AR.dkc_keys_c = '↑ ↓ اختيار · Enter تحديد · Esc إغلاق';
+Object.keys(DCOMBO_EN).forEach(function (k) { I18N.en[k] = DCOMBO_EN[k]; });
+Object.keys(DCOMBO_AR).forEach(function (k) { I18N.ar[k] = DCOMBO_AR[k]; });
+
+/* ---- the office's order alerts (Web Push). `dlp_push_` = the board's bell. */
+var DPUSH_EN = {
+  dlp_push_off: 'Order alerts',
+  dlp_push_on: 'Alerts on',
+  dlp_push_title_off: 'Get a notification on this device whenever an order moves — even with the app closed',
+  dlp_push_title_on: 'Order alerts are on for this device. Press to turn them off.',
+  dlp_push_turned_on: 'Order alerts are on for this device. A test notification is on its way.',
+  dlp_push_turned_off: 'Order alerts are off for this device.',
+  dlp_push_blocked: 'Notifications are blocked for this site. Allow them in the browser’s site settings, then press again.',
+  dlp_push_not_allowed: 'Notifications were not allowed, so nothing was turned on.',
+  dlp_push_unsupported: 'This browser cannot receive notifications here. It needs the secure address (https://…), not the Wi-Fi IP — and on an iPhone, the app added to the Home Screen.',
+  dlp_push_failed: 'Could not turn on order alerts: {e}'
+};
+var DPUSH_AR = {
+  dlp_push_off: 'تنبيهات الطلبات',
+  dlp_push_on: 'التنبيهات مفعّلة',
+  dlp_push_title_off: 'يصلك إشعار على هذا الجهاز عند كل تحرّك لطلب — حتى والتطبيق مغلق',
+  dlp_push_title_on: 'تنبيهات الطلبات مفعّلة على هذا الجهاز. اضغط لإيقافها.',
+  dlp_push_turned_on: 'تنبيهات الطلبات مفعّلة على هذا الجهاز. إشعار تجريبي في الطريق.',
+  dlp_push_turned_off: 'تم إيقاف تنبيهات الطلبات على هذا الجهاز.',
+  dlp_push_blocked: 'الإشعارات محظورة لهذا الموقع. اسمح بها من إعدادات الموقع في المتصفح ثم اضغط مجدداً.',
+  dlp_push_not_allowed: 'لم يُسمح بالإشعارات، فلم يُفعَّل شيء.',
+  dlp_push_unsupported: 'هذا المتصفح لا يستقبل الإشعارات هنا. يلزم العنوان الآمن (https://…) لا عنوان الواي فاي — وعلى الآيفون يلزم إضافة التطبيق إلى الشاشة الرئيسية.',
+  dlp_push_failed: 'تعذّر تفعيل تنبيهات الطلبات: {e}'
+};
+Object.keys(DPUSH_EN).forEach(function (k) { I18N.en[k] = DPUSH_EN[k]; });
+Object.keys(DPUSH_AR).forEach(function (k) { I18N.ar[k] = DPUSH_AR[k]; });
+
+/* ---- the tracking link on WhatsApp: the office's order view and saved card,
+   and a button on every order on the Deliveries board. */
+var DWATRACK_EN = {
+  dk_wa_track: 'WhatsApp: tracking link',
+  dl_wa_track: 'WhatsApp',
+  dl_wa_track_title: 'Send the tracking link on WhatsApp',
+  dk_wa_no_link: 'This shop has no public address yet, so a customer could not open the link. Set the shop’s public address, or connect Cloudflare, first.'
+};
+var DWATRACK_AR = {
+  dk_wa_track: 'واتساب: رابط التتبّع',
+  dl_wa_track: 'واتساب',
+  dl_wa_track_title: 'أرسل رابط التتبّع على واتساب',
+  dk_wa_no_link: 'لا يوجد عنوان عام للمحل بعد، فلن يستطيع الزبون فتح الرابط. اضبط العنوان العام للمحل أو اربط Cloudflare أولاً.'
+};
+Object.keys(DWATRACK_EN).forEach(function (k) { I18N.en[k] = DWATRACK_EN[k]; });
+Object.keys(DWATRACK_AR).forEach(function (k) { I18N.ar[k] = DWATRACK_AR[k]; });
+
+/* ---- the Reviews page (js/reviews.js). `rv_tag_*` ids match TAGS in
+   server/lib/reviews.js, whose own TAG_WORDS the tracking page and the
+   website print — keep the two in step. */
+var REVIEWS_EN = {
+  nav_reviews: 'Reviews',
+  rv_title: 'Reviews',
+  rv_sub: 'What customers said when their delivery arrived',
+  rv_refresh: 'Refresh',
+  rv_n_reviews: '{n} reviews',
+  rv_share: '{p}% of {n} delivered orders reviewed',
+  rv_tags_h: 'What they liked',
+  rv_on_web_n: '{n} on the website',
+  rv_allowed_n: '{n} allowed by the customer',
+  rv_f_all: 'All stars',
+  rv_f_low: '1–2★',
+  rv_s_all: 'Everything',
+  rv_s_comment: 'With words',
+  rv_s_allowed: 'Allowed on website',
+  rv_s_web: 'On website',
+  rv_search_ph: 'Customer, invoice, city or words…',
+  rv_none: 'No reviews yet',
+  rv_none_sub: 'When a customer rates a delivered order on its tracking page, it appears here.',
+  rv_none_match: 'No review matches',
+  rv_none_match_sub: 'Try another star or filter.',
+  rv_noun: 'reviews',
+  rv_no_words: 'No words — just the stars.',
+  rv_edited: 'edited',
+  rv_no_permission: 'The customer did not allow this on the website',
+  rv_web_on: 'Shown on the website',
+  rv_web_off: 'Show on the website',
+  rv_web_since: 'since {d}',
+  rv_web_as: 'as “{name}”',
+  rv_web_turned_on: 'This review is now on the website.',
+  rv_web_turned_off: 'This review is off the website.',
+  rv_tag_fast: 'Fast delivery',
+  rv_tag_driver: 'Friendly driver',
+  rv_tag_packed: 'Well packed',
+  rv_tag_described: 'As described',
+  rv_tag_quality: 'Great quality',
+  rv_tag_again: 'Would order again'
+};
+var REVIEWS_AR = {
+  nav_reviews: 'التقييمات',
+  rv_title: 'التقييمات',
+  rv_sub: 'ما قاله الزبائن عند وصول طلباتهم',
+  rv_refresh: 'تحديث',
+  rv_n_reviews: '{n} تقييم',
+  rv_share: 'قُيّم {p}% من {n} طلب مُسلَّم',
+  rv_tags_h: 'ما أعجبهم',
+  rv_on_web_n: '{n} على الموقع',
+  rv_allowed_n: '{n} بموافقة الزبون',
+  rv_f_all: 'كل النجوم',
+  rv_f_low: '1–2★',
+  rv_s_all: 'الكل',
+  rv_s_comment: 'مع تعليق',
+  rv_s_allowed: 'مسموح على الموقع',
+  rv_s_web: 'على الموقع',
+  rv_search_ph: 'الزبون، الفاتورة، المدينة أو التعليق…',
+  rv_none: 'لا توجد تقييمات بعد',
+  rv_none_sub: 'عندما يقيّم زبون طلباً مُسلَّماً من صفحة التتبّع، يظهر هنا.',
+  rv_none_match: 'لا يوجد تقييم مطابق',
+  rv_none_match_sub: 'جرّب عدد نجوم أو فلتراً آخر.',
+  rv_noun: 'تقييمات',
+  rv_no_words: 'بدون تعليق — النجوم فقط.',
+  rv_edited: 'معدَّل',
+  rv_no_permission: 'الزبون لم يوافق على عرضه على الموقع',
+  rv_web_on: 'معروض على الموقع',
+  rv_web_off: 'اعرضه على الموقع',
+  rv_web_since: 'منذ {d}',
+  rv_web_as: 'باسم «{name}»',
+  rv_web_turned_on: 'أصبح التقييم معروضاً على الموقع.',
+  rv_web_turned_off: 'أُزيل التقييم من الموقع.',
+  rv_tag_fast: 'توصيل سريع',
+  rv_tag_driver: 'سائق لطيف',
+  rv_tag_packed: 'تغليف ممتاز',
+  rv_tag_described: 'مطابق للوصف',
+  rv_tag_quality: 'جودة ممتازة',
+  rv_tag_again: 'سأطلب مجدداً'
+};
+Object.keys(REVIEWS_EN).forEach(function (k) { I18N.en[k] = REVIEWS_EN[k]; });
+Object.keys(REVIEWS_AR).forEach(function (k) { I18N.ar[k] = REVIEWS_AR[k]; });
+
+/* ---- the panel's Full refresh, as an open tab sees it (js/pulse.js). */
+var REFRESH_EN = {
+  rf_app_title: 'Updating OG System…',
+  rf_app_sub: 'The shop is restarting with the newest files and data. This screen comes back by itself in a few seconds.',
+  rf_app_load: 'Loading the newest version…'
+};
+var REFRESH_AR = {
+  rf_app_title: 'جارٍ تحديث النظام…',
+  rf_app_sub: 'يُعاد تشغيل المحل بأحدث الملفات والبيانات. ستعود هذه الشاشة تلقائياً خلال ثوانٍ.',
+  rf_app_load: 'جارٍ تحميل أحدث نسخة…'
+};
+Object.keys(REFRESH_EN).forEach(function (k) { I18N.en[k] = REFRESH_EN[k]; });
+Object.keys(REFRESH_AR).forEach(function (k) { I18N.ar[k] = REFRESH_AR[k]; });

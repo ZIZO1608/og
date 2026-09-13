@@ -570,7 +570,7 @@ function readCacheName() {
    the tabs holding /api/live, which is the manager's and the developer's: a
    till reloading itself under a cashier's hands is not a refresh, it is a
    lost sale. */
-function hardRefresh() {
+function bumpCache() {
   try {
     const text = readFileSync(SW, 'utf8');
     const m = CACHE_RE.exec(text);
@@ -586,35 +586,7 @@ function hardRefresh() {
     say('  Could not bump sw.js: ' + e.message, 'err');
   }
 
-  /* THE SERVER HALF. Editing server/ and pressing Hard refresh used to update
-     the browser and leave the shop running the code it was started with - so
-     a route added a minute ago answered "No such endpoint" to a button that
-     plainly existed. Restarted only when something it runs actually changed,
-     because a restart costs the boot pull and interrupts the till. */
-  if (serverIsStale()) {
-    say('  The server code changed since it started - restarting the shop too.', 'note');
-    const dying = child;
-    stopServer();
-    const wait = setInterval(() => {
-      if (child === dying) return;
-      clearInterval(wait);
-      startServer();
-      /* The tabs are told once it is answering again, or they reload into a
-         shop that is still pulling from the cloud and see the failure page. */
-      const upAgain = setInterval(() => {
-        if (state.server !== 'running') return;
-        clearInterval(upAgain);
-        tellTabs();
-      }, 500);
-      upAgain.unref();
-    }, 300);
-    wait.unref();
-    pushState();
-    return;
-  }
-
-  tellTabs();
-  pushState();
+  return readCacheName();
 }
 
 function tellTabs() {
@@ -624,6 +596,147 @@ function tellTabs() {
   } else {
     say('  The shop is not running, so there are no open tabs to tell.', 'note');
   }
+}
+
+/* ------------------------------------------------------- the full refresh
+
+   The owner asked for Hard refresh to be a FULL refresh: new files, a fresh
+   shop, and every open screen back on the newest data — every time, not only
+   when server code happened to change. Six steps, each pushed to the window
+   as an id and a state (`refresh` events; the words are panel/ui/i18n.js's):
+
+     files   bump sw.js's cache name
+     warn    tell the open tabs a refresh is coming, so they cover themselves
+             with "Updating…" instead of a failing page while the shop is down
+     stop    close the shop gracefully
+     start   open it again (the boot pull runs as on any start)
+     answer  wait until it says it is ready
+     tabs    tell every tab to drop its caches and reload
+
+   A tab that reconnects to the NEW server after the reload message went out
+   reloads on its own: it was told `refreshing`, and the next hello it hears
+   is from the fresh shop (js/pulse.js). */
+const REFRESH_STEPS = ['files', 'warn', 'stop', 'start', 'answer', 'tabs'];
+const ANSWER_LIMIT_MS = 5 * 60 * 1000;   // the boot pull can hold a start for minutes
+
+function refreshStep(id, st, extra) {
+  const r = state.refresh;
+  if (!r) return;
+  const row = r.steps.find((s) => s.id === id);
+  if (!row) return;
+  row.state = st;
+  row.at = Date.now();
+  if (extra) Object.assign(row, extra);
+  push('refresh', r);
+}
+
+function refreshDone(ok, code) {
+  const r = state.refresh;
+  if (!r) return;
+  r.finished = Date.now();
+  r.ok = ok;
+  r.code = code || null;
+  push('refresh', r);
+  pushState();
+  const secs = Math.round((r.finished - r.started) / 1000);
+  say(ok ? `  Full refresh done in ${secs}s.` : `  Full refresh stopped (${code}).`, ok ? 'note' : 'err');
+}
+
+function hardRefresh() {
+  if (state.refresh && !state.refresh.finished) return refuse('refresh', 'refresh_busy');
+  if (job) return refuse('refresh', 'job_busy', { running: state.job ? state.job.label : null });
+
+  state.refresh = {
+    started: Date.now(), finished: null, ok: null, code: null,
+    steps: REFRESH_STEPS.map((id) => ({ id, state: 'wait' }))
+  };
+  push('refresh', state.refresh);
+  say('');
+  say('  Full refresh - new files, a fresh shop, every open screen reloaded.', 'note');
+
+  refreshStep('files', 'run');
+  const cache = bumpCache();
+  refreshStep('files', cache ? 'ok' : 'warn', { cache });
+
+  /* A shop this panel did not start is somebody else's to restart. */
+  if (!child && state.ready && state.ready.foreign) {
+    for (const id of ['warn', 'stop', 'start', 'answer', 'tabs']) refreshStep(id, 'skip');
+    return refreshDone(true, 'foreign');
+  }
+
+  const startAndReload = () => {
+    const t0 = Date.now();
+    refreshStep('start', 'run');
+    startServer();
+    const up = setInterval(() => {
+      if (state.server === 'running' && child) {
+        clearInterval(up);
+        refreshStep('start', 'ok');
+        refreshStep('answer', 'ok', { ms: Date.now() - t0 });
+        refreshStep('tabs', 'run');
+        tellTabs();
+        refreshStep('tabs', 'ok');
+        return refreshDone(true);
+      }
+      if (state.server === 'starting' || child) {
+        const r = state.refresh;
+        const startRow = r && r.steps.find((s) => s.id === 'start');
+        if (child && startRow && startRow.state === 'run') {
+          refreshStep('start', 'ok');
+          refreshStep('answer', 'run');
+        }
+      }
+      /* The port answered for a shop somebody else started in the gap — this
+         window adopted it rather than starting one, so there is nothing of
+         its own to wait for or reload. */
+      if (!child && state.server === 'stopped' && state.ready && state.ready.foreign) {
+        clearInterval(up);
+        for (const id of ['start', 'answer', 'tabs']) refreshStep(id, 'skip');
+        return refreshDone(true, 'foreign');
+      }
+      /* Nothing holding the process and nothing starting: it did not come up. */
+      if (!child && state.server === 'stopped' && Date.now() - t0 > 2500) {
+        clearInterval(up);
+        refreshStep('start', 'fail');
+        return refreshDone(false, 'start_failed');
+      }
+      if (Date.now() - t0 > ANSWER_LIMIT_MS) {
+        clearInterval(up);
+        refreshStep('answer', 'fail');
+        return refreshDone(false, 'no_answer');
+      }
+    }, 400);
+    up.unref();
+  };
+
+  if (!child) {
+    /* Closed already: nothing to warn or stop, just open it fresh. */
+    refreshStep('warn', 'skip');
+    refreshStep('stop', 'skip');
+    startAndReload();
+    return pushState();
+  }
+
+  refreshStep('warn', 'run');
+  try { child.send({ type: 'refreshing' }); } catch { /* gone */ }
+  refreshStep('warn', 'ok');
+
+  /* A breath for that warning to reach the tabs before the shop goes. */
+  const pause = setTimeout(() => {
+    if (!child) { refreshStep('stop', 'ok'); return startAndReload(); }
+    refreshStep('stop', 'run');
+    const dying = child;
+    stopServer();
+    const wait = setInterval(() => {
+      if (child === dying) return;
+      clearInterval(wait);
+      refreshStep('stop', 'ok');
+      startAndReload();
+    }, 300);
+    wait.unref();
+  }, 800);
+  pause.unref();
+  pushState();
 }
 
 /* --------------------------------------------------------------- the jobs */

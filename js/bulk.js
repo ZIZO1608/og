@@ -291,19 +291,39 @@ var Bulk = (function () {
     });
   }
 
+  /* The message to many customers, both languages like every WhatsApp message
+     (WA.both). {name} becomes each customer's first name as their button is
+     pressed. Each row used to carry its own fixed Arabic sentence in its link,
+     so whatever was typed into the box above was never what got sent. */
+  function bulkText() {
+    return WA.both([
+      'مرحباً {name} 👋',
+      'وصلتنا موديلات جديدة في *' + CONFIG.SHOP_NAME + '* 🔥',
+      'تعال شوفها قبل ما تخلص المقاسات 🖤'
+    ], [
+      'Hi {name} 👋',
+      'New styles just landed at *' + CONFIG.SHOP_NAME + '* 🔥',
+      'Come and see them before the sizes run out 🖤'
+    ]);
+  }
+  function personal(text, name) {
+    var n = WA.first(name);
+    return String(text || '').replace(/[ \t]?\{name\}/g, n ? ' ' + n : '');
+  }
+
   function messageModal() {
     var list = selCustomers();
-    var body = '<div class="partner-note mb">' + t('bk_message_hint') + '</div>' +
+    var body = '<div class="partner-note mb">' + t('bk_message_hint') + ' <b dir="ltr">{name}</b> ' +
+      t('bk_message_name') + '</div>' +
       '<div class="field"><span class="lbl">' + t('whatsapp_msg') + '</span>' +
-      '<textarea class="inp" id="bkMsg" dir="rtl" rows="5">' +
-      esc('مرحباً! وصلتنا موديلات جديدة في OG — تعال شوفها قبل ما تخلص المقاسات. 🖤') +
+      '<textarea class="inp" id="bkMsg" dir="auto" rows="9" style="line-height:1.7;unicode-bidi:plaintext;text-align:start">' +
+      esc(bulkText()) +
       '</textarea></div><div class="table-wrap" style="max-height:220px;overflow-y:auto">' +
       '<table class="tbl tbl-compact"><tbody>';
-    list.forEach(function (c) {
+    list.forEach(function (c, i) {
       body += '<tr><td>' + esc(c.name) + '</td><td class="muted num">' + tel(c.phone) + '</td>' +
-        '<td class="num"><a class="btn btn-sm btn-ghost" target="_blank" rel="noopener" href="' +
-        waLink(c.phone, 'مرحباً ' + c.name.split(' ')[0] + '، وصلتنا موديلات جديدة في OG!') +
-        '">' + t('send') + '</a></td></tr>';
+        '<td class="num"><button type="button" class="btn btn-sm btn-ghost" data-bk="msg-one" data-i="' + i + '">' +
+        t('send') + '</button></td></tr>';
     });
     body += '</tbody></table></div>';
 
@@ -632,6 +652,19 @@ var Bulk = (function () {
         pushRows(list, function (x, i) { return priced(x, srcBefore[i]); });
       });
       refreshAll(); paint();
+    },
+
+    /* One customer's button: the box's text as it stands NOW, their name in it. */
+    'msg-one': function (el) {
+      var c = selCustomers()[+el.getAttribute('data-i')];
+      var box = document.getElementById('bkMsg');
+      if (!c || !box) return;
+      var text = personal(box.value, c.name);
+      var url = WA.link(c.phone, text);
+      if (!url) { toast(t('send_whatsapp'), t('wa_bad_number'), 'err'); return; }
+      WA.log({ to: c.phone, name: c.name, kind: 'bulk', text: text });
+      window.open(url, '_blank', 'noopener');
+      el.textContent = '✓ ' + t('send');
     },
 
     'msg-log': function () {

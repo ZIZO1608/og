@@ -554,6 +554,66 @@ select.in { padding-inline-end: 28px; }
 .ask .foot2 { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
 .ask .foot2 .btn { min-width: 92px; }
 
+/* ====================================================== the full refresh
+   The shop's mark in a lime ring that fills as the six steps tick, an orbit
+   turning while it works, the steps under it. Done lights the ring and pulses
+   the mark once; a failure keeps the sheet open with the reason. */
+.rf {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center; padding: 26px;
+  background: radial-gradient(60% 50% at 50% 40%, rgb(198 255 0 / .07), transparent 70%), rgb(0 0 0 / .82);
+  animation: fade .18s ease both;
+}
+.rf .box2 {
+  position: relative; width: 100%; max-width: 420px; padding: 26px 24px 20px; text-align: center;
+  background: var(--popover); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: 0 30px 70px -20px rgb(0 0 0 / .9), 0 0 0 1px rgb(198 255 0 / .06);
+  animation: pop .22s var(--e-std) both;
+}
+.rf .box2::before {
+  content: ''; position: absolute; inset-inline: 24px; top: -1px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brand), transparent); opacity: .5;
+}
+.rf-ring { position: relative; width: 128px; height: 128px; margin: 2px auto 14px; }
+.rf-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.rf-ring circle { fill: none; stroke-width: 5; }
+.rf-ring .bg { stroke: var(--border); }
+.rf-ring .fg {
+  stroke: var(--brand); stroke-linecap: round; stroke-dasharray: 339.3;
+  transition: stroke-dashoffset .6s var(--e-out); filter: drop-shadow(0 0 6px rgb(198 255 0 / .5));
+}
+.rf-ring img { position: absolute; inset: 26px; width: 76px; height: 76px; border-radius: 20px; }
+.rf-ring .orbit {
+  position: absolute; inset: -7px; border-radius: 50%;
+  border: 2px solid transparent; border-top-color: rgb(198 255 0 / .6);
+  animation: spin 1.2s linear infinite;
+}
+.rf.done .orbit, .rf.fail .orbit { display: none; }
+.rf.done .rf-ring img { animation: rfPulse .7s var(--e-out) 1; }
+.rf.fail .rf-ring .fg { stroke: var(--destructive); filter: none; }
+@keyframes rfPulse { 40% { transform: scale(1.12); } }
+.rf h3 { font-size: 17px; margin: 0 0 2px; }
+.rf .sub { font-size: 12px; color: var(--dim); }
+.rf-steps { list-style: none; margin: 18px 0 0; padding: 0; text-align: start; display: flex; flex-direction: column; gap: 3px; }
+.rf-steps li {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--radius-sm);
+  font-size: 12.5px; color: var(--dim); transition: background var(--t), color var(--t);
+}
+.rf-steps .ic { width: 18px; height: 18px; flex: none; display: grid; place-items: center; }
+.rf-steps .ic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.rf-steps li.run { color: var(--foreground); background: var(--brand-soft); }
+.rf-steps li.run .ic { color: var(--brand); }
+.rf-steps li.run .ic svg { animation: spin 1s linear infinite; }
+.rf-steps li.ok { color: var(--foreground); }
+.rf-steps li.ok .ic { color: var(--brand); }
+.rf-steps li.skip { opacity: .45; }
+.rf-steps li.warn .ic { color: var(--warning); }
+.rf-steps li.fail { color: var(--destructive); }
+.rf-steps li em { margin-inline-start: auto; font-style: normal; font-size: 11px; color: var(--dim); }
+.rf .why { margin-top: 12px; font-size: 12px; color: var(--destructive); }
+.rf .foot2 { margin-top: 16px; display: flex; justify-content: center; gap: 8px; }
+.rf .foot2 .btn { min-width: 110px; }
+
 /* ============================================================ the toasts */
 
 .toasts {

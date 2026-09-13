@@ -66,10 +66,12 @@
     if (state.server === 'running') { outroPlayed = true; fading = false; }
     booted = true;
     draw();
+    paintRefresh();
     stick();
   });
 
-  es.addEventListener('state', function (e) { state = JSON.parse(e.data); draw(); });
+  es.addEventListener('state', function (e) { state = JSON.parse(e.data); draw(); paintRefresh(); });
+  es.addEventListener('refresh', function (e) { state.refresh = JSON.parse(e.data); paintRefresh(); });
 
   es.addEventListener('steps', function (e) {
     state.steps = JSON.parse(e.data);
@@ -915,6 +917,100 @@
     );
   }
 
+  /* ======================================================= the full refresh */
+
+  var rfSeen = 0;      /* the refresh this window last closed */
+  var rfTimer = null;
+  var RF_IC = {
+    wait: '<circle cx="12" cy="12" r="2.5"/>',
+    run: '<path d="M21 12a9 9 0 1 1-6.2-8.6"/>',
+    ok: '<path d="M5 12.5l4.2 4.2L19 7"/>',
+    skip: '<path d="M6 12h12"/>',
+    warn: '<path d="M12 7v6M12 16.5v.01"/>',
+    fail: '<path d="M6 6l12 12M18 6L6 18"/>'
+  };
+
+  function paintRefresh() {
+    var el = $('refresh');
+    var r = state.refresh;
+    if (!el) return;
+    /* A window opened (or reconnected) well after a refresh finished is not
+       owed the result sheet again. */
+    if (r && r.finished && Date.now() - r.finished > 15000) rfSeen = r.started;
+    if (!r || r.started === rfSeen) {
+      el.hidden = true;
+      if (rfTimer) { window.clearInterval(rfTimer); rfTimer = null; }
+      return;
+    }
+    var done = !!r.finished, ok = done && !!r.ok;
+    var steps = r.steps || [];
+    var reached = steps.filter(function (s) { return s.state === 'ok' || s.state === 'skip' || s.state === 'warn'; }).length;
+    var frac = ok ? 1 : (steps.length ? reached / steps.length : 0);
+    var secs = Math.max(0, Math.round(((r.finished || Date.now()) - r.started) / 1000));
+
+    el.className = 'rf' + (done ? (ok ? ' done' : ' fail') : '');
+    el.innerHTML = '<div class="box2">' +
+      '<div class="rf-ring"><svg viewBox="0 0 120 120"><circle class="bg" cx="60" cy="60" r="54"/>' +
+        '<circle class="fg" cx="60" cy="60" r="54" style="stroke-dashoffset:' + (339.3 * (1 - frac)).toFixed(1) + '"/></svg>' +
+        '<i class="orbit"></i><img src="/assets/logo.svg" alt=""></div>' +
+      '<h3>' + esc(t(done ? (ok ? 'rfTitleOk' : 'rfTitleFail') : 'rfTitleRun')) + '</h3>' +
+      '<p class="sub" id="rfSecs">' + ltr(t('rfElapsed', { s: secs })) + '</p>' +
+      '<ol class="rf-steps">' + steps.map(function (s) {
+        var detail = s.id === 'files' && s.cache ? ltr(s.cache)
+          : s.id === 'answer' && s.ms ? ltr(t('rfElapsed', { s: Math.round(s.ms / 1000) })) : '';
+        return '<li class="' + esc(s.state) + '"><span class="ic"><svg viewBox="0 0 24 24">' + (RF_IC[s.state] || RF_IC.wait) + '</svg></span>' +
+          '<span>' + esc(t('rf_' + s.id)) + '</span>' + (detail ? '<em>' + detail + '</em>' : '') + '</li>';
+      }).join('') + '</ol>' +
+      (done && r.code ? '<p class="why">' + esc(t('rf_code_' + r.code)) + '</p>' : '') +
+      (done
+        ? '<div class="foot2">' +
+            (ok ? '' : '<button class="btn btn-ghost" data-rf="log">' + esc(t('showLog')) + '</button>') +
+            '<button class="btn ' + (ok ? 'btn-primary' : 'btn-ghost') + '" data-rf="close">' + esc(t('rfClose')) + '</button>' +
+          '</div>'
+        : '') +
+    '</div>';
+    el.hidden = false;
+
+    if (rfTimer) { window.clearInterval(rfTimer); rfTimer = null; }
+    if (!done) {
+      rfTimer = window.setInterval(function () {
+        var s = $('rfSecs');
+        if (s && state.refresh) s.innerHTML = ltr(t('rfElapsed', { s: Math.round((Date.now() - state.refresh.started) / 1000) }));
+      }, 1000);
+    } else if (ok) {
+      /* A success does not need a click to go away. */
+      var started = r.started;
+      window.setTimeout(function () {
+        if (state.refresh && state.refresh.started === started) { rfSeen = started; paintRefresh(); }
+      }, 4500);
+    }
+  }
+
+  function askRefresh() {
+    var running = isRunning();
+    if (running) send('who');
+    openAsk(
+      '<h3>' + esc(t('rfAskTitle')) + '</h3>' +
+      '<p>' + esc(t('rfAskBody')) + '</p>' +
+      (running ? '<p id="whoLine">' + esc(t('stopBodyAsking')) + '</p>' : '') +
+      '<div class="foot2">' +
+      '<button class="btn btn-ghost" data-ask="no">' + esc(t('cancel')) + '</button>' +
+      '<button class="btn btn-primary doit">' + esc(t('rfGo')) + '</button>' +
+      '</div>',
+      function (box) {
+        box.querySelector('.doit').addEventListener('click', function () { closeAsk(); send('refresh'); });
+      }
+    );
+  }
+
+  $('refresh').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-rf]') : null;
+    if (!b) return;
+    if (state.refresh) rfSeen = state.refresh.started;
+    paintRefresh();
+    if (b.getAttribute('data-rf') === 'log') go('log');
+  });
+
   /* ============================================================== the clicks */
 
   document.addEventListener('click', function (e) {
@@ -947,6 +1043,7 @@
       if (el.disabled) return;
       if (act === 'quit') return askQuit();
       if (act === 'askstop') return askStop();
+      if (act === 'refresh') return askRefresh();
       if (act === 'openshop') {
         var r = state.ready || {};
         return void send('open', { url: r.https || r.http });

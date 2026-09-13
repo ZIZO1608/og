@@ -198,7 +198,7 @@ function attachItems(rows) {
    method  driver | office | courier | abroad | pickup
    money   owes | paid | with_driver
    q       an invoice, a name, a phone, a city, a tracking number */
-export function board(user, { status = null, method = null, money = null, q = null, limit = 100 } = {}) {
+export function board(user, { status = null, method = null, money = null, q = null, since = null, limit = 100 } = {}) {
   const mine = scope(user);
   const where = [];
   const args = [];
@@ -207,6 +207,16 @@ export function board(user, { status = null, method = null, money = null, q = nu
 
   if (status === 'cancelled') where.push('s.voided = 1');
   else if (status === 'open') where.push("d.status IN ('waiting','out')", 's.voided = 0');
+  /* THE DAY, as the lanes and the driver's phone read it: everything still
+     open whatever its age, and what closed since the reader's own midnight.
+     The midnight is the BROWSER's — the server is UTC and Aleppo is not, the
+     same reason the dashboard is handed two instants. `closed_at` is UTC text,
+     so the instant is re-normalised before it is compared. */
+  else if (status === 'today') {
+    where.push(`(d.status IN ('waiting','out') OR (d.status IN ('delivered','failed') AND d.closed_at >= ?))`,
+               's.voided = 0');
+    args.push(dayStart(since));
+  }
   else if (status && NEXT[status]) { where.push('d.status = ?', 's.voided = 0'); args.push(status); }
 
   if (method === 'driver') where.push("(d.method = 'driver' OR d.method IS NULL)");
@@ -243,6 +253,53 @@ export function board(user, { status = null, method = null, money = null, q = nu
     shown: rows.length,
     total,
     capped: total > rows.length
+  };
+}
+
+function dayStart(since) {
+  const t = new Date(since || '');
+  return isNaN(t.getTime()) ? nowIso().slice(0, 10) + 'T00:00:00.000Z' : t.toISOString();
+}
+
+/* THE FOUR NUMBERS ACROSS THE TOP OF THE BOARD, for the whole shop.
+
+   Never derived from the list under them: that list is filtered by whatever
+   is in the search box and capped at a couple of hundred rows, and a tile
+   reading "3 still owe" because somebody had typed a name would be a number
+   about the search, not about the shop.
+
+   Money is a pair per currency and is never added across them. What is owed
+   uses the same arithmetic as the board's own "owes" filter; the cash in
+   drivers' pockets uses exactly the WHERE of Orders.driverCash, so the tile
+   and the Cash back tab can never disagree about the same notes. */
+export function summary() {
+  const d = get();
+  const counts = { waiting: 0, out: 0 };
+  for (const r of d.prepare(
+    `SELECT d.status, COUNT(*) AS n
+       FROM deliveries d JOIN sales s ON s.id = d.sale_id
+      WHERE s.voided = 0 AND d.status IN ('waiting','out')
+      GROUP BY d.status`
+  ).all()) counts[r.status] = r.n;
+
+  const owed = d.prepare(
+    `SELECT d.currency AS currency, SUM(${DUE} - ${PAID}) AS amount, COUNT(*) AS n ${FROM}
+      WHERE s.voided = 0 AND d.status <> 'failed' AND ${DUE} - ${PAID} > 0
+      GROUP BY d.currency ORDER BY d.currency`
+  ).all();
+
+  const cash = d.prepare(
+    `SELECT currency, SUM(amount) AS amount, COUNT(DISTINCT received_by) AS drivers
+       FROM order_payments
+      WHERE kind = 'in' AND drawer = 1 AND handed_in_at IS NULL
+      GROUP BY currency ORDER BY currency`
+  ).all();
+
+  return {
+    waiting: counts.waiting,
+    out: counts.out,
+    owed: owed.map((r) => ({ currency: r.currency || 'SYP', amount: r.amount || 0, n: r.n })),
+    cash: cash.map((r) => ({ currency: r.currency || 'SYP', amount: r.amount || 0, drivers: r.drivers }))
   };
 }
 

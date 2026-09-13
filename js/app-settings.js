@@ -1253,6 +1253,15 @@ function viewSettings() {
   h += setSection(t('setg_wh'));
   h += shelvesCard();
 
+  /* THE DELIVERY OFFICE'S OWN LISTS — payment methods, the transport offices
+     and couriers, the shipping price list, the shop's transfer details. They
+     were written (Desk.settingsCards in js/desk.js) and never drawn: nothing
+     here called them, so "add a company in Settings" sent the shop to a page
+     that did not have one. It draws its own section heading, gates itself on
+     config.write, and on a first visit fetches the office's settings and
+     redraws this page when they land. */
+  if (typeof Desk !== 'undefined' && Desk.settingsCards) h += Desk.settingsCards();
+
   h += setSection(t('setg_people'));
   h += presenceCard();
   h += rolesCard();

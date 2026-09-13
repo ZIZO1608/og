@@ -978,16 +978,31 @@ var ACTIONS = {
     var po = DB.po(el.getAttribute('data-id'));
     if (!po) return;
     var sup = DB.supplier(po.supplierId);
-    var body = po.lines.map(function (l) {
-      var p = DB.product(l.productId);
-      return '• ' + p.name + ' — ' + t('size') + ' ' + l.size + ' × ' + l.qty;
-    }).join('\n');
+    var pieces = DB.poPieces(po), total = DB.poTotal(po);
+    /* Both languages, like every WhatsApp message (WA.both). */
+    function part(ar) {
+      var L = [];
+      L.push('📦 *' + CONFIG.SHOP_NAME + '* — ' + (ar ? 'طلبية جديدة' : 'New purchase order'));
+      L.push('');
+      L.push((ar ? 'مرحباً ' : 'Hi ') + sup.name + ' 👋');
+      L.push(ar ? 'طلبية رقم *' + po.id + '*:' : 'Order *' + po.id + '*:');
+      L.push('');
+      po.lines.forEach(function (l) {
+        var p = DB.product(l.productId);
+        L.push('▫️ ' + (p ? p.name : l.productId) + (l.size ? (ar ? ' · مقاس ' : ' · size ') + l.size : '') + '  ×' + l.qty);
+      });
+      L.push('');
+      L.push((ar ? '🔢 الكمية: ' : '🔢 Pieces: ') + nf(pieces) + (ar ? ' قطعة' : ''));
+      L.push((ar ? '💰 الإجمالي: *' : '💰 Total: *') + WA.cash(total, ar) + '*');
+      L.push('');
+      L.push(ar ? '🙏 نرجو تأكيد التوفّر وموعد التسليم.' : '🙏 Please confirm availability and the delivery date.');
+      return L;
+    }
     WA.compose({
       title: po.id + ' · ' + sup.name,
       to: sup.contact, name: sup.name, kind: 'purchase-order',
-      text: 'مرحباً ' + sup.name + '،\n\nطلبية جديدة ' + po.id + ':\n\n' + body +
-            '\n\nالإجمالي: ' + money(DB.poTotal(po)) + '\n— ' + CONFIG.SHOP_NAME,
-      note: DB.poPieces(po) + ' ' + t('pieces') + ' · ' + money(DB.poTotal(po))
+      text: WA.both(part(true), part(false)),
+      note: pieces + ' ' + t('pieces') + ' · ' + money(total)
     });
   },
 
@@ -1247,14 +1262,20 @@ var ACTIONS = {
     var job = DB.job(el.getAttribute('data-id'));
     if (!job) return;
     var sizes = Object.keys(job.sizes || {}).map(function (k) { return k + '×' + job.sizes[k]; }).join(' · ');
-    var text = 'طلب طباعة جديد · ' + job.id + '\n\n' +
-      job.design + '\n' +
-      'العدد: ' + job.qty + ' قطعة\n' +
-      (sizes ? 'القياسات: ' + sizes + '\n' : '') +
-      'موعد التسليم: ' + fmtDate(job.deadline) + '\n' +
-      (job.priority === 'urgent' ? '⚡ مستعجل\n' : '') +
-      'المستحق: ' + money(job.cost) + '\n\n' +
-      '— ' + CONFIG.SHOP_NAME;
+    /* Both languages, like every WhatsApp message (WA.both). */
+    function part(ar) {
+      var L = [];
+      L.push('🖨️ *' + CONFIG.SHOP_NAME + '* — ' + (ar ? 'طلب طباعة جديد' : 'New print order'));
+      L.push('*' + job.id + '*' + (job.priority === 'urgent' ? (ar ? ' · ⚡ *مستعجل*' : ' · ⚡ *Urgent*') : ''));
+      L.push('');
+      if (job.design) L.push('🎨 ' + job.design);
+      L.push((ar ? '🔢 العدد: ' : '🔢 Quantity: ') + nf(job.qty) + (ar ? ' قطعة' : ' pcs'));
+      if (sizes) L.push((ar ? '📏 القياسات: ' : '📏 Sizes: ') + sizes);
+      L.push((ar ? '🗓️ موعد التسليم: ' : '🗓️ Due: ') + WA.day(job.deadline, ar));
+      L.push((ar ? '💵 المستحق: *' : '💵 Amount: *') + WA.cash(job.cost, ar) + '*');
+      return L;
+    }
+    var text = WA.both(part(true), part(false));
     WA.compose({
       to: '+963 932 887 190',            /* Yalla Wear, from the supplier list */
       name: CONFIG.PRINT_PARTNER,

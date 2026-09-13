@@ -475,12 +475,23 @@ var Money = (function () {
       if (!s || !s.customerId) return;
       var c = DB.customer(s.customerId);
       var bal = DB.debtBalance(s);
+      /* Both languages, like every WhatsApp message (WA.both). */
+      var part = function (ar) {
+        return [
+          WA.hi(c.name, ar),
+          '',
+          ar ? 'تذكير ودّي بخصوص الفاتورة *' + s.id + '* بتاريخ ' + WA.day(s.date, true) + '.'
+             : 'A friendly reminder about invoice *' + s.id + '* from ' + WA.day(s.date, false) + '.',
+          (ar ? '💰 المتبقّي: *' : '💰 Still to pay: *') + WA.cash(bal, ar) + '*',
+          '',
+          (ar ? 'شكراً لك 🖤' : 'Thank you 🖤'),
+          '— ' + CONFIG.SHOP_NAME
+        ];
+      };
       WA.compose({
         title: t('mn_remind') + ' · ' + esc(c.name),
         to: c.phone, name: c.name, kind: 'debt-reminder',
-        text: 'مرحباً ' + String(c.name).split(' ')[0] + '،\n\n' +
-              'تذكير ودّي بخصوص الفاتورة ' + s.id + ' بتاريخ ' + fmtDate(s.date) + '.\n' +
-              'المتبقّي: ' + money(bal) + '\n\nشكراً لك 🖤\n— ' + CONFIG.SHOP_NAME,
+        text: WA.both(part(true), part(false)),
         note: t('mn_age') + ' ' + DB.daysSince(s.date) + t('yl_d') + ' · ' + money(bal)
       });
     }

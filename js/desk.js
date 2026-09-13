@@ -17,7 +17,10 @@
    Save that lost the wifi and is pressed again returns the order it already
    made instead of making a second one.
 
-   Repaints patch one panel (#dkItems, #dkWho, #dkSum) and never call
+   ONE STEP AT A TIME: bag, customer, how it travels, where to, the money —
+   one centred panel (#dkStage), a rail over it, Back and Next under it.
+
+   Repaints patch the step's body (#dkBody), the foot and the rail, and never call
    render(): half this screen is typed-but-unsaved, and a full repaint takes
    the caret out of the box somebody is typing a phone number into.
    ========================================================================== */
@@ -39,6 +42,8 @@ var Desk = (function () {
   var loading = false;
   var S = null;           /* the draft */
   var saved = null;       /* the order just made, for the result card */
+  var celebrated = null;  /* the order whose "saved" card has already landed once */
+  var lastStamp = null;   /* the ticket's stamp last drawn, so it thumps only on a change */
   var busy = false;
 
   /* ------------------------------------------------------------------ draft */
@@ -66,14 +71,20 @@ var Desk = (function () {
       pays: [],                        /* [{ amount, currency, method, txnRef }] */
       note: '',
       print: printPref(),
-      opId: null
+      opId: null,
+      step: 0,                         /* the step on screen, kept so a refresh returns to it */
+      maxStep: 0                       /* the furthest step reached, for the rail's ticks */
     };
   }
 
   function loadDraft() {
     try {
       var v = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
-      return v && v.v === 1 && Array.isArray(v.lines) ? v : null;
+      if (!(v && v.v === 1 && Array.isArray(v.lines))) return null;
+      /* A draft saved before the steps existed has none. */
+      if (typeof v.step !== 'number' || v.step < 0 || v.step > 4) v.step = 0;
+      if (typeof v.maxStep !== 'number') v.maxStep = v.step;
+      return v;
     } catch (e) { return null; }
   }
 
@@ -282,6 +293,10 @@ var Desk = (function () {
   function reasons(tt) {
     var r = [];
     if (!S.lines.length) r.push(t('dk_r_items'));
+    /* NOT ENOUGH AT THE PLACE IT IS PACKED FROM. The server refuses the whole
+       order for it (insufficient_stock), so letting it reach Save meant five
+       steps of typing ended in "Only 0 of OG-050-42 left" and nothing printed. */
+    else if (shortLines().length) r.push(t('dkp_r_short').replace('{wh}', whLabel(S.whId)));
     if (!S.customerId) r.push(t('dk_r_customer'));
     if (S.method !== 'pickup' && !String(S.address).trim()) r.push(t('dk_r_address'));
     /* SHIPPING HAS TO BE ANSWERED, not left to a price list that may say
@@ -333,6 +348,11 @@ var Desk = (function () {
   }
 
   function addVariant(v) {
+    /* Whatever put it in — a pick from the list, Enter, the gun — the list
+       has done its job and the box is ready for the next pair. */
+    pick.open = false;
+    pick.q = '';
+    pick.hi = -1;
     if (saved) startNew();
     var p = DB.product(v.productId);
     if (!p || p.archived) { toast(t('dk_title'), t('dk_archived'), 'warn'); return; }
@@ -341,6 +361,11 @@ var Desk = (function () {
     else { line = { sku: v.sku, qty: 1 }; S.lines.unshift(line); }
     S.flash = v.sku;
     touch('items', 'sum');
+    /* Scanned while another step is on screen: it still goes in the bag, and
+       says so, because the bag is not in view to show it. */
+    if (S.step !== 0) {
+      toast(p.name + ' · ' + v.size, t('dkw_added').replace('{n}', nf(pieces())), 'ok', 2600);
+    }
     var have = DB.stockAt(v, S.whId);
     if (have < line.qty) {
       toast(p.name + ' · ' + v.size,
@@ -406,6 +431,10 @@ var Desk = (function () {
       loading = false;
       if (!S) S = loadDraft() || fresh();
       if (!S.whId) S.whId = b.settings.wh;
+      /* A draft restored onto a step it can no longer be on — a product
+         archived since, a customer merged away — goes back to the first
+         step that still needs answering. */
+      while (S.step > 0 && !canReach(S.step)) S.step--;
       repaint();
     }).catch(function (err) {
       loading = false;
@@ -417,18 +446,19 @@ var Desk = (function () {
   function after() {
     if (typeof Auth !== 'undefined' && !Auth.can('delivery.desk')) return;
     if (!boot) { load(); return; }
-    focusScan();
+    focusStep();
   }
 
   function repaint() {
     /* The Settings folds are drawn by app-settings.js, so when the bootstrap
        lands while somebody is on that screen, the page itself has to redraw —
        otherwise the four folds sit empty until the next navigation. */
-    if (OG.view === 'settings') { if (typeof render === 'function') render(); return; }
+    if (OG.view === 'settings') { renderKeepScroll(); return; }
     if (OG.view !== 'desk') return;
     var host = document.getElementById('view');
     if (host) host.innerHTML = view();
-    focusScan();
+    markCustHi(false);
+    focusStep();
   }
 
   /* ----------------------------------------------------------------- views */
@@ -452,51 +482,97 @@ var Desk = (function () {
     }
 
     return head +
-      '<div class="dk">' +
-        '<section class="card dk-col" id="dkItems">' + itemsHtml() + '</section>' +
-        '<section class="card dk-col" id="dkWho">' + whoHtml() + '</section>' +
-        '<aside class="card dk-sum" id="dkSum">' + (saved ? resultHtml() : sumHtml()) + '</aside>' +
-      '</div>' +
-      '<div class="dk-bar" id="dkBar">' + barHtml() + '</div>';
+      '<nav class="dk-rail dk-wiz-rail" id="dkRail" aria-label="' + esc(t('dkp_rail')) + '">' + railSteps() + '</nav>' +
+      stageHtml();
   }
 
-  /* ON A PHONE THE SAVE BUTTON IS OFF THE BOTTOM OF THE PAGE. Three columns
-     become one stacked screen, so the money panel — and the only way to
-     finish — sits under everything that was scanned. This bar is drawn
-     always and shown by CSS only where the layout has stacked; it carries the
-     one number that matters and the one button, and both are the same
-     delegated actions as the panel's own, so there is nothing to keep in
-     step. */
-  function barHtml() {
+  /* ONE STEP AT A TIME. Three panels side by side read as three forms to be
+     filled at once, and the person on the phone with a customer needs one
+     question in front of them: what is in the bag, who it is for, how it
+     travels, where to, and the money. The office asked for exactly that.
+
+     Nothing about the order changed underneath: every step reads and writes
+     the same draft (S), the step itself is kept in it so a refresh comes
+     back to the step it was on, and what may not be left yet is reasons()'s
+     own list split by step (stepReason) — so Next and Save can never
+     disagree about what is missing. A scan never moves the screen on: an
+     order is often three pairs, and Next is pressed when the bag is full. */
+  var STEP_KEYS = ['bag', 'customer', 'method', 'address', 'pay'];
+  var stageDir = '';          /* ' is-fwd' | ' is-back', for the one paint after a step change */
+
+  function stageHtml() {
+    var dir = stageDir;
+    stageDir = '';
     if (saved) {
-      return '<div class="dk-bar-sum"><b><bdi dir="ltr">' + esc(saved.order.sale.id) + '</bdi></b>' +
-        '<span>' + t('dk_bar_done') + '</span></div>' +
-        '<button class="btn btn-primary" data-act="dk-new">' + t('dk_new') + '</button>';
+      return '<section class="card dk-stage is-done' + dir + '" id="dkStage">' +
+        '<div class="dk-body" id="dkBody">' + resultHtml() + '</div></section>';
     }
-    var tt = totals();
-    var why = reasons(tt);
-    return '<div class="dk-bar-sum"><b>' + fmt(tt.due, tt.currency) + '</b>' +
-      '<span>' + (S.lines.length ? nf(pieces()) + ' ' + t('dk_pieces') : t('dk_empty')) +
-        (tt.remaining ? ' · ' + t('dk_remaining') + ' ' + fmt(tt.remaining, tt.currency) : '') +
-      '</span></div>' +
-      '<button class="btn btn-primary" data-act="dk-save"' + (why.length || busy ? ' disabled' : '') + '>' +
-        (busy ? t('dk_saving') : t('dk_save')) + '</button>';
+    var i = S.step;
+    return '<section class="card dk-stage' + dir + '" id="dkStage">' +
+      '<header class="dk-stage-head">' +
+        '<span class="dk-stage-n">' + t('dkw_step_n').replace('{n}', nf(i + 1)) + '</span>' +
+        '<h2>' + t('dkw_t_' + STEP_KEYS[i]) + '</h2><p>' + t('dkw_d_' + STEP_KEYS[i]) + '</p>' +
+      '</header>' +
+      '<div class="dk-body" id="dkBody">' + stepBody() + '</div>' +
+      '<footer class="dk-nav" id="dkNav">' + navHtml() + '</footer>' +
+    '</section>';
   }
+
+  function stepBody() {
+    switch (S.step) {
+      case 1: return customerHtml();
+      case 2: return methodHtml();
+      case 3: return addressHtml();
+      case 4: return payHtml();
+      default: return itemsHtml();
+    }
+  }
+
+  var CHEV = '<svg class="dk-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>';
+  var CHEV_BACK = '<svg class="dk-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
+
+  /* The foot of every step: back, what the order comes to with whatever is
+     still missing, and the way on — Save, on the last step. It sticks to the
+     bottom of the screen, so the next move is never a scroll away. */
+  function navHtml() {
+    var tt = totals();
+    var i = S.step;
+    var why = stepReason(i, tt);
+    var note = why
+      ? '<span class="is-why">' + esc(why) + '</span>'
+      : '<span>' + (S.lines.length ? piecesText() : '') +
+          (i === 0 && S.lines.length && !coarse() ? ' · ' + t('dkw_enter_hint') : '') + '</span>';
+    return (i > 0
+        ? '<button type="button" class="btn btn-ghost dk-back" data-act="dk-back">' + CHEV_BACK +
+          '<span>' + t('dkw_back') + '</span></button>'
+        : '<span class="dk-nav-gap"></span>') +
+      '<div class="dk-nav-mid"><b>' + fmt(tt.due, tt.currency) + '</b>' + note + '</div>' +
+      (i < 4
+        ? '<button type="button" class="btn btn-primary dk-next" data-act="dk-next"' + (why ? ' disabled' : '') + '>' +
+          '<span>' + t('dkw_next') + '</span>' + CHEV + '</button>'
+        : '<button type="button" class="btn btn-primary dk-next" data-act="dk-save"' +
+          (why || busy ? ' disabled' : '') + '>' + (busy ? t('dk_saving') : t('dk_save')) + '</button>');
+  }
+
+  /* Which step a part's content lives on. A change repaints the step's body
+     only when that step is the one on screen — typing an address must not
+     rebuild the box the caret is in — while the rail and the foot, which
+     answer "can I go on" and "what does it come to", repaint with anything. */
+  var PART_STEP = { items: [0], who: [1, 2, 3], sum: [4] };
 
   function paint(part) {
-    if (OG.view !== 'desk' || !boot) return;
-    var id = part === 'items' ? 'dkItems' : part === 'who' ? 'dkWho' : 'dkSum';
-    var host = document.getElementById(id);
-    if (!host) return;
-    host.innerHTML = part === 'items' ? itemsHtml()
-                   : part === 'who' ? whoHtml()
-                   : (saved ? resultHtml() : sumHtml());
-    /* The phone bar carries the same due figure and the same Save, so it
-       repaints with every panel rather than only with the money one — a line
-       scanned in panel one changes what it says. */
-    var bar = document.getElementById('dkBar');
-    if (bar) bar.innerHTML = barHtml();
-    if (part === 'items') focusScan();
+    if (OG.view !== 'desk' || !boot || !S) return;
+    var body = document.getElementById('dkBody');
+    if (body) {
+      if (saved) { if (part === 'sum') body.innerHTML = resultHtml(); }
+      else if ((PART_STEP[part] || []).indexOf(S.step) > -1) body.innerHTML = stepBody();
+    }
+    var nav = document.getElementById('dkNav');
+    if (nav) nav.innerHTML = navHtml();
+    var rail = document.getElementById('dkRail');
+    if (rail) rail.innerHTML = railSteps();
+    if (part === 'items' && S.step === 0 && !saved) focusScan();
+    if (S.step === 1) markCustHi(false);
   }
 
   /* Back to the scan box after a line lands — unless somebody is typing
@@ -517,15 +593,49 @@ var Desk = (function () {
   function wireScan(el) {
     if (el.__wired) return;
     el.__wired = true;
+    el.addEventListener('click', function () { if (!pick.open) openDrop(); });
     el.addEventListener('keydown', function (e) {
-      if (e.key !== 'Enter') return;
+      var k = e.key;
+
+      if (k === 'ArrowDown' || k === 'ArrowUp') {
+        e.preventDefault();
+        if (!pick.open) {
+          openDrop();
+          if (pick.hi < 0) { pick.hi = firstInStockOpt(); markHi(true); }
+          return;
+        }
+        if (!pick.opts.length) return;
+        pick.hi = pick.hi < 0 ? firstInStockOpt()
+          : Math.max(0, Math.min(pick.opts.length - 1, pick.hi + (k === 'ArrowDown' ? 1 : -1)));
+        markHi(true);
+        return;
+      }
+
+      /* Esc closes the list; a second Esc empties the box. */
+      if (k === 'Escape') {
+        if (pick.open) { e.preventDefault(); closeDrop(); }
+        else if (el.value) { e.preventDefault(); el.value = ''; pick.q = ''; }
+        return;
+      }
+
+      if (k !== 'Enter') return;
       e.preventDefault();
-      var v = el.value;
-      if (!String(v).trim()) return;
-      var exact = DB.variantByBarcode(v.trim()) || DB.variantBySku(v.trim()) ||
-                  (DB.variantByLabelCode && DB.variantByLabelCode(v.trim()));
-      if (exact || invoiceFrom(v)) { el.value = ''; setHits(''); scanned(v); return; }
-      setHits(v);
+      var code = String(el.value || '').trim();
+
+      /* A code typed in full is a scan. */
+      if (code) {
+        var exact = DB.variantByBarcode(code) || DB.variantBySku(code) ||
+                    (DB.variantByLabelCode && DB.variantByLabelCode(code));
+        if (exact || invoiceFrom(code)) { el.value = ''; pick.q = ''; closeDrop(); scanned(code); return; }
+      }
+      /* The lit size in the list. */
+      if (pick.open && pick.hi > -1 && pick.opts[pick.hi]) {
+        var lit = DB.variantBySku(pick.opts[pick.hi]);
+        if (lit) { addVariant(lit); return; }
+      }
+      /* An empty box and Enter: the bag is full, go on. */
+      if (!code) { closeDrop(); nextStep(); return; }
+      openDrop(el.value);
     });
   }
 
@@ -533,30 +643,127 @@ var Desk = (function () {
     var el = document.getElementById('dkScan');
     if (!el) return;
     wireScan(el);
+    markHi(false);
     if (coarse()) return;
     var a = document.activeElement;
-    if (a && a !== document.body && a !== el && !(a.closest && a.closest('#dkItems'))) return;
+    if (a && a !== document.body && a !== el && !(a.closest && a.closest('#dkStage'))) return;
     el.focus();
   }
 
-  /* A NUMBER BECOMES A TICK WHEN THE STEP IS ACTUALLY DONE. Three panels side
-     by side read as three unrelated forms, and the one question the person on
-     the phone has — what is still missing before I can print — was only
-     answered at the bottom of the third column, in the list under Save. The
-     tick is the same fact, where the eye already is.
-
-     `done` is never a guess: it is the same condition reasons() refuses on. */
-  function stepHead(n, title, meta, done) {
-    return '<div class="dk-step' + (done ? ' is-done' : '') + '">' +
-      '<span class="dk-n">' + (done ? '✓' : n) + '</span><h3>' + title + '</h3>' +
-      (meta ? '<span class="dk-meta">' + meta + '</span>' : '') + '</div>';
+  /* WHY THIS STEP CANNOT BE LEFT YET, in words — or '' when it can. Each is
+     one of reasons()'s own refusals, filed under the step it belongs to; the
+     last step answers with the first of whatever reasons() still has. */
+  function stepReason(i, tt) {
+    if (i === 0) {
+      if (!S.lines.length) return t('dk_r_items');
+      return shortLines().length ? t('dkp_r_short').replace('{wh}', whLabel(S.whId)) : '';
+    }
+    if (i === 1) return S.customerId ? '' : t('dk_r_customer');
+    if (i === 2) return '';
+    if (i === 3) {
+      if (S.method === 'pickup') return '';
+      if (!String(S.address || '').trim()) return t('dk_r_address');
+      if (S.feeMode === 'auto' && !tt.fee.source) return t('dk_r_fee');
+      return '';
+    }
+    var r = reasons(tt);
+    return r.length ? r[0] : '';
   }
 
-  /* Is the destination finished? The same two things create() refuses
-     without: somebody to send it to, and somewhere to send it — except a
-     pickup, which is collected from the counter and has no address. */
-  function whoDone() {
-    return !!S.customerId && (S.method === 'pickup' || !!String(S.address || '').trim());
+  /* A step can be opened once every step before it is answered. A pickup
+     has no address step at all. */
+  function canReach(n, tt) {
+    tt = tt || totals();
+    for (var j = 0; j < n && j < 4; j++) {
+      if (j === 3 && S.method === 'pickup') continue;
+      if (stepReason(j, tt)) return false;
+    }
+    return true;
+  }
+
+  function goStep(n) {
+    if (!S || saved || n < 0 || n > 4) return;
+    /* A pickup's address step is stepped over, in whichever direction. */
+    if (n === 3 && S.method === 'pickup') n = n > S.step ? 4 : 2;
+    if (n === S.step) return;
+    if (n > S.step && !canReach(n)) return;
+    stageDir = n > S.step ? ' is-fwd' : ' is-back';
+    pick.open = false;
+    pick.hi = -1;
+    cpick.open = false;
+    cpick.hi = -1;
+    S.step = n;
+    S.maxStep = Math.max(S.maxStep || 0, n);
+    saveDraft();
+    repaint();
+    /* On a long step scrolled down, the next one must start at its top. */
+    var rail = document.getElementById('dkRail');
+    if (rail && rail.getBoundingClientRect().top < 0) {
+      try { rail.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { rail.scrollIntoView(); }
+    }
+  }
+
+  function nextStep() {
+    if (!S || saved || S.step >= 4 || stepReason(S.step, totals())) return;
+    goStep(S.step + 1);
+  }
+
+  function prevStep() {
+    if (!S || saved || S.step <= 0) return;
+    goStep(S.step - 1);
+  }
+
+  /* Where the caret goes when a step opens: the box the step is answered in.
+     Never on a phone, where a focus throws the keyboard over the step you
+     were just shown, and never on the last step, where Enter must not save.
+     On "how it travels" it is Next, so Enter takes the default and goes on. */
+  function focusStep() {
+    if (!S || saved || OG.view !== 'desk') return;
+    if (S.step === 0) { focusScan(); return; }
+    if (coarse()) return;
+    var sel = S.step === 1 ? '#dkCust' : S.step === 2 ? '.dk-next' : S.step === 3 ? '[data-k="address"]' : null;
+    var el = sel ? document.querySelector(sel) : null;
+    if (!el || el.disabled) return;
+    setTimeout(function () { try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); } }, 40);
+  }
+
+  /* THE RAIL: five steps, the one on screen ringed, the answered ones
+     ticked, a pickup's address step struck through. A step is a button only
+     when it can actually be opened, so pressing ahead of an unanswered step
+     does nothing rather than something wrong. */
+  function railSteps() {
+    var tt = totals();
+    return '<ol>' + STEP_KEYS.map(function (k, i) {
+      var skip = i === 3 && S.method === 'pickup';
+      var cur = !saved && i === S.step;
+      var done = saved || (!cur && i < 4 && i <= (S.maxStep || 0) && !stepReason(i, tt));
+      var st = skip ? 'skip' : cur ? 'now' : done ? 'on' : 'off';
+      var open = !saved && !cur && !skip && canReach(i, tt);
+      return '<li class="' + st + '"><button type="button" data-act="dk-go" data-id="' + i + '"' +
+        (open ? '' : ' disabled') + '>' +
+        '<i>' + (st === 'on' ? '✓' : st === 'skip' ? '–' : nf(i + 1)) + '</i>' +
+        '<span>' + t('dkw_r_' + k) + '</span></button></li>';
+    }).join('') + '</ol>';
+  }
+
+  /* THE STAMP ON THE TICKET: what happens to the money, in the words said to
+     the customer on the phone, drawn from the same totals as the panel. It
+     thumps only when its answer CHANGES — a stamp that re-landed on every
+     keystroke in the discount box would be noise, not news. */
+  function stampKind(tt) {
+    if (!S.lines.length || tt.due <= 0 || tt.over) return null;
+    if (tt.remaining <= 0) return 'paid';
+    if (COMPANY.indexOf(S.method) > -1) return 'first';
+    if (tt.paid > 0) return 'deposit';
+    return S.method === 'pickup' ? 'pickup' : 'door';
+  }
+
+  function stampHtml(tt) {
+    var k = stampKind(tt);
+    var fresh = !!k && k !== lastStamp;
+    lastStamp = k;
+    return k ? '<div class="dk-stamp-row"><span class="dk-stamp is-' + k + (fresh ? ' is-fresh' : '') + '">' +
+      t('dkp_st_' + k) + '</span></div>' : '';
   }
 
   function scanIcon(cls) {
@@ -568,18 +775,62 @@ var Desk = (function () {
     return S.lines.reduce(function (a, l) { return a + l.qty; }, 0);
   }
 
+  function whLabel(id) { return DB.whName(id, OG.lang === 'ar'); }
+
+  /* The lines the place the order is packed from cannot cover, by the stock
+     this browser last loaded. The server has the last word at Save; this is
+     so the person hears it on the bag step, where it can still be fixed. */
+  function shortLines(whId) {
+    var at = whId || S.whId;
+    return S.lines.filter(function (l) {
+      var v = DB.variantBySku(l.sku);
+      return !!v && DB.stockAt(v, at) < l.qty;
+    });
+  }
+
+  /* Another place that holds EVERYTHING in the bag — the order is packed from
+     one place, so a place that covers only some of it is not an answer. */
+  function coveringPlace() {
+    var list = (boot && boot.warehouses) || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id !== S.whId && !shortLines(list[i].id).length) return list[i].id;
+    }
+    return null;
+  }
+
+  /* Where else a size is, and how many — for the line that is short. */
+  function bestElsewhere(v) {
+    var best = null;
+    ((boot && boot.warehouses) || []).forEach(function (w) {
+      if (w.id === S.whId) return;
+      var n = DB.stockAt(v, w.id);
+      if (n > 0 && (!best || n > best.n)) best = { id: w.id, n: n };
+    });
+    return best;
+  }
+
+  /* "1 pieces" is how a screen tells you nobody read it. */
+  function piecesText() {
+    var n = pieces();
+    return n === 1 ? t('dkw_one_piece') : nf(n) + ' ' + t('dk_pieces');
+  }
+
   /* ------------------------------------------------------ 1. what's in the bag */
 
   function itemsHtml() {
     var tt = totals();
-    var h = stepHead(1, t('dk_items'), S.lines.length ? nf(pieces()) + ' ' + t('dk_pieces') : '',
-                     S.lines.length > 0);
-
-    h += '<div class="dk-scan">' + scanIcon() +
-      '<input class="inp" id="dkScan" type="text" autocomplete="off" spellcheck="false" ' +
-        'data-change="dk-q" placeholder="' + esc(t('dk_scan_ph')) + '">' +
-    '</div>' +
-    '<div class="dk-hits" id="dkHits"></div>';
+    /* The scan box and the product list are ONE control: the gun types into
+       it, a person types into it, and a click opens the list under it. */
+    var h = '<div class="dk-combo' + (pick.open ? ' is-open' : '') + '" id="dkCombo">' +
+      '<div class="dk-scan">' + scanIcon() +
+        '<input class="inp" id="dkScan" type="text" autocomplete="off" spellcheck="false" role="combobox" ' +
+          'aria-autocomplete="list" aria-controls="dkDrop" aria-expanded="' + (pick.open ? 'true' : 'false') + '" ' +
+          'data-change="dk-q" value="' + esc(pick.q) + '" placeholder="' + esc(t('dkc_ph')) + '">' +
+        '<button type="button" class="dk-combo-btn" data-act="dk-browse" aria-label="' + esc(t('dkc_browse')) + '" ' +
+          'title="' + esc(t('dkc_browse')) + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' +
+      '</div>' +
+      '<div class="dk-drop" id="dkDrop" role="listbox"' + (pick.open ? '>' + dropHtml() : ' hidden>') + '</div>' +
+    '</div>';
 
     h += '<div class="dk-wh"><span class="lbl">' + t('dk_take_from') + '</span><div class="seg-row">';
     (boot.warehouses || []).forEach(function (w) {
@@ -588,8 +839,28 @@ var Desk = (function () {
     });
     h += '</div></div>';
 
+    /* What the place cannot cover, said above the lines with the way out:
+       pack from the place that has all of it, or refresh a stale count. */
+    var short = S.lines.length ? shortLines() : [];
+    if (short.length) {
+      var other = coveringPlace();
+      h += '<div class="dk-shortbar" role="alert"><div>' +
+          '<b>' + t('dkp_short_head').replace('{wh}', esc(whLabel(S.whId))) + '</b>' +
+          '<span>' + short.map(function (l) {
+            var sv = DB.variantBySku(l.sku), sp = sv ? DB.product(sv.productId) : null;
+            return esc((sp ? sp.name : l.sku) + (sv ? ' · ' + sv.size : '')) + ' (' +
+              t('dkp_n_here').replace('{n}', nf(sv ? DB.stockAt(sv, S.whId) : 0)) + ')';
+          }).join(' · ') + '</span></div>' +
+        '<div class="dk-shortbar-acts">' +
+          (other ? '<button type="button" class="btn btn-sm" data-act="dk-wh" data-id="' + esc(other) + '">' +
+            t('dkp_pack_from').replace('{wh}', esc(whLabel(other))) + '</button>' : '') +
+          '<button type="button" class="btn btn-sm btn-ghost" data-act="dk-restock">' + t('dkp_restock') + '</button>' +
+        '</div></div>';
+    }
+
     if (!S.lines.length) {
-      return h + '<div class="dk-empty">' + scanIcon('big') + '<b>' + t('dk_empty') + '</b>' +
+      return h + '<div class="dk-empty"><span class="dk-laser">' + scanIcon('big') + '<i></i></span>' +
+        '<b>' + t('dk_empty') + '</b>' +
         '<span>' + t('dk_empty_sub') + '</span></div>';
     }
 
@@ -610,7 +881,11 @@ var Desk = (function () {
         thumb(hit.p, 'dk-thumb') +
         '<div class="dk-l-txt"><b>' + esc(hit.p.name) + '</b>' +
           '<small>' + t('size') + ' ' + esc(hit.v.size) + ' · <bdi dir="ltr">' + esc(l.sku) + '</bdi>' +
-          (short ? ' · <span class="dk-short">' + t('dk_only').replace('{n}', nf(have)) + '</span>' : '') +
+          (short ? ' · <span class="dk-short">' + t('dk_only').replace('{n}', nf(have)) +
+            (function () {
+              var e = bestElsewhere(hit.v);
+              return e ? ' · ' + t('dkp_there').replace('{wh}', esc(whLabel(e.id))).replace('{n}', nf(e.n)) : '';
+            })() + '</span>' : '') +
           '</small></div>' +
         '<div class="dk-qty">' +
           '<button type="button" data-act="dk-qty" data-sku="' + esc(l.sku) + '" data-d="-1" aria-label="−">−</button>' +
@@ -628,30 +903,168 @@ var Desk = (function () {
     return h + '</div>';
   }
 
-  /* Typing a name instead of scanning: the products that match, each with its
-     sizes and how many are in the place the order is packed from. */
-  function hitsHtml(q) {
-    var query = String(q || '').trim();
-    if (query.length < 2) return '';
-    var qf = DB.foldName(query);
-    var list = DB.products.filter(function (p) {
-      return !p.archived && DB.foldName(p.name + ' ' + (p.brand || '')).indexOf(qf) > -1;
-    }).slice(0, 6);
-    if (!list.length) return '<div class="dk-hit-none">' + t('dk_no_hits') + '</div>';
-    return list.map(function (p) {
-      var sizes = DB.variantsOf(p.id).map(function (v) {
-        var have = DB.stockAt(v, S.whId);
-        return '<button type="button" class="dk-size' + (have ? '' : ' is-out') + '" data-act="dk-add" data-sku="' +
-          esc(v.sku) + '">' + esc(v.size) + '<i class="num">' + nf(have) + '</i></button>';
-      }).join('');
-      return '<div class="dk-hit">' + thumb(p, 'dk-thumb') +
-        '<div class="dk-hit-txt"><b>' + esc(p.name) + '</b><div class="dk-sizes">' + sizes + '</div></div></div>';
-    }).join('');
+  /* ---- the product picker ------------------------------------------------
+     THE SCAN BOX IS ALSO A SEARCH. Click it and the products drop down under
+     it — with an empty box, what is in stock at the place the order is packed
+     from, most first; type and the list narrows on the name, the brand, the
+     colourway, a size, the SKU, the barcode or the label code, every word
+     having to match. Each product carries its sizes as chips with the count
+     on hand; a click or Enter puts that size in the bag, ↑ ↓ walk the sizes.
+
+     It opens on a CLICK, a keystroke or ↓ — never on focus. The box is
+     focused again after every line lands, so the gun is always ready, and a
+     list springing open at each of those would bury the bag being built.
+
+     A code typed in full and Enter is still a scan (the size goes straight
+     in), and the gun itself never goes near the list: js/wedge.js hands the
+     code to scanned(), which closes it.
+
+     CAPPED, AND SAYS SO. The list draws the first PICK_MAX matches and the
+     head names the total — a list that quietly stops at thirty is how
+     somebody concludes the shop does not stock the thirty-first. */
+  var PICK_MAX = 30;
+  var pick = { open: false, q: '', hi: -1, auto: false, opts: [] };
+
+  function pickResults() {
+    var tokens = DB.foldName(String(pick.q || '').trim()).split(/\s+/).filter(Boolean);
+    /* One pass over the variants per paint, not one filter per product. */
+    var byP = {};
+    DB.liveVariants().forEach(function (v) { (byP[v.productId] = byP[v.productId] || []).push(v); });
+
+    var rows = [];
+    DB.products.forEach(function (p) {
+      if (p.archived) return;
+      var vs = byP[p.id] || [];
+      if (tokens.length) {
+        var hay = DB.foldName([p.name, p.brand, p.colorway].filter(Boolean).join(' ') + ' ' +
+          vs.map(function (v) { return [v.size, v.sku, v.barcode, v.labelCode].filter(Boolean).join(' '); }).join(' '));
+        for (var i = 0; i < tokens.length; i++) if (hay.indexOf(tokens[i]) < 0) return;
+      }
+      var have = vs.reduce(function (a, v) { return a + (DB.stockAt(v, S.whId) || 0); }, 0);
+      rows.push({ p: p, vs: vs, have: have });
+    });
+
+    /* An empty box shows what is on hand here — and everything, saying so,
+       when nothing is. */
+    var fallback = false;
+    if (!tokens.length) {
+      var inStock = rows.filter(function (r) { return r.have > 0; });
+      if (inStock.length) rows = inStock; else fallback = true;
+    }
+    rows.sort(function (a, b) {
+      return ((b.have > 0) - (a.have > 0)) ||
+        (tokens.length ? 0 : b.have - a.have) ||
+        String(a.p.name).localeCompare(String(b.p.name));
+    });
+    return { rows: rows.slice(0, PICK_MAX), total: rows.length, tokens: tokens, fallback: fallback };
   }
 
-  function setHits(q) {
-    var host = document.getElementById('dkHits');
-    if (host) host.innerHTML = hitsHtml(q);
+  function dropHtml() {
+    var r = pickResults();
+    var cur = orderCur();
+    var wh = esc(DB.whName(S.whId, OG.lang === 'ar'));
+    pick.opts = [];
+
+    if (!r.rows.length) {
+      pick.hi = -1;
+      pick.auto = false;
+      return '<div class="dk-drop-none">' + esc(t('dkc_no_match').replace('{q}', String(pick.q).trim())) + '</div>';
+    }
+
+    var head = r.tokens.length ? t('dkc_found').replace('{n}', nf(r.total))
+      : r.fallback ? t('dkc_none_here').replace('{wh}', wh) : t('dkc_instock').replace('{wh}', wh);
+    if (r.total > r.rows.length) head += ' · ' + t('dkc_shown').replace('{n}', nf(r.rows.length));
+    var h = '<div class="dk-drop-head"><span>' + head + '</span>' +
+      (coarse() ? '' : '<small>' + t('dkc_keys') + '</small>') + '</div>';
+
+    var want = -1, firstIn = -1;
+    r.rows.forEach(function (x) {
+      var p = x.p;
+      var skus = {};
+      x.vs.forEach(function (v) { skus[v.sku] = 1; });
+      var inBag = S.lines.reduce(function (a, l) { return a + (skus[l.sku] ? l.qty : 0); }, 0);
+      var price = convert(p.srcSellingPrice, p.srcCurrency, cur);
+
+      h += '<div class="dk-opt' + (x.have ? '' : ' is-out') + '">' + thumb(p, 'dk-thumb') +
+        '<div class="dk-opt-txt">' +
+          '<div class="dk-opt-top"><b>' + esc(p.name) + '</b>' +
+            (price === null ? '' : '<span class="dk-opt-price">' + fmt(price, cur) + '</span>') + '</div>' +
+          '<small>' + (p.brand ? esc(p.brand) + ' · ' : '') + t('dkc_have').replace('{n}', nf(x.have)) +
+            (inBag ? ' · <em>' + t('dkc_in_bag').replace('{n}', nf(inBag)) + '</em>' : '') + '</small>' +
+          '<div class="dk-sizes">' + x.vs.map(function (v) {
+            var have = DB.stockAt(v, S.whId);
+            var i = pick.opts.length;
+            pick.opts.push(v.sku);
+            if (firstIn < 0 && have > 0) firstIn = i;
+            /* "samba 43": the 43 is the size the person means. */
+            if (want < 0 && have > 0 && r.tokens.indexOf(DB.foldName(v.size)) > -1) want = i;
+            return '<button type="button" class="dk-size' + (have ? '' : ' is-out') + '" data-act="dk-add" ' +
+              'data-sku="' + esc(v.sku) + '" data-opt="' + i + '" role="option" tabindex="-1">' +
+              esc(v.size) + '<i class="num">' + nf(have) + '</i></button>';
+          }).join('') + '</div>' +
+        '</div></div>';
+    });
+
+    /* After a keystroke the first size worth adding is lit, so Enter does the
+       obvious thing; an untouched list lights nothing, so Enter still means
+       "the bag is full, go on". */
+    if (pick.auto) {
+      pick.hi = r.tokens.length ? (want > -1 ? want : firstIn > -1 ? firstIn : 0) : -1;
+      pick.auto = false;
+    }
+    if (pick.hi >= pick.opts.length) pick.hi = pick.opts.length - 1;
+    return h;
+  }
+
+  /* Only the list repaints while somebody types — never the box itself. */
+  function paintDrop() {
+    var host = document.getElementById('dkDrop');
+    if (!host) return;
+    var combo = document.getElementById('dkCombo');
+    var box = document.getElementById('dkScan');
+    host.hidden = !pick.open;
+    if (combo) combo.classList.toggle('is-open', pick.open);
+    if (box) box.setAttribute('aria-expanded', pick.open ? 'true' : 'false');
+    host.innerHTML = pick.open ? dropHtml() : '';
+    markHi(true);
+  }
+
+  /* The lit option in a list, scrolled into the list's own view — never the
+     page's. One helper for both pickers. */
+  function lightOpt(hostId, index, scroll) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    Array.prototype.forEach.call(host.querySelectorAll('.is-hi'), function (b) { b.classList.remove('is-hi'); });
+    var b = index > -1 ? host.querySelector('[data-opt="' + index + '"]') : null;
+    if (!b) return;
+    b.classList.add('is-hi');
+    if (!scroll) return;
+    var hr = host.getBoundingClientRect(), br = b.getBoundingClientRect();
+    if (br.top < hr.top + 40) host.scrollTop -= (hr.top + 40) - br.top;
+    else if (br.bottom > hr.bottom) host.scrollTop += br.bottom - hr.bottom + 8;
+  }
+
+  function markHi(scroll) { lightOpt('dkDrop', pick.hi, scroll); }
+  function markCustHi(scroll) { lightOpt('dkCustDrop', cpick.hi, scroll); }
+
+  function openDrop(q) {
+    if (q !== undefined) { pick.q = q; pick.auto = true; }
+    pick.open = true;
+    paintDrop();
+  }
+
+  function closeDrop() {
+    if (!pick.open) return;
+    pick.open = false;
+    pick.hi = -1;
+    paintDrop();
+  }
+
+  function firstInStockOpt() {
+    for (var i = 0; i < pick.opts.length; i++) {
+      if (DB.stockAt(DB.variantBySku(pick.opts[i]), S.whId) > 0) return i;
+    }
+    return pick.opts.length ? 0 : -1;
   }
 
   /* --------------------------------------------- 2. who, and how it travels */
@@ -664,6 +1077,41 @@ var Desk = (function () {
     pickup:  'M4 10v10h16V10M3 10l2-6h14l2 6M9 20v-6h6v6'
   };
 
+  function methodIconSvg(m, cls) {
+    return '<svg class="dlp-mi' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="' + (METHOD_ICON[m] || METHOD_ICON.driver) + '"/></svg>';
+  }
+
+  /* THE RAIL, the browser's twin of the one on the customer's tracking page
+     (server/lib/receipt.js) — same four steps, same rule for each, so the
+     board and the link a customer opens can never disagree about how far a
+     parcel has got. Nothing is estimated: each dot is on because of a stamp
+     the database holds. A parcel that has arrived is finished, every dot
+     filled and none ringed; the ring means "still moving". */
+  function railHtml(d, labels) {
+    if (!d) return '';
+    var done = d.status === 'delivered';
+    var back = d.status === 'failed' || (d.returns > 0);
+    var at = d.voided ? 0 : done ? 3 : d.status === 'out' ? 2 : (d.paid > 0 ? 1 : 0);
+    var names = [t('dlp_r_placed'), t('dlp_r_paid'),
+                 d.method === 'pickup' ? t('dlp_r_counter') : t('dlp_r_road'), t('dlp_r_arrived')];
+    return '<ol class="og-rail' + (back ? ' is-back' : '') + (labels ? ' has-labels' : '') + '">' +
+      names.map(function (n, i) {
+        var st = d.voided ? 'off' : i < at ? 'on' : i === at ? (done ? 'on' : 'now') : 'off';
+        return '<li class="' + st + '" title="' + esc(n) + '"><i></i>' + (labels ? '<span>' + n + '</span>' : '') + '</li>';
+      }).join('') + '</ol>';
+  }
+
+  /* A person as two letters in their own colour — personFace/personTint in
+     js/app-util.js, keyed on the account id so a driver is the same colour
+     on the board, the sheet and the cash card. */
+  function faceHtml(id, name) {
+    var tint = typeof personTint === 'function' ? personTint(id) : null;
+    var txt = typeof personFace === 'function' ? personFace(name) : String(name || '?').charAt(0);
+    return '<span class="dlp-face"' + (tint ? ' style="color:' + tint.fg + ';background:' + tint.bg + '"' : '') +
+      ' aria-hidden="true">' + esc(txt) + '</span>';
+  }
+
   function segBtn(act, id, on, label) {
     return '<button type="button" class="seg' + (on ? ' on' : '') + '" data-act="' + act + '" data-id="' +
       esc(id) + '">' + label + '</button>';
@@ -673,35 +1121,51 @@ var Desk = (function () {
     return row ? esc(OG.lang === 'ar' ? (row.ar || row.en) : (row.en || row.ar)) : '';
   }
 
-  function whoHtml() {
-    var h = stepHead(2, t('dk_who'), '', !!S.customerId);
+  /* ---- 2. who it is for, and where the order came from ---- */
+
+  function customerHtml() {
+    var h = '';
     var cust = S.customerId ? DB.customer(S.customerId) : null;
 
     if (cust) {
-      h += '<div class="dk-cust">' +
+      h += '<div class="dk-cust is-picked">' + faceHtml(cust.id, cust.name) +
         '<div class="dk-cust-txt"><b>' + nm(cust.name) + '</b>' +
           '<small>' + (cust.phone ? tel(cust.phone) : '') + (cust.city ? ' · ' + nm(cust.city) : '') + '</small></div>' +
-        '<button type="button" class="btn btn-ghost btn-sm" data-act="dk-last">' + t('dk_last_address') + '</button>' +
         '<button type="button" class="btn btn-ghost btn-sm" data-act="dk-cust-clear">' + t('dk_change') + '</button>' +
       '</div>';
     } else {
+      /* The same control as the bag's: a box that searches and a list that
+         drops under it — and the button for somebody not in it yet, kept
+         right beside it. */
       h += '<div class="dk-find">' +
-        '<input class="inp" id="dkCust" type="text" autocomplete="off" data-change="dk-cust" ' +
-          'placeholder="' + esc(t('dk_cust_ph')) + '" value="' + esc(S.custQ) + '">' +
+        '<div class="dk-combo dk-ccombo' + (cpick.open ? ' is-open' : '') + '" id="dkCustCombo">' +
+          '<div class="dk-scan">' +
+            '<svg class="dk-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 20a8 8 0 0 1 16 0"/></svg>' +
+            '<input class="inp" id="dkCust" type="text" autocomplete="off" spellcheck="false" role="combobox" ' +
+              'aria-autocomplete="list" aria-controls="dkCustDrop" aria-expanded="' + (cpick.open ? 'true' : 'false') + '" ' +
+              'data-change="dk-cust" placeholder="' + esc(t('dk_cust_ph')) + '" value="' + esc(S.custQ) + '">' +
+            '<button type="button" class="dk-combo-btn" data-act="dk-cdrop" aria-label="' + esc(t('dkc_cust_browse')) + '" ' +
+              'title="' + esc(t('dkc_cust_browse')) + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' +
+          '</div>' +
+          '<div class="dk-drop" id="dkCustDrop" role="listbox"' + (cpick.open ? '>' + custDropHtml() : ' hidden>') + '</div>' +
+        '</div>' +
         (allow('customer.write')
-          ? '<button type="button" class="btn btn-sm" data-act="dk-cust-new">+ ' + t('dk_cust_new') + '</button>' : '') +
-      '</div><div class="dk-cust-hits" id="dkCustHits">' + custHitsHtml(S.custQ) + '</div>';
+          ? '<button type="button" class="btn dk-cust-newbtn" data-act="dk-cust-new">+ ' + t('dk_cust_new') + '</button>' : '') +
+      '</div>';
     }
 
     h += '<div class="dk-row"><span class="lbl">' + t('dk_channel') + '</span><div class="seg-row">';
     CHANNELS.forEach(function (c) { h += segBtn('dk-channel', c, S.channel === c, t('dk_ch_' + c)); });
     h += '</div></div>';
+    return h;
+  }
 
-    h += stepHead(3, t('dk_where'), '', whoDone());
+  /* ---- 3. how it travels ----
+     Before the address, because a pickup has no destination at all and a
+     company changes what may be paid on receipt. */
 
-    /* How it travels comes first: a pickup has no destination at all, and a
-       company changes what may be paid on receipt. */
-    h += '<div class="dk-methods">';
+  function methodHtml() {
+    var h = '<div class="dk-methods">';
     METHODS.forEach(function (m) {
       h += '<button type="button" class="dk-method' + (S.method === m ? ' on' : '') + '" data-act="dk-method" data-id="' + m + '">' +
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + METHOD_ICON[m] + '"/></svg>' +
@@ -709,14 +1173,7 @@ var Desk = (function () {
     });
     h += '</div>';
 
-    if (S.method === 'pickup') return h + '<div class="partner-note">' + t('dk_pickup_note') + '</div>';
-
-    var countries = (boot.settings.countries || []).filter(function (c) { return c && c.active !== false; });
-    if (countries.length > 1) {
-      h += '<div class="dk-row"><span class="lbl">' + t('dk_country') + '</span><div class="seg-row">';
-      countries.forEach(function (c) { h += segBtn('dk-country', c.id, S.country === c.id, label(c)); });
-      h += '</div></div>';
-    }
+    if (S.method === 'pickup') return h + '<div class="partner-note mt">' + t('dk_pickup_note') + '</div>';
 
     if (COMPANY.indexOf(S.method) > -1) {
       var cos = (boot.settings.companies || []).filter(function (c) {
@@ -725,7 +1182,7 @@ var Desk = (function () {
       h += '<div class="dk-row"><span class="lbl">' + t('dk_company') + '</span>';
       if (!cos.length) {
         h += '<div class="dk-hint">' + t('dk_no_company') +
-          (allow('config.write') ? ' <span class="clickable" data-act="nav" data-view="settings">' +
+          (allow('config.write') ? ' <span class="clickable" data-act="dk-goto-companies">' +
             t('dk_add_in_settings') + '</span>' : '') + '</div>';
       } else {
         h += '<div class="seg-row">';
@@ -733,6 +1190,29 @@ var Desk = (function () {
         h += '</div>';
       }
       h += '</div>';
+    }
+    return h;
+  }
+
+  /* ---- 4. where to, and the shipping ---- */
+
+  function addressHtml() {
+    if (S.method === 'pickup') {
+      return '<div class="dk-empty">' + methodIconSvg('pickup', 'dk-ico big') +
+        '<b>' + t('dkw_pickup_skip') + '</b><span>' + t('dk_pickup_note') + '</span></div>';
+    }
+    var cust = S.customerId ? DB.customer(S.customerId) : null;
+    var h = '';
+    if (cust) {
+      h += '<div class="dk-last-row"><button type="button" class="btn btn-sm" data-act="dk-last">' +
+        t('dk_last_address') + '</button></div>';
+    }
+
+    var countries = (boot.settings.countries || []).filter(function (c) { return c && c.active !== false; });
+    if (countries.length > 1) {
+      h += '<div class="dk-row"><span class="lbl">' + t('dk_country') + '</span><div class="seg-row">';
+      countries.forEach(function (c) { h += segBtn('dk-country', c.id, S.country === c.id, label(c)); });
+      h += '</div></div>';
     }
 
     var country = countryRow(S.country);
@@ -762,16 +1242,111 @@ var Desk = (function () {
     return h + feeHtml();
   }
 
-  function custHitsHtml(q) {
-    var query = String(q || '').trim();
-    if (!query) return '';
-    var list = custSearch(query).slice(0, 5);
-    if (!list.length) return '<div class="dk-hit-none">' + t('dk_cust_none') + '</div>';
-    return list.map(function (c) {
-      return '<button type="button" class="dk-cust-hit" data-act="dk-cust-pick" data-id="' + c.id + '">' +
-        '<b>' + nm(c.name) + '</b><small>' + (c.phone ? tel(c.phone) : '') + (c.city ? ' · ' + nm(c.city) : '') +
-        '</small></button>';
-    }).join('');
+  /* ---- the customer picker ----------------------------------------------
+     The bag's picker, for people. A click, a keystroke or ↓ opens the list;
+     an empty box lists the shop's customers most recent buyer first, and
+     typing narrows it through custSearch() — the ONE rule for "which customer
+     does this text mean" (name and city folded, the phone in any of its
+     spellings), shared with the attach, merge and job-link pickers, so the
+     office cannot find somebody the customers screen cannot. Archived and
+     merged-away people are not offered.
+
+     Capped at CUST_MAX and the head says so. Nothing matching offers to add
+     what was typed as a new customer, beside the + New customer button that
+     is always there. */
+  var CUST_MAX = 30;
+  var cpick = { open: false, hi: -1, auto: false, ids: [] };
+
+  function custDropHtml() {
+    var q = String(S.custQ || '').trim();
+    var all = typeof custSearch === 'function' ? custSearch(q) : [];
+    var rows = all.slice(0, CUST_MAX);
+    var canAdd = allow('customer.write');
+    cpick.ids = rows.map(function (c) { return c.id; });
+
+    if (!rows.length) {
+      cpick.hi = -1;
+      cpick.auto = false;
+      return '<div class="dk-drop-none">' +
+          esc(q ? t('dkc_cust_none_q').replace('{q}', q) : t('dkc_cust_empty')) + '</div>' +
+        (canAdd ? '<button type="button" class="dk-copt-new" data-act="dk-cust-new">+ ' +
+          esc(q ? t('dkc_cust_add_q').replace('{q}', q) : t('dk_cust_new')) + '</button>' : '');
+    }
+
+    var head = q ? t('dkc_found').replace('{n}', nf(all.length)) : t('dkc_cust_recent');
+    if (all.length > rows.length) head += ' · ' + t('dkc_shown').replace('{n}', nf(rows.length));
+    var h = '<div class="dk-drop-head"><span>' + head + '</span>' +
+      (coarse() ? '' : '<small>' + t('dkc_keys_c') + '</small>') + '</div>';
+
+    rows.forEach(function (c, i) {
+      /* Debt is null, not zero, for an account that may not see it. */
+      var owes = (c.debtSyp > 0) || (c.debtUsd > 0);
+      h += '<button type="button" class="dk-copt" data-act="dk-cust-pick" data-id="' + c.id + '" ' +
+          'data-opt="' + i + '" role="option" tabindex="-1">' + faceHtml(c.id, c.name) +
+        '<span class="dk-copt-txt"><b>' + nm(c.name) + '</b>' +
+          '<small>' + (c.phone ? tel(c.phone) : t('dkc_cust_nophone')) + (c.city ? ' · ' + nm(c.city) : '') + '</small></span>' +
+        '<span class="dk-copt-side">' +
+          (owes ? '<em>' + t('dkc_cust_owes') + '</em>' : '') +
+          '<small>' + (c.lastPurchaseDate ? t('dkc_cust_last').replace('{d}', fmtDate(c.lastPurchaseDate))
+                                          : t('dkc_cust_never')) + '</small>' +
+        '</span></button>';
+    });
+
+    /* After a keystroke the best match is lit, so Enter takes it. */
+    if (cpick.auto) { cpick.hi = q ? 0 : -1; cpick.auto = false; }
+    if (cpick.hi >= cpick.ids.length) cpick.hi = cpick.ids.length - 1;
+    return h;
+  }
+
+  function paintCust() {
+    var host = document.getElementById('dkCustDrop');
+    if (!host) return;
+    var combo = document.getElementById('dkCustCombo');
+    var box = document.getElementById('dkCust');
+    host.hidden = !cpick.open;
+    if (combo) combo.classList.toggle('is-open', cpick.open);
+    if (box) box.setAttribute('aria-expanded', cpick.open ? 'true' : 'false');
+    host.innerHTML = cpick.open ? custDropHtml() : '';
+    markCustHi(true);
+  }
+
+  function openCust(typed) {
+    if (typed) cpick.auto = true;
+    cpick.open = true;
+    paintCust();
+  }
+
+  function closeCust() {
+    if (!cpick.open) return;
+    cpick.open = false;
+    cpick.hi = -1;
+    paintCust();
+  }
+
+  function custKey(e) {
+    var el = e.target, k = e.key;
+    if (k === 'ArrowDown' || k === 'ArrowUp') {
+      e.preventDefault();
+      if (!cpick.open) {
+        openCust();
+        if (cpick.hi < 0 && cpick.ids.length) { cpick.hi = 0; markCustHi(true); }
+        return;
+      }
+      if (!cpick.ids.length) return;
+      cpick.hi = cpick.hi < 0 ? 0
+        : Math.max(0, Math.min(cpick.ids.length - 1, cpick.hi + (k === 'ArrowDown' ? 1 : -1)));
+      markCustHi(true);
+      return;
+    }
+    if (k === 'Escape') {
+      if (cpick.open) { e.preventDefault(); closeCust(); }
+      else if (el.value) { e.preventDefault(); el.value = ''; S.custQ = ''; }
+      return;
+    }
+    if (k !== 'Enter') return;
+    e.preventDefault();
+    if (cpick.open && cpick.hi > -1 && cpick.ids[cpick.hi] != null) { pickCustomer(cpick.ids[cpick.hi]); return; }
+    openCust(!!String(el.value || '').trim());
   }
 
   /* The cities the price list knows for this country, in the reader's
@@ -870,10 +1445,51 @@ var Desk = (function () {
     return h + '</div>';
   }
 
-  function sumHtml() {
+  /* THE ORDER, READ BACK before the money: one row per step, each a button
+     back to the step it came from. This is the summary the one-panel layout
+     owes the person — nothing they typed three steps ago is out of sight. */
+  function reviewRow(i, lbl, main, sub) {
+    return '<button type="button" class="dk-rv" data-act="dk-go" data-id="' + i + '">' +
+      '<span class="dk-rv-lbl">' + lbl + '</span>' +
+      '<span class="dk-rv-main"><b>' + main + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</span>' +
+      '<span class="dk-rv-edit">' + t('dkw_edit') + '</span></button>';
+  }
+
+  function reviewHtml() {
+    var cust = S.customerId ? DB.customer(S.customerId) : null;
+    var items = S.lines.map(function (l) {
+      var hit = product(l);
+      return (hit && hit.p ? esc(hit.p.name) + ' · ' + esc(hit.v.size) : '<bdi dir="ltr">' + esc(l.sku) + '</bdi>') +
+        ' ×' + nf(l.qty);
+    }).join(' · ');
+    var co = COMPANY.indexOf(S.method) > -1
+      ? ((boot.settings.companies || []).filter(function (c) { return c && c.id === S.companyId; })[0] || null)
+      : null;
+    var phone = S.phone || (cust && cust.phone) || '';
+    var place = [S.city ? nm(S.city) : '', label(countryRow(S.country))].filter(Boolean).join(' · ');
+
+    var h = '<div class="dk-review">' +
+      reviewRow(0, t('dkw_r_bag'), piecesText(), items) +
+      reviewRow(1, t('dkw_r_customer'), cust ? nm(cust.name) : '—',
+        (phone ? tel(phone) + ' · ' : '') + t('dk_ch_' + S.channel)) +
+      reviewRow(2, t('dkw_r_method'), methodIconSvg(S.method) + '<span>' + t('dk_m_' + S.method) + '</span>',
+        co ? label(co) : '');
+    if (S.method !== 'pickup') {
+      h += reviewRow(3, t('dkw_r_address'), place || '—',
+        nm(S.address) + (S.someoneElse && S.recipient ? ' · ' + nm(S.recipient) : ''));
+    }
+    return h + '</div>';
+  }
+
+  function payHtml() {
     var tt = totals();
     var code = tt.currency;
-    var h = stepHead(4, t('dk_money'), currencyChips(code), !reasons(tt).length);
+    var h = reviewHtml();
+    /* A RECEIPT, NOT A FORM. The money is drawn as the ticket the customer is
+       about to be read over the phone: the bill, the stamp saying what
+       happens to the money, then how it is paid. */
+    h += '<div class="dk-tk-meta"><span>' + t('dkp_ticket') + '</span>' + currencyChips(code) + '</div>' +
+      '<div class="dk-perf" aria-hidden="true"></div>';
 
     h += '<div class="dk-tot">' + sumRow(t('dk_goods'), fmt(tt.subtotal, code)) +
       '<div class="dk-sr dk-disc"><span>' + t('discount') + '</span>' +
@@ -882,6 +1498,7 @@ var Desk = (function () {
     if (tt.fee.mode === 'invoice' && tt.fee.amount) h += sumRow(t('dk_shipping'), fmt(tt.fee.amount, code));
     else if (tt.fee.mode === 'courier') h += sumRow(t('dk_shipping'), '<span class="muted">' + t('dk_fee_courier') + '</span>');
     h += '<div class="dk-due"><span>' + t('dk_due') + '</span><b>' + fmt(tt.due, code) + '</b></div></div>';
+    h += stampHtml(tt) + '<div class="dk-perf" aria-hidden="true"></div>';
 
     h += '<div class="dk-row"><span class="lbl">' + t('dk_plan') + '</span><div class="seg-row">' +
       segBtn('dk-plan', 'full', S.plan === 'full', t('dk_plan_full')) +
@@ -916,19 +1533,12 @@ var Desk = (function () {
       segBtn('dk-print', 'none', S.print === 'none', t('dk_print_none')) +
       '</div></div>';
 
-    /* Save and the reasons it cannot be pressed are one block, because on a
-       wide screen the panel scrolls inside itself and this block sticks to
-       the bottom of it (.dk-close in css/og-skin.css). They belong together
-       either way: a disabled button with its reason somewhere else is how
-       somebody presses it twice and then asks what is wrong. */
+    /* Save is in the foot, like every Next; what still stops it is listed
+       here, right above it. */
     var why = reasons(tt);
-    h += '<div class="dk-close">' +
-      '<button class="btn btn-primary dk-save" data-act="dk-save"' +
-        (why.length || busy ? ' disabled' : '') + '>' + (busy ? t('dk_saving') : t('dk_save')) + '</button>' +
-      (why.length
-        ? '<ul class="dk-why">' + why.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>'
-        : '') +
-    '</div>';
+    if (why.length) {
+      h += '<ul class="dk-why">' + why.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>';
+    }
     return h;
   }
 
@@ -955,8 +1565,21 @@ var Desk = (function () {
     var cust = o.sale.customerId ? DB.customer(o.sale.customerId) : null;
     var canWa = !!(cust && cust.phone);
 
-    var h = '<div class="dk-done"><div class="dk-tick" aria-hidden="true">✓</div>' +
-      '<b><bdi dir="ltr">' + esc(o.sale.id) + '</bdi></b><span>' + t('dk_saved') + '</span></div>';
+    /* It lands ONCE. Recording the rest of a deposit repaints this card, and
+       a celebration that replays every time is not one. */
+    var anim = celebrated !== o.sale.id;
+    celebrated = o.sale.id;
+    var dv = o.delivery || null;
+    var h = '<div class="dk-done' + (anim ? ' is-anim' : '') + '">' +
+      '<svg class="dk-check" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="23"/>' +
+        '<path d="M15 27l7 7 15-16"/></svg>' +
+      '<b><bdi dir="ltr">' + esc(o.sale.id) + '</bdi></b><span>' + t('dk_saved') + '</span>' +
+      '<span class="dk-stamp is-saved">' + t('dkp_st_saved') + '</span></div>';
+    if (dv) {
+      h += '<div class="dk-done-route">' + methodIconSvg(dv.method || 'driver') +
+        '<span>' + methodLine(dv) + (whereLine(dv) ? '<small>' + whereLine(dv) + '</small>' : '') + '</span></div>' +
+        railHtml(dv, true);
+    }
 
     h += '<div class="dk-tot">' + sumRow(t('dk_due'), fmt(m.due, code)) +
       sumRow(t('dk_paid_now'), fmt(m.paid, code)) +
@@ -968,6 +1591,7 @@ var Desk = (function () {
       '<button class="btn" data-act="dk-print-a4" data-id="' + esc(o.sale.id) + '">' + t('dk_print_a4') + '</button>' +
       (canWa ? '<button class="btn" data-act="dk-wa" data-kind="confirm">' + t('dk_wa_confirm') + '</button>' : '') +
       (canWa && m.remaining ? '<button class="btn" data-act="dk-wa" data-kind="pay">' + t('dk_wa_pay') + '</button>' : '') +
+      (trackLink() ? '<button class="btn" data-act="dk-wa" data-kind="track">' + t('dk_wa_track') + '</button>' : '') +
       (trackLink() ? '<button class="btn btn-ghost" data-act="dk-copy-link">' + t('dk_copy_link') + '</button>' : '') +
       (m.remaining ? '<button class="btn btn-ghost" data-act="dk-take-pay" data-id="' + esc(o.sale.id) + '">' +
         t('dk_take_payment') + '</button>' : '') +
@@ -1008,28 +1632,38 @@ var Desk = (function () {
     var code = o.sale.currency;
     var due = d.due, paid = d.paid, left = d.remaining;
     var body =
-      '<div class="dk-ord-top"><div><b><bdi dir="ltr">' + esc(o.sale.id) + '</bdi></b>' +
+      '<div class="dk-ord-top">' +
+        '<span class="dk-ord-mi">' + methodIconSvg(d.method || 'driver') + '</span>' +
+        '<div><b><bdi dir="ltr">' + esc(o.sale.id) + '</bdi></b>' +
         '<small>' + nm(o.sale.customerName || t('walk_in')) +
           (o.customer && o.customer.phone ? ' · ' + tel(o.customer.phone) : '') + '</small></div>' +
         '<span class="badge ' + (d.voided ? 'neutral' : d.status === 'delivered' ? 'healthy'
           : d.status === 'failed' ? 'critical' : d.status === 'out' ? 'accent' : 'neutral') + '">' +
           t(d.voided ? 'dk_cancelled' : 'dl_' + d.status) + '</span></div>' +
+      /* The same rail the customer's tracking link draws, with its words. */
+      railHtml(d, true) +
       '<div class="dk-ord-where">' + methodLine(d) + (whereLine(d) ? '<small>' + whereLine(d) + '</small>' : '') +
         (d.trackingNo ? '<small><bdi dir="ltr">' + esc(d.trackingNo) + '</bdi></small>' : '') + '</div>' +
-      '<div class="dk-tot">' + sumRow(t('dk_due'), fmt(due, code)) + sumRow(t('dk_paid_now'), fmt(paid, code)) +
+      '<div class="dk-tot dk-ord-tot">' + sumRow(t('dk_due'), fmt(due, code)) + sumRow(t('dk_paid_now'), fmt(paid, code)) +
         '<div class="dk-remain' + (left ? ' owes' : ' clear') + '"><span>' + t('dk_remaining') + '</span>' +
         '<b>' + fmt(left, code) + '</b></div></div>';
 
     if (o.items && o.items.length) {
-      body += '<div class="dk-ord-items">' + o.items.map(function (it) {
+      body += '<div class="lbl mt">' + t('dkp_in_bag') + '</div><div class="dk-ord-items">' + o.items.map(function (it) {
         return '<span>' + esc(it.name) + (it.size ? ' · ' + esc(it.size) : '') + ' <b>×' + it.qty + '</b></span>';
       }).join('') + '</div>';
     }
+    /* The money as a timeline — when it came, how, and who took it — because
+       "did he pay the rest?" is answered by the last line, not by a total. */
     if (o.payments && o.payments.length) {
-      body += '<div class="dk-ord-pays">' + o.payments.map(function (p) {
-        return '<div><span>' + esc(DB.payLabel(p.method)) + (p.txnRef ? ' · <bdi dir="ltr">' + esc(p.txnRef) + '</bdi>' : '') +
-          '</span><b>' + fmt(p.amount, p.currency) + '</b></div>';
-      }).join('') + '</div>';
+      body += '<div class="lbl mt">' + t('dkp_payments') + '</div><ol class="dk-ord-pays">' + o.payments.map(function (p) {
+        var back = !!p.kind && p.kind !== 'in';
+        return '<li class="' + (back ? 'is-out' : 'is-in') + '"><i aria-hidden="true"></i><div>' +
+          '<span>' + esc(DB.payLabel(p.method)) + (p.txnRef ? ' · <bdi dir="ltr">' + esc(p.txnRef) + '</bdi>' : '') +
+            '<small>' + (p.at ? fmtDateTime(p.at) : '') + (p.receivedBy ? ' · ' + nm(p.receivedBy) : '') +
+              (back ? ' · ' + t('dkp_refund') : '') + '</small></span>' +
+          '<b>' + fmt(p.amount, p.currency) + '</b></div></li>';
+      }).join('') + '</ol>';
     }
 
     /* THE MESSAGES AND THE LINK LIVE HERE TOO, not only on the card that
@@ -1047,6 +1681,7 @@ var Desk = (function () {
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
         (canWa ? '<button class="btn" data-act="dk-wa" data-kind="confirm">' + t('dk_wa_confirm') + '</button>' : '') +
         (canWa && left ? '<button class="btn" data-act="dk-wa" data-kind="pay">' + t('dk_wa_pay') + '</button>' : '') +
+        (linkFor(o) && !o.sale.voided ? '<button class="btn" data-act="dk-wa" data-kind="track">' + t('dk_wa_track') + '</button>' : '') +
         (linkFor(o) ? '<button class="btn btn-ghost" data-act="dk-copy-link">' + t('dk_copy_link') + '</button>' : '') +
         '<button class="btn" data-act="dk-print-slip" data-id="' + esc(o.sale.id) + '">' + t('dk_print_slip') + '</button>' +
         (left && allow('delivery.desk')
@@ -1057,7 +1692,13 @@ var Desk = (function () {
   }
 
   function openOrder(saleId) {
-    API.get('/api/orders/by-sale/' + encodeURIComponent(saleId))
+    /* The dialog's WhatsApp messages and tracking link read the office's
+       bootstrap (the public address, the transfer accounts), which was only
+       fetched once the office screen had been opened — so a dialog opened from
+       the board straight after sign-in had no tracking button and a
+       confirmation with no link. Fetched first; the dialog opens either way. */
+    ensureBoot()['catch'](function () { return null; })
+      .then(function () { return API.get('/api/orders/by-sale/' + encodeURIComponent(saleId)); })
       .then(function (r) { orderModal(r.order); })
       .catch(function (err) {
         toast(t('dk_title'), err.code === 'not_found'
@@ -1105,110 +1746,246 @@ var Desk = (function () {
     }).join('\n');
   }
 
-  /* Arabic by default: the customer is in Aleppo, Damascus or Amman, and the
-     English half exists for the ones who write in it. Western digits, no
-     emoji, no Markdown — the same rules the Telegram messages follow. */
-  function waConfirm(o, ar) {
-    var d = o.delivery;
-    var code = o.sale.currency;
-    var link = boot && boot.publicBase && o.sale.publicToken
-      ? boot.publicBase + '/i/' + o.sale.publicToken : null;
-    var name = firstNameOf(o.sale.customerName || (o.customer && o.customer.name));
-    var where = [d.city, (countryRow(d.country) || {})[ar ? 'ar' : 'en']].filter(Boolean).join('، ');
-    var via = t('dk_m_' + (d.method || 'driver')) + (d.companyName ? ' · ' + d.companyName : '');
-    var L = [];
+  /* BOTH LANGUAGES IN EVERY MESSAGE. The office used to write in whichever
+     language its own screen was in, so an English-reading customer in Amman
+     got Arabic because the person at the desk works in Arabic. Now each
+     message is the Arabic block, a rule, then the English block — the
+     customer reads the half that is theirs and nobody chooses before Send.
 
-    if (ar) {
-      L.push('أهلاً ' + name + '،');
-      L.push('تم تثبيت طلبك من ' + CONFIG.SHOP_NAME + '.');
-      L.push('رقم الطلب: ' + o.sale.id);
+     WhatsApp's own formatting: *bold* for each heading and for the figures a
+     customer acts on, one emoji per heading so a long message can be scanned
+     on a phone. Western digits in both halves. The Arabic half's link opens
+     the Arabic page, the English half's opens ?lang=en.
+
+     RLM (U+200F) starts an Arabic line that would otherwise begin with a
+     Latin letter — a product name, a city typed in English — because WhatsApp
+     takes each line's direction from its first strong letter, and that line
+     would sit left-aligned in the middle of the Arabic. */
+  var RLM = '‏';
+
+  function moneyIn(minor, code, ar) {
+    var e = expOf(code);
+    var v = wholeOf(minor, code);
+    var n = v.toLocaleString('en-US', { minimumFractionDigits: e && v % 1 ? e : 0, maximumFractionDigits: e });
+    if (code === 'USD') return '$' + n;
+    var c = currency(code);
+    var sym = c ? (ar && c.symbol_ar ? c.symbol_ar : c.symbol) : code;
+    return n + ' ' + (ar && code === 'SYP' ? 'ل.س' : sym);
+  }
+
+  /* A word from the other language's table, whichever the screen is in. */
+  function wordIn(key, ar) {
+    var table = (typeof I18N !== 'undefined' && I18N[ar ? 'ar' : 'en']) || {};
+    return table[key] || t(key);
+  }
+
+  function payName(id, ar) {
+    var m = ((boot && boot.settings && boot.settings.methods) || [])
+      .filter(function (x) { return x && x.id === id; })[0];
+    if (m) return (ar ? (m.ar || m.en) : (m.en || m.ar)) || id;
+    return DB.payLabel ? DB.payLabel(id) : id;
+  }
+
+  function itemsIn(o, ar) {
+    return (o.items || []).map(function (it) {
+      return (ar ? RLM : '') + '▫️ ' + it.name +
+        (it.size ? (ar ? ' · مقاس ' : ' · size ') + it.size : '') + '  ×' + it.qty;
+    }).join('\n');
+  }
+
+  function helloIn(o, ar) {
+    var name = firstNameOf(o.sale.customerName || (o.customer && o.customer.name));
+    return ar ? 'أهلاً' + (name ? ' ' + name : '') + ' 👋' : 'Hi' + (name ? ' ' + name : '') + ' 👋';
+  }
+
+  function trackUrl(o, ar) {
+    var l = linkFor(o);
+    return l ? l + (ar ? '' : '?lang=en') : null;
+  }
+
+  /* How it travels, as a sentence reads it — the office's own labels are
+     button captions ("Our driver"), which read wrongly after "via". A named
+     company is named instead. */
+  var WA_VIA = {
+    ar: { driver: 'سائق المحل', office: 'مكتب نقل', courier: 'شركة شحن', abroad: 'الشحن الخارجي' },
+    en: { driver: 'our own driver', office: 'a transport office', courier: 'a courier company', abroad: 'shipping abroad' }
+  };
+  function viaIn(d, ar) {
+    if (d.companyName) return d.companyName;
+    var m = WA_VIA[ar ? 'ar' : 'en'];
+    return m[d.method] || m.driver;
+  }
+
+  /* WA.both (js/whatsapp.js) is the one shape every WhatsApp message takes. */
+  function waBoth(arLines, enLines) {
+    return WA.both(arLines, enLines);
+  }
+
+  function waConfirm(o) {
+    var d = o.delivery || {};
+    var code = o.sale.currency;
+    var owed = d.remaining > 0;
+    function part(ar) {
+      var L = [];
+      var where = [d.city, (countryRow(d.country) || {})[ar ? 'ar' : 'en']].filter(Boolean).join(ar ? '، ' : ', ');
+      var via = viaIn(d, ar);
+      var url = trackUrl(o, ar);
+      L.push('🛍️ *' + CONFIG.SHOP_NAME + '*' + (ar ? ' — تأكيد الطلب' : ' — Order confirmed'));
       L.push('');
-      L.push(orderLines(o));
+      L.push(helloIn(o, ar));
+      L.push(ar ? 'تم تثبيت طلبك رقم *' + o.sale.id + '* ✅' : 'Your order *' + o.sale.id + '* is confirmed ✅');
       L.push('');
-      L.push('قيمة البضاعة: ' + moneyText(o.sale.total, code));
-      if (d.feeMode === 'invoice' && d.fee) L.push('أجرة الشحن: ' + moneyText(d.fee, code));
-      if (d.feeMode === 'courier') L.push('أجرة الشحن تُدفع لشركة الشحن عند الاستلام.');
-      L.push('الإجمالي: ' + moneyText(d.due, code));
-      L.push('المدفوع: ' + moneyText(d.paid, code));
-      L.push('المتبقي: ' + moneyText(d.remaining, code));
+      L.push(ar ? '🧾 *الطلب*' : '🧾 *Your order*');
+      L.push(itemsIn(o, ar));
       L.push('');
-      if (d.method === 'pickup') L.push('الطلب جاهز للاستلام من المحل.');
-      else L.push('التوصيل إلى: ' + where + ' — عن طريق ' + via + '.');
-      if (d.remaining && ON_RECEIPT.indexOf(d.method) > -1) L.push('المبلغ المتبقي يُدفع عند الاستلام.');
-      if (d.remaining && COMPANY.indexOf(d.method) > -1) L.push('نشحن الطلب فور وصول المبلغ المتبقي.');
-      if (link) { L.push(''); L.push('تابع طلبك: ' + link); }
-      L.push('— ' + CONFIG.SHOP_NAME);
-    } else {
-      L.push('Hi ' + name + ',');
-      L.push('Your order from ' + CONFIG.SHOP_NAME + ' is confirmed.');
-      L.push('Order: ' + o.sale.id);
+      L.push(ar ? '💳 *الحساب*' : '💳 *Payment*');
+      L.push((ar ? 'البضاعة: ' : 'Goods: ') + moneyIn(o.sale.total, code, ar));
+      if (d.feeMode === 'invoice' && d.fee) L.push((ar ? 'الشحن: ' : 'Shipping: ') + moneyIn(d.fee, code, ar));
+      if (d.feeMode === 'courier') L.push(ar ? 'الشحن: يُدفع لشركة الشحن عند الاستلام' : 'Shipping: paid to the courier on delivery');
+      L.push((ar ? 'الإجمالي: *' : 'Total: *') + moneyIn(d.due, code, ar) + '*');
+      if (d.paid) L.push((ar ? 'المدفوع: ' : 'Paid: ') + moneyIn(d.paid, code, ar));
+      L.push(owed ? (ar ? 'المتبقي: *' : 'Still to pay: *') + moneyIn(d.remaining, code, ar) + '*'
+                  : (ar ? '✔️ مدفوع بالكامل' : '✔️ Paid in full'));
       L.push('');
-      L.push(orderLines(o));
+      if (d.method === 'pickup') {
+        L.push(ar ? '🏬 *الاستلام*' : '🏬 *Pickup*');
+        L.push(ar ? 'طلبك جاهز للاستلام من المحل.' : 'It is ready to collect from the shop.');
+      } else {
+        L.push(ar ? '🚚 *التوصيل*' : '🚚 *Delivery*');
+        L.push((ar ? RLM : '') + (where ? where + ' — ' : '') + (ar ? 'عن طريق ' : 'via ') + via);
+      }
+      if (owed && ON_RECEIPT.indexOf(d.method) > -1) L.push(ar ? '💵 المتبقي يُدفع عند الاستلام.' : '💵 The rest is paid on delivery.');
+      if (owed && COMPANY.indexOf(d.method) > -1) L.push(ar ? '📦 نشحن الطلب فور وصول المبلغ المتبقي.' : '📦 We ship as soon as the rest arrives.');
+      if (url) {
+        L.push('');
+        L.push(ar ? '📍 *تابع طلبك مباشرة*' : '📍 *Track it live*');
+        L.push(url);
+      }
       L.push('');
-      L.push('Goods: ' + moneyText(o.sale.total, code));
-      if (d.feeMode === 'invoice' && d.fee) L.push('Shipping: ' + moneyText(d.fee, code));
-      if (d.feeMode === 'courier') L.push('Shipping is paid to the courier on delivery.');
-      L.push('Total: ' + moneyText(d.due, code));
-      L.push('Paid: ' + moneyText(d.paid, code));
-      L.push('Still owed: ' + moneyText(d.remaining, code));
-      L.push('');
-      if (d.method === 'pickup') L.push('It is ready to collect from the shop.');
-      else L.push('Delivering to ' + where + ' via ' + via + '.');
-      if (d.remaining && ON_RECEIPT.indexOf(d.method) > -1) L.push('The rest is paid on delivery.');
-      if (d.remaining && COMPANY.indexOf(d.method) > -1) L.push('We ship as soon as the rest arrives.');
-      if (link) { L.push(''); L.push('Track your order: ' + link); }
-      L.push('— ' + CONFIG.SHOP_NAME);
+      L.push(ar ? 'شكراً لثقتك بنا 🖤' : 'Thank you for shopping with us 🖤');
+      return L;
     }
-    return L.join('\n');
+    return waBoth(part(true), part(false));
   }
 
   /* How to pay: the amount, and the shop's own account for each transfer
      method the owner has filled in (pay.accounts, config.write only). */
-  function waPay(o, ar) {
-    var d = o.delivery;
+  function waPay(o) {
+    var d = o.delivery || {};
     var code = o.sale.currency;
     var accounts = (boot && boot.settings && boot.settings.accounts) || {};
-    var name = firstNameOf(o.sale.customerName || (o.customer && o.customer.name));
-    var L = [];
-    L.push(ar ? 'أهلاً ' + name + '،' : 'Hi ' + name + ',');
-    L.push((ar ? 'المبلغ المطلوب لطلبك ' : 'Amount due for order ') + o.sale.id + ': ' +
-      moneyText(d.remaining, code));
-    if (COMPANY.indexOf(d.method) > -1) L.push(ar ? 'الشحن يتم بعد وصول المبلغ.' : 'We ship once the payment arrives.');
-    var any = false;
-    Object.keys(accounts).forEach(function (id) {
-      var a = accounts[id];
-      var txt = ar ? (a.ar || a.en) : (a.en || a.ar);
-      if (!txt) return;
-      if (!any) { L.push(''); L.push(ar ? 'طرق الدفع:' : 'You can pay by:'); any = true; }
-      L.push('• ' + DB.payLabel(id) + ': ' + txt);
-    });
-    L.push('');
-    L.push(ar ? 'بعد التحويل أرسل لنا رقم العملية أو صورة الإشعار.'
-              : 'After paying, send us the transaction number or a photo of the receipt.');
-    L.push('— ' + CONFIG.SHOP_NAME);
-    return L.join('\n');
+    function part(ar) {
+      var L = [];
+      L.push('💳 *' + CONFIG.SHOP_NAME + '*' + (ar ? ' — طريقة الدفع' : ' — How to pay'));
+      L.push('');
+      L.push(helloIn(o, ar));
+      L.push(ar ? 'المبلغ المطلوب لطلبك *' + o.sale.id + '*:' : 'Amount due for order *' + o.sale.id + '*:');
+      L.push('💰 *' + moneyIn(d.remaining, code, ar) + '*');
+      if (COMPANY.indexOf(d.method) > -1) L.push(ar ? '📦 نشحن الطلب فور وصول المبلغ.' : '📦 We ship as soon as it arrives.');
+      var rows = [];
+      Object.keys(accounts).forEach(function (id) {
+        var a = accounts[id] || {};
+        var txt = ar ? (a.ar || a.en) : (a.en || a.ar);
+        if (txt) rows.push((ar ? RLM : '') + '▫️ *' + payName(id, ar) + '*: ' + txt);
+      });
+      if (rows.length) {
+        L.push('');
+        L.push(ar ? '🏦 *طرق الدفع*' : '🏦 *You can pay by*');
+        L = L.concat(rows);
+      }
+      L.push('');
+      L.push(ar ? '📸 بعد التحويل أرسل لنا رقم العملية أو صورة الإشعار.'
+                : '📸 After paying, send us the transaction number or a photo of the receipt.');
+      return L;
+    }
+    return waBoth(part(true), part(false));
+  }
+
+  /* THE TRACKING LINK ON ITS OWN — the message sent most after the first one,
+     because the question after an order is "where is it?". It says where it
+     has got to right now and what is left to pay, since the link answers
+     nothing until it is tapped, and it points at Notify me on the page, which
+     is what saves the next question. Each half's link opens the page in that
+     half's language (the page is Arabic unless ?lang=en). */
+  var WA_STATE = {
+    ar: { waiting: '⏳ قيد التجهيز', pickup: '🏬 جاهز للاستلام من المحل', out: '🚚 في الطريق إليك',
+          delivered: '✅ تم التسليم', failed: '↩️ رجع إلى المحل', 'void': '✖️ ملغى' },
+    en: { waiting: '⏳ Being prepared', pickup: '🏬 Ready to collect from the shop', out: '🚚 On its way to you',
+          delivered: '✅ Delivered', failed: '↩️ Came back to the shop', 'void': '✖️ Cancelled' }
+  };
+
+  function waTrack(o) {
+    var d = o.delivery || {};
+    var code = o.sale.currency;
+    var st = o.sale.voided ? 'void'
+      : (d.status === 'waiting' && d.method === 'pickup') ? 'pickup'
+      : (d.status || 'waiting');
+    var moving = !o.sale.voided && d.status !== 'delivered';
+    var owed = d.remaining > 0 && !o.sale.voided ? d.remaining : 0;
+    function part(ar) {
+      var S = WA_STATE[ar ? 'ar' : 'en'];
+      var L = [];
+      L.push('📦 *' + CONFIG.SHOP_NAME + '*' + (ar ? ' — تتبّع الطلب' : ' — Order tracking'));
+      L.push('');
+      L.push(helloIn(o, ar));
+      L.push(ar ? 'تابع طلبك *' + o.sale.id + '* لحظة بلحظة من هنا 👇' : 'Follow your order *' + o.sale.id + '* live, right here 👇');
+      L.push(trackUrl(o, ar));
+      L.push('');
+      L.push((ar ? '*الحالة الآن:* ' : '*Right now:* ') + (S[st] || S.waiting));
+      if (owed) {
+        L.push((ar ? '*المتبقي:* ' : '*Still to pay:* ') + moneyIn(owed, code, ar) +
+          (ON_RECEIPT.indexOf(d.method) > -1 ? (ar ? ' — يُدفع عند الاستلام' : ' — on delivery')
+            : COMPANY.indexOf(d.method) > -1 ? (ar ? ' — نشحن الطلب فور وصوله' : ' — we ship as soon as it arrives') : ''));
+      }
+      if (moving) {
+        L.push('');
+        L.push(ar ? '🔔 اضغط «فعّل الإشعارات» في الصفحة ليصلك إشعار عند كل تحرّك للطلب.'
+                  : '🔔 Tap “Notify me” on the page to get a notification every time it moves.');
+      }
+      return L;
+    }
+    return waBoth(part(true), part(false));
   }
 
   function waSend(kind, o) {
     var cust = o.sale.customerId ? DB.customer(o.sale.customerId) : (o.customer || null);
     var phone = (o.delivery && o.delivery.phone) || (cust && cust.phone) || '';
-    if (!phone) { toast(t('dk_title'), t('dk_no_phone'), 'warn'); return; }
-    var ar = OG.lang === 'ar';
-    var text = kind === 'pay' ? waPay(o, ar) : waConfirm(o, ar);
+    var track = kind === 'track';
+    /* A link nobody outside the shop's wifi can open is not worth sending. */
+    if (track && !linkFor(o)) { toast(t('dk_title'), t('dk_wa_no_link'), 'warn', 9000); return; }
+    /* The tracking link is also sent to a number typed on the spot — a friend
+       collecting it, a customer writing from another phone — so with no
+       number on the order it opens the composer with the box empty instead
+       of refusing. The two money messages still need the customer's own. */
+    if (!phone && !track) { toast(t('dk_title'), t('dk_no_phone'), 'warn'); return; }
+    var text = kind === 'pay' ? waPay(o) : track ? waTrack(o) : waConfirm(o);
+    var waKind = kind === 'pay' ? 'order_pay' : track ? 'order_track' : 'order_confirm';
 
     /* wa.me cannot report a send, so what is recorded is that the message was
        OPENED, for which order, by whom — server/lib/partner.js logWhatsApp,
-       written in 015 and never called until now. */
-    API.post('/api/wa-messages', {
-      phone: phone, body: text, kind: kind === 'pay' ? 'order_pay' : 'order_confirm',
-      refType: 'sale', refId: o.sale.id
-    }).catch(function () { /* the message still opens; the record is not the point of it */ });
+       written in 015 and never called until now. A number typed into the
+       composer is not known here, so that one opens without a record. */
+    if (phone) {
+      API.post('/api/wa-messages', {
+        phone: phone, body: text, kind: waKind, refType: 'sale', refId: o.sale.id
+      }).catch(function () { /* the message still opens; the record is not the point of it */ });
+    }
 
     WA.compose({
-      to: phone, text: text, name: (cust && cust.name) || '',
-      kind: kind === 'pay' ? 'order_pay' : 'order_confirm',
-      title: kind === 'pay' ? t('dk_wa_pay') : t('dk_wa_confirm')
+      to: phone, text: text, name: (cust && cust.name) || '', kind: waKind,
+      title: kind === 'pay' ? t('dk_wa_pay') : track ? t('dk_wa_track') : t('dk_wa_confirm')
     });
+  }
+
+  /* From the Deliveries board, where the order in hand is a row, not the full
+     order: fetch it (and the office's bootstrap, which knows the public
+     address) and send the tracking link. */
+  function sendTrack(saleId) {
+    ensureBoot().then(function () {
+      return API.get('/api/orders/by-sale/' + encodeURIComponent(saleId));
+    }).then(function (r) {
+      if (r && r.order) waSend('track', r.order);
+    }).catch(function (e) { toast(t('dk_title'), API.friendly(e), 'err', 7000); });
   }
 
   /* ---------------------------------------------------------------- saving */
@@ -1261,11 +2038,9 @@ var Desk = (function () {
       S = fresh();
       S.print = print;
       repaint();
-      /* THE CONFIRMATION IS THE THIRD PANEL, so on a stacked layout it is two
-         screens below the scan box the person is looking at: the order saved
-         and nothing visibly happened. Bring it to them. Harmless on the wide
-         layout, where it is already on screen and at the top of its column. */
-      var card = document.getElementById('dkSum');
+      /* The confirmation replaces the last step, which may have been
+         scrolled a long way down: bring its top back into view. */
+      var card = document.getElementById('dkRail');
       if (card && card.scrollIntoView) {
         try { card.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
         catch (e) { card.scrollIntoView(); }
@@ -1277,6 +2052,25 @@ var Desk = (function () {
       if (typeof Shop !== 'undefined' && Shop.reload) Shop.reload().catch(function () {});
     }).catch(function (err) {
       busy = false;
+      /* SOLD WHILE THE ORDER WAS BEING TYPED. The browser's count said there
+         was one; the server, which decides, says there is not. Say so in the
+         person's language, say the order was NOT saved (so nobody waits for a
+         slip that will never come), refresh the stock, and put them back on
+         the bag where it can be changed. */
+      if (err && err.code === 'insufficient_stock') {
+        var det = err.detail || {};
+        var sv = det.sku ? DB.variantBySku(det.sku) : null;
+        var sp = sv ? DB.product(sv.productId) : null;
+        toast(t('dk_title'), t('dkp_sold_meanwhile')
+          .replace('{item}', sp ? sp.name + ' · ' + sv.size : String(det.sku || ''))
+          .replace('{n}', nf(Number(det.available) || 0))
+          .replace('{wh}', whLabel(S.whId)), 'err', 10000);
+        goStep(0);
+        if (typeof Shop !== 'undefined' && Shop.reload) {
+          Shop.reload().then(function () { paint('items'); }).catch(function () { paint('items'); });
+        }
+        return;
+      }
       paint('sum');
       toast(t('dk_title'), err.message || API.friendly(err), 'err', 7000);
     });
@@ -1284,8 +2078,27 @@ var Desk = (function () {
 
   /* A payment that arrived after the order was made — the rest of a deposit,
      a transfer the next morning. */
+  /* THE BOARD CAN ASK FOR A PAYMENT BEFORE THIS SCREEN HAS EVER LOADED.
+     The dialog reads the currencies and the payment methods out of the
+     office's bootstrap, which was only fetched when the office screen opened
+     — so Take a payment pressed on the deliveries board after a fresh sign-in
+     died on `boot.currencies` and the shopkeeper saw a TypeError in a toast.
+     Fetched here on demand, the same request the screen would have made. */
+  function ensureBoot() {
+    if (boot) return Promise.resolve(boot);
+    return API.get('/api/orders/bootstrap').then(function (b) {
+      boot = b;
+      bootErr = null;
+      if (!S) S = loadDraft() || fresh();
+      if (!S.whId) S.whId = b.settings.wh;
+      return b;
+    });
+  }
+
   function takePayment(saleId) {
-    API.get('/api/orders/by-sale/' + encodeURIComponent(saleId)).then(function (r) {
+    ensureBoot().then(function () {
+      return API.get('/api/orders/by-sale/' + encodeURIComponent(saleId));
+    }).then(function (r) {
       var o = r.order;
       var code = o.sale.currency;
       var left = o.delivery.remaining;
@@ -1295,21 +2108,33 @@ var Desk = (function () {
 
       openModal({
         title: t('dk_take_payment') + ' · ' + o.sale.id, size: 'narrow',
-        body: '<div class="dk-tot">' + sumRow(t('dk_remaining'), fmt(left, code)) + '</div>' +
-          '<label class="field mt"><span>' + t('dk_amount') + '</span>' +
+        body: '<div class="dl-hero"><span>' + t('dk_remaining') + '</span><b>' + fmt(left, code) + '</b>' +
+            '<small>' + nm(o.sale.customerName || t('walk_in')) + ' · <bdi dir="ltr">' + esc(o.sale.id) + '</bdi></small></div>' +
+          /* The two amounts people actually take — the rest, or half of it —
+             one tap each, still typed over when it is something else. */
+          '<div class="field mt"><span>' + t('dk_amount') + '</span><div class="dkp-amt">' +
             '<input class="inp num" id="dkPayAmt" type="text" inputmode="decimal" dir="ltr" value="' +
-              esc(moneyPlain(left, code)) + '"></label>' +
+              esc(moneyPlain(left, code)) + '">' +
+            '<button type="button" class="chip on" data-act="dk-fill" data-cur="' + esc(code) + '" data-v="' +
+              esc(moneyPlain(left, code)) + '">' + t('dkp_fill_all') + '</button>' +
+            (left > 1 ? '<button type="button" class="chip" data-act="dk-fill" data-cur="' + esc(code) + '" data-v="' +
+              esc(moneyPlain(Math.round(left / 2), code)) + '">' + t('dkp_fill_half') + '</button>' : '') +
+          '</div></div>' +
           ((boot.currencies || []).length > 1
             ? '<label class="field"><span>' + t('dk_currency') + '</span><select class="inp" id="dkPayCur">' +
               boot.currencies.map(function (c) {
                 return '<option value="' + esc(c.code) + '"' + (c.code === code ? ' selected' : '') + '>' +
                   esc(c.code) + '</option>';
               }).join('') + '</select></label>' : '') +
-          '<label class="field"><span>' + t('payment') + '</span><select class="inp" id="dkPayMethod">' +
-            methods.map(function (m) {
-              return '<option value="' + esc(m.id) + '">' +
-                esc(OG.lang === 'ar' ? (m.ar || m.en) : (m.en || m.ar)) + '</option>';
-            }).join('') + '</select></label>' +
+          /* Chips over a hidden value rather than a select: the methods are
+             four words, and a select hides three of them behind a tap. payGo
+             reads #dkPayMethod either way. */
+          '<div class="field"><span>' + t('payment') + '</span><div class="dkp-methods">' +
+            methods.map(function (m, i) {
+              return '<button type="button" class="chip' + (i === 0 ? ' on' : '') + '" data-act="dk-paym" ' +
+                'data-id="' + esc(m.id) + '">' + esc(OG.lang === 'ar' ? (m.ar || m.en) : (m.en || m.ar)) + '</button>';
+            }).join('') +
+            '<input type="hidden" id="dkPayMethod" value="' + esc(methods[0].id) + '"></div></div>' +
           '<label class="field"><span>' + t('dk_ref_ph') + '</span>' +
             '<input class="inp" id="dkPayRef" type="text" dir="ltr" maxlength="64"></label>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
@@ -1360,6 +2185,8 @@ var Desk = (function () {
     if (!c) return;
     S.customerId = id;
     S.custQ = '';
+    cpick.open = false;
+    cpick.hi = -1;
     if (!S.phone && c.phone) S.phone = c.phone;
     if (!S.city && c.city) S.city = c.city;
     if (!S.address && c.address) S.address = c.address;
@@ -1397,8 +2224,17 @@ var Desk = (function () {
     };
 
     ACTIONS['dk-cust-pick'] = function (el) { pickCustomer(Number(el.getAttribute('data-id'))); };
-    ACTIONS['dk-cust-clear'] = function () { S.customerId = null; touch('who', 'sum'); };
+    /* Change means "somebody else" — so the list is already open for them. */
+    ACTIONS['dk-cust-clear'] = function () {
+      S.customerId = null;
+      cpick.open = true;
+      cpick.hi = -1;
+      touch('who', 'sum');
+      var box = document.getElementById('dkCust');
+      if (box && !coarse()) box.focus();
+    };
     ACTIONS['dk-cust-new'] = function () {
+      closeCust();
       if (typeof openNewCustomer !== 'function') return;
       openNewCustomer(S.custQ, function (c) { if (c && c.id) pickCustomer(c.id); });
     };
@@ -1486,6 +2322,72 @@ var Desk = (function () {
     };
     ACTIONS['dk-take-pay'] = function (el) { takePayment(el.getAttribute('data-id')); };
     ACTIONS['dk-pay-go'] = function (el) { payGo(el.getAttribute('data-id')); };
+
+    ACTIONS['dk-fill'] = function (el) {
+      var box = document.getElementById('dkPayAmt');
+      if (!box) return;
+      box.value = el.getAttribute('data-v') || '';
+      /* The amount is in the order's currency, so the currency box follows. */
+      var cur = document.getElementById('dkPayCur');
+      if (cur && el.getAttribute('data-cur')) cur.value = el.getAttribute('data-cur');
+      markChip(el);
+    };
+    ACTIONS['dk-paym'] = function (el) {
+      var hidden = document.getElementById('dkPayMethod');
+      if (hidden) hidden.value = el.getAttribute('data-id');
+      markChip(el);
+    };
+
+    /* The steps: on, back, and straight to one — from the rail or from a
+       row of the read-back on the last step. goStep refuses a step ahead of
+       an unanswered one. */
+    /* The ▾ at the end of the box: the list, for somebody who would rather
+       look than type. NOT 'dk-drop' — that is the ✕ on a bag line, and ACTIONS
+       is one object: a second key of the same name silently replaced the
+       remove button with "open the list". */
+    ACTIONS['dk-browse'] = function () {
+      if (pick.open) closeDrop(); else openDrop();
+      var box = document.getElementById('dkScan');
+      if (box && !coarse()) box.focus();
+    };
+    /* A press anywhere outside the box and its list closes it. mousedown,
+       not click, so the list is gone before whatever was pressed reacts. */
+    document.addEventListener('mousedown', function (e) {
+      if (pick.open) {
+        var combo = document.getElementById('dkCombo');
+        if (!(combo && combo.contains(e.target))) closeDrop();
+      }
+      if (cpick.open) {
+        var cc = document.getElementById('dkCustCombo');
+        if (!(cc && cc.contains(e.target))) closeCust();
+      }
+    });
+
+    /* The customer box is rebuilt with its step, so it is listened to at the
+       document rather than wired element by element. */
+    document.addEventListener('click', function (e) {
+      if (e.target && e.target.id === 'dkCust' && !cpick.open) openCust();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.target && e.target.id === 'dkCust') custKey(e);
+    });
+    ACTIONS['dk-cdrop'] = function () {
+      if (cpick.open) closeCust(); else openCust();
+      var box = document.getElementById('dkCust');
+      if (box && !coarse()) box.focus();
+    };
+
+    /* A count this browser loaded a while ago may be behind the warehouse. */
+    ACTIONS['dk-restock'] = function () {
+      if (typeof Shop === 'undefined' || !Shop.reload) return;
+      toast(t('dk_title'), t('dkp_restocking'), 'ok', 1500);
+      Shop.reload().then(function () { paint('items'); })
+        .catch(function (e) { toast(t('dk_title'), API.friendly(e), 'err', 6000); });
+    };
+
+    ACTIONS['dk-next'] = function () { nextStep(); };
+    ACTIONS['dk-back'] = function () { prevStep(); };
+    ACTIONS['dk-go'] = function (el) { goStep(Number(el.getAttribute('data-id'))); };
     ACTIONS['dk-board-go'] = function () {
       closeModal();
       if (typeof go === 'function') go('deliveries');
@@ -1493,11 +2395,10 @@ var Desk = (function () {
 
     if (typeof CHANGES === 'undefined') return;
 
-    CHANGES['dk-q'] = function (el) { setHits(el.value); };
+    CHANGES['dk-q'] = function (el) { openDrop(el.value); };
     CHANGES['dk-cust'] = function (el) {
       S.custQ = el.value;
-      var host = document.getElementById('dkCustHits');
-      if (host) host.innerHTML = custHitsHtml(el.value);
+      openCust(true);
     };
     CHANGES['dk-field'] = function (el) {
       var k = el.getAttribute('data-k');
@@ -1545,6 +2446,15 @@ var Desk = (function () {
     };
   }
 
+  /* One chip lit in its own row. */
+  function markChip(el) {
+    var row = el.parentNode;
+    if (!row) return;
+    Array.prototype.forEach.call(row.querySelectorAll('.chip'), function (c) {
+      c.classList.toggle('on', c === el);
+    });
+  }
+
   function paintFee() {
     var host = document.getElementById('dkFeeLine');
     if (host) host.innerHTML = feeLineHtml();
@@ -1568,10 +2478,24 @@ var Desk = (function () {
       '" data-k="' + key + '"' + (on ? ' checked' : '') + (off ? ' disabled' : '') + '><i></i></label>';
   }
 
+  /* A number box (a phone, a fee) is left-to-right in both languages: in the
+     Arabic layout "021 111 222" was drawn as "222 111 021". */
   function inp(change, i, key, value, ph, cls) {
+    var ltr = / ?num\b/.test(cls || '');
     return '<input class="inp ' + (cls || '') + '" type="text" data-change="' + change + '" data-i="' + i +
-      '" data-k="' + key + '" value="' + esc(value == null ? '' : value) + '"' +
+      '" data-k="' + key + '" value="' + esc(value == null ? '' : value) + '"' + (ltr ? ' dir="ltr"' : '') +
       (ph ? ' placeholder="' + esc(ph) + '"' : '') + '>';
+  }
+
+  /* Settings redraws whole after a save; the page must stay where the person
+     was working, not jump back to Branding at the top. */
+  function renderKeepScroll() {
+    if (typeof render !== 'function') return;
+    var v = document.querySelector('.view');
+    var y = v ? v.scrollTop : 0;
+    render();
+    v = document.querySelector('.view');
+    if (v) v.scrollTop = y;
   }
 
   function sel(change, i, key, value, options) {
@@ -1701,6 +2625,28 @@ var Desk = (function () {
       acc[id][el.getAttribute('data-k')] = el.value;
     };
 
+    /* "Add one in Settings", from the office, the Assign dialog and the
+       handover picker: straight to the companies list, already open, rather
+       than to the top of an eleven-card page. */
+    ACTIONS['dk-goto-companies'] = function () {
+      if (typeof closeModal === 'function') closeModal();
+      if (typeof setFoldRemember === 'function') setFoldRemember('dk-companies', true);
+      if (typeof go === 'function') go('settings');
+      /* Scrolled after the page has settled, and checked: navigating resets
+         the view's scroll once the new screen is in, so a scroll made on the
+         first frame is undone a moment later and the list sat off-screen. */
+      var tries = 0;
+      (function find() {
+        var f = document.querySelector('[data-fold="dk-companies"]');
+        var r = f && f.getBoundingClientRect();
+        var inView = r && r.top >= 0 && r.top < window.innerHeight - 80;
+        if (inView && tries > 3) return;
+        if (f) f.scrollIntoView({ block: 'start' });
+        /* The office's settings may still be on their way on a first visit. */
+        if (++tries < 50) setTimeout(find, 120);
+      })();
+    };
+
     ACTIONS['dks-add'] = function (el) {
       var k = el.getAttribute('data-k');
       var d = draft();
@@ -1716,12 +2662,27 @@ var Desk = (function () {
           fee: 0, currency: (boot.base || 'SYP'), fee_mode: 'invoice', active: true });
       }
       if (typeof render === 'function') render();
+      /* The row just added is empty, so the caret goes into its name. */
+      var change = k === 'methods' ? 'dks-m' : k === 'companies' ? 'dks-c' : null;
+      if (change) {
+        var names = document.querySelectorAll('[data-change="' + change + '"][data-k="en"]');
+        var last = names[names.length - 1];
+        if (last) { try { last.focus({ preventScroll: false }); } catch (e) { last.focus(); } }
+      }
     };
 
     ACTIONS['dks-save'] = function (el) {
       var k = el.getAttribute('data-k');
       var d = draft();
       var body = {};
+      /* A nameless row is the one refusal somebody meets by pressing Add and
+         then Save — said here in their language, rather than as the server's
+         English with a JSON path on the end. */
+      var list = k === 'methods' ? d.methods : k === 'companies' ? d.companies : null;
+      if (list && list.some(function (r) { return !String(r.en || '').trim() && !String(r.ar || '').trim(); })) {
+        toast(t('setg_delivery'), t(k === 'companies' ? 'dks_need_name_c' : 'dks_need_name_m'), 'warn', 5000);
+        return;
+      }
       if (k === 'methods') body.methods = d.methods;
       else if (k === 'companies') body.companies = d.companies;
       else if (k === 'prices') body.prices = d.prices;
@@ -1731,7 +2692,7 @@ var Desk = (function () {
         boot.settings = r.settings;
         setDraft = JSON.parse(JSON.stringify(r.settings));
         toast(t('setg_delivery'), t('dks_saved'), 'ok', 3000);
-        if (typeof render === 'function') render();
+        renderKeepScroll();
       }).catch(function (err) {
         toast(t('setg_delivery'), (err.message || API.friendly(err)) +
           (err.detail && err.detail.path ? ' · ' + err.detail.path : ''), 'err', 8000);
@@ -1763,11 +2724,21 @@ var Desk = (function () {
     plain: moneyPlain,
     toMinor: toMinor,
     openOrder: openOrder,
+    sendTrack: sendTrack,
     takePayment: takePayment,
+    /* The pictures the board, the road and the order dialog share, so a
+       parcel is drawn one way wherever it appears. */
+    methodIcon: methodIconSvg,
+    rail: railHtml,
+    face: faceHtml,
     companies: function () {
       return ((boot && boot.settings && boot.settings.companies) || []).filter(function (c) {
         return c && c.active !== false;
       });
-    }
+    },
+    /* Whether the list above is the office's real one — it is the copy a
+       Settings save updates, so the board and the handover picker prefer it
+       over the one they fetched earlier. */
+    companiesLoaded: function () { return !!boot; }
   };
 })();

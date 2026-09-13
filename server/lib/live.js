@@ -21,6 +21,74 @@ let clients = new Set();     // { res, side, userId, name, since }
 let timer = null;
 let sent = 0;
 
+/* THE PUBLIC TRACKING PAGES (/i/<token>/live) are a SEPARATE set, keyed by
+   order, and never counted in presence(): a customer watching their parcel
+   is not somebody "online" on the shop's side, and the pill that says who is
+   reading must not grow a stranger. The same data-less rule holds — the page
+   is told only that its order moved, and refetches its own public HTML.
+
+   Capped, because there is no login in front of it: a dozen tabs on one order
+   is a family, a thousand is somebody holding connections open on purpose. */
+const track = new Map();     // saleId -> Set<res>
+const TRACK_PER_ORDER = 12;
+const TRACK_TOTAL = 600;
+let trackOpen = 0;
+
+function heartbeat() {
+  if (timer) return;
+  timer = setInterval(() => {
+    for (const k of clients) {
+      try { k.res.write(': ping\n\n'); } catch { clients.delete(k); }
+    }
+    for (const [id, set] of track) {
+      for (const r of set) {
+        try { r.write(': ping\n\n'); } catch { if (set.delete(r)) trackOpen--; }
+      }
+      if (!set.size) track.delete(id);
+    }
+  }, HEARTBEAT_MS);
+  timer.unref();
+}
+
+/* false when the caps are reached — the page then polls instead. */
+export function subscribeTrack(res, saleId) {
+  const set = track.get(saleId) || new Set();
+  if (set.size >= TRACK_PER_ORDER || trackOpen >= TRACK_TOTAL) return false;
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'private, no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Robots-Tag': 'noindex, nofollow'
+  });
+  res.write('retry: 5000\n\n');
+  res.write(`event: hello\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`);
+  set.add(res);
+  track.set(saleId, set);
+  trackOpen++;
+  const drop = () => {
+    if (!set.delete(res)) return;
+    trackOpen--;
+    if (!set.size && track.get(saleId) === set) track.delete(saleId);
+  };
+  res.on('close', drop);
+  res.on('error', drop);
+  heartbeat();
+  return true;
+}
+
+export function notifyTrack(saleIds) {
+  const body = `event: change\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`;
+  for (const id of saleIds) {
+    const set = track.get(id);
+    if (!set) continue;
+    for (const r of set) {
+      try { r.write(body); sent++; } catch { if (set.delete(r)) trackOpen--; }
+    }
+  }
+}
+
 export function subscribe(res, side, userId = null, name = null) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -46,14 +114,7 @@ export function subscribe(res, side, userId = null, name = null) {
   res.on('close', drop);
   res.on('error', drop);
 
-  if (!timer) {
-    timer = setInterval(() => {
-      for (const k of clients) {
-        try { k.res.write(': ping\n\n'); } catch { clients.delete(k); }
-      }
-    }, HEARTBEAT_MS);
-    timer.unref();
-  }
+  heartbeat();
 }
 
 /* Who is on the line right now — PEOPLE, not tabs.
@@ -98,5 +159,5 @@ export function notify(sides = 'all', payload = {}) {
 export function status() {
   const bySide = { og: 0, yalla: 0 };
   for (const c of clients) bySide[c.side] = (bySide[c.side] || 0) + 1;
-  return { open: clients.size, bySide, sent };
+  return { open: clients.size, bySide, sent, track: trackOpen };
 }
