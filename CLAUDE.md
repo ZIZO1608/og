@@ -1720,6 +1720,16 @@ same family as screenshotting a popover mid-fade.
   sticker is 30 × 30 mm and `labels60.js` was built for 60 × 40), a lint for the cap family, merge
   with no undo, a one-currency credit limit, a wants tab with no "arrived" filter. The full list
   with reasons is `CUSTOMERS.md` → "Still open".
+- **Web Push dies when the shop moves laptops.** The VAPID pair lives in `push_keys`, which is per
+  laptop and deliberately not mirrored (migration 048), and so is `push_subscriptions`. The laptop
+  that takes the baton mints a new pair, publishes its public half to config `push.public_key`, and
+  holds no subscriptions at all — so every customer's Notify me and every office bell stops
+  delivering, silently. og-track's inbox does not bring them back: follows the old laptop already
+  applied are marked done in the inbox and are never collected again. A customer's browser
+  recovers only when somebody opens the page and taps Notify me again (the page sees the key has
+  changed and subscribes afresh); the office bell has to be turned on again the same way. The fix
+  is not decided — carrying the private half across sealed the way `credvault.js` seals the
+  passwords, or re-applying recent inbox follows when a laptop claims a new lineage.
 
 ## Customers
 
@@ -2281,7 +2291,8 @@ notification to the mobile and laptop", and chose: **Web Push that arrives with 
 - **`webpush.js` is RFC 8291 + VAPID on `node:crypto`, no package.** The endpoint is a URL a
   stranger's browser sends, so **only the vendors' push hosts are ever called** (FCM, Mozilla,
   WNS, Apple), https on 443. The VAPID key pair lives in `push_keys` — not `config` (handed to every
-  login), not `.env`. `push_subscriptions` and `push_seen` are **not mirrored**, for
+  login), not `.env`. Only the PUBLIC half is also written to config `push.public_key`
+  (`Push.publishKey()` at boot), for og-track; see **og-track's inbox** below. `push_subscriptions` and `push_seen` are **not mirrored**, for
   `partner_events`' reason; `drift.js` checks only its PUSHED list, so it stays green. A 404/410 from
   a vendor deletes every row on that endpoint; eight other failures in a row delete the one row.
 - **A SCRATCH COPY MUST NOT PUSH.** A copy of `og.db` carries real customers' subscriptions — the
@@ -2404,6 +2415,57 @@ when **the customer allowed it AND the shop switched it on**; and the arrival as
   `trackflow` (41 — page, worker, manifest, live stream, follow, staff bell, who is told what) and
   `trackui` (the look at 390/820/1366 in both languages, the Live pill, a payment taken elsewhere
   landing on the open page without a reload, Notify me on and off).
+
+### og-track's inbox: the public page writes, this laptop applies (13 Sep 2026)
+
+`server/lib/inbox.js`, migration `050_inbox_applied.sql`, `Push.publishKey()` in
+`server/lib/webpush.js`, the inbox timer in `server/lib/sync-worker.js`. **og-track** is a separate
+project (Railway, its own repository) that answers `/i/<token>` from the mirror while this laptop is
+shut. It cannot reach SQLite, so a customer's review and Notify me land in Supabase's `inbox.items`
+(og-track's `sql/002_inbox.sql`: schema `inbox`, not exposed, written only through `track.review` /
+`track.push` with the publishable key) and this laptop collects them. `inbox.items` is not a mirrored
+table: `mirror.js`, `restore.js`, reconcile and drift never see it.
+
+- **Collected through the POS's own code.** `Inbox.collect()` runs after the boot's full run and every
+  minute while the worker is `live`: `track.inbox_take` (up to 50, oldest first) with the service key
+  and `Content-Profile: track` (`SB.rpc(fn, args, { schema })`), then each item through exactly what
+  the route calls — `Reviews.submit` + `Live.notify` + `Tracking.reviewed` for a review,
+  `Tracking.followOrder` / `unfollowOrder` for Notify me — then `track.inbox_done`.
+- **Only the mirror's owner collects.** Both functions answer `not_owner` to any lineage id but the
+  first word of `sync_state.lineage`; the worker sends `Lineage.localId({ create: false })`. A dev copy
+  holding the service key collects nothing and says `[inbox] not collected: not_owner` once.
+- **A refusal is reported, a failure waits.** An error with a string `code` and a 4xx `status` — the
+  shape of every `fail()` in `reviews.js` and `tracking.js` — is reported `rejected` with that code.
+  Anything else (a locked database, a bug) leaves the item pending and logs it; the next minute tries
+  again.
+- **Applied once: `inbox_applied` (050, LOCAL_ONLY).** Each decision is recorded per item AND revision
+  before it is reported, so an `inbox_done` lost to the line is reported again, not applied again.
+  `tx()` cannot nest and `Reviews.submit` has its own, so the record follows that commit: a crash in
+  between applies one item once more, which is harmless (the same review; a follow already there). A
+  newer revision — the customer edited — is a new row and is applied. Rows go after 30 days.
+- **A repeat follow greets nobody.** `followOrder` sends the "notifications are on" push only when this
+  browser did not already follow this order — on the POS's own page as well. The row is still saved
+  again, so fresh keys and a changed language take effect.
+- **The page's push key comes from config.** `Push.publishKey()` writes the public half to
+  `push.public_key` at boot — after the pull, so a laptop that took the baton replaces the other
+  laptop's key — and only when it differs; the settings lane mirrors it and og-track's `track.page`
+  hands it to the page. No key in config, no Notify me card on og-track. `CONFIG_WRITABLE` does not
+  match `push.*`. What becomes of subscriptions when the laptop changes is in **Known open work**.
+- **`supabase:check`'s LOCAL_ONLY** also names `push_keys`, `push_subscriptions` and `push_seen` (048),
+  which it had been reporting as missing mirror tables on every run, and `inbox_applied`.
+- **Bookkeeping never costs a pass its answer.** Recording, marking reported and the 30-day prune are
+  each best-effort: an item already applied is reported even if its record did not land, because the
+  report is what stops it being applied again.
+- **How it was verified**: 23 checks on a `VACUUM INTO` copy of the live database, with a local
+  stand-in for `inbox_take` / `inbox_done` (the script refuses to run unless `lib/supabase.js` points
+  at it) and `OG_PUSH_TEST_HOST` on a local receiver — migration 050, `publishKey` once and replacing
+  another laptop's key, no lineage and `not_owner` collecting nothing, a review applied and reported
+  with the service key and `Content-Profile: track`, a follow whose report was dropped reported next
+  pass without a second apply or greeting, a repeat follow greeting nobody, unfollow, a returning
+  browser greeted again, `not_delivered` / `bad_subscription` / `not_found` / `unsupported` reported
+  with their codes, a locked database leaving an edit pending then applied, the prune, and nothing
+  but those two functions called. The locked-database check is what found the prune taking a whole
+  pass down with it. The copy was deleted afterwards.
 
 ## The dashboard
 

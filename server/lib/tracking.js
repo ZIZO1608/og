@@ -246,15 +246,25 @@ export function followOrder(sale, body) {
   if (!sub) throw fail('that is not a push subscription this server can use', 'bad_subscription');
   const d = get();
   const lang = langOf(body.lang);
+  /* Asked before saving, because saving replaces the row. */
+  const already = !!d.prepare(
+    `SELECT 1 FROM push_subscriptions WHERE endpoint = ? AND audience = 'track' AND sale_id = ?`
+  ).get(sub.endpoint, sale.id);
   const row = saveSub(d, sub, 'track', sale.id, null, lang);
   /* Everything on the page right now is not news to the person looking at it. */
   if (!d.prepare('SELECT 1 FROM push_seen WHERE sale_id = ?').get(sale.id)) {
     remember(d, sale.id, Receipt.events(sale, 'en'));
   }
   /* The first notification arrives at once and says what it is for — the
-     proof, on the customer's own phone, that the button worked. */
-  deliver(row, Receipt.pushText(sale, lang, null, { audience: 'track', hello: true }), 'o' + sale.id)
-    .catch(() => {});
+     proof, on the customer's own phone, that the button worked. Only the
+     FIRST time this browser follows this order: a second tap, or og-track's
+     inbox (lib/inbox.js) delivering a follow that is already here, would be a
+     "notifications are on" at a random hour, which is noise. The row is still
+     saved again, so new keys or a new language take effect. */
+  if (!already) {
+    deliver(row, Receipt.pushText(sale, lang, null, { audience: 'track', hello: true }), 'o' + sale.id)
+      .catch(() => {});
+  }
   return { on: true };
 }
 

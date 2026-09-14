@@ -46,6 +46,13 @@
    `shop` heartbeat every two minutes, which is how the next laptop tells
    "closed last night" from "working right now".
 
+   AND IT COLLECTS OG-TRACK'S INBOX. While live — once after the boot run,
+   then every minute — lib/inbox.js takes the reviews and Notify me that the
+   public tracking page queued in Supabase while this laptop was shut, and
+   applies them through the shop's own code. One pass at a time, beside the
+   push lane rather than inside it; Supabase itself refuses a laptop that
+   does not own the mirror.
+
    Off in one case only: no Supabase configured (or OG_SYNC_MINUTES=0, which
    means "by hand only", as it always has). Then this file does nothing at
    all and says so once.
@@ -58,6 +65,7 @@ import * as Live from './live.js';
 import * as PanelLink from './panel-link.js';
 import * as Lineage from './lineage.js';
 import * as Mirror from './mirror.js';
+import * as Inbox from './inbox.js';
 
 const DEFAULT_FULL_MINUTES = 60;
 const FIRST_RUN_MS = 20 * 1000;      /* boot is the busiest second the machine has */
@@ -65,6 +73,7 @@ const DEBOUNCE_MS = 2 * 1000;
 const TICK_MS = 10 * 1000;
 const RECHECK_LINEAGE_MS = 10 * 60 * 1000;
 const HEARTBEAT_MS = 2 * 60 * 1000;   /* lib/lineage.js STALE_MS is five of these */
+const INBOX_MS = 60 * 1000;           /* og-track's inbox, lib/inbox.js */
 const BACKOFF_MIN_MS = 10 * 1000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 
@@ -92,6 +101,9 @@ let tick = null;
 let fullTimer = null;
 let lineageTimer = null;
 let heartbeatTimer = null;
+let inboxTimer = null;
+let inboxBusy = false;
+let inboxFailing = false;
 let unhook = null;
 
 export function fullMinutes() {
@@ -277,6 +289,8 @@ async function boot() {
      server left behind and seeds the settings hashes the fast lane compares
      against. */
   await run('full');
+  /* Then whatever og-track's inbox gathered while the laptop was shut. */
+  collectInbox();
 }
 
 function arm() {
@@ -289,6 +303,8 @@ function arm() {
   fullTimer.unref();
   heartbeatTimer = setInterval(beat, HEARTBEAT_MS);
   heartbeatTimer.unref();
+  inboxTimer = setInterval(collectInbox, INBOX_MS);
+  inboxTimer.unref();
 }
 
 /* "Still here." Only while live and idle; a failure says nothing — the next
@@ -296,6 +312,36 @@ function arm() {
 function beat() {
   if (state.mode !== 'live' || state.busy) return;
   SB.update('sync_state', { id: 'shop' }, { last_push_at: new Date().toISOString() }).catch(() => {});
+}
+
+/* og-track's inbox (lib/inbox.js): the reviews and Notify me customers left on
+   the public tracking page while this laptop was shut. Only while live, and
+   one pass at a time. It sends this database's lineage id and lets Supabase
+   decide whether this laptop owns the mirror. A failure is said once, not
+   every minute, and a pass that found nothing says nothing. */
+async function collectInbox() {
+  if (state.mode !== 'live' || inboxBusy) return;
+  inboxBusy = true;
+  try {
+    const out = await Inbox.collect({ lineage: Lineage.localId({ create: false }) });
+    if (out.error || out.skipped) {
+      if (!inboxFailing) console.log(`  [inbox] not collected: ${out.error || out.skipped}`);
+      inboxFailing = true;
+      return;
+    }
+    if (inboxFailing) console.log('  [inbox] collecting again');
+    inboxFailing = false;
+    if (out.applied || out.rejected || out.pending || out.unreported) {
+      console.log(`  [inbox] applied ${out.applied}, rejected ${out.rejected}` +
+                  (out.pending ? `, ${out.pending} left pending` : '') +
+                  (out.unreported ? ` — not reported back yet: ${out.unreported}` : ''));
+    }
+  } catch (err) {
+    if (!inboxFailing) console.log(`  [inbox] not collected: ${reason(err)}`);
+    inboxFailing = true;
+  } finally {
+    inboxBusy = false;
+  }
 }
 
 /* What the boot pull did, for the status line and the Settings fold. */
@@ -373,6 +419,7 @@ export function stop() {
   if (fullTimer) { clearInterval(fullTimer); fullTimer = null; }
   if (lineageTimer) { clearInterval(lineageTimer); lineageTimer = null; }
   if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+  if (inboxTimer) { clearInterval(inboxTimer); inboxTimer = null; }
   if (unhook) { unhook(); unhook = null; }
   state.mode = 'off';
 }

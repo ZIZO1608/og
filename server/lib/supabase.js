@@ -248,9 +248,13 @@ export async function remove(table, match) {
    separate HTTP calls are six separate transactions, and a sale that writes
    stock but loses the invoice is exactly the failure this project's schema
    was designed to make impossible. */
-export async function rpc(fn, args = {}) {
+/* `schema` addresses a function outside `public`: PostgREST takes the schema
+   from the Content-Profile header, never from the path — track.inbox_take is
+   POST rpc/inbox_take with Content-Profile: track (lib/inbox.js). */
+export async function rpc(fn, args = {}, { schema = null } = {}) {
   const { body } = await call(`rpc/${fn}`, {
     method: 'POST',
+    headers: schema ? { 'Content-Profile': schema } : undefined,
     body: JSON.stringify(args)
   });
   return body;

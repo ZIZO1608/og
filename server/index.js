@@ -3241,6 +3241,15 @@ if (runDirectly) {
     /* Who a push service writes to when something is wrong with our pushes:
        the shop's own https address when it has one. */
     try { Push.setContact(Orders.publicBase()); } catch { /* the default stands */ }
+    /* og-track's page subscribes browsers with this laptop's public key, which
+       it reads from the mirror's config. Here, after the boot pull has settled,
+       so a shop pulled from another laptop replaces that laptop's key with its
+       own before anything mirrors it. */
+    try {
+      if (Push.publishKey()) console.log('  Web Push: public key published to config push.public_key');
+    } catch (e) {
+      console.log(`  Web Push: could not publish the public key — ${e.message}`);
+    }
 
     /* The panel is watching a pipe, not this window. Everything it needs to
        stop saying "starting…" and start drawing the shop: the addresses to

@@ -181,11 +181,18 @@ const db = DB.get();
    accepted" to two phones would be a bug, so the sync leaves it out on
    purpose — and this list must agree, or the check reports the design as a
    missing table every run. sync_local (038) is this machine's own record of
-   what it has pushed — bookkeeping about the mirror, never part of it. */
+   what it has pushed — bookkeeping about the mirror, never part of it.
+   push_keys, push_subscriptions and push_seen (048) are Web Push state: the
+   private key never leaves this laptop, and every subscription is bound to it.
+   Left off this list they read as missing mirror tables on every run, which
+   is exactly the false alarm this list exists to prevent. inbox_applied (050)
+   is this machine's record of what it did with og-track's inbox. */
 const LOCAL_ONLY = new Set(['sessions', 'login_attempts', 'applied_ops',
                             'label_print_jobs', 'label_code_seq',
                             'schema_migrations', 'change_log',
-                            'partner_events', 'sync_local']);
+                            'partner_events', 'sync_local',
+                            'push_keys', 'push_subscriptions', 'push_seen',
+                            'inbox_applied']);
 
 /* Columns that exist here and MUST NOT exist there. The column check below
    would otherwise report the most important security property of this mirror

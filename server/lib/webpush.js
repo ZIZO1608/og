@@ -66,6 +66,23 @@ export function keys() {
 
 export function publicKey() { return keys().publicKey; }
 
+/* The public half, published to config `push.public_key` so the mirror
+   carries it to og-track, whose page subscribes browsers with it. Written only
+   when it differs: a laptop that pulled the shop from another brings that
+   laptop's key in config and replaces it here with its own. The private half
+   never leaves push_keys (rule 3). True when something was written. */
+export function publishKey() {
+  const key = keys().publicKey;
+  const d = get();
+  const row = d.prepare("SELECT value FROM config WHERE key = 'push.public_key'").get();
+  if (row && row.value === key) return false;
+  d.prepare(
+    `INSERT INTO config (key, value, updated_at) VALUES ('push.public_key', ?, ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).run(key, nowIso());
+  return true;
+}
+
 /* -------------------------------------------------------------- endpoints */
 
 const SERVICES = [
