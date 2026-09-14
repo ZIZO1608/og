@@ -1730,6 +1730,23 @@ same family as screenshotting a popover mid-fade.
   changed and subscribes afresh); the office bell has to be turned on again the same way. The fix
   is not decided — carrying the private half across sealed the way `credvault.js` seals the
   passwords, or re-applying recent inbox follows when a laptop claims a new lineage.
+- **No ACTIVE account has the delivery bell on, so the office gets no order or review alerts at
+  all** (checked 14 Sep 2026). The only staff subscription belongs to `hussam` (user 1), disabled
+  with the other old test accounts on 13 Sep. `Auth.can()` is false for an inactive account, so
+  `tracking.js` skips that row before sending — correct behaviour, and silent: `fails` stays 0,
+  `last_ok_at` stops moving, nothing is logged. The active managers, `owner` (7) and `zaren` (10),
+  have never turned the bell on. Somebody has to, signed in as themselves, on the Deliveries board —
+  and staff alerts skip the person who made the change, so the account that enters the orders is not
+  the one whose phone will hear about them.
+- **Staff push gets harder once the shop is LAN-only — a Phase C consequence.** The bell subscribes
+  through the app's `sw.js`, and a browser registers a service worker only on an origin it TRUSTS.
+  A self-signed certificate somebody pressed "continue" on is enough to open the page, not to
+  register the worker, so the bell cannot be offered at all. On the till `npm run cert:trust` puts
+  the certificate in Windows' trusted list; every other office device would need it installed and
+  trusted by hand (an iPhone also needs full trust switched on in Settings, and push there only
+  works from the app added to the Home Screen). Delivery still needs outbound internet: from the
+  laptop to the push services, and from each device to its vendor. Decide how office alerts work
+  before the public address leaves this laptop.
 
 ## Customers
 
