@@ -46,8 +46,6 @@ export const STR = {
     toPayShort: (a) => `${a} عند الاستلام`,
     andMore: (n) => `و${n} غيرها`,
     pushOn: (id) => `ستصلك إشعارات عند تحرّك الطلب ${id}.`,
-    staffTitle: 'مكتب التوصيل', staffOn: 'تنبيهات الطلبات مفعّلة على هذا الجهاز.', newOrder: 'طلب جديد',
-    reviewNew: 'تقييم جديد', reviewEdited: 'تعديل على تقييم',
     rateAsk: 'كيف كانت تجربتك؟ قيّم التوصيل', rateBtn: 'قيّم التوصيل',
     /* the review card */
     rvYours: 'تقييمك', rvTitle: 'كيف كانت تجربة التوصيل؟', rvSub: 'رأيك يساعدنا نصير أحسن.',
@@ -132,8 +130,6 @@ export const STR = {
     toPayShort: (a) => `${a} to pay on delivery`,
     andMore: (n) => `+${n} more`,
     pushOn: (id) => `You will be notified when ${id} moves.`,
-    staffTitle: 'Delivery office', staffOn: 'Order alerts are on for this device.', newOrder: 'New order',
-    reviewNew: 'New review', reviewEdited: 'Review changed',
     rateAsk: 'How was it? Rate your delivery', rateBtn: 'Rate it',
     rvYours: 'Your review', rvTitle: 'How was your delivery?', rvSub: 'Your review helps us get better.',
     rvStars: ['Terrible', 'Bad', 'OK', 'Good', 'Excellent'],

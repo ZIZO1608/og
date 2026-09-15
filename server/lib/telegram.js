@@ -126,9 +126,16 @@ const KIND_GROUPS = {
   yl:    ['rem_yl_order_waiting', 'rem_yl_due', 'rem_yl_due_tomorrow', 'rem_yl_blocked',
           'rem_yl_digest', 'rem_yl_week', 'rem_yl_pay_wait'],
   live:  ['order_new', 'order_accepted', 'order_declined', 'stage', 'names_ready',
-          'message', 'invoice_new', 'payment_recorded', 'payment_confirmed', 'review']
+          'message', 'invoice_new', 'payment_recorded', 'payment_confirmed', 'review'],
+  /* The delivery office's order alerts (052, lib/office-alerts.js) — what the
+     Deliveries board's Web Push bell used to say. Gated harder than any other
+     group: see officeWants(). */
+  office: ['dl_new', 'dl_paid', 'dl_out', 'dl_back', 'dl_delivered', 'dl_failed',
+           'dl_cancelled', 'dl_review', 'dl_handin']
 };
 export const ALL_KINDS = Object.keys(KIND_GROUPS).reduce((a, g) => a.concat(KIND_GROUPS[g]), []);
+export const OFFICE_KINDS = KIND_GROUPS.office;
+const isOffice = (kind) => OFFICE_KINDS.indexOf(kind) > -1;
 
 /* THE MONEY ONES, OFF ON A NEW CHAT. Somebody in the warehouse links their
    phone to hear about stock and must not be handed the day's takings because
@@ -136,7 +143,9 @@ export const ALL_KINDS = Object.keys(KIND_GROUPS).reduce((a, g) => a.concat(KIND
    whoever owns the shop, on a screen that names the chat it is doing it to. */
 const MONEY_KINDS = ['rem_day_close', 'rem_cash_variance', 'rem_og_digest',
                      'rem_dead_stock', 'rem_driver_cash'];
-export const DEFAULT_RULES = ALL_KINDS.filter((k) => MONEY_KINDS.indexOf(k) < 0);
+/* Nor the office's order alerts: a new group is somebody's stock room, and
+   what an order is doing is chosen for a room deliberately or not at all. */
+export const DEFAULT_RULES = ALL_KINDS.filter((k) => MONEY_KINDS.indexOf(k) < 0 && !isOffice(k));
 
 export function kindGroups() { return KIND_GROUPS; }
 
@@ -154,7 +163,10 @@ export function kindGroups() { return KIND_GROUPS; }
    THE ONE EXCEPTION IS MONEY. A kind that carries takings is never granted by
    a default, an upgrade, or anything but somebody ticking it deliberately on a
    screen that names the chat. Same instinct as DEFAULT_RULES, same reason. */
-const RULES_VERSION = 3;
+/* 4 (052): the office group. A choice saved at 4 or later was made with the
+   order alerts on the screen, so "everything" there includes them — see
+   officeWants(), which reads it for a chat that belongs to nobody. */
+const RULES_VERSION = 4;
 /* kind -> the version that introduced it. A chat whose saved list predates a
    kind accepts it; a chat saved since then said no to it deliberately. */
 const KIND_SINCE = {
@@ -232,6 +244,49 @@ function wants(chat, kind) {
   return MONEY_KINDS.indexOf(kind) < 0 && newerThanChoice(chat, kind);
 }
 
+/* THE OFFICE'S ORDER ALERTS HAVE A HARD GATE, and wants() is not it.
+
+   A PHONE WITH A PERSON BEHIND IT hears an order alert only while that account
+   can work the delivery office (Auth.can: false for a disabled account too) —
+   whatever is ticked, whatever its role's preset says. An order alert names
+   the order, what is owed on it and who carries it; that is the delivery desk's
+   business, and a chat is not a way past the permission the board is gated on.
+   Then its rules decide, with no upgrade grant: nobody is handed the office's
+   traffic because a kind is newer than their last choice.
+
+   A CHAT WITH NO PERSON — a group, or a phone linked before anybody recorded
+   whose it is — has no account to ask, so it hears only what somebody chose for
+   it by hand: an explicit list naming the kind, or "everything" chosen since
+   the office group existed (rulesV 4). A chat carried forward from before
+   hears nothing, and the card says why (status(), `office.why`). */
+function officeWants(chat, kind) {
+  if (!chat) return false;
+  if (chat.person != null) {
+    const u = personOf(chat);
+    if (!u || !Auth.can(u, 'delivery.desk')) return false;
+    const rules = effectiveRules(chat);
+    return !Array.isArray(rules) || rules.indexOf(kind) > -1;
+  }
+  if (Array.isArray(chat.rules)) return chat.rules.indexOf(kind) > -1;
+  return chat.rules == null && (Number(chat.rulesV) || 0) >= 4;
+}
+
+/* WHY A CHAT GETS NO ORDER ALERTS, in a word the card turns into a sentence
+   and a fix. The owner's own phone silently receiving nothing is a trap — it
+   reads as the bot being broken — so every chat on the shop's side says what
+   it gets or why it gets none. */
+function officeFor(chat) {
+  const gets = OFFICE_KINDS.filter((k) => officeWants(chat, k));
+  if (gets.length) return { gets, why: null };
+  if (chat.person != null) {
+    const u = personOf(chat);
+    return { gets, why: !u || !u.active ? 'owner_off'
+                     : !Auth.can(u, 'delivery.desk') ? 'no_desk' : 'not_ticked' };
+  }
+  const room = chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel';
+  return { gets, why: room ? 'room_not_ticked' : 'no_owner' };
+}
+
 /* IS THIS ROW FOR THIS CHAT. `to_user` null is every row that exists today:
    the whole side, unchanged. An addressed row reaches the person it names —
    and whoever runs the shop, which is the owner's decision and is also what
@@ -287,7 +342,12 @@ export const KIND_PERM = {
   rem_customer_quiet: 'customer.read',
   invoice_new: 'money.read',
   payment_recorded: 'money.read',
-  payment_confirmed: 'money.read'
+  payment_confirmed: 'money.read',
+  /* Unlike every row above, these are ENFORCED — officeWants() — and listed
+     here so the picker says so beside the box. */
+  dl_new: 'delivery.desk', dl_paid: 'delivery.desk', dl_out: 'delivery.desk',
+  dl_back: 'delivery.desk', dl_delivered: 'delivery.desk', dl_failed: 'delivery.desk',
+  dl_cancelled: 'delivery.desk', dl_review: 'delivery.desk', dl_handin: 'delivery.desk'
 };
 
 /* A PRIVATE CHAT LINKED BEFORE `person` EXISTED IS STILL SOMEBODY'S PHONE.
@@ -387,7 +447,18 @@ function addChat(side, chat, by, userId) {
      message. Refreshed in place, never appended twice — and it keeps the
      rules it already had, or re-linking would silently reset somebody's
      choices to the default. */
-  if (at >= 0) { list[at] = { ...list[at], title: entry.title, type: entry.type }; return { list: setChats(side, list), already: true }; }
+  if (at >= 0) {
+    /* RECONNECTING IS HOW A PHONE GETS AN OWNER. A private chat linked before
+       anybody recorded whose it was has no person, and so hears no order
+       alerts (officeWants); its owner signing in and sending their own code
+       from it is the fix the card offers. Only a private chat with no person
+       yet — never a group, never somebody else's phone — and its rules stay. */
+    const was = list[at];
+    const own = entry.type === 'private' && was.person == null && userId != null
+      ? { person: Number(userId), userId: Number(userId) } : {};
+    list[at] = { ...was, title: entry.title, type: entry.type, ...own };
+    return { list: setChats(side, list), already: true };
+  }
   list.push(entry);
   return { list: setChats(side, list), already: false };
 }
@@ -476,6 +547,25 @@ const STAGE_AR = { design: 'التصميم', sent: 'استلمتها المطب�
 const STAGE_EN = { design: 'Design', sent: 'Taken by the printer', printing: 'Printing', delivery: 'On its way', done: 'Done' };
 const KIND_AR = { note: 'ملاحظة', nudge: 'تذكير', delay: 'تأخير', 'name-request': 'طلب أسماء', reply: 'رد', reminder: 'تذكير', invoice: 'فاتورة' };
 
+/* How an order travels, worded for a sentence: the company by name where there
+   is one, otherwise the method. */
+const DL_VIA = {
+  ar: { driver: 'مع سائقنا', office: 'عبر مكتب نقل', courier: 'عبر شركة شحن', abroad: 'شحن للخارج', pickup: 'استلام من المحل' },
+  en: { driver: 'with our own driver', office: 'via a transport office', courier: 'via a courier', abroad: 'shipping abroad', pickup: 'pickup at the shop' }
+};
+function dlVia(a, lang) {
+  if (a.company && a.method !== 'driver' && a.method !== 'pickup') {
+    return lang === 'ar' ? ` — عبر ${a.company}` : ` — via ${a.company}`;
+  }
+  const w = DL_VIA[lang][a.method];
+  return w ? ' — ' + w : '';
+}
+function dlMore(a, lang) {
+  const n = Number(a.more) || 0;
+  if (n < 1) return '';
+  return lang === 'ar' ? `${BR}و${n} تحديث آخر على الطلب نفسه.` : `${BR}and ${n} more update(s) on the same order.`;
+}
+
 const TEMPLATES = {
   order_new: (a) => ({
     ar: `🧵 طلب طباعة جديد ${a.id} — ${a.qty} قطعة` + (a.deadline ? `، التسليم ${fmtDate(a.deadline)}` : '') +
@@ -519,6 +609,59 @@ const TEMPLATES = {
     ar: `⭐ تقييم OG للطلب ${a.id}: ${'★'.repeat(a.rating)}${'☆'.repeat(5 - a.rating)}` + (a.feedback ? `\n${a.feedback}` : ''),
     en: `OG rated ${a.id}: ${'★'.repeat(a.rating)}${'☆'.repeat(5 - a.rating)}` + (a.feedback ? `\n${a.feedback}` : '')
   }),
+  /* ---- the delivery office (052, lib/office-alerts.js) --------------------
+     Pre-formatted money (the currency's own decimals), the order number, how
+     it travels. NEVER the customer: see office-alerts.js. `more` is the rest
+     of a batch the lead event stands for. */
+  dl_new: (a) => ({
+    ar: `🛍 طلب جديد ${a.id}` + dlVia(a, 'ar') + (a.left ? `${BR}المتبقي: ${a.left}` : '') + dlMore(a, 'ar'),
+    en: `New order ${a.id}` + dlVia(a, 'en') + (a.left ? `${BR}Still to pay: ${a.left}` : '') + dlMore(a, 'en')
+  }),
+  dl_paid: (a) => ({
+    ar: (a.refund ? `↩️ استرداد${a.amount ? ' ' + a.amount : ''} على الطلب ${a.id}`
+                  : `💵 دفعة${a.amount ? ' ' + a.amount : ''} على الطلب ${a.id}`) +
+        (a.left ? `${BR}المتبقي: ${a.left}` : (a.refund ? '' : `${BR}مدفوع بالكامل.`)) + dlMore(a, 'ar'),
+    en: (a.refund ? `Refund${a.amount ? ' of ' + a.amount : ''} on order ${a.id}`
+                  : `Payment${a.amount ? ' of ' + a.amount : ''} on order ${a.id}`) +
+        (a.left ? `${BR}Still to pay: ${a.left}` : (a.refund ? '' : `${BR}Paid in full.`)) + dlMore(a, 'en')
+  }),
+  dl_out: (a) => ({
+    ar: `🚚 خرج الطلب ${a.id}` + dlVia(a, 'ar') + (a.left ? `${BR}يُحصَّل عند التسليم: ${a.left}` : '') + dlMore(a, 'ar'),
+    en: `Order ${a.id} is out` + dlVia(a, 'en') + (a.left ? `${BR}To collect at the door: ${a.left}` : '') + dlMore(a, 'en')
+  }),
+  dl_back: (a) => ({
+    ar: `↩️ رجع الطلب ${a.id} إلى المحل.` + dlMore(a, 'ar'),
+    en: `Order ${a.id} came back to the shop.` + dlMore(a, 'en')
+  }),
+  dl_delivered: (a) => ({
+    ar: (a.method === 'pickup' ? `✅ استلم الزبون الطلب ${a.id} من المحل.` : `✅ وصل الطلب ${a.id}` + dlVia(a, 'ar') + '.') +
+        (a.left ? `${BR}ما زال مستحقاً: ${a.left}` : '') + dlMore(a, 'ar'),
+    en: (a.method === 'pickup' ? `Order ${a.id} was collected from the shop.` : `Order ${a.id} was delivered` + dlVia(a, 'en') + '.') +
+        (a.left ? `${BR}Still owed: ${a.left}` : '') + dlMore(a, 'en')
+  }),
+  dl_failed: (a) => ({
+    ar: `⚠️ تعذّر تسليم الطلب ${a.id}` + dlVia(a, 'ar') + `.${BR}يحتاج متابعة.` + dlMore(a, 'ar'),
+    en: `Delivery failed for order ${a.id}` + dlVia(a, 'en') + `.${BR}It needs following up.` + dlMore(a, 'en')
+  }),
+  dl_cancelled: (a) => ({
+    ar: `❌ أُلغي الطلب ${a.id}.${BR}إن كان مُجهّزاً فلا تُسلّمه.`,
+    en: `Order ${a.id} was cancelled.${BR}If it is packed, do not hand it over.`
+  }),
+  dl_review: (a) => {
+    const n = Math.max(0, Math.min(5, Number(a.stars) || 0));
+    const stars = '★'.repeat(n) + '☆'.repeat(5 - n);
+    return {
+      ar: `⭐ ${a.edited ? 'تعديل على تقييم' : 'تقييم جديد'} للطلب ${a.id}: ${stars}` + (a.words ? `${BR}«${a.words}»` : ''),
+      en: `${a.edited ? 'Review changed' : 'New review'} on order ${a.id}: ${stars}` + (a.words ? `${BR}"${a.words}"` : '')
+    };
+  },
+  dl_handin: (a) => ({
+    ar: `💰 سُلّمت نقدية: ${a.amounts}` + (a.driver ? ` من ${a.driver}` : '') + ` — ${a.orders} طلب.` +
+        (a.noShift ? `${BR}لا وردية مفتوحة، فلم تدخل أي درج.` : ''),
+    en: `Cash handed in: ${a.amounts}` + (a.driver ? ` from ${a.driver}` : '') + ` — ${a.orders} order(s).` +
+        (a.noShift ? `${BR}No shift is open, so it is in no drawer.` : '')
+  }),
+
   test: () => ({
     ar: '🔔 رسالة تجريبية من نظام OG — التنبيهات تعمل.',
     en: 'Test message from OG System — notifications are working.'
@@ -849,6 +992,11 @@ function publicBase() {
 }
 
 function linkFor(kind, a) {
+  /* NOT FOR THE OFFICE'S ORDER ALERTS. The base is the public tunnel hostname,
+     which dies when the shop goes LAN-only (Phase C) — a link that opens
+     nothing is worse than none — and the people these go to have the board
+     open anyway. The order number is in the sentence. */
+  if (isOffice(kind)) return null;
   const base = publicBase();
   if (!base) return null;
   if (a && a.id && JOB_LINK_KINDS.indexOf(kind) > -1) {
@@ -981,7 +1129,21 @@ async function drain() {
          one place both the reminders and the real-time events pass through,
          so there is exactly one copy of the rule. */
       const nowMs = Date.now();
-      const wanted = list.filter((c) => wants(c, row.kind) && addressed(c, row.to_user));
+      const gate = isOffice(row.kind) ? officeWants : wants;
+      const subscribed = list.filter((c) => gate(c, row.kind) && addressed(c, row.to_user));
+      /* NOT THE PERSON WHO DID IT (052). Somebody who just pressed Delivered
+         does not need their own phone buzzing to say so. A column rather than
+         a key in args_json, because render() prints args.actor as a signature
+         and routing is not part of the message. Only a chat with a person can
+         be recognised — a group may hold them, and that is the room's choice. */
+      let skip = [];
+      if (row.skip_users) {
+        try { const v = JSON.parse(row.skip_users); if (Array.isArray(v)) skip = v.map(Number); }
+        catch { /* unreadable: nobody is skipped */ }
+      }
+      const wanted = skip.length
+        ? subscribed.filter((c) => c.person == null || skip.indexOf(Number(c.person)) < 0)
+        : subscribed;
       const targets = wanted.filter((c) => !mutedNow(c, row.kind, nowMs));
 
       /* THREE WAYS TO HAVE NO TARGET, AND THEY ARE NOT THE SAME THING.
@@ -1013,7 +1175,9 @@ async function drain() {
       if (!targets.length) {
         DB.tx((db) => {
           db.prepare('UPDATE partner_events SET sent_at = ?, error = ? WHERE id = ?')
-            .run(nowIso(), row.to_user != null
+            .run(nowIso(), subscribed.length
+                   ? 'only the person who did it subscribes to ' + row.kind
+                   : row.to_user != null
                    ? 'nobody on this side is addressed by this row'
                    : 'no chat on this side is subscribed to ' + row.kind, row.id);
         });
@@ -1303,6 +1467,26 @@ async function pollLoop(side) {
 
 export function isConfigured() { return SIDES.some((s) => !!token(s)); }
 
+/* IS THERE A BOT AND A CHAT AT ALL — the gate the office's order alerts are
+   queued behind, and deliberately NOT canReach().
+
+   canReach asks "does any chat want this KIND", which is right for a reminder:
+   the row IS the dedupe ledger, so queueing one nobody has subscribed to would
+   spend that occasion for ever and the evening it describes never comes back.
+   An order alert is news about one event that has already happened — its key
+   can never recur (push_seen) — so there is nothing to spend, and a row that
+   reaches drain() with no subscriber is marked sent with the reason in as many
+   words. That is a record of a thing that happened and was heard by nobody,
+   which is exactly what somebody debugging "why did my phone not buzz" needs.
+
+   What this DOES refuse is a shop with no bot or no chat linked, because
+   drain() skips such a row without bumping it (`!token(side) || !list.length`)
+   and it would sit in the queue for ever, counted on the Telegram card as a
+   backlog nobody can clear. */
+export function canQueue(side) {
+  return !!token(side) && chats(side).length > 0;
+}
+
 /* Is this chat one of the ones this side sends to? THE LINKED LIST IS THE
    AUTHORISATION — a Telegram chat carries no session, so there is nothing
    else to check a command against. Exported for lib/telegram-commands.js. */
@@ -1399,7 +1583,8 @@ export function canReach(side, opts) {
      marked sent — and the row IS the dedupe ledger, so the occasion was spent.
      Subscribe tomorrow and that evening never came back. Asking here instead
      means the key survives and lands the day somebody ticks the box. */
-  const wanted = list.filter((c) => wants(c, opts.kind));
+  const gate = isOffice(opts.kind) ? officeWants : wants;
+  const wanted = list.filter((c) => gate(c, opts.kind));
   if (!wanted.length) return false;
 
   /* ADDRESSED TO SOMEBODY WITH NO PHONE. Reported rather than refused, so the
@@ -1587,7 +1772,10 @@ export function status() {
                   that carries money the account could not open on a screen.
                   No leak: GET /api/roles hands the same matrix to everybody. */
                personPerms: u ? Auth.permissionsFor(u.role) : null,
-               effective: effectiveRules(c) };
+               effective: effectiveRules(c),
+               /* Which order alerts it actually gets, or the reason for none —
+                  the shop's side only; Yalla Wear has no delivery office. */
+               office: s === 'og' ? officeFor(c) : undefined };
     });
     out[s] = {
       configured: !!token(s),

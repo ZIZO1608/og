@@ -106,7 +106,6 @@ var Deliveries = (function () {
     handover: 'M9 3.5h6v3H9zM7.5 5H5v15.5h14V5h-2.5M8.5 13l2.5 2.5 4.5-5',
     search:   'M10.5 18a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15M16 16l5 5',
     refresh:  'M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4',
-    bell:     'M6 16v-5a6 6 0 1 1 12 0v5l2 2H4l2-2zM10 20a2 2 0 0 0 4 0',
     wa:       'M3.5 20.5l1.3-4A8.5 8.5 0 1 1 8.2 19.4l-4.7 1.1zM9 8.6c.2 3.4 2.9 6.2 6.4 6.4l1-1.6-2.1-1-.9.8a4.4 4.4 0 0 1-1.9-1.9l.8-.9-1-2.1L9 8.6z',
     lanes:    'M4 4h4v16H4zM10 4h4v10h-4zM16 4h4v13h-4z',
     list:     'M4 6h16M4 12h16M4 18h16',
@@ -623,7 +622,7 @@ var Deliveries = (function () {
   function boardView() {
     var h = '<div class="page-head"><div><h1>' + t('dl_title') + '</h1>' +
       '<div class="sub">' + t('dl_sub') + '</div></div>' +
-      '<div class="head-actions">' + pushButton() +
+      '<div class="head-actions">' +
         '<button class="btn btn-ghost btn-sm dlb-refresh" data-act="dl-reload" title="' + esc(t('dlp_refresh')) + '" ' +
           'aria-label="' + esc(t('dlp_refresh')) + '">' + svg(ICON.refresh) + '</button>' +
         ifNav('desk', '<button class="btn btn-primary btn-sm" data-act="nav" data-view="desk">+ ' + t('dk_new') + '</button>') +
@@ -638,77 +637,11 @@ var Deliveries = (function () {
     return h + cappedNote(cap, t('nav_deliveries').toLowerCase());
   }
 
-  /* --------------------------------------------------- the office's alerts
-     Web Push to THIS browser whenever an order moves, even with the app
-     closed — server/lib/tracking.js decides what is news, sw.js shows it.
-     The state comes from the browser's own subscription CONFIRMED by the
-     server, because a subscription the server has dropped (the vendor said
-     410) must not go on looking lit. The bell repaints itself alone and never
-     through render(), which would take the board's scroll with it. */
-  var push = { state: 'unknown', busy: false };
-
-  function pushSupported() {
-    return !!(window.isSecureContext && 'serviceWorker' in navigator &&
-      'PushManager' in window && 'Notification' in window);
-  }
-  function pushTitle() { return t(push.state === 'on' ? 'dlp_push_title_on' : 'dlp_push_title_off'); }
-  function pushButton() {
-    if (typeof Auth !== 'undefined' && !Auth.can('delivery.desk')) return '';
-    return '<button class="btn btn-ghost btn-sm dlb-push' + (push.state === 'on' ? ' is-on' : '') +
-      '" data-act="dl-push"' + (push.busy ? ' disabled' : '') +
-      ' title="' + esc(pushTitle()) + '" aria-label="' + esc(pushTitle()) + '"' +
-      ' aria-pressed="' + (push.state === 'on' ? 'true' : 'false') + '">' + svg(ICON.bell) +
-      '<span>' + esc(t(push.state === 'on' ? 'dlp_push_on' : 'dlp_push_off')) + '</span></button>';
-  }
-  function pushPaint() {
-    var b = document.querySelector('.dlb-push');
-    if (b) b.outerHTML = pushButton();
-  }
-  /* The app's own worker, registered by index.html. Raced against a timer: a
-     worker that never installed would otherwise leave the bell disabled. */
-  function pushReg() {
-    return Promise.race([
-      navigator.serviceWorker.ready,
-      new Promise(function (res, rej) {
-        setTimeout(function () { rej(new Error('the service worker is not running')); }, 8000);
-      })
-    ]);
-  }
-  function pushBytes(b64) {
-    var pad = new Array((4 - b64.length % 4) % 4 + 1).join('=');
-    var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
-    var out = new Uint8Array(raw.length);
-    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-    return out;
-  }
-  /* Made with a key the server no longer holds (a restored laptop mints its
-     own): undeliverable for ever, so it is replaced rather than reused. */
-  function pushSameKey(sub, key) {
-    try {
-      var k = sub.options && sub.options.applicationServerKey;
-      if (!k) return true;
-      var a = new Uint8Array(k), b = pushBytes(key);
-      if (a.length !== b.length) return false;
-      for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-      return true;
-    } catch (e) { return true; }
-  }
-  function pushInit() {
-    if (push.state !== 'unknown') return;
-    if (!pushSupported()) { push.state = 'unsupported'; return; }
-    push.state = 'off';
-    if (Notification.permission !== 'granted') return;
-    pushReg().then(function (reg) { return reg.pushManager.getSubscription(); })
-      .then(function (sub) { return sub ? API.post('/api/push/state', sub.toJSON()) : null; })
-      .then(function (r) { push.state = r && r.on ? 'on' : 'off'; pushPaint(); })
-      ['catch'](function () { /* it stays off */ });
-  }
-  function pushAsk() {
-    return new Promise(function (resolve) {
-      var r = Notification.requestPermission(function (p) { resolve(p); });
-      if (r && r.then) r.then(resolve);
-    });
-  }
+  /* The office's order alerts were a Web Push bell here. They are on the
+     shop's Telegram bot now (server/lib/office-alerts.js, 052): a LAN-only
+     shop cannot register a service worker on its self-signed certificate, so
+     the bell could never have been offered anywhere but the till. Who hears
+     what is Settings → Telegram → Order alerts. */
 
   /* -------------------------------------------------------------- the shell */
 
@@ -730,7 +663,6 @@ var Deliveries = (function () {
     load();
     /* Whichever tab the board was left on fills itself in. */
     if (typeof Road !== 'undefined' && !isDriver()) Road.load();
-    if (!isDriver()) pushInit();
     /* Who can be given a run. Only for the board, and only for an account
        that may assign one. */
     if (!isDriver() && !drivers.length && typeof Auth !== 'undefined' && Auth.can('delivery.write')) {
@@ -901,67 +833,6 @@ var Deliveries = (function () {
     ACTIONS['dl-reload'] = function () { failed = null; loaded = false; repaint(); load(); };
     ACTIONS['dl-wa-track'] = function (el) {
       if (typeof Desk !== 'undefined' && Desk.sendTrack) Desk.sendTrack(el.getAttribute('data-id'));
-    };
-
-    /* The bell. On → off unsubscribes this browser; off → on asks for
-       permission, subscribes with the server's key and registers the device,
-       and the server sends a first notification at once as proof. */
-    ACTIONS['dl-push'] = function () {
-      if (push.busy) return;
-      if (push.state === 'unknown') pushInit();
-      if (push.state === 'unsupported') {
-        toast(t('dl_title'), t('dlp_push_unsupported'), 'err', 10000);
-        return;
-      }
-      push.busy = true;
-      pushPaint();
-      var finish = function () { push.busy = false; pushPaint(); };
-
-      if (push.state === 'on') {
-        pushReg().then(function (reg) { return reg.pushManager.getSubscription(); })
-          .then(function (sub) {
-            if (!sub) return null;
-            return API.post('/api/push/unsubscribe', { endpoint: sub.endpoint })
-              .then(function () { return sub.unsubscribe(); });
-          })
-          .then(function () {
-            push.state = 'off';
-            finish();
-            toast(t('dl_title'), t('dlp_push_turned_off'), 'ok', 3500);
-          })
-          ['catch'](function (e) { finish(); toast(t('dl_title'), API.friendly(e), 'err', 8000); });
-        return;
-      }
-
-      pushAsk().then(function (p) {
-        if (p !== 'granted') throw { perm: p };
-        return Promise.all([pushReg(), API.post('/api/push/state', {})]);
-      }).then(function (both) {
-        var reg = both[0], key = both[1] && both[1].key;
-        if (!key) throw new Error('the server has no push key');
-        return reg.pushManager.getSubscription().then(function (sub) {
-          if (sub && !pushSameKey(sub, key)) return sub.unsubscribe().then(function () { return null; });
-          return sub;
-        }).then(function (sub) {
-          return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushBytes(key) });
-        });
-      }).then(function (sub) {
-        var body = sub.toJSON();
-        body.lang = OG.lang === 'ar' ? 'ar' : 'en';
-        return API.post('/api/push/subscribe', body);
-      }).then(function () {
-        push.state = 'on';
-        finish();
-        toast(t('dl_title'), t('dlp_push_turned_on'), 'ok', 5000);
-      })['catch'](function (e) {
-        finish();
-        if (e && e.perm) {
-          toast(t('dl_title'), t(e.perm === 'denied' ? 'dlp_push_blocked' : 'dlp_push_not_allowed'), 'err', 10000);
-          return;
-        }
-        toast(t('dl_title'), t('dlp_push_failed').replace('{e}',
-          (e && e.message) ? e.message : API.friendly(e)), 'err', 10000);
-      });
     };
 
     /* A status tile narrows the parcels; "still owed" filters on money; the

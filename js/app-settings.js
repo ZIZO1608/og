@@ -1220,7 +1220,13 @@ function telegramCard() {
   var h = setFoldStart('telegram', t('tg_title'),
     '<span id="tgMeta" class="muted">' + t('tg_loading') + '</span>');
   h += '<div class="card-body"><div id="tgHost" class="tg-host">' + t('tg_loading') + '</div>' +
-    '<div class="muted small mt">' + t('tg_partner_note') + '</div></div>';
+    '<div class="muted small mt">' + t('tg_partner_note') + '</div>' +
+    /* THE ORDER ALERTS (052). Filled by YALLA.telegramLoad() alongside the card
+       above, from the same status call, and only for an account that runs the
+       shop — the server sends `office` to nobody else. It sits inside this fold
+       rather than in one of its own because "which phone hears what" is one
+       question, and the answer to it was already half on this screen. */
+    '<div id="tgoHost" class="tgo-host"></div></div>';
   return h + setFoldEnd();
 }
 

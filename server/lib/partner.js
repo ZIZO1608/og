@@ -73,7 +73,7 @@ function actorName(d, userId) {
 }
 
 function emitEvent(d, { kind, refType, refId, audience, args = {}, dedupe = null,
-                       userId = null, toUser = null }) {
+                       userId = null, toUser = null, skipUsers = null, nextTryAt = null }) {
   const a = { ...args };
   if (audience === 'yalla') for (const k of PARTNER_STRIP) delete a[k];
   /* Never overwrite an actor a caller set deliberately. */
@@ -83,10 +83,12 @@ function emitEvent(d, { kind, refType, refId, audience, args = {}, dedupe = null
      real-time events above keep the plain INSERT that has always thrown, and
      queueEvent checks the audience itself before it gets here. */
   const sql = `INSERT ${dedupe ? 'OR IGNORE ' : ''}INTO partner_events
-                 (at, kind, ref_type, ref_id, audience, args_json, dedupe, to_user)
-               VALUES (?,?,?,?,?,?,?,?)`;
+                 (at, kind, ref_type, ref_id, audience, args_json, dedupe, to_user, skip_users, next_try_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)`;
   return d.prepare(sql).run(nowIso(), kind, refType, String(refId), audience,
-                            JSON.stringify(a), dedupe, toUser).changes;
+                            JSON.stringify(a), dedupe, toUser,
+                            skipUsers && skipUsers.length ? JSON.stringify(skipUsers) : null,
+                            nextTryAt || null).changes;
 }
 
 /* THE SAME DOOR, opened for lib/reminders.js — and it is the only way in.
@@ -123,6 +125,19 @@ export function queueEvent(d, opts) {
        be quietly delivered to nobody — the worst shape a bug can take here. */
     if (!Number.isInteger(opts.toUser)) {
       throw Object.assign(new Error('toUser must be a user id'), { code: 'bad_request' });
+    }
+  }
+  /* WHO MUST NOT HEAR IT (052): the people whose own action the row reports.
+     Refused on the partner's audience for toUser's reason — the list is staff
+     ids, and nothing aimed at Yalla Wear may carry them — and refused unless
+     every entry is an integer, or 'lubna' would match no chat and quietly skip
+     nobody. */
+  if (opts.skipUsers != null) {
+    if (opts.audience === 'yalla') {
+      throw Object.assign(new Error('a yalla row cannot skip a person'), { code: 'bad_request' });
+    }
+    if (!Array.isArray(opts.skipUsers) || !opts.skipUsers.every(Number.isInteger)) {
+      throw Object.assign(new Error('skipUsers must be user ids'), { code: 'bad_request' });
     }
   }
   return emitEvent(d, opts);

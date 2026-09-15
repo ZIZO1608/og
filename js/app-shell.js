@@ -343,6 +343,12 @@ function openMoreSheet() {
       '</div>' +
       '<div class="ma-btns">' +
         '<button class="btn btn-sm" data-act="acct-pw">' + t('change_pw') + '</button>' +
+        /* THE PHONE'S COPY OF THE ACCOUNT MENU. Leaving My Telegram out of it
+           would put linking a phone on the desktop popover only — and the
+           people this is for (a cashier, the warehouse, a driver) are the ones
+           who work from a phone. */
+        (typeof YALLA !== 'undefined' && YALLA.telegramLoad
+          ? '<button class="btn btn-sm" data-act="acct-tg">' + t('acct_telegram') + '</button>' : '') +
         '<button class="btn btn-sm btn-danger" data-act="acct-out">' + t('sign_out') + '</button>' +
       '</div>' +
     '</div>';
@@ -471,6 +477,15 @@ function accountPopHtml(u) {
       '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
         '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>' +
       t('change_pw') + '</button>' +
+    /* Your own phone on the shop's bot — account self-service, like the
+       password. Every account, because linking is not what grants anything:
+       a chat hears only what its account may see. */
+    (typeof YALLA !== 'undefined' && YALLA.telegramLoad
+      ? '<button class="acct-item" data-act="acct-tg">' +
+          '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
+            '<path d="M21 4L3 11l6 2 2 6 3-4 5 4 2-15zM9 13l8-6"/></svg>' +
+          t('acct_telegram') + '</button>'
+      : '') +
     '<button class="acct-item danger" data-act="acct-out">' +
       '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
         '<path d="M15 17l5-5-5-5M20 12H9M12 3H5v18h7"/></svg>' +
@@ -500,6 +515,33 @@ function openChangePassword() {
     onOpen: function (root) {
       var f = root.querySelector('#pwCur');
       if (f) setTimeout(function () { f.focus(); }, 60);
+    }
+  });
+}
+
+/* MY TELEGRAM — the same card the Settings fold draws, for one's own phone.
+
+   Every signed-in account, not only a manager: linking is account self-service
+   like the password above (POST /api/telegram/link is ungated for exactly that
+   reason), and the server hands a non-manager only their OWN row. Before this
+   the card lived on a manager-only screen, so a cashier, a warehouse hand or a
+   driver had no way to press Connect at all — their phone could follow their
+   role's preset and never be linked to follow it with.
+
+   What it sends is still not theirs to choose: PUT /api/telegram/chat stays on
+   config.write, so the picker's Choose button is drawn for a manager only. */
+function openMyTelegram() {
+  openModal({
+    title: t('acct_telegram'),
+    size: 'narrow',
+    sheet: window.innerWidth <= 720,
+    body: '<p class="muted small">' + t('acct_tg_sub') + '</p>' +
+          '<div class="tg-host">' + t('tg_loading') + '</div>',
+    foot: '<button class="btn" data-act="modal-close">' + t('close') + '</button>',
+    /* The card paints itself into every .tg-host on the page, so this one
+       fills whether or not Settings is open behind it. */
+    onOpen: function () {
+      if (typeof YALLA !== 'undefined' && YALLA.telegramLoad) YALLA.telegramLoad();
     }
   });
 }

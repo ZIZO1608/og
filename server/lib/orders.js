@@ -543,7 +543,7 @@ export function handIn(saleId, user, opId = null) {
 
     orderSale(d, saleId);
     const pending = d.prepare(
-      `SELECT id FROM order_payments
+      `SELECT id, amount, currency, received_by FROM order_payments
         WHERE sale_id = ? AND kind = 'in' AND drawer = 1 AND handed_in_at IS NULL`
     ).all(saleId);
     if (!pending.length) {
@@ -560,9 +560,15 @@ export function handIn(saleId, user, opId = null) {
       logChange('order_payments', p.id, 'update', user.id, 'handed in');
     }
 
+    /* What moved and from whom, per currency — the same shape handInFor
+       reports, so the manager's dl_handin alert (lib/office-alerts.js) reads
+       one answer whichever of the two buttons was pressed. */
+    const took = {};
+    for (const p of pending) took[p.currency] = (took[p.currency] || 0) + p.amount;
     const out = {
       saleId, handedIn: pending.length, shiftId: shift ? shift.id : null,
-      noShift: !shift, money: money(d, saleId)
+      noShift: !shift, money: money(d, saleId), took, at,
+      driverIds: [...new Set(pending.map((p) => p.received_by).filter((v) => v != null))]
     };
     if (opId) {
       d.prepare(

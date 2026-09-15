@@ -53,6 +53,7 @@ import * as Telegram from './lib/telegram.js';
 import * as Reminders from './lib/reminders.js';
 import * as Live from './lib/live.js';
 import * as Tracking from './lib/tracking.js';
+import * as Office from './lib/office-alerts.js';
 import * as Push from './lib/webpush.js';
 import * as Reviews from './lib/reviews.js';
 import * as TLS from './lib/tls.js';
@@ -1345,6 +1346,9 @@ router.add('POST /api/orders/:id/handin', requirePerm(['delivery.desk', 'debt.co
     const out = Orders.handIn(ctx.params.id, ctx.user, typeof b.opId === 'string' ? b.opId : null);
     Live.notify('og', { deliveries: true });
     Tracking.moved(ctx.params.id, ctx.user.id);
+    /* Nothing a customer can see, so tracking says nothing — but money moved
+       between people, and the manager hears it (dl_handin). */
+    Office.handedIn(out, ctx.user);
     sendOk(ctx.res, { ...out, order: Deliveries.bySale(ctx.params.id, ctx.user) });
   } catch (e) { orderFail(ctx.res, e); }
 }));
@@ -1450,25 +1454,9 @@ router.add('PATCH /api/reviews/:id', requirePerm('config.write', async (ctx) => 
   }
 }));
 
-/* -------------------------------------------- the office's order alerts
-   The Deliveries board's bell: Web Push to this browser whenever an order
-   moves (lib/tracking.js). Gated on the desk, because the message names the
-   order and — for an account that may read customers — the customer. */
-router.add('POST /api/push/state', requirePerm('delivery.desk', async (ctx) => {
-  const b = await readJson(ctx.req);
-  sendOk(ctx.res, Tracking.shopState(ctx.user, b));
-}));
-
-router.add('POST /api/push/subscribe', requirePerm('delivery.desk', async (ctx) => {
-  const b = await readJson(ctx.req);
-  try { sendOk(ctx.res, Tracking.followShop(ctx.user, b)); }
-  catch (e) { sendError(ctx.res, e.status || 400, e.code || 'invalid', e.message); }
-}));
-
-router.add('POST /api/push/unsubscribe', requirePerm('delivery.desk', async (ctx) => {
-  const b = await readJson(ctx.req);
-  sendOk(ctx.res, Tracking.unfollowShop(ctx.user, b));
-}));
+/* The office's order alerts are on Telegram now (lib/office-alerts.js, 052);
+   the Deliveries board's Web Push bell and its three /api/push routes are gone.
+   A browser left subscribed gets 404 from nothing — it has no route to call. */
 
 /* ------------------------------------------------------- the driver's cash */
 router.add('GET /api/driver-cash', requirePerm(['delivery.desk', 'money.read', 'debt.collect'], (ctx) => {
@@ -1487,6 +1475,7 @@ router.add('POST /api/driver-cash/handin', requirePerm(['delivery.desk', 'debt.c
       opId: typeof b.opId === 'string' ? b.opId : null
     }, ctx.user);
     Live.notify('og', { deliveries: true });
+    Office.handedIn(out, ctx.user);
     sendOk(ctx.res, out);
   } catch (e) { orderFail(ctx.res, e); }
 }));
@@ -2329,8 +2318,32 @@ router.add('GET /api/telegram/status', (ctx) => {
                        Forwarded explicitly: this route answers with ONE side's
                        object, and these live above it — leaving them out is what
                        drew a picker with no boxes in it. */
-                    groups: s.groups, allKinds: s.allKinds, defaultRules: s.defaultRules,
+                    /* THE OFFICE GROUP IS THE SHOP'S OWN, and Yalla Wear's card
+                       must not offer it: they are a different company, their
+                       chats are on the other side, and an order alert is never
+                       queued for that audience. Drawing nine boxes that can
+                       never do anything would be a picker that lies — and it
+                       would hand another company the list of what the shop's
+                       delivery office says to itself. */
+                    groups: mine === 'og' ? s.groups
+                      : Object.fromEntries(Object.entries(s.groups).filter(([g]) => g !== 'office')),
+                    allKinds: mine === 'og' ? s.allKinds
+                      : s.allKinds.filter((k) => !Office.OFFICE_KINDS.includes(k)),
+                    defaultRules: s.defaultRules,
                     kindPerm: s.kindPerm, presets: s.presets,
+                    /* The office's order alerts, for the grid that decides who
+                       hears them: the kinds, which go out at any hour, the
+                       shop's hours, and which roles may work the desk at all
+                       (a role that cannot hears none, whatever is ticked). */
+                    office: mine === 'og' && tgManages(ctx) ? (() => {
+                      const c = Office.readClock();
+                      const rolePerms = {};
+                      for (const r of ['manager', 'cashier', 'warehouse', 'delivery']) {
+                        rolePerms[r] = Auth.permissionsFor(r).includes('delivery.desk');
+                      }
+                      return { kinds: Office.OFFICE_KINDS, urgent: c.urgent,
+                               quietFrom: c.from, quietTo: c.to, tz: c.tz, rolePerms };
+                    })() : undefined,
                     /* The manager may also see whether the partner's line is up. */
                     other: mine === 'og' && tgManages(ctx)
                       ? { linked: s.yalla.linked, configured: s.yalla.configured } : undefined });

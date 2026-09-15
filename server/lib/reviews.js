@@ -113,6 +113,10 @@ export function submit(sale, body = {}) {
     return {
       review: shape(d.prepare('SELECT * FROM order_reviews WHERE sale_id = ?').get(sale.id)),
       first: !old,
+      /* Nothing the shop would read is different. `updated_at` moves anyway, so
+         a caller that cannot see this would announce an edit that never
+         happened — see office-alerts.js. */
+      same: !!old && same,
       unpublished: !!(old && old.on_web && !onWeb)
     };
   });

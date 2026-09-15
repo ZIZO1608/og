@@ -272,6 +272,14 @@ var ACTIONS = {
       });
   },
 
+  /* Your own phone on the shop's bot. The pop-up closes first, like the
+     password item above it, or the menu is left hanging over the dialog. */
+  'acct-tg': function () {
+    var pop = document.getElementById('acctPop'); if (pop) pop.remove();
+    closeModal();
+    openMyTelegram();
+  },
+
   'acct-out': function () {
     var pop = document.getElementById('acctPop'); if (pop) pop.remove();
     closeModal();

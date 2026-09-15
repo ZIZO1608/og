@@ -286,23 +286,18 @@ export function events(sale, lang) {
 /* ------------------------------------------------------------ push words
 
    A notification is one sentence the page already shows, with the order
-   number in front: the customer is told the newest event, the office is told
-   the same thing with the customer's name when their account may read it.
-   `hello` is the first one, sent the moment somebody turns notifications on,
-   so they see on their own screen that it worked. */
-export function pushText(sale, lang, key, { audience = 'track', more = 0, customer = false, hello = false } = {}) {
+   number in front: the customer is told the newest event. `hello` is the
+   first one, sent the moment somebody turns notifications on, so they see on
+   their own screen that it worked. The office's own alerts are not written
+   here any more — they are Telegram's (lib/office-alerts.js, 052). */
+export function pushText(sale, lang, key, { more = 0, hello = false } = {}) {
   const lng = lang === 'en' ? 'en' : 'ar';
   const L = STR[lng];
   const name = shopName();
   const base = { lang: lng, dir: L.dir, at: new Date().toISOString(), icon: '/assets/icon-192.png' };
-  const staffTitle = `${name} · ${L.staffTitle}`;
-
-  if (audience === 'staff' && hello) return { ...base, title: staffTitle, body: L.staffOn, url: '/#deliveries', tag: 'og-staff' };
   if (!sale) return null;
 
-  const url = audience === 'track'
-    ? `/i/${sale.public_token}${lng === 'en' ? '?lang=en' : ''}`
-    : '/#deliveries';
+  const url = `/i/${sale.public_token}${lng === 'en' ? '?lang=en' : ''}`;
   const tag = 'order-' + sale.id;
   /* `always`: the customer is looking at the page when they turn this on, and
      this one notification is the proof — the worker shows it even so. */
@@ -312,42 +307,23 @@ export function pushText(sale, lang, key, { audience = 'track', more = 0, custom
   const row = rows.find((r) => r.key === key) || rows[rows.length - 1];
   if (!row) return null;
 
-  let text = row.key === 'placed' && audience === 'staff' ? L.newOrder : row.text;
+  let text = row.text;
   const m = moneyOf(sale);
   /* A parcel leaving with money still to pay says how much: it is the one
      number the customer needs ready at the door. */
-  if (audience === 'track' && row.key.startsWith('out:') && m && m.left) {
+  if (row.key.startsWith('out:') && m && m.left) {
     text += ' · ' + L.toPayShort(iso(amount(m.left, sale.currency) + ' ' + sale.currency));
   }
-  const bits = [iso(sale.id)];
-  if (audience === 'staff' && customer && sale.customer_name) bits.push(sale.customer_name);
-  bits.push(text);
+  const bits = [iso(sale.id), text];
   if (more > 0) bits.push(L.andMore(more));
   /* THE ARRIVAL ASKS FOR THE REVIEW, once, and only while there is none: the
      moment a customer is most likely to answer is the moment the parcel is in
      their hands. A "Rate it" button on the notification opens the form. */
-  const ask = audience === 'track' && row.key.startsWith('closed:delivered:') && !Reviews.forSale(sale.id);
+  const ask = row.key.startsWith('closed:delivered:') && !Reviews.forSale(sale.id);
   if (ask) bits.push(L.rateAsk);
   return {
-    ...base, title: audience === 'staff' ? staffTitle : name, body: bits.join(' · '), url, tag,
+    ...base, title: name, body: bits.join(' · '), url, tag,
     ...(ask ? { actions: [{ action: 'rate', title: L.rateBtn }], links: { rate: url + '#review' }, sticky: true } : {})
-  };
-}
-
-/* The office hears about a review the moment it is written: the stars, the
-   customer's name for an account that may read customers, and the words. */
-export function reviewText(sale, review, lang, { customer = false, edited = false } = {}) {
-  const lng = lang === 'en' ? 'en' : 'ar';
-  const L = STR[lng];
-  const bits = [iso(sale.id), '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating)];
-  if (customer && sale.customer_name) bits.push(sale.customer_name);
-  let body = bits.join(' · ');
-  const words = String(review.comment || '');
-  if (words) body += '\n“' + words.slice(0, 140) + (words.length > 140 ? '…' : '') + '”';
-  return {
-    lang: lng, dir: L.dir, at: new Date().toISOString(), icon: '/assets/icon-192.png',
-    title: `${shopName()} · ${edited ? L.reviewEdited : L.reviewNew}`,
-    body, url: '/#reviews', tag: 'review-' + sale.id
   };
 }
 

@@ -1032,6 +1032,18 @@ var TGRULES_EN = {
   tg_g_yl_sub: 'The nudges their own bot sends them.',
   tg_g_live: 'As it happens',
   tg_g_live_sub: 'Orders, stage changes, messages, invoices and payments, the moment they occur.',
+  tg_g_office: 'Orders and the office',
+  tg_g_office_sub: 'A delivery order placed, paid, handed over, delivered, failed, back or cancelled, a review, and cash handed in. Only for accounts that can work the delivery office.',
+
+  tgk_dl_new: 'An order is placed',
+  tgk_dl_paid: 'A payment or refund on an order',
+  tgk_dl_out: 'An order leaves with its carrier',
+  tgk_dl_back: 'An order comes back',
+  tgk_dl_delivered: 'An order is delivered',
+  tgk_dl_failed: 'A delivery fails',
+  tgk_dl_cancelled: 'An order is cancelled',
+  tgk_dl_review: 'A customer reviews a delivery',
+  tgk_dl_handin: 'A driver hands in cash',
 
   tgk_order_new: 'A new order is sent',
   tgk_order_accepted: 'An order is accepted',
@@ -1074,6 +1086,18 @@ var TGRULES_AR = {
   tg_g_yl_sub: 'ما يرسله بوتهم إليهم.',
   tg_g_live: 'فور حدوثه',
   tg_g_live_sub: 'الطلبات وتغيّر المراحل والرسائل والفواتير والدفعات، لحظة وقوعها.',
+  tg_g_office: 'الطلبات والمكتب',
+  tg_g_office_sub: 'طلب توصيل جديد، دفعة، خروج مع الناقل، وصول، تعذّر تسليم، رجوع، إلغاء، تقييم، وتسليم نقدية. فقط للحسابات التي تعمل في مكتب التوصيل.',
+
+  tgk_dl_new: 'تسجيل طلب جديد',
+  tgk_dl_paid: 'دفعة أو استرداد على طلب',
+  tgk_dl_out: 'خروج طلب مع الناقل',
+  tgk_dl_back: 'رجوع طلب',
+  tgk_dl_delivered: 'وصول طلب',
+  tgk_dl_failed: 'تعذّر تسليم طلب',
+  tgk_dl_cancelled: 'إلغاء طلب',
+  tgk_dl_review: 'تقييم زبون للتوصيل',
+  tgk_dl_handin: 'تسليم سائق للنقدية',
 
   tgk_order_new: 'إرسال طلب جديد',
   tgk_order_accepted: 'قبول طلب',
@@ -2180,33 +2204,79 @@ DCOMBO_AR.dkc_keys_c = '↑ ↓ اختيار · Enter تحديد · Esc إغلا
 Object.keys(DCOMBO_EN).forEach(function (k) { I18N.en[k] = DCOMBO_EN[k]; });
 Object.keys(DCOMBO_AR).forEach(function (k) { I18N.ar[k] = DCOMBO_AR[k]; });
 
-/* ---- the office's order alerts (Web Push). `dlp_push_` = the board's bell. */
-var DPUSH_EN = {
-  dlp_push_off: 'Order alerts',
-  dlp_push_on: 'Alerts on',
-  dlp_push_title_off: 'Get a notification on this device whenever an order moves — even with the app closed',
-  dlp_push_title_on: 'Order alerts are on for this device. Press to turn them off.',
-  dlp_push_turned_on: 'Order alerts are on for this device. A test notification is on its way.',
-  dlp_push_turned_off: 'Order alerts are off for this device.',
-  dlp_push_blocked: 'Notifications are blocked for this site. Allow them in the browser’s site settings, then press again.',
-  dlp_push_not_allowed: 'Notifications were not allowed, so nothing was turned on.',
-  dlp_push_unsupported: 'This browser cannot receive notifications here. It needs the secure address (https://…), not the Wi-Fi IP — and on an iPhone, the app added to the Home Screen.',
-  dlp_push_failed: 'Could not turn on order alerts: {e}'
+/* ---- the office's order alerts, on Telegram (052). They were a Web Push bell
+   on the Deliveries board (`dlp_push_*`, gone): a browser will not register a
+   service worker on a self-signed certificate, so on a LAN-only shop the bell
+   could only ever have worked on the till. `tgo_*` is the Order alerts section
+   of the Telegram card; `acct_tg*` is My Telegram in the account menu. */
+var TGOFFICE_EN = {
+  tgo_title: 'Order alerts',
+  tgo_sub: 'What reaches phones when an order moves. They come through the shop\'s Telegram bot, and the person who made the change is never told about it.',
+  tgo_chats_h: 'Linked chats',
+  tgo_gets: 'Gets {n} of {of} order alerts',
+  tgo_gets_none: 'Gets no order alerts',
+  tgo_why_no_owner: 'This chat was linked before the shop recorded whose phone it is, so it cannot be checked against the delivery office permission.',
+  tgo_fix_no_owner: 'Fix: the person whose phone it is signs in, opens My Telegram, presses Connect and sends the code from this chat. Or choose its order alerts by hand.',
+  tgo_why_room: 'A shared room gets order alerts only when somebody chooses them for it.',
+  tgo_fix_room: 'Fix: choose them by hand.',
+  tgo_why_not_ticked: '{name} can work the delivery office, but no order alert is chosen for this chat.',
+  tgo_fix_not_ticked: 'Fix: tick them for the {role} role below, or choose for this chat by hand.',
+  tgo_why_no_desk: '{name} ({role}) cannot open the delivery office, and order alerts never go to an account that cannot.',
+  tgo_fix_no_desk: 'Fix, if they should: give the {role} role the delivery office permission under Roles & permissions.',
+  tgo_why_owner_off: '{name}\'s account is disabled, so this chat gets no order alerts.',
+  tgo_fix_owner_off: 'Fix: disconnect it, or link the phone again from an active account.',
+  tgo_reconnect: 'Connect',
+  tgo_choose: 'Choose by hand',
+  tgo_grid_h: 'What each role hears',
+  tgo_grid_sub: 'A phone that follows its role gets what is ticked here. A role without the delivery office permission gets none of these, whatever is ticked.',
+  tgo_col_kind: 'Alert',
+  tgo_col_any: 'Any hour',
+  tgo_needs_desk: 'needs the delivery office permission',
+  tgo_quiet: 'Everything not ticked "Any hour" waits while the shop is shut and goes out when it opens.',
+  tgo_quiet_from: 'The shop shuts at',
+  tgo_quiet_to: 'The shop opens at',
+  tgo_saved: 'Saved',
+  tgo_hours_h: 'When the shop is shut',
+  tgo_none_yet: 'No phone is linked to the shop\'s bot yet, so nobody hears an order move. Connect one above.',
+  tgo_ok: 'Every linked chat gets order alerts.',
+  acct_telegram: 'My Telegram',
+  acct_tg_sub: 'Link your own phone to the shop\'s Telegram bot. What it sends you depends on your role.'
 };
-var DPUSH_AR = {
-  dlp_push_off: 'تنبيهات الطلبات',
-  dlp_push_on: 'التنبيهات مفعّلة',
-  dlp_push_title_off: 'يصلك إشعار على هذا الجهاز عند كل تحرّك لطلب — حتى والتطبيق مغلق',
-  dlp_push_title_on: 'تنبيهات الطلبات مفعّلة على هذا الجهاز. اضغط لإيقافها.',
-  dlp_push_turned_on: 'تنبيهات الطلبات مفعّلة على هذا الجهاز. إشعار تجريبي في الطريق.',
-  dlp_push_turned_off: 'تم إيقاف تنبيهات الطلبات على هذا الجهاز.',
-  dlp_push_blocked: 'الإشعارات محظورة لهذا الموقع. اسمح بها من إعدادات الموقع في المتصفح ثم اضغط مجدداً.',
-  dlp_push_not_allowed: 'لم يُسمح بالإشعارات، فلم يُفعَّل شيء.',
-  dlp_push_unsupported: 'هذا المتصفح لا يستقبل الإشعارات هنا. يلزم العنوان الآمن (https://…) لا عنوان الواي فاي — وعلى الآيفون يلزم إضافة التطبيق إلى الشاشة الرئيسية.',
-  dlp_push_failed: 'تعذّر تفعيل تنبيهات الطلبات: {e}'
+var TGOFFICE_AR = {
+  tgo_title: 'تنبيهات الطلبات',
+  tgo_sub: 'ما يصل إلى الهواتف عند تحرّك طلب. تصل عبر بوت تيليغرام المحل، ومن قام بالتغيير لا يصله تنبيه عنه.',
+  tgo_chats_h: 'المحادثات المربوطة',
+  tgo_gets: 'يصلها {n} من {of} من تنبيهات الطلبات',
+  tgo_gets_none: 'لا يصلها أي تنبيه للطلبات',
+  tgo_why_no_owner: 'رُبطت هذه المحادثة قبل أن يسجّل المحل صاحب الهاتف، فلا يمكن التحقق من صلاحية مكتب التوصيل.',
+  tgo_fix_no_owner: 'الحل: يدخل صاحب الهاتف بحسابه، يفتح «تيليغرام الخاص بي»، يضغط «ربط» ويرسل الرمز من هذه المحادثة. أو اختر تنبيهات الطلبات لها يدوياً.',
+  tgo_why_room: 'الغرفة المشتركة لا تصلها تنبيهات الطلبات إلا إذا اختارها أحد لها.',
+  tgo_fix_room: 'الحل: اخترها يدوياً.',
+  tgo_why_not_ticked: '{name} يعمل في مكتب التوصيل، لكن لم يُختر أي تنبيه للطلبات لهذه المحادثة.',
+  tgo_fix_not_ticked: 'الحل: فعّلها لدور {role} في الجدول أدناه، أو اختر لهذه المحادثة يدوياً.',
+  tgo_why_no_desk: '{name} ({role}) لا يستطيع فتح مكتب التوصيل، وتنبيهات الطلبات لا تصل أبداً إلى حساب لا يستطيع.',
+  tgo_fix_no_desk: 'الحل إن كان ينبغي: أعطِ دور {role} صلاحية مكتب التوصيل من «الأدوار والصلاحيات».',
+  tgo_why_owner_off: 'حساب {name} معطّل، فلا تصل هذه المحادثة أي تنبيهات للطلبات.',
+  tgo_fix_owner_off: 'الحل: افصلها، أو اربط الهاتف من جديد بحساب فعّال.',
+  tgo_reconnect: 'ربط',
+  tgo_choose: 'اختر يدوياً',
+  tgo_grid_h: 'ما يصل إلى كل دور',
+  tgo_grid_sub: 'الهاتف الذي يتبع دوره يصله ما هو محدد هنا. الدور الذي لا يملك صلاحية مكتب التوصيل لا يصله شيء منها مهما حُدد.',
+  tgo_col_kind: 'التنبيه',
+  tgo_col_any: 'في أي ساعة',
+  tgo_needs_desk: 'يحتاج صلاحية مكتب التوصيل',
+  tgo_quiet: 'كل ما ليس «في أي ساعة» ينتظر والمحل مغلق، ويُرسل عند الافتتاح.',
+  tgo_quiet_from: 'يغلق المحل الساعة',
+  tgo_quiet_to: 'يفتح المحل الساعة',
+  tgo_saved: 'تم الحفظ',
+  tgo_hours_h: 'ساعات إغلاق المحل',
+  tgo_none_yet: 'لا يوجد هاتف مربوط ببوت المحل بعد، فلا أحد يسمع تحرّك الطلبات. اربط واحداً من الأعلى.',
+  tgo_ok: 'كل المحادثات المربوطة تصلها تنبيهات الطلبات.',
+  acct_telegram: 'تيليغرام الخاص بي',
+  acct_tg_sub: 'اربط هاتفك ببوت تيليغرام المحل. ما يصلك يعتمد على دورك.'
 };
-Object.keys(DPUSH_EN).forEach(function (k) { I18N.en[k] = DPUSH_EN[k]; });
-Object.keys(DPUSH_AR).forEach(function (k) { I18N.ar[k] = DPUSH_AR[k]; });
+Object.keys(TGOFFICE_EN).forEach(function (k) { I18N.en[k] = TGOFFICE_EN[k]; });
+Object.keys(TGOFFICE_AR).forEach(function (k) { I18N.ar[k] = TGOFFICE_AR[k]; });
 
 /* ---- the tracking link on WhatsApp: the office's order view and saved card,
    and a button on every order on the Deliveries board. */

@@ -9,9 +9,10 @@
       page refetches its own public HTML. Immediate.
    2. The customer's phone or laptop with the page CLOSED → Web Push to every
       browser following that order.
-   3. The office's own browsers → Web Push to every staff subscription whose
-      account may still work the desk — EXCEPT the person who made the change,
-      who does not need their own phone buzzing about the button they pressed.
+   3. The office → the shop's Telegram bot (lib/office-alerts.js, 052). It was
+      Web Push to a bell on the Deliveries board, which a LAN-only shop cannot
+      offer: a browser will not register a service worker on a self-signed
+      certificate. The person who made the change is still skipped.
 
    WHAT COUNTS AS NEWS is decided by keys, not by which route ran. Every public
    event carries a stable key (pay:17, out:<stamp>, closed:delivered:<stamp>);
@@ -28,7 +29,7 @@ import { get, nowIso } from './db.js';
 import * as Receipt from './receipt.js';
 import * as Push from './webpush.js';
 import * as Live from './live.js';
-import * as Auth from './auth.js';
+import * as Office from './office-alerts.js';
 
 /* An order with no push_seen row yet (it predates this, or nobody has ever
    followed it): only events this recent are news. Long enough for the route
@@ -96,7 +97,14 @@ function seenKeys(d, saleId, rows) {
     try { return new Set(JSON.parse(row.keys)); } catch { /* rebuilt below */ }
   }
   const cutoff = Date.now() - FRESH_MS;
-  return new Set(rows.filter((r) => !(Date.parse(r.at) >= cutoff)).map((r) => r.key));
+  /* A ROW WITH NO STAMP CANNOT BE JUDGED BY ITS AGE, and must not be written
+     off as old news because of it. `Receipt.events` gives a voided sale
+     `at: null` — a void has no stamp of its own — and `Date.parse(null)` is
+     NaN, so `NaN >= cutoff` is false and every cancellation on an order nobody
+     had ever followed was pre-marked as already said. Silently, and for the
+     one alert the delivery office most needs: the parcel may be packed and
+     about to leave. Measured on a scratch copy, 16 Sep 2026. */
+  return new Set(rows.filter((r) => r.at && !(Date.parse(r.at) >= cutoff)).map((r) => r.key));
 }
 
 function remember(d, saleId, rows) {
@@ -120,6 +128,13 @@ async function announce(saleId, actors) {
 
   const fresh = rows.filter((r) => !seen.has(r.key));
   if (!fresh.length) return;
+
+  /* THE OFFICE FIRST, AND WHETHER OR NOT ANY CUSTOMER IS FOLLOWING. The
+     subscriptions query below returns early on an order nobody follows —
+     which is most of them — and the office's news used to sit behind it.
+     office-alerts.js never throws. */
+  Office.orderMoved(sale, fresh, actors, Receipt.moneyOf(sale));
+
   /* WHICH EVENT LEADS when several land at once. Not simply the last by time:
      a driver marking a parcel delivered with the cash in his hand writes the
      payment a moment AFTER the arrival, and "Payment received · +1 more" was
@@ -133,32 +148,13 @@ async function announce(saleId, actors) {
   const more = fresh.length - 1;
 
   const subs = d.prepare(
-    `SELECT * FROM push_subscriptions
-      WHERE (audience = 'track' AND sale_id = ?) OR audience = 'staff'`
+    `SELECT * FROM push_subscriptions WHERE audience = 'track' AND sale_id = ?`
   ).all(sale.id);
   if (!subs.length) return;
 
-  const users = new Map();
-  const userOf = (id) => {
-    if (!users.has(id)) users.set(id, d.prepare('SELECT id, role, active FROM users WHERE id = ?').get(id) || null);
-    return users.get(id);
-  };
-
   const jobs = [];
   for (const s of subs) {
-    let msg;
-    if (s.audience === 'track') {
-      msg = Receipt.pushText(sale, s.lang, key, { audience: 'track', more });
-    } else {
-      if (actors.has(s.user_id)) continue;
-      const u = userOf(s.user_id);
-      /* Skipped, not deleted: a permission taken away this morning may be
-         given back this afternoon, and the phone should still be on the list. */
-      if (!Auth.can(u, 'delivery.desk')) continue;
-      msg = Receipt.pushText(sale, s.lang, key, {
-        audience: 'staff', more, customer: Auth.can(u, 'customer.read')
-      });
-    }
+    const msg = Receipt.pushText(sale, s.lang, key, { more });
     if (msg) jobs.push(deliver(s, msg, 'o' + sale.id));
   }
   await Promise.allSettled(jobs);
@@ -186,30 +182,11 @@ async function deliver(s, msg, topic) {
   return out;
 }
 
-/* A customer reviewed their delivery: every office device that may work the
-   desk hears it. Never throws into the route. */
+/* A customer reviewed their delivery: the office hears it on Telegram. Kept
+   here under its old name because two doors call it — the tracking page's
+   route and og-track's inbox (lib/inbox.js). Never throws. */
 export async function reviewed(sale, out) {
-  try {
-    if (!out || !out.review) return;
-    const d = get();
-    const subs = d.prepare(`SELECT * FROM push_subscriptions WHERE audience = 'staff'`).all();
-    const users = new Map();
-    const jobs = [];
-    for (const s of subs) {
-      if (!users.has(s.user_id)) {
-        users.set(s.user_id, d.prepare('SELECT id, role, active FROM users WHERE id = ?').get(s.user_id) || null);
-      }
-      const u = users.get(s.user_id);
-      if (!Auth.can(u, 'delivery.desk')) continue;
-      const msg = Receipt.reviewText(sale, out.review, s.lang, {
-        customer: Auth.can(u, 'customer.read'), edited: !out.first
-      });
-      if (msg) jobs.push(deliver(s, msg, 'r' + sale.id));
-    }
-    await Promise.allSettled(jobs);
-  } catch (e) {
-    console.error(`[${nowIso()}] review push for ${sale && sale.id} —`, e.message);
-  }
+  Office.reviewed(sale, out);
 }
 
 /* --------------------------------------------------------- subscriptions */
@@ -262,7 +239,7 @@ export function followOrder(sale, body) {
      "notifications are on" at a random hour, which is noise. The row is still
      saved again, so new keys or a new language take effect. */
   if (!already) {
-    deliver(row, Receipt.pushText(sale, lang, null, { audience: 'track', hello: true }), 'o' + sale.id)
+    deliver(row, Receipt.pushText(sale, lang, null, { hello: true }), 'o' + sale.id)
       .catch(() => {});
   }
   return { on: true };
@@ -284,36 +261,6 @@ export function followingOrder(sale, body) {
     `SELECT 1 FROM push_subscriptions WHERE endpoint = ? AND audience = 'track' AND sale_id = ?`
   ).get(endpoint, sale.id) : null;
   return { on: !!row };
-}
-
-/* The office's bell. One browser, one person: whoever turned it on last owns
-   the alerts on it, so a shared office laptop does not buzz for two accounts. */
-export function followShop(user, body) {
-  const sub = Push.cleanSubscription(body);
-  if (!sub) throw fail('that is not a push subscription this server can use', 'bad_subscription');
-  const d = get();
-  const lang = langOf(body.lang);
-  d.prepare(`DELETE FROM push_subscriptions WHERE endpoint = ? AND audience = 'staff'`).run(sub.endpoint);
-  const row = saveSub(d, sub, 'staff', null, user.id, lang);
-  deliver(row, Receipt.pushText(null, lang, null, { audience: 'staff', hello: true }), 'staff')
-    .catch(() => {});
-  return { on: true };
-}
-
-export function unfollowShop(user, body) {
-  const endpoint = endpointOf(body);
-  if (endpoint) {
-    get().prepare(`DELETE FROM push_subscriptions WHERE endpoint = ? AND audience = 'staff'`).run(endpoint);
-  }
-  return { on: false };
-}
-
-export function shopState(user, body) {
-  const endpoint = endpointOf(body);
-  const row = endpoint ? get().prepare(
-    `SELECT user_id FROM push_subscriptions WHERE endpoint = ? AND audience = 'staff'`
-  ).get(endpoint) : null;
-  return { on: !!row && row.user_id === user.id, key: Push.publicKey(), off: process.env.OG_PUSH === '0' };
 }
 
 /* ------------------------------------------------------- the page's pieces */
@@ -342,8 +289,9 @@ export function manifest(sale, token, lang) {
 
 /* /i/sw.js — the tracking page's own service worker, scoped to /i/ so it can
    never touch the app. It does nothing but show a push and open the page.
-   The app's sw.js carries the same two handlers for the office's alerts;
-   KEEP THE TWO IN STEP. */
+   It is the only push worker left: the app's sw.js carried the same two
+   handlers for the office's bell, and lost them when that moved to Telegram
+   (052). */
 export const WORKER = `/* OG SYSTEM — the tracking page's service worker. Served by server/lib/tracking.js. */
 self.addEventListener('install', function () { self.skipWaiting(); });
 self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim()); });

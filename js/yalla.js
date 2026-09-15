@@ -721,12 +721,21 @@ var YALLA = (function () {
        the truth. The server sends `effective` for exactly this reason. */
     var eff = c.effective !== undefined ? c.effective : c.rules;
     var lead = c.preset === 'role' ? t('tg_by_role') + ' · ' : '';
-    if (!eff) return lead + t('tg_gets_all');
-    if (!eff.length) return lead + t('tg_gets_none');
+    /* "EVERYTHING" STOPPED BEING TRUE when the order alerts got their own gate
+       (052): a chat with no owner recorded has `rules: null` — everything —
+       and still hears none of them. So the office kinds are read from what the
+       server says this chat actually gets, and the word "everything" is only
+       printed when it is. */
+    var offAll = (s && s.groups && s.groups.office) || [];
+    var offGets = c.office ? (c.office.gets || []) : offAll;
+    if (!eff && offGets.length === offAll.length) return lead + t('tg_gets_all');
+    if (eff && !eff.length && !offGets.length) return lead + t('tg_gets_none');
+    var full = (eff ? eff.slice() : ((s && s.allKinds) || []).slice())
+      .filter(function (k) { return offAll.indexOf(k) < 0; }).concat(offGets);
     var names = [];
     Object.keys(groups).forEach(function (g) {
       var kinds = groups[g] || [];
-      var on = kinds.filter(function (k) { return eff.indexOf(k) > -1; }).length;
+      var on = kinds.filter(function (k) { return full.indexOf(k) > -1; }).length;
       if (!on) return;
       names.push(t('tg_g_' + g) + (on < kinds.length ? ' (' + on + '/' + kinds.length + ')' : ''));
     });
@@ -748,6 +757,18 @@ var YALLA = (function () {
        that were never true. */
     var eff = c.effective !== undefined ? c.effective : c.rules;
     var picked = eff ? eff.slice() : (s.allKinds || []).slice();
+    /* THE ORDER ALERTS ARE NOT DECIDED BY `rules` ALONE (052). They have a
+       hard gate of their own — the account behind the chat must be able to
+       work the delivery office, and a chat with nobody behind it hears them
+       only if somebody ticked them by hand — so a chat on "everything" can
+       still receive none of them. The server sends what it ACTUALLY gets
+       (`office.gets`); opening these boxes on `rules` would show nine ticks
+       against nine messages that never arrive. */
+    if (c.office) {
+      var offKinds = (s.groups && s.groups.office) || [];
+      picked = picked.filter(function (k) { return offKinds.indexOf(k) < 0; })
+                     .concat(c.office.gets || []);
+    }
     var perms = s.kindPerm || {};
 
     var h = '<div class="tg-rules-body">';
@@ -913,9 +934,126 @@ var YALLA = (function () {
     }
     return h;
   }
+  /* ---- the office's order alerts (052) --------------------------------------
+     WHO HEARS AN ORDER MOVE, and what each role hears by default. Drawn under
+     the card in OG's Settings fold and nowhere else: the server puts `office`
+     on the status for an account that runs the shop and for no one else, and
+     never on the partner's side — Yalla Wear has no delivery office.
+
+     THE POINT OF THE FIRST HALF IS THE CHAT THAT HEARS NOTHING. The shop's own
+     linked phone was connected before anybody recorded whose it is, so the
+     hard gate (officeWants) gives it no order alert at all — correct, and
+     completely invisible, which reads as the bot being broken. Every chat
+     therefore says what it gets or why it gets none, with the fix beside it. */
+  var TGO_WHY = { no_owner: 'no_owner', room_not_ticked: 'room', not_ticked: 'not_ticked',
+                  no_desk: 'no_desk', owner_off: 'owner_off' };
+
+  function tgoSay(key, c) {
+    return t(key)
+      .split('{name}').join(esc(c.personName || c.title || ''))
+      .split('{role}').join(c.personRole ? t('role_' + c.personRole) : '');
+  }
+
+  function tgoChatHtml(c, s) {
+    var o = c.office || { gets: [], why: null };
+    var of = ((s.office || {}).kinds || []).length;
+    var none = !o.gets || !o.gets.length;
+    var h = '<div class="tgo-chat' + (none ? ' none' : '') + '"><b>' + esc(c.title || c.id) + '</b>' +
+      '<span class="tgo-gets">' + (none ? t('tgo_gets_none')
+        : t('tgo_gets').split('{n}').join('<span dir="ltr">' + o.gets.length + '</span>')
+                       .split('{of}').join('<span dir="ltr">' + of + '</span>')) + '</span>';
+    var why = TGO_WHY[o.why];
+    if (why) {
+      h += '<span class="tgo-why">' + tgoSay('tgo_why_' + why, c) + '</span>' +
+           '<span class="tgo-fix">' + tgoSay('tgo_fix_' + why, c) + '</span>' +
+           '<span class="tgo-acts">' +
+             (why === 'no_owner'
+               ? '<button class="btn btn-sm btn-ghost" data-yl="tg-link">' + t('tgo_reconnect') + '</button>' : '') +
+             '<button class="btn btn-sm btn-ghost" data-yl="tg-rules" data-chat="' + esc(c.id) + '">' +
+               t('tgo_choose') + '</button></span>';
+    }
+    return h + '</div>';
+  }
+
+  /* WHAT EACH ROLE HEARS. One row per kind, one column per role, writing the
+     `reminders.preset.<role>` keys a phone on `preset: 'role'` already follows.
+     A role that cannot open the delivery office is dimmed and its boxes
+     disabled: officeWants refuses it whatever is ticked, and a tick that
+     changes nothing is worse than no tick. The last column is the short list of
+     kinds worth a phone while the shop is shut. */
+  function tgoGridHtml(s) {
+    var o = s.office || {};
+    var roles = Object.keys(o.rolePerms || {});
+    var kinds = o.kinds || [];
+    var presets = s.presets || {};
+    var urgent = o.urgent || [];
+
+    var h = '<h4 class="set-h mt">' + t('tgo_grid_h') + '</h4>' +
+      '<p class="muted small tgo-sub">' + t('tgo_grid_sub') + '</p>' +
+      '<div class="tgo-grid-wrap"><table class="tgo-grid"><thead><tr>' +
+      '<th>' + t('tgo_col_kind') + '</th>';
+    roles.forEach(function (r) {
+      var can = !!o.rolePerms[r];
+      h += '<th' + (can ? '' : ' class="tgo-off"') + '>' + t('role_' + r) +
+        (can ? '' : '<em>' + t('tgo_needs_desk') + '</em>') + '</th>';
+    });
+    h += '<th class="tgo-any">' + t('tgo_col_any') + '</th></tr></thead><tbody>';
+
+    kinds.forEach(function (k) {
+      h += '<tr><td>' + t('tgk_' + k) + '</td>';
+      roles.forEach(function (r) {
+        var pre = presets[r];
+        var on = (pre === null || pre === undefined) ? true : pre.indexOf(k) > -1;
+        var can = !!o.rolePerms[r];
+        h += '<td' + (can ? '' : ' class="tgo-off"') + '>' +
+          '<input type="checkbox" data-change="set-tgo-preset" data-role="' + r + '" data-k="' + k + '"' +
+          (on ? ' checked' : '') + (can ? '' : ' disabled') + '></td>';
+      });
+      h += '<td><input type="checkbox" data-change="set-tgo-urgent" data-k="' + k + '"' +
+        (urgent.indexOf(k) > -1 ? ' checked' : '') + '></td></tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  function tgoHtml(s) {
+    if (!s || !s.office) return '';
+    var o = s.office;
+    var list = s.chats || [];
+    var h = '<h4 class="set-h">' + t('tgo_title') + '</h4>' +
+      '<p class="muted small tgo-sub">' + t('tgo_sub') + '</p>';
+
+    h += '<h4 class="set-h mt">' + t('tgo_chats_h') + '</h4>';
+    if (!list.length) h += '<p class="muted small">' + t('tgo_none_yet') + '</p>';
+    else {
+      var bad = list.filter(function (c) { return !c.office || !c.office.gets.length; }).length;
+      list.forEach(function (c) { h += tgoChatHtml(c, s); });
+      if (!bad) h += '<p class="muted small mt">' + t('tgo_ok') + '</p>';
+    }
+
+    h += tgoGridHtml(s);
+
+    /* The shop's own hours, on the shop's clock. Everything but the kinds
+       ticked "any hour" waits here until the door opens. */
+    h += '<h4 class="set-h mt">' + t('tgo_hours_h') + '</h4>' +
+      '<div class="tgo-hours">' +
+        '<label class="field"><span>' + t('tgo_quiet_from') + '</span>' +
+          '<input class="inp num" type="number" min="0" max="23" dir="ltr" value="' + o.quietFrom + '"' +
+          ' data-change="set-tgo-hour" data-k="quiet_from"></label>' +
+        '<label class="field"><span>' + t('tgo_quiet_to') + '</span>' +
+          '<input class="inp num" type="number" min="0" max="23" dir="ltr" value="' + o.quietTo + '"' +
+          ' data-change="set-tgo-hour" data-k="quiet_to"></label>' +
+      '</div><div class="partner-note">' + t('tgo_quiet') + '</div>';
+    return h;
+  }
+
+  /* EVERY .tg-host ON THE PAGE, not the one with the id. The card has three
+     homes now — OG's Settings fold, the partner's Today screen, and the My
+     Telegram dialog from the account menu — and a dialog opened over Settings
+     would otherwise paint into the fold underneath it, because getElementById
+     answers with the first in the document. */
   function tgPaint() {
-    var host = document.getElementById('tgHost');
-    if (host) host.innerHTML = tgCardHtml(TG.status);
+    var hosts = document.querySelectorAll('.tg-host');
+    for (var i = 0; i < hosts.length; i++) hosts[i].innerHTML = tgCardHtml(TG.status);
     var meta = document.getElementById('tgMeta');
     if (meta && TG.status) {
       var cs = TG.status.chats || [];
@@ -924,17 +1062,24 @@ var YALLA = (function () {
         : cs.length ? t('tg_n_linked').replace('{n}', cs.length)
         : t('tg_not_linked');
     }
+    var oh = document.getElementById('tgoHost');
+    if (oh) oh.innerHTML = tgoHtml(TG.status);
   }
 
   function telegramLoad() {
-    var host = document.getElementById('tgHost');
+    var host = document.querySelector('.tg-host');
     if (!host) return;
     if (typeof Shop === 'undefined' || !Shop.live()) { host.innerHTML = ''; return; }
     Shop.telegramStatus().then(function (s) {
       TG.status = s;
       tgPaint();
     }).catch(function (e) {
-      host.innerHTML = '<div class="muted small">' + esc(API.friendly ? API.friendly(e) : String(e)) + '</div>';
+      /* Every host, like tgPaint — the dialog opened over Settings is the one
+         somebody is actually looking at, and it must not be left saying
+         "loading…" because the fold underneath it took the error. */
+      var msg = '<div class="muted small">' + esc(API.friendly ? API.friendly(e) : String(e)) + '</div>';
+      var hs = document.querySelectorAll('.tg-host');
+      for (var i = 0; i < hs.length; i++) hs[i].innerHTML = msg;
     });
   }
 
@@ -2265,6 +2410,10 @@ var YALLA = (function () {
     thread: thread,
     /* The Telegram card, for OG's Settings fold — same card, their bot. */
     telegramLoad: telegramLoad,
+    /* The status as last loaded. The order-alerts grid's change handlers
+       (js/app-changes.js) read and patch THIS object rather than keeping a
+       second copy of the presets that could drift from the card's. */
+    telegramStatus: function () { return TG.status; },
     threadCard: threadCard,
     go: function (v, id) {
       S.view = v; S.day = null;

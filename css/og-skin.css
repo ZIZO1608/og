@@ -826,24 +826,11 @@ body:not([data-portal="yalla"]) .dlb-sel.on { border-color: var(--border-strong)
 .dlb-vbtn:hover { color: var(--foreground); }
 .dlb-vbtn.on { color: var(--foreground); background: var(--muted); }
 body:not([data-portal="yalla"]) .dlb-refresh { width: 34px; padding: 0; display: inline-grid; place-items: center; }
-/* The office's order-alerts bell. Lit (a lime hairline, not a lime block) while
-   this device is subscribed; the word hides on a phone, the bell stays. */
-body:not([data-portal="yalla"]) .dlb-push { display: inline-flex; align-items: center; gap: 7px; }
-.dlb-push svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8;
-  stroke-linecap: round; stroke-linejoin: round; flex: none; }
-body:not([data-portal="yalla"]) .dlb-push.is-on { color: var(--brand); border-color: var(--brand-border); }
-body:not([data-portal="yalla"]) .dlb-push.is-on svg { animation: dlbRing .9s ease 1; transform-origin: 50% 12%; }
-body:not([data-portal="yalla"]) .dlb-push[disabled] { opacity: .6; }
-@keyframes dlbRing { 20% { transform: rotate(14deg); } 45% { transform: rotate(-11deg); } 70% { transform: rotate(6deg); } }
 /* The card's WhatsApp button: an ordinary button with the chat glyph in
    WhatsApp's green — the one place that colour means exactly what it says. */
 body:not([data-portal="yalla"]) .dlb-wa { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .dlb-wa svg { width: 15px; height: 15px; fill: none; stroke: #25D366; stroke-width: 1.8;
   stroke-linecap: round; stroke-linejoin: round; flex: none; }
-@media (max-width: 720px) {
-  body:not([data-portal="yalla"]) .dlb-push span { display: none; }
-  body:not([data-portal="yalla"]) .page-head .head-actions .dlb-push { flex: 0 0 44px; width: 44px; padding: 0; justify-content: center; }
-}
 .dlb-refresh svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8;
                    stroke-linecap: round; stroke-linejoin: round; }
 

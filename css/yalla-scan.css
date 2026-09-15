@@ -927,6 +927,44 @@ tr.row-late td { background: color-mix(in srgb, var(--destructive-solid) 7%, tra
   border-top: 1px solid var(--border); padding-top: 8px;
 }
 
+/* ---- the office's order alerts (052) ---------------------------------------
+   Under the Telegram card in Settings, for whoever runs the shop. Two
+   questions: which linked chats hear an order move (and why one does not), and
+   what each ROLE hears by default. A chat receiving nothing is the trap this
+   section exists for — the owner's own phone was linked before the shop
+   recorded whose it is — so it is amber and says the fix, rather than being a
+   silence somebody reads as a broken bot. */
+.tgo-host:empty { display: none; }
+.tgo-host { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.tgo-sub { margin: 2px 0 12px; max-width: 70ch; }
+.tgo-chat { padding: 9px 0; border-bottom: 1px solid var(--border); }
+.tgo-chat:last-of-type { border-bottom: 0; }
+.tgo-chat b { display: block; font-size: 13.5px; }
+.tgo-gets { display: block; margin-top: 2px; font-size: var(--fs-xs); color: var(--brand); font-weight: 600; }
+.tgo-chat.none .tgo-gets { color: var(--warning, #E8B339); }
+.tgo-why { display: block; margin-top: 3px; font-size: var(--fs-xs); color: var(--muted-foreground); line-height: 1.55; }
+.tgo-fix { display: block; margin-top: 2px; font-size: var(--fs-xs); color: var(--muted-foreground); line-height: 1.55; }
+.tgo-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 7px; }
+
+/* The grid. A table because it IS one — a kind per row, a role per column —
+   and on a phone it scrolls sideways inside its own box rather than pushing
+   the fold wider than the screen. */
+.tgo-grid-wrap { overflow-x: auto; margin-top: 8px; }
+.tgo-grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tgo-grid th, .tgo-grid td { padding: 7px 8px; border-bottom: 1px solid var(--border); text-align: center; }
+.tgo-grid th:first-child, .tgo-grid td:first-child { text-align: start; min-width: 15ch; }
+.tgo-grid thead th { font-size: var(--fs-xs); color: var(--muted-foreground); font-weight: 700; white-space: nowrap; }
+.tgo-grid tbody tr:last-child td { border-bottom: 0; }
+.tgo-grid input { width: 15px; height: 15px; accent-color: var(--brand); }
+/* A role that cannot open the delivery office hears none of these whatever is
+   ticked (officeWants), so its column is dimmed and its boxes are not a
+   promise anybody can make. */
+.tgo-grid th.tgo-off, .tgo-grid td.tgo-off { opacity: .45; }
+.tgo-grid th.tgo-off em { display: block; font-style: normal; font-weight: 600; font-size: 10.5px; line-height: 1.35; white-space: normal; max-width: 12ch; }
+.tgo-grid th.tgo-any { color: var(--brand); }
+.tgo-hours { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-top: 10px; }
+.tgo-hours .field { max-width: 15ch; }
+
 /* the by-hand job form */
 .pj-form .field span { font-size: var(--fs-xs); }
 .pj-lines { display: flex; flex-direction: column; gap: 6px; }

@@ -1418,7 +1418,9 @@ accepts — and **`userId`**, the account that pressed Connect. No migration and
   answer — hence `Array.isArray`, never a truthiness test.
 - **Every kind is routable, not only the reminders.** Filtering the nudges and not the live events
   would be strange, and both already pass through the same place. `KIND_GROUPS` in `telegram.js`
-  is the one list: **day · stock · print · yl · live** (the ten real-time `emitEvent` kinds). It
+  is the one list: **day · stock · print · yl · live** (the ten real-time `emitEvent` kinds) **·
+office** (the nine `dl_*` order alerts, 052, which are gated harder than any other group —
+see **The office hears an order move**). It
   rides out on `GET /api/telegram/status` so the browser draws the tick boxes from THAT list and
   not a second copy — a kind added there appears on screen with two i18n strings and no other edit.
   `test` is deliberately in no group: the Test button means "does this chat work", and a test
@@ -1718,9 +1720,12 @@ same family as screenshotting a popover mid-fade.
   pending `order_payments` (see **The road**). What is still not built is the **orders block on the
   dashboard and in Reports**: money received in the window, what is outstanding, and what is in
   drivers' pockets. Nothing there counts an order's balance today.
-- **Telegram says nothing about an order.** The reminders know about runs and a driver's cash; a
-  deposit that never turned into the rest, or a parcel a customer has not collected, is not a rule
-  yet.
+- **Telegram now says what an order DID, but still not what it FAILED to do.** The nine `dl_*`
+  kinds (052) are events: placed, paid, out, back, delivered, failed, cancelled, reviewed, cash in.
+  What is still not a rule is the absence of one — a deposit that never turned into the rest, or a
+  parcel a customer has not collected for a fortnight. Those belong in `reminders.js` with the
+  other standing conditions, not in `office-alerts.js`, which only ever speaks when something
+  happened.
 - Bulk catalogue entry; an offline write queue. (The Yalla Wear portal now runs against real data —
   what remains is exposing the server to them: Tailscale or a tunnel, and `OG_ORIGINS` listing the
   address they use.)
@@ -1755,30 +1760,36 @@ same family as screenshotting a popover mid-fade.
 - **Web Push dies when the shop moves laptops.** The VAPID pair lives in `push_keys`, which is per
   laptop and deliberately not mirrored (migration 048), and so is `push_subscriptions`. The laptop
   that takes the baton mints a new pair, publishes its public half to config `push.public_key`, and
-  holds no subscriptions at all — so every customer's Notify me and every office bell stops
+  holds no subscriptions at all — so every customer's Notify me stops
   delivering, silently. og-track's inbox does not bring them back: follows the old laptop already
   applied are marked done in the inbox and are never collected again. A customer's browser
   recovers only when somebody opens the page and taps Notify me again (the page sees the key has
-  changed and subscribes afresh); the office bell has to be turned on again the same way. The fix
+  changed and subscribes afresh). The fix
   is not decided — carrying the private half across sealed the way `credvault.js` seals the
   passwords, or re-applying recent inbox follows when a laptop claims a new lineage.
-- **No ACTIVE account has the delivery bell on, so the office gets no order or review alerts at
-  all** (checked 14 Sep 2026). The only staff subscription belongs to `hussam` (user 1), disabled
-  with the other old test accounts on 13 Sep. `Auth.can()` is false for an inactive account, so
-  `tracking.js` skips that row before sending — correct behaviour, and silent: `fails` stays 0,
-  `last_ok_at` stops moving, nothing is logged. The active managers, `owner` (7) and `zaren` (10),
-  have never turned the bell on. Somebody has to, signed in as themselves, on the Deliveries board —
-  and staff alerts skip the person who made the change, so the account that enters the orders is not
-  the one whose phone will hear about them.
-- **Staff push gets harder once the shop is LAN-only — a Phase C consequence.** The bell subscribes
-  through the app's `sw.js`, and a browser registers a service worker only on an origin it TRUSTS.
-  A self-signed certificate somebody pressed "continue" on is enough to open the page, not to
-  register the worker, so the bell cannot be offered at all. On the till `npm run cert:trust` puts
-  the certificate in Windows' trusted list; every other office device would need it installed and
-  trusted by hand (an iPhone also needs full trust switched on in Settings, and push there only
-  works from the app added to the Home Screen). Delivery still needs outbound internet: from the
-  laptop to the push services, and from each device to its vendor. Decide how office alerts work
-  before the public address leaves this laptop.
+  **The office is no longer part of this problem**: its alerts are Telegram since 052, and a linked
+  chat lives in `config`, which is mirrored whole — so the phones survive the laptop baton for free.
+- **NOBODY HEARS AN ORDER ALERT YET, and the shop has to press two buttons for that to change**
+  (16 Sep 2026). The office's alerts are Telegram now (**The office hears an order move**, below),
+  and the gate is real: a private chat hears one only while the account behind it can work the
+  delivery office. The shop's ONE linked chat is private with **no `person` recorded** — it was
+  linked before chat owners existed — so it hears none of them, and every `dl_*` row is currently
+  marked sent with `no chat on this side is subscribed to …` written into it. That is the guard
+  working, not a fault. The fix is either: the owner signs in, opens **My Telegram** in the account
+  menu, presses Connect and sends the code from that same chat (which records him as its owner and
+  puts it on the manager preset), or somebody ticks the order alerts for it by hand in
+  Settings → Telegram → Choose. Settings names the chat and the reason on its face so this is not
+  discovered by silence.
+- **Staff Web Push is gone, and that question is settled** (16 Sep 2026). It could not survive
+  Phase C: a browser registers a service worker only on an origin it TRUSTS, and a self-signed
+  certificate somebody pressed "continue" on is enough to open the page but not to register the
+  worker — so on a LAN-only shop the office bell could only ever have worked on the till, where it
+  adds nothing. The office's alerts moved to the shop's Telegram bot, which is outbound-only, needs
+  no certificate and no inbound port, and survives somebody replacing a phone. **The CUSTOMER's
+  push is untouched** and still carries that limit: `/i/<token>` must be opened on an origin the
+  browser trusts, which today means the public address rather than the Wi-Fi IP, and on an iPhone
+  the page added to the Home Screen. Delivery still needs outbound internet from this laptop to the
+  push services.
 
 ## Customers
 
@@ -2311,7 +2322,9 @@ is two read-only additions below.
 `track-page-client.js`, `track-page-words.js`, `server/lib/tracking.js`, `server/lib/webpush.js`,
 migration `048_push.sql`. The owner asked for `/i/<token>` to be "more branded, real time, and send a
 notification to the mobile and laptop", and chose: **Web Push that arrives with the page closed**,
-**to the customer AND the shop's staff**, **always dark**.
+**to the customer AND the shop's staff**, **always dark**. (The STAFF half moved to Telegram on
+16 Sep 2026 — see **The office hears an order move**. Everything below about the CUSTOMER's push
+still stands, unchanged.)
 
 - **The page is no longer script-free, and still works without one.** Everything a customer needs
   is in the server's HTML; the one inline script ADDS the live refresh, relative times and Notify
@@ -2332,11 +2345,13 @@ notification to the mobile and laptop", and chose: **Web Push that arrives with 
   PATCH delivery, void — and a change the customer cannot see (cash handed in) says nothing, two
   routes on one order say it once, a restart repeats nothing. An order with no `push_seen` row
   treats only events from the last 3 minutes as news, so old orders are not re-announced.
-- **Staff alerts skip the person who pressed the button**, and are gated on `delivery.desk` at
-  subscribe and again at send (skipped, not deleted, when the permission is gone); the customer's
-  name is added only for an account with `customer.read`. The bell is on the Deliveries board
-  (`dl-push`, `.dlb-push`), subscribes through the app's own `sw.js`, and the server sends a first
-  notification at once as proof — both audiences get that "hello".
+- **THE OFFICE'S HALF OF THIS IS GONE — it is Telegram now** (052; see **The office hears an order
+  move** below). What survived the move is the shape: `Tracking.moved(saleIds, actorId)` still
+  carries the actor, and that actor is what `partner_events.skip_users` is set from, so "never tell
+  somebody about the button they just pressed" still holds. Removed with the bell: the Deliveries
+  board's `dl-push` button and its `.dlb-push` rules, `POST /api/push/state|subscribe|unsubscribe`,
+  `followShop`/`unfollowShop`/`shopState`, the staff wording in `receipt.js`, and the app `sw.js`'s
+  two push handlers. `push_subscriptions` now holds customers only.
 - **`webpush.js` is RFC 8291 + VAPID on `node:crypto`, no package.** The endpoint is a URL a
   stranger's browser sends, so **only the vendors' push hosts are ever called** (FCM, Mozilla,
   WNS, Apple), https on 443. The VAPID key pair lives in `push_keys` — not `config` (handed to every
@@ -2351,8 +2366,9 @@ notification to the mobile and laptop", and chose: **Web Push that arrives with 
 - **iPhones get push only from a page added to the Home Screen** (Apple's rule), so each order
   page links `/i/<token>/manifest.webmanifest` (scope `/i/`, start_url that order) and the card
   says how, instead of a button that cannot work. The page's worker is `/i/sw.js`, served from
-  `Tracking.WORKER` with `Service-Worker-Allowed: /i/`; the app's `sw.js` carries the same push
-  handlers — **keep the two in step**. Push also needs a secure page: the public
+  `Tracking.WORKER` with `Service-Worker-Allowed: /i/`, and since 052 it is the **only** push
+  worker there is: the app's `sw.js` carried the same two handlers for the office's bell and lost
+  them when that moved to Telegram. Push also needs a secure page: the public
   `https://shop.ogsports1.com/i/…` link works, the Wi-Fi IP does not, and both screens say so.
 - **The Home Screen guide.** The owner asked for install steps in the notifications card and for
   iPhone notifications "from the top". The second is Apple's own banner, which exists only for a
@@ -2453,7 +2469,9 @@ when **the customer allowed it AND the shop switched it on**; and the arrival as
   spread as bars that filter, what they liked, the share of delivered orders reviewed, then a card
   per review with its order (opens it), carrier, words and the website switch or the lock line.
   The summary is the whole shop's, never the filtered list's. Search repaints `#rvwList` only, so
-  the caret stays. The office hears each review as a push ("New review ★★★★☆ · name · words").
+  the caret stays. The office hears each review on the shop's Telegram bot (`dl_review`): the stars, whether it is
+  new or changed, and the words — and **never the customer's name**, because a chat is a room whose
+  membership nobody in this system controls (052).
 - **Mirrored**, cursor shape like `job_reviews`: `order_reviews` sits in the ROAD guarded block,
   `CURSOR_TABLES`, `restore.js ORDER`, `drift.js PUSHED`, reconcile `TABLES` (key `sale_id`) and the
   sale-purge list, and `019` is appended to `CATCH-UP.sql`. **Run `019` in the Supabase dashboard,
@@ -2461,9 +2479,93 @@ when **the customer allowed it AND the shop switched it on**; and the arrival as
   which is the guard working.
 
 - **Verified** on a scratch copy: `pushcrypto` (25 — endpoints, encryption, JWT, 410, off switch),
-  `trackflow` (41 — page, worker, manifest, live stream, follow, staff bell, who is told what) and
+  `trackflow` (41 — page, worker, manifest, live stream, follow, the staff bell **as it was then**,
+  who is told what) and
   `trackui` (the look at 390/820/1366 in both languages, the Live pill, a payment taken elsewhere
   landing on the open page without a reload, Notify me on and off).
+
+### The office hears an order move — on Telegram, not on a bell (16 Sep 2026)
+
+`server/lib/office-alerts.js`, migration `052_office_alerts.sql`, the `office` group in
+`server/lib/telegram.js`, the Order alerts section of the Telegram fold (`tgoHtml` in `js/yalla.js`).
+**The staff half of Web Push (048) is gone**; the customer's half is untouched.
+
+It could not survive the shop going LAN-only. A browser registers a service worker only on an origin
+it TRUSTS, and a self-signed certificate somebody pressed "continue" on opens the page but does not
+earn a worker — so the Deliveries board's bell could only ever have worked on the till itself, where
+it adds nothing. It was already silent: the one staff subscription belonged to an account disabled on
+13 Sep, and both staff paths skip an inactive account without a word. Telegram is outbound-only, needs
+no certificate and no inbound port, survives a replaced phone, and **the shop's bot is already
+running** — so this adds no listener on either token. It writes rows; the `drain()` that has always
+sent them sends these too.
+
+- **NINE KINDS, one `dl_` group**: `dl_new` `dl_paid` `dl_out` `dl_back` `dl_delivered` `dl_failed`
+  `dl_cancelled` `dl_review` `dl_handin`. The `dl_` prefix is not decoration — the print partner
+  already owns `order_new` and `review`, and one name for two things is how a warehouse phone starts
+  hearing another company's invoices.
+- **WHAT IS NEWS IS STILL DECIDED IN ONE PLACE.** `tracking.js` reads the customer's own event list
+  (`Receipt.events`) against `push_seen` and hands what is new to `Office.orderMoved()` — so the
+  office and the customer's phone can never disagree, and a restart repeats nothing. It is called
+  **before** the subscriptions query, because `announce()` returns early on an order nobody follows,
+  which is most of them, and the office's news used to sit behind that return.
+- **NO CUSTOMER NAME, EVER.** Order number, what happened, how it travels, what is still owed. A
+  staff group is wider than `customer.read`, and a phone on a counter is readable by whoever picks
+  it up — the same rule `PARTNER_STRIP` follows one door along.
+- **THE HARD GATE IS `officeWants()`, and it is a real gate.** Every other kind's permission note is
+  advisory; these are enforced. A chat with a PERSON hears an order alert only while that account
+  can work the delivery office (`Auth.can` — false for a disabled account too), whatever is ticked.
+  A chat with NO person — a group, or a phone linked before owners were recorded — hears them only
+  if somebody ticked them **by hand**: never by default (`DEFAULT_RULES` excludes the group), never
+  by the newer-kind upgrade rule. **Today that means the shop's one linked chat hears nothing**, and
+  the Settings section says so with the fix; see Known open work.
+- **SKIP-YOURSELF is a column, not an argument.** `partner_events.skip_users` is a JSON array of the
+  ids whose own buttons made the news; `drain()` drops a chat whose `person` is in it, and a row
+  with nobody left is marked **sent with the reason**, never retried. It is a column because
+  `args.actor` is printed as the message's signature — routing is not part of the message, the call
+  `to_user` (042) already made. Refused for the partner audience, and refused unless every id is an
+  integer: SQLite would store `'lubna'` in an INTEGER column without complaint and the row would
+  reach nobody. **A group has no owner**, so somebody acting from a room still sees their own action
+  there — that is the room's business, not the system's.
+- **ONE ACTOR SIGNS THE MESSAGE, several sign nothing.** `userId` is passed only when the batch had
+  exactly one actor, so a message ends "— Lubna" or ends plainly, and never names one of three.
+- **THE SHOP IS SHUT FROM 23:00 TO 13:00** (`alerts.quiet_from` / `alerts.quiet_to`, on
+  `shop.tz_minutes`), and only `alerts.urgent` — a cancelled order, because it may be packed and
+  about to leave — goes out in the night. An event fires once and cannot be re-evaluated the way a
+  reminder can, so a held alert is queued with `next_try_at` set to the next 13:00 shop time;
+  `drain()` already waits for that and does not count it as an attempt. Kept apart from
+  `reminders.quiet_*` (00–08), or the 21:00 day close would never go out.
+- **OVERNIGHT, ONE ROW PER ORDER.** A held alert overtaken by a bigger one about the same order is
+  marked `superseded overnight`, and a weaker one arriving after a stronger is dropped — so 13:00
+  brings "delivered", not "out" and then "delivered". An urgent alert is never held, so it can
+  never be superseded.
+- **THE ROW IS WRITTEN EVEN WHEN NOBODY IS SUBSCRIBED**, which is the opposite of a reminder. A
+  reminder asks `canReach()` first because its row IS the ledger that the thing was said; an order
+  alert is news whose key can never recur, so the row is queued and `drain()` marks it sent with
+  `no chat on this side is subscribed to dl_out` written into it. `Telegram.canQueue(side)` — a bot
+  AND a linked chat — is still asked, because `drain()` skips a row for a side with neither without
+  bumping it, and it would sit in the card's queue for ever.
+- **`dl_*` are excluded from `linkFor()`**: it builds a link from the public tunnel hostname, which
+  dies with Phase C, and a link that opens nothing is worse than none. `/mute` still silences the
+  reminders only — these are news.
+- **Money is the currency's own decimals** (`minor_exp`), so a dollar order says `17.31 USD` and a
+  lira one `450,000 SYP`, never rounded and never added together.
+- **MY TELEGRAM IS IN THE ACCOUNT MENU, for every account.** Linking is self-service like the
+  password (`POST /api/telegram/link` is deliberately ungated, and a chat answers a command only as
+  far as its account may); the card used to live on a manager-only screen, so a cashier could not
+  press Connect at all. Choosing what a chat receives stays `config.write`.
+- **Settings → Telegram → Order alerts** is the other half: every linked chat with what it gets or
+  why it gets none and the fix, a roles × kinds grid writing `reminders.preset.<role>`, the "any
+  hour" column writing `alerts.urgent`, and the shop's two hours. The grid stores **everything
+  ticked as `null`**, the picker's own rule — an explicit list of today's kinds would silently
+  exclude next month's.
+- **The picker and the summary had to learn about the gate.** A chat on "everything" can still
+  receive no order alert, so both read the office kinds from what the server says the chat
+  ACTUALLY gets (`office.gets`) rather than from its stored rules. Nine ticks against nine messages
+  that never arrive is exactly the lie this section exists to stop.
+- `partner_events` stays **local-only**: no `server/supabase/` file, no `mirror-lag.js` entry,
+  `supabase:drift` stays green. The migration also deletes `push_subscriptions WHERE audience =
+  'staff'` and leaves the CHECK constraint alone — rebuilding a table real customers' rows live in
+  to drop one word is risk for nothing.
 
 ### og-track's inbox: the public page writes, this laptop applies (13 Sep 2026)
 

@@ -351,6 +351,66 @@ var CHANGES = {
       });
   },
 
+  /* ---- the office's order alerts (052) -------------------------------------
+     WHAT EACH ROLE HEARS, written into the same `reminders.preset.<role>` keys
+     a phone already follows — one key with two writers (this grid and the
+     per-chat picker), never a second set that could disagree.
+
+     `null` MEANS EVERYTHING AND IS KEPT THAT WAY. The manager's preset is the
+     string 'null', which is what makes a kind invented next month reach him
+     without anybody re-ticking anything; an explicit list of today's kinds
+     would silently exclude it. So a full row is stored back as null — the same
+     rule the picker's Save follows — and only an actual gap is materialised. */
+  'set-tgo-preset': function (el) {
+    var role = el.getAttribute('data-role'), kind = el.getAttribute('data-k');
+    var s = tgOfficeStatus();
+    if (!role || !kind || !s) return;
+    var all = (s.allKinds || []).slice();
+    /* NO KIND LIST, NO WRITE. That list is what "everything" is measured
+       against; saving against an empty one would store `[]` — every phone on
+       that role switched off — and it would look on screen like one tick. */
+    if (!all.length) { el.checked = !el.checked; return; }
+    var cur = (s.presets || {})[role];
+    var list = (cur === null || cur === undefined) ? all.slice() : cur.slice();
+    var at = list.indexOf(kind);
+    if (el.checked && at < 0) list.push(kind);
+    if (!el.checked && at > -1) list.splice(at, 1);
+    /* Everything ticked is stored as "everything", not as a frozen list. */
+    var whole = all.length && list.length === all.length;
+    s.presets[role] = whole ? null : list;
+    saveConfig('reminders.preset.' + role, whole ? 'null' : JSON.stringify(list),
+               t('tgo_title'), 0, t('role_' + role) + ' · ' + t('tgo_saved'), tgOfficeReload);
+  },
+
+  /* ANY HOUR, or wait for the shop to open. `alerts.urgent` is the short list
+     of kinds worth a phone at three in the morning — a cancelled order, because
+     it may be packed and about to leave. Written with the key spelled out
+     rather than built from the box, so the config-keys test can see it. */
+  'set-tgo-urgent': function (el) {
+    var kind = el.getAttribute('data-k');
+    var s = tgOfficeStatus();
+    if (!kind || !s || !s.office) return;
+    var list = (s.office.urgent || []).slice();
+    var at = list.indexOf(kind);
+    if (el.checked && at < 0) list.push(kind);
+    if (!el.checked && at > -1) list.splice(at, 1);
+    s.office.urgent = list;
+    saveConfig('alerts.urgent', JSON.stringify(list), t('tgo_title'), 0,
+               t('tgo_saved'), tgOfficeReload);
+  },
+
+  /* WHEN THE SHOP IS SHUT, on the shop's own clock (shop.tz_minutes). Out of
+     range is a half-typed hour, not a value — the reminders' own rule. */
+  'set-tgo-hour': function (el) {
+    var k = el.getAttribute('data-k');
+    var v = parseInt(el.value, 10);
+    if (!isFinite(v) || v < 0 || v > 23) return;
+    var s = tgOfficeStatus();
+    if (s && s.office) s.office[k === 'quiet_to' ? 'quietTo' : 'quietFrom'] = v;
+    if (k === 'quiet_to') saveConfig('alerts.quiet_to', v, t('tgo_title'), 600, String(v), tgOfficeReload);
+    else saveConfig('alerts.quiet_from', v, t('tgo_title'), 600, String(v), tgOfficeReload);
+  },
+
   'set-rate': function (el) {
     var v = parseInt(el.value, 10);
     if (v > 0) {
@@ -374,16 +434,29 @@ var ATRISK_SAVE_T = null;
    breath do not cancel each other — that was the bug waiting in a single
    shared timer. */
 var CONFIG_SAVE_T = {};
-function saveConfig(key, value, label, wait) {
+/* `shown` is what the toast says instead of the raw value — a JSON list is not
+   a sentence — and `after` runs once the server has it. */
+function saveConfig(key, value, label, wait, shown, after) {
   clearTimeout(CONFIG_SAVE_T[key]);
   if (typeof API === 'undefined' || !API.live) return;    /* _shot.html */
   CONFIG_SAVE_T[key] = setTimeout(function () {
     var updates = {};
     updates[key] = String(value);
     API.put('/api/config', { updates: updates })
-      .then(function () { toast(label, String(value), 'ok', 1800); })
+      .then(function () {
+        toast(label, shown === undefined ? String(value) : shown, 'ok', 1800);
+        if (typeof after === 'function') after();
+      })
       .catch(function (err) { toast(label, API.friendly(err), 'err', 5000); });
   }, wait === undefined ? 600 : wait);
+}
+
+/* The Telegram card as it was last loaded, and a way to load it again. */
+function tgOfficeStatus() {
+  return typeof YALLA !== 'undefined' && YALLA.telegramStatus ? YALLA.telegramStatus() : null;
+}
+function tgOfficeReload() {
+  if (typeof YALLA !== 'undefined' && YALLA.telegramLoad) YALLA.telegramLoad();
 }
 
 /* Re-focus an input after a full re-render so typing is never interrupted. */

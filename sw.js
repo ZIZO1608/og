@@ -14,7 +14,7 @@
    Bump this on EVERY upload or phones that already have the app will keep
    serving the old cached copy — including, here, a copy that still expects a
    passcode screen that no longer exists. */
-var CACHE = 'og-system-v220';
+var CACHE = 'og-system-v225';
 
 var SHELL = [
   './',
@@ -175,40 +175,9 @@ self.addEventListener('fetch', function (e) {
   );
 });
 
-/* ORDER ALERTS FOR THE OFFICE (Web Push). The Deliveries board's bell
-   subscribes through this registration; server/lib/tracking.js sends. The
-   customer's tracking page has its own worker at /i/sw.js with the same two
-   handlers — KEEP THEM IN STEP. A click brings an open app window forward
-   rather than navigating it: that window may be the office with a
-   half-typed order in it. */
-self.addEventListener('push', function (e) {
-  var m = {};
-  try { m = e.data ? e.data.json() : {}; } catch (x) { m = { body: e.data ? e.data.text() : '' }; }
-  e.waitUntil(self.registration.showNotification(m.title || 'OG', {
-    body: m.body || '',
-    icon: m.icon || 'assets/icon-192.png',
-    tag: m.tag || undefined,
-    renotify: !!m.tag,
-    lang: m.lang || undefined,
-    dir: m.dir || 'auto',
-    timestamp: m.at ? Date.parse(m.at) : Date.now(),
-    /* Heard, not only seen: never silent, a buzz on a phone in a pocket. */
-    silent: false,
-    vibrate: [200, 100, 200, 100, 320],
-    requireInteraction: !!m.sticky,
-    data: { url: m.url || './' }
-  }));
-});
-
-self.addEventListener('notificationclick', function (e) {
-  e.notification.close();
-  var url = (e.notification.data && e.notification.data.url) || './';
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
-    for (var i = 0; i < list.length; i++) {
-      var path = new URL(list[i].url).pathname;
-      if (path.indexOf('/i/') === 0) continue;
-      if ('focus' in list[i]) return list[i].focus();
-    }
-    return self.clients.openWindow ? self.clients.openWindow(url) : null;
-  }));
-});
+/* NO PUSH HANDLERS HERE ANY MORE (052). They served only the office's order
+   alerts, which moved to the shop's Telegram bot: a service worker will not
+   register on a self-signed certificate, so on a LAN-only shop this bell could
+   never have worked anywhere but the till. The CUSTOMER's push is untouched —
+   the tracking page has its own worker at /i/sw.js (Tracking.WORKER, scope
+   /i/), and that is the only worker a customer's browser subscribes through. */
