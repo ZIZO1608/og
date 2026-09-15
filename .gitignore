@@ -23,7 +23,15 @@ flutter_app/
 
 # ---- generated document assets ----------------------------------------------
 # make-proposal.ps1 regenerates all of these from the live app.
-docs/img/
+# `docs/img/*`, not `docs/img/`: git cannot re-include a file inside an
+# excluded DIRECTORY, so the exception below only works against the contents.
+docs/img/*
+# ...except the warehouse room's design reference and the screenshots of the
+# work built from it. They are not generated — the render came from the owner —
+# and three stages in a row were judged without it because it lived in a chat.
+# The proposal rig writes dashboard/pos/warehouse/money/reports/print/yalla/
+# phone.png, none of which matches.
+!docs/img/warehouse-*
 docs/fonts/
 docs/proof/
 docs/*.pdf
