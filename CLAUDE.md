@@ -21,6 +21,7 @@ cd server && npm start          # or double-click "OG System.exe" - the panel, s
 # nothing to draw without the server. Both now say so rather than inventing a shop.
 
 cd server
+npm test                         # the one test: browser config keys vs the server's allow-list
 npm run createuser               # interactive; also accepts piped stdin
 npm run backup                   # VACUUM INTO + integrity_check + FK check
 npm run preflight                # accounts, catalogue, Supabase, port
@@ -831,7 +832,20 @@ the arc around the mark is the count. At the end everything pulls into the mark 
 
 ## Tests
 
-**There are none — they were removed on request.** 986 checks (858 browser, 128 server) used to gate
+**One, deliberately small: `cd server && npm test`** (`node --test`, no dependency, no server, no
+database). `server/test/config-keys.test.js` reads the browser's own source for every config key it
+sends through `PUT /api/config` and checks each against `CONFIG_WRITABLE` in
+`server/lib/config-writable.js` — the list the route itself uses. It exists because **Settings → Save
+changes never saved** (found and confirmed on a scratch server, 15 Sep 2026): the button sends
+`shop.name`, `shop.address` and `shop.city` with the loyalty rate, the allow-list had never held those
+three, so the server refused the whole request with "shop.name cannot be changed here."; the exchange
+rate, posted only after that save, never went out; and the page reloaded the old name, address and rate
+over what had been typed, leaving one red toast. The three keys are on the list now, a blank shop name
+is refused at the door, and the test was run against the old list to see it go red on exactly those
+three keys (`js/app-actions.js:2015–2017`). It does not start the server — `index.js` reads `.env` and
+would long-poll the real Telegram bots.
+
+**Everything else was removed on request.** 986 checks (858 browser, 128 server) used to gate
 deployment. Nothing inspects a push now, so a change that breaks the till reaches the live site as fast
 as one that fixes it. Verify your own changes in a browser before pushing.
 
@@ -1714,6 +1728,15 @@ same family as screenshotting a popover mid-fade.
   every real sale was frozen at it — the shop is on the redenominated lira. The seed that assumed
   13,000 is gone, so nothing in the repo asserts the old scale any more.
 - `flutter_app/` fails to build on an Android NDK/`sdkmanager` crash.
+- **The shelf edit form is drawn only for `config.write`, but the server saves it for `stock.move`**
+  (logged 15 Sep 2026, not decided). In the shelf map's panel, `editForm()` in `js/shelfmap.js` sits
+  behind `canEdit()` (`config.write`). Its **Save** — the shelf's code, capacity, product and size
+  range — is `PATCH /api/shelves/:id`, which `server/index.js` gates on `stock.move`; only its
+  **Delete** (`DELETE /api/shelves/:id`) is `config.write`. So a warehouse account never sees the
+  form, yet the server would take the same write from it sent by hand. The browser is not the
+  boundary, so the server's gate is what actually applies today. One of the two has to move: the
+  route to `config.write` (a shelf's code and size range are layout, and a code change strands
+  printed shelf labels), or the form to `stock.move` (which product a shelf holds is put-away work).
 - **Shelf map, Arabic fullscreen: the "putting away onto…" line overlaps the scan box** in the bottom
   strip (`.sm-ov-bottom`, `.sm-scanbox` + `.sm-scanwhat`). Seen 14 Sep 2026 while building the room's
   Stage A; older than that work and deliberately left out of it.

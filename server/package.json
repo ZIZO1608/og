@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node index.js",
+    "test": "node --test \"test/*.test.js\"",
     "preflight": "node scripts/preflight.js",
     "cert": "node scripts/make-cert.js",
     "cert:trust": "node scripts/trust-cert.js",

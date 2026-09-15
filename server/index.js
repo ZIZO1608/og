@@ -59,6 +59,7 @@ import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
 import * as Storage from './lib/storage.js';
 import * as SB from './lib/supabase.js';
+import { CONFIG_WRITABLE, configRefusal } from './lib/config-writable.js';
 import { lanAddresses } from './lib/net.js';
 import { timingSafeEqual } from 'node:crypto';
 import {
@@ -405,7 +406,9 @@ router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
    in-memory state and therefore earned a route of its own. Note what this
    does NOT open: the partner writes reminders.yl_* through
    PUT /api/reminders/config, whose allow-list is narrower than this one. */
-const CONFIG_WRITABLE = /^receipt\.|^customer\.|^loyalty\.|^reminders\.|^shop\.(branch_name|phone|tz_minutes)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|logo_asset|code_source|max_batch|lease_minutes|calibrate_cmd)$/;
+/* The list itself is CONFIG_WRITABLE in lib/config-writable.js, with the
+   Save changes bug it was moved there to fix (shop.name, shop.address and
+   shop.city were never on it), and a test holds it to the browser's keys. */
 
 /* ---- the Sync button in the topbar --------------------------------------
    The mirror already runs on a timer, but somebody who has just finished a
@@ -441,11 +444,8 @@ router.add('PUT /api/config', requirePerm('config.write', async (ctx) => {
   const keys = Object.keys(updates);
   if (!keys.length) return sendError(ctx.res, 400, 'invalid', 'Nothing to save.');
 
-  for (const k of keys) {
-    if (!CONFIG_WRITABLE.test(k)) {
-      return sendError(ctx.res, 400, 'invalid', `${k} cannot be changed here.`);
-    }
-  }
+  const refused = configRefusal(updates);
+  if (refused) return sendError(ctx.res, 400, 'invalid', refused);
 
   const at = DB.nowIso();
   DB.tx((d) => {
