@@ -71,8 +71,11 @@ export const MIRROR_LAG = {
      the rack is and where on the wall it stands, in centimetres (013). A
      restore without the second set hands back standard-size racks at
      bay-count positions: walkable, but a layout somebody has to fix. */
-  sections:   { cols: ['room_id', 'wall', 'wall_pos', 'bay_cm', 'level_cm', 'depth_cm', 'wall_cm'],
-                file: 'server/supabase/008_rooms.sql then 013_rack_size.sql',
+  /* 051 — a rack standing on the floor, and where (020). Without these a
+     free-standing rack restores as a rack in its room on no wall at all. */
+  sections:   { cols: ['room_id', 'wall', 'wall_pos', 'bay_cm', 'level_cm', 'depth_cm', 'wall_cm',
+                       'placement', 'x_cm', 'y_cm', 'rot_deg'],
+                file: 'server/supabase/008_rooms.sql then 013_rack_size.sql then 020_free_racks.sql',
                 retriedBy: ['sync', 'reconcile'] },
 
   /* 017 — the shift a sale was rung up on. `sales` is likewise pushed outside

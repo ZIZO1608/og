@@ -825,7 +825,8 @@ the arc around the mark is the count. At the end everything pulls into the mark 
   to build the Arabic client PDF.
 - **PowerShell here is 5.1**: no `&&`/`||`, no heredocs, no ternary; it prepends a UTF-8 BOM when piping
   (which once made a password not match its own confirmation). The Bash tool is available for POSIX.
-- `dist/`, `flutter_app/`, `docs/img/`, `docs/fonts/`, `docs/*.pdf` are **deliberately untracked**.
+- `dist/`, `flutter_app/`, `docs/img/`, `docs/fonts/`, `docs/*.pdf` are **deliberately untracked** —
+  except `docs/img/warehouse-*`, the 3D room's design reference and its screenshots (see the shelf map).
   Committing `dist/` is what previously let the live site drift several versions behind.
 
 ## Tests
@@ -1713,6 +1714,14 @@ same family as screenshotting a popover mid-fade.
   every real sale was frozen at it — the shop is on the redenominated lira. The seed that assumed
   13,000 is gone, so nothing in the repo asserts the old scale any more.
 - `flutter_app/` fails to build on an Android NDK/`sdkmanager` crash.
+- **Shelf map, Arabic fullscreen: the "putting away onto…" line overlaps the scan box** in the bottom
+  strip (`.sm-ov-bottom`, `.sm-scanbox` + `.sm-scanwhat`). Seen 14 Sep 2026 while building the room's
+  Stage A; older than that work and deliberately left out of it.
+- **The one-room script has not been run on the shop's database** (15 Sep 2026). `npm run
+  warehouse:one-room` is written and verified on copies; the live `og.db` still holds the three test
+  rooms. Migration 051 is already applied there (the server restarted at 18:58); **run
+  `server/supabase/020_free_racks.sql` in the dashboard BEFORE the script**, or D reaches the mirror
+  without its place. See **Stage B** under the shelf map.
 - **The demo rows are gone** (`server/scripts/purge-demo.js`; the live database holds zero rows with
   `demo = 1`). `products.demo` and `customers.demo` remain as columns, `GET /api/ext/products` still
   filters on `demo = 0`, and nothing sets either any more.
@@ -2723,6 +2732,13 @@ one press away (`js/shelfroom.js`). With the layout editor open the room is also
 is **changed**: drag a rack onto a wall, drag a rack in from the list beside it, pull a wall to say
 how big the room really is.
 
+**The design reference for the 3D room is `docs/img/warehouse-ref.jpg`** — the owner's render of the
+back room: the 3D view, the floor plan, the view through the open door, 4.5 × 5.5 × 3.5 m. Look at it
+before changing anything the room draws; the screenshots of each stage sit beside it
+(`warehouse-a1-*`, `warehouse-b-*`). It is tracked on purpose: `docs/img/*` is ignored as the
+proposal rig's output, with an exception for `warehouse-*`. Three stages in a row were judged from a
+chat attachment before it was committed.
+
 - **The drop is the save.** Every drag ends in a `PATCH /api/sections/:id` or `/api/rooms/:id` and
   a reload. There is no Save button and no edit buffer, deliberately: a layout held in the browser
   is a layout that dies on a refresh, which is the trap the draft partner invoice is still in.
@@ -2802,9 +2818,16 @@ can see is too short is a wall somebody will fix.
 
 Two more things that were silently wrong and are worth not reintroducing:
 
-- **Names and clicks are occlusion-tested.** One world box per rack, tested against the line from
-  the camera. Without it a product name from the far wall floated over the near rack, and a click
-  went through a rack and selected a bay behind it — the hit boxes write no depth.
+- **Names and clicks are occlusion-tested — and for as long as the feature existed, only the bottom
+  half of each rack was.** One world box per rack, tested against the line from the camera; without
+  it a product name from the far wall floated over the near rack, and a click went through a rack
+  and selected a bay behind it — the hit boxes write no depth. The box was built centred on the
+  rack's group, whose origin is ON THE FLOOR, so it ran from −h/2 to +h/2: half underground, and
+  every click and name above half the rack's height passed straight through to whatever stood
+  behind. This line said "occlusion-tested" the whole time. Fixed in Stage A (floor to top board),
+  and `_smcheck.html` now fires a real press through a gap in a near rack at a bay behind it and
+  asserts nothing is picked. **Do not read a line like this as covered without a test that goes red
+  when it is not.**
 - **The room's name is in `sameSig`.** Left out, renaming a room left the old name painted on the
   back wall until something structural forced a rebuild.
 - **No mark is better than a black square.** The logo plate starts hidden and appears only once the
@@ -2814,6 +2837,346 @@ Verified by `_smcheck.html` — `?gl=force` runs the room suite (needs
 `--use-angle=swiftshader --enable-unsafe-swiftshader` headless), and **`?hold=1` stops before the
 context-loss test** so the finished room can be looked at, which is the one check that cannot be
 written as an assertion.
+
+### Stage A: the look, one box per pair, and pressing a bay (15 Sep 2026)
+
+No schema, no API. Pixels, camera and strings.
+
+- **The look is the back room itself**: warm near-black walls and steel, cold concrete, kraft
+  boxes, one warm light (`C.light` `#FFD9A0`) as the only bright thing. Selection and hover are
+  that light's white (`#FFF2DC`) — green and red stay the scan colours. Floor paint is that white
+  too, faint (it was worn lime, and on this screen lime reads as a scan accepted — Stage A.1).
+- **The light is counted, per tier**: a hemisphere, one shadow-casting key from overhead, and on
+  high four point lights under the strips — **6 on high, 2 on low** (`LIGHTS_HIGH/LOW`, counted as
+  VISIBLE lights in `stats()`). The strips are unlit geometry; the pools on the walls are emissive
+  maps; the floor's reflection is an env map of the strips (high only), not a second render.
+- **The ceiling is one boolean on the camera's height** (`ceilingByCamera()` in `updateCam()`):
+  hidden above the walls, there once the camera drops inside.
+- **One box per pair, ONE `InstancedMesh` for the room** (plus a second for the type stickers on
+  the box ends — the type colour moved there from the old crate fill, so the legend stays true).
+  `slotsFor(rec)` decides how many fit a bay from the bay's own size — 24 on the standard rack,
+  half on low — and `layoutBoxes()` places them with repeatable jitter keyed on bay and slot, so a
+  scan never reshuffles a shelf. **The drawing is capped; the card is not** — the pinned peek
+  shows the server's `qty`. `BOX` is the size of a shoe box, not rack geometry; every rack number
+  still comes from the server. The box's look is `boxAtlas()` and nothing else: a photo of a real
+  box replaces what it draws.
+- **Pressing a bay flies to it** (`ShelfRoom.focus`, from the map's `pick` hook, after the repaint
+  — a repaint detaches the canvas and stops any tween): square on, the bay and one either side,
+  500 ms, clamped so the camera never stands inside the rack opposite. **Where the first press was
+  made from is kept** (`flyHome`, the walk included) and Escape flies back there; Escape mid-flight
+  stops the camera where it is; a press or a drag takes it back too. Pressing the selected bay
+  again deselects and flies back — the touch screen's Escape. No flight while the layout editor is
+  open. A canned view or a camera switch forgets the way back.
+- **The pinned card** (`showPinned` in `shelfmap.js`) is the peek, docked in the room's corner, and
+  — unlike the hover card and the flat panel — it carries the **count per size**, most held first,
+  with colourway and "Rack · Level · Bay". `peekPin` survives the repaint that `hidePeek()`s it.
+  Its Escape listener is at the capture phase so one Escape never closes a dialog AND flies.
+- **On touch, a finger holds before it grabs** (450 ms still) in the editor; move first and it is
+  an orbit. Held and let go without moving puts the rack back, saving nothing.
+- **The rack boxes were half underground** until this stage: built centred on a group whose origin
+  is the floor, they covered −h/2..h/2, so clicks and names above half height went unoccluded. Now
+  floor to top board. The harness's occlusion test is what found it.
+- Arabic: **one word for a bay, خانة** — it was already on screen and the shop knows it. Stage A
+  briefly used عمود; A.1 changed those, and the two older strings that also said عمود
+  (`sm_origin`, `sm_no_renumber`). The one عمود left in the repo is a customers-screen note about a
+  table column, which is the right word there.
+- `_smcheck.html?gl=force` asserts all of it (lights per tier, one instanced mesh, cap vs card,
+  ceiling, flight frames, Escape, occlusion, shaped RTL Arabic on plates and tags, touch hold);
+  `?room=og&hold` is a look-only room shaped like the shop's 4.5 × 5.5 × 3.5 m back room.
+  `ShelfRoom.bench(n)` times frames with a pixel read-back — **Chrome does not block on
+  `gl.finish()`**, which reported 0.27 ms under swiftshader.
+
+### Stage A.1: the room from the reference render (15 Sep 2026)
+
+The owner's reference render (a 3D cutaway, a floor plan, a view through the open door; 4.5 × 5.5 ×
+3.5 m) is the target. Still no schema, no migration, no API. The middle free-standing rack in it is
+**Stage B** — the schema cannot describe a rack that is not on a wall — and is not faked.
+
+- **Racks are open steel**: a slim post front and back at every bay boundary (drawn inside the
+  server's `upright`, so a bay's clear width is unchanged), the boards, and two top rails instead of
+  a top board — from above, the top level's boxes are what a person looks down on. Bay outlines and
+  the metre grid are **edit-only** (`editOnly`, toggled in `setEdit`): the open frame shows a bay on
+  its own, and a wireframe over every shelf made the room read as a drawing.
+- **Walls have thickness** (`WALL_T`, 20 cm, outward of the measured room): plaster inside, block
+  outside, a lighter cap on top that draws the room's outline from above. **The inside cornice is
+  gone** — seen from above it was a dark band across the floor. The inside face is still the only
+  thing a wall pull grabs. **The outside face steps aside** for a camera outside that wall and below
+  its top (`ceilingByCamera` now also does the shell — one boolean per wall), so a low orbit past the
+  front still looks into the room. Outside faces cast no shadow, so this never touches the baked map.
+- **The door is a hole in the front wall**, hung on the jamb nearer the middle and **standing open
+  outward**, as the reference draws it: slatted leaf, the mark on its outside face, a lamp over it
+  whose wash is on the front wall's outside face (so it steps aside with it), and a warm pool on the
+  ground. The ground outside (`groundTexture`, unlit) carries the light spilling along the foot of
+  the front wall.
+- **The back wall carries the mark and nothing else** — the room's name is on the room selector.
+  The mark is drawn as white ink from the artwork's brightness (`markCanvas`), because
+  `assets/logo.svg` is a white mark on a black square and drawn as-is the square comes with it.
+  Still hidden until the artwork loads; a tainted canvas gives no mark, never the square.
+- **Wall lights are slim lit bars** with their wash painted into the wall's emissive map
+  (`wallWash`): upright above the racks on the side walls, level either side of the mark on the
+  back. No real lights were added — the tier budget (6 / 2) is unchanged and still asserted.
+- **Floor paint is the light's white, faint** (`floorPaint`): three thin lines with open arrowheads
+  looping up the right aisle from the door, across the back, down the left; the front area is a
+  dashed edge from the end of the side racks to the front wall (at most 1.4 m), and its words sit
+  **beside** the door, never in front of it. No lime anywhere on the floor — the per-rack lime aisle
+  line is gone inside a room, and the drag ghost's floor is white.
+- **The floor is neutral grey**, key light less orange than the strips (`C.key`), and a faint
+  additive glow makes the middle brightest, as a room lit from the ceiling is.
+- **The room opens from the reference's seat**, nearly frontal and steep (`homeAz` 0.18, `homePol`
+  0.6). From the old three-quarter seat the new front wall's block face covered half the floor.
+- **A wall whose outside face is showing now occludes like a rack** (`shellWalls[].box` in
+  `blocked()`): names and clicks behind it are hidden. Without it the right rack's names floated
+  over the front wall. A wall that has stepped aside for a low camera occludes nothing, and walls
+  stand outside the room, so from inside they never get between the eye and a bay.
+- **Harness** (`_smcheck.html?gl=force`): every wall shows its thickness from above and the front one
+  steps aside for a low camera out front; no painted pixel on the floor is green; the arrows loop;
+  the Front area words clear the door; the grid and outlines appear only in the editor.
+  `?room=og&hold` is now the live room's exact sizes. The `short:` check was made to reset the camera
+  first: it had passed or failed on how long the room took to build, because a canvas-centre ray taken
+  mid-arrival landed just outside a 2 m room.
+- **Declined on purpose**: a true mirror floor (the scene twice per frame) and soft contact shadows
+  under the boxes (a post-processing pass, per frame, against "a still camera schedules nothing").
+
+**Superseded by `npm run warehouse:one-room` (Stage B, below)**, which builds the same room with the
+middle rack as well and every rack on 92 cm bays (B moved to 41 cm); the paragraph is kept for what
+it says about the old racks' labels.
+**Rebuilding the live room from the render was prepared, NOT run** (15 Sep 2026 — the session's
+auto mode refused a write to the live `og.db`). It is one script, verified on a `VACUUM INTO` copy
+and going through `server/lib/shelves.js` so every row is `logChange`d: it refuses unless the rooms
+are exactly the owner's old test rooms `vorig`, `safa` and `safaSSS`; clears the shelf location of the
+153 pieces of OG-053 on `safaSSS`'s A6 (their quantity on the shop floor is untouched); deletes the 172
+shelves, four racks and three rooms; and creates room **المستودع** (store, 450 × 550 × 350 cm) with rack
+**A** الرف الأيسر (left wall at 115 cm, 4 × 92 cm bays), **B** الرف الخلفي (back wall at 55 cm, 4 × 85 cm)
+and **C** الرف الأيمن (right wall at 67 cm, 4 × 92 cm), each 6 levels of 34 cm, 45 cm deep. A backup was
+taken first (`server/backups/og-2026-09-15T11-18-14-590.db`). Once it runs, **every shelf label printed
+for the old racks is a code for a shelf that does not exist.** Check the database, not this paragraph:
+`SELECT id, name FROM rooms`.
+
+### Stage B: a rack that stands on the floor, and one real room (15 Sep 2026)
+
+Migration `051_free_racks.sql`, mirror file `server/supabase/020_free_racks.sql` (in `CATCH-UP.sql`),
+`server/lib/shelves.js`, `server/scripts/warehouse-one-room.js`.
+
+- **`sections.placement`** is `'wall'` or `'free'`, with `x_cm` (left edge to the rack's middle),
+  `y_cm` (FRONT edge — the door's wall — to its middle) and `rot_deg` (0/90/180/270). **The DEFAULT is
+  the migration**: every existing row reads `'wall'` with no UPDATE, no `change_log` row, nothing
+  re-mirrored — verified column for column on a copy of the live database.
+- **`'wall'` with no `wall` is still legal** — a rack in its room not placed yet, which live rows
+  are. What is refused, in `checkPlacement` with `bad_placement`, is half and half: `'free'` with a
+  wall or a wall position, or `'wall'` (or no placement) with any of x/y/rot. A free rack needs all
+  three, a quarter turn (`bad_rotation`), and a **measured** room (`free_unmeasured`) — there is
+  nothing to measure its aisles against otherwise; a room holding one cannot be un-measured.
+- **Quarter turns only**, so every footprint stays axis-aligned and the maths extends rather than
+  being replaced. **`footprint()` (server, cm) and `placeOnWall()` + `footprint()` (shelfroom.js,
+  metres) gained the same fifth case, `'free'`, in the same position** — n, s, e, free, default w —
+  and `fpCm()` in shelfmap.js, the fill plan's copy, with them. Change one, change all.
+- **Every rack tests against every rack** (`placedRacks` now returns racks on the floor too, each
+  with its `place`), and a free rack is also tested against the walls (`outside_room`). Refusals
+  name the neighbour by name and letter (`rack_overlap`).
+- **THE AISLE RULE**: `AISLE_MIN` (70 cm) beside the other constants; `aisleMin()` reads
+  `OG_AISLE_MIN` on every call, and **0 turns it off** (for a harness). A free rack may leave no less
+  than that to any wall or rack (`aisle_narrow` carries `gap`, `need`, and the wall or the rack), and
+  a wall rack placed or grown into a free rack's aisle is refused the same way — the gap is the same
+  whichever of the two moved. It rides `GET /api/sections` as `limits.aisle_min_cm`, with
+  `limits.rotations`, so the drag previews the server's number.
+- **Where the old code grew a rack without asking**, it now asks: `seedGrid` re-checks a placed rack
+  at its new width (before 051 a grid could run a wall rack off its wall), `editCols` checks free
+  racks too, and `fitRoom` refuses a resize that would put a wall or a wall rack through a free
+  rack's aisle, with the room that would do.
+- **`clearances(roomId)`** reports every gap round every free rack, for the script's report and for
+  the check that a seed passes its own rule.
+- **The browser**: a free rack drags on the floor (never snapping onto a wall), **R** turns it a
+  quarter in the air, the readout shows the live gap to the nearest thing and hides the ghost where
+  the server would refuse; **nothing is written until release**. The on-screen turn — a touch screen
+  has no R — is the ⟳ button on the island's row in the designer. The rack dialog offers
+  Free-standing / حر in the wall list, with x, y and turn. The plan draws the island on its floor,
+  upright when it runs front to back (`.sm-pl-island`). In the room it is the same open frame, its
+  boxes in the same InstancedMesh, **no light added**, and its plate turns to face the camera
+  (`billboards`, set in `ceilingByCamera`; depth-tested, casts no shadow). The floor arrows run the
+  two aisles either side of an island and turn across the floor behind it.
+- **The room switcher hides when it would offer one choice** (rooms + racks in no room ≤ 1), at
+  render time; rooms stay fully supported.
+- **`npm run warehouse:one-room`** is the owner's script: refuses unless the rooms are exactly
+  `vorig`, `safa`, `safaSSS` with every rack in one of them; takes and verifies a backup; clears the
+  shelf location of the 153 pieces of OG-053 (quantities untouched); deletes the 172 shelves, 4 racks
+  and 3 rooms through the lib; builds المستودع with **every rack on the room's own 92 cm bay** — A on
+  the left wall at 115 cm, B centred on the back wall at 41 cm, C on the right wall at 67 cm, 4 × 92
+  each — and **D الرف الأوسط free-standing, 2 × 92 = 184 cm** (the count nearest 2 m), centred (x 225),
+  115 cm clear to the front wall (y 207), turned 270° so its bays face the aisle the door opens onto.
+  84 shelves. Each rack is placed only after its grid exists, so the fit and aisle checks run on the
+  rack as it will stand. A second run finds the room built and changes nothing.
+  **Clearances round D**: 158 cm to A and to C, 206 cm to B, 115 cm to the front wall, 251 cm to the
+  back wall.
+- **A rack's bay width belongs to its room.** The first version seeded D with the server's standard
+  114 cm (228 cm long, outside the 190–205 cm measured off the reference) beside wall racks of 92 cm —
+  and B at 85 — so one rack stood a different size from its neighbours for good. `ROOM.bayCm` is the
+  one number now, and nothing else in the seed reached for `GEOMETRY` (levels and depth were already
+  the script's own). The script checks the ROWS after building and on every later run (`wrongBays`)
+  and refuses with exit 4, naming the rack, when one is not the room's width — a rack resized
+  afterwards, or left on the standard (`bay_cm` NULL), included.
+- **THE GO-LIVE ORDER, from the code**: `020_free_racks.sql` in the dashboard → the server restarted
+  on this code (which applies 051) → the script → `npm run supabase:check`. **The script pushes
+  nothing**: the RUNNING server's mirror tick finds its `change_log` rows and pushes `sections` with
+  `SELECT *`. A server older than Stage B has no `mirror-lag.js` entry for the four columns, so a
+  mirror without 020 rejects every rack batch; a Stage B server facing the same mirror drops the
+  columns and pushes D anyway with its cursor past it — a rack on no wall in the mirror until
+  reconcile. **It will not apply 051 itself**: `lib/db.js` `open()` migrates on the way in, which put
+  the first version's schema change BEFORE its own refusal and before its backup. It now looks
+  through `DB.openReadOnly()` and `DB.pendingMigrations()` first, refuses with exit 3 while any
+  migration is pending, and opens to write only after the backup, re-checking that the rooms and
+  racks are the ones it checked. **On 15 Sep 2026 the live server was restarted at 18:58 and applied
+  051 then; 020 had not been run on the mirror** (`supabase:drift` named the four columns).
+- **Verified**: the script against copies, 26 checks — refused on a database the server has not been
+  restarted on, with the schema, the rooms and the backup folder all untouched; built on a copy of
+  the live file with every rack at 92 cm, 84 shelves and no stock quantity moved; nothing to do the
+  second time; refused naming D at 114 cm and at the standard; refused on unexpected rooms. Before
+  that, 38 server checks on a copy (migration, footprints, round trip, every refusal, the
+  aisle at 0, `fitRoom`, a restore through the same insert `restore.js` uses, and a row from a mirror
+  without 020); the script refused a mismatched copy and ran twice on another; `_smcheck.html` —
+  wall racks with no placement draw as before, the four turns, the island drawn, plate facing from
+  four sides, occlusion through it, drag and R and release, the aisle refusal and its words, the
+  aisle at 0, the switcher at one and two rooms. 211 pass in English, 212 in Arabic, 140 as staff
+  (**staff have no editor**, so the step checks there is no turn button and skips the carrying; it
+  used to click an edit button that is not there). The walk check now waits for the loop's second
+  frame instead of 120 ms — under swiftshader the first frame after the walk switch came later
+  than that, and the key had been taken.
+- **Frame time with the island** (`ShelfRoom.bench(30)`, Intel UHD, 1440×900 fullscreen, DPR 1):
+  high 11.7 ms mean from the seat and 14.4 walking, low 6.4 and 7.7; 358 boxes, 260 draw calls,
+  6 lights on high and 2 on low. Two swiftshader harness runs at once share one CPU and fail the
+  timing checks — run one at a time; the GPU Chrome can run beside it.
+- **Run `020` in the Supabase dashboard, then reconcile**, or a free rack restores as a rack on no
+  wall; until then the sync names the file every run.
+
+### Stage C: live, editable, and the product on the box (15 Sep 2026)
+
+No migration. `server/lib/shelves.js`, `server/index.js`, `js/pulse.js`, `js/shelfmap.js`,
+`js/shelfroom.js`, the `sm_*` strings, `_smcheck.html`.
+
+**Live.** The map was not subscribed to anything: stock put away on one screen reached another on its
+next reload. Now `DB.onCommit` in `index.js` watches the tables a commit touched — `rooms`,
+`sections`, `shelves` are a LAYOUT change, `stock` a STOCK change — debounces 250 ms and sends
+`Live.notify('og', { shelves: 'layout' | 'stock' })`: a flag, no data (a burst of three writes is one
+event). `/api/live` admits `stock.read`, so the warehouse holds the line. `js/pulse.js` hands the flag
+to `ShelfMap.live()`, which asks `GET /api/sections` again through the same gated route and compares
+two signatures before drawing anything (`layoutSig` / `stockSig`).
+
+- **A stock change is the repaint every scan already is**: the room's `sameSig` has no quantities,
+  so it keeps its scene, moves the instanced boxes, draws one frame and goes quiet. `stats().rebuilds`
+  counts real rebuilds and the harness asserts it does not move.
+- **Never under somebody's hands.** `busy()` in `shelfmap.js` is the one list: a dialog or drawer
+  open, the layout editor open, a new rack being placed, a rack / wall / grip in the air
+  (`ShelfRoom.dragging()`), a camera flight, a hand on the canvas (`ShelfRoom.handBusy()`). A held
+  update is looked at every 400 ms — a timer, never a frame — and taken the moment they are free.
+- **A layout changed ELSEWHERE while this person is laying the room out is never taken for them**:
+  `#smLive` (and `#smLiveFs` in fullscreen) says so with **Show the new layout**, written straight into
+  its host rather than by a repaint, because a repaint is the thing it exists not to do.
+- **The 45 s poll is the backstop only while the live line is down** (`Pulse.isLive()`), and a map
+  that is not on screen marks itself stale and reloads when it comes back.
+
+**Who may reshape the room.** Every layout write — sections, rooms, grid, rows, cols, POST/DELETE
+shelves — is `config.write` now; putting a pair away (`PATCH /api/shelves/:id`, `assign-shelf`)
+stays `stock.move`. A warehouse account is refused 403 at the server, and in the browser has no
+editor, so no Add a rack, no grips and no take-the-layout button — the staff run asserts all three
+are absent.
+
+**Found on the way — a Stage B bug:** `SHELF_STATUS` never learned 051's refusal codes, so
+`rack_overlap`, `aisle_narrow`, `outside_room` and `free_unmeasured` reached the browser as a bare
+`400 invalid` without their numbers. They are 409 with their fields now, beside the new
+`rack_too_tall` and `room_too_low` (and `bad_placement` / `bad_rotation` as 400).
+
+**Adding and removing, from inside the room.**
+
+- **A new rack takes its room's size — bay, level AND depth** (`roomSizeCm`: the size the racks
+  already there share, the smaller on a tie), never the standard, and `createSection` takes
+  `rows`/`cols` so the grid is written in the same transaction as the rack: a refusal leaves nothing
+  behind. The rack dialog's placeholder and hint say the room's size for a new rack
+  (`sm_rack_size_hint_room`); an existing rack left blank is still the standard.
+- **Add a rack** is a small form in the designer, drawn only inside the room: on a wall or standing
+  free, how many bays and levels (the room's commonest to start). **Place it** puts a ghost in the
+  hand at the room's own numbers (`roomShape()` — the browser twin of `roomSizeCm`), a press on the
+  room puts it down, Escape or a press elsewhere puts it back. Nothing is written until it is down;
+  then one POST with the next free letter, the grid and **no size**.
+- **Grips on the rack in focus** while the editor is open (`placeHandles`): one at the end a rack
+  grows from, for bays; one over its top, for levels. The light's white. Drag, and the ghost shows the
+  shape with a readout: how many, and the live gap to the nearest thing. A wall rack grows from its
+  measured end, a free rack both ways from its middle; a level is added at the bottom and taking
+  levels away takes the lowest. **Nothing is written until release**, then one request —
+  `{action:'add', count}` or `{action:'remove', last}` (`editRows`/`editCols` take both).
+- **Refused in the air, saying why**: past the end of its wall, through a wall, into a rack, into a
+  free rack's aisle, a free rack in an unmeasured room, **through the ceiling** (`checkHeight`: base +
+  levels × level + top against the room's height, with the most levels that would fit), and taking
+  away **a bay or level with stock on it — named, with the count** ("خانة ٤ فيها ٣ قطعة — فضّيها
+  أولاً"). The server refuses the same things (`rack_too_tall`; `shelf_occupied` now carries
+  `bays:[{col,pieces}]` and `levels:[{row,pieces}]`) and `layoutError` words them. **Stock is never
+  moved for anybody.** A ceiling lowered onto a rack is `room_too_low`, naming it.
+- The owner's example said زوج; the strings say **قطعة**, because the server counts pieces and a
+  bay can hold things that are not pairs.
+
+**THE PRODUCT ON THE BOX.** Every box is one `InstancedMesh`, and one mesh has one texture, so the
+pictures are ONE ATLAS: a grid of slots, one per product with a photo (`products.image_url`, hydrated
+as `image.src`). Each box carries its slot as an instanced attribute (`aSlot`, −1 = kraft); the box
+material's shader — `onBeforeCompile` on the ordinary `MeshStandardMaterial`, the lighting untouched —
+samples that slot on **both end faces** (`aEnd`/`aEndUv`, taken before the kraft atlas remap), so a
+wall rack shows it to its aisle and the island to both of its.
+
+- **A slot is the end face's letterbox** (about 2.5 : 1 under the lid's edge, `PIC_U0..PIC_V1`), and a
+  photo of another shape is fitted inside it on kraft, centred, never stretched. The sticker stays and
+  thins under a picture (`PIC_TAG0/1`); a box without one is exactly the old box.
+- **The slots come from the product count**: as wide as they can be up to 420 px (the product
+  screen's stored photos are ≤ 420 px) and no narrower than 96, with a quarter again of headroom, in
+  an atlas of at most 2048 — the real room made a 1024 × 2048 atlas of 16 slots for 12 products, the
+  2× room 2048 × 2048 of 30 for 24.
+- **Most held first.** More products than slots: the least held stay kraft (`nospace`), and a box
+  only ever shows a slot whose photo is still that product's photo — `pictureAudit()` checks every
+  box against whose it is. **A product put away later takes a free slot without a rebuild**, or stays
+  kraft until the next rebuild when there is none; a photo replaced or removed is kraft until then.
+- **The room never waits for a picture.** It draws kraft and a box takes its picture when the image
+  lands. Four fetches at once, 20 s each, `crossOrigin='anonymous'` (the bucket sends
+  `Access-Control-Allow-Origin: *`), cached per page by URL including failures. Each image is drawn
+  through a scratch canvas that is read back first, so one that would taint the canvas is refused
+  there instead of stopping the whole atlas uploading. No URL, a dead one, a timeout: that product's
+  boxes are kraft and **nothing is logged**. A room where no product has a photo — the shop today —
+  makes no atlas and fetches nothing. **The low tier draws none and fetches none.**
+
+**Draw calls stopped growing with the room.** The hit boxes were drawn — invisible, but a draw call
+each, 84 in the shop's room — and are `visible = false` now (r147's raycaster ignores visibility).
+Every post, rail and board was its own mesh; they are two `InstancedMesh`es for the whole room
+(`frameMesh`, `boardMesh`), a board's type tint its instance colour, and a rack in the hand is hidden
+by collapsing its own instances (`rackPieces`, `showRack`). **260 calls became 50**; the 2× room is 60 —
+what is left per rack is its name plate, and a wider room adds a ceiling strip.
+
+**At double.** `_smcheck.html?room=og2&pics=24` is the headroom room: 6.36 × 7.78 m (twice the floor),
+eight racks with two islands, 162 bays, 702 boxes, 24 products with drawn test photographs (`?pics=N`,
+harness artwork only). It builds, walks, keeps 6 lights on high and 2 on low, and two islands keep
+the aisle between them. Frame time (`ShelfRoom.bench(60)`, Intel UHD, 1440 × 900 fullscreen, DPR 1,
+mean ms):
+
+| | high, seat | high, walking | low, seat | low, walking | calls |
+|---|---|---|---|---|---|
+| Stage B, the shop's room | 11.7 | 14.4 | 6.4 | 7.7 | 260 |
+| Stage C, no photos | 10.7 | 13.3 | 6.5 | 6.2 | 50 |
+| Stage C, 12 photos | 9.5 | 13.0 | 5.7 | 6.1 | 50 |
+| 2×, no photos | 11.0 | 13.6 | 6.2 | 7.9 | 60 |
+| 2×, 24 photos | 11.2 | 13.5 | 8.2 | 8.9 | 60 |
+
+The pictures cost nothing measurable. **High stays under 16.7 ms at 2× — about 3 ms of headroom
+walking**, and what grows with the room now is triangles and the shadow bake (702 boxes, 13k
+triangles), not calls. Before the frame was instanced the 2× room was 306 calls with a worst frame of
+16.7 ms walking.
+
+**Verified**: 30 server checks on a copy with the one-room script run on it (room size, grid in the
+same transaction, rows/cols count and last, ceiling, room too low, occupied bays and levels named);
+16 over HTTP on a scratch server (`OG_SYNC_MINUTES=0 OG_HTTPS=0 OG_PULL_AT_BOOT=0 OG_PUSH=0`, bogus
+Telegram tokens — a warehouse account holds the live line, gets `shelves: stock` once for a burst, is
+refused 403 on every layout write, still reads and puts away; `aisle_narrow` arrives as 409 with its
+gap); `_smcheck.html` 273 in English, 274 in Arabic, 179 as staff, 97 flat — live update without a
+rebuild and one frame then quiet, held through a drag / a flight / a dialog, the backstop poll, the
+layout line while editing, a rack added at the room's 92 cm bay, grips with nothing written in the
+air, the aisle and the ceiling refused in the air and from the server in the page's language, an
+occupied bay named with its count, pictures with no rebuild, a failed photo kraft, a portrait photo
+letterboxed, the atlas filled, both end faces read back as pixels, the low tier, nothing logged; and
+11 checks on the 2× room. Screenshots: `docs/img/warehouse-c-pictures.png`,
+`warehouse-c-pictures-island.png`, `warehouse-c-double.png`.
 
 ## The warehouse: moving stock, and the log of it
 

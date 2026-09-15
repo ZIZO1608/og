@@ -374,7 +374,9 @@ var Pulse = (function () {
     /* config.write for the mirror's own status line; delivery.read since the
        board became live — a driver and the office both need the line, and
        neither of them can read a print job. */
-    return Auth.can('config.write') || Auth.can('delivery.read');
+    return Auth.can('config.write') || Auth.can('delivery.read') ||
+           /* since Stage C the shelf map is live, for whoever can read it */
+           Auth.can('stock.read');
   }
 
   /* FULL REFRESH, the moment before the shop closes (panel/panel.js).
@@ -467,6 +469,14 @@ var Pulse = (function () {
          gets handed to two carriers. Only the board refetches, and only while
          it is the screen on show: this event carries no data, and the reload
          goes through the same gated route as any other read. */
+      /* A pair reached a shelf or left one, or the layout changed. The map
+         decides what that means — refetch, compare, and apply only when the
+         person looking at it is not in the middle of something. Nothing here
+         calls render(). */
+      if (d.shelves) {
+        if (typeof ShelfMap !== 'undefined' && ShelfMap.live) ShelfMap.live(d.shelves);
+        return;
+      }
       if (d.deliveries) {
         var onBoard = OG.view === 'deliveries' ||
                       (OG.view === 'dashboard' && roleOf() === 'delivery');

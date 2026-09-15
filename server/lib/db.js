@@ -74,6 +74,17 @@ export function openReadOnly(file) {
   return db;
 }
 
+/* Migration files this database has not had yet. For a script that must not
+   be the thing that migrates a live file: open() applies these on the way in,
+   before its caller has any chance to refuse. Works on a read-only handle; a
+   database with no schema_migrations table has had none. */
+export function pendingMigrations(d = get()) {
+  let done;
+  try { done = new Set(d.prepare('SELECT name FROM schema_migrations').all().map(r => r.name)); }
+  catch { done = new Set(); }
+  return readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort().filter(f => !done.has(f));
+}
+
 /* ---------------------------------------------------------------- migrations
    Numbered .sql files applied in order, each recorded so it runs once. Kept
    deliberately dumb: no down-migrations, no checksums. A shop database that

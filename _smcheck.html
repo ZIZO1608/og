@@ -47,7 +47,10 @@ function toast(title, msg, kind) { __toasts.push({ title: title, msg: msg, kind:
 /* The room's high tier, pinned: swiftshader is slow enough to make the auto
    tier drop itself, and the shadow paths are what this run has to exercise.
    The camera starts in orbit whatever the last run left behind. */
-try { localStorage.setItem('og_sm_quality', 'high'); localStorage.removeItem('og_sm_cam'); localStorage.removeItem('og_sm_pads'); } catch (e) {}
+try { localStorage.setItem('og_sm_quality', 'high'); localStorage.removeItem('og_sm_cam'); localStorage.removeItem('og_sm_pads');
+      /* the view switch persists too, and a previous run that ended in the
+         room would otherwise open this one there */
+      localStorage.removeItem('og_sm_view'); } catch (e) {}
 /* A <div id="toasts"> as the app has, so fullscreen has something to bring in. */
 (function () { var d = document.createElement('div'); d.id = 'toasts'; document.body.appendChild(d); })();
 
@@ -224,8 +227,118 @@ var ROOMS = [
 
 /* The standard rack and the limits ride with the layout, as the server
    sends them (GEOMETRY / RACK_LIMITS in server/lib/shelves.js). */
+/* ?room=og swaps the fixture for a room shaped like the shop's own back room —
+   4.5 m wide, 5.5 m front to back, 3.5 m high, a rack on the left wall, the
+   back wall and the right wall, and the island down the middle, at exactly
+   the sizes npm run warehouse:one-room builds (the room's 92 cm bays, 34 cm
+   levels, 45 cm deep, 4 bays × 6 levels on the walls, 2 × 6 in the middle) —
+   stocked unevenly, some bays past what fits.
+   It asserts nothing: it exists to be LOOKED at, with ?gl=force&hold, beside
+   docs/img/warehouse-ref.jpg. */
+/* Stage C adds two knobs to the look room.
+   ?pics=N  — N products of its own, each with a drawn test photograph (a
+              sneaker in profile, in landscape, wide and square shapes), so
+              the boxes carry pictures. Harness-only artwork, never shipped.
+   ?room=og2 — the headroom room: twice the floor (6.36 × 7.78 m), twice the
+              racks (eight, two of them free-standing), and with pics=24 twice
+              the products; the boxes come to about twice as many. Built to
+              find what breaks before the shop grows into it. */
+var LOOK = /[?&]room=og2?\b/.test(location.search);
+if (LOOK) (function () {
+  var params = new URLSearchParams(location.search);
+  var TWO = params.get('room') === 'og2';
+  var PICS = Math.max(0, Math.min(200, +params.get('pics') || 0));
+  var shoe = function (i) {
+    var shapes = [[360, 240], [400, 190], [260, 260]], sz = shapes[i % 3];
+    var c = document.createElement('canvas'), W = sz[0], H = sz[1];
+    c.width = W; c.height = H;
+    var g = c.getContext('2d'), hue = (i * 47) % 360;
+    var bg = g.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#f2f0ec'); bg.addColorStop(1, '#d6d1ca');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    var s = Math.min(W / 380, H / 190);
+    g.save();
+    g.translate((W - 360 * s) / 2, (H - 170 * s) / 2);
+    g.scale(s, s);
+    g.fillStyle = '#fafafa';
+    g.beginPath(); g.moveTo(10, 130); g.lineTo(350, 130); g.quadraticCurveTo(364, 150, 340, 162);
+    g.lineTo(22, 162); g.quadraticCurveTo(0, 150, 10, 130); g.fill();
+    g.fillStyle = '#2b2b2b'; g.fillRect(16, 154, 328, 8);
+    g.fillStyle = 'hsl(' + hue + ',62%,44%)';
+    g.beginPath(); g.moveTo(20, 132); g.quadraticCurveTo(28, 70, 112, 60); g.lineTo(172, 18);
+    g.quadraticCurveTo(212, 4, 234, 30); g.lineTo(252, 72); g.quadraticCurveTo(334, 82, 350, 132); g.closePath(); g.fill();
+    g.strokeStyle = 'hsl(' + ((hue + 180) % 360) + ',70%,90%)'; g.lineWidth = 13; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(88, 116); g.quadraticCurveTo(200, 122, 302, 88); g.stroke();
+    g.strokeStyle = '#f4f4f4'; g.lineWidth = 4;
+    for (var l = 0; l < 4; l++) { g.beginPath(); g.moveTo(150 + l * 20, 50 + l * 6); g.lineTo(172 + l * 20, 41 + l * 6); g.stroke(); }
+    g.restore();
+    return c.toDataURL('image/png');
+  };
+  var gen = [], kinds = ['sneakers', 'sneakers', 'crocs', 'tshirts'];
+  for (var gi = 0; gi < PICS; gi++) {
+    PRODUCTS.push({ id: 100 + gi, name: 'Runner ' + (gi + 1), colorway: '', type: kinds[gi % kinds.length], archived: false,
+                    image: { bg: '#555555', initials: 'R' + (gi + 1), src: shoe(gi) } });
+    gen.push(100 + gi);
+  }
+  var pick = function (r, fallback) {
+    return PICS ? [gen[(r * 3) % PICS], gen[(r * 3 + 1) % PICS], gen[(r * 3 + 2) % PICS]] : fallback;
+  };
+  var nameOf = function (pid) { var p = DB.product(pid); return p ? p.name : ''; };
+  var free = function (d, x, y, rot) {
+    d.wall = null; d.wall_pos = null; d.wall_cm = null;
+    d.placement = 'free'; d.x_cm = x; d.y_cm = y; d.rot_deg = rot;
+    return d;
+  };
+  var h = function (a, b) { var x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
+  var sizesBy = { 1: ['39', '40', '41', '42', '43', '44', '45'], 2: ['S', 'M', 'L', 'XL'], 4: ['39', '39.5', '40'] };
+  var names = { 1: 'حذاء الاختبار', 2: 'Test Tee', 4: 'Half Sizes' };
+  var rack = function (id, key, name, wall, wallCm, cols, rows, pids, bay) {
+    var shelves = [];
+    for (var r = 0; r < rows; r++) for (var c = 1; c <= cols; c++) {
+      var pid = pids[(r + c) % pids.length];
+      var roll = h(id + r, c);
+      var qty = roll < 0.18 ? 0 : roll < 0.3 ? 30 + Math.round(h(c, id) * 20) : Math.round(2 + roll * 20);
+      var sz = sizesBy[pid] || ['40', '41', '42', '43'], contents = [], left = qty;
+      for (var s = 0; s < sz.length && left > 0; s++) {
+        var q = s === sz.length - 1 ? left : Math.min(left, Math.round(qty / sz.length + h(s, r + c) * 4));
+        if (q > 0) { contents.push({ sku: 'OG-00' + pid + '-' + sz[s], size: sz[s], qty: q, product_id: pid, product_name: nameOf(pid) }); left -= q; }
+      }
+      shelves.push({ id: id * 100 + r * 10 + c, code: 'ABCDEFGH'.charAt(r) + c, row_label: 'ABCDEFGH'.charAt(r), col_index: c,
+                     product_id: qty ? pid : null, product_name: qty ? nameOf(pid) : null, size_from: null, size_to: null, range: null,
+                     capacity: null, qty: qty, variants: contents.length, contents: contents });
+    }
+    return { id: id, key: key, name: name, wh_id: 'store', wh_code: 2, grid_origin: 'left', sort_index: id,
+             room_id: 1, wall: wall, wall_pos: Math.round(wallCm / bay), wall_cm: wallCm,
+             bay_cm: bay, level_cm: 34, depth_cm: 45,
+             size: { bay: bay, level: 34, depth: 45, cols: cols, width: cols * bay }, shelves: shelves };
+  };
+  SECTIONS.length = 0;
+  if (!TWO) {
+    SECTIONS.push(rack(21, 'A', 'الرف الأيسر', 'w', 115, 4, 6, pick(0, [1, 4]), 92));
+    SECTIONS.push(rack(22, 'B', 'الرف الخلفي', 'n', 41, 4, 6, pick(1, [1, 2, 4]), 92));
+    SECTIONS.push(rack(23, 'C', 'الرف الأيمن', 'e', 67, 4, 6, pick(2, [2, 1]), 92));
+    /* D, free-standing down the middle (051), as warehouse-one-room.js seeds
+       it: two of the ROOM's 92 cm bays, centred, 115 cm clear to the front */
+    SECTIONS.push(free(rack(24, 'D', 'الرف الأوسط', 'n', 0, 2, 6, pick(3, [1, 2]), 92), 225, 207, 270));
+    ROOMS[0] = { id: 1, wh_id: 'store', name: 'المستودع', sort_index: 1, width_cm: 450, depth_cm: 550, height_cm: 350 };
+  } else {
+    /* twice the room: two racks on each side wall, two on the back, and two
+       islands with a walkable aisle between them and round them */
+    SECTIONS.push(rack(21, 'A', 'يسار ١', 'w', 20, 4, 6, pick(0, [1, 4]), 92));
+    SECTIONS.push(rack(22, 'E', 'يسار ٢', 'w', 400, 4, 6, pick(1, [1, 2]), 92));
+    SECTIONS.push(rack(23, 'C', 'يمين ١', 'e', 10, 4, 6, pick(2, [2, 1]), 92));
+    SECTIONS.push(rack(24, 'F', 'يمين ٢', 'e', 390, 4, 6, pick(3, [2, 4]), 92));
+    SECTIONS.push(rack(25, 'B', 'خلف ١', 'n', 50, 3, 6, pick(4, [1, 2, 4]), 92));
+    SECTIONS.push(rack(26, 'G', 'خلف ٢', 'n', 330, 2, 6, pick(5, [4, 1]), 92));
+    SECTIONS.push(free(rack(27, 'D', 'وسط ١', 'n', 0, 3, 6, pick(6, [1, 2]), 92), 212, 300, 270));
+    SECTIONS.push(free(rack(28, 'H', 'وسط ٢', 'n', 0, 3, 6, pick(7, [2, 1]), 92), 424, 300, 270));
+    ROOMS[0] = { id: 1, wh_id: 'store', name: 'المستودع × 2', sort_index: 1, width_cm: 636, depth_cm: 778, height_cm: 350 };
+  }
+})();
+
 var GEOMETRY = { bay_cm: 114, level_cm: 46, depth_cm: 95, upright_cm: 14, base_cm: 8, top_cm: 5, board_cm: 4 };
-var LIMITS = { rack: { bay: [60, 300], level: [10, 200], depth: [20, 200] }, room_max_cm: 10000, bay_min_cm: 60 };
+var LIMITS = { rack: { bay: [60, 300], level: [10, 200], depth: [20, 200] }, room_max_cm: 10000, bay_min_cm: 60,
+               aisle_min_cm: 70, rotations: [0, 90, 180, 270] };
 
 var Shop = { sections: function () {
   return Promise.resolve({ sections: JSON.parse(JSON.stringify(SECTIONS)),
@@ -246,12 +359,40 @@ var API = {
       e.detail = { belongsOn: { matching: [{ id: 101, full_code: 'M-A1' }] } };
       return Promise.reject(e);
     }
+    /* Stage C's refusals, shaped as server/lib/shelves.js throws them */
+    if (__postMode === 'too_tall' && /\/rows$/.test(p)) {
+      __postMode = 'ok';
+      var et = new Error('rack P would stand 243 cm tall with 5 levels and the room is 200 cm high');
+      et.code = 'rack_too_tall';
+      et.detail = { ok: false, code: 'rack_too_tall', error: et.message, rack: 'P', levels: 5,
+                    height_cm: 243, room_height_cm: 200, max_levels: 4 };
+      return Promise.reject(et);
+    }
+    if (__postMode === 'occupied' && /\/cols$/.test(p)) {
+      __postMode = 'ok';
+      var eo = new Error('bay 4 cannot go: M-A4 has 3');
+      eo.code = 'shelf_occupied';
+      eo.detail = { ok: false, code: 'shelf_occupied', error: eo.message, rack: 'M',
+                    blocked: [{ code: 'A4', full_code: 'M-A4', pieces: 3, row: 'A', col: 4 }],
+                    bays: [{ col: 4, pieces: 3 }], levels: [{ row: 'A', pieces: 3 }] };
+      return Promise.reject(eo);
+    }
     return Promise.resolve({ ok: true });
   },
   patch: function (p, b) {
     __calls.push(['PATCH', p, b]);
     /* the room resize refusal and the auto-shrink answer, shaped as the
        server shapes them (fitRoom in server/lib/shelves.js) */
+    /* a free-standing rack turned into its neighbour's aisle, shaped as
+       checkFit in server/lib/shelves.js refuses it */
+    if (__postMode === 'aisle') {
+      __postMode = 'ok';
+      var ea = new Error('only 40 cm from rack E to الرفّ الجانبي (rack N) — needs 70 cm');
+      ea.code = 'aisle_narrow';
+      ea.detail = { ok: false, code: 'aisle_narrow', error: ea.message, to: 'rack', rack: 'N',
+                    name: 'الرفّ الجانبي', gap: 40, need: 70, of: 'E' };
+      return Promise.reject(ea);
+    }
     if (__postMode === 'room_too_small') {
       var e2 = new Error('rack N would not fit — this room needs at least 462 × 300 cm for what is in it');
       e2.code = 'room_too_small';
@@ -356,6 +497,8 @@ function roomTests(finish) {
 
   function go() {
     var cv = $('#smRoom canvas');
+    /* the look-only room: mounted, nothing asserted, held for the eye */
+    if (LOOK) { R.notes.push(' note look-only room ' + JSON.stringify(ShelfRoom.stats())); return finish(); }
     ok('room: exactly one canvas', $$('canvas').length === 1, $$('canvas').length);
     ok('room: the canvas can never take focus', !cv.hasAttribute('tabindex'));
     var tagsEl = $('.sm-room-tags');
@@ -552,10 +695,18 @@ function roomTests(finish) {
              so, and letting go writes nothing — the refusal never has to
              come back from the server. */
           var s0 = __calls.length;
+          /* The camera where a person has it, not wherever the arrival into
+             the room happens to be when this line runs: the synced room keeps
+             the fixture's room id, so nothing reset it, and a canvas-centre
+             ray mid-arrival can land just outside the 2 m room — which made
+             this check pass or fail on how long the room took to build. */
+          ShelfRoom.resetView();
           ShelfRoom.grab(99, { cols: 2, rows: 1, bay: 1.2, depth: 0.95 }, true);
           var si = ShelfRoom.dragTo(midX, midY);
           ok('short: a rack wider than every wall is refused while still in the air',
-             !!si && si.ok === false && si.why === 'short', si);
+             !!si && si.ok === false && si.why === 'short',
+             { si: si, mid: [midX, midY], cv: (function () { var q = cv.getBoundingClientRect(); return [q.left, q.top, q.width, q.height]; })(),
+               cam: ShelfRoom.camera(), st: ShelfRoom.stats().room });
           ok('short: …and the readout carries the wall\'s length in metres', !!si && si.have === 2, si && si.have);
           var sput = ShelfRoom.drop(midX, midY);
           ok('short: letting go places nothing', sput === null, sput);
@@ -723,6 +874,516 @@ function laterTests(cv, finish) {
      one frame of its own; the frame counts below must not see it. */
   steps.push(function (done) { setTimeout(done, 1500); });
 
+  /* ---- STAGE A: WHAT THE ROOM IS MADE OF ------------------------------
+     Lights counted per tier, the boxes as one instanced mesh within what a
+     bay can hold, the selection colour, and frame time on both tiers. */
+  steps.push(function (done) {
+    var st = ShelfRoom.stats();
+    ok('light: the high tier stays within its budget of six', st.quality === 'high' && st.lights > 0 && st.lights <= 6, st);
+    ok('boxes: every pair in the room is ONE InstancedMesh', st.boxes.meshes === 1, st.boxes);
+    var total = 0, over = [];
+    Object.keys(st.boxes.drawn).forEach(function (id) {
+      total += st.boxes.drawn[id];
+      if (st.boxes.drawn[id] > st.boxes.cap[id]) over.push(id);
+    });
+    ok('boxes: one box per pair — 12 on M-A1, 3 on M-A4, 4 on N-C1', st.boxes.count === 19 && total === 19, st.boxes);
+    ok('boxes: no bay draws more than fits on it', over.length === 0, over);
+    ok('boxes: each box on a bay with a type carries the sticker', st.boxes.stickers === 19, st.boxes.stickers);
+    ok('selection: rim and hover are the light\'s white — never green, never red',
+       st.selColour === 0xfff2dc && st.hoverColour === 0xfff2dc, [st.selColour, st.hoverColour]);
+
+    ShelfRoom.setQuality('low');
+    var lo = ShelfRoom.stats();
+    ok('light: the low tier draws two at most', lo.lights <= 2, lo.lights);
+    ok('boxes: the low tier halves what each bay may draw',
+       Object.keys(lo.boxes.cap).every(function (id) { return lo.boxes.cap[id] === Math.max(1, Math.floor(st.boxes.cap[id] / 2)); }),
+       [st.boxes.cap, lo.boxes.cap]);
+    var benchLo = ShelfRoom.bench(12);
+    ShelfRoom.setQuality('high');
+    var benchHi = ShelfRoom.bench(12);
+    ok('light: back on high, within six again', ShelfRoom.stats().lights <= 6);
+    R.notes.push(' note frame time (swiftshader) high ' + JSON.stringify(benchHi) + ' low ' + JSON.stringify(benchLo));
+
+    ShelfRoom.resetView();
+    var ce = ShelfRoom.stats();
+    ok('ceiling: absent while the camera is above the walls', ce.camY > ce.room.h && ce.ceiling === false, ce);
+
+    /* ---- STAGE A.1: the room from the reference ------------------------ */
+    ok('shell: from above, every wall shows its thickness',
+       ['n', 's', 'e', 'w'].every(function (k) { return ce.shell[k] === true; }), ce.shell);
+    ok('edit-only: no grid and no bay wireframe while just looking', ce.editOnly === 0, ce.editOnly);
+    var pt = ShelfRoom.paint();
+    var inked = 0, green = 0;
+    if (pt && pt.canvas) {
+      var px = pt.canvas.getContext('2d').getImageData(0, 0, pt.canvas.width, pt.canvas.height).data;
+      for (var pi = 0; pi < px.length; pi += 4) {
+        if (px[pi + 3] < 8) continue;
+        inked++;
+        if (px[pi + 1] > px[pi] + 12 && px[pi + 1] > px[pi + 2] + 12) green++;
+      }
+    }
+    ok('paint: the floor is painted, and not one painted pixel is lime or green', inked > 0 && green === 0,
+       { inked: inked, green: green });
+    ok('paint: the arrows loop — up the right aisle, across, down the left', !!pt && !!pt.loop && pt.loop.xL < pt.loop.xR,
+       pt && pt.loop);
+    ok('paint: the Front area words stand clear of the door',
+       !!pt && !!pt.words && !!pt.door && (pt.words.x1 < pt.door.x0 || pt.words.x0 > pt.door.x1),
+       pt && { words: pt.words, door: pt.door });
+    ShelfRoom.camera({ az: 0, pol: 1.45, dist: 9, tx: 0, ty: 1, tz: 0 });
+    var lowSh = ShelfRoom.stats().shell;
+    ok('shell: a low camera out front sees in — the front wall\'s outside steps aside, the back wall\'s stays',
+       lowSh.s === false && lowSh.n === true, lowSh);
+    ShelfRoom.resetView();
+    if ($('[data-sm="edit"]')) {
+      $('[data-sm="edit"]').click();
+      ok('edit-only: opening the layout editor brings the grid and the outlines back', ShelfRoom.stats().editOnly > 0,
+         ShelfRoom.stats().editOnly);
+      $('[data-sm="edit"]').click();
+      ok('edit-only: …and Done puts them away', ShelfRoom.stats().editOnly === 0);
+    }
+
+    /* the rack plate carries its name, and an Arabic name is shaped and RTL */
+    var sg = ShelfRoom.sign(11);
+    ok('sign: the rack plate carries the Arabic rack name, drawn right to left',
+       !!sg && sg.text === 'مستودع الأحذية' && sg.dir === 'rtl', sg && { text: sg.text, dir: sg.dir });
+    if (sg) {
+      var cx = document.createElement('canvas').getContext('2d');
+      cx.font = sg.font;
+      var joined = cx.measureText(sg.text).width;
+      var apart = cx.measureText(sg.text.split('').join('‌')).width;
+      ok('sign: …and SHAPED — its letters join, so it measures differently held apart',
+         Math.abs(joined - apart) > 2, { joined: joined, apart: apart });
+    }
+    /* every label line holding Arabic — a run's name, or the name under a
+       selected bay's code — resolves right to left, in either UI language */
+    var arLines = $$('.sm-tag b, .sm-tag small').filter(function (b) { return /[؀-ۿ]/.test(b.textContent); });
+    var isRtl = function (el) { try { return el.matches(':dir(rtl)'); } catch (e) { return getComputedStyle(el).direction === 'rtl'; } };
+    ok('tag: every Arabic name on a tag runs right to left  [' + OG.lang + ']',
+       arLines.length > 0 && arLines.every(isRtl), arLines.map(function (e) { return e.tagName + ':' + isRtl(e); }));
+    var arTag = arLines[0];
+    if (arTag) {
+      var probe = function (text) {
+        var s = document.createElement('span');
+        s.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:' + getComputedStyle(arTag).font;
+        s.textContent = text;
+        document.body.appendChild(s);
+        var w = s.getBoundingClientRect().width;
+        s.remove();
+        return w;
+      };
+      var tj = probe(arTag.textContent), ta = probe(arTag.textContent.split('').join('‌'));
+      ok('tag: …and shaped', Math.abs(tj - ta) > 2, { joined: tj, apart: ta });
+    }
+    done();
+  });
+
+  /* ---- PRESSING A BAY ---------------------------------------------------
+     The flight asks for frames while it moves and none once it lands; the
+     card pins with the truth; Escape flies back to where the press was
+     made; Escape mid-flight stops the camera where it is; a drag hands the
+     camera back too. */
+  var rafs = 0, origRafA = window.requestAnimationFrame;
+  var countOn = function () { rafs = 0; window.requestAnimationFrame = function (f) { rafs++; return origRafA(f); }; };
+  var countOff = function () { window.requestAnimationFrame = origRafA; };
+  var esc = function () { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); };
+  var angle = function (a) { a = a % (Math.PI * 2); return a < 0 ? a + Math.PI * 2 : a; };
+  var same = function (a, b) {
+    return !!a && !!b && Math.abs(angle(a.az) - angle(b.az)) < 1e-3 && Math.abs(a.pol - b.pol) < 1e-3 &&
+           Math.abs(a.dist - b.dist) < 1e-3 && Math.abs(a.tx - b.tx) < 1e-3 && Math.abs(a.ty - b.ty) < 1e-3 && Math.abs(a.tz - b.tz) < 1e-3;
+  };
+  var pointAt = function (id) {
+    var c = ShelfRoom.bayCentre(id);
+    return c ? ShelfRoom.project(c.x, c.y, c.z) : null;
+  };
+  var tap = function (pt, extra) {
+    var o = { bubbles: true, pointerId: 21, clientX: pt.x, clientY: pt.y, button: 0 };
+    for (var k in extra) o[k] = extra[k];
+    cv.dispatchEvent(new PointerEvent('pointerdown', o));
+    cv.dispatchEvent(new PointerEvent('pointerup', o));
+  };
+  var landed = function (cb) {
+    var n = 0;
+    (function poll() { if (!ShelfRoom.flying() || ++n > 200) return cb(); setTimeout(poll, 20); })();
+  };
+
+  steps.push(function (done) {
+    ShelfRoom.resetView();
+    var home = ShelfRoom.camera();
+    var pt = pointAt(101);
+    ok('fly: the bay is on screen to be pressed', !!pt, pt);
+    countOn();
+    tap(pt);
+    ok('fly: pressing a bay starts the flight', ShelfRoom.flying() === true, ShelfRoom.stats());
+    var pk = $('.sm-peek');
+    ok('pin: the card pins, naming the bay', !!pk && !pk.hidden && pk.classList.contains('sm-peek-pinned') &&
+       pk.querySelector('.sm-peek-top b').textContent === 'M-A1', pk && pk.textContent);
+    setTimeout(function () {
+      ok('fly: the flight asks for frames while it moves', rafs > 0, rafs);
+      landed(function () {
+        countOn();
+        setTimeout(function () {
+          countOff();
+          ok('fly: once it has landed the room asks for no more frames', rafs === 0, rafs);
+          var b = ShelfRoom.bayCentre(101), pc = ShelfRoom.project(b.x, b.y, b.z), r = cv.getBoundingClientRect();
+          ok('fly: it lands with the bay in the middle of the picture',
+             !!pc && Math.abs(pc.x - (r.left + r.width / 2)) < r.width * 0.08 && Math.abs(pc.y - (r.top + r.height / 2)) < r.height * 0.15,
+             { pc: pc, mid: [r.left + r.width / 2, r.top + r.height / 2] });
+          var s2 = ShelfRoom.stats();
+          ok('ceiling: present once the camera is below the walls', s2.camY < s2.room.h && s2.ceiling === true, s2);
+          var rows = $$('.sm-peek-rows span').map(function (e) { return e.textContent; });
+          ok('pin: the count of every size, most held first', rows.join(',') === '40,7,39,5', rows);
+          ok('pin: the total is the shop\'s number  [' + OG.lang + ']', $('.sm-peek-cap').textContent.indexOf('12') > -1, $('.sm-peek-cap').textContent);
+          ok('pin: the colourway is named', !!$('.sm-peek-cw') && $('.sm-peek-cw').textContent === 'Triple Black');
+          ok('pin: where it is, in the fixed words  [' + OG.lang + ']',
+             $('.sm-peek-where').textContent === t('sm_bay_where').replace('{r}', 'M').replace('{l}', 'A').replace('{b}', '1'),
+             $('.sm-peek-where').textContent);
+          /* two repaints, same selection: the card must come back through both */
+          $('[data-sm="room-colour"]').click();
+          $('[data-sm="room-colour"]').click();
+          ok('pin: the card survives the map repainting under it',
+             !$('.sm-peek').hidden && $('.sm-peek').classList.contains('sm-peek-pinned') &&
+             $('.sm-peek-top b').textContent === 'M-A1', $('.sm-peek').textContent);
+
+          countOn();
+          esc();
+          ok('back: Escape after landing flies back out', ShelfRoom.flying() === true);
+          ok('back: …and the card goes with it', $('.sm-peek').hidden);
+          landed(function () {
+            countOff();
+            ok('back: …to the camera it left, not a default', same(ShelfRoom.camera(), home), [ShelfRoom.camera(), home]);
+            ok('back: home reached, the flight is forgotten', ShelfRoom.stats().focused === false);
+            interrupt();
+          });
+        }, 150);
+      });
+    }, 120);
+
+    function interrupt() {
+      var home2 = ShelfRoom.camera();
+      tap(pointAt(104));
+      setTimeout(function () {
+        ok('stop: a second press flies again', ShelfRoom.flying() === true);
+        esc();
+        var mid = ShelfRoom.camera();
+        ok('stop: Escape during a flight returns control at once', ShelfRoom.flying() === false);
+        countOn();
+        setTimeout(function () {
+          countOff();
+          ok('stop: …and leaves the camera where it was interrupted', same(ShelfRoom.camera(), mid) && !same(mid, home2),
+             [ShelfRoom.camera(), mid, home2]);
+          ok('stop: …asking for no frames after', rafs === 0, rafs);
+          esc();
+          ok('stop: a second Escape still flies home', ShelfRoom.flying() === true);
+          landed(function () {
+            ok('stop: …home being where the first press was made', same(ShelfRoom.camera(), home2), [ShelfRoom.camera(), home2]);
+            dragStops();
+          });
+        }, 120);
+      }, 150);
+    }
+
+    function dragStops() {
+      var home3 = ShelfRoom.camera();
+      var p = pointAt(101);
+      tap(p);                                            /* selects M-A1 again, flies */
+      setTimeout(function () {
+        var o = { bubbles: true, pointerId: 22, button: 0 };
+        cv.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ clientX: p.x, clientY: p.y }, o)));
+        ok('stop: a press takes the camera back from the flight', ShelfRoom.flying() === false);
+        cv.dispatchEvent(new PointerEvent('pointermove', Object.assign({ clientX: p.x + 40, clientY: p.y }, o)));
+        cv.dispatchEvent(new PointerEvent('pointerup', Object.assign({ clientX: p.x + 40, clientY: p.y }, o)));
+        ok('stop: …a drag orbits and picks nothing', ShelfRoom.flying() === false && ShelfRoom.stats().focused === true);
+        esc();
+        landed(function () {
+          ok('stop: Escape after a drag still flies back', same(ShelfRoom.camera(), home3), [ShelfRoom.camera(), home3]);
+          done();
+        });
+      }, 120);
+    }
+  });
+
+  /* ---- THE CAP NEVER LIES ------------------------------------------------
+     A bay holding 400 draws what fits on it, and the card says 400. */
+  steps.push(function (done) {
+    var i = 0, sec = SECTIONS.filter(function (s) { return s.id === 13; })[0];
+    var was = JSON.stringify(sec.shelves[0]);
+    sec.shelves[0].qty = 400;
+    sec.shelves[0].contents = [
+      { sku: 'OG-002-M', size: 'M', qty: 150, product_id: 2, product_name: 'Test Tee' },
+      { sku: 'OG-002-L', size: 'L', qty: 120, product_id: 2, product_name: 'Test Tee' },
+      { sku: 'OG-002-S', size: 'S', qty: 90, product_id: 2, product_name: 'Test Tee' },
+      { sku: 'OG-002-XL', size: 'XL', qty: 40, product_id: 2, product_name: 'Test Tee' }
+    ];
+    ShelfMap.reload().then(function () {
+      setTimeout(function () {
+        var st = ShelfRoom.stats();
+        ok('cap: a bay holding 400 draws only what fits on it', st.boxes.cap[301] < 400 && st.boxes.drawn[301] === st.boxes.cap[301],
+           { drawn: st.boxes.drawn[301], cap: st.boxes.cap[301] });
+        /* from the west and high, looking at N's face on the east wall — high
+           enough to see over the west wall, which is solid once it shows */
+        ShelfRoom.camera({ az: -1.3, pol: 0.8, dist: 7, tx: 0, ty: 0.9, tz: 0 });
+        var p = pointAt(301);
+        ok('cap: the bay can be pressed', !!p && ShelfRoom.pickAt(p.x, p.y) === 301, p);
+        if (p) tap(p);
+        /* landed first: an Escape mid-flight only stops the camera, and the
+           room would still be holding the way back for the next step */
+        landed(function () {
+          ok('cap: the card says the TRUE count, 400, not the boxes drawn', !!$('.sm-peek-pinned') &&
+             $('.sm-peek-cap').textContent.indexOf('400') > -1, $('.sm-peek') && $('.sm-peek').textContent);
+          var rows = $$('.sm-peek-rows span').map(function (e) { return e.textContent; });
+          ok('cap: …most held size first', rows[0] === 'M' && rows[1] === '150', rows);
+          esc();
+          landed(function () {
+            sec.shelves[0] = JSON.parse(was);
+            ShelfMap.reload().then(function () { setTimeout(done, 40); });
+          });
+        });
+      }, 40);
+    });
+  });
+
+  /* ---- OCCLUSION STILL HOLDS -------------------------------------------
+     A rack between the camera and a bay: a press aimed at the bay behind
+     it — through a gap in the near rack, where there is no bay of its own
+     to catch it — selects nothing, and does not fly. */
+  steps.push(function (done) {
+    var bayM = function (id, col) {
+      return { id: id, code: 'A' + col, full: 'X-A' + col, row: 0, col: col, qty: 0, capacity: null,
+               pid: null, name: '', fill: null, mark: null };
+    };
+    ShelfRoom.sync({ roomId: 1, name: 'Occlusion', w: 4, d: 4, h: 3, sel: null, words: { front: t('sm_front_area') },
+      racks: [
+        { id: 71, key: 'P', name: 'P', wall: 's', at: 0.2, cols: 3, rows: 1, origin: 'left', bay: 1.14, level: 0.46, depth: 0.95,
+          bays: [bayM(711, 1), bayM(713, 3)] },
+        { id: 72, key: 'Q', name: 'Q', wall: 'n', at: 0.2, cols: 3, rows: 1, origin: 'left', bay: 1.14, level: 0.46, depth: 0.95,
+          bays: [bayM(721, 1), bayM(722, 2), bayM(723, 3)] }
+      ] });
+    var q = ShelfRoom.bayCentre(722);
+    ShelfRoom.camera({ az: 0, pol: 0.3, dist: 7, tx: q.x, ty: q.y, tz: q.z });
+    var above = ShelfRoom.project(q.x, q.y, q.z);
+    ok('occlusion: from above, nothing in the way, the bay is pressable', ShelfRoom.pickAt(above.x, above.y) === 722);
+    ShelfRoom.camera({ az: 0, pol: Math.PI / 2, dist: 7, tx: q.x, ty: q.y, tz: q.z });
+    var hid = ShelfRoom.project(q.x, q.y, q.z);
+    ok('occlusion: through the near rack\'s gap, the hidden bay is NOT picked', ShelfRoom.pickAt(hid.x, hid.y) === null,
+       ShelfRoom.pickAt(hid.x, hid.y));
+    var pv = ShelfRoom.bayCentre(711), vis = ShelfRoom.project(pv.x, pv.y, pv.z);
+    ok('occlusion: …while the near rack\'s own bay beside it still is', ShelfRoom.pickAt(vis.x, vis.y) === 711);
+    tap(hid, { pointerId: 23 });
+    ok('occlusion: a real press there flies nowhere', ShelfRoom.flying() === false && ShelfRoom.stats().focused === false);
+    ok('occlusion: …and pins no card', !$('.sm-peek-pinned') || $('.sm-peek').hidden);
+    ShelfMap.reload().then(function () { ShelfRoom.resetView(); setTimeout(done, 40); });
+  });
+
+  /* ---- A FINGER HOLDS BEFORE IT GRABS ------------------------------------ */
+  steps.push(function (done) {
+    if (!$('[data-sm="edit"]')) return done();
+    $('[data-sm="edit"]').click();
+    ShelfRoom.resetView();
+    var calls0 = __calls.length;
+    var p = pointAt(101);
+    var o = { bubbles: true, pointerId: 31, pointerType: 'touch', button: 0 };
+    cv.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ clientX: p.x, clientY: p.y }, o)));
+    cv.dispatchEvent(new PointerEvent('pointermove', Object.assign({ clientX: p.x + 30, clientY: p.y }, o)));
+    ok('touch: a finger that moves at once orbits — no rack is lifted', ShelfRoom.dragging() === false);
+    cv.dispatchEvent(new PointerEvent('pointerup', Object.assign({ clientX: p.x + 30, clientY: p.y }, o)));
+    ShelfRoom.resetView();
+    var p2 = pointAt(101);
+    cv.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ clientX: p2.x, clientY: p2.y }, o)));
+    setTimeout(function () {
+      ok('touch: held still, the rack under the finger is lifted', ShelfRoom.dragging() === true);
+      cv.dispatchEvent(new PointerEvent('pointerup', Object.assign({ clientX: p2.x, clientY: p2.y }, o)));
+      ok('touch: lifted and let go without moving, it is put back', ShelfRoom.dragging() === false);
+      setTimeout(function () {
+        ok('touch: …and nothing is saved', __calls.slice(calls0).filter(function (c) { return c[0] === 'PATCH'; }).length === 0,
+           __calls.slice(calls0));
+        $('[data-sm="edit"]').click();
+        done();
+      }, 40);
+    }, 560);
+  });
+
+  /* ---- STAGE B: A RACK THAT STANDS ON THE FLOOR (051) ---------------------
+     First the rows that matter most — every rack in the live database has no
+     placement of its own — then a free-standing rack added to a measured
+     fixture room: drawn, turned, faced, occluded, dragged, rotated, refused,
+     and the room switcher counted. The fixture is put back at the end. */
+  steps.push(function (done) {
+    var near = function (a, b) { return Math.abs(a - b) < 1e-6; };
+    ok('B: the fixture\'s racks carry no placement at all — as every live row did before 051',
+       SECTIONS.every(function (s) { return !('placement' in s); }));
+    var st0 = ShelfRoom.stats();
+    ok('B: …and they still load and draw exactly as before: 2 racks, 6 bays, 19 boxes, none free',
+       st0.racks === 2 && st0.bays === 6 && st0.boxes.count === 19 && st0.free === 0, st0);
+
+    var R4 = function (rot) { return ShelfRoom.rect('free', { x: 2.25, y: 2.29, rot: rot }, 2.28, 0.45, 4.5, 5.5); };
+    var r0 = R4(0), r90 = R4(90), r180 = R4(180), r270 = R4(270);
+    ok('B: at 0° a free rack lies across the room — 2.28 m of x, 0.45 m of z',
+       near(r0.x1 - r0.x0, 2.28) && near(r0.z1 - r0.z0, 0.45), r0);
+    ok('B: at 180° it is the same rectangle', near(r180.x0, r0.x0) && near(r180.x1, r0.x1) && near(r180.z0, r0.z0));
+    ok('B: at 90° it runs front to back — 0.45 m of x, 2.28 m of z, its middle 2.29 m from the front',
+       near(r90.x1 - r90.x0, 0.45) && near(r90.z1 - r90.z0, 2.28) && near((r90.z0 + r90.z1) / 2, 5.5 - 2.29), r90);
+    ok('B: at 270° it is the same rectangle', near(r270.x0, r90.x0) && near(r270.z1, r90.z1));
+
+    var saved = { room: JSON.stringify(ROOMS[0]), secs: SECTIONS.slice(), limits: JSON.stringify(LIMITS) };
+    ROOMS[0].width_cm = 600; ROOMS[0].depth_cm = 600; ROOMS[0].height_cm = 340;
+    var eShelf = function (id, row, qty) {
+      return { id: id, code: row + '1', row_label: row, col_index: 1, product_id: 1, product_name: 'حذاء الاختبار',
+               size_from: null, size_to: null, range: null, capacity: null, qty: qty, variants: qty ? 1 : 0,
+               contents: qty ? [{ sku: 'OG-001-41', size: '41', qty: qty, product_id: 1, product_name: 'حذاء الاختبار' }] : [] };
+    };
+    SECTIONS.push({ id: 14, key: 'E', name: 'الرف الأوسط', wh_id: 'store', wh_code: 2, grid_origin: 'left', sort_index: 3,
+      room_id: 1, placement: 'free', x_cm: 250, y_cm: 250, rot_deg: 90, wall: null, wall_pos: null, wall_cm: null,
+      bay_cm: null, level_cm: null, depth_cm: null, size: { bay: 114, level: 46, depth: 95, cols: 1, width: 114 },
+      shelves: [eShelf(401, 'A', 6), eShelf(402, 'B', 0), eShelf(403, 'C', 2)] });
+    ShelfRoom.resetView();
+    ShelfMap.reload().then(function () { setTimeout(drawn, 80); });
+
+    function drawn() {
+      var st = ShelfRoom.stats();
+      ok('B: a free rack joins the room — 3 racks, 9 bays, one standing free', st.racks === 3 && st.bays === 9 && st.free === 1, st);
+      ok('B: its boxes join the ONE InstancedMesh, capped like any bay',
+         st.boxes.meshes === 1 && st.boxes.drawn[401] === 6 && st.boxes.drawn[403] === 2, st.boxes);
+      ok('B: a rack on the floor adds no light — six at most', st.lights <= 6, st.lights);
+      var fr = ShelfRoom.rackRect(14);
+      ok('B: it stands where the server says — 2.5 m from the left, 2.5 m from the front, a quarter turn',
+         !!fr && near(fr.x0, 2.025) && near(fr.x1, 2.975) && near(fr.z0, 3.5 - 0.57) && near(fr.z1, 3.5 + 0.57), fr);
+
+      var facing = [];
+      [0, Math.PI / 2, Math.PI, -Math.PI / 2].forEach(function (az) {
+        ShelfRoom.camera({ az: az, pol: 1.25, dist: 2.3, tx: -0.5, ty: 1.2, tz: 0.5 });
+        facing.push(ShelfRoom.plateFacing(14));
+      });
+      ok('B: the island\'s name plate turns to face the camera from all four sides',
+         facing.every(function (f) { return f != null && f > 0.99; }), facing);
+
+      var b102 = ShelfRoom.bayCentre(102);
+      ShelfRoom.camera({ az: 0, pol: Math.PI / 2 - 0.05, dist: 5.3, tx: b102.x, ty: 1.1, tz: b102.z });
+      var hidden = ShelfRoom.project(b102.x, b102.y, b102.z);
+      ok('B: a back-wall bay straight behind the island is NOT picked through it',
+         !!hidden && ShelfRoom.pickAt(hidden.x, hidden.y) !== 102, hidden && ShelfRoom.pickAt(hidden.x, hidden.y));
+      ShelfRoom.camera({ az: 0, pol: 0.25, dist: 6, tx: b102.x, ty: b102.y, tz: b102.z });
+      var seen = ShelfRoom.project(b102.x, b102.y, b102.z);
+      ok('B: …and from above, over the island, it is', !!seen && ShelfRoom.pickAt(seen.x, seen.y) === 102,
+         seen && ShelfRoom.pickAt(seen.x, seen.y));
+
+      /* ---- in the air: nothing written until release ---- */
+      ShelfRoom.resetView();
+      /* staff have no editor: nothing to carry and no turn button, but the
+         switcher is drawn for them too */
+      if (!$('[data-sm="edit"]')) {
+        ok('B: staff get no quarter-turn button on the island', !$('[data-sm="rack-rot"]'));
+        return switcher();
+      }
+      $('[data-sm="edit"]').click();
+      var c0 = __calls.length;
+      ok('B: a free rack can be picked up',
+         ShelfRoom.grab(14, { cols: 1, rows: 3, bay: 1.14, level: 0.46, depth: 0.95, placement: 'free', rot: 90 }, false) === true);
+      var legal = ShelfRoom.project(-1.5, 0, 0);          /* 1.5 m from the left wall, 3 m from the front */
+      var info = ShelfRoom.dragTo(legal.x, legal.y);
+      ok('B: in the air it is on the floor, not on a wall, and can go there', !!info && info.kind === 'free' && info.ok === true, info);
+      ok('B: …the readout carries the live gap to the nearest thing', !!info && info.gap > 0.7 && !!info.near, info && info.near);
+      ok('B: …and nothing has been written', __calls.length === c0, __calls.slice(c0));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true }));
+      ok('B: R turns it a quarter in the air', ShelfRoom.heldRot() === 180, ShelfRoom.heldRot());
+      var into = ShelfRoom.project(1.9, 0, -1.26);        /* into N, on the right wall */
+      var hit = ShelfRoom.dragTo(into.x, into.y);
+      ok('B: into a rack is refused in the air, naming it', !!hit && hit.ok === false && hit.why === 'overlap' &&
+         !!hit.near && hit.near.key === 'N', hit);
+      var tight = ShelfRoom.project(0.9, 0, -0.8);        /* 58 cm short of N, and more than that clear of M */
+      var aisle = ShelfRoom.dragTo(tight.x, tight.y);
+      ok('B: under the aisle is refused in the air, with the gap', !!aisle && aisle.ok === false && aisle.why === 'aisle' &&
+         aisle.near.key === 'N' && Math.abs(aisle.gap - 0.58) < 0.01, aisle);
+      ShelfRoom.dragTo(legal.x, legal.y);
+      var put = ShelfRoom.drop(legal.x, legal.y);
+      ok('B: letting go somewhere legal hands back a place on the floor, not a wall',
+         !!put && put.wall === 'free' && put.at.rot === 180 && near(put.at.x, 1.5) && near(put.at.y, 3), put);
+      ok('B: …and the room by itself wrote nothing — the map does the saving', __calls.length === c0);
+
+      /* by hand: press on the island's bay, carry it, let go */
+      var e401 = ShelfRoom.bayCentre(401), ep = ShelfRoom.project(e401.x, e401.y, e401.z);
+      ok('B: the island\'s bay can be pressed from the default seat', !!ep && ShelfRoom.pickAt(ep.x, ep.y) === 401,
+         ep && ShelfRoom.pickAt(ep.x, ep.y));
+      var o = { bubbles: true, pointerId: 41, button: 0 };
+      cv.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ clientX: ep.x, clientY: ep.y }, o)));
+      cv.dispatchEvent(new PointerEvent('pointermove', Object.assign({ clientX: ep.x + 10, clientY: ep.y + 10 }, o)));
+      cv.dispatchEvent(new PointerEvent('pointermove', Object.assign({ clientX: legal.x, clientY: legal.y }, o)));
+      ok('B: carried by hand, still nothing written while it moves', __calls.length === c0, __calls.slice(c0));
+      cv.dispatchEvent(new PointerEvent('pointerup', Object.assign({ clientX: legal.x, clientY: legal.y }, o)));
+      var patch = __calls.slice(c0).filter(function (c) { return c[0] === 'PATCH' && c[1] === '/api/sections/14'; })[0];
+      ok('B: released, it is saved as placement free, in whole centimetres, at its turn, with no wall',
+         !!patch && patch[2].placement === 'free' && Number.isInteger(patch[2].xCm) && Number.isInteger(patch[2].yCm) &&
+         patch[2].rotDeg === 90 && !patch[2].wall && !('wallCm' in patch[2]), patch);
+      setTimeout(turned, 80);
+    }
+
+    function turned() {
+      var rb = $('[data-sm="rack-rot"][data-id="14"]');
+      ok('B: the on-screen quarter turn is on the island\'s row — a touch screen has no R', !!rb);
+      if (!rb) return restore();
+      var c1 = __calls.length;
+      __toasts.length = 0;
+      __postMode = 'aisle';
+      rb.click();
+      setTimeout(function () {
+        var pc = __calls.slice(c1).filter(function (c) { return c[0] === 'PATCH'; })[0];
+        ok('B: it asks for a quarter turn where it stands', !!pc && pc[2].placement === 'free' &&
+           pc[2].xCm === 250 && pc[2].yCm === 250 && pc[2].rotDeg === 180, pc);
+        var tt = __toasts[__toasts.length - 1];
+        ok('B: the aisle refusal says the gap and the requirement and names the rack  [' + OG.lang + ']',
+           !!tt && tt.title.indexOf('40') > -1 && tt.title.indexOf('70') > -1 && tt.title.indexOf('الرفّ الجانبي') > -1 &&
+           tt.title === t('sm_err_aisle').replace('{g}', '⁦40⁩').replace('{n}', 'الرفّ الجانبي').replace('{m}', '⁦70⁩'), tt);
+        $('[data-sm="edit"]').click();
+        LIMITS.aisle_min_cm = 0;
+        ShelfMap.reload().then(function () { setTimeout(aisleOff, 80); });
+      }, 60);
+    }
+
+    function aisleOff() {
+      ShelfRoom.resetView();
+      ShelfRoom.grab(14, { cols: 1, rows: 3, bay: 1.14, level: 0.46, depth: 0.95, placement: 'free', rot: 180 }, false);
+      var tight = ShelfRoom.project(0.9, 0, -0.8);
+      var z = ShelfRoom.dragTo(tight.x, tight.y);
+      ok('B: with the aisle at 0 the same place 58 cm from N is allowed', !!z && z.ok === true && z.gap < 0.7, z);
+      ShelfRoom.cancelDrag();
+      switcher();
+    }
+
+    function switcher() {
+      ok('B: a room and a rack standing in none — the switcher is shown', !!$('.sm-top [data-smv="room"]'));
+      var fAt = -1;
+      SECTIONS.forEach(function (s, i) { if (s.id === 12) fAt = i; });
+      SECTIONS.splice(fAt, 1);
+      ShelfMap.reload().then(function () {
+        setTimeout(function () {
+          ok('B: one room and nothing else — the switcher is hidden', !$('.sm-top [data-smv="room"]') && !$('[data-smv="room"]'));
+          ROOMS.push({ id: 2, wh_id: 'store', name: 'غرفة ثانية', sort_index: 2, width_cm: null, depth_cm: null, height_cm: null });
+          ShelfMap.reload().then(function () {
+            setTimeout(function () {
+              ok('B: a second room — the switcher is back', !!$('.sm-top [data-smv="room"]'));
+              restore();
+            }, 60);
+          });
+        }, 60);
+      });
+    }
+
+    function restore() {
+      ROOMS.length = 0; ROOMS.push(JSON.parse(saved.room));
+      SECTIONS.length = 0; saved.secs.forEach(function (s) { SECTIONS.push(s); });
+      var L = JSON.parse(saved.limits);
+      Object.keys(L).forEach(function (k) { LIMITS[k] = L[k]; });
+      __postMode = 'ok';
+      ShelfMap.reload().then(function () {
+        setTimeout(function () {
+          var sb = ShelfRoom.stats();
+          ok('B: the fixture is put back — 2 racks, none free', sb.racks === 2 && sb.free === 0, sb);
+          ShelfRoom.resetView();
+          done();
+        }, 80);
+      });
+    }
+  });
+
   steps.push(function (done) {
     var rafs = 0, origRaf = window.requestAnimationFrame, rafFrom = '';
     var count = function () {
@@ -734,6 +1395,7 @@ function laterTests(cv, finish) {
     $('[data-sm="cam-walk"]').click();
     ok('walk: the switch persists per machine', localStorage.getItem('og_sm_cam') === 'walk');
     ok('walk: the room is walking', ShelfRoom.mode() === 'walk');
+    ok('ceiling: walking at eye height, the ceiling is there', ShelfRoom.stats().ceiling === true, ShelfRoom.stats());
     ok('walk: …and the switch says so', $('[data-sm="cam-walk"]').getAttribute('aria-pressed') === 'true');
     var box = $('#smScan');
     box.value = '';
@@ -744,10 +1406,19 @@ function laterTests(cv, finish) {
     var e0 = ShelfRoom.stats().eye;
     count();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true }));
-    setTimeout(function () {
+    /* Wait for the walk loop's own second frame (it moves the eye on the
+       first), not a fixed 120 ms: the first frame after the walk switch
+       repaints the map, and under swiftshader it arrived later than that
+       for the staff run — the key had been taken, the frame asked for. */
+    var walkT0 = Date.now();
+    (function walked() {
+      if (rafs < 2 && Date.now() - walkT0 < 1500) return setTimeout(walked, 20);
       ok('walk: a held key asks for frames', rafs > 0, rafs);
+      var mr = document.getElementById('modal-root');
       ok('walk: …and the eye moved', !!e0 && Math.hypot(ShelfRoom.stats().eye.x - e0.x, ShelfRoom.stats().eye.z - e0.z) > 0.01,
-         [e0, ShelfRoom.stats().eye]);
+         { e0: e0, eye: ShelfRoom.stats().eye, view: OG.view, mode: ShelfRoom.mode(), rafs: rafs, from: rafFrom,
+           modal: mr ? mr.innerHTML.slice(0, 160) : null, drawer: !!document.querySelector('.drawer.open, .drawer-root > *'),
+           flying: ShelfRoom.stats().flying, focused: ShelfRoom.stats().focused });
       ok('walk: the letter never reached the scan box', box.value === '', box.value);
       document.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', bubbles: true }));
       setTimeout(function () {
@@ -801,6 +1472,7 @@ function laterTests(cv, finish) {
                   setTimeout(function () {
                     stop();
                     ok('room: after the tween lands a still camera asks for no frames — still', rafs === 0, rafs);
+                    ok('ceiling: from the top view it is gone again', ShelfRoom.stats().ceiling === false, ShelfRoom.stats());
                     R.notes.push(' note draw calls ' + JSON.stringify(ShelfRoom.stats()));
                     done();
                   }, 200);
@@ -810,7 +1482,498 @@ function laterTests(cv, finish) {
           }, 120);
         }, 120);
       }, 30);
-    }, 120);
+    })();
+  });
+
+  /* ---- STAGE C: the room is live, a rack grows from inside it, and the
+     product is on the box. As manager and as staff; the fixture goes back at
+     the end. Every refusal is checked in the air (the readout) AND as the
+     server's answer (the toast), in the page's language. ---------------- */
+  steps.push(function (done) {
+    var saved = { room: JSON.stringify(ROOMS[0]), secs: JSON.stringify(SECTIONS),
+                  prods: JSON.stringify(PRODUCTS), limits: JSON.stringify(LIMITS) };
+    var chain = [];
+    var add = function (f) { chain.push(f); };
+    var run = function () { var f = chain.shift(); if (f) f(run); };
+    var st = function () { return ShelfRoom.stats(); };
+    var shelf = function (id) {
+      var hit = null;
+      SECTIONS.forEach(function (s) { s.shelves.forEach(function (sh) { if (sh.id === id) hit = sh; }); });
+      return hit;
+    };
+    var ptr = function (type, p, id) {
+      cv.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id || 81,
+        clientX: p.x, clientY: p.y, button: 0, pointerType: 'mouse' }));
+    };
+    var rafCount = function () {
+      var o = { n: 0 }, real = window.requestAnimationFrame;
+      window.requestAnimationFrame = function (f) { o.n++; return real(f); };
+      o.stop = function () { window.requestAnimationFrame = real; };
+      return o;
+    };
+    var hud = function () { var el = $('.sm-hud'); return el && !el.hidden ? el.textContent.replace(/[⁦⁩]/g, '') : ''; };
+    var callsFrom = function (from, path) { return __calls.slice(from).filter(function (c) { return !path || c[1] === path; }); };
+    var word = function (key, hole) { return t(key).split(hole).join('').trim(); };
+    var picture = function (w, h, colour) {
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      var g = c.getContext('2d');
+      g.fillStyle = colour; g.fillRect(0, 0, w, h);
+      return c.toDataURL('image/png');
+    };
+    var BLUE = picture(320, 160, '#2F5BFF'), TALL = picture(120, 300, '#8A2BE2'), ORANGE = picture(300, 200, '#FF8A00');
+    var logs = 0, real = {};
+    var hush = function () {
+      ['log', 'warn', 'error', 'info'].forEach(function (k) {
+        real[k] = console[k];
+        console[k] = function () { logs++; return real[k].apply(console, arguments); };
+      });
+    };
+    var unhush = function () { Object.keys(real).forEach(function (k) { console[k] = real[k]; }); };
+
+    /* ---- live ---- */
+    add(function (next) {
+      ShelfRoom.resetView();
+      setTimeout(function () {
+        var s0 = st(), cam0 = ShelfRoom.camera(), c0 = $('#smRoom canvas');
+        var sh = shelf(106);
+        sh.qty = 2; sh.variants = 1;
+        sh.contents = [{ sku: 'OG-004-39', size: '39', qty: 2, product_id: 4, product_name: 'Half Sizes' }];
+        var rc = rafCount();
+        ShelfMap.live('stock');
+        setTimeout(function () {
+          var first = rc.n;
+          rc.stop();
+          var s1 = st(), cam1 = ShelfRoom.camera();
+          ok('C live: a stock change made elsewhere reaches the room — B3 now draws its 2 boxes',
+             s0.boxes.drawn[106] === 0 && s1.boxes.drawn[106] === 2, [s0.boxes.drawn[106], s1.boxes.drawn[106]]);
+          ok('C live: …WITHOUT A SCENE REBUILD — stock is not in the room\'s signature', s1.rebuilds === s0.rebuilds, [s0.rebuilds, s1.rebuilds]);
+          ok('C live: …the canvas is the same node and the camera has not moved', $('#smRoom canvas') === c0 &&
+             cam1.az === cam0.az && cam1.pol === cam0.pol && cam1.dist === cam0.dist, [cam0, cam1]);
+          ok('C live: …the frame loop woke for it', first >= 1, first);
+          var rc2 = rafCount();
+          setTimeout(function () {
+            rc2.stop();
+            ok('C live: …AND WENT QUIET AGAIN — nothing asked for after that frame', rc2.n === 0, rc2.n);
+            next();
+          }, 250);
+        }, 350);
+      }, 300);
+    });
+
+    add(function (next) {
+      var sh = shelf(105), d0 = st().boxes.drawn[105];
+      ShelfRoom.grab(13, { cols: 1, rows: 1, bay: 1.2, level: 0.46, depth: 0.95 }, false);
+      sh.qty = 3; sh.variants = 1;
+      sh.contents = [{ sku: 'OG-001-39', size: '39', qty: 3, product_id: 1, product_name: 'حذاء الاختبار' }];
+      ShelfMap.live('stock');
+      setTimeout(function () {
+        ok('C live: an update arriving DURING A DRAG is held, not applied', st().boxes.drawn[105] === d0 &&
+           ShelfMap.liveState().held, [d0, st().boxes.drawn[105], ShelfMap.liveState()]);
+        ShelfRoom.cancelDrag();
+        setTimeout(function () {
+          ok('C live: …and applied once the hand lets go', st().boxes.drawn[105] === 3 && !ShelfMap.liveState().held,
+             [st().boxes.drawn[105], ShelfMap.liveState()]);
+          next();
+        }, 600);
+      }, 250);
+    });
+
+    add(function (next) {
+      var sh = shelf(105);
+      sh.qty = 5; sh.contents[0].qty = 5;
+      ShelfRoom.focus(101);
+      ShelfMap.live('stock');
+      setTimeout(function () {
+        ok('C live: …DURING A CAMERA FLIGHT, held', ShelfRoom.flying() && st().boxes.drawn[105] === 3 && ShelfMap.liveState().held,
+           [ShelfRoom.flying(), st().boxes.drawn[105], ShelfMap.liveState()]);
+        setTimeout(function () {
+          ok('C live: …and taken when the camera lands', !ShelfRoom.flying() && st().boxes.drawn[105] === 5, st().boxes.drawn[105]);
+          ShelfRoom.back();
+          setTimeout(next, 800);
+        }, 1200);
+      }, 120);
+    });
+
+    add(function (next) {
+      var sh = shelf(105);
+      sh.qty = 1; sh.contents[0].qty = 1;
+      openModal({ title: 'held', body: '<p>held</p>' });
+      ShelfMap.live('stock');
+      setTimeout(function () {
+        ok('C live: …WITH A DIALOG OPEN, held', st().boxes.drawn[105] === 5 && ShelfMap.liveState().held, st().boxes.drawn[105]);
+        closeModal();
+        setTimeout(function () {
+          ok('C live: …and taken when it closes', st().boxes.drawn[105] === 1, st().boxes.drawn[105]);
+          next();
+        }, 700);
+      }, 200);
+    });
+
+    add(function (next) {
+      var sh = shelf(105);
+      sh.qty = 4; sh.contents[0].qty = 4;
+      ShelfMap.livePollMs(250);
+      setTimeout(function () {
+        ok('C live: WITH NO LIVE LINE AT ALL the map asks for itself — the backstop poll brought B1\'s 4 boxes',
+           st().boxes.drawn[105] === 4, st().boxes.drawn[105]);
+        ShelfMap.livePollMs(45000);
+        next();
+      }, 900);
+    });
+
+    /* ---- a measured room, the room's own 92 cm bay, and a free rack ---- */
+    add(function (next) {
+      ROOMS[0].width_cm = 600; ROOMS[0].depth_cm = 600; ROOMS[0].height_cm = 200;
+      SECTIONS.forEach(function (s) {
+        if (s.id === 11) { s.bay_cm = 92; s.size = { bay: 92, level: 46, depth: 95, cols: 4, width: 368 }; }
+        if (s.id === 13) { s.bay_cm = 92; s.size = { bay: 92, level: 46, depth: 95, cols: 1, width: 92 }; }
+      });
+      SECTIONS.push({ id: 15, key: 'P', name: 'الرف الحر', wh_id: 'store', wh_code: 2, grid_origin: 'left', sort_index: 4,
+        room_id: 1, placement: 'free', x_cm: 300, y_cm: 300, rot_deg: 0, wall: null, wall_pos: null, wall_cm: null,
+        bay_cm: 92, level_cm: 46, depth_cm: 45, size: { bay: 92, level: 46, depth: 45, cols: 1, width: 92 },
+        shelves: [
+          { id: 501, code: 'A1', row_label: 'A', col_index: 1, product_id: 1, product_name: 'حذاء الاختبار',
+            size_from: null, size_to: null, range: null, capacity: null, qty: 4, variants: 1,
+            contents: [{ sku: 'OG-001-42', size: '42', qty: 4, product_id: 1, product_name: 'حذاء الاختبار' }] },
+          { id: 502, code: 'B1', row_label: 'B', col_index: 1, product_id: null, product_name: null,
+            size_from: null, size_to: null, range: null, capacity: null, qty: 0, variants: 0, contents: [] }
+        ] });
+      ShelfRoom.resetView();
+      ShelfMap.reload().then(function () {
+        setTimeout(function () {
+          var s = st();
+          ok('C: the fixture room is measured, 2 m high, with a free rack P on the room\'s 92 cm bays', s.free === 1 && s.racks === 3, s);
+          next();
+        }, 150);
+      });
+    });
+
+    if (asManager) {
+      add(function (next) {
+        $('[data-sm="edit"]').click();
+        setTimeout(function () {
+          var rb0 = st().rebuilds, box = $('#smAddCols');
+          ok('C edit: inside the room the designer offers Add a rack', !!box && !!$('[data-sm="rack-add-go"]'));
+          if (box) box.value = '7';
+          SECTIONS.forEach(function (s) { if (s.id === 13) { s.wall_cm = 0; s.wall_pos = 0; } });
+          ShelfMap.live('layout');
+          setTimeout(function () {
+            var line = $('#smLive');
+            ok('C live: A LAYOUT CHANGED ELSEWHERE WHILE THE ROOM IS BEING LAID OUT IS NOT TAKEN — a quiet line says so',
+               !!line && !line.hidden && line.textContent.indexOf(t('sm_live_changed')) > -1, line && line.outerHTML);
+            ok('C live: …the scene was not rebuilt under the hands', st().rebuilds === rb0, [rb0, st().rebuilds]);
+            ok('C live: …and the number being typed into the designer is still there', !!$('#smAddCols') && $('#smAddCols').value === '7');
+            $('[data-sm="live-take"]').click();
+            setTimeout(function () {
+              ok('C live: Show the new layout takes it — one rebuild, and the line goes',
+                 st().rebuilds === rb0 + 1 && $('#smLive').hidden, [rb0, st().rebuilds, $('#smLive') && $('#smLive').hidden]);
+              next();
+            }, 300);
+          }, 400);
+        }, 200);
+      });
+
+      add(function (next) {
+        var c0 = __calls.length;
+        var wallKind = $('input[name="smAddKind"][value="wall"]');
+        if (wallKind) wallKind.checked = true;
+        $('#smAddCols').value = '2';
+        $('#smAddRows').value = '2';
+        $('[data-sm="rack-add-go"]').click();
+        var pl = ShelfMap.placing();
+        ok('C edit: A RACK ADDED IN THE ROOM IS DRAWN AT THE ROOM\'S 92 cm BAY — never the standard 114',
+           !!pl && Math.abs(pl.shape.bay - 0.92) < 1e-9 && pl.shape.cols === 2 && pl.shape.rows === 2, pl);
+        ok('C edit: …with the next free letter', !!pl && pl.key === 'A', pl && pl.key);
+        var p = ShelfRoom.project(0, 0, 2.6);
+        ptr('pointermove', p, 91);
+        setTimeout(function () {
+          ok('C edit: carried over the front wall, the readout follows it', hud().length > 0, hud());
+          ok('C edit: …NOTHING WRITTEN WHILE IT IS IN THE AIR', callsFrom(c0).length === 0, callsFrom(c0));
+          ptr('pointerdown', p, 91);
+          ptr('pointerup', p, 91);
+          setTimeout(function () {
+            var post = callsFrom(c0, '/api/sections').filter(function (c) { return c[0] === 'POST'; })[0];
+            ok('C edit: put down, it is saved ONCE, on the wall, with its grid and NO size — the server gives it the room\'s',
+               !!post && post[2].placement === 'wall' && post[2].wall === 's' && post[2].rows === 2 && post[2].cols === 2 &&
+               !('bayCm' in post[2]) && !('levelCm' in post[2]) && !('depthCm' in post[2]) && post[2].key === 'A' &&
+               post[2].name === t('sm_add_name').replace('{k}', 'A'), post);
+            ok('C edit: …and it has left the hand', !ShelfMap.placing());
+            next();
+          }, 250);
+        }, 150);
+      });
+
+      add(function (next) {
+        $('[data-sm="rack-focus"][data-id="15"]').click();
+        setTimeout(function () {
+          ok('C edit: the rack in focus shows its grips', st().handles === true, st().handles);
+          var g = ShelfRoom.gripPoint('bays');
+          ok('C edit: …the bays grip is on screen', !!g, g);
+          if (!g) return next();
+          var c0 = __calls.length;
+          var okP = ShelfRoom.project(0.92, 0, 0.8), badP = ShelfRoom.project(2.76, 0, 0.8);
+          ptr('pointerdown', g, 82);
+          ptr('pointermove', { x: g.x + 8, y: g.y + 2 }, 82);
+          ptr('pointermove', okP, 82);
+          var s1 = st().growing, h1 = hud();
+          ok('C edit: the grip dragged out: 2 bays, and the live gap to the nearest thing',
+             !!s1 && s1.cols === 2 && s1.ok === true && h1.indexOf(word('sm_grow_bays', '{n}')) > -1 &&
+             h1.indexOf(word('sm_grow_near', '{g}').split('{n}')[0].trim()) > -1, [s1, h1]);
+          ptr('pointermove', badP, 82);
+          var s2 = st().growing, h2 = hud();
+          ok('C edit: A BAY ADDED TO A FREE RACK RE-RUNS THE FIT AND AISLE CHECKS — six would leave 24 cm to the wall: refused, and said',
+             /* six bays centred in 6 m leave 24 cm to BOTH walls; either is the true answer */
+             !!s2 && s2.cols === 6 && s2.ok === false && h2.indexOf('24') > -1 &&
+             (h2.indexOf(t('sm_the_wall_w')) > -1 || h2.indexOf(t('sm_the_wall_e')) > -1), [s2, h2]);
+          ok('C edit: …nothing written while the grip is held', callsFrom(c0).length === 0, callsFrom(c0));
+          ptr('pointermove', okP, 82);
+          ptr('pointerup', okP, 82);
+          setTimeout(function () {
+            var post = callsFrom(c0, '/api/sections/15/cols')[0];
+            ok('C edit: let go at 2 bays: ONE request, add 1', !!post && post[0] === 'POST' && post[2].action === 'add' &&
+               post[2].count === 1, post);
+            next();
+          }, 250);
+        }, 300);
+      });
+
+      add(function (next) {
+        var g = ShelfRoom.gripPoint('levels');
+        ok('C edit: the levels grip is on screen', !!g, g);
+        if (!g) return next();
+        var c0 = __calls.length;
+        var high = ShelfRoom.project(0, 2.6, 0);
+        ptr('pointerdown', g, 83);
+        ptr('pointermove', { x: g.x + 2, y: g.y - 8 }, 83);
+        ptr('pointermove', high, 83);
+        var s = st().growing, h = hud();
+        ok('C edit: A LEVEL THROUGH THE CEILING IS REFUSED IN THE AIR, SAYING SO — 5 levels, 243 cm, a 200 cm room',
+           !!s && s.rows === 5 && s.ok === false && h.indexOf('243') > -1 && h.indexOf('200') > -1, [s, h]);
+        ptr('pointerup', high, 83);
+        setTimeout(function () {
+          ok('C edit: …let go there, nothing is written', callsFrom(c0).length === 0, callsFrom(c0));
+          __toasts.length = 0;
+          __postMode = 'too_tall';
+          $('[data-sm="row-add"]').click();
+          setTimeout(function () {
+            var tt = __toasts[__toasts.length - 1];
+            var want = t('sm_err_too_tall').replace('{k}', 'P').replace('{h}', '243').replace('{r}', '200').replace('{m}', '4');
+            ok('C edit: the server\'s refusal reads in the page\'s language, with its numbers  [' + OG.lang + ']',
+               !!tt && tt.title.replace(/[⁦⁩]/g, '') === want, [tt, want]);
+            next();
+          }, 200);
+        }, 200);
+      });
+
+      add(function (next) {
+        $('[data-sm="rack-focus"][data-id="11"]').click();
+        setTimeout(function () {
+          var g = ShelfRoom.gripPoint('bays');
+          ok('C edit: M\'s bays grip', !!g, g);
+          if (!g) return next();
+          var c0 = __calls.length;
+          var three = ShelfRoom.project(-0.24, 0, -1.6);
+          var want = t('sm_err_bay_occupied').replace('{b}', '4').replace('{n}', '3');
+          ptr('pointerdown', g, 84);
+          ptr('pointermove', { x: g.x - 8, y: g.y }, 84);
+          ptr('pointermove', three, 84);
+          var s = st().growing, h = hud();
+          ok('C edit: REMOVING A BAY THAT HOLDS STOCK IS REFUSED IN THE AIR, NAMING THE BAY AND THE COUNT  [' + OG.lang + ']',
+             !!s && s.cols === 3 && s.ok === false && h.indexOf(want) > -1, [s, h, want]);
+          ptr('pointerup', three, 84);
+          setTimeout(function () {
+            ok('C edit: …nothing written', callsFrom(c0).length === 0, callsFrom(c0));
+            __toasts.length = 0;
+            __postMode = 'occupied';
+            $('[data-sm="col-rm"][data-col="4"]').click();
+            setTimeout(function () {
+              var go = $('[data-sm="remove-go"]');
+              if (go) go.click();
+              setTimeout(function () {
+                var tt = __toasts[__toasts.length - 1];
+                ok('C edit: the server\'s shelf_occupied reads per bay, with the count  [' + OG.lang + ']',
+                   !!tt && tt.title.replace(/[⁦⁩]/g, '') === want, [tt, want]);
+                var a4 = shelf(104);
+                a4.qty = 0; a4.variants = 0; a4.contents = [];
+                ShelfMap.reload().then(function () {
+                  setTimeout(function () {
+                    var g2 = ShelfRoom.gripPoint('bays');
+                    if (!g2) { ok('C edit: M\'s grip after the reload', false); return next(); }
+                    var c1 = __calls.length;
+                    ptr('pointerdown', g2, 85);
+                    ptr('pointermove', { x: g2.x - 8, y: g2.y }, 85);
+                    ptr('pointermove', three, 85);
+                    var s3 = st().growing;
+                    ok('C edit: REMOVING AN EMPTY BAY IS FINE', !!s3 && s3.cols === 3 && s3.ok === true, s3);
+                    ptr('pointerup', three, 85);
+                    setTimeout(function () {
+                      var post = callsFrom(c1, '/api/sections/11/cols')[0];
+                      ok('C edit: …and goes in one request: remove the last 1', !!post && post[2].action === 'remove' &&
+                         post[2].last === 1, post);
+                      next();
+                    }, 250);
+                  }, 200);
+                });
+              }, 200);
+            }, 150);
+          }, 200);
+        }, 300);
+      });
+
+      add(function (next) { $('[data-sm="edit"]').click(); setTimeout(next, 200); });
+    } else {
+      add(function (next) {
+        ok('C staff: there is no layout editor to open', !$('[data-sm="edit"]'));
+        ok('C staff: NO "Add a rack" control, anywhere', !$('[data-sm="rack-add-go"]') && !$('.sm-addrk'));
+        ok('C staff: NO grips in the room', st().handles === false &&
+           ShelfRoom.gripPoint('bays') === null && ShelfRoom.gripPoint('levels') === null);
+        ok('C staff: no take-the-new-layout control either', !$('[data-sm="live-take"]'));
+        next();
+      });
+    }
+
+    /* ---- the product on the box ---- */
+    add(function (next) {
+      hush();
+      var s0 = st(), a0 = ShelfRoom.pictureAudit();
+      ok('C boxes: A ROOM WHERE NO PRODUCT HAS A PHOTO MAKES NO ATLAS AND FETCHES NOTHING',
+         !s0.pictures.atlas && !s0.pictures.on, s0.pictures);
+      ok('C boxes: …every box is kraft', a0.showing === 0 && a0.boxes > 0, a0);
+      var calls0 = ShelfRoom.bench(2).calls, rb0 = s0.rebuilds;
+      PRODUCTS.forEach(function (p) {
+        if (p.id === 1) p.image.src = BLUE;
+        if (p.id === 2) p.image.src = TALL;
+        if (p.id === 4) p.image.src = 'data:image/png;base64,AAAA';
+      });
+      ShelfMap.reload().then(function () {
+        setTimeout(function () {
+          var s1 = st(), a1 = ShelfRoom.pictureAudit();
+          ok('C boxes: photos in the catalogue: an atlas and a slot each — made WITHOUT A SCENE REBUILD',
+             !!s1.pictures.atlas && s1.pictures.on && s1.rebuilds === rb0, s1.pictures);
+          ok('C boxes: the two good photos are on their boxes', s1.pictures.ready === 2 && a1.byPid[1] > 0 && a1.byPid[2] > 0,
+             [s1.pictures, a1]);
+          ok('C boxes: A PHOTO THAT WILL NOT LOAD LEAVES ITS OWN BOXES KRAFT, AND ONLY THEIRS', s1.pictures.failed === 1 && !a1.byPid[4], a1);
+          ok('C boxes: NO BOX SHOWS ANOTHER PRODUCT\'S PICTURE', a1.wrong === 0, a1);
+          var calls1 = ShelfRoom.bench(2).calls;
+          ok('C boxes: DRAW CALLS DO NOT RISE WITH THE PRODUCTS PICTURED — ' + calls0 + ' with none, ' + calls1 + ' with the atlas',
+             calls1 === calls0, [calls0, calls1]);
+          ok('C boxes: …still ONE instanced mesh for every box', s1.boxes.meshes === 1, s1.boxes);
+          var f = s1.pictures.fit[2];
+          ok('C boxes: A PORTRAIT PHOTO IS LETTERBOXED, NEVER STRETCHED — the slot\'s full height at its own width',
+             !!f && f.h === f.slotH && f.w < f.slotW && Math.abs(f.w / f.h - f.imgW / f.imgH) < 0.03, f);
+          ok('C boxes: a slot is the end face\'s letterbox, not a square', s1.pictures.slotW / s1.pictures.slotH > 2.2,
+             [s1.pictures.slotW, s1.pictures.slotH]);
+          next();
+        }, 450);
+      });
+    });
+
+    add(function (next) {
+      var slow = [], Real = window.Image;
+      window.Image = function () {
+        var el = document.createElement('canvas');
+        el.width = 320; el.height = 160;
+        var g = el.getContext('2d');
+        g.fillStyle = '#FF8A00'; g.fillRect(0, 0, 320, 160);
+        el.naturalWidth = 320; el.naturalHeight = 160;
+        Object.defineProperty(el, 'src', { set: function () { slow.push(el); }, get: function () { return ''; } });
+        return el;
+      };
+      PRODUCTS.forEach(function (p) { if (p.id === 4) p.image.src = 'https://example.invalid/slow-photo.png'; });
+      ShelfMap.reload().then(function () {
+        ShelfRoom.pictureLimit(0);       /* the next build, with the photo still on its way */
+        window.Image = Real;
+        var s = st(), a = ShelfRoom.pictureAudit();
+        ok('C boxes: THE ROOM DRAWS BEFORE A PICTURE HAS ARRIVED — its boxes are there, kraft, the picture still coming',
+           s.boxes.count > 0 && s.pictures.waiting === 1 && slow.length === 1 && !a.byPid[4] && a.byPid[1] > 0, [s.pictures, a]);
+        slow.forEach(function (el) { el.onload(); });
+        var a2 = ShelfRoom.pictureAudit();
+        ok('C boxes: …and it goes on when it lands, with nothing rebuilt', a2.byPid[4] > 0 && a2.wrong === 0 &&
+           st().rebuilds === s.rebuilds, a2);
+        next();
+      });
+    });
+
+    add(function (next) {
+      PRODUCTS.forEach(function (p) { if (p.id === 4) p.image.src = ORANGE; });
+      ShelfMap.reload().then(function () {
+        setTimeout(function () {
+          var ps = ShelfRoom.pictureLimit(100), a = ShelfRoom.pictureAudit();
+          ok('C boxes: MORE PRODUCTS THAN SLOTS — the most held get them and the least held stays kraft',
+             ps.cap === 2 && ps.nospace === 1 && a.byPid[1] > 0 && a.byPid[2] > 0 && !a.byPid[4], [ps, a]);
+          ok('C boxes: …AND STILL NO BOX SHOWS ANOTHER PRODUCT\'S PICTURE', a.wrong === 0, a);
+          ShelfRoom.pictureLimit(0);
+          setTimeout(next, 200);
+        }, 200);
+      });
+    });
+
+    add(function (next) {
+      var f = ShelfRoom.boxEnd(501, 0, 1), b = ShelfRoom.boxEnd(501, 0, -1);
+      ok('C boxes: the free rack\'s box has an end to each aisle', !!f && !!b, [f, b]);
+      if (!f || !b) return next();
+      var nx = f.x - b.x, nz = f.z - b.z, len = Math.hypot(nx, nz);
+      nx /= len; nz /= len;
+      var look = function (pt, sx, sz) {
+        ShelfRoom.camera({ az: Math.atan2(sx, sz), pol: 1.3, dist: 1.0, tx: pt.x, ty: pt.y, tz: pt.z });
+        var q = ShelfRoom.project(pt.x, pt.y, pt.z);
+        return q ? ShelfRoom.pixel(q.x, q.y) : null;
+      };
+      /* blue by its balance, not its brightness: the end away from the key light is lit from
+         behind, and the same picture reads [21,34,74] there. Kraft is never blue-dominant. */
+      var blue = function (c) { return !!c && c[2] > 45 && c[2] > c[0] * 1.8 && c[2] > c[1] * 1.4; };
+      var front = look(f, nx, nz), back = look(b, -nx, -nz);
+      ok('C boxes: BOTH END FACES CARRY THE PICTURE — seen from one aisle', blue(front), front);
+      ok('C boxes: …and from the other', blue(back), back);
+      ShelfRoom.setQuality('low');
+      setTimeout(function () {
+        var sl = st(), al = ShelfRoom.pictureAudit(), lowPx = look(f, nx, nz);
+        ok('C boxes: THE LOW TIER DRAWS NO PICTURES', !sl.pictures.on && al.showing === 0 && !blue(lowPx),
+           [sl.pictures.on, al.showing, lowPx]);
+        ShelfRoom.setQuality('high');
+        setTimeout(function () {
+          ok('C boxes: …and back on the high tier they return', ShelfRoom.pictureAudit().showing > 0 && st().pictures.on);
+          ShelfRoom.resetView();
+          next();
+        }, 300);
+      }, 300);
+    });
+
+    add(function (next) {
+      PRODUCTS.forEach(function (p) { delete p.image.src; });
+      ShelfMap.reload().then(function () {
+        setTimeout(function () {
+          var s = st(), a = ShelfRoom.pictureAudit();
+          ok('C boxes: every photo taken away again: no atlas and every box kraft — the room the shop ships in',
+             !s.pictures.atlas && !s.pictures.on && a.showing === 0, [s.pictures, a]);
+          unhush();
+          ok('C boxes: AND NOTHING WAS LOGGED — not for a missing photo, not for a dead one', logs === 0, logs);
+          next();
+        }, 200);
+      });
+    });
+
+    add(function () {
+      ROOMS[0] = JSON.parse(saved.room);
+      SECTIONS.length = 0;
+      JSON.parse(saved.secs).forEach(function (s) { SECTIONS.push(s); });
+      PRODUCTS.length = 0;
+      JSON.parse(saved.prods).forEach(function (p) { PRODUCTS.push(p); });
+      var L = JSON.parse(saved.limits);
+      Object.keys(L).forEach(function (k) { LIMITS[k] = L[k]; });
+      __postMode = 'ok';
+      ShelfMap.reload().then(function () {
+        setTimeout(function () {
+          var sb = st();
+          ok('C: the fixture is put back — 2 racks, 19 boxes', sb.racks === 2 && sb.boxes.count === 19, sb.boxes);
+          ShelfRoom.resetView();
+          done();
+        }, 150);
+      });
+    });
+
+    run();
   });
 
   steps.push(function () {

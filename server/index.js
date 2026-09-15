@@ -645,33 +645,44 @@ router.add('GET /api/sections', requirePerm('stock.read', (ctx) => {
        these and from each rack's own `size`, so the browser owns no number
        the server has not got. */
     geometry: Shelves.GEOMETRY,
-    limits: { rack: Shelves.RACK_LIMITS, room_max_cm: Shelves.MAX_ROOM_CM, bay_min_cm: Shelves.BAY_MIN }
+    limits: { rack: Shelves.RACK_LIMITS, room_max_cm: Shelves.MAX_ROOM_CM, bay_min_cm: Shelves.BAY_MIN,
+              /* 051: the narrowest aisle a free-standing rack may leave, and
+                 the turns it may take — the drag previews both */
+              aisle_min_cm: Shelves.aisleMin(), rotations: Shelves.ROTATIONS }
   });
 }));
 
-router.add('POST /api/sections', requirePerm('stock.move', async (ctx) => {
+/* RESHAPING THE ROOM IS THE MANAGER'S (Stage C). Every route that adds, moves,
+   resizes or removes a room, a rack, a level, a bay or a shelf is config.write
+   — the same gate the browser's layout editor has always been drawn behind.
+   They were stock.move, so anybody allowed to put a pair away could send the
+   request by hand and reshape the room in the middle of a stock count. Putting
+   stock away and assigning what a shelf is for stay stock.move. */
+router.add('POST /api/sections', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => ({ section: Shelves.createSection({
     whId: b.whId, key: b.key, name: b.name,
     sortIndex: b.sortIndex, gridOrigin: b.gridOrigin,
     roomId: b.roomId, wall: b.wall, wallPos: b.wallPos, wallCm: b.wallCm,
-    bayCm: b.bayCm, levelCm: b.levelCm, depthCm: b.depthCm, userId: ctx.user.id
+    placement: b.placement, xCm: b.xCm, yCm: b.yCm, rotDeg: b.rotDeg,
+    bayCm: b.bayCm, levelCm: b.levelCm, depthCm: b.depthCm,
+    /* a rack placed from inside the room brings its grid in the same breath */
+    rows: b.rows, cols: b.cols, userId: ctx.user.id
   }) }));
 }));
 
-router.add('PATCH /api/sections/:id', requirePerm('stock.move', async (ctx) => {
+router.add('PATCH /api/sections/:id', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => ({ section: Shelves.updateSection(Number(ctx.params.id), {
     name: b.name, sortIndex: b.sortIndex, gridOrigin: b.gridOrigin,
     roomId: b.roomId, wall: b.wall, wallPos: b.wallPos, wallCm: b.wallCm,
+    placement: b.placement, xCm: b.xCm, yCm: b.yCm, rotDeg: b.rotDeg,
     bayCm: b.bayCm, levelCm: b.levelCm, depthCm: b.depthCm
   }, ctx.user.id) }));
 }));
 
-/* Rooms: the walls the racks hang on. Same permission pair, same reasoning —
-   the person who knows which wall the rack is against is the person who
-   moves the boxes. */
-router.add('POST /api/rooms', requirePerm('stock.move', async (ctx) => {
+/* Rooms: the walls the racks hang on. The manager's, like the racks. */
+router.add('POST /api/rooms', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => ({ room: Shelves.createRoom({
     whId: b.whId, name: b.name, sortIndex: b.sortIndex,
@@ -679,7 +690,7 @@ router.add('POST /api/rooms', requirePerm('stock.move', async (ctx) => {
   }) }));
 }));
 
-router.add('PATCH /api/rooms/:id', requirePerm('stock.move', async (ctx) => {
+router.add('PATCH /api/rooms/:id', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => ({ room: Shelves.updateRoom(Number(ctx.params.id), {
     name: b.name, sortIndex: b.sortIndex,
@@ -687,38 +698,40 @@ router.add('PATCH /api/rooms/:id', requirePerm('stock.move', async (ctx) => {
   }, ctx.user.id) }));
 }));
 
-router.add('DELETE /api/rooms/:id', requirePerm('stock.move', (ctx) => {
+router.add('DELETE /api/rooms/:id', requirePerm('config.write', (ctx) => {
   shelfOp(ctx, () => Shelves.deleteRoom(Number(ctx.params.id), ctx.user.id));
 }));
 
-router.add('DELETE /api/sections/:id', requirePerm('stock.move', (ctx) => {
+router.add('DELETE /api/sections/:id', requirePerm('config.write', (ctx) => {
   shelfOp(ctx, () => Shelves.deleteSection(Number(ctx.params.id), ctx.user.id));
 }));
 
 /* Lay a room out. Idempotent on code and it never deletes, because the shop is
    inventing this layout for the first time and will run it more than once. */
-router.add('POST /api/sections/:id/grid', requirePerm('stock.move', async (ctx) => {
+router.add('POST /api/sections/:id/grid', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => Shelves.seedGrid(Number(ctx.params.id), {
     rows: b.rows, cols: b.cols, capacity: b.capacity
   }, ctx.user.id));
 }));
 
-router.add('POST /api/sections/:id/rows', requirePerm('stock.move', async (ctx) => {
+/* `count` adds that many at once and `last` takes the last that many away —
+   what a handle dragged in the room lets go of, in one transaction. */
+router.add('POST /api/sections/:id/rows', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => Shelves.editRows(Number(ctx.params.id), {
-    action: b.action, row: b.row, cols: b.cols
+    action: b.action, row: b.row, cols: b.cols, count: b.count, last: b.last
   }, ctx.user.id));
 }));
 
-router.add('POST /api/sections/:id/cols', requirePerm('stock.move', async (ctx) => {
+router.add('POST /api/sections/:id/cols', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => Shelves.editCols(Number(ctx.params.id), {
-    action: b.action, col: b.col
+    action: b.action, col: b.col, count: b.count, last: b.last
   }, ctx.user.id));
 }));
 
-router.add('POST /api/shelves', requirePerm('stock.move', async (ctx) => {
+router.add('POST /api/shelves', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => ({ shelf: Shelves.createShelf({
     sectionId: Number(b.sectionId), rowLabel: b.rowLabel,
@@ -737,7 +750,7 @@ router.add('PATCH /api/shelves/:id', requirePerm('stock.move', async (ctx) => {
   }, { force: b.force === true, userId: ctx.user.id }));
 }));
 
-router.add('DELETE /api/shelves/:id', requirePerm('stock.move', (ctx) => {
+router.add('DELETE /api/shelves/:id', requirePerm('config.write', (ctx) => {
   shelfOp(ctx, () => Shelves.deleteShelf(Number(ctx.params.id), ctx.user.id));
 }));
 
@@ -1920,6 +1933,36 @@ function bump() {
   Live.notify('all');
 }
 
+/* THE SHELF MAP IS LIVE (Stage C). Not one more line at the end of every
+   route: a pair reaches a shelf, or leaves one, through the put-away scan,
+   a sale, a transfer, a count, a delivery, a return — and a route that forgot
+   to say so would be a room quietly showing yesterday's boxes. Every one of
+   those already logs the table it wrote, so the commit hook is the one place
+   that cannot be missed. A flag and nothing else goes out, to the shop's side
+   only: `layout` when a room, a rack or a shelf changed, `stock` when only
+   what is on them did. It is a hint — the browser compares what it fetches
+   and decides for itself. A burst of writes is one event. */
+{
+  const LAYOUT = new Set(['rooms', 'sections', 'shelves']);
+  let timer = null, kind = null;
+  DB.onCommit((tables) => {
+    let hit = null;
+    for (const t of tables) {
+      if (LAYOUT.has(t)) { hit = 'layout'; break; }
+      if (t === 'stock') hit = 'stock';
+    }
+    if (!hit) return;
+    if (hit === 'layout' || !kind) kind = hit;
+    if (timer) return;
+    timer = setTimeout(() => {
+      const k = kind;
+      timer = null; kind = null;
+      Live.notify('og', { shelves: k });
+    }, 250);
+    if (timer.unref) timer.unref();
+  });
+}
+
 /* The live channel. One long GET per open tab; lib/live.js writes a one-line
    "change" event whenever bump() runs, and the browser refetches through the
    ordinary gated routes. Which side a tab is on comes from the account.
@@ -1932,7 +1975,11 @@ function bump() {
    phone — and a parcel that left five minutes ago showing as waiting is how
    the same parcel gets handed to two carriers. The event still carries
    nothing but a flag; the board refetches through its own gated route. */
-router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write', 'delivery.read', 'delivery.desk'], (ctx) => {
+/* stock.read since Stage C: the shelf map is live, and the person putting
+   stock away in the back room holds neither a print nor a delivery
+   permission. The event carries a flag and nothing else — the map refetches
+   through GET /api/sections, which is stock.read already. */
+router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write', 'delivery.read', 'delivery.desk', 'stock.read'], (ctx) => {
   /* The name rides along so the other company's screen can say who is
      here. Yalla Wear is two people and the shop wants the one who is
      actually reading, not the company. */
@@ -2682,6 +2729,17 @@ const SHELF_STATUS = {
   wall_overlap:      409,
   wall_short:        409,
   room_too_small:    409,
+  /* 051's refusals were never added here, so on a real server every one of
+     them came back as a bare 400 'invalid' with only the English sentence —
+     the aisle and the neighbour's name never reached the Arabic screen. The
+     harness stubbed the answer and could not see it. */
+  rack_overlap:      409,
+  aisle_narrow:      409,
+  outside_room:      409,
+  free_unmeasured:   409,
+  /* Stage C: a level through the ceiling, and a ceiling lowered onto racks */
+  rack_too_tall:     409,
+  room_too_low:      409,
   no_letters_left:   409,
   duplicate_key:     409,
   duplicate_code:    409,
@@ -2690,6 +2748,8 @@ const SHELF_STATUS = {
   bad_request:       400,
   bad_key:           400,
   bad_wall:          400,
+  bad_placement:     400,
+  bad_rotation:      400,
   bad_code:          400,
   bad_range:         400,
   no_rows:           400,

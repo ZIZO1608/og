@@ -23,6 +23,7 @@
     "createuser": "node scripts/createuser.js",
     "botfather": "node scripts/botfather.js",
     "backup": "node scripts/backup.js",
+    "warehouse:one-room": "node scripts/warehouse-one-room.js",
     "supabase:check": "node scripts/supabase-check.js",
     "supabase:drift": "node scripts/mirror-drift.js",
     "supabase:test-write": "node scripts/supabase-test-write.js",

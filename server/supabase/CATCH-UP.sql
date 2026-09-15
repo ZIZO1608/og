@@ -631,3 +631,10 @@ CREATE TABLE IF NOT EXISTS order_reviews (
 CREATE INDEX IF NOT EXISTS idx_order_reviews_at ON order_reviews (at);
 
 ALTER TABLE order_reviews ENABLE ROW LEVEL SECURITY;
+
+-- ===== 020_free_racks.sql =====  (local 051: a rack that stands on the floor, not against a wall)
+
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS placement TEXT NOT NULL DEFAULT 'wall';
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS x_cm    INTEGER;
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS y_cm    INTEGER;
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS rot_deg INTEGER;

@@ -596,7 +596,7 @@ body.rtl .toast { animation-name: toastInR; }
    js/shelfroom.js owns both and moves them into #smRoom after every paint,
    which is how they survive the innerHTML a scan causes. */
 .sm-stage3d { padding: 0; overflow: hidden; }
-.sm-room { position: relative; height: 560px; max-height: 64vh; min-height: 340px; background: #0d0d0d; }
+.sm-room { position: relative; height: 560px; max-height: 64vh; min-height: 340px; background: #0b0a08; }
 .sm-room-wait { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12.5px; }
 .sm-room-hint { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 11.5px; text-align: center; }
 
@@ -606,7 +606,7 @@ body.rtl .toast { animation-name: toastInR; }
    browser grants it — shows this same node. The 560px pins above belong to
    .sm-room and stop applying the moment the wrapper is not inside it, which
    is the whole reason it is re-parented rather than styled in place. */
-.sm-gl { position: absolute; inset: 0; background: #0d0d0d; }
+.sm-gl { position: absolute; inset: 0; background: #0b0a08; }
 .sm-gl canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 .sm-gl.sm-fs { position: fixed; inset: 0; z-index: 150; }
 .sm-gl:fullscreen, .sm-gl:-webkit-full-screen { width: 100%; height: 100%; }
@@ -674,20 +674,25 @@ body.sm-walking { cursor: crosshair; }
    because a room must not turn round when the menus change language; a label
    is TEXT, and an Arabic product name reads right-to-left in Arabic. */
 .sm-room-tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; contain: layout; }
+/* A name carries its own quiet plate — warm, like the room — so it reads
+   the same over a lit wall and a dark one, and never borrows contrast from
+   whatever happens to be behind it. Its text is a warm off-white, a step
+   below the light: the strips are the brightest thing in the room, and a
+   label is read, not seen. */
 .sm-tag {
   position: absolute; top: 0; left: 0; visibility: hidden; will-change: transform;
   max-width: 190px; padding: 4px 9px; border-radius: 5px;
-  background: rgba(13, 13, 13, .9); border: 1px solid #3a3a3a; color: #FFFFFF;
+  background: rgba(17, 15, 12, .9); border: 1px solid #3b352d; color: #EFE7DA;
   font-size: 11.5px; line-height: 1.3; white-space: nowrap;
 }
-.sm-tag.on { border-color: #FFFFFF; }
+.sm-tag.on { border-color: #FFF2DC; }
 .sm-tag b { display: block; font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.sm-tag small { display: block; color: var(--muted-foreground); max-width: 172px; overflow: hidden; text-overflow: ellipsis; }
+.sm-tag small { display: block; color: #A89E90; max-width: 172px; overflow: hidden; text-overflow: ellipsis; }
 
 /* a run's name: one line, lighter, so six of them over a room read as
    signage rather than as six dialogs */
-.sm-tag.run { padding: 3px 8px; background: rgba(13, 13, 13, .78); border-color: #2c2c2c; }
-.sm-tag.run b { font-size: 11px; font-weight: 700; color: #E4E4E7; max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+.sm-tag.run { padding: 3px 8px; background: rgba(17, 15, 12, .8); border-color: #2f2a24; }
+.sm-tag.run b { font-size: 11px; font-weight: 700; color: #E3DACB; max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
 
 /* under the room: the key on one side, the controls hint on the other —
    both on the flat surface, where a person can read them */
@@ -766,6 +771,16 @@ body.sm-walking { cursor: crosshair; }
   min-width: 26px; padding: 7px 3px;
 }
 .sm-pl-loose { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; font-size: 11.5px; }
+/* A rack standing free on the floor (051), drawn in the middle of the plan.
+   Its size is its own, not a share of a wall — hence the flex override of
+   the bar's inline share — and it stands upright when it runs front to back,
+   with the same upright letters the side walls use for the same reason. */
+.sm-pl-island { display: flex; gap: 5px; align-items: center; justify-content: center; width: 100%; }
+.sm-pl-island .sm-pl-rack { flex: none !important; min-width: 44px; }
+.sm-pl-island .sm-pl-rack.sm-pl-upright {
+  writing-mode: vertical-rl; text-orientation: upright;
+  min-width: 26px; min-height: 46px; padding: 7px 3px;
+}
 
 /* ---- the peek ------------------------------------------------------------
    One card, moved and refilled, for the life of the page. It carries the
@@ -786,6 +801,26 @@ body.sm-walking { cursor: crosshair; }
 .sm-peek-name i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .sm-peek .sm-chips { margin-top: 7px; }
 .sm-peek-range { margin-top: 5px; font-size: 11px; }
+
+/* PINNED: the bay somebody pressed in the room. Docked in the room's top
+   corner rather than following the hand, and — unlike the hover card — it
+   carries the count per size, most held first, because it answers a
+   different question: not "what is missing here" but "how many, exactly".
+   The total at the top is the shop's number, never the count of boxes the
+   room managed to draw. */
+.sm-peek.sm-peek-pinned { min-width: 210px; max-width: 300px; }
+.sm-peek-where { margin-top: 2px; font-size: 11px; color: var(--muted-foreground); }
+.sm-peek-group { margin-top: 9px; }
+.sm-peek-group + .sm-peek-group { padding-top: 8px; border-top: 1px solid var(--border); }
+.sm-peek-cw { margin-top: 1px; font-size: 11px; color: var(--muted-foreground); }
+.sm-peek-rows {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 16px; margin-top: 6px;
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.sm-peek-rows span:nth-child(odd) { font-weight: 700; }
+.sm-peek-rows span:nth-child(even) { text-align: end; color: var(--muted-foreground); }
+.sm-peek-empty { margin-top: 8px; font-size: 12px; }
+.sm-peek-hint { margin-top: 9px; font-size: 10.5px; color: var(--muted-foreground); }
 
 /* THE CAPTION ON A RACK IN THE AIR. Same family as the peek card and the
    same reason for pointer-events:none — it follows the hand, and a node the
@@ -852,6 +887,21 @@ body.sm-dragging .sm-dz-row { cursor: grabbing; }
 }
 .sm-dz-chip .sm-rc-x { padding: 0 4px; font-size: 12px; }
 .sm-dz-note { font-size: 11.5px; }
+
+/* ---- Stage C: the layout changed on another screen, and adding a rack ----
+   Quiet on purpose: the line is news about somebody else's change while this
+   person is laying the room out, not an alarm. No green, no red. */
+.sm-liveline {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 8px; padding: 6px 10px;
+  border: 1px solid var(--border); border-inline-start: 3px solid #FFF2DC; border-radius: var(--radius);
+  font-size: 12.5px; color: var(--muted-foreground);
+}
+.sm-liveline[hidden] { display: none; }
+.sm-addrk-kind { gap: 14px; flex-wrap: wrap; font-size: 12.5px; min-height: 0; }
+.sm-addrk-kind label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.sm-addrk .field { flex: 1; min-width: 0; }
+.sm-addrk .inp.num { width: 100%; }
 @media (max-width: 900px) { .sm-split.with-designer { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---- reduced motion: no tilt, no lift, no slider pretending — and no room.
