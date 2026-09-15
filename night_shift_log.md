@@ -330,4 +330,13 @@ boots clean with 052 applied; and the customer's tracking page still works in bo
 **Not verified:** Telegram actually accepting a message (bogus tokens by design), the `dl_review`
 path end to end, and anything on a live order.
 
+**Committed as `8db4d55`** — 23 files, +1623/−411, local only, not pushed.
+
+**Then verified once more against that commit.** My first live check ran before the last two server
+fixes landed, which is not the same thing as checking what I committed. So I restarted the live
+server on the committed code and ran it again: clean boot, migration already applied, and the till
+and the customer's tracking page passed the same nine checks — the page names the order, draws its
+rail and live regions, still offers Notify me, is Arabic-RTL with English one tap away, and throws
+nothing. Then I stopped the server and the browser again.
+
 ## Test rows in the scratch copy (not the shop)
