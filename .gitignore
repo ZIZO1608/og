@@ -21,16 +21,17 @@ dist/
 # .widget_preview/, so the real source is only ~350 KB.
 flutter_app/
 
-# ---- generated document assets ----------------------------------------------
-# make-proposal.ps1 regenerates all of these from the live app.
+# ---- local document assets --------------------------------------------------
+# Screenshots, fonts and PDFs left behind by the retired proposal rig, and any
+# made by hand since. They stay on the machine that made them, not in git.
 # `docs/img/*`, not `docs/img/`: git cannot re-include a file inside an
 # excluded DIRECTORY, so the exception below only works against the contents.
 docs/img/*
 # ...except the warehouse room's design reference and the screenshots of the
 # work built from it. They are not generated — the render came from the owner —
 # and three stages in a row were judged without it because it lived in a chat.
-# The proposal rig writes dashboard/pos/warehouse/money/reports/print/yalla/
-# phone.png, none of which matches.
+# The proposal rig's leftovers (dashboard/pos/warehouse/money/reports/print/
+# yalla/phone.png) do not match it.
 !docs/img/warehouse-*
 docs/fonts/
 docs/proof/
@@ -39,6 +40,7 @@ docs/_*.html
 
 # ---- tooling and OS junk ----------------------------------------------------
 .claude/
+.serena/
 .vscode/
 .idea/
 *.iml
@@ -58,3 +60,14 @@ Desktop.ini
 # not source — and committing the key would hand every checkout the ability to
 # impersonate the shop's till on its own network.
 server/data/certs/
+
+# ---- night shift sandbox ----------------------------------------------------
+# A copy of the database and an env file with no real keys, for testing
+# without touching the shop. Never source.
+server/data-sandbox/
+server/data-sandbox2/
+server/.env.sandbox
+_nightshift/
+# Passwords written by `npm run users:rebuild --apply`, in whichever data
+# folder it ran against.
+ACCOUNTS.private.md

@@ -18,6 +18,7 @@
    ========================================================================== */
 
 import { resolve, dirname } from 'node:path';
+import { dbFile } from '../lib/env.js';
 import { fileURLToPath } from 'node:url';
 
 import { load } from '../lib/env.js';
@@ -47,7 +48,7 @@ tick(`Connected to ${SB.projectUrl()}`);
 /* openReadOnly, not open: DB.open() applies pending migrations, and a check
    that changes the schema it is checking is not a check. Same rule the
    Supabase check already follows and for the same reason. */
-DB.openReadOnly(process.env.OG_DB || resolve(HERE, '..', 'data', 'og.db'));
+DB.openReadOnly(dbFile());
 
 const r = await Drift.check({ ahead: true });
 

@@ -22,9 +22,10 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import * as DB from './db.js';
+import { backupDir } from './env.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const BACKUP_DIR = resolve(HERE, '..', 'backups');
+export const BACKUP_DIR = backupDir();
 
 /* Tables that must contain rows in any healthy database. A backup that opens
    cleanly but has lost the reference data is corrupt in a way `integrity_check`

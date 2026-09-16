@@ -51,6 +51,7 @@
    ========================================================================== */
 
 import { existsSync } from 'node:fs';
+import { dbFile } from '../lib/env.js';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env, exit } from 'node:process';
@@ -60,7 +61,7 @@ import * as Shelves from '../lib/shelves.js';
 import * as Backup from '../lib/backup.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DB_FILE = env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
+const DB_FILE = dbFile();
 
 const OLD_ROOMS = ['vorig', 'safa', 'safaSSS'];
 const FREE_COLS = ['placement', 'x_cm', 'y_cm', 'rot_deg'];

@@ -51,6 +51,7 @@
    ========================================================================== */
 
 import { spawnSync } from 'node:child_process';
+import { dbFile } from '../lib/env.js';
 import { connect } from 'node:net';
 import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -176,7 +177,7 @@ function probe() {
    a USB cable, and receipt.printer_share names the queue. Checking for a
    queue nobody asked for would be inventing a requirement. */
 function readConfig() {
-  const file = env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
+  const file = dbFile();
   if (!existsSync(file)) return null;
   try {
     const db = DB.open(file);

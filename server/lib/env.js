@@ -6,9 +6,10 @@
    can fail on a shop's connection, and this is not worth a dependency.
 
    Node 20.6+ has `--env-file`, which does the same job. It is not used
-   because the shop starts the server by double-clicking start-og-system.bat,
-   which runs `node index.js` with no flags. A loader that lives in the code
-   works however the process is launched — batch file, npm script, or by hand.
+   because the shop starts the server from the launcher (OG System.exe, whose
+   panel/panel.js spawns `node index.js` with no flags) or with `npm start`.
+   A loader that lives in the code works however the process is launched —
+   the panel, an npm script, or by hand.
 
    Real environment variables always win over the file. That is what every
    other .env loader does, and it is what makes `OG_PORT=9000 npm start`
@@ -16,11 +17,32 @@
    ========================================================================== */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, join, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ENV_FILE = resolve(HERE, '..', '.env');
+const SERVER_DIR = resolve(HERE, '..');
+const REPO_DIR = resolve(SERVER_DIR, '..');
+
+/* Two dev-only switches, both REAL environment variables (a file cannot name
+   the file it is read from). OG_ENV_FILE replaces server/.env outright — when
+   it is set, server/.env is never opened, so a scratch server cannot pick up
+   the real Supabase keys or Telegram tokens by accident. OG_DATA_DIR moves the
+   database, the backups and the certificate together. A relative path is read
+   from the repository root: OG_DATA_DIR=server/data-sandbox. */
+const fromRepo = (p) => isAbsolute(p) ? p : resolve(REPO_DIR, p);
+const ENV_FILE = process.env.OG_ENV_FILE ? fromRepo(process.env.OG_ENV_FILE) : resolve(SERVER_DIR, '.env');
+
+export function dataDir() {
+  return process.env.OG_DATA_DIR ? fromRepo(process.env.OG_DATA_DIR) : resolve(SERVER_DIR, 'data');
+}
+export function backupDir() {
+  return process.env.OG_DATA_DIR ? join(dataDir(), 'backups') : resolve(SERVER_DIR, 'backups');
+}
+/* OG_DB still wins; otherwise the database lives in the data folder. */
+export function dbFile() {
+  return process.env.OG_DB || join(dataDir(), 'og.db');
+}
 
 let loaded = false;
 

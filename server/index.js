@@ -18,6 +18,7 @@
    ========================================================================== */
 
 import { createServer } from 'node:http';
+import { dbFile } from './lib/env.js';
 import { createServer as createTlsServer } from 'node:https';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -81,7 +82,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 loadEnv();
 
 const PORT    = Number(process.env.OG_PORT || 8090);
-const DB_FILE = process.env.OG_DB || resolve(HERE, 'data', 'og.db');
+const DB_FILE = dbFile();
 const STATIC  = resolve(process.env.OG_STATIC || resolve(HERE, '..'));
 /* '1' forces it; otherwise it turns itself on the moment this process is
    actually serving HTTPS, which is the only thing the flag is really about.
@@ -92,24 +93,6 @@ let SECURE_SERVER = null;
 const HTTPS_PORT = Number(process.env.OG_HTTPS_PORT || 8443);
 const HTTPS_OFF  = process.env.OG_HTTPS === '0';
 
-/* THE ADDRESS THE WORLD TYPES. Set when this shop is reachable from outside
-   through a Cloudflare tunnel — scripts/cloudflare.js and the panel's Check
-   Cloudflare button are the other half of it.
-
-   It is a fact about DNS and a tunnel, not about this process, so nothing
-   here can verify it and nothing here should: the server cannot see its own
-   public name, and a boot that tried to would be asking Cloudflare to call
-   back into itself before the first sale of the day. It is passed on to the
-   panel to DISPLAY, and `npm run cloudflare` is what actually tests it.
-
-   The scheme is added rather than accepted, because the tunnel terminates
-   TLS at Cloudflare's edge and there is no arrangement in which this address
-   is correctly plain http. A pasted "https://shop.example.com/" survives. */
-const PUBLIC_URL = (() => {
-  const h = String(process.env.OG_CF_HOSTNAME || '')
-    .trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-  return h ? `https://${h}` : null;
-})();
 const ORIGINS = (process.env.OG_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
@@ -144,13 +127,7 @@ router.add('GET /api/health', (ctx) => {
     warehouses: row.n, time: DB.nowIso(),
     shop: shop ? shop.value : null,
     https: !!SECURE_SERVER,
-    lan: lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`),
-    /* The tunnel address, for the same reason `lan` is here: a device asking
-       this server how to be reached should get every answer, not the ones
-       that only work on the wifi. It is also what lets the panel print the
-       right address for a shop it ADOPTED rather than started — that branch
-       has no pipe to read a ready message from and this line is all it has. */
-    public: PUBLIC_URL
+    lan: lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`)
   });
 });
 
@@ -476,15 +453,6 @@ router.add('GET /api/catalogue', requirePerm('product.read', (ctx) => {
   sendOk(ctx.res, { products: products.map(p => scrubCost(p, ctx.user)) });
 }));
 
-router.add('GET /api/scan/:code', requirePerm('product.read', (ctx) => {
-  const hit = Cat.byBarcode(ctx.params.code);
-  if (!hit) return sendError(ctx.res, 404, 'unknown_code', 'Nothing matches that code.');
-  sendOk(ctx.res, {
-    variant: scrubCost(hit, ctx.user),
-    stock: Stock.placesFor(hit.sku)
-  });
-}));
-
 router.add('POST /api/products', requirePerm('product.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
@@ -562,19 +530,6 @@ router.add('POST /api/products/:id/variants', requirePerm('product.write', async
 
 /* --- stock ------------------------------------------------------------------ */
 
-router.add('GET /api/stock/:sku', requirePerm('stock.read', (ctx) => {
-  sendOk(ctx.res, {
-    sku: ctx.params.sku,
-    places: Stock.placesFor(ctx.params.sku),
-    total: Stock.totalFor(ctx.params.sku)
-  });
-}));
-
-router.add('GET /api/stock/:sku/movements', requirePerm('stock.read', (ctx) => {
-  const limit = Math.min(Number(ctx.url.searchParams.get('limit')) || 50, 500);
-  sendOk(ctx.res, { movements: Stock.movementsFor(ctx.params.sku, limit) });
-}));
-
 router.add('POST /api/stock/receive', requirePerm('stock.move', async (ctx) => {
   const b = await readJson(ctx.req);
   await stockOp(ctx, () => Stock.receive({
@@ -605,14 +560,7 @@ router.add('POST /api/stock/count', requirePerm('stock.count', async (ctx) => {
   }));
 }));
 
-router.add('GET /api/stock', requirePerm('stock.read', (ctx) => {
-  const wh = ctx.url.searchParams.get('wh') || 'floor';
-  const below = Number(ctx.url.searchParams.get('below')) || 10;
-  sendOk(ctx.res, { low: Stock.lowStock(wh, below) });
-}));
-
-/* The whole shop's movement log. `movements/:sku` above is the trail for one
-   size; this is the warehouse's Moves tab, which shows everything. */
+/* The whole shop's movement log — the warehouse's Moves tab. */
 router.add('GET /api/movements', requirePerm('stock.read', (ctx) => {
   const limit = Math.min(Number(ctx.url.searchParams.get('limit')) || 200, 1000);
   const cap = Cap.withCap(Stock.recent(limit), limit,
@@ -624,17 +572,14 @@ router.add('GET /api/movements', requirePerm('stock.read', (ctx) => {
 
 /* --- shelves ----------------------------------------------------------------
    Where things physically are. Reading the layout is `stock.read`; changing it
-   and putting stock away are `stock.move` — the existing warehouse pair, so
-   there is no new permission, no migration seeding one, and no fifth place for
-   the boundary to go stale. The people who know where the pillar is are the
-   people who move the boxes.
+   is `config.write` (Stage C, below); putting stock away is `stock.move`.
 
    `/api/sections` and `/api/shelves` deliberately sit at the top level rather
-   than under `/api/stock/`, where `GET /api/stock/:sku` (registered above)
-   would swallow them: router.match returns the FIRST route whose pattern fits,
-   so `GET /api/stock/shelves` would answer as sku='shelves' with a cheerful
-   200 and an empty result. `POST /api/stock/assign-shelf` is safe because
-   every other POST under /api/stock/ is a literal path. */
+   than under `/api/stock/`: router.match returns the FIRST route whose pattern
+   fits, so a `GET /api/stock/:param` route added later would swallow them and
+   answer `GET /api/stock/shelves` with a cheerful 200 and an empty result.
+   `POST /api/stock/assign-shelf` is safe because every other POST under
+   /api/stock/ is a literal path. */
 
 router.add('GET /api/sections', requirePerm('stock.read', (ctx) => {
   const wh = ctx.url.searchParams.get('wh') || null;
@@ -661,8 +606,9 @@ router.add('GET /api/sections', requirePerm('stock.read', (ctx) => {
    resizes or removes a room, a rack, a level, a bay or a shelf is config.write
    — the same gate the browser's layout editor has always been drawn behind.
    They were stock.move, so anybody allowed to put a pair away could send the
-   request by hand and reshape the room in the middle of a stock count. Putting
-   stock away and assigning what a shelf is for stay stock.move. */
+   request by hand and reshape the room in the middle of a stock count. Editing
+   a shelf — its code, capacity and what it is for — is config.write too;
+   putting stock away (POST /api/stock/assign-shelf) stays stock.move. */
 router.add('POST /api/sections', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => ({ section: Shelves.createSection({
@@ -746,8 +692,10 @@ router.add('POST /api/shelves', requirePerm('config.write', async (ctx) => {
 
 /* Rename, set capacity, set the assignment. Renaming a code or reassigning a
    shelf that still has stock on it changes nothing and returns the numbers
-   first; `force` is how the manager says yes to what it just showed him. */
-router.add('PATCH /api/shelves/:id', requirePerm('stock.move', async (ctx) => {
+   first; `force` is how the manager says yes to what it just showed him.
+   config.write, like the rest of the layout: a code change strands printed
+   shelf labels, and the browser draws this form only for config.write. */
+router.add('PATCH /api/shelves/:id', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   shelfOp(ctx, () => Shelves.updateShelf(Number(ctx.params.id), {
     code: b.code, capacity: b.capacity,
@@ -1106,13 +1054,6 @@ router.add('GET /api/sales', requirePerm('sell', (ctx) => {
   });
 }));
 
-router.add('GET /api/sales/:id', requirePerm('sell', (ctx) => {
-  const s = Sales.byId(ctx.params.id);
-  if (!s) return sendError(ctx.res, 404, 'not_found', 'No such invoice.');
-  s.items = s.items.map(i => scrubCost(i, ctx.user));
-  sendOk(ctx.res, { sale: scrubCost(s, ctx.user) });
-}));
-
 /* Voiding is a manager's job, not a cashier's. A cashier who can void their
    own sale can take the cash and leave no trace, which is the commonest way
    money walks out of a shop. */
@@ -1224,15 +1165,6 @@ router.add('GET /api/deliveries', requirePerm('delivery.read', (ctx) => {
   });
 }));
 
-router.add('GET /api/deliveries/:id', requirePerm('delivery.read', (ctx) => {
-  const d = Deliveries.byId(Number(ctx.params.id), ctx.user);
-  /* Someone else's delivery answers exactly like one that does not exist. A
-     driver must not be able to learn that a delivery to that address happened
-     by telling a 403 from a 404. */
-  if (!d) return sendError(ctx.res, 404, 'not_found', 'No such delivery.');
-  sendOk(ctx.res, { delivery: d });
-}));
-
 /* --- the delivery office ----------------------------------------------------
    Orders taken by phone, Instagram and WhatsApp. lib/orders.js holds the
    rules; these routes read the body and map the refusals. */
@@ -1272,7 +1204,7 @@ function orderFail(res, e) {
                : e.code === 'forbidden' ? 403
                : ['voided', 'already_settled', 'nothing_pending', 'bad_status',
                   'unknown_customer', 'no_rate', 'on_another_sheet', 'empty',
-                  'already_linked', 'not_on_order'].includes(e.code) ? 409
+                  'not_on_order'].includes(e.code) ? 409
                : 400;
   sendError(res, status, e.code || 'invalid', e.message);
 }
@@ -1340,19 +1272,6 @@ router.add('POST /api/orders/:id/payments', requirePerm(['delivery.desk', 'debt.
     }, ctx.user);
     Live.notify('og', { deliveries: true });
     Tracking.moved(ctx.params.id, ctx.user.id);
-    sendOk(ctx.res, { ...out, order: Deliveries.bySale(ctx.params.id, ctx.user) });
-  } catch (e) { orderFail(ctx.res, e); }
-}));
-
-router.add('POST /api/orders/:id/handin', requirePerm(['delivery.desk', 'debt.collect'], async (ctx) => {
-  const b = await readJson(ctx.req);
-  try {
-    const out = Orders.handIn(ctx.params.id, ctx.user, typeof b.opId === 'string' ? b.opId : null);
-    Live.notify('og', { deliveries: true });
-    Tracking.moved(ctx.params.id, ctx.user.id);
-    /* Nothing a customer can see, so tracking says nothing — but money moved
-       between people, and the manager hears it (dl_handin). */
-    Office.handedIn(out, ctx.user);
     sendOk(ctx.res, { ...out, order: Deliveries.bySale(ctx.params.id, ctx.user) });
   } catch (e) { orderFail(ctx.res, e); }
 }));
@@ -1510,12 +1429,6 @@ router.add('POST /api/orders/:id/returns', requirePerm('delivery.desk', async (c
   } catch (e) { orderFail(ctx.res, e); }
 }));
 
-/* Money the shop is holding for somebody. Behind customer.read as well as the
-   desk's own permission: it is a fact about a customer. */
-router.add('GET /api/customers/:id/credit', requirePerm(['delivery.desk', 'customer.read'], (ctx) => {
-  sendOk(ctx.res, Orders.credit(Number(ctx.params.id)));
-}));
-
 router.add('PUT /api/delivery/settings', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try { sendOk(ctx.res, { settings: Orders.saveSettings(b) }); }
@@ -1566,10 +1479,6 @@ function moneyFail(res, e) {
    screen's permission; every write here says where the SHOP's money went and
    none of them is a sale, so they are money.move — the manager's. Each carries
    an opId: a Move tapped twice on a stalled connection must move once. */
-
-router.add('GET /api/cash', requirePerm('money.read', (ctx) => {
-  sendOk(ctx.res, Cash.snapshot());
-}));
 
 router.add('GET /api/cash/book', requirePerm('money.read', (ctx) => {
   const u = new URL(ctx.req.url, 'http://x');
@@ -2916,14 +2825,6 @@ router.add('POST /api/labels/calibrate', requirePerm('label.print', async (ctx) 
   }
 }));
 
-/* Everything one product label needs, per size, including which shelf each
-   size BELONGS on — resolved on the server so the size-range rules exist in
-   exactly one place. */
-router.add('GET /api/labels/product/:id', requirePerm('label.print', (ctx) => {
-  const wh = ctx.url.searchParams.get('wh') || 'store';
-  shelfOp(ctx, () => Shelves.labelRowsFor(Number(ctx.params.id), wh));
-}));
-
 /* The 60x40 shelf and product labels are laid out in HTML and printed by the
    browser's own dialog — the only path Arabic survives. They still have to
    land in the audit log, or nothing can answer "was this shelf's label ever
@@ -3313,20 +3214,13 @@ function httpHandler(req, res) {
   const p = String(req.url || '/');
   if (!wantsPage || p.startsWith('/api/') || p.startsWith('/i/')) return handle(req, res);
 
-  /* ALREADY SECURE, ARRIVING THROUGH THE TUNNEL. Cloudflare terminates TLS
-     itself and forwards to plain http on this port, so the request has been
-     over HTTPS for its whole public life — and redirecting it to
-     shop.ogsports1.com:8443 sends the visitor to a port Cloudflare does not
-     carry. The public address died the moment `npm run cert` was run, with no
-     error a shopkeeper could read, and the documented workaround was to
-     repoint the tunnel and turn off certificate verification. This is the
-     better half of that trade: believe the proxy header when we are trusting
-     the proxy anyway — OG_TRUST_PROXY, which the login throttle already needs
-     or every remote visitor shares one address).
-
-     Yalla Wear work in a different building and every message their bot sends
-     now carries a link to this hostname, so this is the difference between a
-     tap that opens the job and a tap that opens nothing. */
+  /* ALREADY SECURE, ARRIVING THROUGH A PROXY. A reverse proxy that terminates
+     TLS itself and forwards to plain http on this port has carried the
+     request over HTTPS for its whole public life, and redirecting it to
+     <public host>:8443 sends the visitor to a port the proxy does not carry.
+     So believe the proxy header when we are trusting the proxy anyway —
+     OG_TRUST_PROXY, which the login throttle already needs (or every remote
+     visitor shares one address). */
   const fwd = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
   if (process.env.OG_TRUST_PROXY === '1' && fwd === 'https') return handle(req, res);
 
@@ -3586,12 +3480,6 @@ if (runDirectly) {
       https: SECURE_SERVER ? `https://localhost:${HTTPS_PORT}` : null,
       lan: lanAddresses().filter((a) => !a.note)
         .map((a) => (SECURE_SERVER ? `https://${a.address}:${HTTPS_PORT}` : `http://${a.address}:${PORT}`)),
-      /* The address the world types. When it is set the panel prints it
-         INSTEAD of the two local ones, because a shop on the tunnel is
-         reached the same way from the counter and from a phone in another
-         city, and two addresses on that card is a choice nobody should have
-         to make. Null here and the panel falls back to what it always drew. */
-      public: PUBLIC_URL,
       secure: !!SECURE_SERVER,
       accounts: n,
       shop: (() => {

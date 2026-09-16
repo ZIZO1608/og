@@ -11,6 +11,7 @@
    ========================================================================== */
 
 import { resolve, dirname } from 'node:path';
+import { dbFile } from '../lib/env.js';
 import { fileURLToPath } from 'node:url';
 
 import { load, maybe, mask, envFilePath, envFileExists } from '../lib/env.js';
@@ -171,7 +172,7 @@ const Lineage = await import('../lib/lineage.js');
    way in, so with an unfinished .sql sitting in server/migrations this check
    was a schema change on the live database that nobody asked for. It did
    exactly that once. A read-only handle cannot. */
-DB.openReadOnly(maybe('OG_DB') || resolve(HERE, '..', 'data', 'og.db'));
+DB.openReadOnly(dbFile());
 const db = DB.get();
 
 /* Deliberately never mirrored — live session tokens, a local print queue and a

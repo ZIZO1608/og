@@ -15,6 +15,7 @@
    ========================================================================== */
 
 import { createInterface } from 'node:readline/promises';
+import { dbFile } from '../lib/env.js';
 import { stdin, stdout, argv, exit, env } from 'node:process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +24,7 @@ import * as DB from '../lib/db.js';
 import * as Auth from '../lib/auth.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DB_FILE = env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
+const DB_FILE = dbFile();
 
 /* --------------------------------------------------------------- arguments */
 

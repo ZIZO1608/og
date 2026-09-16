@@ -17,11 +17,12 @@ this in meetings. The owner keeps his records on paper today.
 # The real thing — serves the app AND the API from one origin on :8090
 cd server && npm start          # or double-click "OG System.exe" - the panel, see below
 
-# serve.ps1 and double-clicking index.html no longer show an app — there is
-# nothing to draw without the server. Both now say so rather than inventing a shop.
+# Double-clicking index.html no longer shows an app — there is nothing to draw
+# without the server, and the page says so rather than inventing a shop.
 
 cd server
 npm test                         # the one test: browser config keys vs the server's allow-list
+npm run warehouse:one-room       # the owner's one-room rebuild of the shelf map (see Stage B)
 npm run createuser               # interactive; also accepts piped stdin
 npm run backup                   # VACUUM INTO + integrity_check + FK check
 npm run preflight                # accounts, catalogue, Supabase, port
@@ -59,12 +60,24 @@ It **will not guess between two USB ports.** One candidate, identified by the ve
 name already on that port, is a fact; choosing between two is how labels come out of the
 receipt printer all morning. Two candidates means it stops and prints the list.
 
+### A sandbox that cannot see the real files — `OG_ENV_FILE` and `OG_DATA_DIR`
+
+Two dev-only switches, both **real** environment variables (a file cannot name the file it is read
+from). `OG_ENV_FILE=server/.env.sandbox` replaces `server/.env` outright: the real file is never
+opened, so a scratch server cannot pick up the real Supabase keys, Telegram tokens or vault key by
+accident. `OG_DATA_DIR=server/data-sandbox` moves the database, `backups/` and `certs/` together
+(`dataDir()` / `backupDir()` / `dbFile()` in `lib/env.js`; `OG_DB` still wins). A relative path is
+read from the repository root. Every script that used to default to `server/data/og.db` asks
+`dbFile()`. Both folders and the env file are gitignored. The night shift's sandbox sets both, plus
+`OG_PORT=8190 OG_HTTPS=0 OG_SYNC_MINUTES=0 OG_PULL_AT_BOOT=0 OG_PUSH=0`, bogus non-empty Telegram
+tokens and no Supabase keys.
+
 **Node 22.5+ required** (`node:sqlite` is used, which arrived in 22.5). There is **no `npm install`** —
 the server has zero dependencies by design, and the frontend has no build step at all.
 
 Publishing: **the Publish button in the panel** (add → commit → pull --rebase → push, the message
 typed into the box; `push.bat` is gone). CI then builds `dist/`
-and deploys to GitHub Pages.
+and skips publishing while the repository is private (see Deploy).
 
 ### HTTPS, and why the till needs it
 
@@ -93,10 +106,10 @@ exactly why this went unnoticed on the machine doing the testing.
   Phones still get the one warning: the certificate is deliberately not an authority (`CA:FALSE`),
   because an authority that anyone with `server/data/certs/` could copy would sign for any site.
   `cert:untrust` takes it out again after a re-run of `npm run cert`.
-- **The launcher opens the browser itself** (`scripts/open-when-ready.js`, started with
-  `start /b` just before `node index.js`, which blocks the window): it polls `/api/health` and
-  opens whichever address the health line says is actually serving. The "already open" branch
-  uses the same script rather than guessing https from a file on disk.
+- **The launcher opens the browser itself**: the panel's `open` step (`openBrowser` in
+  `panel/panel.js`) opens whichever address the server's ready line says is actually serving,
+  and an adopted shop is opened from its own health line rather than by guessing https from a
+  file on disk.
 - `SECURE` sets itself when HTTPS is actually serving, so session cookies get the `Secure` flag
   without anyone remembering `OG_SECURE`. Browsers still accept Secure cookies on
   `http://localhost`, so the till on this machine is unaffected.
@@ -107,70 +120,21 @@ exactly why this went unnoticed on the machine doing the testing.
   moved. It also warns 30 days before expiry.
 - `server/data/certs/` is gitignored: it holds a private key, and it is one command to rebuild.
 
-### The way in from outside — Cloudflare
+### The way in from outside — retired (16 Sep 2026)
 
-`server/scripts/cloudflare.js`, the panel's **Check Cloudflare** button, and one Cloudflare
-tunnel. The shop listens on one laptop; a phone on the shop wifi reaches it by IP and nobody
-else can, because there is no public address and nothing is going to open a port on a router in
-Aleppo. `cloudflared` runs as a Windows service, makes an **outbound** connection to Cloudflare
-and holds it open; Cloudflare answers for `shop.ogsports1.com` and passes each request back down
-it to `http://localhost:8090`. No inbound port, no fixed IP, and the padlock is Cloudflare's real
-certificate rather than the one `lib/tls.js` apologises for.
-
-- **`npm run cert` BREAKS THIS, and nothing says so at the time.** `index.js` is
-  `createServer(SECURE_SERVER ? httpHandler : handle)`, and `httpHandler` sends any browser
-  asking for a page to `https://<host>:8443`. Through the tunnel that is a redirect to
-  `shop.ogsports1.com:8443`, a port Cloudflare does not carry, so the public address dies with
-  no error a shopkeeper could read. The check looks for `server/data/certs/` and says so; the
-  panel's Make certificate blurb warns before the fact. If the local certificate is ever genuinely
-  needed, the tunnel must be repointed at `https://localhost:8443` with **No TLS Verify** on.
-- **The id is public, the token is the secret.** `OG_CF_TUNNEL_ID` names the tunnel and
-  authorises nothing; `OG_CF_TUNNEL_TOKEN` is what lets a machine join it and lives in
-  `server/.env`. Once `cloudflared service install <token>` has run, Windows keeps its own copy
-  at `C:\ProgramData\cloudflared\token`, **administrator-only** — so nothing here ever reads it,
-  and the check reports the service's command line instead. Its existence is the only fact needed.
-- **The hostname mapping lives in the dashboard, not on this machine.** A token-based tunnel has
-  no `config.yml` to write, which is why the connect pass is one call and there is no local file
-  to drift. **It can still be read here, and the check reads it**: cloudflared runs a metrics
-  server on localhost (20241 upwards, or whatever `--metrics` names), and `/diag/tunnel` says
-  which tunnel it actually joined while `/config` carries the ingress rules the dashboard handed
-  it. Read-only, localhost-only, no credential — the token file is still never opened. So "which
-  tunnel is this laptop on" and "where does it send the hostname" are facts now, not guesses, and
-  a build too old to answer prints nothing rather than inventing it.
-- **A 502 IS ANSWERED BY WHOEVER CLOUDFLARE GAVE THE REQUEST TO, AND THAT NEED NOT BE THIS
-  LAPTOP.** 530 means no connector is attached at all; 502 means one is, and it failed — but not
-  necessarily the one here. `cloudflared_tunnel_total_requests` on the metrics page is read either
-  side of the check's own public request, and that bracket answers the question no amount of
-  reading configuration can: *did that request come through this computer*. Measured on
-  12 Sep 2026 — the connector here was on the right tunnel, its rule already read
-  `http://localhost:8090`, and across nineteen public requests its counter never moved once.
-  Every one was being answered elsewhere. The check used to report this as "the tunnel is pointed
-  somewhere else", sending somebody to change a setting that was already correct; it now
-  distinguishes the two and names the second machine as the cause. Two connectors on one tunnel
-  are a high-availability pair to Cloudflare, which hands each request to whichever it likes — so
-  a second install sharing `OG_CF_TUNNEL_TOKEN` takes the shop off the internet without touching
-  it. Same shape as the `lineage.js` problem, one layer down; see the Supabase section.
-- **`Get-CimInstance Win32_Service` does not return on the shop's laptop**, and a `try/catch`
-  around a call that never returns protects nothing. It was how the service's command line was
-  read, so its hang took the whole probe's 60-second timeout with it and *all four* answers were
-  lost — the check told the owner his running service was "not installed", and then that his
-  tunnel token was missing, which followed from the first. One slow call, four wrong sentences,
-  a minute each time the panel's button was pressed. The registry holds the same string
-  (`HKLM:\SYSTEM\CurrentControlSet\Services\cloudflared` → `ImagePath`) and answers in
-  milliseconds. **Nothing there may use WMI for a fact readable another way**, the probe's
-  timeout is 15 s, and `asked` now separates "Windows says there is no service" from "Windows did
-  not say" — printing the second as the first is what made the advice wrong.
-- **The service's command line can carry the token**, because `cloudflared service install
-  <token>` writes it into `ImagePath`. The check prints that line, to the terminal and into its
-  log file, so it is redacted on the way out. This laptop uses `--token-file` and never showed
-  one, which is exactly why it went unnoticed.
-- **One button that checks and fixes**, unlike `hardware` / `hardwareInstall` which are a pair.
-  On a client's machine the only useful answer to "is Cloudflare set up" is "it is now". A machine
-  already connected raises no permission prompt, which is what makes it safe to press twice.
-- **`OG_ORIGINS` must list the tunnel hostname** the moment the shop is reachable from outside.
-  Blank does not mean "allow the shop", it means allow everything — `originAllowed()` in
-  `lib/http.js` returns true on an empty list. `OG_TRUST_PROXY=1` belongs with it, or every remote
-  visitor shares one address for login throttling because they all arrive from localhost.
+The shop was reachable from outside through a Cloudflare tunnel (`shop.ogsports1.com` →
+`http://localhost:8090`). It was retired: cloudflared is no longer installed on this laptop and
+the hostname has no connector. `server/scripts/cloudflare.js`, the panel's Check Cloudflare
+button, the `cloudflare` npm scripts, the `OG_CF_*` settings and every fallback that read them
+were removed. The server no longer reports a `public` address in `/api/health` or the panel's
+`ready` payload, so the launcher's address card shows the local and Wi-Fi addresses only.
+Customers reach their order page through og-track on Railway (`receipt.public_url`); Telegram job
+links appear only when `shop.public_url` is set. If the shop is ever put on the internet again,
+`OG_ORIGINS` must list that hostname (blank allows every origin — `originAllowed()` in
+`lib/http.js`) and `OG_TRUST_PROXY=1` belongs with it, or every remote visitor shares one address
+for login throttling. A second connector on one tunnel token is a high-availability pair to
+Cloudflare and takes requests away from this laptop without a word — the same shape as the
+`lineage.js` problem, one layer down. The full story is in git history (`git log -- server/scripts/cloudflare.js`).
 
 ### Accounts
 
@@ -185,7 +149,7 @@ used to say all five were retired — `maher` and `yalla` deleted, the other thr
 hashes replaced by random bytes. That describes another install's database (Ahmad's, which holds the
 mirror's lineage; not verified from this laptop). On this laptop's `server/data/og.db` all five were
 still `active = 1` with the hint, and because the paragraph said otherwise nobody looked — including
-while this laptop was on the public internet through the Cloudflare tunnel. **Check the database, not
+while this laptop was on the public internet through the (since retired) Cloudflare tunnel. **Check the database, not
 this file:** `SELECT id, username, active, pw_hint FROM users`.
 
 - **2026-09-05, the attempt that undid itself.** A session disabled the five with raw SQL, found no
@@ -201,9 +165,13 @@ this file:** `SELECT id, username, active, pw_hint FROM users`.
   makes re-enabling harmless, and has not been taken here.
 - Also on this copy: `mirrortest` (id 6, disabled), `zaven` and `zohrab` (Yalla Wear — see the
   partner half), `zaren` (id 10, manager, created 2026-09-13).
+- **2026-09-16, this laptop — they were back.** A read-only check found `lubna`, `maher` and `talal`
+  `active = 1` again, and `mirrortest` too (`hussam` and `yalla` were still 0). The cause is not
+  known. The owner was told; nothing was changed.
 
-Done with raw SQL, which is acceptable on a dev copy only. On the shop machine use Settings (the
-`staff.write`-gated route), which also ends the sessions. The server's startup notice
+Done with raw SQL, which is acceptable on a dev copy only. On the shop machine use the
+`staff.write`-gated route (`POST /api/users/:id/active`), which also ends the sessions — Settings has
+no control for it yet, so it is called by hand (see Known open work). The server's startup notice
 (`retired_account`) and `npm run preflight` both name any of the five usernames that is
 `active = 1` — which is exactly the warning that was printed on this laptop every morning and read
 as noise because this section said the accounts were already gone.
@@ -220,6 +188,7 @@ stopped except by closing it, and said the mirror's state once at 8 am and never
 OG System.exe               the icon. Starts panel/panel.js, opens a window onto it, sits in the tray
 panel/panel.js              the supervisor: holds the server as a child, streams its output, runs the jobs
 panel/jobs.js               the button table — every job is a command plus the two sentences before it
+panel/package.json          {"type":"module"} — every panel file is ESM; without it Node 24 warns and re-parses them
 panel/ui/                   the window: three screens, same tokens and Montserrat as the shop
 panel/ui/i18n.js            its own English and Arabic — the shop's I18N needs a server to exist
 panel/launcher/OGSystem.cs  the .exe's source. panel/build-exe.ps1 compiles it; panel/make-icon.js the icon
@@ -371,7 +340,7 @@ that is how it was reported.
   button, the address with a QR beside it, and anything wrong as a card. The last screen is
   deliberately **not** remembered: the one morning somebody opened the log out of curiosity would
   otherwise become every morning after it.
-- **Tools** (the gear) is all sixteen jobs under four headings, drawn from `group` in `jobs.js`.
+- **Tools** (the gear) is every job (eighteen) under four headings, drawn from `group` in `jobs.js`.
 - **Log** is the terminal, given the whole window — a place you go to, not the room you arrive in.
 
 **The boot is seven steps, and every one is a real signal** — an exit code, a spawn, a message off
@@ -572,11 +541,11 @@ The failure this prevents was specific and real: generated data looks exactly li
 till that falls back to it takes money into memory nobody keeps. A banner is a thing you stop seeing
 by the second day.
 
-`_shot.html` loads **neither `api.js` nor `auth.js`**, so `Auth` is `undefined` there, and the
-`typeof Auth === 'undefined'` guards all over the frontend exist for it. **It no longer renders
-anything useful** — it drew the seeded shop, and there is no seeded shop. The file and its guards are
-kept because deleting them is a separate decision; the Arabic proposal PDF cannot be built until it is
-given a data source.
+The Arabic proposal rig (`make-proposal.ps1`, `_shot.html`, `serve.ps1`, `docs/proposal-ar.html`) was
+retired on 16 Sep 2026: with no seeded shop it could only screenshot empty screens. The
+`typeof Auth === 'undefined'` guards that existed for `_shot.html` went with it — `Auth` and `API` are
+always loaded (they are the 2nd and 3rd scripts in `index.html`). It is in git history if a proposal
+is ever wanted again; it would need a data source first.
 
 ### Frontend conventions
 
@@ -586,7 +555,7 @@ given a data source.
   `data-*` attribute: `data-act`, `data-pos`, `data-yl`, `data-nt`, `data-mo`, `data-sc`, `data-st`,
   `data-bk`, `data-wa`, `data-change`. Adding a button means adding `data-act="thing"` and a case in
   `ACTIONS` — not an `addEventListener`.
-- **Every new string goes in BOTH `I18N.en` and `I18N.ar`** in `js/app.js`. A missing Arabic key falls
+- **Every new string goes in BOTH `I18N.en` and `I18N.ar`** in `js/app-i18n.js` (or the grouped blocks in `js/app-i18n-extra.js`). A missing Arabic key falls
   back to English mid-sentence inside an RTL layout and reads as a bug.
 - `js/api.js` is **the only file allowed to talk to the server**. Everything else goes through `DB.*`.
 - Every screen reads from the server. `js/data.js` holds the shape and the lookups; the data arrives
@@ -616,13 +585,11 @@ card by writing one that returns `setFoldStart(…) + … + setFoldEnd()` and ca
 
 ### What is left of the seeded generator
 
-The dataset generator is gone (see above), but its helpers are not: `rnd()`, `ri()`, `pick()`,
-`chance()`, the private `whRnd()` and the `splitAcrossWarehouses()` IIFE still sit in `js/data.js`,
-and the IIFE still runs at boot — over collections that are now empty, so it does nothing. The old
-rule ("one extra `rand()` call shifts every value drawn after it") described data that no longer
-exists. **Do not build on these**: a new screen that draws from `rnd()` is a screen inventing
-numbers, which is the thing the server-only mode was introduced to end. Deleting them is a separate,
-safe decision that nobody has taken yet.
+The dataset generator is gone (see above). `pick()`, `chance()`, `whRnd()`, the
+`splitAcrossWarehouses()` IIFE and `pinDeadStock` were deleted on 16 Sep 2026. `rnd()` and `ri()`
+remain in `js/data.js` only because `DB.newProduct` still calls `ri()` for the local mirror of a new
+product. **Do not build on them**: a new screen that draws from `rnd()` is a screen inventing
+numbers, which is the thing the server-only mode was introduced to end.
 
 ## Permissions — the model to understand before touching any screen
 
@@ -639,11 +606,11 @@ security bug.
 If you add a screen showing cost, profit or customer data, guard it in both — and treat the server one
 as the actual protection.
 
-### Helpers in `js/app.js` you should reuse rather than re-derive
+### Helpers in `js/app-shell.js` you should reuse rather than re-derive
 
 ```js
-roleOf()            // 'manager' | 'cashier' | … | null in _shot.html
-allow(perm)         // Auth.can(), or true in _shot.html where Auth does not exist
+roleOf()            // 'manager' | 'cashier' | … | null when nobody is signed in
+allow(perm)         // Auth.can(perm)
 seesCost()          // allow('cost.read')
 seesProfit()        // allow('profit.read')
 isPartnerAccount()  // Yalla Wear — locked into their portal
@@ -651,8 +618,7 @@ navAllowed(id)      // per-screen gate, via the NAV_PERM map
 ifNav(view, html)   // wrap in-page shortcut buttons ("View all →")
 ```
 
-`allow()` returns **true** only when `Auth` is undefined, which now means `_shot.html` alone. In the
-app it is `Auth.can()`, so a signed-out browser draws nothing — there is no longer a mode where
+`allow()` is `Auth.can()`, so a signed-out browser draws nothing — there is no mode where
 everything is permitted because nothing is real.
 
 ### Two rules enforced in code, not in the table
@@ -670,14 +636,14 @@ anyone can send the request by hand.
 
 ### Home screen is chosen by role
 
-`VIEWS.dashboard` in `js/app.js` is a chooser, not one screen with four moods:
+`VIEWS.dashboard` in `js/app-routing.js` is a chooser, not one screen with four moods:
 
 | Role | Home | Built from |
 |---|---|---|
 | cashier | `viewShiftHome()` — her shift, never the shop's money | `stat`, `card`, `tbl` markup |
 | warehouse | `viewBackHome()` — what arrived, what needs moving | same |
 | delivery | `viewRunsHome()` → `Deliveries.view()` | live server data |
-| manager / `_shot.html` | `viewDashboard()` — the full dashboard | charts |
+| manager | `viewDashboard()` — the full dashboard | charts |
 
 The partner never reaches it: `boot()` and `render()` both force `OG.print.partner = true` for that role.
 **There is no door between the two sides in either direction.** The `partner-view` toggle, the sidebar
@@ -822,8 +788,6 @@ the arc around the mark is the count. At the end everything pulls into the mark 
   pointer-dependent code: `--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2`.
 - **Files starting with `_` are stripped from the published site** by `make-deploy.ps1` and by CI, and the
   server refuses to serve them. `.nojekyll` stops GitHub deleting them itself.
-- **Do not delete `_shot.html`.** It is not a test — it is the screenshot rig `make-proposal.ps1` drives
-  to build the Arabic client PDF.
 - **PowerShell here is 5.1**: no `&&`/`||`, no heredocs, no ternary; it prepends a UTF-8 BOM when piping
   (which once made a password not match its own confirmation). The Bash tool is available for POSIX.
 - `dist/`, `flutter_app/`, `docs/img/`, `docs/fonts/`, `docs/*.pdf` are **deliberately untracked** —
@@ -913,8 +877,8 @@ this laptop's code is behind the mirror) · `fetch_failed` · `accounts_unreadab
 · `restore_failed` (the moved-aside file is put back). The result rides `GET /api/sync/status` as
 `pull` — `MirrorUI` draws it, `backup` is stripped from the live-channel copy, the splash's cloud
 chip says "N rows pulled", and `app-boot.js` toasts once per pull. `OG_PULL_AT_BOOT=0` on a dev
-copy; `OG_SYNC_MINUTES=0` refuses on its own. `open-when-ready.js` waits four minutes because of
-this.
+copy; `OG_SYNC_MINUTES=0` refuses on its own. The panel's Full refresh waits up to five minutes for
+the answer (`ANSWER_LIMIT_MS` in `panel/panel.js`) because of this.
 
 **Cursors after a pull are RESET explicitly** (`resetCursorsAfterPull`: seq cursors → 0, maxid
 cursors → local `MAX(id)`, one upsert), not left to the rewind — the rewind would fire one table
@@ -1053,7 +1017,7 @@ it rejects the **whole batch**, not the column:
   on a new project). **`021_cash_book.sql`, `022_day_close.sql` and `023_payables.sql` (local 053–055)
   are outstanding as of 16 Sep 2026** — until they are run the boot pull refuses with `drift`; run them
   in that order, then `npm run supabase:reconcile` (023 adds `employees.pay_day`, which the sync pushes
-  without until then); see "The money". **`server/supabase/CATCH-UP.sql` is every outstanding one concatenated** — one
+  without until then); see "The money". **`server/supabase/CATCH-UP.sql` is `008`–`023` concatenated** (the last three are the outstanding ones) — one
   paste instead of four visits; it is generated, every statement is `IF NOT EXISTS`, and re-running it
   is safe. **`016`, `017` and `018` were applied on 2026-09-12** — `supabase:drift` reads green, all
   45 pushed tables column for column, and the six new tables (`order_payments`, `handovers`,
@@ -1071,7 +1035,7 @@ it rejects the **whole batch**, not the column:
   way in one pass, 65 statements, HTTP 201. **A personal access token is account-wide**, not
   project-scoped: it manages every project on the account, so it is made for the job, kept out of
   `.env` afterwards, and revoked. That is why this is written down as a route rather than wired into
-  a button — the dashboard paste stays the default, and nothing in this repo stores such a token. `002`–`007` are applied on the live mirror. `008` (rooms, and which wall a rack hangs on)
+  a button — the dashboard paste stays the default, and nothing in this repo stores such a token. `002`–`007` are applied on the live mirror, and `008`–`018` went up with `CATCH-UP.sql`; the notes below say what each adds. `008` (rooms, and which wall a rack hangs on)
   must be run before the shelf map's rooms mirror at all — until then the sync skips `rooms` by name
   and pushes `sections` without the three placement columns. `009` adds `print_log.kind` (local `027`);
   until it is run the print history block is rejected and retries every run, so nothing is lost, only
@@ -1707,22 +1671,25 @@ same family as screenshotting a popover mid-fade.
 ## Known open work
 
 - The supplier and payroll editors exist now (the Money screen, 055). Still no screen for adding one
-  size to an existing product (`Shop.addVariant`) or cancelling a purchase order (`Shop.cancelPO`). These are listed by
-  name in the wiring test so they stay visible rather than becoming permanent.
+  size to an existing product (`Shop.addVariant`) or cancelling a purchase order (`Shop.cancelPO`). Both functions
+  are kept on purpose, unwired, so the gap stays visible.
+- **Server routes with no button.** A sale can be voided only by a hand-sent
+  `POST /api/sales/:id/void`; the staff-account routes (`POST /api/users`, `/api/users/:id/reset`,
+  `/api/users/:id/active`) have no Settings control. The permissions `refund` and `partner.read` gate
+  nothing, so their tick boxes in Settings → Roles change nothing. `receipt.show_qr` and
+  `receipt.site_url` are seeded by migrations and read by nothing (the second QR `020` describes was
+  never built).
+- **An exchange return is not linked to the order that replaced it.** `order_returns.new_sale_id`
+  stays NULL: the `linkExchange` helper was never called and was removed on 16 Sep 2026.
 - **There are endpoints but no website.** `/api/ext/print-jobs` and `/api/ext/products` are both
   live behind `OG_WEB_API_KEY`; nothing calls either yet. The catalogue side is complete — the
   flag, the mirror column, the editor and the read door — so what is missing is the site itself,
   not anything here.
-- **Telegram job links point at a dead address.** `publicBase()` in `server/lib/telegram.js` reads
-  `shop.public_url` (never set) and then `OG_CF_HOSTNAME`, which stopped resolving when cloudflared was
-  removed on 13 Sep, so the link line under job messages opens nothing. It is not the tracking base
-  (`receipt.public_url`, now the Railway address): these links open the POS itself
-  (`/#open/job/<id>`), which Railway does not serve. They need a POS address that works, or to go.
-- **`telegram.js` and `reminders.js` cannot be the first module a process imports.** Loading either
-  first reaches `office-alerts.js` through `telegram-commands.js` before `telegram.js` has finished,
-  and `export const OFFICE_KINDS = Telegram.OFFICE_KINDS` throws "Cannot access before
-  initialization". `index.js` never hits it (something importing `office-alerts.js` comes first); a
-  script or test that imports `telegram.js` directly must import `office-alerts.js` before it.
+- **Telegram job messages carry no link.** `publicBase()` in `server/lib/telegram.js` reads
+  `shop.public_url` only (the `OG_CF_HOSTNAME` fallback went with the tunnel on 16 Sep), and it is
+  never set, so no link line is added. It is not the tracking base (`receipt.public_url`, the
+  Railway address): these links open the POS itself (`/#open/job/<id>`), which Railway does not
+  serve. Setting `shop.public_url` to a POS address that works brings them back.
 - **The shop's bot on Railway is built but not switched on** — see "The shop's bot can be answered on
   Railway". The cutover (secrets, `sql/004`, Railway variables, `OG_TELEGRAM_OG_RELAY=railway`, the
   webhook) is a by-hand job, in the order written in og-track's `night_shift_2_log.md`.
@@ -1754,15 +1721,6 @@ same family as screenshotting a popover mid-fade.
   every real sale was frozen at it — the shop is on the redenominated lira. The seed that assumed
   13,000 is gone, so nothing in the repo asserts the old scale any more.
 - `flutter_app/` fails to build on an Android NDK/`sdkmanager` crash.
-- **The shelf edit form is drawn only for `config.write`, but the server saves it for `stock.move`**
-  (logged 15 Sep 2026, not decided). In the shelf map's panel, `editForm()` in `js/shelfmap.js` sits
-  behind `canEdit()` (`config.write`). Its **Save** — the shelf's code, capacity, product and size
-  range — is `PATCH /api/shelves/:id`, which `server/index.js` gates on `stock.move`; only its
-  **Delete** (`DELETE /api/shelves/:id`) is `config.write`. So a warehouse account never sees the
-  form, yet the server would take the same write from it sent by hand. The browser is not the
-  boundary, so the server's gate is what actually applies today. One of the two has to move: the
-  route to `config.write` (a shelf's code and size range are layout, and a code change strands
-  printed shelf labels), or the form to `stock.move` (which product a shelf holds is put-away work).
 - **Shelf map, Arabic fullscreen: the "putting away onto…" line overlaps the scan box** in the bottom
   strip (`.sm-ov-bottom`, `.sm-scanbox` + `.sm-scanwhat`). Seen 14 Sep 2026 while building the room's
   Stage A; older than that work and deliberately left out of it.
@@ -1964,7 +1922,7 @@ holding a transaction can use it — `DB.tx` refuses to nest), the delivery row,
   `DB.shiftSummary` does the same from `DB.orderPayments` — two figures for one cash box that
   disagree is worse than either alone. Dollar cash in a lira drawer is reported beside the count,
   never added into it. A driver's door cash is `handed_in_at IS NULL` until somebody says it
-  reached the shop (`POST /api/orders/:id/handin`).
+  reached the shop (`POST /api/driver-cash/handin`, `Orders.handInFor`).
 - **Takings stay invoice-based.** The goods left at print and cost is booked then; what the office
   adds is a balance, not a second revenue figure.
 
@@ -2086,8 +2044,9 @@ goes** and **whether the shipping stays owed**. Underneath:
   other, checked against the ledger inside the transaction that writes it.
 - **`store_credit` is written in code, not seeded** (`SYSTEM_METHODS` + the injection in
   `settings()`), so every shop that already has 045's list gets it with no config migration.
-- An exchange grants the credit and `linkExchange` points the return at the order that replaced it;
-  there is one way money moves between two orders and one ledger to read.
+- An exchange grants the credit, and the customer spends it on the order that replaces it; there is
+  one way money moves between two orders and one ledger to read. The return itself is not linked to
+  that order (`new_sale_id` stays NULL — see Known open work).
 - A partly returned order is ordinary: `returnable()` answers per size, which is why the lines
   table exists at all.
 
@@ -2161,7 +2120,8 @@ What landed:
   Save sat below the bottom edge. Above 1240 the panel is its own scroller with `.dk-close` (Save
   plus the reasons it is disabled) stuck to its bottom; below 1240 — where the panel is drawn full
   width *underneath* both other columns and Save measured 824px below the fold — the fixed
-  `.dk-bar` carries it. That bar used to switch on only under 860px.
+  `.dk-bar` carries it. That bar used to switch on only under 860px. (Both rules went with the
+  three-column layout; the five-step panel's sticky foot carries Save now — see "The look".)
 - **A comma is a decimal point here.** `Desk.toMinor` stripped everything but digits and dots, so
   `12,50` — how everybody in this shop writes twelve and a half — became `1250` and a $12.50
   deposit was recorded as **$1,250**. Three digits after the last separator is a thousands group,
@@ -2424,7 +2384,7 @@ still stands, unchanged.)
   (`publicBase()` null), because a link only the shop's wifi can open is not worth sending.
   **Since 16 Sep 2026 the base is og-track on Railway**: `receipt.public_url` =
   `https://og-track-production-aa0b.up.railway.app` (it had been empty, so `publicBase()` fell through
-  to `OG_CF_HOSTNAME`, dead since 13 Sep). Set through the same `configRefusal()` + upsert
+  to `OG_CF_HOSTNAME`, dead since 13 Sep and removed on 16 Sep). Set through the same `configRefusal()` + upsert
   `PUT /api/config` runs; the paper receipt itself prints a barcode, not a tracking QR.
   `WA.compose`'s message box is `dir="auto"` now — it was forced rtl and turned "Hi Nour," into
   ",Hi Nour". Verified by `wa.mjs` in both languages: the button on the cards, the composer's
@@ -2678,8 +2638,8 @@ nothing here behaves differently.**
   conditional update; a send with no answer stays claimed and is never repeated. The other 26 rules
   stay: every one is about something this laptop changes while it is on, and several read what the
   mirror does not have (`partner_events`, the dedupe ledger).
-- **What the switch does not fix.** Telegram job links (`linkFor`, `publicBase()` in this file) still
-  point at `OG_CF_HOSTNAME`, which stopped resolving on 13 Sep — see Known open work.
+- **What the switch does not change.** Telegram job links (`linkFor`, `publicBase()` in this file)
+  appear only when `shop.public_url` is set — see Known open work.
 - **How it was verified** (scratchpad only, nothing live): 134 checks of the SQL in PGlite (Postgres 18
   in WebAssembly) including every block of `sql/verify_tg.sql`; 43 checks of this side on a `VACUUM
   INTO` copy with invented tokens and every fetch intercepted (the og-track texts proved byte-identical
@@ -2877,8 +2837,8 @@ the server one (numeric `label_code` in Code 128), a browser "Label Studio" in `
   reads (`templateSummaries`), never from `config.label.presets` — that blob was a second list nobody
   kept in step, and is only the backstop now. `allowEan` is computed with the same arithmetic the
   print uses, so the EAN chip is disabled exactly where a forced EAN-13 would be refused.
-- **`shelf` is a slot kind** — where the pair belongs, resolved server-side (`shelfCodeFor`) the way
-  `Shelves.labelRowsFor` does it; blank keeps its box. `shelves.js` already counted labels printed
+- **`shelf` is a slot kind** — where the pair belongs, resolved server-side (`shelfCodeFor` in
+  `server/lib/labels.js`); blank keeps its box. `shelves.js` already counted labels printed
   from a template with an `on` shelf slot as ones a reassignment makes stale; 037 puts one on the
   60x40 row (and re-lays that row out for the roll it is named after, price and date off).
 - **The preview draws barcodes at the printer's bar width** — `narrowDots` from the layout, the
@@ -3267,8 +3227,8 @@ two signatures before drawing anything (`layoutSig` / `stockSig`).
   that is not on screen marks itself stale and reloads when it comes back.
 
 **Who may reshape the room.** Every layout write — sections, rooms, grid, rows, cols, POST/DELETE
-shelves — is `config.write` now; putting a pair away (`PATCH /api/shelves/:id`, `assign-shelf`)
-stays `stock.move`. A warehouse account is refused 403 at the server, and in the browser has no
+shelves, and since 16 Sep 2026 `PATCH /api/shelves/:id` — is `config.write` now; putting a pair away
+(`POST /api/stock/assign-shelf`) stays `stock.move`. A warehouse account is refused 403 at the server, and in the browser has no
 editor, so no Add a rack, no grips and no take-the-layout button — the staff run asserts all three
 are absent.
 

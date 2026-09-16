@@ -32,6 +32,7 @@
    ========================================================================== */
 
 import { argv, exit } from 'node:process';
+import { dbFile } from '../lib/env.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,7 +46,7 @@ load();
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
-const DB_FILE = maybe('OG_DB') || resolve(HERE, '..', 'data', 'og.db');
+const DB_FILE = dbFile();
 
 const WANT_RECEIPT = argv.includes('--receipt') || !argv.includes('--label');
 const WANT_LABEL = argv.includes('--label') || !argv.includes('--receipt');

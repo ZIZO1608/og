@@ -31,6 +31,7 @@
    ========================================================================== */
 
 import { resolve, dirname } from 'node:path';
+import { dbFile } from '../lib/env.js';
 import { fileURLToPath } from 'node:url';
 import { argv } from 'node:process';
 
@@ -38,7 +39,7 @@ import { load } from '../lib/env.js';
 import * as DB from '../lib/db.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DB_FILE = process.env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
+const DB_FILE = dbFile();
 
 load();
 DB.open(DB_FILE);

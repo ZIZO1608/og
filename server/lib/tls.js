@@ -30,7 +30,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-export const DIR  = resolve(HERE, '..', 'data', 'certs');
+import { dataDir } from './env.js';
+export const DIR  = resolve(dataDir(), 'certs');
 export const KEY  = resolve(DIR, 'og-key.pem');
 export const CERT = resolve(DIR, 'og-cert.pem');
 export const META = resolve(DIR, 'og-cert.json');

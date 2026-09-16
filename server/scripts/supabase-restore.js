@@ -30,6 +30,7 @@
    ========================================================================== */
 
 import { resolve, dirname } from 'node:path';
+import { dbFile } from '../lib/env.js';
 import { fileURLToPath } from 'node:url';
 
 import { load } from '../lib/env.js';
@@ -45,7 +46,7 @@ load();
 const FORCE = process.argv.includes('--force');
 const DRY = process.argv.includes('--dry-run');
 const WIPE = process.argv.includes('--wipe');
-const DB_FILE = process.env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
+const DB_FILE = dbFile();
 const PORT = Number(process.env.OG_PORT || 8090);
 
 const log = Mirror.consoleLog();

@@ -25,6 +25,7 @@
    ========================================================================== */
 
 import { createServer } from 'node:net';
+import { dbFile } from '../lib/env.js';
 import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,7 +77,7 @@ try {
    and migrating, moments later — a check that quietly changed what it was
    checking would be worse than no check. Hence the existsSync guard rather
    than letting DB.open() bring a file into being. */
-const DB_FILE = process.env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
+const DB_FILE = dbFile();
 
 let db = null;
 try {

@@ -32,6 +32,7 @@
    ========================================================================== */
 
 import { resolve, dirname } from 'node:path';
+import { dbFile } from '../lib/env.js';
 import { fileURLToPath } from 'node:url';
 
 import { load } from '../lib/env.js';
@@ -161,7 +162,7 @@ const reach = await SB.ping();
 if (!reach.ok) { bad(`Cannot reach Supabase — ${reach.message}`); process.exit(1); }
 tick(`Connected to ${SB.projectUrl()}`);
 
-DB.open(process.env.OG_DB || resolve(HERE, '..', 'data', 'og.db'));
+DB.open(dbFile());
 
 /* Whose mirror is this? A reconcile from the wrong machine is the most
    destructive thing in this folder — it deletes every row the other

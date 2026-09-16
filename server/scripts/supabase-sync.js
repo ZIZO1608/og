@@ -25,6 +25,7 @@
    ========================================================================== */
 
 import { resolve, dirname } from 'node:path';
+import { dbFile } from '../lib/env.js';
 import { fileURLToPath } from 'node:url';
 import { env } from 'node:process';
 
@@ -40,7 +41,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
    same path the server, the restore and the reconcile all resolve. */
 load();
 
-const DB_FILE = env.OG_DB || resolve(HERE, '..', 'data', 'og.db');
+const DB_FILE = dbFile();
 
 if (!SB.isConfigured()) {
   console.error('Supabase is not configured — run npm run supabase:check first.');
