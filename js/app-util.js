@@ -142,7 +142,9 @@ function moneySypRaw(v) {
 }
 function moneyUsdRaw(cents) {
   var v = (Number(cents) || 0) / 100;
-  return '$' + (v === Math.round(v) ? nf(v) : v.toFixed(2));
+  var a = Math.abs(v);
+  /* The sign before the dollar sign: "-$112.50", never "$-112.50". */
+  return (v < 0 ? '-' : '') + '$' + (a === Math.round(a) ? nf(a) : a.toFixed(2));
 }
 function moneyPairText(syp, usd, compact) {
   var parts = [];

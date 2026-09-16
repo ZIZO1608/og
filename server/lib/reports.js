@@ -53,6 +53,7 @@
 import * as DB from './db.js';
 import * as Auth from './auth.js';
 import * as Money from './money.js';
+import * as Payables from './payables.js';
 import { parseRange } from './dashboard.js';
 
 export { parseRange };
@@ -487,22 +488,41 @@ export function build(user, { from, to, tz }) {
 
     const salary = { syp: 0, usd: 0 };
     const rows = d.prepare(
-      `SELECT id, user_id, name, role, currency, salary, next_payment, since, phone
+      `SELECT id, user_id, name, role, currency, salary, pay_day, since, phone
          FROM employees WHERE archived = 0
         ORDER BY name COLLATE NOCASE`
     ).all().map((e) => {
       if (e.currency === 'SYP') salary.syp += e.salary;
       else if (e.currency === 'USD') salary.usd += e.salary;
       const s = e.user_id != null ? sold.get(e.user_id) : null;
+      /* 055: derived from what has been paid — the stored column is no
+         longer written by anything. */
+      const next = Payables.nextPayDay(d, e);
       return {
         id: e.id, userId: e.user_id, name: e.name, role: e.role,
         currency: e.currency, salary: e.salary,
-        nextPayment: e.next_payment, since: e.since, phone: e.phone,
+        nextPayment: next ? next.date : null, since: e.since, phone: e.phone,
         sold: e.user_id == null ? null : (s || { count: 0, syp: 0, usd: 0 })
       };
     });
 
-    out.employees = { rows, salary, count: rows.length };
+    /* What was actually PAID in the window (055) — advances and salaries,
+       less any that were undone — beside the monthly bill above, which is
+       what the payroll costs, not what left the shop. */
+    const paid = { syp: 0, usd: 0 };
+    d.prepare(
+      `SELECT p.currency,
+              COALESCE(SUM(CASE WHEN p.kind IN ('advance', 'salary') THEN p.amount
+                                WHEN p.kind = 'reversal'
+                                 AND (SELECT o.kind FROM salary_payments o WHERE o.id = p.reverses_id)
+                                     IN ('advance', 'salary') THEN -p.amount
+                                ELSE 0 END), 0) AS total
+         FROM salary_payments p
+        WHERE p.at >= ? AND p.at < ?
+        GROUP BY p.currency`
+    ).all(...args).forEach((r) => addPair(paid, r, 'total'));
+
+    out.employees = { rows, salary, paid, count: rows.length };
   }
 
   return out;

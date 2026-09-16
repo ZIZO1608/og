@@ -31,6 +31,7 @@
    ========================================================================== */
 
 import * as DB from './db.js';
+import * as Cash from './cashbook.js';
 
 const nowIso = () => new Date().toISOString();
 const fail = (msg, code) => Object.assign(new Error(msg), { code });
@@ -112,10 +113,24 @@ function summary(d, s) {
     `SELECT COALESCE(SUM(amount), 0) AS n FROM debt_payments
       WHERE shift_id = ? AND method IN (${marks}) AND currency = ?`
   ).get(s.id, ...methods, s.currency).n;
+  /* A voided expense (053) is a row in the cash book, not a flag on the
+     expense, so it is excluded by asking the book. */
   const paidOut = d.prepare(
     `SELECT COALESCE(SUM(amount), 0) AS n FROM expenses
-      WHERE shift_id = ? AND method IN (${marks}) AND currency = ?`
+      WHERE shift_id = ? AND method IN (${marks}) AND currency = ?
+        AND id NOT IN (SELECT ref_id FROM money_moves
+                        WHERE kind = 'expense_void' AND ref_type = 'expense')`
   ).get(s.id, ...methods, s.currency).n;
+
+  /* THE DOLLAR CASH SALE, which used to vanish. A sale settled in dollars
+     at the till is real paper in the box, and it is not lira, so the figure
+     above rightly leaves it out — but nothing said it existed at all. Said
+     beside the count, the way ordersOther below says the delivery office's. */
+  const salesOther = d.prepare(
+    `SELECT currency, SUM(total) AS amount FROM sales
+      WHERE shift_id = ? AND voided = 0 AND payment IN (${marks}) AND currency <> ?
+      GROUP BY currency`
+  ).all(s.id, ...methods, s.currency);
 
   /* THE DELIVERY OFFICE. An order's sale is written with payment = 'order',
      which is never a drawer method, so the sales figure above counts nothing
@@ -137,7 +152,7 @@ function summary(d, s) {
 
   const expected = s.float_amount + sales + collected + orders - paidOut;
   return {
-    sales, collected, orders, ordersOther, paidOut,
+    sales, collected, orders, ordersOther, salesOther, paidOut,
     /* A closed shift keeps the figure it was signed off against. Recomputing
        it would let a void a week later rewrite last Tuesday's variance. */
     expected: s.closed_at ? s.expected : expected,
@@ -198,13 +213,23 @@ export function closeShift(id, counted, userId = null) {
 
 /* -------------------------------------------------------------- expenses */
 
+/* Each expense with where it was paid from and whether it has been voided —
+   both read out of the cash book (053), which is where both facts live. */
+const EXPENSE_SELECT =
+  `SELECT e.*,
+          (SELECT place FROM money_moves m
+            WHERE m.kind = 'expense' AND m.ref_type = 'expense' AND m.ref_id = e.id LIMIT 1) AS place,
+          (SELECT at FROM money_moves v
+            WHERE v.kind = 'expense_void' AND v.ref_type = 'expense' AND v.ref_id = e.id LIMIT 1) AS voided_at
+     FROM expenses e`;
+
 export function expenses({ from = null, to = null, limit = 200 } = {}) {
   const d = DB.get();
   if (from && to) {
-    return d.prepare('SELECT * FROM expenses WHERE at >= ? AND at < ? ORDER BY at DESC LIMIT ?')
+    return d.prepare(`${EXPENSE_SELECT} WHERE e.at >= ? AND e.at < ? ORDER BY e.at DESC LIMIT ?`)
       .all(from, to, limit);
   }
-  return d.prepare('SELECT * FROM expenses ORDER BY at DESC LIMIT ?').all(limit);
+  return d.prepare(`${EXPENSE_SELECT} ORDER BY e.at DESC LIMIT ?`).all(limit);
 }
 
 export function categories(d = DB.get()) {
@@ -212,31 +237,109 @@ export function categories(d = DB.get()) {
     .map((s) => s.trim()).filter(Boolean);
 }
 
-export function addExpense({ category, amount, method = 'cash', note = null,
+/* WHERE IT WAS PAID FROM (053). An expense used to carry only a method, which
+   answers "cash or Sham Cash" and not "out of the drawer or out of the
+   owner's own pocket" — and the owner pays the rent from home. So an expense
+   can name a PLACE instead. The expenses table gains no column for it: it is
+   pushed to the mirror above its highest id, and a column the mirror had not
+   got would stop every expense landing. The place lives on the cash book's
+   row, and `method` says as much as it can:
+     a wallet   its method id ('sham'), as before
+     the drawer 'cash', so the shift still counts it out of the box
+     anything else — the owner, a safe, a driver — its place id, which is in
+     no drawer list, so a shift never subtracts money that did not leave it.
+
+   Either currency (the rent may be paid in dollars), and a day in the past
+   (the generator was paid on Tuesday and written down on Thursday). */
+export function addExpense({ category, amount, method = 'cash', place = null, note = null,
                              at = null, currency = null, userId = null }) {
-  if (!(amount > 0)) throw fail('an expense has to be more than nothing', 'bad_request');
+  const amt = Math.round(Number(amount));
+  if (!(amt > 0)) throw fail('an expense has to be more than nothing', 'bad_request');
   if (!category) throw fail('an expense needs a category', 'bad_request');
+
+  let when = null;
+  if (at) {
+    const t = new Date(at);
+    if (isNaN(t.getTime())) throw fail('that is not a date', 'bad_request');
+    /* A day ahead is a clock or a zone, not an expense from the future. */
+    if (t.getTime() > Date.now() + 36 * 3600 * 1000) {
+      throw fail('an expense cannot be in the future', 'bad_request');
+    }
+    when = t.toISOString();
+  }
 
   return DB.tx(() => {
     const d = DB.get();
-    const base = checkCurrency(d, currency);
+    const cur = currency || cfg(d, 'shop.base_currency', 'SYP');
+    if (!d.prepare('SELECT 1 FROM currencies WHERE code = ?').get(cur)) {
+      throw fail(`unknown currency: ${cur}`, 'bad_currency');
+    }
     if (!categories(d).includes(category)) {
       throw fail(`there is no '${category}' category`, 'bad_category');
     }
 
+    let where;
+    let methodOut;
+    if (place) {
+      Cash.need(d, place);
+      where = place;
+      methodOut = place === 'drawer' ? 'cash' : place.startsWith('m:') ? place.slice(2) : place;
+    } else {
+      where = Cash.placeForMethod(d, method);
+      if (!where) throw fail(`an expense cannot be paid by '${method}'`, 'bad_method');
+      methodOut = method;
+    }
+
     const id = nextId(d, 'expenses', 'EX-', 4);
     const open = currentShift(d);
+    const stamp = when || nowIso();
     d.prepare(
       `INSERT INTO expenses (id, at, category, amount, currency, method, note,
                              shift_id, created_at, created_by)
        VALUES (?,?,?,?,?,?,?,?,?,?)`
-    ).run(id, at || nowIso(), category, Math.round(amount), base, method, note,
+    ).run(id, stamp, category, amt, cur, methodOut, note,
           /* Stamped, not matched by time — so cash paid out of THIS drawer
              comes out of this drawer's count and no other. */
           open ? open.id : null, nowIso(), userId);
 
+    Cash.apply(d, {
+      place: where, currency: cur, amount: -amt, kind: 'expense',
+      refType: 'expense', refId: id, note: category, userId, at: stamp
+    });
+
     DB.logChange('expenses', id, 'insert', userId, null);
-    return d.prepare('SELECT * FROM expenses WHERE id = ?').get(id);
+    return d.prepare(`${EXPENSE_SELECT} WHERE e.id = ?`).get(id);
+  });
+}
+
+/* A wrong expense, undone. Not deleted: the expenses table is pushed to the
+   mirror above its highest id and an UPDATE or DELETE there is never seen.
+   The void is a row in the cash book that puts the money back where it came
+   from, and every figure that reads expenses asks the book whether this one
+   still counts. An expense written before the cash book has no move to put
+   back, so its void is a marker of nothing — which is the one zero 053
+   allows for exactly this. */
+export function voidExpense(id, { reason = null, userId = null } = {}) {
+  return DB.tx(() => {
+    const d = DB.get();
+    const e = d.prepare('SELECT * FROM expenses WHERE id = ?').get(id);
+    if (!e) throw fail('no such expense', 'not_found');
+    const done = d.prepare(
+      "SELECT 1 FROM money_moves WHERE kind = 'expense_void' AND ref_type = 'expense' AND ref_id = ?"
+    ).get(id);
+    if (done) throw fail('that expense is already voided', 'already_voided');
+
+    const note = reason ? String(reason).trim().slice(0, 200) : null;
+    const moved = Cash.reverse(d, {
+      refType: 'expense', refId: id, kind: 'expense', as: 'expense_void', note, userId
+    });
+    if (!moved.length) {
+      Cash.apply(d, {
+        place: Cash.placeForMethod(d, e.method) || 'drawer', currency: e.currency, amount: 0,
+        kind: 'expense_void', refType: 'expense', refId: id, note, userId
+      });
+    }
+    return d.prepare(`${EXPENSE_SELECT} WHERE e.id = ?`).get(id);
   });
 }
 
@@ -331,7 +434,6 @@ export function payDebt({ saleId, amount, method = 'cash', note = null,
 
   return DB.tx(() => {
     const d = DB.get();
-    const base = checkCurrency(d, currency);
 
     /* The same applied_ops table a sale uses. A till that loses wifi mid
        request does not know whether the payment landed; replaying the same
@@ -340,6 +442,24 @@ export function payDebt({ saleId, amount, method = 'cash', note = null,
       const seen = d.prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
       if (seen) return JSON.parse(seen.result);
     }
+
+    /* IN THE DEBT'S OWN CURRENCY. This used to force the shop's base
+       currency, then subtract the payment from the sale's balance — so on a
+       dollar credit sale, 50 lira came off a balance counted in cents, and
+       the debt cleared for a fraction of what was owed. A debt is paid in
+       what it is owed in; a customer paying a dollar debt in lira is an
+       exchange first, and the cash book has one of those. */
+    const owed = d.prepare('SELECT currency FROM sales WHERE id = ?').get(saleId);
+    if (!owed) throw fail('no such sale', 'not_found');
+    if (currency && currency !== owed.currency) {
+      throw fail(`that debt is owed in ${owed.currency}, not ${currency}`, 'bad_currency');
+    }
+    const base = owed.currency;
+
+    /* Where the money went. A method the shop does not have is refused, and so
+       is one that moves no money — "paid on credit" pays nothing. */
+    const where = Cash.placeForMethod(d, method || 'cash');
+    if (!where) throw fail(`a debt cannot be paid by '${method}'`, 'bad_method');
 
     /* Recomputed inside the transaction. Checked on screen it is only a
        courtesy — two devices settling the same debt both pass that check. */
@@ -353,14 +473,19 @@ export function payDebt({ saleId, amount, method = 'cash', note = null,
     const info = d.prepare(
       `INSERT INTO debt_payments (sale_id, at, amount, currency, method, shift_id, note, user_id)
        VALUES (?,?,?,?,?,?,?,?)`
-    ).run(saleId, nowIso(), Math.round(amount), base, method,
+    ).run(saleId, nowIso(), Math.round(amount), base, method || 'cash',
           open ? open.id : null, note, userId);
 
     const out = {
       id: Number(info.lastInsertRowid),
-      saleId, amount: Math.round(amount), method,
+      saleId, amount: Math.round(amount), currency: base, method: method || 'cash',
       balance: balance - Math.round(amount)
     };
+
+    Cash.apply(d, {
+      place: where, currency: base, amount: out.amount, kind: 'debt_in',
+      refType: 'debt_payment', refId: out.id, note: saleId, userId
+    });
     if (opId) {
       d.prepare('INSERT INTO applied_ops (op_id, at, user_id, kind, result) VALUES (?,?,?,?,?)')
         .run(opId, nowIso(), userId, 'debt_payment', JSON.stringify(out));
@@ -399,6 +524,11 @@ export function all() {
         ORDER BY at`
     ).all(),
     creditSales: openDebts(),
-    categories: categories(d)
+    categories: categories(d),
+    /* 053: where every lira and dollar is, and the latest moves. Same gate as
+       the rest of this bundle — money.read — because the balance of the
+       owner's pocket is the money screen's, not the till's. */
+    cash: Cash.snapshot(d),
+    book: Cash.book({ limit: 200 })
   };
 }

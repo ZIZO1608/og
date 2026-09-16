@@ -30,6 +30,7 @@ import { get, nowIso, tx, logChange } from './db.js';
 import * as Sales from './sales.js';
 import { currentShift } from './money.js';
 import * as Stock from './stock.js';
+import * as Cash from './cashbook.js';
 
 export const METHODS = ['driver', 'office', 'courier', 'abroad', 'pickup'];
 /* Handed to a company that never collects for the shop. */
@@ -270,6 +271,17 @@ function takePayment(d, sale, s, {
 
   const id = Number(info.lastInsertRowid);
   logChange('order_payments', id, 'insert', userId, `${m.id} ${amt} ${cur} for ${sale.id}`);
+
+  /* The cash book (053): into the drawer when it reached the shop, into the
+     driver's pocket when he took it at a door, into the wallet when it was a
+     transfer. Shop credit moves nothing — the money never left the shop. */
+  if (m.id !== STORE_CREDIT.id) {
+    Cash.apply(d, {
+      place: !drawer ? 'm:' + m.id : inShop ? 'drawer' : Cash.driverPlace(receivedBy ?? userId),
+      currency: cur, amount: amt, kind: 'order_in',
+      refType: 'order_payment', refId: id, note: sale.id, userId, at, fxRate: usdTo(cur)
+    });
+  }
 
   if (spender) {
     creditRow(d, {
@@ -558,6 +570,11 @@ export function handIn(saleId, user, opId = null) {
     for (const p of pending) {
       stamp.run(at, user.id, shift ? shift.id : null, p.id);
       logChange('order_payments', p.id, 'update', user.id, 'handed in');
+      /* Out of the driver's pocket and into the drawer, in the cash book. */
+      Cash.handInPayment(d, {
+        paymentId: p.id, currency: p.currency, amount: p.amount,
+        userId: user.id, note: saleId, at
+      });
     }
 
     /* What moved and from whom, per currency — the same shape handInFor
@@ -896,6 +913,10 @@ export function handInFor(driverId, { saleIds = null, opId = null } = {}, user) 
     for (const p of pending) {
       stamp.run(at, user.id, shift ? shift.id : null, p.id);
       logChange('order_payments', p.id, 'update', user.id, `handed in by driver ${driverId}`);
+      Cash.handInPayment(d, {
+        paymentId: p.id, currency: p.currency, amount: p.amount,
+        userId: user.id, note: p.sale_id, at
+      });
       took[p.currency] = (took[p.currency] || 0) + p.amount;
     }
 
@@ -1007,6 +1028,15 @@ function refundOut(d, sale, s, { amount, currency, method, txnRef, note, userId,
         note ? String(note).slice(0, 300) : null, userId ?? null, at);
   const id = Number(info.lastInsertRowid);
   logChange('order_payments', id, 'insert', userId, `refund ${amt} ${cur} on ${sale.id}`);
+
+  /* Money out of the place it leaves from. Kept as shop credit, it leaves
+     nowhere — creditRow records who it now belongs to. */
+  if (m.id !== STORE_CREDIT.id) {
+    Cash.apply(d, {
+      place: drawer ? 'drawer' : 'm:' + m.id, currency: cur, amount: -amt, kind: 'order_refund',
+      refType: 'order_payment', refId: id, note: sale.id, userId, at, fxRate: usdTo(cur)
+    });
+  }
 
   return {
     id, at, amount: amt, currency: cur, amountOrder: outOrder, method: m.id,

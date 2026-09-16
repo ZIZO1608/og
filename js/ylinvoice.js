@@ -581,7 +581,8 @@ var YLINV = (function () {
       if (!inv) return;
       var amt = Math.round(Number((document.getElementById('yiPayAmt') || {}).value) || 0);
       var method = (document.getElementById('yiPayMethod') || {}).value || 'cash';
-      var me = (typeof Notify !== 'undefined') ? Notify.side() : 'og';
+      var place = (document.getElementById('yiPayPlace') || {}).value || null;
+      var me = payerSide();
       if (!DB.payInvoice(inv, amt, method, null, me)) {
         toast(inv.id, t('yi_bad_amount'), 'err');
         return;
@@ -592,7 +593,7 @@ var YLINV = (function () {
          only and the next reload showed it unpaid again. */
       var opId = 'yw-' + inv.id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
       pushInvoice(function () {
-        return Shop.payInvoice(inv.id, { amount: amt, method: method, opId: opId });
+        return Shop.payInvoice(inv.id, { amount: amt, method: method, place: place, opId: opId });
       });
       closeModal();
       toast(inv.id, money(amt) + ' · ' + t('yi_payment_saved') + ' — ' +
@@ -601,6 +602,10 @@ var YLINV = (function () {
       refresh();
     }
   };
+
+  function payerSide() {
+    return (typeof Notify !== 'undefined') ? Notify.side() : 'og';
+  }
 
   /* Recording a payment — from either side. The shop uses it from its own
      Print screen (Pay now), the printer from the invoice sheet; the server
@@ -625,6 +630,17 @@ var YLINV = (function () {
               Object.keys(DB.paymentLabels).map(function (k) {
                 return '<option value="' + k + '">' + esc(DB.payLabel(k)) + '</option>';
               }).join('') + '</select></label>' +
+          /* THE SHOP'S SIDE says which of its places the money left (053) —
+             the owner usually pays the printer out of his own cash, not the
+             drawer. Yalla Wear's side never sees the shop's places. */
+          (payerSide() === 'og' && typeof Cashbook !== 'undefined' && Cashbook.pickable().length
+            ? '<label class="field mt"><span>' + t('mn_paid_from') + '</span>' +
+                '<select class="inp" id="yiPayPlace">' +
+                  Cashbook.pickable().map(function (p) {
+                    return '<option value="' + esc(p.id) + '"' + (p.id === 'owner' ? ' selected' : '') + '>' +
+                      esc(Cashbook.placeName(p.id)) + '</option>';
+                  }).join('') + '</select></label>'
+            : '') +
           '<div style="display:flex;gap:8px;margin-top:10px">' +
             '<button class="btn btn-sm btn-ghost" data-yi="pay-part" data-id="' + inv.id +
               '" data-v="' + Math.round(bal / 2) + '">' + t('yi_half') + '</button>' +

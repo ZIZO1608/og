@@ -118,7 +118,7 @@ function setCfg(pairs) {
    this chat work", and a test message that silently went nowhere because the
    chat had unticked something would be the worst possible answer. */
 const KIND_GROUPS = {
-  day:   ['rem_og_digest', 'rem_day_close', 'rem_shift_open', 'rem_cash_variance'],
+  day:   ['rem_og_digest', 'rem_day_close', 'rem_shift_open', 'rem_day_uncounted', 'rem_cash_variance'],
   stock: ['rem_stock_out', 'rem_stock_critical', 'rem_floor_empty', 'rem_reorder_due',
           'rem_size_run_broken', 'rem_dead_stock', 'rem_po_late', 'rem_wants_back'],
   print: ['rem_order_no_answer', 'rem_job_late', 'rem_partner_unread',
@@ -168,13 +168,15 @@ export function kindGroups() { return KIND_GROUPS; }
 /* 4 (052): the office group. A choice saved at 4 or later was made with the
    order alerts on the screen, so "everything" there includes them — see
    officeWants(), which reads it for a chat that belongs to nobody. */
-const RULES_VERSION = 4;
+/* 5 (054): the nightly count nudge. */
+const RULES_VERSION = 5;
 /* kind -> the version that introduced it. A chat whose saved list predates a
    kind accepts it; a chat saved since then said no to it deliberately. */
 const KIND_SINCE = {
   rem_og_digest: 2, rem_floor_empty: 2, rem_reorder_due: 2, rem_size_run_broken: 2,
   rem_dead_stock: 2, rem_run_out_long: 2, rem_driver_cash: 2, rem_customer_quiet: 2,
-  rem_yl_due_tomorrow: 3, rem_yl_week: 3
+  rem_yl_due_tomorrow: 3, rem_yl_week: 3,
+  rem_day_uncounted: 5
 };
 
 function newerThanChoice(chat, kind) {
@@ -533,7 +535,17 @@ async function call(side, method, body, timeoutMs = SEND_TIMEOUT_MS) {
    P_1043 or a name with an underscore would break the parse and the message
    would silently never arrive. */
 
-const fmtMoney = (n, cur) => `${Number(n || 0).toLocaleString('en-US')} ${cur || ''}`.trim();
+/* Every amount handed to a template is in MINOR units — cents for dollars,
+   whole lira for lira. This printed the number as it came, so a driver holding
+   $60 was told "6,000 USD". Dollars get their two decimals now; everything
+   else (lira has none) prints as before. */
+const fmtMoney = (n, cur) => {
+  const v = Number(n || 0);
+  const text = cur === 'USD'
+    ? (v / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : v.toLocaleString('en-US');
+  return `${text} ${cur || ''}`.trim();
+};
 const fmtDate = (iso) => {
   if (!iso) return null;
   const d = new Date(iso);
@@ -678,17 +690,31 @@ const TEMPLATES = {
      Each one says the thing and, where there is one, the action. A reminder
      that only states a fact is a reminder people stop reading. */
 
+  /* `drawer` and `counted` arrive with the cash book (054) and are absent on a
+     row queued before it, so both are optional. `drawer` is already written
+     out, the pair never added. */
   rem_day_close: (a) => ({
     ar: `📊 إغلاق اليوم ${a.day}` +
         `${BR}المبيعات: ${fmtPair(a.syp, a.usd)}` +
         `${BR}${a.invoices} فاتورة` +
         (a.expected == null ? '' : `${BR}المتوقع في الدرج: ${fmtMoney(a.expected, a.currency)}`) +
+        (a.drawer ? `${BR}في صندوق المحل حسب الدفتر: ${a.drawer}` : '') +
+        (a.counted === 'no' && a.drawer ? `${BR}لم يُعدّ الصندوق بعد.` : '') +
+        (a.counted === 'counted' ? `${BR}عُدّ الصندوق وينتظر تأكيد صاحب المحل.` : '') +
         (a.shiftOpen ? `${BR}الوردية ${a.shift} ما زالت مفتوحة.` : ''),
     en: `Day close ${a.day}` +
         `${BR}Sales: ${fmtPair(a.syp, a.usd)}` +
         `${BR}${a.invoices} invoice(s)` +
         (a.expected == null ? '' : `${BR}Expected in the drawer: ${fmtMoney(a.expected, a.currency)}`) +
+        (a.drawer ? `${BR}Drawer, by the cash book: ${a.drawer}` : '') +
+        (a.counted === 'no' && a.drawer ? `${BR}The drawer has not been counted yet.` : '') +
+        (a.counted === 'counted' ? `${BR}The drawer is counted and waiting for the owner.` : '') +
         (a.shiftOpen ? `${BR}Shift ${a.shift} is still open.` : '')
+  }),
+  /* No figure — the person who counts is told to count, never what to find. */
+  rem_day_uncounted: () => ({
+    ar: `🧮 لم يُعدّ صندوق المحل اليوم.${BR}عُدّ النقد — ليرة ودولار — من شاشة «المال ← إغلاق اليوم».`,
+    en: `The drawer has not been counted today.${BR}Count the cash — lira and dollars — on Money → Close the day.`
   }),
   /* THE NAME LEADS. These two are addressed to the person they are about, and
      the same rendered text goes to them and to whoever runs the shop — so it
@@ -703,12 +729,13 @@ const TEMPLATES = {
         `shift ${a.id} has been open for ${a.hours}h.` +
         `${BR}Count the drawer and close it.`
   }),
+  /* `close` (054) says the count was a night's close rather than a shift. */
   rem_cash_variance: (a) => ({
     ar: (a.person ? `${a.person} — ` : '') +
-        `⚠️ فرق في الصندوق على الوردية ${a.id}: ${a.diff > 0 ? '+' : ''}${fmtMoney(a.diff, a.currency)}` +
+        `⚠️ فرق في الصندوق ${a.close ? 'في إغلاق اليوم' : 'على الوردية'} ${a.id}: ${a.diff > 0 ? '+' : ''}${fmtMoney(a.diff, a.currency)}` +
         `${BR}عُدّ ${fmtMoney(a.counted, a.currency)}، والمتوقع ${fmtMoney(a.expected, a.currency)}.`,
     en: (a.person ? `${a.person} — ` : '') +
-        `drawer difference on shift ${a.id}: ${a.diff > 0 ? '+' : ''}${fmtMoney(a.diff, a.currency)}` +
+        `drawer difference on ${a.close ? 'day close' : 'shift'} ${a.id}: ${a.diff > 0 ? '+' : ''}${fmtMoney(a.diff, a.currency)}` +
         `${BR}Counted ${fmtMoney(a.counted, a.currency)}, expected ${fmtMoney(a.expected, a.currency)}.`
   }),
   /* ---- the shelves ------------------------------------------------------ */

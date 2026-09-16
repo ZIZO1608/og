@@ -84,3 +84,7 @@ if (r.loyaltyFailed) {
   log.warn('  The stamp cards and the wants list are NOT in the mirror. Exit 1.\n');
   process.exit(1);
 }
+if (r.cashFailed) {
+  log.warn('  The cash book is NOT in the mirror — run server/supabase/021_cash_book.sql. Exit 1.\n');
+  process.exit(1);
+}

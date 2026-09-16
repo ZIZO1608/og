@@ -78,6 +78,8 @@ import * as Money from './money.js';
 import * as Wants from './wants.js';
 import * as Stockwatch from './stockwatch.js';
 import * as Customers from './customers.js';
+import * as Cash from './cashbook.js';
+import * as DayClose from './dayclose.js';
 
 const TICK_MS = 60 * 1000;
 /* Boot is the busiest second the machine has — the same reason the mirror
@@ -257,6 +259,22 @@ function weekForPartner(fromIso, toIso) {
            onTime: judged ? Math.round((onTimeN / judged) * 100) : null };
 }
 
+/* 054: the counts of one shop day, cancelled ones left out. */
+function dayClosesOn(dayKey) {
+  return DB.get().prepare(
+    "SELECT id, status FROM day_closes WHERE day = ? AND status <> 'cancelled'"
+  ).all(dayKey);
+}
+
+/* Has the owner told the cash book what the drawer holds? Before that its
+   balance is "since the book started", and nothing should be counted
+   against it. */
+function drawerStarted() {
+  return !!DB.get().prepare(
+    "SELECT 1 FROM money_moves WHERE place = 'drawer' AND kind = 'opening' LIMIT 1"
+  ).get();
+}
+
 function acceptedOpen() {
   return DB.get().prepare(
     `SELECT j.id, j.stage, j.order_responded_at,
@@ -364,7 +382,10 @@ const RULES = [
       const opened = DB.get().prepare(
         'SELECT COUNT(*) AS n FROM shifts WHERE opened_at >= ? AND opened_at < ?'
       ).get(from, to).n;
-      if (!t.count && !opened) return [];
+      /* A day the drawer was counted is a day the shop opened, even with no
+         invoice and no shift (054). */
+      const closes = dayClosesOn(c.dayKey);
+      if (!t.count && !opened && !closes.length) return [];
       /* `expected` only means anything against an open drawer. A shift closed
          earlier has been counted and signed off, and its variance is the
          cash_variance rule's business, not this one's. */
@@ -374,7 +395,14 @@ const RULES = [
         args: {
           day: c.dayKey, syp: t.takings.syp, usd: t.takings.usd, invoices: t.count,
           expected: s ? s.expected : null, currency: s ? s.currency : null,
-          shift: s ? s.id : null, shiftOpen: !!s
+          shift: s ? s.id : null, shiftOpen: !!s,
+          /* THE CASH BOOK'S DRAWER (053), once the book has started there —
+             what the drawer should hold whether or not a shift is open — and
+             whether tonight's count has happened. */
+          drawer: drawerStarted() ? moneyPair({
+            syp: Cash.balanceOf(DB.get(), 'drawer', 'SYP'), usd: Cash.balanceOf(DB.get(), 'drawer', 'USD')
+          }) : null,
+          counted: closes.length ? (closes.some((x) => x.status === 'closed') ? 'closed' : 'counted') : 'no'
         }
       }];
     }
@@ -403,27 +431,75 @@ const RULES = [
     }
   },
   {
+    /* THE DRAWER TOOK MONEY TODAY AND NOBODY HAS COUNTED IT (054). The
+       owner's night is a count by the cashier and a confirmation by him, and
+       a night with neither is a night the cash went home unchecked. Only once
+       the cash book has started at the drawer — before that there is nothing
+       to count against — and only on a day the drawer actually moved: a
+       Friday with the shop shut is not a missed count. No money in the
+       sentence, so it reaches the person who counts. */
+    id: 'day_uncounted', audience: 'og', kind: 'rem_day_uncounted', refType: 'day',
+    run: (c) => {
+      if (c.hour < num('reminders.day_count_hour', 22)) return [];
+      if (!drawerStarted()) return [];
+      const { from, to } = dayRange(c.dayKey, c.tz);
+      const moved = DB.get().prepare(
+        `SELECT COUNT(*) AS n FROM money_moves
+          WHERE place = 'drawer' AND at >= ? AND at < ?
+            AND kind NOT IN ('count_diff', 'opening')`
+      ).get(from, to).n;
+      if (!moved) return [];
+      if (dayClosesOn(c.dayKey).length) return [];
+      return [{ refId: c.dayKey, occasion: '', args: { day: c.dayKey, moves: moved } }];
+    }
+  },
+  {
     id: 'cash_variance', audience: 'og', kind: 'rem_cash_variance', refType: 'shift',
     run: (c) => {
       const min = num('reminders.variance_min', 1000);
+      const out = [];
       const last = DB.get().prepare(
         'SELECT id, closed_at, user_id, user_name FROM shifts ' +
         'WHERE closed_at IS NOT NULL ORDER BY closed_at DESC LIMIT 1'
       ).get();
-      if (!last) return [];
       /* Only a shift closed in the last two days. Without this a laptop
          starting with an empty ledger would announce a variance from March. */
-      const age = hoursSince(last.closed_at, c.ms);
-      if (age == null || age > 48) return [];
-      const s = Money.shift(last.id);
-      if (!s || s.diff == null || Math.abs(s.diff) < min) return [];
-      /* The person who counted the box is the one who can say what happened to
-         it, so they are told as well as the owner — and the money guard means
-         this only reaches their phone if somebody deliberately allowed it. */
-      return [{ refId: s.id, occasion: '', toUser: last.user_id || null,
-                args: { id: s.id, diff: s.diff, counted: s.counted,
-                        expected: s.expected, currency: s.currency,
-                        person: last.user_name || null } }];
+      const age = last ? hoursSince(last.closed_at, c.ms) : null;
+      const s = last && age != null && age <= 48 ? Money.shift(last.id) : null;
+      if (s && s.diff != null && Math.abs(s.diff) >= min) {
+        /* The person who counted the box is the one who can say what happened
+           to it, so they are told as well as the owner — and the money guard
+           means this only reaches their phone if somebody deliberately allowed
+           it. */
+        out.push({ refId: s.id, occasion: '', toUser: last.user_id || null,
+                   args: { id: s.id, diff: s.diff, counted: s.counted,
+                           expected: s.expected, currency: s.currency,
+                           person: last.user_name || null } });
+      }
+
+      /* THE NIGHT'S COUNT (054), once the owner has confirmed it — one line
+         per currency that was out, each against its own threshold, because
+         1000 is nothing in lira and ten dollars in cents. Keyed per currency,
+         so a night short in both says both. */
+      const minUsd = num('reminders.variance_min_usd', 100);
+      const dc = DB.get().prepare(
+        "SELECT id, confirmed_at, counted_by, counted_name FROM day_closes " +
+        "WHERE status = 'closed' ORDER BY confirmed_at DESC LIMIT 1"
+      ).get();
+      const dcAge = dc ? hoursSince(dc.confirmed_at, c.ms) : null;
+      if (dc && dcAge != null && dcAge <= 48) {
+        const full = DayClose.byId(dc.id);
+        for (const l of (full ? full.lines : [])) {
+          const floor = l.currency === 'USD' ? minUsd : min;
+          if (!l.diff || Math.abs(l.diff) < floor) continue;
+          out.push({ refType: 'day_close', refId: `${dc.id}:${l.currency}`, occasion: '',
+                     toUser: dc.counted_by || null,
+                     args: { id: dc.id, close: true, diff: l.diff, counted: l.counted,
+                             expected: l.expected, currency: l.currency,
+                             person: dc.counted_name || null } });
+        }
+      }
+      return out;
     }
   },
 
@@ -953,7 +1029,9 @@ export function evaluate({ at = null, dry = false } = {}) {
       const key = dedupeKey(rule.id, r.refId, r.occasion, toUser);
       if (seen.get(key)) continue;
       perSide[rule.audience].push({
-        rule: rule.id, kind: rule.kind, refType: rule.refType, refId: String(r.refId),
+        /* A row may name its own ref type — cash_variance speaks about a
+           shift or, since 054, about a night's count. */
+        rule: rule.id, kind: rule.kind, refType: r.refType || rule.refType, refId: String(r.refId),
         audience: rule.audience, args: r.args, dedupe: key, toUser,
         /* The preview shows the MESSAGE, not the rule's name. Nobody can judge
            "yl_due fired"; everybody can judge the sentence it would send. And
@@ -1075,6 +1153,7 @@ function nextDaily() {
      proves the time zone is right. */
   for (const [id, key, dflt] of [['og_digest', 'reminders.og_digest_hour', 9],
                                  ['day_close', 'reminders.day_close_hour', 21],
+                                 ['day_uncounted', 'reminders.day_count_hour', 22],
                                  ['yl_digest', 'reminders.yl_digest_hour', 9]]) {
     const h = num(key, dflt);
     const local = shopNow(now, tz);

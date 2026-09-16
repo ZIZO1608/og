@@ -1,44 +1,96 @@
 /* ==========================================================================
-   MONEY — the drawer, the expenses, and الدين                     [data-mn]
+   MONEY — where it is, the drawer, the expenses, and الدين         [data-mn]
    --------------------------------------------------------------------------
-   Three screens for the three things the shop keeps on paper.
+   The things the shop kept on paper, one tab each — only the tabs the
+   account may have are drawn.
 
-   Until now Reports showed REVENUE and called it profit, because expenses did
-   not exist anywhere in the system. That is the gap this closes: gross, minus
-   what the stock cost, minus rent and diesel and transport, is the number he
-   actually lives on.
+   Now and Book are the cash book (053, js/cashbook.js): every place the
+   shop's money physically is — the drawer, the owner's own pocket, each
+   transfer office — and every move between them. Close the day is 054.
+   Suppliers and Salaries are js/payables.js (055); Statement is
+   js/statement.js. Shift, Expenses and Debt are the three that came first.
 
-   The shift close is the emotional centre. It states what SHOULD be in the
-   box, he counts what is, and the difference is shown without softening it.
-   The whole thing is only worth anything because of one distinction:
-   Sham Cash and card are revenue but they are not in the drawer.
+   Until the expenses existed, Reports showed REVENUE and called it profit.
+   Gross, minus what the stock cost, minus rent and diesel and transport, is
+   the number he actually lives on.
+
+   The shift close is still here and still honest. It states what SHOULD be
+   in the box, he counts what is, and the difference is shown without
+   softening it. The whole thing is only worth anything because of one
+   distinction: Sham Cash and card are revenue but they are not in the drawer.
    ========================================================================== */
 
 var Money = (function () {
 
-  var S = { tab: 'shift', expCat: 'all' };
+  var S = { tab: 'now' };
 
   /* ------------------------------------------------------------- shell */
 
+  function base() { return CONFIG.BASE_CURRENCY || 'SYP'; }
+
+  /* In the currency the money is actually in. money() assumes lira and
+     converts with the header's switch — right for the shop's own figures,
+     wrong for a dollar debt or a dollar expense. */
+  function inCur(minor, cur) {
+    if (!cur || cur === base()) return money(minor);
+    return (typeof Desk !== 'undefined' && Desk.fmt) ? Desk.fmt(minor, cur) : nf(minor) + ' ' + cur;
+  }
+  function inCurText(minor, cur) {
+    if (!cur || cur === base()) return money(minor);
+    return (typeof Desk !== 'undefined' && Desk.moneyText) ? Desk.moneyText(minor, cur) : nf(minor) + ' ' + cur;
+  }
+  function toMinor(v, cur) {
+    return (typeof Desk !== 'undefined' && Desk.toMinor)
+      ? Desk.toMinor(v, cur)
+      : Math.max(0, Math.round(Number(String(v || '').replace(/[^\d.]/g, '')) * (cur === 'USD' ? 100 : 1)));
+  }
+
   function view() {
-    var open = DB.currentShift();
-    var debt = DB.debtTotal();
+    var reads = allow('money.read');
+    var counts = allow('money.count') || allow('money.move');
+    var open = reads ? DB.currentShift() : null;
+    var owed = reads && (DB.debtTotal() || DB.debtTotal(base() === 'USD' ? 'SYP' : 'USD'));
+
+    /* ONLY THE TABS THIS ACCOUNT MAY HAVE (054). A cashier reaches this
+       screen to count the drawer and nothing else — the others read the
+       shop's money, which the server does not send her anyway. */
+    var staff = allow('staff.read');
+    var tabs = [];
+    if (reads) tabs.push(['now', t('cb_now')]);
+    if (counts) tabs.push(['close', t('dc_tab')]);
+    if (reads) {
+      tabs.push(['book', t('cb_book')]);
+      tabs.push(['shift', t('mn_shift') + (open ? '<span class="tab-dot on"></span>' : '')]);
+      tabs.push(['expenses', t('mn_expenses')]);
+      tabs.push(['debt', t('mn_debt') + (owed ? '<span class="tab-dot"></span>' : '')]);
+      /* 055: what the shop owes the people it buys from. */
+      var dueSup = (DB.suppliers || []).some(function (x) { return x.outstanding > 0; });
+      tabs.push(['suppliers', t('py_suppliers') + (dueSup ? '<span class="tab-dot"></span>' : '')]);
+    }
+    if (staff) tabs.push(['salaries', t('py_salaries')]);
+    var profit = allow('profit.read');
+    if (profit) tabs.push(['statement', t('pl_tab')]);
+    if (!tabs.some(function (x) { return x[0] === S.tab; })) S.tab = tabs.length ? tabs[0][0] : 'close';
 
     var h = '<div class="page-head"><div><h1>' + t('mn_title') + '</h1>' +
-      '<div class="sub">' + t('mn_sub') + '</div></div>' +
-      '<div class="head-actions">' + exportButtons() + '</div></div>';
+      '<div class="sub">' + t(reads ? 'mn_sub' : counts ? 'dc_sub' : staff ? 'py_sub' : 'pl_sub') + '</div></div>' +
+      (reads || staff || profit ? '<div class="head-actions">' + exportButtons() + '</div>' : '') + '</div>';
 
-    h += '<div class="tabs mb">' +
-      '<button class="tab ' + (S.tab === 'shift' ? 'on' : '') + '" data-mn="tab" data-t="shift">' +
-        t('mn_shift') + (open ? '<span class="tab-dot on"></span>' : '') + '</button>' +
-      '<button class="tab ' + (S.tab === 'expenses' ? 'on' : '') + '" data-mn="tab" data-t="expenses">' +
-        t('mn_expenses') + '</button>' +
-      '<button class="tab ' + (S.tab === 'debt' ? 'on' : '') + '" data-mn="tab" data-t="debt">' +
-        t('mn_debt') + (debt ? '<span class="tab-dot"></span>' : '') + '</button>' +
-    '</div>';
+    if (tabs.length > 1) {
+      h += '<div class="tabs mb">' + tabs.map(function (x) {
+        return '<button class="tab ' + (S.tab === x[0] ? 'on' : '') + '" data-mn="tab" data-t="' + x[0] + '">' +
+          x[1] + '</button>';
+      }).join('') + '</div>';
+    }
 
-    return h + (S.tab === 'shift' ? shiftTab()
+    return h + (S.tab === 'now' ? Cashbook.nowTab()
+              : S.tab === 'close' ? Cashbook.closeTab()
+              : S.tab === 'book' ? Cashbook.bookTab()
+              : S.tab === 'shift' ? shiftTab()
               : S.tab === 'expenses' ? expensesTab()
+              : S.tab === 'suppliers' ? Payables.suppliersTab()
+              : S.tab === 'salaries' ? Payables.salariesTab()
+              : S.tab === 'statement' ? Statement.tab()
               : debtTab());
   }
 
@@ -74,6 +126,9 @@ var Money = (function () {
         row(t('mn_float'), s.float, '') +
         row(t('mn_cash_sales'), sum.drawerSales, 'plus') +
         (sum.settled ? row(t('mn_debt_settled'), sum.settled, 'plus') : '') +
+        /* The delivery office's cash is inside `expected` — it has to be a
+           line too, or the sum does not add up by eye. */
+        (sum.orders ? row(t('mn_orders_in'), sum.orders, 'plus') : '') +
         (sum.cashOut ? row(t('mn_cash_out'), -sum.cashOut, 'minus') : '') +
         '<div class="mn-line"></div>' +
         row(t('mn_expected'), sum.expected, 'total') +
@@ -110,7 +165,10 @@ var Money = (function () {
   }
 
   function shiftClosed() {
-    var last = DB.shifts.filter(function (x) { return x.closed; }).slice(-1)[0];
+    /* NEWEST FIRST — that is the order the server sends shifts in
+       (server/lib/money.js). This took the last element and so showed the
+       OLDEST of sixty shifts under the heading "Last shift". */
+    var last = DB.shifts.filter(function (x) { return x.closed; })[0];
 
     var h = '<div class="card"><div class="card-body" style="text-align:center;padding:36px 24px">' +
       '<svg viewBox="0 0 24 24" stroke-linecap="square" ' +
@@ -146,38 +204,41 @@ var Money = (function () {
 
   function expensesTab() {
     var month = DB.expensesInMonth(0), lastMonth = DB.expensesInMonth(1);
-    var p = DB.netProfit(0);
+    var canWrite = allow('money.write');
 
-    var h = '<div class="grid stat-row mb" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
+    /* The month's profit is the Statement's (server-side, every sale, both
+       currencies). It used to be worked out here from the last 200 sales
+       with lira and dollars added together. */
+    var h = '<div class="grid stat-row py-stats mn-exp-stats mb">' +
       '<div class="stat"><span class="eyebrow">' + t('mn_exp_month') + '</span>' +
         '<div class="val warn">' + moneyStat(month) + '</div>' +
         deltaTag(month, lastMonth, t('vs_last_month')) + '</div>' +
-      '<div class="stat"><span class="eyebrow">' + t('mn_gross') + '</span>' +
-        '<div class="val">' + moneyStat(p.gross) + '</div>' +
-        '<div class="foot">' + t('mn_this_month') + '</div></div>' +
-      '<div class="stat"><span class="eyebrow">' + t('mn_after_cost') + '</span>' +
-        '<div class="val">' + moneyStat(p.grossProfit) + '</div>' +
-        '<div class="foot">' + t('mn_minus_cogs') + '</div></div>' +
-      /* The number that did not exist before this screen. */
-      '<div class="stat"><span class="eyebrow">' + t('mn_net') + '</span>' +
-        '<div class="val ' + (p.net >= 0 ? 'accent' : 'warn') + '">' + moneyStat(p.net) + '</div>' +
-        '<div class="foot">' + t('mn_real_profit') + '</div></div>' +
+      (allow('profit.read')
+        ? '<div class="stat clickable" data-mn="tab" data-t="statement"><span class="eyebrow">' + t('mn_net') + '</span>' +
+            '<div class="val py-val">' + t('pl_open') + ' →</div>' +
+            '<div class="foot">' + t('pl_open_sub') + '</div></div>'
+        : '') +
     '</div>';
 
-    /* Where it goes, biggest first. */
+    /* Where it goes, biggest first — the shop's own currency, voids left out,
+       the same set the month's figure above is made of. */
     var byCat = {};
-    DB.expenses.forEach(function (e) { byCat[e.category] = (byCat[e.category] || 0) + e.amount; });
+    DB.expenses.forEach(function (e) {
+      if (e.voided || e.currency !== base()) return;
+      byCat[e.category] = (byCat[e.category] || 0) + e.amount;
+    });
     var cats = Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; });
     var maxCat = cats.length ? byCat[cats[0]] : 1;
 
-    h += '<div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);align-items:start">';
+    h += '<div class="mn-exp-grid">';
 
     h += '<div class="card"><div class="card-head"><h3>' + t('mn_where') + '</h3>' +
-      '<div class="card-actions"><button class="btn btn-sm btn-primary" data-mn="add-expense">+ ' +
-        t('mn_add') + '</button></div></div><div class="card-body">';
+      (canWrite ? '<div class="card-actions"><button class="btn btn-sm btn-primary" data-mn="add-expense">+ ' +
+        t('mn_add') + '</button></div>' : '') + '</div><div class="card-body">';
+    if (!cats.length) h += '<p class="muted">' + t('mn_no_expenses') + '</p>';
     cats.forEach(function (c) {
       h += '<div class="mn-cat">' +
-        '<span class="mc-name">' + t('mn_c_' + c) + '</span>' +
+        '<span class="mc-name">' + esc(Cashbook.catLabel(c)) + '</span>' +
         '<span class="mc-bar"><i style="width:' + Math.round(byCat[c] / maxCat * 100) + '%"></i></span>' +
         '<span class="mc-amt">' + moneyShort(byCat[c]) + '</span></div>';
     });
@@ -185,16 +246,24 @@ var Money = (function () {
 
     h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
       '<th>' + t('date') + '</th><th>' + t('mn_category') + '</th><th>' + t('note') + '</th>' +
-      '<th>' + t('payment') + '</th><th class="num">' + t('mn_amount') + '</th>' +
+      '<th>' + t('mn_paid_from') + '</th><th class="num">' + t('mn_amount') + '</th>' +
+      (canWrite ? '<th></th>' : '') +
     '</tr></thead><tbody>';
-    DB.expenses.slice(0, 40).forEach(function (e) {
-      h += '<tr><td class="num muted">' + fmtDate(e.at) + '</td>' +
-        '<td><span class="badge neutral">' + t('mn_c_' + e.category) + '</span></td>' +
+    DB.expenses.forEach(function (e) {
+      h += '<tr class="' + (e.voided ? 'mn-void' : '') + '"><td class="num muted">' + fmtDate(e.at) + '</td>' +
+        '<td><span class="badge neutral">' + esc(Cashbook.catLabel(e.category)) + '</span>' +
+          (e.voided ? ' <span class="badge critical">' + t('mn_voided') + '</span>' : '') + '</td>' +
         '<td class="muted">' + esc(e.note) + '</td>' +
-        '<td class="muted">' + esc(DB.payLabel(e.method)) + '</td>' +
-        '<td class="num"><b>' + money(e.amount) + '</b></td></tr>';
+        '<td class="muted">' + esc(e.place ? Cashbook.placeName(e.place) : DB.payLabel(e.method)) + '</td>' +
+        '<td class="num"><b>' + inCur(e.amount, e.currency) + '</b></td>' +
+        (canWrite ? '<td>' + (e.voided ? '' :
+          '<button class="btn btn-sm btn-ghost" data-mn="void-expense" data-id="' + esc(e.id) + '">' +
+            t('mn_void') + '</button>') + '</td>' : '') +
+        '</tr>';
     });
-    h += '</tbody></table></div></div>';
+    h += '</tbody></table>' +
+      (DB.expenses.length >= 200 ? '<div class="partner-note mt">' + t('mn_exp_window') + '</div>' : '') +
+      '</div></div>';
     return h;
   }
 
@@ -202,14 +271,17 @@ var Money = (function () {
 
   function debtTab() {
     var debts = DB.debts();
+    var other = base() === 'USD' ? 'SYP' : 'USD';
     var total = DB.debtTotal();
+    var totalOther = DB.debtTotal(other);
     var age = DB.debtAgeing();
     var over30 = debts.filter(function (d) { return d.age > 30; }).length;
 
     var h = '<div class="grid stat-row mb" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
       '<div class="stat"><span class="eyebrow">' + t('mn_owed_total') + '</span>' +
         '<div class="val' + (total ? ' warn' : '') + '">' + moneyStat(total) + '</div>' +
-        '<div class="foot">' + debts.length + ' ' + t('mn_people') + '</div></div>' +
+        '<div class="foot">' + (totalOther ? '+ ' + inCur(totalOther, other) + ' · ' : '') +
+          debts.length + ' ' + t('mn_people') + '</div></div>' +
       '<div class="stat"><span class="eyebrow">' + t('mn_over_30') + '</span>' +
         '<div class="val' + (over30 ? ' warn' : '') + '">' + over30 + '</div>' +
         '<div class="foot">' + t('mn_chase_these') + '</div></div>' +
@@ -219,7 +291,8 @@ var Money = (function () {
     '</div>';
 
     if (total > 0) {
-      h += '<div class="card mb"><div class="card-head"><h3>' + t('yl_ageing') + '</h3></div>' +
+      h += '<div class="card mb"><div class="card-head"><h3>' + t('yl_ageing') + '</h3>' +
+        (totalOther ? '<div class="card-actions muted small">' + esc(base()) + '</div>' : '') + '</div>' +
         '<div class="card-body"><div class="yl-age">';
       age.forEach(function (b) {
         var w = Math.round(b.value / total * 100);
@@ -248,15 +321,15 @@ var Money = (function () {
           (d.customer ? '<small class="muted" style="display:block">' + tel(d.customer.phone) + '</small>' : '') + '</td>' +
         '<td class="muted">' + d.sale.id + '</td>' +
         '<td class="num muted">' + fmtDate(d.sale.date) + '</td>' +
-        '<td class="num">' + money(d.total) + '</td>' +
-        '<td class="num muted">' + (d.paid ? money(d.paid) : '—') + '</td>' +
-        '<td class="num"><b style="color:var(--warning)">' + money(d.balance) + '</b></td>' +
+        '<td class="num">' + inCur(d.total, d.currency) + '</td>' +
+        '<td class="num muted">' + (d.paid ? inCur(d.paid, d.currency) : '—') + '</td>' +
+        '<td class="num"><b style="color:var(--warning)">' + inCur(d.balance, d.currency) + '</b></td>' +
         '<td><span class="badge ' + (late ? 'critical' : 'neutral') + '">' + d.age + t('yl_d') + '</span></td>' +
         '<td style="white-space:nowrap">' +
           (d.customer ? '<button class="btn btn-sm btn-ghost" data-mn="remind" data-id="' + d.sale.id + '">' +
             t('mn_remind') + '</button> ' : '') +
-          '<button class="btn btn-sm btn-primary" data-mn="settle" data-id="' + d.sale.id + '">' +
-            t('mn_settle') + '</button></td></tr>';
+          (allow('debt.collect') ? '<button class="btn btn-sm btn-primary" data-mn="settle" data-id="' + d.sale.id + '">' +
+            t('mn_settle') + '</button>' : '') + '</td></tr>';
     });
 
     return h + '</tbody></table></div>';
@@ -266,6 +339,19 @@ var Money = (function () {
     d = new Date(d);
     var hh = d.getHours(), mm = String(d.getMinutes()).padStart(2, '0');
     return (hh % 12 || 12) + ':' + mm + ' ' + (hh >= 12 ? 'PM' : 'AM');
+  }
+
+  /* The methods a debt can be settled by: the owner's own list, never the
+     four the till started with — a customer settling by Haram or Tarabut
+     had no way to be recorded. Credit and delivery orders are never offered. */
+  function debtMethods() {
+    var list = DB.payMethodsFor('debt');
+    return list.length ? list.map(function (m) { return m.id; }) : ['cash', 'sham', 'fuad', 'card'];
+  }
+
+  function todayYmd() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
   /* --------------------------------------------------------------- acts */
@@ -282,7 +368,7 @@ var Money = (function () {
                     .map(function (e) { return '<option>' + esc(e.name) + '</option>'; }).join('') +
                 '</select></label>' +
               '<label class="field mt"><span>' + t('mn_float') + '</span>' +
-                '<input class="inp num" id="mnFloat" type="number" min="0" value="200000"></label>' +
+                '<input class="inp num" id="mnFloat" type="number" min="0" value="0"></label>' +
               '<div class="partner-note mt">' + t('mn_float_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-mn="open-shift-go">' + t('mn_open_shift') + '</button>'
@@ -309,23 +395,16 @@ var Money = (function () {
       );
     },
 
+    /* COUNT BEFORE YOU LOOK. The dialog used to print the expected figure
+       and put it in the box as a placeholder, which is the exact thing its
+       own hint told people not to do. The figure comes back after the count. */
     'close-shift': function () {
       var s = DB.currentShift();
       if (!s) return;
-      var sum = DB.shiftSummary(s);
       openModal({
         title: t('mn_close_shift') + ' · ' + s.id, size: 'narrow',
-        body: '<div class="mn-calc">' +
-                row(t('mn_float'), s.float, '') +
-                row(t('mn_cash_sales'), sum.drawerSales, 'plus') +
-                (sum.settled ? row(t('mn_debt_settled'), sum.settled, 'plus') : '') +
-                (sum.cashOut ? row(t('mn_cash_out'), -sum.cashOut, 'minus') : '') +
-                '<div class="mn-line"></div>' +
-                row(t('mn_expected'), sum.expected, 'total') +
-              '</div>' +
-              '<label class="field mt"><span>' + t('mn_count_now') + '</span>' +
-                '<input class="inp num" id="mnCounted" type="number" min="0" ' +
-                  'placeholder="' + sum.expected + '"></label>' +
+        body: '<label class="field"><span>' + t('mn_count_now') + '</span>' +
+                '<input class="inp num" id="mnCounted" type="number" min="0" dir="ltr"></label>' +
               '<div class="partner-note mt">' + t('mn_close_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-mn="close-shift-go">' + t('mn_close_shift') + '</button>'
@@ -355,29 +434,46 @@ var Money = (function () {
           toast(done.id + ' · ' + t('mn_closed'),
             done.diff === 0 ? t('mn_balanced')
               : (done.diff > 0 ? '+' : '') + money(done.diff) + ' · ' +
-                t(done.diff < 0 ? 'mn_short' : 'mn_over'),
+                t(done.diff < 0 ? 'mn_short' : 'mn_over') +
+                ' · ' + t('mn_expected') + ' ' + money(done.expected),
             kind, 6000);
         }
       );
     },
 
+    /* An expense names WHERE it was paid from — the drawer, the owner's own
+       cash, a wallet — in either currency, on the day it was paid. */
     'add-expense': function () {
+      var places = Cashbook.pickable();
+      var curs = (DB.cash && DB.cash.currencies ? DB.cash.currencies.map(function (c) { return c.code; }) : ['SYP', 'USD']);
       openModal({
         title: t('mn_add_expense'), size: 'narrow',
         body: '<label class="field"><span>' + t('mn_category') + '</span>' +
                 '<select class="inp" id="mnCat">' +
                   DB.expenseCategories.map(function (c) {
-                    return '<option value="' + c + '">' + t('mn_c_' + c) + '</option>';
+                    return '<option value="' + esc(c) + '">' + esc(Cashbook.catLabel(c)) + '</option>';
                   }).join('') + '</select></label>' +
-              '<label class="field mt"><span>' + t('mn_amount') + '</span>' +
-                '<input class="inp num" id="mnAmt" type="number" min="1"></label>' +
-              '<label class="field mt"><span>' + t('payment') + '</span>' +
-                '<select class="inp" id="mnMethod">' +
-                  ['cash', 'sham', 'fuad', 'card'].map(function (m) {
-                    return '<option value="' + m + '">' + esc(DB.payLabel(m)) + '</option>';
+              '<div class="cb-pair">' +
+                '<label class="field"><span>' + t('cb_currency') + '</span><select class="inp" id="mnCur">' +
+                  curs.map(function (c) {
+                    return '<option value="' + c + '"' + (c === base() ? ' selected' : '') + '>' + c + '</option>';
                   }).join('') + '</select></label>' +
+                '<label class="field"><span>' + t('mn_amount') + '</span>' +
+                  '<input class="inp num" id="mnAmt" type="text" inputmode="decimal" dir="ltr" autocomplete="off"></label>' +
+              '</div>' +
+              '<label class="field mt"><span>' + t('mn_paid_from') + '</span>' +
+                (places.length
+                  ? '<select class="inp" id="mnPlace">' + places.map(function (p) {
+                      return '<option value="' + esc(p.id) + '">' + esc(Cashbook.placeName(p.id)) + '</option>';
+                    }).join('') + '</select>'
+                  : '<select class="inp" id="mnMethod">' + debtMethods().map(function (m) {
+                      return '<option value="' + esc(m) + '">' + esc(DB.payLabel(m)) + '</option>';
+                    }).join('') + '</select>') +
+              '</label>' +
+              '<label class="field mt"><span>' + t('date') + '</span>' +
+                '<input class="inp" id="mnDate" type="date" dir="ltr" max="' + todayYmd() + '" value="' + todayYmd() + '"></label>' +
               '<label class="field mt"><span>' + t('note') + '</span>' +
-                '<input class="inp" id="mnNote" type="text"></label>' +
+                '<input class="inp" id="mnNote" type="text" maxlength="300"></label>' +
               '<div class="partner-note mt">' + t('mn_expense_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-mn="add-expense-go">' + t('save') + '</button>'
@@ -385,13 +481,22 @@ var Money = (function () {
     },
 
     'add-expense-go': function () {
-      var amt = parseInt((document.getElementById('mnAmt') || {}).value, 10);
+      var cur = (document.getElementById('mnCur') || {}).value || base();
+      var amt = toMinor((document.getElementById('mnAmt') || {}).value, cur);
       if (!amt || amt <= 0) { toast(t('mn_add_expense'), t('mn_amount_needed'), 'warn'); return; }
+      var place = (document.getElementById('mnPlace') || {}).value || null;
+      var ymd = (document.getElementById('mnDate') || {}).value || '';
       var body = {
         category: (document.getElementById('mnCat') || {}).value,
         amount: amt,
-        method: (document.getElementById('mnMethod') || {}).value,
-        note: (document.getElementById('mnNote') || {}).value
+        currency: cur,
+        place: place,
+        method: place ? null : (document.getElementById('mnMethod') || {}).value,
+        note: (document.getElementById('mnNote') || {}).value,
+        /* A LOCAL day. Today stays "now" so the order of today's rows is the
+           order they happened; an earlier day is that day's noon, which no
+           time zone can push into the next or previous date. */
+        at: !ymd || ymd === todayYmd() ? null : new Date(ymd + 'T12:00:00').toISOString()
       };
       Shop.write(
         function () { return Shop.addExpense(body); },
@@ -401,55 +506,82 @@ var Money = (function () {
           closeModal();
           render();
           if (!e) return;
-          /* shift_id from the server, shiftId from the local mirror — the
-             same fact under two spellings, because this is the one toast
-             that reads a field the server named. */
-          var fromDrawer = e.shiftId || e.shift_id;
-          toast(t('mn_c_' + e.category), money(e.amount) +
-            (fromDrawer ? ' · ' + t('mn_from_drawer') : ''), 'ok', 3200);
+          toast(Cashbook.catLabel(e.category), inCurText(e.amount, e.currency || cur) +
+            ' · ' + Cashbook.placeName(e.place || place || 'drawer'), 'ok', 3600);
         }
       );
+    },
+
+    'void-expense': function (el) {
+      var id = el.getAttribute('data-id');
+      var e = DB.expenses.filter(function (x) { return x.id === id; })[0];
+      if (!e) return;
+      openModal({
+        title: t('mn_void') + ' · ' + esc(id), size: 'narrow',
+        body: '<p>' + esc(Cashbook.catLabel(e.category)) + ' · <b>' + inCur(e.amount, e.currency) + '</b> · ' +
+                esc(fmtDate(e.at)) + '</p>' +
+              '<p class="muted small">' + t('mn_void_hint') + '</p>' +
+              '<label class="field mt"><span>' + t('mn_void_why') + '</span>' +
+                '<input class="inp" id="mnWhy" type="text" maxlength="200"></label>',
+        foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+              '<button class="btn btn-danger" data-mn="void-expense-go" data-id="' + esc(id) + '">' + t('mn_void') + '</button>'
+      });
+    },
+
+    'void-expense-go': function (el) {
+      var id = el.getAttribute('data-id');
+      var why = (document.getElementById('mnWhy') || {}).value || null;
+      Shop.write(function () { return Shop.voidExpense(id, why); }, null, function () {
+        closeModal();
+        toast(id, t('mn_voided_toast'), 'ok', 3200);
+      });
     },
 
     settle: function (el) {
       var s = DB.sale(el.getAttribute('data-id'));
       if (!s) return;
       var bal = DB.debtBalance(s);
+      var cur = s.currency || base();
       openModal({
         title: t('mn_settle') + ' · ' + esc(s.customerName), size: 'narrow',
         body: '<div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">' +
                 '<div class="stat"><span class="eyebrow">' + t('total') + '</span>' +
-                  '<div class="val" style="font-size:17px">' + money(s.total) + '</div></div>' +
+                  '<div class="val" style="font-size:17px">' + inCur(s.total, cur) + '</div></div>' +
                 '<div class="stat"><span class="eyebrow">' + t('mn_still_owed') + '</span>' +
-                  '<div class="val warn" style="font-size:17px">' + money(bal) + '</div></div>' +
+                  '<div class="val warn" style="font-size:17px">' + inCur(bal, cur) + '</div></div>' +
               '</div>' +
-              '<label class="field mt"><span>' + t('yi_amount') + '</span>' +
-                '<input class="inp num" id="mnPay" type="number" min="1" max="' + bal + '" value="' + bal + '"></label>' +
+              /* In the debt's own currency: the server refuses any other, and a
+                 dollar debt is typed in dollars ("12,50"), never in cents. */
+              '<label class="field mt"><span>' + t('yi_amount') + ' · ' + esc(cur) + '</span>' +
+                '<input class="inp num" id="mnPay" type="text" inputmode="decimal" dir="ltr" value="' +
+                  esc(cur === 'USD' ? (bal / 100).toFixed(2) : String(bal)) + '"></label>' +
               '<label class="field mt"><span>' + t('payment') + '</span>' +
                 '<select class="inp" id="mnPayMethod">' +
-                  ['cash', 'sham', 'fuad', 'card'].map(function (m) {
-                    return '<option value="' + m + '">' + esc(DB.payLabel(m)) + '</option>';
+                  debtMethods().map(function (m) {
+                    return '<option value="' + esc(m) + '">' + esc(DB.payLabel(m)) + '</option>';
                   }).join('') + '</select></label>' +
               '<div class="partner-note mt">' + t('mn_settle_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
-              '<button class="btn btn-primary" data-mn="settle-go" data-id="' + s.id + '">' + t('save') + '</button>'
+              '<button class="btn btn-primary" data-mn="settle-go" data-id="' + s.id + '" data-op="' +
+                'dp-' + s.id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '">' + t('save') + '</button>'
       });
     },
 
     'settle-go': function (el) {
       var id = el.getAttribute('data-id');
-      var amt = parseInt((document.getElementById('mnPay') || {}).value, 10);
+      var sale = DB.sale(id);
+      var cur = (sale && sale.currency) || base();
+      var amt = toMinor((document.getElementById('mnPay') || {}).value, cur);
       var method = (document.getElementById('mnPayMethod') || {}).value;
-      /* Money across the counter, and the one write here that carries an
-         opId. A till that loses wifi mid-request does not know whether the
-         payment landed, and tapping Save again must not clear the debt twice
-         on one payment. The server recomputes the balance too — checked here
-         it is only a courtesy, and two devices settling the same debt both
-         pass a check made on screen. */
-      var opId = 'dp-' + id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      if (!amt) { toast(t('mn_settle'), t('mn_amount_needed'), 'warn'); return; }
+      /* Money across the counter, so it carries an opId — minted when the
+         dialog opened, so a second press of Save on a stalled line is the
+         same payment rather than a second one. The server recomputes the
+         balance too; checked here it is only a courtesy. */
+      var opId = el.getAttribute('data-op');
       Shop.write(
         function () {
-          return Shop.payDebt({ saleId: id, amount: amt, method: method, opId: opId });
+          return Shop.payDebt({ saleId: id, amount: amt, method: method, currency: cur, opId: opId });
         },
         function () {
           if (!DB.payDebt(id, amt, method)) return null;
@@ -459,11 +591,11 @@ var Money = (function () {
           if (!res) { toast(t('mn_settle'), t('yi_bad_amount'), 'err'); return; }
           closeModal();
           render();
-          var sale = DB.sale(id);
+          var s2 = DB.sale(id);
           var left = res.payment ? res.payment.balance
-                                 : (sale ? DB.debtBalance(sale) : 0);
-          toast(esc(sale ? sale.customerName : id), money(amt) + ' · ' +
-            (left ? t('mn_part_paid') + ' ' + money(left) : t('mn_cleared')),
+                                 : (s2 ? DB.debtBalance(s2) : 0);
+          toast(s2 ? s2.customerName : id, inCurText(amt, cur) + ' · ' +
+            (left ? t('mn_part_paid') + ' ' + inCurText(left, cur) : t('mn_cleared')),
             'ok', 4000);
         }
       );
@@ -475,6 +607,11 @@ var Money = (function () {
       if (!s || !s.customerId) return;
       var c = DB.customer(s.customerId);
       var bal = DB.debtBalance(s);
+      var cur = s.currency || base();
+      var owed = function (ar) {
+        if (cur === base()) return WA.cash(bal, ar);
+        return (typeof Desk !== 'undefined' && Desk.moneyText) ? Desk.moneyText(bal, cur) : nf(bal) + ' ' + cur;
+      };
       /* Both languages, like every WhatsApp message (WA.both). */
       var part = function (ar) {
         return [
@@ -482,7 +619,7 @@ var Money = (function () {
           '',
           ar ? 'تذكير ودّي بخصوص الفاتورة *' + s.id + '* بتاريخ ' + WA.day(s.date, true) + '.'
              : 'A friendly reminder about invoice *' + s.id + '* from ' + WA.day(s.date, false) + '.',
-          (ar ? '💰 المتبقّي: *' : '💰 Still to pay: *') + WA.cash(bal, ar) + '*',
+          (ar ? '💰 المتبقّي: *' : '💰 Still to pay: *') + owed(ar) + '*',
           '',
           (ar ? 'شكراً لك 🖤' : 'Thank you 🖤'),
           '— ' + CONFIG.SHOP_NAME
@@ -492,7 +629,7 @@ var Money = (function () {
         title: t('mn_remind') + ' · ' + esc(c.name),
         to: c.phone, name: c.name, kind: 'debt-reminder',
         text: WA.both(part(true), part(false)),
-        note: t('mn_age') + ' ' + DB.daysSince(s.date) + t('yl_d') + ' · ' + money(bal)
+        note: t('mn_age') + ' ' + DB.daysSince(s.date) + t('yl_d') + ' · ' + inCurText(bal, cur)
       });
     }
   };
@@ -512,39 +649,69 @@ var Money = (function () {
 
   /* Each tab exports itself. */
   function exportSpec() {
+    if (S.tab === 'book') return Cashbook.exportSpec();
+    if (S.tab === 'close') return Cashbook.closeExportSpec();
+    if (S.tab === 'suppliers' || S.tab === 'salaries') return Payables.exportSpec(S.tab);
+    if (S.tab === 'statement') return Statement.exportSpec();
+    if (S.tab === 'now') {
+      var c = DB.cash;
+      var ps = c ? c.places : [];
+      return {
+        name: 'money-now', sheet: 'Where the money is', title: t('cb_now'),
+        subtitle: fmtDate(new Date()),
+        columns: [{ label: t('cb_col_place'), width: 28 }, { label: t('cb_col_kind') },
+                  { label: 'SYP', money: 'SYP' }, { label: 'USD', money: 'USD' },
+                  { label: t('cb_checked'), date: true }],
+        rows: ps.map(function (p) {
+          var b = p.balances || {};
+          return [Cashbook.placeName(p.id), t('cb_kind_' + p.kind),
+                  b.SYP === undefined ? null : b.SYP,
+                  b.USD === undefined ? null : b.USD / 100,
+                  p.lastCheck ? new Date(p.lastCheck) : null];
+        }),
+        totals: [t('total'), null,
+                 c && c.totals.SYP !== undefined ? c.totals.SYP : null,
+                 c && c.totals.USD !== undefined ? c.totals.USD / 100 : null, null]
+      };
+    }
     if (S.tab === 'debt') {
       var d = DB.debts();
       return {
         name: 'debt-book', sheet: 'Debts', title: t('mn_debt'),
         subtitle: money(DB.debtTotal()) + ' · ' + fmtDate(TODAY),
         columns: [{ label: t('customer'), width: 26 }, { label: t('invoice') }, { label: t('date') },
-                  { label: exCol(t('total')), num: true }, { label: exCol(t('yi_paid')), num: true },
-                  { label: exCol(t('mn_still_owed')), num: true }, { label: t('mn_age'), num: true }],
+                  { label: 'SYP', money: 'SYP' }, { label: 'USD', money: 'USD' },
+                  { label: t('yi_paid') }, { label: t('mn_age'), num: true }],
         rows: d.map(function (x) {
-          return [x.name, x.sale.id, fmtDate(x.sale.date), exMoney(x.total),
-                  exMoney(x.paid), exMoney(x.balance), x.age];
+          var whole = x.balance / (x.currency === 'USD' ? 100 : 1);
+          return [x.name, x.sale.id, fmtDate(x.sale.date),
+                  x.currency === 'USD' ? null : whole,
+                  x.currency === 'USD' ? whole : null,
+                  x.paid ? inCurText(x.paid, x.currency) : '', x.age];
         }),
-        totals: [t('total'), null, null, null, null, exMoney(DB.debtTotal()), null],
+        totals: [t('total'), null, null, DB.debtTotal('SYP'), DB.debtTotal('USD') / 100, null, null],
         kpis: [{ label: t('mn_owed_total'), value: money(DB.debtTotal()) },
                { label: t('mn_people'), value: String(d.length) }]
       };
     }
     if (S.tab === 'expenses') {
-      var p = DB.netProfit(0);
+      var live = DB.expenses.filter(function (e) { return !e.voided; });
       return {
         name: 'expenses', sheet: 'Expenses', title: t('mn_expenses'),
         subtitle: fmtDate(TODAY),
         columns: [{ label: t('date') }, { label: t('mn_category') }, { label: t('note'), width: 30 },
-                  { label: t('payment') }, { label: exCol(t('mn_amount')), num: true }],
-        rows: DB.expenses.map(function (e) {
-          return [fmtDate(e.at), t('mn_c_' + e.category), e.note,
-                  DB.payLabel(e.method), exMoney(e.amount)];
+                  { label: t('mn_paid_from') },
+                  { label: 'SYP', money: 'SYP' }, { label: 'USD', money: 'USD' }],
+        rows: live.map(function (e) {
+          var whole = e.amount / (e.currency === 'USD' ? 100 : 1);
+          return [fmtDate(e.at), Cashbook.catLabel(e.category), e.note,
+                  e.place ? Cashbook.placeName(e.place) : DB.payLabel(e.method),
+                  e.currency === 'USD' ? null : whole, e.currency === 'USD' ? whole : null];
         }),
         totals: [t('total'), null, null, null,
-                 exMoney(DB.expenses.reduce(function (a, e) { return a + e.amount; }, 0))],
-        kpis: [{ label: t('mn_gross'), value: money(p.gross) },
-               { label: t('mn_exp_month'), value: money(p.expenses) },
-               { label: t('mn_net'), value: money(p.net) }]
+                 live.reduce(function (a, e) { return e.currency === 'USD' ? a : a + e.amount; }, 0),
+                 live.reduce(function (a, e) { return e.currency === 'USD' ? a + e.amount / 100 : a; }, 0)],
+        kpis: [{ label: t('mn_exp_month'), value: money(DB.expensesInMonth(0)) }]
       };
     }
     var s = DB.currentShift();

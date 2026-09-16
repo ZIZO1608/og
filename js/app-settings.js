@@ -340,7 +340,8 @@ function saveRolePermissions(role) {
    [ id, group ]. Audience is implied by the `yl_` prefix, which is also what
    the partner's own copy of this list filters on. */
 var REMINDER_RULES = [
-  ['og_digest', 'day'], ['day_close', 'day'], ['shift_open', 'day'], ['cash_variance', 'day'],
+  ['og_digest', 'day'], ['day_close', 'day'], ['shift_open', 'day'], ['day_uncounted', 'day'],
+  ['cash_variance', 'day'],
   ['stock_out', 'stock'], ['stock_critical', 'stock'],
   ['floor_empty', 'stock'], ['reorder_due', 'stock'],
   ['size_run_broken', 'stock'], ['dead_stock', 'stock'],
@@ -357,7 +358,7 @@ var REMINDER_RULES = [
    Hours are 0-23 in the SHOP's clock, not the browser's. */
 var REMINDER_NUMS = {
   day:   [['og_digest_hour', 0, 23], ['day_close_hour', 0, 23], ['shift_open_hour', 0, 23],
-          ['variance_min', 0, 99999999]],
+          ['day_count_hour', 0, 23], ['variance_min', 0, 99999999], ['variance_min_usd', 0, 99999999]],
   stock: [['stock_repeat_days', 1, 365], ['cover_weeks', 1, 52], ['dead_days', 7, 730]],
   print: [['order_wait_hours', 1, 168], ['unread_hours', 1, 168],
           /* delivery_stuck_hours belongs to the PRINT rule job_stuck, not to
@@ -1248,6 +1249,9 @@ function viewSettings() {
   h += setSection(t('setg_shop'));
   h += brandingCard();
   h += rateCard();
+  /* The owner's own places for the cash book (053) — a safe, a bank. It
+     gates itself on config.write. */
+  if (typeof Cashbook !== 'undefined') h += Cashbook.settingsCard();
   h += loyaltyCard();
   h += customersCard();
 

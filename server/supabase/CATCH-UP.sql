@@ -638,3 +638,102 @@ ALTER TABLE sections ADD COLUMN IF NOT EXISTS placement TEXT NOT NULL DEFAULT 'w
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS x_cm    INTEGER;
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS y_cm    INTEGER;
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS rot_deg INTEGER;
+
+-- ===== 021_cash_book.sql =====  (local 053: where every lira and dollar is)
+
+CREATE TABLE IF NOT EXISTS money_moves (
+  id         BIGINT PRIMARY KEY,
+  at         TIMESTAMPTZ NOT NULL,
+  place      TEXT NOT NULL,
+  currency   TEXT NOT NULL REFERENCES currencies(code),
+  amount     BIGINT NOT NULL,
+  kind       TEXT NOT NULL,
+  fx_rate    DOUBLE PRECISION NOT NULL,
+  pair_id    BIGINT,
+  ref_type   TEXT,
+  ref_id     TEXT,
+  note       TEXT,
+  user_id    BIGINT,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_money_moves_place ON money_moves (place, currency, at);
+CREATE INDEX IF NOT EXISTS idx_money_moves_ref   ON money_moves (ref_type, ref_id);
+
+ALTER TABLE money_moves ENABLE ROW LEVEL SECURITY;
+
+-- ===== 022_day_close.sql =====  (local 054: closing the day)
+
+CREATE TABLE IF NOT EXISTS day_closes (
+  id             TEXT PRIMARY KEY,
+  day            TEXT NOT NULL,
+  status         TEXT NOT NULL DEFAULT 'counted',
+  counted_by     BIGINT,
+  counted_name   TEXT,
+  counted_at     TIMESTAMPTZ NOT NULL,
+  note           TEXT,
+  confirmed_by   BIGINT,
+  confirmed_name TEXT,
+  confirmed_at   TIMESTAMPTZ,
+  owner_note     TEXT,
+  created_at     TIMESTAMPTZ NOT NULL,
+  updated_at     TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS day_close_lines (
+  close_id  TEXT   NOT NULL REFERENCES day_closes(id) ON DELETE CASCADE,
+  currency  TEXT   NOT NULL REFERENCES currencies(code),
+  counted   BIGINT NOT NULL,
+  expected  BIGINT NOT NULL,
+  taken     BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (close_id, currency)
+);
+
+CREATE INDEX IF NOT EXISTS idx_day_closes_day ON day_closes (day);
+
+ALTER TABLE day_closes      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE day_close_lines ENABLE ROW LEVEL SECURITY;
+
+-- ===== 023_payables.sql =====  (local 055: paying suppliers and staff)
+
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS pay_day INTEGER;
+
+CREATE TABLE IF NOT EXISTS supplier_ledger (
+  id            BIGINT PRIMARY KEY,
+  supplier_id   BIGINT NOT NULL REFERENCES suppliers(id),
+  at            TIMESTAMPTZ NOT NULL,
+  kind          TEXT NOT NULL,
+  amount        BIGINT NOT NULL,
+  currency      TEXT NOT NULL REFERENCES currencies(code),
+  paid_amount   BIGINT,
+  paid_currency TEXT,
+  fx_rate       DOUBLE PRECISION NOT NULL,
+  place         TEXT,
+  reverses_id   BIGINT,
+  ref_type      TEXT,
+  ref_id        TEXT,
+  note          TEXT,
+  user_id       BIGINT,
+  created_at    TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_supplier_ledger_who ON supplier_ledger (supplier_id, at);
+
+CREATE TABLE IF NOT EXISTS salary_payments (
+  id           BIGINT PRIMARY KEY,
+  employee_id  BIGINT NOT NULL REFERENCES employees(id),
+  month        TEXT NOT NULL,
+  kind         TEXT NOT NULL,
+  amount       BIGINT NOT NULL,
+  currency     TEXT NOT NULL REFERENCES currencies(code),
+  fx_rate      DOUBLE PRECISION NOT NULL,
+  place        TEXT,
+  reverses_id  BIGINT,
+  at           TIMESTAMPTZ NOT NULL,
+  note         TEXT,
+  user_id      BIGINT,
+  created_at   TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_salary_payments_who ON salary_payments (employee_id, month);
+
+ALTER TABLE supplier_ledger ENABLE ROW LEVEL SECURITY;
+ALTER TABLE salary_payments ENABLE ROW LEVEL SECURITY;

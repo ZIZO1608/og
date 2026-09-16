@@ -209,6 +209,10 @@ var Shop = (function () {
       if (typeof CONFIG !== 'undefined') {
         CONFIG.LABEL_TEMPLATES = (r.labelTemplates && r.labelTemplates.templates) || [];
       }
+      /* Panels that fetch their own figures (the payroll month, the
+         statement) compare against this: anything they hold from before the
+         shop last reloaded — which every write does — is stale. */
+      loadedAt = Date.now();
       return DB;
     });
   }
@@ -339,6 +343,7 @@ var Shop = (function () {
      inside it. Two taps would be two transfers, and unlike a sale there is no
      opId to make the repeat harmless. */
   var busy = false;
+  var loadedAt = 0;
 
   /* Every write in the app goes through here.
 
@@ -396,6 +401,7 @@ var Shop = (function () {
 
   return {
     load: load,
+    loadedAt: function () { return loadedAt; },
     steps: steps,
     mirrorStatus: mirrorStatus,
     reload: reload,
@@ -481,7 +487,7 @@ var Shop = (function () {
     payInvoice:    function (id, body)    { return API.post('/api/partner-invoices/' + id + '/payments', body); },
     /* The other half of the payment handshake: the side that did not record
        it says the money arrived. */
-    confirmPayment: function (id, pid)    { return API.post('/api/partner-invoices/' + id + '/payments/' + pid + '/confirm', {}); },
+    confirmPayment: function (id, pid, body) { return API.post('/api/partner-invoices/' + id + '/payments/' + pid + '/confirm', body || {}); },
     reviewJob:     function (id, body)    { return API.post('/api/print-jobs/' + id + '/review', body); },
     /* Has anything moved for my side? Polled, so it is one tiny read. */
     pulse:         function ()            { return API.get('/api/partner/pulse'); },
@@ -530,7 +536,54 @@ var Shop = (function () {
     openShift:   function (body)      { return API.post('/api/shifts', body); },
     closeShift:  function (id, count) { return API.post('/api/shifts/' + id + '/close', { counted: count }); },
     addExpense:  function (body)      { return API.post('/api/expenses', body); },
+    /* Undone as a row in the cash book, never deleted. */
+    voidExpense: function (id, reason) {
+      return API.post('/api/expenses/' + encodeURIComponent(id) + '/void', { reason: reason || null });
+    },
     payDebt:     function (body)      { return API.post('/api/debt-payments', body); },
+
+    /* ---- the cash book (053) ----
+       Where every lira and dollar is. Every write carries the caller's opId,
+       minted once when the dialog opened, so a retry moves the money once. */
+    cashBook: function (q) {
+      var parts = [];
+      Object.keys(q || {}).forEach(function (k) {
+        if (q[k] !== '' && q[k] !== null && q[k] !== undefined) {
+          parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(q[k]));
+        }
+      });
+      return API.get('/api/cash/book' + (parts.length ? '?' + parts.join('&') : ''));
+    },
+    cashTransfer: function (body) { return API.post('/api/cash/transfer', body); },
+    cashExchange: function (body) { return API.post('/api/cash/exchange', body); },
+    cashOwner:    function (body) { return API.post('/api/cash/owner', body); },
+    cashCheck:    function (body) { return API.post('/api/cash/check', body); },
+
+    /* ---- closing the day (054) ----
+       Read when the tab opens, not at boot: a cashier carries no money
+       bundle, and a count is judged against the drawer as it is now. */
+    dayClose:   function ()         { return API.get('/api/day-close'); },
+    dayCount:   function (body)     { return API.post('/api/day-close/count', body); },
+    dayConfirm: function (id, body) { return API.post('/api/day-close/' + encodeURIComponent(id) + '/confirm', body); },
+    dayCancel:  function (id)       { return API.post('/api/day-close/' + encodeURIComponent(id) + '/cancel', {}); },
+
+    /* ---- paying suppliers and staff (055) ---- */
+    supplierLedger: function (id)       { return API.get('/api/suppliers/' + id + '/ledger'); },
+    paySupplier:    function (id, body) { return API.post('/api/suppliers/' + id + '/payments', body); },
+    adjustSupplier: function (id, body) { return API.post('/api/suppliers/' + id + '/ledger', body); },
+    voidSupplierPay: function (ledgerId, reason) {
+      return API.post('/api/supplier-ledger/' + ledgerId + '/void', { reason: reason || null });
+    },
+    payroll:       function (month) { return API.get('/api/payroll' + (month ? '?month=' + encodeURIComponent(month) : '')); },
+    payStaff:      function (body)  { return API.post('/api/payroll', body); },
+    voidStaffPay:  function (id, reason) { return API.post('/api/payroll/' + id + '/void', { reason: reason || null }); },
+    staffLogins:   function ()      { return API.get('/api/users'); },
+
+    /* ---- the month's statement ---- */
+    statement:     function (month) {
+      return API.get('/api/statement?month=' + encodeURIComponent(month || '') +
+                     '&tz=' + (-new Date().getTimezoneOffset()));
+    },
 
     /* ---- the count sheet ---- */
     startCount:     function (body)      { return API.post('/api/stock-counts', body); },

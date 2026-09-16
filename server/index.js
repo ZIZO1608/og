@@ -42,6 +42,10 @@ import * as Alerts from './lib/alerts.js';
 import * as Dashboard from './lib/dashboard.js';
 import * as Reports from './lib/reports.js';
 import * as Money from './lib/money.js';
+import * as Cash from './lib/cashbook.js';
+import * as DayClose from './lib/dayclose.js';
+import * as Payables from './lib/payables.js';
+import * as Statement from './lib/statement.js';
 import * as Counts from './lib/counts.js';
 import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
@@ -1551,10 +1555,137 @@ router.add('GET /api/money', requirePerm('money.read', (ctx) => {
 function moneyFail(res, e) {
   const status = e.code === 'not_found' ? 404
                : ['already_open', 'already_closed', 'already_settled',
-                  'overpaid', 'voided', 'bad_status'].includes(e.code) ? 409
+                  'overpaid', 'voided', 'bad_status', 'already_voided', 'place_used',
+                  'take_too_much'].includes(e.code) ? 409
                : 400;
   sendError(res, status, e.code || 'invalid', e.message);
 }
+
+/* ------------------------------------------------------------ the cash book
+   Where every lira and dollar is (053, lib/cashbook.js). Reading is the money
+   screen's permission; every write here says where the SHOP's money went and
+   none of them is a sale, so they are money.move — the manager's. Each carries
+   an opId: a Move tapped twice on a stalled connection must move once. */
+
+router.add('GET /api/cash', requirePerm('money.read', (ctx) => {
+  sendOk(ctx.res, Cash.snapshot());
+}));
+
+router.add('GET /api/cash/book', requirePerm('money.read', (ctx) => {
+  const u = new URL(ctx.req.url, 'http://x');
+  const q = (k) => u.searchParams.get(k) || null;
+  sendOk(ctx.res, Cash.book({
+    place: q('place'), kind: q('kind'), from: q('from'), to: q('to'),
+    limit: Number(q('limit')) || 200
+  }));
+}));
+
+const cashStr = (v) => (typeof v === 'string' && v ? v : null);
+
+router.add('POST /api/cash/transfer', requirePerm('money.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Cash.transfer({
+      from: cashStr(b.from), to: cashStr(b.to), currency: cashStr(b.currency),
+      amount: Number(b.amount), fee: Number(b.fee) || 0, note: cashStr(b.note),
+      opId: cashStr(b.opId), userId: ctx.user.id
+    }));
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+router.add('POST /api/cash/exchange', requirePerm('money.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  const side = (v) => ({ currency: cashStr(v && v.currency), amount: Number(v && v.amount) });
+  try {
+    const out = Cash.exchange({
+      place: cashStr(b.place), toPlace: cashStr(b.toPlace), give: side(b.give), get: side(b.get),
+      /* Setting the shop's rate is a Settings decision, so it takes that
+         permission too — money.move alone records the exchange. */
+      setRate: !!b.setRate && Auth.can(ctx.user, 'config.write'),
+      note: cashStr(b.note), opId: cashStr(b.opId), userId: ctx.user.id
+    });
+    sendOk(ctx.res, out);
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+router.add('POST /api/cash/owner', requirePerm('money.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Cash.ownerMove({
+      direction: b.direction, place: cashStr(b.place) || 'owner', currency: cashStr(b.currency),
+      amount: Number(b.amount), note: cashStr(b.note), opId: cashStr(b.opId), userId: ctx.user.id
+    }));
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+router.add('POST /api/cash/check', requirePerm('money.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Cash.check({
+      place: cashStr(b.place), currency: cashStr(b.currency), counted: b.counted,
+      note: cashStr(b.note), opId: cashStr(b.opId), userId: ctx.user.id
+    }));
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+/* ------------------------------------------------------- closing the day
+   (054, lib/dayclose.js). THE COUNT IS BLIND ON THE SERVER, not only on the
+   screen: an account that may count but not confirm is never sent what the
+   book expects, or the difference — in the answer to its own count, or in
+   the list. A hidden figure in the browser is one devtools away. */
+const seesDrawer = (user) => Auth.can(user, 'money.move');
+const shapeClose = (c, user) => (!c ? null : seesDrawer(user) ? c : DayClose.blind(c));
+
+router.add('GET /api/day-close', requirePerm(['money.count', 'money.move'], (ctx) => {
+  sendOk(ctx.res, {
+    open: shapeClose(DayClose.open(), ctx.user),
+    /* The history is the owner's: it is a list of how short people were. */
+    recent: seesDrawer(ctx.user) ? DayClose.recent({ limit: 30 }) : [],
+    day: DayClose.dayKey(DB.get())
+  });
+}));
+
+router.add('POST /api/day-close/count', requirePerm('money.count', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const out = DayClose.count({
+      counted: b.counted && typeof b.counted === 'object' ? b.counted : {},
+      note: cashStr(b.note), opId: cashStr(b.opId),
+      userId: ctx.user.id, userName: ctx.user.name
+    });
+    sendOk(ctx.res, { close: shapeClose(out.close, ctx.user), recount: !!out.recount, replayed: !!out.replayed });
+  } catch (e) {
+    if (e.code === 'count_all') {
+      return sendErrorDetail(ctx.res, 400, e.code, e.message, { missing: e.missing || [] });
+    }
+    moneyFail(ctx.res, e);
+  }
+}));
+
+router.add('POST /api/day-close/:id/confirm', requirePerm('money.move', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const out = DayClose.confirm(ctx.params.id, {
+      taken: b.taken && typeof b.taken === 'object' ? b.taken : {},
+      ownerNote: cashStr(b.ownerNote), opId: cashStr(b.opId),
+      userId: ctx.user.id, userName: ctx.user.name
+    });
+    sendOk(ctx.res, { close: out.close, replayed: !!out.replayed });
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+router.add('POST /api/day-close/:id/cancel', requirePerm('money.move', (ctx) => {
+  try { sendOk(ctx.res, { close: DayClose.cancel(ctx.params.id, { userId: ctx.user.id }) }); }
+  catch (e) { moneyFail(ctx.res, e); }
+}));
+
+/* The owner's own places — a safe, a bank. Settings, so config.write. */
+router.add('PUT /api/cash/places', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { places: Cash.savePlaces(b.places) });
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
 
 /* Whose name goes on the drawer is the account opening it, not a dropdown.
    "Who was on the till" is an accountability record, and a picker lets
@@ -1593,8 +1724,21 @@ router.add('POST /api/expenses', requirePerm('money.write', async (ctx) => {
     sendOk(ctx.res, {
       expense: Money.addExpense({
         category: b.category, amount: Number(b.amount), method: b.method,
+        place: typeof b.place === 'string' && b.place ? b.place : null,
         note: b.note || null, at: b.at || null, currency: b.currency || null,
         userId: ctx.user.id
+      })
+    });
+  } catch (e) { moneyFail(ctx.res, e); }
+}));
+
+/* A wrong expense, undone as a row in the cash book — never deleted. */
+router.add('POST /api/expenses/:id/void', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, {
+      expense: Money.voidExpense(ctx.params.id, {
+        reason: typeof b.reason === 'string' ? b.reason : null, userId: ctx.user.id
       })
     });
   } catch (e) { moneyFail(ctx.res, e); }
@@ -1667,12 +1811,96 @@ router.add('POST /api/stock-counts/:id/cancel', requirePerm('stock.count', async
    inside /api/partner, which is gated on print.read — so revoking that from
    a manager silently emptied the supplier list and the payroll, with no
    error to explain it. One list, one permission, one place. */
+/* 055: through lib/payables.js — what is owed comes with the ledger's own
+   sums, and a pay day is derived from what has actually been paid. */
 router.add('GET /api/suppliers', requirePerm('money.read', (ctx) => {
-  sendOk(ctx.res, { suppliers: Partner.suppliers() });
+  sendOk(ctx.res, { suppliers: Payables.suppliers() });
 }));
 
 router.add('GET /api/employees', requirePerm('staff.read', (ctx) => {
-  sendOk(ctx.res, { employees: Partner.employees() });
+  sendOk(ctx.res, { employees: Payables.employees() });
+}));
+
+/* ---------------------------------------------- paying suppliers and staff
+   Every payment moves money out of a cash-book place, so it carries an opId
+   and the permission that says money may be moved. */
+function payFail(res, e) {
+  if (e.code === 'more_than_owed') {
+    return sendErrorDetail(res, 409, e.code, e.message, { left: e.left ?? null, currency: e.currency ?? null });
+  }
+  const status = e.code === 'not_found' ? 404
+               : ['already_voided', 'already_opened', 'currency_locked'].includes(e.code) ? 409
+               : 400;
+  sendError(res, status, e.code || 'invalid', e.message);
+}
+
+router.add('GET /api/suppliers/:id/ledger', requirePerm('money.read', (ctx) => {
+  const s = Payables.supplier(Number(ctx.params.id));
+  if (!s) return sendError(ctx.res, 404, 'not_found', 'No such supplier.');
+  sendOk(ctx.res, { supplier: s, ledger: Payables.ledger(s.id, { limit: 300 }) });
+}));
+
+router.add('POST /api/suppliers/:id/payments', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Payables.paySupplier({
+      supplierId: Number(ctx.params.id), amount: Number(b.amount), currency: cashStr(b.currency),
+      place: cashStr(b.place), note: cashStr(b.note), opId: cashStr(b.opId), userId: ctx.user.id
+    }));
+  } catch (e) { payFail(ctx.res, e); }
+}));
+
+router.add('POST /api/suppliers/:id/ledger', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Payables.adjustSupplier({
+      supplierId: Number(ctx.params.id), kind: cashStr(b.kind), amount: Number(b.amount),
+      note: cashStr(b.note), opId: cashStr(b.opId), userId: ctx.user.id
+    }));
+  } catch (e) { payFail(ctx.res, e); }
+}));
+
+router.add('POST /api/supplier-ledger/:id/void', requirePerm('money.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Payables.voidSupplierPayment(Number(ctx.params.id), {
+      reason: cashStr(b.reason), userId: ctx.user.id
+    }));
+  } catch (e) { payFail(ctx.res, e); }
+}));
+
+router.add('GET /api/payroll', requirePerm('staff.read', (ctx) => {
+  const u = new URL(ctx.req.url, 'http://x');
+  try { sendOk(ctx.res, Payables.payroll({ month: u.searchParams.get('month') || null })); }
+  catch (e) { payFail(ctx.res, e); }
+}));
+
+/* staff.write for the payroll, and money.write as well when the entry moves
+   money — an advance or a salary leaves a cash-book place. */
+router.add('POST /api/payroll', requirePerm('staff.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  if (Payables.MOVES_MONEY(b.kind) && !Auth.can(ctx.user, 'money.write')) {
+    return sendError(ctx.res, 403, 'forbidden', 'Paying a salary needs the right to record money.');
+  }
+  try {
+    sendOk(ctx.res, Payables.payStaff({
+      employeeId: Number(b.employeeId), month: cashStr(b.month), kind: cashStr(b.kind),
+      amount: Number(b.amount), place: cashStr(b.place), note: cashStr(b.note),
+      opId: cashStr(b.opId), userId: ctx.user.id
+    }));
+  } catch (e) { payFail(ctx.res, e); }
+}));
+
+router.add('POST /api/payroll/:id/void', requirePerm('staff.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  if (!Auth.can(ctx.user, 'money.write')) {
+    return sendError(ctx.res, 403, 'forbidden', 'Undoing a payment needs the right to record money.');
+  }
+  try {
+    sendOk(ctx.res, Payables.voidStaffPayment(Number(ctx.params.id), {
+      reason: cashStr(b.reason), userId: ctx.user.id
+    }));
+  } catch (e) { payFail(ctx.res, e); }
 }));
 
 /* ------------------------------------------------------------------ bell
@@ -1751,6 +1979,22 @@ router.add('GET /api/reports', requirePerm('report.read', (ctx) => {
   const range = Reports.parseRange(q.get('from'), q.get('to'), q.get('tz'));
   if (range.error) return sendError(ctx.res, 400, 'bad_range', range.error);
   sendOk(ctx.res, Reports.build(ctx.user, range));
+}));
+
+/* The month's statement (lib/statement.js): profit and loss on profit.read,
+   and the cash flow beside it only for an account that may see where the
+   money is. The month is the shop's; `tz` is minutes east of UTC. */
+router.add('GET /api/statement', requirePerm('profit.read', (ctx) => {
+  const q = ctx.url.searchParams;
+  try {
+    sendOk(ctx.res, Statement.build({
+      month: q.get('month') || null, tz: q.get('tz'),
+      withCash: Auth.can(ctx.user, 'money.read')
+    }));
+  } catch (e) {
+    if (e.code === 'bad_range') return sendError(ctx.res, 400, 'bad_range', e.message);
+    throw e;
+  }
 }));
 
 /* One alert by key, or everything currently showing when no key is named.
@@ -2261,6 +2505,9 @@ router.add('POST /api/partner-invoices/:id/payments', requirePerm(['money.write'
     const invoice = Partner.recordPayment({
       invoiceId: ctx.params.id, amount: Number(b.amount),
       method: b.method, at: b.at || null, side: side(ctx),
+      /* Which of the shop's places the money came out of (053). Read only
+         for the shop's side; Yalla Wear's record moves nothing here. */
+      place: side(ctx) === 'og' && typeof b.place === 'string' && b.place ? b.place : null,
       userId: ctx.user.id, opId: b.opId || null
     });
     bump();
@@ -2272,9 +2519,12 @@ router.add('POST /api/partner-invoices/:id/payments', requirePerm(['money.write'
    lib/partner.js refuses a side confirming its own. */
 router.add('POST /api/partner-invoices/:id/payments/:pid/confirm',
   requirePerm(['money.write', 'partner.invoice'], async (ctx) => {
+    const b = await readJson(ctx.req);
     try {
       const invoice = Partner.confirmPayment({
-        invoiceId: ctx.params.id, paymentId: ctx.params.pid, side: side(ctx), userId: ctx.user.id
+        invoiceId: ctx.params.id, paymentId: ctx.params.pid, side: side(ctx),
+        place: side(ctx) === 'og' && typeof b.place === 'string' && b.place ? b.place : null,
+        userId: ctx.user.id
       });
       bump();
       sendOk(ctx.res, { invoice });
@@ -2493,16 +2743,18 @@ router.add('PUT /api/reminders/config', requirePerm(['config.write', 'partner.jo
   sendOk(ctx.res, { config, status: Reminders.status() });
 }));
 
+/* 055: the editors. What the ledger keeps (outstanding, what was bought,
+   when it was last paid) and the derived pay date are not writable here. */
 router.add('POST /api/suppliers', requirePerm('money.write', async (ctx) => {
   const b = await readJson(ctx.req);
-  try { sendOk(ctx.res, { supplier: Partner.saveSupplier(b, ctx.user.id) }); }
-  catch (e) { partnerFail(ctx.res, e); }
+  try { sendOk(ctx.res, { supplier: Payables.saveSupplier(b, ctx.user.id) }); }
+  catch (e) { payFail(ctx.res, e); }
 }));
 
 router.add('POST /api/employees', requirePerm('staff.write', async (ctx) => {
   const b = await readJson(ctx.req);
-  try { sendOk(ctx.res, { employee: Partner.saveEmployee(b, ctx.user.id) }); }
-  catch (e) { partnerFail(ctx.res, e); }
+  try { sendOk(ctx.res, { employee: Payables.saveEmployee(b, ctx.user.id) }); }
+  catch (e) { payFail(ctx.res, e); }
 }));
 
 router.add('POST /api/deliveries', requirePerm('delivery.write', async (ctx) => {

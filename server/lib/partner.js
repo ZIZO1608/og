@@ -32,6 +32,7 @@
    ========================================================================== */
 
 import * as DB from './db.js';
+import * as Cash from './cashbook.js';
 
 export const STAGES = ['design', 'sent', 'printing', 'delivery', 'done'];
 const STAGE_LABEL = {
@@ -747,7 +748,23 @@ function invoiceTotal(d, invoiceId) {
    so this carries an opId through applied_ops like a debt payment does — a
    manager taps Pay, the wifi stalls, they tap again, and the printer must not
    be told twice that they were paid. */
-export function recordPayment({ invoiceId, amount, method, at = null, side = 'og', userId = null, opId = null }) {
+/* THE SHOP'S MONEY LEAVES ONCE (053). When the shop records that it paid,
+   the cash book writes it out of the place it was paid from then. When Yalla
+   Wear records that money reached them, nothing has left the shop's books yet
+   — it leaves when the shop confirms it, from the place named then. Either
+   way one row, in the invoice's currency. */
+function payOut(d, { inv, paymentId, amount, method, place, at, userId }) {
+  let where = place;
+  if (where) Cash.need(d, where);
+  else where = Cash.placeForMethod(d, method || 'cash') || 'drawer';
+  Cash.apply(d, {
+    place: where, currency: inv.currency, amount: -amount, kind: 'partner_pay',
+    refType: 'partner_payment', refId: paymentId, note: inv.id, userId, at
+  });
+}
+
+export function recordPayment({ invoiceId, amount, method, at = null, side = 'og', place = null,
+                                userId = null, opId = null }) {
   if (!(amount > 0)) {
     throw Object.assign(new Error('a payment has to be more than nothing'), { code: 'bad_request' });
   }
@@ -770,6 +787,9 @@ export function recordPayment({ invoiceId, amount, method, at = null, side = 'og
        VALUES (?,?,?,?,?,?)`
     ).run(invoiceId, when, amt, method || 'cash', userId, side);
     d.prepare('UPDATE partner_invoices SET updated_at = ? WHERE id = ?').run(nowIso(), invoiceId);
+    if (side === 'og') {
+      payOut(d, { inv, paymentId: info.lastInsertRowid, amount: amt, method, place, at: when, userId });
+    }
 
     insertMessage(d, {
       invoiceId, from: side, kind: 'payment',
@@ -796,7 +816,7 @@ export function recordPayment({ invoiceId, amount, method, at = null, side = 'og
    transfer — so the route derives `side` from the account and this refuses
    its own. Confirming twice is a no-op, not an error: two people on the same
    side pressing the same button is not a dispute. */
-export function confirmPayment({ invoiceId, paymentId, side, userId = null }) {
+export function confirmPayment({ invoiceId, paymentId, side, place = null, userId = null }) {
   if (side !== 'og' && side !== 'yalla') {
     throw Object.assign(new Error('side must be og or yalla'), { code: 'bad_request' });
   }
@@ -819,6 +839,9 @@ export function confirmPayment({ invoiceId, paymentId, side, userId = null }) {
       'UPDATE partner_invoice_payments SET confirmed_at = ?, confirmed_by = ? WHERE id = ?'
     ).run(at, userId, p.id);
     d.prepare('UPDATE partner_invoices SET updated_at = ? WHERE id = ?').run(at, invoiceId);
+    if (side === 'og') {
+      payOut(d, { inv, paymentId: p.id, amount: p.amount, method: p.method, place, at, userId });
+    }
 
     insertMessage(d, {
       invoiceId, from: side, kind: 'payment-confirmed',
@@ -856,42 +879,9 @@ export function logWhatsApp({ phone, body, kind = null, refType = null, refId = 
   ).run(nowIso(), phone, body, kind, refType, refId, userId);
 }
 
-/* ---- the two shop-side lists -------------------------------------------- */
-
-export function saveSupplier(fields, userId = null) { return upsert('suppliers', fields, userId); }
-export function saveEmployee(fields, userId = null) { return upsert('employees', fields, userId); }
-
-const WRITABLE = {
-  suppliers: ['name', 'contact', 'category', 'currency', 'outstanding',
-              'total_purchased', 'due_date', 'last_payment', 'archived'],
-  employees: ['user_id', 'name', 'role', 'currency', 'salary', 'next_payment',
-              'since', 'phone', 'archived']
-};
-
-function upsert(table, fields, userId) {
-  const cols = WRITABLE[table].filter((c) => c in fields);
-  if (!cols.length) throw Object.assign(new Error('nothing to save'), { code: 'bad_request' });
-
-  return DB.tx(() => {
-    const d = DB.get();
-    const at = nowIso();
-
-    if (fields.id) {
-      d.prepare(
-        `UPDATE ${table} SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`
-      ).run(...cols.map((c) => fields[c]), at, fields.id);
-      DB.logChange(table, fields.id, 'update', userId, null);
-      return d.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(fields.id);
-    }
-
-    const info = d.prepare(
-      `INSERT INTO ${table} (${cols.join(',')}, created_at, updated_at)
-       VALUES (${cols.map(() => '?').join(',')}, ?, ?)`
-    ).run(...cols.map((c) => fields[c]), at, at);
-    DB.logChange(table, info.lastInsertRowid, 'insert', userId, null);
-    return d.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(info.lastInsertRowid);
-  });
-}
+/* The supplier and employee editors moved to lib/payables.js (055). The
+   generic upsert that lived here could write `outstanding` straight past the
+   supplier ledger, so it is gone rather than left beside the real one. */
 
 /* Print jobs a customer_id actually proves. Never a name match: in Aleppo
    the same person is written in Arabic on Tuesday and in Latin on Thursday,

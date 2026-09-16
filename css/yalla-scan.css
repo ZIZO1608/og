@@ -698,6 +698,156 @@ tr.sc-row-on td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
 
 .tab-dot.on { background: var(--success); }
 
+/* The expense that was cancelled stays readable and reads as cancelled. */
+tr.mn-void td { color: var(--dim); }
+tr.mn-void td b { text-decoration: line-through; color: var(--dim); }
+
+
+/* =============================================================== CASH BOOK
+   One card per place the shop's money is. The number is the card; lira and
+   dollars sit on their own lines and are never added. Below zero turns the
+   card amber — money came in that nobody recorded — and says so in words. */
+
+.cb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cb-group { margin-bottom: 22px; }
+.cb-grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+.cb-place {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; border-radius: var(--radius-lg);
+  background: var(--card); border: 1px solid var(--border);
+  min-width: 0;
+}
+.cb-place.off { opacity: .66; }
+.cb-place.neg { border-color: var(--warning-border); background: linear-gradient(0deg, var(--warning-soft), var(--card) 70%); }
+.cb-ph { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.cb-ic {
+  width: 32px; height: 32px; flex: none; border-radius: var(--radius-sm);
+  display: grid; place-items: center; background: var(--muted);
+}
+.cb-ic svg { width: 17px; height: 17px; fill: none; stroke: var(--muted-foreground); stroke-width: 1.6; }
+.cb-nm { min-width: 0; flex: 1; }
+.cb-nm b { display: block; font-size: var(--fs-lg); font-weight: 700; overflow-wrap: anywhere; }
+.cb-nm small { display: block; color: var(--dim); font-size: var(--fs-xs); margin-top: 2px; }
+.cb-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.cb-bal { display: flex; flex-direction: column; gap: 2px; }
+.cb-line { display: flex; align-items: baseline; gap: 10px; }
+.cb-line b {
+  font-family: var(--font-head); font-weight: 700; font-size: 21px;
+  letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+}
+.cb-line:first-child b { font-size: 24px; }
+.cb-line.neg b { color: var(--warning); }
+.cb-warn { font-size: var(--fs-xs); color: var(--warning); line-height: 1.5; }
+.cb-warn-t { color: var(--warning); }
+.cb-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); flex-wrap: wrap;
+}
+.cb-btns { display: flex; gap: 4px; }
+
+.cb-start h3 { font-size: var(--fs-lg); margin-bottom: 6px; }
+.cb-start p { max-width: 640px; line-height: 1.6; margin-bottom: 14px; }
+
+/* Two fields on one line — currency and amount — that stack on a phone. */
+.cb-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; margin-top: 12px; }
+.cb-check { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); cursor: pointer; }
+.cb-x { padding: 4px 0; }
+
+/* Take out / put in: a two-way switch of its own. Not `.seg`, which already
+   means two different things in this app. */
+.cb-seg { display: flex; gap: 4px; padding: 4px; border-radius: var(--radius); background: var(--muted); }
+.cb-seg button {
+  flex: 1; min-height: 38px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--muted-foreground); font: inherit; font-weight: 600; cursor: pointer;
+}
+.cb-seg button.on { background: var(--card); color: var(--foreground); box-shadow: var(--shadow-sm); }
+
+.cb-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.cb-filters .field { min-width: 150px; flex: 1 1 150px; margin: 0; }
+.cb-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cb-amt.up { color: var(--success); }
+.cb-amt.down { color: var(--foreground); }
+.cb-other { white-space: nowrap; }
+
+.cb-start-tbl input { max-width: 150px; margin-inline-start: auto; }
+
+.cb-set-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-top: 8px; }
+.cb-set-foot { display: flex; gap: 8px; justify-content: flex-end; }
+
+@media (max-width: 720px) {
+  .cb-grid { grid-template-columns: minmax(0, 1fr); }
+  .cb-pair { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .cb-set-row { grid-template-columns: minmax(0, 1fr); }
+  .cb-actions .btn { flex: 1 1 45%; }
+  .cb-btns .btn { min-height: 38px; }
+  .cb-totals { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+/* Closing the day (054). The count is two big boxes and one button; the
+   owner's half is a table he can read across. */
+.dc-card h3 { font-size: var(--fs-lg); }
+.dc-card p { max-width: 680px; line-height: 1.6; }
+.dc-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
+.dc-inputs .inp { font-size: 22px; min-height: 52px; font-weight: 700; }
+.dc-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.dc-lines { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; }
+.dc-line b { font-size: 20px; }
+.dc-tbl .dc-take { max-width: 160px; margin-inline-start: auto; text-align: end; }
+.dc-take.dc-bad { border-color: var(--destructive); }
+.dc-short { color: var(--destructive); }
+.dc-over { color: var(--warning); }
+.dc-exact { color: var(--success); }
+
+/* The expenses: where it goes above, the list below it at full width. Side
+   by side the list's seven columns scrolled sideways at 1366 and cut off the
+   Cancel button. */
+.mn-exp-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+
+/* Suppliers and salaries (055). What is owed is the loud figure; everything
+   else on the row is quiet. The row's buttons wrap rather than pushing the
+   table sideways. */
+.py-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.py-stats .val { font-size: 22px; line-height: 1.35; }
+.py-val { font-size: 19px; line-height: 1.35; }
+.py-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.py-sub { display: block; margin-top: 2px; }
+.py-tbl td { vertical-align: top; }
+.py-owe { color: var(--warning); font-variant-numeric: tabular-nums; }
+.py-ahead { color: var(--success); font-variant-numeric: tabular-nums; }
+.py-acts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.py-month { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.py-month-lbl { font-size: var(--fs-lg); min-width: 9ch; text-align: center; }
+.py-grow { flex: 1; }
+.py-kinds { flex-wrap: wrap; }
+.py-kinds button { flex: 1 1 22%; }
+
+/* The Expenses tab's two cards, and the Statement (Phase 4). A total row is
+   a hairline and weight, never a colour; the net line is the one that is
+   read first. */
+.mn-exp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pl-tbl td, .pl-cash td { white-space: nowrap; }
+.pl-tbl td:first-child { white-space: normal; }
+.pl-tbl tr.pl-total td, .pl-cash tr.pl-total td { border-top: 1px solid var(--border-strong, var(--border)); }
+.pl-tbl tr.pl-net td { font-size: var(--fs-lg); }
+.pl-tbl tr.pl-sub td:first-child { padding-inline-start: 28px; color: var(--muted-foreground); }
+.pl-notes p { margin: 0 0 6px; max-width: 760px; line-height: 1.55; }
+.pl-h4 { font-size: var(--fs-sm); font-weight: 700; margin: 0 0 8px; }
+.pl-kinds { max-width: 520px; }
+/* A drawer the book says is below zero: money came in that nobody recorded. */
+.dash-hero-val.warn { color: var(--warning); }
+
+@media (max-width: 720px) {
+  .py-stats { grid-template-columns: minmax(0, 1fr) !important; }
+  .mn-exp-stats { grid-template-columns: minmax(0, 1fr) !important; }
+  .pl-tbl td:first-child { min-width: 120px; }
+  .py-acts { justify-content: flex-start; }
+  .py-acts .btn { min-height: 38px; }
+  .py-kinds button { flex-basis: 45%; }
+}
+
 /* ========================================================= COMMAND PALETTE
    Sits above everything, near the top rather than centred — the eye is
    already up there when you press Ctrl+K, and the list wants room to grow

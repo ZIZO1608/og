@@ -83,6 +83,15 @@ export const ALL_PERMISSIONS = [
   { perm: 'profit.read',     group: 'money',     label: 'See profit' },
   { perm: 'money.read',      group: 'money',     label: 'See the money screen' },
   { perm: 'money.write',     group: 'money',     label: 'Record expenses and debts' },
+  /* 053 — the cash book. Moving money between places, changing dollars, the
+     owner taking money out or putting it in, and checking what a place
+     really holds. Not money.write: an expense is a cost somebody paid, and
+     this is where the shop's money is — who may say so is a separate call. */
+  { perm: 'money.move',      group: 'money',     label: 'Move money between places, change dollars, record the owner taking or adding money' },
+  /* 054 — the cashier counts the drawer at night; confirming the count and
+     taking the cash is money.move. Counting shows her nothing of what the
+     book expects, so it hands over no figure she could not already see. */
+  { perm: 'money.count',     group: 'money',     label: 'Count the drawer at closing time' },
   /* Separate from money.read ON PURPOSE. A cashier takes a customer's cash
      when they settle up — the money is in HER drawer, during HER shift, and
      if she cannot record it her count comes up over with no explanation. That

@@ -1,0 +1,1094 @@
+/* ==========================================================================
+   THE CASH BOOK — where every lira and dollar is, right now        [data-cb]
+   --------------------------------------------------------------------------
+   Two tabs of the Money screen (js/money.js draws the bar) and the dialogs
+   behind them. The rules live on the server (server/lib/cashbook.js); this
+   file draws what it says and sends what somebody typed.
+
+   A PLACE is where money physically is: the drawer, the owner's own pocket,
+   each transfer office and wallet, a driver who has not handed in. A balance
+   is the sum of that place's moves in ONE currency. Lira and dollars are
+   drawn side by side and never added together — a place holding 400,000
+   lira and $60 is holding two things.
+
+   Nothing here writes optimistically. Money is the one place where a figure
+   that looks recorded and is not is worse than one that takes a moment, so
+   every write goes through Shop.write and the screen redraws from what the
+   server then says.
+   ========================================================================== */
+
+var Cashbook = (function () {
+
+  /* The Book tab's filters, and the rows they fetched. `data` is null while
+     no filter is set — the bundle's own latest page is used then. */
+  var B = { place: '', kind: '', from: '', to: '', data: null, busy: false };
+
+  /* The Settings card's working copy of the owner's own places. */
+  var P = null;
+
+  var KINDS = ['sale', 'sale_void', 'debt_in', 'order_in', 'order_refund', 'expense',
+               'expense_void', 'supplier_pay', 'salary', 'partner_pay', 'owner_draw',
+               'owner_in', 'transfer', 'exchange', 'fee', 'count_diff', 'opening'];
+
+  /* ------------------------------------------------------------ reading */
+
+  function snap() { return DB.cash || null; }
+
+  function base() { return (typeof CONFIG !== 'undefined' && CONFIG.BASE_CURRENCY) || 'SYP'; }
+
+  function currencies() {
+    var c = snap();
+    var list = c && c.currencies && c.currencies.length
+      ? c.currencies.map(function (x) { return x.code; }) : ['SYP', 'USD'];
+    /* The shop's own currency first — it is what nearly everything is in. */
+    list.sort(function (a, b) { return (a === base() ? -1 : 0) - (b === base() ? -1 : 0); });
+    return list;
+  }
+
+  function places() { var c = snap(); return c ? c.places : []; }
+
+  function findPlace(id) {
+    return places().filter(function (p) { return p.id === id; })[0] || null;
+  }
+
+  function placeName(id) {
+    if (!id) return '—';
+    if (id === 'drawer') return t('cb_p_drawer');
+    if (id === 'owner') return t('cb_p_owner');
+    var p = findPlace(id);
+    if (p) return (OG.lang === 'ar' ? p.ar : p.en) || id;
+    if (id.indexOf('m:') === 0) return DB.payLabel(id.slice(2));
+    if (id.indexOf('x:') === 0) return id.slice(2);
+    if (id.indexOf('driver:') === 0) return t('cb_p_driver');
+    return id;
+  }
+
+  /* Where money can be sent, or taken from, in a dialog: everything that is
+     switched on, plus — when asked — a switched-off place still holding
+     money, so it can be emptied. Drivers are not offered: their money moves
+     by the hand-in on the deliveries board, which knows which parcel it is. */
+  function pickable(opts) {
+    opts = opts || {};
+    return places().filter(function (p) {
+      if (p.kind === 'driver' || p.kind === 'unknown') return false;
+      if (p.active !== false) return true;
+      if (!opts.emptying) return false;
+      return Object.keys(p.balances || {}).some(function (k) { return p.balances[k] !== 0; });
+    });
+  }
+
+  function fmt(minor, cur) {
+    if (typeof Desk !== 'undefined' && Desk.fmt) return Desk.fmt(minor, cur);
+    return '<bdi dir="ltr">' + esc(nf(minor) + ' ' + cur) + '</bdi>';
+  }
+
+  /* The sign INSIDE the same isolate as the figure. Two isolates side by side
+     are reordered by an Arabic line, and "−$81.50" was drawn "$81.50−". */
+  function signed(minor, cur) {
+    var n = Number(minor) || 0;
+    return '<bdi dir="ltr">' + (n > 0 ? '+' : n < 0 ? '−' : '') + esc(text(Math.abs(n), cur)) + '</bdi>';
+  }
+
+  function text(minor, cur) {
+    return (typeof Desk !== 'undefined' && Desk.moneyText) ? Desk.moneyText(minor, cur) : nf(minor) + ' ' + cur;
+  }
+
+  function toMinor(v, cur) {
+    if (typeof Desk !== 'undefined' && Desk.toMinor) return Desk.toMinor(v, cur);
+    var n = Math.round(Number(String(v || '').replace(/[^\d.]/g, '')) * (cur === 'USD' ? 100 : 1));
+    return n > 0 ? n : 0;
+  }
+
+  function newOp(tag) {
+    return 'cb-' + tag + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  }
+
+  function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+
+  var ICONS = {
+    drawer: 'M3 8h18v11H3zM3 8l2-4h14l2 4M9 13h6',
+    owner: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21v-1a7 7 0 0 1 14 0v1',
+    wallet: 'M3 7h16v12H3zM3 7l12-3v3M15 13h3',
+    extra: 'M4 4h16v16H4zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M12 12h4',
+    driver: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3',
+    unknown: 'M12 17h.01M9.1 9a3 3 0 1 1 3.9 2.8c-.6.3-1 .8-1 1.5V14'
+  };
+
+  function icon(kind) {
+    return '<svg viewBox="0 0 24 24" stroke-linecap="square" aria-hidden="true"><path d="' +
+      (ICONS[kind] || ICONS.unknown) + '"/></svg>';
+  }
+
+  /* ------------------------------------------------------------ the Now tab */
+
+  function nowTab() {
+    var c = snap();
+    if (!c) {
+      return '<div class="card"><div class="cart-empty"><b>' + t('cb_unavailable') + '</b>' +
+        t('cb_unavailable_sub') + '</div></div>';
+    }
+    var can = allow('money.move');
+    var h = '';
+
+    /* The whole shop, one figure per currency. */
+    var curs = currencies();
+    h += '<div class="grid stat-row mb cb-totals" style="grid-template-columns:repeat(' + curs.length + ',minmax(0,1fr))">';
+    curs.forEach(function (cur) {
+      var v = (c.totals || {})[cur] || 0;
+      var where = c.places.filter(function (p) { return (p.balances || {})[cur]; }).length;
+      h += '<div class="stat"><span class="eyebrow">' + t('cb_all_money') + ' · ' + esc(cur) + '</span>' +
+        '<div class="val' + (v < 0 ? ' warn' : '') + '">' + signedPlain(v, cur) + '</div>' +
+        '<div class="foot">' + t('cb_in_places').replace('{n}', nf(where)) + '</div></div>';
+    });
+    h += '</div>';
+
+    if (!c.started) {
+      h += '<div class="card mb cb-start"><div class="card-body">' +
+        '<h3>' + t('cb_start_title') + '</h3>' +
+        '<p class="muted">' + t('cb_start_sub') + '</p>' +
+        (can ? '<button class="btn btn-primary" data-cb="start">' + t('cb_start_btn') + '</button>'
+             : '<p class="muted small">' + t('cb_start_manager') + '</p>') +
+        '</div></div>';
+    }
+
+    if (can) {
+      h += '<div class="cb-actions mb">' +
+        '<button class="btn btn-primary" data-cb="move">' + t('cb_move') + '</button>' +
+        '<button class="btn" data-cb="exchange">' + t('cb_exchange') + '</button>' +
+        '<button class="btn" data-cb="owner">' + t('cb_owner_btn') + '</button>' +
+        (c.started ? '<button class="btn btn-ghost" data-cb="start">' + t('cb_start_more') + '</button>' : '') +
+        '</div>';
+    }
+
+    var groups = [
+      { key: 'cb_g_cash', kinds: ['drawer', 'owner', 'extra'] },
+      { key: 'cb_g_wallets', kinds: ['wallet'] },
+      { key: 'cb_g_drivers', kinds: ['driver'] },
+      { key: 'cb_g_other', kinds: ['unknown'] }
+    ];
+    groups.forEach(function (g) {
+      var list = c.places.filter(function (p) {
+        if (g.kinds.indexOf(p.kind) < 0) return false;
+        if (p.active !== false) return true;
+        /* Switched off and holding nothing is nothing to look at. */
+        return Object.keys(p.balances || {}).some(function (k) { return p.balances[k] !== 0; });
+      });
+      if (!list.length) return;
+      h += '<div class="cb-group"><div class="set-sec">' + t(g.key) + '</div><div class="cb-grid">' +
+        list.map(function (p) { return placeCard(p, can, c.started); }).join('') + '</div></div>';
+    });
+
+    h += '<p class="muted small mt">' + t('cb_never_added') + '</p>';
+    return h;
+  }
+
+  function signedPlain(v, cur) {
+    return '<bdi dir="ltr">' + (v < 0 ? '−' : '') + esc(text(Math.abs(v), cur)) + '</bdi>';
+  }
+
+  function placeCard(p, can, started) {
+    var bal = p.balances || {};
+    var curs = currencies().filter(function (cur, i) { return i === 0 || bal[cur]; });
+    var neg = curs.some(function (cur) { return (bal[cur] || 0) < 0; });
+    var chips = '';
+    if (p.active === false) chips += '<span class="badge neutral">' + t('cb_off') + '</span>';
+    if (started && !p.opened && p.kind !== 'driver' && p.kind !== 'unknown') {
+      chips += '<span class="badge neutral">' + t('cb_not_started') + '</span>';
+    }
+
+    /* The chips sit UNDER the name, never beside it: beside it they took the
+       width and a name like "Safe" was drawn one letter per line. */
+    var h = '<div class="cb-place' + (neg ? ' neg' : '') + (p.active === false ? ' off' : '') +
+      '" data-place="' + esc(p.id) + '">' +
+      '<div class="cb-ph"><span class="cb-ic">' + icon(p.kind) + '</span>' +
+        '<div class="cb-nm"><b>' + esc(placeName(p.id)) + '</b><small>' + t('cb_kind_' + p.kind) + '</small>' +
+        (chips ? '<div class="cb-chips">' + chips + '</div>' : '') + '</div></div>' +
+      /* The figure carries its own currency, so no second label beside it. */
+      '<div class="cb-bal">' +
+        curs.map(function (cur) {
+          var v = bal[cur] || 0;
+          return '<div class="cb-line' + (v < 0 ? ' neg' : '') + '"><b>' + signedPlain(v, cur) + '</b></div>';
+        }).join('') +
+      '</div>';
+
+    if (neg) h += '<div class="cb-warn">' + t('cb_neg_note') + '</div>';
+
+    h += '<div class="cb-foot"><small class="muted">' +
+      (p.lastCheck ? t('cb_checked') + ' ' + esc(relDate(p.lastCheck)) : t('cb_never_checked')) +
+      '</small>';
+    if (can && p.kind !== 'driver' && p.kind !== 'unknown') {
+      h += '<span class="cb-btns">' +
+        '<button class="btn btn-sm btn-ghost" data-cb="check" data-place="' + esc(p.id) + '">' + t('cb_check') + '</button>' +
+        '<button class="btn btn-sm btn-ghost" data-cb="move" data-place="' + esc(p.id) + '">' + t('cb_move_short') + '</button>' +
+        '</span>';
+    }
+    return h + '</div></div>';
+  }
+
+  /* ----------------------------------------------------------- the Book tab */
+
+  function filtered() { return !!(B.place || B.kind || B.from || B.to); }
+
+  function bookTab() {
+    var h = '<div class="card mb"><div class="card-body cb-filters">' +
+      '<label class="field"><span>' + t('cb_f_place') + '</span><select class="inp" data-cbc="f" data-k="place">' +
+        '<option value="">' + t('cb_f_all') + '</option>' +
+        places().map(function (p) {
+          return '<option value="' + esc(p.id) + '"' + (B.place === p.id ? ' selected' : '') + '>' +
+            esc(placeName(p.id)) + '</option>';
+        }).join('') + '</select></label>' +
+      '<label class="field"><span>' + t('cb_f_kind') + '</span><select class="inp" data-cbc="f" data-k="kind">' +
+        '<option value="">' + t('cb_f_all') + '</option>' +
+        KINDS.map(function (k) {
+          return '<option value="' + k + '"' + (B.kind === k ? ' selected' : '') + '>' + esc(t('cb_k_' + k)) + '</option>';
+        }).join('') + '</select></label>' +
+      '<label class="field"><span>' + t('cb_f_from') + '</span><input class="inp" type="date" dir="ltr" data-cbc="f" data-k="from" value="' + esc(B.from) + '"></label>' +
+      '<label class="field"><span>' + t('cb_f_to') + '</span><input class="inp" type="date" dir="ltr" data-cbc="f" data-k="to" value="' + esc(B.to) + '"></label>' +
+      (filtered() ? '<button class="btn btn-ghost btn-sm" data-cb="f-clear">' + t('cb_f_clear') + '</button>' : '') +
+      '</div></div>';
+
+    if (filtered() && !B.data && !B.busy) setTimeout(loadBook, 0);
+    return h + '<div id="cbBook">' + bookBody() + '</div>';
+  }
+
+  function bookBody() {
+    var page = filtered() ? B.data : DB.cashBook;
+    if (!page) {
+      return '<div class="card"><div class="cart-empty"><b>' +
+        (B.busy || filtered() ? t('cb_loading') : t('cb_unavailable')) + '</b></div></div>';
+    }
+    if (!page.rows.length) {
+      return '<div class="card"><div class="cart-empty"><b>' + t('cb_book_empty') + '</b>' +
+        t('cb_book_empty_sub') + '</div></div>';
+    }
+    var h = '<div class="card table-wrap"><table class="tbl cb-book"><thead><tr>' +
+      '<th>' + t('date') + '</th><th>' + t('cb_col_place') + '</th><th>' + t('cb_col_what') + '</th>' +
+      '<th>' + t('cb_col_ref') + '</th><th class="num">' + t('mn_amount') + '</th><th>' + t('cb_col_who') + '</th>' +
+      '</tr></thead><tbody>';
+    page.rows.forEach(function (m) {
+      h += '<tr>' +
+        '<td class="num muted">' + esc(fmtDate(m.at)) + '<small class="muted" style="display:block">' +
+          esc(fmtTimeOnly(m.at)) + '</small></td>' +
+        '<td><b>' + esc(placeName(m.place)) + '</b></td>' +
+        '<td>' + esc(t('cb_k_' + m.kind)) + otherSide(m) +
+          (m.note && !refIsNote(m) ? '<small class="muted" style="display:block">' + esc(m.note) + '</small>' : '') + '</td>' +
+        '<td class="muted">' + esc(refText(m)) + '</td>' +
+        '<td class="num"><b class="cb-amt ' + (m.amount > 0 ? 'up' : m.amount < 0 ? 'down' : '') + '">' +
+          signed(m.amount, m.currency) + '</b></td>' +
+        '<td class="muted">' + esc(m.user_name || '') + '</td>' +
+      '</tr>';
+    });
+    h += '</tbody></table></div>';
+    return h + cappedNote(page, t('cb_moves'));
+  }
+
+  function otherSide(m) {
+    if (!m.other_place) return '';
+    if (m.kind === 'exchange') {
+      return ' <small class="muted cb-other">' + (m.amount < 0 ? '→ ' : '← ') +
+        fmt(Math.abs(m.other_amount || 0), m.other_currency) + '</small>';
+    }
+    return ' <small class="muted cb-other">' + (m.amount < 0 ? t('cb_to') : t('cb_from_w')) + ' ' +
+      esc(placeName(m.other_place)) + '</small>';
+  }
+
+  /* The note IS the reference for the rows whose reference is an internal
+     payment id — the invoice number is what somebody recognises. */
+  function refIsNote(m) {
+    return m.ref_type === 'order_payment' || m.ref_type === 'debt_payment' ||
+           m.ref_type === 'partner_payment' || m.ref_type === 'expense' ||
+           m.ref_type === 'supplier_payment' || m.ref_type === 'salary_payment';
+  }
+
+  function refText(m) {
+    if (m.ref_type === 'sale') return m.ref_id || '';
+    if (m.ref_type === 'expense') return (m.ref_id || '') + (m.note ? ' · ' + catLabel(m.note) : '');
+    if (refIsNote(m)) return m.note || '';
+    return '';
+  }
+
+  function catLabel(c) {
+    var k = 'mn_c_' + c;
+    return (I18N.en[k] !== undefined || I18N.ar[k] !== undefined) ? t(k) : String(c || '');
+  }
+
+  function loadBook() {
+    if (typeof Shop === 'undefined' || !Shop.cashBook) return;
+    if (!filtered()) { B.data = null; paintBook(); return; }
+    B.busy = true;
+    var q = { place: B.place, kind: B.kind, limit: 300 };
+    /* The date boxes are LOCAL days; the book is UTC. */
+    if (B.from) q.from = ymdStart(B.from).toISOString();
+    if (B.to) { var e = ymdStart(B.to); e.setDate(e.getDate() + 1); q.to = e.toISOString(); }
+    var want = JSON.stringify([B.place, B.kind, B.from, B.to]);
+    Shop.cashBook(q).then(function (page) {
+      if (want !== JSON.stringify([B.place, B.kind, B.from, B.to])) return;
+      B.data = page;
+      B.busy = false;
+      paintBook();
+    }).catch(function (err) {
+      B.busy = false;
+      toast(t('cb_book'), API.friendly(err), 'err', 5000);
+    });
+  }
+
+  function ymdStart(s) {
+    var p = String(s).split('-');
+    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  }
+
+  /* One panel repainted — the filters above keep their focus and caret. */
+  function paintBook() {
+    var host = document.getElementById('cbBook');
+    if (!host) return;
+    host.innerHTML = bookBody();
+    /* render() gives wide tables their phone cards; a panel painted on its
+       own has to ask for them, or at 390 the table is cut off at the edge. */
+    if (typeof labelWideTables === 'function') labelWideTables(host);
+  }
+
+  /* ------------------------------------------------------------ the dialogs */
+
+  function placeSelect(id, selected, opts) {
+    return '<select class="inp" id="' + id + '"' + (opts && opts.change ? ' data-cbc="' + opts.change + '"' : '') + '>' +
+      pickable(opts).map(function (p) {
+        return '<option value="' + esc(p.id) + '"' + (p.id === selected ? ' selected' : '') + '>' +
+          esc(placeName(p.id)) + (p.active === false ? ' · ' + t('cb_off') : '') + '</option>';
+      }).join('') + '</select>';
+  }
+
+  function curSelect(id, selected, change) {
+    return '<select class="inp" id="' + id + '"' + (change ? ' data-cbc="' + change + '"' : '') + '>' +
+      currencies().map(function (c) {
+        return '<option value="' + c + '"' + (c === selected ? ' selected' : '') + '>' + c + '</option>';
+      }).join('') + '</select>';
+  }
+
+  function amountBox(id, change) {
+    return '<input class="inp num" id="' + id + '" type="text" inputmode="decimal" dir="ltr" autocomplete="off"' +
+      (change ? ' data-cbc="' + change + '"' : '') + '>';
+  }
+
+  function field(label, inner, cls) {
+    return '<label class="field' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span>' + inner + '</label>';
+  }
+
+  function pair(a, b) { return '<div class="cb-pair">' + a + b + '</div>'; }
+
+  function holds(placeId, cur) {
+    var p = findPlace(placeId);
+    return p ? ((p.balances || {})[cur] || 0) : 0;
+  }
+
+  /* ---- move ---- */
+  function openMove(from) {
+    var src = from || 'drawer';
+    openModal({
+      title: t('cb_move'), size: 'narrow',
+      body: field(t('cb_from'), placeSelect('cbFrom', src, { emptying: true, change: 'mv-hint' })) +
+        field(t('cb_to'), placeSelect('cbTo', src === 'owner' ? 'drawer' : 'owner'), 'mt') +
+        pair(field(t('cb_currency'), curSelect('cbCur', base(), 'mv-hint')),
+             field(t('mn_amount'), amountBox('cbAmt'))) +
+        field(t('cb_fee'), amountBox('cbFee'), 'mt') +
+        '<div class="muted small">' + t('cb_fee_hint') + '</div>' +
+        field(t('note'), '<input class="inp" id="cbNote" type="text" maxlength="300">', 'mt') +
+        '<div class="partner-note mt" id="cbHint">' + moveHint(src, base()) + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+        '<button class="btn btn-primary" data-cb="move-go" data-op="' + newOp('mv') + '">' + t('cb_move') + '</button>'
+    });
+  }
+
+  function moveHint(from, cur) {
+    from = from || val('cbFrom') || 'drawer';
+    cur = cur || val('cbCur') || base();
+    return t('cb_holds').replace('{p}', esc(placeName(from))) + ' ' + signedPlain(holds(from, cur), cur);
+  }
+
+  /* ---- exchange ---- */
+  function openExchange() {
+    var other = currencies().filter(function (c) { return c !== 'USD'; })[0] || base();
+    openModal({
+      title: t('cb_exchange'), size: 'narrow',
+      body: field(t('cb_x_where'), placeSelect('cbXPlace', 'owner')) +
+        '<div class="cb-x mt">' +
+          pair(field(t('cb_x_give'), curSelect('cbXGiveCur', 'USD', 'x-rate')),
+               field(t('mn_amount'), amountBox('cbXGive', 'x-rate'))) +
+          pair(field(t('cb_x_get'), curSelect('cbXGetCur', other, 'x-rate')),
+               field(t('mn_amount'), amountBox('cbXGet', 'x-rate'))) +
+        '</div>' +
+        '<div class="partner-note mt" id="cbXRate">' + rateLine() + '</div>' +
+        (allow('config.write')
+          ? '<label class="cb-check mt"><input type="checkbox" id="cbXSet"> ' + t('cb_x_set') + '</label>' : '') +
+        field(t('note'), '<input class="inp" id="cbNote" type="text" maxlength="300">', 'mt'),
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+        '<button class="btn btn-primary" data-cb="exchange-go" data-op="' + newOp('x') + '">' + t('cb_exchange') + '</button>'
+    });
+  }
+
+  /* The rate the office gave, worked out as it is typed, beside the shop's.
+     A rate a hundred times out is nearly always cents typed as dollars. */
+  function impliedRate() {
+    var gc = val('cbXGiveCur'), rc = val('cbXGetCur');
+    var ga = toMinor(val('cbXGive'), gc), ra = toMinor(val('cbXGet'), rc);
+    if (!ga || !ra || gc === rc) return null;
+    var usd = gc === 'USD' ? ga : rc === 'USD' ? ra : 0;
+    var oth = gc === 'USD' ? { a: ra, c: rc } : { a: ga, c: gc };
+    if (!usd) return null;
+    var expOth = oth.c === 'USD' ? 2 : 0;
+    return { rate: (oth.a / Math.pow(10, expOth)) / (usd / 100), code: oth.c };
+  }
+
+  function rateLine() {
+    var r = impliedRate();
+    var c = snap();
+    if (!r) return t('cb_x_hint');
+    var shop = c && c.rates ? c.rates[r.code] : null;
+    var far = shop && (r.rate / shop < 0.5 || r.rate / shop > 2);
+    return '<span class="' + (far ? 'cb-warn-t' : '') + '">' +
+      t('cb_x_rate').replace('{r}', '<bdi dir="ltr">1 USD = ' + nf(r.rate) + ' ' + esc(r.code) + '</bdi>') +
+      (shop ? ' · ' + t('cb_x_shop').replace('{r}', '<bdi dir="ltr">' + nf(shop) + '</bdi>') : '') +
+      (far ? ' · ' + t('cb_x_far') : '') + '</span>';
+  }
+
+  /* ---- the owner ---- */
+  function openOwner() {
+    openModal({
+      title: t('cb_owner_btn'), size: 'narrow',
+      body: '<div class="cb-seg" role="group">' +
+          '<button type="button" class="on" data-cb="owner-dir" data-v="draw">' + t('cb_o_draw') + '</button>' +
+          '<button type="button" data-cb="owner-dir" data-v="in">' + t('cb_o_in') + '</button>' +
+        '</div><input type="hidden" id="cbODir" value="draw">' +
+        '<p class="muted small mt" id="cbOHint">' + t('cb_o_draw_hint') + '</p>' +
+        field(t('cb_o_place'), placeSelect('cbOPlace', 'owner'), 'mt') +
+        pair(field(t('cb_currency'), curSelect('cbCur', base())), field(t('mn_amount'), amountBox('cbAmt'))) +
+        field(t('note'), '<input class="inp" id="cbNote" type="text" maxlength="300">', 'mt'),
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+        '<button class="btn btn-primary" data-cb="owner-go" data-op="' + newOp('o') + '">' + t('save') + '</button>'
+    });
+  }
+
+  /* ---- a check ----
+     The figure the book expects is deliberately NOT shown. Checking against a
+     number you already know is not a count; the difference comes back after. */
+  function openCheck(placeId) {
+    openModal({
+      title: t('cb_check') + ' · ' + esc(placeName(placeId)), size: 'narrow',
+      body: '<p class="muted">' + t('cb_check_sub') + '</p>' +
+        currencies().map(function (c) {
+          return field(t('cb_counted') + ' · ' + c, amountBox('cbCnt_' + c), 'mt');
+        }).join('') +
+        '<div class="muted small">' + t('cb_blank_skips') + '</div>' +
+        field(t('note'), '<input class="inp" id="cbNote" type="text" maxlength="300">', 'mt'),
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+        '<button class="btn btn-primary" data-cb="check-go" data-place="' + esc(placeId) + '" data-op="' +
+          newOp('k') + '">' + t('save') + '</button>'
+    });
+  }
+
+  /* ---- starting balances ----
+     Every place the book has not been told about yet, both currencies. The
+     first check of a place IS its starting balance. */
+  function openStart() {
+    var list = pickable().filter(function (p) { return !p.opened; });
+    var curs = currencies();
+    if (!list.length) {
+      toast(t('cb_start_title'), t('cb_start_done'), 'ok', 4000);
+      return;
+    }
+    openModal({
+      title: t('cb_start_title'), size: 'wide',
+      body: '<p class="muted">' + t('cb_start_sub') + '</p>' +
+        '<div class="table-wrap"><table class="tbl cb-start-tbl"><thead><tr><th>' + t('cb_col_place') + '</th>' +
+          curs.map(function (c) { return '<th class="num">' + c + '</th>'; }).join('') + '</tr></thead><tbody>' +
+          list.map(function (p) {
+            return '<tr><td><b>' + esc(placeName(p.id)) + '</b><small class="muted" style="display:block">' +
+              t('cb_kind_' + p.kind) + '</small></td>' +
+              curs.map(function (c) {
+                return '<td class="num"><input class="inp num cb-start-in" type="text" inputmode="decimal" dir="ltr"' +
+                  ' data-place="' + esc(p.id) + '" data-cur="' + c + '" placeholder="—"></td>';
+              }).join('') + '</tr>';
+          }).join('') +
+        '</tbody></table></div>' +
+        '<div class="muted small mt">' + t('cb_blank_skips') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+        '<button class="btn btn-primary" data-cb="start-go" data-op="' + newOp('st') + '">' + t('cb_start_save') + '</button>'
+    });
+  }
+
+  /* Several checks, one after another inside ONE Shop.write — its one-write
+     gate is held for the batch, and each check is its own transaction on the
+     server. Each carries an opId derived from the dialog's, so pressing Save
+     twice on a stalled line checks each place once. */
+  function runChecks(items, op, title) {
+    if (!items.length) { toast(title, t('cb_nothing_typed'), 'warn'); return; }
+    Shop.write(
+      function () {
+        var out = [];
+        var chain = Promise.resolve();
+        items.forEach(function (it, i) {
+          chain = chain.then(function () {
+            return Shop.cashCheck({
+              place: it.place, currency: it.currency, counted: it.counted,
+              note: it.note || null, opId: op + '-' + i
+            }).then(function (r) { out.push(r); });
+          });
+        });
+        return chain.then(function () { return { results: out }; });
+      },
+      null,
+      function (res) {
+        closeModal();
+        B.data = null;
+        var rs = (res && res.results) || [];
+        var lines = rs.map(function (r) {
+          var name = placeName(r.place);
+          if (r.kind === 'opening') return name + ': ' + t('cb_r_opening') + ' ' + text(r.counted, r.currency);
+          if (!r.diff) return name + ': ' + t('cb_r_exact');
+          return name + ': ' + text(Math.abs(r.diff), r.currency) + ' ' + t(r.diff < 0 ? 'mn_short' : 'mn_over');
+        });
+        var off = rs.some(function (r) { return r.kind !== 'opening' && r.diff; });
+        toast(title, lines.join(' · '), off ? 'warn' : 'ok', 7000);
+      }
+    );
+  }
+
+  /* ------------------------------------------------------- closing the day
+     (054). Two hands: the cashier counts, the owner confirms. What the book
+     expects is shown only to the owner — the server does not even send it to
+     an account that may only count. Loaded when the tab is opened, not at
+     boot: a cashier has no money bundle to carry it, and a count taken at
+     night must not be read from a figure fetched at nine in the morning. */
+  var DC = { data: null, at: 0, busy: false, recount: false };
+
+  function loadClose(force) {
+    if (DC.busy) return;
+    if (!force && DC.data && Date.now() - DC.at < 4000) return;
+    DC.busy = true;
+    Shop.dayClose().then(function (r) {
+      DC.data = r; DC.at = Date.now(); DC.busy = false;
+      paintClose();
+    }).catch(function (err) {
+      DC.busy = false;
+      toast(t('dc_title'), API.friendly(err), 'err', 5000);
+    });
+  }
+
+  function paintClose() {
+    var host = document.getElementById('cbClose');
+    if (!host) return;
+    host.innerHTML = closeBody();
+    if (typeof labelWideTables === 'function') labelWideTables(host);
+  }
+
+  function closeTab() {
+    loadClose(false);
+    return '<div id="cbClose">' + closeBody() + '</div>';
+  }
+
+  function hm(iso) {
+    return iso ? esc(fmtDate(iso)) + ' · <bdi dir="ltr">' + esc(fmtTimeOnly(iso)) + '</bdi>' : '—';
+  }
+
+  function closeBody() {
+    var d = DC.data;
+    if (!d) return '<div class="card"><div class="cart-empty"><b>' + t('cb_loading') + '</b></div></div>';
+    var canCount = allow('money.count');
+    var canConfirm = allow('money.move');
+    var o = d.open;
+    var h = '';
+
+    if (o && canConfirm) h += confirmCard(o);
+    else if (o && !DC.recount) h += waitingCard(o, canCount);
+    if (canCount && (!o || DC.recount)) h += countCard(o);
+    if (!canCount && !o) {
+      h += '<div class="card"><div class="cart-empty"><b>' + t('dc_nothing') + '</b>' + t('dc_nothing_sub') + '</div></div>';
+    }
+    if (canConfirm) h += historyCard(d.recent || []);
+    return h;
+  }
+
+  function countCard(o) {
+    var curs = currencies();
+    return '<div class="card mb dc-card"><div class="card-head"><h3>' + t(o ? 'dc_recount' : 'dc_count_title') + '</h3></div>' +
+      '<div class="card-body">' +
+        '<p class="muted">' + t('dc_count_sub') + '</p>' +
+        '<div class="dc-inputs">' +
+          curs.map(function (c) {
+            return field(t('cb_counted') + ' · ' + c, amountBox('dcCnt_' + c));
+          }).join('') +
+        '</div>' +
+        field(t('note'), '<input class="inp" id="dcNote" type="text" maxlength="300">', 'mt') +
+        '<div class="dc-actions mt">' +
+          (o ? '<button class="btn btn-ghost" data-cb="dc-recount-off">' + t('cancel') + '</button>' : '') +
+          '<button class="btn btn-primary btn-lg" data-cb="dc-count" data-op="' + newOp('dc') + '">' + t('dc_save_count') + '</button>' +
+        '</div>' +
+      '</div></div>';
+  }
+
+  function waitingCard(o, canCount) {
+    return '<div class="card mb dc-card"><div class="card-body">' +
+      '<h3>' + t('dc_waiting') + '</h3>' +
+      '<p class="muted">' + t('dc_counted_by').replace('{name}', esc(o.counted_name || '—')) + ' · ' + hm(o.counted_at) + '</p>' +
+      '<div class="dc-lines">' + o.lines.map(function (l) {
+        return '<div class="dc-line"><span class="muted">' + t('cb_counted') + '</span> <b>' + signedPlain(l.counted, l.currency) + '</b></div>';
+      }).join('') + '</div>' +
+      (canCount ? '<button class="btn btn-ghost mt" data-cb="dc-recount">' + t('dc_recount') + '</button>' : '') +
+      '</div></div>';
+  }
+
+  /* The owner's half. What stays in the drawer is what was last left there,
+     so "take the rest" is one press on an ordinary night. */
+  function lastLeft(cur) {
+    var r = (DC.data && DC.data.recent) || [];
+    for (var i = 0; i < r.length; i++) {
+      if (r[i].status !== 'closed') continue;
+      var l = (r[i].lines || []).filter(function (x) { return x.currency === cur; })[0];
+      if (l) return Math.max(0, l.left);
+    }
+    return 0;
+  }
+
+  function wholeText(minor, cur) {
+    var v = (Number(minor) || 0) / Math.pow(10, cur === 'USD' ? 2 : 0);
+    return cur === 'USD' ? v.toFixed(2) : String(Math.round(v));
+  }
+
+  function confirmCard(o) {
+    var h = '<div class="card mb dc-card dc-confirm"><div class="card-head"><h3>' + t('dc_confirm_title') + '</h3>' +
+      '<div class="card-actions muted small">' + esc(o.id) + '</div></div><div class="card-body">' +
+      '<p class="muted">' + t('dc_counted_by').replace('{name}', esc(o.counted_name || '—')) + ' · ' + hm(o.counted_at) +
+        (o.note ? ' · «' + esc(o.note) + '»' : '') + '</p>' +
+      '<div class="table-wrap"><table class="tbl dc-tbl"><thead><tr>' +
+        '<th>' + t('cb_currency') + '</th><th class="num">' + t('cb_counted') + '</th>' +
+        '<th class="num">' + t('dc_book_said') + '</th><th class="num">' + t('mn_difference') + '</th>' +
+        '<th class="num">' + t('dc_take') + '</th><th class="num">' + t('dc_stays') + '</th>' +
+      '</tr></thead><tbody>';
+    o.lines.forEach(function (l) {
+      var take = Math.max(0, l.counted - lastLeft(l.currency));
+      h += '<tr>' +
+        '<td><b>' + esc(l.currency) + '</b></td>' +
+        '<td class="num">' + signedPlain(l.counted, l.currency) + '</td>' +
+        '<td class="num muted">' + signedPlain(l.expected, l.currency) + '</td>' +
+        '<td class="num"><b class="' + (l.diff < 0 ? 'dc-short' : l.diff > 0 ? 'dc-over' : 'dc-exact') + '">' +
+          (l.diff ? signed(l.diff, l.currency) : t('mn_balanced')) + '</b></td>' +
+        '<td class="num"><input class="inp num dc-take" type="text" inputmode="decimal" dir="ltr"' +
+          ' data-cbc="dc-take" data-cur="' + esc(l.currency) + '" data-counted="' + l.counted + '"' +
+          ' value="' + esc(wholeText(take, l.currency)) + '"></td>' +
+        '<td class="num" id="dcStay_' + esc(l.currency) + '">' + signedPlain(l.counted - take, l.currency) + '</td>' +
+        '</tr>';
+    });
+    h += '</tbody></table></div>' +
+      '<p class="muted small mt">' + t('dc_confirm_sub') + '</p>' +
+      field(t('note'), '<input class="inp" id="dcOwnerNote" type="text" maxlength="300">', 'mt') +
+      '<div class="dc-actions mt">' +
+        '<button class="btn btn-ghost" data-cb="dc-cancel" data-id="' + esc(o.id) + '">' + t('dc_cancel') + '</button>' +
+        '<button class="btn btn-primary btn-lg" data-cb="dc-confirm" data-id="' + esc(o.id) + '" data-op="' + newOp('dcc') + '">' +
+          t('dc_confirm_btn') + '</button>' +
+      '</div></div></div>';
+    return h;
+  }
+
+  function historyCard(list) {
+    var curs = currencies();
+    var h = '<div class="card table-wrap"><div class="card-head"><h3>' + t('dc_history') + '</h3></div>';
+    if (!list.length) return h + '<div class="cart-empty"><b>' + t('dc_history_empty') + '</b></div></div>';
+    h += '<table class="tbl dc-hist"><thead><tr><th>' + t('date') + '</th><th>' + t('dc_counted_col') + '</th>' +
+      curs.map(function (c) { return '<th class="num">' + esc(c) + '</th>'; }).join('') +
+      '<th>' + t('status') + '</th></tr></thead><tbody>';
+    list.forEach(function (x) {
+      h += '<tr' + (x.status === 'cancelled' ? ' class="mn-void"' : '') + '>' +
+        '<td class="num muted">' + hm(x.counted_at) + '</td>' +
+        '<td>' + esc(x.counted_name || '—') + '</td>' +
+        curs.map(function (c) {
+          var l = (x.lines || []).filter(function (y) { return y.currency === c; })[0];
+          if (!l) return '<td class="num muted">—</td>';
+          return '<td class="num"><b>' + signedPlain(l.counted, c) + '</b>' +
+            (l.diff ? '<small class="' + (l.diff < 0 ? 'dc-short' : 'dc-over') + '" style="display:block">' + signed(l.diff, c) + '</small>' : '') +
+            (l.taken ? '<small class="muted" style="display:block">' + t('dc_took') + ' ' + signedPlain(l.taken, c) + '</small>' : '') +
+            '</td>';
+        }).join('') +
+        '<td><span class="badge ' + (x.status === 'closed' ? 'healthy' : x.status === 'counted' ? 'low' : 'neutral') + '">' +
+          t('dc_st_' + x.status) + '</span>' +
+          (x.confirmed_name ? '<small class="muted" style="display:block">' + esc(x.confirmed_name) + '</small>' : '') +
+        '</td></tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  /* ------------------------------------------------------ the owner's places
+     A safe, a bank — anything that holds the shop's money and is not a
+     payment method. Settings, config.write. */
+  function settingsCard() {
+    if (!allow('config.write')) return '';
+    if (!P) {
+      P = places().filter(function (p) { return p.kind === 'extra'; }).map(function (p) {
+        return { id: p.id.slice(2), en: p.en, ar: p.ar, active: p.active !== false };
+      });
+    }
+    var h = setFoldStart('cashplaces', t('cb_set_title'),
+      '<span dir="ltr">' + nf(P.filter(function (x) { return x.active; }).length) + '</span>');
+    h += '<div class="card-body"><p class="muted small">' + t('cb_set_sub') + '</p>';
+    if (!P.length) h += '<p class="muted">' + t('cb_set_none') + '</p>';
+    P.forEach(function (x, i) {
+      h += '<div class="cb-set-row">' +
+        '<input class="inp" type="text" maxlength="40" placeholder="' + esc(t('cb_set_en')) + '" data-cbc="pl" data-i="' + i + '" data-k="en" value="' + esc(x.en) + '">' +
+        '<input class="inp" type="text" maxlength="40" dir="rtl" placeholder="' + esc(t('cb_set_ar')) + '" data-cbc="pl" data-i="' + i + '" data-k="ar" value="' + esc(x.ar) + '">' +
+        '<label class="cb-check"><input type="checkbox" data-cbc="pl" data-i="' + i + '" data-k="active"' +
+          (x.active ? ' checked' : '') + '> ' + t('cb_set_on') + '</label>' +
+        '</div>';
+    });
+    h += '<div class="cb-set-foot mt">' +
+      '<button class="btn btn-ghost btn-sm" data-cb="pl-add">+ ' + t('cb_set_add') + '</button>' +
+      '<button class="btn btn-primary btn-sm" data-cb="pl-save">' + t('save') + '</button></div>';
+    return h + '</div>' + setFoldEnd();
+  }
+
+  function keepScrollRender() {
+    var v = document.querySelector('.view');
+    var y = v ? v.scrollTop : 0;
+    render();
+    v = document.querySelector('.view');
+    if (v) v.scrollTop = y;
+  }
+
+  function slug(s, taken) {
+    var b = String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'place';
+    var id = b, n = 2;
+    while (taken.indexOf(id) > -1) id = b + '-' + (n++);
+    return id;
+  }
+
+  /* --------------------------------------------------------------- acts */
+
+  var ACT = {
+    start: function () { openStart(); },
+    move: function (el) { openMove(el.getAttribute('data-place')); },
+    exchange: function () { openExchange(); },
+    owner: function () { openOwner(); },
+    check: function (el) { openCheck(el.getAttribute('data-place')); },
+
+    'f-clear': function () {
+      B.place = B.kind = B.from = B.to = '';
+      B.data = null;
+      render();
+    },
+
+    'owner-dir': function (el) {
+      var v = el.getAttribute('data-v');
+      var box = document.getElementById('cbODir');
+      if (box) box.value = v;
+      var seg = el.parentNode;
+      Array.prototype.forEach.call(seg.children, function (b) { b.classList.toggle('on', b === el); });
+      var hint = document.getElementById('cbOHint');
+      if (hint) hint.textContent = t(v === 'draw' ? 'cb_o_draw_hint' : 'cb_o_in_hint');
+    },
+
+    'move-go': function (el) {
+      var from = val('cbFrom'), to = val('cbTo'), cur = val('cbCur');
+      var amount = toMinor(val('cbAmt'), cur);
+      var fee = toMinor(val('cbFee'), cur);
+      if (from === to) { toast(t('cb_move'), t('cb_same_place'), 'warn'); return; }
+      if (!amount) { toast(t('cb_move'), t('mn_amount_needed'), 'warn'); return; }
+      var body = { from: from, to: to, currency: cur, amount: amount, fee: fee || 0,
+                   note: val('cbNote') || null, opId: el.getAttribute('data-op') };
+      Shop.write(function () { return Shop.cashTransfer(body); }, null, function () {
+        closeModal();
+        B.data = null;
+        toast(t('cb_move'), placeName(from) + ' → ' + placeName(to) + ' · ' + text(amount, cur) +
+          (fee ? ' · ' + t('cb_fee_short') + ' ' + text(fee, cur) : ''), 'ok', 4500);
+      });
+    },
+
+    'exchange-go': function (el) {
+      var gc = val('cbXGiveCur'), rc = val('cbXGetCur');
+      var ga = toMinor(val('cbXGive'), gc), ra = toMinor(val('cbXGet'), rc);
+      if (gc === rc) { toast(t('cb_exchange'), t('cb_x_same'), 'warn'); return; }
+      if (!ga || !ra) { toast(t('cb_exchange'), t('mn_amount_needed'), 'warn'); return; }
+      var set = document.getElementById('cbXSet');
+      var body = {
+        place: val('cbXPlace'), give: { currency: gc, amount: ga }, get: { currency: rc, amount: ra },
+        setRate: !!(set && set.checked), note: val('cbNote') || null, opId: el.getAttribute('data-op')
+      };
+      Shop.write(function () { return Shop.cashExchange(body); }, null, function (res) {
+        closeModal();
+        B.data = null;
+        var msg = text(ga, gc) + ' → ' + text(ra, rc);
+        if (res && res.rate) msg += ' · 1 USD = ' + nf(res.rate);
+        if (res && res.rateSet) msg += ' · ' + t('cb_x_rate_set');
+        toast(t('cb_exchange'), msg, res && res.warning ? 'warn' : 'ok', 6000);
+      });
+    },
+
+    'owner-go': function (el) {
+      var cur = val('cbCur');
+      var amount = toMinor(val('cbAmt'), cur);
+      if (!amount) { toast(t('cb_owner_btn'), t('mn_amount_needed'), 'warn'); return; }
+      var dir = val('cbODir') === 'in' ? 'in' : 'draw';
+      var body = { direction: dir, place: val('cbOPlace'), currency: cur, amount: amount,
+                   note: val('cbNote') || null, opId: el.getAttribute('data-op') };
+      Shop.write(function () { return Shop.cashOwner(body); }, null, function () {
+        closeModal();
+        B.data = null;
+        toast(t(dir === 'draw' ? 'cb_o_draw' : 'cb_o_in'), placeName(body.place) + ' · ' + text(amount, cur), 'ok', 4000);
+      });
+    },
+
+    'check-go': function (el) {
+      var placeId = el.getAttribute('data-place');
+      var note = val('cbNote');
+      var items = [];
+      currencies().forEach(function (c) {
+        var raw = val('cbCnt_' + c).trim();
+        if (raw === '') return;
+        items.push({ place: placeId, currency: c, counted: toMinor(raw, c), note: note });
+      });
+      runChecks(items, el.getAttribute('data-op'), t('cb_check') + ' · ' + placeName(placeId));
+    },
+
+    'start-go': function (el) {
+      var items = [];
+      Array.prototype.forEach.call(document.querySelectorAll('.cb-start-in'), function (inp) {
+        var raw = String(inp.value || '').trim();
+        if (raw === '') return;
+        var c = inp.getAttribute('data-cur');
+        items.push({ place: inp.getAttribute('data-place'), currency: c, counted: toMinor(raw, c) });
+      });
+      runChecks(items, el.getAttribute('data-op'), t('cb_start_title'));
+    },
+
+    /* From anywhere — the cashier's home — straight to the count. */
+    'go-close': function () {
+      if (typeof Money !== 'undefined') Money.state.tab = 'close';
+      go('money');
+    },
+
+    'dc-recount': function () { DC.recount = true; paintClose(); },
+    'dc-recount-off': function () { DC.recount = false; paintClose(); },
+
+    'dc-count': function (el) {
+      var counted = {};
+      var any = false;
+      currencies().forEach(function (c) {
+        var raw = val('dcCnt_' + c).trim();
+        /* An empty box is "none of this currency" — the server still refuses
+           a currency the drawer holds if it was left out entirely, and the
+           form always sends every one. */
+        counted[c] = raw === '' ? 0 : toMinor(raw, c);
+        if (raw !== '') any = true;
+      });
+      if (!any) { toast(t('dc_title'), t('cb_nothing_typed'), 'warn'); return; }
+      var body = { counted: counted, note: val('dcNote') || null, opId: el.getAttribute('data-op') };
+      Shop.write(function () { return Shop.dayCount(body); }, null, function (res) {
+        DC.recount = false;
+        DC.data = null;
+        loadClose(true);
+        toast(t('dc_title'), t(res && res.recount ? 'dc_recounted' : 'dc_counted'), 'ok', 5000);
+      });
+    },
+
+    'dc-confirm': function (el) {
+      var id = el.getAttribute('data-id');
+      var taken = {};
+      var bad = null;
+      Array.prototype.forEach.call(document.querySelectorAll('.dc-take'), function (inp) {
+        var c = inp.getAttribute('data-cur');
+        var n = String(inp.value || '').trim() === '' ? 0 : toMinor(inp.value, c);
+        if (n > Number(inp.getAttribute('data-counted'))) bad = c;
+        taken[c] = n;
+      });
+      if (bad) { toast(t('dc_title'), t('dc_take_too_much').replace('{c}', bad), 'warn', 5000); return; }
+      var body = { taken: taken, ownerNote: val('dcOwnerNote') || null, opId: el.getAttribute('data-op') };
+      Shop.write(function () { return Shop.dayConfirm(id, body); }, null, function (res) {
+        DC.data = null;
+        loadClose(true);
+        var lines = ((res && res.close && res.close.lines) || []).map(function (l) {
+          return l.currency + ': ' + t('dc_took') + ' ' + text(l.taken, l.currency) + ', ' +
+            t('dc_stays').toLowerCase() + ' ' + text(l.left, l.currency) +
+            (l.diff ? ' (' + (l.diff < 0 ? '−' : '+') + text(Math.abs(l.diff), l.currency) + ')' : '');
+        });
+        var off = ((res && res.close && res.close.lines) || []).some(function (l) { return l.diff; });
+        toast(t('dc_closed'), lines.join(' · '), off ? 'warn' : 'ok', 8000);
+      });
+    },
+
+    'dc-cancel': function (el) {
+      var id = el.getAttribute('data-id');
+      Shop.write(function () { return Shop.dayCancel(id); }, null, function () {
+        DC.data = null;
+        loadClose(true);
+        toast(t('dc_title'), t('dc_cancelled'), 'ok', 3500);
+      });
+    },
+
+    'pl-add': function () {
+      if (!P) return;
+      P.push({ id: '', en: '', ar: '', active: true });
+      keepScrollRender();
+      var boxes = document.querySelectorAll('[data-cbc="pl"][data-k="en"]');
+      var last = boxes[boxes.length - 1];
+      if (last) { try { last.focus({ preventScroll: true }); } catch (e) { last.focus(); } }
+    },
+
+    'pl-save': function () {
+      if (!P) return;
+      if (P.some(function (x) { return !String(x.en || '').trim() && !String(x.ar || '').trim(); })) {
+        toast(t('cb_set_title'), t('cb_set_need_name'), 'warn', 5000);
+        return;
+      }
+      var taken = P.map(function (x) { return x.id; }).filter(Boolean);
+      var list = P.map(function (x) {
+        if (!x.id) { x.id = slug(x.en || x.ar, taken); taken.push(x.id); }
+        return { id: x.id, en: x.en, ar: x.ar, active: !!x.active };
+      });
+      API.put('/api/cash/places', { places: list }).then(function () {
+        P = null;
+        return Shop.load();
+      }).then(function () {
+        toast(t('cb_set_title'), t('cb_set_saved'), 'ok', 3000);
+        keepScrollRender();
+      }).catch(function (err) {
+        toast(t('cb_set_title'), err.message || API.friendly(err), 'err', 7000);
+      });
+    }
+  };
+
+  /* Typing and choosing, never render(): the dialogs hold what is being
+     typed, and the Book's filters hold a caret. */
+  var CHANGE = {
+    f: function (el) {
+      B[el.getAttribute('data-k')] = el.value;
+      B.data = null;
+      if (!filtered()) { paintBook(); return; }
+      var host = document.getElementById('cbBook');
+      if (host) host.innerHTML = '<div class="card"><div class="cart-empty"><b>' + t('cb_loading') + '</b></div></div>';
+      loadBook();
+    },
+    'mv-hint': function () {
+      var h = document.getElementById('cbHint');
+      if (h) h.innerHTML = moveHint();
+    },
+    'x-rate': function () {
+      var h = document.getElementById('cbXRate');
+      if (h) h.innerHTML = rateLine();
+    },
+    /* What stays in the drawer, as the owner types what he takes. */
+    'dc-take': function (el) {
+      var c = el.getAttribute('data-cur');
+      var counted = Number(el.getAttribute('data-counted')) || 0;
+      var take = String(el.value || '').trim() === '' ? 0 : toMinor(el.value, c);
+      var cell = document.getElementById('dcStay_' + c);
+      if (cell) cell.innerHTML = signedPlain(counted - take, c);
+      el.classList.toggle('dc-bad', take > counted);
+    },
+    pl: function (el) {
+      if (!P) return;
+      var row = P[Number(el.getAttribute('data-i'))];
+      if (!row) return;
+      var k = el.getAttribute('data-k');
+      row[k] = el.type === 'checkbox' ? !!el.checked : el.value;
+    }
+  };
+
+  var bound = false;
+  function bind() {
+    if (bound) return;
+    bound = true;
+    document.addEventListener('click', function (e) {
+      var el = e.target.closest ? e.target.closest('[data-cb]') : null;
+      if (!el) return;
+      var fn = ACT[el.getAttribute('data-cb')];
+      if (fn) { e.preventDefault(); fn(el, e); }
+    });
+    var onChange = function (e) {
+      var el = e.target && e.target.closest ? e.target.closest('[data-cbc]') : null;
+      if (!el) return;
+      var fn = CHANGE[el.getAttribute('data-cbc')];
+      if (fn) fn(el, e);
+    };
+    document.addEventListener('change', onChange);
+    /* On every keystroke only where that is the point — the live rate and
+       the settings copy. The Book's filters wait for a change. */
+    document.addEventListener('input', function (e) {
+      var el = e.target && e.target.closest ? e.target.closest('[data-cbc]') : null;
+      if (!el) return;
+      var k = el.getAttribute('data-cbc');
+      if (k === 'x-rate' || k === 'pl' || k === 'dc-take') onChange(e);
+    });
+  }
+  bind();
+
+  /* The Book tab exports what it shows. */
+  function exportSpec() {
+    var page = filtered() ? B.data : DB.cashBook;
+    var rows = page ? page.rows : [];
+    return {
+      name: 'cash-book', sheet: 'Cash book', title: t('cb_book'),
+      subtitle: (page && page.capped ? t('cap_window').replace('{a}', nf(page.shown)).replace('{b}', nf(page.total))
+                  .replace('{n}', t('cb_moves')) + ' · ' : '') + fmtDate(new Date()),
+      /* One column per currency, never one for both; the other is blank —
+         blank, not zero, because nothing moved in it. */
+      columns: [{ label: t('date'), date: true }, { label: t('cb_col_place'), width: 22 },
+                { label: t('cb_col_what'), width: 26 }, { label: t('cb_col_ref') },
+                { label: 'SYP', money: 'SYP' }, { label: 'USD', money: 'USD' },
+                { label: t('cb_col_who') }],
+      rows: rows.map(function (m) {
+        var whole = m.amount / Math.pow(10, m.currency === 'USD' ? 2 : 0);
+        return [new Date(m.at), placeName(m.place), t('cb_k_' + m.kind) +
+                  (m.other_place && m.kind !== 'exchange' ? ' ' + (m.amount < 0 ? t('cb_to') : t('cb_from_w')) +
+                   ' ' + placeName(m.other_place) : ''),
+                refText(m),
+                m.currency === 'SYP' ? whole : null,
+                m.currency === 'USD' ? whole : null,
+                m.user_name || ''];
+      })
+    };
+  }
+
+  function closeExportSpec() {
+    var list = (DC.data && DC.data.recent) || [];
+    var curs = currencies();
+    var cols = [{ label: t('date'), date: true }, { label: t('dc_counted_col'), width: 20 }];
+    curs.forEach(function (c) {
+      cols.push({ label: c + ' · ' + t('cb_counted'), money: c });
+      cols.push({ label: c + ' · ' + t('mn_difference'), money: c });
+      cols.push({ label: c + ' · ' + t('dc_take'), money: c });
+    });
+    cols.push({ label: t('status') });
+    return {
+      name: 'day-closes', sheet: 'Day closes', title: t('dc_history'), subtitle: fmtDate(new Date()),
+      columns: cols,
+      rows: list.map(function (x) {
+        var row = [new Date(x.counted_at), x.counted_name || ''];
+        curs.forEach(function (c) {
+          var l = (x.lines || []).filter(function (y) { return y.currency === c; })[0];
+          var div = c === 'USD' ? 100 : 1;
+          row.push(l ? l.counted / div : null, l ? l.diff / div : null, l ? l.taken / div : null);
+        });
+        row.push(t('dc_st_' + x.status));
+        return row;
+      })
+    };
+  }
+
+  return {
+    nowTab: nowTab,
+    bookTab: bookTab,
+    closeTab: closeTab,
+    closeExportSpec: closeExportSpec,
+    settingsCard: settingsCard,
+    placeName: placeName,
+    pickable: pickable,
+    /* The one money encoder and parser for the Money screen's other tabs
+       (js/payables.js) — a second copy is how two figures stop agreeing. */
+    money: signedPlain,
+    signed: signed,
+    moneyText: text,
+    toMinor: toMinor,
+    newOp: newOp,
+    placeSelect: placeSelect,
+    currencies: currencies,
+    catLabel: catLabel,
+    exportSpec: exportSpec,
+    openMove: openMove
+  };
+})();

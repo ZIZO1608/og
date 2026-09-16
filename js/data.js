@@ -2123,8 +2123,13 @@ var DB = {
     return e;
   },
 
+  /* Voided ones are not a cost, and a dollar expense is not lira: the
+     month's figure is the shop's own currency, and says so where it is drawn. */
   expensesBetween: function (from, to) {
-    return expenses.filter(function (e) { return e.at >= from && e.at < to; });
+    var base = CONFIG.BASE_CURRENCY || 'SYP';
+    return expenses.filter(function (e) {
+      return e.at >= from && e.at < to && !e.voided && (e.currency || base) === base;
+    });
   },
 
   expensesInMonth: function (monthsBack) {
@@ -2133,25 +2138,9 @@ var DB = {
     return DB.expensesBetween(d, e).reduce(function (a, x) { return a + x.amount; }, 0);
   },
 
-  /* Gross minus what it actually cost to keep the doors open. This is the
-     number Reports has been missing — revenue was being shown as if it were
-     profit. */
-  netProfit: function (monthsBack) {
-    var d = new Date(TODAY.getFullYear(), TODAY.getMonth() - (monthsBack || 0), 1);
-    var e = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-    var gross = 0, cogs = 0;
-    sales.forEach(function (s) {
-      if (s.date < d || s.date >= e) return;
-      gross += s.total;
-      s.items.forEach(function (i) {
-        var p = DB.product(i.productId);
-        if (p) cogs += p.costPrice * i.qty;
-      });
-    });
-    var exp = DB.expensesInMonth(monthsBack);
-    return { gross: gross, cogs: cogs, grossProfit: gross - cogs, expenses: exp,
-             net: gross - cogs - exp };
-  },
+  /* netProfit lived here: the last 200 sales, lira and dollars added, cost
+     from today's price list. The month's profit is the Statement's now
+     (server/lib/statement.js), over every sale in its own currency. */
 
   /* ---- the debt book, الدين ----------------------------------------------
      Derived from credit sales rather than stored separately, so a debt can
@@ -2178,21 +2167,28 @@ var DB = {
           total: s.total,
           paid: DB.debtPaid(s.id),
           balance: DB.debtBalance(s),
+          currency: s.currency || CONFIG.BASE_CURRENCY || 'SYP',
           age: DB.daysSince(s.date)
         };
       })
       .sort(function (a, b) { return b.age - a.age; });
   },
 
-  debtTotal: function () {
-    return DB.debts().reduce(function (a, d) { return a + d.balance; }, 0);
+  /* ONE CURRENCY PER TOTAL. A dollar debt is owed in cents; adding it to a
+     lira total put $45.00 into the book as 4,500 lira. The shop's own
+     currency by default, and the screen asks for the other one by name. */
+  debtTotal: function (cur) {
+    var want = cur || CONFIG.BASE_CURRENCY || 'SYP';
+    return DB.debts().reduce(function (a, d) { return d.currency === want ? a + d.balance : a; }, 0);
   },
 
-  /* Buckets sum exactly to debtTotal, same contract as the partner ageing. */
-  debtAgeing: function () {
+  /* Buckets sum exactly to debtTotal(cur), same contract as the partner ageing. */
+  debtAgeing: function (cur) {
+    var want = cur || CONFIG.BASE_CURRENCY || 'SYP';
     var b = [{ key: '0-7', max: 7, value: 0 }, { key: '8-30', max: 30, value: 0 },
              { key: '31-60', max: 60, value: 0 }, { key: '60+', max: Infinity, value: 0 }];
     DB.debts().forEach(function (d) {
+      if (d.currency !== want) return;
       for (var k = 0; k < b.length; k++) {
         if (d.age <= b[k].max) { b[k].value += d.balance; return; }
       }
@@ -2672,6 +2668,7 @@ var DB = {
     if (cfg['loyalty.void_reverses_points'] !== undefined) {
       CONFIG.VOID_REVERSES_POINTS = cfg['loyalty.void_reverses_points'] !== '0';
     }
+    if (cfg['shop.base_currency']) CONFIG.BASE_CURRENCY = cfg['shop.base_currency'];
     if (cfg['shop.name']) CONFIG.SHOP_NAME = cfg['shop.name'];
     if (cfg['shop.address']) CONFIG.SHOP_ADDRESS = cfg['shop.address'];
     if (cfg['shop.city']) CONFIG.SHOP_CITY = cfg['shop.city'];
@@ -2938,7 +2935,10 @@ var DB = {
            rested on it. */
         shiftId: s.shift_id || null,
         publicToken: s.public_token || null,
-        fxRate: s.fx_rate || rate
+        fxRate: s.fx_rate || rate,
+        /* What `total` is counted in. A dollar credit sale is owed in cents,
+           and the debt book has to say so rather than print cents as lira. */
+        currency: s.currency || CONFIG.BASE_CURRENCY || 'SYP'
       };
       sales.push(sale);
       if (custIndex[sale.customerId]) custIndex[sale.customerId].history.push(sale.id);
@@ -2993,8 +2993,12 @@ var DB = {
       payload.suppliers.forEach(function (x) {
         suppliers.push({
           id: x.id, name: x.name, contact: x.contact, category: x.category,
+          /* 055: in the supplier's own currency, kept by its ledger. */
+          currency: x.currency || CONFIG.BASE_CURRENCY || 'SYP',
           outstanding: x.outstanding, totalPurchased: x.total_purchased,
+          paid: x.paid || 0, entries: x.entries || 0,
           dueDate: x.due_date ? new Date(x.due_date) : null,
+          dueRaw: x.due_date || null,
           lastPayment: x.last_payment ? new Date(x.last_payment) : null
         });
       });
@@ -3005,8 +3009,13 @@ var DB = {
       payload.employees.forEach(function (x) {
         employees.push({
           id: x.id, name: x.name, role: x.role, salary: x.salary,
-          nextPayment: x.next_payment ? new Date(x.next_payment) : null,
-          since: x.since, phone: x.phone, sales: 0
+          /* 055: derived from what has been paid, not stored. */
+          nextPayment: x.next_payment ? new Date(x.next_payment + 'T12:00:00') : null,
+          nextRaw: x.next_payment || null,
+          since: x.since, phone: x.phone, sales: 0,
+          currency: x.currency || CONFIG.BASE_CURRENCY || 'SYP',
+          payDay: x.pay_day || null, userId: x.user_id || null,
+          archived: !!x.archived, thisMonth: x.this_month || null
         });
       });
     }
@@ -3147,9 +3156,20 @@ function hydrateMoney(m) {
   (m.expenses || []).forEach(function (e) {
     expenses.push({
       id: e.id, at: date(e.at), category: e.category, amount: e.amount,
-      method: e.method, note: e.note || '', shiftId: e.shift_id
+      method: e.method, note: e.note || '', shiftId: e.shift_id,
+      /* 053: in its own currency, from the place the cash book says, and
+         voided by a row there rather than a flag here. */
+      currency: e.currency || CONFIG.BASE_CURRENCY || 'SYP',
+      place: e.place || null,
+      voided: !!e.voided_at, voidedAt: date(e.voided_at)
     });
   });
+
+  /* 053: where every lira and dollar is, and the latest page of the book.
+     Replaced whole, like DB.dash — a snapshot, not a collection anyone holds
+     a reference to. */
+  DB.cash = m.cash || null;
+  DB.cashBook = m.book || null;
 
   debtPayments.length = 0;
   (m.debtPayments || []).forEach(function (p) {

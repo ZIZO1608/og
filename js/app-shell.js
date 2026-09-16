@@ -87,7 +87,10 @@ var NAV_PERM = {
      it needs stock.move, and the layout editor config.write — both checked
      inside the module, and both again on the server. */
   shelfmap:   'stock.read',
-  money:      'money.read',
+  /* Any of these (054): the cashier counts the drawer here at night and sees
+     nothing else on this screen — money.js draws only the tabs each account
+     may have. */
+  money:      ['money.read', 'money.count', 'staff.read', 'profit.read'],
   /* The office writes orders — a sale with a destination and a payment plan
      — which is a different job from reading the board. */
   desk:       'delivery.desk',
@@ -125,7 +128,9 @@ function navAllowed(id) {
   if (id === 'customers' && roleOf() === 'delivery') return false;
 
   var need = NAV_PERM[id];
-  return !need || allow(need);
+  if (!need) return true;
+  /* A list means any of them, the same meaning requirePerm gives one. */
+  return Array.isArray(need) ? need.some(allow) : allow(need);
 }
 
 function allowedNav() {
@@ -270,7 +275,9 @@ function renderSidebar() {
    Five is the ceiling — a sixth tab makes each one too narrow for a thumb, so
    the rest live behind More. */
 var TABS = ['dashboard', 'pos', 'products', 'print'];
-var MORE_ITEMS = ['warehouse', 'shelfmap', 'desk', 'deliveries', 'reviews', 'customers', 'labels', 'reports', 'settings'];
+/* Money was missing here, so on a phone nobody could reach it at all — and the
+   night's count (054) is a cashier's job on whatever device is to hand. */
+var MORE_ITEMS = ['warehouse', 'shelfmap', 'money', 'desk', 'deliveries', 'reviews', 'customers', 'labels', 'reports', 'settings'];
 
 function renderTabbar() {
   var host = document.getElementById('tabbar');

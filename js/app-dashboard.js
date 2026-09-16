@@ -242,7 +242,19 @@ function viewDashboard() {
     h += '<div class="card"><div class="card-head"><h3>' + t('dash_drawer') + '</h3>' +
       (drawer.open ? '<div class="card-actions"><span class="badge healthy">' + esc(drawer.id) + '</span></div>' : '') +
       '</div>';
-    if (!drawer.open) {
+    /* No shift open is the ordinary state since the day close (054): the
+       drawer is continuous, and the cash book knows what is in it. */
+    var bookDrawer = DB.cash && DB.cash.started
+      ? (DB.cash.places || []).filter(function (p) { return p.id === 'drawer'; })[0] : null;
+    if (!drawer.open && bookDrawer) {
+      var bb = bookDrawer.balances || {};
+      h += '<div class="card-body">' +
+        '<div class="dash-hero-val dash-drawer-val' + ((bb.SYP || 0) < 0 || (bb.USD || 0) < 0 ? ' warn' : '') + '">' +
+          moneyPair(bb.SYP || 0, bb.USD || 0) + '</div>' +
+        '<div class="muted small">' + t('dash_drawer_book') + '</div>' +
+        ifNav('money', '<div class="mt"><button class="btn btn-sm" data-act="nav" data-view="money" data-tab="close">' +
+          t('dc_tab') + '</button></div>') + '</div>';
+    } else if (!drawer.open) {
       h += '<div class="cart-empty"><b>' + t('dash_drawer_none') + '</b>' + t('dash_drawer_none_sub') +
         ifNav('money', '<div class="mt"><button class="btn btn-sm" data-act="nav" data-view="money">' +
           t('dash_open_shift') + '</button></div>') + '</div>';
@@ -267,12 +279,23 @@ function viewDashboard() {
 
     /* -- owed in / owed out -- */
     h += '<div class="card"><div class="card-body">';
+    /* Where the money is (053): every place in the cash book, lira and
+       dollars apart. The page it opens says which place holds what. */
+    if (DB.cash && DB.cash.started) {
+      var tot = DB.cash.totals || {};
+      h += '<div class="stat mb' + (navAllowed('money') ? ' clickable" data-act="nav" data-view="money" data-tab="now"' : '"') + '>' +
+        '<span class="eyebrow">' + t('dash_money_where') + '</span>' +
+        '<div class="val">' + moneyPair(tot.SYP || 0, tot.USD || 0, true) + '</div>' +
+        '<div class="foot">' + t('dash_money_where_sub') + '</div></div>';
+    }
     h += '<div class="stat clickable" data-act="dash-cust" data-f="debt"><span class="eyebrow">' + t('dash_customers_owe') + '</span>' +
       '<div class="val">' + moneyPair(debts.syp, debts.usd, true) + '</div>' +
       '<div class="foot">' + t('dash_open_invoices')
         .replace('{n}', '<bdi dir="ltr">' + nf(debts.invoices) + '</bdi>')
         .replace('{c}', '<bdi dir="ltr">' + nf(debts.customers) + '</bdi>') + '</div></div>';
-    h += '<div class="stat mt' + (navAllowed('reports') ? ' clickable" data-act="nav" data-view="reports" data-tab="suppliers"' : '"') + '>' +
+    /* Opens where the suppliers are paid (055), not the read-only report. */
+    h += '<div class="stat mt' + (navAllowed('money') ? ' clickable" data-act="nav" data-view="money" data-tab="suppliers"'
+                                  : navAllowed('reports') ? ' clickable" data-act="nav" data-view="reports" data-tab="suppliers"' : '"') + '>' +
       '<span class="eyebrow">' + t('dash_owe_suppliers') + '</span>' +
       '<div class="val">' + moneyPair(sup.syp, sup.usd, true) + '</div>' +
       '<div class="foot">' + t('dash_n_suppliers').replace('{n}', '<bdi dir="ltr">' + nf(sup.count) + '</bdi>') + '</div></div>';
@@ -511,7 +534,10 @@ function viewShiftHome() {
 
   h += ifNav('pos', '<div class="home-cta mt">' +
     '<button class="btn btn-primary btn-lg" data-act="nav" data-view="pos">' +
-      t('open_till') + ' →</button></div>');
+      t('open_till') + ' →</button>' +
+    /* The night's count (054) is hers too, and one press from home. */
+    (allow('money.count') ? ' <button class="btn btn-lg" data-cb="go-close">' + t('dc_count_title') + '</button>' : '') +
+    '</div>');
 
   /* -- what she has rung up -- */
   var mine = me ? me.latest : [];

@@ -28,6 +28,7 @@
 import { randomBytes } from 'node:crypto';
 import { get, nowIso, tx, logChange } from './db.js';
 import * as Stock from './stock.js';
+import * as Cash from './cashbook.js';
 
 /* The address the printed QR points at.
 
@@ -449,6 +450,21 @@ export function record({
                   p.unitPrice, p.unitCost, p.srcCurrency, p.srcUnitPrice);
     }
 
+    /* ---- the cash book (053) ---------------------------------------------
+       The money arrives somewhere, in the same transaction as the sale that
+       brought it: cash into the drawer, Sham Cash into Sham Cash. A credit
+       sale moves nothing — it is a debt — and a delivery order's money moves
+       with its payments. A sale paid entirely in points took no money. */
+    if (total > 0) {
+      const where = Cash.placeForMethod(d, payment || 'cash');
+      if (where) {
+        Cash.apply(d, {
+          place: where, currency: settle, amount: total, kind: 'sale',
+          refType: 'sale', refId: saleId, userId, at, fxRate: rate
+        });
+      }
+    }
+
     /* ---- loyalty ----------------------------------------------------------
        Earned is `earnedForRow`, computed above so it could be written into
        the invoice itself; reused here rather than recomputed so the row and
@@ -785,6 +801,13 @@ export function voidSale(id, { reason, userId }) {
         }
       }
     }
+
+    /* The money it brought in goes back out of the place it went into — as
+       new rows, so the book shows the sale and its reversal side by side. */
+    Cash.reverse(d, {
+      refType: 'sale', refId: id, kind: 'sale', as: 'sale_void',
+      note: reason ? `voided: ${reason}` : 'voided', userId
+    });
 
     d.prepare('UPDATE sales SET voided = 1, void_reason = ? WHERE id = ?')
      .run(reason ?? null, id);

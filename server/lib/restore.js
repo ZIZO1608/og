@@ -123,6 +123,14 @@ export const ORDER = [
   'handovers', 'handover_lines', 'order_returns', 'order_return_lines', 'customer_credit', 'order_reviews',
   'stock_counts', 'stock_count_lines',
 
+  /* the cash book (053): a move names a currency and a user and nothing else,
+     so it can come anywhere after accounts — last, beside the other logs;
+     a night's count before its lines (054) */
+  'money_moves', 'day_closes', 'day_close_lines',
+  /* what suppliers and staff were paid (055): after the supplier and the
+     employee they name, which come first in this list */
+  'supplier_ledger', 'salary_payments',
+
   /* what was printed, which the mirror has always had room for */
   'print_log', 'label_print_log'
 ];
@@ -367,19 +375,41 @@ export function applyShop(d, snapshot, accounts, { force = false, log = null, on
     }
   };
 
+  /* A PERMISSION THE MIRROR HAS NEVER HEARD OF keeps this code's default.
+     Replacing role_permissions whole is right for every permission the mirror
+     knows — the manager's ticks win over the factory grid — but a mirror
+     written by a laptop on older code has no row at all for a permission a
+     newer migration added (053's money.move, 054's money.count), and "no row"
+     is DENIED. Pulled as-is, the manager lost the Money actions the moment the
+     shop moved laptops. Rows are only ever upserted (auth.js), never deleted,
+     so a permission with no row anywhere in the mirror is one its writer did
+     not know — never one somebody removed. */
+  const unknownPerms = () => {
+    const pulled = snapshot.tables.find((t) => t.table === 'role_permissions');
+    if (!pulled || !pulled.rows.length) return [];
+    const known = new Set(pulled.rows.map((r) => r.perm));
+    return d.prepare('SELECT * FROM role_permissions').all().filter((r) => !known.has(r.perm));
+  };
+
   const each = oneTx ? (fn) => fn() : (fn) => DB.tx(fn);
   const body = () => {
+    let keep = [];
     if (oneTx) {
       /* Foreign keys are checked at COMMIT rather than per statement, so the
          order inside the transaction is not load-bearing: the whole shop
          either lands consistent or not at all. The seed's own rows are what
          made this necessary — a fresh database is not empty. */
       d.exec('PRAGMA defer_foreign_keys = ON');
+      keep = unknownPerms();
       clearSeeded();
     }
     const users = writeUsers();
     for (const t of snapshot.tables) each(() => writeTable(t));
-    return { users, labelSeq: fixLabelSeq() };
+    for (const r of keep) put('role_permissions', r);
+    if (keep.length && log) {
+      log.line(`    kept this code's default for ${[...new Set(keep.map((r) => r.perm))].join(', ')} — the mirror has no row for it`);
+    }
+    return { users, labelSeq: fixLabelSeq(), keptPerms: keep.length };
   };
   const { users, labelSeq } = oneTx ? DB.tx(body) : body();
 

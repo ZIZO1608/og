@@ -48,6 +48,7 @@ import * as Sync from './sync-worker.js';
 import * as Loyalty from './loyalty.js';
 import * as Wants from './wants.js';
 import { capArray } from './capped.js';
+import * as Payables from './payables.js';
 
 /* How many rows the bell shows at most. Named, because the stamp block
    below has to reserve a slot inside this budget for its summary row — and
@@ -295,12 +296,12 @@ export function list(user, { limit = MAX_ROWS } = {}) {
       out.push({
         key: 'supplier:' + r.id, kind: 'supplier_due',
         args: { name: r.name, amount: r.outstanding, currency: r.currency, days: left },
-        icon: '$', tone: left < 0 ? 'red' : 'amber', view: 'reports'
+        icon: '$', tone: left < 0 ? 'red' : 'amber', view: 'money'
       });
     });
     if (rows.length === 3) {
       more('supplier_due', d.prepare(`SELECT COUNT(*) AS n ${DUE_SQL}`).get(horizon.toISOString()).n,
-           rows.length, '$', 'amber', 'reports');
+           rows.length, '$', 'amber', 'money');
     }
   }
 
@@ -372,18 +373,17 @@ export function list(user, { limit = MAX_ROWS } = {}) {
     }
   }
 
+  /* The pay day is DERIVED now (055) — the month's pay day while that month
+     is unpaid, the next month's once it is settled — and the key carries the
+     MONTH. It used to be the constant 'payroll', read against a date nothing
+     ever moved: marked read once, it stayed read for every month after. */
   if (can('staff.read')) {
-    const soonest = d.prepare(
-      `SELECT next_payment FROM employees
-        WHERE archived = 0 AND next_payment IS NOT NULL
-        ORDER BY next_payment ASC LIMIT 1`
-    ).get();
+    const soonest = Payables.soonestPayDay();
     if (soonest) {
-      const who = d.prepare(
-        'SELECT COUNT(*) AS n FROM employees WHERE archived = 0 AND next_payment = ?'
-      ).get(soonest.next_payment).n;
-      out.push({ key: 'payroll', kind: 'payroll', args: { n: who, days: daysUntil(soonest.next_payment) },
-                 icon: 'P', tone: 'grey', view: 'reports' });
+      const days = daysUntil(soonest.date);
+      out.push({ key: 'payroll:' + soonest.month, kind: 'payroll',
+                 args: { n: soonest.count, days },
+                 icon: 'P', tone: days < 0 ? 'amber' : 'grey', view: 'money' });
     }
   }
 

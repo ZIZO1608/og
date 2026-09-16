@@ -898,6 +898,12 @@ Four facts it is built on, all verified in source and all easy to break:
   wipe on `behind()`.**
 - **A mirrored user with no sealed box comes back DISABLED** with random password bytes, so
   `sales.cashier_id` holds; the wipe itself is refused unless an active manager's box opens.
+- **A permission the mirror has no row for keeps this code's default** (`unknownPerms()` in
+  `applyShop`). `role_permissions` is otherwise replaced whole, and a mirror written by a laptop on
+  older code has no row at all for a permission a newer migration added — "no row" is denied, so a
+  pull from it stripped 053's `money.move` and 054's `money.count` from the manager and the cashier.
+  Safe because permission rows are only ever upserted, never deleted. Config is still replaced
+  whole: the keys 053/054 seed have the same defaults in code, so losing them changes nothing.
 
 Every guard refuses to the local copy with a reason code, and **no path exits or opens an empty
 shop**: `sync_off` · `vault_off` · `unreachable` · `own_lineage` (the same laptop again — skipped:
@@ -1043,8 +1049,11 @@ it rejects the **whole batch**, not the column:
   asks about the *data*; the shape question used to be answered by a day of missing sales instead of
   by a command. Both new branches were verified by breaking `mirror-lag.js` on purpose.
 
-- **The schema files are run by hand in the Supabase dashboard**, `002` through `018` (`001` too,
-  on a new project). **`server/supabase/CATCH-UP.sql` is every outstanding one concatenated** — one
+- **The schema files are run by hand in the Supabase dashboard**, `002` through `023` (`001` too,
+  on a new project). **`021_cash_book.sql`, `022_day_close.sql` and `023_payables.sql` (local 053–055)
+  are outstanding as of 16 Sep 2026** — until they are run the boot pull refuses with `drift`; run them
+  in that order, then `npm run supabase:reconcile` (023 adds `employees.pay_day`, which the sync pushes
+  without until then); see "The money". **`server/supabase/CATCH-UP.sql` is every outstanding one concatenated** — one
   paste instead of four visits; it is generated, every statement is `IF NOT EXISTS`, and re-running it
   is safe. **`016`, `017` and `018` were applied on 2026-09-12** — `supabase:drift` reads green, all
   45 pushed tables column for column, and the six new tables (`order_payments`, `handovers`,
@@ -1697,9 +1706,8 @@ same family as screenshotting a popover mid-fade.
 
 ## Known open work
 
-- The **supplier and payroll editors do not exist**. `Shop.saveSupplier` / `saveEmployee` and their
-  routes are live and tested; there is simply no screen. Same for adding one size to an existing
-  product (`Shop.addVariant`) and cancelling a purchase order (`Shop.cancelPO`). These are listed by
+- The supplier and payroll editors exist now (the Money screen, 055). Still no screen for adding one
+  size to an existing product (`Shop.addVariant`) or cancelling a purchase order (`Shop.cancelPO`). These are listed by
   name in the wiring test so they stay visible rather than becoming permanent.
 - **There are endpoints but no website.** `/api/ext/print-jobs` and `/api/ext/products` are both
   live behind `OG_WEB_API_KEY`; nothing calls either yet. The catalogue side is complete — the
@@ -3660,3 +3668,263 @@ only in the browser and died on a refresh.
   re-applied every adjustment and a sale landing mid-way corrected against a figure that had moved.
 - `stock_count_lines.system_qty` is the one derived value this schema stores: the point of a count is
   the variance *at that moment*, and by June the live figure has moved.
+
+## The money — where every lira and dollar is
+
+`server/lib/cashbook.js`, `js/cashbook.js`, migration `053_cash_book.sql`, mirror file
+`server/supabase/021_cash_book.sql`. The shop's money was on paper: the live database had 20 sales,
+every one with `shift_id = NULL`, and zero shifts, expenses or supplier payments. Money arrives as cash
+and through nine transfer offices and wallets (Sham Cash, Fuad, Haram, Tarabut, Gold Master, Andalus,
+Yaqut, Tima, Zam Zam) and card, and **the owner said money sits in those as a balance** — the system
+recorded which method a sale used and nothing about how much was where.
+
+**THE STOCK MOVEMENT LOG, APPLIED TO MONEY.** A *place* is where money physically is; a *move* is one
+signed row `(place, currency, amount)` in `money_moves` with a `kind` and a reference; a balance is
+`SUM(amount)` per place and currency, derived every time and stored nowhere (the `Money.openDebts`
+reason). Not a double-entry ledger — debits and credits are vocabulary nobody here reads — but every
+move names both sides (the kind and ref, or the other place for a transfer), which is enough for a
+balance, a cash flow and a profit and loss. The owner's answers that shaped it (16 Sep 2026): wallet
+money stays as a balance; lira and dollars are both held and exchanged often; **the owner takes the
+day's cash home and it still pays shop costs**; the cashier counts blind and the owner confirms;
+salaries are monthly with advances. Phase 2 (closing the day), phase 3 (suppliers and salaries) and
+phase 4 (the month's statement — profit and loss, cash flow) are below.
+
+- **Places are text, not a table.** `drawer`, `owner` ("with the owner"), `m:<method id>` for every
+  `pay.methods` entry that is not a drawer method and not `credit`/`order`/`store_credit` — **derived,
+  so there is no second list to keep in step** — `driver:<user id>` for door cash not handed in, and
+  `x:<id>` for the owner's own places (a safe, a bank) in `config['money.places']`, edited by the
+  Settings fold `Cashbook.settingsCard()` through `PUT /api/cash/places`. An `x:` id that has held money
+  is never removed, only switched off, and a switched-off place still holding money is still drawn.
+- **Every money write the system already made writes its move in the SAME transaction**, through
+  `Cash.apply(d, …)`, which opens no transaction of its own (the `Stock.apply` rule): a till sale
+  (`Sales.recordIn` — a credit or `order` sale writes none, a sale paid entirely in points writes
+  none), a void (`Cash.reverse`, new rows, never an edit), a debt payment, an expense, a delivery-office
+  payment and refund (`Orders.takePayment` / `refundOut`), the driver hand-in (`Cash.handInPayment`:
+  `driver:<id>` → `drawer`; a payment taken before 053 simply *arrives* in the drawer), and a payment
+  to Yalla Wear. **The shop's money leaves once** for Yalla Wear: when the shop records the payment,
+  or when the shop confirms one Yalla Wear recorded — never both, and Yalla Wear's own record moves
+  nothing on the shop's books. Their request can carry no `place`; the route reads it only for `og`.
+- **A NEGATIVE BALANCE IS ALLOWED, AND SAID.** The opposite of stock's `CHECK (qty >= 0)`, on purpose:
+  a wallet reading −50,000 means something coming IN was never recorded, and refusing a supplier
+  payment out of it would stop the shop recording the payment at all. The card turns amber and says so
+  in words.
+- **Append-only, and corrections are rows.** Load-bearing twice: the trail stays honest, and the mirror
+  pushes this table above its highest id, which never sees an UPDATE. **An expense is voided by an
+  `expense_void` move, not a flag** — `expenses` is append-only in the mirror too, so a `voided` column
+  there would never arrive. Every reader of expenses asks the book (`Money.summary`, `EXPENSE_SELECT`).
+- **The one zero.** `amount <> 0` except for `opening`, `count_diff` and `expense_void` — a check that
+  matched ("Sham Cash, the 16th, exact") is evidence, a first balance of nothing is a start, and a void
+  of an expense written before 053 has no move to reverse.
+- **The first check of a place in a currency is its `opening`.** No backfill of the 20 old sales —
+  that cash went home weeks ago. The owner enters starting balances once (the Now tab's call to
+  action); because it is a *check*, a sale rung up between the deploy and that pass is not counted
+  twice. **A check never shows what the book expects** — the difference comes back afterwards.
+- **An expense names WHERE it was paid from** (`place`), in either currency, on a past day (refused
+  more than a day and a half ahead). The `expenses` table gained no column for it (a column the mirror
+  lacks would stop every expense landing): the place lives on the move, and `method` says as much as it
+  can — a wallet's method id, `cash` for the drawer (so a shift still counts it), and the place id for
+  anything else, which is in no drawer list, so a shift never subtracts money that did not leave it.
+- **A transfer's fee is its own `fee` row out of the FROM place** — a hawala office keeps a commission,
+  and that row is what the statement will count as a cost. **An exchange freezes the rate actually
+  got** on the non-dollar row (`fx_rate`), so the difference from the shop's rate is a real figure;
+  a rate half or double the shop's is recorded and flagged `rate_far` (cents typed as dollars).
+  "Make this the shop's rate" inserts the `fx_rates` row inside the same transaction (`Cat.setRate`
+  opens its own) and needs `config.write` as well.
+- **Permission `money.move`** (manager) for every write here; reading is `money.read`. `money.*` is
+  already forbidden to the partner by prefix. `GET /api/money` carries `cash` (the snapshot) and `book`
+  (the latest 200, capped with `withCap`); the Book tab's filters ask `GET /api/cash/book` and repaint
+  one panel.
+- **Bugs fixed with it:** `payDebt` forced the base currency and subtracted lira from a dollar-cent
+  balance — a debt is now paid in its own currency and anything else is `bad_currency`; a debt cannot
+  be "paid on credit" (`bad_method`); a dollar cash sale at the till is now listed beside the shift
+  figure (`salesOther`); `DB.debtTotal()` / `debtAgeing()` added cents to lira — one currency each now,
+  and the debt book draws each debt in its own; the "Last shift" card read the OLDEST shift (the server
+  sends newest first); the expense and settle dialogs offered four hardcoded methods; the close-shift
+  dialog printed the expected figure it tells people not to look at; the drawer arithmetic left out the
+  delivery office's cash (`mn_orders_in`); `CONFIG.BASE_CURRENCY` was never read from
+  `shop.base_currency`.
+- **The screen** is the Money screen; 053 gave it five tabs (054 and 055 add three more): **Where it is** (a card per place, per-currency
+  totals, the four actions), **Cash book**, Shift, Expenses, Debt book. A card's status chips sit under
+  the name — beside it they took the width and "Safe" was drawn a letter per line. **A signed amount is
+  ONE `<bdi dir="ltr">` with the sign inside** — two isolates side by side were reordered by Arabic and
+  "−$81.50" read "$81.50−". The expense list sits under the categories at full width; beside them its
+  columns scrolled sideways at 1366. `Desk.toMinor` parses every amount, so "12,50" is twelve and a half.
+- **The mirror.** `money_moves` is append-only and behind a guarded block of its own at the end of the
+  walk (`flags.cashFailed`, exit 1 from `supabase:sync`). It is in `restore.js` `ORDER`, `drift.js`
+  `PUSHED` and the reconcile's list; `supabase:check` finds it from the schema. **Until `021` is run in
+  the dashboard, the sync names the file every run AND THE BOOT PULL REFUSES WITH `drift`** — the
+  laptop handover will not happen until it is run. Run `021` (it is also at the end of `CATCH-UP.sql`)
+  before the shop next moves laptops; no reconcile is needed for it alone.
+- **Verified** on a `VACUUM INTO` copy with a scratch server (`OG_SYNC_MINUTES=0`, a dead
+  `SUPABASE_URL`, bogus Telegram tokens, `OG_ORIGINS` set to the scratch address — the real list refuses
+  a browser login there): 90 API checks (every write path, both currencies, replays, refusals, the
+  driver hand-in, the cashier refused; every balance equals the sum of its moves), 15 on the Yalla Wear
+  handshake, 50 in a browser over CDP (both languages, 1366 and 390, dialogs hit-tested, raw i18n keys,
+  the cashier bounced), and the real `Mirror.fullRun` against a faked `fetch` with the table present
+  (every row pushed, a second push finds nothing) and absent (skipped by name, the rest still pushed).
+  Two harness facts: `Page.navigate` from `/` to `/#money` is a hash change and does not reload —
+  sign in, then load a distinct URL; and wait for `#bootSplash` to go before hit-testing anything.
+
+### Closing the day (054)
+
+`server/lib/dayclose.js`, the **Close the day** tab (`Cashbook.closeTab`), migration
+`054_day_close.sql`, mirror file `server/supabase/022_day_close.sql`. The owner's night as he described
+it: **the cashier counts** — lira and dollars — **and the owner confirms and takes the cash home**.
+
+- **The count is blind ON THE SERVER.** An account with `money.count` and not `money.move` is sent
+  `DayClose.blind(close)` — who counted and what they counted, never `expected` or the difference —
+  in the answer to its own count and in `GET /api/day-close`, and no history at all (a list of how
+  short people were is the owner's). A figure hidden only in the browser is one devtools away.
+- **`expected` is frozen AT THE COUNT**, per currency, from the cash book's drawer. A sale rung up
+  between the count and the confirmation is in the drawer and not in the count; measured at
+  confirmation it would read as a shortage nobody caused. A **recount** (while unconfirmed) replaces
+  the lines and re-freezes the figure; a confirmed close is history and is corrected in the book.
+- **Every currency the drawer holds must be counted** (`count_all`, naming them) — or the owner
+  confirms a night with the dollars missing. The form always sends every currency; an empty box is 0.
+- **Confirming is one transaction**: per currency a `count_diff` row (the `opening` if the book had
+  not started there, and a zero when exact — it dates the drawer's last check), then what he takes as
+  a `transfer` drawer → `owner`. `take_too_much` refuses more than was counted. **The drawer is
+  continuous** — tomorrow's float is what he left; nobody types a float. "Take" defaults to all but
+  what was left last night. A count he will not confirm is thrown away (`cancelled`); nothing moved.
+- **Shifts stay** — sales carry `shift_id`, the table is mirrored, and a shop that uses shifts keeps
+  them. The Shift tab is untouched; the day close is what proves the drawer from now on.
+- **`money.count`** (cashier + manager) reaches the Money screen, which then draws only the tabs the
+  account may have — a cashier gets the count and nothing else. `NAV_PERM` values may now be a list
+  (any-of, `navAllowed`). **Money was missing from the phone's More sheet** (`MORE_ITEMS`), so nobody
+  could reach it on a phone at all. The cashier's home has **Count the drawer** (`data-cb="go-close"`).
+- **Reminders.** New rule **`day_uncounted`** (on, `reminders.day_count_hour` 22): the drawer moved
+  today, the book has started there, and nobody counted — no figure in the sentence, in the cashier
+  preset (054 appends it), `KIND_SINCE` 5 / `RULES_VERSION` 5, listed in `nextDaily()`.
+  **`day_close`** now quotes the book's drawer and whether tonight is counted, and a day with a count
+  but no invoice is still a day. **`cash_variance`** also reads the last confirmed close, one row per
+  currency over its own threshold (`reminders.variance_min_usd`, cents, beside the lira one), filed
+  `refType: 'day_close'` — a rule's row may now name its own `refType`.
+- **`fmtMoney` in `telegram.js` printed minor units as they came**, so a driver holding $60 was told
+  "6,000 USD" — every template passes minor units. Dollars get two decimals now.
+- **The mirror:** `day_closes` is cursor-shape (updated on confirmation) with `day_close_lines`
+  riding on its `afterUpsert`, in the cash-book block behind **its own** guard — a project with 021
+  and not 022 still mirrors the book. In `ORDER`, `PUSHED` and the reconcile list. **Run `022` in the
+  dashboard after `021`**; until then the boot pull refuses with `drift`.
+- **Verified** on the scratch copy: 31 API checks (the blind answer, the refusal to leave out
+  dollars, a replay, a recount, a sale after the count not becoming a shortage, the float left, the
+  zero check, `take_too_much`, a cancel moving nothing, the nudge before and after, the variance
+  message naming the close), the real mirror against a faked `fetch` in three states (both files,
+  neither, 021 without 022), and 22 in a browser (the cashier's screen never containing the book's
+  figure, her phone in Arabic, the owner's table and the live "stays in the drawer").
+
+### Suppliers and salaries (055)
+
+`server/lib/payables.js`, `js/payables.js` (global `Payables`, `data-py`), the **Suppliers** and
+**Salaries** tabs of the Money screen, migration `055_payables.sql`, mirror file
+`server/supabase/023_payables.sql`. Before this, receiving a purchase order raised
+`suppliers.outstanding` and nothing ever lowered it; nothing recorded a salary or an advance, and the
+payroll bell, keyed on a date nothing moved, never cleared.
+
+- **A supplier's debt is a ledger with a running total — the stock pattern.** `supplier_ledger` is
+  append-only (`opening · purchase · payment · return · adjust · reversal`, signed, + = the shop owes
+  more), and `suppliers.outstanding` is written **in the same transaction by `Payables.post()`, the
+  only way it moves**. `Payables.audit()` compares every running total with its sum. The columns the
+  ledger keeps (`outstanding`, `total_purchased`, `last_payment`) are not writable by the editor, and
+  the generic upsert in `partner.js` that could write them is gone.
+- **One debt currency per supplier.** Goods received on a lira order from a dollar supplier are
+  converted through the USD rates at that moment (`convert()`), and the row keeps what the order said
+  (`paid_amount` / `paid_currency`). A payment in the other currency is the same: the money leaves the
+  place in the currency it was handed over in (a `supplier_pay` move), the debt comes down in the
+  supplier's. **The currency cannot change while anything is owed** (`currency_locked`) — the balance
+  would silently change meaning. Paying more than is owed is allowed and said (`paid_ahead`).
+- **A supplier payment is not an expense** (017's rule, restated on the dialog): the goods are already
+  in cost price. An opening balance can be entered once (`already_opened`); a correction needs a reason
+  (`needs_note`); only a payment can be undone, by a `reversal` row that also puts the money back
+  (`Cash.reverse`). 055 backfilled an `opening` row for every non-zero `outstanding`, so the audit holds
+  from the first boot.
+- **Salaries are months.** `salary_payments` (`advance · salary · bonus · deduction · reversal`,
+  `month` = `YYYY-MM`). A month owes salary + bonuses − deductions; advances and the salary payment
+  count against it. **Only an advance or a salary moves money** (a `salary` move, and the route then
+  also needs `money.write`); a bonus or a deduction changes what the month owes and ignores any place
+  sent. Paying more than is left is refused with the figure (`more_than_owed`, `left`) — add the bonus
+  first, so the record says why. The browser stops it before sending, from the same number.
+- **The pay day is derived, never stored.** `employees.pay_day` (1–28) is the day; `next_payment` is
+  this month's pay day while this month is unpaid, next month's once it is settled
+  (`Payables.nextPayDay`). The old column is still there, written by nothing; `GET /api/employees` and
+  Reports both send the derived one. **The bell's key carries the month** (`payroll:YYYY-MM`) — it was
+  the constant `payroll`, so marking it read silenced every month after — and opens Money, on the tab.
+- **Reports** read the ledgers: the employees block adds what was actually **paid** in the window
+  (advances and salaries, less undone ones) beside the monthly bill, and the next pay day is derived.
+- **The screens.** Suppliers: owed per currency (never added), a row per supplier with Pay, History
+  (a drawer with undo, returns and corrections) and Edit; a new supplier can carry its opening balance.
+  Salaries: a month picker (› ‹, and "this month"), what the month owes / paid / left, a row per person
+  with Pay the rest, Advance, Bonus / deduction (one dialog, four kinds), History with undo, and the
+  person editor with a login picker (working logins only, never the partner). Every write carries an
+  opId minted when the dialog opened. **The payroll body is painted after `render()`**, so it — and the
+  Cash book's and Close the day's panels — call `labelWideTables()` themselves; without that the
+  table was cut off at 390 instead of becoming cards. In Arabic "Adjust" and "Edit" were both تعديل, so
+  the button is "Bonus / deduction".
+- **The mirror.** Both ledgers are append-only, in the cash-book block behind their own guard (a
+  project with 021 and 022 and not 023 still mirrors the book and the closes), with the 023 file named
+  on every run. `employees.pay_day` is in `mirror-lag.js`, so employees go up without it until 023 is
+  run. In `ORDER`, `PUSHED` and the reconcile list. **Run `023` after `021` and `022`, then
+  `npm run supabase:reconcile`** to fill in `pay_day`; until then the boot pull refuses with `drift`.
+- **Verified** on the scratch copy: 80 API checks (permissions for the cashier and the partner, the
+  opening and its replay, a lira order received against a dollar supplier, payments in both
+  currencies and their moves, a replayed Pay, unknown place and zero refused, paying ahead, undo and
+  undo twice, returns, a signed correction, the currency lock, the ledger history, the audit, the whole
+  payroll month through advance / bonus / deduction / salary / undo, the derived pay day moving, the
+  bell's month key, and the Reports figures), the real mirror against a faked `fetch` with 023 run and
+  not run (ledgers skipped by name, employees retried without `pay_day`, only 023 named), and 76 in a
+  browser (both editors, the pay hint in the other currency, "120,000" and "20,000" parsed as whole
+  lira, the ledger drawer's undo, the month picker, the login list, the exports, Arabic at 390 with
+  dialogs hit-tested, the cashier seeing neither tab). With them, the earlier suites re-run green on
+  the same copy: 90 + 50 + 15 + 31 + 22.
+
+### The month's statement
+
+`server/lib/statement.js`, `GET /api/statement?month=YYYY-MM&tz=<minutes>` (`profit.read`; the cash
+flow only with `money.read` as well), `js/statement.js` (global `Statement`, `data-pl`), the
+**Statement** tab of the Money screen. No migration and no mirror file — it reads what is there.
+**`DB.netProfit` is gone**: it summed the last 200 sales, added dollars to lira and costed them at
+today's price list, and the Expenses tab's three profit cards were built on it. That tab now points
+at the statement.
+
+- **Profit and loss, per currency, over every row of the shop's month** (the month's two instants
+  come from `tz`, as the dashboard's do): sales (non-voided, by the sale's time) + shipping charged
+  on the invoice (`fee_mode = 'invoice'`) − returns (each return's own `due_minor`, by the return's
+  time) = **takings**; − the cost of the goods (`sale_items.unit_cost`, which is in the sale's
+  currency, less the cost of what came back) = **gross**; − expenses by category (voided ones are
+  the `expense_void` moves) − salaries paid **for** the month (`salary_payments.month`, so an
+  advance paid on the 28th for next month is next month's) − transfer fees ± count differences ±
+  the exchange result = **net**.
+- **The exchange result** is each exchange pair (`COALESCE(pair_id, id)`) valued in lira at the
+  shop's rate at that moment: changing $100 for 13,500 when the rate is 130 made 500.
+- **"≈ in lira" converts each row at the shop's rate at its own moment**, from the `fx_rates`
+  history — never from `sales.fx_rate`, which is 1 for a dollar sale and so says nothing about lira.
+  It is labelled approximate; the currency columns are the figures. `unconverted` counts rows that
+  had no rate.
+- **Below the line, never a cost:** what the owner took out or put in, suppliers paid (the goods
+  are in the cost of goods already), Yalla Wear paid, and the salaries still owed for the month.
+- **Printing is left out, and the page says so.** The till writes the print price onto the job
+  (`print_jobs.price`), not into the sale, so the shop's print income is not in `sales` and adding
+  Yalla Wear's bill as a cost would show printing as a pure loss. What was paid to them is listed
+  below the line. **The `salaries` expense category still exists** (017's defaults): a salary
+  entered there AND through the payroll is counted twice. The payroll is the place now.
+- **`noCost`** counts pieces sold with no cost price — the gross is too high by them, and the page
+  says so rather than guessing.
+- **Cash flow** per place and currency: the balance before the month, every move in it by kind, the
+  balance at its end. **This month's end is the Now tab to the unit**, and next month opens where this
+  one closed — both are tested. Across all places a transfer adds to nothing.
+- **Panels that fetch for themselves go stale after a write**, which reloads the shop but not them.
+  `Shop.loadedAt()` is stamped on every load; the payroll and the statement refetch whenever what
+  they hold is older than it (or half a minute old).
+- **The dashboard** gains "Where the money is" (every place's total, opening the Now tab); with no
+  shift open the drawer card shows the cash book's drawer — amber below zero — and a Close the day
+  button, instead of "No shift open"; "owed to suppliers" opens the Suppliers tab, where they are paid.
+  `moneyUsdRaw` prints "-$112.50", not "$-112.50".
+- **Export** is one sheet with a Section column (profit and loss, not costs, cash flow) and a column
+  per currency.
+- **Verified**: 58 API checks, each a delta or an independent SQL sum (the copy carries the shop's
+  real month): the three totals add up in both currencies, sales and returns equal their tables, a
+  sale moves sales and cost and its void takes both back, lira and dollar expenses and a voided one,
+  a fee, a short count, a profitable exchange, owner and supplier money leaving net untouched,
+  salaries landing in their own month, the seams between months, refusals for a cashier, the
+  partner, a bad month and a bad zone. 25 in a browser: the figures against the API, the month
+  picker, a new expense appearing without a reload, the Expenses shortcut, the dashboard band,
+  Arabic at 390 with the cash flow as cards, the export, the cashier without the tab.

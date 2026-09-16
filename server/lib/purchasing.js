@@ -22,6 +22,7 @@
 
 import * as DB from './db.js';
 import * as Stock from './stock.js';
+import * as Payables from './payables.js';
 
 const nowIso = () => new Date().toISOString();
 const fail = (msg, code) => Object.assign(new Error(msg), { code });
@@ -170,10 +171,14 @@ export function receive(id, received = null, userId = null) {
     /* The shop owes for what ARRIVED, not for what it hoped would. Adding
        the order total on the first partial delivery would book the shop for
        ten pairs when eight came. */
+    /* Through the supplier's ledger (055), which keeps `outstanding` as its
+       running total and converts an order priced in the other currency into
+       the supplier's own. This used to add the order's value straight on —
+       a dollar order's cents onto a lira balance, as lira. */
     if (o.supplier_id && value) {
-      d.prepare('UPDATE suppliers SET outstanding = outstanding + ?, updated_at = ? WHERE id = ?')
-        .run(value, at, o.supplier_id);
-      DB.logChange('suppliers', o.supplier_id, 'update', userId, null);
+      Payables.receivePurchase(d, {
+        supplierId: o.supplier_id, value, currency: o.currency, poId: id, userId
+      });
     }
 
     DB.logChange('purchase_orders', id, 'update', userId, null);

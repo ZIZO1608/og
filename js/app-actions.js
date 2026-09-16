@@ -21,7 +21,11 @@
    tabs; naming them here means a shortcut can say WHERE it is going rather
    than only which screen — "+ Add product" on the Products page should land
    on the Add form, not on whichever warehouse tab was open last. */
-var NAV_TAB_STATE = { warehouse: function () { return OG.wh; }, reports: function () { return OG.rep; } };
+var NAV_TAB_STATE = {
+  warehouse: function () { return OG.wh; },
+  reports: function () { return OG.rep; },
+  money: function () { return Money.state; }
+};
 
 function navTo(view, tab) {
   /* Set before go(), because go() renders — doing it after would draw the
@@ -409,7 +413,9 @@ var ACTIONS = {
        that answers "who was waiting for this box". */
     if (of === 'wants_back') OG.wh.tab = 'wants';
     if (of === 'stamps') OG.cust.filter = 'cardfull';
-    if (of === 'supplier_due') OG.rep.tab = 'suppliers';
+    /* Suppliers and the payroll are paid from the Money screen (055). */
+    if (of === 'supplier_due') { OG.rep.tab = 'suppliers'; if (a.view === 'money') Money.state.tab = 'suppliers'; }
+    if (of === 'payroll' && a.view === 'money') Money.state.tab = 'salaries';
     go(a.view);
   },
 

@@ -459,6 +459,15 @@ export const TABLES = {
   employees: { parseKey: numKey, fetchLocal: byId('employees'), mapRow: (r) => ({ ...r, archived: !!r.archived }) },
 
   shifts: { parseKey: textKey, fetchLocal: byId('shifts'), mapRow: (r) => r },
+  /* 054 — the night's count. CURSOR shape: a close is UPDATED when the owner
+     confirms it, and its per-currency lines ride on it like sale_items. */
+  day_closes: {
+    parseKey: textKey, fetchLocal: byId('day_closes'), mapRow: (r) => r,
+    afterUpsert: async (log, localRow) => {
+      const rows = DB.get().prepare('SELECT * FROM day_close_lines WHERE close_id = ?').all(localRow.id);
+      await replaceChildren(log, 'day_close_lines', 'close_id', localRow.id, rows);
+    }
+  },
   stock_counts: {
     parseKey: textKey, fetchLocal: byId('stock_counts'), mapRow: (r) => r,
     afterUpsert: async (log, localRow) => {
@@ -626,7 +635,11 @@ const PARTNER = ['print_jobs', 'job_reviews', 'partner_invoices', 'job_messages'
                  'employees', 'purchase_orders'];
 const DRAWER  = ['shifts', 'stock_counts'];
 const APPEND  = ['fx_rates', 'stock_movements', 'print_log', 'label_print_log',
-                 'loyalty_redemptions', 'wa_messages', 'expenses', 'debt_payments'];
+                 'loyalty_redemptions', 'wa_messages', 'expenses', 'debt_payments',
+                 /* 053 — the cash book. Append-only by design: a correction is
+                    a new row, so the highest-id bookmark sees every one. 055's
+                    two ledgers are the same kind of table, for the same reason. */
+                 'money_moves', 'supplier_ledger', 'salary_payments'];
 const WHOLE   = Object.keys(WHOLE_KEYS);
 
 /* Every table this library pushes, for the check and the status. */
@@ -634,7 +647,7 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
    on its parent's afterUpsert, the way sale_items ride on their sale. */
 export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants',
                               'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews',
-                              ...PARTNER, ...DRAWER];
+                              ...PARTNER, ...DRAWER, 'day_closes'];
 export const APPEND_TABLES = APPEND;
 export const WHOLE_TABLES = WHOLE;
 
@@ -656,7 +669,7 @@ async function twoPhase(log, names, want) {
 async function walk(log, only) {
   const want = (n) => !only || only.has(n);
   const touched = [];
-  const flags = { layoutFailed: false, loyaltyFailed: false };
+  const flags = { layoutFailed: false, loyaltyFailed: false, cashFailed: false };
 
   await syncReference(log, want);
   await syncSettings(log, want);
@@ -800,6 +813,52 @@ async function walk(log, only) {
         log.warn('Supabase is missing a table' + (named ? ': ' + named[1] : '') + ' — skipped.');
         log.line('    Run server/supabase/CATCH-UP.sql in the Supabase SQL editor.');
       } else { throw e; }
+    }
+  }
+
+  /* The cash book (053), behind its own guard and after everything it could
+     name — a move points at a currency and a user, nothing else. A project
+     that has not had 021 run skips it BY NAME and the rest of the run lands;
+     the bookmark does not move, so every row waits rather than being lost. */
+  /* ONE GUARD PER TABLE, like the road's: a project that has had 021 run but
+     not 022 must still mirror its cash book. */
+  const missing = (e) => MISSING_TABLE.test(String(e.message)) || /schema cache/i.test(String(e.message));
+  const BOOKS = ['money_moves', 'day_closes', 'supplier_ledger', 'salary_payments'];
+  if (BOOKS.some(want)) log.head('Cash book');
+  if (want('money_moves')) {
+    try {
+      await syncAppendOnly(log, 'money_moves');
+      touched.push('money_moves');
+    } catch (e) {
+      if (!missing(e)) throw e;
+      log.warn('Supabase is missing money_moves — skipped, everything else still went up.');
+      log.line('    Run server/supabase/021_cash_book.sql in the SQL editor.');
+      flags.cashFailed = true;
+    }
+  }
+  if (want('day_closes')) {
+    try {
+      await syncTable(log, 'day_closes', { phase: 'upsert' });
+      await syncTable(log, 'day_closes', { phase: 'delete' });
+      touched.push('day_closes');
+    } catch (e) {
+      if (!missing(e)) throw e;
+      log.warn('Supabase is missing day_closes — skipped, everything else still went up.');
+      log.line('    Run server/supabase/022_day_close.sql in the SQL editor.');
+      flags.cashFailed = true;
+    }
+  }
+  /* 055 — what suppliers and staff were paid. After the partner block, which
+     is where suppliers and employees go up: a ledger row names one. */
+  for (const name of ['supplier_ledger', 'salary_payments'].filter(want)) {
+    try {
+      await syncAppendOnly(log, name);
+      touched.push(name);
+    } catch (e) {
+      if (!missing(e)) throw e;
+      log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
+      log.line('    Run server/supabase/023_payables.sql in the SQL editor.');
+      flags.cashFailed = true;
     }
   }
 
@@ -955,7 +1014,7 @@ export async function fullRun({ log = consoleLog() } = {}) {
     last_push_at: new Date().toISOString(),
     note: 'full run completed'
   });
-  return { ok: !r.layoutFailed && !r.loyaltyFailed, ...r };
+  return { ok: !r.layoutFailed && !r.loyaltyFailed && !r.cashFailed, ...r };
 }
 
 /* Only what moved. No request at all when nothing did. */
@@ -970,5 +1029,5 @@ export async function pushChanged({ log = tailLog() } = {}) {
   });
   const after = detect();
   return { pushed: true, tables: [...det.changed], behind: after ? after.behind : 0,
-           ok: !r.layoutFailed && !r.loyaltyFailed, ...r };
+           ok: !r.layoutFailed && !r.loyaltyFailed && !r.cashFailed, ...r };
 }

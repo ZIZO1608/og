@@ -109,7 +109,12 @@ const TABLES = [
   { name: 'customer_credit',          key: 'id' },
   { name: 'order_reviews',            key: 'sale_id' },
   { name: 'stock_counts',             key: 'id' },
-  { name: 'stock_count_lines',        key: 'id' }
+  { name: 'stock_count_lines',        key: 'id' },
+  { name: 'money_moves',              key: 'id' },
+  { name: 'day_closes',               key: 'id' },
+  { name: 'day_close_lines',          key: ['close_id', 'currency'] },
+  { name: 'supplier_ledger',          key: 'id' },
+  { name: 'salary_payments',          key: 'id' }
 ];
 
 const PAGE = 1000;
