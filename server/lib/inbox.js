@@ -13,7 +13,9 @@
       the POS's own route makes — Reviews.submit, Tracking.followOrder and
       unfollowOrder — with the sale looked up here from the sale id the inbox
       took from the token. Nothing is trusted because og-track or the
-      database checked it first.
+      database checked it first. Kind 'tg' (og-track's sql/004) is the shop's
+      Telegram bot answered on Railway: a chat linking itself or muting its
+      reminders, applied by Telegram.relay() exactly as the long poll would.
    2. ONLY THE LAPTOP THAT OWNS THE MIRROR COLLECTS. track.inbox_take and
       track.inbox_done refuse any lineage id but the one in sync_state, so a
       development copy holding the service key collects nothing.
@@ -37,6 +39,7 @@ import * as Receipt from './receipt.js';
 import * as Reviews from './reviews.js';
 import * as Tracking from './tracking.js';
 import * as Live from './live.js';
+import * as Telegram from './telegram.js';
 
 const BATCH = 50;
 const KEEP_MS = 30 * 24 * 60 * 60 * 1000;
@@ -46,9 +49,17 @@ const refusal = (e) =>
 
 /* One item through the shop's own code: { outcome, code }, or null when it
    must stay pending. */
-function apply(item) {
+async function apply(item) {
   const p = item.payload && typeof item.payload === 'object' ? item.payload : {};
   if (p.v !== 1) return { outcome: 'rejected', code: 'unsupported' };
+  if (item.kind === 'tg') {
+    try {
+      return await Telegram.relay(p, { createdAt: item.created_at });
+    } catch (e) {
+      console.error(`[${nowIso()}] inbox item ${item.id} (tg) left pending — ${e && e.message}`);
+      return null;
+    }
+  }
   try {
     const sale = Receipt.bySaleId(item.sale_id);
     if (!sale) return { outcome: 'rejected', code: 'not_found' };
@@ -92,7 +103,7 @@ async function pass(lineage) {
     if (!Number.isSafeInteger(id) || !Number.isSafeInteger(revision)) { count.pending++; continue; }
     let out = recorded.get(id, revision);
     if (!out) {
-      out = apply(item);
+      out = await apply(item);
       if (!out) { count.pending++; continue; }
       /* Already applied, so it is reported whether or not the record lands:
          reporting it now is what stops the next pass applying it again. */

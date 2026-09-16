@@ -1705,6 +1705,19 @@ same family as screenshotting a popover mid-fade.
   live behind `OG_WEB_API_KEY`; nothing calls either yet. The catalogue side is complete — the
   flag, the mirror column, the editor and the read door — so what is missing is the site itself,
   not anything here.
+- **Telegram job links point at a dead address.** `publicBase()` in `server/lib/telegram.js` reads
+  `shop.public_url` (never set) and then `OG_CF_HOSTNAME`, which stopped resolving when cloudflared was
+  removed on 13 Sep, so the link line under job messages opens nothing. It is not the tracking base
+  (`receipt.public_url`, now the Railway address): these links open the POS itself
+  (`/#open/job/<id>`), which Railway does not serve. They need a POS address that works, or to go.
+- **`telegram.js` and `reminders.js` cannot be the first module a process imports.** Loading either
+  first reaches `office-alerts.js` through `telegram-commands.js` before `telegram.js` has finished,
+  and `export const OFFICE_KINDS = Telegram.OFFICE_KINDS` throws "Cannot access before
+  initialization". `index.js` never hits it (something importing `office-alerts.js` comes first); a
+  script or test that imports `telegram.js` directly must import `office-alerts.js` before it.
+- **The shop's bot on Railway is built but not switched on** — see "The shop's bot can be answered on
+  Railway". The cutover (secrets, `sql/004`, Railway variables, `OG_TELEGRAM_OG_RELAY=railway`, the
+  webhook) is a by-hand job, in the order written in og-track's `night_shift_2_log.md`.
 - **Yalla Wear's bot has never been linked.** `telegram.yalla_chats` does not exist, so all five
   `yl_*` rules are skipped with `no_chat` and nothing is queued for them. They link it from their
   portal's Telegram card: Connect → a six-letter code → send it to the bot.
@@ -2401,6 +2414,10 @@ still stands, unchanged.)
   bootstrap because the board has neither). Unlike the money messages it opens with an empty number
   box when the order has none, and it refuses with words when the shop has no public address
   (`publicBase()` null), because a link only the shop's wifi can open is not worth sending.
+  **Since 16 Sep 2026 the base is og-track on Railway**: `receipt.public_url` =
+  `https://og-track-production-aa0b.up.railway.app` (it had been empty, so `publicBase()` fell through
+  to `OG_CF_HOSTNAME`, dead since 13 Sep). Set through the same `configRefusal()` + upsert
+  `PUT /api/config` runs; the paper receipt itself prints a barcode, not a tracking QR.
   `WA.compose`'s message box is `dir="auto"` now — it was forced rtl and turned "Hi Nour," into
   ",Hi Nour". Verified by `wa.mjs` in both languages: the button on the cards, the composer's
   text, the link opening the page, and the `wa.me` URL (window.open caught).
@@ -2617,6 +2634,49 @@ table: `mirror.js`, `restore.js`, reconcile and drift never see it.
   with their codes, a locked database leaving an edit pending then applied, the prune, and nothing
   but those two functions called. The locked-database check is what found the prune taking a whole
   pass down with it. The copy was deleted afterwards.
+
+### The shop's bot can be answered on Railway — built, NOT switched on (16 Sep 2026)
+
+`ogRelay()` / `relay()` / `linkWith()` in `server/lib/telegram.js`, `ON_RAILWAY` in
+`server/lib/reminders.js`, kind `tg` in `server/lib/inbox.js`. The other half is og-track's `src/tg/`
+and `sql/004_tg_bot.sql`; the cutover, in order, is at the end of og-track's `night_shift_2_log.md`.
+**Until somebody sets the webhook by hand and puts `OG_TELEGRAM_OG_RELAY=railway` in `server/.env`,
+nothing here behaves differently.**
+
+- **One bot moves, the shop's.** With the switch on, `start()` still calls `getMe` and `drain()` still
+  sends through `OG_TELEGRAM_TOKEN_OG` — sending is allowed from anywhere — but the laptop stops
+  long-polling that bot, because a webhook and `getUpdates` cannot both be live on one token.
+  **Yalla Wear's bot never moves**: `OG_TELEGRAM_TOKEN_YALLA` keeps polling here. og-track holds only
+  the shop bot's token (`TG_BOT_TOKEN`) and checks it with `getMe` against `TG_BOT_USERNAME`.
+- **Railway reads the mirror, never this laptop's tables.** Its one database door, `track.tg`, needs a
+  secret (`TG_DB_SECRET`, whose SHA-256 is in `tgbot.settings`, an unexposed schema) and answers with
+  counts, ids, stages, dates and money totals — the POS bot's `/queue`, `/today`, `/late`, `/job`,
+  `/status`, authorised the same way (the chat must be on `telegram.og_chats`; the owning account's
+  `role_permissions` with PINNED/FORBIDDEN restated). It also keeps a hard allowlist of chat ids
+  (`TG_ALLOWED_CHATS`): **a phone linked here is answered there only once its chat id is on that list.**
+- **Writes come back through the inbox.** The chat list is this laptop's config, so `/start CODE`,
+  `/mute`, `/unmute` and the Mute 2h button are queued by og-track as `inbox.items` kind `tg` and
+  applied here by `relay()`: a link spends the code in THIS process's memory exactly as the poll does
+  (a message older than a code's 10 minutes is refused as `expired`; a wrong code is refused as
+  `no_code` and nobody is told — Railway already answered the same sentence either way), a mute goes
+  through `muteChat()` for a linked chat, capped at 72 h from when it was asked. Linking therefore
+  needs the laptop on, which it is whenever somebody is looking at a code in Settings.
+- **The morning digest moves; nothing else does.** `og_digest` fires at shop hour ≥ 9, so with the
+  laptop off at nine it arrives when the laptop opens. With the switch on it is skipped here
+  (`movedTo: 'railway'` in the preview and status) and og-track sends it at nine from the mirror —
+  but only while `config telegram.og_relay` = `railway`, which `start()` writes when the switch is on
+  and removes when it is off. So it cannot go out twice, and taking the switch back takes the digest
+  back. og-track claims each send in `tgbot.sent` (rule + shop day + chat) and marks it with a
+  conditional update; a send with no answer stays claimed and is never repeated. The other 26 rules
+  stay: every one is about something this laptop changes while it is on, and several read what the
+  mirror does not have (`partner_events`, the dedupe ledger).
+- **What the switch does not fix.** Telegram job links (`linkFor`, `publicBase()` in this file) still
+  point at `OG_CF_HOSTNAME`, which stopped resolving on 13 Sep — see Known open work.
+- **How it was verified** (scratchpad only, nothing live): 134 checks of the SQL in PGlite (Postgres 18
+  in WebAssembly) including every block of `sql/verify_tg.sql`; 43 checks of this side on a `VACUUM
+  INTO` copy with invented tokens and every fetch intercepted (the og-track texts proved byte-identical
+  to `welcomeText`, `COMMAND_MENU` and `rem_og_digest`); and a 25-check end-to-end run — og-track's
+  webhook → the real SQL behind a PostgREST stand-in → this laptop's collector on a copy.
 
 ## The dashboard
 

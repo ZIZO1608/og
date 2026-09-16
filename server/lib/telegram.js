@@ -22,6 +22,8 @@
 
    Env:  OG_TELEGRAM_TOKEN_OG      the shop's bot, from @BotFather
          OG_TELEGRAM_TOKEN_YALLA   Yalla Wear's bot
+         OG_TELEGRAM_OG_RELAY      'railway' = og-track answers the shop's bot
+                                   and this laptop stops polling it (see relay())
    Config (written here, read by Settings):
          telegram.og_chat_id / telegram.og_chat_title
          telegram.yalla_chat_id / telegram.yalla_chat_title
@@ -1349,6 +1351,126 @@ function chatTitle(chat) {
   return [chat.first_name, chat.last_name].filter(Boolean).join(' ') || chat.username || String(chat.id);
 }
 
+/* A live code has been spent: the chat goes on the list and is told so. The
+   long poll (handleUpdate) and a code that reached Railway and came back
+   through the inbox (relay) both end here, so there is one copy of it. */
+async function linkWith(side, chat, live) {
+  /* ADDED to the list, not put in place of it - this is how a second phone
+     or a second group joins. */
+  const r = addChat(side, chat, live.by, live.byId);
+  const n = r.list.length;
+  await call(side, 'sendMessage', {
+    chat_id: chat.id,
+    text: r.already
+      ? '✅ هذه المحادثة مرتبطة أصلاً.' + BR + 'This chat is already linked.'
+      : (side === 'og'
+          ? '✅ تم الربط — ستصل تنبيهات نظام OG إلى هنا. (' + n + ')' + BR +
+            'Linked - OG System notifications will arrive here. (' + n + ' linked)'
+          : '✅ تم الربط — ستصل طلبات OG وتحديثاتها إلى هنا. (' + n + ')' + BR +
+            'Linked - orders and updates from OG will arrive here. (' + n + ' linked)')
+  }).catch(() => {});
+  /* THE TUTORIAL GOES OUT HERE, not only when somebody thinks to type
+     /help. This is the one moment the person is certainly holding the phone
+     and looking at it; a bot that explains itself a week later, to somebody
+     who has already decided it only buzzes, explains itself to nobody.
+     Second message rather than a longer first one, so the "it worked" line
+     stays a glance and the lesson is scrollable underneath it.
+     And the command menu is published to this chat now that it exists. */
+  syncCommands(side).catch(() => {});
+  if (!r.already) {
+    await call(side, 'sendMessage', {
+      chat_id: chat.id, text: Commands.welcomeText(side, true), disable_web_page_preview: true
+    }).catch(() => {});
+  }
+  return { already: r.already };
+}
+
+/* ---- THE SHOP'S BOT, ANSWERED ON RAILWAY -----------------------------------
+   With OG_TELEGRAM_OG_RELAY=railway in server/.env, Telegram delivers the
+   shop bot's updates to og-track on Railway (a webhook somebody set by hand),
+   so this laptop stops long-polling THAT ONE BOT: a webhook and getUpdates
+   cannot both be live on a token, and two pollers only fight (409). Yalla
+   Wear's bot is untouched and keeps polling here. SENDING DOES NOT CHANGE:
+   drain() keeps posting the outbox through the same token, which Telegram
+   allows from any number of places. Off (unset) is the default.
+
+   og-track cannot write the chat list — it is this laptop's config — so the
+   two writes a chat can ask for come back through og-track's inbox
+   (lib/inbox.js, kind 'tg') and are applied here:
+     link  "/start CODE": spent against the codes in THIS process's memory,
+           exactly as the long poll spends them. A wrong or expired code is
+           refused without a word; Railway already answered the same sentence
+           whether the code was right or not.
+     mute  /mute, /unmute and the Mute 2h button: muteChat() on a linked chat.
+   Returns { outcome, code } as lib/inbox.js reports it. A refusal is an
+   answer, not an exception. */
+export function ogRelay() {
+  return String(maybe('OG_TELEGRAM_OG_RELAY') || '').trim().toLowerCase() === 'railway';
+}
+
+const RELAY_MUTE_MAX_MS = 72 * 3600 * 1000 + 5 * 60 * 1000;
+
+export async function relay(p, { createdAt = null } = {}) {
+  if (!p || typeof p !== 'object' || p.side !== 'og') return { outcome: 'rejected', code: 'bad_side' };
+  const asked = Date.parse(createdAt || '');
+
+  if (p.op === 'link') {
+    const chat = p.chat && typeof p.chat === 'object' ? p.chat : null;
+    const code = String(p.code || '').toUpperCase();
+    if (!chat || !/^-?\d{1,20}$/.test(String(chat.id)) || !/^[A-Z0-9]{6}$/.test(code)) {
+      return { outcome: 'rejected', code: 'bad_link' };
+    }
+    if (!token('og')) return { outcome: 'rejected', code: 'not_configured' };
+    /* Older than any code lives: whatever it named is gone, and letting it
+       spend a code minted since would link a chat nobody is linking now. */
+    if (!Number.isFinite(asked) || Date.now() - asked > CODE_TTL_MS) {
+      return { outcome: 'rejected', code: 'expired' };
+    }
+    const live = spendCode('og', code);
+    if (!live) return { outcome: 'rejected', code: 'no_code' };
+    const r = await linkWith('og', {
+      id: String(chat.id),
+      type: ['private', 'group', 'supergroup', 'channel'].includes(chat.type) ? chat.type : 'unknown',
+      title: chat.title || undefined,
+      first_name: chat.first_name || undefined,
+      last_name: chat.last_name || undefined,
+      username: chat.username || undefined
+    }, live);
+    return { outcome: 'applied', code: r.already ? 'already_linked' : null };
+  }
+
+  if (p.op === 'mute') {
+    const id = String(p.chat_id || '');
+    if (!/^-?\d{1,20}$/.test(id)) return { outcome: 'rejected', code: 'bad_mute' };
+    if (!isLinked('og', id)) return { outcome: 'rejected', code: 'not_linked' };
+    let until = null;
+    if (p.until != null) {
+      const t = Date.parse(p.until);
+      if (!Number.isFinite(t)) return { outcome: 'rejected', code: 'bad_until' };
+      /* Never longer than /mute itself allows, counted from when it was asked. */
+      const from = Number.isFinite(asked) ? asked : Date.now();
+      until = new Date(Math.min(t, from + RELAY_MUTE_MAX_MS)).toISOString();
+    }
+    muteChat('og', id, until);
+    return { outcome: 'applied', code: null };
+  }
+
+  return { outcome: 'rejected', code: 'unsupported' };
+}
+
+/* Railway sends the morning digest only while this laptop says it has handed
+   it over, so the two can never both send it. Written at boot, and only when
+   it changes: config is pushed whole on the next ten-second tick. */
+function markRelay() {
+  const want = ogRelay() && token('og') ? 'railway' : null;
+  if ((cfg('telegram.og_relay') || null) === want) return;
+  try {
+    setCfg({ 'telegram.og_relay': want });
+  } catch (e) {
+    console.log(`  Telegram: could not record the relay switch — ${e.message}`);
+  }
+}
+
 async function handleUpdate(side, u) {
   /* A BUTTON PRESS IS NOT A MESSAGE. It arrives as a callback_query with its
      own id, and Telegram spins that button until the id is answered — so the
@@ -1389,33 +1511,7 @@ async function handleUpdate(side, u) {
      their own, and each chat is stamped with the person who actually sent it. */
   const live = m ? spendCode(side, m[1].toUpperCase()) : null;
   if (live) {
-    /* ADDED to the list, not put in place of it - this is how a second phone
-       or a second group joins. */
-    const r = addChat(side, chat, live.by, live.byId);
-    const n = r.list.length;
-    await call(side, 'sendMessage', {
-      chat_id: chat.id,
-      text: r.already
-        ? '✅ هذه المحادثة مرتبطة أصلاً.' + BR + 'This chat is already linked.'
-        : (side === 'og'
-            ? '✅ تم الربط — ستصل تنبيهات نظام OG إلى هنا. (' + n + ')' + BR +
-              'Linked - OG System notifications will arrive here. (' + n + ' linked)'
-            : '✅ تم الربط — ستصل طلبات OG وتحديثاتها إلى هنا. (' + n + ')' + BR +
-              'Linked - orders and updates from OG will arrive here. (' + n + ' linked)')
-    }).catch(() => {});
-    /* THE TUTORIAL GOES OUT HERE, not only when somebody thinks to type
-       /help. This is the one moment the person is certainly holding the phone
-       and looking at it; a bot that explains itself a week later, to somebody
-       who has already decided it only buzzes, explains itself to nobody.
-       Second message rather than a longer first one, so the "it worked" line
-       stays a glance and the lesson is scrollable underneath it.
-       And the command menu is published to this chat now that it exists. */
-    syncCommands(side).catch(() => {});
-    if (!r.already) {
-      await call(side, 'sendMessage', {
-        chat_id: chat.id, text: Commands.welcomeText(side, true), disable_web_page_preview: true
-      }).catch(() => {});
-    }
+    await linkWith(side, chat, live);
     return;
   }
 
@@ -1671,6 +1767,7 @@ export function canAddress(side, toUser) {
 
 export function start() {
   if (timer) return;
+  markRelay();
   const on = SIDES.filter((s) => token(s));
   if (!on.length) {
     console.log('  Telegram: no bot token set — notifications stay in the app only.');
@@ -1678,7 +1775,9 @@ export function start() {
   }
 
   for (const side of on) {
-    bots[side] = { username: null, polling: true, offset: 0, lastError: null, lastOkAt: null };
+    const relayed = side === 'og' && ogRelay();
+    bots[side] = { username: null, polling: !relayed, relay: relayed ? 'railway' : null,
+                   offset: 0, lastError: null, lastOkAt: null };
     call(side, 'getMe').then((me) => {
       bots[side].username = me.username;
       const cs = chats(side);
@@ -1694,7 +1793,12 @@ export function start() {
       bots[side].lastError = e.message;
       console.log(`  Telegram: ${side} bot could not be reached — ${e.message}`);
     });
-    pollLoop(side);
+    if (relayed) {
+      console.log('  Telegram: og bot is answered on Railway (OG_TELEGRAM_OG_RELAY=railway) — ' +
+                  'not polling it here; this laptop still sends its messages.');
+    } else {
+      pollLoop(side);
+    }
   }
 
   timer = setInterval(() => { drain().catch(() => {}); }, TICK_MS);
@@ -1788,7 +1892,9 @@ export function status() {
       queued: (byAud[s] && byAud[s].queued) || 0,
       failed: (byAud[s] && byAud[s].failed) || 0,
       lastError: bots[s] ? bots[s].lastError : null,
-      codeLive: anyCode(s)
+      codeLive: anyCode(s),
+      /* 'railway' while og-track answers this bot and this laptop only sends. */
+      relay: bots[s] ? bots[s].relay || null : null
     };
   }
   return out;

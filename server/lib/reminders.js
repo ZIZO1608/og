@@ -845,6 +845,16 @@ const RULES = [
 
 export const RULE_IDS = RULES.map((r) => r.id);
 
+/* THE MORNING DIGEST MOVES WITH THE SHOP'S BOT. With OG_TELEGRAM_OG_RELAY=
+   railway, og-track sends og_digest from the mirror at its hour — the one rule
+   whose hour falls while this laptop is normally off — and it is skipped here,
+   so it is never said twice (og-track sends only while config
+   telegram.og_relay says this laptop handed it over). Every other rule stays:
+   each is about something this laptop changes while it is on, and several read
+   what the mirror does not hold (partner_events, costs, customer names). */
+const ON_RAILWAY = ['og_digest'];
+const movedAway = (id) => ON_RAILWAY.indexOf(id) > -1 && Telegram.ogRelay();
+
 /* ------------------------------------------------------------------ the tick */
 
 /* THE ADDRESSEE IS PART OF THE KEY, AND ONLY WHEN THERE IS ONE.
@@ -906,6 +916,7 @@ export function evaluate({ at = null, dry = false } = {}) {
     const info = { fired: 0, queued: 0, error: null };
     byRule[rule.id] = info;
     if (!on('reminders.' + rule.id)) { info.off = true; continue; }
+    if (movedAway(rule.id)) { info.off = true; info.movedTo = 'railway'; continue; }
     /* A blocked side still EVALUATES in a dry run — the preview must work on
        a shop with no bot linked yet, which is every shop before it has one. */
     if (skipped[rule.audience] && !dry) continue;
@@ -1070,7 +1081,8 @@ function nextDaily() {
     const fired = local.getUTCHours() >= h;
     const at = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(),
                                  local.getUTCDate() + (fired ? 1 : 0), h) - tz * 60000);
-    out[id] = { hour: h, at: at.toISOString(), on: on('reminders.' + id) };
+    out[id] = { hour: h, at: at.toISOString(), on: on('reminders.' + id),
+                movedTo: movedAway(id) ? 'railway' : null };
   }
   return out;
 }
@@ -1084,7 +1096,8 @@ export function status() {
     dayKey: dayKeyOf(Date.now(), tzMinutes()),
     enabled: on('reminders.enabled'),
     yallaPaused: cfg('reminders.yalla_paused') === '1',
-    rules: RULES.map((r) => ({ id: r.id, audience: r.audience, on: on('reminders.' + r.id) })),
+    rules: RULES.map((r) => ({ id: r.id, audience: r.audience, on: on('reminders.' + r.id),
+                               movedTo: movedAway(r.id) ? 'railway' : null })),
     nextDaily: nextDaily()
   };
 }
