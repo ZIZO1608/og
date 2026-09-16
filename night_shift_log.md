@@ -18,7 +18,7 @@ Baton on this laptop (read-only check): **probably yes, not verified against Sup
 | Edit | DONE / PARTIAL / NOT DONE | Verified how (screens, languages, widths) | Commit |
 |---|---|---|---|
 | Stage 0 | DONE | isolation proof above | (see below) |
-| E5 | — | | |
+| E5 | DONE | `_nightshift/e5.mjs`: title and page text in EN+AR × 1366 and 375 (8/8); screenshots `e5-*.png` | (E5 commit) |
 | E3 | — | | |
 | E4 | — | | |
 | E7 | — | | |
@@ -32,6 +32,8 @@ Baton on this laptop (read-only check): **probably yes, not verified against Sup
 - **The prompt arrived truncated** at 50,000 characters ("→ the E1 migrati"). `NIGHT_SHIFT_01.md` is everything that arrived, verbatim, plus a note at the top saying so (50,718 bytes). The morning checklist is completed from the rest of the file.
 - **Files the owner and I both changed are committed whole.** 101 files carry the owner's uncommitted work, including `CLAUDE.md`, `sw.js`, `server/index.js` and most of `js/`. Committing only my hunks (by patching the index) would leave those files dirty and different between `night-shift-01` and `main`, and then the morning's `git checkout main` would refuse to run at all. Committing them whole means their working copy equals the branch, so the checkout and the merge work. The cost is that those commits also carry the owner's pending edits in those files. The exact pre-night state is kept at `refs/nightshift/owner-baseline` (`a274f47`), so `git diff a274f47 night-shift-01 -- <file>` shows only my part. Files I never touched are never added, and the owner's 5 staged files stay staged: every commit is `git commit -- <paths>`, which commits only the listed paths.
 - **Two dev-only switches** were added so the sandbox cannot see the real files: `OG_ENV_FILE` replaces `server/.env` outright (the real file is never opened), and `OG_DATA_DIR` moves the database, backups and certificate. Relative paths are read from the repo root. Both must be real environment variables. Every script that defaulted to `server/data/og.db` now asks `dbFile()` in `lib/env.js`.
+- **E5:** the screen is "Cashier" / "الكاشير" (`nav_pos`, `pos_title`, the palette group `pg_till`, `open_till`, the empty-board hint, the manifest shortcut). The **role** keeps its own label, "Cashier" / "كاشير" (indefinite in Arabic), because in the roles grid it names a person, not a screen; in English the two words are now the same, and they never appear side by side as two different things (the cashier's home header reads "Cashier · My sales today"). Code ids, `#pos`, `POS`, classes and the `cashier` role id are unchanged. The panel never said "Point of Sale", so it needed nothing.
+- The harness bypasses the service worker (`Network.setBypassServiceWorker`) — the first E5 run failed on desktop only because the old cached `app-i18n.js` answered.
 - Sandbox test logins live in `_nightshift/sandbox-logins.txt` (gitignored, sandbox only). `nightmgr` (manager) was created for testing and will be removed by the E6 rebuild like any other account not on the list.
 
 ## Every 'manager' literal and what I decided
@@ -40,6 +42,7 @@ Baton on this laptop (read-only check): **probably yes, not verified against Sup
 ## Bugs hit and how I fixed them   (error → cause → fix → retries)
 
 ## Files changed per edit
+- E5: `js/app-i18n.js`, `manifest.webmanifest`, `sw.js` (v240 → v241)
 - Stage 0: `.gitignore`, `NIGHT_SHIFT_01.md`, `night_shift_log.md`, `server/lib/env.js`, `server/lib/tls.js`, `server/lib/backup.js`, `server/index.js`, `server/scripts/{backup,createuser,hardware,mirror-drift,preflight,purge-demo,supabase-check,supabase-reconcile,supabase-restore,supabase-sync,test-print,warehouse-one-room}.js`
 
 ## New migrations + Supabase files (in order)

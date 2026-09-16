@@ -1,20 +1,20 @@
 /* ==========================================================================
    OG SYSTEM — service worker
    --------------------------------------------------------------------------
-   Cache-first over a precached app shell. The whole product is static and
-   about 1 MB, so everything is cached on install and the app runs with the
-   network off after a single visit — which is the point, given the venue.
+   Cache-first over a precached app shell. The app needs the server — every
+   screen reads from it — so this is not an offline mode: it caches the shell
+   (HTML, CSS, JS, fonts, icons) so a reload is fast and survives a blip in
+   the wifi. /api/ and /i/ are never cached; see the fetch handler.
 
-   All paths are relative so this works from a GitHub Pages project subpath
-   (https://user.github.io/og-system/) as well as from a domain root.
-   Bump CACHE when shipping a new build; old caches are dropped on activate.
+   All paths are relative, so the shell resolves against wherever the server
+   serves it from. Old caches are dropped on activate.
    ========================================================================== */
 
-/* Bumped for the real-login build: gate.js is gone, api.js and auth.js are new.
-   Bump this on EVERY upload or phones that already have the app will keep
-   serving the old cached copy — including, here, a copy that still expects a
-   passcode screen that no longer exists. */
-var CACHE = 'og-system-v239';
+/* Bump this on EVERY change under css/, js/ or index.html (the panel's Full
+   refresh does it), or browsers that already have the app will keep serving
+   the old cached copy — cache-first with ignoreSearch, so no query string
+   gets past it. */
+var CACHE = 'og-system-v241';
 
 var SHELL = [
   './',
@@ -105,10 +105,10 @@ var SHELL = [
 
 /* Cache each file on its own rather than with addAll().
    addAll() is all-or-nothing: one 404 rejects the whole promise, install
-   fails, the worker never activates and NOTHING is cached. Since this app is
-   uploaded by hand through the GitHub web UI, a single missed file is a real
-   possibility — and it must not cost us offline support for everything else.
-   Anything that fails here is simply fetched from the network later. */
+   fails, the worker never activates and NOTHING is cached. A file dropped from
+   the tree but still named in SHELL is a real possibility, and it must not
+   cost the cache for everything else. Anything that fails here is simply
+   fetched from the network later. */
 self.addEventListener('install', function (e) {
   e.waitUntil(
     caches.open(CACHE).then(function (c) {
