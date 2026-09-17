@@ -212,6 +212,17 @@ export function list(user, { limit = MAX_ROWS } = {}) {
        connection. What matters is rows sitting on this machine and nowhere
        else for a quarter of an hour — or a mirror that refuses this machine
        outright, which no amount of waiting fixes. */
+    /* A TABLE SUPABASE REFUSES stops nothing else, but its rows sit here
+       until somebody runs one line of SQL — so it is a red row at once,
+       keyed on which tables, not on time. */
+    const denied = s.denied || [];
+    if (s.configured && denied.length) {
+      out.push({
+        key: 'mirror_denied:' + denied.map((d) => d.table).sort().join(','), kind: 'mirror_denied',
+        args: { n: denied.length, name: denied.map((d) => d.table).join(', ') },
+        icon: '!', tone: 'red', view: 'settings'
+      });
+    }
     const STALE_MS = 15 * 60 * 1000;
     const stale = !s.lastOkAt || (Date.now() - new Date(s.lastOkAt).getTime()) > STALE_MS;
     const stuck = s.mode === 'refused' || (s.behind > 0 && stale && s.failures > 0);

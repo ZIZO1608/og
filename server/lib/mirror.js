@@ -176,10 +176,12 @@ async function syncReference(log, want) {
   if (!doing.length) return;
   log.head('Reference data');
   for (const t of doing) {
-    const rows = DB.get().prepare(`SELECT * FROM ${t}`).all();
-    if (rows.length) await SB.insert(t, rows, { upsert: true });
-    markPushed(t);
-    log.tick(`${t.padEnd(12)} ${rows.length} rows`);
+    await guard(log, t, async () => {
+      const rows = DB.get().prepare(`SELECT * FROM ${t}`).all();
+      if (rows.length) await SB.insert(t, rows, { upsert: true });
+      markPushed(t);
+      log.tick(`${t.padEnd(12)} ${rows.length} rows`);
+    });
   }
 }
 
@@ -223,29 +225,39 @@ async function syncSettings(log, want) {
   const doing = ['config', 'role_permissions', 'label_templates', 'categories', 'user_permissions'].filter(want);
   if (!doing.length) return;
   log.head('Settings');
-  if (want('config')) await mirrorTable(log, 'config', ['key']);
+  if (want('config')) await guard(log, 'config', () => mirrorTable(log, 'config', ['key']));
   if (want('role_permissions')) {
-    await mirrorTable(log, 'role_permissions', ['role', 'perm'], (r) => ({ ...r, allowed: !!r.allowed }));
+    await guard(log, 'role_permissions', () =>
+      mirrorTable(log, 'role_permissions', ['role', 'perm'], (r) => ({ ...r, allowed: !!r.allowed })));
   }
   if (want('label_templates')) {
-    await mirrorTable(log, 'label_templates', ['id'],
-                      (r) => ({ ...r, archived: !!r.archived, slots: parseSlots(log, r.slots, r.id) }));
+    await guard(log, 'label_templates', () =>
+      mirrorTable(log, 'label_templates', ['id'],
+                  (r) => ({ ...r, archived: !!r.archived, slots: parseSlots(log, r.slots, r.id) })));
   }
   /* 059 — access per person, pushed whole, deletes follow. Its own guard. */
   if (want('user_permissions')) {
     try {
       await mirrorTable(log, 'user_permissions', ['user_id', 'perm'], (r) => ({ ...r, allowed: !!r.allowed }));
+      denied.delete('user_permissions');
     } catch (e) {
+      if (noteRefused(log, 'user_permissions', e)) return syncSettingsTail(log, want);
       if (!MISSING_TABLE.test(String(e.message))) throw e;
       log.warn('Supabase is missing user_permissions — skipped, everything else still went up.');
       log.line('    Run server/supabase/027_access.sql in the SQL editor.');
     }
   }
-  /* 057 — its own guard: a mirror without 025 still gets every other setting. */
+  await syncSettingsTail(log, want);
+}
+
+/* 057 — its own guard: a mirror without 025 still gets every other setting. */
+async function syncSettingsTail(log, want) {
   if (want('categories')) {
     try {
       await mirrorTable(log, 'categories', ['id'], (r) => ({ ...r, active: !!r.active, sizes: parseSlots(log, r.sizes, r.id) }));
+      denied.delete('categories');
     } catch (e) {
+      if (noteRefused(log, 'categories', e)) return;
       if (!MISSING_TABLE.test(String(e.message))) throw e;
       log.warn('Supabase is missing categories — skipped, everything else still went up.');
       log.line('    Run server/supabase/025_categories.sql in the SQL editor.');
@@ -679,12 +691,65 @@ export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours',
 const MISSING_TABLE = /Could not find the table|PGRST205|relation .* does not exist|Supabase 404 on /i;
 const MISSING_COLUMN = /PGRST204|column .* does not exist|Could not find the '[a-z_]+' column/i;
 
+/* A TABLE SUPABASE REFUSES IS NOT A MISSING TABLE, AND IT IS NOT A REASON TO
+   STOP. On 17 Sep 2026 the files 025–028 created their tables without
+   granting the service role anything, and the first "permission denied for
+   table user_permissions" took the WHOLE run down with it — sales included.
+   Now the refused table is skipped by name and the rest goes up. Its bookmark
+   (cursor, highest id, or content hash) only moves after a push that landed,
+   so nothing is lost: the rows wait here and go up on the first run after the
+   GRANT. It is loud on purpose — the sync status carries the list with the
+   SQL to run (the panel's Connections card, the Mirror fold and the bell draw
+   it), and the log says it on every run that meets it. */
+const REFUSED = /permission denied for (?:table|relation|sequence|schema)|\b42501\b/i;
+const denied = new Map();
+
+export function refusals() { return [...denied.values()]; }
+
+export function grantSql(table) {
+  return `GRANT SELECT, INSERT, UPDATE, DELETE ON public.${table} TO service_role;`;
+}
+
+function noteRefused(log, name, e) {
+  const msg = String((e && e.message) || e);
+  if (!REFUSED.test(msg)) return false;
+  const m = msg.match(/permission denied for (?:table|relation) "?([a-z_0-9]+)"?/i);
+  const table = m ? m[1] : name;
+  const now = new Date().toISOString();
+  const was = denied.get(table);
+  denied.set(table, { table, sql: grantSql(table), since: was ? was.since : now, at: now });
+  log.warn(`Supabase REFUSED ${table} (permission denied) — skipped; its rows wait on this machine and go up once it is fixed.`);
+  log.line(`    Run in Supabase → SQL Editor: ${grantSql(table)}`);
+  return true;
+}
+
+/* One table's step: a success clears its refusal, a refusal is noted and
+   answered false, anything else is thrown as before. */
+async function guard(log, name, fn) {
+  try {
+    await fn();
+    denied.delete(name);
+    return true;
+  } catch (e) {
+    if (noteRefused(log, name, e)) return false;
+    throw e;
+  }
+}
+
 /* Upsert forward, delete reversed, for the tables of a group that are wanted. */
 async function twoPhase(log, names, want) {
   const doing = names.filter(want);
-  for (const n of doing) { await syncTable(log, n, { phase: 'upsert' }); await breathe(); }
-  for (const n of doing.slice().reverse()) { await syncTable(log, n, { phase: 'delete' }); await breathe(); }
-  return doing;
+  const refused = new Set();
+  for (const n of doing) {
+    if (!await guard(log, n, () => syncTable(log, n, { phase: 'upsert' }))) refused.add(n);
+    await breathe();
+  }
+  for (const n of doing.slice().reverse()) {
+    if (refused.has(n)) continue;
+    if (!await guard(log, n, () => syncTable(log, n, { phase: 'delete' }))) refused.add(n);
+    await breathe();
+  }
+  return doing.filter((n) => !refused.has(n));
 }
 
 /* The one walk both entry points share. `only` is null for a full run, or
@@ -695,10 +760,11 @@ async function walk(log, only) {
   const want = (n) => !only || only.has(n);
   const touched = [];
   const flags = { layoutFailed: false, loyaltyFailed: false, cashFailed: false };
+  const finish = () => ({ touched, ...flags, refused: refusals() });
 
   await syncReference(log, want);
   await syncSettings(log, want);
-  if (want('users')) await syncUsers(log);
+  if (want('users')) await guard(log, 'users', () => syncUsers(log));
   await breathe();
 
   touched.push(...await twoPhase(log, CORE, want));
@@ -714,9 +780,10 @@ async function walk(log, only) {
       if (skipped.has(name)) return;
       try {
         await syncTable(log, name, { phase });
-        if (phase === 'delete') touched.push(name);
+        if (phase === 'delete') { touched.push(name); denied.delete(name); }
       } catch (e) {
         const msg = String(e.message);
+        if (noteRefused(log, name, e)) { skipped.add(name); return; }
         /* A MISSING COLUMN IS NOT A MISSING TABLE; column first, because its
            message contains the table pattern's words too. */
         if (MISSING_COLUMN.test(msg)) {
@@ -743,8 +810,9 @@ async function walk(log, only) {
      at a currency. */
   if (want('fx_rates') || want('stock_movements')) {
     log.head('History');
-    if (want('fx_rates')) { await syncAppendOnly(log, 'fx_rates'); touched.push('fx_rates'); }
-    if (want('stock_movements')) { await syncAppendOnly(log, 'stock_movements'); touched.push('stock_movements'); }
+    for (const t of ['fx_rates', 'stock_movements'].filter(want)) {
+      if (await guard(log, t, () => syncAppendOnly(log, t))) touched.push(t);
+    }
     await breathe();
   }
 
@@ -754,8 +822,9 @@ async function walk(log, only) {
   if (want('print_log') || want('label_print_log')) {
     log.head('Print history');
     for (const t of ['print_log', 'label_print_log'].filter(want)) {
-      try { await syncAppendOnly(log, t); touched.push(t); }
+      try { await syncAppendOnly(log, t); touched.push(t); denied.delete(t); }
       catch (e) {
+        if (noteRefused(log, t, e)) continue;
         log.warn(`${t}: ${String(e.message).slice(0, 90)}`);
         if (t === 'print_log' && /\bkind\b/.test(String(e.message))) {
           log.line('    Run server/supabase/009_gift_receipt.sql in the SQL editor — the rows');
@@ -772,10 +841,14 @@ async function walk(log, only) {
       await syncTable(log, 'product_colours', { phase: 'upsert' });
       await syncTable(log, 'product_colours', { phase: 'delete' });
       touched.push('product_colours');
+      denied.delete('product_colours');
     } catch (e) {
+      if (noteRefused(log, 'product_colours', e)) { /* skipped, named */ }
+      else {
       if (!MISSING_TABLE.test(String(e.message))) throw e;
       log.warn('Supabase is missing product_colours — skipped, everything else still went up.');
       log.line('    Run server/supabase/026_colours.sql in the SQL editor.');
+      }
     }
     await breathe();
   }
@@ -785,8 +858,9 @@ async function walk(log, only) {
   if (want('loyalty_redemptions') || want('wants')) {
     log.head('Loyalty and wants');
     const step = async (name, fn) => {
-      try { await fn(); touched.push(name); }
+      try { await fn(); touched.push(name); denied.delete(name); }
       catch (e) {
+        if (noteRefused(log, name, e)) return;
         if (/does not exist|Could not find the table|PGRST205|Supabase 404 on |schema cache/i.test(String(e.message))) {
           log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
           log.line('    Run server/supabase/010_loyalty_and_wants.sql in the SQL editor.');
@@ -819,7 +893,9 @@ async function walk(log, only) {
         await syncTable(log, name, { phase: 'upsert' });
         await syncTable(log, name, { phase: 'delete' });
         touched.push(name);
+        denied.delete(name);
       } catch (e) {
+        if (noteRefused(log, name, e)) continue;
         if (MISSING_TABLE.test(String(e.message))) {
           log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
           log.line('    Run server/supabase/' +
@@ -841,13 +917,14 @@ async function walk(log, only) {
   if (partnerWanted) {
     log.head('Partner');
     try {
-      if (want('clubs')) await mirrorTable(log, 'clubs', ['code'], (r) => ({ ...r, archived: !!r.archived }));
+      if (want('clubs')) await guard(log, 'clubs', () => mirrorTable(log, 'clubs', ['code'], (r) => ({ ...r, archived: !!r.archived })));
       touched.push(...await twoPhase(log, PARTNER, want));
-      if (want('wa_messages')) { await syncAppendOnly(log, 'wa_messages'); touched.push('wa_messages'); }
+      if (want('wa_messages') && await guard(log, 'wa_messages', () => syncAppendOnly(log, 'wa_messages'))) touched.push('wa_messages');
       touched.push(...await twoPhase(log, DRAWER, want));
-      if (want('expenses')) { await syncAppendOnly(log, 'expenses'); touched.push('expenses'); }
-      if (want('debt_payments')) { await syncAppendOnly(log, 'debt_payments'); touched.push('debt_payments'); }
-      if (want('notification_reads')) await mirrorTable(log, 'notification_reads', ['user_id', 'key']);
+      for (const t of ['expenses', 'debt_payments'].filter(want)) {
+        if (await guard(log, t, () => syncAppendOnly(log, t))) touched.push(t);
+      }
+      if (want('notification_reads')) await guard(log, 'notification_reads', () => mirrorTable(log, 'notification_reads', ['user_id', 'key']));
     } catch (e) {
       if (/does not exist|Could not find the table|PGRST205|schema cache/i.test(String(e.message))) {
         const named = String(e.message).match(/public.([a-z_]+)/);
@@ -870,11 +947,15 @@ async function walk(log, only) {
     try {
       await syncAppendOnly(log, 'money_moves');
       touched.push('money_moves');
+      denied.delete('money_moves');
     } catch (e) {
-      if (!missing(e)) throw e;
+      if (noteRefused(log, 'money_moves', e)) { flags.cashFailed = true; }
+      else if (!missing(e)) throw e;
+      else {
       log.warn('Supabase is missing money_moves — skipped, everything else still went up.');
       log.line('    Run server/supabase/021_cash_book.sql in the SQL editor.');
       flags.cashFailed = true;
+      }
     }
   }
   if (want('day_closes')) {
@@ -882,11 +963,15 @@ async function walk(log, only) {
       await syncTable(log, 'day_closes', { phase: 'upsert' });
       await syncTable(log, 'day_closes', { phase: 'delete' });
       touched.push('day_closes');
+      denied.delete('day_closes');
     } catch (e) {
-      if (!missing(e)) throw e;
+      if (noteRefused(log, 'day_closes', e)) { flags.cashFailed = true; }
+      else if (!missing(e)) throw e;
+      else {
       log.warn('Supabase is missing day_closes — skipped, everything else still went up.');
       log.line('    Run server/supabase/022_day_close.sql in the SQL editor.');
       flags.cashFailed = true;
+      }
     }
   }
   /* 055 — what suppliers and staff were paid. After the partner block, which
@@ -895,7 +980,9 @@ async function walk(log, only) {
     try {
       await syncAppendOnly(log, name);
       touched.push(name);
+      denied.delete(name);
     } catch (e) {
+      if (noteRefused(log, name, e)) { flags.cashFailed = true; continue; }
       if (!missing(e)) throw e;
       log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
       log.line('    Run server/supabase/023_payables.sql in the SQL editor.');
@@ -903,7 +990,7 @@ async function walk(log, only) {
     }
   }
 
-  return { touched, ...flags };
+  return finish();
 }
 
 /* ------------------------------------------------------------ detection
@@ -1055,20 +1142,30 @@ export async function fullRun({ log = consoleLog() } = {}) {
     last_push_at: new Date().toISOString(),
     note: 'full run completed'
   });
-  return { ok: !r.layoutFailed && !r.loyaltyFailed && !r.cashFailed, ...r };
+  return { ok: !r.layoutFailed && !r.loyaltyFailed && !r.cashFailed && !r.refused.length, ...r };
 }
 
 /* Only what moved. No request at all when nothing did. */
 export async function pushChanged({ log = tailLog() } = {}) {
   if (!cursorsLoaded) await loadCursors();
   const det = detect();
-  if (!det.changed.size) return { pushed: false, tables: [], behind: 0, ok: true };
+  /* A refused table is asked again at most once a minute here (the full run
+     always asks): every ten seconds would be a request and a log line each
+     time for a table nobody has granted yet. */
+  const now = Date.now();
+  for (const t of [...det.changed]) {
+    const d = denied.get(t);
+    if (d && now - new Date(d.at).getTime() < 60 * 1000) det.changed.delete(t);
+  }
+  if (!det.changed.size) return { pushed: false, tables: [], behind: det.behind, ok: !denied.size, refused: refusals() };
   const r = await walk(log, det.changed);
   await SB.update('sync_state', { id: 'shop' }, {
     last_push_at: new Date().toISOString(),
     note: 'live push: ' + [...det.changed].join(', ').slice(0, 200)
   });
   const after = detect();
-  return { pushed: true, tables: [...det.changed], behind: after ? after.behind : 0,
-           ok: !r.layoutFailed && !r.loyaltyFailed && !r.cashFailed, ...r };
+  /* only what actually went up is reported as pushed */
+  const tables = [...det.changed].filter((t) => !denied.has(t));
+  return { pushed: tables.length > 0, tables, behind: after ? after.behind : 0,
+           ok: !r.layoutFailed && !r.loyaltyFailed && !r.cashFailed && !r.refused.length, ...r };
 }

@@ -736,6 +736,10 @@
     var a = r.args || {};
     var c = r.code;
     if (c === 'mirror_live' && !a.behind) c = 'mirror_live0';
+    if (c === 'mirror_denied') {
+      return tHtml('cc_mirror_denied', { tables: ltr(listOf(a.tables || [])) }) +
+        '<code class="sql" dir="ltr">' + esc(a.sql || '') + '</code>';
+    }
     if (c === 'backup_age' && !a.hours) c = 'backup_recent';
     var parts = {};
     var k;
@@ -785,6 +789,9 @@
         '<span class="at">' + (r && r.at ? tHtml('connAt', { time: ltr(clock(r.at)) }) : '') + '</span>' +
         '<span class="bt">' +
           (fix ? '<button class="btn btn-sm btn-hot" data-job="' + esc(fix) + '"' + (state.job ? ' disabled' : '') + '>' + esc(t('fix_' + fix)) + '</button>' : '') +
+          (r && r.code === 'mirror_denied' && r.args && r.args.sql
+            ? '<button class="btn btn-sm btn-ghost" data-copy="' + esc(r.args.sql) + '">' + esc(copiedUrl === r.args.sql ? t('copied') : t('copySql')) + '</button>'
+            : '') +
           '<button class="again" data-conn="' + id + '" title="' + esc(t('connCheck')) + '" aria-label="' + esc(t('connCheck')) + '">' + svg('again') + '</button>' +
         '</span>' +
         '</li>';

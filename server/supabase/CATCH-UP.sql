@@ -633,6 +633,44 @@ CREATE INDEX IF NOT EXISTS idx_order_reviews_at ON order_reviews (at);
 
 ALTER TABLE order_reviews ENABLE ROW LEVEL SECURITY;
 
+
+-- ---- grants (night shift 01 fix) ----
+--  Supabase gives a table made in the SQL editor NO privileges for the
+--  service_role on this project, so the shop's key was refused with
+--  "permission denied for table …" and the whole mirror run stopped. The
+--  shop's key needs to read and write each new table; anon and authenticated
+--  are kept out, as 001 does for its own tables. A sequence owned by one of
+--  these tables (none today — the ids come from the shop) gets USAGE and
+--  SELECT. Every statement is a GRANT or a REVOKE: running this twice
+--  changes nothing. A table that does not exist yet is skipped.
+DO $$
+DECLARE
+  t TEXT;
+  s RECORD;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['order_reviews'] LOOP
+    IF to_regclass('public.' || t) IS NULL THEN CONTINUE; END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO service_role', t);
+      FOR s IN
+        SELECT seq.relname
+          FROM pg_class seq
+          JOIN pg_depend dep ON dep.objid = seq.oid AND dep.deptype IN ('a', 'i')
+          JOIN pg_class tab ON tab.oid = dep.refobjid
+         WHERE seq.relkind = 'S' AND tab.oid = ('public.' || t)::regclass
+      LOOP
+        EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO service_role', s.relname);
+      END LOOP;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    END IF;
+  END LOOP;
+END $$;
+
 -- ===== 020_free_racks.sql =====  (local 051: a rack that stands on the floor, not against a wall)
 
 ALTER TABLE sections ADD COLUMN IF NOT EXISTS placement TEXT NOT NULL DEFAULT 'wall';
@@ -662,6 +700,44 @@ CREATE INDEX IF NOT EXISTS idx_money_moves_place ON money_moves (place, currency
 CREATE INDEX IF NOT EXISTS idx_money_moves_ref   ON money_moves (ref_type, ref_id);
 
 ALTER TABLE money_moves ENABLE ROW LEVEL SECURITY;
+
+
+-- ---- grants (night shift 01 fix) ----
+--  Supabase gives a table made in the SQL editor NO privileges for the
+--  service_role on this project, so the shop's key was refused with
+--  "permission denied for table …" and the whole mirror run stopped. The
+--  shop's key needs to read and write each new table; anon and authenticated
+--  are kept out, as 001 does for its own tables. A sequence owned by one of
+--  these tables (none today — the ids come from the shop) gets USAGE and
+--  SELECT. Every statement is a GRANT or a REVOKE: running this twice
+--  changes nothing. A table that does not exist yet is skipped.
+DO $$
+DECLARE
+  t TEXT;
+  s RECORD;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['money_moves'] LOOP
+    IF to_regclass('public.' || t) IS NULL THEN CONTINUE; END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO service_role', t);
+      FOR s IN
+        SELECT seq.relname
+          FROM pg_class seq
+          JOIN pg_depend dep ON dep.objid = seq.oid AND dep.deptype IN ('a', 'i')
+          JOIN pg_class tab ON tab.oid = dep.refobjid
+         WHERE seq.relkind = 'S' AND tab.oid = ('public.' || t)::regclass
+      LOOP
+        EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO service_role', s.relname);
+      END LOOP;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    END IF;
+  END LOOP;
+END $$;
 
 -- ===== 022_day_close.sql =====  (local 054: closing the day)
 
@@ -694,6 +770,44 @@ CREATE INDEX IF NOT EXISTS idx_day_closes_day ON day_closes (day);
 
 ALTER TABLE day_closes      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE day_close_lines ENABLE ROW LEVEL SECURITY;
+
+
+-- ---- grants (night shift 01 fix) ----
+--  Supabase gives a table made in the SQL editor NO privileges for the
+--  service_role on this project, so the shop's key was refused with
+--  "permission denied for table …" and the whole mirror run stopped. The
+--  shop's key needs to read and write each new table; anon and authenticated
+--  are kept out, as 001 does for its own tables. A sequence owned by one of
+--  these tables (none today — the ids come from the shop) gets USAGE and
+--  SELECT. Every statement is a GRANT or a REVOKE: running this twice
+--  changes nothing. A table that does not exist yet is skipped.
+DO $$
+DECLARE
+  t TEXT;
+  s RECORD;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['day_closes', 'day_close_lines'] LOOP
+    IF to_regclass('public.' || t) IS NULL THEN CONTINUE; END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO service_role', t);
+      FOR s IN
+        SELECT seq.relname
+          FROM pg_class seq
+          JOIN pg_depend dep ON dep.objid = seq.oid AND dep.deptype IN ('a', 'i')
+          JOIN pg_class tab ON tab.oid = dep.refobjid
+         WHERE seq.relkind = 'S' AND tab.oid = ('public.' || t)::regclass
+      LOOP
+        EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO service_role', s.relname);
+      END LOOP;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    END IF;
+  END LOOP;
+END $$;
 
 -- ===== 023_payables.sql =====  (local 055: paying suppliers and staff)
 
@@ -740,6 +854,44 @@ ALTER TABLE supplier_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE salary_payments ENABLE ROW LEVEL SECURITY;
 
 
+
+-- ---- grants (night shift 01 fix) ----
+--  Supabase gives a table made in the SQL editor NO privileges for the
+--  service_role on this project, so the shop's key was refused with
+--  "permission denied for table …" and the whole mirror run stopped. The
+--  shop's key needs to read and write each new table; anon and authenticated
+--  are kept out, as 001 does for its own tables. A sequence owned by one of
+--  these tables (none today — the ids come from the shop) gets USAGE and
+--  SELECT. Every statement is a GRANT or a REVOKE: running this twice
+--  changes nothing. A table that does not exist yet is skipped.
+DO $$
+DECLARE
+  t TEXT;
+  s RECORD;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['supplier_ledger', 'salary_payments'] LOOP
+    IF to_regclass('public.' || t) IS NULL THEN CONTINUE; END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO service_role', t);
+      FOR s IN
+        SELECT seq.relname
+          FROM pg_class seq
+          JOIN pg_depend dep ON dep.objid = seq.oid AND dep.deptype IN ('a', 'i')
+          JOIN pg_class tab ON tab.oid = dep.refobjid
+         WHERE seq.relkind = 'S' AND tab.oid = ('public.' || t)::regclass
+      LOOP
+        EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO service_role', s.relname);
+      END LOOP;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    END IF;
+  END LOOP;
+END $$;
+
 -- ===== 024_po_due.sql =====  (local 056: when a purchase order is due)
 ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS due_date TEXT;
 
@@ -757,6 +909,44 @@ CREATE TABLE IF NOT EXISTS categories (
 );
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 
+
+
+-- ---- grants (night shift 01 fix) ----
+--  Supabase gives a table made in the SQL editor NO privileges for the
+--  service_role on this project, so the shop's key was refused with
+--  "permission denied for table …" and the whole mirror run stopped. The
+--  shop's key needs to read and write each new table; anon and authenticated
+--  are kept out, as 001 does for its own tables. A sequence owned by one of
+--  these tables (none today — the ids come from the shop) gets USAGE and
+--  SELECT. Every statement is a GRANT or a REVOKE: running this twice
+--  changes nothing. A table that does not exist yet is skipped.
+DO $$
+DECLARE
+  t TEXT;
+  s RECORD;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['categories'] LOOP
+    IF to_regclass('public.' || t) IS NULL THEN CONTINUE; END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO service_role', t);
+      FOR s IN
+        SELECT seq.relname
+          FROM pg_class seq
+          JOIN pg_depend dep ON dep.objid = seq.oid AND dep.deptype IN ('a', 'i')
+          JOIN pg_class tab ON tab.oid = dep.refobjid
+         WHERE seq.relkind = 'S' AND tab.oid = ('public.' || t)::regclass
+      LOOP
+        EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO service_role', s.relname);
+      END LOOP;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    END IF;
+  END LOOP;
+END $$;
 
 -- ===== 026_colours.sql =====  (local 058: a product has colours; a printed code is shared by every colour of a size)
 CREATE TABLE IF NOT EXISTS product_colours (
@@ -785,6 +975,44 @@ ALTER TABLE order_return_lines ADD COLUMN IF NOT EXISTS colour TEXT;
 ALTER TABLE order_return_lines ADD COLUMN IF NOT EXISTS colour_ar TEXT;
 
 
+
+-- ---- grants (night shift 01 fix) ----
+--  Supabase gives a table made in the SQL editor NO privileges for the
+--  service_role on this project, so the shop's key was refused with
+--  "permission denied for table …" and the whole mirror run stopped. The
+--  shop's key needs to read and write each new table; anon and authenticated
+--  are kept out, as 001 does for its own tables. A sequence owned by one of
+--  these tables (none today — the ids come from the shop) gets USAGE and
+--  SELECT. Every statement is a GRANT or a REVOKE: running this twice
+--  changes nothing. A table that does not exist yet is skipped.
+DO $$
+DECLARE
+  t TEXT;
+  s RECORD;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['product_colours'] LOOP
+    IF to_regclass('public.' || t) IS NULL THEN CONTINUE; END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO service_role', t);
+      FOR s IN
+        SELECT seq.relname
+          FROM pg_class seq
+          JOIN pg_depend dep ON dep.objid = seq.oid AND dep.deptype IN ('a', 'i')
+          JOIN pg_class tab ON tab.oid = dep.refobjid
+         WHERE seq.relkind = 'S' AND tab.oid = ('public.' || t)::regclass
+      LOOP
+        EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO service_role', s.relname);
+      END LOOP;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    END IF;
+  END LOOP;
+END $$;
+
 -- ===== 027_access.sql =====  (local 059: owner and developer, and access per person)
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN
@@ -804,6 +1032,44 @@ CREATE TABLE IF NOT EXISTS user_permissions (
 );
 ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;
 
+
+
+-- ---- grants (night shift 01 fix) ----
+--  Supabase gives a table made in the SQL editor NO privileges for the
+--  service_role on this project, so the shop's key was refused with
+--  "permission denied for table …" and the whole mirror run stopped. The
+--  shop's key needs to read and write each new table; anon and authenticated
+--  are kept out, as 001 does for its own tables. A sequence owned by one of
+--  these tables (none today — the ids come from the shop) gets USAGE and
+--  SELECT. Every statement is a GRANT or a REVOKE: running this twice
+--  changes nothing. A table that does not exist yet is skipped.
+DO $$
+DECLARE
+  t TEXT;
+  s RECORD;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['user_permissions'] LOOP
+    IF to_regclass('public.' || t) IS NULL THEN CONTINUE; END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO service_role', t);
+      FOR s IN
+        SELECT seq.relname
+          FROM pg_class seq
+          JOIN pg_depend dep ON dep.objid = seq.oid AND dep.deptype IN ('a', 'i')
+          JOIN pg_class tab ON tab.oid = dep.refobjid
+         WHERE seq.relkind = 'S' AND tab.oid = ('public.' || t)::regclass
+      LOOP
+        EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO service_role', s.relname);
+      END LOOP;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    END IF;
+  END LOOP;
+END $$;
 
 -- ===== 028_safeers.sql =====  (local 060: the delivery team's errands)
 CREATE TABLE IF NOT EXISTS errands (
@@ -826,3 +1092,41 @@ CREATE TABLE IF NOT EXISTS errands (
 );
 CREATE INDEX IF NOT EXISTS errands_safeer ON errands (safeer_id, status);
 ALTER TABLE errands ENABLE ROW LEVEL SECURITY;
+
+
+-- ---- grants (night shift 01 fix) ----
+--  Supabase gives a table made in the SQL editor NO privileges for the
+--  service_role on this project, so the shop's key was refused with
+--  "permission denied for table …" and the whole mirror run stopped. The
+--  shop's key needs to read and write each new table; anon and authenticated
+--  are kept out, as 001 does for its own tables. A sequence owned by one of
+--  these tables (none today — the ids come from the shop) gets USAGE and
+--  SELECT. Every statement is a GRANT or a REVOKE: running this twice
+--  changes nothing. A table that does not exist yet is skipped.
+DO $$
+DECLARE
+  t TEXT;
+  s RECORD;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['errands'] LOOP
+    IF to_regclass('public.' || t) IS NULL THEN CONTINUE; END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO service_role', t);
+      FOR s IN
+        SELECT seq.relname
+          FROM pg_class seq
+          JOIN pg_depend dep ON dep.objid = seq.oid AND dep.deptype IN ('a', 'i')
+          JOIN pg_class tab ON tab.oid = dep.refobjid
+         WHERE seq.relkind = 'S' AND tab.oid = ('public.' || t)::regclass
+      LOOP
+        EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO service_role', s.relname);
+      END LOOP;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    END IF;
+  END LOOP;
+END $$;

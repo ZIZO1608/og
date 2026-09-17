@@ -364,6 +364,10 @@ function runCapture(argv, ms) {
   });
 }
 
+function deniedSig(m) {
+  return m && m.denied ? m.denied.map((d) => d.table).sort().join(',') : '';
+}
+
 const CONN_IDS = ['server', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'backup', 'vault'];
 
 async function checkOne(id, ctx) {
@@ -402,6 +406,13 @@ async function checkOne(id, ctx) {
       if (!m) return row('skip', 'mirror_silent');
       if (!m.configured || m.mode === 'off') return row('warn', 'mirror_off');
       if (m.mode === 'refused') return row('bad', 'mirror_refused', { by: m.refusedBy || '?' });
+      /* a table Supabase refuses: named, with the SQL, while the rest goes up */
+      if (m.denied && m.denied.length) {
+        return row('bad', 'mirror_denied', {
+          tables: m.denied.map((d) => d.table),
+          sql: m.denied.map((d) => d.sql).join('\n')
+        });
+      }
       if (m.mode === 'offline') return row('warn', 'mirror_offline', { behind: m.behind || 0 });
       return row(m.behind ? 'warn' : 'ok', 'mirror_live', { behind: m.behind || 0, at: m.lastOkAt || null });
     }
@@ -779,7 +790,14 @@ async function startServer() {
       setTimeout(() => { checkConnections().catch(() => {}); }, 1500);
       return;
     }
-    if (m.type === 'mirror') { state.mirror = m.mirror; stepFromMirror(m.mirror); return pushState(); }
+    if (m.type === 'mirror') {
+      const before = deniedSig(state.mirror);
+      state.mirror = m.mirror;
+      stepFromMirror(m.mirror);
+      /* the Connections row follows the refused-table list the moment it changes */
+      if (deniedSig(m.mirror) !== before) checkConnections('mirror').catch(() => {});
+      return pushState();
+    }
     /* a password, answering the developer panel — never logged, never pushed */
     if (m.type === 'secret') { const w = secretWait.get(m.reqId); if (w) w(m); return; }
     if (m.type === 'who') { state.who = m.who || null; return pushState(); }

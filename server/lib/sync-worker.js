@@ -182,6 +182,7 @@ async function run(kind) {
       state.lastPushAt = state.lastOkAt;
       console.log(`  [mirror] pushed ${out.tables.join(', ')} (${secs}s)`);
     }
+    sayRefusals(kind === 'full');
     tell();
   } catch (err) {
     state.lastFailedAt = new Date().toISOString();
@@ -202,6 +203,26 @@ async function run(kind) {
     if (state.pending) { state.pending = false; schedule(0); }
   }
   return out;
+}
+
+/* A TABLE SUPABASE REFUSES (lib/mirror.js refusals()). Said in the log when
+   the list changes and after every full run while it is not empty — with the
+   SQL to run — and carried in the status, where the panel's Connections card,
+   the Mirror fold and the bell draw it. The rows wait; they are not lost. */
+let refusedSig = '';
+function sayRefusals(always) {
+  const list = Mirror.refusals();
+  const sig = list.map((r) => r.table).sort().join(',');
+  if (sig === refusedSig && !(always && list.length)) return;
+  if (!list.length) {
+    console.log('  [mirror] Supabase accepts every table again — the waiting rows went up.');
+  } else {
+    console.log('  [mirror] SUPABASE REFUSED ' + list.length + ' table(s): ' + list.map((r) => r.table).join(', ') +
+                ' — skipped; their rows wait on this machine, everything else still goes up.');
+    console.log('           Run this in Supabase → SQL Editor:');
+    for (const r of list) console.log('             ' + r.sql);
+  }
+  refusedSig = sig;
 }
 
 function lastWarning(text) {
@@ -442,6 +463,7 @@ export function status() {
     lastFullAt: state.lastFullAt,
     lastFullOk: state.lastFullOk,
     pull: state.pull,
+    denied: Mirror.refusals(),
     /* kept for anything that still reads the old name */
     everyMinutes: fullMinutes()
   };

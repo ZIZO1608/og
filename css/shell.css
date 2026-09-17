@@ -196,6 +196,12 @@ body[data-sidebar="mini"]:not([data-portal="yalla"]) .nav-badge {
   border: 1px solid var(--border); background: var(--muted);
 }
 .mir-state + .mir-state { margin-top: 8px; }
+/* A table Supabase refuses: named, with its line of SQL (left to right in both languages). */
+.mir-denied { margin-top: 10px; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--destructive-border, #7F2226); background: var(--destructive-soft, #2B1416); }
+.mir-denied-head { font-size: 12px; color: var(--foreground); margin-bottom: 6px; }
+.mir-denied-row { display: grid; gap: 3px; margin-top: 6px; }
+.mir-denied-row b { font-size: 12px; text-align: start; }
+.mir-denied-row code { display: block; font: 500 11.5px/1.5 Consolas, 'Cascadia Mono', monospace; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; direction: ltr; user-select: all; padding: 5px 7px; border-radius: 6px; background: var(--app, #0A0A0B); }
 .mir-state.ok   { border-color: rgba(61, 220, 132, .28);  background: rgba(61, 220, 132, .05); }
 .mir-state.warn { border-color: rgba(245, 185, 62, .30);  background: rgba(245, 185, 62, .05); }
 .mir-state.bad  { border-color: rgba(255, 92, 92, .32);   background: rgba(255, 92, 92, .05); }

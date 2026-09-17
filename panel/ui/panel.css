@@ -787,6 +787,12 @@ body.rtl .devchip { padding: 3px 11px 3px 3px; }
 .cr.warn .nm small { color: var(--warning); }
 .cr.skip .nm small, .cr.wait .nm small { color: var(--dim); }
 .cr .at { font-size: 10.5px; color: var(--dim); white-space: nowrap; }
+.cr .nm code.sql {
+  display: block; margin-top: 5px; padding: 6px 8px; border-radius: var(--radius-sm);
+  background: var(--app); border: 1px solid var(--destructive-border); color: var(--foreground);
+  font: 500 11px/1.5 'Cascadia Mono', Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+  text-align: left; user-select: text;
+}
 .cr .bt { display: inline-flex; align-items: center; gap: 6px; }
 .again {
   width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-sm);

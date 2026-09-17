@@ -1035,6 +1035,9 @@ var MirrorUI = (function () {
       var w = until(s.nextRetryAt);
       return { tone: 'bad', text: t('mir_offline').replace('{n}', w), why: s.lastError };
     }
+    if (s.denied && s.denied.length) {
+      return { tone: 'bad', text: t('mir_denied').replace('{n}', s.denied.length) };
+    }
     if (s.running) return { tone: 'wait', text: t('mir_pushing') };
     if (s.lastError && s.failures > 0) {
       return { tone: 'warn', text: t('mir_retry').replace('{n}', until(s.nextRetryAt)), why: s.lastError };
@@ -1064,6 +1067,7 @@ var MirrorUI = (function () {
       '<div><div class="mir-line"><span dir="auto">' + esc(v.text) + '</span></div>' +
       (v.why ? '<div class="muted small mt-xs"><span dir="auto">' + esc(v.why) + '</span></div>' : '') +
       '</div></div>';
+    h += deniedBlock(s.denied);
     h += pullLine(s.pull);
     h += '<div class="mir-facts">';
     h += fact(t('mir_last_push'), s.lastPushAt ? ago(s.lastPushAt) : t('mir_never'));
@@ -1076,6 +1080,18 @@ var MirrorUI = (function () {
     h += '<div class="mir-act"><button class="btn btn-ghost btn-sm" data-act="sync-now">' + t('sync_now') + '</button>' +
          '<span class="muted small">' + t('mir_how') + '</span></div>';
     host.innerHTML = h;
+  }
+
+  /* The tables Supabase refuses, each with the one line of SQL that fixes it.
+     SQL is machine text: left to right in both languages. */
+  function deniedBlock(list) {
+    if (!list || !list.length) return '';
+    return '<div class="mir-denied">' +
+      '<div class="mir-denied-head"><span dir="auto">' + esc(t('mir_denied_how')) + '</span></div>' +
+      list.map(function (d) {
+        return '<div class="mir-denied-row"><b dir="ltr">' + esc(d.table) + '</b>' +
+               '<code dir="ltr">' + esc(d.sql) + '</code></div>';
+      }).join('') + '</div>';
   }
 
   function fact(label, value) {

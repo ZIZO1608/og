@@ -145,6 +145,8 @@ var EXTRA_V3_EN = {
   mir_last_push: 'Last push', mir_behind: 'Waiting on this machine',
   mir_last_full: 'Last full pass', mir_full_every: 'Full pass every',
   mir_full_skipped: 'a table was skipped', mir_minutes: '{n} min', mir_never: 'never',
+  mir_denied: 'Supabase refuses {n} table(s) — everything else is mirrored',
+  mir_denied_how: 'Their changes wait on this machine; nothing is lost. Run this in Supabase → SQL Editor, and they go up on the next push:',
   mir_how: 'Changes go up by themselves — this only hurries the next one.',
   /* The boot pull — what this laptop did with the cloud copy at startup */
   mir_pull: 'Cloud copy at startup',
@@ -300,6 +302,8 @@ var EXTRA_V3_AR = {
   mir_last_push: 'آخر رفع', mir_behind: 'بانتظار الرفع على هذا الجهاز',
   mir_last_full: 'آخر جولة كاملة', mir_full_every: 'جولة كاملة كل',
   mir_full_skipped: 'تم تخطي جدول', mir_minutes: '{n} د', mir_never: 'أبداً',
+  mir_denied: 'Supabase يرفض {n} جدول — كل ما عداها يُنسخ',
+  mir_denied_how: 'تغييراتها تنتظر على هذا الجهاز ولا يضيع شيء. نفّذ هذا في Supabase ← SQL Editor، فتُرفع مع الدفعة التالية:',
   mir_how: 'التغييرات تُرفع من تلقاء نفسها — هذا الزر يعجّل التالية فقط.',
   /* السحب عند التشغيل — ما فعله هذا الجهاز بالنسخة السحابية عند بدء التشغيل */
   mir_pull: 'النسخة السحابية عند التشغيل',
@@ -429,6 +433,8 @@ var EXTRA_EN = {
      {n}, {total}, {days} are numbers; {name}, {size}, {id} are names; {amount}
      is money already in its own currency. A `_1` key is the singular. */
   al_mirror: 'Supabase mirror is stuck — {behind} change(s) exist on this machine only{err}',
+  al_mirror_denied: 'Supabase refuses {name} — those changes wait on this machine. Settings → Mirror shows the SQL to run',
+  al_mirror_denied_1: 'Supabase refuses the table {name} — its changes wait on this machine. Settings → Mirror shows the SQL to run',
   al_stock_out: '{name} — size {size} out of stock',
   al_job_late: 'Print job #{id} is {days} days overdue',
   al_job_late_1: 'Print job #{id} is 1 day overdue',
@@ -681,6 +687,8 @@ var EXTRA_AR = {
 
   /* ---- the bell, written here from kind + values ---- */
   al_mirror: 'نسخة Supabase متوقفة — {behind} تغيير موجود على هذا الجهاز فقط{err}',
+  al_mirror_denied: 'Supabase يرفض {name} — تلك التغييرات تنتظر على هذا الجهاز. الإعدادات ← النسخة السحابية تعرض أمر SQL المطلوب',
+  al_mirror_denied_1: 'Supabase يرفض الجدول {name} — تغييراته تنتظر على هذا الجهاز. الإعدادات ← النسخة السحابية تعرض أمر SQL المطلوب',
   al_stock_out: '{name} — مقاس {size} نفد من المخزون',
   al_job_late: 'طلب الطباعة #{id} متأخر {days} يوماً',
   al_job_late_1: 'طلب الطباعة #{id} متأخر يوماً واحداً',

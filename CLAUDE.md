@@ -1166,6 +1166,26 @@ it rejects the **whole batch**, not the column:
   `sections` (local `036`); until it is run the sync pushes racks without their size and names the
   file every run. `002` adds `users.pw_enc` and is easy to forget because the sync only needs it
   once `OG_VAULT_KEY` is set.
+- **A TABLE MADE IN THE SQL EDITOR IS NOT READABLE BY THE SHOP'S KEY ON THIS PROJECT** (found
+  17 Sep 2026): 027 created `user_permissions`, and every push then died on `403 permission denied
+  for table user_permissions`. The files that create tables since 019 (019, 021–023, 025–028, and
+  their `CATCH-UP.sql` sections) now end with a guarded block — `GRANT SELECT, INSERT, UPDATE,
+  DELETE … TO service_role`, `USAGE, SELECT` on any sequence the table owns, `REVOKE ALL` from
+  `anon` and `authenticated` (001's second lock), a table that does not exist skipped — so running
+  one twice changes nothing. **A new table file needs the same block.** Verified in PGlite: 001–028,
+  `CATCH-UP.sql` twice, 025–028 again, a refused table fixed, a sequence granted.
+  **And the mirror no longer stops for it**: `noteRefused()` / `guard()` in `lib/mirror.js` skip a
+  refused table BY NAME at every step (reference, settings, users, the two-phase groups, layout,
+  history, colours, loyalty, road, partner, cash book) and push the rest. Its bookmark (cursor,
+  highest id or content hash) moves only after a push that landed, so its rows wait here and go up
+  on the first run after the GRANT. It is loud: `Mirror.refusals()` rides the sync status as
+  `denied` (`[{table, sql, since, at}]`), the panel's Connections card turns the mirror row red with
+  the SQL and a Copy SQL button, the Settings Mirror fold draws each table with its line, the bell
+  has a red `mirror_denied` row for `config.write`, and the log names the tables and the SQL when
+  the list changes and after every full run. The fast lane asks a refused table at most once a
+  minute and never reports it as pushed. Tested with a fake PostgREST (`_nightshift/denied-test.mjs`,
+  29 checks; `denied-e2e.mjs`, 27 — the panel, the log, the bell and the fold in both languages,
+  and the refusal clearing itself once the fake allows it).
 - **Running one of these files is only half the repair.** The sync pushed those rows with the missing
   columns *dropped* and its cursor is already past them, so the columns exist afterwards and stay
   NULL. **`npm run supabase:reconcile` is what refills them**, and it is not optional.
