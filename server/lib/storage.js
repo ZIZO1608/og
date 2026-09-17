@@ -108,6 +108,10 @@ export function pathForJob(jobId, ext) {
   return `jobs/${String(jobId).replace(/[^A-Za-z0-9_-]/g, '')}/${Date.now().toString(36)}.${ext}`;
 }
 
+export function pathForColour(productId, colourId, ext) {
+  return `products/${productId}/colours/${colourId}/${Date.now().toString(36)}.${ext}`;
+}
+
 export function pathFor(productId, ext) {
   return `products/${productId}/${Date.now().toString(36)}.${ext}`;
 }

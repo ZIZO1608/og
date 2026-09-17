@@ -147,12 +147,19 @@ var Stock = (function () {
      opening a product sheet — he is holding the item, not researching it. */
   function scanned(raw) {
     if (!S.active) return false;
-    var v = DB.variantByBarcode(String(raw).trim()) || DB.variantBySku(String(raw).trim());
-    if (!v) { toast(t('st_count'), t('sc_unknown'), 'err'); return false; }
+    var list = DB.variantsByCode(String(raw).trim());
+    if (!list.length) { toast(t('st_count'), t('sc_unknown'), 'err'); return false; }
+    if (list.length > 1) {
+      /* 058 — counting is about what is on the shelf, so every colour is
+         offered, stock or not. */
+      ColourPick.choose(list, {}, function (pickd) { if (pickd) scanned(pickd.sku); });
+      return true;
+    }
+    var v = list[0];
     var cur = Object.prototype.hasOwnProperty.call(S.active.counted, v.sku) ? S.active.counted[v.sku] : 0;
     S.active.counted[v.sku] = cur + 1;
     var p = DB.product(v.productId);
-    toast(p.name + ' · ' + v.size, t('st_now_counted') + ' ' + (cur + 1), 'ok', 1400);
+    toast(p.name + ' · ' + DB.variantLabel(v), t('st_now_counted') + ' ' + (cur + 1), 'ok', 1400);
     render();
     return true;
   }
@@ -318,7 +325,7 @@ var Stock = (function () {
       h += '<tr class="' + cls + '">' +
         '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
           '<small class="num">' + esc(r.v.sku) + '</small></span></div></td>' +
-        '<td><b>' + r.v.size + '</b></td>' +
+        '<td><b>' + esc(DB.variantLabel(r.v)) + '</b></td>' +
         '<td class="muted">' + esc(r.v.shelf) + '</td>' +
         '<td class="num muted">' + r.system + '</td>' +
         '<td class="num"><input class="inp num st-in" type="number" min="0" ' +
@@ -462,7 +469,7 @@ var Stock = (function () {
                 { label: t('shelf') }, { label: t('st_system'), num: true },
                 { label: t('st_counted'), num: true }, { label: t('st_diff'), num: true }],
       rows: list.map(function (r) {
-        return [r.p.name, r.v.size, r.v.sku, r.v.shelf, r.system,
+        return [r.p.name, DB.variantLabel(r.v), r.v.sku, r.v.shelf, r.system,
                 r.has ? r.counted : '—', r.has ? r.diff : '—'];
       }),
       totals: [t('total'), null, null, null, null, tt.counted, tt.pieces],

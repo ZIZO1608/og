@@ -450,6 +450,11 @@ var Shop = (function () {
 
     /* ---- catalogue ---- */
     newProduct: function (body) { return API.post('/api/products', body); },
+    /* 058 — colours */
+    addColour:  function (pid, body) { return API.post('/api/products/' + pid + '/colours', body); },
+    updateColour: function (id, body) { return API.patch('/api/colours/' + id, body); },
+    setColourImage: function (id, dataUrl) { return API.post('/api/colours/' + id + '/image', { dataUrl: dataUrl }); },
+    addSize:    function (pid, body) { return API.post('/api/products/' + pid + '/variants', body); },
     /* The picture, already shrunk by readImageFile, to the bucket; null clears. */
     setProductImage: function (id, dataUrl) {
       return API.post('/api/products/' + id + '/image', dataUrl ? { dataUrl: dataUrl } : { clear: true });

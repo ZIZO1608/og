@@ -246,8 +246,11 @@ export function record({
     for (const l of lines) {
       const v = d.prepare(
         `SELECT v.sku, v.size, v.product_id, p.name, p.currency,
-                p.selling_price, p.cost_price
+                p.selling_price, p.cost_price,
+                c.name_en AS colour_en, c.name_ar AS colour_ar,
+                (SELECT COUNT(*) FROM product_colours x WHERE x.product_id = p.id) AS colour_count
            FROM variants v JOIN products p ON p.id = v.product_id
+           LEFT JOIN product_colours c ON c.id = v.colour_id
           WHERE v.sku = ?`
       ).get(l.sku);
 
@@ -267,7 +270,11 @@ export function record({
       priced.push({
         sku: v.sku, productId: v.product_id, name: v.name, size: v.size,
         qty, unitPrice, unitCost,
-        srcCurrency: v.currency, srcUnitPrice: v.selling_price
+        srcCurrency: v.currency, srcUnitPrice: v.selling_price,
+        /* 058 — the colour is frozen on the line only when there was a
+           choice; a product with one colour reads as it always did. */
+        colour: v.colour_count > 1 ? v.colour_en : null,
+        colourAr: v.colour_count > 1 ? v.colour_ar : null
       });
 
       subtotal += unitPrice * qty;
@@ -442,12 +449,13 @@ export function record({
     const insLine = d.prepare(
       `INSERT INTO sale_items
          (sale_id, sku, product_id, name, size, qty,
-          unit_price, unit_cost, src_currency, src_unit_price)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          unit_price, unit_cost, src_currency, src_unit_price, colour, colour_ar)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const p of priced) {
       insLine.run(saleId, p.sku, p.productId, p.name, p.size, p.qty,
-                  p.unitPrice, p.unitCost, p.srcCurrency, p.srcUnitPrice);
+                  p.unitPrice, p.unitCost, p.srcCurrency, p.srcUnitPrice,
+                  p.colour ?? null, p.colourAr ?? null);
     }
 
     /* ---- the cash book (053) ---------------------------------------------
@@ -532,17 +540,6 @@ export function recordIn(d, args) {
 }
 
 /* ------------------------------------------------------------------ reading */
-
-export function byId(id) {
-  const s = get().prepare(
-    `SELECT s.*, u.name AS cashier_name
-       FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
-      WHERE s.id = ?`
-  ).get(id);
-  if (!s) return null;
-  s.items = get().prepare('SELECT * FROM sale_items WHERE sale_id = ? ORDER BY id').all(id);
-  return s;
-}
 
 /* Recent invoices WITH their lines.
 

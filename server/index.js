@@ -538,15 +538,67 @@ router.add('POST /api/products/:id/image', requirePerm('product.write', async (c
   }
 }));
 
+/* A size on one of a product's colours (058). Its opening stock, if any, is
+   a "received" movement into `whId` — the same thing the new-product form
+   books — and its printed codes are the ones that size already has on the
+   product's other colours. */
 router.add('POST /api/products/:id/variants', requirePerm('product.write', async (ctx) => {
   const b = await readJson(ctx.req);
   try {
     sendOk(ctx.res, Cat.addVariant({
-      productId: Number(ctx.params.id), size: b.size,
-      barcode: b.barcode, shelf: b.shelf, userId: ctx.user.id
+      productId: Number(ctx.params.id), size: b.size, colourId: b.colourId,
+      qty: b.qty, whId: b.whId || 'store', shelf: b.shelf, userId: ctx.user.id
     }));
   } catch (e) {
-    sendError(ctx.res, 400, 'invalid', e.message);
+    sendError(ctx.res, e.status || 400, e.code || 'invalid', e.message);
+  }
+}));
+
+/* A new colour on a product that exists, with its sizes and their stock. */
+router.add('POST /api/products/:id/colours', requirePerm('product.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Cat.addColour({
+      productId: Number(ctx.params.id), nameEn: b.nameEn, nameAr: b.nameAr, hex: b.hex,
+      sizes: Array.isArray(b.sizes) ? b.sizes : [], whId: b.whId || 'store', userId: ctx.user.id
+    }));
+  } catch (e) {
+    sendError(ctx.res, e.status || 400, e.code || 'invalid', e.message);
+  }
+}));
+
+router.add('PATCH /api/colours/:id', requirePerm('product.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { colour: Cat.updateColour(Number(ctx.params.id), b || {}, ctx.user.id) });
+  } catch (e) {
+    sendError(ctx.res, e.status || 400, e.code || 'invalid', e.message);
+  }
+}));
+
+/* A colour's own photograph — the product picture's route, keyed by product
+   AND colour, a new path on every replace. */
+router.add('POST /api/colours/:id/image', requirePerm('product.write', async (ctx) => {
+  const id = Number(ctx.params.id);
+  const b = await readJson(ctx.req);
+  try {
+    const c = Cat.colourById(id);
+    if (!c) return sendError(ctx.res, 404, 'not_found', 'No such colour.');
+    if (b && b.clear) {
+      const r = Cat.setColourImage(id, null, ctx.user.id);
+      if (r.previous) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
+      return sendOk(ctx.res, { imageUrl: null });
+    }
+    if (!SB.isConfigured()) return sendError(ctx.res, 503, 'not_configured', 'Pictures need Supabase, which is not set up on this server.');
+    const pic = Storage.decodeDataUrl(b && b.dataUrl);
+    const url = await Storage.putObject(Storage.pathForColour(c.productId, id, pic.ext), pic.bytes, pic.type);
+    const r = Cat.setColourImage(id, url, ctx.user.id);
+    if (r.previous && r.previous !== url) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
+    sendOk(ctx.res, { imageUrl: url });
+  } catch (e) {
+    if (e.code === 'not_found') return sendError(ctx.res, 404, 'not_found', e.message);
+    if (e.code === 'bad_image' || e.code === 'too_large') return sendError(ctx.res, 400, e.code, e.message);
+    sendError(ctx.res, 503, 'storage_failed', e.message);
   }
 }));
 

@@ -106,6 +106,18 @@ export const MIRROR_LAG = {
   purchase_orders: { cols: ['due_date'],
                 file: 'server/supabase/024_po_due.sql', retriedBy: ['sync', 'reconcile'] },
 
+  /* 058 — which colour a size is (026). variants lead the UNGUARDED core
+     loop, so without this a mirror that has not had 026 run would refuse
+     every size and take stock, customers, sales and deliveries with it. */
+  variants:   { cols: ['colour_id'],
+                file: 'server/supabase/026_colours.sql', retriedBy: ['sync', 'reconcile'] },
+  /* 058 — the colour frozen on a sold line. Rides on the sale's afterUpsert;
+     insertChildren applies this fallback by name. */
+  sale_items: { cols: ['colour', 'colour_ar'],
+                file: 'server/supabase/026_colours.sql', retriedBy: ['sync', 'reconcile'] },
+  order_return_lines: { cols: ['colour', 'colour_ar'],
+                file: 'server/supabase/026_colours.sql', retriedBy: ['sync', 'reconcile'] },
+
   /* 027 — gift receipts. NOTE: the sync deliberately does NOT apply this one.
      print_log is append-only, bookmarked by the highest id already sent, so
      dropping the column would land the rows and advance the bookmark past

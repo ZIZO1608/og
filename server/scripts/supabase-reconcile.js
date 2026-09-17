@@ -60,6 +60,7 @@ const dim  = (m) => console.log(`    ${DIM}${m}${OFF}`);
    preference. `key` is what identifies a row on both sides. */
 const TABLES = [
   { name: 'products',   key: 'id' },
+  { name: 'product_colours', key: 'id' },
   { name: 'variants',   key: 'sku' },
   { name: 'stock',      key: ['sku', 'wh_id'] },
   /* The only repair path for a shelf whose log entry was consumed by a run

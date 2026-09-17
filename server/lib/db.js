@@ -19,7 +19,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS = resolve(HERE, '..', 'migrations');
+/* OG_MIGRATIONS_DIR is for a test that runs a deliberately broken copy of a
+   migration, to prove its check refuses. Never set on a shop. */
+const MIGRATIONS = process.env.OG_MIGRATIONS_DIR
+  ? resolve(process.env.OG_MIGRATIONS_DIR)
+  : resolve(HERE, '..', 'migrations');
+import { CHECKS } from './migration-checks.js';
 
 let db = null;
 
@@ -110,17 +115,36 @@ function migrate(d) {
 
     /* Each migration is one transaction: a half-applied schema change is far
        worse than a failed startup, because the next run would try to apply the
-       rest on top of a shape it does not expect. */
+       rest on top of a shape it does not expect.
+
+       A migration listed in lib/migration-checks.js also gets its checks, and
+       may ask for foreign keys to be off while a parent table is rebuilt —
+       the PRAGMA is a no-op inside a transaction, so it is set around it. */
+    const check = CHECKS[f] || null;
+    if (check && check.foreignKeysOff) d.exec('PRAGMA foreign_keys = OFF');
     d.exec('BEGIN');
     try {
+      const snap = check && check.before ? check.before(d) : null;
+      /* Only NEW broken references fail it: an old orphan somewhere else in a
+         shop's database must not be what stops the shop opening. */
+      const fkBefore = check && check.foreignKeysOff ? d.prepare('PRAGMA foreign_key_check').all().length : 0;
       d.exec(sql);
+      if (check && check.foreignKeysOff) {
+        const bad = d.prepare('PRAGMA foreign_key_check').all();
+        if (bad.length > fkBefore) {
+          throw new Error(`${bad.length - fkBefore} new broken reference(s), e.g. in ${bad[0].table} → ${bad[0].parent}`);
+        }
+      }
+      if (check && check.after) check.after(d, snap);
       d.prepare('INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)')
        .run(f, nowIso());
       d.exec('COMMIT');
     } catch (err) {
       d.exec('ROLLBACK');
+      if (check && check.foreignKeysOff) d.exec('PRAGMA foreign_keys = ON');
       throw new Error(`migration ${f} failed: ${err.message}`);
     }
+    if (check && check.foreignKeysOff) d.exec('PRAGMA foreign_keys = ON');
   }
 }
 

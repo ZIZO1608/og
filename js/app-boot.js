@@ -187,11 +187,13 @@ function handleScan(code) {
      nobody can see. */
   if (OG.view === 'pos' && !(OG.print && OG.print.partner) && typeof POS !== 'undefined') {
     var c = String(code || '').trim();
-    var v = DB.variantByBarcode(c) || DB.variantBySku(c) ||
-            (DB.variantByLabelCode && DB.variantByLabelCode(c));
-    if (v) {
+    /* 058: one code can be several colours of the same size. The colours with
+       stock at the till's place decide; one of them goes straight in. */
+    var list = DB.variantsByCode(c);
+    if (list.length) {
       closeModal();
-      POS.add(v);
+      ColourPick.choose(list, { whId: POS.state && POS.state.warehouse, needStock: true },
+                        function (v) { if (v) POS.add(v); });
       return;
     }
   }
@@ -229,8 +231,7 @@ function bindWedge() {
        silent otherwise, so the one thing owed from here is feedback on a
        code it will ignore — silence reads as a dead scanner. */
     if (document.querySelector('.lbl-picker')) {
-      var known = DB.variantByBarcode(code) || DB.variantBySku(code) ||
-                  (DB.variantByLabelCode && DB.variantByLabelCode(code));
+      var known = DB.variantsByCode(code).length > 0;
       if (!known) toast(t('lbl_unknown_code'), String(code).slice(0, 40), 'warn');
       return;
     }

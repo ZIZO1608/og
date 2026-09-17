@@ -85,7 +85,7 @@ export const ORDER = [
      database is opened with foreign_keys = ON, so getting it wrong does not
      drift quietly — it kills the restore partway through, the way
      sales.cashier_id did when accounts came last. */
-  'products', 'variants', 'rooms', 'sections', 'shelves', 'stock',
+  'products', 'product_colours', 'variants', 'rooms', 'sections', 'shelves', 'stock',
   'customers', 'sales', 'sale_items', 'deliveries',
 
   /* a rate needs its currencies; a movement needs its variant and warehouse */

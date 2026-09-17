@@ -1668,11 +1668,90 @@ different states all measured as the same lime over a DOM that was demonstrably 
 `*{transition:none!important;animation:none!important}` and force a reflow before measuring — the
 same family as screenshotting a popover mid-fade.
 
+## Night shift 01 (17 Sep 2026) — colours, categories, the date picker, partner invoices
+
+Built on branch `night-shift-01`, verified on a sandbox copy; the night's log is `night_shift_log.md`.
+**Mirror files 024–026 must be run in the Supabase dashboard BEFORE the shop laptop runs this code**
+(026 above all — see "Colours").
+
+### Colours — a product is colours × sizes (058)
+
+`product_colours`, `server/lib/catalogue.js` (`coloursOf`, `addColour`, `updateColour`,
+`setColourImage`, `addVariant`), `js/colourform.js` (`ColourForm`, the Add-product form and the drawer's
+"Add a colour or a size"), `js/colourpick.js` (`ColourPick`), mirror file `026_colours.sql`.
+
+- **A variant is a colour × size**: `variants.colour_id`, `UNIQUE (product_id, colour_id, size)`. The first
+  colour keeps the old SKUs (`OG-050-42`); a later one is `OG-050-C2-42`.
+- **THE PRINTED CODE IS SHARED BY EVERY COLOUR OF ONE PRODUCT AND SIZE** (the owner's decision): the
+  barcode and the label code of a size are issued once and reused by `codesFor()`, so both columns lost
+  their UNIQUE. `attachCode` writes a code to every sibling and refuses it only against a different
+  product or size. A scan can therefore name several variants: **`DB.variantsByCode(code)` is the one
+  lookup**, and every scan path — the wedge at the till, `resolveScan`, the till's own box, move-by-scan,
+  the stock count, the office — hands the list to `ColourPick.choose(list, {whId, needStock}, cb)`. One
+  colour (or one with stock at that place) is answered at once; otherwise a sheet of swatches. It draws
+  on **its own layer (`#cpRoot`, z 970), never through `openModal`**, or it would close the move-by-scan
+  panel it was asked from.
+- **A product with ONE colour draws exactly as before.** `DB.shownColour(v)` is null for it, so
+  `DB.variantLabel(v)` is just the size; a sold line freezes `sale_items.colour` / `colour_ar` only when
+  there was a choice (`DB.lineSize(line)` prints it). Migration 058 gave every existing product one colour
+  ("Standard / أساسي", or its colourway) and touched no SKU, stock row or movement.
+- **Opening stock is `Stock.apply` (a `received` movement)**, for a new product, a new colour and a new
+  size alike. `createWithVariants` takes `colours: [{nameEn, nameAr, hex, sizes:[{size, qty}]}]`; a caller
+  sending only `sizes` gets one colour.
+- **The migration checks itself.** `lib/migration-checks.js`: a migration listed there gets a `before` and
+  an `after` inside its transaction, and 058's compares pieces, value and sizes per product, the movement
+  count and the stock table — any difference rolls back and names the product, and the server does not
+  start. It also asks for `foreignKeysOff` (SQLite's table-rebuild procedure: DROP TABLE on `variants`
+  would otherwise cascade into `stock`), with a check that no NEW broken reference appeared.
+  `OG_MIGRATIONS_DIR` points the runner at another folder — only for the test that proves the refusal on a
+  deliberately broken copy; never set on a shop.
+- **Colour photos**: `POST /api/colours/:id/image`, stored at `products/<id>/colours/<cid>/<time>.<ext>`; a
+  product with no picture shows its first colour's.
+- **The website** (`/api/ext/products`) carries `colours: [{id, en, ar, hex, imageUrl, sizes}]`; the stock
+  reminders and the bell name the colour when there is a choice.
+- **RUN 026 BEFORE THE SHOP RUNS THIS CODE.** Postgres still holds 001's `UNIQUE (product_id, size)` until
+  026 drops it, and `variants` lead the unguarded core loop: the first second colour of a size would be
+  refused there and take stock, customers, sales and deliveries with it. `mirror-lag.js` covers the
+  missing column, not a constraint.
+
+### Categories in both languages (057)
+
+`categories` (`id` = the slug `products.type` already held), `server/lib/categories.js`, `js/catset.js`
+(`CatSet`, Settings → Warehouse → Categories). Both names required, duplicates refused in either language
+(folded), never deleted — switched off. `Categories.assertUsable` guards every product write (no foreign
+key: that would mean rebuilding `products`). The browser keeps `DB.typeLabels` / `DB.sizeSets` and refills
+them in place in the screen's language on hydrate and on every `applyLang()`; `DB.activeTypes()` is what a
+form or filter offers. Pushed whole (`WHOLE_KEYS`), file 025.
+
+`applyLang()` now also writes `localStorage['og.lang']`, which the login screen and the splash always read
+and nothing wrote — so the gate was English for everybody. The app opens in it too. Every string on the
+gate is in both languages, and `API.friendly()` prefers an `err_<code>` string in the screen's language.
+
+### The date picker (`js/datepick.js`, `DatePick`)
+
+Every `input[type=date]` is dressed by a MutationObserver, SelectBox's rule: the input stays (read-only,
+transparent, ISO value), a face says the date through `fmtDate` with a white calendar icon, and a pick
+fires `input` + `change`. The whole field opens it; a bottom sheet under 480px; the week starts on
+**Saturday**; `min`/`max` honoured; arrows mirrored in Arabic. The wrapper is a `div` — `.field > span` is
+the label's style. A purchase order now has a **due date** (`purchase_orders.due_date`, 056 / file 024):
+the reorder dialog asks for it (not in the past, refused `due_past` on the server too), the PO list shows
+it with a "late" badge, and the bell calls a dated order late the day after it (`po_overdue`).
+
+### Tick boxes in dialogs, and Yalla Wear's invoice from finished work
+
+**No tick box inside any dialog could be ticked.** The backdrop carries `data-act="modal-backdrop"` and is
+every control's ancestor, so the delegated dispatcher found it and called `preventDefault()` — which undoes
+a checkbox's click — before the action decided not to close. The dispatcher now ignores the backdrop unless
+it was pressed itself. That was why Yalla Wear had never issued an invoice. With it: the picker ticks whole
+**jobs** (the server bills jobs, not kit lines); Issue waits for the server before saying anything; and
+`Partner.createInvoice` refuses a job not finished, a job already invoiced, a reused number and mixed
+currencies (409 `job_not_done` / `already_invoiced` / `invoice_exists` / `mixed_currency`).
+
 ## Known open work
 
-- The supplier and payroll editors exist now (the Money screen, 055). Still no screen for adding one
-  size to an existing product (`Shop.addVariant`) or cancelling a purchase order (`Shop.cancelPO`). Both functions
-  are kept on purpose, unwired, so the gap stays visible.
+- The supplier and payroll editors exist now (the Money screen, 055), and adding a colour or a size to an
+  existing product has its dialog (night shift 01). Still no screen for cancelling a purchase order
+  (`Shop.cancelPO`), kept on purpose, unwired, so the gap stays visible.
 - **Server routes with no button.** A sale can be voided only by a hand-sent
   `POST /api/sales/:id/void`; the staff-account routes (`POST /api/users`, `/api/users/:id/reset`,
   `/api/users/:id/active`) have no Settings control. The permissions `refund` and `partner.read` gate

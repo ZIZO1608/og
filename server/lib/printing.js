@@ -59,7 +59,7 @@ export function data(saleId) {
   if (!sale) return null;
 
   sale.items = get().prepare(
-    `SELECT sku, name, size, qty, unit_price FROM sale_items
+    `SELECT sku, name, size, qty, unit_price, colour, colour_ar FROM sale_items
       WHERE sale_id = ? ORDER BY id`
   ).all(saleId);
 

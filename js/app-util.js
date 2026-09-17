@@ -48,11 +48,19 @@ function personFirst(name) {
    Yalla Wear is Zaven Yalla and Zohrab Yalla, so initialsOf() gives "ZY"
    for both of them — the one thing a face must never do. "Za" and "Zo"
    tell them apart at any size, and the colour underneath does the rest.
-   initialsOf() is untouched: it names an ACCOUNT in its own menu, where
+   initialsOf() below keeps first-plus-last: it names an ACCOUNT in its own menu, where
    there is only ever one person and the surname is worth having. */
 function personFace(name) {
   var f = personFirst(name);
   return f ? (f.charAt(0).toUpperCase() + f.charAt(1).toLowerCase()) : '?';
+}
+
+/* Initials for the avatar block. .split(' ') on a name with a double space
+   yields an empty string whose [0] is undefined, and 'undefined' is what used
+   to be printed in the circle. */
+function initialsOf(name) {
+  return String(name || '').split(/\s+/).filter(Boolean)
+    .slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase() || '—';
 }
 
 /* ------------------------------------------------------------ 3. FORMATTING */
@@ -227,8 +235,6 @@ function relDate(d) {
   return t('in_days') + ' ' + Math.abs(n) + ' ' + t('days');
 }
 
-function dateWithRel(d) { return fmtDate(d) + ' <span class="muted">· ' + relDate(d) + '</span>'; }
-
 function esc(s) {
   return String(s === undefined || s === null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -366,6 +372,10 @@ function uploadJobDesign(id, dataUrl, then) {
   return uploadImageThrough(function () { return Shop.setJobImage(id, dataUrl); }, then);
 }
 
+function uploadColourImage(id, dataUrl, then) {
+  return uploadImageThrough(function () { return Shop.setColourImage(id, dataUrl); }, then);
+}
+
 function uploadProductImage(id, dataUrl, then) {
   return uploadImageThrough(function () { return Shop.setProductImage(id, dataUrl); }, then);
 }
@@ -390,7 +400,7 @@ function uploadImageThrough(send, then) {
     }
     /* Otherwise the server's own reason, which names Supabase or the network
        rather than "error". */
-    toast(t('image'), t('img_fail') + ' ' + (typeof API !== 'undefined' && API.friendly ? API.friendly(err) : (err && err.message || '')), 'err', 8000);
+    toast(t('image'), t('img_fail') + ' ' + API.friendly(err), 'err', 8000);
   });
 }
 
@@ -439,14 +449,6 @@ function stepper(stage, opts) {
    In url mode these go through deepLink(), not CONFIG.QR_BASE_URL — that
    constant is a placeholder domain, so scanning it would land on nothing.
    deepLink() emits a route the app actually handles. */
-function qrForVariant(v) {
-  var p = DB.product(v.productId);
-  if (CONFIG.QR_MODE === 'url') return deepLink('product', v.productId);
-  return CONFIG.SHOP_NAME.toUpperCase() + '\n' + p.name + '\n' +
-         t('size') + ' ' + v.size + ' | ' + v.sku + '\n' +
-         money(p.sellingPrice) + ' | ' + v.shelf;
-}
-
 function qrForSale(sale) {
   if (CONFIG.QR_MODE === 'url') return deepLink('invoice', sale.id);
   return CONFIG.SHOP_NAME.toUpperCase() + ' | ' + sale.id + '\n' +

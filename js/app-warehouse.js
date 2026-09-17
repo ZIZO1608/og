@@ -123,7 +123,7 @@ function whWantsTab() {
   var groups = {};
   var order = [];
   wantRows.forEach(function (w) {
-    var key = (w.product_id || 0) + '|' + (w.size || '');
+    var key = (w.product_id || 0) + '|' + (w.variant_sku || w.size || '');
     if (!groups[key]) { groups[key] = []; order.push(key); }
     groups[key].push(w);
   });
@@ -146,7 +146,7 @@ function whWantsTab() {
     rows.forEach(function (w, i) {
       h += '<tr' + (here > 0 ? ' class="st-ok"' : '') + '>' +
         '<td>' + (i === 0 ? nm(w.product_name || t('product')) : '') + '</td>' +
-        '<td>' + (i === 0 ? '<b>' + esc(w.size || '—') + '</b>' : '') + '</td>' +
+        '<td>' + (i === 0 ? '<b>' + esc((back ? DB.variantLabel(back, w.size) : w.size) || '—') + '</b>' : '') + '</td>' +
         '<td><span class="clickable" data-act="cu-open" data-id="' + w.customer_id + '">' +
           nm(w.customer_name) + ' ›</span></td>' +
         '<td class="num">' + tel(w.customer_phone || '') + '</td>' +
@@ -286,8 +286,8 @@ function whStockTab() {
         var cls = here === 0
           ? (DB.stockElsewhere(v, whId) > 0 ? 'wh-cell elsewhere' : 'wh-cell zero')
           : 'wh-cell';
-        h += '<span class="' + cls + '" title="' + esc(v.size + ' · ' + v.shelf) + '">' +
-          '<b>' + v.size + '</b><i>' + sub + '</i></span>';
+        h += '<span class="' + cls + '" title="' + esc(DB.variantLabel(v) + ' · ' + v.shelf) + '">' +
+          '<b>' + (DB.shownColour(v) ? DB.swatch(DB.shownColour(v)) + ' ' : '') + esc(v.size) + '</b><i>' + sub + '</i></span>';
       });
 
       h += '</div></td>' +
@@ -429,7 +429,7 @@ function openTransfer(pid) {
     var parts = DB.warehouses.map(function (w) {
       return DB.whName(w.id, ar) + ' ' + DB.stockAt(v, w.id);
     }).join(' · ');
-    body += '<option value="' + v.sku + '">' + v.size + ' — ' + esc(parts) + '</option>';
+    body += '<option value="' + v.sku + '">' + esc(DB.variantLabel(v)) + ' — ' + esc(parts) + '</option>';
   });
   body += '</select>';
 
@@ -486,7 +486,7 @@ function whSuggestCard() {
     if (!p) return;
     h += '<tr class="row-late">' +
       '<td><div class="cell-prod">' + thumb(p) + '<span><b>' + esc(p.name) + '</b></span></div></td>' +
-      '<td><b>' + s.size + '</b></td>' +
+      '<td><b>' + esc(DB.variantLabel(DB.variantBySku(s.sku), s.size)) + '</b></td>' +
       '<td class="num"><span class="badge critical">0</span></td>' +
       '<td class="num"><b>' + s.back + '</b></td>' +
       /* One decimal. A single size sells a fraction of a pair per week and the
@@ -517,7 +517,7 @@ function whPoTab() {
       var p = DB.product(s.productId);
       h += '<tr class="clickable' + (s.have === 0 ? ' row-late' : '') + '" data-act="reorder" data-id="' + p.id + '">' +
         '<td><div class="cell-prod">' + thumb(p) + '<span><b>' + esc(p.name) + '</b></span></div></td>' +
-        '<td><b>' + s.size + '</b></td>' +
+        '<td><b>' + esc(DB.variantLabel(DB.variantBySku(s.sku), s.size)) + '</b></td>' +
         '<td class="num">' + healthBadge(s.have) + ' ' + s.have + '</td>' +
         '<td class="num muted">' + s.rate + '/' + t('po_week') + '</td>' +
         '<td class="num ' + (s.cover < 14 ? 'po-urgent' : 'muted') + '">' +
@@ -592,9 +592,9 @@ function whAddTab() {
   var totalPieces = 0, totalCost = 0, totalRev = 0;
   var cost = Number(document.getElementById('whCost') && document.getElementById('whCost').value) || 0;
 
-  sizes.forEach(function (s) { totalPieces += Number(OG.wh.sizes[s] || 0); });
+  totalPieces = ColourForm.grand();
 
-  var h = '<div class="grid" style="grid-template-columns:minmax(0,1fr) 330px;align-items:start">';
+  var h = '<div class="grid wh-add-grid">';
 
   /* -- form -- */
   h += '<div class="card"><div class="card-head"><h3>' + t('tab_add') + '</h3>' +
@@ -670,19 +670,11 @@ function whAddTab() {
       : '') +
   '</div></div>';
 
+  /* 058 — colours, each with its own sizes and quantities (js/colourform.js).
+     The size run is the category's; the codes are issued on save. */
   h += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">' +
-    '<span class="lbl">' + t('size_matrix') + ' — ' + DB.typeLabels[OG.wh.type] + '</span>' +
-    '<div class="size-matrix">';
-  /* The small line under each size used to carry an invented EAN-13 (see the
-     note at the top of this file). It now carries the SKU the server will
-     mint — the one thing about a size that is known before saving. */
-  sizes.forEach(function (s) {
-    var q = OG.wh.sizes[s] || '';
-    h += '<div class="size-cell' + (q ? ' filled' : '') + '"><b>' + s + '</b>' +
-      '<input type="number" min="0" placeholder="0" value="' + q + '" data-change="wh-size" data-size="' + s + '">' +
-      '<small>' + (q ? t('wh_code_on_save') : '—') + '</small></div>';
-  });
-  h += '</div></div>';
+    '<span class="lbl">' + t('size_matrix') + ' — ' + esc(DB.typeLabels[OG.wh.type] || '') + '</span>' +
+    ColourForm.html() + '</div>';
 
   /* "Save & print labels" rather than a print button beside Save: the codes
      on the sticker are issued by the server when the product is saved, so
@@ -857,12 +849,18 @@ function whAddPreview(sizes, totalPieces) {
     '<div class="table-wrap" style="max-height:300px;overflow-y:auto"><table class="tbl tbl-compact"><thead><tr>' +
       '<th>' + t('size') + '</th><th class="num">' + t('qty') + '</th><th>' + t('barcode') + '</th></tr></thead><tbody>';
   var any = false;
-  sizes.forEach(function (s) {
-    var q = Number(OG.wh.sizes[s] || 0);
-    if (!q) return;
-    any = true;
-    h += '<tr><td><b>' + s + '</b></td><td class="num">' + q + '</td>' +
-         '<td class="muted small">' + t('wh_code_on_save') + '</td></tr>';
+  var many = ColourForm.list().length > 1;
+  ColourForm.list().forEach(function (c, i) {
+    sizes.forEach(function (s) {
+      var q = Number(c.qty[s] || 0);
+      if (!q) return;
+      any = true;
+      h += '<tr><td><b dir="ltr">' + esc(s) + '</b>' +
+        (many ? ' <span class="line-colour">' + '<span class="cp-sw" style="background:' + (c.hex || '#3F3F46') + '"></span>' +
+                esc(ColourForm.label(c, i)) + '</span>' : '') + '</td>' +
+        '<td class="num">' + q + '</td>' +
+        '<td class="muted small">' + t('wh_code_on_save') + '</td></tr>';
+    });
   });
   if (!any) {
     h += '<tr><td colspan="3" class="muted small" style="text-align:center;padding:18px">' + t('wh_no_sizes_yet') + '</td></tr>';
@@ -887,21 +885,7 @@ function whAddPreview(sizes, totalPieces) {
    the rest of the page — and the caret — exactly where they were. */
 function repaintWhAdd() {
   var sizes = DB.sizeSets[OG.wh.type] || [];
-  var total = 0;
-  sizes.forEach(function (s) { total += Number(OG.wh.sizes[s] || 0); });
-
-  /* the cell's own highlight and note, without rebuilding its input */
-  sizes.forEach(function (s) {
-    var input = document.querySelector('[data-change="wh-size"][data-size="' + s + '"]');
-    if (!input) return;
-    var cell = input.parentNode;
-    var q = Number(OG.wh.sizes[s] || 0);
-    if (cell) {
-      cell.classList.toggle('filled', !!q);
-      var code = cell.querySelector('small');
-      if (code) code.textContent = q ? t('wh_code_on_save') : '—';
-    }
-  });
+  var total = ColourForm.grand();
 
   var box = document.getElementById('whPreview');
   if (box) box.innerHTML = whAddPreview(sizes, total);
@@ -1025,7 +1009,7 @@ function moveScanBody() {
     h += '<tr' + (over ? ' class="row-danger"' : '') + '>' +
       '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
         '<small dir="ltr">' + esc(r.v.sku) + '</small></span></div></td>' +
-      '<td><b>' + esc(r.v.size) + '</b></td>' +
+      '<td><b>' + esc(DB.variantLabel(r.v)) + '</b></td>' +
       '<td class="num' + (over ? ' mv-delta mv-down' : ' muted') + '">' + r.have + '</td>' +
       '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' + r.line.qty +
         '" style="width:64px" data-change="ms-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
@@ -1090,9 +1074,17 @@ function moveScanned(raw) {
   var code = String(raw || '').trim();
   if (!code) return false;
 
-  var v = DB.variantByBarcode(code) || DB.variantBySku(code) ||
-          (DB.variantByLabelCode ? DB.variantByLabelCode(code) : null);
-  if (!v) { toast(t('ms_title'), t('sc_unknown') + ' · ' + code.slice(0, 24), 'err', 3000); return false; }
+  var list = DB.variantsByCode(code);
+  if (!list.length) { toast(t('ms_title'), t('sc_unknown') + ' · ' + code.slice(0, 24), 'err', 3000); return false; }
+  if (list.length > 1) {
+    /* 058 — which colour is in his hand: the ones held at the FROM place. The
+       sheet opens over the panel, which comes back when it closes. */
+    ColourPick.choose(list, { whId: moveScan.from, needStock: true }, function (pickd) {
+      if (pickd) moveScanned(pickd.sku);
+    });
+    return true;
+  }
+  var v = list[0];
 
   var p = DB.product(v.productId);
   var have = DB.stockAt(v, moveScan.from);
@@ -1114,7 +1106,7 @@ function moveScanned(raw) {
 
   var qty = found ? found.qty : 1;
   moveScanRepaint();
-  toast((p ? p.name : v.sku) + ' · ' + t('size') + ' ' + v.size,
+  toast((p ? p.name : v.sku) + ' · ' + t('size') + ' ' + DB.variantLabel(v),
         t('ms_on_list').replace('{n}', qty), 'ok', 1400);
   return true;
 }
@@ -1225,7 +1217,7 @@ function whMovesTab() {
          carries the SKU and somebody holding it needs to match the two. */
       '<td><div class="cell-prod">' + (p ? thumb(p) : '') +
         '<span><b>' + esc(p ? p.name : '—') + '</b>' +
-        '<small class="nowrap">' + t('size') + ' ' + esc(mv.size) +
+        '<small class="nowrap">' + t('size') + ' ' + esc(DB.variantLabel(DB.variantBySku(mv.sku), mv.size)) +
           ' · <span dir="ltr">' + esc(mv.sku) + '</span></small></span></div></td>' +
 
       /* Rows written before places existed carry no wh; a dash, never a

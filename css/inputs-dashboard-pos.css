@@ -625,3 +625,33 @@ body.pos-resizing-v { cursor: row-resize; user-select: none; }
 @media (max-width: 720px) { .pe-grid { grid-template-columns: 1fr; } }
 .pe-check { display: flex; align-items: center; gap: 8px; }
 .pe-check input { accent-color: var(--brand); width: 16px; height: 16px; }
+
+
+/* ---- colours (058): swatches and the which-colour sheet (js/colourpick.js) */
+.cp-sw { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .22); flex: none; }
+.cp-sw.cp-big { width: 44px; height: 44px; border-radius: 12px; }
+.cp-back { position: fixed; inset: 0; z-index: 970; background: rgb(0 0 0 / .7);
+  display: flex; align-items: center; justify-content: center; padding: 16px; animation: fade .15s ease both; }
+.cp-card { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 18px;
+  background: var(--popover); border: 1px solid var(--border-strong); border-radius: 16px;
+  box-shadow: 0 24px 64px -16px rgb(0 0 0 / .9); }
+.cp-back.as-sheet { align-items: flex-end; padding: 0; }
+.cp-back.as-sheet .cp-card { width: 100%; border-radius: 20px 20px 0 0;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+.cp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.cp-head h3 { font-size: 16px; margin: 0; }
+.cp-head .x { background: transparent; border: 0; color: var(--muted-foreground); font-size: 22px; cursor: pointer; width: 36px; height: 36px; }
+.cp-sub { margin: 0 0 12px; }
+.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.cp-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px;
+  border-radius: 14px; border: 1px solid var(--border-strong); background: var(--card);
+  color: var(--foreground); cursor: pointer; font: inherit; min-height: 120px;
+}
+.cp-opt:hover, .cp-opt:focus-visible { border-color: var(--ring); outline: none; }
+.cp-opt b { font-size: 14px; }
+.cp-opt small { color: var(--muted-foreground); font-size: 11.5px; }
+.cp-opt[data-empty] { opacity: .5; }
+.cp-img { width: 56px; height: 56px; object-fit: cover; border-radius: 12px; }
+.line-colour { display: inline-flex; align-items: center; gap: 5px; }

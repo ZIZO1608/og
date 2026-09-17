@@ -273,6 +273,12 @@ const removed = DB.tx(() => {
     const shelfIds = many(
       `SELECT id FROM shelves WHERE product_id IN (${inList(ids)})`, ...ids
     ).map((r) => r.id);
+    /* 058 — the colours go first, logged, or the mirror keeps them. */
+    try {
+      const cols = many(`SELECT id FROM product_colours WHERE product_id IN (${inList(ids)})`, ...ids);
+      d.prepare(`DELETE FROM product_colours WHERE product_id IN (${inList(ids)})`).run(...ids);
+      for (const c of cols) DB.logChange('product_colours', c.id, 'delete', null, null);
+    } catch { /* before 058 */ }
     d.prepare(`DELETE FROM products WHERE id IN (${inList(ids)})`).run(...ids);
     for (const id of ids) DB.logChange('products', id, 'delete', null, null);
     for (const id of shelfIds) DB.logChange('shelves', id, 'update', null, null);

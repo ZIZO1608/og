@@ -31,12 +31,6 @@ import * as DB from './db.js';
 const FLOOR = 'floor';
 const STORE = 'store';
 
-const cfgNum = (key, dflt) => {
-  const r = DB.get().prepare('SELECT value FROM config WHERE key = ?').get(key);
-  const n = Number(r && r.value);
-  return Number.isFinite(n) && n > 0 ? n : dflt;
-};
-
 const daysAgo = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -55,7 +49,7 @@ const daysAgo = (n) => {
    stock_out is about buying more; this is about carrying it twenty metres. */
 export function floorEmpty({ limit = 3, weeks = 8 } = {}) {
   return DB.get().prepare(
-    `SELECT v.sku, v.size, p.name,
+    `SELECT v.sku, v.size, p.name || COALESCE((SELECT ' · ' || c.name_en FROM product_colours c WHERE c.id = v.colour_id AND (SELECT COUNT(*) FROM product_colours x WHERE x.product_id = p.id) > 1), '') AS name,
             COALESCE(back.qty, 0) AS back,
             COALESCE(sold.n, 0)   AS sold
        FROM variants v
@@ -170,7 +164,7 @@ export function brokenRuns({ limit = 2, months = 6, minCore = 3 } = {}) {
    infinite cover or as zero: it is a size the shop has not proved it needs. */
 export function reorderDue({ limit = 3, weeks = 8, coverWeeks = 2 } = {}) {
   return DB.get().prepare(
-    `SELECT v.sku, v.size, p.name,
+    `SELECT v.sku, v.size, p.name || COALESCE((SELECT ' · ' || c.name_en FROM product_colours c WHERE c.id = v.colour_id AND (SELECT COUNT(*) FROM product_colours x WHERE x.product_id = p.id) > 1), '') AS name,
             COALESCE((SELECT SUM(qty) FROM stock st WHERE st.sku = v.sku), 0) AS have,
             sold.n AS sold
        FROM variants v
@@ -251,12 +245,4 @@ export function deadStock({ limit = 2, days = 90 } = {}) {
   ).get(since);
 
   return { rows, n: (total && total.n) || 0, pieces: (total && total.pieces) || 0, days };
-}
-
-/* The thresholds, so the rule table and the fold read the same numbers. */
-export function settings() {
-  return {
-    deadDays: cfgNum('reminders.dead_days', 90),
-    coverWeeks: cfgNum('reminders.cover_weeks', 2)
-  };
 }

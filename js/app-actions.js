@@ -942,7 +942,7 @@ var ACTIONS = {
     var lines = [];
     document.querySelectorAll('[data-po-qty][data-pid="' + pid + '"]').forEach(function (inp) {
       var qty = parseInt(inp.value, 10) || 0;
-      if (qty > 0) lines.push({ productId: pid, size: inp.getAttribute('data-size'), qty: qty, cost: p.costPrice });
+      if (qty > 0) lines.push({ productId: pid, size: inp.getAttribute('data-size'), sku: inp.getAttribute('data-sku'), qty: qty, cost: p.costPrice });
     });
     if (!lines.length) { toast(t('reorder'), t('po_need_qty'), 'warn'); return; }
 
@@ -953,7 +953,8 @@ var ACTIONS = {
        the box when the delivery arrives — so the product+size pair is
        resolved here rather than sent as two halves. */
     var srvLines = lines.map(function (l) {
-      var v = DB.variants.filter(function (x) {
+      /* 058 — a line is a colour × size: the row carries its sku. */
+      var v = (l.sku && DB.variantBySku(l.sku)) || DB.variants.filter(function (x) {
         return x.productId === l.productId && x.size === l.size;
       })[0];
       return v ? { sku: v.sku, qty: l.qty, unitCost: l.cost } : null;
@@ -1001,7 +1002,10 @@ var ACTIONS = {
       L.push('');
       po.lines.forEach(function (l) {
         var p = DB.product(l.productId);
-        L.push('▫️ ' + (p ? p.name : l.productId) + (l.size ? (ar ? ' · مقاس ' : ' · size ') + l.size : '') + '  ×' + l.qty);
+        var lv = l.sku ? DB.variantBySku(l.sku) : null;
+        var lc = lv ? DB.shownColour(lv) : null;
+        L.push('▫️ ' + (p ? p.name : l.productId) + (l.size ? (ar ? ' · مقاس ' : ' · size ') + l.size : '') +
+               (lc ? ' · ' + (ar ? lc.nameAr : lc.nameEn) : '') + '  ×' + l.qty);
       });
       L.push('');
       L.push((ar ? '🔢 الكمية: ' : '🔢 Pieces: ') + nf(pieces) + (ar ? ' قطعة' : ''));
@@ -1527,9 +1531,17 @@ var ACTIONS = {
     OG.wh.printAfter = false;
 
     var name = (document.getElementById('whName') || {}).value || OG.wh.name;
-    var pieces = Object.keys(OG.wh.sizes).reduce(function (a, k) { return a + (Number(OG.wh.sizes[k]) || 0); }, 0);
+    var pieces = ColourForm.grand();
     if (!name) { toast(t('product_name'), OG.lang === 'ar' ? 'اكتب اسم المنتج' : 'Enter a product name', 'err'); return; }
     if (!pieces) { toast(t('size_matrix'), OG.lang === 'ar' ? 'أدخل الكميات' : 'Enter quantities per size', 'err'); return; }
+    /* 058 — the colours, or the reason they cannot go. Nothing typed is lost:
+       the form's state stays in OG.wh.colours until the server says yes. */
+    var built = ColourForm.payload();
+    if (built.error) {
+      toast(t('cl_colours'), built.error, 'warn', 6000);
+      if (built.key) ColourForm.flag(built.key);
+      return;
+    }
 
     /* Stop a second SKU for a shoe already in the catalogue — unless he has
        looked at the match and said it really is a different product. The
@@ -1549,8 +1561,8 @@ var ACTIONS = {
     var whId = whAddWh();
     var shelfId = (allow('stock.move') && OG.wh.shelfId) ? Number(OG.wh.shelfId) : null;
     var shelfCode = shelfId ? whShelfCode() : '';
-    var sizes = OG.wh.sizes;
-    var skus = Object.keys(sizes).filter(function (k) { return sizes[k]; }).length;
+    var skus = built.colours.reduce(function (a, c) { return a + c.sizes.length; }, 0);
+    var colourPics = built.colours.map(function (c) { return c.imgSrc || null; });
     var imgSrc = OG.wh.imgSrc, bg = OG.wh.img;
 
     Shop.write(
@@ -1565,9 +1577,9 @@ var ACTIONS = {
           costPrice: cost,
           sellingPrice: price,
           imageBg: bg || undefined,
-          sizes: Object.keys(sizes)
-            .filter(function (s) { return Number(sizes[s]) > 0; })
-            .map(function (s) { return { size: s, qty: Number(sizes[s]) }; }),
+          colours: built.colours.map(function (c) {
+            return { nameEn: c.nameEn, nameAr: c.nameAr, hex: c.hex, sizes: c.sizes };
+          }),
           /* Opening stock arrives where the person booking it in says it
              does. This was hard-coded to the back door, underneath a text
              box reading "SHELF / BOX" that nothing ever read. */
@@ -1575,10 +1587,7 @@ var ACTIONS = {
         });
       },
       function () {
-        return DB.newProduct({
-          name: name, type: OG.wh.type, cost: cost, price: price,
-          sizes: sizes, imgSrc: imgSrc, bg: bg
-        });
+        return null;
       },
       function (res) {
         var id = res && (res.productId !== undefined ? res.productId : res.id);
@@ -1589,6 +1598,10 @@ var ACTIONS = {
            Supabase on this server) is said, not silently dropped - he can
            add it later from the product drawer. */
         if (imgSrc && id !== undefined && Shop.live()) uploadProductImage(id, imgSrc);
+        /* Each colour's own photo, once its row exists (the path is keyed on it). */
+        ((res && res.colours) || []).forEach(function (c, i) {
+          if (colourPics[i] && Shop.live()) uploadColourImage(c.id, colourPics[i]);
+        });
 
         /* createWithVariants answers { productId, variants:[{sku,size,barcode}] },
            so the SKUs the server has just minted are already here — nothing
@@ -1602,6 +1615,7 @@ var ACTIONS = {
         var line = name + ' · ' + pieces + ' pcs · ' + skus + ' SKU';
 
         OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null; OG.wh.imgSrc = null;
+        ColourForm.reset();
         /* The room STAYS — the next box off the same delivery goes to the
            same place. The shelf does not: it now belongs to the product just
            created, so offering it again would create the next product and
@@ -1616,7 +1630,7 @@ var ACTIONS = {
            set that needs a label. */
         if (printAfter && made.length && typeof Labels !== 'undefined') {
           var labelLines = made.map(function (v) {
-            return { sku: v.sku, qty: Math.max(1, Number(sizes[v.size]) || 1) };
+            return { sku: v.sku, qty: Math.max(1, Number(v.qty) || 1) };
           });
           Labels.openPreviewModal(labelLines, Labels.lastChoice().preset, Labels.lastChoice().station);
         }

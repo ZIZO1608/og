@@ -147,13 +147,13 @@ var POS = (function () {
              offer to move it, rather than a flat "out of stock" that is a lie. */
           toast(
             t('wh_not_here'),
-            p.name + ' · ' + t('size') + ' ' + v.size + ' — ' +
+            p.name + ' · ' + t('size') + ' ' + DB.variantLabel(v) + ' — ' +
               back + ' ' + t('wh_in_the_back'),
             'warn', 6000,
             { label: t('wh_bring_out'), attrs: 'data-pos="bring" data-sku="' + v.sku + '"' }
           );
         } else {
-          toast(t('out_of_stock'), p.name + ' · ' + t('size') + ' ' + v.size, 'err');
+          toast(t('out_of_stock'), p.name + ' · ' + t('size') + ' ' + DB.variantLabel(v), 'err');
         }
       }
       /* ---- the wants list, without asking anybody to keep one ------------
@@ -174,7 +174,7 @@ var POS = (function () {
     });
 
     S.flashSku = v.sku;
-    if (!silent) toast(p.name, t('size') + ' ' + v.size + ' · ' + money(p.sellingPrice), 'ok', 1600);
+    if (!silent) toast(p.name, t('size') + ' ' + DB.variantLabel(v) + ' · ' + money(p.sellingPrice), 'ok', 1600);
     paintCart();
     paintPrintBox();
     pulseScan(true);
@@ -188,15 +188,20 @@ var POS = (function () {
   function scanBarcode(code, silent) {
     code = String(code || '').trim();
     if (!code) return false;
-    var v = DB.variantByBarcode(code);
-    if (!v) {
+    var list = DB.variantsByCode(code).filter(function (x) { return x.barcode === code || x.labelCode === code || x.sku === code; });
+    if (!list.length) {
       if (!silent) {
         toast(t('scan_btn'), (OG.lang === 'ar' ? 'باركود غير معروف: ' : 'Unknown barcode: ') + code, 'err');
         pulseScan(false);
       }
       return false;
     }
-    return addVariant(v, silent, 'scan');
+    if (list.length === 1) return addVariant(list[0], silent, 'scan');
+    /* 058 — several colours share this code: the ones with stock here decide. */
+    ColourPick.choose(list, { whId: S.warehouse, needStock: true }, function (v) {
+      if (v) addVariant(v, silent, 'scan');
+    });
+    return true;
   }
 
   /* ------------------------------------------------- the cart/grid divider
@@ -448,7 +453,7 @@ var POS = (function () {
       var max = stockFor(l.sku);
       h += '<div class="cart-line' + (S.flashSku === l.sku ? ' flash' : '') + '" data-sku="' + l.sku + '">' +
         '<div class="cl-main"><b>' + esc(l.name) + '</b>' +
-          '<small>' + t('size') + ' ' + l.size + ' · ' + max + ' ' + t('in_stock') + '</small></div>' +
+          '<small>' + t('size') + ' ' + esc(DB.variantLabel(DB.variantBySku(l.sku), l.size)) + ' · ' + max + ' ' + t('in_stock') + '</small></div>' +
         '<span class="stepper">' +
           '<button data-pos="dec" data-i="' + i + '">−</button>' +
           '<span>' + l.qty + '</span>' +
@@ -922,7 +927,8 @@ var POS = (function () {
         : (back > 0 ? back + ' ' + t('wh_in_the_back') : t('out'));
       body += '<button class="' + cls + '" data-pos="size" data-sku="' + v.sku + '"' +
         (here <= 0 && back <= 0 ? ' disabled' : '') + '>' +
-        v.size + '<small>' + note + '</small></button>';
+        v.size + (DB.shownColour(v) ? '<span class="line-colour">' + DB.swatch(DB.shownColour(v)) + esc(DB.colourName(DB.shownColour(v))) + '</span>' : '') +
+        '<small>' + note + '</small></button>';
     });
     body += '</div>';
     var gaps = DB.sizeGaps(pid);
@@ -1359,7 +1365,7 @@ var POS = (function () {
 
     inc: function (el) {
       var l = S.cart[+el.getAttribute('data-i')];
-      if (l.qty >= stockFor(l.sku)) { toast(t('out_of_stock'), l.name + ' · ' + l.size, 'err'); return; }
+      if (l.qty >= stockFor(l.sku)) { toast(t('out_of_stock'), l.name + ' · ' + DB.variantLabel(DB.variantBySku(l.sku), l.size), 'err'); return; }
       l.qty += 1; S.flashSku = l.sku; paintCart(); paintPrintBox();
     },
     dec: function (el) {
@@ -1472,7 +1478,7 @@ var POS = (function () {
       var p = DB.product(v.productId);
       var moved = function () {
         toast(t('wh_moved'),
-              p.name + ' · ' + t('size') + ' ' + v.size + ' — ' +
+              p.name + ' · ' + t('size') + ' ' + DB.variantLabel(v) + ' — ' +
                 DB.whName(from, OG.lang === 'ar') + ' → ' +
                 DB.whName(S.warehouse, OG.lang === 'ar'),
               'ok');

@@ -1012,3 +1012,62 @@ body.rtl .cat-headrow { letter-spacing: 0; }
   .cat-act { align-items: stretch; }
   .cat-act .btn { width: 100%; }
 }
+
+
+/* ---- Add product → colours (js/colourform.js) ---------------------------- */
+.wh-add-grid { grid-template-columns: minmax(0, 1fr) 330px; align-items: start; }
+@media (max-width: 1100px) { .wh-add-grid { grid-template-columns: 1fr; } }
+.cf { display: grid; gap: 12px; margin-top: 8px; }
+.cf-top { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.cf-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cf-chip { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 6px 0 12px;
+  border: 1px solid var(--border-strong); border-radius: 999px; background: var(--card); }
+.cf-chip b { font-size: 13px; font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-chip small { color: var(--muted-foreground); font-weight: 600; }
+.cf-chip-x { width: 24px; height: 24px; border-radius: 50%; border: 0; background: transparent; color: var(--dim); cursor: pointer; }
+.cf-chip-x:hover { background: var(--accent); color: var(--foreground); }
+.cf-card { border: 1px solid var(--border); border-radius: 16px; padding: 14px; background: var(--subtle); }
+.cf-card.cf-bad { animation: cfBad .9s ease; border-color: var(--warning-border); }
+@keyframes cfBad { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
+.cf-head { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; align-items: start; }
+.cf-photo { position: relative; width: 76px; height: 76px; border-radius: 14px; border: 1px dashed var(--border-strong);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; overflow: hidden; }
+.cf-photo small { font-size: 10.5px; color: var(--muted-foreground); }
+.cf-photo .cp-big { width: 36px; height: 36px; }
+.cf-photo.has-img { border-style: solid; }
+.cf-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cf-photo .up-x { position: absolute; top: 3px; inset-inline-end: 3px; }
+.cf-names { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cf-names .field { margin: 0; }
+.cf-palette { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 12px 0; }
+.cf-sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .2); }
+.cf-sw.on { border-color: var(--ring); }
+.cf-custom { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); cursor: pointer; }
+.cf-custom input { width: 28px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; }
+.cf-sizes { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.cf-size { border: 1px solid var(--border); border-radius: 12px; padding: 8px; display: grid; gap: 6px; background: var(--card); }
+.cf-size.filled { border-color: var(--brand-border); background: var(--brand-soft); }
+.cf-size > b { font-size: 13px; text-align: center; }
+.cf-step { display: grid; grid-template-columns: 30px minmax(0, 1fr) 30px; align-items: center; gap: 4px; }
+.cf-step button { height: 32px; border-radius: 9px; border: 0; background: var(--accent); color: var(--foreground);
+  font-size: 18px; font-weight: 600; cursor: pointer; }
+.cf-step button:active { transform: scale(.94); }
+.cf-step input { width: 100%; height: 32px; text-align: center; border-radius: 9px; border: 1px solid var(--input);
+  background: var(--app); color: var(--foreground); font: inherit; font-weight: 700; -moz-appearance: textfield; }
+.cf-step input::-webkit-outer-spin-button, .cf-step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cf-foot, .cf-grand { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; font-size: 13px; }
+.cf-grand { padding: 10px 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); margin-top: 0; }
+.cf-grand b { font-size: 16px; }
+@media (max-width: 520px) {
+  .cf-head { grid-template-columns: 64px minmax(0, 1fr); }
+  .cf-photo { width: 64px; height: 64px; }
+  .cf-names { grid-template-columns: 1fr; }
+  .cf-sizes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cf-step { grid-template-columns: 40px minmax(0, 1fr) 40px; }
+  .cf-step button, .cf-step input { height: 40px; }
+  .cf-sw { width: 32px; height: 32px; }
+}
+
+.cf-matrix td.cf-zero b { color: var(--destructive); }
+.cf-mode { display: inline-flex; gap: 4px; }

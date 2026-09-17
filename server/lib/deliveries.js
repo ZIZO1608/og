@@ -184,11 +184,12 @@ function attachItems(rows) {
   if (!rows.length) return rows;
   const ids = [...new Set(rows.map((r) => r.sale_id))];
   const items = get().prepare(
-    `SELECT sale_id, name, size, qty FROM sale_items
+    `SELECT sale_id, name, size, qty, colour, colour_ar FROM sale_items
       WHERE sale_id IN (${ids.map(() => '?').join(',')}) ORDER BY id`
   ).all(...ids);
   const bySale = new Map(ids.map((id) => [id, []]));
-  for (const it of items) bySale.get(it.sale_id)?.push({ name: it.name, size: it.size, qty: it.qty });
+  for (const it of items) bySale.get(it.sale_id)?.push({ name: it.name, size: it.size, qty: it.qty,
+                                                        colour: it.colour, colourAr: it.colour_ar });
   for (const r of rows) r.items = bySale.get(r.sale_id) || [];
   return rows;
 }
@@ -307,20 +308,10 @@ export function list(user, { status, limit = 100 } = {}) {
   return board(user, { status, limit }).rows;
 }
 
-/* Null for "no such delivery" AND for "not yours" — deliberately the same
-   answer, so the number of rows in the table is not something a driver can
-   probe for by counting 404s against 403s. */
-export function byId(id, user) {
-  const mine = scope(user);
-  const r = get().prepare(
-    `${COLS} ${FROM} WHERE d.id = ?${mine !== null ? ' AND d.driver_id = ?' : ''}`
-  ).get(...(mine !== null ? [id, mine] : [id]));
-
-  return r ? shape(attachItems([r])[0], mine !== null) : null;
-}
-
 /* Everything about one order, by its invoice number — what a scanned slip
-   opens. The same scoping as byId: another driver's order does not exist. */
+   opens. Null for "no such order" AND for "not yours" — deliberately the same
+   answer, so a driver cannot probe for another driver's orders by counting
+   404s against 403s. */
 export function bySale(saleId, user) {
   const d = get();
   const mine = scope(user);
@@ -338,10 +329,11 @@ export function bySale(saleId, user) {
   ).get(saleId);
 
   const items = d.prepare(
-    'SELECT sku, name, size, qty, unit_price FROM sale_items WHERE sale_id = ? ORDER BY id'
+    'SELECT sku, name, size, qty, unit_price, colour, colour_ar FROM sale_items WHERE sale_id = ? ORDER BY id'
   ).all(saleId).map((it) => driver
-    ? { name: it.name, size: it.size, qty: it.qty }
-    : { sku: it.sku, name: it.name, size: it.size, qty: it.qty, unitPrice: it.unit_price });
+    ? { name: it.name, size: it.size, qty: it.qty, colour: it.colour, colourAr: it.colour_ar }
+    : { sku: it.sku, name: it.name, size: it.size, qty: it.qty, unitPrice: it.unit_price,
+        colour: it.colour, colourAr: it.colour_ar });
 
   const payments = sale.payment !== 'order' ? [] : d.prepare(
     `SELECT p.id, p.kind, p.at, p.amount, p.currency, p.amount_order, p.method, p.drawer,
@@ -373,16 +365,6 @@ export function bySale(saleId, user) {
     payments,
     customer
   };
-}
-
-/* For the nav badge: how many are still on the road. */
-export function openCount(user) {
-  const mine = scope(user);
-  const r = get().prepare(
-    `SELECT COUNT(*) AS n FROM deliveries d JOIN sales s ON s.id = d.sale_id
-      WHERE d.status IN ('waiting','out') AND s.voided = 0${mine !== null ? ' AND d.driver_id = ?' : ''}`
-  ).get(...(mine !== null ? [mine] : []));
-  return r.n;
 }
 
 /* ---------------------------------------------------------------- assigning */

@@ -85,7 +85,8 @@ const OUT_SQL = `FROM variants v
    rule DB.liveVariants() enforces everywhere else. */
 export function stockOut({ limit = 3 } = {}) {
   return DB.get().prepare(
-    `SELECT v.sku, v.size, p.name ${OUT_SQL} ORDER BY p.name, v.size LIMIT ?`
+    /* 058 — a size in one of several colours says which. */
+    `SELECT v.sku, v.size, p.name || COALESCE((SELECT ' · ' || c.name_en FROM product_colours c WHERE c.id = v.colour_id AND (SELECT COUNT(*) FROM product_colours x WHERE x.product_id = p.id) > 1), '') AS name ${OUT_SQL} ORDER BY p.name, v.size LIMIT ?`
   ).all(limit);
 }
 export function stockOutCount() {

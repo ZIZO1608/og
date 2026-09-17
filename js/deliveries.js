@@ -236,7 +236,7 @@ var Deliveries = (function () {
     if (d.items && d.items.length) {
       h += '<div class="rc-items">';
       d.items.forEach(function (it) {
-        h += '<span class="rc-item">' + esc(it.name) + (it.size ? ' · ' + esc(it.size) : '') +
+        h += '<span class="rc-item">' + esc(it.name) + (it.size ? ' · ' + esc(DB.lineSize(it)) : '') +
              ' <b>×' + it.qty + '</b></span>';
       });
       h += '</div>';
@@ -659,13 +659,13 @@ var Deliveries = (function () {
   }
 
   function after() {
-    if (typeof Auth !== 'undefined' && !Auth.can('delivery.read')) return;
+    if (!Auth.can('delivery.read')) return;
     load();
     /* Whichever tab the board was left on fills itself in. */
     if (typeof Road !== 'undefined' && !isDriver()) Road.load();
     /* Who can be given a run. Only for the board, and only for an account
        that may assign one. */
-    if (!isDriver() && !drivers.length && typeof Auth !== 'undefined' && Auth.can('delivery.write')) {
+    if (!isDriver() && !drivers.length && Auth.can('delivery.write')) {
       API.get('/api/orders/bootstrap').then(function (b) {
         drivers = b.drivers || [];
         cos = ((b.settings && b.settings.companies) || []).filter(function (c) { return c && c.active !== false; });

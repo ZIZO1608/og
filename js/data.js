@@ -289,6 +289,11 @@ var TYPE_COLOUR_DEFAULT = '#4A4A52';   /* the grey the thumbnails have always us
    the name in the screen's language. relabelTypes() runs again on every
    language switch (applyLang). */
 var CATEGORIES = [];
+function firstColourImage(list) {
+  for (var i = 0; list && i < list.length; i++) if (list[i].imageUrl) return list[i].imageUrl;
+  return null;
+}
+
 function relabelTypes() {
   var ar = typeof OG !== 'undefined' && OG.lang === 'ar';
   if (!CATEGORIES.length) {
@@ -853,6 +858,70 @@ var DB = {
   variantBySku: function (sku) { return variants.filter(function (v) { return v.sku === sku; })[0]; },
   variantByBarcode: function (b) { return variants.filter(function (v) { return v.barcode === b; })[0]; },
   variantByLabelCode: function (c) { return variants.filter(function (v) { return v.labelCode === c; })[0]; },
+
+  /* ---- colours (058) --------------------------------------------------
+     A printed code is shared by every colour of one product and size, so a
+     scan can name SEVERAL variants. Every scan path asks this and, when it
+     gets more than one, lets ColourPick ask the person. The sku is the only
+     code that is always one variant. */
+  variantsByCode: function (code) {
+    code = String(code == null ? '' : code).trim();
+    if (!code) return [];
+    var bySku = variants.filter(function (v) { return v.sku === code; });
+    if (bySku.length) return bySku;
+    var byBar = variants.filter(function (v) { return v.barcode && v.barcode === code; });
+    if (byBar.length) return byBar;
+    return variants.filter(function (v) { return v.labelCode && v.labelCode === code; });
+  },
+  coloursOf: function (pid) {
+    var p = DB.product(pid);
+    return (p && p.colours) || [];
+  },
+  colour: function (id) {
+    for (var i = 0; i < products.length; i++) {
+      var cs = products[i].colours || [];
+      for (var k = 0; k < cs.length; k++) if (cs[k].id === id) return cs[k];
+    }
+    return null;
+  },
+  colourName: function (c) {
+    if (!c) return '';
+    var ar = typeof OG !== 'undefined' && OG.lang === 'ar';
+    return ar ? (c.nameAr || c.nameEn) : (c.nameEn || c.nameAr);
+  },
+  /* The colour of a variant, or null when the product has only one — a
+     single colour is never worth naming. */
+  shownColour: function (v) {
+    if (!v || !v.colourId) return null;
+    var p = DB.product(v.productId);
+    if (!p || !p.colours || p.colours.length < 2) return null;
+    return DB.colour(v.colourId);
+  },
+  /* "42 · Black", or "42" — for any line that names a variant. */
+  variantLabel: function (v, size) {
+    var s = size != null ? size : (v ? v.size : '');
+    var c = DB.shownColour(v);
+    return c ? s + ' · ' + DB.colourName(c) : String(s == null ? '' : s);
+  },
+  /* A frozen line (sale_items, return lines) in the screen's language. */
+  /* A frozen line's size with its colour, in the screen's language: "42 · Black". */
+  lineSize: function (l, ar) {
+    if (!l) return '';
+    var s = l.size == null ? '' : String(l.size);
+    var useAr = ar === undefined ? (typeof OG !== 'undefined' && OG.lang === 'ar') : ar;
+    var c = useAr ? (l.colourAr || l.colour_ar || l.colour) : (l.colour || l.colourAr || l.colour_ar);
+    return c ? (s ? s + ' · ' + c : c) : s;
+  },
+  lineColour: function (l) {
+    if (!l) return '';
+    var ar = typeof OG !== 'undefined' && OG.lang === 'ar';
+    return (ar ? (l.colourAr || l.colour_ar) : (l.colour)) || l.colour || '';
+  },
+  swatch: function (c, cls) {
+    if (!c) return '';
+    return '<span class="cp-sw' + (cls ? ' ' + cls : '') + '" style="background:' +
+      (c.hex || '#3F3F46') + '"></span>';
+  },
 
   totalQty: function (pid) {
     return DB.variantsOf(pid).reduce(function (s, v) { return s + v.qty; }, 0);
@@ -2689,8 +2758,15 @@ var DB = {
            photo, and it is not a guess either. */
         /* `src` is the picture's public address in the bucket (040) when the
            shop has photographed it; the block stays the fallback. */
-        image: { bg: p.image_bg || typeColour(p.type), initials: p.image_initials || '??', src: p.image_url || null },
+        /* 058 — with no product picture, the first colour's picture stands in. */
+        image: { bg: p.image_bg || typeColour(p.type), initials: p.image_initials || '??',
+                 src: p.image_url || firstColourImage(p.colours) },
         colorway: p.colorway || '',
+        /* 058 — the product's colours, in order. Every product has at least one;
+           a product with one colour draws exactly as it did before colours. */
+        colours: (p.colours || []).map(function (c) {
+          return { id: c.id, nameEn: c.nameEn, nameAr: c.nameAr, hex: c.hex || '', imageUrl: c.imageUrl || null };
+        }),
         costPrice: toBase(p.cost_price, p.currency),
         sellingPrice: toBase(p.selling_price, p.currency),
         /* Kept beside the converted figures rather than instead of them: a
@@ -2733,6 +2809,7 @@ var DB = {
           sku: v.sku,
           productId: v.product_id,
           size: v.size,
+          colourId: v.colour_id || null,
           color: v.color || '',
           barcode: v.barcode || '',
           /* The numeric-only code migration 010 created for the label printer,
@@ -2798,6 +2875,7 @@ var DB = {
             sku: it.sku, productId: it.product_id, name: it.name,
             type: (DB.product(it.product_id) || {}).type || '',
             size: it.size, qty: it.qty,
+            colour: it.colour || null, colourAr: it.colour_ar || null,
             unitPrice: it.unit_price,
             /* Absent for anyone without cost.read — the server strips it from
                the nested items, not just the header. Left undefined rather

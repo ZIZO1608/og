@@ -273,6 +273,19 @@ function openProductDrawer(pid) {
   body += '<div class="grid" style="grid-template-columns:repeat(' + kpi.length +
           ',1fr);margin-bottom:16px">' + kpi.join('') + '</div>';
 
+  /* 058 — stock as a colour × size matrix. Read-only: stock moves through
+     the movement log, never by typing over a number here. */
+  body += ColourForm.matrix(p);
+
+  var many = (p.colours || []).length > 1;
+  if (many) {
+    vs = vs.slice().sort(function (a, b) {
+      var ia = p.colours.findIndex(function (c) { return c.id === a.colourId; });
+      var ib = p.colours.findIndex(function (c) { return c.id === b.colourId; });
+      return ia - ib;
+    });
+  }
+
   var canLabel = allow('label.print');
   body += '<div class="card mb"><div class="card-head"><h3>' + t('per_size') + '</h3>' +
     '<div class="card-actions"><span class="badge neutral">' + vs.length + ' SKU</span></div></div>' +
@@ -288,7 +301,9 @@ function openProductDrawer(pid) {
     '</tr></thead><tbody>';
   vs.forEach(function (v) {
     body += '<tr' + (v.qty === 0 ? ' class="row-danger"' : '') + '>' +
-      '<td><b style="font-family:var(--font-head);font-size:14px">' + v.size + '</b></td>' +
+      '<td><b style="font-family:var(--font-head);font-size:14px">' + esc(v.size) + '</b>' +
+        (many && DB.colour(v.colourId) ? '<small class="line-colour" style="display:flex">' + DB.swatch(DB.colour(v.colourId)) +
+          esc(DB.colourName(DB.colour(v.colourId))) + '</small>' : '') + '</td>' +
       '<td class="muted num nowrap">' + v.sku + '</td>' +
       '<td class="num muted nowrap">' + v.barcode + '</td>' +
       '<td class="num nowrap"><b>' + esc(v.labelCode || '—') + '</b></td>' +
@@ -324,6 +339,9 @@ function openProductDrawer(pid) {
 
   body += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
     '<button class="btn btn-primary" data-act="prod-edit" data-id="' + p.id + '">' + t('edit_product') + '</button>' +
+    (allow('product.write')
+      ? '<button class="btn" data-cf="add-more" data-pid="' + p.id + '">' + t('cl_add_more') + '</button>'
+      : '') +
     /* ONE print button. There were two here — this one drove the browser
        Label Studio (SKU text in the bars) and a second opened the 60x40
        layout in js/labels60.js — beside the per-size buttons in the table

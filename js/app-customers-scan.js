@@ -344,7 +344,7 @@ function timelineRows(payload, c) {
   (payload.sales || []).forEach(function (s) {
     var when = new Date(s.at);
     var items = (s.items || []).map(function (it) {
-      return esc(it.name) + (it.size ? ' (' + esc(it.size) + ')' : '') + ' ×' + it.qty;
+      return esc(it.name) + (it.size ? ' (' + esc(DB.lineSize(it)) + ')' : '') + ' ×' + it.qty;
     }).join(' · ');
     out.push({
       at: when, kind: 'sale',
@@ -381,7 +381,7 @@ function timelineRows(payload, c) {
     out.push({
       at: new Date(w.at), kind: 'want',
       title: t('wa_wanted').replace('{n}', esc(w.product_name || t('product')))
-             + (w.size ? ' · ' + esc(w.size) : ''),
+             + (w.size ? ' · ' + esc(w.variant_sku && DB.variantBySku(w.variant_sku) ? DB.variantLabel(DB.variantBySku(w.variant_sku), w.size) : w.size) : ''),
       sub: w.closed_at
         ? t('wa_answered') + (w.closed_note ? ' · ' + nm(w.closed_note) : '')
         : t('wa_still_waiting'),
@@ -1125,7 +1125,7 @@ function fillCustomerHistory(cid, rows) {
        cost.read, and a cost across the counter is not this screen's job. */
     var open = !!DB.sale(s.id);
     var items = (s.items || []).map(function (it) {
-      return nm(it.name) + ' (' + esc(it.size || '—') + ') ×' + it.qty +
+      return nm(it.name) + ' (' + esc(DB.lineSize(it) || '—') + ') ×' + it.qty +
              ' @ ' + saleMoney(it.unit_price, s.currency);
     }).join('<br>');
     var p = (s.points_earned ? '+' + nf(s.points_earned) : '') +
@@ -1264,17 +1264,12 @@ function resolveScan(raw) {
     if (who) return { kind: 'customer', customer: who };
   }
 
-  var v = DB.variantByBarcode(code);
-  if (v) return { kind: 'variant', variant: v };
-
-  v = DB.variantBySku(code);
-  if (v) return { kind: 'variant', variant: v };
-
-  /* The numeric code printed under a thermal label's Code128 barcode —
-     matching it here is the other half of "scanning must match printing":
-     barcode, SKU and label code all resolve to the same pair. */
-  v = DB.variantByLabelCode(code);
-  if (v) return { kind: 'variant', variant: v };
+  /* Barcode, SKU and the label's numeric code all resolve to the same pair —
+     and since 058 a printed code can be that size in several colours, so the
+     whole list goes back and the sheet asks which one is in the hand. */
+  var list = DB.variantsByCode(code);
+  if (list.length) return { kind: 'variant', variant: list[0], choices: list };
+  var v;
 
   var sale = DB.sale(code);
   if (sale) return { kind: 'invoice', sale: sale };
@@ -1307,7 +1302,7 @@ function attachResultsHTML(q, code) {
   return hits.map(function (v) {
     var p = DB.product(v.productId);
     return '<div class="rule-row"><div class="rr-txt"><b>' + esc(p.name) + '</b>' +
-      '<small>' + esc(v.sku) + ' · ' + t('size') + ' ' + esc(v.size) + '</small></div>' +
+      '<small>' + esc(v.sku) + ' · ' + t('size') + ' ' + esc(DB.variantLabel(v)) + '</small></div>' +
       '<button class="btn btn-sm btn-primary" data-act="variant-attach-save" data-sku="' + esc(v.sku) +
         '" data-code="' + esc(code) + '">' + t('lbl_attach_save') + '</button></div>';
   }).join('');
@@ -1378,6 +1373,13 @@ function openScanResult(raw) {
   if (found.kind === 'job')     { openJobDrawer(found.job.id); return; }
   if (found.kind === 'customer') { scannedCustomer(found.customer); return; }
 
+  if (found.choices && found.choices.length > 1) {
+    ColourPick.choose(found.choices, {}, function (pickd) {
+      if (pickd) openScanResult(pickd.sku);
+    });
+    return;
+  }
+
   var v = found.variant;
   var p = DB.product(v.productId);
   var vs = DB.variantsOf(p.id);
@@ -1402,7 +1404,7 @@ function openScanResult(raw) {
   /* The scanned size first and loudest — that is the one in his hand. */
   h += '<div class="grid mt" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
     '<div class="stat"><span class="eyebrow">' + t('sc_this_size') + '</span>' +
-      '<div class="val accent">' + v.size + '</div>' +
+      '<div class="val accent">' + esc(v.size) + (DB.shownColour(v) ? ' <small class="line-colour">' + DB.swatch(DB.shownColour(v)) + esc(DB.colourName(DB.shownColour(v))) + '</small>' : '') + '</div>' +
       '<div class="foot">' + v.qty + ' ' + t('in_stock') + ' · ' + esc(v.shelf) + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('total_stock') + '</span>' +
       '<div class="val">' + nf(total) + '</div>' +
@@ -1454,7 +1456,7 @@ function openScanResult(raw) {
   vs.forEach(function (x) {
     var xr = DB.weeklyRate(p.id, x.size);
     h += '<tr' + (x.sku === v.sku ? ' class="sc-row-on"' : '') + '>' +
-      '<td><b>' + x.size + '</b>' + (x.sku === v.sku ? ' <span class="badge accent">' + t('sc_scanned') + '</span>' : '') + '</td>' +
+      '<td><b>' + esc(DB.variantLabel(x)) + '</b>' + (x.sku === v.sku ? ' <span class="badge accent">' + t('sc_scanned') + '</span>' : '') + '</td>' +
       '<td class="num"><b>' + x.qty + '</b></td>' +
       /* Split by place, because "we have 8" is useless if all 8 are in the
          back and the customer is standing at the shelf. */
@@ -1635,23 +1637,23 @@ function openReorder(pid) {
   '</tr></thead><tbody>';
 
   var sug = {}, total = 0;
-  DB.reorderSuggestions().forEach(function (s) { if (s.productId === pid) sug[s.size] = s; });
+  DB.reorderSuggestions().forEach(function (s) { if (s.productId === pid) sug[s.sku] = s; });
 
   vs.forEach(function (v) {
-    var s = sug[v.size];
+    var s = sug[v.sku];
     var rate = DB.weeklyRate(pid, v.size);
     var cover = DB.daysOfCover(v);
     var qty = s ? s.qty : 0;
     total += qty * p.costPrice;
 
     h += '<tr' + (v.qty === 0 ? ' class="row-late"' : '') + '>' +
-      '<td><b>' + v.size + '</b></td>' +
+      '<td><b>' + esc(v.size) + '</b>' + (DB.shownColour(v) ? ' <span class="line-colour">' + DB.swatch(DB.shownColour(v)) + esc(DB.colourName(DB.shownColour(v))) + '</span>' : '') + '</td>' +
       '<td class="num">' + healthBadge(v.qty) + ' ' + v.qty + '</td>' +
       '<td class="num muted">' + (rate > 0 ? (Math.round(rate * 10) / 10) + '/' + t('po_week') : '—') + '</td>' +
       '<td class="num ' + (cover < 14 ? 'po-urgent' : 'muted') + '">' +
         (cover === Infinity ? t('po_no_sales') : cover + t('yl_d')) + '</td>' +
       '<td class="num"><input class="inp num po-qty" type="number" min="0" value="' + qty + '" ' +
-        'data-po-qty="1" data-pid="' + pid + '" data-size="' + v.size + '"></td></tr>';
+        'data-po-qty="1" data-pid="' + pid + '" data-sku="' + esc(v.sku) + '" data-size="' + esc(v.size) + '"></td></tr>';
   });
 
   h += '</tbody></table></div>' +

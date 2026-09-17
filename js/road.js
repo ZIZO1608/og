@@ -630,7 +630,7 @@ var Road = (function () {
     R.lines.forEach(function (l, i) {
       h += '<div class="rd-line' + (Number(l.qty) > 0 ? ' is-on' : '') + '">' +
         '<div class="rd-l-main">' + lineThumb(l.sku) +
-          '<div><b>' + esc(l.name) + '</b>' + (l.size ? '<span class="sz">' + esc(l.size) + '</span>' : '') +
+          '<div><b>' + esc(l.name) + '</b>' + (l.size ? '<span class="sz">' + esc(DB.lineSize(l)) + '</span>' : '') +
           '<small class="muted" style="display:block">' + fmt(l.price, cur) + '</small></div></div>' +
         '<div class="rd-qty">' +
           '<button type="button" class="btn btn-sm" data-act="rd-q" data-i="' + i + '" data-d="-1" aria-label="−">−</button>' +

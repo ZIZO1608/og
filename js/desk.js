@@ -339,9 +339,11 @@ var Desk = (function () {
   function scanned(raw) {
     var code = String(raw || '').trim();
     if (!code) return;
-    var v = DB.variantByBarcode(code) || DB.variantBySku(code) ||
-            (DB.variantByLabelCode && DB.variantByLabelCode(code));
-    if (v) { addVariant(v); return; }
+    var list = DB.variantsByCode(code);
+    if (list.length) {
+      ColourPick.choose(list, { whId: S.whId, needStock: true }, function (v) { if (v) addVariant(v); });
+      return;
+    }
     var inv = invoiceFrom(code);
     if (inv) { openOrder(inv); return; }
     toast(t('dk_title'), t('dk_unknown_code') + ' · ' + code.slice(0, 40), 'warn');
@@ -364,11 +366,11 @@ var Desk = (function () {
     /* Scanned while another step is on screen: it still goes in the bag, and
        says so, because the bag is not in view to show it. */
     if (S.step !== 0) {
-      toast(p.name + ' · ' + v.size, t('dkw_added').replace('{n}', nf(pieces())), 'ok', 2600);
+      toast(p.name + ' · ' + DB.variantLabel(v), t('dkw_added').replace('{n}', nf(pieces())), 'ok', 2600);
     }
     var have = DB.stockAt(v, S.whId);
     if (have < line.qty) {
-      toast(p.name + ' · ' + v.size,
+      toast(p.name + ' · ' + DB.variantLabel(v),
         t('dk_short').replace('{n}', nf(have)).replace('{wh}', DB.whName(S.whId, OG.lang === 'ar')),
         'warn', 3500);
     }
@@ -444,7 +446,7 @@ var Desk = (function () {
   }
 
   function after() {
-    if (typeof Auth !== 'undefined' && !Auth.can('delivery.desk')) return;
+    if (!Auth.can('delivery.desk')) return;
     if (!boot) { load(); return; }
     focusStep();
   }
@@ -624,8 +626,7 @@ var Desk = (function () {
 
       /* A code typed in full is a scan. */
       if (code) {
-        var exact = DB.variantByBarcode(code) || DB.variantBySku(code) ||
-                    (DB.variantByLabelCode && DB.variantByLabelCode(code));
+        var exact = DB.variantsByCode(code).length > 0;
         if (exact || invoiceFrom(code)) { el.value = ''; pick.q = ''; closeDrop(); scanned(code); return; }
       }
       /* The lit size in the list. */
@@ -848,7 +849,7 @@ var Desk = (function () {
           '<b>' + t('dkp_short_head').replace('{wh}', esc(whLabel(S.whId))) + '</b>' +
           '<span>' + short.map(function (l) {
             var sv = DB.variantBySku(l.sku), sp = sv ? DB.product(sv.productId) : null;
-            return esc((sp ? sp.name : l.sku) + (sv ? ' · ' + sv.size : '')) + ' (' +
+            return esc((sp ? sp.name : l.sku) + (sv ? ' · ' + DB.variantLabel(sv) : '')) + ' (' +
               t('dkp_n_here').replace('{n}', nf(sv ? DB.stockAt(sv, S.whId) : 0)) + ')';
           }).join(' · ') + '</span></div>' +
         '<div class="dk-shortbar-acts">' +
@@ -880,7 +881,7 @@ var Desk = (function () {
       h += '<div class="dk-line' + (S.flash === l.sku ? ' is-new' : '') + (short ? ' is-short' : '') + '">' +
         thumb(hit.p, 'dk-thumb') +
         '<div class="dk-l-txt"><b>' + esc(hit.p.name) + '</b>' +
-          '<small>' + t('size') + ' ' + esc(hit.v.size) + ' · <bdi dir="ltr">' + esc(l.sku) + '</bdi>' +
+          '<small>' + t('size') + ' ' + esc(DB.variantLabel(hit.v)) + ' · <bdi dir="ltr">' + esc(l.sku) + '</bdi>' +
           (short ? ' · <span class="dk-short">' + t('dk_only').replace('{n}', nf(have)) +
             (function () {
               var e = bestElsewhere(hit.v);
@@ -1000,7 +1001,7 @@ var Desk = (function () {
             if (want < 0 && have > 0 && r.tokens.indexOf(DB.foldName(v.size)) > -1) want = i;
             return '<button type="button" class="dk-size' + (have ? '' : ' is-out') + '" data-act="dk-add" ' +
               'data-sku="' + esc(v.sku) + '" data-opt="' + i + '" role="option" tabindex="-1">' +
-              esc(v.size) + '<i class="num">' + nf(have) + '</i></button>';
+              esc(DB.variantLabel(v)) + '<i class="num">' + nf(have) + '</i></button>';
           }).join('') + '</div>' +
         '</div></div>';
     });
@@ -1459,7 +1460,7 @@ var Desk = (function () {
     var cust = S.customerId ? DB.customer(S.customerId) : null;
     var items = S.lines.map(function (l) {
       var hit = product(l);
-      return (hit && hit.p ? esc(hit.p.name) + ' · ' + esc(hit.v.size) : '<bdi dir="ltr">' + esc(l.sku) + '</bdi>') +
+      return (hit && hit.p ? esc(hit.p.name) + ' · ' + esc(DB.variantLabel(hit.v)) : '<bdi dir="ltr">' + esc(l.sku) + '</bdi>') +
         ' ×' + nf(l.qty);
     }).join(' · ');
     var co = COMPANY.indexOf(S.method) > -1
@@ -1650,7 +1651,7 @@ var Desk = (function () {
 
     if (o.items && o.items.length) {
       body += '<div class="lbl mt">' + t('dkp_in_bag') + '</div><div class="dk-ord-items">' + o.items.map(function (it) {
-        return '<span>' + esc(it.name) + (it.size ? ' · ' + esc(it.size) : '') + ' <b>×' + it.qty + '</b></span>';
+        return '<span>' + esc(it.name) + (it.size ? ' · ' + esc(DB.lineSize(it)) : '') + ' <b>×' + it.qty + '</b></span>';
       }).join('') + '</div>';
     }
     /* The money as a timeline — when it came, how, and who took it — because
@@ -1739,13 +1740,6 @@ var Desk = (function () {
     return String(name || '').trim().split(/\s+/)[0] || '';
   }
 
-  function orderLines(o) {
-    return (o.items || []).map(function (it) {
-      return '• ' + it.name + (it.size ? ' — ' + (OG.lang === 'ar' ? 'مقاس ' : 'size ') + it.size : '') +
-        ' × ' + it.qty;
-    }).join('\n');
-  }
-
   /* BOTH LANGUAGES IN EVERY MESSAGE. The office used to write in whichever
      language its own screen was in, so an English-reading customer in Amman
      got Arabic because the person at the desk works in Arabic. Now each
@@ -1773,12 +1767,6 @@ var Desk = (function () {
     return n + ' ' + (ar && code === 'SYP' ? 'ل.س' : sym);
   }
 
-  /* A word from the other language's table, whichever the screen is in. */
-  function wordIn(key, ar) {
-    var table = (typeof I18N !== 'undefined' && I18N[ar ? 'ar' : 'en']) || {};
-    return table[key] || t(key);
-  }
-
   function payName(id, ar) {
     var m = ((boot && boot.settings && boot.settings.methods) || [])
       .filter(function (x) { return x && x.id === id; })[0];
@@ -1789,7 +1777,7 @@ var Desk = (function () {
   function itemsIn(o, ar) {
     return (o.items || []).map(function (it) {
       return (ar ? RLM : '') + '▫️ ' + it.name +
-        (it.size ? (ar ? ' · مقاس ' : ' · size ') + it.size : '') + '  ×' + it.qty;
+        (it.size ? (ar ? ' · مقاس ' : ' · size ') + DB.lineSize(it, ar) : '') + '  ×' + it.qty;
     }).join('\n');
   }
 
@@ -2062,7 +2050,7 @@ var Desk = (function () {
         var sv = det.sku ? DB.variantBySku(det.sku) : null;
         var sp = sv ? DB.product(sv.productId) : null;
         toast(t('dk_title'), t('dkp_sold_meanwhile')
-          .replace('{item}', sp ? sp.name + ' · ' + sv.size : String(det.sku || ''))
+          .replace('{item}', sp ? sp.name + ' · ' + DB.variantLabel(sv) : String(det.sku || ''))
           .replace('{n}', nf(Number(det.available) || 0))
           .replace('{wh}', whLabel(S.whId)), 'err', 10000);
         goStep(0);
@@ -2714,7 +2702,6 @@ var Desk = (function () {
     register: register,
     owns: owns,
     scanned: scanned,
-    reload: function () { boot = null; load(); },
     settingsCards: settingsCards,
 
     /* The board reads money and opens orders through here rather than

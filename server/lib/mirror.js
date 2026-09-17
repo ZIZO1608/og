@@ -364,6 +364,11 @@ export const TABLES = {
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM variants WHERE sku = ?').get(key.sku),
     mapRow: (r) => r
   },
+  /* 058 — a product's colours. Cursor shape (renamed, re-pictured), pushed
+     behind a guard of its own after the core loop: variants.colour_id is not
+     a foreign key in the mirror, so the order does not matter there, and a
+     project without 026 still mirrors the shop. */
+  product_colours: { parseKey: numKey, fetchLocal: byId('product_colours'), mapRow: (r) => r },
   stock: {
     parseKey: (rowId) => { const [sku, wh_id] = rowId.split(':'); return { sku, wh_id }; },
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM stock WHERE sku = ? AND wh_id = ?').get(key.sku, key.wh_id),
@@ -654,7 +659,7 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
 /* Every table this library pushes, for the check and the status. */
 /* handover_lines and order_return_lines are not here on purpose: each rides
    on its parent's afterUpsert, the way sale_items ride on their sale. */
-export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants',
+export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours',
                               'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews',
                               ...PARTNER, ...DRAWER, 'day_closes'];
 
@@ -745,6 +750,21 @@ async function walk(log, only) {
         }
       }
     }
+  }
+
+  /* 058 — colours, behind their own guard. */
+  if (want('product_colours')) {
+    log.head('Colours');
+    try {
+      await syncTable(log, 'product_colours', { phase: 'upsert' });
+      await syncTable(log, 'product_colours', { phase: 'delete' });
+      touched.push('product_colours');
+    } catch (e) {
+      if (!MISSING_TABLE.test(String(e.message))) throw e;
+      log.warn('Supabase is missing product_colours — skipped, everything else still went up.');
+      log.line('    Run server/supabase/026_colours.sql in the SQL editor.');
+    }
+    await breathe();
   }
 
   /* The stamp cards and the wants list: the two tables recoverable from

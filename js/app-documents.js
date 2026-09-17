@@ -64,7 +64,7 @@ function invoiceHtml(sale, order) {
      own minor units; a till sale's come from the browser's copy in the
      display currency. `om` knows which it is looking at. */
   (order ? order.items : sale.items).forEach(function (it) {
-    h += '<tr><td>' + esc(it.name) + '</td><td>' + esc(it.size) + '</td>' +
+    h += '<tr><td>' + esc(it.name) + '</td><td>' + esc(DB.lineSize(it)) + '</td>' +
       '<td class="num">' + it.qty + '</td><td class="num">' + om(it.unitPrice, it.unitPrice) + '</td>' +
       '<td class="num">' + om(it.qty * it.unitPrice, it.qty * it.unitPrice) + '</td></tr>';
   });
@@ -273,7 +273,7 @@ function receiptHtml(sale) {
   sale.items.forEach(function (it) {
     h += '<div class="rcp-name">' + esc(it.name) + '</div>' +
       '<div class="rcp-line">' +
-        '<span>' + (it.size ? esc(it.size) + '  ·  ' : '') +
+        '<span>' + (it.size ? esc(DB.lineSize(it)) + '  ·  ' : '') +
           it.qty + ' × ' + moneyBare(it.unitPrice) + '</span>' +
         '<span class="rcp-amt">' + moneyBare(it.qty * it.unitPrice) + '</span>' +
       '</div>';

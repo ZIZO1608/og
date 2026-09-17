@@ -13,6 +13,8 @@
 
 import { get, nowIso, tx, logChange } from './db.js';
 import * as Categories from './categories.js';
+import * as Stock from './stock.js';
+import { foldName } from './text.js';
 
 /* Currency codes come from the database, so adding one is a migration rather
    than an edit here. */
@@ -162,6 +164,8 @@ export function list({ includeHidden = false } = {}) {
        FROM variants v ORDER BY v.product_id, v.size`
   ).all();
 
+  const colours = coloursOf(null);
+
   const stock = get().prepare('SELECT sku, wh_id, qty FROM stock').all();
   const byWh = {};
   for (const s of stock) (byWh[s.sku] ??= {})[s.wh_id] = s.qty;
@@ -171,7 +175,161 @@ export function list({ includeHidden = false } = {}) {
     (bySize[v.product_id] ??= []).push({ ...v, wh: byWh[v.sku] ?? {} });
   }
 
-  return rows.map(p => ({ ...p, variants: bySize[p.id] ?? [] }));
+  return rows.map(p => ({ ...p, colours: colours[p.id] ?? [], variants: bySize[p.id] ?? [] }));
+}
+
+/* ---- colours (058) -------------------------------------------------------
+   Every product has at least one. The first one's SKUs are the old
+   OG-050-42; a later colour's are OG-050-C2-42. The printed codes — barcode
+   and label code — are SHARED by every colour of one product and size: the
+   box says "Puma Suede 42", and the colour is chosen at the till. */
+export function coloursOf(productId) {
+  let rows;
+  try {
+    rows = productId == null
+      ? get().prepare('SELECT * FROM product_colours ORDER BY product_id, sort, id').all()
+      : get().prepare('SELECT * FROM product_colours WHERE product_id = ? ORDER BY sort, id').all(productId);
+  } catch { return productId == null ? {} : []; }   /* before 058 */
+  const shape = (c) => ({ id: c.id, productId: c.product_id, nameEn: c.name_en, nameAr: c.name_ar,
+                          hex: c.hex, imageUrl: c.image_url, sort: c.sort });
+  if (productId != null) return rows.map(shape);
+  const by = {};
+  for (const c of rows) (by[c.product_id] ??= []).push(shape(c));
+  return by;
+}
+
+function fail(message, code, status = 400) {
+  const e = new Error(message); e.code = code; e.status = status; return e;
+}
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/* A colour as typed: both names (either may stand in for the other), an
+   optional swatch. Returns the cleaned pair. */
+function cleanColour(c, i) {
+  let en = String(c?.nameEn ?? '').trim().replace(/\s+/g, ' ');
+  let ar = String(c?.nameAr ?? '').trim().replace(/\s+/g, ' ');
+  if (!en && !ar) throw fail(`colour ${i + 1} needs a name`, 'colour_name_required');
+  if (!en) en = ar;
+  if (!ar) ar = en;
+  if (en.length > 40 || ar.length > 40) throw fail('a colour name is at most 40 characters', 'name_too_long');
+  const hex = c?.hex ? String(c.hex).trim() : null;
+  if (hex && !HEX.test(hex)) throw fail(`"${hex}" is not a colour`, 'bad_hex');
+  return { nameEn: en, nameAr: ar, hex: hex ? hex.toUpperCase() : null };
+}
+
+function assertColourUnique(list) {
+  const seen = new Set();
+  for (const c of list) {
+    for (const k of [foldName(c.nameEn), 'ar:' + foldName(c.nameAr)]) {
+      if (seen.has(k)) throw fail(`the colour "${c.nameEn}" is listed twice`, 'colour_dup', 409);
+      seen.add(k);
+    }
+  }
+}
+
+function skuFor(productId, colourNo, size) {
+  const p = String(productId).padStart(3, '0');
+  return colourNo <= 1 ? `OG-${p}-${size}` : `OG-${p}-C${colourNo}-${size}`;
+}
+
+/* The printed codes a size already has on another colour, or new ones. */
+function codesFor(d, productId, size) {
+  const have = d.prepare(
+    `SELECT barcode, label_code FROM variants
+      WHERE product_id = ? AND size = ? ORDER BY created_at, sku LIMIT 1`
+  ).get(productId, size);
+  if (have) return { barcode: have.barcode, labelCode: have.label_code };
+  return { barcode: nextBarcode(d, productId), labelCode: nextLabelCode(d) };
+}
+
+/* One colour × size, with its opening stock booked as a movement. Runs inside
+   the caller's transaction. */
+function insertVariant(d, { productId, colour, colourNo, size, qty, whId, userId, at, shelf = null }) {
+  const sku = skuFor(productId, colourNo, size);
+  if (d.prepare('SELECT 1 FROM variants WHERE sku = ?').get(sku) ||
+      d.prepare('SELECT 1 FROM variants WHERE product_id = ? AND colour_id = ? AND size = ?').get(productId, colour.id, size)) {
+    throw fail(`${colour.nameEn} ${size} already exists for this product`, 'size_exists', 409);
+  }
+  const codes = codesFor(d, productId, size);
+  d.prepare(
+    `INSERT INTO variants (sku, product_id, colour_id, size, color, barcode, label_code, shelf,
+                           created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(sku, productId, colour.id, size, colour.nameEn, codes.barcode, codes.labelCode, shelf, at, at);
+  logChange('variants', sku, 'insert', userId, null);
+  const n = Number(qty ?? 0);
+  if (!Number.isInteger(n) || n < 0) throw fail(`${size}: the quantity must be a whole number, not below zero`, 'bad_qty');
+  if (n > 0) {
+    Stock.apply(d, { sku, whId, delta: n, type: 'received', note: 'opening stock',
+                     userId: userId ?? null, refType: 'opening' });
+  }
+  return { sku, size, barcode: codes.barcode, labelCode: codes.labelCode, colourId: colour.id, qty: n };
+}
+
+function insertColour(d, productId, c, sort, userId, at) {
+  const info = d.prepare(
+    `INSERT INTO product_colours (product_id, name_en, name_ar, hex, sort, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(productId, c.nameEn, c.nameAr, c.hex, sort, at, at);
+  const id = Number(info.lastInsertRowid);
+  logChange('product_colours', id, 'insert', userId, null);
+  return { id, ...c };
+}
+
+/* A new colour on a product that exists, with the sizes it comes in. */
+export function addColour({ productId, nameEn, nameAr, hex, sizes = [], whId = 'store', userId }) {
+  const c = cleanColour({ nameEn, nameAr, hex }, 0);
+  return tx((d) => {
+    if (!d.prepare('SELECT 1 FROM products WHERE id = ?').get(productId)) throw fail('no such product', 'not_found', 404);
+    const existing = coloursOf(productId);
+    assertColourUnique([...existing, c]);
+    const at = nowIso();
+    const colour = insertColour(d, productId, c, existing.length, userId, at);
+    const colourNo = existing.length + 1;
+    const made = [];
+    const seen = new Set();
+    for (const s of sizes) {
+      const size = String(s.size ?? '').trim();
+      if (!size) throw fail('every size needs a label', 'bad_size');
+      if (seen.has(size)) throw fail(`size "${size}" is listed twice`, 'size_dup');
+      seen.add(size);
+      made.push(insertVariant(d, { productId, colour, colourNo, size, qty: s.qty, whId, userId, at }));
+    }
+    d.prepare('UPDATE products SET updated_at = ? WHERE id = ?').run(at, productId);
+    logChange('products', productId, 'update', userId, null);
+    return { colour, variants: made };
+  });
+}
+
+export function updateColour(id, { nameEn, nameAr, hex }, userId) {
+  return tx((d) => {
+    const cur = d.prepare('SELECT * FROM product_colours WHERE id = ?').get(id);
+    if (!cur) throw fail('no such colour', 'not_found', 404);
+    const c = cleanColour({ nameEn: nameEn ?? cur.name_en, nameAr: nameAr ?? cur.name_ar,
+                            hex: hex === undefined ? cur.hex : hex }, 0);
+    const others = coloursOf(cur.product_id).filter((x) => x.id !== cur.id);
+    assertColourUnique([...others, c]);
+    d.prepare('UPDATE product_colours SET name_en = ?, name_ar = ?, hex = ?, updated_at = ? WHERE id = ?')
+     .run(c.nameEn, c.nameAr, c.hex, nowIso(), id);
+    logChange('product_colours', id, 'update', userId, null);
+    return coloursOf(cur.product_id).find((x) => x.id === id);
+  });
+}
+
+export function setColourImage(id, url, userId) {
+  return tx((d) => {
+    const row = d.prepare('SELECT image_url FROM product_colours WHERE id = ?').get(id);
+    if (!row) throw fail('no such colour', 'not_found', 404);
+    d.prepare('UPDATE product_colours SET image_url = ?, updated_at = ? WHERE id = ?').run(url || null, nowIso(), id);
+    logChange('product_colours', id, 'update', userId, null);
+    return { id, previous: row.image_url || null, imageUrl: url || null };
+  });
+}
+
+export function colourById(id) {
+  const c = get().prepare('SELECT * FROM product_colours WHERE id = ?').get(id);
+  return c ? { id: c.id, productId: c.product_id, nameEn: c.name_en, nameAr: c.name_ar, hex: c.hex, imageUrl: c.image_url } : null;
 }
 
 /* --------------------------------------------------- what the website sees
@@ -225,7 +383,12 @@ function webRow(p, sizes) {
     price: p.selling_price,
     currency: p.currency,
     minorExp: minorExp(p.currency),
-    sizes: sizes.map((v) => ({ size: v.size, sku: v.sku, inStock: v.total > 0 })),
+    sizes: sizes.map((v) => ({ size: v.size, sku: v.sku, colourId: v.colour_id ?? null, inStock: v.total > 0 })),
+    /* 058 — each colour, its picture, and which of its sizes are in stock. */
+    colours: coloursOf(p.id).map((c) => ({
+      id: c.id, en: c.nameEn, ar: c.nameAr, hex: c.hex, imageUrl: c.imageUrl,
+      sizes: sizes.filter((v) => v.colour_id === c.id).map((v) => ({ size: v.size, sku: v.sku, inStock: v.total > 0 }))
+    })),
     inStock: sizes.some((v) => v.total > 0),
     updatedAt: p.updated_at
   };
@@ -244,7 +407,7 @@ function webSizes(productIds) {
   if (!productIds.length) return {};
   const marks = productIds.map(() => '?').join(',');
   const rows = get().prepare(
-    `SELECT v.sku, v.product_id, v.size,
+    `SELECT v.sku, v.product_id, v.size, v.colour_id,
             COALESCE((SELECT SUM(qty) FROM stock s WHERE s.sku = v.sku), 0) AS total
        FROM variants v
       WHERE v.product_id IN (${marks})
@@ -281,15 +444,18 @@ export function byId(id) {
   const p = get().prepare('SELECT * FROM products WHERE id = ?').get(id);
   if (!p) return null;
   const variants = get().prepare(
-    'SELECT * FROM variants WHERE product_id = ? ORDER BY size'
+    'SELECT * FROM variants WHERE product_id = ? ORDER BY colour_id, size'
   ).all(id);
-  return { ...p, variants };
+  return { ...p, colours: coloursOf(id), variants };
 }
 
 export function bySku(sku) {
   return get().prepare(
-    `SELECT v.*, p.name, p.type, p.brand, p.currency, p.cost_price, p.selling_price
+    `SELECT v.*, p.name, p.type, p.brand, p.currency, p.cost_price, p.selling_price,
+            c.name_en AS colour_en, c.name_ar AS colour_ar, c.hex AS colour_hex,
+            (SELECT COUNT(*) FROM product_colours x WHERE x.product_id = p.id) AS colour_count
        FROM variants v JOIN products p ON p.id = v.product_id
+       LEFT JOIN product_colours c ON c.id = v.colour_id
       WHERE v.sku = ?`
   ).get(sku) ?? null;
 }
@@ -330,7 +496,7 @@ export function remove(id, userId) {
   const holds = [
     ['sold', 'SELECT COUNT(*) AS n FROM sale_items WHERE product_id = ?', [id]],
     ['movements', `SELECT COUNT(*) AS n FROM stock_movements WHERE sku IN (${inList})`, skus],
-    ['orders', `SELECT COUNT(*) AS n FROM po_lines WHERE sku IN (${inList})`, skus],
+    ['orders', `SELECT COUNT(*) AS n FROM purchase_order_lines WHERE sku IN (${inList})`, skus],
     ['counts', `SELECT COUNT(*) AS n FROM stock_count_lines WHERE sku IN (${inList})`, skus],
     ['labels', `SELECT COUNT(*) AS n FROM label_print_log WHERE sku IN (${inList})`, skus],
     ['wants', `SELECT COUNT(*) AS n FROM wants WHERE variant_sku IN (${inList})`, skus]
@@ -355,6 +521,8 @@ export function remove(id, userId) {
       logChange('variants', sku, 'delete', userId, 'product deleted');
     }
     db.prepare('DELETE FROM variants WHERE product_id = ?').run(id);
+    for (const c of coloursOf(id)) logChange('product_colours', c.id, 'delete', userId, 'product deleted');
+    try { db.prepare('DELETE FROM product_colours WHERE product_id = ?').run(id); } catch { /* before 058 */ }
     db.prepare('DELETE FROM products WHERE id = ?').run(id);
     logChange('products', id, 'delete', userId, 'deleted by hand');
     return { id, name: p.name, variants: skus.length };
@@ -381,24 +549,31 @@ export function setImage(id, url, userId) {
    DIFFERENT variant so two products can't end up sharing an identity. */
 export function attachCode(sku, { barcode, labelCode }, userId) {
   return tx((d) => {
-    const v = d.prepare('SELECT sku FROM variants WHERE sku = ?').get(sku);
+    const v = d.prepare('SELECT sku, product_id, size FROM variants WHERE sku = ?').get(sku);
     if (!v) throw new Error('no such variant');
 
+    /* A code is shared by every colour of this product and size (058), and by
+       nothing else. So the clash test skips the siblings, and the new code is
+       written to all of them — one box, one sticker, whichever colour. */
+    const notSibling = 'AND NOT (product_id = ? AND size = ?)';
     if (barcode) {
-      const clash = d.prepare('SELECT sku FROM variants WHERE barcode = ? AND sku != ?').get(barcode, sku);
+      const clash = d.prepare(`SELECT sku FROM variants WHERE barcode = ? ${notSibling}`).get(barcode, v.product_id, v.size);
       if (clash) throw new Error(`that barcode already belongs to ${clash.sku}`);
     }
     if (labelCode) {
       if (!/^\d{1,8}$/.test(labelCode)) throw new Error('label_code must be numeric, 8 digits or fewer');
-      const clash = d.prepare('SELECT sku FROM variants WHERE label_code = ? AND sku != ?').get(labelCode, sku);
+      const clash = d.prepare(`SELECT sku FROM variants WHERE label_code = ? ${notSibling}`).get(labelCode, v.product_id, v.size);
       if (clash) throw new Error(`that code already belongs to ${clash.sku}`);
     }
     if (!barcode && !labelCode) throw new Error('nothing to attach');
 
     const at = nowIso();
-    if (barcode) d.prepare('UPDATE variants SET barcode = ?, updated_at = ? WHERE sku = ?').run(barcode, at, sku);
-    if (labelCode) d.prepare('UPDATE variants SET label_code = ?, updated_at = ? WHERE sku = ?').run(labelCode, at, sku);
-    logChange('variants', sku, 'update', userId, null);
+    const siblings = d.prepare('SELECT sku FROM variants WHERE product_id = ? AND size = ?').all(v.product_id, v.size);
+    for (const s of siblings) {
+      if (barcode) d.prepare('UPDATE variants SET barcode = ?, updated_at = ? WHERE sku = ?').run(barcode, at, s.sku);
+      if (labelCode) d.prepare('UPDATE variants SET label_code = ?, updated_at = ? WHERE sku = ?').run(labelCode, at, s.sku);
+      logChange('variants', s.sku, 'update', userId, null);
+    }
     return bySku(sku);
   });
 }
@@ -413,7 +588,7 @@ export function attachCode(sku, { barcode, labelCode }, userId) {
 export function createWithVariants({
   name, type, brand, madeIn, colorway, imageBg, imageInitials,
   currency, costPrice, sellingPrice, shelfZone,
-  sizes = [], whId = 'store', userId,
+  sizes = [], colours = null, whId = 'store', userId,
   /* Nothing sets this any more — the script that planted demo rows is gone.
      The column stays because rows it marked are still in the database,
      hidden rather than deleted so the invoices naming them still read.
@@ -428,17 +603,30 @@ export function createWithVariants({
   if (!currency) throw new Error('currency is required');
   minorExp(currency);                       // throws if the currency is unknown
 
-  if (!Array.isArray(sizes) || sizes.length === 0) {
-    throw new Error('a product needs at least one size');
-  }
+  /* 058: a list of colours, each with its own sizes. A caller that sends
+     only `sizes` (an older browser, a script) gets one colour — the
+     colourway if there is one — exactly as before. */
+  const list = Array.isArray(colours) && colours.length
+    ? colours
+    : [{ nameEn: colorway || 'Standard', nameAr: colorway || 'أساسي', sizes }];
+  const clean = list.map((c, i) => ({ ...cleanColour(c, i), sizes: Array.isArray(c.sizes) ? c.sizes : [] }));
+  assertColourUnique(clean);
 
-  const seen = new Set();
-  for (const s of sizes) {
-    const key = String(s.size).trim();
-    if (!key) throw new Error('every size needs a label');
-    if (seen.has(key)) throw new Error(`size "${key}" is listed twice`);
-    seen.add(key);
+  let total = 0;
+  for (const c of clean) {
+    if (!c.sizes.length) throw fail(`the colour "${c.nameEn}" has no sizes`, 'colour_no_sizes');
+    const seen = new Set();
+    for (const s of c.sizes) {
+      const key = String(s.size ?? '').trim();
+      if (!key) throw new Error('every size needs a label');
+      if (seen.has(key)) throw new Error(`size "${key}" is listed twice`);
+      seen.add(key);
+      const q = Number(s.qty ?? 0);
+      if (!Number.isInteger(q) || q < 0) throw fail(`${c.nameEn} ${key}: the quantity must be a whole number, not below zero`, 'bad_qty');
+      total += 1;
+    }
   }
+  if (!total) throw new Error('a product needs at least one size');
 
   return tx((d) => {
     const at = nowIso();
@@ -459,41 +647,23 @@ export function createWithVariants({
     const productId = Number(info.lastInsertRowid);
     logChange('products', productId, 'insert', userId, null);
 
+    /* The product, its colours, every colour × size and one opening
+       "received" movement per size with stock — one transaction. Opening
+       stock is a movement (Stock.apply), never a typed-over number. */
     const made = [];
-    for (const s of sizes) {
-      const size = String(s.size).trim();
-      const sku = `OG-${String(productId).padStart(3, '0')}-${size}`;
-      const barcode = s.barcode || nextBarcode(d, productId);
-      const labelCode = nextLabelCode(d);
-
-      d.prepare(
-        `INSERT INTO variants (sku, product_id, size, color, barcode, label_code, shelf,
-                               created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(sku, productId, size, colorway ?? null, barcode, labelCode, s.shelf ?? null, at, at);
-
-      logChange('variants', sku, 'insert', userId, null);
-      made.push({ sku, size, barcode });
-
-      /* Opening stock goes in as a movement, not a starting number, so the
-         trail is complete from the very first pair. Imported inline rather
-         than at the top to keep the module cycle-free. */
-      const qty = Number(s.qty ?? 0);
-      if (qty > 0) {
-        d.prepare('INSERT INTO stock (sku, wh_id, qty) VALUES (?, ?, 0) ON CONFLICT DO NOTHING')
-         .run(sku, whId);
-        d.prepare('UPDATE stock SET qty = qty + ? WHERE sku = ? AND wh_id = ?')
-         .run(qty, sku, whId);
-        d.prepare(
-          `INSERT INTO stock_movements
-             (at, sku, wh_id, type, delta, balance, note, user_id, ref_type)
-           VALUES (?, ?, ?, 'received', ?, ?, 'opening stock', ?, 'opening')`
-        ).run(at, sku, whId, qty, qty, userId ?? null);
-        logChange('stock', `${sku}:${whId}`, 'update', userId, null);
+    const out = [];
+    clean.forEach((c, i) => {
+      const colour = insertColour(d, productId, c, i, userId, at);
+      out.push(colour);
+      for (const s of c.sizes) {
+        made.push(insertVariant(d, {
+          productId, colour, colourNo: i + 1, size: String(s.size).trim(), qty: s.qty,
+          whId, userId, at, shelf: s.shelf ?? null
+        }));
       }
-    }
+    });
 
-    return { productId, variants: made };
+    return { productId, colours: out, variants: made };
   });
 }
 
@@ -545,28 +715,23 @@ export function update(id, fields, userId) {
 }
 
 /* Add a size to a product that already exists. */
-export function addVariant({ productId, size, barcode, shelf, userId }) {
+export function addVariant({ productId, size, colourId = null, qty = 0, whId = 'store', shelf, userId }) {
   return tx((d) => {
-    const p = d.prepare('SELECT id, colorway FROM products WHERE id = ?').get(productId);
-    if (!p) throw new Error('no such product');
+    const p = d.prepare('SELECT id FROM products WHERE id = ?').get(productId);
+    if (!p) throw fail('no such product', 'not_found', 404);
 
-    const label = String(size).trim();
-    if (!label) throw new Error('size is required');
+    const label = String(size ?? '').trim();
+    if (!label) throw fail('size is required', 'bad_size');
 
-    const sku = `OG-${String(productId).padStart(3, '0')}-${label}`;
-    if (d.prepare('SELECT 1 FROM variants WHERE sku = ?').get(sku)) {
-      throw new Error(`size "${label}" already exists for this product`);
-    }
+    const list = coloursOf(productId);
+    const colour = colourId ? list.find((c) => c.id === Number(colourId)) : list[0];
+    if (!colour) throw fail('no such colour on this product', 'bad_colour');
+    const colourNo = list.indexOf(colour) + 1;
 
     const at = nowIso();
-    d.prepare(
-      `INSERT INTO variants (sku, product_id, size, color, barcode, label_code, shelf,
-                             created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(sku, productId, label, p.colorway ?? null,
-          barcode || nextBarcode(d, productId), nextLabelCode(d), shelf ?? null, at, at);
-
-    logChange('variants', sku, 'insert', userId, null);
-    return { sku, size: label };
+    const made = insertVariant(d, { productId, colour, colourNo, size: label, qty, whId, userId, at, shelf: shelf ?? null });
+    d.prepare('UPDATE products SET updated_at = ? WHERE id = ?').run(at, productId);
+    logChange('products', productId, 'update', userId, null);
+    return made;
   });
 }

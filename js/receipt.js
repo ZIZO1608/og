@@ -8,10 +8,6 @@
    image library by design. The browser's own text engine does the hard
    part; js/escpos.js turns the finished canvas into printer bytes.
 
-   The same canvas is also the file:// / static-host fallback: no server
-   means no LAN socket, so that path calls window.print() on the canvas
-   instead — see printLocal() below.
-
      Receipt.autoPrint(sale)      fire-and-forget, called right after a sale
                                    completes in js/pos.js
      Receipt.printSale(id)        manual "Print receipt" / reprint button
@@ -526,7 +522,7 @@ var Receipt = (function () {
         y += 30;
       });
       if (it.size) {
-        textAt(ctx, L('rc2_size').ar + ' ' + it.size, W - PAD - 20, y + 18, { size: 18, dir: 'rtl', align: 'right' });
+        textAt(ctx, L('rc2_size').ar + ' ' + DB.lineSize(it, true), W - PAD - 20, y + 18, { size: 18, dir: 'rtl', align: 'right' });
         y += 26;
       }
       if (!gift) {
@@ -880,7 +876,8 @@ var Receipt = (function () {
         loyaltyPoints: payload.customer.loyalty_points
       } : null,
       items: payload.items.map(function (it) {
-        return { name: it.name, size: it.size, qty: it.qty, unitPrice: it.unit_price / div };
+        return { name: it.name, size: it.size, qty: it.qty, unitPrice: it.unit_price / div,
+                 colour: it.colour || null, colourAr: it.colour_ar || null };
       }),
       currency: payload.currency,
       subtotal: payload.subtotal / div, discount: payload.discount / div,
@@ -916,71 +913,14 @@ var Receipt = (function () {
     };
   }
 
-  /* From js/data.js's local sale object — demo mode, or the shape pos.js
-     builds right after a real sale, whole units already. */
-  function fromLocal(sale) {
-    var cust = sale.customerId ? DB.customer(sale.customerId) : null;
-    var cfg = receiptCfgFromConfig();
-    var second = null;
-    if (CONFIG.BASE_CURRENCY === 'SYP' && sale.fxRate) {
-      second = { code: 'USD', amount: sale.total / sale.fxRate };
-    }
-    return {
-      id: sale.id, at: sale.date, cashierName: sale.cashier,
-      customer: cust ? { name: cust.name, phone: cust.phone, loyaltyPoints: cust.loyaltyPoints } : null,
-      items: sale.items.map(function (it) {
-        return { name: it.name, size: it.size, qty: it.qty, unitPrice: it.unitPrice };
-      }),
-      currency: CONFIG.BASE_CURRENCY, subtotal: sale.subtotal, discount: sale.discount,
-      pointsValue: sale.pointsUsed ? sale.pointsUsed * CONFIG.LOYALTY_POINT_VALUE : 0,
-      total: sale.total, fxRate: sale.fxRate, secondCurrency: second,
-      payment: sale.payment, txnRef: sale.txnRef || null,
-      toCollect: sale.payment === 'cod' ? sale.total : 0,
-      pointsEarned: Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000),
-      shop: {
-        name: CONFIG.SHOP_NAME, branch: CONFIG.SHOP_BRANCH,
-        address: CONFIG.SHOP_ADDRESS, phone: CONFIG.SHOP_PHONE
-      },
-      instagram: cfg.instagram, telegram: cfg.telegram, mapsUrl: cfg.mapsUrl,
-      footerAr: cfg.footerAr, footerEn: cfg.footerEn,
-      policyAr: cfg.policyAr, policyEn: cfg.policyEn,
-      giftPolicyAr: cfg.giftPolicyAr, giftPolicyEn: cfg.giftPolicyEn,
-      giftExchangeHours: cfg.giftExchangeHours,
-      showBarcode: cfg.showBarcode, showLoyalty: cfg.showLoyalty
-    };
-  }
-
   /* ---------------------------------------------------------------- data */
 
   function fetchData(saleId) {
-    if (typeof Auth !== 'undefined') {
-      return API.get('/api/sales/' + encodeURIComponent(saleId) + '/receipt')
-        .then(function (res) { return fromServer(res.receipt); });
-    }
-    var local = DB.sale(saleId);
-    if (!local) return Promise.reject(new Error('No such sale.'));
-    return Promise.resolve(fromLocal(local));
+    return API.get('/api/sales/' + encodeURIComponent(saleId) + '/receipt')
+      .then(function (res) { return fromServer(res.receipt); });
   }
 
   /* --------------------------------------------------------------- print */
-
-  function printLocal(canvas) {
-    /* No server, no LAN socket — the same canvas prints through the OS
-       dialog instead, sized to the same 80mm roll so what was previewed is
-       what comes out. */
-    var win = window.open('', '_blank');
-    if (!win) { window.print(); return; }
-    var mmH = canvas.height / 8;   // 8 dots/mm at 203dpi
-    win.document.write(
-      '<!doctype html><html><head><meta charset="utf-8"><title>' +
-      (typeof t === 'function' ? t('rc_title') : 'Receipt') +
-      '</title><style>@page{size:80mm auto;margin:0}' +
-      'body{margin:0}img{width:80mm;display:block}</style></head><body>' +
-      '<img src="' + canvas.toDataURL('image/png') + '"></body></html>'
-    );
-    win.document.close();
-    win.onload = function () { win.focus(); win.print(); };
-  }
 
   /* One opId per PRINT ATTEMPT, not per click. A failed attempt keeps its
      opId so pressing the same "try again" button retries the same attempt —
@@ -1006,17 +946,12 @@ var Receipt = (function () {
       .then(function (res) { delete pendingOpId[slot]; return res; });
   }
 
-  /* Builds both copies, and either mails them to the LAN printer in one
-     socket write or falls back to the browser print dialog when there is
-     no server to reach. */
+  /* Builds both copies and mails them to the LAN printer in one socket
+     write. */
   function printJob(saleId, opts) {
     opts = opts || {};
     return fetchData(saleId).then(function (R) {
       return Promise.all([draw(R, 'customer'), draw(R, 'shop')]).then(function (copies) {
-        if (typeof Auth === 'undefined') {
-          printLocal(copies[0].canvas);
-          return { local: true };
-        }
         var bytes = ESCPOS.buildJob([copies[0].canvas, copies[1].canvas],
           { cutMode: CONFIG.RECEIPT_CUT_MODE, burnLuma: burnLuma() });
         return sendToPrinter(ESCPOS.toBase64(bytes), saleId, 2, 'sale');
@@ -1030,10 +965,6 @@ var Receipt = (function () {
   function printGiftJob(saleId, lines) {
     return fetchData(saleId).then(function (R) {
       return draw(R, 'gift', { lines: lines }).then(function (copy) {
-        if (typeof Auth === 'undefined') {
-          printLocal(copy.canvas);
-          return { local: true };
-        }
         var bytes = ESCPOS.build(copy.canvas,
           { cutMode: CONFIG.RECEIPT_CUT_MODE, burnLuma: burnLuma() });
         return sendToPrinter(ESCPOS.toBase64(bytes), saleId, 1, 'gift');
@@ -1047,13 +978,13 @@ var Receipt = (function () {
       return Promise.resolve();
     }
     if (typeof toast === 'function') toast(t('gift_receipt'), t('printing') + '…', 'ok', 2000);
-    return printGiftJob(saleId, lines).then(function (res) {
-      if (typeof toast === 'function' && !res.local) {
+    return printGiftJob(saleId, lines).then(function () {
+      if (typeof toast === 'function') {
         toast(t('gift_receipt'), t('print_sent'), 'ok', 3000);
       }
     })['catch'](function (err) {
       if (typeof toast === 'function') {
-        toast(t('gift_receipt'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 7000);
+        toast(t('gift_receipt'), API.friendly(err), 'err', 7000);
       }
     });
   }
@@ -1072,7 +1003,6 @@ var Receipt = (function () {
      because the cashier is watching the same screen anyway. The approval
      step is for the admin raising an invoice deliberately. */
   function autoPrint(sale) {
-    if (typeof Auth === 'undefined') return;
     if (!CONFIG.RECEIPT_AUTO_PRINT) return;
     if (typeof allow === 'function' && !allow('sale.reprint')) return;
 
@@ -1081,7 +1011,7 @@ var Receipt = (function () {
     printJob(sale.id).catch(function (err) {
       if (typeof toast === 'function') {
         toast(typeof t === 'function' ? t('rc_title') : 'Receipt',
-          (typeof API !== 'undefined' ? API.friendly(err) : err.message) +
+          API.friendly(err) +
           (typeof t === 'function' ? ' · ' + t('print_retry') : ' · Retry from the receipt.'),
           'err', 7000);
       }
@@ -1095,13 +1025,13 @@ var Receipt = (function () {
       return;
     }
     if (typeof toast === 'function') toast(t('print_receipt'), t('printing') + '…', 'ok', 2000);
-    printJob(saleId).then(function (res) {
-      if (typeof toast === 'function' && !res.local) {
+    printJob(saleId).then(function () {
+      if (typeof toast === 'function') {
         toast(t('print_receipt'), t('print_sent'), 'ok', 3000);
       }
     }).catch(function (err) {
       if (typeof toast === 'function') {
-        toast(t('print_receipt'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 7000);
+        toast(t('print_receipt'), API.friendly(err), 'err', 7000);
       }
     });
   }
@@ -1169,7 +1099,7 @@ var Receipt = (function () {
       });
     }).catch(function (err) {
       if (typeof toast === 'function') {
-        toast(t('rc_title'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 6000);
+        toast(t('rc_title'), API.friendly(err), 'err', 6000);
       }
     });
   }
@@ -1197,7 +1127,7 @@ var Receipt = (function () {
     R.items.forEach(function (it, i) {
       h += '<label class="check"><input type="checkbox" data-gift-line="' + i + '"' +
         (giftSel[i] ? ' checked' : '') + '><span><b>' + esc(it.name) + '</b>' +
-        (it.size ? ' <span class="muted">· ' + esc(String(it.size)) + '</span>' : '') +
+        (it.size ? ' <span class="muted">· ' + esc(DB.lineSize(it)) + '</span>' : '') +
         '</span></label>';
     });
     return h;
@@ -1273,18 +1203,13 @@ var Receipt = (function () {
       });
     })['catch'](function (err) {
       if (typeof toast === 'function') {
-        toast(t('gift_receipt'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 6000);
+        toast(t('gift_receipt'), API.friendly(err), 'err', 6000);
       }
     });
   }
 
   function register() {
     if (typeof ACTIONS === 'undefined') return;
-
-    ACTIONS['print-receipt'] = function (el) {
-      var id = el.getAttribute('data-id');
-      if (id) printSale(id);
-    };
 
     /* The approval dialog's own Print button: print, then close — so the
        modal cannot be left open over a receipt that has already been
@@ -1322,34 +1247,6 @@ var Receipt = (function () {
       if (typeof closeModal === 'function') closeModal();
       printGift(id, lines);
     };
-
-    ACTIONS['preview-receipt'] = function (el) {
-      var id = el.getAttribute('data-id');
-      if (!id || typeof openModal !== 'function') return;
-      preview(id).then(function (res) {
-        res.canvas.style.width = '72mm';
-        res.canvas.style.maxWidth = '100%';
-        res.canvas.style.display = 'block';
-        res.canvas.style.margin = '0 auto';
-        openModal({
-          title: (typeof t === 'function' ? t('rc_title') : 'Receipt') + ' — ' + id,
-          body: '<div id="rcPreviewHost" style="background:#fff;padding:12px"></div>',
-          foot: '<button class="btn btn-primary" data-act="modal-close">' +
-                (typeof t === 'function' ? t('close') : 'Close') + '</button>',
-          /* The canvas carries real pixel data, not markup, so it is
-             attached to the live DOM after openModal builds it rather than
-             serialised into the body string. */
-          onOpen: function () {
-            var host = document.getElementById('rcPreviewHost');
-            if (host) host.appendChild(res.canvas);
-          }
-        });
-      }).catch(function (err) {
-        if (typeof toast === 'function') {
-          toast(t('rc_title'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 6000);
-        }
-      });
-    };
   }
 
   return {
@@ -1362,7 +1259,6 @@ var Receipt = (function () {
     register: register,
     /* Exposed for testing/preview screens that already have normalised data. */
     draw: draw,
-    fromServer: fromServer,
-    fromLocal: fromLocal
+    fromServer: fromServer
   };
 })();

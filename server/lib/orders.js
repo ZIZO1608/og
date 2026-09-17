@@ -99,18 +99,14 @@ export function settings(d = get()) {
   };
 }
 
-/* The address a customer's tracking link starts with. The receipt's own
-   setting first, then the shop's, then the Cloudflare hostname — which is
-   https by construction, the tunnel terminates TLS at Cloudflare's edge. */
+/* The address a customer's tracking link starts with: the receipt's own
+   setting first, then the shop's. Null when neither is set — a link only the
+   shop's wifi can open is not worth sending. */
 export function publicBase(d = get()) {
   const set = cfg(d, 'receipt.public_url') || cfg(d, 'shop.public_url');
-  if (set && String(set).trim()) {
-    const v = String(set).trim().replace(/\/+$/, '');
-    return /^https?:\/\//i.test(v) ? v : `https://${v}`;
-  }
-  const h = String(process.env.OG_CF_HOSTNAME || '')
-    .trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-  return h ? `https://${h}` : null;
+  if (!set || !String(set).trim()) return null;
+  const v = String(set).trim().replace(/\/+$/, '');
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
 }
 
 export function drivers() {
@@ -544,58 +540,6 @@ export function pay(saleId, { amount, currency, method, txnRef, stage, note, opI
   });
 }
 
-/* The driver is back and the cash is on the counter. Stamps every piece of
-   door cash on this order still in somebody's hand with the open drawer. */
-export function handIn(saleId, user, opId = null) {
-  return tx((d) => {
-    if (opId) {
-      const seen = d.prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
-      if (seen) return { ...JSON.parse(seen.result), replayed: true };
-    }
-
-    orderSale(d, saleId);
-    const pending = d.prepare(
-      `SELECT id, amount, currency, received_by FROM order_payments
-        WHERE sale_id = ? AND kind = 'in' AND drawer = 1 AND handed_in_at IS NULL`
-    ).all(saleId);
-    if (!pending.length) {
-      throw fail('nothing from this order is waiting to be handed in', 'nothing_pending');
-    }
-
-    const shift = currentShift(d);
-    const at = nowIso();
-    const stamp = d.prepare(
-      'UPDATE order_payments SET handed_in_at = ?, handed_in_by = ?, shift_id = ? WHERE id = ?'
-    );
-    for (const p of pending) {
-      stamp.run(at, user.id, shift ? shift.id : null, p.id);
-      logChange('order_payments', p.id, 'update', user.id, 'handed in');
-      /* Out of the driver's pocket and into the drawer, in the cash book. */
-      Cash.handInPayment(d, {
-        paymentId: p.id, currency: p.currency, amount: p.amount,
-        userId: user.id, note: saleId, at
-      });
-    }
-
-    /* What moved and from whom, per currency — the same shape handInFor
-       reports, so the manager's dl_handin alert (lib/office-alerts.js) reads
-       one answer whichever of the two buttons was pressed. */
-    const took = {};
-    for (const p of pending) took[p.currency] = (took[p.currency] || 0) + p.amount;
-    const out = {
-      saleId, handedIn: pending.length, shiftId: shift ? shift.id : null,
-      noShift: !shift, money: money(d, saleId), took, at,
-      driverIds: [...new Set(pending.map((p) => p.received_by).filter((v) => v != null))]
-    };
-    if (opId) {
-      d.prepare(
-        `INSERT INTO applied_ops (op_id, at, user_id, kind, result) VALUES (?, ?, ?, 'order_handin', ?)`
-      ).run(opId, at, user.id, JSON.stringify(out));
-    }
-    return out;
-  });
-}
-
 /* Where this customer's last order went, for "use last address". */
 export function lastDestination(customerId) {
   const r = get().prepare(
@@ -958,22 +902,6 @@ function creditRow(d, { customerId, kind, amount, currency, saleId, note, userId
   return id;
 }
 
-/* What this customer has with the shop, and where it came from. */
-export function credit(customerId) {
-  const d = get();
-  const balances = d.prepare(
-    `SELECT currency,
-            SUM(CASE WHEN kind = 'grant' THEN amount ELSE -amount END) AS amount
-       FROM customer_credit WHERE customer_id = ?
-      GROUP BY currency HAVING amount <> 0 ORDER BY currency`
-  ).all(customerId);
-  const rows = d.prepare(
-    `SELECT id, at, kind, amount, currency, sale_id AS saleId, note
-       FROM customer_credit WHERE customer_id = ? ORDER BY at DESC, id DESC LIMIT 50`
-  ).all(customerId);
-  return { balances, rows };
-}
-
 /* =============================================================== the return
    The parcel came back. Four decisions, and the owner said the shop uses all
    four case by case: send another size, keep the money as credit, refund it,
@@ -1049,7 +977,7 @@ function refundOut(d, sale, s, { amount, currency, method, txnRef, note, userId,
 /* What is left to come back, per line: sold minus already returned. */
 export function returnable(saleId, d = get()) {
   const items = d.prepare(
-    `SELECT sku, name, size, qty, unit_price FROM sale_items WHERE sale_id = ? ORDER BY id`
+    `SELECT sku, name, size, qty, unit_price, colour, colour_ar FROM sale_items WHERE sale_id = ? ORDER BY id`
   ).all(saleId);
   const done = {};
   for (const r of d.prepare(
@@ -1125,7 +1053,8 @@ export function takeBack(saleId, {
           ? `only ${row.left} of ${sku} can still come back`
           : `every ${sku} on ${saleId} has already come back`, 'too_many', { left: row.left });
       }
-      back.push({ sku, qty, name: row.name, size: row.size, unitPrice: row.unit_price });
+      back.push({ sku, qty, name: row.name, size: row.size, unitPrice: row.unit_price,
+                 colour: row.colour, colourAr: row.colour_ar });
       goods += qty * row.unit_price;
       row.left -= qty;                       /* two lines of the same sku in one return */
     }
@@ -1153,11 +1082,12 @@ export function takeBack(saleId, {
     const returnId = Number(info.lastInsertRowid);
 
     const line = d.prepare(
-      `INSERT INTO order_return_lines (return_id, sku, name, size, qty, unit_price)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO order_return_lines (return_id, sku, name, size, qty, unit_price, colour, colour_ar)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const l of back) {
-      const lid = Number(line.run(returnId, l.sku, l.name, l.size, l.qty, l.unitPrice).lastInsertRowid);
+      const lid = Number(line.run(returnId, l.sku, l.name, l.size, l.qty, l.unitPrice,
+                                  l.colour ?? null, l.colourAr ?? null).lastInsertRowid);
       logChange('order_return_lines', lid, 'insert', user.id, null);
       /* Back on the shelf through the ordinary movement log — the same way
          every other piece of stock in this system moves. */
@@ -1240,23 +1170,6 @@ export function takeBack(saleId, {
       ).run(opId, at, user.id, JSON.stringify(result));
     }
     return result;
-  });
-}
-
-/* An exchange is a return plus the order that replaces it. The credit the
-   return granted is spent on the new one through the ordinary payment path,
-   so there is one way money moves and one ledger to read. */
-export function linkExchange(returnId, newSaleId, user) {
-  return tx((d) => {
-    const r = d.prepare('SELECT id, outcome, new_sale_id FROM order_returns WHERE id = ?').get(returnId);
-    if (!r) throw fail('no such return', 'not_found');
-    if (r.new_sale_id) throw fail('that return already points at an order', 'already_linked');
-    if (!d.prepare('SELECT 1 FROM sales WHERE id = ?').get(newSaleId)) {
-      throw fail('no such order', 'not_found');
-    }
-    d.prepare('UPDATE order_returns SET new_sale_id = ? WHERE id = ?').run(newSaleId, returnId);
-    logChange('order_returns', returnId, 'update', user ? user.id : null, `exchanged into ${newSaleId}`);
-    return { returnId, newSaleId };
   });
 }
 

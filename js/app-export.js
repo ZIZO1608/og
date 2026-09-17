@@ -463,16 +463,18 @@ function whNewProductExportSpec() {
   /* Two columns, not three: the barcode column used to carry a number the
      browser had made up. The codes exist once the product is saved and are
      on the product's own stock sheet. */
-  sizes.forEach(function (s) {
-    var q = Number(OG.wh.sizes[s] || 0);
-    rows.push([s, q]);
+  /* 058 — one row per colour × size. */
+  ColourForm.list().forEach(function (c, i) {
+    sizes.forEach(function (s) {
+      rows.push([ColourForm.label(c, i), s, Number(c.qty[s] || 0)]);
+    });
   });
   return {
     name: 'new-product', sheet: 'New product', title: t('tab_add'),
     subtitle: (OG.wh.name || t('product_name')) + ' · ' + DB.typeLabels[OG.wh.type],
-    columns: [{ label: t('size') }, { label: t('qty'), num: true }],
+    columns: [{ label: t('cl_colour') }, { label: t('size') }, { label: t('qty'), num: true }],
     rows: rows,
-    totals: [t('total_pieces'), rows.reduce(function (a, r) { return a + r[1]; }, 0)],
+    totals: [t('total_pieces'), null, rows.reduce(function (a, r) { return a + r[2]; }, 0)],
     kpis: [{ label: t('type'), value: DB.typeLabels[OG.wh.type] },
            { label: t('size_matrix'), value: sizes.length + ' ' + t('size').toLowerCase() }]
   };
@@ -503,7 +505,7 @@ function whStockExportSpec() {
     DB.variantsOf(p.id).forEach(function (v) {
       var here = everywhere ? v.qty : DB.stockAt(v, whId);
       pieces += here;
-      var out = [p.name, DB.typeLabels[p.type], v.size, v.sku, v.shelf || ''];
+      var out = [p.name, DB.typeLabels[p.type], DB.variantLabel(v), v.sku, v.shelf || ''];
       if (everywhere) DB.warehouses.forEach(function (w) { out.push(DB.stockAt(v, w.id)); });
       out.push(here);
       if (cost) out.push(exMoney(p.costPrice * here));
@@ -656,14 +658,14 @@ function salesExportSpec() {
 }
 
 /* ------------------------------------------------------- DEEP LINKS
-   #open/<type>/<id> — the destination a scanned QR lands on. Works when
-   pasted from file://, and works from a phone camera once the folder is
-   served on the LAN. Same route the printed receipt will use. */
+   #open/<type>/<id> — the destination a scanned QR lands on. Works pasted
+   into the address bar, and from a phone camera on the shop's wifi. Same
+   route the printed receipt will use. */
 
 function deepLink(type, id) {
   /* CONFIG.PUBLIC_URL wins when it is set: a QR printed today has to keep
      working from a phone that has never seen this laptop. Without it the link
-     would carry file:/// or a LAN IP and die the moment it leaves the room. */
+     would carry a LAN IP and die the moment it leaves the room. */
   var base = CONFIG.PUBLIC_URL || location.href.split('#')[0];
   return base + '#open/' + type + '/' + encodeURIComponent(id);
 }
@@ -884,13 +886,12 @@ function partnerInvoicesExportSpec() {
    said nothing about why.
 
    It now reads the SAME matrix the grid on screen is drawn from: ROLE_MATRIX,
-   which GET /api/roles filled in, with the shipped defaults as the fallback
-   for _shot.html where there is no server to ask. Five roles, not four, and
+   which GET /api/roles filled in (null until it has answered, and then there
+   is nothing to export yet). Five roles, not four, and
    the permission list is whatever the server actually holds rather than a
    copy that had already gone stale. */
 function settingsExportSpec() {
-  var m = (typeof ROLE_MATRIX !== 'undefined' && ROLE_MATRIX) ||
-          (typeof demoMatrix === 'function' ? demoMatrix() : null);
+  var m = ROLE_MATRIX;
   if (!m) return null;
 
   var columns = [{ label: t('permission'), width: 36 }];
@@ -984,7 +985,7 @@ function productSheetSpec(pid) {
     columns: [{ label: t('size') }, { label: t('sku') }, { label: t('barcode') },
               { label: t('qty'), num: true }, { label: t('shelf') }, { label: t('health') }],
     rows: vs.map(function (v) {
-      return [v.size, v.sku, v.barcode, v.qty, v.shelf, t(DB.health(v.qty))];
+      return [DB.variantLabel(v), v.sku, v.barcode, v.qty, v.shelf, t(DB.health(v.qty))];
     }),
     totals: [t('total'), null, null, total, null, t(DB.health(total))],
     kpis: [{ label: t('total_stock'), value: nf(total) + ' ' + t('pieces') },

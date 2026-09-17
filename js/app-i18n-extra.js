@@ -3030,3 +3030,41 @@ var YLINV_AR = {
 };
 Object.keys(YLINV_EN).forEach(function (k) { I18N.en[k] = YLINV_EN[k]; });
 Object.keys(YLINV_AR).forEach(function (k) { I18N.ar[k] = YLINV_AR[k]; });
+
+/* ---- colours (058, js/colourpick.js and the product forms) --------------- */
+var COLOURS_EN = {
+  cp_title: 'Which colour?', cp_sub: 'This code is on every colour of this size. Tap the one in your hand.',
+  cp_in_stock: 'here', cp_none_here: 'none here',
+  cl_colour: 'Colour', cl_colours: 'Colours', cl_add: 'Add colour', cl_name_en: 'Name (English)', cl_name_ar: 'Name (Arabic)',
+  cl_custom: 'Custom', cl_remove: 'Remove colour', cl_remove_q: 'Remove {name} and the sizes typed for it?',
+  cl_photo: 'Photo', cl_photo_add: 'Add a photo', cl_total: 'In this colour', cl_grand: 'Everything',
+  cl_empty_warn: '{name} has no quantities — it will be saved with no sizes. Remove it, or type some.',
+  cl_need_colour: 'Add at least one colour.', cl_need_name: 'Every colour needs a name.',
+  cl_dup: 'Two colours have the same name.', cl_no_neg: 'Quantities cannot be below zero.',
+  cl_first_hint: 'Each colour has its own sizes and quantities. The price is the product\'s, and the barcode is shared by every colour of a size.',
+  cl_matrix: 'Stock by colour and size', cl_add_more: 'Add a colour or a size', cl_new_colour: 'New colour',
+  cl_new_size: 'New size on a colour', cl_qty_arrives: 'Pieces arriving now', cl_saved: 'Saved',
+  cl_photo_later: 'The colour was saved; its photo did not upload', cl_size: 'Size',
+  err_colour_dup: 'Two colours have the same name.', err_colour_no_sizes: 'A colour has no sizes.',
+  err_bad_qty: 'A quantity is not a whole number, or below zero.', err_size_exists: 'That colour already has that size.',
+  err_colour_name_required: 'Every colour needs a name.', err_bad_hex: 'That is not a colour.'
+};
+var COLOURS_AR = {
+  cp_title: 'أي لون؟', cp_sub: 'هذا الرمز على كل ألوان هذا القياس. اضغط على اللون الذي بيدك.',
+  cp_in_stock: 'هنا', cp_none_here: 'لا يوجد هنا',
+  cl_colour: 'اللون', cl_colours: 'الألوان', cl_add: 'أضف لوناً', cl_name_en: 'الاسم (إنكليزي)', cl_name_ar: 'الاسم (عربي)',
+  cl_custom: 'مخصّص', cl_remove: 'احذف اللون', cl_remove_q: 'حذف {name} والقياسات المكتوبة له؟',
+  cl_photo: 'صورة', cl_photo_add: 'أضف صورة', cl_total: 'في هذا اللون', cl_grand: 'المجموع',
+  cl_empty_warn: '{name} بلا كميات — سيُحفظ بلا قياسات. احذفه أو اكتب كميات.',
+  cl_need_colour: 'أضف لوناً واحداً على الأقل.', cl_need_name: 'كل لون يحتاج اسماً.',
+  cl_dup: 'لونان بالاسم نفسه.', cl_no_neg: 'لا يمكن أن تكون الكمية أقل من صفر.',
+  cl_first_hint: 'لكل لون قياساته وكمياته. السعر للمنتج كله، والباركود مشترك بين كل ألوان القياس الواحد.',
+  cl_matrix: 'المخزون حسب اللون والقياس', cl_add_more: 'أضف لوناً أو قياساً', cl_new_colour: 'لون جديد',
+  cl_new_size: 'قياس جديد على لون', cl_qty_arrives: 'القطع الواصلة الآن', cl_saved: 'حُفظ',
+  cl_photo_later: 'حُفظ اللون، ولم تُرفع صورته', cl_size: 'القياس',
+  err_colour_dup: 'لونان بالاسم نفسه.', err_colour_no_sizes: 'أحد الألوان بلا قياسات.',
+  err_bad_qty: 'إحدى الكميات ليست عدداً صحيحاً أو أقل من صفر.', err_size_exists: 'هذا اللون فيه هذا القياس مسبقاً.',
+  err_colour_name_required: 'كل لون يحتاج اسماً.', err_bad_hex: 'هذا ليس لوناً.'
+};
+Object.keys(COLOURS_EN).forEach(function (k) { I18N.en[k] = COLOURS_EN[k]; });
+Object.keys(COLOURS_AR).forEach(function (k) { I18N.ar[k] = COLOURS_AR[k]; });
