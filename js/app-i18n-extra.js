@@ -2966,3 +2966,49 @@ var DATEPICK_AR = {
 };
 Object.keys(DATEPICK_EN).forEach(function (k) { I18N.en[k] = DATEPICK_EN[k]; });
 Object.keys(DATEPICK_AR).forEach(function (k) { I18N.ar[k] = DATEPICK_AR[k]; });
+
+/* ---- product categories (057, js/catset.js) ------------------------------ */
+var CATS_EN = {
+  cat_title: 'Categories', cat_count: 'categories', cat_off_count: 'switched off',
+  cat_note: 'What the till filters by and what a product is filed under. Each needs an English and an Arabic name. A category is never deleted — switch it off and it leaves the till and the new-product form, while the products already in it keep it.',
+  cat_name_en: 'English name', cat_name_ar: 'Arabic name', cat_sizes: 'Sizes (comma between)',
+  cat_on: 'In use', cat_is_on: 'On', cat_is_off: 'Off', cat_turn_off: 'Switch this category off', cat_turn_on: 'Switch this category on',
+  cat_add: 'Add a category', cat_add_btn: 'Add', cat_added: '{name} added', cat_saved: 'Category saved',
+  cat_now_on: 'Category switched on', cat_now_off: 'Category switched off — its products keep it',
+  err_name_en_required: 'The English name is required.', err_name_ar_required: 'The Arabic name is required.',
+  err_category_dup_en: 'Another category already has that English name.',
+  err_category_dup_ar: 'Another category already has that Arabic name.',
+  err_bad_category: 'That category does not exist.', err_category_off: 'That category is switched off. Switch it on in Settings first.',
+  err_name_too_long: 'A name is at most 40 characters.', err_bad_size: 'One of the sizes is too long.',
+  err_offline: 'No connection to the server. Check the wifi.',
+  err_timeout: 'The server is not answering. Try again.',
+  err_unauthenticated: 'You have been signed out. Please sign in again.',
+  err_forbidden: 'Your account does not have access to this.',
+  err_server_error: 'Something went wrong on the server.',
+  err_bad_credentials: 'That username and password do not match.',
+  err_too_many_attempts: 'Too many tries. Wait a few minutes and try again.',
+  err_disabled: 'This account is switched off. Ask the owner.'
+};
+var CATS_AR = {
+  cat_title: 'الفئات', cat_count: 'فئة', cat_off_count: 'موقوفة',
+  cat_note: 'ما يفرز به الكاشير وما يُصنَّف تحته كل منتج. لكل فئة اسم بالإنكليزية واسم بالعربية. لا تُحذف الفئة أبداً — أوقفها فتختفي من الكاشير ومن نموذج المنتج الجديد، وتبقى للمنتجات الموجودة فيها.',
+  cat_name_en: 'الاسم بالإنكليزية', cat_name_ar: 'الاسم بالعربية', cat_sizes: 'القياسات (بينها فاصلة)',
+  cat_on: 'مستخدمة', cat_is_on: 'تعمل', cat_is_off: 'موقوفة', cat_turn_off: 'أوقف هذه الفئة', cat_turn_on: 'شغّل هذه الفئة',
+  cat_add: 'أضف فئة', cat_add_btn: 'إضافة', cat_added: 'أُضيفت {name}', cat_saved: 'حُفظت الفئة',
+  cat_now_on: 'شُغّلت الفئة', cat_now_off: 'أُوقفت الفئة — تبقى لمنتجاتها',
+  err_name_en_required: 'الاسم بالإنكليزية مطلوب.', err_name_ar_required: 'الاسم بالعربية مطلوب.',
+  err_category_dup_en: 'هناك فئة أخرى بالاسم الإنكليزي نفسه.',
+  err_category_dup_ar: 'هناك فئة أخرى بالاسم العربي نفسه.',
+  err_bad_category: 'هذه الفئة غير موجودة.', err_category_off: 'هذه الفئة موقوفة. شغّلها من الإعدادات أولاً.',
+  err_name_too_long: 'الاسم 40 حرفاً على الأكثر.', err_bad_size: 'أحد القياسات طويل جداً.',
+  err_offline: 'لا اتصال بالخادم. تحقّق من الواي فاي.',
+  err_timeout: 'الخادم لا يستجيب. حاول مجدداً.',
+  err_unauthenticated: 'تم تسجيل خروجك. سجّل الدخول مجدداً.',
+  err_forbidden: 'حسابك لا يملك صلاحية لهذا.',
+  err_server_error: 'حدث خطأ في الخادم.',
+  err_bad_credentials: 'اسم المستخدم وكلمة المرور غير متطابقين.',
+  err_too_many_attempts: 'محاولات كثيرة. انتظر بضع دقائق ثم حاول.',
+  err_disabled: 'هذا الحساب موقوف. اسأل صاحب المتجر.'
+};
+Object.keys(CATS_EN).forEach(function (k) { I18N.en[k] = CATS_EN[k]; });
+Object.keys(CATS_AR).forEach(function (k) { I18N.ar[k] = CATS_AR[k]; });

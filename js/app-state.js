@@ -11,7 +11,9 @@
 
 var OG = {
   view: 'dashboard',
-  lang: 'en',
+  /* The language this machine last used (written by applyLang). The login
+     screen already spoke it; the app now opens in it too. */
+  lang: (function () { try { return localStorage.getItem('og.lang') === 'ar' ? 'ar' : 'en'; } catch (e) { return 'en'; } })(),
   currency: 'SYP',
   pending: null,                                        // action to run after a view renders
   /* `arch` is the LIFECYCLE filter and is deliberately NOT part of `health`.

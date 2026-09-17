@@ -92,53 +92,8 @@ function setSection(label) { return '<div class="set-sec">' + label + '</div>'; 
 var ROLE_MATRIX = null;
 var ROLE_SAVE_T = null;
 
-/* Fallback for demo mode and for _shot.html, where there is no server to ask.
-   Shows the shipped defaults, read-only, so the screen still says something
-   true rather than rendering an empty card in a client screenshot. */
-var DEMO_MATRIX_ROLES = ['manager', 'cashier', 'warehouse', 'delivery', 'partner'];
-var DEMO_MATRIX = [
-  ['sell',           'till',      'Sell at the till',            [1, 1, 0, 0, 0]],
-  ['refund',         'till',      'Give a refund',               [1, 1, 0, 0, 0]],
-  ['void',           'till',      'Cancel a completed sale',     [1, 0, 0, 0, 0]],
-  ['stock.read',     'stock',     'See stock levels',            [1, 1, 1, 1, 0]],
-  ['stock.move',     'stock',     'Receive and move stock',      [1, 0, 1, 0, 0]],
-  ['stock.count',    'stock',     'Do a stock count',            [1, 0, 1, 0, 0]],
-  ['product.read',   'products',  'See products',                [1, 1, 1, 1, 0]],
-  ['product.write',  'products',  'Add and edit products',       [1, 0, 1, 0, 0]],
-  ['customer.read',  'customers', 'See customers',               [1, 1, 0, 1, 0]],
-  ['customer.write', 'customers', 'Add and edit customers',      [1, 1, 0, 0, 0]],
-  ['cost.read',      'money',     'See what things cost',        [1, 0, 0, 0, 0]],
-  ['profit.read',    'money',     'See profit',                  [1, 0, 0, 0, 0]],
-  ['money.read',     'money',     'See the money screen',        [1, 0, 0, 0, 0]],
-  ['money.write',    'money',     'Record expenses and debts',   [1, 0, 0, 0, 0]],
-  ['print.read',     'print',     'See print jobs',              [1, 1, 1, 1, 0]],
-  ['print.write',    'print',     'Create and change print jobs',[1, 0, 0, 0, 0]],
-  ['partner.read',   'print',     'See the partner portal',      [1, 0, 0, 0, 0]],
-  ['partner.write',  'print',     'Act on partner orders',       [1, 0, 0, 0, 0]],
-  ['staff.read',     'admin',     'See staff accounts',          [1, 0, 0, 0, 0]],
-  ['staff.write',    'admin',     'Add and edit staff',          [1, 0, 0, 0, 0]],
-  ['report.read',    'admin',     'See reports',                 [1, 0, 0, 0, 0]],
-  ['config.write',   'admin',     'Change settings',             [1, 0, 0, 0, 0]],
-  ['partner.jobs',   'partner',   'Yalla Wear: own jobs',        [0, 0, 0, 0, 1]],
-  ['partner.respond','partner',   'Yalla Wear: accept or decline',[0, 0, 0, 0, 1]],
-  ['partner.invoice','partner',   'Yalla Wear: own invoices',    [0, 0, 0, 0, 1]]
-];
-
-function demoMatrix() {
-  return {
-    roles: DEMO_MATRIX_ROLES,
-    permissions: DEMO_MATRIX.map(function (r) {
-      var roles = {};
-      DEMO_MATRIX_ROLES.forEach(function (name, i) {
-        roles[name] = { allowed: !!r[3][i], locked: true, why: null };
-      });
-      return { perm: r[0], group: r[1], label: r[2], roles: roles };
-    })
-  };
-}
-
 function rolesCard() {
-  var m = ROLE_MATRIX || (typeof Auth === 'undefined' ? demoMatrix() : null);
+  var m = ROLE_MATRIX;
 
   /* Still loading. Draw the frame rather than nothing, so the card does not
      pop into existence and shove the rest of the page down. */
@@ -149,7 +104,7 @@ function rolesCard() {
 
   /* Only a manager may change these. Everyone else sees the same grid,
      read-only — knowing the rules is not a privilege, changing them is. */
-  var editable = typeof Auth !== 'undefined' && Auth.can('config.write');
+  var editable = Auth.can('config.write');
 
   var h = setFoldStart('roles', t('roles_perms'),
     m.roles.length + ' ' + t('role').toLowerCase() + 's · ' +
@@ -196,7 +151,6 @@ function rolesCard() {
 /* Pull the live matrix, then repaint Settings once. Called from afterSettings
    so it only runs when the screen is actually open. */
 function loadRoleMatrix() {
-  if (typeof Auth === 'undefined') return;
   if (ROLE_MATRIX) return;
 
   API.get('/api/roles')
@@ -233,7 +187,6 @@ var PRESENCE_FRESH_MS = 30 * 1000;
 var STAFF_PRESENCE_AT = 0;
 
 function loadStaffPresence() {
-  if (typeof Auth === 'undefined') return;
   if (!Auth.can('staff.read')) return;
 
   /* The render this fetch triggers lands back here immediately; that second
@@ -262,10 +215,6 @@ function presenceMinutesAgo(iso) {
 }
 
 function presenceCard() {
-  if (typeof Auth === 'undefined') {
-    return setFoldStart('presence', t('presence_title'), '') +
-      '<div class="card-body muted small">' + t('demo_no_account') + '</div>' + setFoldEnd();
-  }
   if (!Auth.can('staff.read')) return '';
 
   var list = STAFF_PRESENCE;
@@ -321,8 +270,7 @@ function saveRolePermissions(role) {
 
       /* Your own role may have just changed — repaint the menu, not just the
          table. */
-      if (typeof Auth !== 'undefined') Auth.refresh().then(function () { refreshAll(); });
-      else render();
+      Auth.refresh().then(function () { refreshAll(); });
     })
     .catch(function (e) { toast(t('roles_perms'), API.friendly(e), 'err', 5000); });
 }
@@ -452,15 +400,9 @@ function hardwareCard() {
    Everything a manager can tune without a code change: which printer to
    talk to, how many copies, and the two blocks of text that print on every
    receipt bilingual — the footer and the return policy. Saves straight to
-   the server's config table via PUT /api/config; there is nothing to save
-   in demo mode, so the fields show the seeded defaults and stay read-only. */
+   the server's config table via PUT /api/config. */
 function receiptSettingsCard() {
-  var demo = typeof Auth === 'undefined';
-  var dis = demo ? ' disabled' : '';
-
   var h = setFoldStart('receipt', t('rc3_title'), t('rc3_sub')) + '<div class="card-body">';
-
-  if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
 
   /* FIVE SUBJECTS, NOT FORTY FIELDS. Which printer, what prints at the top of
      the slip, how the head burns it, what appears on the paper, and the gift
@@ -472,22 +414,22 @@ function receiptSettingsCard() {
   var usb = CONFIG.RECEIPT_TRANSPORT === 'usb';
   h += '<label class="field"><span>' + t('rc3_transport') + '</span>' +
     '<div class="chip-row" id="rcTransport" data-v="' + (usb ? 'usb' : 'tcp') + '">' +
-      '<button class="chip ' + (!usb ? 'on' : '') + '"' + dis +
+      '<button class="chip ' + (!usb ? 'on' : '') + '"' +
         ' data-act="rc-transport" data-k="tcp">' + t('rc3_transport_network') + '</button>' +
-      '<button class="chip ' + (usb ? 'on' : '') + '"' + dis +
+      '<button class="chip ' + (usb ? 'on' : '') + '"' +
         ' data-act="rc-transport" data-k="usb">' + t('rc3_transport_usb') + '</button>' +
     '</div></label>';
 
   h += '<div class="row2" id="rcTransportFields">';
   if (usb) {
     h += '<label class="field" style="grid-column:1/-1"><span>' + t('rc3_printer_share') + '</span>' +
-      '<input class="inp num" dir="ltr" id="rcShare" value="' + esc(CONFIG.RECEIPT_PRINTER_SHARE) + '"' + dis + '></label>' +
+      '<input class="inp num" dir="ltr" id="rcShare" value="' + esc(CONFIG.RECEIPT_PRINTER_SHARE) + '"></label>' +
       '<div class="partner-note" style="grid-column:1/-1">' + t('rc3_printer_share_hint') + '</div>';
   } else {
     h += '<label class="field"><span>' + t('rc3_host') + '</span>' +
-      '<input class="inp num" dir="ltr" id="rcHost" value="' + esc(CONFIG.RECEIPT_PRINTER_HOST) + '"' + dis + '></label>' +
+      '<input class="inp num" dir="ltr" id="rcHost" value="' + esc(CONFIG.RECEIPT_PRINTER_HOST) + '"></label>' +
     '<label class="field"><span>' + t('rc3_port') + '</span>' +
-      '<input class="inp num" type="number" id="rcPort" value="' + CONFIG.RECEIPT_PRINTER_PORT + '"' + dis + '></label>';
+      '<input class="inp num" type="number" id="rcPort" value="' + CONFIG.RECEIPT_PRINTER_PORT + '"></label>';
   }
   h += '</div>';
 
@@ -496,22 +438,22 @@ function receiptSettingsCard() {
 
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_branch') + '</span>' +
-      '<input class="inp" id="rcBranch" value="' + esc(CONFIG.SHOP_BRANCH) + '"' + dis + '></label>' +
+      '<input class="inp" id="rcBranch" value="' + esc(CONFIG.SHOP_BRANCH) + '"></label>' +
     '<label class="field"><span>' + t('phone') + '</span>' +
-      '<input class="inp num" dir="ltr" id="rcPhone" value="' + esc(CONFIG.SHOP_PHONE) + '"' + dis + '></label>' +
+      '<input class="inp num" dir="ltr" id="rcPhone" value="' + esc(CONFIG.SHOP_PHONE) + '"></label>' +
   '</div>';
 
   /* Printed on the receipt in place of the street address (drawHeader() no
      longer prints it — the customer is standing in the shop already). */
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_instagram') + '</span>' +
-      '<input class="inp num" dir="ltr" id="rcInstagram" value="' + esc(CONFIG.RECEIPT_INSTAGRAM) + '"' + dis + '></label>' +
+      '<input class="inp num" dir="ltr" id="rcInstagram" value="' + esc(CONFIG.RECEIPT_INSTAGRAM) + '"></label>' +
     '<label class="field"><span>' + t('rc3_telegram') + '</span>' +
-      '<input class="inp num" dir="ltr" id="rcTelegram" value="' + esc(CONFIG.RECEIPT_TELEGRAM) + '"' + dis + '></label>' +
+      '<input class="inp num" dir="ltr" id="rcTelegram" value="' + esc(CONFIG.RECEIPT_TELEGRAM) + '"></label>' +
   '</div>';
   h += '<div class="row2">' +
     '<label class="field" style="grid-column:1/-1"><span>' + t('rc3_maps_url') + '</span>' +
-      '<input class="inp num" dir="ltr" id="rcMapsUrl" value="' + esc(CONFIG.RECEIPT_MAPS_URL) + '"' + dis + '></label>' +
+      '<input class="inp num" dir="ltr" id="rcMapsUrl" value="' + esc(CONFIG.RECEIPT_MAPS_URL) + '"></label>' +
   '</div>';
 
   h += '<div class="set-sep"></div><h4 class="set-h">' + t('rc3_g_how') + '</h4>' +
@@ -520,21 +462,21 @@ function receiptSettingsCard() {
   h += '<div class="rule-row"><div class="rr-txt"><b>' + t('rc3_auto_print') + '</b>' +
     '<small>' + t('rc3_auto_print_hint') + '</small></div>' +
     '<label class="switch"><input type="checkbox" id="rcAutoPrint"' +
-      (CONFIG.RECEIPT_AUTO_PRINT ? ' checked' : '') + dis + '><i></i></label></div>';
+      (CONFIG.RECEIPT_AUTO_PRINT ? ' checked' : '') + '><i></i></label></div>';
 
   h += '<div class="rule-row"><div class="rr-txt"><b>' + t('rc3_confirm_print') + '</b>' +
     '<small>' + t('rc3_confirm_print_hint') + '</small></div>' +
     '<label class="switch"><input type="checkbox" id="rcConfirmPrint"' +
-      (CONFIG.RECEIPT_CONFIRM_PRINT ? ' checked' : '') + dis + '><i></i></label></div>';
+      (CONFIG.RECEIPT_CONFIRM_PRINT ? ' checked' : '') + '><i></i></label></div>';
 
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_copies') + '</span>' +
-      '<input class="inp num" type="number" min="1" max="4" id="rcCopies" value="' + CONFIG.RECEIPT_COPIES + '"' + dis + '></label>' +
+      '<input class="inp num" type="number" min="1" max="4" id="rcCopies" value="' + CONFIG.RECEIPT_COPIES + '"></label>' +
     '<label class="field"><span>' + t('rc3_cut_mode') + '</span>' +
       '<div class="chip-row" id="rcCutMode" data-v="' + esc(CONFIG.RECEIPT_CUT_MODE) + '">' +
-        '<button class="chip ' + (CONFIG.RECEIPT_CUT_MODE !== 'full' ? 'on' : '') + '"' + dis +
+        '<button class="chip ' + (CONFIG.RECEIPT_CUT_MODE !== 'full' ? 'on' : '') + '"' +
           ' data-act="rc-cut" data-k="partial">' + t('rc3_cut_partial') + '</button>' +
-        '<button class="chip ' + (CONFIG.RECEIPT_CUT_MODE === 'full' ? 'on' : '') + '"' + dis +
+        '<button class="chip ' + (CONFIG.RECEIPT_CUT_MODE === 'full' ? 'on' : '') + '"' +
           ' data-act="rc-cut" data-k="full">' + t('rc3_cut_full') + '</button>' +
       '</div></label>' +
   '</div>';
@@ -546,7 +488,7 @@ function receiptSettingsCard() {
   h += '<label class="field"><span>' + t('rc3_ink') + '</span>' +
     '<div class="chip-row" id="rcInk" data-v="' + esc(CONFIG.RECEIPT_INK) + '">' +
       ['normal', 'dark', 'darker'].map(function (k) {
-        return '<button class="chip ' + (CONFIG.RECEIPT_INK === k ? 'on' : '') + '"' + dis +
+        return '<button class="chip ' + (CONFIG.RECEIPT_INK === k ? 'on' : '') + '"' +
           ' data-act="rc-ink" data-k="' + k + '">' + t('rc3_ink_' + k) + '</button>';
       }).join('') +
     '</div><small class="faint">' + t('rc3_ink_hint') + '</small></label>';
@@ -559,21 +501,21 @@ function receiptSettingsCard() {
   ].forEach(function (f) {
     h += '<div class="rule-row"><div class="rr-txt"><b>' + t(f[1]) + '</b>' +
       '<small>' + t(f[2]) + '</small></div>' +
-      '<label class="switch"><input type="checkbox" id="' + f[0] + '"' + (f[3] ? ' checked' : '') + dis + '><i></i></label></div>';
+      '<label class="switch"><input type="checkbox" id="' + f[0] + '"' + (f[3] ? ' checked' : '') + '><i></i></label></div>';
   });
 
   h += '<div class="row2 mt">' +
     '<label class="field"><span>' + t('rc3_footer_ar') + '</span>' +
-      '<textarea class="inp" dir="rtl" id="rcFooterAr" rows="2"' + dis + '>' + esc(CONFIG.RECEIPT_FOOTER_AR) + '</textarea></label>' +
+      '<textarea class="inp" dir="rtl" id="rcFooterAr" rows="2">' + esc(CONFIG.RECEIPT_FOOTER_AR) + '</textarea></label>' +
     '<label class="field"><span>' + t('rc3_footer_en') + '</span>' +
-      '<textarea class="inp" dir="ltr" id="rcFooterEn" rows="2"' + dis + '>' + esc(CONFIG.RECEIPT_FOOTER_EN) + '</textarea></label>' +
+      '<textarea class="inp" dir="ltr" id="rcFooterEn" rows="2">' + esc(CONFIG.RECEIPT_FOOTER_EN) + '</textarea></label>' +
   '</div>';
 
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_policy_ar') + '</span>' +
-      '<textarea class="inp" dir="rtl" id="rcPolicyAr" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_POLICY_AR) + '</textarea></label>' +
+      '<textarea class="inp" dir="rtl" id="rcPolicyAr" rows="3">' + esc(CONFIG.RECEIPT_POLICY_AR) + '</textarea></label>' +
     '<label class="field"><span>' + t('rc3_policy_en') + '</span>' +
-      '<textarea class="inp" dir="ltr" id="rcPolicyEn" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_POLICY_EN) + '</textarea></label>' +
+      '<textarea class="inp" dir="ltr" id="rcPolicyEn" rows="3">' + esc(CONFIG.RECEIPT_POLICY_EN) + '</textarea></label>' +
   '</div>';
 
   /* ---- the gift slip -----------------------------------------------------
@@ -595,18 +537,18 @@ function receiptSettingsCard() {
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_gift_window') + '</span>' +
       '<input class="inp num" type="number" min="1" max="365" id="rcGiftDays" value="' +
-        Math.max(1, Math.round(CONFIG.RECEIPT_GIFT_EXCHANGE_HOURS / 24)) + '"' + dis + '></label>' +
+        Math.max(1, Math.round(CONFIG.RECEIPT_GIFT_EXCHANGE_HOURS / 24)) + '"></label>' +
     '<p class="set-note set-aside">' + t('rc3_gift_window_hint') + '</p>' +
   '</div>';
 
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_gift_policy_ar') + '</span>' +
-      '<textarea class="inp" dir="rtl" id="rcGiftPolicyAr" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_GIFT_POLICY_AR) + '</textarea></label>' +
+      '<textarea class="inp" dir="rtl" id="rcGiftPolicyAr" rows="3">' + esc(CONFIG.RECEIPT_GIFT_POLICY_AR) + '</textarea></label>' +
     '<label class="field"><span>' + t('rc3_gift_policy_en') + '</span>' +
-      '<textarea class="inp" dir="ltr" id="rcGiftPolicyEn" rows="3"' + dis + '>' + esc(CONFIG.RECEIPT_GIFT_POLICY_EN) + '</textarea></label>' +
+      '<textarea class="inp" dir="ltr" id="rcGiftPolicyEn" rows="3">' + esc(CONFIG.RECEIPT_GIFT_POLICY_EN) + '</textarea></label>' +
   '</div>';
 
-  h += '<div class="mt"><button class="btn btn-primary" data-act="rc-save-config"' + dis + '>' +
+  h += '<div class="mt"><button class="btn btn-primary" data-act="rc-save-config">' +
     t('rc3_save') + '</button></div>';
 
   return h + '</div>' + setFoldEnd();
@@ -619,16 +561,14 @@ function receiptSettingsCard() {
    queue view work for anyone with label.print; the config fields below
    them are manager-only (config.write), same split as everywhere else. */
 function thermalLabelsCard() {
-  var demo = typeof Auth === 'undefined';
   var canPrint = allow('label.print');
-  var canConfig = allow('config.write') && !demo;
-  var dis = demo || !canPrint ? ' disabled' : '';
+  var canConfig = allow('config.write');
+  var dis = !canPrint ? ' disabled' : '';
   var cdis = canConfig ? '' : ' disabled';
 
   var h = setFoldStart('labels', t('lbl_thermal_section'), t('lbl_thermal_sub')) + '<div class="card-body">';
 
-  if (demo) h += '<div class="partner-note note-warn mb">' + t('rc3_demo_note') + '</div>';
-  else if (!canPrint) h += '<div class="partner-note note-warn mb">' + t('no_access') + '</div>';
+  if (!canPrint) h += '<div class="partner-note note-warn mb">' + t('no_access') + '</div>';
 
   /* Where this machine's labels come out — the same choice the preview
      offers, remembered per machine. */
@@ -664,7 +604,7 @@ function thermalLabelsCard() {
   h += '<div class="mt"><button class="btn btn-ghost"' + dis + ' data-act="label-calibrate">' +
     t('hw_calibrate') + '</button></div>';
 
-  if (!demo && canPrint && OG.labelQueue === undefined && !OG.labelQueueLoading) {
+  if (canPrint && OG.labelQueue === undefined && !OG.labelQueueLoading) {
     OG.labelQueueLoading = true;
     API.get('/api/labels/queue').then(function (res) {
       OG.labelQueueLoading = false;
@@ -712,7 +652,7 @@ function thermalLabelsCard() {
 
 /* Which model each shelf is for — the coarse list beside the map, for the
    manager who wants to run down a whole room's assignments without clicking
-   forty tiles. The controls are ShelfMap's own (data-change="smset-assign"),
+   forty tiles. The controls are ShelfMap's own (data-smv="set-assign"),
    so both surfaces hit PATCH /api/shelves/:id through one flow, warnings and
    stale-label counts included. */
 function shelvesCard() {
@@ -968,7 +908,7 @@ var RemindersUI = (function () {
   var last = null;
 
   function can() {
-    return typeof Auth !== 'undefined' && Auth.can('config.write') &&
+    return Auth.can('config.write') &&
            typeof Shop !== 'undefined' && Shop.live();
   }
 
@@ -1048,10 +988,6 @@ var RemindersUI = (function () {
   return { load: load, paint: paint, preview: preview };
 })();
 
-/* The Telegram line — the shop's own bot, linked to a person or a staff
-   group. The card itself is drawn by YALLA.telegramCard, because the partner
-   portal shows the very same card for their bot; only the words differ. The
-   body loads in afterSettings, like the roles grid — a shut fold still binds. */
 /* ---- the Supabase mirror -------------------------------------------------
    Where the copy of the shop is up to. The server pushes every change a
    couple of seconds after it lands and reports itself on the live channel
@@ -1070,7 +1006,7 @@ var MirrorUI = (function () {
   var tickT = null;
 
   function can() {
-    return typeof Auth !== 'undefined' && Auth.can('config.write') &&
+    return Auth.can('config.write') &&
            typeof Shop !== 'undefined' && Shop.live();
   }
 
@@ -1217,6 +1153,11 @@ function mirrorCard() {
   return h + setFoldEnd();
 }
 
+/* The Telegram line — the shop's own bot, linked to a person or a staff
+   group. This draws only the fold and its empty hosts; the body is YALLA's
+   own tgCardHtml, filled in by YALLA.telegramLoad, because the partner portal
+   shows the very same card for their bot and only the words differ. The body
+   loads in afterSettings, like the roles grid — a shut fold still binds. */
 function telegramCard() {
   var h = setFoldStart('telegram', t('tg_title'),
     '<span id="tgMeta" class="muted">' + t('tg_loading') + '</span>');
@@ -1262,6 +1203,8 @@ function viewSettings() {
 
   h += setSection(t('setg_wh'));
   h += shelvesCard();
+  /* The product categories, in both languages (057). config.write only. */
+  if (typeof CatSet !== 'undefined') h += CatSet.card();
 
   /* THE DELIVERY OFFICE'S OWN LISTS — payment methods, the transport offices
      and couriers, the shipping price list, the shop's transfer details. They

@@ -75,7 +75,7 @@ import { fullMinutes } from './sync-worker.js';
    the same reason. */
 export const ORDER = [
   /* nothing points out of these */
-  'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates',
+  'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates', 'categories',
   'clubs', 'suppliers', 'employees',
 
   /* the catalogue and what was sold from it.
@@ -144,6 +144,8 @@ export const ORDER = [
    permissions back instead of the ones he set. */
 export const SEEDED = new Set([
   'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates', 'fx_rates',
+  /* 057 seeds the eight categories */
+  'categories',
   /* the migration plants the nine clubs the shop prints, so this is never
      empty either and would be skipped forever without saying so */
   'clubs'

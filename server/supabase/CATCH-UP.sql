@@ -742,3 +742,17 @@ ALTER TABLE salary_payments ENABLE ROW LEVEL SECURITY;
 
 -- ===== 024_po_due.sql =====  (local 056: when a purchase order is due)
 ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS due_date TEXT;
+
+
+-- ===== 025_categories.sql =====  (local 057: product categories in English and Arabic)
+CREATE TABLE IF NOT EXISTS categories (
+  id          TEXT PRIMARY KEY,
+  name_en     TEXT NOT NULL,
+  name_ar     TEXT NOT NULL,
+  sizes       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  active      BOOLEAN NOT NULL DEFAULT TRUE,
+  sort        INTEGER NOT NULL DEFAULT 100,
+  created_at  TIMESTAMPTZ NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL
+);
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;

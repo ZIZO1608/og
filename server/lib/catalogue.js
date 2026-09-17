@@ -12,6 +12,7 @@
    ========================================================================== */
 
 import { get, nowIso, tx, logChange } from './db.js';
+import * as Categories from './categories.js';
 
 /* Currency codes come from the database, so adding one is a migration rather
    than an edit here. */
@@ -26,32 +27,6 @@ export function minorExp(code) {
   const r = get().prepare('SELECT minor_exp FROM currencies WHERE code = ?').get(code);
   if (!r) throw new Error(`unknown currency: ${code}`);
   return r.minor_exp;
-}
-
-/* "12.50" USD -> 1250. "45000" SYP -> 45000.
-   Parsed from a string rather than a float so 0.1 + 0.2 never enters the
-   picture; the whole point of minor units is to keep money in integers. */
-export function toMinor(amount, code) {
-  const exp = minorExp(code);
-  const s = String(amount).trim();
-
-  if (!/^-?\d*\.?\d*$/.test(s) || s === '' || s === '.') {
-    throw new Error(`"${amount}" is not a number`);
-  }
-
-  const neg = s.startsWith('-');
-  const [whole, frac = ''] = s.replace('-', '').split('.');
-
-  if (frac.length > exp) {
-    throw new Error(
-      `${code} has ${exp} decimal place(s); "${amount}" has ${frac.length}`
-    );
-  }
-
-  const padded = frac.padEnd(exp, '0');
-  const n = Number((whole || '0') + padded);
-  if (!Number.isSafeInteger(n)) throw new Error(`${amount} is too large`);
-  return neg ? -n : n;
 }
 
 export function fromMinor(minor, code) {
@@ -90,23 +65,6 @@ export function setRate({ base, quote, rate, userId }) {
     logChange('fx_rates', info.lastInsertRowid, 'insert', userId, null);
     return { base, quote, rate, at };
   });
-}
-
-/* Convert between currencies at a given rate. Rounds to the target's minor
-   units — the caller must pass the rate explicitly rather than have one looked
-   up, so a sale can be settled at the rate frozen onto it. */
-export function convert(minor, from, to, rate) {
-  if (from === to) return minor;
-
-  const fromExp = minorExp(from);
-  const toExp = minorExp(to);
-
-  /* Work in major units for the multiply, then back to minor units of the
-     target. Doing it any other way needs the exponent difference folded into
-     the rate, which is where these conversions usually go wrong. */
-  const major = minor / 10 ** fromExp;
-  const converted = from === 'USD' ? major * rate : major / rate;
-  return Math.round(converted * 10 ** toExp);
 }
 
 /* ---------------------------------------------------------------- barcodes
@@ -252,6 +210,8 @@ function webRow(p, sizes) {
     name: p.name,
     brand: p.brand ?? null,
     type: p.type,
+    /* 057 — both names, so a site in either language needs no second list */
+    category: catNames(p.type),
     colorway: p.colorway ?? null,
     madeIn: p.made_in ?? null,
     /* The shop has no photographs — the app draws a colour block with the
@@ -269,6 +229,11 @@ function webRow(p, sizes) {
     inStock: sizes.some((v) => v.total > 0),
     updatedAt: p.updated_at
   };
+}
+
+function catNames(id) {
+  const c = Categories.byId(id);
+  return c ? { id: c.id, en: c.nameEn, ar: c.nameAr } : { id, en: id, ar: id };
 }
 
 const WEB_COLS =
@@ -410,18 +375,6 @@ export function setImage(id, url, userId) {
   return { id, previous: row.image_url || null, imageUrl: url || null };
 }
 
-/* The lookup a scan performs. Barcode first because that is what a scanner
-   sends; sku second so a human can type the code printed on the label. */
-export function byBarcode(code) {
-  const v = get().prepare(
-    `SELECT v.*, p.name, p.type, p.brand, p.colorway, p.currency,
-            p.cost_price, p.selling_price, p.image_bg, p.image_initials
-       FROM variants v JOIN products p ON p.id = v.product_id
-      WHERE v.barcode = ? OR v.sku = ? OR v.label_code = ?`
-  ).get(code, code, code);
-  return v ?? null;
-}
-
 /* Attach a scanned code to an existing variant — either a fresh barcode (the
    box actually carries one and it was never recorded) or a corrected
    label_code. Never touches sku. Refuses a code already claimed by a
@@ -471,6 +424,7 @@ export function createWithVariants({
 }) {
   if (!name || !String(name).trim()) throw new Error('name is required');
   if (!type) throw new Error('type is required');
+  Categories.assertUsable(type);            // 057: a real, switched-on category
   if (!currency) throw new Error('currency is required');
   minorExp(currency);                       // throws if the currency is unknown
 
@@ -567,6 +521,10 @@ export function update(id, fields, userId) {
 
   for (const [k, v] of Object.entries(fields)) {
     if (!EDITABLE.has(k)) continue;      // ignore unknown keys rather than fail
+    if (k === 'type') {
+      const cur = get().prepare('SELECT type FROM products WHERE id = ?').get(id);
+      Categories.assertUsable(v, { current: cur ? cur.type : null });
+    }
     if (k === 'currency') minorExp(v);   // validate before writing
     sets.push(`${k} = ?`);
     args.push(v);
@@ -611,10 +569,4 @@ export function addVariant({ productId, size, barcode, shelf, userId }) {
     logChange('variants', sku, 'insert', userId, null);
     return { sku, size: label };
   });
-}
-
-/* Products are hidden, never deleted. A deleted product breaks every past sale
-   that referenced it, and "discontinued" is what is actually meant. */
-export function hide(id, userId) {
-  return update(id, { hidden: 1 }, userId);
 }

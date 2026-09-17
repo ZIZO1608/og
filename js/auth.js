@@ -55,6 +55,10 @@ var Auth = (function () {
 
   /* ----------------------------------------------------------------- screen */
 
+  /* The login screen is drawn before anyone has chosen a language, so it
+     speaks the language the app last opened in (OG_LANG_AR). */
+  function L(en, ar) { return (typeof OG_LANG_AR === 'function' && OG_LANG_AR()) ? ar : en; }
+
   function loginScreen() {
     var el = document.createElement('div');
     el.className = 'gate';
@@ -66,29 +70,29 @@ var Auth = (function () {
       '<div class="gate-card">' +
         '<div class="gate-mark"><img src="assets/logo.svg" alt="OG"></div>' +
         '<h1>OG SYSTEM</h1>' +
-        '<p>Sneakers &amp; Streetwear — retail operations</p>' +
+        '<p>' + L('Sneakers &amp; Streetwear — retail operations', 'أحذية وملابس رياضية — إدارة المتجر') + '</p>' +
         '<form id="lgForm" autocomplete="on">' +
-          '<label class="gate-field"><span>Username</span>' +
-            '<input id="lgUser" type="text" aria-label="Username" ' +
+          '<label class="gate-field"><span>' + L('Username', 'اسم المستخدم') + '</span>' +
+            '<input id="lgUser" type="text" dir="ltr" aria-label="' + L('Username', 'اسم المستخدم') + '" ' +
               'autocomplete="username" spellcheck="false" autocapitalize="none"></label>' +
-          '<label class="gate-field"><span>Password</span>' +
+          '<label class="gate-field"><span>' + L('Password', 'كلمة المرور') + '</span>' +
             '<span class="gate-pw">' +
-              '<input id="lgPass" type="password" aria-label="Password" ' +
+              '<input id="lgPass" type="password" dir="ltr" aria-label="' + L('Password', 'كلمة المرور') + '" ' +
                 'autocomplete="current-password">' +
               /* A shop keyboard is often the wrong layout, and the password is
                  typed one-handed over a counter. Being able to see what was
                  actually typed turns a second failed attempt into none. */
               '<button type="button" id="lgEye" class="gate-eye" ' +
-                'aria-label="Show password" title="Show password">' +
+                'aria-label="' + L('Show password', 'أظهر كلمة المرور') + '" title="' + L('Show password', 'أظهر كلمة المرور') + '">' +
                 '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
                   '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/>' +
                   '<circle cx="12" cy="12" r="2.6"/>' +
                   '<path class="eye-slash" d="M4 20L20 4"/></svg></button>' +
             '</span></label>' +
-          '<button type="submit" id="lgGo">Sign in</button>' +
+          '<button type="submit" id="lgGo">' + L('Sign in', 'تسجيل الدخول') + '</button>' +
         '</form>' +
         '<small id="lgErr"></small>' +
-        '<button type="button" id="lgHint" class="gate-link">Forgotten your password?</button>' +
+        '<button type="button" id="lgHint" class="gate-link">' + L('Forgotten your password?', 'نسيت كلمة المرور؟') + '</button>' +
         '<span class="gate-note" id="lgNote"></span>' +
       '</div>';
     return el;
@@ -137,8 +141,8 @@ var Auth = (function () {
       var hidden = pEl.type === 'password';
       pEl.type = hidden ? 'text' : 'password';
       eye.classList.toggle('on', hidden);
-      eye.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
-      eye.setAttribute('title', hidden ? 'Hide password' : 'Show password');
+      eye.setAttribute('aria-label', hidden ? L('Hide password', 'أخفِ كلمة المرور') : L('Show password', 'أظهر كلمة المرور'));
+      eye.setAttribute('title', hidden ? L('Hide password', 'أخفِ كلمة المرور') : L('Show password', 'أظهر كلمة المرور'));
       pEl.focus();
     });
 
@@ -146,7 +150,7 @@ var Auth = (function () {
        someone type a correct password and be told it is wrong. */
     API.ping().then(function (verdict) {
       if (verdict !== 'up') {
-        note.textContent = 'Cannot reach the server';
+        note.textContent = L('Cannot reach the server', 'لا يمكن الوصول إلى الخادم');
         note.className = 'gate-note gate-warn';
         return;
       }
@@ -173,12 +177,12 @@ var Auth = (function () {
       var username = uEl.value.trim();
       var password = pEl.value;
       if (!username || !password) {
-        show(el, 'Type your username and password.');
+        show(el, L('Type your username and password.', 'اكتب اسم المستخدم وكلمة المرور.'));
         return;
       }
 
       go.disabled = true;
-      go.textContent = 'Signing in…';
+      go.textContent = L('Signing in…', 'جارٍ الدخول…');
       show(el, '');
 
       API.post('/api/auth/login', { username: username, password: password })
@@ -192,14 +196,14 @@ var Auth = (function () {
           if (user.mustChange) {
             setTimeout(function () {
               if (typeof toast === 'function') {
-                toast('Your password was reset. Change it in Settings.', 'warn');
+                toast(L('Your password was reset. Change it in Settings.', 'أُعيد تعيين كلمة مرورك. غيّرها من الإعدادات.'), 'warn');
               }
             }, 800);
           }
         })
         .catch(function (err) {
           go.disabled = false;
-          go.textContent = 'Sign in';
+          go.textContent = L('Sign in', 'تسجيل الدخول');
           pEl.select();
           show(el, API.friendly(err));
           shake(el);
@@ -214,15 +218,15 @@ var Auth = (function () {
     el.querySelector('#lgHint').addEventListener('click', function () {
       var username = uEl.value.trim();
       if (!username) {
-        show(el, 'Type your username first.');
+        show(el, L('Type your username first.', 'اكتب اسم المستخدم أولاً.'));
         uEl.focus();
         return;
       }
       API.post('/api/auth/hint', { username: username })
         .then(function (data) {
           show(el, data.hint
-            ? 'Hint: ' + data.hint
-            : 'No hint was set. Ask a manager to reset your password.', 'ok');
+            ? L('Hint: ', 'تلميح: ') + data.hint
+            : L('No hint was set. Ask a manager to reset your password.', 'لا يوجد تلميح. اطلب من المدير إعادة تعيين كلمة مرورك.'), 'ok');
         })
         .catch(function (err) { show(el, API.friendly(err)); });
     });

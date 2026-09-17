@@ -282,8 +282,43 @@ var TYPE_COLOURS = {
 };
 var TYPE_COLOUR_DEFAULT = '#4A4A52';   /* the grey the thumbnails have always used */
 
+/* ---- categories (057) ------------------------------------------------
+   The two objects above are the defaults a server from before 057 leaves in
+   place. Once the server sends its categories, both are REFILLED IN PLACE —
+   every screen holds them by reference (DB.typeLabels, DB.sizeSets) — with
+   the name in the screen's language. relabelTypes() runs again on every
+   language switch (applyLang). */
+var CATEGORIES = [];
+function relabelTypes() {
+  var ar = typeof OG !== 'undefined' && OG.lang === 'ar';
+  if (!CATEGORIES.length) {
+    /* no categories from the server: the old list, with the Arabic words
+       the app already had */
+    Object.keys(TYPE_LABELS).forEach(function (k) {
+      if (!TYPE_LABELS_EN[k]) TYPE_LABELS_EN[k] = TYPE_LABELS[k];
+      var tk = 'ty_' + k;
+      TYPE_LABELS[k] = ar && typeof t === 'function' && t(tk) !== tk ? t(tk) : TYPE_LABELS_EN[k];
+    });
+    return;
+  }
+  Object.keys(TYPE_LABELS).forEach(function (k) { delete TYPE_LABELS[k]; });
+  Object.keys(SIZE_SETS).forEach(function (k) { delete SIZE_SETS[k]; });
+  CATEGORIES.forEach(function (c) {
+    TYPE_LABELS[c.id] = ar ? c.nameAr : c.nameEn;
+    SIZE_SETS[c.id] = (c.sizes || []).slice();
+  });
+}
+var TYPE_LABELS_EN = {};
+
 function typeColour(type) {
-  return TYPE_COLOURS[type] || TYPE_COLOUR_DEFAULT;
+  if (TYPE_COLOURS[type]) return TYPE_COLOURS[type];
+  /* a category the owner added: a dark hue from its id, away from the
+     reserved green/amber/red/lime band (roughly 30°–150°) */
+  if (!type) return TYPE_COLOUR_DEFAULT;
+  var h = 0;
+  for (var i = 0; i < type.length; i++) h = (h * 31 + type.charCodeAt(i)) >>> 0;
+  var hue = 170 + (h % 180);
+  return 'hsl(' + hue + ' 32% 34%)';
 }
 
 /* name, type, brand, madeIn, colour block, colourway, cost, price, shelf zone, hidden */
@@ -720,6 +755,25 @@ var DB = {
   sizeSets: SIZE_SETS,
   typeLabels: TYPE_LABELS,
   typeColour: typeColour,
+  categories: CATEGORIES,
+  relabelTypes: relabelTypes,
+  category: function (id) { return CATEGORIES.filter(function (c) { return c.id === id; })[0] || null; },
+  /* Both names of a category, for a search box that should find "بوط" on an
+     English screen too. */
+  typeWords: function (id) {
+    var c = DB.category(id);
+    return c ? (c.nameEn + ' ' + c.nameAr) : (TYPE_LABELS[id] || id || '');
+  },
+  /* What a list or a form may offer: the switched-on categories, in order,
+     plus any extra ids the caller passes (a product already in a category
+     that has since been switched off keeps its own). */
+  activeTypes: function (keep) {
+    var ids = CATEGORIES.length
+      ? CATEGORIES.filter(function (c) { return c.active; }).map(function (c) { return c.id; })
+      : Object.keys(TYPE_LABELS);
+    (keep || []).forEach(function (k) { if (k && ids.indexOf(k) < 0 && TYPE_LABELS[k]) ids.push(k); });
+    return ids;
+  },
   paymentLabels: PAYMENT_LABELS,
   paymentLabelsAr: PAYMENT_LABELS_AR,
   /* One call site instead of every screen remembering to check the language. */
@@ -2609,6 +2663,13 @@ var DB = {
       if (cur === 'USD') return Math.round(minor / 100 * rate);
       return minor;
     }
+
+    /* ---- categories (057) ---- */
+    if (payload.categories && payload.categories.length) {
+      CATEGORIES.length = 0;
+      payload.categories.forEach(function (c) { CATEGORIES.push(c); });
+    }
+    relabelTypes();
 
     /* ---- products and their sizes ---------------------------------------- */
     products.length = 0;

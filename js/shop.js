@@ -26,8 +26,8 @@
 
    There is no fallback to demo data. A server that is down must stop the app,
    not quietly hand a cashier a working-looking till whose sales evaporate.
-   That is the exact failure the DEMO banner exists to prevent, and it is worse
-   here because nothing on screen would say so.
+   That is the exact failure the server-only mode exists to prevent, and a
+   till that did it would have nothing on screen to say so.
    ========================================================================== */
 
 var Shop = (function () {
@@ -47,7 +47,7 @@ var Shop = (function () {
      opinion and the server's answer is the real one, so a disagreement must
      end in an empty list rather than a dead app. */
   function may(perm) {
-    return typeof Auth === 'undefined' || Auth.can(perm);
+    return Auth.can(perm);
   }
 
   function want(perm, path, empty) {
@@ -185,6 +185,7 @@ var Shop = (function () {
         rate: r.config.rate,
         warehouses: r.config.warehouses,
         products: r.catalogue.products,
+        categories: r.catalogue.categories || [],
         customers: r.customers.customers,
         sales: r.sales.sales,
         salesTotal: r.sales.salesTotal,
@@ -278,8 +279,7 @@ var Shop = (function () {
      hour into memory that is thrown away when she reloads. */
   function fail(err) {
     var ar = (typeof OG !== 'undefined' && OG.lang === 'ar');
-    var msg = (typeof API !== 'undefined' && API.friendly)
-      ? API.friendly(err) : (err && err.message) || '';
+    var msg = API.friendly(err);
 
     /* A 404 on a boot request is not a dead server, it is an OLD one: the
        page on disk is newer than the process serving it, which happens every
@@ -333,7 +333,7 @@ var Shop = (function () {
   /* ------------------------------------------------------------- writing */
 
   function live() {
-    return typeof Auth !== 'undefined' && DB.live;
+    return DB.live;
   }
 
   /* One write at a time.
@@ -348,8 +348,8 @@ var Shop = (function () {
   /* Every write in the app goes through here.
 
      `send` returns the promise from the server call. `mirror` applies the same
-     change to memory and runs ONLY in demo mode, where there is no server to
-     ask. `done` runs after the change is real — after the server agreed and
+     change to memory and runs ONLY while DB.live is false — before the shop
+     has been loaded from the server, when there is nothing to re-read. `done` runs after the change is real — after the server agreed and
      the data has been re-read — so a toast built inside it can quote the
      numbers the shop actually has rather than the ones we hoped for.
 

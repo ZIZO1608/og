@@ -608,7 +608,7 @@ var ShelfMap = (function () {
       '<div class="sm-scanbox' + (arm ? ' armed' : '') + '">' +
         '<input class="inp sm-scanin" id="smScan" type="text" autocomplete="off"' +
           ' spellcheck="false" dir="ltr"' +
-          ' placeholder="' + esc(t('sm_scan_ph')) + '" data-smv="scan-enter">' +
+          ' placeholder="' + esc(t('sm_scan_ph')) + '">' +
       '</div>' +
       '<div class="sm-scanwhat">' +
         (arm
@@ -888,8 +888,7 @@ var ShelfMap = (function () {
      English only; the Arabic ones live in I18N as ty_*, and a type the shop
      invents later falls back to its English label rather than to a key. */
   function typeLabel(ty) {
-    var k = 'ty_' + ty, s = t(k);
-    return s === k ? ((DB.typeLabels && DB.typeLabels[ty]) || ty) : s;
+    return (DB.typeLabels && DB.typeLabels[ty]) || ty;
   }
 
   /* The plain model the room is drawn from. No DB, no t(), no esc() cross
@@ -2200,7 +2199,7 @@ var ShelfMap = (function () {
       var p = DB.product(pid);
       if (p) sizes = sizesOf(p).map(function (v) { return v.size; });
     }
-    /* Built with an explicit selected flag per option  marking the choice
+    /* Built with an explicit selected flag per option - marking the choice
        by string-replacing value="39" would also hit the front of
        value="39.5", and a size run is exactly where both exist. */
     function sel(id, val) {
@@ -3548,8 +3547,9 @@ var ShelfMap = (function () {
      afterSettings() runs after EVERY render of that screen, so this caches
      for a short window the way loadStaffPresence() does — refetching on
      every keystroke elsewhere in Settings would repaint the list under the
-     user's pointer for no news. A write through smset-assign passes `force`,
-     because its whole point is that something changed. */
+     user's pointer for no news. A write through the data-smv="set-assign"
+     control passes `force`, because its whole point is that something
+     changed. */
   var setFreshAt = 0, setCache = null, setPending = null;
   var SET_FRESH_MS = 30 * 1000;
 

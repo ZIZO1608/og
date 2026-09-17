@@ -77,7 +77,7 @@ function productRows() {
 
 function viewProducts() {
   var rows = productRows();
-  var types = Object.keys(DB.typeLabels);
+  var types = DB.activeTypes(DB.products.map(function (p) { return p.type; }));
 
   /* The products sheet is an inventory document — stock levels, pieces,
      critical SKUs. Without stock.read it would export a list of names and
@@ -376,7 +376,7 @@ function openProductEditor(pid) {
   var major = function (minor) {
     return minor == null ? '' : (exp ? (minor / Math.pow(10, exp)).toFixed(exp) : String(minor));
   };
-  var typeOpts = Object.keys(DB.typeLabels).map(function (k) {
+  var typeOpts = DB.activeTypes([p.type]).map(function (k) {
     return '<option value="' + k + '"' + (p.type === k ? ' selected' : '') + '>' + esc(DB.typeLabels[k]) + '</option>';
   }).join('');
   var curOpts = ['SYP', 'USD'].map(function (c) {

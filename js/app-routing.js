@@ -18,9 +18,9 @@ var VIEWS = {
      fifth branch inside viewDashboard, so each one stays a small readable
      function instead of one screen with four moods.
 
-     roleOf() is null on file://, on the static demo and in _shot.html, so all
-     three keep the full manager dashboard — the demo exists to show the whole
-     system, and the Arabic proposal is screenshotted from it. */
+     A manager, and any role this does not name, gets the full dashboard. The
+     partner never arrives here: boot() and render() send that account to its
+     portal. */
   dashboard: function () {
     var r = roleOf();
     return r === 'cashier'   ? viewShiftHome()
@@ -353,6 +353,10 @@ function applyLang() {
   document.documentElement.lang = ar ? 'ar' : 'en';
   document.documentElement.dir = ar ? 'rtl' : 'ltr';
   document.body.classList.toggle('rtl', ar);
+  if (typeof DB !== 'undefined' && DB.relabelTypes) DB.relabelTypes();
+  /* The login screen and the splash read this before any app code runs;
+     nothing wrote it until now, so the gate was English for everybody. */
+  try { localStorage.setItem('og.lang', ar ? 'ar' : 'en'); } catch (e) { /* private window */ }
 }
 
 function refreshAll() {
@@ -422,9 +426,5 @@ function bindKanban() {
   I18N.en['print_' + s] = ['Design', 'Sent to print', 'Printing', 'Delivery', 'Done'][i];
   I18N.ar['print_' + s] = ['تصميم', 'أُرسل للطباعة', 'قيد الطباعة', 'التوصيل', 'منجز'][i];
 });
-I18N.en.if_sold_all = 'if everything sells';
-I18N.ar.if_sold_all = 'لو بيع كل شيء';
-I18N.en.invoices = 'Invoices';
-I18N.ar.invoices = 'الفواتير';
 
 /* ---- Yalla Wear portal, tracker and Label Studio strings ---------------- */

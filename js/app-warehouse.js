@@ -624,7 +624,7 @@ function whAddTab() {
       '<input class="inp" id="whName" type="text" value="' + esc(OG.wh.name) + '" placeholder="OG Heavyweight Tee" data-change="wh-name"></label>' +
     '<div class="row2">' +
       '<label class="field"><span>' + t('type') + '</span><select class="inp" data-change="wh-type">' +
-        Object.keys(DB.typeLabels).map(function (ty) {
+        DB.activeTypes().map(function (ty) {
           return '<option value="' + ty + '"' + (OG.wh.type === ty ? ' selected' : '') + '>' + DB.typeLabels[ty] + '</option>';
         }).join('') + '</select></label>' +
       '<label class="field"><span>' + t('brand') + '</span><input class="inp" type="text" value="OG" placeholder="OG"></label>' +

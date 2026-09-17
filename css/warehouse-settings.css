@@ -428,11 +428,6 @@ body.rtl .toast { animation-name: toastInR; }
 .sm-roomsel { min-width: 220px; }
 .sm-topbtns { display: flex; gap: 8px; margin-inline-start: auto; }
 
-.sm-scanline {
-  border: 1px solid var(--border); border-inline-start: 3px solid #FFFFFF;
-  padding: 8px 12px; border-radius: var(--radius); font-weight: 700; font-size: 12.5px;
-}
-
 .sm-note { font-size: 12px; }
 .sm-empty { padding: 30px 0; text-align: center; }
 
@@ -663,7 +658,6 @@ body.sm-fs-on { overflow: hidden; }
   display: grid; place-items: center; color: var(--muted-foreground); font-size: 11px; touch-action: none;
   user-select: none; cursor: move; pointer-events: auto;
 }
-body.sm-walking { cursor: crosshair; }
 
 /* the place-my-racks plan */
 .sm-fill-list { margin: 0 0 10px; padding-inline-start: 18px; font-size: 13px; line-height: 1.7; }
@@ -991,4 +985,30 @@ body.sm-dragging .sm-dz-row { cursor: grabbing; }
 @media (max-width: 720px) {
   .sm-scanbox { flex: 1 1 100%; }
   .sm-undo { max-width: 150px; }
+}
+
+
+/* ---- Settings → Categories (js/catset.js) -------------------------------- */
+.cat-note { margin: 0 0 12px; }
+.cat-list { display: grid; gap: 6px; }
+.cat-row {
+  display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) 120px 84px;
+  gap: 10px; align-items: center;
+}
+.cat-headrow { font-size: 11px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; padding: 0 2px; }
+body.rtl .cat-headrow { letter-spacing: 0; }
+.cat-row.is-off .inp { opacity: .55; }
+.cat-cell { display: flex; flex-direction: column; min-width: 0; margin: 0; }
+.cat-lbl { display: none; font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+.cat-sw { flex-direction: row; align-items: center; gap: 8px; }
+.cat-act { align-items: flex-end; }
+.cat-add { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.cat-add-h { margin-bottom: 8px; font-size: 13px; }
+@media (max-width: 760px) {
+  .cat-headrow { display: none; }
+  .cat-row { grid-template-columns: 1fr 1fr; padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
+  .cat-lbl { display: block; }
+  .cat-cell:nth-child(3) { grid-column: 1 / -1; }
+  .cat-act { align-items: stretch; }
+  .cat-act .btn { width: 100%; }
 }

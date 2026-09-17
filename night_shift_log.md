@@ -20,7 +20,7 @@ Baton on this laptop (read-only check): **probably yes, not verified against Sup
 | Stage 0 | DONE | isolation proof above | (see below) |
 | E5 | DONE | `_nightshift/e5.mjs`: title and page text in EN+AR × 1366 and 375 (8/8); screenshots `e5-*.png` | (E5 commit) |
 | E3 | DONE | `_nightshift/e3.mjs` 60/60: server refusals (past, non-date), every field dressed, white icon, whole field opens, hit-test over a modal, sheet only at 375, RTL, keyboard (arrows mirrored, PgUp/PgDn, Esc keeps the modal), outside tap, PO saved → reload keeps the date → list column → WhatsApp composer opens (nothing sent); Reports custom range fires its handler. EN+AR × 1366 and 375; `e3-*.png` | (E3 commit) |
-| E4 | — | | |
+| E4 | DONE | `_nightshift/e4.mjs` 38/38: server rules (dup EN / dup AR / missing name / switched-off / unknown refused, never deleted, website feed carries both names, every product has a category), till chips, Settings fold (browser refusal, add, stays open, switch saves at once), products filter — EN+AR × 1366 and 375; Arabic login screen; `i18ncheck.mjs` | (E4 commit) |
 | E7 | — | | |
 | E1 | — | | |
 | E6 | — | | |
@@ -37,6 +37,9 @@ Baton on this laptop (read-only check): **probably yes, not verified against Sup
 - **E3 — the PO had no due date at all.** Neither the reorder dialog nor `purchase_orders` carried one, so "pick a due date, save, reload" could not be done. Added `purchase_orders.due_date` (YYYY-MM-DD, migration **056**, mirror file **024**, declared in `mirror-lag.js`), `Purchasing.cleanDue` (refuses `bad_due` / `due_past`, with 36 h of slack for the clock), a Due field (min = today) in the reorder dialog, a Due column with a "late" badge in the PO list, and the bell: an order with a due date is late the day after it (`po_overdue`), one without keeps the old 14-day rule. The 14–42-day `po_late` Telegram reminder is unchanged.
 - **E3 — DatePick keeps the native input** (SelectBox's rule): read-only, transparent, wrapped in a `div.dp-wrap` with a face that says the date through `fmtDate`; a pick writes ISO back and fires `input` + `change`, so no call site changed. A MutationObserver dresses every date field, now and later (10 fields today: PO due, Reports from/to, cash book from/to, expense date, print-job deadlines ×2, Yalla's promise date, supplier due, employee since). **The week starts on Saturday** in both languages (the shop's week ends on Friday). z-index 960, beside SelectBox's 950.
 - `API.friendly()` now says `err_<code>` in the screen's language when the app has that string, before its English fallbacks.
+- **E4 — where categories lived:** nowhere on the server. `products.type` held a slug (`sneakers`), and the names and size runs were two hardcoded objects in `js/data.js` (`TYPE_LABELS`, English only, and `SIZE_SETS`); the Arabic words existed only as `ty_*` keys that the shelf map alone used. Now a `categories` table (057) **keyed by that same slug**, so no product changed: before the migration the sandbox had 8 products over 4 distinct types (boots 1, jerseys 2, sneakers 3, tshirts 2); after it, 8 categories (the old eight, seeded) and the same 8 products on the same 4 ids — none unknown, none lost. A type the seed does not know would have been carried over under its own spelling. No foreign key (it would mean rebuilding `products`): `Categories.assertUsable` runs on every product create and type change. Mirror shape **whole** (in `WHOLE_KEYS`, `syncSettings` behind its own guard, restore `ORDER` + `SEEDED`, drift `PUSHED`, check `WHOLE`), file **025**.
+- **E4 — the browser keeps `DB.typeLabels` / `DB.sizeSets`** as the objects every screen already reads, refilled in place with the current language's names on hydrate and on every language switch; `DB.activeTypes()` is what a filter or form offers (switched-off ones leave the till and the add form, but a product already in one keeps it in its editor). The till's chips show only categories with something on sale; the till's search matches either language's name. A category an owner adds gets a derived dark hue, away from the reserved green/amber/red/lime.
+- **E4 — the login screen was English for everybody.** It read `localStorage['og.lang']`, which nothing ever wrote. `applyLang()` writes it now, the app opens in it, and every string on the gate is in both languages.
 - Sandbox test logins live in `_nightshift/sandbox-logins.txt` (gitignored, sandbox only). `nightmgr` (manager) was created for testing and will be removed by the E6 rebuild like any other account not on the list.
 
 ## Every 'manager' literal and what I decided
@@ -49,16 +52,32 @@ Baton on this laptop (read-only check): **probably yes, not verified against Sup
 - E3: the face read "PICK A DATE" and the native "/ /" showed through → `.field > span` styled the wrapper, and the datetime-edit text part kept its colour → wrapper is a div, all three edit parts at opacity 0; Today lost its lime to og-skin's `.btn` → an og-skin rule for `.dp-today`.
 
 ## Files changed per edit
+- E4: `server/migrations/057_categories.sql`, `server/supabase/025_categories.sql`, `server/lib/categories.js` (new), `server/lib/catalogue.js`, `server/index.js`, `server/lib/mirror.js`, `server/lib/restore.js`, `server/lib/drift.js`, `server/scripts/supabase-check.js`, `js/catset.js` (new), `js/data.js`, `js/shop.js`, `js/app-routing.js`, `js/app-state.js`, `js/auth.js`, `js/pos.js`, `js/app-products.js`, `js/app-print-labels.js`, `js/app-warehouse.js`, `js/shelfmap.js`, `js/app-settings.js`, `js/app-i18n-extra.js`, `css/warehouse-settings.css`, `index.html`, `sw.js` (v243)
 - E3: `js/datepick.js` (new), `index.html`, `sw.js` (v242, precached), `css/inputs-dashboard-pos.css`, `css/og-skin.css`, `js/api.js`, `js/app-i18n-extra.js`, `js/app-customers-scan.js`, `js/app-actions.js`, `js/app-warehouse.js`, `js/data.js`, `server/lib/purchasing.js`, `server/lib/alerts.js`, `server/lib/mirror-lag.js`, `server/migrations/056_po_due.sql`, `server/supabase/024_po_due.sql`
 - E5: `js/app-i18n.js`, `manifest.webmanifest`, `sw.js` (v240 → v241)
 - Stage 0: `.gitignore`, `NIGHT_SHIFT_01.md`, `night_shift_log.md`, `server/lib/env.js`, `server/lib/tls.js`, `server/lib/backup.js`, `server/index.js`, `server/scripts/{backup,createuser,hardware,mirror-drift,preflight,purge-demo,supabase-check,supabase-reconcile,supabase-restore,supabase-sync,test-print,warehouse-one-room}.js`
 
 ## New migrations + Supabase files (in order)
+- 057_categories.sql ↔ 025_categories.sql — `categories` (whole-table; no reconcile needed)
 - 056_po_due.sql ↔ 024_po_due.sql — `purchase_orders.due_date` (then `supabase:reconcile`)
 
 ## Category translations EN → AR (for review)
+| id | English | Arabic |
+|---|---|---|
+| sneakers | Sneakers | أحذية رياضية |
+| boots | Boots | بوط |
+| tshirts | T-Shirts | تيشيرتات |
+| jeans | Jeans | جينز |
+| jerseys | Jerseys | قمصان فرق (was جيرسي in the old `ty_` key — "team shirts" reads better on a till; change it in Settings if the shop says جيرسي) |
+| crocs | Crocs | كروكس |
+| shirts | Shirts | قمصان |
+| jackets | Jackets | جاكيتات |
+Only four are in use in the sandbox copy (boots, jerseys, sneakers, tshirts). The sandbox also holds test categories made by `e4.mjs` ("Night Caps …", "Beanies …") — sandbox only.
 
 ## Arabic check — what was missing and fixed
+- `_nightshift/i18ncheck.mjs` loads `app-i18n.js` + `app-i18n-extra.js` in a VM: **2,747 keys in each table, none missing on either side, none left identical to the English**; no key defined twice inside one object block (the scanner was proved on a planted duplicate); the panel's own table (`PI18N`, 177 keys) is complete both ways. Re-run in the final pass for tonight's keys.
+- Hardcoded English that bypassed `t()`: **the login screen** (title line, Username, Password, Show/Hide password, Sign in, Signing in…, Forgotten your password?, Cannot reach the server, the three validation/hint lines, the reset-password toast) — all now in both languages; and `API`'s five English fallbacks (offline, timeout, signed out, forbidden, server error) plus the three login refusals now have `err_*` strings in both tables, which `API.friendly()` prefers.
+- Category names: the till, the product forms and filters, Reports and exports showed English category names in Arabic — now the category's Arabic name.
 
 ## E7 root cause
 

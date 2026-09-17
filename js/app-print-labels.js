@@ -49,7 +49,7 @@ function viewPrintLabels() {
   OG.lbQty = OG.lbQty || {};
   var f = OG.lbf;
   var rows = labelVariantRows();
-  var types = Object.keys(DB.typeLabels);
+  var types = DB.activeTypes(DB.products.map(function (p) { return p.type; }));
 
   var h = '<div class="page-head"><div><h1>' + t('labels_title') + '</h1>' +
     '<div class="sub">' + t('labels_sub') + '</div></div>' +

@@ -27,6 +27,7 @@ import { load as loadEnv } from './lib/env.js';
 import * as DB from './lib/db.js';
 import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
+import * as Categories from './lib/categories.js';
 import * as Stock from './lib/stock.js';
 import * as Shelves from './lib/shelves.js';
 import * as Sales from './lib/sales.js';
@@ -450,7 +451,28 @@ router.add('PUT /api/config', requirePerm('config.write', async (ctx) => {
    858 frontend tests intact. A shop's catalogue is a few hundred KB. */
 router.add('GET /api/catalogue', requirePerm('product.read', (ctx) => {
   const products = Cat.list({ includeHidden: Auth.can(ctx.user, 'product.write') });
-  sendOk(ctx.res, { products: products.map(p => scrubCost(p, ctx.user)) });
+  sendOk(ctx.res, { products: products.map(p => scrubCost(p, ctx.user)), categories: Categories.list() });
+}));
+
+/* --- categories (057) ------------------------------------------------------
+   Anyone signed in reads them (the till's filter, the partner's nothing — a
+   category name is not a secret). Only config.write changes them. Never
+   deleted: PATCH { active: false } switches one off. */
+function catFail(res, e) {
+  const status = e.status || (e.code ? 400 : 500);
+  sendError(res, status, e.code || 'invalid', e.message);
+}
+router.add('GET /api/categories', (ctx) => {
+  if (!ctx.user) return sendError(ctx.res, 401, 'unauthenticated', 'Sign in first.');
+  sendOk(ctx.res, { categories: Categories.list() });
+});
+router.add('POST /api/categories', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { category: Categories.create(b || {}) }); } catch (e) { catFail(ctx.res, e); }
+}));
+router.add('PATCH /api/categories/:id', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { category: Categories.update(ctx.params.id, b || {}) }); } catch (e) { catFail(ctx.res, e); }
 }));
 
 router.add('POST /api/products', requirePerm('product.write', async (ctx) => {
@@ -458,7 +480,7 @@ router.add('POST /api/products', requirePerm('product.write', async (ctx) => {
   try {
     sendOk(ctx.res, Cat.createWithVariants({ ...b, userId: ctx.user.id }));
   } catch (e) {
-    sendError(ctx.res, 400, 'invalid', e.message);
+    sendError(ctx.res, e.status || 400, e.code || 'invalid', e.message);
   }
 }));
 
@@ -467,7 +489,7 @@ router.add('PATCH /api/products/:id', requirePerm('product.write', async (ctx) =
   try {
     sendOk(ctx.res, { product: Cat.update(Number(ctx.params.id), b, ctx.user.id) });
   } catch (e) {
-    sendError(ctx.res, 400, 'invalid', e.message);
+    sendError(ctx.res, e.status || 400, e.code || 'invalid', e.message);
   }
 }));
 

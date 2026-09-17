@@ -94,8 +94,6 @@ export async function loadCursors() {
   return cursors.size;
 }
 
-export function cursorsAreLoaded() { return cursorsLoaded; }
-
 async function cursor(id, note) {
   if (!cursorsLoaded) await loadCursors();
   if (cursors.has(id)) return cursors.get(id);
@@ -144,6 +142,7 @@ function noteLocal(id, lastSeq) {
 const WHOLE_KEYS = {
   currencies: ['code'], warehouses: ['id'], config: ['key'],
   role_permissions: ['role', 'perm'], label_templates: ['id'], clubs: ['code'],
+  categories: ['id'],
   notification_reads: ['user_id', 'key'], users: ['id']
 };
 const hashes = new Map();
@@ -220,7 +219,7 @@ function parseSlots(log, raw, id) {
 }
 
 async function syncSettings(log, want) {
-  const doing = ['config', 'role_permissions', 'label_templates'].filter(want);
+  const doing = ['config', 'role_permissions', 'label_templates', 'categories'].filter(want);
   if (!doing.length) return;
   log.head('Settings');
   if (want('config')) await mirrorTable(log, 'config', ['key']);
@@ -230,6 +229,16 @@ async function syncSettings(log, want) {
   if (want('label_templates')) {
     await mirrorTable(log, 'label_templates', ['id'],
                       (r) => ({ ...r, archived: !!r.archived, slots: parseSlots(log, r.slots, r.id) }));
+  }
+  /* 057 — its own guard: a mirror without 025 still gets every other setting. */
+  if (want('categories')) {
+    try {
+      await mirrorTable(log, 'categories', ['id'], (r) => ({ ...r, active: !!r.active, sizes: parseSlots(log, r.sizes, r.id) }));
+    } catch (e) {
+      if (!MISSING_TABLE.test(String(e.message))) throw e;
+      log.warn('Supabase is missing categories — skipped, everything else still went up.');
+      log.line('    Run server/supabase/025_categories.sql in the SQL editor.');
+    }
   }
 }
 
@@ -648,8 +657,6 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
 export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants',
                               'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews',
                               ...PARTNER, ...DRAWER, 'day_closes'];
-export const APPEND_TABLES = APPEND;
-export const WHOLE_TABLES = WHOLE;
 
 const MISSING_TABLE = /Could not find the table|PGRST205|relation .* does not exist|Supabase 404 on /i;
 const MISSING_COLUMN = /PGRST204|column .* does not exist|Could not find the '[a-z_]+' column/i;

@@ -1,6 +1,6 @@
 /* ==========================================================================
    OG SYSTEM — Point of Sale
-   The screen the demo lives or dies on. Everything here is built for speed:
+   The screen the shop lives or dies on. Everything here is built for speed:
    scan → size → done. Sub-renders keep focus in the input while the cart
    updates around it.
    ========================================================================== */
@@ -85,10 +85,6 @@ var POS = (function () {
   function maxDiscountPct() { return CONFIG.MAX_DISCOUNT_PCT; }
 
   function discountCapped() {
-    /* Demo mode has no accounts, so nothing is capped — the demo exists to
-       show the whole system, and a refused discount in a sales pitch just
-       looks broken. */
-    if (typeof Auth === 'undefined') return false;
     return !Auth.can('discount.unlimited');
   }
 
@@ -410,7 +406,7 @@ var POS = (function () {
       list = list.filter(function (p) {
         return p.name.toLowerCase().indexOf(q) > -1 ||
                p.brand.toLowerCase().indexOf(q) > -1 ||
-               DB.typeLabels[p.type].toLowerCase().indexOf(q) > -1;
+               DB.typeWords(p.type).toLowerCase().indexOf(q) > -1;
       });
     }
     return list;
@@ -561,7 +557,7 @@ var POS = (function () {
      putting a slip for a sale on paper — a box that opens a dialog the person
      is not allowed to finish is worse than no box. */
   function giftBoxHtml() {
-    if (typeof Auth !== 'undefined' && !Auth.can('sale.reprint')) return '';
+    if (!Auth.can('sale.reprint')) return '';
     return '<div class="deliver-add">' +
       '<label class="check"><input type="checkbox" id="posGift"' +
         (S.gift ? ' checked' : '') + ' data-pos-check="gift">' +
@@ -579,7 +575,6 @@ var POS = (function () {
      A sale paid in the shop can be sent out too, hence the tick box: people
      pay for a pair and ask for it to be dropped at their flat. */
   function deliveryBoxHtml() {
-    if (typeof Auth === 'undefined') return '';
     if (!Auth.can('delivery.write')) return '';
 
     /* COD is not optional — money is owed on the doorstep, so somebody has to
@@ -778,7 +773,10 @@ var POS = (function () {
   }
 
   function render() {
-    var cats = Object.keys(DB.typeLabels);
+    /* switched-on categories that have something on sale */
+    var cats = DB.activeTypes().filter(function (c) {
+      return DB.products.some(function (p) { return p.type === c && !p.hidden; });
+    });
 
     var h = '<div class="pos">' +
       '<div class="pos-left">' +
@@ -937,12 +935,8 @@ var POS = (function () {
 
   /* ----------------------------------------------------------- checkout */
 
-  /* Checkout has two paths, and which one runs is the whole difference between
-     a demo and a shop.
-
-       demo    — no server exists. Ring it up locally, exactly as before.
-       real    — ASK THE SERVER FIRST, and only touch anything locally once it
-                 has said yes.
+  /* Checkout ASKS THE SERVER FIRST, and only touches anything locally once it
+     has said yes.
 
      The order matters. This browser's idea of the stock is a guess several
      seconds old, taken before the other till rang up the same last pair. If
@@ -956,13 +950,11 @@ var POS = (function () {
     }
 
     /* A print job with no pieces picked is a job Yalla Wear cannot print.
-       Caught before anything is charged, in demo and live mode alike. */
+       Caught before anything is charged. */
     if (S.print.on && !printPicks().length) {
       if (!silent) toast(t('add_print'), t('pr_none_sel'), 'err', 5000);
       return;
     }
-
-    if (typeof Auth === 'undefined') return completeLocal(silent, null);
 
     /* Caught here so she is told before the customer is told. The server
        refuses this too — that is the actual boundary — but a cashier should
@@ -1073,7 +1065,6 @@ var POS = (function () {
   /* --------------------------------------------------------- sending it out */
 
   function wantsDelivery() {
-    if (typeof Auth === 'undefined') return false;
     if (!Auth.can('delivery.write')) return false;
     return S.payment === 'cod' || S.deliver;
   }
@@ -1119,20 +1110,17 @@ var POS = (function () {
     var x = totals();
     var cust = S.customerId ? DB.customer(S.customerId) : null;
 
-    /* Whoever is actually standing at the till. This was hardcoded to one
-       cashier's name from the demo, which was harmless while there were no
-       accounts and is not any more: it is the name that goes on the receipt,
-       into the stock movement log, and onto "my sales today". */
-    var cashier = (typeof Auth !== 'undefined' && Auth.user() && Auth.user().name)
-      ? Auth.user().name
-      : 'Lubna Kayali';
+    /* Whoever is actually standing at the till: the name that goes on the
+       receipt, into the stock movement log, and onto "my sales today". */
+    var me = Auth.user();
+    var cashier = (me && me.name) || '';
 
     var sale = {
-      /* The server's invoice number when it wrote one, so the printed receipt
-         and the database agree. Two sources of numbering would eventually
-         collide and print the same invoice id twice. */
-      id: server ? server.id : DB.nextInvoiceId(),
-      date: server ? new Date(server.at) : new Date(),
+      /* The server's invoice number, so the printed receipt and the database
+         agree. Two sources of numbering would eventually collide and print
+         the same invoice id twice. */
+      id: server.id,
+      date: new Date(server.at),
       customerId: cust ? cust.id : null,
       customerName: cust ? cust.name : t('walk_in'),
       items: S.cart.map(function (l) {
@@ -1154,16 +1142,14 @@ var POS = (function () {
          up before the shift opened must never drift into its drawer count. */
       shiftId: (DB.currentShift() || {}).id || null,
 
-      /* Both come from the server and only exist on a real sale.
+      /* Both come from the server.
 
          publicToken is the address the receipt's QR points at. fxRate is the
          rate this sale was actually settled at — the receipt has to print
          that, not today's, or a customer comparing two receipts a month apart
-         finds the same purchase quoted at two different dollar values. In
-         demo mode there is no server, so the current rate is the honest
-         answer and nothing is saved anyway. */
-      publicToken: server ? server.publicToken : null,
-      fxRate: server ? server.fxRate : CONFIG.EXCHANGE_RATE
+         finds the same purchase quoted at two different dollar values. */
+      publicToken: server.publicToken,
+      fxRate: server.fxRate
     };
 
     /* --- the moment that sells the product: stock actually moves --- */
@@ -1180,14 +1166,12 @@ var POS = (function () {
 
     DB.sales.unshift(sale);
 
-    /* The server's own figures when there is one. It already earned and spent
-       these points inside the sale's transaction against the stored balance;
-       recomputing them here from the browser's copy of the rules would give a
-       second answer, and the second answer is the one on screen. */
-    var earned = server
-      ? (server.pointsEarned || 0)
-      : Math.round(sale.total / 1000 * CONFIG.LOYALTY_POINTS_PER_1000);
-    var spent = server ? (server.pointsUsed || 0) : S.pointsUsed;
+    /* The server's own figures. It already earned and spent these points
+       inside the sale's transaction against the stored balance; recomputing
+       them here from the browser's copy of the rules would give a second
+       answer, and the second answer is the one on screen. */
+    var earned = server.pointsEarned || 0;
+    var spent = server.pointsUsed || 0;
 
     /* Onto the sale object itself, because the receipt and the invoice that
        open a moment later read sale.pointsEarned — the frozen figure, the
@@ -1204,7 +1188,7 @@ var POS = (function () {
        Nine seconds and 'warn', not 'err': nothing went wrong, and colouring
        it as a failure would teach people to stop attaching a customer to the
        sale — which loses the shop far more than the overage. */
-    var cw = server && server.warning;
+    var cw = server.warning;
     if (cw && cw.code === 'over_credit_limit') {
       toast(t('cu_over_limit'),
         t('cu_over_limit_msg')
