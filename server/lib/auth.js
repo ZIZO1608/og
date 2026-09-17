@@ -13,10 +13,11 @@
    ========================================================================== */
 
 import {
-  scrypt, randomBytes, timingSafeEqual, createHash
+  scrypt, randomBytes, timingSafeEqual
 } from 'node:crypto';
 import { promisify } from 'node:util';
 import { get, nowIso } from './db.js';
+import * as Vault from './credvault.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -38,7 +39,8 @@ const SESSION_MS = SESSION_DAYS * 24 * 60 * 60 * 1000;
 const MAX_FAILS = 8;
 const FAIL_WINDOW_MS = 15 * 60 * 1000;
 
-export const ROLES = ['manager', 'cashier', 'warehouse', 'delivery', 'partner'];
+/* 059 — owner and developer hold everything; the rest as before. */
+export const ROLES = ['owner', 'developer', 'manager', 'cashier', 'warehouse', 'delivery', 'partner'];
 
 /* --------------------------------------------------------------- permissions
    One table, read top to bottom, rather than `if (role === 'manager')` sprayed
@@ -108,6 +110,9 @@ export const ALL_PERMISSIONS = [
   { perm: 'staff.write',     group: 'admin',     label: 'Add and edit staff' },
   { perm: 'report.read',     group: 'admin',     label: 'See reports' },
   { perm: 'config.write',    group: 'admin',     label: 'Change settings' },
+  /* 059 — open or close a permission for one person, and manage who can
+     sign in. Pinned to the owner and the developer. */
+  { perm: 'access.write',    group: 'admin',     label: 'Change what each person may do' },
 
   { perm: 'partner.jobs',    group: 'partner',   label: 'Yalla Wear: own jobs' },
   { perm: 'partner.respond', group: 'partner',   label: 'Yalla Wear: accept or decline' },
@@ -122,7 +127,10 @@ const PERM_SET = new Set(ALL_PERMISSIONS.map(p => p.perm));
 
 /* A manager who removes their own access to Settings or Staff leaves nobody
    able to put it back without opening the database file. */
-const PINNED = { manager: ['config.write', 'staff.write'] };
+/* 059: the owner and the developer — the manager is no longer pinned, so the
+   owner can close Settings for him. */
+const PIN_SET = ['config.write', 'staff.write', 'access.write'];
+const PINNED = { owner: PIN_SET, developer: PIN_SET };
 
 /* Yalla Wear is a different company. These can never be granted to them, no
    matter what the grid says. One mis-clicked box should not be able to hand a
@@ -165,7 +173,48 @@ export function isForbidden(role, perm) {
    clears it — that is the whole contract of this variable. */
 let permCache = null;
 
-export function invalidatePermissions() { permCache = null; }
+let userCache = null;   /* userId → { grant: Set, deny: Set } */
+
+export function invalidatePermissions() { permCache = null; userCache = null; }
+
+function userOverrides() {
+  if (userCache) return userCache;
+  userCache = new Map();
+  let rows = [];
+  try { rows = get().prepare('SELECT user_id, perm, allowed FROM user_permissions').all(); }
+  catch { rows = []; }   /* a database from before 059 */
+  for (const r of rows) {
+    let o = userCache.get(r.user_id);
+    if (!o) { o = { grant: new Set(), deny: new Set() }; userCache.set(r.user_id, o); }
+    (r.allowed ? o.grant : o.deny).add(r.perm);
+  }
+  return userCache;
+}
+
+/* THE ONE PLACE a person's permissions are worked out: the role's set, plus
+   what was granted to them, minus what was taken away — then FORBIDDEN and
+   PINNED, whatever the rows say. requirePerm, can(), /api/live and the list
+   the browser is sent all come through here. */
+export function effectiveFor(user) {
+  if (!user || !user.active) return new Set();
+  const base = permissions()[user.role];
+  if (!base) return new Set();
+  const out = new Set(base);
+  const o = user.id != null ? userOverrides().get(user.id) : null;
+  if (o) {
+    for (const p of o.grant) if (PERM_SET.has(p) && !isForbidden(user.role, p)) out.add(p);
+    for (const p of o.deny) if (!isPinned(user.role, p)) out.delete(p);
+  }
+  return out;
+}
+
+export function permissionsForUser(user) { return [...effectiveFor(user)]; }
+
+/* "Former staff" rows hold history for accounts that were removed; nothing
+   lists them and nobody can sign in as one. */
+export function isHiddenUser(u) {
+  return !!u && /^former-staff/i.test(String(u.username || ''));
+}
 
 function permissions() {
   if (permCache) return permCache;
@@ -195,8 +244,7 @@ function permissions() {
 
 export function can(user, perm) {
   if (!user || !user.active) return false;
-  const set = permissions()[user.role];
-  return !!set && set.has(perm);
+  return effectiveFor(user).has(perm);
 }
 
 export function permissionsFor(role) {
@@ -216,7 +264,7 @@ export function permissionMatrix() {
         allowed: live[r].has(p.perm),
         locked: isPinned(r, p.perm) || isForbidden(r, p.perm),
         why: isPinned(r, p.perm)
-          ? 'A manager must keep this, or nobody can undo the change.'
+          ? 'The owner and the developer must keep this, or nobody can undo the change.'
           : isForbidden(r, p.perm)
             ? 'Yalla Wear is a separate company and can never be given this.'
             : null
@@ -268,6 +316,91 @@ export function setRolePermissions(role, granted, byUserId) {
   return { role, granted: [...want].sort(), refused: [...new Set(refused)] };
 }
 
+/* ------------------------------------------------------ one person's access
+   A switch per permission: on or off for this person, and whether that is
+   the role's answer or theirs. Setting a switch back to what the role says
+   removes the row, so the table only ever holds real exceptions. */
+function accessFail(message, code, status = 400) {
+  const e = new Error(message); e.code = code; e.status = status; return e;
+}
+
+export function userAccess(userId) {
+  const u = findById(userId);
+  if (!u || isHiddenUser(u)) throw accessFail('no such person', 'not_found', 404);
+  const roleSet = permissions()[u.role] || new Set();
+  const eff = effectiveFor({ ...u, active: 1 });
+  const o = userOverrides().get(u.id) || { grant: new Set(), deny: new Set() };
+  return {
+    user: { id: u.id, username: u.username, name: u.name, role: u.role, active: !!u.active },
+    permissions: ALL_PERMISSIONS.map((p) => ({
+      perm: p.perm, group: p.group, label: p.label,
+      allowed: eff.has(p.perm),
+      fromRole: roleSet.has(p.perm),
+      changed: o.grant.has(p.perm) || o.deny.has(p.perm),
+      locked: isPinned(u.role, p.perm) ? 'pinned' : isForbidden(u.role, p.perm) ? 'forbidden' : null
+    }))
+  };
+}
+
+/* allowed: true (grant), false (take away), null (back to the role). */
+export function setUserPermission(userId, perm, allowed, byUserId) {
+  if (!PERM_SET.has(perm)) throw accessFail(`no permission called ${perm}`, 'bad_perm');
+  const u = findById(userId);
+  if (!u || isHiddenUser(u)) throw accessFail('no such person', 'not_found', 404);
+  if (allowed === true && isForbidden(u.role, perm)) {
+    throw accessFail('Yalla Wear is a separate company and can never be given this.', 'forbidden_perm', 409);
+  }
+  if (allowed === false && isPinned(u.role, perm)) {
+    throw accessFail('The owner and the developer must keep this.', 'pinned_perm', 409);
+  }
+  const roleHas = (permissions()[u.role] || new Set()).has(perm);
+  const d = get();
+  if (allowed === null || allowed === undefined || allowed === roleHas) {
+    d.prepare('DELETE FROM user_permissions WHERE user_id = ? AND perm = ?').run(u.id, perm);
+  } else {
+    d.prepare(
+      `INSERT INTO user_permissions (user_id, perm, allowed, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (user_id, perm) DO UPDATE SET
+         allowed = excluded.allowed, updated_at = excluded.updated_at, updated_by = excluded.updated_by`
+    ).run(u.id, perm, allowed ? 1 : 0, nowIso(), byUserId ?? null);
+  }
+  invalidatePermissions();
+  return userAccess(u.id);
+}
+
+export function resetUserPermissions(userId) {
+  const u = findById(userId);
+  if (!u || isHiddenUser(u)) throw accessFail('no such person', 'not_found', 404);
+  get().prepare('DELETE FROM user_permissions WHERE user_id = ?').run(u.id);
+  invalidatePermissions();
+  return userAccess(u.id);
+}
+
+/* The readable password, sealed (059). Only when the vault is on; a failure
+   to seal never stops the password itself being set. */
+function boxFor(plain) {
+  try { return Vault.isEnabled() ? Vault.seal({ pw: plain }) : null; }
+  catch { return null; }
+}
+
+/* For the developer panel only — never behind an HTTP route. */
+export function openBox(userId) {
+  const u = findById(userId);
+  if (!u || !u.pw_box) return { ok: false, reason: 'no_box' };
+  if (!Vault.isEnabled()) return { ok: false, reason: 'no_key' };
+  try { return { ok: true, password: Vault.unseal(u.pw_box).pw }; }
+  catch { return { ok: false, reason: 'wrong_key' }; }
+}
+
+/* A strong password a person can read aloud: three words-ish chunks and
+   digits, 12+ characters, never only numbers. */
+export function makePassword() {
+  const A = 'abcdefghjkmnpqrstuvwxyz', B = 'ABCDEFGHJKMNPQRSTUVWXYZ', N = '23456789';
+  const pick = (set, n) => Array.from(randomBytes(n), (x) => set[x % set.length]).join('');
+  return pick(B, 1) + pick(A, 4) + '-' + pick(B, 1) + pick(A, 4) + '-' + pick(N, 4);
+}
+
 /* ------------------------------------------------------------------ hashing */
 
 export async function hashPassword(plain) {
@@ -303,7 +436,12 @@ export async function createUser({ username, name, role, password, hint, phone }
      VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`
   ).run(username, name, role, hash, salt, hint ?? null, phone ?? null, at, at);
 
-  return Number(info.lastInsertRowid);
+  const id = Number(info.lastInsertRowid);
+  const box = boxFor(password);
+  if (box) {
+    try { get().prepare('UPDATE users SET pw_box = ? WHERE id = ?').run(box, id); } catch { /* before 059 */ }
+  }
+  return id;
 }
 
 /* Deliberately mild. A shop till is not a bank, and rules so strict that staff
@@ -340,7 +478,7 @@ export function publicUser(u) {
     phone: u.phone,
     active: !!u.active,
     mustChange: !!u.must_change,
-    permissions: permissionsFor(u.role)
+    permissions: permissionsForUser(u)
   };
 }
 
@@ -388,6 +526,7 @@ export async function login(username, password, ip, userAgent) {
   }
 
   recordAttempt(username, ip, true);
+  try { get().prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(nowIso(), u.id); } catch { /* before 059 */ }
   const token = createSession(u.id, userAgent);
   return { ok: true, user: u, token };
 }
@@ -469,6 +608,7 @@ export async function changePassword(userId, newPassword) {
     `UPDATE users SET pw_hash = ?, pw_salt = ?, must_change = 0, updated_at = ?
      WHERE id = ?`
   ).run(hash, salt, nowIso(), userId);
+  setBox(userId, newPassword);
 
   /* Every other session for this account dies. If the password was changed
      because it leaked, leaving the thief's session alive defeats the point. */
@@ -487,7 +627,15 @@ export async function resetPassword(targetUserId, tempPassword) {
     `UPDATE users SET pw_hash = ?, pw_salt = ?, must_change = 1, updated_at = ?
      WHERE id = ?`
   ).run(hash, salt, nowIso(), targetUserId);
+  setBox(targetUserId, tempPassword);
   destroyAllSessions(targetUserId);
+}
+
+/* A password set here is also kept sealed; a password set with the vault off
+   leaves no box (and clears an old one, which would now be wrong). */
+function setBox(userId, plain) {
+  try { get().prepare('UPDATE users SET pw_box = ? WHERE id = ?').run(boxFor(plain), userId); }
+  catch { /* before 059 */ }
 }
 
 /* The hint, for the login screen. Returned only after a username is typed and
@@ -520,10 +668,4 @@ export function clearCookieHeader({ secure }) {
   const bits = [`${COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
   if (secure) bits.push('Secure');
   return bits.join('; ');
-}
-
-/* Stable, non-reversible id for a token, for logging. Writing a live session
-   token into a log file turns the log into a set of working keys. */
-export function tokenFingerprint(token) {
-  return createHash('sha256').update(String(token)).digest('hex').slice(0, 12);
 }

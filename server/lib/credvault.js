@@ -121,7 +121,10 @@ export function sealUser(row) {
     pw_hash: Buffer.from(row.pw_hash).toString('base64'),
     pw_salt: Buffer.from(row.pw_salt).toString('base64'),
     pw_hint: row.pw_hint ?? null,
-    must_change: row.must_change ? 1 : 0
+    must_change: row.must_change ? 1 : 0,
+    /* 059 — the readable password, itself a sealed box, so a laptop that
+       takes the shop over can still show it on the developer panel. */
+    pw_box: row.pw_box ?? null
   });
 }
 
@@ -131,10 +134,7 @@ export function unsealUser(text) {
     pw_hash: Buffer.from(o.pw_hash, 'base64'),
     pw_salt: Buffer.from(o.pw_salt, 'base64'),
     pw_hint: o.pw_hint ?? null,
-    must_change: o.must_change ? 1 : 0
+    must_change: o.must_change ? 1 : 0,
+    pw_box: o.pw_box ?? null
   };
 }
-
-/* Testing hook: forget the derived key so a changed passphrase takes effect
-   without restarting the process. Not used in normal operation. */
-export function _reset() { runSalt = null; runKey = null; }

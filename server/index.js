@@ -28,6 +28,7 @@ import * as DB from './lib/db.js';
 import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
 import * as Categories from './lib/categories.js';
+import * as People from './lib/people.js';
 import * as Stock from './lib/stock.js';
 import * as Shelves from './lib/shelves.js';
 import * as Sales from './lib/sales.js';
@@ -209,7 +210,7 @@ router.add('POST /api/auth/password', async (ctx) => {
 router.add('GET /api/users', requirePerm('staff.read', (ctx) => {
   const rows = DB.get().prepare(
     'SELECT * FROM users ORDER BY active DESC, name'
-  ).all();
+  ).all().filter((u) => !Auth.isHiddenUser(u));
   sendOk(ctx.res, { users: rows.map(Auth.publicUser) });
 }));
 
@@ -294,6 +295,10 @@ router.add('GET /api/roles', (ctx) => {
 
 router.add('PUT /api/roles/:role', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
+  /* The owner's and the developer's rows are the access holders' to change. */
+  if (['owner', 'developer'].includes(ctx.params.role) && !Auth.can(ctx.user, 'access.write')) {
+    return sendError(ctx.res, 403, 'forbidden', 'Only the owner or a developer can change this role.');
+  }
   try {
     const out = Auth.setRolePermissions(
       ctx.params.role,
@@ -309,6 +314,49 @@ router.add('PUT /api/roles/:role', requirePerm('config.write', async (ctx) => {
   } catch (e) {
     sendError(ctx.res, 400, 'invalid', e.message);
   }
+}));
+
+/* --- access, per person (059) ------------------------------------------------
+   The owner's panel: who can sign in, and what each of them may do on top of
+   (or below) their role. access.write only — pinned to the owner and the
+   developer. A password is in a response exactly twice: when a person is
+   added and when theirs is reset, and never again (the developer panel reads
+   the sealed box over its own pipe, never over HTTP). */
+function accessFail(res, e) {
+  sendError(res, e.status || (e.code ? 400 : 500), e.code || 'invalid', e.message);
+}
+router.add('GET /api/access', requirePerm('access.write', (ctx) => {
+  sendOk(ctx.res, {
+    people: People.list().map(People.shape),
+    roles: Auth.ROLES,
+    groups: [...new Set(Auth.ALL_PERMISSIONS.map((p) => p.group))]
+  });
+}));
+router.add('GET /api/access/:id', requirePerm('access.write', (ctx) => {
+  try { sendOk(ctx.res, Auth.userAccess(Number(ctx.params.id))); } catch (e) { accessFail(ctx.res, e); }
+}));
+router.add('PUT /api/access/:id/perm', requirePerm('access.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  const allowed = b.allowed === true ? true : b.allowed === false ? false : null;
+  try { sendOk(ctx.res, Auth.setUserPermission(Number(ctx.params.id), String(b.perm || ''), allowed, ctx.user.id)); }
+  catch (e) { accessFail(ctx.res, e); }
+}));
+router.add('POST /api/access/:id/reset', requirePerm('access.write', (ctx) => {
+  try { sendOk(ctx.res, Auth.resetUserPermissions(Number(ctx.params.id))); } catch (e) { accessFail(ctx.res, e); }
+}));
+router.add('POST /api/access/people', requirePerm('access.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, await People.add({ name: b.name, username: b.username, role: b.role, phone: b.phone })); }
+  catch (e) { accessFail(ctx.res, e); }
+}));
+router.add('POST /api/access/:id/active', requirePerm('access.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { user: People.setActive(Number(ctx.params.id), !!b.active, ctx.user.id) }); }
+  catch (e) { accessFail(ctx.res, e); }
+}));
+router.add('POST /api/access/:id/password', requirePerm('access.write', async (ctx) => {
+  try { sendOk(ctx.res, await People.newPassword(Number(ctx.params.id), { mustChange: false })); }
+  catch (e) { accessFail(ctx.res, e); }
 }));
 
 /* --- reference data -------------------------------------------------------- */
@@ -2572,7 +2620,7 @@ router.add('GET /api/telegram/status', (ctx) => {
                     office: mine === 'og' && tgManages(ctx) ? (() => {
                       const c = Office.readClock();
                       const rolePerms = {};
-                      for (const r of ['manager', 'cashier', 'warehouse', 'delivery']) {
+                      for (const r of ['owner', 'developer', 'manager', 'cashier', 'warehouse', 'delivery']) {
                         rolePerms[r] = Auth.permissionsFor(r).includes('delivery.desk');
                       }
                       return { kinds: Office.OFFICE_KINDS, urgent: c.urgent,

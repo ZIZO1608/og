@@ -225,7 +225,7 @@ let matched = 0;
 
 /* Tables the sync rewrites WHOLE on every run. A gap in one of these closes
    on the next sync by itself; the advice for the others is reconcile. */
-const WHOLE = new Set(['config', 'role_permissions', 'label_templates', 'clubs', 'categories',
+const WHOLE = new Set(['config', 'role_permissions', 'label_templates', 'clubs', 'categories', 'user_permissions',
                        'notification_reads', 'users', 'currencies', 'warehouses']);
 
 /* The bookmarks, fetched once here because section 5 needs them too: a row

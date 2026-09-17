@@ -129,7 +129,7 @@ function rolesCard() {
         t('pg_' + p.group) + '</td></tr>';
     }
 
-    h += '<tr><td class="perm-name">' + esc(p.label) + '</td>';
+    h += '<tr><td class="perm-name">' + esc(typeof AccessUI !== 'undefined' ? AccessUI.permLabel(p) : p.label) + '</td>';
     m.roles.forEach(function (r) {
       var cell = p.roles[r] || { allowed: false, locked: true };
       var locked = cell.locked || !editable;
@@ -1216,6 +1216,8 @@ function viewSettings() {
   if (typeof Desk !== 'undefined' && Desk.settingsCards) h += Desk.settingsCards();
 
   h += setSection(t('setg_people'));
+  /* 059 — who can sign in, and what each person may do. access.write only. */
+  if (typeof AccessUI !== 'undefined') h += AccessUI.card();
   h += presenceCard();
   h += rolesCard();
 

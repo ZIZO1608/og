@@ -1071,3 +1071,34 @@ body.rtl .cat-headrow { letter-spacing: 0; }
 
 .cf-matrix td.cf-zero b { color: var(--destructive); }
 .cf-mode { display: inline-flex; gap: 4px; }
+
+
+/* ---- Settings → Access (js/access.js) ------------------------------------ */
+.ac-note { margin: 0 0 12px; }
+.ac-once { border: 1px solid var(--brand-border); background: var(--brand-soft); border-radius: 12px; padding: 12px; margin-bottom: 14px; display: grid; gap: 8px; }
+.ac-once-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ac-once code { font-size: 18px; font-weight: 700; letter-spacing: .04em; padding: 6px 10px; border-radius: 8px; background: var(--app); color: var(--foreground); user-select: all; }
+.ac-list { display: grid; gap: 6px; }
+.ac-person { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.ac-person.is-off .ac-who b { color: var(--muted-foreground); }
+.ac-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--card);
+  border: 0; color: var(--foreground); cursor: pointer; font: inherit; text-align: start; }
+.ac-head:hover { background: var(--card-hover); }
+.ac-face { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); font-weight: 700; font-size: 12px; flex: none; }
+.ac-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ac-who small { color: var(--muted-foreground); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-changed { color: var(--warning); }
+.ac-detail { padding: 12px; border-top: 1px solid var(--border); background: var(--subtle); }
+.ac-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.ac-group { margin-bottom: 10px; }
+.ac-gh { font-size: 11px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: .05em; margin: 6px 0; }
+body.rtl .ac-gh { letter-spacing: 0; }
+.ac-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.ac-row:last-child { border-bottom: 0; }
+.ac-label { display: flex; flex-direction: column; font-size: 13px; min-width: 0; }
+.ac-label small { color: var(--dim); font-size: 11px; }
+.ac-row.is-changed .ac-label small { color: var(--warning); }
+.ac-add { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.ac-add-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: 10px; align-items: end; margin-top: 8px; }
+.ac-add-row .field { margin: 0; }
+@media (max-width: 760px) { .ac-add-row { grid-template-columns: 1fr; } }

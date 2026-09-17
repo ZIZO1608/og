@@ -3068,3 +3068,79 @@ var COLOURS_AR = {
 };
 Object.keys(COLOURS_EN).forEach(function (k) { I18N.en[k] = COLOURS_EN[k]; });
 Object.keys(COLOURS_AR).forEach(function (k) { I18N.ar[k] = COLOURS_AR[k]; });
+
+/* ---- access per person (059, js/access.js), the new roles, and every
+   permission's name in both languages (the roles grid printed the server's
+   English labels on an Arabic screen) ---------------------------------------- */
+var ACCESS_EN = {
+  role_owner: 'Owner', role_developer: 'Developer',
+  ac_title: 'Access', ac_can_sign_in: 'can sign in',
+  ac_note: 'Everyone who can sign in, and what each of them may do. A switch saves the moment it moves — on top of what their role allows.',
+  ac_active: 'Active', ac_off: 'Switched off', ac_n_changed: '{n} changed for this person',
+  ac_reset_role: 'Back to the role', ac_new_pw: 'New password', ac_switch_off: 'Switch off', ac_switch_on: 'Switch on',
+  ac_from_role: 'from the role', ac_for_person: 'changed for this person',
+  ac_why_pinned: 'The owner and the developer always keep this.', ac_why_forbidden: 'Yalla Wear is a separate company and can never have this.',
+  ac_opened: '{what} — on', ac_closed: '{what} — off', ac_reset_done: 'Back to what the role allows',
+  ac_now_on: 'Switched on — they can sign in', ac_now_off: 'Switched off — signed out everywhere',
+  ac_pw_new: 'New password made — every session ended', ac_pw_once: 'Password for {name}',
+  ac_pw_once_sub: 'Shown once. Copy it now and give it to them in person.', ac_copy: 'Copy', ac_copied: 'Copied', ac_done: 'Done',
+  ac_add: 'Add a person', ac_name: 'Name', ac_username: 'Username', ac_add_btn: 'Add',
+  ac_need_both: 'A name and a username, please.', ac_added: '{name} can sign in now',
+  err_username_taken: 'That username is already taken.', err_bad_role: 'That is not a role.',
+  err_last_owner: 'This is the last owner or developer who can sign in.', err_self_lockout: 'You cannot switch off your own account.',
+  err_forbidden_perm: 'Yalla Wear is a separate company and can never have this.',
+  err_pinned_perm: 'The owner and the developer always keep this.',
+  err_bad_username: 'A username is 3–32 letters, numbers, dots, dashes or underscores.',
+  perm_sell: 'Sell at the cashier', perm_refund: 'Give a refund', perm_void: 'Cancel a completed sale', perm_sale_reprint: 'Reprint a past receipt',
+  perm_stock_read: 'See stock levels', perm_stock_move: 'Receive and move stock', perm_stock_count: 'Do a stock count', perm_label_print: 'Print product labels',
+  perm_product_read: 'See products', perm_product_write: 'Add and edit products and prices',
+  perm_customer_read: 'See customers', perm_customer_write: 'Add and edit customers',
+  perm_delivery_read: 'See deliveries', perm_delivery_write: 'Send out and mark delivered', perm_delivery_desk: 'Take remote orders at the delivery office',
+  perm_cost_read: 'See what things cost', perm_profit_read: 'See profit', perm_money_read: 'See the money screen',
+  perm_money_write: 'Record expenses and debts', perm_money_move: 'Move money, change dollars, owner in and out',
+  perm_money_count: 'Count the drawer at closing time', perm_debt_collect: 'Take a payment against a debt',
+  perm_discount_unlimited: 'Discount past the limit',
+  perm_print_read: 'See print jobs', perm_print_write: 'Create and change print jobs',
+  perm_partner_read: 'See the partner portal', perm_partner_write: 'Act on partner orders',
+  perm_staff_read: 'See staff accounts', perm_staff_write: 'Add and edit staff', perm_report_read: 'See reports',
+  perm_config_write: 'Change settings', perm_access_write: 'Change what each person may do',
+  perm_partner_jobs: 'Yalla Wear: own jobs', perm_partner_respond: 'Yalla Wear: accept or decline', perm_partner_invoice: 'Yalla Wear: own invoices',
+  perm_safeer_read: 'See the delivery team (Safeers)', perm_safeer_write: 'Manage Safeers and their tasks'
+};
+var ACCESS_AR = {
+  role_owner: 'صاحب المحل', role_developer: 'مطوّر',
+  ac_title: 'الصلاحيات', ac_can_sign_in: 'يمكنهم الدخول',
+  ac_note: 'كل من يستطيع الدخول، وما يُسمح لكل منهم. يُحفظ المفتاح لحظة تحريكه — فوق ما يسمح به دوره.',
+  ac_active: 'فعّال', ac_off: 'موقوف', ac_n_changed: '{n} مُعدّلة لهذا الشخص',
+  ac_reset_role: 'العودة إلى الدور', ac_new_pw: 'كلمة مرور جديدة', ac_switch_off: 'أوقف الحساب', ac_switch_on: 'فعّل الحساب',
+  ac_from_role: 'من الدور', ac_for_person: 'مُعدّلة لهذا الشخص',
+  ac_why_pinned: 'صاحب المحل والمطوّر يحتفظان بها دائماً.', ac_why_forbidden: 'يلا وير شركة مستقلة ولا يمكن منحها هذا أبداً.',
+  ac_opened: '{what} — مفعّلة', ac_closed: '{what} — موقوفة', ac_reset_done: 'عاد إلى ما يسمح به الدور',
+  ac_now_on: 'فُعّل — يمكنه الدخول', ac_now_off: 'أُوقف — خرج من كل الأجهزة',
+  ac_pw_new: 'صُنعت كلمة مرور جديدة — انتهت كل الجلسات', ac_pw_once: 'كلمة مرور {name}',
+  ac_pw_once_sub: 'تظهر مرة واحدة. انسخها الآن وسلّمها باليد.', ac_copy: 'نسخ', ac_copied: 'نُسخت', ac_done: 'تم',
+  ac_add: 'أضف شخصاً', ac_name: 'الاسم', ac_username: 'اسم المستخدم', ac_add_btn: 'إضافة',
+  ac_need_both: 'الاسم واسم المستخدم من فضلك.', ac_added: '{name} يمكنه الدخول الآن',
+  err_username_taken: 'اسم المستخدم هذا مأخوذ.', err_bad_role: 'هذا ليس دوراً.',
+  err_last_owner: 'هذا آخر صاحب محل أو مطوّر يستطيع الدخول.', err_self_lockout: 'لا يمكنك إيقاف حسابك.',
+  err_forbidden_perm: 'يلا وير شركة مستقلة ولا يمكن منحها هذا أبداً.',
+  err_pinned_perm: 'صاحب المحل والمطوّر يحتفظان بها دائماً.',
+  err_bad_username: 'اسم المستخدم من 3 إلى 32 حرفاً أو رقماً أو نقطة أو شرطة.',
+  perm_sell: 'البيع على الكاشير', perm_refund: 'إرجاع مبلغ', perm_void: 'إلغاء بيع مكتمل', perm_sale_reprint: 'إعادة طباعة إيصال قديم',
+  perm_stock_read: 'رؤية المخزون', perm_stock_move: 'استلام البضاعة ونقلها', perm_stock_count: 'جرد المخزون', perm_label_print: 'طباعة ملصقات المنتجات',
+  perm_product_read: 'رؤية المنتجات', perm_product_write: 'إضافة المنتجات والأسعار وتعديلها',
+  perm_customer_read: 'رؤية الزبائن', perm_customer_write: 'إضافة الزبائن وتعديلهم',
+  perm_delivery_read: 'رؤية التوصيلات', perm_delivery_write: 'إرسال الطلبات وتسجيل التسليم', perm_delivery_desk: 'أخذ الطلبات في مكتب التوصيل',
+  perm_cost_read: 'رؤية التكلفة', perm_profit_read: 'رؤية الربح', perm_money_read: 'رؤية شاشة المال',
+  perm_money_write: 'تسجيل المصاريف والديون', perm_money_move: 'نقل المال وصرف الدولار ومال صاحب المحل',
+  perm_money_count: 'عدّ الصندوق عند الإغلاق', perm_debt_collect: 'قبض دفعة من دين',
+  perm_discount_unlimited: 'خصم فوق الحد',
+  perm_print_read: 'رؤية أعمال الطباعة', perm_print_write: 'إنشاء أعمال الطباعة وتعديلها',
+  perm_partner_read: 'رؤية بوابة الشريك', perm_partner_write: 'التصرف في طلبات الشريك',
+  perm_staff_read: 'رؤية حسابات الموظفين', perm_staff_write: 'إضافة الموظفين وتعديلهم', perm_report_read: 'رؤية التقارير',
+  perm_config_write: 'تغيير الإعدادات', perm_access_write: 'تغيير صلاحيات كل شخص',
+  perm_partner_jobs: 'يلا وير: طلباتها', perm_partner_respond: 'يلا وير: قبول أو رفض', perm_partner_invoice: 'يلا وير: فواتيرها',
+  perm_safeer_read: 'رؤية فريق التوصيل (السفراء)', perm_safeer_write: 'إدارة السفراء ومهامهم'
+};
+Object.keys(ACCESS_EN).forEach(function (k) { I18N.en[k] = ACCESS_EN[k]; });
+Object.keys(ACCESS_AR).forEach(function (k) { I18N.ar[k] = ACCESS_AR[k]; });

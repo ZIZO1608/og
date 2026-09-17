@@ -10,29 +10,17 @@
 
 /* ------------------------------------------------------------- 5a. WHO, WHAT
 
-   Three ways this app runs, and every permission question has to answer for
-   all of them:
-
-     signed in   — a real account with a real role. Ask the server's answer,
-                   which Auth cached at sign-in.
-     demo mode   — file://, GitHub Pages, serve.ps1. Nobody is signed in and
-                   nothing is saved. The demo exists to SHOW the whole system,
-                   so everything is permitted and no screen is trimmed.
-     no Auth     — _shot.html, which loads neither api.js nor auth.js and
-                   drives the Arabic proposal screenshots. Same answer as demo.
-
-   Getting this backwards is how the proposal PDF ends up full of empty
-   screens, so both fallbacks say yes rather than no. That is safe precisely
-   because neither case has any real data behind it. */
+   The app always runs against the server, so every permission question has
+   one answer: the server's, which Auth cached at sign-in. With nobody signed
+   in roleOf() is null and allow() says no, so a signed-out browser draws
+   nothing. */
 
 function roleOf() {
-  if (typeof Auth === 'undefined') return null;
   var u = Auth.user();
   return u ? u.role : null;
 }
 
 function allow(perm) {
-  if (typeof Auth === 'undefined') return true;
   return Auth.can(perm);
 }
 
@@ -105,8 +93,8 @@ var NAV_PERM = {
   settings:   'config.write'
 };
 
-/* In demo mode every screen shows — the demo is meant to display the whole
-   system — and with no Auth at all (_shot.html) nothing is filtered either. */
+/* Whether this account may open a screen: NAV_PERM, plus the per-role rules
+   below that a permission cannot express. */
 function navAllowed(id) {
   /* The partner has no shop nav at all, including the dashboard that is
      otherwise open to everyone. Their whole app is the portal. */
@@ -379,10 +367,9 @@ function renderTopbar() {
        somebody who has just finished a stock count wants it up NOW rather
        than within ten minutes.
 
-       Hidden in demo mode and for anyone without config.write, because in
-       both cases pressing it could only ever produce an error: there is no
-       server to push from, or no permission to do it. */
-    (allow('config.write') && !(typeof Auth === 'undefined')
+       Hidden for anyone without config.write, because pressing it could
+       only ever produce an error. */
+    (allow('config.write')
       ? '<button class="icon-btn sync-btn" data-act="sync-now" ' +
           'title="' + esc(t('sync_now')) + '" aria-label="' + esc(t('sync_now')) + '">' +
           '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
@@ -403,7 +390,7 @@ function renderTopbar() {
     (typeof Notify !== 'undefined' ? Notify.bell() : '') +
     /* Green while the live line to the server is open; grey while it is
        reconnecting and the poll carries on. Pulse paints it. */
-    (typeof Auth !== 'undefined' && Auth.can('print.read') ? livePill() : '') +
+    (Auth.can('print.read') ? livePill() : '') +
     '<button class="icon-btn" data-act="bell" title="' + t('notifications') + '">' +
       '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M18 16V10a6 6 0 1 0-12 0v6l-2 3h16zM10 21h4"/></svg>' +
       /* Unread, not total — a badge that never moves is one people stop
@@ -417,24 +404,14 @@ function renderTopbar() {
 
 /* ------------------------------------------------------------- 5b. ACCOUNT */
 
-/* Who is signed in. Three shapes, because there are three ways to be here:
-
-     no Auth at all  — _shot.html, which loads neither api.js nor auth.js.
-                       Falls back to the old static chip so the Arabic
-                       proposal screenshots keep looking like a real app.
-     demo mode       — file:// or a static host. Nobody to sign out.
-     signed in       — the real thing.  */
+/* Who is signed in, or null. */
 function acct() {
-  return (typeof Auth !== 'undefined') ? Auth.user() : null;
-}
-
-function initialsOf(name) {
-  var w = String(name || '').trim().split(/\s+/);
-  return ((w[0] || '?')[0] + (w[1] ? w[1][0] : (w[0] || '')[1] || '')).toUpperCase();
+  return Auth.user();
 }
 
 function roleLabel(role) {
-  var k = { manager: 'role_manager', cashier: 'role_cashier', warehouse: 'role_warehouse',
+  var k = { owner: 'role_owner', developer: 'role_developer',
+            manager: 'role_manager', cashier: 'role_cashier', warehouse: 'role_warehouse',
             delivery: 'role_delivery', partner: 'role_partner' }[role];
   return k ? t(k) : role;
 }
@@ -453,11 +430,6 @@ function livePill() {
 }
 
 function accountChip() {
-  if (typeof Auth === 'undefined') {
-    return '<div class="user-chip"><span class="user-avatar">A</span>' +
-           '<span>' + t('admin') + '</span></div>';
-  }
-
   var u = Auth.user();
   if (!u) return '';
 

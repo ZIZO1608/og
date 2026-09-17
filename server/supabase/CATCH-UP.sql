@@ -783,3 +783,23 @@ ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS colour TEXT;
 ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS colour_ar TEXT;
 ALTER TABLE order_return_lines ADD COLUMN IF NOT EXISTS colour TEXT;
 ALTER TABLE order_return_lines ADD COLUMN IF NOT EXISTS colour_ar TEXT;
+
+
+-- ===== 027_access.sql =====  (local 059: owner and developer, and access per person)
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN
+  ('owner','developer','manager','cashier','warehouse','delivery','partner'));
+
+ALTER TABLE role_permissions DROP CONSTRAINT IF EXISTS role_permissions_role_check;
+ALTER TABLE role_permissions ADD CONSTRAINT role_permissions_role_check CHECK (role IN
+  ('owner','developer','manager','cashier','warehouse','delivery','partner'));
+
+CREATE TABLE IF NOT EXISTS user_permissions (
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  perm       TEXT NOT NULL,
+  allowed    BOOLEAN NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  updated_by BIGINT,
+  PRIMARY KEY (user_id, perm)
+);
+ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;

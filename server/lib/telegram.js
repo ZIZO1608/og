@@ -149,8 +149,6 @@ const MONEY_KINDS = ['rem_day_close', 'rem_cash_variance', 'rem_og_digest',
    what an order is doing is chosen for a room deliberately or not at all. */
 export const DEFAULT_RULES = ALL_KINDS.filter((k) => MONEY_KINDS.indexOf(k) < 0 && !isOffice(k));
 
-export function kindGroups() { return KIND_GROUPS; }
-
 /* ---- A KIND INVENTED LATER, AND A LIST WRITTEN EARLIER ---------------------
    A chat's `rules` is an explicit array frozen at the moment somebody chose
    it, so it can never contain a kind that did not exist yet. Without this,
@@ -320,7 +318,7 @@ function mutedNow(chat, kind, nowMs) {
    beside the box, so it can never happen by accident and can be seen later. */
 /* The five role presets as the browser needs them, read from config so the
    screen and the router can never hold two different answers. */
-export const PRESET_ROLES = ['manager', 'cashier', 'warehouse', 'delivery', 'partner'];
+export const PRESET_ROLES = ['owner', 'developer', 'manager', 'cashier', 'warehouse', 'delivery', 'partner'];
 export function presetMap() {
   const out = {};
   for (const r of PRESET_ROLES) {
@@ -991,10 +989,10 @@ const ACTOR_INLINE = new Set(['order_accepted', 'order_declined']);
    went unused. #open/job/<id> already exists and already knows which side of
    the line the reader is on, so this only has to build the address.
 
-   The base is shop.public_url, and FALLS BACK TO THE TUNNEL HOSTNAME in
-   server/.env — there is no sense in having a public address configured and a
-   config row somebody has to remember to fill in with the same string. A LAN
-   IP is deliberately never used: Yalla Wear are in a different building. */
+   The base is shop.public_url, and with none set there is no link at all:
+   the shop has no public address of its own, and a link that opens nothing is
+   worse than none. A LAN IP is deliberately never used: Yalla Wear are in a
+   different building. */
 /* Where a design picture is worth more than its name. Deliberately short:
    every stage move carrying the artwork again would be the same image four
    times down one chat. */
@@ -1012,19 +1010,13 @@ function publicBase() {
     while (b.length && (b[b.length - 1] === '/' || b[b.length - 1] === '#')) b = b.slice(0, -1);
     return b;
   }
-  const host = maybe('OG_CF_HOSTNAME');
-  if (!host) return null;
-  let h = String(host).trim();
-  if (h.indexOf('://') > -1) h = h.slice(h.indexOf('://') + 3);
-  while (h.length && h[h.length - 1] === '/') h = h.slice(0, -1);
-  return h ? 'https://' + h : null;
+  return null;
 }
 
 function linkFor(kind, a) {
-  /* NOT FOR THE OFFICE'S ORDER ALERTS. The base is the public tunnel hostname,
-     which dies when the shop goes LAN-only (Phase C) — a link that opens
-     nothing is worse than none — and the people these go to have the board
-     open anyway. The order number is in the sentence. */
+  /* NOT FOR THE OFFICE'S ORDER ALERTS. The shop is LAN-only, so a link from a
+     chat would open nothing — which is worse than none — and the people these
+     go to have the board open anyway. The order number is in the sentence. */
   if (isOffice(kind)) return null;
   const base = publicBase();
   if (!base) return null;
@@ -1588,8 +1580,6 @@ async function pollLoop(side) {
 
 /* --------------------------------------------------------------- lifecycle */
 
-export function isConfigured() { return SIDES.some((s) => !!token(s)); }
-
 /* IS THERE A BOT AND A CHAT AT ALL — the gate the office's order alerts are
    queued behind, and deliberately NOT canReach().
 
@@ -1863,10 +1853,6 @@ export async function sendTest(side, chatId) {
    that just queued something, so a phone buzzes within a second of the tap. */
 export function nudge() { if (timer) drain().catch(() => {}); }
 
-/* Drain once and WAIT for it — nudge() is fire-and-forget and only runs when
-   the timer is up, which a test harness has no reason to start. */
-export function drainNow() { return drain(); }
-
 export function status() {
   const d = DB.get();
   const q = d.prepare(
@@ -1902,7 +1888,7 @@ export function status() {
                /* What that ROLE may do, so the picker can warn beside a box
                   that carries money the account could not open on a screen.
                   No leak: GET /api/roles hands the same matrix to everybody. */
-               personPerms: u ? Auth.permissionsFor(u.role) : null,
+               personPerms: u ? Auth.permissionsForUser(u) : null,
                effective: effectiveRules(c),
                /* Which order alerts it actually gets, or the reason for none —
                   the shop's side only; Yalla Wear has no delivery office. */

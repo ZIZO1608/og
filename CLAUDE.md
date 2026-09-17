@@ -138,6 +138,52 @@ Cloudflare and takes requests away from this laptop without a word — the same 
 
 ### Accounts
 
+**The shop's accounts are one table, and two commands make the world match it** (night shift 01,
+migration 059). The table is `TARGET` in `server/scripts/users-rebuild.js`: `abode` (owner), `wael`
+(manager), `cashier`, `member1`–`member3` (warehouse), `zaven` and `zohrab` (Yalla Wear, left exactly as
+they are), `zizo` and `ahmad` (developer), `safeer1` and `safeer2` (delivery). Every other account is
+removed. Ahmad keeps his developer ACCOUNT; his laptop is no longer part of this system.
+
+- **`npm run users:rebuild`** (dry run; `-- --apply` to write; `--url` names the running shop). Backs up
+  first. **The lockout guard** — 2026-09-05 happened — creates `abode`, signs him in through the RUNNING
+  shop's real login route and opens Access; if any of that fails it stops with nothing else changed.
+  Then it creates the missing accounts (Auth.createUser, sealed), gives a new password to any account it
+  did not make, removes the rest without breaking history, and applies the manager's new default set
+  through the shop so its permission cache follows. **Passwords go ONLY to `ACCOUNTS.private.md` in the
+  data folder it ran against** (gitignored); nothing is printed. Refuses while migrations are pending.
+- **Removing an account** (`lib/people.js`): every column that references `users` — read from the schema,
+  so a new table is covered — is re-pointed to one hidden, disabled **"Former staff"** record
+  (`former-staff`), logged where the mirror replays change_log; sessions, per-person permissions and read
+  marks go with the account. A table that will not take the re-point keeps that one account instead,
+  hidden and unusable, as `former-staff-<username>`. `Auth.isHiddenUser` keeps these out of every list.
+- **`npm run users:mirror`** (dry run; `-- --apply`). Refuses unless this database holds the mirror
+  (the lineage check). Upserts every local account with its sealed box; for every account the mirror has
+  and this database has not — including anything only another install ever wrote — re-points its
+  references IN THE MIRROR (append-only tables too) to the local account with the same username, or to
+  Former staff, then deletes it; then compares `role_permissions` and `user_permissions`. Safe twice.
+- **Roles.** `owner` and `developer` hold every permission and the full dashboard; `config.write`,
+  `staff.write` and **`access.write`** are PINNED to them (the manager is no longer pinned). The manager's
+  default set is everything else minus money, cost, profit, staff, settings and access — applied by
+  `users:rebuild`, never by the migration, which runs before any owner exists. The warehouse adds and edits
+  products and prices, cost included. `users.role` and `role_permissions.role` had inline CHECKs, so 059
+  rebuilds both (foreign keys off, checked).
+- **Access per person** (`user_permissions`, pushed whole): effective = role + grants − denies, FORBIDDEN
+  and PINNED enforced, computed once in `Auth.effectiveFor()` — `requirePerm`, `can()`, `/api/live` and
+  the list the browser gets all use it. Setting a switch back to the role's answer deletes the row.
+  **Settings → Access** (`js/access.js`, `access.write` only) lists people, a switch per permission that
+  saves at once, Back to the role, add a person, switch one off (ends their sessions; never yourself, never
+  the last owner/developer), new password. **A password is shown ONCE**, when made or reset — never again
+  there. Every permission name is in both languages (`perm_*`); the roles grid printed the server's English.
+- **`users.pw_box`** is the readable password sealed with `OG_VAULT_KEY`, written wherever a password is
+  set, carried to the mirror only inside the `pw_enc` box, and read ONLY by the developer panel over its
+  pipe. `pw_enc` itself seals the HASH — it never held a password anybody could read.
+- **Check the database, not this file:** `SELECT id, username, role, active FROM users`. The live state is
+  written here after the owner runs the two commands. The old five (`hussam` … `yalla`) and their
+  published password are still in git history; once `users:rebuild --apply` has run on a database they no
+  longer exist in it.
+
+### Accounts — the history before the rebuild
+
 There are no test accounts. Five used to exist — `hussam`, `lubna`, `maher`, `talal`, `yalla` — all
 on one password published in the repo, each with `pw_hint = 'the test one'`, which the login screen
 hands to anyone who types the username. **That password is still in git history and cannot be

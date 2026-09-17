@@ -75,7 +75,7 @@ import { fullMinutes } from './sync-worker.js';
    the same reason. */
 export const ORDER = [
   /* nothing points out of these */
-  'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates', 'categories',
+  'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates', 'categories', 'user_permissions',
   'clubs', 'suppliers', 'employees',
 
   /* the catalogue and what was sold from it.
@@ -281,7 +281,8 @@ export function unsealAccounts(users) {
       try {
         const cred = Vault.unsealUser(u.pw_enc);
         ready.push({ row: u, cred });
-        if ((u.active === true || u.active === 1) && u.role === 'manager') activeManager = true;
+        /* 059 — the owner and the developer count as much as a manager. */
+        if ((u.active === true || u.active === 1) && ['manager', 'owner', 'developer'].includes(u.role)) activeManager = true;
         continue;
       } catch (e) {
         failed++;
@@ -323,7 +324,9 @@ export function applyShop(d, snapshot, accounts, { force = false, log = null, on
       if (exists(u) && !force) { kept++; continue; }
       const row = adapt(u, cols);
       delete row.pw_enc;
-      put('users', { ...row, ...cred });
+      const c = { ...cred };
+      if (!cols.includes('pw_box')) delete c.pw_box;
+      put('users', { ...row, ...c });
       added++;
     }
     for (const u of accounts.disabled) {

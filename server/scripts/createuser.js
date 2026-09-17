@@ -123,7 +123,7 @@ async function main() {
 
     let role = flag('role');
     if (!role) {
-      const suggested = existing === 0 ? 'manager' : 'cashier';
+      const suggested = existing === 0 ? 'owner' : 'cashier';
       console.log(`  roles    : ${Auth.ROLES.join(', ')}`);
       role = (await ask(rl, `  role [${suggested}]: `, 'role')) || suggested;
     }

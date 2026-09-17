@@ -37,6 +37,29 @@ function stockByProduct(d) {
 }
 
 export const CHECKS = {
+  /* 059 rebuilds users (for the role check) — every account, every session
+     and every row that points at one must come through untouched. */
+  '059_access.sql': {
+    foreignKeysOff: true,
+    before(d) {
+      return {
+        users: d.prepare("SELECT COUNT(*) AS n, group_concat(id || ':' || username || ':' || role || ':' || active, ',') AS k FROM (SELECT * FROM users ORDER BY id)").get(),
+        perms: d.prepare('SELECT COUNT(*) AS n FROM role_permissions').get().n,
+        sessions: d.prepare('SELECT COUNT(*) AS n FROM sessions').get().n
+      };
+    },
+    after(d, snap) {
+      const u = d.prepare("SELECT COUNT(*) AS n, group_concat(id || ':' || username || ':' || role || ':' || active, ',') AS k FROM (SELECT * FROM users ORDER BY id)").get();
+      if (u.n !== snap.users.n || u.k !== snap.users.k) throw new Error('the accounts changed while rebuilding users — nothing was changed');
+      const s = d.prepare('SELECT COUNT(*) AS n FROM sessions').get().n;
+      if (s !== snap.sessions) throw new Error('the sessions changed while rebuilding users — nothing was changed');
+      const p = d.prepare('SELECT COUNT(*) AS n FROM role_permissions').get().n;
+      if (p < snap.perms) throw new Error('permission rows were lost — nothing was changed');
+      const h = d.prepare("SELECT COUNT(*) AS n FROM users WHERE length(pw_hash) <> 64").get().n;
+      if (h) throw new Error(h + ' password hash(es) came through damaged — nothing was changed');
+    }
+  },
+
   '058_colours.sql': {
     foreignKeysOff: true,
     before(d) {

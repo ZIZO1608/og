@@ -143,6 +143,7 @@ const WHOLE_KEYS = {
   currencies: ['code'], warehouses: ['id'], config: ['key'],
   role_permissions: ['role', 'perm'], label_templates: ['id'], clubs: ['code'],
   categories: ['id'],
+  user_permissions: ['user_id', 'perm'],
   notification_reads: ['user_id', 'key'], users: ['id']
 };
 const hashes = new Map();
@@ -219,7 +220,7 @@ function parseSlots(log, raw, id) {
 }
 
 async function syncSettings(log, want) {
-  const doing = ['config', 'role_permissions', 'label_templates', 'categories'].filter(want);
+  const doing = ['config', 'role_permissions', 'label_templates', 'categories', 'user_permissions'].filter(want);
   if (!doing.length) return;
   log.head('Settings');
   if (want('config')) await mirrorTable(log, 'config', ['key']);
@@ -229,6 +230,16 @@ async function syncSettings(log, want) {
   if (want('label_templates')) {
     await mirrorTable(log, 'label_templates', ['id'],
                       (r) => ({ ...r, archived: !!r.archived, slots: parseSlots(log, r.slots, r.id) }));
+  }
+  /* 059 — access per person, pushed whole, deletes follow. Its own guard. */
+  if (want('user_permissions')) {
+    try {
+      await mirrorTable(log, 'user_permissions', ['user_id', 'perm'], (r) => ({ ...r, allowed: !!r.allowed }));
+    } catch (e) {
+      if (!MISSING_TABLE.test(String(e.message))) throw e;
+      log.warn('Supabase is missing user_permissions — skipped, everything else still went up.');
+      log.line('    Run server/supabase/027_access.sql in the SQL editor.');
+    }
   }
   /* 057 — its own guard: a mirror without 025 still gets every other setting. */
   if (want('categories')) {
@@ -296,7 +307,7 @@ async function syncUsers(log) {
   const rows = users.map((u) => ({ ...u, active: !!u.active }));
   if (sealing) {
     const cred = DB.get().prepare(
-      'SELECT pw_hash, pw_salt, pw_hint, must_change FROM users WHERE id = ?'
+      'SELECT pw_hash, pw_salt, pw_hint, must_change, pw_box FROM users WHERE id = ?'
     );
     for (const r of rows) {
       const c = cred.get(r.id);

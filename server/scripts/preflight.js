@@ -120,6 +120,19 @@ if (db) {
         hint('Give it a new password, or set active = 0 in Settings.');
       }
     } catch { /* older database without those columns — not worth failing over */ }
+
+    /* 059 — somebody must be able to open Access and Settings. */
+    try {
+      const admins = db.prepare(
+        "SELECT COUNT(*) AS n FROM users WHERE active = 1 AND role IN ('owner','developer')"
+      ).get().n;
+      if (admins === 0) {
+        warn('No active owner or developer account — nobody can change what people may do.');
+        hint('Run:  npm run users:rebuild   (dry run first; --apply to make them)');
+      } else {
+        ok(`${admins} owner/developer account${admins === 1 ? '' : 's'} can open Access.`);
+      }
+    } catch { /* before 059 */ }
   }
 
   /* What the till can actually put in a basket. Hidden rows are still in
