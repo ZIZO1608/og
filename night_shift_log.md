@@ -218,6 +218,7 @@ Six passwords were used or shown in the test (the developer's, the owner's and t
 | every HTTP answer except the reveal/reset answers themselves | 4,275 | 0 |
 | the REAL `%LOCALAPPDATA%\OGSystem\panel.log` | 17,096 | 0 (and its mtime unchanged by the tests) |
 | the REAL `launcher.log` | 336 | 0 (mtime unchanged) |
+**Git:** every sandbox password on record (15, from `sandbox-logins.txt` and both `ACCOUNTS.private.md` files) was searched for in `git log -p main..night-shift-01` (1.04 MB of diffs) and in every commit message: **0 found**.
 The only answers carrying a password are the reveal and reset answers, by design (keyed, `no-store`). The audit log records `unlock`, `unlock-refused <name>`, `lock (button/idle/closed)`, `reveal <user>`, `reset-password <user>` — no password. Also: `sendJson` now refuses any JSON answer holding `pw_box`/`pw_enc`/`pw_hash`/`pw_salt` (tested directly: a clean answer → 200; `pw_box`, `pw_hash` and a nested `pw_salt` key → 500 `server_error`; the words "pw_box" inside a value → 200. `e6api.mjs` already checked that no answer carries a `pw_*` field; it is re-run in the final pass). No screenshot shows a password (blurred before each capture).
 
 ## Cloudflare: removed from the panel / leftovers elsewhere (for a later decision)
@@ -249,7 +250,7 @@ Today the shop is one Node process on the shop laptop, SQLite beside it, reached
 ## MORNING CHECKLIST (in this order)
 (PowerShell blocks npm.ps1 on these machines, so every command below uses npm.cmd.)
 
-1. **Your own laptop (this one):** review the branch: `git log --oneline main..night-shift-01` (9 commits), this log, and the screenshots in `_nightshift/shots/`. Then `git checkout main`, `git merge night-shift-01`, then **Publish**.
+1. **Your own laptop (this one):** review the branch: `git log --oneline main..night-shift-01` (11 commits: stage 0, the eight edits, the final pass, and this log fix), this log, and the screenshots in `_nightshift/shots/`. Then `git checkout main`, `git merge night-shift-01`, then **Publish**.
    - The files the night and you both changed are committed whole (see "Decisions"). `git diff a274f47 night-shift-01 -- <file>` shows only the night's part.
    - **Publish runs `git add -A`**, so it also commits your other ~90 pending edits and the 5 files you had staged. Commit or set those aside first if they are not ready.
    - After the merge: `git update-ref -d refs/nightshift/owner-baseline`, and `git branch -d night-shift-01` if you like.
