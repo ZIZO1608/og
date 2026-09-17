@@ -28,7 +28,6 @@
   --card-hover:     #141419;
   --popover:        #16161A;
   --muted:          #18181C;
-  --accent:         #1C1C21;
   --raise:          #1A1A1F;
   --raise-hover:    #232329;
 
@@ -44,7 +43,6 @@
   /* brand — lime, spent sparingly */
   --brand:            #C6FF00;
   --brand-hover:      #D2FF33;
-  --brand-dim:        #A8DA00;
   --brand-foreground: #0A0A0B;
   --brand-soft:       #1C2600;
   --brand-border:     #4A6600;
@@ -62,7 +60,6 @@
   --radius-lg: 14px;
 
   --d-1: 120ms;
-  --d-2: 180ms;
   --d-3: 260ms;
   --e-out: cubic-bezier(.16, 1, .3, 1);
   --e-in:  cubic-bezier(.4, 0, 1, 1);
@@ -258,7 +255,6 @@ body.rtl .ring { transform: rotate(-90deg) scaleY(-1); }
 .btn-ghost { background: transparent; border-color: var(--border-strong); color: var(--muted-foreground); }
 .btn-ghost:hover { background: var(--card-hover); color: var(--foreground); }
 .btn-sm { height: 31px; padding: 0 12px; font-size: 12px; border-radius: var(--radius-sm); }
-.btn-block { width: 100%; }
 .btn-hot { background: transparent; border-color: var(--brand-border); color: var(--brand); }
 .btn-hot:hover { background: var(--brand-soft); border-color: var(--brand); }
 .btn-danger { background: transparent; border-color: var(--destructive-border); color: var(--destructive); }
@@ -357,7 +353,6 @@ body.rtl .ring { transform: rotate(-90deg) scaleY(-1); }
   font-size: 13px; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.addr .tag { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
 .addr .go {
   flex: none; width: 28px; height: 28px; display: grid; place-items: center;
   border-radius: var(--radius-sm); border: 1px solid transparent;
@@ -617,12 +612,13 @@ select.in { padding-inline-end: 28px; }
 /* ============================================================ the toasts */
 
 .toasts {
-  position: fixed; top: 14px; inset-inline-end: 14px; z-index: 80;
+  /* below the bar: a toast over the Developer button is a button nobody can press */
+  position: fixed; top: calc(var(--bar-h) + 10px); inset-inline-end: 14px; z-index: 80;
   display: flex; flex-direction: column; gap: 9px;
   pointer-events: none;
 }
 .toast {
-  min-width: 268px; max-width: 380px;
+  min-width: min(268px, calc(100vw - 28px)); max-width: min(380px, calc(100vw - 28px));
   background: var(--popover); border: 1px solid var(--border-strong);
   border-inline-start: 3px solid var(--border-strong);
   border-radius: var(--radius-lg); padding: 12px 14px;
@@ -660,6 +656,274 @@ body.rtl .toast { animation-name: toastInR; }
   .qrcard { justify-self: start; }
 }
 
+/* ===================================================== night shift 01
+   The developer door, the boot's mark, the Shop screen's quiet buttons, the
+   Connections card, and the developer screens. */
+
+/* ---------------------------------------------------- the door in the bar */
+#bDev .ic-open { display: none; }
+#bDev.open .ic-open { display: block; }
+#bDev.open .ic-locked { display: none; }
+#bDev.open { color: var(--brand); }
+#bDev.here { background: var(--brand-soft); border-color: var(--brand-border); }
+
+.devchip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 3px 3px 11px; border-radius: 9999px;
+  border: 1px solid var(--brand-border); background: var(--brand-soft);
+  font-size: 11.5px; font-weight: 600; color: var(--brand);
+  animation: fade .2s ease both;
+}
+body.rtl .devchip { padding: 3px 11px 3px 3px; }
+.devchip .who { white-space: nowrap; }
+.lockbtn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 9px; border-radius: 9999px;
+  background: var(--app); color: var(--foreground);
+  font-size: 11px; font-weight: 700;
+  transition: background var(--t), color var(--t);
+}
+.lockbtn:hover { background: var(--brand); color: var(--brand-foreground); }
+.lockbtn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ------------------------------------------------------- the boot's mark */
+/* The mark draws itself in: a circle opening from its middle, a little
+   blur coming into focus. Then the ring counts the real steps. */
+.stage.drawn .mark { animation: markDraw .9s var(--e-out) both; }
+.stage.drawn .ring .track { animation: trackIn .7s var(--e-out) both; }
+@keyframes markDraw {
+  0%   { clip-path: circle(0% at 50% 50%); filter: blur(6px); transform: scale(.86); }
+  60%  { filter: blur(0); }
+  100% { clip-path: circle(75% at 50% 50%); transform: scale(1); }
+}
+@keyframes trackIn { from { stroke-dasharray: 0 339; } to { stroke-dasharray: 339 0; } }
+
+.stage .orbit {
+  position: absolute; inset: -6px; border-radius: 50%;
+  border: 1.5px solid transparent; border-top-color: rgb(198 255 0 / .55);
+  opacity: 0; transition: opacity var(--d-3) var(--e-std);
+  pointer-events: none;
+}
+.stage.busy .orbit { opacity: 1; animation: spin 1.3s linear infinite; }
+.stage.lit .arc { filter: drop-shadow(0 0 5px rgb(198 255 0 / .45)); }
+.stage.fail .arc { stroke: var(--destructive); }
+.stage.fail .track { stroke: var(--destructive-border); }
+.stage.fail .mark { animation: markShake .45s var(--e-std) 1; }
+@keyframes markShake {
+  20% { transform: translateX(-4px); } 40% { transform: translateX(4px); }
+  60% { transform: translateX(-2px); } 80% { transform: translateX(2px); }
+}
+.hero .sub b { color: var(--foreground); font-weight: 700; }
+.cap1 { display: inline-block; }
+.cap1::first-letter { text-transform: uppercase; }
+.stage.fail ~ .sub { color: var(--destructive); }
+
+/* ------------------------------------------------- the quiet buttons */
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 32px; padding: 0 12px; border-radius: 9999px;
+  border: 1px solid var(--border-strong); color: var(--muted-foreground);
+  font-size: 12px; font-weight: 600;
+  transition: background var(--t), color var(--t), border-color var(--t);
+}
+.chip:hover { background: var(--card-hover); color: var(--foreground); }
+.chip:disabled { opacity: .4; pointer-events: none; }
+.chip svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.chip.stop:hover { color: var(--destructive); border-color: var(--destructive-border); background: var(--destructive-soft); }
+
+/* ------------------------------------------------------- the handover */
+.handover {
+  margin-top: 22px; width: 100%;
+  display: grid; grid-template-columns: 20px 1fr auto; gap: 12px; align-items: center;
+  padding: 14px 16px; border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgb(198 255 0 / .06), transparent), var(--card);
+  border: 1px solid var(--brand-border);
+  text-align: start;
+}
+.handover .ho-ic { color: var(--brand); }
+.handover .ho-ic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.handover b { display: block; font-size: 13px; margin-bottom: 3px; }
+.handover small { display: block; font-size: 11.5px; color: var(--muted-foreground); line-height: 1.5; }
+
+/* ----------------------------------------------------- the connections */
+.conn { width: 100%; margin-top: 16px; text-align: start; }
+.conn-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 0 2px 9px;
+}
+.conn-head h3 {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+}
+.conn-head small { display: block; font-size: 12px; font-weight: 600; color: var(--muted-foreground); margin-top: 2px; }
+.conn-head small.ok { color: var(--success); }
+.conn-head small.warn { color: var(--warning); }
+.conn-head small.bad { color: var(--destructive); }
+.conn-head .btn svg { width: 13px; height: 13px; }
+.conn.checking .conn-head .btn svg { animation: spin 1s linear infinite; }
+
+.conn-list {
+  list-style: none; margin: 0; padding: 0;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.cr {
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; gap: 10px; align-items: center;
+  padding-block: 8px; padding-inline: 12px 10px;
+  border-top: 1px solid var(--border);
+}
+.cr:first-child { border-top: 0; }
+.cr .ic { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: var(--dim); }
+.cr .ic svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.cr.ok .ic   { color: var(--brand); background: var(--brand-soft); }
+.cr.warn .ic { color: var(--warning); background: var(--warning-soft); }
+.cr.bad .ic  { color: var(--destructive); background: var(--destructive-soft); }
+.cr.skip .ic { color: var(--dim); background: var(--muted); }
+.conn.checking .cr.wait .ic svg { animation: spin 1s linear infinite; }
+.cr .nm { min-width: 0; }
+.cr .nm b { display: block; font-size: 12.5px; font-weight: 600; }
+.cr .nm small { display: block; font-size: 11.5px; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.cr.bad .nm small { color: var(--destructive); }
+.cr.warn .nm small { color: var(--warning); }
+.cr.skip .nm small, .cr.wait .nm small { color: var(--dim); }
+.cr .at { font-size: 10.5px; color: var(--dim); white-space: nowrap; }
+.cr .bt { display: inline-flex; align-items: center; gap: 6px; }
+.again {
+  width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-sm);
+  color: var(--dim); border: 1px solid transparent;
+  transition: background var(--t), color var(--t), border-color var(--t);
+}
+.again:hover { color: var(--foreground); background: var(--card-hover); border-color: var(--border-strong); }
+.again svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.again.spinning svg { animation: spin 1s linear infinite; }
+
+/* ------------------------------------------------ the developer screens */
+.screen.dev { overflow: hidden; }
+.dev-head { flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 0; gap: 10px 16px; }
+.dev-head .back { margin-bottom: 8px; }
+.tabs {
+  display: flex; gap: 2px; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none;
+  align-self: stretch;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  position: relative; flex: none;
+  padding: 8px 12px 13px; font-size: 12.5px; font-weight: 600; color: var(--dim);
+  transition: color var(--t);
+}
+.tab:hover { color: var(--foreground); }
+.tab.on { color: var(--foreground); }
+.tab.on::after {
+  content: ''; position: absolute; inset-inline: 12px; bottom: 0; height: 2px;
+  border-radius: 2px; background: var(--brand);
+}
+.pane { flex: 1; min-height: 0; overflow-y: auto; }
+.pane .pad { padding-top: 18px; }
+.term-pane { display: flex; flex-direction: column; overflow: hidden; }
+.term-pane .term { border-top: 0; }
+.termbar .hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.narrow { max-width: 880px; margin-inline: auto; }
+.pane .conn { margin-top: 0; }
+
+.sec-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.sec-head h2 { font-size: 16px; margin-bottom: 3px; }
+.sec-head .btn svg { width: 13px; height: 13px; }
+.pane .notice { margin-bottom: 12px; }
+
+/* the accounts */
+.acc-list { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.acc-row {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .9fr) minmax(0, .9fr) minmax(0, 1.6fr);
+  gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border);
+}
+.acc-row:first-child { border-top: 0; }
+.acc-th { padding-block: 8px; background: var(--muted); }
+.acc-th span { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.acc-row.off .who b { color: var(--muted-foreground); }
+.acc-row.shown { background: var(--brand-soft); }
+.acc-row .who b { display: block; font-size: 12.5px; }
+.acc-row .who small { display: block; font-size: 11px; color: var(--dim); text-align: start; }
+.acc-row .last { font-size: 11.5px; color: var(--muted-foreground); }
+.acc-row .pw { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.pw-dots { color: var(--dim); letter-spacing: .12em; font-size: 12px; }
+.pw-val {
+  font: 600 13px/1.2 'Cascadia Mono', Consolas, monospace; color: var(--brand);
+  background: var(--app); border: 1px solid var(--brand-border); border-radius: var(--radius-sm);
+  padding: 5px 8px; user-select: all; overflow-wrap: anywhere;
+}
+.pw-none { font-size: 11.5px; color: var(--warning); }
+.pw .left { font-size: 10.5px; color: var(--dim); width: 100%; }
+.ib {
+  width: 28px; height: 28px; display: grid; place-items: center; flex: none;
+  border-radius: var(--radius-sm); border: 1px solid var(--border-strong); color: var(--muted-foreground);
+  transition: background var(--t), color var(--t), border-color var(--t);
+}
+.ib:hover { color: var(--foreground); background: var(--card-hover); }
+.ib.done { color: var(--brand); border-color: var(--brand-border); }
+.ib svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.link.sm { font-size: 11px; padding: 4px 6px; }
+
+/* this machine */
+.kvs { padding: 4px 16px; }
+.kv { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 14px; padding: 10px 0; border-top: 1px solid var(--border); align-items: start; }
+.kv:first-child { border-top: 0; }
+.kv > span:first-child { font-size: 11.5px; font-weight: 600; color: var(--dim); }
+.kv > span:last-child { font-size: 12.5px; min-width: 0; }
+.kv code, .paths code {
+  display: block; font: 500 11.5px/1.5 'Cascadia Mono', Consolas, monospace; color: var(--muted-foreground);
+  overflow-wrap: anywhere; user-select: text; text-align: left;
+}
+
+/* the asks */
+.ask .err { margin-top: 12px; color: var(--destructive); font-size: 12px; }
+.newpw {
+  margin: 14px 0 10px; display: flex; align-items: center; gap: 10px;
+  background: var(--app); border: 1px solid var(--brand-border); border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.newpw code { flex: 1; min-width: 0; font: 700 16px/1.3 'Cascadia Mono', Consolas, monospace; color: var(--brand); user-select: all; overflow-wrap: anywhere; }
+.newpw .btn svg { width: 13px; height: 13px; }
+.ask .btn svg { width: 14px; height: 14px; }
+.ask { overflow-y: auto; }
+
+@media (max-width: 720px) {
+  .acc-th { display: none; }
+  .acc-row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; }
+  .acc-row .last { grid-column: 1 / -1; order: 3; }
+  .acc-row .pw { grid-column: 1 / -1; order: 4; }
+  .kv { grid-template-columns: 1fr; gap: 3px; }
+  .cr { grid-template-columns: 22px minmax(0, 1fr) auto; }
+  .cr .at { grid-column: 2; grid-row: 2; }
+  .cr .bt { grid-column: 3; grid-row: 1 / span 2; flex-direction: column; align-items: flex-end; }
+  .handover { grid-template-columns: 20px 1fr; }
+  .handover .btn { grid-column: 1 / -1; justify-self: stretch; }
+  .dev-head { padding-inline: 12px; }
+  .pad { padding-inline: 14px; }
+  .screen.center { padding-inline: 16px; }
+  .ask { padding: 16px; }
+}
+@media (max-width: 520px) {
+  .bar { gap: 8px; padding-inline: 12px; }
+  .bar h1 { display: none; }
+  .devchip .who { display: none; }
+  .devchip, body.rtl .devchip { padding: 3px; }
+  .lamp { padding: 5px 9px; }
+  .termbar .hint { display: none; }
+  .tabs { flex-basis: 100%; }
+  .tool { grid-template-columns: minmax(0, 1fr); }
+  .tool .tags { flex-wrap: wrap; }
+  .pubrow { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage.drawn .mark, .stage.drawn .ring .track, .stage.fail .mark { animation: none; }
+  .stage.busy .orbit, .conn.checking .conn-head .btn svg, .conn.checking .cr.wait .ic svg,
+  .again.spinning svg, .devchip { animation: none; }
+  .ring .arc { transition: none; }
+}
+
+body.rtl .conn-head h3, body.rtl .acc-th span, body.rtl .pw-dots { letter-spacing: 0; }
+
 /* ============================================================== Arabic */
 
 /* Tracked capitals are an English typographic device. Arabic is a joined
@@ -670,7 +934,7 @@ body.rtl {
   letter-spacing: 0;
 }
 body.rtl h1, body.rtl h2, body.rtl h3,
-body.rtl .card h3, body.rtl .gh, body.rtl .qrcard .cap, body.rtl .addr .tag,
+body.rtl .card h3, body.rtl .gh, body.rtl .qrcard .cap,
 body.rtl .tag-pill, body.rtl .ask label, body.rtl .ask .word,
 body.rtl .lang-btn, body.rtl .hero h2 { letter-spacing: 0; }
 

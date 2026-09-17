@@ -134,10 +134,24 @@ export const JOBS = {
   testPrint: {
     label: 'Print a test',
     group: 'machine',
+    public: true,
     blurb: 'Sends one receipt and one label so paper actually comes out. Readable words mean it works; strange codes mean the wrong driver is installed.',
     while: 'any',
     cwd: 'server',
     steps: () => [['node', ['scripts/test-print.js']]]
+  },
+
+  /* The Shop screen's printer check: first where it WOULD go (no paper),
+     then, only when the person says so, the real slip. Both are public —
+     a shopkeeper standing at a silent printer needs no developer. */
+  testPrintDry: {
+    label: 'Check the printers (no paper)',
+    group: 'machine',
+    blurb: 'Says which printer each slip would go to, and sends nothing.',
+    while: 'any',
+    public: true,
+    cwd: 'server',
+    steps: () => [['node', ['scripts/test-print.js', '--dry']]]
   },
 
   hardwareInstall: {
@@ -149,33 +163,11 @@ export const JOBS = {
     steps: () => [['node', ['scripts/hardware.js', '--install']]]
   },
 
-  /* ------------------------------------------- the door from outside in */
-
-  /* ONE button that both checks and fixes, which is not the shape the rest
-     of this table uses and is deliberate. `hardware` reports and
-     `hardwareInstall` acts, because a printer driver is a decision about
-     this machine somebody may want to read before taking. The connector is
-     not that: on a client's machine the only useful answer to "is Cloudflare
-     set up" is "it is now".
-
-     So it runs the check first, prints everything it found, and then puts
-     right whatever it can. A machine already connected raises no permission
-     prompt at all, which is what makes it safe to press twice — and pressing
-     it twice is exactly what somebody will do. */
-  cloudflare: {
-    label: 'Check Cloudflare',
-    group: 'machine',
-    blurb: 'Whether this computer is connected to the tunnel that puts the shop on its web address. Downloads and connects it if it is not, asking Windows for permission once.',
-    while: 'any',
-    cwd: 'server',
-    steps: () => [['node', ['scripts/cloudflare.js', '--connect']]]
-  },
-
   /* --------------------------------------------------------- the padlock */
   cert: {
     label: 'Make certificate',
     group: 'machine',
-    blurb: 'A new self-signed certificate for this machine\u2019s addresses. Every phone shows its warning once more afterwards, and the shop needs a restart. If this shop is reached from outside through Cloudflare, this button BREAKS that \u2014 the web address stops loading until the certificate is removed again.',
+    blurb: 'A new self-signed certificate for this machine\u2019s addresses. Every phone shows its warning once more afterwards, and the shop needs a restart.',
     danger: 'NEW CERT',
     while: 'any',
     cwd: 'server',
@@ -273,6 +265,9 @@ export const JOBS = {
     blurb: 'Pulls the whole shop down from the cloud onto this machine and makes this the laptop that owns the mirror. Close the shop on the other laptop first. Whatever is on this machine that never reached the cloud is replaced by the cloud copy.',
     danger: 'TAKE',
     while: 'shut',
+    /* public, and still refused unless the mirror belongs to another laptop
+       (the shopkeeper's handover) — see the handover check in ask() in panel.js */
+    public: true,
     aroundShop: true,
     cwd: 'server',
     steps: () => [['node', ['scripts/supabase-restore.js', '--wipe']]]

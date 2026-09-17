@@ -235,7 +235,7 @@ OG System.exe               the icon. Starts panel/panel.js, opens a window onto
 panel/panel.js              the supervisor: holds the server as a child, streams its output, runs the jobs
 panel/jobs.js               the button table — every job is a command plus the two sentences before it
 panel/package.json          {"type":"module"} — every panel file is ESM; without it Node 24 warns and re-parses them
-panel/ui/                   the window: three screens, same tokens and Montserrat as the shop
+panel/ui/                   the window: the Shop screen + the developer screens, the shop's tokens and Montserrat
 panel/ui/i18n.js            its own English and Arabic — the shop's I18N needs a server to exist
 panel/launcher/OGSystem.cs  the .exe's source. panel/build-exe.ps1 compiles it; panel/make-icon.js the icon
 ```
@@ -375,7 +375,7 @@ of it may stop the shop opening** — the .bat's loudest rule, kept to the lette
 session because two of these can raise a UAC prompt, right at 8 am and wrong on the ninth
 restart of an afternoon's editing.
 
-### The window is three screens, and it opens on the one a shopkeeper needs
+### The window opens on the one screen a shopkeeper needs
 
 It used to open on a 306px rail of five cards beside a **full-height black terminal**, which was
 the largest thing on screen and the first thing the owner saw at eight in the morning. He keeps
@@ -386,8 +386,10 @@ that is how it was reported.
   button, the address with a QR beside it, and anything wrong as a card. The last screen is
   deliberately **not** remembered: the one morning somebody opened the log out of curiosity would
   otherwise become every morning after it.
-- **Tools** (the gear) is every job (eighteen) under four headings, drawn from `group` in `jobs.js`.
-- **Log** is the terminal, given the whole window — a place you go to, not the room you arrive in.
+- **Developer** (the lock at the end of the bar) is everything else — Tools (every job under four
+  headings, drawn from `group` in `jobs.js`), Log (the terminal), Connections with fix buttons,
+  Accounts, This machine — and it opens only for a **developer** account. See **The Shop screen and
+  the developer door** below.
 
 **The boot is seven steps, and every one is a real signal** — an exit code, a spawn, a message off
 the pipe. `STEPS` in `panel.js`: `port · checks · padlock · printers · server · cloud · open`, each
@@ -416,6 +418,77 @@ runs, so every refusal used to exist only as a red line in a pane this window no
 `refuse()` pushes `event: refused` with a code and the window toasts it. Job progress goes the same
 way (`event: job`, `{step, of}`), and the long-emitted-but-ignored `event: done` is now the
 completion toast.
+
+### The Shop screen and the developer door (night shift 01)
+
+The owner asked for a launcher a shopkeeper cannot hurt the shop with. **The Shop screen is the
+whole window for anybody without a developer sign-in**: Open in the browser, Open / Close the shop,
+Restart (the Full refresh, asked first), Test the printers, the language, the address and QR, the
+notices, the handover card when the situation is the handover, and the **Connections** card.
+Everything else is behind the lock in the bar.
+
+- **THE GATE IS IN THE PANEL PROCESS, NOT THE PAGE.** `ask()` in `panel/panel.js` runs in front of
+  `act()` for every `POST /act`: `PUBLIC_ACTIONS` (start, stop, restart, refresh, open, who, lock,
+  unlock, connections, devstate) and the jobs marked `public: true` (`testPrintDry`, `testPrint`,
+  and `takeShop` **only while `state.mirror.mode === 'refused'`**) pass; anything else answers
+  `{ok:false, code:'locked'}` and pushes `refused`. `quit` and `clear` are developer actions. The
+  typed danger word is checked in `runJob` too (`needs_word`) — the window's disabled button was the
+  only check before, and a hand-sent request has no button.
+- **Only the `developer` role opens it — the owner is refused too**, by the owner's decision.
+  `devAuth()` asks the running shop's own `POST /api/auth/login` (and logs that session out at once),
+  or, with the shop closed, opens the database **read-only** and runs `verifyPassword` (an unknown
+  name hashes against random bytes, as the shop's login does). Eight failures in fifteen minutes
+  refuse even the right password (`too_many`), and every failure waits 700 ms. The unlock lasts until
+  `OG_PANEL_DEV_IDLE_MS` (15 min) passes with nothing asked — the window sends `devstate` on use, at
+  most twice a minute — or until no window is connected for five seconds (a reload reconnects
+  sooner). **Lock** is always in the bar while it is open.
+- **The log is a developer's screen.** `say()` pushes `line` only while unlocked; the `hello` frame
+  carries no lines to a locked window, and the unlock replays the ring (`event: lines`). A lock
+  empties the pane.
+- **Connections** (`checkConnections()` / `checkOne()`): shop server (`/api/health`), HTTPS
+  (`trust-cert --check`, `TLS.daysLeft()`, `TLS.uncovered()`), receipt · label · scanner
+  (`hardware.js --json`, one run for the three), cloud copy (the worker's own state), both Telegram
+  bots (**`getMe` only — nothing is ever sent**) with the linked-chat count, Web Push keys, internet
+  (`generate_204`), the newest backup's age, the vault key. Each has a deadline, answers `skip`
+  when it did not run, and is a code plus values; the words are `cc_*` in `panel/ui/i18n.js`. The
+  card is checked when the shop reports ready, when the shop stops (server and mirror rows), and on
+  Check all / Check again. Fix buttons (`CONN_FIX` in the window) are drawn only while unlocked.
+- **Accounts** are read straight from the database, read-only; Former staff never listed. The eye
+  opens `users.pw_box` with this machine's `OG_VAULT_KEY` (`revealPassword`) and the answer goes
+  **only** in the keyed `/act` response (`Cache-Control: no-store`), is drawn in one row for 30 s,
+  one row at a time, and is never logged, toasted or pushed. No box, no key or the wrong key reads
+  "Password not readable on this machine" with **Reset**: the panel asks the shop over IPC
+  (`{type:'resetpw'}` → `People.newPassword`, which re-seals it and ends that account's sessions)
+  and the answer comes back as `{type:'secret'}`, never through `say()`. A reset needs the shop
+  open. Every unlock, refusal, lock, reveal and reset is a line in `panel-audit.log` beside
+  `panel.log` — **without** the password.
+- **`sendJson` in `server/lib/http.js` refuses any JSON answer carrying `pw_box`, `pw_enc`,
+  `pw_hash` or `pw_salt`** (a 500 and a log line), so a `SELECT *` added to a route next year
+  cannot hand password material to a browser.
+- **The boot**: the mark draws itself in (clip-path, blur) on open and on every fresh sequence, an
+  orbit turns while the shop opens, the ring counts the real steps, the line under the headline
+  names the step running. A failure turns the ring red where it stopped and says ONE sentence;
+  a shopkeeper gets Try again, a developer also Show details and the step list. All of it stands
+  still under `prefers-reduced-motion`.
+- **Test printers is two steps**: `testPrintDry` (sends nothing), and only if it exits 0 the
+  window asks before `testPrint` spends paper.
+- **Toasts sit below the bar.** At the top corner they covered the Developer button, and a test
+  could not open the sign-in until the toast faded.
+- **A test panel** is `node panel/panel.js` with `OG_PANEL_PORT` (not 8099), `OG_PANEL_KEY`,
+  `OG_PANEL_AUTOSTART=0`, the sandbox env (`OG_ENV_FILE`, `OG_DATA_DIR`, `OG_PORT=8190` …) and
+  **`OG_PANEL_LOG_DIR`**, which moves `panel.log` and `panel-audit.log` so the real ones in
+  `%LOCALAPPDATA%\OGSystem` (truncated at every start) are never touched. `OG_PANEL_DEV_IDLE_MS`
+  shortens the idle lock for a test. Never start `OG System.exe` for a test: its mutex is the
+  live panel's. `OGSystem.cs` did not change for any of this, so the `.exe` was not rebuilt.
+
+Verified (17 Sep 2026) on the sandbox through a test panel on 8199: 90 checks over HTTP (every
+hand-sent locked action refused; cashier and owner refused on both paths; the developer let in and
+the question session ended; every danger word enforced; connections; a reveal matching the real
+password; a reset ending the old session; restart, full refresh, stop; the window closing locks
+it), 7 for the idle lock and the throttle, and 175 in the window over CDP in English and Arabic at
+1100 × 760 and 375 × 760, every confirm button hit-tested. Six passwords were searched for in
+`panel.log`, `panel-audit.log`, the panel's stdout, every event-stream frame, every HTTP answer
+other than the reveal and reset themselves, and the real `panel.log` and `launcher.log`: zero hits.
 
 ### The jobs — `panel/jobs.js`
 

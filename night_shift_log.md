@@ -137,12 +137,89 @@ Migration 058 on a copy of the verified backup (`_nightshift/e1mig.mjs`):
 - The sandbox itself migrated the same way when restarted.
 
 ## E8 every panel job: job | how tested | result
+Test panel: `node panel/panel.js` via `_nightshift/tp-run.sh` — `OG_PANEL_PORT=8199`, `OG_PANEL_KEY` set, `OG_PANEL_AUTOSTART=0`, the sandbox env (shop on 8190), `OG_PANEL_LOG_DIR=_nightshift/panel-logs`. `OG System.exe` was never started; nothing listened on 8099. `OGSystem.cs` did not change, so the .exe was not rebuilt. Script: `_nightshift/e8api.mjs` (90/90).
+
+| job | how tested | result |
+|---|---|---|
+| testPrintDry (new) | run for real while LOCKED (public); sandbox printer config; `--dry` sends nothing | exit 0 |
+| (action) start | run for real while locked (public) — the panel started the sandbox shop, 7 steps, none failed | running |
+| backup | run for real (lands in `server/data-sandbox/backups`) | exit 0 |
+| preflight | run for real (prints only) | exit 3 = its own "the shop is already open here" answer; accounts, 3 owner/developer, catalogue all OK |
+| hardware | run for real (read-only check) | exit 0 |
+| mirrorCheck | run for real; the sandbox env has no Supabase | exit 1 "Supabase is not configured" (expected) |
+| mirrorDrift | run for real; no Supabase | exit 1 (expected, same reason) |
+| createuser | run for real: a throw-away sandbox cashier (password piped, never on the command line); it then signed in | exit 0 |
+| cert | run for real with its word NEW CERT: written to `server/data-sandbox/certs` (the real `server/data/certs` untouched), then that sandbox folder deleted so no later Start asks Windows to trust it | exit 0 |
+| push (Publish) | NOT run — commits + pushes. Verified: dev-only (hand-sent while locked → `locked`), needs a message | verified without running |
+| pull | NOT run — git pull is forbidden tonight. Verified: dev-only | verified without running |
+| deploy | NOT run — would rewrite the owner's untracked `dist/`. Verified: dev-only | verified without running |
+| testPrint | NOT run — real paper. Verified: public; the window only offers it after `testPrintDry` exits 0, and asks first (screens `*-07-printers-real-ask`) | verified without running |
+| hardwareInstall | NOT run — administrator prompt, installs queues. Verified: dev-only | verified without running |
+| certTrust | NOT run — writes the Windows trusted store. Verified: dev-only | verified without running |
+| mirrorSync | NOT run — pushes to Supabase. Verified: dev-only; with the shop open → `needs_shut` | verified without running |
+| mirrorReconcile | NOT run — deletes in Supabase. Verified: dev-only; without RECONCILE → `needs_word` | verified without running |
+| claim | NOT run — takes the lineage. Verified: without CLAIM → `needs_word` | verified without running |
+| restore | NOT run — replaces og.db from Supabase. Verified: locked → `locked`; without RESTORE → `needs_word` | verified without running |
+| takeShop | NOT run — the same wipe. Verified: locked and not in a handover → `locked`; without TAKE → `needs_word` | verified without running |
+| (action) restart | run for real, sandbox | running again |
+| (action) refresh (Full refresh) | run for real, sandbox — all six steps ok; it bumps `sw.js` (the test runs took it v249 → v253) | ok |
+| (action) sync | run for real; the sandbox worker has no Supabase → "[panel] sync finished", nothing pushed | ok, nothing sent |
+| (action) who / stop | run for real while locked (public) | answered / stopped |
+
+**The lock, proved** (`e8api.mjs`, `e8idle.mjs` 6/6, `e8ui.mjs`):
+- Hand-sent `POST /act` while locked, refused `locked` by the panel process: accounts, reveal, resetpw, info, clear, sync, quit, job backup, job restore (with its word), job takeShop (with its word, not a handover), job push. The locked event stream carried no log line.
+- `cashier` and owner `abode` refused on both paths (shop closed → read-only database check; shop open → the shop's own login); a wrong developer password refused; `zizo` (developer) let in on both paths, and the session the shop's login made for the question was gone afterwards (session count before = after).
+- Idle: with `OG_PANEL_DEV_IDLE_MS=8000`, 12 s of use kept it open, 10 s of nothing locked it, the window was told `why: idle`, a hand-sent accounts afterwards was refused.
+- The window closing: with no stream connected for 5 s it locked itself.
+- Throttle: after eight failures in 15 min even the right password is refused `too_many` (it also caught my own test runs twice, which is how the throttle was first seen working).
+- After Lock: a hand-sent reveal and accounts refused.
+
+**The window** (`e8ui.mjs` 175/175, CDP, EN + AR × 1100×760 and 375×760; 76 screenshots in `_nightshift/shots/e8/`, passwords blurred before every picture): closed Shop screen shows only Open the shop, Test the printers, the language and the lock (plus the connection re-checks) — no job reachable; a failing connection (the bogus Telegram tokens) shown with no fix button; boot mid (ring part-filled, running step named) and end (ring full and lit); the open Shop screen scrolls to its last connection at 760 px; printer test → dry check → the real print ASKED, not sent; Restart asks; the lock dialog; a cashier refused in the window (password field emptied); the developer in; Tools (18 jobs + restart + full refresh, publish box), Log, Connections, Accounts (no Former staff, zaven "not readable" + Reset, all hidden), a reveal of the right password with a countdown, a second reveal hiding the first, the reveal hiding itself after 30 s, a reset (confirm hit-tested, the new password shown once, gone from the page when closed), This machine; Lock back to the Shop screen with the log emptied; Stop asks; **a failed boot** (a socket held 8190 and never answered): ring red, one sentence, a shopkeeper gets Try again only, a developer also Show details and the step list, Show details opens the Log; `prefers-reduced-motion` stops the draw-in and the orbit; no sideways scroll anywhere (RTL included); no page errors; every confirm button hit-tested.
+
+Fixed on the way: toasts sat over the bar and covered the Developer button (moved below the bar); tool rows ran off a 375 screen (tags wrap); after a stop the "Shop server" row still said Answering (the panel re-checks server and mirror when the shop stops; a closed shop reads "not checked", not red); the failed-boot line read "The port is free — something else is holding port 8190" (now just the reason); "0 h ago" for a fresh backup; a reset of Former staff was written to the audit log before being refused (now refused first); `restore`/`takeShop`/`cert`/… danger words were checked only in the window (now in `runJob` too).
 
 ## E8 connections: check | result on the sandbox
+Checked at 11:43 by the test panel, shop open (`_nightshift/e8-connections.json`):
+
+| check | how | result |
+|---|---|---|
+| Shop server | `/api/health`, 5 s | ok — answering (OG Sports) |
+| Secure address | `trust-cert --check` (15 s) + `TLS.daysLeft` + `TLS.uncovered` | warn `https_none` — the sandbox has no certificate (the real one was not looked at) |
+| Receipt printer | `hardware.js --json` (60 s, one run for three rows) | ok |
+| Label printer | same | ok |
+| Scanner | same | ok |
+| Cloud copy | the worker's own state | warn `mirror_off` — no Supabase in the sandbox |
+| Telegram · OG bot | `getMe` only, 6 s; linked-chat count from config | bad `tg_refused` — the sandbox's bogus token (2 chats in the copy, with fake ids) |
+| Telegram · Yalla Wear bot | same | bad `tg_refused` — bogus token, 0 chats |
+| Web Push keys | `push_keys` row, `OG_PUSH` | warn `push_off` (keys present, push switched off in the sandbox) |
+| Internet | `gstatic generate_204`, 5 s | ok |
+| Last backup | newest `.db` in the data folder's backups | ok — within the hour |
+| Vault key | `OG_VAULT_KEY` present | ok (the sandbox's throw-away key) |
+With the shop closed, the server row reads "The shop is closed" as skip and the mirror row "not checked". Every row has a deadline; the whole card has one of 70 s.
 
 ## E8 password-leak search result (no passwords)
+Six passwords were used or shown in the test (the developer's, the owner's and the cashier's sandbox passwords; the password revealed; two made by reset; one piped to createuser). Each was searched for as plain text:
+
+| where | size | hits |
+|---|---|---|
+| test `panel.log` | 15,578 chars | 0 |
+| test panel stdout | 62 | 0 |
+| test `panel-audit.log` | 788 | 0 |
+| every event-stream frame (incl. every Log-screen line) | 272,623 | 0 |
+| every HTTP answer except the reveal/reset answers themselves | 4,275 | 0 |
+| the REAL `%LOCALAPPDATA%\OGSystem\panel.log` | 17,096 | 0 (and its mtime unchanged by the tests) |
+| the REAL `launcher.log` | 336 | 0 (mtime unchanged) |
+The only answers carrying a password are the reveal and reset answers, by design (keyed, `no-store`). The audit log records `unlock`, `unlock-refused <name>`, `lock (button/idle/closed)`, `reveal <user>`, `reset-password <user>` — no password. Also: `sendJson` now refuses any JSON answer holding `pw_box`/`pw_enc`/`pw_hash`/`pw_salt` (tested directly: a clean answer → 200; `pw_box`, `pw_hash` and a nested `pw_salt` key → 500 `server_error`; the words "pw_box" inside a value → 200. `e6api.mjs` already checked that no answer carries a `pw_*` field; it is re-run in the final pass). No screenshot shows a password (blurred before each capture).
 
 ## Cloudflare: removed from the panel / leftovers elsewhere (for a later decision)
+**Panel:** there was nothing to remove — no Cloudflare job in `panel/jobs.js`, no button or word in `panel/ui/` or `panel/panel.js` (it went on 16 Sep). The new panel mentions none. `git grep -i cloudflare` over tracked files other than Markdown: **0**.
+
+Left elsewhere, untouched (the Cloudflare service was left alone):
+1. **`server/.env` still holds three lines: `OG_CF_TUNNEL_ID`, `OG_CF_HOSTNAME`, `OG_CF_TUNNEL_TOKEN`** (values not read tonight). No code reads them since 16 Sep. The token is a live credential for the tunnel → decide: delete the lines, and delete or rotate the tunnel in the Cloudflare dashboard.
+2. **`C:\Program Files (x86)\cloudflared\cloudflared.exe`** (54 MB, 11 Sep) is still on disk. There is no Windows service called `cloudflared` and no `%USERPROFILE%\.cloudflared`. CLAUDE.md says "no longer installed" — the service is gone, the program file is not.
+3. The Cloudflare account: the tunnel and the `shop.ogsports1.com` DNS record (not looked at tonight — no calls to Cloudflare).
+4. `dist/js/app-i18n-extra.js` (untracked build of 16 Sep) still has the old "…or connect Cloudflare, first." strings in both languages; the next Build dist replaces it.
+5. Words only: CLAUDE.md's "The way in from outside — retired", the memory notes, and git history (`git log -- server/scripts/cloudflare.js`).
 
 ## Going online later — Railway or a VPS (research only, NO code)
 

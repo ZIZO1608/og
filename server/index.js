@@ -3733,7 +3733,7 @@ if (runDirectly) {
   /* THE CONTROL PANEL. None of this exists unless the process was spawned
      with an IPC channel — lib/panel-link.js says why the conversation is a
      pipe and not another route. */
-  PanelLink.onAsk((type) => {
+  PanelLink.onAsk((type, m) => {
     if (type === 'stop') { shutdown('the control panel'); return; }
 
     /* HARD REFRESH. The panel has already bumped the service worker's cache
@@ -3776,6 +3776,18 @@ if (runDirectly) {
        the shop open" and deliberately not "Lubna is mid-sale" — that is a
        thing this server does not know, and the panel's wording says only what
        is in this object. */
+    /* THE DEVELOPER PANEL'S "NEW PASSWORD". The one way a password crosses
+       out of this process is up this pipe, to the panel that started it —
+       never over HTTP (lib/http.js refuses that). */
+    if (type === 'resetpw') {
+      People.newPassword(Number(m.id)).then((r) => {
+        PanelLink.tell('secret', { reqId: m.reqId, id: Number(m.id), password: r.password });
+      }, (e) => {
+        PanelLink.tell('secret', { reqId: m.reqId, id: Number(m.id), error: e.code || 'failed' });
+      });
+      return;
+    }
+
     if (type === 'who') {
       const p = Live.presence();
       PanelLink.tell('who', {

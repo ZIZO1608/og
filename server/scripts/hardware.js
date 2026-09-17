@@ -68,6 +68,12 @@ const ROOT = resolve(HERE, '..', '..');
 const RAW_DRIVER = 'Generic / Text Only';
 
 const INSTALL = argv.includes('--install');
+/* --json: the same check, plus one last line the control panel reads —
+   OG_HW_JSON {"receipt":…,"label":…,"scanner":…} — each one of
+   ok · fix (this script can put it right) · person (somebody must) ·
+   none (not set up) · elsewhere (another computer's) · unknown. */
+const JSON_OUT = argv.includes('--json');
+const HW = { receipt: 'unknown', label: 'unknown', scanner: 'unknown' };
 const LOG = (() => { const i = argv.indexOf('--log'); return i > -1 ? argv[i + 1] : null; })();
 
 /* ------------------------------------------------------------------ output */
@@ -381,13 +387,17 @@ async function check() {
     hint('The server creates it on this run — start again afterwards.');
   } else if (cfg.receipt.transport === 'usb') {
     const at = unc(cfg.receipt.share);
+    HW.receipt = 'none';
     if (!at) {
+      HW.receipt = 'person';
       humans.push(`The receipt printer is set to USB, but receipt.printer_share ("${cfg.receipt.share}") is not a share name like \\\\localhost\\OGRECEIPT. Fix it in Settings.`);
     } else if (!isHere(at.host, facts.computer)) {
+      HW.receipt = 'elsewhere';
       warn(`The receipt printer is shared from ${at.host}, not from this computer.`);
       hint(`Nothing to install here — check the queue "${at.share}" on ${at.host}.`);
     } else {
       const p = planQueue({ label: 'receipt printer', share: at.share, facts, hints: ['xp-t', 'xp-8', 'xp8', 'pos', 'receipt', '80'] });
+      HW.receipt = p.ready ? 'ok' : p.human ? 'person' : p.actions.length ? 'fix' : 'person';
       if (p.ready) ok(`The receipt printer queue ${at.share} is installed, shared, and on the ${RAW_DRIVER} driver.`);
       if (p.human) humans.push(`The receipt printer queue ${at.share} does not exist, and ${p.human}`);
       for (const n of p.notes) warn(n);
@@ -395,9 +405,11 @@ async function check() {
     }
   } else if (cfg.receipt.host) {
     const up = await reachable(cfg.receipt.host, cfg.receipt.port);
+    HW.receipt = up ? 'ok' : 'person';
     if (up) ok(`The receipt printer answers at ${cfg.receipt.host}:${cfg.receipt.port} — no driver needed on this computer.`);
     else humans.push(`The receipt printer at ${cfg.receipt.host}:${cfg.receipt.port} does not answer. Switch it on, or check the cable and the address in Settings.`);
   } else {
+    HW.receipt = 'none';
     warn('No receipt printer is set up at all — receipt.printer_host is empty.');
     hint('Settings > Receipt. The till still sells; it just cannot print.');
   }
@@ -407,9 +419,11 @@ async function check() {
   if (cfg && cfg.label.transport === 'tcp') {
     if (cfg.label.host) {
       const up = await reachable(cfg.label.host, cfg.label.port);
+      HW.label = up ? 'ok' : 'person';
       if (up) ok(`The label printer answers at ${cfg.label.host}:${cfg.label.port} — no driver needed on this computer.`);
       else humans.push(`The label printer at ${cfg.label.host}:${cfg.label.port} does not answer. Switch it on, or check the address in Settings.`);
     } else {
+      HW.label = 'person';
       warn('label.transport is "tcp" but no label printer address is set, so label printing fails on every attempt.');
       if (agent) hint(`This computer is set up as the label station "${agent.station}" — set the transport back to "agent" in Settings.`);
       else hint('Settings > Labels: give it an address, or set the transport to "agent".');
@@ -422,12 +436,15 @@ async function check() {
   if (agent) {
     const at = unc(agent.share);
     if (!at) {
+      HW.label = 'person';
       humans.push(`agent\\agent-config.json has printerShare "${agent.share}", which is not a share name like \\\\localhost\\OGLABEL.`);
     } else if (!isHere(at.host, facts.computer)) {
+      HW.label = 'elsewhere';
       warn(`The label printer is shared from ${at.host}, not from this computer.`);
       hint(`Nothing to install here — check the queue "${at.share}" on ${at.host}.`);
     } else {
       const p = planQueue({ label: 'label printer', share: at.share, facts, hints: ['xp-2', 'xp2', '235', 'label', 'tspl'] });
+      HW.label = p.ready ? 'ok' : p.human ? 'person' : p.actions.length ? 'fix' : 'person';
       if (p.ready) ok(`The label printer queue ${at.share} is installed, shared, and on the ${RAW_DRIVER} driver.`);
       if (p.human) humans.push(`The label printer queue ${at.share} does not exist, and ${p.human}`);
       for (const n of p.notes) warn(n);
@@ -442,6 +459,7 @@ async function check() {
       hint('Double-click agent\\install-agent.bat once. Until then label jobs just queue up.');
     }
   } else if (cfg && cfg.label.transport !== 'tcp') {
+    HW.label = 'none';
     warn('Label jobs wait for a print agent, and this computer is not one.');
     hint('If the label printer is plugged in HERE, see agent\\README.md.');
   }
@@ -457,6 +475,7 @@ async function check() {
   const stuck = facts.broken.filter(d =>
     !d.class || ['keyboard', 'hidclass', 'usb', 'unknown'].includes(String(d.class).toLowerCase()));
 
+  HW.scanner = stuck.length ? 'fix' : plugIn.length ? 'ok' : 'none';
   if (stuck.length) {
     for (const d of stuck) warn(`Windows has not finished installing "${d.name || d.id}".`);
     actions.push({
@@ -587,5 +606,6 @@ if (INSTALL) {
   exit(await install());
 } else {
   const { code } = await check();
+  if (JSON_OUT) console.log('OG_HW_JSON ' + JSON.stringify(HW));
   exit(code);
 }

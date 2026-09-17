@@ -20,7 +20,7 @@
    ========================================================================== */
 
 import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, extname } from 'node:path';
@@ -28,7 +28,12 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { createServer as createProbe } from 'node:net';
 import { JOBS } from './jobs.js';
-import { load as loadServerEnv } from '../server/lib/env.js';
+import { load as loadServerEnv, dataDir, backupDir, dbFile } from '../server/lib/env.js';
+import { DatabaseSync } from 'node:sqlite';
+import { verifyPassword } from '../server/lib/auth.js';
+import * as Vault from '../server/lib/credvault.js';
+import * as TLS from '../server/lib/tls.js';
+import { lanAddresses } from '../server/lib/net.js';
 
 /* The shop's own server/.env, read the way the server reads it, so the
    panel's idea of which port to check is never a second guess at it. */
@@ -62,7 +67,10 @@ const state = {
   swCache: null,   // the service worker's cache name, as it stands on disk
   stale: false,    // server/ has been edited since the running shop started
   steps: [],       // opening the shop, one row per real thing that happens
-  who: null        // who has the shop open, asked for before Stop
+  who: null,       // who has the shop open, asked for before Stop
+  dev: null,       // { who, until } while the developer section is unlocked
+  connections: [], // the Connections card: { id, state, code, args, at }
+  connChecking: false
 };
 
 let child = null;  // the shop
@@ -88,7 +96,9 @@ const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
    panel starts, so the answer to "why did it not open this morning" exists
    after the window has been closed. Same folder the launcher keeps its own
    log and the window's browser profile in. */
-const LOG_DIR = join(process.env.LOCALAPPDATA || tmpdir(), 'OGSystem');
+/* OG_PANEL_LOG_DIR: a test panel keeps its own logs, so the real panel.log and
+   launcher.log (truncated at every start) are never touched by one. */
+const LOG_DIR = process.env.OG_PANEL_LOG_DIR || join(process.env.LOCALAPPDATA || tmpdir(), 'OGSystem');
 let logFile = null;
 try {
   mkdirSync(LOG_DIR, { recursive: true });
@@ -104,7 +114,9 @@ function say(text, stream = 'out') {
     LINES.push(line);
     if (LINES.length > MAX_LINES) LINES.shift();
     if (logFile) logFile.write(stamp() + '  ' + (stream === 'out' ? '  ' : stream === 'err' ? '! ' : '> ') + raw + '\n');
-    push('line', line);
+    /* The log is a developer's screen: it goes to the window only while the
+       developer section is unlocked, and is replayed whole on unlock. */
+    if (devOn()) push('line', line);
   }
 }
 
@@ -133,6 +145,335 @@ function snapshot() {
 }
 
 function pushState() { push('state', snapshot()); }
+
+/* =================================================== the developer section
+   Night shift 01. Everything that is not "open the shop" sits behind a
+   developer's own username and password — the owner's included is refused,
+   by the owner's decision. Checked HERE, in the panel process, on every
+   action; the window only draws what this allows.
+
+   The password is checked through the running shop's own login route (the
+   session it makes is ended at once), or, with the shop closed, against a
+   READ-ONLY open of the database with the same scrypt check. Failures are
+   throttled like the shop's login and say nothing about which part was
+   wrong. The unlock lasts until the window closes or DEV_IDLE_MS passes with
+   nothing done. */
+const DEV_IDLE_MS = Number(process.env.OG_PANEL_DEV_IDLE_MS) || 15 * 60 * 1000;
+const dev = { who: null, until: 0 };
+const devFails = [];
+
+function devOn() {
+  if (!dev.who) return false;
+  if (Date.now() < dev.until) return true;
+  lockDev('idle');
+  return false;
+}
+function touchDev() { if (dev.who) { dev.until = Date.now() + DEV_IDLE_MS; state.dev = { who: dev.who, until: dev.until }; } }
+function lockDev(why) {
+  if (!dev.who) return;
+  audit('lock', null, why);
+  dev.who = null; dev.until = 0; state.dev = null;
+  push('dev', { unlocked: false, why });
+  pushState();
+}
+setInterval(() => { if (dev.who && Date.now() >= dev.until) lockDev('idle'); }, 2000).unref();
+
+/* Who did what, never with a password in it. */
+function audit(what, account, note) {
+  try {
+    mkdirSync(LOG_DIR, { recursive: true });
+    const line = new Date().toISOString() + '  ' + (dev.who || '-') + '  ' + what +
+      (account ? '  ' + account : '') + (note ? '  (' + note + ')' : '') + '\n';
+    writeFileSync(join(LOG_DIR, 'panel-audit.log'), line, { flag: 'a' });
+  } catch { /* the audit is best-effort; the action is not blocked on it */ }
+}
+
+function readOnlyDb() {
+  try { return new DatabaseSync(dbFile(), { readOnly: true }); } catch { return null; }
+}
+
+async function devAuth(username, password) {
+  const now = Date.now();
+  while (devFails.length && now - devFails[0] > 15 * 60 * 1000) devFails.shift();
+  if (devFails.length >= 8) return { ok: false, code: 'too_many' };
+  const u = String(username || '').trim();
+  const p = String(password || '');
+  let ok = false;
+
+  if (child && state.server === 'running') {
+    const base = 'http://localhost:' + SHOP_PORT;
+    try {
+      const r = await fetch(base + '/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: base },
+        body: JSON.stringify({ username: u, password: p }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const body = await r.json().catch(() => ({}));
+      const cookie = (r.headers.getSetCookie ? r.headers.getSetCookie() : []).map((c) => c.split(';')[0]).join('; ');
+      if (r.ok && body.ok && body.user) {
+        ok = body.user.role === 'developer' && body.user.active !== false;
+        /* The session was only a question; it ends now. */
+        await fetch(base + '/api/auth/logout', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, Cookie: cookie }, body: '{}',
+          signal: AbortSignal.timeout(5000)
+        }).catch(() => {});
+      }
+    } catch { ok = false; }
+  } else {
+    const d = readOnlyDb();
+    let row = null;
+    try { row = d ? d.prepare('SELECT pw_hash, pw_salt, role, active FROM users WHERE username = ? COLLATE NOCASE').get(u) : null; }
+    catch { row = null; }
+    finally { try { d && d.close(); } catch { /* closed */ } }
+    /* hash either way, so an unknown name takes as long as a known one */
+    const good = row
+      ? await verifyPassword(p, Buffer.from(row.pw_hash), Buffer.from(row.pw_salt))
+      : await verifyPassword(p, Buffer.alloc(64), randomBytes(16));
+    ok = !!(row && good && row.role === 'developer' && row.active);
+  }
+
+  if (!ok) {
+    devFails.push(Date.now());
+    await new Promise((r) => setTimeout(r, 700));
+    audit('unlock-refused', u);
+    return { ok: false, code: 'refused' };
+  }
+  dev.who = u;
+  touchDev();
+  audit('unlock', null);
+  push('dev', { unlocked: true, who: u });
+  push('lines', { lines: LINES });
+  pushState();
+  return { ok: true, who: u };
+}
+
+/* ---- accounts: the list, and a password read out of its sealed box ------ */
+
+function listAccounts() {
+  const d = readOnlyDb();
+  if (!d) return { ok: false, code: 'no_db' };
+  try {
+    let rows;
+    try {
+      rows = d.prepare('SELECT id, username, name, role, active, last_login_at, pw_box IS NOT NULL AS boxed FROM users ORDER BY active DESC, name').all();
+    } catch {
+      rows = d.prepare('SELECT id, username, name, role, active, NULL AS last_login_at, 0 AS boxed FROM users ORDER BY active DESC, name').all();
+    }
+    return {
+      ok: true,
+      vault: Vault.isEnabled(),
+      accounts: rows.filter((r) => !/^former-staff/i.test(r.username)).map((r) => ({
+        id: r.id, username: r.username, name: r.name, role: r.role, active: !!r.active,
+        lastLoginAt: r.last_login_at || null, boxed: !!r.boxed
+      }))
+    };
+  } finally { try { d.close(); } catch { /* closed */ } }
+}
+
+function revealPassword(id) {
+  const d = readOnlyDb();
+  if (!d) return { ok: false, code: 'no_db' };
+  let row = null;
+  try { row = d.prepare('SELECT username, pw_box FROM users WHERE id = ?').get(Number(id)); }
+  catch { row = null; }
+  finally { try { d.close(); } catch { /* closed */ } }
+  if (!row || /^former-staff/i.test(row.username)) return { ok: false, code: 'not_found' };
+  audit('reveal', row.username);
+  /* said in the log without the password — the log is written to disk */
+  say('  Developer ' + dev.who + ' looked at the password of ' + row.username + '.', 'note');
+  if (!row.pw_box) return { ok: false, code: 'unreadable', why: 'no_box' };
+  if (!Vault.isEnabled()) return { ok: false, code: 'unreadable', why: 'no_key' };
+  try {
+    return { ok: true, password: Vault.unseal(row.pw_box).pw };
+  } catch {
+    return { ok: false, code: 'unreadable', why: 'wrong_key' };
+  }
+}
+
+const secretWait = new Map();
+function resetPassword(id) {
+  return new Promise((done) => {
+    if (!child || state.server !== 'running') return done({ ok: false, code: 'needs_shop' });
+    const reqId = randomBytes(8).toString('hex');
+    const timer = setTimeout(() => { secretWait.delete(reqId); done({ ok: false, code: 'no_answer' }); }, 20000);
+    secretWait.set(reqId, (m) => {
+      clearTimeout(timer);
+      secretWait.delete(reqId);
+      if (m.error) return done({ ok: false, code: m.error });
+      done({ ok: true, password: m.password });
+    });
+    const d = readOnlyDb();
+    let who = null;
+    try { const r = d && d.prepare('SELECT username FROM users WHERE id = ?').get(Number(id)); if (r) who = r.username; } catch { who = null; }
+    finally { try { d && d.close(); } catch { /* closed */ } }
+    /* Former staff is the placeholder old records point at; nobody signs in as it. */
+    if (!who || /^former-staff/i.test(who)) {
+      clearTimeout(timer);
+      secretWait.delete(reqId);
+      return done({ ok: false, code: 'not_found' });
+    }
+    audit('reset-password', who);
+    say('  Developer ' + dev.who + ' gave ' + who + ' a new password.', 'note');
+    try { child.send({ type: 'resetpw', id: Number(id), reqId }); } catch { done({ ok: false, code: 'needs_shop' }); }
+  });
+}
+
+/* ---- read-only facts for the developer's Info card ----------------------- */
+
+function devInfo() {
+  let branch = null;
+  try {
+    const r = spawnSync(EXE.git, ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT, encoding: 'utf8', windowsHide: true, timeout: 5000 });
+    branch = r.status === 0 ? r.stdout.trim() : null;
+  } catch { branch = null; }
+  let lineage = null;
+  const d = readOnlyDb();
+  try { const r = d && d.prepare("SELECT value FROM config WHERE key = 'sync.lineage'").get(); lineage = r ? String(r.value).slice(0, 8) : null; }
+  catch { lineage = null; }
+  finally { try { d && d.close(); } catch { /* closed */ } }
+  const m = state.mirror;
+  return {
+    logs: [join(LOG_DIR, 'panel.log'), join(LOG_DIR, 'launcher.log'), join(LOG_DIR, 'panel-audit.log')],
+    cache: readCacheName(),
+    branch,
+    database: dbFile(),
+    baton: !m ? { state: 'unknown' }
+      : m.mode === 'refused' ? { state: 'elsewhere', by: m.refusedBy || null }
+      : m.configured ? { state: 'here', lineage } : { state: 'off' }
+  };
+}
+
+/* ================================================================ connections
+   One list of everything the shop leans on, each checked by the code that
+   already checks it, each with a deadline, none of them able to hold the shop
+   up. A row is a code and its values; the window writes the words. A check
+   that did not run says skip, never a tick. */
+function withTimeout(p, ms, fallback) {
+  return Promise.race([p, new Promise((r) => setTimeout(() => r(fallback), ms))]);
+}
+
+function runCapture(argv, ms) {
+  return new Promise((done) => {
+    let out = '';
+    const p = spawn(EXE.node, argv, { cwd: SERVER, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env: { ...process.env, FORCE_COLOR: '0' } });
+    const timer = setTimeout(() => { try { p.kill(); } catch { /* gone */ } done({ code: null, out }); }, ms);
+    p.stdout.on('data', (b) => { out += b.toString('utf8'); });
+    p.on('error', () => { clearTimeout(timer); done({ code: null, out }); });
+    p.on('exit', (code) => { clearTimeout(timer); done({ code, out }); });
+  });
+}
+
+const CONN_IDS = ['server', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'backup', 'vault'];
+
+async function checkOne(id, ctx) {
+  const row = (st, code, args) => ({ id, state: st, code, args: args || {}, at: Date.now() });
+  switch (id) {
+    case 'server': {
+      if (!child && !(state.ready && state.ready.foreign)) return row('skip', 'server_closed');
+      const h = await withTimeout(askTheShop(), 5000, null);
+      return h ? row('ok', 'server_ok', { shop: h.shop || '' }) : row('bad', 'server_silent');
+    }
+    case 'https': {
+      if (!TLS.have()) return row('warn', 'https_none');
+      const r = await runCapture(['scripts/trust-cert.js', '--check'], 15000);
+      const days = TLS.daysLeft();
+      const gaps = TLS.uncovered(lanAddresses().map((a) => a.address || a).filter(Boolean));
+      if (r.code === null) return row('skip', 'timeout');
+      if (r.code === 4) return row('warn', 'https_untrusted', { days });
+      if (gaps.length) return row('warn', 'https_address', { ips: gaps });
+      if (days !== null && days < 30) return row('warn', 'https_expiring', { days });
+      return r.code === 0 ? row('ok', 'https_ok', { days }) : row('warn', 'https_unknown');
+    }
+    case 'receipt': case 'label': case 'scanner': {
+      const hw = ctx.hw || (ctx.hw = runCapture(['scripts/hardware.js', '--json'], 60000).then((r) => {
+        const m = /OG_HW_JSON (\{.*\})/.exec(r.out);
+        try { return m ? JSON.parse(m[1]) : null; } catch { return null; }
+      }));
+      const res = await hw;
+      if (!res) return row('skip', 'timeout');
+      const v = res[id];
+      const st = v === 'ok' ? 'ok' : v === 'unknown' ? 'skip' : v === 'none' || v === 'elsewhere' ? 'warn' : 'bad';
+      return row(st, 'hw_' + v);
+    }
+    case 'mirror': {
+      const m = state.mirror;
+      if (!child) return row('skip', 'shop_closed');
+      if (!m) return row('skip', 'mirror_silent');
+      if (!m.configured || m.mode === 'off') return row('warn', 'mirror_off');
+      if (m.mode === 'refused') return row('bad', 'mirror_refused', { by: m.refusedBy || '?' });
+      if (m.mode === 'offline') return row('warn', 'mirror_offline', { behind: m.behind || 0 });
+      return row(m.behind ? 'warn' : 'ok', 'mirror_live', { behind: m.behind || 0, at: m.lastOkAt || null });
+    }
+    case 'tg_og': case 'tg_yalla': {
+      const side = id === 'tg_og' ? 'og' : 'yalla';
+      const token = process.env[side === 'og' ? 'OG_TELEGRAM_TOKEN_OG' : 'OG_TELEGRAM_TOKEN_YALLA'];
+      if (!token) return row('warn', 'tg_no_token');
+      let chats = 0;
+      const d = readOnlyDb();
+      try {
+        const c = d && d.prepare('SELECT value FROM config WHERE key = ?').get('telegram.' + side + '_chats');
+        const list = c ? JSON.parse(c.value) : [];
+        chats = Array.isArray(list) ? list.length : 0;
+      } catch { chats = 0; }
+      finally { try { d && d.close(); } catch { /* closed */ } }
+      try {
+        /* getMe only — nothing is ever sent from here */
+        const r = await fetch('https://api.telegram.org/bot' + token + '/getMe', { signal: AbortSignal.timeout(6000) });
+        const j = await r.json().catch(() => ({}));
+        if (!j.ok) return row('bad', 'tg_refused', { chats });
+        return row(chats ? 'ok' : 'warn', chats ? 'tg_ok' : 'tg_no_chats', { bot: j.result && j.result.username, chats });
+      } catch { return row('warn', 'tg_unreachable', { chats }); }
+    }
+    case 'push': {
+      const d = readOnlyDb();
+      let have = false;
+      try { have = !!(d && d.prepare('SELECT 1 FROM push_keys WHERE id = 1').get()); } catch { have = false; }
+      finally { try { d && d.close(); } catch { /* closed */ } }
+      if (process.env.OG_PUSH === '0') return row('warn', 'push_off', { keys: have });
+      return have ? row('ok', 'push_ok') : row('warn', 'push_none');
+    }
+    case 'internet': {
+      try {
+        const r = await fetch('https://www.gstatic.com/generate_204', { signal: AbortSignal.timeout(5000) });
+        return r.status < 500 ? row('ok', 'net_ok') : row('warn', 'net_bad');
+      } catch { return row('bad', 'net_none'); }
+    }
+    case 'backup': {
+      let newest = 0;
+      try {
+        for (const n of readdirSync(backupDir())) {
+          if (!/\.db$/.test(n)) continue;
+          const m = statSync(join(backupDir(), n)).mtimeMs;
+          if (m > newest) newest = m;
+        }
+      } catch { newest = 0; }
+      if (!newest) return row('warn', 'backup_none');
+      const hours = Math.round((Date.now() - newest) / 3600000);
+      return row(hours > 48 ? 'warn' : 'ok', 'backup_age', { hours });
+    }
+    case 'vault':
+      return Vault.isEnabled() ? row('ok', 'vault_ok') : row('bad', 'vault_none');
+  }
+  return row('skip', 'unknown');
+}
+
+async function checkConnections(only) {
+  const ids = only ? [only] : CONN_IDS;
+  if (!only) state.connChecking = true;
+  pushState();
+  const ctx = {};
+  await Promise.all(ids.map(async (id) => {
+    const r = await withTimeout(checkOne(id, ctx).catch(() => ({ id, state: 'skip', code: 'failed', args: {}, at: Date.now() })),
+      70000, { id, state: 'skip', code: 'timeout', args: {}, at: Date.now() });
+    const i = state.connections.findIndex((x) => x.id === id);
+    if (i > -1) state.connections[i] = r; else state.connections.push(r);
+    state.connections.sort((a, b) => CONN_IDS.indexOf(a.id) - CONN_IDS.indexOf(b.id));
+    pushState();
+  }));
+  if (!only) state.connChecking = false;
+  pushState();
+}
 
 /* ------------------------------------------------------------- the steps */
 
@@ -262,7 +603,7 @@ async function morning() {
 
   /* The certificate, and whether Windows trusts it. --check is free and
      silent; only a 4 - made, not yet trusted - leads to the prompt, once. */
-  if (existsSync(join(SERVER, 'data', 'certs', 'og-cert.pem'))) {
+  if (existsSync(join(dataDir(), 'certs', 'og-cert.pem'))) {
     step('padlock', 'run');
     if (await runQuiet(['scripts/trust-cert.js', '--check']) === 4) {
       say('');
@@ -364,12 +705,6 @@ async function startServer() {
         http: 'http://localhost:' + SHOP_PORT,
         https: health.https ? 'https://localhost:' + httpsPort : null,
         lan: health.lan || [],
-        /* Straight off the health line rather than out of this process's own
-           environment: the shop being adopted may have been started with a
-           different .env than this panel can see, and printing OUR tunnel
-           address over THEIR server is how somebody ends up typing an address
-           that reaches a different shop. */
-        public: health.public || null,
         secure: !!health.https,
         shop: health.shop,
         accounts: null,
@@ -439,9 +774,14 @@ async function startServer() {
         accounts: m.accounts == null ? null : m.accounts,
         secure: !!m.secure
       });
-      return pushState();
+      pushState();
+      /* the Connections card, now that there is a shop to ask — never waited on */
+      setTimeout(() => { checkConnections().catch(() => {}); }, 1500);
+      return;
     }
     if (m.type === 'mirror') { state.mirror = m.mirror; stepFromMirror(m.mirror); return pushState(); }
+    /* a password, answering the developer panel — never logged, never pushed */
+    if (m.type === 'secret') { const w = secretWait.get(m.reqId); if (w) w(m); return; }
     if (m.type === 'who') { state.who = m.who || null; return pushState(); }
     if (m.type === 'stopping') { state.server = 'stopping'; return pushState(); }
     if (m.type === 'log') say(m.line);
@@ -480,6 +820,8 @@ async function startServer() {
       step('open', 'wait');
       step('cloud', 'wait');
     }
+    /* the Connections card's first two rows are facts about this process */
+    if (state.connections.length) checkConnections('server').then(() => checkConnections('mirror')).catch(() => {});
     pushState();
     say('');
     const how = code ? '  (exit ' + code + ')' : signal ? '  (' + signal + ')' : '';
@@ -758,6 +1100,13 @@ function runJob(name, args = {}) {
   const spec = JOBS[name];
   if (!spec) { say('  No such job: ' + name, 'err'); return refuse(name, 'job_unknown'); }
 
+  /* The typed word is checked here too: the window's disabled button is a
+     suggestion, and a hand-sent request carries no button at all. */
+  if (spec.danger && String(args.confirm || '').trim().toUpperCase() !== spec.danger) {
+    say('  "' + spec.label + '" needs its word typed first.', 'err');
+    return refuse(name, 'needs_word', { label: spec.label });
+  }
+
   /* The reason this check is here and not in the UI: a disabled button is a
      suggestion. Two writers on one set of mirror bookmarks is the exact
      failure lineage.js exists to prevent, and it must not depend on which
@@ -887,7 +1236,8 @@ function catalogue() {
          card only worked because it drew its own un-greyed copy of the
          button. Sent now, so the enablement rule can match the real one. */
       group: v.group || 'shop',
-      aroundShop: !!v.aroundShop
+      aroundShop: !!v.aroundShop,
+      public: !!v.public
     };
   }
   return out;
@@ -946,17 +1296,25 @@ const server = createServer(async (req, res) => {
       Connection: 'keep-alive'
     });
     res.write('retry: 2000\n\n');
-    res.write('event: hello\ndata: ' + JSON.stringify({ state: snapshot(), lines: LINES, jobs: catalogue() }) + '\n\n');
+    res.write('event: hello\ndata: ' + JSON.stringify({ state: snapshot(), lines: devOn() ? LINES : [], jobs: catalogue() }) + '\n\n');
     watchers.add(res);
     const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* gone */ } }, 20000);
     beat.unref();
-    req.on('close', () => { watchers.delete(res); clearInterval(beat); });
+    req.on('close', () => {
+      watchers.delete(res);
+      clearInterval(beat);
+      /* The unlock lasts until the window closes. A reload reconnects within a
+         second or two, so the lock waits that long before deciding. */
+      setTimeout(() => { if (!watchers.size) lockDev('closed'); }, 5000).unref();
+    });
     return;
   }
 
   if (path === '/act' && req.method === 'POST') {
     const b = await body(req);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const answer = await ask(b.action, b.args || {});
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    if (answer !== undefined) return res.end(JSON.stringify(answer));
     res.end('{"ok":true}');
     return act(b.action, b.args || {});
   }
@@ -964,6 +1322,35 @@ const server = createServer(async (req, res) => {
   res.writeHead(404);
   res.end();
 });
+
+/* THE GATE. What a shopkeeper may do without the developer unlock; everything
+   else is refused HERE, whatever the window drew — a hand-sent POST included. */
+const PUBLIC_ACTIONS = new Set(['start', 'stop', 'restart', 'refresh', 'open', 'who', 'lock', 'unlock', 'connections', 'devstate']);
+
+async function ask(action, args) {
+  if (action === 'unlock') return devAuth(args.username, args.password);
+  if (action === 'lock') { lockDev('button'); return { ok: true }; }
+  if (action === 'devstate') return { ok: true, unlocked: devOn(), who: dev.who };
+  if (action === 'connections') {
+    const only = args.only && CONN_IDS.includes(args.only) ? args.only : null;
+    checkConnections(only).catch(() => {});
+    return { ok: true };
+  }
+  /* Take the shop here is a shopkeeper's button only while the handover is
+     actually the situation; otherwise it is a developer's tool like the rest. */
+  const handover = !!(state.mirror && state.mirror.mode === 'refused');
+  const isPublicJob = action === 'job' && JOBS[args.name] && JOBS[args.name].public &&
+    (args.name !== 'takeShop' || handover);
+  if (!PUBLIC_ACTIONS.has(action) && !isPublicJob) {
+    if (!devOn()) { refuse(action === 'job' ? args.name : action, 'locked'); return { ok: false, code: 'locked' }; }
+    touchDev();
+  } else if (devOn()) touchDev();
+  if (action === 'accounts') return listAccounts();
+  if (action === 'reveal') return revealPassword(args.id);
+  if (action === 'resetpw') return resetPassword(args.id);
+  if (action === 'info') return { ok: true, ...devInfo() };
+  return undefined;
+}
 
 function act(action, args) {
   if (action === 'start') return startServer();

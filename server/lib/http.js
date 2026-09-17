@@ -50,8 +50,19 @@ export function readJson(req) {
 
 /* ---------------------------------------------------------------- responses */
 
+/* PASSWORD MATERIAL NEVER LEAVES OVER HTTP (night shift 01). A readable
+   password lives only in users.pw_box and is read only by the developer panel,
+   over its own pipe. Every JSON answer is checked for the column names that
+   carry password material; one that has them is refused rather than sent,
+   whatever route built it — a SELECT * somewhere next year included. */
+const SECRET_KEYS = /"(pw_box|pw_enc|pw_hash|pw_salt)"\s*:/;
 export function sendJson(res, status, body, headers = {}) {
-  const text = JSON.stringify(body);
+  let text = JSON.stringify(body);
+  if (SECRET_KEYS.test(text)) {
+    console.error('  [http] refused to send an answer carrying password material');
+    status = 500;
+    text = JSON.stringify({ ok: false, code: 'server_error', error: 'Something went wrong on the server.' });
+  }
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(text),

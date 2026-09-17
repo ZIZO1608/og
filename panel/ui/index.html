@@ -33,17 +33,29 @@
 
   <button class="icon-btn lang-btn" id="bLang" data-go="lang" title="Switch to Arabic">عربي</button>
 
-  <button class="icon-btn" id="bTools" data-go="tools" title="Tools and settings" aria-label="Tools">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  <!-- The developer door. Locked, it asks for a developer's own sign-in;
+       unlocked, it is the way back to the developer screens, and the chip
+       beside it says who opened it and carries the Lock. -->
+  <div class="devchip" id="devChip" hidden>
+    <span class="who" id="devWho"></span>
+    <button class="lockbtn" data-do="lock" id="bLock">
+      <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      <span id="bLockText">Lock</span>
+    </button>
+  </div>
+  <button class="icon-btn" id="bDev" data-go="dev" title="Developer" aria-label="Developer">
+    <svg class="ic-locked" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+    <svg class="ic-open" viewBox="0 0 24 24"><path d="m8 9-4 3 4 3"/><path d="m16 9 4 3-4 3"/><path d="m13.5 6-3 12"/></svg>
   </button>
 </header>
 
 <main>
 
   <!-- ============================================================== SHOP
-       The screen this window opens on, every time. What somebody needs at
-       eight in the morning and nothing else: whether the shop is open, one
-       button, the address to type on a phone, and anything that is wrong. -->
+       The screen this window opens on, every time, and the only one anybody
+       without the developer sign-in ever sees: whether the shop is open, the
+       buttons to open, stop, restart and test the printers, the address to
+       type on a phone, and what the shop leans on. -->
   <section class="screen center" id="scShop">
     <div class="hero">
 
@@ -52,6 +64,7 @@
           <circle class="track" cx="58" cy="58" r="54"/>
           <circle class="arc" id="arc" cx="58" cy="58" r="54"/>
         </svg>
+        <i class="orbit" aria-hidden="true"></i>
         <div class="mark"><img src="/assets/logo.svg" alt=""></div>
       </div>
 
@@ -64,55 +77,55 @@
            opening, the address once it is open. -->
       <div class="steps" id="steps" hidden></div>
 
+      <div class="handover" id="handover" hidden></div>
       <div class="verdict" id="verdict" hidden></div>
       <div class="addrs" id="addrs" hidden></div>
       <div class="notices" id="notices" hidden></div>
       <div class="cloudline" id="cloudline" hidden></div>
-
-      <div class="foot">
-        <button class="link" data-go="log" id="bShowLog">Show the technical log</button>
-      </div>
+      <div class="conn" id="connShop"></div>
     </div>
   </section>
 
-  <!-- ============================================================= TOOLS
-       Everything a developer needs and nobody in the shop ever presses. Drawn
-       from panel/jobs.js by its `group`, so a job added there appears here
-       without this file being touched. -->
-  <section class="screen" id="scTools" hidden>
-    <div class="head">
+  <!-- ========================================================= DEVELOPER
+       Everything a developer needs and nobody in the shop ever presses,
+       behind a developer's own sign-in. The panel process refuses every one
+       of these actions while locked, whatever this page draws. -->
+  <section class="screen dev" id="scDev" hidden>
+    <div class="head dev-head">
       <button class="back" data-go="shop">
         <svg viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
-        <span id="tBack">Back</span>
+        <span id="dBack">Back</span>
       </button>
-      <h2 id="tTitle">Tools</h2>
+      <nav class="tabs" id="devTabs" role="tablist"></nav>
     </div>
-    <div class="pad">
-      <div class="groups" id="groups"></div>
-    </div>
-  </section>
 
-  <!-- =============================================================== LOG
-       The terminal, given the whole window. It is a place you go to, not the
-       room you arrive in. -->
-  <section class="screen" id="scLog" hidden>
-    <div class="head">
-      <button class="back" data-go="shop">
-        <svg viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
-        <span id="lBack">Back</span>
-      </button>
-      <h2 id="lTitle">Technical log</h2>
-      <div class="spacer"></div>
-      <p class="hint" id="lSw"></p>
+    <div class="pane" id="pTools">
+      <div class="pad"><div class="groups" id="groups"></div></div>
     </div>
-    <div class="term">
-      <div class="termbar">
-        <label class="follow"><input type="checkbox" id="follow" checked> <span id="lFollow">Follow</span></label>
-        <div class="spacer"></div>
-        <button class="btn btn-sm btn-ghost" data-do="clear" id="lClear">Clear</button>
-        <button class="btn btn-sm btn-danger" data-do="quit" id="lQuit">Quit</button>
+
+    <div class="pane term-pane" id="pLog" hidden>
+      <div class="term">
+        <div class="termbar">
+          <label class="follow"><input type="checkbox" id="follow" checked> <span id="lFollow">Follow</span></label>
+          <p class="hint" id="lSw"></p>
+          <div class="spacer"></div>
+          <button class="btn btn-sm btn-ghost" data-do="clear" id="lClear">Clear</button>
+          <button class="btn btn-sm btn-danger" data-do="quit" id="lQuit">Quit</button>
+        </div>
+        <pre id="out" class="out" tabindex="0"></pre>
       </div>
-      <pre id="out" class="out" tabindex="0"></pre>
+    </div>
+
+    <div class="pane" id="pConn" hidden>
+      <div class="pad"><div class="narrow"><div class="conn" id="connDev"></div></div></div>
+    </div>
+
+    <div class="pane" id="pAcc" hidden>
+      <div class="pad"><div class="narrow" id="accBox"></div></div>
+    </div>
+
+    <div class="pane" id="pInfo" hidden>
+      <div class="pad"><div class="narrow" id="infoBox"></div></div>
     </div>
   </section>
 
