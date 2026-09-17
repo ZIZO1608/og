@@ -273,56 +273,6 @@ export function list({ whId = null } = {}) {
   });
 }
 
-/* ------------------------------------------------- what goes on a shoe label
-   Everything the 60x40 product label needs for one model, including WHICH
-   SHELF each size belongs on.
-
-   That last part is worked out here rather than in the browser on purpose.
-   Deciding whether a 42 falls inside "39 to 41" is the one piece of logic in
-   this feature that is genuinely easy to get wrong — text order puts 9 after
-   42, a numeric cast collapses every letter size to zero — and a second copy
-   of it in JavaScript would be a second chance to get it wrong, on the side
-   that prints the paper. One implementation, one answer.
-
-   BELONGS, not sits. The shelf named is the one whose ASSIGNMENT covers this
-   size, not wherever the stock happens to be pointing today: the label is
-   there so a pair can be put back where it goes. */
-export function labelRowsFor(productId, whId) {
-  const d = DB.get();
-
-  const p = d.prepare('SELECT id, name, colorway, type FROM products WHERE id = ?')
-             .get(Number(productId));
-  if (!p) throw fail('no such product', 'not_found');
-
-  const shelves = d.prepare(
-    `SELECT sh.id, sh.code, sh.size_from, sh.size_to, se.key AS section_key
-       FROM shelves sh JOIN sections se ON se.id = sh.section_id
-      WHERE sh.product_id = ? AND se.wh_id = ?
-      ORDER BY se.sort_index, se.key, sh.row_label, sh.col_index`
-  ).all(p.id, whId);
-
-  const rows = d.prepare(
-    `SELECT v.sku, v.size, v.label_code, v.color, COALESCE(s.qty, 0) AS qty
-       FROM variants v
-       LEFT JOIN stock s ON s.sku = v.sku AND s.wh_id = ?
-      WHERE v.product_id = ?`
-  ).all(whId, p.id).map((r) => {
-    const fits = shelves.filter((s) => inRange(r.size, s.size_from, s.size_to));
-    return { ...r, shelf: fits.length ? fullCode(fits[0].section_key, fits[0].code) : null };
-  });
-
-  /* By size, the way a person reads a size run — so 9 comes before 42 and S
-     before XL. ORDER BY in SQL would sort these as text and put 40 before 9. */
-  rows.sort((a, b) => {
-    const x = sizeKey(a.size), y = sizeKey(b.size);
-    if (!x || !y) return String(a.size).localeCompare(String(b.size));
-    if (x.family !== y.family) return x.family < y.family ? -1 : 1;
-    return x.rank - y.rank;
-  });
-
-  return { product: p, rows };
-}
-
 /* Stock that has arrived and not been put away. NULL shelf_id is permanent
    and valid, so this is a working list rather than an error: "these came in,
    somebody still has to carry them to a rack". */
@@ -523,10 +473,6 @@ function roomSizeCm(d, roomId, exceptId = -1) {
   };
   return { bay: commonest('bay_cm', GEOMETRY.bay_cm), level: commonest('level_cm', GEOMETRY.level_cm),
            depth: commonest('depth_cm', GEOMETRY.depth_cm) };
-}
-export function roomBay(roomId) {
-  const s = roomSizeCm(DB.get(), Number(roomId));
-  return s ? s.bay : null;
 }
 
 /* A grid typed in: how many levels and how many bays. */

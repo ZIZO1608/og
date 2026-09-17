@@ -86,9 +86,9 @@ jobs:
             [ -d "$d" ] && cp -r "$d" dist/ && echo "  + $d/"
           done
 
-          # Safety net, mirrored from make-deploy.ps1. _shot.html still lives in
-          # the root — it is the screenshot rig make-proposal.ps1 drives to build
-          # the Arabic client PDF, not a test — and it must never reach the site.
+          # Safety net, mirrored from make-deploy.ps1. The browser test harnesses
+          # (_smcheck.html, _l60check.html) live in the root, and nothing whose
+          # name starts with an underscore may ever reach the site.
           find dist -name '_*' -type f -print -delete | sed 's/^/  - stripped /'
 
           echo ""

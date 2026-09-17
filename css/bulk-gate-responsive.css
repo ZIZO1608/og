@@ -32,7 +32,6 @@
 tr.bk-on { background: var(--brand-soft) !important; }
 tr.bk-on td { border-bottom-color: var(--brand-border); }
 .cust-card.bk-on, .kcard.bk-on { border-color: var(--brand); background: var(--brand-soft); }
-.order-row.bk-on { background: var(--brand-soft); }
 
 .cust-card { position: relative; }
 .bk-corner { position: absolute; top: 10px; inset-inline-end: 10px; z-index: 2; }
@@ -326,10 +325,9 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
 
 .muted { color: var(--muted-foreground); }
 .small { font-size: 12px; }
-.mt { margin-top: 14px; } .mt-lg { margin-top: 22px; } .mb { margin-bottom: 14px; }
+.mt { margin-top: 14px; } .mb { margin-bottom: 14px; }
 .strong-num { font-family: var(--font-head); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
 .nowrap { white-space: nowrap; }
-.hidden-flag { color: var(--dim); text-decoration: line-through; }
 
 .print-root { display: none; }
 
@@ -349,7 +347,6 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
      screen. Every single-column collapse below has the same guard. */
   .dash-grid { grid-template-columns: minmax(0, 1fr); }
   .kanban { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .store-layout { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 900px) {
@@ -394,9 +391,9 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
    `body[data-overlay]` is set by openModal/openDrawer (js/app-util.js,
    syncOverlay) whenever either root holds anything.
 
-   Three things float above the page on a phone and all three were drawn ON
+   Two things float above the page on a phone and both were drawn ON
    TOP of a dialog, because a modal's backdrop is z-index 200 and they sit at
-   320-340. That is not a cosmetic overlap:
+   320 and 340. That is not a cosmetic overlap:
 
      the tab bar (340)  was tappable through the backdrop — open Take payment,
                         press Products, and the shop navigates underneath a
@@ -406,15 +403,13 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
                         raised its own sheets to 360 instead.
      the bulk bar (320) floated undimmed over the confirm dialog for the very
                         action it had just started.
-     the office bar (330) put a second Save & print over the dialog's own.
 
-   Hiding beats raising: while a dialog is open none of the three can be
+   Hiding beats raising: while a dialog is open neither of the two can be
    acted on anyway, and a raised bar would still have to be dodged by the
    sheet. The selectors are (0,2,1) so they beat each element's own display
    rule wherever it is declared, whatever the file order. */
 body[data-overlay] .tabbar,
-body[data-overlay] .bk-bar,
-body[data-overlay] .dk-bar { display: none; }
+body[data-overlay] .bk-bar { display: none; }
 
 @media (max-width: 720px) {
   :root { --tabbar-h: calc(58px + env(safe-area-inset-bottom, 0px)); }
@@ -564,7 +559,7 @@ body[data-overlay] .dk-bar { display: none; }
   /* The default blue tap flash fights the brand on every single tap. */
   * { -webkit-tap-highlight-color: rgb(198 255 0 / .14); }
   /* Hover-only affordances need a pressed state instead. */
-  .yl-card:active, .pcard:active, .st-card:active, .kcard:active { background: var(--surface-2); }
+  .yl-card:active, .pcard:active, .kcard:active { background: var(--surface-2); }
 }
 
 /* ------------------------------------------------------ TOPBAR ON A PHONE

@@ -50,8 +50,10 @@ import * as Telegram from './telegram.js';
    picker draws from, the presets are measured against and the drain routes by.
    A second copy here is how a kind ends up routed and never queued, or queued
    and never routed. The seven that follow an order along its road are WEIGHT's
-   keys below; the other two (a review, a driver's cash) have no road. */
-export const OFFICE_KINDS = Telegram.OFFICE_KINDS;
+   keys below; the other two (a review, a driver's cash) have no road.
+   Re-exported rather than copied into a const: a const here is read while
+   telegram.js may still be loading, when a module imports telegram.js first. */
+export { OFFICE_KINDS } from './telegram.js';
 
 /* WHICH LEADS when several land at once. A cancellation outranks everything —
    the parcel must not leave. An arrival or a failure closes the order. */
@@ -95,7 +97,7 @@ export function readClock(d = get()) {
   if (raw != null) {
     try {
       const v = JSON.parse(raw);
-      if (Array.isArray(v)) urgent = v.filter((k) => OFFICE_KINDS.includes(k));
+      if (Array.isArray(v)) urgent = v.filter((k) => Telegram.OFFICE_KINDS.includes(k));
     } catch { /* unreadable: the default stands */ }
   }
   return {
@@ -155,7 +157,7 @@ function money(d, minor, code) {
    never be marked sent and would show as a backlog for ever. */
 export function queueAlert({ kind, saleId = null, refType = 'order', refId, args, dedupe,
                              skipUsers = [], userId = null, nowMs = Date.now() }) {
-  if (!OFFICE_KINDS.includes(kind)) throw new Error('not an office alert: ' + kind);
+  if (!Telegram.OFFICE_KINDS.includes(kind)) throw new Error('not an office alert: ' + kind);
   if (!Telegram.canQueue('og')) return 0;
   const d = get();
   const clock = readClock(d);
@@ -305,11 +307,11 @@ export function handedIn(out, user) {
       : (out.driverId != null ? [out.driverId] : []);
     const driverId = out.driverId != null ? Number(out.driverId)
       : (ids.length ? Number(ids[0]) : null);
-    /* A NAME ONLY WHEN ONE PERSON'S CASH IS IN THE PILE. The per-order hand-in
-       sums every pending drawer payment on that sale, and `received_by` is
-       whoever RECORDED it — an office clerk as easily as the driver — so
-       naming the first of several would put one person's name on other
-       people's money. The template drops the clause when there is no name. */
+    /* A NAME ONLY WHEN ONE PERSON'S CASH IS IN THE PILE. `received_by` on a
+       payment is whoever RECORDED it — an office clerk as easily as the
+       driver — so a pile that is not one driver's gets no name rather than
+       the first of several on other people's money. The template drops the
+       clause when there is no name. */
     const who = driverId != null && ids.length <= 1
       ? d.prepare('SELECT name FROM users WHERE id = ?').get(driverId) : null;
     const amounts = Object.keys(out.took).sort().map((c) => money(d, out.took[c], c)).join(' + ');

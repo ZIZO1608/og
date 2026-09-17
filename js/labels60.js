@@ -14,7 +14,7 @@
    through them at all — the workaround there is to rasterise every Arabic run
    to a 1-bit bitmap in the browser and splice it in, keyed `bitmaps[sku][kind]`.
    A shelf label is one long Arabic room name and has no sku to key on. So
-   these two go the way the Label Studio already goes: real millimetres in
+   it goes the way js/labels.js's browser output goes: real millimetres in
    HTML, `@page` written with the numbers in it, and the operating system's own
    print dialog. Nothing about Arabic is special on that path — the browser
    shapes it, as it does on screen.
@@ -33,7 +33,6 @@
 var Labels60 = (function () {
 
   var W_MM = 60, H_MM = 40;
-  var MARGIN_MM = 3;
   var MODULE_MM = 3 / 8;          /* 3 dots at 8 dots/mm */
   var BAR_MM = 9;                 /* bar height */
   var QUIET_MODULES = 10;         /* Codes.code128SVG adds this each side */
@@ -52,8 +51,8 @@ var Labels60 = (function () {
   var SHELF_PRESET = 'shelf-60x40';
 
   /* Arabic, Arabic Supplement, Extended-A and both Presentation Forms — the
-     same test js/labels.js uses to decide a field needs the bitmap path. Here
-     it only chooses a direction and a font. */
+     same test server/lib/labels.js uses to decide a field needs the bitmap
+     path. Here it only chooses a direction and a font. */
   var ARABIC_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
   function isArabic(s) { return ARABIC_RE.test(String(s || '')); }
 
@@ -170,7 +169,7 @@ var Labels60 = (function () {
   /* `@page { size: … }` is the one property that cannot be driven by a class
      or a variable — the browser reads it from the stylesheet at print time —
      so the rule is written with the numbers in it, exactly the way
-     setRollPageSize() does for the Label Studio. */
+     setRollPageSize() does for the product labels. */
   function doPrint() {
     if (!state || !state.items.length) return;
     setRollPageSize({ w: W_MM, h: H_MM });

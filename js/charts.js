@@ -440,39 +440,6 @@ var Charts = (function () {
     }
   }
 
-  /* Draw a QR-looking block pattern. Deterministic from the seed string so the
-     same invoice always renders the same code. Decorative, not scannable. */
-  function qr(canvas, seed, size) {
-    if (!canvas || !canvas.getContext) return;
-    size = size || 96;
-    var cells = 25, cell = size / cells;
-    canvas.width = size; canvas.height = size;
-    var ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, size, size);
-    ctx.fillStyle = '#000000';
-
-    var h = 2166136261;
-    for (var i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = (h * 16777619) >>> 0; }
-    function next() { h ^= h << 13; h >>>= 0; h ^= h >> 17; h ^= h << 5; h >>>= 0; return h / 4294967296; }
-
-    function finder(cx, cy) {
-      ctx.fillRect(cx * cell, cy * cell, cell * 7, cell * 7);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect((cx + 1) * cell, (cy + 1) * cell, cell * 5, cell * 5);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect((cx + 2) * cell, (cy + 2) * cell, cell * 3, cell * 3);
-    }
-
-    for (var y = 0; y < cells; y++) {
-      for (var x = 0; x < cells; x++) {
-        var inFinder = (x < 8 && y < 8) || (x > cells - 9 && y < 8) || (x < 8 && y > cells - 9);
-        if (inFinder) continue;
-        if (next() > .52) ctx.fillRect(x * cell, y * cell, cell, cell);
-      }
-    }
-    finder(0, 0); finder(cells - 7, 0); finder(0, cells - 7);
-  }
-
-  return { line: line, bars: bars, donut: donut, qr: qr, destroy: destroy, destroyAll: destroyAll,
+  return { line: line, bars: bars, donut: donut, destroy: destroy, destroyAll: destroyAll,
            has: has, compact: compact, printSnapshot: printSnapshot };
 })();

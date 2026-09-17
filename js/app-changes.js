@@ -284,7 +284,7 @@ var CHANGES = {
     if (!isFinite(v) || v < 1 || v > 3650) return;
     CONFIG.AT_RISK_DAYS = v;
     clearTimeout(ATRISK_SAVE_T);
-    if (typeof API === 'undefined' || !API.live) return;   /* _shot.html */
+    if (!API.live) return;
     ATRISK_SAVE_T = setTimeout(function () {
       API.put('/api/config', { updates: { 'customer.at_risk_days': String(v) } })
         .then(function () {
@@ -336,7 +336,7 @@ var CHANGES = {
      account's role rather than from the body. */
   'set-reminder-yl': function (el) {
     var k = el.getAttribute('data-k');
-    if (!k || typeof API === 'undefined' || !API.live) return;
+    if (!k || !API.live) return;
     var v = el.checked ? '1' : '0';
     CONFIG.REMINDERS[k] = v;
     var updates = {};
@@ -438,7 +438,7 @@ var CONFIG_SAVE_T = {};
    a sentence — and `after` runs once the server has it. */
 function saveConfig(key, value, label, wait, shown, after) {
   clearTimeout(CONFIG_SAVE_T[key]);
-  if (typeof API === 'undefined' || !API.live) return;    /* _shot.html */
+  if (!API.live) return;
   CONFIG_SAVE_T[key] = setTimeout(function () {
     var updates = {};
     updates[key] = String(value);

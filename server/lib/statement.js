@@ -235,7 +235,7 @@ export function build({ month = null, tz = null, withCash = true } = {}) {
   /* ---- cash flow -------------------------------------------------------- */
   if (withCash) {
     const byPlace = new Map();
-    const key = (p, c) => p + ' ' + c;
+    const key = (p, c) => p + '\u0000' + c;
     for (const r of d.prepare(
       `SELECT place, currency,
               COALESCE(SUM(CASE WHEN at < ? THEN amount ELSE 0 END), 0) AS opening,

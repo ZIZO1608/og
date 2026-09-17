@@ -482,7 +482,7 @@ function greeting() {
 /* First name only. "Good morning, Hussam" reads like a person talking;
    "Good morning, Hussam Fattal" reads like a bank letter. */
 function firstName() {
-  var u = (typeof Auth !== 'undefined') ? Auth.user() : null;
+  var u = Auth.user();
   return u && u.name ? String(u.name).trim().split(/\s+/)[0] : '';
 }
 

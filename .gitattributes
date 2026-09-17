@@ -6,8 +6,9 @@
 #  looks changed. Two specific cases actually break rather than just look bad:
 #
 #    *.bat  needs CRLF. cmd.exe can lose its place inside a `goto` label in an
-#           LF-only batch file, so push.bat would fail in a way that reads like
-#           a git problem.
+#           LF-only batch file, so a script such as start-og-system.bat or
+#           agent/install-agent.bat can fail in a way that reads like a git
+#           problem.
 #    *.yml  needs LF. The workflow embeds bash; with CRLF the Linux runner sees
 #           a trailing \r on every line and reports `$'\r': command not found`.
 # =============================================================================

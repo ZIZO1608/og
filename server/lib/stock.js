@@ -37,31 +37,6 @@ export class InsufficientStock extends Error {
   }
 }
 
-/* ------------------------------------------------------------------ reading */
-
-export function qtyAt(sku, whId) {
-  const r = get().prepare('SELECT qty FROM stock WHERE sku = ? AND wh_id = ?')
-                 .get(sku, whId);
-  return r ? r.qty : 0;
-}
-
-/* Every place this size exists, as { floor: 3, store: 11 }. Mirrors the shape
-   `variant.wh` already has in the browser, so the client can drop it straight
-   in without reshaping. */
-export function placesFor(sku) {
-  const out = {};
-  for (const r of get().prepare('SELECT wh_id, qty FROM stock WHERE sku = ?').all(sku)) {
-    out[r.wh_id] = r.qty;
-  }
-  return out;
-}
-
-export function totalFor(sku) {
-  const r = get().prepare('SELECT COALESCE(SUM(qty), 0) AS n FROM stock WHERE sku = ?')
-                 .get(sku);
-  return r.n;
-}
-
 /* --------------------------------------------------------------- one change
    `delta` is signed: -2 sold, +10 received.
 
@@ -216,18 +191,6 @@ export function sellLines(d, { lines, whId, userId, saleId }) {
 
 /* --------------------------------------------------------------- reporting */
 
-/* The trail for one size, newest first. */
-export function movementsFor(sku, limit = 50) {
-  return get().prepare(
-    `SELECT m.*, u.name AS user_name
-       FROM stock_movements m
-       LEFT JOIN users u ON u.id = m.user_id
-      WHERE m.sku = ?
-      ORDER BY m.at DESC, m.id DESC
-      LIMIT ?`
-  ).all(sku, limit);
-}
-
 /* The whole shop's movement log, newest first — what the warehouse "Moves"
    tab shows. Joined out to the product here rather than looked up per row in
    the browser: the app renders the product name, the size and who did it on
@@ -244,18 +207,6 @@ export function recent(limit = 200) {
       ORDER BY m.at DESC, m.id DESC
       LIMIT ?`
   ).all(limit);
-}
-
-/* Everything at or below a threshold, worst first. Drives the reorder list. */
-export function lowStock(whId, threshold) {
-  return get().prepare(
-    `SELECT s.sku, s.wh_id, s.qty, v.size, v.product_id, p.name, p.type
-       FROM stock s
-       JOIN variants v ON v.sku = s.sku
-       JOIN products p ON p.id = v.product_id
-      WHERE s.wh_id = ? AND s.qty <= ? AND p.hidden = 0
-      ORDER BY s.qty ASC, p.name ASC`
-  ).all(whId, threshold);
 }
 
 /* Prove the running totals still match the movement log.

@@ -4030,8 +4030,6 @@ var ShelfRoom = (function () {
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);
 
-  function isFullscreen() { return !!fs; }
-  function fsKind() { return fs; }
   function overlayHost() { return overlay; }
 
   /* ------------------------------------------------------------ the tags */
@@ -4384,8 +4382,6 @@ var ShelfRoom = (function () {
     look: look,
     step: step,
     fullscreen: fullscreen,
-    isFullscreen: isFullscreen,
-    fsKind: fsKind,
     overlayHost: overlayHost,
     pointerLock: pointerLock,
     setQuality: setQuality,

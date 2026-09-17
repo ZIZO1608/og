@@ -27,8 +27,6 @@
    'ipc' entry in stdio, so this doubles as "am I under the panel". */
 const up = typeof process.send === 'function' ? process.send.bind(process) : null;
 
-export function attached() { return !!up; }
-
 /* Never throws and never reports. A panel that has been closed mid-sentence
    is an EPIPE on the next write, and a shop must not fall over because its
    launcher window went away. */

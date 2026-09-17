@@ -1,22 +1,20 @@
 # =============================================================================
-#  OG SYSTEM — build the publishable copy of the app
+#  OG SYSTEM - build the publishable copy of the app
 # -----------------------------------------------------------------------------
 #  Copies only the real application, leaving behind anything whose name starts
-#  with an underscore. The test harnesses that used to live there are gone, but
-#  _shot.html remains -- it is the screenshot rig make-proposal.ps1 drives to
-#  build the Arabic client PDF, and it must not reach the live site either.
+#  with an underscore. _smcheck.html and _l60check.html are browser test
+#  harnesses that live in the root, and they must not reach the live site.
 #
 #  Usage:
 #    .\make-deploy.ps1                      build into .\dist   (default)
-#    .\make-deploy.ps1 -Out "D:\repos\og"   build into a git clone, ready to
-#                                           commit with GitHub Desktop
+#    .\make-deploy.ps1 -Out "D:\repos\og"   build into another folder
 #
-#  Nothing to install — this uses only what ships with Windows.
+#  Nothing to install - this uses only what ships with Windows.
 #
 #  SAFETY, and why this script looks more careful than it needs to:
 #  the previous version began with `Remove-Item $dist -Recurse -Force`. Aimed
 #  at a git clone that deletes the .git folder, which destroys the repository
-#  link, the history and everything GitHub Desktop needs — with no undo. So
+#  link, the history and everything GitHub Desktop needs - with no undo. So
 #  the clean step below removes only the specific files this script itself
 #  publishes, and refuses to run at all if the target holds anything it does
 #  not recognise.
@@ -126,19 +124,8 @@ Write-Host ('  Done: {0} files, {1:N0} KB' -f $count, $size) -ForegroundColor Gr
 if ($cache) { Write-Host ('  Service worker cache: {0}' -f $cache) -ForegroundColor Cyan }
 Write-Host ''
 
-if ((Test-Path (Join-Path $dest '.git')) -or (Test-Path (Join-Path $dest '.github'))) {
-  Write-Host '  This is a git clone. Next:'
-  Write-Host '    1. Open GitHub Desktop - it lists every changed file'
-  Write-Host '    2. Type a short summary, click "Commit to main"'
-  Write-Host '    3. Click "Push origin"'
-  Write-Host '    4. Wait ~1 minute, then hard-refresh the page (Ctrl+Shift+R)'
-} else {
-  Write-Host '  Next:'
-  Write-Host ('    Drag EVERYTHING INSIDE this folder to GitHub:  {0}' -f $dest)
-  Write-Host '    Root files are easy to miss - index.html, sw.js, manifest.webmanifest'
-}
-Write-Host ''
-Write-Host '  Note: this build is the FRONTEND only. Served on its own it runs on' -ForegroundColor Cyan
-Write-Host '  demo data with no login and saves nothing. The real system needs the' -ForegroundColor Cyan
+Write-Host '  Note: this build is the FRONTEND only, for inspection. Served on its' -ForegroundColor Cyan
+Write-Host '  own it shows only "server is not answering" - the app needs the' -ForegroundColor Cyan
 Write-Host '  server:  cd server  then  npm start' -ForegroundColor Cyan
+Write-Host '  The published copy is built by CI (.github/workflows/deploy.yml).' -ForegroundColor Cyan
 Write-Host ''

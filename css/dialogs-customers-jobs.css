@@ -239,15 +239,7 @@ table.inv-tbl td.num, table.inv-tbl th.num { text-align: end; }
 .kcard-foot .money { margin-inline-start: auto; font-weight: 700; color: var(--foreground); }
 .kcard-foot .cost { color: var(--dim); font-weight: 500; }
 
-.partner-shell { border: 1px solid var(--brand-border); border-radius: var(--radius-lg); overflow: hidden; }
-.partner-head { background: var(--brand); color: var(--brand-foreground); padding: 18px 22px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.partner-head h2 { font-size: 19px; color: var(--brand-foreground); font-weight: 800; letter-spacing: -.02em; }
-.partner-head .sub { color: rgb(10 10 11 / .68); font-size: 12px; font-weight: 600; }
-.partner-head .brand-mark { background: var(--brand-foreground) !important; color: var(--brand) !important; }
 .partner-chip { background: var(--brand-foreground); color: var(--brand); font-size: 11px; font-weight: 700; padding: 5px 13px; border-radius: var(--radius-full); text-transform: uppercase; letter-spacing: .06em; }
-.partner-head .btn-primary { background: var(--brand-foreground); border-color: var(--brand-foreground); color: var(--brand); }
-.partner-head .btn-primary:hover { background: #27272A; border-color: #27272A; }
-.partner-body { background: var(--card); padding: 20px 22px; }
 .partner-note { background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px; color: var(--muted-foreground); margin-top: 14px; line-height: 1.6; }
 .note-danger { border-color: var(--destructive-border); background: var(--destructive-soft); color: var(--destructive); }
 /* The other two tones. These were being used before they existed, which meant

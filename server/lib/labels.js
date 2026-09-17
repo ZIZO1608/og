@@ -84,20 +84,17 @@ const FONT_SIZE_TO_TSPL = { S: '1', M: '2', L: '3' };
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 export function isArabic(s) { return ARABIC_RE.test(String(s || '')); }
 
-/* The two 60x40 labels the BROWSER prints, named here because more than one
-   place has to agree on the string: js/labels60.js sends it when recording a
-   print, and server/lib/shelves.js counts against it to work out how many
-   stuck-on labels a shelf reassignment has just invalidated.
+/* The 60x40 product label the BROWSER used to print, named here because
+   server/lib/shelves.js counts against it to work out how many stuck-on
+   labels a shelf reassignment has just invalidated. It no longer prints —
+   every product label now comes from a template (the 60x40 row carries a
+   `shelf` slot since 037), through either the TSPL queue or the browser's
+   dialog (`record`, below) — but its key stays, because the rows already in
+   label_print_log carry it.
 
-   The shelf label is deliberately NOT a row in `label_templates`: that table
-   describes a label about a VARIANT, and a rack has no sku, no size and no
-   price to resolve. The product one no longer prints — every product label
-   now comes from a template (the 60x40 row carries a `shelf` slot since 037),
-   through either the TSPL queue or the browser's dialog (`record`, below).
-   Its key stays because the rows already in label_print_log carry it, and
-   shelves.js counts against it to work out how many stuck-on labels a
-   reassignment has made wrong. */
-export const SHELF_LABEL_PRESET = 'shelf-60x40';
+   The shelf label ('shelf-60x40', sent by js/labels60.js) is deliberately NOT
+   a row in `label_templates`: that table describes a label about a VARIANT,
+   and a rack has no sku, no size and no price to resolve. */
 export const PRODUCT_LABEL_PRESET = 'product-60x40';
 
 /* ------------------------------------------------------------- templates */
@@ -413,7 +410,8 @@ function resolveSlot(slot, variant, shopCfg, opts = {}) {
 /* The shelf a variant belongs on, as the code printed on the rack
    ('M-A3'): the first shelf assigned to its product whose size range takes
    this size, walking warehouses in their own order and racks in theirs —
-   the same rule Shelves.labelRowsFor applies for one warehouse at a time.
+   the same size-range rule (inRange, from shelves.js) that putting a pair
+   away checks.
    Null when nothing has been assigned. */
 function shelfCodeFor(variant) {
   const rows = get().prepare(
@@ -495,7 +493,7 @@ export function calibrate({ station, userId, opId }) {
 
 /* ---------------------------------------------------------- logo bitmap
    A small monochrome mark never changes between prints, so it is rasterized
-   ONCE, offline (see server/scripts/build-label-logo.mjs), and loaded here
+   ONCE, offline, and committed as server/assets/label-logo.json — loaded here
    as a static asset rather than needing a font/canvas engine at request
    time. Stored in ESC/POS polarity (1=black) like everything else that
    passes through invertToTsplPolarity, so there is exactly one place bit
@@ -735,24 +733,6 @@ export function reprint(batchId, userId, opId) {
   }
   const lines = Object.entries(counts).map(([sku, qty]) => ({ sku, qty }));
   return enqueue({ lines, presetKey: jobs[0].preset, station: jobs[0].station, userId, opId });
-}
-
-/* Read side of label_print_log — never had one before; History (js/app.js's
-   `labels` view) is the first consumer. */
-export function printLog({ sku, batchId, station, limit = 200 } = {}) {
-  const clauses = [];
-  const params = [];
-  if (sku) { clauses.push('sku = ?'); params.push(sku); }
-  if (batchId) { clauses.push('batch_id = ?'); params.push(batchId); }
-  if (station) { clauses.push('station = ?'); params.push(station); }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  params.push(limit);
-  return get().prepare(
-    `SELECT l.*, u.username AS user_name
-       FROM label_print_log l LEFT JOIN users u ON u.id = l.user_id
-       ${where}
-      ORDER BY l.at DESC LIMIT ?`
-  ).all(...params);
 }
 
 /* ---------------------------------------------- claim / lease / complete

@@ -32,7 +32,6 @@ import { load, maybe, need } from './env.js';
 
 let base = null;
 let key = null;
-let keyKind = null;
 
 /* Resolved on first use rather than at import, so simply importing this file
    cannot crash a server that is running happily on SQLite with no Supabase
@@ -47,7 +46,6 @@ function config() {
      more recently. Both are sent the same way, so accept either and let the
      user paste whichever their dashboard shows. */
   key = maybe('SUPABASE_SERVICE_ROLE_KEY') || maybe('SUPABASE_SECRET_KEY');
-  keyKind = 'service_role';
 
   if (!key) {
     throw new Error(
@@ -65,7 +63,6 @@ export function isConfigured() {
 }
 
 export function projectUrl() { load(); return maybe('SUPABASE_URL'); }
-export function keyType() { config(); return keyKind; }
 
 function headers(extra = {}) {
   const { key } = config();

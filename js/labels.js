@@ -79,85 +79,15 @@ var Labels = (function () {
      picked here, that choice sticks. */
   function outputChoice() {
     if (lastChoice.output === 'station' || lastChoice.output === 'browser') return lastChoice.output;
-    if (typeof Auth === 'undefined') return 'browser';
     var cfg = (typeof CONFIG !== 'undefined') ? CONFIG : {};
     if (cfg.LABEL_TRANSPORT === 'tcp' && !cfg.LABEL_PRINTER_HOST) return 'browser';
     return 'station';
   }
 
-  var ARABIC_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
-  function isArabic(s) { return ARABIC_RE.test(String(s || '')); }
-
   function opId() { return 'lbl-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10); }
 
-  /* ------------------------------------------------------------- symbology
-     Mirrors server/lib/labels.js's barcodeFor/computeBarcodeWidth exactly —
-     duplicated on purpose, same reasoning as Codes.ean13Check already being
-     duplicated between js/codes.js and server/lib/catalogue.js. Needed only
-     for the DEMO-mode preview, which has no server to ask. */
-  var EAN13_MODULES = 11 + 95 + 7;
-  function code128ModuleCount(digits) {
-    var s = String(digits), pairs = Math.floor(s.length / 2), odd = s.length % 2 === 1;
-    var symbols = 1 + pairs + (odd ? 2 : 0) + 1 + 1;
-    return (symbols - 1) * 11 + 13;
-  }
-  function barcodeFor(variant, presetObj, barcodeType) {
-    var barcode = variant.barcode || '';
-    var validEan = /^\d{13}$/.test(barcode) && Codes.ean13Valid(barcode);
-    var forced = barcodeType === 'ean13' || barcodeType === 'code128';
-    var tryEan = barcodeType === 'ean13' || (!forced && presetObj.allowEan && validEan);
-    if (tryEan && validEan) return { symbology: 'ean13', content: barcode, fallbackReason: null };
-    var reason = barcodeType === 'code128'
-      ? null
-      : !presetObj.allowEan
-        ? presetObj.widthMm + 'mm is narrower than the 40mm EAN-13 needs'
-        : 'no valid EAN-13 on this variant';
-    return { symbology: 'code128', content: variant.labelCode, fallbackReason: reason };
-  }
-  function computeBarcodeWidthDemo(symbology, content, presetObj) {
-    var modules = symbology === 'ean13' ? EAN13_MODULES : code128ModuleCount(content);
-    var usableDots = (presetObj.widthMm - 2 * 2.5) * DOTS_PER_MM;
-    var narrowDots = Math.max(2, Math.floor(usableDots / modules));
-    return { narrowDots: narrowDots, widthDots: narrowDots * modules };
-  }
-  /* Demo mode has no server to ask for a template, so it still renders from
-     the old fixed 4-preset shape (demoPresets() below) — but the OUTPUT is
-     now the same generic `fields` array the live path produces, so
-     labelPreviewHTML/buildArabicBitmaps only need to know one shape. */
-  function demoLayout(variant, presetObj, barcodeType) {
-    var widthDots = presetObj.widthMm * DOTS_PER_MM, heightDots = presetObj.heightMm * DOTS_PER_MM;
-    var marginDots = Math.round(2.5 * DOTS_PER_MM);
-    var bc = barcodeFor(variant, presetObj, barcodeType);
-    var bcWidth = computeBarcodeWidthDemo(bc.symbology, bc.content, presetObj);
-    var barcodeHeightDots = presetObj.barcodeHeightMm * DOTS_PER_MM;
-    var logo = presetObj.logo === 'omit' ? null : { xDots: marginDots, yDots: 4, wDots: 40, hDots: 40 };
-    var textLeft = presetObj.logo === 'left-of-text' ? marginDots + 46 : marginDots;
-    var y = (logo && presetObj.logo !== 'left-of-text') ? logo.yDots + logo.hDots + 4 : 6;
-    var nameHeightDots = presetObj.nameLines * 22;
-    var nameArabic = isArabic(variant.name);
-    var nameYDots = y;
-    y += nameHeightDots + 4;
-    var variantYDots = y;
-    y += 30;
-    var barcodeY = Math.max(y, heightDots - barcodeHeightDots - 26);
-
-    var fields = [];
-    if (logo) fields.push({ kind: 'logo', type: 'image', xDots: logo.xDots, yDots: logo.yDots, wDots: logo.wDots, hDots: logo.hDots });
-    fields.push({
-      kind: 'name', type: nameArabic ? 'bitmap' : 'text', arabic: nameArabic,
-      xDots: textLeft, yDots: nameYDots, wDots: widthDots - textLeft - marginDots, hDots: nameHeightDots,
-      text: variant.name
-    });
-    fields.push({ kind: 'variant', type: 'text', xDots: textLeft, yDots: variantYDots, text: String(variant.size) });
-    fields.push({
-      kind: 'barcode', type: 'barcode',
-      xDots: Math.max(marginDots, Math.round((widthDots - bcWidth.widthDots) / 2)), yDots: barcodeY,
-      wDots: bcWidth.widthDots, hDots: barcodeHeightDots,
-      symbology: bc.symbology, content: bc.content, fallbackReason: bc.fallbackReason
-    });
-    return { widthDots: widthDots, heightDots: heightDots, fields: fields };
-  }
-
+  /* The last-resort chip list, for a session whose CONFIG carries neither
+     the templates nor config.label.presets. */
   function demoPresets() {
     return [
       { key: '30x30', widthMm: 30, heightMm: 30, gapMm: 2, logo: 'small-top', nameLines: 2, barcodeHeightMm: 12, allowEan: false },
@@ -165,8 +95,7 @@ var Labels = (function () {
       { key: '40x30', widthMm: 40, heightMm: 30, gapMm: 2, logo: 'small-top-left', nameLines: 2, barcodeHeightMm: 13, allowEan: true },
       { key: '50x30', widthMm: 50, heightMm: 30, gapMm: 2, logo: 'left-of-text', nameLines: 2, barcodeHeightMm: 13, allowEan: true },
       /* Mirrors the '60x40' row seeded in server/migrations/011_label_templates.sql
-         (proportions only — this demo shape is for the offline/no-server
-         preview, the live print always renders from that DB template). */
+         (proportions only — the print always renders from that DB template). */
       { key: '60x40', widthMm: 60, heightMm: 40, gapMm: 2, logo: 'small-top-left', nameLines: 2, barcodeHeightMm: 14, allowEan: true }
     ];
   }
@@ -176,19 +105,9 @@ var Labels = (function () {
   }
 
   /* ------------------------------------------------------------- preview
-     Live mode asks the server for the SAME layout object the TSPL builder
-     will use, so preview cannot drift from what prints. Demo mode computes
-     the same shape locally — there is no server to ask. */
+     Asks the server for the SAME layout object the TSPL builder will use,
+     so preview cannot drift from what prints. */
   function renderPreview(lines, presetKey, barcodeType) {
-    if (typeof Auth === 'undefined') {
-      var presetObj = demoPreset(presetKey);
-      var out = lines.map(function (l) {
-        var v = DB.variantBySku(l.sku || l.variantId);
-        if (!v) return null;
-        return { sku: v.sku, qty: l.qty, name: v.name || (DB.product(v.productId) || {}).name || v.sku, size: v.size, layout: demoLayout({ name: v.name || (DB.product(v.productId) || {}).name || v.sku, size: v.size, barcode: v.barcode, labelCode: v.labelCode }, presetObj, barcodeType) };
-      }).filter(Boolean);
-      return Promise.resolve({ preset: presetObj, lines: out });
-    }
     return API.post('/api/labels/preview', { lines: lines, preset: presetKey, barcodeType: barcodeType });
   }
 
@@ -394,10 +313,6 @@ var Labels = (function () {
   }
 
   function doPrint(lines, presetKey, station, barcodeType) {
-    if (typeof Auth === 'undefined') {
-      toast(t('lbl_title'), t('lbl_demo_only'), 'info', 5000);
-      return Promise.resolve(null);
-    }
     presetKey = presetKey || lastChoice.preset;
     barcodeType = barcodeType || lastChoice.barcodeType || 'code128';
 
@@ -407,7 +322,7 @@ var Labels = (function () {
         if (!res.unlogged) toast(t('lbl_title'), t('lbl_sent_browser').replace('{n}', res.labelCount), 'ok', 5000);
         return res;
       }).catch(function (err) {
-        toast(t('lbl_title'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 6000);
+        toast(t('lbl_title'), API.friendly(err), 'err', 6000);
         throw err;
       });
     }
@@ -443,7 +358,6 @@ var Labels = (function () {
      list of the same thing that nothing kept in step; it is only the backstop
      now, for a session that booted before the route answered. */
   function presetOptions() {
-    if (typeof Auth === 'undefined') return demoPresets();
     var cfg = (typeof CONFIG !== 'undefined') ? CONFIG : {};
     if (cfg.LABEL_TEMPLATES && cfg.LABEL_TEMPLATES.length) return cfg.LABEL_TEMPLATES;
     return cfg.LABEL_PRESETS || demoPresets();
@@ -549,7 +463,7 @@ var Labels = (function () {
       activeLines = lines;
       lastPreview = preview;
     }).catch(function (err) {
-      toast(t('lbl_title'), typeof API !== 'undefined' ? API.friendly(err) : err.message, 'err', 6000);
+      toast(t('lbl_title'), API.friendly(err), 'err', 6000);
     });
   }
 
@@ -583,7 +497,7 @@ var Labels = (function () {
       }
       doPrint(lines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType).then(function (res) {
         if (res) { activeLines = null; if (typeof closeModal === 'function') closeModal(); }
-      });
+      }).catch(function () { /* doPrint has already said why */ });
     };
 
     /* Inside the batch modal these re-open it with the new choice so the
@@ -621,7 +535,6 @@ var Labels = (function () {
     };
 
     ACTIONS['label-calibrate'] = function (el) {
-      if (typeof Auth === 'undefined') return;
       var station = lastChoice.station || stationOptions()[0];
       API.post('/api/labels/calibrate', { station: station, opId: opId() })
         .then(function () { toast(t('lbl_title'), t('lbl_calibrate_sent'), 'ok', 4000); })

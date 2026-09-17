@@ -1,7 +1,7 @@
 /* ==========================================================================
    OG SYSTEM — barcode + QR encoders
    --------------------------------------------------------------------------
-   Real, scannable codes. No libraries, no network, works from file://.
+   Real, scannable codes. No libraries, no network.
 
      Codes.ean13(digits)        -> 95-module string, or null if invalid
      Codes.ean13Check(digits12) -> the 13th checksum digit
@@ -721,7 +721,7 @@ var Codes = (function () {
     return out;
   }
 
-  /* Same option shape as ean13SVG so the label studio swaps renderers by one
+  /* Same option shape as ean13SVG so js/labels.js swaps renderers by one
      field. The 10-module quiet zone each side is not decoration: too little
      white space is the single most common reason a home-made barcode will
      not scan. */

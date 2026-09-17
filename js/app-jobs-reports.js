@@ -323,8 +323,8 @@ function starsHtml(n, pick, jid) {
 function reviewCardHtml(j, readOnly) {
   var r = j.review;
   var rating = (OG.rv && OG.rv.jobId === j.id) ? OG.rv.rating : (r ? r.rating : 0);
-  var h = '<div class="card mb rv-card"><div class="card-head"><h3>' + t('rv_title') + '</h3>' +
-    '<div class="card-actions muted small">' + (r ? fmtDate(r.at) : t('rv_sub')) + '</div></div>' +
+  var h = '<div class="card mb rv-card"><div class="card-head"><h3>' + t('rv_job_title') + '</h3>' +
+    '<div class="card-actions muted small">' + (r ? fmtDate(r.at) : t('rv_job_sub')) + '</div></div>' +
     '<div class="card-body">';
   if (readOnly) {
     h += starsHtml(r ? r.rating : 0, false) +
@@ -1327,14 +1327,6 @@ function expenseLabel(cat) {
   var k = 'mn_c_' + cat;
   var s = t(k);
   return s === k ? String(cat || '—') : s;
-}
-
-/* Initials for the avatar block. `.split(' ')` on a name with a double space
-   yields an empty string whose [0] is undefined, and 'undefined' is what used
-   to be printed in the circle. */
-function initialsOf(name) {
-  return String(name || '').split(/\s+/).filter(Boolean)
-    .slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase() || '—';
 }
 
 /* ------------------------------------------------------------------ chart

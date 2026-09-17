@@ -185,7 +185,7 @@ body[data-portal="yalla"] .yl-line-node.on .yl-line-ico { background: var(--mint
 body[data-portal="yalla"] .yl-line-node.on .yl-line-ico svg { stroke: var(--brand-foreground); }
 
 /* radar, capacity */
-body[data-portal="yalla"] .yl-rd, body[data-portal="yalla"] .yl-heat-c {
+body[data-portal="yalla"] .yl-rd {
   border-radius: 12px; background: rgba(255, 255, 255, .03); border-color: rgba(255, 255, 255, .06);
 }
 body[data-portal="yalla"] .yl-rd.today, body[data-portal="yalla"] .yl-rd.on { background: rgba(181, 220, 192, .08); }

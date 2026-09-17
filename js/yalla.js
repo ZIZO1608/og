@@ -177,7 +177,7 @@ var YALLA = (function () {
      button on every screen size: on OG's side the chip hides on a phone
      because the More sheet carries the account block, and the portal has
      no More sheet. */
-  function me() { return (typeof Auth !== 'undefined') ? Auth.user() : null; }
+  function me() { return Auth.user(); }
 
   function initials(name) {
     var w = String(name || '').trim().split(/\s+/);
@@ -347,7 +347,7 @@ var YALLA = (function () {
     clearTimeout(outTimer);
     closeModal();
     toast(t('sign_out'), t('signing_out'), 'ok', 1500);
-    if (typeof Auth !== 'undefined') Auth.logout();
+    Auth.logout();
   }
 
   /* ------------------------------------------------------------- widgets */

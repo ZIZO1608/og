@@ -55,9 +55,6 @@ export function rules() {
 export function stampsOn(mode) {
   return mode === 'stamps' || mode === 'both';
 }
-export function pointsOn(mode) {
-  return mode === 'points' || mode === 'both';
-}
 
 /* ---- counting ------------------------------------------------------------
    EVERYTHING they ever earned, minus everything they have ever cashed in.

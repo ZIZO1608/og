@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- Harness for the warehouse map. Underscore-prefixed: never served, never
-     deployed — same rule as _shot.html and _l60check.html. Drives the REAL
+     deployed — same rule as _l60check.html. Drives the REAL
      js/shelfmap.js and the REAL js/wedge.js against stubbed app globals and
      a fixed sections payload, then asserts geometry, chips, gating and the
      scan flows. ?lang=ar runs the whole thing in RTL, where the grid must
@@ -423,7 +423,6 @@ var API = {
 
 var Labels60 = {
   opened: [],
-  openProductLabels: function (id) { Labels60.opened.push(['product', id]); },
   openShelfLabels: function (wh, o) { Labels60.opened.push(['shelf', wh, o]); }
 };
 function labelDim() { return { w: 30, h: 30 }; }

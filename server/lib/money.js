@@ -496,14 +496,6 @@ export function payDebt({ saleId, amount, method = 'cash', note = null,
   });
 }
 
-/* Called by Sales.void before it voids. A credit sale the customer has
-   already part-paid cannot simply be undone: the cash is in the box, and
-   voiding would erase the debt it was paid against while leaving the money
-   unexplained. */
-export function paymentsAgainst(d, saleId) {
-  return d.prepare('SELECT COUNT(*) AS n FROM debt_payments WHERE sale_id = ?').get(saleId).n;
-}
-
 /* ------------------------------------------------------------ the bundle */
 
 export function all() {

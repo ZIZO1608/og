@@ -559,7 +559,7 @@ var Export = (function () {
     catch (e) { bits.push(new Date().toISOString()); }
     try { if (CONFIG.SHOP_NAME) bits.push(CONFIG.SHOP_NAME); } catch (e) {}
     try {
-      var me = (typeof Auth !== 'undefined' && Auth.user && Auth.user()) || null;
+      var me = Auth.user() || null;
       if (me && me.name) bits.push(me.name);
     } catch (e) {}
     return bits.join('  ·  ');
@@ -595,7 +595,7 @@ var Export = (function () {
     var now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     var who = '';
     try {
-      var me = (typeof Auth !== 'undefined' && Auth.user && Auth.user()) || null;
+      var me = Auth.user() || null;
       who = (me && me.name) || '';
     } catch (e) {}
     var shop = '';
@@ -906,7 +906,7 @@ var Export = (function () {
   return {
     run: run, download: download, buildXlsx: buildXlsx,
     crc32: crc32, zip: zip, utf8: utf8,
-    /* Exposed for the export self-check — see _exportcheck.html. */
+    /* Internal helpers, exposed on Export as well. */
     sheetName: sheetName, excelDate: excelDate, logoBytes: logoBytes
   };
 })();

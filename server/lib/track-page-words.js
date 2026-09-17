@@ -18,9 +18,9 @@
 export const STR = {
   ar: {
     dir: 'rtl', other: 'en', otherName: 'English',
-    invoice: 'طلب', receiptT: 'إيصال', date: 'التاريخ', servedBy: 'بإشراف', customer: 'الزبون',
+    invoice: 'طلب', receiptT: 'إيصال', servedBy: 'بإشراف',
     subtotal: 'المجموع', discount: 'الحسم', total: 'الإجمالي', returnedLine: 'ما رجع إلى المحل',
-    shipping: 'الشحن', paid: 'المدفوع', left: 'المتبقّي للدفع', paidFull: 'مدفوع بالكامل',
+    shipping: 'الشحن', left: 'المتبقّي للدفع', paidFull: 'مدفوع بالكامل',
     paidOf: (p, d) => `دُفع ${p} من ${d}`,
     thanks: 'شكراً لك — ', thanksHero: 'شكراً لتسوّقك معنا', cancelled: 'ملغى',
     cancelledNote: 'هذه الفاتورة ملغاة — لا تصلح للاستبدال.',
@@ -104,9 +104,9 @@ export const STR = {
   },
   en: {
     dir: 'ltr', other: 'ar', otherName: 'العربية',
-    invoice: 'Order', receiptT: 'Receipt', date: 'Date', servedBy: 'Served by', customer: 'Customer',
+    invoice: 'Order', receiptT: 'Receipt', servedBy: 'Served by',
     subtotal: 'Subtotal', discount: 'Discount', total: 'Total', returnedLine: 'Came back',
-    shipping: 'Shipping', paid: 'Paid', left: 'Still to pay', paidFull: 'Paid in full',
+    shipping: 'Shipping', left: 'Still to pay', paidFull: 'Paid in full',
     paidOf: (p, d) => `${p} paid of ${d}`,
     thanks: 'Thank you — ', thanksHero: 'Thank you for shopping with us', cancelled: 'CANCELLED',
     cancelledNote: 'This sale was voided — it is not valid for exchange.',

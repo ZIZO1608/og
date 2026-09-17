@@ -1,5 +1,6 @@
 # =============================================================================
-#  Never commit this. The repository is public.
+#  Never commit this. The repository is private now, but a password in git
+#  history stays there for good, and anyone with a clone can read it.
 # -----------------------------------------------------------------------------
 #  agent-config.json holds a real OG System login (username + password) for
 #  whichever station this agent runs as, plus the printer share path. Commit

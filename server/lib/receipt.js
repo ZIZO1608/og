@@ -169,10 +169,17 @@ function nf(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }
    currency code to the wrong end of it. */
 const iso = (s) => `⁨${s}⁩`;
 
-/* Minor units out, whole units in. */
+/* How many digits a currency keeps after the point: 2 for USD, 0 for SYP. */
+function minorExp(code) {
+  const r = get().prepare('SELECT minor_exp FROM currencies WHERE code = ?').get(code);
+  return r ? Number(r.minor_exp) || 0 : 0;
+}
+
+/* Minor units out, whole units in, with the currency's own decimals — so
+   15430 cents is 154.30, never 154. */
 function amount(minor, code) {
-  const exp = get().prepare('SELECT minor_exp FROM currencies WHERE code = ?').get(code);
-  return nf(minor / Math.pow(10, exp ? exp.minor_exp : 0));
+  const e = minorExp(code);
+  return ((Number(minor) || 0) / Math.pow(10, e)).toLocaleString('en-US', { minimumFractionDigits: e, maximumFractionDigits: e });
 }
 
 function when(iso8601) {
@@ -346,7 +353,7 @@ export function render(sale, lang, opts = {}) {
 
   /* The dollar value AT THE RATE OF THAT DAY, never today's. */
   const usd = sale.fx_rate
-    ? (sale.total / Math.pow(10, cur === 'USD' ? 2 : 0) / sale.fx_rate).toFixed(2)
+    ? (sale.total / Math.pow(10, minorExp(cur)) / sale.fx_rate).toFixed(2)
     : null;
 
   /* ---- where it has got to. The rail's rule is Desk.rail's twin in

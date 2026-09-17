@@ -660,43 +660,10 @@
   text-align: end;
 }
 
-/* ---- product label ---- */
-
-.l60-top { display: flex; align-items: flex-start; gap: 2mm; height: 14mm; }
-
-/* Biggest thing on the label. Somebody picking off a shelf needs the size. */
-.l60-size {
-  font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif;
-  font-weight: 800;
-  font-size: 13mm; line-height: 14mm;
-  letter-spacing: -.04em;
-  flex: 0 0 auto;
-  font-variant-numeric: lining-nums tabular-nums;
-}
-
-.l60-meta { flex: 1 1 auto; min-width: 0; overflow: hidden; }
-.l60-name   { font-size: 3.6mm; line-height: 4mm; max-height: 8mm; overflow: hidden; text-align: end; }
-.l60-colour { font-size: 2.8mm; line-height: 3.2mm; height: 3.2mm; overflow: hidden; white-space: nowrap; text-align: end; }
-/* Arabic never goes below 3.5mm on this stock: under that the dots on the
-   letters merge at 203 dpi and the word turns into a smear. A colourway is
-   usually Latin ("Triple White") and 2.8mm is fine for it, but the field is
-   free text and the day somebody types it in Arabic it has to grow. */
-.l60-colour.ar { font-size: 3.5mm; line-height: 3.8mm; height: 3.8mm; }
-
-/* Where the pair goes back. Monospace so a hand-written correction next to it
-   is obviously not part of the code. */
-.l60-shelf {
-  font-family: Menlo, Consolas, monospace;
-  font-weight: 700;
-  font-size: 3.6mm; line-height: 4mm; height: 4mm;
-  margin-top: 1mm;
-  letter-spacing: .04em;
-}
-
 /* ---- barcode ---- */
 
-/* Pushed to the bottom of whatever space is left, so both labels put their
-   barcode in the same place on the roll. */
+/* Pushed to the bottom of whatever space is left, so every shelf label puts
+   its barcode in the same place on the roll. */
 .l60-bc { margin-top: auto; text-align: center; line-height: 0; }
 .l60-bc svg { display: inline-block; }
 

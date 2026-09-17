@@ -207,7 +207,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 @media (pointer: fine) {
   html, body { cursor: var(--cur); }
   button, a, .clickable, [data-act], [data-pos], [data-yl], [data-yi], [data-bk], [data-nt],
-  .chip, .tab, .nav-item, .pcard, .st-card, .yl-rd, .yl-hc, .upload-box, label.switch,
+  .chip, .tab, .nav-item, .pcard, .yl-rd, .yl-hc, .upload-box, label.switch,
   table.tbl th.sortable, table.tbl tbody tr.clickable {
     cursor: var(--cur-int);
   }
@@ -219,7 +219,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   .kcard:active, .yl-card.drag:active { cursor: grabbing; }
   /* A disabled control must still say so. */
   button:disabled, .btn:disabled, .btn.is-blocked,
-  .size-btn:disabled, .st-size:disabled { cursor: not-allowed; }
+  .size-btn:disabled { cursor: not-allowed; }
 }
 
 /* Every button in this app paints itself. Without this reset a button that
@@ -245,9 +245,6 @@ body[data-portal="yalla"] .mo-glow {
   background: radial-gradient(circle, rgb(181 220 192 / .12) 0%, rgb(181 220 192 / 0) 62%);
 }
 .mo-glow.on { opacity: 1; }
-/* Never over a light document — a lime haze on a white invoice looks like a
-   screen smudge. */
-body.modal-open .mo-glow { opacity: 0; }
 a { color: inherit; }
 
 .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
