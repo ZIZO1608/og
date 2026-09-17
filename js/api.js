@@ -52,7 +52,13 @@ var API = (function () {
     server_error:   'Something went wrong on the server.'
   };
 
+  /* A code with an `err_<code>` string in the app's own table is said in the
+     screen's language; everything else as before. */
   function friendly(err) {
+    if (err && err.code && typeof I18N !== 'undefined' && typeof OG !== 'undefined') {
+      var table = I18N[OG.lang] || I18N.en;
+      if (table && table['err_' + err.code]) return table['err_' + err.code];
+    }
     return MESSAGES[err.code] || err.message || 'Something went wrong.';
   }
 
@@ -138,17 +144,16 @@ var API = (function () {
        is the whole point.
 
          'up'    the server answered. A real deployment.
-         'none'  something answered, but not a backend. A static host: the
-                 GitHub Pages demo, or serve.ps1. There is no server here and
-                 there never was.
+         'none'  something answered, but not a backend — a static host, or
+                 a page opened from file://, with no API behind it. There is
+                 no server here and there never was.
          'down'  nothing carried the request at all. Either the wifi went, or
                  the shop's server is off.
 
-       'none' and 'down' used to be the same boolean, and collapsing them is
-       how a cashier ends up ringing sales into a demo. A static host is safe
-       to fall back on; a server that has stopped answering is not, because
-       the shop believes it is selling. Telling them apart is the difference
-       between a banner and a full stop.
+       The two call for different next actions: 'none' means this address
+       was never the shop, 'down' means the shop's server has stopped
+       answering while the shop believes it is selling. Telling them apart
+       is what lets the app say which.
 
        Never rejects — a probe that throws is one more thing to wrap. */
     ping: function () {

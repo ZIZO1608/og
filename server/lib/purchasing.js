@@ -80,9 +80,26 @@ export function get(id) {
   ).all(id));
 }
 
+/* A due date is the shop's calendar day, YYYY-MM-DD. Refused when it is not a
+   real date, or when it is already behind the shop: an order cannot be due
+   yesterday. A day of slack, because the browser's "today" and the server's
+   may sit either side of midnight. */
+export function cleanDue(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const s = String(v);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || isNaN(Date.parse(s + 'T00:00:00Z')) ||
+      new Date(s + 'T00:00:00Z').toISOString().slice(0, 10) !== s) {
+    throw fail('the due date is not a date', 'bad_due');
+  }
+  const yesterday = new Date(Date.now() - 36 * 3600 * 1000).toISOString().slice(0, 10);
+  if (s < yesterday) throw fail('the due date is in the past', 'due_past');
+  return s;
+}
+
 export function create({ supplierId = null, lines = [], note = null, whId = null,
-                         currency = 'SYP', userId = null }) {
+                         currency = 'SYP', dueDate = null, userId = null }) {
   if (!lines.length) throw fail('an order needs at least one line', 'bad_request');
+  const due = cleanDue(dueDate);
 
   return DB.tx(() => {
     const d = DB.get();
@@ -95,9 +112,9 @@ export function create({ supplierId = null, lines = [], note = null, whId = null
     d.prepare(
       `INSERT INTO purchase_orders
          (id, supplier_id, supplier_name, status, currency, wh_id, note,
-          created_at, updated_at, created_by)
-       VALUES (?,?,?,'draft',?,?,?,?,?,?)`
-    ).run(id, supplierId, sup ? sup.name : null, currency, whId, note, at, at, userId);
+          created_at, updated_at, created_by, due_date)
+       VALUES (?,?,?,'draft',?,?,?,?,?,?,?)`
+    ).run(id, supplierId, sup ? sup.name : null, currency, whId, note, at, at, userId, due);
 
     const ins = d.prepare(
       'INSERT INTO purchase_order_lines (po_id, sku, qty, unit_cost) VALUES (?,?,?,?)'

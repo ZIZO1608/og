@@ -23,9 +23,6 @@ function viewWarehouse() {
     '<div class="head-actions">' +
       '<span class="badge neutral">' + DB.liveVariants().length + ' SKU</span>' +
       '<span class="badge accent">' + nf(DB.liveVariants().reduce(function (a, v) { return a + v.qty; }, 0)) + ' ' + t('total_pieces').toLowerCase() + '</span>' +
-      /* The map is its own screen — it takes over the scanner and keeps the
-         focus in a scan box, which is not something to do inside a tab of a
-         screen that has four other jobs. */
       /* The commonest job in this room, and it had no button: carry pairs out
          of the back and onto the floor. In the header rather than inside a
          tab because it is done from wherever somebody happens to be standing
@@ -548,6 +545,7 @@ function whPoTab() {
 
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
     '<th>' + t('yi_invoice') + '</th><th>' + t('supplier') + '</th><th>' + t('date') + '</th>' +
+    '<th>' + t('po_due_col') + '</th>' +
     '<th class="num">' + t('pieces') + '</th>' +
     (poMoney ? '<th class="num">' + t('total') + '</th>' : '') +
     '<th>' + t('status') + '</th><th></th>' +
@@ -560,6 +558,7 @@ function whPoTab() {
       '<td><b>' + po.id + '</b><small class="muted" style="display:block">' + esc(po.note) + '</small></td>' +
       '<td>' + esc(sup ? sup.name : '—') + '</td>' +
       '<td class="num muted">' + fmtDate(po.created) + '</td>' +
+      '<td>' + poDueCell(po) + '</td>' +
       '<td class="num">' + DB.poPieces(po) + '</td>' +
       (poMoney ? '<td class="num"><b>' + money(DB.poTotal(po)) + '</b></td>' : '') +
       '<td><span class="badge ' + cls + '">' + t('po_' + po.status) + '</span></td>' +
@@ -574,6 +573,18 @@ function whPoTab() {
   });
 
   return h + '</tbody></table></div>';
+}
+
+/* A due date as the shop's calendar day, with "late" once it has passed and
+   the goods are still not in. ymdLocal reads it as local midnight. */
+function poDueCell(po) {
+  if (!po.dueDate) return '<span class="muted">—</span>';
+  var d = ymdLocal(po.dueDate);
+  if (!d) return '<span class="muted">—</span>';
+  var start = new Date(); start.setHours(0, 0, 0, 0);
+  var late = po.status !== 'received' && po.status !== 'cancelled' && d < start;
+  return '<span dir="auto" style="white-space:nowrap">' + fmtDate(d) + '</span>' +
+    (late ? ' <span class="badge critical">' + t('po_overdue_badge') + '</span>' : '');
 }
 
 function whAddTab() {

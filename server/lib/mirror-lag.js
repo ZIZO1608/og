@@ -100,6 +100,12 @@ export const MIRROR_LAG = {
   employees:  { cols: ['pay_day'],
                 file: 'server/supabase/023_payables.sql', retriedBy: ['sync', 'reconcile'] },
 
+  /* 056 — when a purchase order is due (024). purchase_orders goes up inside
+     the partner block, which is one try: a refusal there would take the
+     employees, the drawer and the expenses with it. */
+  purchase_orders: { cols: ['due_date'],
+                file: 'server/supabase/024_po_due.sql', retriedBy: ['sync', 'reconcile'] },
+
   /* 027 — gift receipts. NOTE: the sync deliberately does NOT apply this one.
      print_log is append-only, bookmarked by the highest id already sent, so
      dropping the column would land the rows and advance the bookmark past

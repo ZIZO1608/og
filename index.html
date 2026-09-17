@@ -7,8 +7,8 @@
 <meta name="theme-color" content="#0A0A0B">
 <meta name="application-name" content="OG System">
 <meta name="apple-mobile-web-app-title" content="OG System">
-<!-- Unreleased client demo: keep it out of search results. GitHub Pages
-     cannot set custom headers, so noindex has to live here. -->
+<!-- A shop's own system: keep it out of search results. The noindex lives in
+     the page so it holds on any host, whatever headers that host sends. -->
 <meta name="robots" content="noindex, nofollow, noarchive">
 <title>OG System — Retail Operations</title>
 <link rel="icon" href="assets/logo.svg">
@@ -55,10 +55,10 @@
 <div id="bulk-root"></div>
 <div id="print-root" class="print-root"></div>
 
-<!-- Chart.js vendored locally — the app now has zero network dependencies. -->
+<!-- Chart.js vendored locally — no CDN; the server serves every file. -->
 <script src="js/vendor/chart.umd.min.js"></script>
-<!-- codes.js first: data.js uses it to stamp valid EAN-13 check digits.
-     yalla.js before app.js, same pattern as pos.js. -->
+<!-- codes.js before data.js: data.js uses it to stamp valid EAN-13 check
+     digits. yalla.js before the app-*.js files, same pattern as pos.js. -->
 <!-- api.js before auth.js: the login screen talks to the server through it. -->
 <script src="js/api.js"></script>
 <script src="js/auth.js"></script>
@@ -86,8 +86,8 @@
 <script src="js/shelfroom.js"></script>
 <script src="js/shelfmap.js"></script>
 <!-- shop.js turns server payloads into the shapes data.js defines, so it must
-     come after it. Nothing it does runs at load time: app.js calls Shop.load()
-     once, after sign-in, before the first paint. -->
+     come after it. Nothing it does runs at load time: app-boot.js calls
+     Shop.load() once, after sign-in, before the first paint. -->
 <script src="js/shop.js"></script>
 <!-- splash.js draws the loading screen the boot mounts; it needs Shop only
      for the names of its requests, and talks to no server itself. -->
@@ -98,12 +98,12 @@
 <!-- notify.js is shared by BOTH portals; ylinvoice.js before yalla.js, because
      the partner portal delegates its Invoices view to it. -->
 <script src="js/scan.js"></script><script src="js/wedge.js"></script><script src="js/stock.js"></script><script src="js/money.js"></script><script src="js/cashbook.js"></script><script src="js/payables.js"></script><script src="js/statement.js"></script>
-<script src="js/selectbox.js"></script><script src="js/palette.js"></script><script src="js/whatsapp.js"></script><script src="js/notify.js"></script><script src="js/pulse.js"></script>
+<script src="js/selectbox.js"></script><script src="js/datepick.js"></script><script src="js/palette.js"></script><script src="js/whatsapp.js"></script><script src="js/notify.js"></script><script src="js/pulse.js"></script>
 <script src="js/ylinvoice.js"></script>
 <script src="js/yalla.js"></script>
-<!-- deliveries.js reads roleOf(), t() and toast() from app.js, but only ever
-     inside a function app.js calls — so it may load before it, and must,
-     because VIEWS in app.js names Deliveries at definition time. -->
+<!-- deliveries.js reads roleOf() (app-shell.js), t() (app-i18n.js) and
+     toast() (app-util.js), but only ever inside a function the app-*.js files
+     call — VIEWS in app-routing.js included — so it may load before them. -->
 <script src="js/deliveries.js"></script>
 <script src="js/reviews.js"></script>
 <script src="js/desk.js"></script>
@@ -127,8 +127,8 @@
 <script src="js/app-changes.js"></script>
 <script src="js/app-boot.js"></script>
 <script>
-/* Service worker: only registers over http(s). On file:// this is a no-op,
-   so double-clicking index.html keeps working exactly as before. */
+/* Service worker: only registers over http(s). A page opened from disk has
+   no server behind it, so there is nothing for a worker to cache. */
 if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('./sw.js').catch(function (e) {

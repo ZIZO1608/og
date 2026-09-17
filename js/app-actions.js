@@ -53,7 +53,6 @@ function giftDays(raw) {
 
 var ACTIONS = {
   nav: function (el) { navTo(el.getAttribute('data-view'), el.getAttribute('data-tab')); },
-  'nav-close': function (el) { closeDrawer(); navTo(el.getAttribute('data-view'), el.getAttribute('data-tab')); },
 
   /* Collapse the sidebar to an icon rail, and remember it. Re-rendered rather
      than just re-styled because the sliding active-indicator is positioned
@@ -433,7 +432,6 @@ var ACTIONS = {
   },
 
   'open-product': function (el) { openProductDrawer(+el.getAttribute('data-id')); },
-  'quick-label': function (el) { openQuickLabelPicker(+el.getAttribute('data-id')); },
 
   /* The Print-labels screen's product rows. A click on the row opens its
      sizes - unless it landed on the tick box, which is a selection, not a
@@ -496,7 +494,6 @@ var ACTIONS = {
   /* The counter view: a drawer over whatever screen you were on. Deliberately
      still a drawer — mid-sale, the question is a size and a phone number, and
      navigating away to answer it loses the basket. */
-  'open-customer': function (el) { openCustomerDrawer(+el.getAttribute('data-id')); },
 
   /* The whole record, as a place. */
   'cu-open': function (el) { closeDrawer(); go('customers', null, el.getAttribute('data-id')); },
@@ -950,6 +947,7 @@ var ACTIONS = {
     if (!lines.length) { toast(t('reorder'), t('po_need_qty'), 'warn'); return; }
 
     var supId = +(document.getElementById('poSupplier') || {}).value || DB.supplierFor(p).id;
+    var dueDate = (document.getElementById('poDue') || {}).value || null;
 
     /* The server keys a line on its sku — which is what the shop reads off
        the box when the delivery arrives — so the product+size pair is
@@ -964,13 +962,13 @@ var ACTIONS = {
     Shop.write(
       function () {
         return Shop.newPO({
-          supplierId: supId, whId: DB.intakeWh, note: p.name, lines: srvLines
+          supplierId: supId, whId: DB.intakeWh, note: p.name, lines: srvLines, dueDate: dueDate
         }).then(function (r) {
           /* Raised and placed in one gesture, the way the screen presents it. */
           return Shop.sendPO(r.po.id).then(function (sent) { return sent; });
         });
       },
-      function () { var local = DB.newPO(supId, lines, p.name); DB.sendPO(local); return local; },
+      function () { var local = DB.newPO(supId, lines, p.name); local.dueDate = dueDate; DB.sendPO(local); return local; },
       function (res) {
         /* The server hands out the real order number; the local one was a
            guess made before it answered. */
@@ -1075,14 +1073,6 @@ var ACTIONS = {
     var isLabelCode = digits.length === code.length && digits.length > 0 && digits.length <= 8;
     var patch = isLabelCode ? { labelCode: code } : { barcode: code };
 
-    function apply() {
-      var v = DB.variantBySku(sku);
-      if (v) { if (patch.barcode) v.barcode = patch.barcode; if (patch.labelCode) v.labelCode = patch.labelCode; }
-      closeModal();
-      toast(t('lbl_attach_code'), (v && DB.product(v.productId) || {}).name || sku, 'ok', 3000);
-    }
-
-    if (typeof Auth === 'undefined') { apply(); return; }
     API.patch('/api/variants/' + encodeURIComponent(sku), patch)
       .then(function (res) {
         var v = DB.variantBySku(sku);
@@ -1138,7 +1128,7 @@ var ACTIONS = {
   },
 
   'rc-save-config': function (el) {
-    if (!allow('config.write') || typeof Auth === 'undefined') return;
+    if (!allow('config.write')) return;
     var transportEl = document.getElementById('rcTransport');
     var transport = (transportEl && transportEl.getAttribute('data-v')) || 'tcp';
     var updates = {
@@ -1192,7 +1182,7 @@ var ACTIONS = {
   },
 
   'lbl-save-config': function (el) {
-    if (!allow('config.write') || typeof Auth === 'undefined') return;
+    if (!allow('config.write')) return;
     var updates = {
       'label.transport':    (document.getElementById('lblTransport') || {}).value || 'agent',
       'label.printer_host': (document.getElementById('lblHost') || {}).value || '',
@@ -1331,6 +1321,27 @@ var ACTIONS = {
   'wh-place': function (el) { OG.wh.place = el.getAttribute('data-w'); render(); },
 
   /* Per-product transfer: choose a size, a direction and a quantity. */
+  /* ---- move by scan ---- */
+  'ms-open': function () { openMoveScan(); },
+  'ms-swap': function () {
+    if (!moveScan) return;
+    var f = moveScan.from;
+    moveScan.from = moveScan.to;
+    moveScan.to = f;
+    moveScanRepaint();
+  },
+  'ms-drop': function (el) {
+    if (!moveScan) return;
+    var sku = el.getAttribute('data-sku');
+    moveScan.lines = moveScan.lines.filter(function (l) { return l.sku !== sku; });
+    moveScanRepaint();
+  },
+  'ms-camera': function () {
+    /* Continuous: he is emptying a shelf, not looking one thing up. */
+    Scan.open({ title: t('ms_title'), continuous: true, onHit: function (code) { moveScanned(code); } });
+  },
+  'ms-go': function () { moveScanCommit(); },
+
   'wh-transfer': function (el) { openTransfer(+el.getAttribute('data-id')); },
 
   'wh-transfer-go': function () {
@@ -1890,7 +1901,7 @@ var ACTIONS = {
     var j = DB.job(id);
     if (!j) return;
     var rating = (OG.rv && OG.rv.jobId === id) ? OG.rv.rating : (j.review ? j.review.rating : 0);
-    if (!rating) { toast(t('rv_title'), t('rv_need_stars'), 'warn'); return; }
+    if (!rating) { toast(t('rv_job_title'), t('rv_need_stars'), 'warn'); return; }
     var box = document.getElementById('rvText');
     var feedback = box ? box.value.trim() : '';
     Shop.write(

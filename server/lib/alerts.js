@@ -108,8 +108,12 @@ export function criticalCount(low = criticalLevel()) {
   ).get(low).n;
 }
 
+/* An order with a due date is late the day after it (056); one without keeps
+   the old rule, sent fourteen days ago. The second bind is today, YYYY-MM-DD. */
 const PO_SQL = `FROM purchase_orders
-    WHERE status = 'sent' AND sent_at IS NOT NULL AND sent_at <= ?`;
+    WHERE status = 'sent' AND sent_at IS NOT NULL
+      AND ((due_date IS NULL AND sent_at <= ?) OR (due_date IS NOT NULL AND due_date < ?))`;
+const poToday = () => new Date().toISOString().slice(0, 10);
 const poCutoff = (days) => {
   const c = new Date(); c.setDate(c.getDate() - days); return c.toISOString();
 };
@@ -118,11 +122,11 @@ const poCutoff = (days) => {
    two very old orders cannot hide a third. */
 export function poLate({ limit = 2, days = 14 } = {}) {
   return DB.get().prepare(
-    `SELECT id, supplier_name, sent_at ${PO_SQL} ORDER BY sent_at ASC LIMIT ?`
-  ).all(poCutoff(days), limit);
+    `SELECT id, supplier_name, sent_at, due_date ${PO_SQL} ORDER BY COALESCE(due_date, sent_at) ASC LIMIT ?`
+  ).all(poCutoff(days), poToday(), limit);
 }
 export function poLateCount({ days = 14 } = {}) {
-  return DB.get().prepare(`SELECT COUNT(*) AS n ${PO_SQL}`).get(poCutoff(days)).n;
+  return DB.get().prepare(`SELECT COUNT(*) AS n ${PO_SQL}`).get(poCutoff(days), poToday()).n;
 }
 
 /* Print jobs past their date.
@@ -393,8 +397,11 @@ export function list(user, { limit = MAX_ROWS } = {}) {
   if (can('stock.read')) {
     const rows = poLate({ limit: 2 });
     rows.forEach((r) => {
-      out.push({ key: 'po:' + r.id, kind: 'po_late',
-                 args: { id: r.id, name: r.supplier_name || null, days: -daysUntil(r.sent_at) },
+      /* An order with a due date says how far past it; one without, how long
+         since it was sent. */
+      out.push({ key: 'po:' + r.id, kind: r.due_date ? 'po_overdue' : 'po_late',
+                 args: { id: r.id, name: r.supplier_name || null,
+                         days: Math.max(1, -daysUntil(r.due_date || r.sent_at)) },
                  icon: '~', tone: 'amber', view: 'warehouse' });
     });
     if (rows.length === 2) more('po_late', poLateCount(), rows.length, '~', 'amber', 'warehouse');

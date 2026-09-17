@@ -137,8 +137,8 @@ function customerCardHTML(c, ci) {
        (Bulk.has('customers', c.id) ? ' bk-on' : '') +
        /* From the LIST a card opens the whole record. Nobody is mid-sale on
           this screen, so the drawer's reason to exist — do not lose the
-          basket — does not apply here. `open-customer` still opens the drawer
-          everywhere else, which is where the counter cases live. */
+          basket — does not apply here. The drawer is what a link or a scan
+          opens at the till mid-sale, which is where the counter cases live. */
        '" data-act="cu-open" data-id="' + c.id + '">' +
     '<span class="bk-corner">' + Bulk.box('customers', c.id, ci) + '</span>' +
 
@@ -186,18 +186,6 @@ function customerCardHTML(c, ci) {
         '</div>'
       : '') +
   '</div>';
-}
-
-/* Two letters from a name that may be Arabic, Latin, or one word.
-
-   UPPERCASED, which is not cosmetic: a shop name typed "coda tools" came out
-   as "cT" in the avatar circle, which reads as a rendering fault rather than
-   as initials. Arabic has no case, so toUpperCase leaves it exactly as it
-   was — this only ever touches Latin. */
-function initialsOf(name) {
-  var parts = String(name || '').split(/\s+/).filter(Boolean);
-  if (!parts.length) return '؟';
-  return parts.map(function (w) { return w.charAt(0); }).slice(0, 2).join('').toUpperCase();
 }
 
 /* Four different nothings, and they call for four different next actions —
@@ -1091,21 +1079,15 @@ function openCustomerDrawer(cid) {
 
   openDrawer({ head: head, body: body });
 
-  if (typeof Shop !== 'undefined' && Shop.live()) {
-    Shop.customerHistory(c.id).then(function (r) {
-      fillCustomerHistory(c.id, (r && r.sales) || []);
-    }).catch(function (err) {
-      var host = custHistHost(c.id);
-      if (host) {
-        host.innerHTML = '<div class="card-body"><span class="muted small">' +
-          esc(API.friendly(err)) + '</span></div>';
-      }
-    });
-  } else {
-    /* _shot.html and demo mirrors: no server to ask, so the history stays
-       honestly empty rather than invented. */
-    fillCustomerHistory(c.id, []);
-  }
+  Shop.customerHistory(c.id).then(function (r) {
+    fillCustomerHistory(c.id, (r && r.sales) || []);
+  }).catch(function (err) {
+    var host = custHistHost(c.id);
+    if (host) {
+      host.innerHTML = '<div class="card-body"><span class="muted small">' +
+        esc(API.friendly(err)) + '</span></div>';
+    }
+  });
 }
 
 function custHistHost(cid) {
@@ -1290,8 +1272,7 @@ function resolveScan(raw) {
 
   /* The numeric code printed under a thermal label's Code128 barcode —
      matching it here is the other half of "scanning must match printing":
-     server/lib/catalogue.js's byBarcode() checks the same three fields for
-     a real server. */
+     barcode, SKU and label code all resolve to the same pair. */
   v = DB.variantByLabelCode(code);
   if (v) return { kind: 'variant', variant: v };
 
@@ -1632,12 +1613,20 @@ function openReorder(pid) {
   var vs = DB.variantsOf(pid);
   var sup = DB.supplierFor(p);
 
-  var h = '<div class="field"><span class="lbl">' + t('supplier') + '</span>' +
+  var now = new Date();
+  var todayIso = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' +
+                 String(now.getDate()).padStart(2, '0');
+  var h = '<div class="po-head-row"><div class="field"><span class="lbl">' + t('supplier') + '</span>' +
     '<select class="inp" id="poSupplier">' +
       DB.suppliers.map(function (s) {
         return '<option value="' + s.id + '"' + (s.id === sup.id ? ' selected' : '') + '>' +
                esc(s.name) + ' · ' + esc(s.category) + '</option>';
-      }).join('') + '</select></div>';
+      }).join('') + '</select></div>' +
+    /* When the goods should arrive. The DatePick field refuses a day behind
+       today; the server refuses it again. */
+    '<label class="field"><span class="lbl">' + t('po_due') + '</span>' +
+      '<input class="inp" type="date" id="poDue" min="' + todayIso + '" aria-label="' + esc(t('po_due')) + '">' +
+      '<small class="muted">' + t('po_due_hint') + '</small></label></div>';
 
   h += '<div class="table-wrap mt"><table class="tbl po-tbl"><thead><tr>' +
     '<th>' + t('size') + '</th><th class="num">' + t('in_stock') + '</th>' +

@@ -102,9 +102,6 @@ var CONFIG = {
      is standing there. */
   MAX_DISCOUNT_PCT: 10,
 
-  /* Valid EAN-13: 622103301284 checksums to 4. The old ...845 looked fine but
-     would not scan. */
-  DEMO_BARCODE: '6221033012844',
   COUPON: { code: 'OG20', percent: 20 },
 
   /* QR payloads. 'text' prints human-readable info that resolves with no
@@ -116,7 +113,7 @@ var CONFIG = {
      deep link points HERE rather than at whatever path the app happens to be
      open from — so a receipt printed on the shop laptop still resolves when
      scanned by a customer's phone on mobile data. Empty falls back to the
-     current location, which is right for a laptop-only demo. */
+     current location, which is right when only the shop's own network opens it. */
   PUBLIC_URL: 'https://zizo1608.github.io/og/',
 
   /* What OG pays Yalla Wear to print one football kit — name, number, badges.
@@ -219,12 +216,13 @@ var CONFIG = {
   ]
 };
 
-/* Deterministic pseudo-random so the demo looks identical every time it opens. */
+/* A small seeded generator, left from the seeded shop. DB.newProduct still
+   draws a local product's barcode digits and shelf number from ri(); nothing
+   else may use it
+   — a screen that draws from rnd() is a screen inventing numbers. */
 var _seed = 987654321;
 function rnd() { _seed = (_seed * 1664525 + 1013904223) % 4294967296; return _seed / 4294967296; }
 function ri(a, b) { return a + Math.floor(rnd() * (b - a + 1)); }
-function pick(a) { return a[Math.floor(rnd() * a.length)]; }
-function chance(p) { return rnd() < p; }
 function pad(n, w) { var s = String(n); while (s.length < w) s = '0' + s; return s; }
 
 var TODAY = new Date(); TODAY.setHours(0, 0, 0, 0);
@@ -296,14 +294,6 @@ function typeColour(type) {
    product that does not exist. */
 var products = [];
 
-/* Products that carry a "size gap": healthy total stock, zero in the sizes
-   customers actually ask for. This is one of the headline insights in the pitch. */
-var SIZE_GAP = {
-  1:  ['42', '43'],      // Air Force 1 — the two sizes everyone wants
-  11: ['M', 'L'],        // OG Heavyweight Tee
-  16: ['32', '34']       // Levi's 501
-};
-
 /* ---- where stock physically is -------------------------------------------
    Until now the shop had one implied warehouse: `qty` was a single number and
    `shelf` only said where inside that one place. So a size with nothing on the
@@ -322,62 +312,7 @@ var INTAKE_WH  = 'store';   /* deliveries arrive at the back door, not the wall 
 
 var variants = [];
 
-/* The dead-stock alert on the dashboard points at a real row. */
-(function pinDeadStock() {
-  variants.filter(function (v) { return v.productId === 24; }).forEach(function (v, i) {
-    v.shelf = 'B-07';
-    v.qty = [2, 4, 5, 4, 3][i] || 3;   // 18 pieces total, none moving
-  });
-})();
-
-/* Split every size between the shop floor and the back storage.
-   ---------------------------------------------------------------------------
-   This uses a generator of its OWN, deliberately not the shared rnd(). The
-   seed sequence is global and positional: drawing from it here would shift
-   every value created afterwards — customer phone numbers, sale totals, which
-   variants the movement log picked — and the test suite asserts against those.
-   A private seed keeps the split reproducible while leaving everything already
-   seeded byte-for-byte identical.
-
-   Runs after the two pins above, so it splits the final quantities. */
-var _whSeed = 20250819;
-function whRnd() {
-  _whSeed = (_whSeed * 1664525 + 1013904223) % 4294967296;
-  return _whSeed / 4294967296;
-}
-
-(function splitAcrossWarehouses() {
-  variants.forEach(function (v) {
-    var floor;
-    if (v.qty === 0) {
-      floor = 0;                       // out everywhere, including the gap sizes
-    } else if (v.qty >= 4 && whRnd() < 0.20) {
-      /* THE INSIGHT: nothing on the wall, plenty in the back. This is the
-         case the paper ledger cannot see, and the reason transfers exist. */
-      floor = 0;
-    } else {
-      /* A wall holds a display, not the whole stock. Roughly a third. */
-      floor = Math.round(v.qty * (0.28 + whRnd() * 0.22));
-      if (floor > v.qty) floor = v.qty;
-      if (floor < 1) floor = 1;
-    }
-    v.wh = { floor: floor, store: v.qty - floor };
-  });
-
-  /* The pair the presenter scans on stage has to be sellable from the floor,
-     or the very first thing demonstrated is a refusal. */
-  var demo = variants.filter(function (x) { return x.barcode === CONFIG.DEMO_BARCODE; })[0];
-  if (demo && demo.wh.floor < 4) {
-    var need = 4 - demo.wh.floor;
-    if (need > demo.wh.store) need = demo.wh.store;
-    demo.wh.floor += need;
-    demo.wh.store -= need;
-  }
-})();
-
 /* --------------------------------------------------------------- 3. PEOPLE */
-
-var CITIES = ['Damascus', 'Aleppo', 'Homs', 'Latakia', 'Hama', 'Tartus', 'Deir ez-Zor'];
 
 var customers = [];
 
@@ -438,32 +373,13 @@ var PRINT_STAGE_LABELS = {
 var CLUBS = {};
 
 var _lineSeq = 0;
-function kl(clubKey, print, number, size, qty) {
-  var c = CLUBS[clubKey];
-  return {
-    id: 'L' + pad(++_lineSeq, 3),
-    club: c[0], clubAr: c[1],
-    print: print || null,                  // null === TO BE CONFIRMED
-    number: number || null,
-    size: size, qty: qty || 1,
-    price: CONFIG.KIT_PRINT_PRICE
-  };
-}
-
-/* P-1043 is one whole team — eighteen Syria shirts, numbers 1 to 18. Five
-   squad places were still open when the order was taken, so five lines have
-   no name. That is why this job sits at "Sent to print" while overdue: it
-   physically cannot advance. It is the best single story in the demo. */
-
-
 /* `qty`, `sizes` and `cost` are DERIVED for kit jobs in buildJobDetail below,
    so a line can never disagree with its job's totals. Only `price` — what OG
    charges the customer — is authored here, because that is OG's margin call. */
 var printJobs = [];
 
-/* Split an order across tee sizes on a realistic curve. Shared by the seed
-   data and by DB.newPrintJob, so a job created live at the till carries the
-   same detail as one that shipped with the demo. */
+/* Split an order across tee sizes on a realistic curve. Used for a new job
+   (DB.newPrintJob) and for a bulk job the server sends without kit lines. */
 var TEE_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
 var TEE_CURVE = [0.14, 0.26, 0.30, 0.20, 0.10];
 
@@ -485,20 +401,7 @@ function splitSizes(qty) {
    size breakdown FROM their lines — never the other way round, so a line
    and its job total can never disagree. */
 
-/* Two of the three jobs still in Design are pushed off draft, so BOTH sides
-   have something to do the moment the demo opens: OG can send one, Yalla can
-   accept another, and the third refuses to send because two of its shirts
-   still have no name on them. */
-
 /* ------------------------------------------------------------ 6. MOVEMENTS */
-
-var MOVEMENT_TYPES = {
-  received: { label: '+ Received',  sign: 1  },
-  sold:     { label: '- Sold',      sign: -1 },
-  damaged:  { label: '- Damaged',   sign: -1 },
-  returned: { label: '+ Return',    sign: 1  },
-  transfer: { label: '- Transfer',  sign: -1 }
-};
 
 var stockMovements = [];
 
@@ -522,7 +425,6 @@ var waMessages = [];
    moves draft → sent → received. Receiving raises stock through the same
    movement log everything else uses, so an arrival is auditable rather than
    a number that changed on its own. */
-var PO_STATUS = ['draft', 'sent', 'received'];
 var purchaseOrders = [];
 
 /* Finished stock counts, newest first. A count is a record in its own right,
@@ -607,8 +509,6 @@ var MSG_REASONS = {
   'other':           'Other'
 };
 
-function hoursAgo(n) { return new Date(Date.now() - n * 3600000); }
-
 var _msgSeq = 0;
 var jobMessages = [];
 
@@ -616,14 +516,11 @@ var jobMessages = [];
 var PEOPLE = {};
 
 /* ---- customer indexes ---------------------------------------------------
-   id → customer, and normalised phone → [customers]. hydrate() used to build
-   the first of these to link sales to people and then throw it away, while
-   DB.customer(id) walked the whole array with a filter on every call — five
-   thousand lookups measured at 121 ms. Kept here instead, rebuilt by
-   DB.indexCustomers() whenever the array is refilled. The phone index is an
-   array per number because two people genuinely can share one. */
+   id → customer. hydrate() used to build this to link sales to people and
+   then throw it away, while DB.customer(id) walked the whole array with a
+   filter on every call — five thousand lookups measured at 121 ms. Kept here instead, rebuilt by
+   DB.indexCustomers() whenever the array is refilled. */
 var custIndex = {};
-var custPhoneIndex = {};
 
 /* One server row → one customer object.
 
@@ -710,7 +607,6 @@ var DB = {
      localStorage, so reading an alert on the till left it bold in the
      office; and it keyed on the text, so "due in 3 days" becoming "due in
      2 days" overnight quietly made a read alert unread again. */
-  isNotifRead: function (n) { return !!n.read; },
 
   unreadNotifications: function () {
     return notifications.filter(function (n) { return !n.read; });
@@ -774,11 +670,11 @@ var DB = {
     if (n.kind === 'stamps' && a.owed > 1) s += t('al_stamps_owed');
 
     var amount = a.amount == null ? '' : (a.currency === 'USD' ? moneyUsdRaw(a.amount) : moneySypRaw(a.amount));
-    var id = a.id == null ? '' : String(a.id) + (n.kind === 'po_late' && a.name ? ' — ' + a.name : '');
+    var id = a.id == null ? '' : String(a.id) + ((n.kind === 'po_late' || n.kind === 'po_overdue') && a.name ? ' — ' + a.name : '');
     var vals = {
       n: a.n, total: a.total, stamps: a.stamps, required: a.required, owed: a.owed,
       days: Math.abs(Number(a.days) || 0),
-      name: n.kind === 'po_late' ? '' : (a.name || ''), size: a.size || '', id: id,
+      name: (n.kind === 'po_late' || n.kind === 'po_overdue') ? '' : (a.name || ''), size: a.size || '', id: id,
       amount: amount, err: a.err ? ' — ' + a.err : '',
       behind: a.behind,
       /* partner_msg: what Yalla Wear said, and what kind of line it was */
@@ -816,14 +712,6 @@ var DB = {
   rep: null,
   hydrateReports: function (d) { DB.rep = d || null; },
 
-  /* One block of the snapshot, or null. `DB.repBlock('payments')` is
-     undefined for a manager without money.read, absent rather than empty,
-     because "not shown to you" and "the shop took nothing" are different
-     sentences and only one of them is ever true. */
-  repBlock: function (name) {
-    return (DB.rep && DB.rep[name] !== undefined && DB.rep[name] !== null) ? DB.rep[name] : null;
-  },
-
   /* The shop's own currency, out of the report's pairs and the dashboard's. */
   repBase: function () { return (DB.rep && DB.rep.base) || CONFIG.BASE_CURRENCY || 'SYP'; },
   /* The partner's production report, computed on the server in SQL over
@@ -859,8 +747,6 @@ var DB = {
   },
   paymentMethods: PAYMENT_METHODS,
   printStages: PRINT_STAGES,
-  printStageLabels: PRINT_STAGE_LABELS,
-  movementTypes: MOVEMENT_TYPES,
   warehouses: WAREHOUSES,
   defaultWh: DEFAULT_WH,
   intakeWh: INTAKE_WH,
@@ -872,7 +758,7 @@ var DB = {
 
   product: function (id) { return products.filter(function (p) { return p.id === id; })[0]; },
   /* The index first; the scan only for a row that reached the array without
-     going through hydrate (the demo-mode mirror in cu-save pushes one), and
+     going through hydrate (Shop.write's local mirror in cu-save pushes one), and
      that row is then remembered so the next lookup is a hash again. */
   customer: function (id) {
     var c = custIndex[id];
@@ -882,24 +768,10 @@ var DB = {
     return c;
   },
 
-  /* By NORMALISED phone (DB.normPhone) — the caller normalises, so a search
-     box and the server agree on what "the same number" means. Prefers a live
-     customer over an archived one holding the same number; undefined when
-     nobody has it. */
-  customerByPhone: function (norm) {
-    var list = norm ? custPhoneIndex[norm] : null;
-    if (!list || !list.length) return undefined;
-    return list.filter(function (c) { return !c.archived; })[0] || list[0];
-  },
-
   indexCustomers: function () {
     custIndex = {};
-    custPhoneIndex = {};
     customers.forEach(function (c) {
       custIndex[c.id] = c;
-      var k = DB.normPhone(c.phone);
-      if (!k) return;
-      (custPhoneIndex[k] = custPhoneIndex[k] || []).push(c);
     });
   },
 
@@ -1015,8 +887,7 @@ var DB = {
   },
 
   /* Two logged legs, out of one place and into the other, so the trail
-     balances and nothing appears from nowhere. `transfer` has existed in
-     MOVEMENT_TYPES since the beginning and was never used until now. */
+     balances and nothing appears from nowhere. */
   transfer: function (v, fromWh, toWh, n, user) {
     if (!v || fromWh === toWh) return 0;
     var have = DB.stockAt(v, fromWh);
@@ -1112,8 +983,6 @@ var DB = {
     return n !== null && n > 0;
   },
 
-
-  stageIndex: function (job) { return PRINT_STAGES.indexOf(job.stage); },
 
   /* Single place a job's stage can change, so the history always stays in
      step with the tracker — used by the OG kanban and the Yalla portal.
@@ -1309,24 +1178,11 @@ var DB = {
     return DB.tbcLines(job).reduce(function (a, l) { return a + l.qty; }, 0);
   },
 
-  jobKitTotal: function (job) {
-    return DB.kitLines(job).reduce(function (a, l) { return a + l.qty * l.price; }, 0);
-  },
-
   /* What a stage change would do, without doing it — so a UI can grey out a
      drop target instead of letting the user try and get a toast. */
   blockedBy: function (job, stage) {
     if (PRINT_STAGES.indexOf(stage) > PRINT_STAGES.indexOf('sent') && DB.tbcCount(job) > 0) return 'tbc';
     return null;
-  },
-
-  confirmName: function (jobId, lineId, name, number) {
-    var l = DB.line(jobId, lineId);
-    if (!l) return false;
-    l.print = (name || '').toUpperCase().trim() || null;
-    if (number !== undefined) l.number = number || null;
-    DB.saveLines(DB.job(jobId));
-    return !!l.print;
   },
 
   /* Send a kit sheet's names and numbers to the server.
@@ -1461,10 +1317,10 @@ var DB = {
     }, 0);
   },
 
-  /* Deliberately NOT nextInvoiceId — that name is already taken further down
-     by the sales-invoice counter (INV-2224). Two keys with the same name in
-     one object literal is legal JavaScript and the second silently wins, so
-     this would have quietly handed out INV- numbers to partner invoices. */
+  /* A name of its own, never a bare nextInvoiceId: sale ids (INV-2224) come
+     from the server, and two keys with the same name in one object literal is
+     legal JavaScript where the second silently wins — which once came close
+     to handing out INV- numbers to partner invoices. */
   nextPartnerInvoiceId: function () {
     var year = TODAY.getFullYear(), max = 0;
     partnerInvoices.forEach(function (i) {
@@ -1780,7 +1636,12 @@ var DB = {
   stampsOn: function () {
     return CONFIG.LOYALTY_MODE === 'stamps' || CONFIG.LOYALTY_MODE === 'both';
   },
-  loyaltyOff: function () { return CONFIG.LOYALTY_MODE === 'off'; },
+
+  /* { shown, total, capped } for one of the windowed lists, or a safe
+     not-capped answer for a list nobody has flagged. */
+  cap: function (kind) {
+    return caps[kind] || { shown: 0, total: 0, capped: false };
+  },
 
   /* Who is holding a full stamp card, as { customerId: true }.
 
@@ -1788,13 +1649,9 @@ var DB = {
      out for the alerts — from every non-voided sale since each customer's
      last redemption — and a second implementation in the browser would be a
      second answer to the same question, computed from the 200 sales this
-     machine happens to hold. The alert key IS the fact: `stamps:<id>`. */
-  /* { shown, total, capped } for one of the windowed lists, or a safe
-     not-capped answer for a list nobody has flagged. */
-  cap: function (kind) {
-    return caps[kind] || { shown: 0, total: 0, capped: false };
-  },
-
+     machine happens to hold. The alert key IS the fact: `stamps:<id>`.
+     `fullCards` is the array itself, refilled in place by js/pulse.js. */
+  fullCards: fullCards,
   fullCardIds: function () {
     var out = {};
     fullCards.forEach(function (id) { out[id] = true; });
@@ -1829,21 +1686,6 @@ var DB = {
     var n = DB.daysSince(c && c.lastPurchaseDate);
     if (n === null) return 'new';
     return n >= DB.quietAfter(c) ? 'quiet' : 'ok';
-  },
-
-  /* People who HAVE bought and then stopped, measured against one fixed
-     window. Never-bought is a different state — a sale that has not happened
-     yet, not a customer who left — and is deliberately not in this list.
-
-     For "who has gone quiet" prefer quietCustomers() below, which measures
-     each person against their own rhythm. This one stays for the places that
-     genuinely mean a fixed window, like "bought in the last N days". */
-  inactiveCustomers: function (days) {
-    var edge = days || DB.atRiskDays();
-    return customers.filter(function (c) {
-      var n = DB.daysSince(c.lastPurchaseDate);
-      return n !== null && n >= edge;
-    });
   },
 
   /* Everyone past their OWN rhythm, archived excluded. Anything that counts
@@ -1925,12 +1767,6 @@ var DB = {
     if (!p) return 0;
     return DB.repBase() === 'USD' ? (p.syp || 0) : (p.usd || 0);
   },
-  /* True when any dollars were taken at all. A second column of zeros on every
-     row of a lira-only shop is noise; the column appears when it means
-     something and is left out when it does not. */
-  repHasOther: function (pairs) {
-    return (pairs || []).some(function (p) { return DB.repOtherOf(p) !== 0; });
-  },
 
   /* Tiny 12-point series used for the sparkline in the product drawer. */
   productTrend: function (pid) {
@@ -1945,12 +1781,6 @@ var DB = {
       out.push(n);
     }
     return out;
-  },
-
-  nextInvoiceId: function () {
-    var max = 2100;
-    sales.forEach(function (s) { var n = parseInt(s.id.split('-')[1], 10); if (n > max) max = n; });
-    return 'INV-' + (max + 1);
   },
 
   /* The one way a product is created at the till, so a live-entered item is
@@ -2311,7 +2141,6 @@ var DB = {
   /* ---- purchase orders --------------------------------------------------- */
 
   purchaseOrders: purchaseOrders,
-  poStatus: PO_STATUS,
   stockCounts: stockCounts,
   shifts: shifts,
   expenses: expenses,
@@ -2616,8 +2445,8 @@ var DB = {
      name and printed an ordinary-looking receipt. Two catalogues is one
      catalogue that is wrong, and you cannot tell which.
 
-     So: in live mode the app shows the server's data, in demo mode it shows
-     the seeded story, and never a mix. A mix is what caused the bug.
+     So: the app shows the server's data and nothing else. A mix is what
+     caused the bug.
 
      WHY IT MUTATES THE ARRAYS RATHER THAN REASSIGNING THEM. `products`,
      `variants`, `customers`, `sales` and `stockMovements` are closed over by
@@ -3075,6 +2904,8 @@ var DB = {
         created: o.created_at ? new Date(o.created_at) : null,
         sentAt: o.sent_at ? new Date(o.sent_at) : null,
         receivedAt: o.received_at ? new Date(o.received_at) : null,
+        /* YYYY-MM-DD, the shop's calendar day, or null (056) */
+        dueDate: o.due_date || null,
         lines: (o.lines || []).map(function (l) {
           return {
             sku: l.sku, productId: l.product_id, size: l.size,
@@ -3121,9 +2952,7 @@ function pushPartner(send, title, quiet) {
     .then(function () { return quiet ? null : Shop.reload(); })
     .catch(function (err) {
       if (typeof toast === 'function') {
-        toast(title, (typeof API !== 'undefined' && API.friendly) ? API.friendly(err)
-                                                                  : String(err.message || err),
-              'err', 6000);
+        toast(title, API.friendly(err), 'err', 6000);
       }
       Shop.reload();
     });

@@ -33,6 +33,98 @@ body.rtl select.inp { background-position: left 11px center; }
 select.inp option { background: var(--popover); color: var(--foreground); }
 input[type="date"].inp::-webkit-calendar-picker-indicator { filter: invert(1) opacity(.6); cursor: pointer; }
 
+/* ---- the date picker (js/datepick.js) -----------------------------------
+   The real input stays, read-only and transparent; the face on top of it says
+   the date in the app's words with a white calendar at the end. The whole
+   field is the button. */
+/* The reorder dialog's head: the supplier and the due date side by side. */
+.po-head-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.po-head-row small { display: block; margin-top: 5px; font-size: 11.5px; line-height: 1.35; }
+@media (max-width: 560px) { .po-head-row { grid-template-columns: 1fr; } }
+
+.dp-wrap { position: relative; display: inline-block; vertical-align: middle; min-width: 150px; }
+.dp-wrap.dp-block { display: block; }
+.dp-wrap > input.dp-inp,
+.dp-wrap > input.dp-inp:read-only {
+  width: 100%; cursor: pointer; color: transparent; caret-color: transparent;
+  background: var(--input-bg, var(--subtle)); text-shadow: none;
+}
+.dp-wrap > input.dp-inp::-webkit-calendar-picker-indicator { display: none; }
+.dp-wrap > input.dp-inp::-webkit-datetime-edit,
+.dp-wrap > input.dp-inp::-webkit-datetime-edit-fields-wrapper,
+.dp-wrap > input.dp-inp::-webkit-datetime-edit-text { opacity: 0; color: transparent; }
+.dp-face {
+  position: absolute; inset: 0; display: flex; align-items: center; gap: 10px;
+  padding-inline: 12px 10px; pointer-events: none; color: var(--foreground);
+  font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden;
+}
+/* Written against .field's own span rule, which capitalises a label. */
+.dp-wrap .dp-face, .dp-wrap .dp-face span {
+  text-transform: none; letter-spacing: 0; margin: 0; display: flex; align-items: center;
+}
+.dp-wrap .dp-face .dp-txt {
+  display: block; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis;
+  color: var(--foreground); font-size: 13.5px; font-weight: 600;
+}
+.dp-wrap .dp-face .dp-txt.dp-ph { color: var(--dim); font-weight: 500; }
+.dp-ico { flex: none; display: grid; place-items: center; width: 22px; height: 22px; }
+.dp-ico svg { width: 18px; height: 18px; fill: none; stroke: #FFFFFF; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dp-ico .dp-dot { stroke-width: 2.6; }
+.dp-wrap:hover > input.dp-inp { border-color: var(--border-strong); }
+.dp-wrap.dp-open > input.dp-inp { border-color: var(--ring); box-shadow: 0 0 0 3px var(--brand-soft); }
+
+.dp-pop {
+  position: fixed; z-index: 960; width: 300px; padding: 12px;
+  background: var(--popover); color: var(--foreground);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg, 14px);
+  box-shadow: 0 24px 64px -16px rgb(0 0 0 / .9), 0 0 0 1px rgb(0 0 0 / .5);
+  animation: sbxIn .12s ease; font-family: inherit;
+}
+.dp-head { display: flex; align-items: center; gap: 2px; margin-bottom: 8px; }
+.dp-title { flex: 1; text-align: center; font-size: 14px; white-space: nowrap; }
+.dp-title b { font-weight: 700; }
+.dp-title span { color: var(--muted-foreground); font-weight: 600; }
+.dp-nav {
+  width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px;
+  background: transparent; border: 0; color: var(--muted-foreground); cursor: pointer;
+}
+.dp-nav svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dp-nav.dp-fwd svg { transform: scaleX(-1); }
+.dp-pop[dir="rtl"] .dp-nav svg { transform: scaleX(-1); }
+.dp-pop[dir="rtl"] .dp-nav.dp-fwd svg { transform: none; }
+.dp-nav:hover, .dp-nav:focus-visible { background: var(--accent); color: var(--foreground); outline: none; }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-wd { text-align: center; font-size: 11px; font-weight: 600; color: var(--dim); padding: 4px 0 6px; }
+.dp-day {
+  height: 36px; border-radius: 9px; border: 0; background: transparent; cursor: pointer;
+  color: var(--foreground); font: inherit; font-size: 13px; font-weight: 600;
+}
+.dp-day:hover { background: var(--accent); }
+.dp-day.now { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.dp-day.at { outline: 2px solid var(--ring); outline-offset: -2px; }
+.dp-day.on { background: var(--brand); color: var(--brand-foreground); font-weight: 700; }
+.dp-day:disabled { color: var(--border-strong); cursor: not-allowed; background: transparent; box-shadow: none; }
+.dp-day:focus { outline: none; }
+.dp-day.at:focus-visible, .dp-day.at:focus { outline: 2px solid var(--ring); outline-offset: -2px; }
+.dp-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.dp-pop .dp-today { background: var(--brand); color: var(--brand-foreground); border-color: transparent; }
+.dp-pop .dp-today:hover { background: var(--brand-dim); color: var(--brand-foreground); }
+.dp-pop .dp-today:disabled { opacity: .4; cursor: not-allowed; }
+
+/* A phone: a sheet at the bottom, thumb-sized days, the page dimmed. */
+.dp-back { position: fixed; inset: 0; z-index: 955; background: rgb(0 0 0 / .6); animation: fade .15s ease both; }
+.dp-pop.dp-sheet {
+  left: 0; right: 0; bottom: 0; top: auto; width: auto;
+  border-radius: 20px 20px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  animation: dpUp .18s ease both;
+}
+.dp-sheet .dp-title { font-size: 16px; }
+.dp-sheet .dp-nav { width: 44px; height: 44px; }
+.dp-sheet .dp-day { height: 46px; font-size: 15px; }
+.dp-sheet .dp-foot .btn { height: 46px; flex: 1; font-size: 14px; }
+@keyframes dpUp { from { transform: translateY(40px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .dp-pop, .dp-back { animation: none; } }
+
 /* ---- the branded select list --------------------------------------------
    Drawn by the app instead of by Windows. The closed field is still a real
    <select> with its own arrow; only the list that drops is ours. Shaped like

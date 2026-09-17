@@ -156,7 +156,6 @@ body:not([data-portal="yalla"]) .bk-rule { background: var(--border-strong); }
 body:not([data-portal="yalla"]) .btn-primary:active { transform: translateY(1px); box-shadow: none; }
 body:not([data-portal="yalla"]) .btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
 body:not([data-portal="yalla"]) .btn-lg { height: 46px; padding: 0 22px; font-size: 14px; }
-body:not([data-portal="yalla"]) .btn-icon { padding: 0; }
 body:not([data-portal="yalla"]) .pos-focus-btn { width: 30px; padding: 0; }
 
 /* ---------------------------------------------------------- CHIPS + TABS */
@@ -342,43 +341,6 @@ body:not([data-portal="yalla"]) .live-faces .who-face { box-shadow: 0 0 0 2px #1
    fighting a base component for specificity and carry no portal prefix. The
    few that DO restyle a shared class (.inp, .seg, .chip inside the office)
    keep it, for exactly the reason the top of this file gives. */
-.dk { display: grid; gap: 16px; align-items: start;
-      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) 360px; }
-.dk-col, .dk-sum { padding: 18px 20px 20px; }
-
-/* THE MONEY PANEL HAS TO KEEP ITS OWN BOTTOM ON SCREEN.
-
-   `position: sticky` only sticks while the element is SHORTER than the
-   scrollport. The panel is around 780px tall — step head, totals, discount,
-   plan, a payment row, paid/remaining, note, four print chips, Save and the
-   reasons list — and the scrollport on the shop's 1366x768 laptop is 610px.
-   So it never stuck, and Save sat a couple of hundred pixels below the bottom
-   edge: to press it you scrolled away from the total you had just agreed.
-
-   Above 1240 the panel becomes its own scroller with a maximum height, and
-   .dk-close — Save plus the list of reasons it is disabled — sticks to the
-   bottom of it. Below 1240 the layout is no longer three columns and the
-   fixed .dk-bar carries the figure and the button instead. */
-@media (min-width: 1241px) {
-  .dk-sum { position: sticky; top: 16px;
-            max-height: calc(100vh - var(--topbar-h) - 34px);
-            overflow-y: auto; overscroll-behavior: contain; }
-  .dk-close { position: sticky; bottom: -20px; margin: 14px -20px -20px; padding: 12px 20px 20px;
-              background: var(--card); border-top: 1px solid var(--border); }
-  .dk-close .dk-save { margin-top: 0; }
-}
-@media (max-width: 1240px) {
-  .dk { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .dk-sum { grid-column: 1 / -1; position: static; }
-}
-@media (max-width: 860px) { .dk { grid-template-columns: minmax(0, 1fr); } }
-
-.dk-step { display: flex; align-items: center; gap: 10px; margin: 2px 0 14px; }
-.dk-step h3 { font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
-.dk-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
-        font-size: 11.5px; font-weight: 700; background: var(--muted); color: var(--muted-foreground);
-        border: 1px solid var(--border); }
-.dk-meta { margin-inline-start: auto; font-size: 12px; color: var(--muted-foreground); }
 
 /* ---- the scan box: one focus ring around the icon and the field together */
 .dk-scan { display: flex; align-items: center; gap: 10px; padding: 4px 12px; background: #0F0F12;
@@ -389,10 +351,6 @@ body:not([data-portal="yalla"]) .dk-scan .inp:focus { border: 0; background: tra
 .dk-ico { width: 20px; height: 20px; flex: none; fill: none; stroke: var(--dim); stroke-width: 1.7; }
 .dk-ico.big { width: 38px; height: 38px; }
 
-.dk-hits:not(:empty) { display: grid; gap: 8px; margin-top: 10px; }
-.dk-hit { display: flex; gap: 10px; align-items: center; padding: 8px;
-          border: 1px solid var(--border); border-radius: var(--radius); }
-.dk-hit-txt b { display: block; font-size: 13px; font-weight: 600; }
 .dk-sizes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .dk-size { display: inline-flex; gap: 5px; align-items: baseline; padding: 5px 9px; cursor: pointer;
            border: 1px solid var(--border-strong); border-radius: 999px; background: transparent;
@@ -400,7 +358,7 @@ body:not([data-portal="yalla"]) .dk-scan .inp:focus { border: 0; background: tra
 .dk-size i { font-style: normal; font-size: 11px; color: var(--dim); }
 .dk-size:hover { border-color: var(--brand); }
 .dk-size.is-out { opacity: .45; }
-.dk-hit-none, .dks-none { padding: 10px 2px; font-size: 12.5px; color: var(--muted-foreground); }
+.dks-none { padding: 10px 2px; font-size: 12.5px; color: var(--muted-foreground); }
 
 .dk-wh { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 0 2px; }
 .dk-row { margin-top: 14px; }
@@ -466,13 +424,6 @@ body:not([data-portal="yalla"]) .dk-scan .inp:focus { border: 0; background: tra
 .dk-cust-txt small { font-size: 11.5px; color: var(--muted-foreground); }
 .dk-find { display: flex; gap: 8px; }
 .dk-find .inp { flex: 1; }
-.dk-cust-hits:not(:empty) { display: grid; gap: 6px; margin-top: 8px; }
-.dk-cust-hit { text-align: start; padding: 8px 10px; cursor: pointer; color: var(--foreground);
-               border: 1px solid var(--border); border-radius: var(--radius); background: transparent; }
-.dk-cust-hit:hover { border-color: var(--brand); }
-.dk-cust-hit b { display: block; font-size: 13px; }
-.dk-cust-hit small { font-size: 11.5px; color: var(--muted-foreground); }
-
 .dk-methods { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(94px, 1fr)); }
 .dk-method { display: grid; gap: 3px; justify-items: center; text-align: center; cursor: pointer;
              padding: 10px 6px; border: 1px solid var(--border); border-radius: var(--radius);
@@ -521,8 +472,6 @@ body:not([data-portal="yalla"]) .dk-save[disabled] { opacity: .45; cursor: not-a
           font-size: 11.5px; color: var(--muted-foreground); }
 
 .dk-done { display: grid; justify-items: center; gap: 4px; text-align: center; padding: 8px 0 14px; }
-.dk-tick { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
-           background: var(--brand-soft); color: var(--brand); font-size: 22px; font-weight: 700; }
 .dk-done b { font-size: 16px; }
 .dk-done span { max-width: 32ch; font-size: 12px; color: var(--muted-foreground); }
 .dk-acts { display: grid; gap: 8px; margin-top: 14px; }
@@ -554,10 +503,6 @@ body:not([data-portal="yalla"]) .dk-acts .btn { width: 100%; }
 .dks-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
 
 /* ---- the deliveries board ---------------------------------------------- */
-.dlb-filters { margin-bottom: 14px; }
-.dlb-filters .card-body { display: grid; gap: 10px; padding-top: 16px; }
-.dlb-f { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.dlb-f .lbl { min-width: 82px; margin: 0; }
 body:not([data-portal="yalla"]) .dlb-search .inp { max-width: 340px; }
 .dlb-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .dlb-owes { color: var(--warning); }
@@ -581,71 +526,17 @@ tr.dlb-void { opacity: .55; }
    this codebase grew two mechanisms for one job.
 
    What is left below is the two things the shared rule cannot know: this
-   table's row of buttons, and a filter bar three rows deep. */
+   table's row of buttons, and its search box. */
 @media (max-width: 720px) {
   /* Buttons share the width instead of huddling at the end under a thumb. */
   .dlb-acts { justify-content: stretch; gap: 8px; }
   .dlb-acts .btn { flex: 1 1 auto; min-height: 40px; }
   /* The actions cell labels itself with nothing, so it needs no label gap. */
   .tbl-cards td.dlb-actions { display: block; padding-top: 10px; }
-
-  /* THE FILTERS WERE 516px OF AN 844px SCREEN before the first parcel. Each
-     row scrolls sideways on its own instead of wrapping onto three lines. */
-  .dlb-filters .card-body { padding: 12px 14px; gap: 8px; }
-  .dlb-f { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .dlb-f::-webkit-scrollbar { display: none; }
-  .dlb-f .lbl { min-width: 0; flex: none; }
-  .dlb-f .seg-row { flex-wrap: nowrap; }
-  .dlb-f .seg { white-space: nowrap; }
+  /* The search box is not capped at 340px here. */
   .dlb-search { overflow: visible; }
   body:not([data-portal="yalla"]) .dlb-search .inp { max-width: none; }
 }
-
-/* ---- the office, polished ------------------------------------------------
-   Two additions, both answering the same question from two distances: what is
-   still missing before this order can be printed. */
-
-/* A step whose condition is actually met trades its number for a tick. The
-   conditions are reasons()' own — see stepHead() in js/desk.js. */
-.dk-step.is-done .dk-n { background: var(--brand-soft); border-color: var(--brand-border);
-                         color: var(--brand); font-size: 12px; }
-
-/* THE BAR THAT CARRIES THE TOTAL AND SAVE.
-
-   It used to appear only below 860px, on the argument that the money panel is
-   a sticky column above that. It is not: between 861 and 1240 the panel is
-   full width UNDERNEATH both other columns, ~780px tall in a ~540px
-   scrollport, so Save was measured 824px below the fold on a 1100px window —
-   a screen and a half — with this bar switched off. It now covers everything
-   that is not the three-column layout.
-
-   It starts after the sidebar, which is 256px, then a 70px rail below 900,
-   and gone below 720. `inset-inline-start` rather than `left`, so it is the
-   same rule in Arabic. It sits ON the tab bar's line (--tabbar-h is 0 where
-   there is no tab bar) and one level under it, like the POS cart sheet — and
-   out of the way entirely while a dialog is open (see body[data-overlay] in
-   css/bulk-gate-responsive.css). */
-.dk-bar { display: none; }
-@media (max-width: 1240px) {
-  .dk { margin-bottom: 78px; }
-  .dk-bar {
-    display: flex; align-items: center; gap: 12px;
-    position: fixed; inset-inline-start: var(--sidebar-w); inset-inline-end: 0;
-    bottom: var(--tabbar-h); z-index: 330;
-    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
-    background: var(--surface-3); border-top: 1px solid var(--border-strong);
-    box-shadow: 0 -14px 40px -12px rgb(0 0 0 / .7);
-  }
-  .dk-bar-sum { flex: 1; min-width: 0; display: grid; gap: 1px; }
-  .dk-bar-sum b { font-size: 17px; font-weight: 800; letter-spacing: -.03em; color: var(--brand); }
-  .dk-bar-sum span { font-size: 11.5px; color: var(--muted-foreground);
-                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  body:not([data-portal="yalla"]) .dk-bar .btn { padding: 11px 20px; font-size: 13.5px; }
-  body:not([data-portal="yalla"]) .dk-bar .btn[disabled] { opacity: .45; box-shadow: none; }
-}
-/* Below 720 the sidebar is gone entirely, so the bar starts at the edge —
-   --sidebar-w keeps its 70px there and would leave a dead strip. */
-@media (max-width: 720px) { .dk-bar { inset-inline-start: 0; } }
 
 /* ---- a finger, not a mouse ---------------------------------------------
    The phone block in css/bulk-gate-responsive.css grows the app's small
@@ -667,11 +558,6 @@ tr.dlb-void { opacity: .55; }
    js/road.js. Three tabs on the deliveries board, because they are the same
    day asked about at three moments. `.rd-*` exists nowhere else. */
 .dlb-tabs { margin-bottom: 12px; }
-
-.rd-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline;
-           justify-content: space-between; margin-bottom: 12px; }
-.rd-head b { font-size: 15px; }
-.rd-sum { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* The scan box is the reason this screen exists, so it is the largest thing
    on it — the same focus ring as the office's, for the same reason. */
@@ -1051,11 +937,9 @@ body:not([data-portal="yalla"]) .dkp-amt .inp { flex: 1 1 150px; height: 46px; f
 .dk-rail li.on button, .dk-rail li.now button { color: var(--foreground); }
 .dk-rail li.on button i { color: var(--brand); background: var(--brand-soft); border-color: var(--brand-border); }
 .dk-rail li.now button i { color: var(--foreground); border-color: var(--foreground); box-shadow: 0 0 0 3px rgb(250 250 250 / .07); }
-.dk-rail-n { flex: none; font-size: 12px; font-weight: 600; color: var(--dim); }
-.dk-rail-n.is-ready { color: var(--brand); }
 @media (max-width: 720px) {
   .dk-rail { margin-top: -18px; padding: 8px 10px; gap: 8px; }
-  .dk-rail button span, .dk-rail-n { display: none; }
+  .dk-rail button span { display: none; }
   .dk-rail li.now button span { display: inline; }
 }
 
@@ -1081,7 +965,6 @@ body:not([data-portal="yalla"]) .dkp-amt .inp { flex: 1 1 150px; height: 46px; f
 .rd-empty .dk-laser { margin-bottom: 6px; }
 
 /* ---- the office: the money panel as a ticket ----------------------------- */
-.dk-ticket { overflow-x: hidden; }
 .dk-tk-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: -6px;
               font-size: 11px; font-weight: 600; color: var(--dim); }
 .dk-tk-meta span:first-child { letter-spacing: .1em; text-transform: uppercase; }
@@ -1216,10 +1099,9 @@ body.rtl .rd-opt[data-id="refund"] svg, body.rtl .rd-opt[data-id="exchange"] svg
    THE OFFICE, ONE STEP AT A TIME (12 Sep 2026, evening)
    js/desk.js stageHtml(). One centred panel — the step's title, its body,
    and a foot with Back, the running total and Next — under a five-step
-   rail. The three-column rules above (.dk, .dk-sum, .dk-close, .dk-bar) no
-   longer have an element to match; the pieces inside a step (.dk-scan,
-   .dk-line, .dk-method, .dk-tot…) are the same ones, drawn larger here
-   because each now has the whole panel to itself.
+   rail. The pieces inside a step (.dk-scan, .dk-line, .dk-method, .dk-tot…)
+   are the ones the office has always drawn, larger here because each now
+   has the whole panel to itself.
    ========================================================================== */
 .dk-wiz-rail, .dk-stage { max-width: 860px; margin-inline: auto; }
 .dk-wiz-rail { margin-bottom: 14px; }
@@ -1313,7 +1195,6 @@ body:not([data-portal="yalla"]) .dk-stage .dk-scan .inp:focus { height: 52px; pa
 .dk-stage .dk-find { gap: 10px; }
 body:not([data-portal="yalla"]) .dk-stage .dk-find .inp { height: 48px; font-size: 15px; }
 body:not([data-portal="yalla"]) .dk-stage .dk-find .btn { height: 48px; }
-.dk-stage .dk-cust-hit { padding: 11px 14px; }
 .dk-cust.is-picked { gap: 14px; padding: 14px 16px; background: var(--brand-soft); border-color: var(--brand-border); }
 .dk-cust.is-picked .dlp-face { width: 44px; height: 44px; font-size: 15px; }
 .dk-cust.is-picked .dk-cust-txt b { font-size: 16px; }
@@ -1575,3 +1456,10 @@ body.rtl .rvw-side-h { letter-spacing: 0; }
 @keyframes ogRfSpin { to { transform: rotate(360deg); } }
 @keyframes ogRfBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 @media (prefers-reduced-motion: reduce) { .og-refresh .ring i, .og-refresh .bar::after { animation: none; } }
+
+
+/* ---- the date picker (js/datepick.js) — lime on the chosen day and on Today
+   only; the .btn rule above would otherwise grey Today out. */
+body:not([data-portal="yalla"]) .dp-pop .dp-today { background: var(--brand); color: var(--brand-foreground); }
+body:not([data-portal="yalla"]) .dp-pop .dp-today:hover { background: var(--brand-dim); color: var(--brand-foreground); }
+body:not([data-portal="yalla"]) .dp-pop { border-radius: 14px; }

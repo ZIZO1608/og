@@ -1,6 +1,7 @@
 /* ==========================================================================
-   OG SYSTEM — application shell  ·  14/17: I18N EXTRAS (Yalla Wear v3, Label
-   Studio, bulk-select, export strings) — merged into the base I18N table
+   OG SYSTEM — application shell  ·  14/17: I18N EXTRAS (Yalla Wear, labels,
+   bulk-select, exports, the delivery office, reviews, money) — merged into the
+   base I18N table
    --------------------------------------------------------------------------
    Split from the original js/app.js (lines 6189-6516). Loads after
    app-routing.js. Must load after app-i18n.js (file 2) since the merge
@@ -95,14 +96,12 @@ var EXTRA_V3_EN = {
   og_nudge_sent: 'sent to Yalla Wear', og_confirm_names: 'Confirm the names',
   og_names_saved: 'names confirmed — Yalla Wear can print now',
   og_kit_lines: 'Kit lines', og_tbc_warn: 'shirts have no name yet — Yalla Wear cannot print them',
-  og_paid_toast: 'marked as paid',
   og_unread_head: 'new messages from Yalla Wear',
   og_unread_sub: 'open the speech bubble in the top bar, or the job itself',
   og_nudge_default: 'The customer is asking about this one — can it move up the queue?',
   og_nudge_hint: 'This lands in Yalla Wear straight away — they see it on the job.',
   og_nothing_changed: 'nothing changed',
   og_names_msg: 'Names confirmed:', og_all_confirmed: 'all names confirmed, you can print',
-  og_paid_msg: 'Payment sent:',
 
   /* notifications */
   nt_title: 'Partner messages', nt_new: 'new', nt_read_all: 'Mark all read',
@@ -255,14 +254,12 @@ var EXTRA_V3_AR = {
   og_nudge_sent: 'أُرسلت إلى Yalla Wear', og_confirm_names: 'تأكيد الأسماء',
   og_names_saved: 'تم تأكيد الأسماء — يستطيع Yalla Wear الطباعة الآن',
   og_kit_lines: 'بنود القمصان', og_tbc_warn: 'قميصاً بلا اسم — لا يستطيع Yalla Wear طباعتها',
-  og_paid_toast: 'وُسمت كمدفوعة',
   og_unread_head: 'رسالة جديدة من Yalla Wear',
   og_unread_sub: 'افتح أيقونة الرسائل في الشريط العلوي، أو الطلب نفسه',
   og_nudge_default: 'الزبون يسأل عن هذا الطلب — هل يمكن تقديمه في الدور؟',
   og_nudge_hint: 'تصل إلى Yalla Wear فوراً وتظهر لهم على الطلب.',
   og_nothing_changed: 'لم يتغيّر شيء',
   og_names_msg: 'تم تأكيد الأسماء:', og_all_confirmed: 'كل الأسماء مؤكدة، يمكنكم الطباعة',
-  og_paid_msg: 'تم إرسال دفعة:',
 
   nt_title: 'رسائل الشريك', nt_new: 'جديدة', nt_read_all: 'تعليم الكل كمقروء',
   nt_you: 'أنت', nt_empty: 'لا شيء بعد',
@@ -346,13 +343,12 @@ var EXTRA_EN = {
   yl_urgent: 'Urgent', yl_due_week: 'Due this week', yl_earned_month: 'Earned this month',
   yl_in_queue: 'waiting in the queue', yl_priority_first: 'printed first',
   yl_line: 'Production line', yl_line_sub: 'tap a stage to filter the queue',
-  yl_capacity: 'Capacity this week', yl_vs_capacity: 'against', yl_per_week: 'per week',
+  yl_vs_capacity: 'against',
   yl_next_up: 'Next up', yl_open: 'Open', yl_jobs: 'jobs',
   yl_urgent_late: 'Urgent & late', yl_all_clear: 'Nothing waiting',
   yl_all_clear_sub: 'Every job in this filter is finished', yl_job: 'Job',
   yl_progress: 'Progress', yl_size_breakdown: 'Sizes to print', yl_payout: 'You get paid',
   yl_piece: 'piece', yl_move_to: 'Move to', yl_moved_to: 'moved to',
-  yl_flag: 'Flag a problem', yl_flagged: 'Flagged for OG System — they have been notified',
   yl_invoice_og: 'Invoice OG System', yl_invoice_sent: 'invoice sent',
   yl_unpaid: 'On open jobs', yl_on_open_jobs: 'not invoiced yet', yl_lifetime: 'All time',
   yl_per_piece: 'Average per piece', yl_monthly: 'Earnings by month',
@@ -361,16 +357,7 @@ var EXTRA_EN = {
   yl_now: 'now', yl_charged: 'Charged to customer',
   yl_billed_to: 'Billed to',
 
-  lb_studio: 'Label studio', lb_template: 'Template', lb_size: 'Label size',
-  lb_show: 'Show on label', lb_copies: 'Copies per size',
-  lb_copies_hint: 'capped at the stock on hand', lb_sheet: 'Print sheet',
-  lb_labels: 'labels', lb_scannable: 'Real EAN-13 · scannable',
-  lb_qr: 'QR code', lb_logo: 'Logo', lb_nothing: 'Enter some quantities first',
-  lb_price: 'Price tag', lb_shelf: 'Shelf label', lb_hang: 'Hang tag', lb_mini: 'Mini sticker',
-  lb_product: 'Product label', lb_custom: 'Custom size',
-  lb_fit_warn: 'Bars come out {mm}mm wide on {n} label(s) — under 0.25mm a thermal head cannot print them cleanly and they will not scan. Use a wider label.',
-  lb_fit_ok: 'Sized to the label: {mm}mm per bar.',
-  lb_no_price_note: 'Prices are left off on purpose. The barcode identifies the shoe; the price lives at the till, so changing a price never means reprinting stickers.',
+  lb_labels: 'labels',
 
   nav_labels: 'Print labels',
   labels_title: 'Print labels', labels_sub: 'Pick exactly which sizes need a barcode, then print',
@@ -387,12 +374,10 @@ var EXTRA_EN = {
   dash_scope_today: 'Today',
   dash_scope_7d: '7 days',
   dash_scope_30d: '30 days',
-  dash_rate_frozen: 'rate frozen · 1 USD = {rate} SYP',
   dash_takings: 'Takings',
   returns: 'Returns',
   dash_nothing_waiting: 'Nothing waiting.',
   dash_shop_clean: 'Shop is clean.',
-  staff_on_shift: 'Staff on shift',
 
   /* ---- dashboard, server-computed ---- */
   dash_also_usd: 'Also taken in dollars',
@@ -439,7 +424,6 @@ var EXTRA_EN = {
   my_full_cards_sub: 'customers owed a reward',
   back_wants_landed: 'Back in stock — tell the floor',
   back_wants_none: 'Nothing anyone is waiting for has landed.',
-  dl_to_hand_in: 'In your pocket',
 
   /* ---- the bell, written here from kind + values ----
      {n}, {total}, {days} are numbers; {name}, {size}, {id} are names; {amount}
@@ -463,6 +447,7 @@ var EXTRA_EN = {
   al_payroll_now: 'Payroll for {n} employees is due now',
   al_payroll_now_1: 'Payroll for 1 employee is due now',
   al_po_late: '{id} still not received after {days} days',
+  al_po_overdue: '{id} was due {days} days ago and has not arrived',
   al_wants_back: '{n} customers asked for {name} {size} — it is back in stock',
   al_wants_back_1: '1 customer asked for {name} {size} — it is back in stock',
   al_more_stock_out: '{n} more sizes out of stock — {total} in total',
@@ -495,9 +480,6 @@ var EXTRA_EN = {
   pr_archived_note: 'Archived lines on this sheet: {k}, holding {n} pieces. The shop has ' +
     'stopped selling them, and although those pieces are inside the Stock total here, they ' +
     'are not counted as stock anywhere else in the system.',
-  bk_delete: 'Delete', bk_deleted: 'deleted', bk_delete_title: 'Delete permanently',
-  bk_delete_q: 'Delete {n} records?',
-  bk_delete_note: 'Archiving is usually what you want — it hides them but keeps the history. Delete cannot be undone once the Undo toast disappears.',
   bk_undo: 'Undo', bk_undo_hint: 'Undo available for a few seconds',
   bk_restored: 'Restored', bk_hidden: 'hidden from the website', bk_shown: 'showing on the website',
   bk_message: 'Send WhatsApp', bk_message_hint: 'Each opens WhatsApp with the message ready to send, in Arabic and English.',
@@ -541,7 +523,7 @@ var EXTRA_EN = {
   pj_pic_change: 'Change the design',
 
   /* the review */
-  rv_title: 'Your review', rv_sub: 'How did the shirts come out?', rv_ph: 'Anything Yalla Wear should know — quality, colours, timing',
+  rv_job_title: 'Your review', rv_job_sub: 'How did the shirts come out?', rv_ph: 'Anything Yalla Wear should know — quality, colours, timing',
   rv_save: 'Save review', rv_update: 'Update review', rv_saved: 'review saved — Yalla Wear can see it',
   rv_need_stars: 'Pick a number of stars first', yl_rating: 'Rating',
 
@@ -616,13 +598,12 @@ var EXTRA_AR = {
   yl_urgent: 'مستعجل', yl_due_week: 'مستحق هذا الأسبوع', yl_earned_month: 'أرباح هذا الشهر',
   yl_in_queue: 'بانتظار الطباعة', yl_priority_first: 'تُطبع أولاً',
   yl_line: 'خط الإنتاج', yl_line_sub: 'اضغط مرحلة لتصفية القائمة',
-  yl_capacity: 'الطاقة هذا الأسبوع', yl_vs_capacity: 'مقابل', yl_per_week: 'أسبوعياً',
+  yl_vs_capacity: 'مقابل',
   yl_next_up: 'التالي', yl_open: 'فتح', yl_jobs: 'طلب',
   yl_urgent_late: 'مستعجل ومتأخر', yl_all_clear: 'لا يوجد شيء بالانتظار',
   yl_all_clear_sub: 'كل الطلبات في هذا الفلتر منجزة', yl_job: 'الطلب',
   yl_progress: 'مراحل التنفيذ', yl_size_breakdown: 'القياسات المطلوبة', yl_payout: 'مستحقاتك',
   yl_piece: 'قطعة', yl_move_to: 'نقل إلى', yl_moved_to: 'انتقل إلى',
-  yl_flag: 'الإبلاغ عن مشكلة', yl_flagged: 'تم إبلاغ OG System بالمشكلة',
   yl_invoice_og: 'إرسال فاتورة إلى OG', yl_invoice_sent: 'أُرسلت الفاتورة',
   yl_unpaid: 'على الطلبات المفتوحة', yl_on_open_jobs: 'لم تُفوتر بعد', yl_lifetime: 'الإجمالي الكلي',
   yl_per_piece: 'متوسط سعر القطعة', yl_monthly: 'الأرباح حسب الشهر',
@@ -630,16 +611,7 @@ var EXTRA_AR = {
   yl_scope: 'ترى طلباتك ومستحقاتك فقط',
   yl_now: 'الآن', yl_charged: 'المحصّل من الزبون', yl_billed_to: 'الفاتورة إلى',
 
-  lb_studio: 'استوديو الملصقات', lb_template: 'القالب', lb_size: 'قياس الملصق',
-  lb_show: 'ما يظهر على الملصق', lb_copies: 'نسخ لكل قياس',
-  lb_copies_hint: 'بحد أقصى الكمية المتوفرة', lb_sheet: 'ورقة الطباعة',
-  lb_labels: 'ملصق', lb_scannable: 'باركود EAN-13 حقيقي · قابل للمسح',
-  lb_qr: 'رمز QR', lb_logo: 'الشعار', lb_nothing: 'أدخل الكميات أولاً',
-  lb_price: 'بطاقة سعر', lb_shelf: 'ملصق رف', lb_hang: 'بطاقة معلّقة', lb_mini: 'ملصق صغير',
-  lb_product: 'ملصق منتج', lb_custom: 'قياس خاص',
-  lb_fit_warn: 'عرض الخطوط بيطلع {mm} ملم على {n} ملصق — تحت ٠٫٢٥ ملم الطابعة الحرارية ما بتقدر تطبعها نظيفة وما رح تنقرأ. استعمل ملصق أعرض.',
-  lb_fit_ok: 'متقاس على الملصق: {mm} ملم لكل خط.',
-  lb_no_price_note: 'الأسعار مقصود ما تنطبع. الباركود بيعرّف الحذاء، والسعر بيضلّ عالكاشير — فتغيير السعر أبداً ما بيحتاج إعادة طباعة الملصقات.',
+  lb_labels: 'ملصق',
 
   nav_labels: 'طباعة الملصقات',
   labels_title: 'طباعة الملصقات', labels_sub: 'اختر بالضبط أي المقاسات تحتاج باركود، ثم اطبع',
@@ -656,12 +628,10 @@ var EXTRA_AR = {
   dash_scope_today: 'اليوم',
   dash_scope_7d: '٧ أيام',
   dash_scope_30d: '٣٠ يوماً',
-  dash_rate_frozen: 'السعر مجمّد · ١ دولار = {rate} ل.س',
   dash_takings: 'المقبوضات',
   returns: 'المرتجعات',
   dash_nothing_waiting: 'لا شيء بالانتظار.',
   dash_shop_clean: 'المحل نظيف.',
-  staff_on_shift: 'الموظفون في المناوبة',
 
   /* ---- dashboard, server-computed ---- */
   dash_also_usd: 'ومقبوضات بالدولار',
@@ -708,7 +678,6 @@ var EXTRA_AR = {
   my_full_cards_sub: 'زبائن لهم مكافأة',
   back_wants_landed: 'عاد للمخزون — أخبر المعرض',
   back_wants_none: 'لم يصل شيء ينتظره أحد.',
-  dl_to_hand_in: 'معك الآن',
 
   /* ---- the bell, written here from kind + values ---- */
   al_mirror: 'نسخة Supabase متوقفة — {behind} تغيير موجود على هذا الجهاز فقط{err}',
@@ -730,6 +699,7 @@ var EXTRA_AR = {
   al_payroll_now: 'رواتب {n} موظفين مستحقة الآن',
   al_payroll_now_1: 'راتب موظف واحد مستحق الآن',
   al_po_late: '{id} لم يصل بعد منذ {days} يوماً',
+  al_po_overdue: '{id} تأخّر عن موعده {days} يوماً ولم يصل',
   al_wants_back: '{n} زبائن طلبوا {name} {size} — عاد للمخزون',
   al_wants_back_1: 'زبون واحد طلب {name} {size} — عاد للمخزون',
   al_more_stock_out: '{n} مقاسات أخرى نفدت — {total} إجمالاً',
@@ -759,9 +729,6 @@ var EXTRA_AR = {
   prod_arch_all: 'كل المنتجات', prod_arch_active: 'المعروضة للبيع',
   pr_archived_note: 'الأصناف المؤرشفة في هذه الورقة: {k}، وعليها {n} قطعة. توقّف المحل عن ' +
     'بيعها، وهذه القطع داخلة في مجموع المخزون هنا لكنها لا تُحتسب مخزوناً في أي مكان آخر بالنظام.',
-  bk_delete: 'حذف', bk_deleted: 'محذوف', bk_delete_title: 'حذف نهائي',
-  bk_delete_q: 'حذف {n} سجل؟',
-  bk_delete_note: 'الأرشفة غالباً هي المطلوب — تخفيها وتحتفظ بالسجل. الحذف لا يمكن التراجع عنه بعد اختفاء التنبيه.',
   bk_undo: 'تراجع', bk_undo_hint: 'التراجع متاح لثوانٍ',
   bk_restored: 'تمت الاستعادة', bk_hidden: 'أُخفيت عن الموقع', bk_shown: 'ظاهرة على الموقع',
   bk_message: 'إرسال واتساب', bk_message_hint: 'كل زر يفتح واتساب والرسالة جاهزة للإرسال، بالعربي والإنجليزي.',
@@ -799,7 +766,7 @@ var EXTRA_AR = {
   pj_pic_add: 'أضف التصميم',
   pj_pic_change: 'غيّر التصميم',
 
-  rv_title: 'تقييمك', rv_sub: 'كيف خرجت القمصان؟', rv_ph: 'أي شيء يجب أن تعرفه يلا وير — الجودة، الألوان، الوقت',
+  rv_job_title: 'تقييمك', rv_job_sub: 'كيف خرجت القمصان؟', rv_ph: 'أي شيء يجب أن تعرفه يلا وير — الجودة، الألوان، الوقت',
   rv_save: 'حفظ التقييم', rv_update: 'تعديل التقييم', rv_saved: 'حُفظ التقييم — تراه يلا وير',
   rv_need_stars: 'اختر عدد النجوم أولاً', yl_rating: 'التقييم',
 
@@ -900,7 +867,7 @@ var REPORTS_EN = {
      right at the top of a column and reads as '3 the-invoices' after a
      number. Arabic takes the indefinite singular there. */
   rp_n_invoice: 'invoices', rp_n_supplier: 'suppliers',
-  rp_n_category: 'categories', rp_n_unit: 'units', rp_n_line: 'lines',
+  rp_n_category: 'categories', rp_n_unit: 'units',
   /* Column headings, not sentence fragments: rp_since reads 'since 3 Jan
      2020' under a name and is wrong at the top of a column. */
   rp_started: 'Started', rp_last_paid: 'Last payment',
@@ -942,7 +909,7 @@ var REPORTS_AR = {
     'فاتورة بيعت بالدين في آذار ما زالت ديناً اليوم.',
   rp_collected: 'ديون محصّلة',
   rp_n_invoice: 'فاتورة', rp_n_supplier: 'مورّد',
-  rp_n_category: 'فئة', rp_n_unit: 'قطعة', rp_n_line: 'صنف',
+  rp_n_category: 'فئة', rp_n_unit: 'قطعة',
   rp_started: 'تاريخ المباشرة', rp_last_paid: 'آخر دفعة',
   rp_locked_note: 'الخانة المعلَّمة 🔒 لا يمكن تغييرها. المدير يحتفظ دائماً بالإعدادات وصلاحية ' +
     'الموظفين، وإلا لم يبقَ من يستطيع إعادتها؛ ويلا وير شركة أخرى، فلا تُمنح أبداً الزبائن ' +
@@ -1419,16 +1386,13 @@ var DESK_EN = {
   dk_to_board: 'Deliveries board',
   dk_camera: 'Camera',
   dk_new: 'New order',
-  dk_items: 'What is in the bag',
   dk_pieces: 'pieces',
-  dk_scan_ph: 'Scan a shoe, or type its name…',
   dk_take_from: 'Packed from',
   dk_empty: 'Scan the first shoe',
   dk_empty_sub: 'Every beep adds it to the order. Scan it again for a second pair.',
   dk_only: 'only {n} here',
   dk_gone: 'This size is no longer in the catalogue.',
   dk_remove: 'Remove',
-  dk_no_hits: 'Nothing by that name.',
   dk_unknown_code: 'That code is not a shoe or an order',
   dk_archived: 'That line is archived — it is not for sale.',
   dk_short: 'Only {n} at {wh} — the server will refuse more.',
@@ -1449,16 +1413,13 @@ var DESK_AR = {
   dk_to_board: 'لوحة التوصيل',
   dk_camera: 'الكاميرا',
   dk_new: 'طلب جديد',
-  dk_items: 'ما في الكيس',
   dk_pieces: 'قطعة',
-  dk_scan_ph: 'امسح القطعة، أو اكتب اسمها…',
   dk_take_from: 'يُجهَّز من',
   dk_empty: 'امسح أول قطعة',
   dk_empty_sub: 'كل مسحة تضيفها إلى الطلب. امسحها مرة ثانية لزوج آخر.',
   dk_only: 'متوفر {n} فقط هنا',
   dk_gone: 'هذا المقاس لم يعد في الكتالوج.',
   dk_remove: 'إزالة',
-  dk_no_hits: 'لا يوجد شيء بهذا الاسم.',
   dk_unknown_code: 'هذا الرمز ليس قطعة ولا طلباً',
   dk_archived: 'هذا المنتج مؤرشف ولا يُباع.',
   dk_short: 'متوفر {n} فقط في {wh} — سيرفض الخادم أكثر من ذلك.',
@@ -1476,15 +1437,12 @@ Object.keys(DESK_EN).forEach(function (k) { I18N.en[k] = DESK_EN[k]; });
 Object.keys(DESK_AR).forEach(function (k) { I18N.ar[k] = DESK_AR[k]; });
 
 var DESK2_EN = {
-  dk_who: 'Who, and where to',
   dk_change: 'Change',
   dk_cust_ph: 'Name or phone number',
   dk_cust_new: 'New customer',
-  dk_cust_none: 'Nobody by that name or number yet.',
   dk_channel: 'The order came by',
   dk_ch_phone: 'Phone', dk_ch_instagram: 'Instagram', dk_ch_whatsapp: 'WhatsApp',
   dk_ch_web: 'Website', dk_ch_other: 'Other',
-  dk_where: 'How it travels',
   dk_m_driver: 'Our driver', dk_m_driver_sub: 'Cash at the door is fine',
   dk_m_office: 'Transport office', dk_m_office_sub: 'Another city · paid first',
   dk_m_courier: 'Courier company', dk_m_courier_sub: 'With a waybill · paid first',
@@ -1514,15 +1472,12 @@ var DESK2_EN = {
   dk_fee_free: 'Free'
 };
 var DESK2_AR = {
-  dk_who: 'لمن، وإلى أين',
   dk_change: 'تغيير',
   dk_cust_ph: 'الاسم أو رقم الهاتف',
   dk_cust_new: 'زبون جديد',
-  dk_cust_none: 'لا أحد بهذا الاسم أو الرقم بعد.',
   dk_channel: 'وصل الطلب عبر',
   dk_ch_phone: 'هاتف', dk_ch_instagram: 'إنستغرام', dk_ch_whatsapp: 'واتساب',
   dk_ch_web: 'الموقع', dk_ch_other: 'غير ذلك',
-  dk_where: 'كيف يصل',
   dk_m_driver: 'سائقنا', dk_m_driver_sub: 'يمكن الدفع عند الباب',
   dk_m_office: 'مكتب نقل', dk_m_office_sub: 'محافظة أخرى · يُدفع أولاً',
   dk_m_courier: 'شركة شحن', dk_m_courier_sub: 'ببوليصة · يُدفع أولاً',
@@ -1555,7 +1510,6 @@ Object.keys(DESK2_EN).forEach(function (k) { I18N.en[k] = DESK2_EN[k]; });
 Object.keys(DESK2_AR).forEach(function (k) { I18N.ar[k] = DESK2_AR[k]; });
 
 var DESK3_EN = {
-  dk_money: 'The money',
   dk_goods: 'Goods',
   dk_due: 'Total due',
   dk_plan: 'How it is paid',
@@ -1585,7 +1539,6 @@ var DESK3_EN = {
   dk_take_payment: 'Take a payment'
 };
 var DESK3_AR = {
-  dk_money: 'الحساب',
   dk_goods: 'البضاعة',
   dk_due: 'الإجمالي المطلوب',
   dk_plan: 'طريقة الدفع',
@@ -1802,7 +1755,6 @@ var ROAD_EN = {
   /* The office's phone bar (js/desk.js barHtml) — two words, because the bar
      is one line under a thumb. dk_saved is the sentence on the desktop card
      and is far too long for it. */
-  dk_bar_done: 'Order saved',
   /* The driver's phone: the sheet the office handed him, counted down. */
   dl_sheet_done: '{n} of {of} done',
   rd_title: 'The road',
@@ -1876,7 +1828,6 @@ var ROAD_AR = {
   dk_new_sure: 'هذا الطلب فيه {n} قطعة ولم يُحفظ بعد. تبدأ طلباً جديداً وتفقده؟',
   dk_new_yes: 'نعم، ابدأ طلباً جديداً',
   dk_r_fee: 'حدّد أجرة الشحن — مبلغ، أو مجاناً، أو الزبون يدفع للمندوب',
-  dk_bar_done: 'حُفِظ الطلب',
   dl_sheet_done: 'أُنجز {n} من {of}',
   rd_title: 'الطريق',
   dl_tab_parcels: 'الطرود',
@@ -1995,13 +1946,6 @@ var DPOLISH_EN = {
   dlp_n_parcels: '{n} parcels',
 
   dkp_rail: 'Order progress',
-  dkp_s_bag: 'In the bag',
-  dkp_s_customer: 'Customer',
-  dkp_s_route: 'Route & shipping',
-  dkp_s_money: 'Money',
-  dkp_rail_n: '{n} of 4 ready',
-  dkp_rail_ready: 'Ready to save',
-  dkp_rail_saved: 'Saved',
   dkp_ticket: 'Order ticket',
   dkp_st_paid: 'Paid in full',
   dkp_st_first: 'Pay before sending',
@@ -2060,13 +2004,6 @@ var DPOLISH_AR = {
   dlp_n_parcels: '{n} طرود',
 
   dkp_rail: 'تقدّم الطلب',
-  dkp_s_bag: 'الأغراض',
-  dkp_s_customer: 'الزبون',
-  dkp_s_route: 'الوجهة والشحن',
-  dkp_s_money: 'المبلغ',
-  dkp_rail_n: '{n} من 4 جاهزة',
-  dkp_rail_ready: 'جاهز للحفظ',
-  dkp_rail_saved: 'حُفظ',
   dkp_ticket: 'تذكرة الطلب',
   dkp_st_paid: 'مدفوع بالكامل',
   dkp_st_first: 'الدفع قبل الشحن',
@@ -2286,13 +2223,13 @@ var DWATRACK_EN = {
   dk_wa_track: 'WhatsApp: tracking link',
   dl_wa_track: 'WhatsApp',
   dl_wa_track_title: 'Send the tracking link on WhatsApp',
-  dk_wa_no_link: 'This shop has no public address yet, so a customer could not open the link. Set the shop’s public address, or connect Cloudflare, first.'
+  dk_wa_no_link: 'This shop has no public address yet, so a customer could not open the link. Set the shop’s public address in Settings first.'
 };
 var DWATRACK_AR = {
   dk_wa_track: 'واتساب: رابط التتبّع',
   dl_wa_track: 'واتساب',
   dl_wa_track_title: 'أرسل رابط التتبّع على واتساب',
-  dk_wa_no_link: 'لا يوجد عنوان عام للمحل بعد، فلن يستطيع الزبون فتح الرابط. اضبط العنوان العام للمحل أو اربط Cloudflare أولاً.'
+  dk_wa_no_link: 'لا يوجد عنوان عام للمحل بعد، فلن يستطيع الزبون فتح الرابط. اضبط العنوان العام للمحل من الإعدادات أولاً.'
 };
 Object.keys(DWATRACK_EN).forEach(function (k) { I18N.en[k] = DWATRACK_EN[k]; });
 Object.keys(DWATRACK_AR).forEach(function (k) { I18N.ar[k] = DWATRACK_AR[k]; });
@@ -3005,3 +2942,27 @@ var STATEMENT_AR = {
 };
 Object.keys(STATEMENT_EN).forEach(function (k) { I18N.en[k] = STATEMENT_EN[k]; });
 Object.keys(STATEMENT_AR).forEach(function (k) { I18N.ar[k] = STATEMENT_AR[k]; });
+
+/* ---- the date picker (js/datepick.js) and a purchase order's due date ----
+   The week starts on Saturday in both languages — the shop's week ends on
+   Friday. */
+var DATEPICK_EN = {
+  dp_pick: 'Pick a date', dp_today: 'Today', dp_clear: 'Clear',
+  dp_days: 'Sat,Sun,Mon,Tue,Wed,Thu,Fri',
+  dp_prev_month: 'Previous month', dp_next_month: 'Next month',
+  dp_prev_year: 'Previous year', dp_next_year: 'Next year',
+  po_due: 'Due date', po_due_hint: 'When the goods should arrive. Leave it empty if nobody said.',
+  po_due_col: 'Due', err_due_past: 'The due date cannot be in the past.',
+  err_bad_due: 'The due date is not a date.', po_overdue_badge: 'late'
+};
+var DATEPICK_AR = {
+  dp_pick: 'اختر تاريخاً', dp_today: 'اليوم', dp_clear: 'مسح',
+  dp_days: 'سبت,أحد,إثنين,ثلاثاء,أربعاء,خميس,جمعة',
+  dp_prev_month: 'الشهر السابق', dp_next_month: 'الشهر التالي',
+  dp_prev_year: 'السنة السابقة', dp_next_year: 'السنة التالية',
+  po_due: 'موعد الاستلام', po_due_hint: 'متى يجب أن تصل البضاعة. اتركه فارغاً إن لم يُحدَّد موعد.',
+  po_due_col: 'الموعد', err_due_past: 'لا يمكن أن يكون موعد الاستلام في الماضي.',
+  err_bad_due: 'موعد الاستلام ليس تاريخاً صحيحاً.', po_overdue_badge: 'متأخر'
+};
+Object.keys(DATEPICK_EN).forEach(function (k) { I18N.en[k] = DATEPICK_EN[k]; });
+Object.keys(DATEPICK_AR).forEach(function (k) { I18N.ar[k] = DATEPICK_AR[k]; });
