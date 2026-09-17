@@ -147,6 +147,9 @@ removed. Ahmad keeps his developer ACCOUNT; his laptop is no longer part of this
 - **`npm run users:rebuild`** (dry run; `-- --apply` to write; `--url` names the running shop). Backs up
   first. **The lockout guard** — 2026-09-05 happened — creates `abode`, signs him in through the RUNNING
   shop's real login route and opens Access; if any of that fails it stops with nothing else changed.
+  **A second run keeps the owner's password**: the guard signs in with `abode`'s sealed password when
+  this machine can read it and it still matches, and makes a new one only when it cannot (the first
+  run did not, and every re-run quietly rotated it — found in the final pass).
   Then it creates the missing accounts (Auth.createUser, sealed), gives a new password to any account it
   did not make, removes the rest without breaking history, and applies the manager's new default set
   through the shop so its permission cache follows. **Passwords go ONLY to `ACCOUNTS.private.md` in the

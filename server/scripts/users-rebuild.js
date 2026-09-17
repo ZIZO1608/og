@@ -98,6 +98,7 @@ async function call(cookie, method, path, body) {
 }
 
 function writePasswords(rows) {
+  if (!rows.length) return null;
   const file = join(dataDir(), 'ACCOUNTS.private.md');
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16);
   let text = existsSync(file) ? readFileSync(file, 'utf8') + '\n' : '# OG System accounts — PRIVATE, never commit, never send\n';
@@ -155,9 +156,18 @@ async function main() {
     if (abode.role !== 'owner' || !abode.active) {
       DB.get().prepare("UPDATE users SET role = 'owner', active = 1, updated_at = ? WHERE id = ?").run(DB.nowIso(), abode.id);
     }
-    const r = await People.newPassword(abode.id);
-    abodePw = r.password;
-    made.push({ username: 'abode', password: abodePw, role: 'owner' });
+    /* A SECOND RUN MUST NOT CHANGE THE OWNER'S PASSWORD. The guard needs to
+       sign in as abode; when this machine can read his sealed password and it
+       still matches, that is the one used. Only an owner whose password
+       nobody here can read gets a new one (the first run, or no vault key). */
+    const box = Auth.openBox(abode.id);
+    if (box.ok && await Auth.verifyPassword(box.password, Buffer.from(abode.pw_hash), Buffer.from(abode.pw_salt))) {
+      abodePw = box.password;
+    } else {
+      const r = await People.newPassword(abode.id);
+      abodePw = r.password;
+      made.push({ username: 'abode', password: abodePw, role: 'owner' });
+    }
   }
   Auth.invalidatePermissions();
   /* the passwords are on disk before anything can fail */
@@ -217,7 +227,7 @@ async function main() {
 
   line('');
   line(`created  : ${made.filter((m) => p.create.some((t) => t.username === m.username)).map((m) => m.username).join(', ') || '—'}`);
-  line(`new pw   : ${made.map((m) => m.username).join(', ')}`);
+  line(`new pw   : ${made.map((m) => m.username).join(', ') || '—'}`);
   for (const g of gone.done) {
     line(g.outcome === 'removed'
       ? `removed  : ${g.username} (${g.moved} reference(s) → Former staff)`
