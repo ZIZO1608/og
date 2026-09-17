@@ -2077,6 +2077,7 @@ router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx)
 /* One place to turn a thrown reason into a status, so a refusal reads the
    same however it was reached. */
 const PARTNER_CONFLICTS = new Set([
+  'invoice_exists', 'already_invoiced', 'job_not_done', 'mixed_currency',
   'names_missing', 'not_accepted', 'not_pending', 'already_sent', 'already_accepted',
   'own_side', 'not_done', 'not_linked'
 ]);

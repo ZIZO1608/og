@@ -21,7 +21,7 @@ Baton on this laptop (read-only check): **probably yes, not verified against Sup
 | E5 | DONE | `_nightshift/e5.mjs`: title and page text in EN+AR × 1366 and 375 (8/8); screenshots `e5-*.png` | (E5 commit) |
 | E3 | DONE | `_nightshift/e3.mjs` 60/60: server refusals (past, non-date), every field dressed, white icon, whole field opens, hit-test over a modal, sheet only at 375, RTL, keyboard (arrows mirrored, PgUp/PgDn, Esc keeps the modal), outside tap, PO saved → reload keeps the date → list column → WhatsApp composer opens (nothing sent); Reports custom range fires its handler. EN+AR × 1366 and 375; `e3-*.png` | (E3 commit) |
 | E4 | DONE | `_nightshift/e4.mjs` 38/38: server rules (dup EN / dup AR / missing name / switched-off / unknown refused, never deleted, website feed carries both names, every product has a category), till chips, Settings fold (browser refusal, add, stays open, switch saves at once), products filter — EN+AR × 1366 and 375; Arabic login screen; `i18ncheck.mjs` | (E4 commit) |
-| E7 | — | | |
+| E7 | DONE | `_nightshift/e7.mjs` 25/25 (twice): one job (tick, untick, re-tick, issue, server holds exactly it, screen total = server total, SYP, visible after reload) at 1366 EN; two jobs at 375 AR (hit-tested); a job invoiced behind the tab's back → the server's 409 reason toasted, the local guess removed; select-all (header box and button) at 1366 AR; nothing left to bill; OG's side sees all four; a tick box in any other dialog works and the backdrop still closes. Throw-away partner `nightcheck-partner` on the sandbox only. | (E7 commit) |
 | E1 | — | | |
 | E6 | — | | |
 | E2 | — | | |
@@ -46,12 +46,16 @@ Baton on this laptop (read-only check): **probably yes, not verified against Sup
 (E6)
 
 ## Bugs hit and how I fixed them   (error → cause → fix → retries)
+- E7: the new server guards seemed not to work → the "restart" had failed with EADDRINUSE: TaskStop killed the wrapper shell, not the sandbox node, so the old server kept answering → `_nightshift/sb-stop.ps1` stops only the node.exe listening on 8190 (checked it was the sandbox's `node index.js`; nothing listened on 8090/8443) → 1 retry.
+- E7: the refusal check was flaky → the browser's POST sat unsent behind connections held by earlier page loads in the same tab → each step gets a fresh tab → 2 retries.
+- Heredocs containing backticks broke the Bash tool's parser twice → patches are written as files and run with node.
 - E3: every date refused as `bad_due` → a heredoc ate the backslashes in `/^d{4}…/` → fixed with Edit, sandbox restarted → 1 retry.
 - E3: the test's "Escape keeps the dialog" failed → the harness clicked at coordinates taken before `scrollIntoView` moved the dialog, so it pressed the backdrop → recompute the point before each press, `block:'nearest'` → 1 retry.
 - E3: a run hung → four tabs left by failed runs each held an SSE stream (six per host) → `closeall.mjs`, and the harness now closes its tab on any uncaught error → 1 retry.
 - E3: the face read "PICK A DATE" and the native "/ /" showed through → `.field > span` styled the wrapper, and the datetime-edit text part kept its colour → wrapper is a div, all three edit parts at opacity 0; Today lost its lime to og-skin's `.btn` → an og-skin rule for `.dp-today`.
 
 ## Files changed per edit
+- E7: `js/app-boot.js`, `js/ylinvoice.js`, `server/lib/partner.js`, `server/index.js`, `js/app-i18n-extra.js`, `css/yalla-scan.css`, `sw.js` (v244)
 - E4: `server/migrations/057_categories.sql`, `server/supabase/025_categories.sql`, `server/lib/categories.js` (new), `server/lib/catalogue.js`, `server/index.js`, `server/lib/mirror.js`, `server/lib/restore.js`, `server/lib/drift.js`, `server/scripts/supabase-check.js`, `js/catset.js` (new), `js/data.js`, `js/shop.js`, `js/app-routing.js`, `js/app-state.js`, `js/auth.js`, `js/pos.js`, `js/app-products.js`, `js/app-print-labels.js`, `js/app-warehouse.js`, `js/shelfmap.js`, `js/app-settings.js`, `js/app-i18n-extra.js`, `css/warehouse-settings.css`, `index.html`, `sw.js` (v243)
 - E3: `js/datepick.js` (new), `index.html`, `sw.js` (v242, precached), `css/inputs-dashboard-pos.css`, `css/og-skin.css`, `js/api.js`, `js/app-i18n-extra.js`, `js/app-customers-scan.js`, `js/app-actions.js`, `js/app-warehouse.js`, `js/data.js`, `server/lib/purchasing.js`, `server/lib/alerts.js`, `server/lib/mirror-lag.js`, `server/migrations/056_po_due.sql`, `server/supabase/024_po_due.sql`
 - E5: `js/app-i18n.js`, `manifest.webmanifest`, `sw.js` (v240 → v241)
@@ -80,6 +84,13 @@ Only four are in use in the sandbox copy (boots, jerseys, sneakers, tshirts). Th
 - Category names: the till, the product forms and filters, Reports and exports showed English category names in Arabic — now the category's Arabic name.
 
 ## E7 root cause
+**Every tick box inside any dialog was impossible to tick.** A dialog's backdrop carries `data-act="modal-backdrop"` and is the ancestor of everything in the dialog, so the app's one delegated click handler (`js/app-boot.js`) found it for a press on the tick box and called `e.preventDefault()` before `ACTIONS['modal-backdrop']` decided not to close — and preventing a checkbox's click un-ticks it. The Yalla Wear builder's "from delivered work" list is all tick boxes, so nothing could ever be chosen and Issue always said "Add at least one shirt first" (0 `partner_invoices` in the database). **Fix:** the dispatcher ignores the backdrop unless the backdrop itself was pressed.
+
+Found on the way, and fixed with it:
+- The picker ticked kit **lines**, but the server bills whole **jobs** (`partner_invoice_refs` holds job ids), so ticking one shirt billed the whole job once it came back from the server. The picker is now one row per finished job (sizes and total), with a select-all box in the header.
+- "Issued and sent" was toasted before the server answered, and a refusal arrived underneath it. Issue now waits: the button says Sending…, the dialog keeps every tick until the answer, a refusal says the server's reason in the screen's language and reloads the truth.
+- The server accepted anything: a job not finished, a job already on another invoice (billed twice), a reused invoice number (500 `UNIQUE constraint failed`), and always labelled the invoice SYP. `Partner.createInvoice` now refuses `job_not_done`, `already_invoiced`, `invoice_exists` and `mixed_currency` (409) and takes the jobs' own currency.
+- **Still open, not touched:** a **blank** (hand-typed) invoice and a **draft** still live only in the browser — there is no table for hand-typed lines, so "Issue" on a blank invoice reaches no server. That is the known-open note in `CLAUDE.md`, unchanged.
 
 ## E1 stock reconciliation result (before = after)
 

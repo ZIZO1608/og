@@ -192,6 +192,19 @@ var YLINV = (function () {
     }, 0);
   }
 
+  function jobCount() {
+    var seen = {};
+    D.refs.forEach(function (r) { seen[r.jobId] = true; });
+    return Object.keys(seen).length;
+  }
+  function sumText() {
+    var what = D.mode === 'work'
+      ? nf(jobCount()) + ' ' + t('yi_jobs_n')
+      : (validLines().length + D.refs.length) + ' ' + t('yi_lines').toLowerCase();
+    return '<span>' + nf(builderPieces()) + ' ' + t('pieces') + ' · ' + what + '</span>' +
+      '<b>' + money(builderTotal()) + '</b>';
+  }
+
   function clubOptions(sel) {
     var h = '<option value="">' + t('yi_pick_club') + '</option>';
     Object.keys(DB.clubs).forEach(function (k) {
@@ -269,36 +282,53 @@ var YLINV = (function () {
 
     } else {
       /* From delivered work — tick what goes on the bill. */
+      /* ONE TICK PER JOB. The server bills whole jobs (partner_invoice_refs
+         holds job ids), so a tick per kit line promised a bill it could not
+         keep: tick one shirt, and the invoice came back from the server with
+         the whole job on it. */
       var refs = DB.unbilledRefs();
       if (!refs.length) {
         h += '<div class="cart-empty"><b>' + t('yi_nothing_ready') + '</b>' + t('yi_nothing_ready_sub') + '</div>';
       } else {
         var chosen = {};
-        D.refs.forEach(function (r) { chosen[r.jobId + '|' + (r.lineId || '')] = true; });
+        D.refs.forEach(function (r) { chosen[r.jobId] = true; });
+        var jobs = [], byJob = {};
+        refs.forEach(function (r) {
+          var dd = DB.refDetail(r);
+          if (!dd) return;
+          if (!byJob[r.jobId]) {
+            var jj = DB.job(r.jobId);
+            byJob[r.jobId] = { id: r.jobId, label: jj ? jj.design : r.jobId, qty: 0, amount: 0, lines: 0, sizes: {} };
+            jobs.push(byJob[r.jobId]);
+          }
+          var g = byJob[r.jobId];
+          g.qty += dd.qty; g.amount += dd.amount; g.lines++;
+          if (dd.size) g.sizes[dd.size] = (g.sizes[dd.size] || 0) + dd.qty;
+        });
+        var allOn = jobs.length > 0 && jobs.every(function (g) { return chosen[g.id]; });
 
-        h += '<div style="display:flex;gap:8px;margin-bottom:10px">' +
-          '<button class="btn btn-sm" data-yi="pick-all">' + t('bk_select_all') + '</button>' +
-          '<button class="btn btn-sm btn-ghost" data-yi="pick-none">' + t('clear') + '</button></div>';
+        h += '<div class="yi-pick-bar">' +
+          '<button class="btn btn-sm" data-yi="pick-all">' + t('yi_pick_all') + '</button>' +
+          '<button class="btn btn-sm btn-ghost" data-yi="pick-none">' + t('clear') + '</button>' +
+          '<span class="muted small">' + t('yi_pick_hint') + '</span></div>';
 
-        h += '<div class="table-wrap" style="max-height:340px;overflow:auto"><table class="tbl"><thead><tr>' +
-          '<th style="width:34px"></th><th>' + t('yl_job') + '</th><th>' + t('yl_kit') + '</th>' +
-          '<th>' + t('yl_print') + '</th><th>' + t('size') + '</th>' +
+        h += '<div class="table-wrap yi-picks"><table class="tbl"><thead><tr>' +
+          '<th class="yi-tick"><input type="checkbox" data-yi-pickall="1"' + (allOn ? ' checked' : '') +
+            ' aria-label="' + esc(t('yi_pick_all')) + '"></th>' +
+          '<th>' + t('yl_job') + '</th><th>' + t('yl_kit') + '</th><th>' + t('size') + '</th>' +
           '<th class="num">' + t('qty') + '</th><th class="num">' + t('total') + '</th>' +
         '</tr></thead><tbody>';
 
-        refs.forEach(function (r) {
-          var d = DB.refDetail(r);
-          if (!d) return;
-          var key = r.jobId + '|' + (r.lineId || '');
-          h += '<tr>' +
-            '<td><input type="checkbox" data-yi-pick="' + esc(key) + '"' + (chosen[key] ? ' checked' : '') + '></td>' +
-            '<td class="muted">' + r.jobId + '</td>' +
-            '<td><b>' + esc(d.label) + '</b></td>' +
-            '<td>' + esc(d.print || (d.lineId ? t('yl_to_confirm') : '—')) +
-              (d.number ? ' <span class="kit-no">' + d.number + '</span>' : '') + '</td>' +
-            '<td>' + (d.size || '—') + '</td>' +
-            '<td class="num">×' + d.qty + '</td>' +
-            '<td class="num">' + nf(d.amount) + '</td></tr>';
+        jobs.forEach(function (g) {
+          var sz = Object.keys(g.sizes).map(function (k) { return k + '×' + g.sizes[k]; }).join(' · ');
+          h += '<tr class="yi-pick-row' + (chosen[g.id] ? ' on' : '') + '">' +
+            '<td class="yi-tick"><input type="checkbox" data-yi-pick="' + esc(g.id) + '"' + (chosen[g.id] ? ' checked' : '') +
+              ' aria-label="' + esc(g.id) + '"></td>' +
+            '<td class="muted" style="white-space:nowrap"><bdi dir="ltr">' + esc(g.id) + '</bdi></td>' +
+            '<td><b>' + esc(g.label) + '</b></td>' +
+            '<td><bdi dir="ltr">' + esc(sz || '—') + '</bdi></td>' +
+            '<td class="num">×' + nf(g.qty) + '</td>' +
+            '<td class="num">' + nf(g.amount) + '</td></tr>';
         });
         h += '</tbody></table></div>';
       }
@@ -307,10 +337,7 @@ var YLINV = (function () {
     h += '<label class="field mt"><span>' + t('yi_note') + '</span>' +
       '<textarea class="inp" rows="2" data-yi-in="note">' + esc(D.note) + '</textarea></label>';
 
-    h += '<div class="yi-sum mt">' +
-      '<span>' + builderPieces() + ' ' + t('pieces') + ' · ' +
-        (validLines().length + D.refs.length) + ' ' + t('yi_lines').toLowerCase() + '</span>' +
-      '<b>' + money(builderTotal()) + '</b></div>';
+    h += '<div class="yi-sum mt">' + sumText() + '</div>';
 
     return h;
   }
@@ -702,12 +729,30 @@ var YLINV = (function () {
         jobIds: (inv.refs || []).map(function (r) { return r.jobId; })
           .filter(function (v, i, a) { return v && a.indexOf(v) === i; })
       };
-      if (body.jobIds.length) {
-        pushInvoice(function () { return Shop.newInvoice(body); });
+      /* WORK FROM JOBS IS SAID ONLY ONCE THE SERVER HAS IT. "Issued and sent"
+         used to appear the moment the button was pressed, and a refusal
+         arrived a second later underneath it — an invoice that looked sent
+         and was not. The dialog stays open, with every tick, until the
+         answer is in. (The "invoice issued" line on the thread is posted by
+         the server, with the total it computed.) */
+      if (body.jobIds.length && typeof Shop !== 'undefined' && Shop.live()) {
+        var btn = document.querySelector('[data-yi="issue-now"]');
+        if (btn) { btn.disabled = true; btn.textContent = t('yi_sending'); }
+        Shop.newInvoice(body).then(function () {
+          D = null;
+          closeModal();
+          toast(inv.id, t('yi_issued_toast'), 'ok', 3400);
+          return Shop.reload().then(function () { open(inv.id); });
+        }).catch(function (err) {
+          /* Take the local guess back out; the ticks stay as they were. */
+          var i = DB.partnerInvoices.indexOf(inv);
+          if (i > -1) DB.partnerInvoices.splice(i, 1);
+          if (btn) { btn.disabled = false; btn.textContent = t('yi_issue'); }
+          toast(t('yi_title'), (API.friendly ? API.friendly(err) : String(err.message || err)), 'err', 6000);
+          Shop.reload().then(function () { if (D) repaintBuilder(); });
+        });
+        return;
       }
-      /* The "invoice issued" line on the thread is posted by the SERVER now,
-         with the total it computed, so every machine on both sides sees the
-         same one. A copy posted from here lived in this browser alone. */
     }
     D = null;
     closeModal();
@@ -736,10 +781,16 @@ var YLINV = (function () {
     document.addEventListener('change', function (e) {
       var pick = e.target.getAttribute && e.target.getAttribute('data-yi-pick');
       if (pick && D) {
-        var parts = pick.split('|');
-        var ref = { jobId: parts[0], lineId: parts[1] || null };
-        if (e.target.checked) D.refs.push(ref);
-        else D.refs = D.refs.filter(function (r) { return r.jobId + '|' + (r.lineId || '') !== pick; });
+        /* The whole job goes on, or comes off — every line of it. */
+        D.refs = D.refs.filter(function (r) { return r.jobId !== pick; });
+        if (e.target.checked) {
+          DB.unbilledRefs().forEach(function (r) { if (r.jobId === pick) D.refs.push(r); });
+        }
+        repaintBuilder();
+        return;
+      }
+      if (D && e.target.getAttribute && e.target.getAttribute('data-yi-pickall')) {
+        D.refs = e.target.checked ? DB.unbilledRefs() : [];
         repaintBuilder();
       }
     });
@@ -780,9 +831,7 @@ var YLINV = (function () {
   function updateTotals() {
     var sum = document.querySelector('.yi-sum');
     if (!sum) return;
-    sum.innerHTML = '<span>' + builderPieces() + ' ' + t('pieces') + ' · ' +
-      (validLines().length + D.refs.length) + ' ' + t('yi_lines').toLowerCase() + '</span>' +
-      '<b>' + money(builderTotal()) + '</b>';
+    sum.innerHTML = sumText();
     document.querySelectorAll('.yi-build tbody tr').forEach(function (tr, i) {
       var l = D.lines[i];
       if (!l) return;

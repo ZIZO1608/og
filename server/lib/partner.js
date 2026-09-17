@@ -691,14 +691,34 @@ export function markRead({ side, jobId = null, invoiceId = null, kind = null, us
 
 /* ---- invoices ----------------------------------------------------------- */
 
-export function createInvoice({ id, issued, due, note = null, currency = 'SYP', jobIds = [], userId = null }) {
+export function createInvoice({ id, issued, due, note = null, currency = null, jobIds = [], userId = null }) {
   if (!id) throw Object.assign(new Error('an invoice needs a number'), { code: 'bad_request' });
+  jobIds = [...new Set((Array.isArray(jobIds) ? jobIds : []).map(String))];
   if (!jobIds.length) {
     throw Object.assign(new Error('an invoice needs at least one job'), { code: 'bad_request' });
   }
   return DB.tx(() => {
     const d = DB.get();
     const at = nowIso();
+    /* Every job must exist, be finished, and be on no other invoice — a job
+       billed twice is money asked for twice. One currency per invoice, and
+       it is the jobs' own: the total below is summed in it. */
+    if (d.prepare('SELECT 1 FROM partner_invoices WHERE id = ?').get(id)) {
+      throw Object.assign(new Error('invoice ' + id + ' already exists'), { code: 'invoice_exists' });
+    }
+    const currencies = new Set();
+    for (const j of jobIds) {
+      const row = d.prepare('SELECT id, stage, currency FROM print_jobs WHERE id = ?').get(j);
+      if (!row) throw Object.assign(new Error('no job ' + j), { code: 'not_found' });
+      if (row.stage !== 'done') throw Object.assign(new Error(j + ' is not finished yet'), { code: 'job_not_done' });
+      const on = d.prepare('SELECT invoice_id FROM partner_invoice_refs WHERE job_id = ?').get(j);
+      if (on) throw Object.assign(new Error(j + ' is already on ' + on.invoice_id), { code: 'already_invoiced' });
+      currencies.add(row.currency || 'SYP');
+    }
+    if (currencies.size > 1) {
+      throw Object.assign(new Error('the jobs are priced in different currencies'), { code: 'mixed_currency' });
+    }
+    currency = [...currencies][0] || currency || 'SYP';
     d.prepare(
       `INSERT INTO partner_invoices (id, issued, due, note, currency, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?)`

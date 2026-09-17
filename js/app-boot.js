@@ -32,6 +32,13 @@ function bindGlobal() {
     if (sr && sr.innerHTML && !e.target.closest('.search')) sr.innerHTML = '';
 
     if (!el) return;
+    /* A dialog's backdrop is the ANCESTOR of everything in the dialog, so
+       closest() finds it for a press on any plain control inside — and the
+       preventDefault below then undid that press. On a tick box that means
+       it can never be ticked: Yalla Wear's "invoice from delivered work"
+       could not be used at all. The backdrop only means "close" when it is
+       itself what was pressed. */
+    if (el.getAttribute('data-act') === 'modal-backdrop' && e.target !== el) return;
     var fn = ACTIONS[el.getAttribute('data-act')];
     if (fn) { e.preventDefault(); fn(el, e); }
   });
@@ -337,8 +344,6 @@ function boot() {
    happened first would show an empty shop, and a cashier who scanned in that
    moment would be told the product does not exist. */
 function start() {
-  if (typeof Auth === 'undefined') return boot();
-
   /* The loading screen (js/splash.js), on black, while the server is asked.
      Between the page opening and the first paint there are two round trips
      (is the cookie good, then the whole shop) and on shop wifi that is long

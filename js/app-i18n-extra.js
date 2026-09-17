@@ -3012,3 +3012,21 @@ var CATS_AR = {
 };
 Object.keys(CATS_EN).forEach(function (k) { I18N.en[k] = CATS_EN[k]; });
 Object.keys(CATS_AR).forEach(function (k) { I18N.ar[k] = CATS_AR[k]; });
+
+/* ---- Yalla Wear: invoicing delivered work, one job at a time (E7) ---------- */
+var YLINV_EN = {
+  yi_jobs_n: 'jobs', yi_sending: 'Sending…', yi_pick_all: 'Tick every job', yi_pick_hint: 'A job goes on the invoice whole — every shirt in it.',
+  err_invoice_exists: 'That invoice number is already taken. Open the invoices again and retry.',
+  err_already_invoiced: 'One of those jobs is already on another invoice.',
+  err_job_not_done: 'Only finished jobs can be invoiced.',
+  err_mixed_currency: 'Those jobs are priced in different currencies — make two invoices.'
+};
+var YLINV_AR = {
+  yi_jobs_n: 'طلبات', yi_sending: 'جارٍ الإرسال…', yi_pick_all: 'حدّد كل الطلبات', yi_pick_hint: 'يدخل الطلب إلى الفاتورة كاملاً — بكل قطعه.',
+  err_invoice_exists: 'رقم الفاتورة هذا مستخدم. افتح الفواتير من جديد وحاول مرة أخرى.',
+  err_already_invoiced: 'أحد هذه الطلبات موجود في فاتورة أخرى.',
+  err_job_not_done: 'لا تُفوتَر إلا الطلبات المنتهية.',
+  err_mixed_currency: 'هذه الطلبات مسعّرة بعملات مختلفة — اعمل فاتورتين.'
+};
+Object.keys(YLINV_EN).forEach(function (k) { I18N.en[k] = YLINV_EN[k]; });
+Object.keys(YLINV_AR).forEach(function (k) { I18N.ar[k] = YLINV_AR[k]; });

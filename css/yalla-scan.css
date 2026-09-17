@@ -191,16 +191,16 @@ body.rtl .yl-line-arrow::after { right: auto; left: 5px; transform: translateY(-
 .hc-pct { font-size: 10px; font-weight: 600; color: var(--dim); font-variant-numeric: tabular-nums; }
 /* Four steps rather than a continuous ramp: a reader can name the level they
    are looking at, which a gradient never allows. */
-.yl-hc.l1 { background: color-mix(in srgb, var(--brand) 12%, var(--subtle)); }
-.yl-hc.l2 { background: color-mix(in srgb, var(--brand) 30%, var(--subtle)); }
+.yl-hc.l1 { background: #2D2F43; background: color-mix(in srgb, var(--brand) 12%, var(--subtle)); }
+.yl-hc.l2 { background: #49525D; background: color-mix(in srgb, var(--brand) 30%, var(--subtle)); }
 .yl-hc.l3 { background: var(--warning-soft); border-color: var(--warning-border); }
 .yl-hc.l3 .hc-pct { color: var(--warning); }
 .yl-hc.l4 { background: var(--destructive-soft); border-color: var(--destructive-border); }
 .yl-hc.l4 .hc-val, .yl-hc.l4 .hc-pct { color: var(--destructive); }
 .yl-heat-key { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
 .hk { width: 16px; height: 8px; border-radius: 2px; }
-.hk.l1 { background: color-mix(in srgb, var(--brand) 12%, var(--subtle)); }
-.hk.l2 { background: color-mix(in srgb, var(--brand) 30%, var(--subtle)); }
+.hk.l1 { background: #2D2F43; background: color-mix(in srgb, var(--brand) 12%, var(--subtle)); }
+.hk.l2 { background: #49525D; background: color-mix(in srgb, var(--brand) 30%, var(--subtle)); }
 .hk.l3 { background: var(--warning-solid); }
 .hk.l4 { background: var(--destructive-solid); }
 .yl-heat-key .small { margin-inline-start: 6px; }
@@ -912,9 +912,9 @@ tr.mn-void td b { text-decoration: line-through; color: var(--dim); }
    that costs money. Tinted rows rather than badges, because he is scanning
    down a long list looking for the exceptions. */
 .st-in { width: 86px; padding: 6px 8px; font-size: 13px; text-align: end; }
-tr.st-ok td    { background: color-mix(in srgb, var(--success-solid) 6%, transparent); }
-tr.st-short td { background: color-mix(in srgb, var(--destructive-solid) 9%, transparent); }
-tr.st-over td  { background: color-mix(in srgb, var(--warning-solid) 9%, transparent); }
+tr.st-ok td    { background: rgba(22, 163, 74, .06); background: color-mix(in srgb, var(--success-solid) 6%, transparent); }
+tr.st-short td { background: rgba(229, 72, 77, .09); background: color-mix(in srgb, var(--destructive-solid) 9%, transparent); }
+tr.st-over td  { background: rgba(217, 119, 6, .09); background: color-mix(in srgb, var(--warning-solid) 9%, transparent); }
 .st-neg { color: var(--destructive); }
 .st-pos { color: var(--warning); }
 
@@ -959,7 +959,7 @@ tr.st-over td  { background: color-mix(in srgb, var(--warning-solid) 9%, transpa
 }
 .yi-sum b { font-family: var(--font-head); font-weight: 800; font-size: 22px;
   color: var(--brand); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-tr.row-late td { background: color-mix(in srgb, var(--destructive-solid) 7%, transparent); }
+tr.row-late td { background: rgba(229, 72, 77, .07); background: color-mix(in srgb, var(--destructive-solid) 7%, transparent); }
 
 /* ================================================== THE LINE TO YALLA WEAR
    Payments as a handshake, the shop's review, the production report, the
@@ -996,7 +996,7 @@ tr.row-late td { background: color-mix(in srgb, var(--destructive-solid) 7%, tra
 /* the Telegram card */
 .tg-host { min-height: 44px; }
 .tg-row { display: flex; align-items: center; gap: 10px; }
-.tg-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--healthy-solid, #3ddc84); flex: 0 0 auto; }
+.tg-dot { width: 10px; height: 10px; border-radius: 50%; background: #3ddc84; flex: 0 0 auto; }
 .tg-dot.off { background: var(--dim); }
 .tg-txt b { display: block; font-size: 13.5px; }
 .tg-txt small { color: var(--muted-foreground); font-size: var(--fs-xs); }
@@ -1183,7 +1183,6 @@ body[data-portal="yalla"] .tabbtn svg { stroke-width: 2; }
 }
 .yl-line-ico svg { width: 17px; height: 17px; stroke-width: 2; stroke: var(--muted-foreground); }
 .yl-line-node.on .yl-line-ico { background: var(--brand-soft); }
-.yl-line-node.on .yl-line-ico svg { stroke: var(--brand); }
 .yl-line-node.hot .yl-line-ico { background: var(--destructive-soft); }
 .yl-line-node.hot .yl-line-ico svg { stroke: var(--destructive); }
 
@@ -1200,9 +1199,6 @@ body[data-portal="yalla"] .tabbtn svg { stroke-width: 2; }
   background: var(--muted); flex: none;
 }
 .fi-ico svg { width: 14px; height: 14px; stroke-width: 2; }
-.yl-fi.k-delay .fi-ico, .yl-fi.k-overdue .fi-ico { background: var(--destructive-soft); }
-.yl-fi.k-nudge .fi-ico, .yl-fi.k-name-request .fi-ico { background: var(--warning-soft); }
-.yl-fi.k-stage .fi-ico, .yl-fi.k-invoice .fi-ico { background: var(--brand-soft); }
 
 /* the board */
 .yl-board { grid-template-columns: repeat(4, minmax(230px, 1fr)); }
@@ -1475,3 +1471,13 @@ body[data-portal="yalla"] .nav-item.active .nav-icon svg { stroke: var(--brand-f
 
 /* The timeline's "who" column carries a face when the stamp knows a person. */
 .ord-tl-by { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---- invoice from delivered work: one tick per job (js/ylinvoice.js) ---- */
+.yi-pick-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.yi-picks { max-height: 340px; overflow: auto; }
+.yi-picks .yi-tick { width: 44px; }
+.yi-picks input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: var(--brand); }
+.yi-pick-row.on td { background: var(--brand-soft); }
+@media (max-width: 520px) {
+  .yi-picks input[type="checkbox"] { width: 24px; height: 24px; }
+}
