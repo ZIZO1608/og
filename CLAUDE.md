@@ -1783,6 +1783,27 @@ the label's style. A purchase order now has a **due date** (`purchase_orders.due
 the reorder dialog asks for it (not in the past, refused `due_past` on the server too), the PO list shows
 it with a "late" badge, and the bell calls a dated order late the day after it (`po_overdue`).
 
+### Safeers (السفراء) — the delivery team (060)
+
+`server/lib/safeers.js`, `js/safeers.js` (`Safeers`, the Safeers screen, the Settings fold "Safeers — pay
+and areas", and a safeer's errand cards under his runs), `errands` (cursor shape, file 028). Not a
+rebuild of the office: PARCELS are still the deliveries table, assigned and moved on the board's own
+routes; ERRANDS (a stock run, a supplier pickup, a bank trip) are new, move `waiting → out → done | failed`
+(failed needs a reason), may point at an order, and never move stock or money by themselves.
+
+- `safeer.read` / `safeer.write` (owner, developer, manager; FORBIDDEN to the partner). A safeer (role
+  `delivery`) reads and moves only his own errands, scoped in the SQL; another's is 404 and he can change
+  nothing but the status.
+- **Pay is per delivery and derived**: delivered parcels + done errands × `config safeer.rate`
+  (`{amount, currency}`), for today / this week (Saturday-first) / this month in the shop's day. **Earned
+  and cash on him ride only with `money.read`** — left out, not zeroed — and cash is `Orders.driverCash()`.
+- `safeer.areas` (config, the owner's list; 060 seeds real Aleppo districts) names where a task goes; the
+  errands answer carries it so a phone that cannot read the team page still shows the name.
+- Adding a safeer makes a `delivery` login through `People.add` (needs staff.write or access.write), the
+  password shown once. Removing an account now returns its **waiting** parcels and errands to nobody.
+- Nothing looks saved before the server has it; an unreachable shop says "connect to the shop wifi".
+  No offline queue and no Telegram write buttons, by decision.
+
 ### Tick boxes in dialogs, and Yalla Wear's invoice from finished work
 
 **No tick box inside any dialog could be ticked.** The backdrop carries `data-act="modal-backdrop"` and is

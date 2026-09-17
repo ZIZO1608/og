@@ -141,6 +141,16 @@ export function removeAccounts(ids, byUserId = null) {
       d.exec('SAVEPOINT rm');
       let moved = 0;
       try {
+        /* Work not started goes back to nobody, so the office can give it
+           out again; Former staff cannot carry a parcel. */
+        for (const [t, col] of [['deliveries', 'driver_id'], ['errands', 'safeer_id']]) {
+          let keys = [];
+          try { keys = d.prepare(`SELECT id FROM ${t} WHERE ${col} = ? AND status = 'waiting'`).all(u.id).map((r) => r.id); }
+          catch { continue; }   /* errands before 060 */
+          if (!keys.length) continue;
+          d.prepare(`UPDATE ${t} SET ${col} = NULL WHERE ${col} = ? AND status = 'waiting'`).run(u.id);
+          for (const k of keys) DB.logChange(t, k, 'update', byUserId, `unassigned: ${u.username} removed`);
+        }
         for (const { table, col } of refs) {
           if (DROP_WITH.has(table)) { d.prepare(`DELETE FROM "${table}" WHERE "${col}" = ?`).run(u.id); continue; }
           const pk = LOGGED.has(table) ? pkOf(d, table) : null;

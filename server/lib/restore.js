@@ -120,7 +120,7 @@ export const ORDER = [
 
   /* the road: a sheet before its lines, a return after the sale it undoes,
      and the credit it may have granted after the customer it belongs to */
-  'handovers', 'handover_lines', 'order_returns', 'order_return_lines', 'customer_credit', 'order_reviews',
+  'handovers', 'handover_lines', 'order_returns', 'order_return_lines', 'customer_credit', 'order_reviews', 'errands',
   'stock_counts', 'stock_count_lines',
 
   /* the cash book (053): a move names a currency and a user and nothing else,

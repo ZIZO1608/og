@@ -49,6 +49,7 @@ var NAV = [
   { id: 'money',      key: 'nav_money',     group: 'main', icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4' },
   { id: 'desk',       key: 'nav_desk',      group: 'ops',  icon: 'M3 7h18v4H3zM5 11v9h14v-9M9 7V4h6v3M10 15h4' },
   { id: 'deliveries', key: 'nav_deliveries',group: 'ops',  icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
+  { id: 'safeers',    key: 'nav_safeers',   group: 'ops',  icon: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M12 20v-1a5 5 0 0 1 10 0v1' },
   { id: 'reviews',    key: 'nav_reviews',   group: 'ops',  icon: 'M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.85 1.03-6L3.3 9.6l6-.9z' },
   { id: 'customers',  key: 'nav_customers', group: 'ops',  icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' },
   { id: 'labels',     key: 'nav_labels',    group: 'ops',  icon: 'M4 5v14M8 5v14M11 5v9M14 5v14M17 5v9M20 5v14' },
@@ -86,6 +87,9 @@ var NAV_PERM = {
   /* The office's: a driver holds delivery.read and has no business reading
      what every customer said, and the partner never reaches any of this. */
   reviews: 'delivery.desk',
+  /* 060 — the delivery team: owner, developer, manager. A safeer's own
+     tasks reach him on his home screen instead. */
+  safeers: 'safeer.read',
   customers:  'customer.read',
   labels:     'label.print',
   print:      'print.read',
@@ -265,7 +269,7 @@ function renderSidebar() {
 var TABS = ['dashboard', 'pos', 'products', 'print'];
 /* Money was missing here, so on a phone nobody could reach it at all — and the
    night's count (054) is a cashier's job on whatever device is to hand. */
-var MORE_ITEMS = ['warehouse', 'shelfmap', 'money', 'desk', 'deliveries', 'reviews', 'customers', 'labels', 'reports', 'settings'];
+var MORE_ITEMS = ['warehouse', 'shelfmap', 'money', 'desk', 'deliveries', 'safeers', 'reviews', 'customers', 'labels', 'reports', 'settings'];
 
 function renderTabbar() {
   var host = document.getElementById('tabbar');

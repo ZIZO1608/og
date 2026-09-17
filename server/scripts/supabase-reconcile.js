@@ -104,6 +104,7 @@ const TABLES = [
   { name: 'expenses',                 key: 'id' },
   { name: 'debt_payments',            key: 'id' },
   { name: 'order_payments',           key: 'id' },
+  { name: 'errands',                  key: 'id' },
   { name: 'handovers',                key: 'id' },
   { name: 'handover_lines',           key: 'id' },
   { name: 'order_returns',            key: 'id' },

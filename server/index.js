@@ -29,6 +29,7 @@ import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
 import * as Categories from './lib/categories.js';
 import * as People from './lib/people.js';
+import * as Safeers from './lib/safeers.js';
 import * as Stock from './lib/stock.js';
 import * as Shelves from './lib/shelves.js';
 import * as Sales from './lib/sales.js';
@@ -314,6 +315,85 @@ router.add('PUT /api/roles/:role', requirePerm('config.write', async (ctx) => {
   } catch (e) {
     sendError(ctx.res, 400, 'invalid', e.message);
   }
+}));
+
+/* --- Safeers (060) -------------------------------------------------------------
+   The delivery team. The team page (safeer.read) carries earned and cash only
+   with money.read — left out, not zeroed. Errands: the office reads and moves
+   all of them (safeer.write to change), a safeer his own (role delivery,
+   scoped in the SQL, somebody else's is 404). Parcels are moved on the
+   deliveries routes, as the board moves them. */
+function safeerFail(res, e) {
+  sendError(res, e.status || (e.code === 'not_found' ? 404 : 400), e.code || 'invalid', e.message);
+}
+const safeerMine = (ctx) => (ctx.user.role === 'delivery' ? ctx.user.id : null);
+router.add('GET /api/safeers', requirePerm('safeer.read', (ctx) => {
+  const tz = Number(ctx.url.searchParams.get('tz')) || 180;
+  sendOk(ctx.res, {
+    ...Safeers.team({ money: Auth.can(ctx.user, 'money.read'), tz }),
+    areas: Safeers.areas()
+  });
+}));
+router.add('PUT /api/safeers/settings', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, Safeers.saveSettings({ rate: b.rate, areas: b.areas }, ctx.user.id)); }
+  catch (e) { safeerFail(ctx.res, e); }
+}));
+router.add('POST /api/safeers', requirePerm('safeer.write', async (ctx) => {
+  if (!Auth.can(ctx.user, 'staff.write') && !Auth.can(ctx.user, 'access.write')) {
+    return sendError(ctx.res, 403, 'forbidden', 'Adding a login needs the staff permission.');
+  }
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, await People.add({ name: b.name, username: b.username, role: 'delivery', phone: b.phone || null })); }
+  catch (e) { safeerFail(ctx.res, e); }
+}));
+router.add('POST /api/safeers/:id/active', requirePerm('safeer.write', async (ctx) => {
+  const id = Number(ctx.params.id);
+  if (!Safeers.isSafeer(id)) return sendError(ctx.res, 404, 'not_found', 'No such safeer.');
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { user: People.setActive(id, !!b.active, ctx.user.id) }); }
+  catch (e) { safeerFail(ctx.res, e); }
+}));
+router.add('POST /api/safeers/:id/password', requirePerm('safeer.write', async (ctx) => {
+  const id = Number(ctx.params.id);
+  if (!Safeers.isSafeer(id)) return sendError(ctx.res, 404, 'not_found', 'No such safeer.');
+  try { sendOk(ctx.res, await People.newPassword(id)); } catch (e) { safeerFail(ctx.res, e); }
+}));
+router.add('GET /api/errands', requirePerm(['safeer.read', 'delivery.read'], (ctx) => {
+  const p = ctx.url.searchParams;
+  const mine = safeerMine(ctx);
+  if (mine === null && !Auth.can(ctx.user, 'safeer.read')) return sendError(ctx.res, 403, 'forbidden', 'Your account does not have access to this.');
+  /* the areas ride along: a safeer's phone cannot read the team page, and a
+     task that says "furqan" instead of الفرقان is a task read wrong */
+  sendOk(ctx.res, { errands: Safeers.list({ mine, safeer: p.get('safeer'), status: p.get('status'), since: p.get('since') }),
+                    areas: Safeers.areas() });
+}));
+router.add('GET /api/errands/:id', requirePerm(['safeer.read', 'delivery.read'], (ctx) => {
+  const mine = safeerMine(ctx);
+  if (mine === null && !Auth.can(ctx.user, 'safeer.read')) return sendError(ctx.res, 403, 'forbidden', 'Your account does not have access to this.');
+  const e = Safeers.byId(Number(ctx.params.id), mine);
+  if (!e) return sendError(ctx.res, 404, 'not_found', 'No such errand.');
+  sendOk(ctx.res, { errand: e });
+}));
+router.add('POST /api/errands', requirePerm('safeer.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const errand = Safeers.create(b || {}, ctx.user.id);
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, { errand });
+  } catch (e) { safeerFail(ctx.res, e); }
+}));
+router.add('PATCH /api/errands/:id', requirePerm(['safeer.write', 'delivery.write'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  const mine = safeerMine(ctx);
+  if (mine === null && !Auth.can(ctx.user, 'safeer.write')) return sendError(ctx.res, 403, 'forbidden', 'Your account does not have access to this.');
+  try {
+    /* a safeer moves his own forward and changes nothing else */
+    const body = mine !== null ? { status: b.status, reason: b.reason } : b;
+    const errand = Safeers.update(Number(ctx.params.id), body || {}, ctx.user, { mine });
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, { errand });
+  } catch (e) { safeerFail(ctx.res, e); }
 }));
 
 /* --- access, per person (059) ------------------------------------------------

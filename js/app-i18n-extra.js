@@ -3144,3 +3144,67 @@ var ACCESS_AR = {
 };
 Object.keys(ACCESS_EN).forEach(function (k) { I18N.en[k] = ACCESS_EN[k]; });
 Object.keys(ACCESS_AR).forEach(function (k) { I18N.ar[k] = ACCESS_AR[k]; });
+
+/* ---- Safeers (060, js/safeers.js) ----------------------------------------- */
+var SAFEERS_EN = {
+  nav_safeers: 'Safeers', sf_sub: 'The delivery team — who is on the road, their tasks, their pay',
+  sf_reload: 'Refresh', sf_assign_parcel: 'Give a parcel', sf_new_errand: 'New errand',
+  sf_offline: 'Cannot reach the shop. Connect to the shop wifi to update the tasks.',
+  sf_failed: 'The team could not be loaded.',
+  sf_no_team: 'No safeers yet', sf_no_team_sub: 'Add one below — they sign in with their own username.',
+  sf_off: 'Switched off', sf_busy: 'On a task', sf_free: 'Free',
+  sf_open: 'Open tasks', sf_done_today: 'Done today', sf_done_month: 'This month',
+  sf_earned: 'Earned today', sf_week: 'week', sf_month: 'month', sf_cash_on_him: 'Cash on him',
+  sf_no_rate: 'No rate set — Settings → Safeers', sf_their_tasks: 'Their tasks', sf_add: 'Add a safeer',
+  sf_tasks: 'Tasks', sf_safeer: 'Safeer', sf_everyone: 'Everyone', sf_since: 'Since',
+  sf_f_open: 'Open', sf_f_waiting: 'Waiting', sf_f_out: 'Out', sf_f_done: 'Done', sf_f_failed: 'Failed', sf_f_all: 'Everything',
+  sf_no_tasks: 'No tasks', sf_no_tasks_sub: 'Give a parcel or add an errand.',
+  sf_task: 'Task', sf_area: 'Area', sf_due: 'Due', sf_parcel: 'Parcel', sf_errand: 'Errand',
+  sf_st_waiting: 'Waiting', sf_st_out: 'Out', sf_st_done: 'Done', sf_st_delivered: 'Delivered', sf_st_failed: 'Failed',
+  sf_mark_out: 'Out', sf_mark_done: 'Done', sf_mark_failed: 'Failed', sf_go_out: 'Out now', sf_on_board: 'On the board',
+  sf_title: 'What to do', sf_title_ph: 'Bring 6 boxes from the warehouse', sf_kind: 'Kind',
+  sf_k_stock_run: 'Stock run', sf_k_supplier_pickup: 'Supplier pickup', sf_k_bank: 'Bank / transfer office', sf_k_other: 'Other',
+  sf_from: 'From', sf_to: 'To', sf_order: 'Order (optional)', sf_nobody_yet: 'Nobody yet',
+  sf_errand_note: 'An errand moves no stock and no money by itself — goods that leave go through an order or a stock move.',
+  sf_no_waiting: 'No parcel is waiting', sf_no_waiting_sub: 'Parcels come from the delivery office and the cashier.',
+  sf_pick_safeer: 'Pick a safeer.', sf_why: 'Why did it fail?', sf_saved: 'Saved', sf_my_errands: 'My errands',
+  sf_settings: 'Safeers — pay and areas', sf_per_delivery: 'delivery',
+  sf_rate: 'Paid per delivery', sf_rate_note: 'Every parcel delivered and every errand done counts as one delivery. What a safeer earned is worked out from this — it is never stored.',
+  sf_areas: 'Areas (one per line: English | عربي, add "| off" to hide one)',
+  sf_areas_hint: 'The places a task can be sent to.',
+  err_title_required: 'Say what the errand is.', err_reason_required: 'Say why it failed.', err_bad_rate: 'The rate is not a number.',
+  err_bad_safeer: 'That person is not a safeer.', err_no_safeer: 'Nobody has been given this errand yet.',
+  err_bad_sale: 'There is no order with that number.', err_bad_areas: 'Every area needs a name.'
+};
+var SAFEERS_AR = {
+  nav_safeers: 'السفراء', sf_sub: 'فريق التوصيل — من على الطريق، ومهامهم، وأجورهم',
+  sf_reload: 'تحديث', sf_assign_parcel: 'أعطِ طرداً', sf_new_errand: 'مهمة جديدة',
+  sf_offline: 'لا يمكن الوصول إلى المحل. اتصل بشبكة المحل لتحديث المهام.',
+  sf_failed: 'تعذّر تحميل الفريق.',
+  sf_no_team: 'لا يوجد سفراء بعد', sf_no_team_sub: 'أضف واحداً في الأسفل — يدخل باسم مستخدمه.',
+  sf_off: 'موقوف', sf_busy: 'في مهمة', sf_free: 'متفرّغ',
+  sf_open: 'مهام مفتوحة', sf_done_today: 'أُنجز اليوم', sf_done_month: 'هذا الشهر',
+  sf_earned: 'أجر اليوم', sf_week: 'الأسبوع', sf_month: 'الشهر', sf_cash_on_him: 'النقد معه',
+  sf_no_rate: 'لم يُحدَّد أجر — الإعدادات ← السفراء', sf_their_tasks: 'مهامه', sf_add: 'أضف سفيراً',
+  sf_tasks: 'المهام', sf_safeer: 'السفير', sf_everyone: 'الكل', sf_since: 'منذ',
+  sf_f_open: 'مفتوحة', sf_f_waiting: 'بالانتظار', sf_f_out: 'خرج', sf_f_done: 'أُنجزت', sf_f_failed: 'فشلت', sf_f_all: 'الكل',
+  sf_no_tasks: 'لا توجد مهام', sf_no_tasks_sub: 'أعطِ طرداً أو أضف مهمة.',
+  sf_task: 'المهمة', sf_area: 'المنطقة', sf_due: 'الموعد', sf_parcel: 'طرد', sf_errand: 'مهمة',
+  sf_st_waiting: 'بالانتظار', sf_st_out: 'خرج', sf_st_done: 'أُنجزت', sf_st_delivered: 'سُلّم', sf_st_failed: 'فشلت',
+  sf_mark_out: 'خرج', sf_mark_done: 'تمّ', sf_mark_failed: 'فشلت', sf_go_out: 'اخرج الآن', sf_on_board: 'على اللوحة',
+  sf_title: 'ما المطلوب', sf_title_ph: 'أحضر 6 كراتين من المستودع', sf_kind: 'النوع',
+  sf_k_stock_run: 'نقل بضاعة', sf_k_supplier_pickup: 'استلام من مورّد', sf_k_bank: 'بنك / مكتب تحويل', sf_k_other: 'أخرى',
+  sf_from: 'من', sf_to: 'إلى', sf_order: 'الطلب (اختياري)', sf_nobody_yet: 'لا أحد بعد',
+  sf_errand_note: 'المهمة لا تنقل بضاعة ولا مالاً وحدها — البضاعة الخارجة تمرّ عبر طلب أو نقل مخزون.',
+  sf_no_waiting: 'لا يوجد طرد بالانتظار', sf_no_waiting_sub: 'تأتي الطرود من مكتب التوصيل والكاشير.',
+  sf_pick_safeer: 'اختر سفيراً.', sf_why: 'لماذا فشلت؟', sf_saved: 'حُفظ', sf_my_errands: 'مهامي',
+  sf_settings: 'السفراء — الأجر والمناطق', sf_per_delivery: 'توصيلة',
+  sf_rate: 'الأجر عن كل توصيلة', sf_rate_note: 'كل طرد مُسلَّم وكل مهمة مُنجزة تُحسب توصيلة. أجر السفير يُحسب من هذا ولا يُخزَّن أبداً.',
+  sf_areas: 'المناطق (واحدة في كل سطر: English | عربي، وأضف "| off" لإخفائها)',
+  sf_areas_hint: 'الأماكن التي يمكن إرسال مهمة إليها.',
+  err_title_required: 'اكتب ما هي المهمة.', err_reason_required: 'اكتب سبب الفشل.', err_bad_rate: 'الأجر ليس رقماً.',
+  err_bad_safeer: 'هذا الشخص ليس سفيراً.', err_no_safeer: 'لم تُعطَ هذه المهمة لأحد بعد.',
+  err_bad_sale: 'لا يوجد طلب بهذا الرقم.', err_bad_areas: 'كل منطقة تحتاج اسماً.'
+};
+Object.keys(SAFEERS_EN).forEach(function (k) { I18N.en[k] = SAFEERS_EN[k]; });
+Object.keys(SAFEERS_AR).forEach(function (k) { I18N.ar[k] = SAFEERS_AR[k]; });

@@ -80,6 +80,9 @@ export const ALL_PERMISSIONS = [
      with a destination and a payment plan, and who does that is the
      manager's decision. */
   { perm: 'delivery.desk',   group: 'delivery',  label: 'Take remote orders at the delivery office' },
+  /* 060 — the delivery team page: who is on the road, their errands, their pay. */
+  { perm: 'safeer.read',     group: 'delivery',  label: 'See the delivery team (Safeers)' },
+  { perm: 'safeer.write',    group: 'delivery',  label: 'Manage Safeers and their tasks' },
 
   { perm: 'cost.read',       group: 'money',     label: 'See what things cost' },
   { perm: 'profit.read',     group: 'money',     label: 'See profit' },
@@ -149,7 +152,7 @@ const FORBIDDEN = {
        and a permission that lets somebody take the shop's cash must never be
        one a tick box can hand to another company. */
     p === 'debt.collect' ||
-    p.startsWith('delivery.') || p === 'discount.unlimited' ||
+    p.startsWith('delivery.') || p.startsWith('safeer.') || p === 'discount.unlimited' ||
     /* A receipt payload carries the customer's name and phone number, so
        this follows customer.* rather than sitting on its own. */
     p === 'sale.reprint' ||

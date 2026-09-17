@@ -803,3 +803,26 @@ CREATE TABLE IF NOT EXISTS user_permissions (
   PRIMARY KEY (user_id, perm)
 );
 ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;
+
+
+-- ===== 028_safeers.sql =====  (local 060: the delivery team's errands)
+CREATE TABLE IF NOT EXISTS errands (
+  id          BIGINT PRIMARY KEY,
+  title       TEXT NOT NULL,
+  kind        TEXT NOT NULL DEFAULT 'other',
+  from_place  TEXT,
+  to_area     TEXT,
+  notes       TEXT,
+  due_date    TEXT,
+  sale_id     TEXT REFERENCES sales(id),
+  safeer_id   BIGINT,
+  assigned_by BIGINT,
+  status      TEXT NOT NULL DEFAULT 'waiting',
+  fail_reason TEXT,
+  created_at  TIMESTAMPTZ NOT NULL,
+  out_at      TIMESTAMPTZ,
+  closed_at   TIMESTAMPTZ,
+  updated_at  TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS errands_safeer ON errands (safeer_id, status);
+ALTER TABLE errands ENABLE ROW LEVEL SECURITY;

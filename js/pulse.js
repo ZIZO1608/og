@@ -45,7 +45,7 @@ var Pulse = (function () {
 
   function canAsk() {
     return typeof Shop !== 'undefined' && Shop.live() &&
-           (typeof Auth === 'undefined' || (Auth.can('print.read') || Auth.can('partner.jobs')));
+           (Auth.can('print.read') || Auth.can('partner.jobs'));
   }
 
   /* Whether a repaint would step on somebody. */
@@ -139,7 +139,7 @@ var Pulse = (function () {
   /* ---- fetching --------------------------------------------------------- */
 
   function apply() {
-    var alerts = (side() === 'og' && typeof Auth !== 'undefined')
+    var alerts = (side() === 'og')
       ? API.get('/api/notifications').catch(function () { return null; })
       : Promise.resolve(null);
 
@@ -370,7 +370,7 @@ var Pulse = (function () {
      who holds config.write and nothing on the print side still connects. */
   function canConnect() {
     if (canAsk()) return true;
-    if (typeof Shop === 'undefined' || !Shop.live() || typeof Auth === 'undefined') return false;
+    if (typeof Shop === 'undefined' || !Shop.live()) return false;
     /* config.write for the mirror's own status line; delivery.read since the
        board became live — a driver and the office both need the line, and
        neither of them can read a print job. */
@@ -484,6 +484,8 @@ var Pulse = (function () {
           Deliveries.load();
           if (typeof Road !== 'undefined' && roleOf() !== 'delivery') Road.load(true);
         }
+        /* 060 — the team page and a safeer's own errands follow too. */
+        if (typeof Safeers !== 'undefined' && !modalOpen()) Safeers.live();
         return;
       }
       if (!d.who && canAsk()) tick();
@@ -519,7 +521,6 @@ var Pulse = (function () {
     presenceText: presenceText,
     facesHtml: facesHtml,
     whoPanelHtml: whoPanelHtml,
-    peopleOn: peopleOn,
-    settle: function () { last = null; }
+    peopleOn: peopleOn
   };
 })();

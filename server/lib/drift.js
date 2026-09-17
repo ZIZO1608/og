@@ -49,7 +49,7 @@ export const PUSHED = [
   'partner_invoices', 'partner_invoice_refs', 'partner_invoice_payments',
   'job_messages', 'purchase_orders', 'purchase_order_lines',
   'wa_messages', 'shifts', 'expenses', 'debt_payments', 'order_payments',
-  'handovers', 'handover_lines', 'order_returns', 'order_return_lines', 'customer_credit', 'order_reviews',
+  'handovers', 'handover_lines', 'order_returns', 'order_return_lines', 'customer_credit', 'order_reviews', 'errands',
   'stock_counts', 'stock_count_lines',
   'loyalty_redemptions', 'wants', 'money_moves', 'day_closes', 'day_close_lines', 'supplier_ledger', 'salary_payments',
   'config', 'role_permissions', 'label_templates', 'clubs', 'notification_reads', 'categories', 'user_permissions'

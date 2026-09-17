@@ -414,7 +414,7 @@ export const TABLES = {
        before it. */
     beforeDelete: async (key) => {
       for (const t of ['print_log', 'debt_payments', 'order_payments',
-                       'order_returns', 'handover_lines', 'customer_credit', 'order_reviews']) {
+                       'order_returns', 'handover_lines', 'customer_credit', 'order_reviews', 'errands']) {
         await SB.remove(t, { sale_id: key.id }).catch(() => {});
       }
     }
@@ -425,6 +425,8 @@ export const TABLES = {
      UPDATED when it is handed in, and a highest-id bookmark would never see
      that. Pushed behind a guard of its own after the core loop — see walk(). */
   order_payments: { parseKey: numKey, fetchLocal: byId('order_payments'), mapRow: (r) => r },
+  /* 060 — the delivery team's errands. Cursor shape: an errand is updated as it moves. */
+  errands: { parseKey: numKey, fetchLocal: byId('errands'), mapRow: (r) => r },
 
   /* 046 — the road. A handover is the sheet somebody signed for, its lines
      are the parcels on it, a return is what happened when one came back, and
@@ -671,7 +673,7 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
 /* handover_lines and order_return_lines are not here on purpose: each rides
    on its parent's afterUpsert, the way sale_items ride on their sale. */
 export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours',
-                              'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews',
+                              'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews', 'errands',
                               ...PARTNER, ...DRAWER, 'day_closes'];
 
 const MISSING_TABLE = /Could not find the table|PGRST205|relation .* does not exist|Supabase 404 on /i;
@@ -806,7 +808,7 @@ async function walk(log, only) {
      the partner block below, which is one try — a project that has not had
      017 run would otherwise lose expenses, debt payments and the read marks
      along with it. */
-  const ROAD = ['order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews'];
+  const ROAD = ['order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews', 'errands'];
   if (ROAD.some(want)) {
     log.head('Delivery office');
     /* ONE GUARD PER TABLE, not one around the block: a project that has had
@@ -822,7 +824,8 @@ async function walk(log, only) {
           log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
           log.line('    Run server/supabase/' +
             (name === 'order_payments' ? '017_delivery_office.sql'
-              : name === 'order_reviews' ? '019_order_reviews.sql' : '018_the_road.sql') +
+              : name === 'order_reviews' ? '019_order_reviews.sql'
+              : name === 'errands' ? '028_safeers.sql' : '018_the_road.sql') +
             ' in the SQL editor.');
         } else throw e;
       }

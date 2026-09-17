@@ -341,6 +341,9 @@ var Deliveries = (function () {
     }
     h += '</div>';
 
+    /* 060 — his errands, under his parcels. */
+    if (typeof Safeers !== 'undefined') h += Safeers.myErrandsHtml();
+
     if (shut.length) {
       h += '<div class="rc-sheet rc-sheet-done"><b>' + t('dlp_done_today') + '</b><span>' + nf(shut.length) + '</span></div>' +
         '<div class="run-list run-done">';

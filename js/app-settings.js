@@ -1214,6 +1214,8 @@ function viewSettings() {
      config.write, and on a first visit fetches the office's settings and
      redraws this page when they land. */
   if (typeof Desk !== 'undefined' && Desk.settingsCards) h += Desk.settingsCards();
+  /* 060 — what a safeer is paid per delivery, and the areas a task can go to. */
+  if (typeof Safeers !== 'undefined') h += Safeers.settingsCard();
 
   h += setSection(t('setg_people'));
   /* 059 — who can sign in, and what each person may do. access.write only. */
