@@ -358,4 +358,4 @@ read back out of SQLite** — never off the screen that wrote it.
 | `77b42a9` | ns03 phase 3: the products list — one box that takes a scan, and three quick edits |
 | `712fdbb` | ns03: phase 1b + phase 4 — settings & staff |
 | `66d1add` | ns03: phase 5 — deliveries, safeers, the driver, and the shelf that lied |
-| *(last)* | ns03: final sweep |
+| `6eec5b6` | ns03: final sweep, the report, and CLAUDE.md |
