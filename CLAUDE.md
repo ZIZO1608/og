@@ -607,9 +607,12 @@ These are constraints, not preferences. Breaking one means rewriting a lot.
 - **Vanilla HTML/CSS/JS. No framework, no bundler, no npm, no build step** for the frontend. Two
   third-party files, both committed directly to `js/vendor/`: `chart.umd.min.js`, and
   `three.min.js` (r147 — the last release with a UMD build and a `THREE` global; r150+ is ESM-only,
-  which is a build-step-shaped problem). Three.js is **lazily injected by `js/shelfroom.js` the
-  first time somebody opens the shelf map**, never a `<script>` in `index.html`: it is 600KB, and
-  the till must not parse it every morning for a screen a cashier never opens.
+  which is a build-step-shaped problem). **Neither is a `<script>` in `index.html`.** Three.js is
+  lazily injected by `js/shelfroom.js` the first time somebody opens the shelf map (600 KB), and
+  since night shift 02 Chart.js is lazily injected by `js/charts.js` on the first draw (200 KB,
+  and there is one chart left in the shop). Same reason both times: the till must not parse it
+  every morning for a screen a cashier never opens. Both stay in `sw.js`'s precache, so they are
+  already on disk when something finally asks.
 - **It needs the server.** This used to say the opposite — that double-clicking `index.html` had to
   keep working offline, because that was the fastest way to show the app to a client. That constraint
   was dropped deliberately: it was paid for with a generated shop, and generated data on a till looks
@@ -765,7 +768,7 @@ anyone can send the request by hand.
 | cashier | `viewShiftHome()` — her shift, never the shop's money | `stat`, `card`, `tbl` markup |
 | warehouse | `viewBackHome()` — what arrived, what needs moving | same |
 | delivery | `viewRunsHome()` → `Deliveries.view()` | live server data |
-| manager | `viewDashboard()` — the full dashboard | charts |
+| manager | `viewDashboard()` — the full dashboard | `stat`, `card`, `tbl` markup (the three charts went in night shift 02) |
 
 The partner never reaches it: `boot()` and `render()` both force `OG.print.partner = true` for that role.
 **There is no door between the two sides in either direction.** The `partner-view` toggle, the sidebar
@@ -1910,11 +1913,199 @@ it was pressed itself. That was why Yalla Wear had never issued an invoice. With
 `Partner.createInvoice` refuses a job not finished, a job already invoiced, a reused number and mixed
 currencies (409 `job_not_done` / `already_invoiced` / `invoice_exists` / `mixed_currency`).
 
+## Night shift 02 (18 Sep 2026) — fewer steps
+
+Built on branch `night-shift-02`; the audit that starts it is `night_shift_02_audit.md` and the
+morning report is `night_shift_02_log.md`. **No migration, no `server/supabase/` file, no
+`mirror-lag.js` entry, no config key** — every flow here uses routes and columns that already
+existed. The people who use this system are not computer people and the owner keeps his records
+on paper; the whole pass is about the number of decisions between somebody and the job they came
+to do.
+
+### No charts, except one, and Chart.js is lazy
+
+There were **five Chart.js canvases and eight hand-built bar visuals** in the shop. One chart is
+left: **Reports → Sales**, a line of takings over the chosen window, drawn only when
+`repChartRoles()` is true — **`owner` or `developer`**. That is a DISPLAY choice, not a boundary:
+every figure behind it is already gated on `report.read`, and hiding a picture of data somebody
+may read protects nothing. A note under it says the line is base currency only, because a canvas
+plots one series and a reader who does not know that reads a short month.
+
+- **`Charts.ensure()` injects `js/vendor/chart.umd.min.js` on the first draw**, the way
+  `js/shelfroom.js` injects three.js. The `<script>` tag is gone from `index.html`; the file stays
+  in `sw.js`'s precache, so it is already on disk when asked for. **Callers did not change** —
+  `line`/`bars`/`donut` each start at `notReady()`, which fetches and redraws when it lands,
+  latches a failed fetch so it is not retried on every repaint, and skips a canvas that left the
+  page while 200 KB came down. This is why the **Yalla Wear portal, which is out of scope, still
+  draws both its charts** without being touched. `Charts.compact()` is the app's number formatter
+  (`js/app-util.js`) and is pure arithmetic — it never triggers a fetch.
+- What replaced them: the dashboard's three became **`sellingCard()`** in `js/app-dashboard.js`
+  (best sellers, category with the share as a number, and one sentence comparing this month with
+  last, from the last two `charts.monthly` buckets — nothing new is computed). The product
+  drawer's sparkline became two sentences. The driver's SVG ring became the figure that was
+  inside it. `repBar()` prints a percentage instead of drawing one, and **keeps its column, its
+  header and its width on purpose** — five tables call it and the phone card layout is addressed
+  by column position. The reviews histogram is five rows that still filter.
+- **The stock count's progress bar stays.** It is a progress indicator, not a picture of data.
+- **Home screens do not count their numbers up.** `render()` puts `data-nocount` on `#view` for
+  the `dashboard` view and `Motion.countAll` skips anything inside it — opt-out, so every other
+  screen keeps the effect without being listed.
+- Fixed with it: the dashboard drew a card reading "no staff" for every account without
+  `staff.read`, which is the zero-instead-of-absent mistake that file is careful about everywhere
+  else. It is gone; Reports → Employees is the one place that list lives.
+
+### The warehouse has verbs on it, and goods can arrive
+
+The screen opened on **Stock movements** — an audit trail — under six tabs wrapping onto two rows.
+It opens on the four things somebody walks into that room to do, as buttons, with Add product
+beside them:
+
+    Goods arrived · Move stock · Where is it? · Count        (+ Add product)
+
+- **`whPanels()` is the one list** — the buttons, the More fold and the dispatch all read it, so a
+  panel cannot appear in one and not the others. **No tab id changed**, so every deep link,
+  `data-act="home-wh"` and `NAV_TAB_STATE.warehouse` still land where they did.
+- The rarer panels (the movement log, `po`, `wants`) are under **More**, remembered per machine in
+  `og.wh.more`. `OG.wh.tab` defaults to **`arrived`** now, not `moves`.
+- A cashier holds one of these jobs, so **she gets the panel and no bar** — one button is
+  furniture. The fallback also **rewrites `OG.wh.tab`** rather than only a local, which is what
+  used to draw a panel with nothing lit above it.
+
+**`js/receive.js` (global `Receive`, `data-rc`) is the flow that did not exist.** A purchase order
+had a button that fired on the press: no dialog, no review, the WHOLE order booked, the supplier
+balance moved, and a label preview nobody asked for. **A short delivery could not be recorded at
+all** — though `purchase_order_lines.received_qty`, `Purchasing.receive` and the route have
+supported `received:[{sku,qty}]` since they were written. The two things people did instead both
+lied: receive ten and write two off as `damaged`, or never receive the order and book eight
+through the scan sheet, leaving the supplier uncharged for ever.
+
+- **It is pick-and-count, NOT scan-first, and that is the design.** New stock arrives with no
+  usable barcode — the shop prints its own OG labels afterwards — so this is the one moment in the
+  building when nothing can be scanned. Printing the labels is therefore the last step and the
+  main button, and the screen says why. From there on every other flow is scan-first again.
+- Four steps: what arrived (open orders as cards, "not from an order", "a new product" → the
+  Add-product form) · count it, prefilled with what is still owed, with "All arrived as ordered" ·
+  where to, remembered per machine in `og.receive.place` · one confirm that names the pieces and
+  the place · **Print N labels**.
+- **A purchase order's place is the order's own** (`purchase_orders.wh_id`; the server takes no
+  place from the request), so it is stated as a fact rather than offered as a picker that does
+  nothing.
+- More than was ordered is **not refused** — a supplier really does send an extra pair — and is
+  said. The unordered path chains one `Shop.receive` per line inside ONE `Shop.write`, deliberately
+  not atomic, and names the lines that did not land: unbooking goods somebody has already shelved
+  is worse.
+- **`Shop.write(send, mirror, done)` toasts its own failure and does NOT call `done`**, so the
+  panel's rejection handler puts its own Save button back and rethrows.
+- Repaints patch `#rcBody` / `#rcFoot` only — this panel holds typed quantities and a caret.
+
+Three more from the audit, in `js/app-warehouse.js`: **move-by-scan remembers its direction** per
+machine (`og.wh.moveway`) instead of resetting to store→floor on every open; the movement log's
+reason column **names both ends** (`ms_note_way`) instead of saying "Carried to the floor"
+whichever way the stock went; and **"Where is it?" has a search box** (`whFindMatch`, matching
+name, brand, size, SKU, barcode and label code) — the only per-size-per-place breakdown in the app
+had none, so answering "have you got it in a 42" meant scrolling the whole catalogue.
+
+### Adding a product asks for four things
+
+Name, category, selling price, quantity per size. Brand, made in, the colourway, the place and the
+shelf are behind **More details** (`og.wh.addmore`). **Every box on the form round-trips through
+`OG.wh` now** — they used to be markup with literal values in it.
+
+Three of these were defects rather than friction, and are worth not reintroducing:
+
+- **Brand and "made in" were dead inputs.** Drawn with no id and no `data-change`; `wh-save` never
+  read them and the POST body carried neither, so anything typed was discarded in silence — and
+  brand IS editable later in the edit modal, which made the loss harder to notice.
+  `createWithVariants` has accepted all three since it was written.
+- **The prices were pre-filled with 1050 and 2250**, as literal markup, and were not cleared
+  between products. A hurried save booked a real shoe at 2,250. Both start empty, and the preview
+  draws a dash rather than quoting revenue off a price nobody typed.
+- **A blank selling price saved as 0** (`Number(...) || 0`) while the edit modal refused the same
+  blank. One rule now, and it is the refusing one.
+
+Two traps found while walking it: a **one-colour product showed the whole colour apparatus** — two
+name boxes, a photo, a twelve-square palette — for a thing `DB.shownColour()` returns null for and
+nothing ever draws. `cf-solo` on `#cfRoot` hides the heading, the chip, the names and the palette
+and leaves the size grid; adding a second colour removes the class and everything comes back with
+what was typed still in it. And a **single unnamed colour was refused by the SERVER**
+(`colour_name_required`) pointing at a box the form had called optional — `ColourForm.payload()`
+saves it as **"Standard / أساسي"**, which is what migration 058 gave every pre-colour product and
+what the server's own fallback uses.
+
+Also: **the label button is the primary one** (the boxes cannot be scanned unlabelled, and the
+plain Save is a subset of it — it says "Save without labels"); the **duplicate guard's polarity**
+was inverted, its eye-catching primary being the one that abandoned the save, under a caption
+("Add stock to this one") for something it does not do; the success toast said "View all" and
+opened the one product just made. The next product keeps the category, the brand and the country
+and clears the rest. Three refusals that were hard-coded bilingual strings now have keys.
+
+**"Visible" meant two opposite things on one screen.** The Products column and the edit checkbox
+write `on_web`; the drawer printed `hidden` — the ARCHIVE flag — under the same word, so an
+archived product read "On website: No" and a withdrawn one read "Yes". Two rows now
+(`pr_on_web`, `pr_selling`), each naming its own question.
+
+The **edit modal** leads with name, category and the two prices — changing a price is much the
+commonest reason it is opened and it stood eighth of nine — with the rest behind a fold that moves
+**one attribute and never re-renders**, because the dialog is full of typed-but-unsaved values.
+
+### Money is six tabs, and a parcel has one next step
+
+- **Nine tabs became six and a "Records" fold.** The six are jobs (where the money is · close the
+  day · expenses · suppliers · salaries · this month); the three inside are records — the cash
+  book is the audit trail, the debt book is read when a customer walks in, and the shift is the
+  older way of proving the drawer that the day close replaced. The fold **opens itself when the
+  tab inside it is showing**, so a deep link still lands with its own tab lit, and `S.more` lets
+  it shut again. Two of the nine read as the same job ("Close the shift", "Close the day").
+- **"Where the money is" carries the four jobs as buttons** — add an expense, pay a supplier, pay
+  wages, close the day — each gated exactly as its own tab is. The expense opens its dialog on the
+  way (`Money.addExpense()`), because there is nothing to read on that tab first.
+- **A board row could carry nine buttons.** A parcel is always at one point on one road, so the
+  row draws **one lime button for its next step** (waiting → Assign → Send out → Delivered) and a
+  **"…"** for everything else. **Failed above all**: it is not a step forward and it was the same
+  size and colour as Delivered, where a tired hand reaches. A parcel that already has a carrier
+  gets "Send out" as its next step and "change the carrier" in the menu.
+- The menu is **markup already in the row, shown by a class** — the board repaints on every live
+  push and a popover built on click would be rebuilt out from under an open one. It closes on an
+  outside press, bound once at the document **in the capture phase** so it runs before the
+  delegated dispatcher. `.dlb-menu` sits at z 30: the topbar owns 20 and the phone tab bar 340.
+
+### Things that will bite you
+
+- **`.btn` is a flex row, so every child is a flex item.** A caption built as
+  `'Print ' + '<bdi>12</bdi>' + ' labels'` comes out with the flex gap either side of the number.
+  Wrap a composed caption in ONE `<span>`.
+- **A fold or a direction remembered per machine makes a test depend on the last run.** The
+  harness shares one Chrome profile, so `og.wh.moveway`, `og.wh.addmore` and friends have to be
+  cleared at the top of a suite or it asserts what the previous run chose.
+- **`cdp.click` scrolls `block:'nearest'`**, which on a phone can leave a target under the fixed
+  tab bar, and the tap then reaches the bar. Nothing is permanently unreachable — the view's 86px
+  bottom padding clears the 58px bar at the end of the content, and every action is reachable once
+  centred, both measured — but centre a target before tapping it, the way a person scrolls until
+  they can see the thing. This is app-wide and older than night shift 02.
+- **`/api/catalogue` answers a partner 403 by design** (`js/shop.js` asks softly). With a shared
+  browser profile a partner session from an earlier suite is still live for the moment before
+  `login()` signs out, so that 403 appears in the console log of an unrelated suite. It is not
+  evidence of anything.
+- **The duplicate guard fires on test data.** `DB.similarProducts` folds at 0.5, so two products
+  called "NS02 Check 123456" and "NS02 Check 654321" match and the save stops at the guard — which
+  is the guard working, and worth handling in a suite rather than working around.
+
 ## Known open work
 
 - The supplier and payroll editors exist now (the Money screen, 055), and adding a colour or a size to an
   existing product has its dialog (night shift 01). Still no screen for cancelling a purchase order
   (`Shop.cancelPO`), kept on purpose, unwired, so the gap stays visible.
+- **Left by night shift 02, in its own words.** The `variants.shelf` column is printed by the
+  product drawer, the count sheet and the scan sheet and is written only at insert — the real
+  assignment is `stock.shelf_id`, which never touches it, so live it is blank and the column
+  lies. Archiving a product still exists only inside the bulk bar, beside Delete, with no
+  confirmation and no button of its own. The shipping price list ships EMPTY, so on a fresh shop
+  every order stalls on "Say what the shipping is" until somebody presses Free or types a number —
+  a data problem with a one-time fix, not a screen problem. Raising a purchase order is one click
+  longer than it was, because "Worth reordering" moved under the warehouse's More fold: receiving,
+  moving, finding and counting happen many times a day and buying does not, but say if that is
+  wrong. And **marking a parcel failed is one click longer on purpose** — it sat the same size and
+  colour as Delivered, and it is now behind the row's "…".
 - **Server routes with no button.** A sale can be voided only by a hand-sent
   `POST /api/sales/:id/void`; the staff-account routes (`POST /api/users`, `/api/users/:id/reset`,
   `/api/users/:id/active`) have no Settings control. The permissions `refund` and `partner.read` gate
@@ -2942,11 +3133,18 @@ refetches only it for a scope chip. **`DB.monthlySales`, `DB.salesByType`, `DB.p
   `null`). `repTab()` bounces a bookmarked or revoked tab back to Sales rather than onto a blank
   card.
 - **Money is a pair and is drawn as a pair**, everywhere except the chart, which can only plot one
-  series and so plots the base currency.
+  series and so plots the base currency — and says so underneath in words (`rp_chart_base`), since
+  a reader who does not know that reads a short month.
 - **`repChartData(tab)` is the ONE description of the chart**, read by both the markup that decides
   whether to put a canvas on the page and the hook that draws into it. They used to be separate and
   disagreed: the Inventory canvas appeared whenever any type had PIECES, while the donut was fed
   CAPITAL — so a shop with no cost prices got a legend, an empty ring and nothing else.
+  **Since night shift 02 there is one chart, not six**: `repHasChart()` answers true only for the
+  Sales tab and only when `repChartRoles()` is (owner or developer), so the other five tabs draw
+  their range as a line of words (`.rp-when`) and no card. `repChartData` still describes all six
+  — nothing was deleted from it — and `repBar()` prints its share as a percentage rather than
+  drawing a bar, keeping its column, header and width because five tables call it and the phone
+  card layout is addressed by column position.
 - **The range is said out loud, and it is the range that was asked for.** The old card head printed
   a hardcoded "179 days ago — today" over six calendar months of table, a present-tense inventory
   total and a payroll with no dates in it at all. Stock, payroll and suppliers say `rp_as_of`
@@ -3575,17 +3773,21 @@ letterboxed, the atlas filled, both end faces read back as pixels, the low tier,
 
 ## The warehouse: moving stock, and the log of it
 
-### The tabs, in the order the room works
+### The four jobs (was: the tabs, in the order the room works)
 
-Left to right: **Stock movements, Stock by place, Worth reordering (the purchase orders, under the
-name of the question the tab answers), Add product, Stock count, Asked for and not in stock** — set
-by the shop, and `OG.wh.tab` lands on `moves` so the leftmost tab is the one that opens; an account
-without `stock.move` falls to the first tab it does have (the fallback in `viewWarehouse`). The
-Shelf map button left the header (the map has its own nav entry), and **nothing on Stock by place
-carries stock to the floor any more** — the per-row Transfer button and the Move column on the
-"bring these out" card are gone, because that is the scan panel's job now; the card stays as the
-list of what to go and fetch. The five-movement card inside Add product is gone too: movements have
-a tab.
+**Night shift 02 replaced the tab bar with four verbs** — see that section. The screen opens on
+**Goods arrived · Move stock · Where is it? · Count**, with Add product beside them and the
+movement log, the purchase orders and the wants list under a **More** fold; `OG.wh.tab` lands on
+`arrived`, and an account without `stock.move` falls back to the first job it does have (the
+fallback in `viewWarehouse`, which now rewrites `OG.wh.tab` rather than only a local). **The tab
+ids did not change** — `moves`, `stock`, `po`, `add`, `count`, `wants` are all still there and
+still dispatch to the same panels, so every deep link and dashboard shortcut lands where it did.
+
+What was true before and is still true: the Shelf map button left the header (the map has its own
+nav entry), and **nothing on "Where is it?" carries stock to the floor** — the per-row Transfer
+button and the Move column on the "bring these out" card are gone, because that is the scan
+panel's job; the card stays as the list of what to go and fetch. The five-movement card inside Add
+product is gone too: movements have a panel of their own.
 
 ### Export hands back the tab you are on
 
