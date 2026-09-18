@@ -407,6 +407,9 @@ var Staff = (function () {
   return {
     card: card,
     jobLine: jobLine,
-    reset: function () { S.people = null; S.roles = null; S.menu = null; S.shown = null; }
+    reset: function () { S.people = null; S.roles = null; S.menu = null; S.shown = null; },
+    /* FIX 05 — the card's "…" menu, for the one route-change cleanup. */
+    menuOpen: function () { return S.menu !== null && S.menu !== undefined; },
+    closeMenu: closeMenus
   };
 })();

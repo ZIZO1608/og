@@ -14,7 +14,7 @@
    refresh does it), or browsers that already have the app will keep serving
    the old cached copy — cache-first with ignoreSearch, so no query string
    gets past it. */
-var CACHE = 'og-system-v273';
+var CACHE = 'og-system-v274';
 
 var SHELL = [
   './',
@@ -49,6 +49,7 @@ var SHELL = [
   'js/vendor/chart.umd.min.js',
   'js/vendor/three.min.js',
   'js/update.js',
+  'js/layers.js',
   'js/api.js',
   'js/auth.js',
   'js/codes.js',

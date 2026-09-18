@@ -721,6 +721,12 @@ var Safeers = (function () {
     /* For the suite: repaint the way a load landing does, to prove the
        filter panel and the open menu are module state and not a class. */
     repaintForTest: repaint,
+    /* FIX 05 — the card menu, for the one route-change cleanup. It is module
+       state on purpose (the page repaints on every live push), which is
+       exactly why leaving the screen has to clear it: come back, and the
+       menu is open again over a card nobody pressed. */
+    menuOpen: function () { return S.menu !== null && S.menu !== undefined; },
+    closeMenu: function () { if (S.menu != null) { S.menu = null; if (OG.view === 'safeers') repaint(); } },
     live: function () {
       if (OG.view === 'safeers') load();
       if (OG.view === 'dashboard' && roleOf() === 'delivery') { S.mine = null; loadMine(); }

@@ -98,5 +98,10 @@ var ColourPick = (function () {
     close();
   }, true);
 
-  return { choose: choose, isOpen: function () { return !!pending; } };
+  /* Shut without answering — what Escape already did, given a name so the
+     one route-change cleanup (js/layers.js) can do it too. The callback is
+     deliberately NOT called: nothing was chosen. */
+  function cancel() { pending = null; close(); }
+
+  return { choose: choose, cancel: cancel, isOpen: function () { return !!pending; } };
 })();

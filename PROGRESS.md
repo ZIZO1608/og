@@ -87,3 +87,33 @@ second suite signing in kills the first one’s session.)
 
 **Every phase is done and committed. Nothing pushed, nothing merged.** The two things for the
 shop laptop, the nine questions and the whole story are in `night_shift_03_log.md`.
+
+---
+
+## Fix 05 — the run-through
+
+| Time | Part | Commit | Checks | Notes |
+|---|---|---|---|---|
+| — | 0 — why the buttons did nothing; one build per page | 334152c | 11 (sw-update) + 6 (p0-namespaces) | the tiles carried `data-hm`, which nothing dispatches on |
+| — | 1 — the job tiles pressed, the grid, "Staff" | efba6ac | 173 (p1-tiles) + 63 (ns03/p1-home, repaired) | ns03/p1-home measured the tiles and never pressed one |
+| — | 2 — one cleanup for everything that floats | — | 48 (p2-layers) | the shelf card is on <body>, and render() only rewrites #view |
+
+```bash
+node _nightshift/fix05/p0-namespaces.mjs   # no button wired to a dead namespace (no browser)
+node _nightshift/fix05/sw-update.mjs       # needs the SECOND Chrome on 9225
+node _nightshift/fix05/p1-tiles.mjs        # every tile, every role, click AND tap, EN/AR, 1100/390
+node _nightshift/fix05/p2-layers.mjs       # every floating layer, route change, Esc, outside, Back
+```
+
+**Starting the two Chromes on Windows: QUOTE THE PROFILE PATH.** The repo lives under
+`D:\DESKTOP\OG System Demo`, and an unquoted `--user-data-dir=...OG System Demo\_nightshift\chrome`
+reaches Chrome as three arguments — it reads the last two as URLs and exits with
+`Multiple targets are not supported in headless mode`, which names nothing that is true.
+
+```powershell
+Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList `
+  '--remote-debugging-port=9224','"--user-data-dir=D:\DESKTOP\OG System Demo\_nightshift\chrome"',`
+  '--headless=new','--no-first-run',`
+  '--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2'
+# and the same on 9225 with _nightshift\chrome-fresh, for fix05/sw-update only
+```

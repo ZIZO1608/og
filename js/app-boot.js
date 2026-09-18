@@ -333,6 +333,10 @@ function boot() {
   renderSidebar();
   render();
   bindGlobal();
+  /* FIX 05 — the one cleanup for everything that floats outside #view.
+     After bindGlobal, so its Escape runs after app-boot's (the modal and
+     the drawer are answered there first, and Layers takes the rest). */
+  if (typeof Layers !== 'undefined') Layers.start();
   bindWedge();
   /* a scanned QR lands here — route after the shell exists */
   if (raw.indexOf('#open/') === 0) handleDeepLink(raw);

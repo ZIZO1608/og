@@ -2921,6 +2921,14 @@ var Desk = (function () {
     scanned: scanned,
     settingsCards: settingsCards,
 
+    /* FIX 05 — the two drop lists, for the one route-change cleanup. Both
+       are drawn inside the office's own panel, so leaving the screen takes
+       them with it; what does NOT go is `pick.open` / `cpick.open`, which
+       live in module state and would open the list again the moment the
+       office is next drawn. */
+    dropsOpen: function () { return !!(pick.open || cpick.open); },
+    closeDrops: function () { closeDrop(); closeCust(); },
+
     /* The board reads money and opens orders through here rather than
        carrying its own copy of either — one formatter, one order view. */
     moneyText: moneyText,

@@ -610,6 +610,16 @@ function syncOverlay() {
            !!document.getElementById('drawer-root').firstChild;
   if (on) document.body.setAttribute('data-overlay', '1');
   else document.body.removeAttribute('data-overlay');
+
+  /* FIX 05 — the back gesture. A sheet is a place to the person holding the
+     phone, so Back should shut it rather than leave the screen. While one is
+     open a marker entry sits on the history stack (same url, so no route
+     change); closing it any other way takes the marker back off. This rides
+     on syncOverlay for the reason the flag above does — there are four ways
+     out of a modal and a counter that one of them forgets stays wrong for
+     the rest of the session. */
+  if (typeof Layers === 'undefined') return;
+  if (on) Layers.mark(); else Layers.afterClose();
 }
 
 function openDrawer(o) {

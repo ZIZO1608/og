@@ -3654,6 +3654,31 @@ var ShelfMap = (function () {
       if (livePollT) { clearInterval(livePollT); livePollT = null; }
       livePoll();
     },
-    placing: function () { return placing ? { key: placing.key, shape: placing.shape } : null; }
+    placing: function () { return placing ? { key: placing.key, shape: placing.shape } : null; },
+
+    /* FIX 05 — WHAT THIS SCREEN LEAVES BEHIND.
+       The bay card and the drag readout are appended to <body>, because the
+       map repaints under them and a node inside #smRoot would be destroyed
+       mid-press. That is right, and it is also why they survived a move to
+       another screen: `render()` rewrites #view and never touches <body>.
+       One popup about a shelf, floating over the till.
+
+       So the two of them, the pin that remembers which bay was pressed, a
+       rack half-placed in the hand and fullscreen all shut together, and
+       js/layers.js calls this on every route change. The state goes with the
+       node: `peekPin` is module state precisely because a repaint hides the
+       card, and leaving it set brings the card back on the next paint. */
+    layersOpen: function () {
+      return !!(peekPin || peekId ||
+                (peekEl && !peekEl.hidden) || (hudEl && !hudEl.hidden) ||
+                placing || S.fs);
+    },
+    closeLayers: function () {
+      peekPin = null;
+      hidePeek();
+      hideHud();
+      if (placing) { try { stopPlacing(); } catch (e) { placing = null; } }
+      leaveFullscreen();
+    }
   };
 })();

@@ -338,9 +338,24 @@ function go(view, pending, param) {
   OG.view = view;
   applyRouteParam(view, param == null ? null : String(param));
   OG.pending = pending || null;
+
+  /* FIX 05 — EVERYTHING FLOATING SHUTS HERE, BEFORE THE HASH MOVES.
+     `render()` rewrites #view and never touches <body>, and fourteen things
+     in this app float outside #view — the shelf map's bay card above all,
+     which stayed on screen over whatever came next. One cleanup, in the one
+     place a screen changes; js/layers.js holds the list.
+
+     `route()` also says whether the back-gesture marker entry is free: if it
+     is, the new address REPLACES it rather than pushing past it, so leaving
+     a screen with a dialog open does not leave a dead Back press behind. */
+  var reuse = (typeof Layers !== 'undefined') ? Layers.route() : false;
+
   /* location.hash, not history.pushState — pushState throws on file:// origins. */
   var want = hashFor(view, OG.viewParam);
-  if (window.location.hash !== want) window.location.hash = want;
+  if (window.location.hash !== want) {
+    if (reuse) { try { history.replaceState(null, '', want); } catch (e) { window.location.hash = want; } }
+    else window.location.hash = want;
+  }
   closeDrawer();
   renderSidebar();
   render();
