@@ -266,6 +266,69 @@ var Desk = (function () {
     return best;
   }
 
+  /* ======================================================================
+     THE COUNTRY FOLLOWS THE CITY                          (night shift 03)
+     Three orders in the sandbox are Aleppo addresses filed under JO and TR.
+     That is not somebody being careless — it is five separate ways for the
+     pair to disagree, none of them guarded:
+
+       1  changing the city never touched the country;
+       2  the country is part of the DRAFT, which lives in localStorage, so
+          one order to Amman left TR/JO on the next five;
+       3  "use the last address" copied the two with independent fallbacks
+          (`r.dest.country || S.country`), so a destination carrying a city
+          and no country kept the PREVIOUS order's country;
+       4  picking a customer filled the city and never the country;
+       5  a one-country shop drew no control at all, so a draft already
+          carrying TR could never be corrected from that screen.
+
+     Now: a city the price list knows sets its own country, and the country
+     may only be CHOSEN when the parcel is going abroad. Everything else is
+     the shop's own country, stated rather than offered — and a draft that
+     arrives holding another one is put right on the next paint, which is
+     what closes (2) and (5) together.
+
+     NOTHING EXISTING IS EDITED. The three rows already in the sandbox are
+     history and stay as they are; they are listed in the log instead. */
+
+  /* The shop's own country: the first active one in the owner's own list.
+     Derived, never invented — `delivery.countries` is his. */
+  function homeCountry() {
+    var list = ((boot && boot.settings.countries) || []).filter(function (c) { return c && c.active !== false; });
+    return (list[0] || {}).id || 'SY';
+  }
+
+  /* Which country this city belongs to, per the shipping price list. Null
+     when the list has never heard of it — a city nobody has priced says
+     nothing about where it is, and guessing would be inventing a fact. */
+  function countryForCity(city) {
+    var rows = (boot && boot.settings.prices) || [];
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (!r || r.active === false) continue;
+      if (!(r.city_en || r.city_ar)) continue;
+      if (sameCity(r, city)) return r.country || null;
+    }
+    return null;
+  }
+
+  /* Abroad is the one method where the country is a question. */
+  function abroad() { return S.method === 'abroad'; }
+
+  /* Called wherever the city, the method or the customer moves. Returns true
+     when it changed something, so the caller can repaint. */
+  function syncCountry() {
+    var was = S.country;
+    if (!abroad()) {
+      S.country = homeCountry();
+    } else {
+      var byCity = countryForCity(S.city);
+      if (byCity) S.country = byCity;
+      else if (!countryRow(S.country)) S.country = homeCountry();
+    }
+    return S.country !== was;
+  }
+
   function countryRow(id) {
     return ((boot && boot.settings.countries) || []).filter(function (c) { return c && c.id === id; })[0] || null;
   }
@@ -1260,11 +1323,19 @@ var Desk = (function () {
         t('dk_last_address') + '</button></div>';
     }
 
+    /* The country is put right before it is drawn, so a draft that arrives
+       holding another one is corrected rather than shown. */
+    syncCountry();
     var countries = (boot.settings.countries || []).filter(function (c) { return c && c.active !== false; });
-    if (countries.length > 1) {
+    if (abroad() && countries.length > 1) {
       h += '<div class="dk-row"><span class="lbl">' + t('dk_country') + '</span><div class="seg-row">';
       countries.forEach(function (c) { h += segBtn('dk-country', c.id, S.country === c.id, label(c)); });
       h += '</div></div>';
+    } else {
+      /* Said, not offered. A parcel our own driver carries does not go to
+         Turkey, and a control that can put it there is the whole fault. */
+      h += '<div class="dk-row"><span class="lbl">' + t('dk_country') + '</span>' +
+        '<div class="dk-hint">' + esc(label(countryRow(S.country)) || S.country) + '</div></div>';
     }
 
     var country = countryRow(S.country);
@@ -1282,7 +1353,7 @@ var Desk = (function () {
     '</div>' +
     '<label class="field"><span>' + t('dk_address') + '</span>' +
       '<textarea class="inp" rows="2" data-change="dk-field" data-k="address" ' +
-        'placeholder="' + esc(t('dk_address_ph')) + '">' + esc(S.address) + '</textarea></label>' +
+        'placeholder="' + esc(t('dk_addr_ph')) + '">' + esc(S.address) + '</textarea></label>' +
     '<label class="check dk-else"><input type="checkbox" data-change="dk-else"' + (S.someoneElse ? ' checked' : '') + '>' +
       '<span>' + t('dk_someone_else') + '</span></label>';
 
@@ -2241,6 +2312,8 @@ var Desk = (function () {
     if (!S.phone && c.phone) S.phone = c.phone;
     if (!S.city && c.city) S.city = c.city;
     if (!S.address && c.address) S.address = c.address;
+    /* a customer's city used to arrive with the PREVIOUS order's country */
+    syncCountry();
     touch('who', 'sum');
   }
 
@@ -2293,8 +2366,11 @@ var Desk = (function () {
       if (!S.customerId) return;
       API.get('/api/orders/last-destination/' + S.customerId).then(function (r) {
         if (!r.dest) { toast(t('dk_title'), t('dk_no_last'), 'warn'); return; }
-        S.country = r.dest.country || S.country;
+        /* The city leads and the country follows it — copying the two
+           with independent fallbacks is how an Aleppo address kept JO. */
         S.city = r.dest.city || S.city;
+        S.country = r.dest.country || S.country;
+        syncCountry();
         S.address = r.dest.address || S.address;
         S.phone = r.dest.phone || S.phone;
         if (r.dest.recipient) { S.someoneElse = true; S.recipient = r.dest.recipient; }
@@ -2303,13 +2379,20 @@ var Desk = (function () {
     };
 
     ACTIONS['dk-channel'] = function (el) { S.channel = el.getAttribute('data-id'); touch('who'); };
-    ACTIONS['dk-country'] = function (el) { S.country = el.getAttribute('data-id'); touch('who', 'sum'); };
+    /* Only reachable while the parcel is going abroad — see syncCountry. */
+    ACTIONS['dk-country'] = function (el) {
+      if (!abroad()) return;
+      S.country = el.getAttribute('data-id');
+      touch('who', 'sum');
+    };
     ACTIONS['dk-company'] = function (el) {
       var id = el.getAttribute('data-id');
       S.companyId = S.companyId === id ? '' : id;
       touch('who');
     };
     ACTIONS['dk-method'] = function (el) {
+      /* to or from ‘abroad’ changes whether the country is a question */
+      setTimeout(function () { if (syncCountry()) { paint('who'); paintFee(); paint('sum'); } }, 0);
       S.method = el.getAttribute('data-id');
       if (COMPANY.indexOf(S.method) === -1) S.companyId = '';
       /* Nobody has said how it is paid yet: a company is paid before it
@@ -2459,6 +2542,9 @@ var Desk = (function () {
          moves what Save is waiting for — an address typed with Save still
          greyed out reads as a screen that has stopped working. Both repaint
          around the box being typed into, never through it. */
+      /* THE CITY DECIDES THE COUNTRY. A city the price list knows carries
+         its own country, and until ns03 nothing connected the two at all. */
+      if (k === 'city' && syncCountry()) { paint('who'); paintFee(); paint('sum'); return; }
       if (k === 'city') paintFee();
       paint('sum');
     };
@@ -2859,6 +2945,21 @@ var Desk = (function () {
     /* Whether the list above is the office's real one — it is the copy a
        Settings save updates, so the board and the handover picker prefer it
        over the one they fetched earlier. */
-    companiesLoaded: function () { return !!boot; }
+    companiesLoaded: function () { return !!boot; },
+    /* The owner's own country list, and the first live one — the board asks
+       so it can say the country ONLY when the parcel is leaving it, rather
+       than assuming SY. */
+    countries: function () { return (boot && boot.settings && boot.settings.countries) || []; },
+    homeCountry: homeCountry,
+    /* The one rule for “which country is this parcel going to”, as a pure
+       function of the three things it depends on — so a check can ask it the
+       same question the screen asks, rather than a copy of it. */
+    countryFor: function (o) {
+      o = o || {};
+      if (o.method !== 'abroad') return homeCountry();
+      var byCity = countryForCity(o.city);
+      if (byCity) return byCity;
+      return countryRow(o.country) ? o.country : homeCountry();
+    }
   };
 })();

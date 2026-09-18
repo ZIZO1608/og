@@ -231,7 +231,13 @@ var Deliveries = (function () {
       '<div class="rc-who"><b>' + nm(d.customerName || t('walk_in')) + '</b>' +
         '<small><bdi dir="ltr">' + esc(d.saleId) + '</bdi></small></div>' + statusBadge(d) + '</div>';
 
-    h += '<div class="rc-addr">' + esc(d.address || (d.method === 'pickup' ? t('dk_m_pickup') : '—')) + '</div>';
+    /* WHERE, SAID ONCE (ns03): the area as its own line, and the address
+       under it with the city taken off the front — people type "Aleppo,
+       Seryan, near the bakery" and the area line already says Aleppo. */
+    var area = d.city ? nm(d.city) : '';
+    var rest = withoutCity(d.address, d.city) || (d.method === 'pickup' ? t('dk_m_pickup') : '');
+    h += '<div class="rc-where">' + (area ? '<b>' + area + '</b>' : '') +
+      (rest ? '<span class="rc-addr">' + rest + '</span>' : (area ? '' : '<span class="rc-addr">—</span>')) + '</div>';
 
     if (d.items && d.items.length) {
       h += '<div class="rc-items">';
@@ -250,8 +256,17 @@ var Deliveries = (function () {
     if (d.status === 'waiting') {
       h += '<button class="btn btn-sm btn-primary" data-act="dl-go" data-id="' + d.id + '">' + t('dl_take') + '</button>';
     } else if (d.status === 'out') {
+      /* Delivered is the lime one and it is the only one that size. "Couldn't
+         deliver" is not a step forward and must not be where a tired thumb
+         lands — the same call the board made for the same button. */
       h += '<button class="btn btn-sm btn-primary" data-act="dl-done" data-id="' + d.id + '">' + t('dl_done') + '</button>' +
-           '<button class="btn btn-sm" data-act="dl-fail" data-id="' + d.id + '">' + t('dl_fail') + '</button>';
+           '<span class="dlb-more">' +
+             '<button class="btn btn-sm btn-ghost dlb-dots" data-act="dl-menu" ' +
+               'aria-label="' + esc(t('cb_more')) + '">···</button>' +
+             '<span class="dlb-menu">' +
+               '<button class="dlb-mitem" data-act="dl-fail" data-id="' + d.id + '">' + t('dl_fail') + '</button>' +
+             '</span>' +
+           '</span>';
     } else if (d.status === 'failed' && d.failReason) {
       h += '<span class="rc-reason">' + esc(d.failReason) + '</span>';
     }
@@ -294,6 +309,23 @@ var Deliveries = (function () {
         '<div class="rc-hero-money"><span class="eyebrow">' + t('dl_to_collect') + '</span>' +
           moneyStack(oweList, t('dl_nothing_owed')) + '</div>' +
       '</div>';
+
+      /* CASH ON ME, first and on its own (ns03). The figure above is what he
+         is GOING to collect; this is what is already in his pocket and has
+         not reached the shop — the same rows Orders.driverCash counts, which
+         is why the shop's own “Cash with drivers” tile agrees with it.
+         Lira and dollars are a pair and are never added. */
+      var got = {}, gotOrder = [];
+      rows.forEach(function (d) {
+        if (!(d.pending > 0)) return;
+        var c = d.currency || 'SYP';
+        if (!(c in got)) { got[c] = 0; gotOrder.push(c); }
+        got[c] += d.pending;
+      });
+      h += '<div class="rc-onme"><span class="eyebrow">' + t('dl_cash_on_me') + '</span>' +
+        moneyStack(gotOrder.map(function (c) { return { currency: c, amount: got[c] }; }),
+                   fmtText(0, (rows[0] && rows[0].currency) || 'SYP')) +
+        '<small>' + t('dl_cash_on_me_sub') + '</small></div>';
     }
 
     /* THE SHEET HE SIGNED FOR, AS A CHECKLIST. The office builds the handover
@@ -448,12 +480,39 @@ var Deliveries = (function () {
     document.querySelectorAll('.dlb-menu.on').forEach(function (m) { m.classList.remove('on'); });
   }
 
+  /* A PARCEL WITH NOBODY BEHIND IT (ns03). Switching an account off
+     re-points its WAITING parcels to the hidden “Former staff” record, and
+     one that was already OUT keeps that id for ever — so the board drew a
+     parcel on the road with a carrier who cannot be called and said nothing.
+     Nothing is changed automatically: the row is marked, and the lime button
+     becomes Reassign, which is the same Assign dialog. */
+  function orphan(d) {
+    return !d.voided && d.status !== 'delivered' && !!d.driverId && d.driverActive === false;
+  }
+
   function rowActions(d) {
     if (d.voided) return '<span class="muted">—</span>';
 
     var next = '', rest = '';
 
-    if (allow('delivery.write')) {
+    if (orphan(d) && allow('delivery.write')) {
+      /* A PARCEL THAT HAS ALREADY LEFT CANNOT BE GIVEN TO SOMEBODY ELSE, and
+         that is the SERVER's rule, not a screen's: Deliveries.update refuses
+         a carrier change on anything past ‘waiting’ with bad_status, because
+         a parcel in one person's hands being handed to a second is exactly
+         what the handover sheet exists to prevent. So Reassign is offered
+         while it is still on the counter, and a parcel already on the road
+         is closed instead — somebody is physically holding it. Drawing
+         Reassign there would be a button that always fails. */
+      if (d.status === 'waiting') {
+        next = '<button class="btn btn-sm btn-primary" data-act="dl-assign" data-id="' + d.id + '">' +
+               t('dl_reassign') + '</button>';
+      } else {
+        next = '<button class="btn btn-sm btn-primary" data-act="dl-done" data-id="' + d.id + '">' +
+               t('dl_done') + '</button>';
+        rest += '<button class="dlb-mitem" data-act="dl-fail" data-id="' + d.id + '">' + t('dl_fail') + '</button>';
+      }
+    } else if (allow('delivery.write')) {
       if (d.status === 'waiting') {
         /* Assigned already? Then the next step is sending it, not choosing a
            carrier again — that moves under the dots as "change the carrier". */
@@ -546,7 +605,8 @@ var Deliveries = (function () {
         '<span>' + esc(d.companyName) + '</span></span>';
     }
     if (d.driverName) {
-      return '<span class="dlb-c-via">' + face(d.driverId, d.driverName) + '<span>' + nm(d.driverName) + '</span></span>';
+      return '<span class="dlb-c-via' + (orphan(d) ? ' is-orphan' : '') + '">' +
+        face(d.driverId, d.driverName) + '<span>' + nm(d.driverName) + '</span></span>';
     }
     if (d.method === 'pickup') {
       return '<span class="dlb-c-via">' + '<span class="dlb-c-ico">' + methodIcon('pickup') + '</span>' +
@@ -556,12 +616,45 @@ var Deliveries = (function () {
       '<span>' + t('dl_unassigned') + '</span></span>';
   }
 
+  /* The country only when the parcel is leaving the country — the shop's own
+     is the answer to a question nobody asked. Read from the owner's list
+     rather than assumed to be SY. */
+  function homeCountry() {
+    var list = (typeof Desk !== 'undefined' && Desk.countries && Desk.countries()) || [];
+    var live = list.filter(function (c) { return c && c.active !== false; });
+    return (live[0] || {}).id || 'SY';
+  }
+  function abroadCountry(d) {
+    return d.country && d.country !== homeCountry() ? esc(d.country) : '';
+  }
+
+  /* The typed address with the city taken off the front or the back of it.
+     People write "Aleppo, Seryan, near the bakery" in the address box, and
+     the card already has the city as its heading. Only a whole word at
+     either end is removed — never from the middle, where it may be part of
+     a street name. */
+  function withoutCity(address, city) {
+    var a = String(address || '').trim();
+    var c = String(city || '').trim();
+    if (!a || !c) return a ? nm(a) : '';
+    /* the whole address IS the city — the heading already says it */
+    if (a.toLowerCase() === c.toLowerCase()) return '';
+    var esq = c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var SEP = '[\\u060C,\\u00B7\\-\\u2013]';
+    a = a.replace(new RegExp('^\\s*' + esq + '\\s*' + SEP + '\\s*', 'i'), '');
+    a = a.replace(new RegExp('\\s*' + SEP + '\\s*' + esq + '\\s*$', 'i'), '');
+    return a.trim() ? nm(a.trim()) : '';
+  }
+
   function laneCard(d) {
     var closed = isClosed(d);
     var when = ago(closed ? d.closedAt : d.status === 'out' ? (d.outAt || d.assignedAt) : (d.assignedAt || d.saleAt));
-    var place = [d.city ? nm(d.city) : '', d.country && d.country !== 'SY' ? esc(d.country) : '']
-      .filter(Boolean).join(' · ');
-    var addr = d.address ? nm(d.address) : '';
+    /* THE DESTINATION IS SAID ONCE (ns03). The city was printed as the
+       heading AND left inside the typed address underneath it, so every
+       card read "Aleppo · Aleppo, Seryan, near the bakery". The country is
+       only worth saying when the parcel is leaving the country. */
+    var place = [d.city ? nm(d.city) : '', abroadCountry(d)].filter(Boolean).join(' · ');
+    var addr = withoutCity(d.address, d.city);
 
     /* The whole card opens the order, when there is one — the buttons and the
        customer's name inside it carry their own data-act, and the delegation
@@ -579,7 +672,15 @@ var Deliveries = (function () {
       (place || addr
         ? '<div class="dlb-c-where">' + (place ? '<b>' + place + '</b>' : '') + (place && addr ? ' · ' : '') +
           (addr ? '<span>' + addr + '</span>' : '') + '</div>' : '') +
-      '<div class="dlb-c-mid">' + carrierChip(d) + rail(d, false) + '</div>' +
+      /* NO RAIL ON A LANE CARD (ns03). Four dots with no words: three of
+         them repeat the lane the card is sitting in, and the fourth — "some
+         money has arrived" — could contradict the green Paid pill two
+         inches above it. The money is said by cardMoney, which is the one
+         that knows. The rail stays on the table row, where there is no lane,
+         and in the order dialog, where it has its words. */
+      '<div class="dlb-c-mid">' + carrierChip(d) + '</div>' +
+      (orphan(d) ? '<div class="dlb-c-orphan">' + svg(ICON.flag) +
+        t(d.status === 'waiting' ? 'dl_driver_off' : 'dl_driver_off_out') + '</div>' : '') +
       (d.pending > 0 ? '<div class="dlb-c-pend">' + svg(ICON.cash) + pendingLine(d) + '</div>' : '') +
       (d.status === 'failed' && d.failReason ? '<div class="dlb-c-why">' + svg(ICON.flag) + esc(d.failReason) + '</div>' : '') +
       '<div class="dlb-c-acts">' + rowActions(d) + '</div>' +

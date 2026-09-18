@@ -3567,11 +3567,17 @@ var NS03_EN = {
   sf_updated_now: 'Updated just now',
   sf_add_one: '+ Add a safeer',
   sf_set_rate: 'Set the pay rate',
+  sf_give_parcel_sub: 'A parcel that is already on the board, handed to a safeer.',
+  sf_give_errand_sub: 'A stock run, a supplier pickup, a trip to the bank.',
+  sf_cash_hidden: 'This account cannot be told about money.',
   sf_filter: 'Filter',
 
   /* -- the board -- */
   dl_driver_off: 'Driver switched off — give it to someone else',
   dl_reassign: 'Reassign',
+  dl_driver_off_out: 'Driver switched off — it already left, so close it when you know what happened',
+  dl_cash_on_me: 'Cash on me',
+  dl_cash_on_me_sub: 'Collected, and not handed in at the shop yet.',
 
   /* -- the order desk -- */
   dk_addr_ph: 'Street, building, landmark',
@@ -3717,10 +3723,16 @@ var NS03_AR = {
   sf_updated_now: 'انحدّث هلق',
   sf_add_one: '+ ضيف سفير',
   sf_set_rate: 'حدّد الأجر',
+  sf_give_parcel_sub: 'طرد موجود عاللوحة، بتعطيه لسفير.',
+  sf_give_errand_sub: 'جيبة بضاعة، استلام من مورّد، مشوار عالبنك.',
+  sf_cash_hidden: 'هالحساب ما بينقاللو عن المصاري.',
   sf_filter: 'فلترة',
 
   dl_driver_off: 'السفير مطفي — عطيه لحدا تاني',
   dl_reassign: 'عطيه لحدا تاني',
+  dl_driver_off_out: 'السفير مطفي — والطرد طلع، فسكّرو لما تعرف شو صار فيه',
+  dl_cash_on_me: 'المصاري يللي معي',
+  dl_cash_on_me_sub: 'قبضتها ولسا ما سلّمتها عالمحل.',
 
   dk_addr_ph: 'الشارع، البناية، علامة مميزة',
   dk_no_prices: 'لسا ما في أسعار شحن — حدّدها مرة وحدة',

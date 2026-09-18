@@ -22,6 +22,7 @@ var Safeers = (function () {
   var S = {
     team: null, areas: [], rate: null, errands: [], parcels: [],
     filter: { safeer: '', status: 'open', date: '' },
+    filtersOpen: false, at: 0,
     loading: false, error: null, shown: null, menu: null,
     mine: null, mineError: null, mineLoading: false
   };
@@ -59,6 +60,7 @@ var Safeers = (function () {
     ]).then(function (r) {
       S.loading = false;
       S.error = null;
+      S.at = Date.now();   /* what “Updated 1 min ago” reads, instead of a Refresh button */
       S.team = r[0].people;
       S.rate = r[0].rate === undefined ? undefined : r[0].rate;
       S.areas = r[0].areas || [];
@@ -71,6 +73,22 @@ var Safeers = (function () {
       S.error = err;
       if (S.again) { S.again = false; load(); return; }
       repaint();
+    });
+  }
+
+  /* THE REFRESH BUTTON IS GONE (ns03). It reloads after every action, on
+     every live push, and when the window comes back — which is what somebody
+     pressing Refresh was asking for. Never while a dialog is open: that is
+     somebody in the middle of something. */
+  var focusBound = false;
+  function bindFocus() {
+    if (focusBound) return;
+    focusBound = true;
+    window.addEventListener('focus', function () {
+      if (OG.view !== 'safeers') return;
+      if (document.querySelector('#modal-root .modal')) return;
+      if (S.at && Date.now() - S.at < 20000) return;   /* just looked */
+      load();
     });
   }
 
@@ -91,12 +109,18 @@ var Safeers = (function () {
     return '<span class="badge ' + cls + '">' + t('sf_st_' + st) + '</span>';
   }
 
+  /* ONE LIME BUTTON, AND A SHEET WITH TWO CHOICES        (night shift 03)
+     The header carried two buttons that are the same idea — "Give a parcel"
+     and "New errand" — plus a Refresh nobody should ever have to press.
+     Now: "Give a task", which asks which kind. The page reloads after every
+     action, on every live push and when the window comes back, and says how
+     long ago that was. */
   function view() {
+    bindFocus();
     var h = '<div class="page-head"><div><h1>' + t('nav_safeers') + '</h1><div class="sub">' + t('sf_sub') + '</div></div>' +
       '<div class="head-actions">' +
-        '<button class="btn btn-ghost btn-sm" data-sf="reload">' + t('sf_reload') + '</button>' +
-        (allow('safeer.write') ? '<button class="btn" data-sf="assign-parcel">' + t('sf_assign_parcel') + '</button>' +
-                                 '<button class="btn btn-primary" data-sf="new-errand">' + t('sf_new_errand') + '</button>' : '') +
+        '<span class="muted small" id="sfWhen">' + updatedLine() + '</span>' +
+        (allow('safeer.write') ? '<button class="btn btn-primary" data-sf="give">' + t('sf_give_task') + '</button>' : '') +
       '</div></div>';
 
     if (S.error) {
@@ -110,76 +134,39 @@ var Safeers = (function () {
     var money = S.rate !== undefined;
     h += '<div class="sf-team">';
     if (!S.team.length) h += '<div class="card"><div class="cart-empty"><b>' + t('sf_no_team') + '</b>' + t('sf_no_team_sub') + '</div></div>';
-    S.team.forEach(function (p) {
-      h += '<div class="card sf-person' + (p.active ? '' : ' is-off') + (S.menu === p.id ? ' is-menu' : '') + '">' +
-        '<div class="sf-p-head">' +
-          (typeof Desk !== 'undefined' && Desk.face ? Desk.face(p.id, p.name) : '') +
-          '<div class="sf-p-who"><b>' + esc(p.name) + '</b>' +
-            '<small>' + (p.phone ? '<bdi dir="ltr">' + esc(p.phone) + '</bdi> · ' : '') + '<bdi dir="ltr">' + esc(p.username) + '</bdi></small></div>' +
-          '<span class="badge ' + (!p.active ? 'neutral' : p.busy ? 'accent' : 'healthy') + '">' +
-            t(!p.active ? 'sf_off' : p.busy ? 'sf_busy' : 'sf_free') + '</span>' +
-        '</div>' +
-        '<div class="sf-p-stats">' +
-          '<div><span class="eyebrow">' + t('sf_open') + '</span><b>' + nf(p.open) + '</b></div>' +
-          '<div><span class="eyebrow">' + t('sf_done_today') + '</span><b>' + nf(p.done.today) + '</b></div>' +
-          '<div><span class="eyebrow">' + t('sf_done_month') + '</span><b>' + nf(p.done.month) + '</b></div>' +
-        '</div>';
-      if (money) {
-        h += '<div class="sf-p-money">' +
-          '<div><span class="eyebrow">' + t('sf_earned') + '</span>' +
-            (p.earned
-              ? '<b><bdi dir="ltr">' + fmt(p.earned.today, p.earned.currency) + '</bdi></b><small>' + t('sf_week') + ' <bdi dir="ltr">' + fmt(p.earned.week, p.earned.currency) + '</bdi> · ' +
-                t('sf_month') + ' <bdi dir="ltr">' + fmt(p.earned.month, p.earned.currency) + '</bdi></small>'
-              : '<small class="muted">' + t('sf_no_rate') + '</small>') + '</div>' +
-          '<div><span class="eyebrow">' + t('sf_cash_on_him') + '</span>' +
-            (p.cash && p.cash.length
-              ? p.cash.map(function (c) { return '<b><bdi dir="ltr">' + fmt(c.amount, c.currency) + '</bdi></b>'; }).join('')
-              : '<b class="muted">—</b>') + '</div>' +
-        '</div>';
-      }
-      if (allow('safeer.write')) {
-        /* "Their tasks" is what this card is pressed for. The two account
-           actions — a new password, and switching somebody off — are rarer
-           and one of them ends their sessions, so they moved behind a "…"
-           (quick fix). Same shape as the deliveries board's row menu: markup
-           already in the card, shown by a class, closed by an outside press. */
-        var acct = (allow('staff.write') || allow('access.write'))
-          ? '<button class="dlb-mitem" data-sf="password" data-id="' + p.id + '">' + t('ac_new_pw') + '</button>' +
-            '<button class="dlb-mitem" data-sf="active" data-id="' + p.id + '" data-on="' + (p.active ? '0' : '1') + '">' +
-              t(p.active ? 'ac_switch_off' : 'ac_switch_on') + '</button>'
-          : '';
-        h += '<div class="sf-p-act">' +
-          '<button class="btn btn-sm btn-ghost" data-sf="filter-person" data-id="' + p.id + '">' + t('sf_their_tasks') + '</button>' +
-          (acct
-            ? '<span class="dlb-more">' +
-                '<button class="btn btn-sm btn-ghost dlb-dots" data-sf="menu" data-id="' + p.id + '" ' +
-                  'aria-label="' + esc(t('sf_more_actions')) + '" title="' + esc(t('sf_more_actions')) + '">···</button>' +
-                '<span class="dlb-menu' + (S.menu === p.id ? ' on' : '') + '" data-menu="sf' + p.id + '">' + acct + '</span>' +
-              '</span>'
-            : '') +
-        '</div>';
-      }
-      h += '</div>';
-    });
+    S.team.forEach(function (p) { h += personCard(p, money); });
     h += '</div>';
 
     if (S.shown) {
       h += '<div class="ac-once" role="status"><b>' + esc(t('ac_pw_once').replace('{name}', S.shown.name)) + '</b>' +
-        '<div class="ac-once-row"><code dir="ltr">' + esc(S.shown.password) + '</code>' +
+        '<div class="ac-once-row"><code dir="ltr" id="sfOncePw">' + esc(S.shown.password) + '</code>' +
+        '<button class="btn btn-sm" data-sf="copy">' + t('st_copy') + '</button>' +
         '<button class="btn btn-sm btn-ghost" data-sf="hide-once">' + t('ac_done') + '</button></div>' +
-        '<small class="muted">' + t('ac_pw_once_sub') + '</small></div>';
+        '<small class="muted">' + t('st_pw_once') + '</small></div>';
     }
+
+    /* A QUIET BUTTON, NOT AN ALWAYS-OPEN FORM. Three empty boxes and a Save
+       sat between the people and their tasks, on a page nobody opens to hire
+       anybody — adding a safeer happens once. */
     if (allow('safeer.write') && (allow('staff.write') || allow('access.write'))) {
-      h += '<div class="card sf-add"><div class="card-head"><h3>' + t('sf_add') + '</h3></div><div class="card-body sf-add-row">' +
-        '<label class="field"><span>' + t('ac_name') + '</span><input class="inp" id="sfName" maxlength="60"></label>' +
-        '<label class="field"><span>' + t('phone') + '</span><input class="inp" id="sfPhone" dir="ltr" maxlength="30"></label>' +
-        '<label class="field"><span>' + t('ac_username') + '</span><input class="inp" id="sfUser" dir="ltr" maxlength="32" autocomplete="off"></label>' +
-        '<button class="btn btn-primary" data-sf="add">' + t('ac_add_btn') + '</button></div></div>';
+      h += '<button class="btn btn-ghost sf-add-btn" data-sf="add-open">' + t('sf_add_one') + '</button>';
     }
 
     /* ---- the tasks ---- */
-    h += '<div class="card mt"><div class="card-head"><h3>' + t('sf_tasks') + '</h3></div>' +
-      '<div class="card-body sf-filters">' +
+    var rows = tasks();
+    var chips = filterChips();
+    h += '<div class="card mt"><div class="card-head"><h3>' + t('sf_tasks') + '</h3>' +
+      '<div class="card-actions">' +
+        '<button class="btn btn-sm' + (chips.length ? ' on' : '') + '" data-sf="filters">' + t('sf_filter') +
+          (chips.length ? ' <span class="pr-n">' + chips.length + '</span>' : '') + '</button>' +
+      '</div></div>' +
+      '<div class="card-body">';
+
+    /* The panel and the chips both read S.filter — module state, because this
+       screen repaints whenever a load lands or a live event arrives, and a
+       filter kept on the DOM would not survive that (the card menu's
+       lesson, one screen up). */
+    h += '<div class="sf-filters"' + (S.filtersOpen ? '' : ' hidden') + ' id="sfFilters">' +
         '<label class="field"><span>' + t('sf_safeer') + '</span><select class="inp" data-sf-f="safeer"><option value="">' + t('sf_everyone') + '</option>' +
           S.team.map(function (p) { return '<option value="' + p.id + '"' + (String(S.filter.safeer) === String(p.id) ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') +
         '</select></label>' +
@@ -189,24 +176,26 @@ var Safeers = (function () {
           }).join('') + '</select></label>' +
         '<label class="field"><span>' + t('sf_since') + '</span><input class="inp" type="date" data-sf-f="date" value="' + esc(S.filter.date) + '"></label>' +
       '</div>';
-    var rows = tasks();
 
     /* THE LIST OPENS FILTERED, AND NEVER SAID SO (quick fix). `S.filter.status`
        starts at 'open', which is the right default — but it meant somebody
        seeing four rows out of twenty-four read the page as empty or cut off,
-       which is exactly how it was reported. It says which filter is on and
-       offers one press to drop the lot. */
-    var filtered = !!(S.filter.status || S.filter.safeer || S.filter.date);
-    if (filtered) {
-      h += '<div class="sf-filtered muted small">' +
-        t('sf_filtered').replace('{n}', '<bdi dir="ltr">' + nf(rows.length) + '</bdi>') +
-        ' <button class="btn btn-sm btn-ghost" data-sf="filter-clear">' + t('sf_show_all') + '</button>' +
-      '</div>';
+       which is exactly how it was reported. Each filter that is on is now a
+       chip you press to take off, and the count is said beside them. */
+    if (chips.length) {
+      h += '<div class="pr-chips">' + chips.map(function (c) {
+        return '<button class="pr-chip" type="button" data-sf="chip-off" data-f="' + c.f + '">' +
+          esc(c.label) + '<span>✕</span></button>';
+      }).join('') +
+      '<button class="pr-chip pr-chip-all" type="button" data-sf="chip-off" data-f="all">' +
+        t('sf_show_all') + '</button>' +
+      '<span class="muted small sf-filtered">' +
+        t('sf_filtered').replace('{n}', '<bdi dir="ltr">' + nf(rows.length) + '</bdi>') + '</span></div>';
     }
 
     if (!rows.length) {
       h += '<div class="cart-empty"><b>' + t('sf_no_tasks') + '</b>' +
-        (filtered ? t('sf_no_tasks_filtered') : t('sf_no_tasks_sub')) + '</div>';
+        (chips.length ? t('sf_no_tasks_filtered') : t('sf_no_tasks_sub')) + '</div>';
     } else {
       h += '<div class="table-wrap"><table class="tbl sf-tbl"><thead><tr>' +
         '<th>' + t('sf_task') + '</th><th>' + t('sf_area') + '</th><th>' + t('sf_safeer') + '</th>' +
@@ -214,8 +203,89 @@ var Safeers = (function () {
       rows.forEach(function (r) { h += taskRow(r); });
       h += '</tbody></table></div>';
     }
-    h += '</div>';
+    h += '</div></div>';
     return h;
+  }
+
+  /* THREE BIG NUMBERS, AND ONE BUTTON. It carried five figures across two
+     rows and three different kinds of "nothing": the money block was ABSENT
+     without money.read, "earned" was a sentence with no rate in it, and cash
+     was a bare em dash. Now — zero is 0, and — means "this account may not
+     ask", which are different answers. "This month" is in the detail line. */
+  function personCard(p, money) {
+    var acctBits = (allow('staff.write') || allow('access.write'))
+      ? '<button class="dlb-mitem" data-sf="password" data-id="' + p.id + '">' + t('ac_new_pw') + '</button>' +
+        '<button class="dlb-mitem" data-sf="active" data-id="' + p.id + '" data-on="' + (p.active ? '0' : '1') + '">' +
+          t(p.active ? 'ac_switch_off' : 'ac_switch_on') + '</button>'
+      : '';
+
+    var h = '<div class="card sf-person' + (p.active ? '' : ' is-off') + (S.menu === p.id ? ' is-menu' : '') + '">' +
+      '<div class="sf-p-head">' +
+        (typeof Desk !== 'undefined' && Desk.face ? Desk.face(p.id, p.name) : '') +
+        '<div class="sf-p-who"><b>' + esc(p.name) + '</b>' +
+          '<small>' + (p.phone ? '<bdi dir="ltr">' + esc(p.phone) + '</bdi> · ' : '') + '<bdi dir="ltr">' + esc(p.username) + '</bdi></small></div>' +
+        '<span class="badge ' + (!p.active ? 'neutral' : p.busy ? 'accent' : 'healthy') + '">' +
+          t(!p.active ? 'sf_off' : p.busy ? 'sf_busy' : 'sf_free') + '</span>' +
+      '</div>' +
+      '<div class="sf-p-stats">' +
+        '<div><span class="eyebrow">' + t('sf_open') + '</span><b>' + nf(p.open) + '</b></div>' +
+        '<div><span class="eyebrow">' + t('sf_done_today') + '</span><b>' + nf(p.done.today) + '</b></div>' +
+        '<div><span class="eyebrow">' + t('sf_cash_on_him') + '</span>' +
+          (!money
+            /* absent, not zero: this account may not ask about money */
+            ? '<b class="muted" title="' + esc(t('sf_cash_hidden')) + '">—</b>'
+            : (p.cash && p.cash.length
+              ? p.cash.map(function (c) { return '<b><bdi dir="ltr">' + fmt(c.amount, c.currency) + '</bdi></b>'; }).join('')
+              : '<b><bdi dir="ltr">' + fmt(0, (S.rate && S.rate.currency) || 'SYP') + '</bdi></b>')) +
+        '</div>' +
+      '</div>';
+
+    /* The detail line: this month, and what he has earned — with the owner's
+       way to fix a missing rate, rather than the words "Settings → Safeers",
+       which is a path most people cannot open. */
+    var detail = [t('sf_month') + ' ' + nf(p.done.month)];
+    if (money) {
+      detail.push(t('sf_earned') + ' ' + (p.earned
+        ? '<bdi dir="ltr">' + fmt(p.earned.today, p.earned.currency) + '</bdi>'
+        : '—'));
+    }
+    h += '<div class="sf-p-detail muted small">' + detail.join(' · ') +
+      (money && !p.earned && allow('config.write')
+        ? ' · <button class="link" data-sf="set-rate">' + t('sf_set_rate') + '</button>'
+        : '') + '</div>';
+
+    if (allow('safeer.write')) {
+      h += '<div class="sf-p-act">' +
+        '<button class="btn btn-sm" data-sf="filter-person" data-id="' + p.id + '">' + t('sf_their_tasks') + '</button>' +
+        (acctBits
+          ? '<span class="dlb-more">' +
+              '<button class="btn btn-sm btn-ghost dlb-dots" data-sf="menu" data-id="' + p.id + '" ' +
+                'aria-label="' + esc(t('sf_more_actions')) + '" title="' + esc(t('sf_more_actions')) + '">···</button>' +
+              '<span class="dlb-menu' + (S.menu === p.id ? ' on' : '') + '" data-menu="sf' + p.id + '">' + acctBits + '</span>' +
+            '</span>'
+          : '') +
+      '</div>';
+    }
+    return h + '</div>';
+  }
+
+  /* Which filters are ON — not the controls that exist. */
+  function filterChips() {
+    var f = S.filter, out = [];
+    if (f.safeer) {
+      var who = (S.team || []).filter(function (p) { return String(p.id) === String(f.safeer); })[0];
+      out.push({ f: 'safeer', label: who ? who.name : String(f.safeer) });
+    }
+    if (f.status) out.push({ f: 'status', label: t('sf_f_' + f.status) });
+    if (f.date) out.push({ f: 'date', label: t('sf_since') + ' ' + fmtDate(f.date) });
+    return out;
+  }
+
+  /* "Updated 1 min ago" — the answer the Refresh button was standing in for. */
+  function updatedLine() {
+    if (!S.at) return '';
+    var mins = Math.floor((Date.now() - S.at) / 60000);
+    return mins < 1 ? t('sf_updated_now') : t('sf_updated').replace('{n}', nf(mins));
   }
 
   /* Parcels (the board's) and errands, one list.
@@ -446,6 +516,60 @@ var Safeers = (function () {
     var v = function (x) { var el = document.getElementById(x); return el ? el.value.trim() : ''; };
 
     if (a === 'reload') { S.error = null; load(); return; }
+
+    /* ONE LIME BUTTON (ns03). Two head buttons that are the same idea became
+       a sheet with two big choices. */
+    if (a === 'give') {
+      openModal({
+        title: t('sf_give_task'), size: 'narrow', sheet: window.innerWidth < 720,
+        body: '<div class="st-jobs">' +
+          '<button type="button" class="st-job" data-sf="assign-parcel">' +
+            '<b>' + t('sf_give_parcel') + '</b><small>' + t('sf_give_parcel_sub') + '</small></button>' +
+          '<button type="button" class="st-job" data-sf="new-errand">' +
+            '<b>' + t('sf_give_errand') + '</b><small>' + t('sf_give_errand_sub') + '</small></button>' +
+        '</div>'
+      });
+      return;
+    }
+    if (a === 'filters') { S.filtersOpen = !S.filtersOpen; repaint(); return; }
+    /* A chip IS its own undo. */
+    if (a === 'chip-off') {
+      var f = b.getAttribute('data-f');
+      if (f === 'all') { S.filter.safeer = ''; S.filter.status = ''; S.filter.date = ''; }
+      else S.filter[f] = '';
+      load();
+      return;
+    }
+    /* Straight to the pay rate, rather than printing a path most accounts
+       cannot open. */
+    if (a === 'set-rate') {
+      if (typeof setFoldRemember === 'function') setFoldRemember('safeers', true);
+      if (typeof go === 'function') go('settings');
+      var tries = 0;
+      (function find() {
+        var f2 = document.querySelector('[data-fold="safeers"]');
+        if (f2) f2.scrollIntoView({ block: 'start' });
+        if (++tries < 14) setTimeout(find, 140);
+      })();
+      return;
+    }
+    if (a === 'copy') {
+      try { navigator.clipboard.writeText(S.shown ? S.shown.password : '')
+        .then(function () { toast(t('nav_safeers'), t('st_copied'), 'ok', 1500); }); } catch (e) {}
+      return;
+    }
+    if (a === 'add-open') {
+      openModal({
+        title: t('sf_add_one'), size: 'narrow',
+        body: '<label class="field"><span>' + t('ac_name') + '</span><input class="inp" id="sfName" maxlength="60" data-sfc="name"></label>' +
+          '<label class="field mt"><span>' + t('phone') + '</span><input class="inp" id="sfPhone" dir="ltr" maxlength="30"></label>' +
+          '<label class="field mt"><span>' + t('ac_username') + '</span><input class="inp" id="sfUser" dir="ltr" maxlength="32" autocomplete="off" spellcheck="false"></label>' +
+          '<div class="muted small">' + t('st_pw_made') + '</div>',
+        foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+          '<button class="btn btn-primary" data-sf="add">' + t('sf_add_one') + '</button>'
+      });
+      return;
+    }
     if (a === 'mine-reload') { S.mineError = null; S.mine = null; loadMine(); render(); return; }
     if (a === 'new-errand') { newErrand(); return; }
     if (a === 'assign-parcel') { assignParcel(); return; }
@@ -510,6 +634,7 @@ var Safeers = (function () {
       if (!body2.name || !body2.username) { toast(t('sf_add'), t('ac_need_both'), 'warn'); return; }
       send(b, API.post('/api/safeers', body2), t('ac_added').replace('{name}', body2.name), function (r) {
         S.shown = { name: r.user.name, password: r.password };
+        closeModal();
         load();
       });
       return;
@@ -593,6 +718,9 @@ var Safeers = (function () {
     errands: function () { return S.errands; },
     parcels: function () { return S.parcels; },
     settingsCard: settingsCard,
+    /* For the suite: repaint the way a load landing does, to prove the
+       filter panel and the open menu are module state and not a class. */
+    repaintForTest: repaint,
     live: function () {
       if (OG.view === 'safeers') load();
       if (OG.view === 'dashboard' && roleOf() === 'delivery') { S.mine = null; loadMine(); }

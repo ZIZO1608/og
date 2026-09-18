@@ -86,7 +86,7 @@ const PAID = `(CASE WHEN s.payment = 'order' THEN COALESCE(op.paid, 0)
                     ELSE s.total END)`;
 
 const COLS =
-  `SELECT d.*, u.name AS driver_name, s.customer_name, s.customer_id,
+  `SELECT d.*, u.name AS driver_name, u.active AS driver_active, s.customer_name, s.customer_id,
           s.total AS sale_total, s.payment AS sale_payment, s.voided AS sale_voided,
           s.public_token, s.at AS sale_at,
           ${DUE} AS due, ${PAID} AS paid, COALESCE(op.pending, 0) AS pending,
@@ -124,6 +124,13 @@ function shape(r, driver = false) {
     saleId: r.sale_id,
     driverId: r.driver_id,
     driverName: r.driver_name || null,
+    /* WHETHER THAT DRIVER CAN STILL BE GIVEN WORK (ns03). Removing an
+       account re-points its waiting parcels to the hidden “Former staff”
+       record, and one that was already OUT keeps that id for ever — so the
+       board drew a parcel on the road with a carrier who cannot be called,
+       and nothing said so. A read-only column off the join it was already
+       doing; no schema change, and no row is touched. */
+    driverActive: r.driver_id ? r.driver_active === 1 : null,
     status: r.status,
     address: r.address,
     phone: r.phone,

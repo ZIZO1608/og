@@ -158,9 +158,23 @@ export function list({ includeHidden = false } = {}) {
       ORDER BY p.name`
   ).all();
 
+  /* THE SHELF COLUMN ON `variants` LIES, so it is answered from where the
+     stock actually IS (ns03). `variants.shelf` is written once, at insert,
+     and the real assignment is `stock.shelf_id` — which never touches it —
+     so on a live shop the column is blank or stale while the product drawer,
+     the count sheet and the scan sheet all print it as the answer to "where
+     is this size". `shelf_at` is the place it is really on, most held
+     first; the old column is still sent, untouched, so nothing that reads it
+     breaks. No schema change and no row is written. */
   const variants = get().prepare(
     `SELECT v.*, COALESCE(
-              (SELECT SUM(qty) FROM stock s WHERE s.sku = v.sku), 0) AS total
+              (SELECT SUM(qty) FROM stock s WHERE s.sku = v.sku), 0) AS total,
+            (SELECT se.key || '-' || sh.code
+               FROM stock s2
+               JOIN shelves sh ON sh.id = s2.shelf_id
+               JOIN sections se ON se.id = sh.section_id
+              WHERE s2.sku = v.sku AND s2.shelf_id IS NOT NULL AND s2.qty > 0
+              ORDER BY s2.qty DESC LIMIT 1) AS shelf_at
        FROM variants v ORDER BY v.product_id, v.size`
   ).all();
 

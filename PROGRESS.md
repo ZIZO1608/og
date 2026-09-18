@@ -23,4 +23,5 @@ That is Phase 1b, first.
 | Time | What | Commit | Checks | Skipped |
 |---|---|---|---|---|
 | 19:18 | run-through started | — | — | — |
-| 19:31 | Phase 1b — the two missing suites, `ns03/p1-home` and `ns03/p1-tabbar` | (with phase 4) | 118 | Phase 1 code was already complete; only the proof was missing |
+| 19:31 | Phase 1b — the two missing suites, `ns03/p1-home` and `ns03/p1-tabbar` | 712fdbb | 118 | Phase 1 code was already complete; only the proof was missing |
+| 19:45 | Phase 4 — Settings in five sections that save themselves, the shipping price list, the people as cards | 712fdbb | 43 | nothing |

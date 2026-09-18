@@ -2862,7 +2862,14 @@ var DB = {
              given unless the attach-code action had set it by hand. */
           labelCode: v.label_code || '',
           qty: Number(v.total) || 0,
-          shelf: v.shelf || '',
+          /* WHERE IT REALLY IS. `variants.shelf` is written at insert and
+             never again; `stock.shelf_id` is what putting a box away
+             actually sets, and the server now answers with it as
+             `shelf_at`. The old column is kept underneath for anything that
+             still wants the original note. */
+          shelf: v.shelf_at || v.shelf || '',
+          shelfSaid: v.shelf || '',
+          shelfReal: v.shelf_at || '',
           wh: wh
         });
       });

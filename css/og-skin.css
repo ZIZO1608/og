@@ -2025,3 +2025,45 @@ body:not([data-portal="yalla"]) .st-job.on { border-color: var(--brand); backgro
 body:not([data-portal="yalla"]) .st-job.on small { color: var(--foreground); }
 
 
+
+/* ---- the pointer glow does not belong on a work screen ------------------
+   .mo-glow (css/tokens.css) is position:fixed; z-index:1 on the BODY, while
+   a lane card is position:relative; z-index:auto — so a 260px lime haze
+   followed the mouse ACROSS THE CARDS rather than behind them, on the one
+   screen where somebody is reading numbers off them. It is a decoration for
+   a screen you look at; these are screens you work on. One rule, keyed on
+   the data-view the router already sets. */
+body[data-view="deliveries"] .mo-glow,
+body[data-view="safeers"] .mo-glow,
+body[data-view="warehouse"] .mo-glow,
+body[data-view="money"] .mo-glow,
+body[data-view="desk"] .mo-glow,
+body[data-view="pos"] .mo-glow { display: none; }
+
+/* ---- a parcel whose driver was switched off ----------------------------- */
+body:not([data-portal="yalla"]) .dlb-c-orphan {
+  display: flex; align-items: center; gap: 7px; padding: 7px 9px; margin-top: 8px;
+  border-radius: 8px; background: var(--warning-soft); border: 1px solid var(--warning-border);
+  color: var(--warning); font-size: 12px; font-weight: 600;
+}
+body:not([data-portal="yalla"]) .dlb-c-orphan svg {
+  width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
+}
+body:not([data-portal="yalla"]) .dlb-c-via.is-orphan { color: var(--warning); }
+
+/* ---- the driver's phone: cash on him, and where he is going ------------- */
+body:not([data-portal="yalla"]) .rc-onme {
+  display: grid; gap: 2px; padding: 14px 16px; margin-bottom: 12px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+body:not([data-portal="yalla"]) .rc-onme b { font-size: 26px; font-weight: 700; }
+body:not([data-portal="yalla"]) .rc-onme small { color: var(--muted-foreground); font-size: 11.5px; }
+body:not([data-portal="yalla"]) .rc-where { display: grid; gap: 2px; margin: 8px 0; }
+body:not([data-portal="yalla"]) .rc-where b { font-size: 15px; font-weight: 700; }
+body:not([data-portal="yalla"]) .rc-where .rc-addr { margin: 0; }
+
+/* ---- Safeers: the detail line, and the quiet Add ------------------------ */
+body:not([data-portal="yalla"]) .sf-p-detail { padding: 0 2px 2px; }
+body:not([data-portal="yalla"]) .sf-add-btn { margin: 4px 0 14px; }
+body:not([data-portal="yalla"]) .sf-filters[hidden] { display: none; }
+body:not([data-portal="yalla"]) .sf-filtered { align-self: center; }
