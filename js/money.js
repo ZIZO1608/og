@@ -410,7 +410,7 @@ var Money = (function () {
                     .map(function (e) { return '<option>' + esc(e.name) + '</option>'; }).join('') +
                 '</select></label>' +
               '<label class="field mt"><span>' + t('mn_float') + '</span>' +
-                '<input class="inp num" id="mnFloat" type="number" min="0" value="0"></label>' +
+                '<input class="inp num" id="mnFloat" type="number" min="0" inputmode="decimal" value="0"></label>' +
               '<div class="partner-note mt">' + t('mn_float_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-mn="open-shift-go">' + t('mn_open_shift') + '</button>'
@@ -446,7 +446,7 @@ var Money = (function () {
       openModal({
         title: t('mn_close_shift') + ' · ' + s.id, size: 'narrow',
         body: '<label class="field"><span>' + t('mn_count_now') + '</span>' +
-                '<input class="inp num" id="mnCounted" type="number" min="0" dir="ltr"></label>' +
+                '<input class="inp num" id="mnCounted" type="number" min="0" inputmode="decimal" dir="ltr"></label>' +
               '<div class="partner-note mt">' + t('mn_close_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-mn="close-shift-go">' + t('mn_close_shift') + '</button>'

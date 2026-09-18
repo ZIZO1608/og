@@ -1669,3 +1669,28 @@ body:not([data-portal="yalla"]) .sf-off-warn {
   background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.35);
   color: #F59E0B; font-size: 12.5px;
 }
+
+/* ---- quick fix: the phone bar and SCROLLING to something under it -------
+   The bottom padding was already right — .view ends at
+   calc(var(--tabbar-h) + 28px), and --tabbar-h already carries
+   env(safe-area-inset-bottom), so nothing can come to rest under the bar at
+   the END of a scroll.
+
+   What was missing is scroll-padding-bottom. Without it the browser's own
+   scrolling — scrollIntoView, focusing a field with the keyboard, jumping to
+   an anchor — parks the target flush with the bottom EDGE of the scrollport,
+   which on a phone is underneath a bar that floats over it. The element is
+   then visible to the code and covered on the glass, and a tap at its centre
+   reaches the bar instead. This is the app-wide behaviour night shift 02
+   measured and left as a question; this is the answer.
+
+   scroll-margin on the items would work too, but it would have to be
+   remembered on every new element for ever. One property on each scroller
+   cannot be forgotten. */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .view,
+  body:not([data-portal="yalla"]) .drawer-body,
+  body:not([data-portal="yalla"]) .modal-body {
+    scroll-padding-bottom: calc(var(--tabbar-h) + 28px);
+  }
+}
