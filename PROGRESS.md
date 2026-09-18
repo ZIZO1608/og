@@ -41,6 +41,11 @@ node _nightshift/ns03/p4-settings-staff.mjs # settings, the shipping list, the p
 node _nightshift/ns03/p5-safeers-board.mjs  # the country, the board, safeers, the driver
 node _nightshift/ns03/sweep.mjs             # every screen, every role, EN 1100 + AR 390
 node _nightshift/ns03/sweep.mjs wael        # …or one role
+
+# fix 04 (branch fix-04)
+node _nightshift/fix04/bring-back.mjs       # why a parcel on the road cannot come back
+node _nightshift/fix04/till.mjs             # the till at 390, and a real sale on a phone
+node _nightshift/fix04/golden-desk.mjs      # regenerate the 1100 golden till.mjs compares against
 ```
 
 ---

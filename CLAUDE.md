@@ -2401,6 +2401,75 @@ underneath as `shelfSaid`. No schema change and no row written.
 every Delivered was read back out of SQLite — never off the screen that wrote it. The ns02 and
 quick-fix suites re-run green; `qf-safeers` and `ns02/p2-edit` were updated where a control moved.
 
+## Fix 04 (18 Sep 2026) — the parcel that cannot come back, and the till's bottom
+
+Branch `fix-04`, off `night-shift-03`; the log is `fix_04_log.md`. **No migration, no schema
+change, no data change, and no server permission weakened.** Nothing to do by hand.
+
+### A parcel on the road with "Former staff" on it is STUCK, and that is the schema
+
+It was asked for as a small fix — a lime **Bring it back** on the board, running the existing
+routes, landing the parcel in `waiting` where Assign already works. **It was not built, because
+the second half of that path does not exist.** `NEXT` in `server/lib/deliveries.js` is
+`waiting: ['out','failed']` · `out: ['delivered','failed']` · `delivered: []` · `failed: []`, and
+assignment is refused on anything past `waiting` (`bad_status`). Every one of the six ways back was
+tried against the running server and refused with a 409 — `fix04/bring-back` is that, pinned, with
+the delivery rows, `money_moves`, `stock_movements` and `order_payments` counted before and after
+to prove nothing was written while proving it.
+
+- **What "couldn't deliver" actually does**: writes `fail_reason` and `closed_at`, and nothing
+  else. No `Cash.apply`, no `order_payments`, no `Stock.apply` — the goods stay out and the money
+  stays owed. Outside the row it fires the office's `dl_failed` Telegram alert and a permanent
+  "could not be delivered" event on the customer's tracking page (`push_seen`).
+- **The only other route that moves an `out` parcel is a RETURN** (`Orders.takeBack`), and it is a
+  money-and-stock decision rather than a fix: it restocks through `Stock.apply`, pays a refund or
+  grants store credit, and **still closes the delivery as `failed`, never back to `waiting`**.
+- So the only way to satisfy the ask is to add `failed → waiting` to that table — a new server
+  rule, against the module's own stated invariant ("delivered and failed are the end"), which is
+  the stop condition the brief wrote. It is question 1 in `fix_04_log.md` and the owner's to
+  answer. Night shift 03's board is already honest about it: Reassign only while the parcel is on
+  the counter, Delivered (and "Couldn't deliver" under the dots) once it has left.
+
+### The till's bottom on a phone — and the cart sheet that scrolled away
+
+Reported as "the last 58px sit under the tab bar". Measured at 390 it was two faults, both worse
+than that, and both fixed in one block in `css/og-skin.css` (`FIX 04`), **layout only** — the
+sale, its steps and its buttons did not move. The desktop is untouched: the 1100 picture is
+byte-identical to a golden taken with the fix stashed out.
+
+- **THE COMPLETE-SALE BUTTON WAS NOT UNDER THE BAR, IT WAS NOT THERE.** At ≤720 the cart is a
+  fixed sheet (`.pos-right`, `bottom: var(--tabbar-h)`, `max-height: 76vh`, `overflow: hidden`)
+  holding head + lines + foot. The ≤1080 block lifts the base `max-height: 64vh` off the foot —
+  right for 721–1080, where the cart is stacked and follows the page down — and the base says
+  `flex: none`, so inside a 578px sheet the foot kept its full 851px of customer, discount,
+  totals, eleven payment methods and Pay, and the sheet's own `overflow: hidden` cut the bottom
+  426px off. **`flex: 0 1 auto; min-height: 0`** lets it shrink, its own `overflow-y: auto` then
+  scrolls it, and **Pay is `position: sticky; bottom: 0`** in a band of the foot's own colour so
+  the one control the screen exists for is never the thing you have to go looking for.
+- **THE SHEET WAS NOT FIXED TO THE SCREEN.** `#view` carries `.fade-in` (every repaint) and
+  `.mo-view` (a view change); both END in `transform: none` and both fill **`both`**, so the
+  finished animation goes on applying that last keyframe and `#view` keeps
+  `transform: matrix(1, 0, 0, 1, 0, 0)` for as long as the screen is up. An identity transform is
+  still a transform, and it makes `#view` the containing block for everything `position: fixed`
+  inside it — so scrolling to the end of the shoes took the cart, the total and the pay sheet
+  **2,210px off the top of the screen**. `animation-fill-mode: backwards` is the cure and costs
+  nothing on the glass. **This is the `shell.css` stacking-context trap one step on** (the same
+  filling animation, the other consequence), and the same one the order desk met in its sticky
+  foot; it is scoped to the phone till because that is the one screen with something fixed inside
+  the view. Whether `.fade-in` should say `backwards` app-wide is question 3 in the log.
+- Smaller, same block: the product grid cleared the 62px collapsed cart sheet and not the bar
+  under it (`calc(62px + var(--tabbar-h) + 24px)` now); `.view.pos-view` opts out of `.view`'s
+  padding by design, so it has to restate its own `scroll-padding-bottom`; and the lines window's
+  90px floor was shorter than one 125–140px cart line, which showed half a shoe with the top of
+  it scrolled up behind the head.
+- **`ns03/sweep` no longer skips the till.** It had a written exception pointing at question 5 of
+  the night-shift-03 log; the till is swept now, measuring the last PRODUCT CARD rather than the
+  view's last child, because `.view.pos-view` has no bottom padding of its own to measure against.
+
+Verified: `fix04/bring-back` 33 · `fix04/till` 88 (both languages at 390 as the cashier and as the
+owner, a cart of one and a cart of twelve, every control hit-tested, a real sale rung up on the
+phone and read back out of SQLite), plus `npm test`, `ns03/sweep` and `qf-board`.
+
 ## Known open work
 
 - The supplier and payroll editors exist now (the Money screen, 055), and adding a colour or a size to an
@@ -2416,6 +2485,16 @@ quick-fix suites re-run green; `qf-safeers` and `ns02/p2-edit` were updated wher
   under the warehouse's More fold — and since ns03 it also needs `cost.read`, because it is a list
   of unit costs and a supplier balance. And **marking a parcel failed is one click longer on
   purpose** — it sat the same size and colour as Delivered, and it is behind the row's "…".
+- **A PARCEL ON THE ROAD WITH A REMOVED ACCOUNT ON IT CANNOT COME BACK** (fix 04). Removing an
+  account returns its WAITING parcels to nobody (`lib/people.js`) and leaves one already `out`
+  pointing at the hidden Former-staff record for ever. `out` can only become `delivered` or
+  `failed`, `failed` is terminal, and a carrier change is refused past `waiting` — so the board's
+  only honest offers are Delivered and "Couldn't deliver", and the parcel can never be given to
+  a real safeer. The sandbox's INV-2121 is the case. **Unsticking it means adding `failed →
+  waiting` to `NEXT` in `lib/deliveries.js`** — a new rule against that module's own stated
+  invariant, and a decision about whether a revived parcel keeps its `closed_at` and the "could
+  not be delivered" line already sent to the customer's tracking page. Question 1 in
+  `fix_04_log.md`.
 - **Server routes with no button.** A sale can be voided only by a hand-sent
   `POST /api/sales/:id/void`; the staff-account routes (`POST /api/users`, `/api/users/:id/reset`,
   `/api/users/:id/active`) have no Settings control. The permissions `refund` and `partner.read` gate
