@@ -52,12 +52,11 @@ function productRows() {
   if (f.type) rows = rows.filter(function (r) { return r.type === f.type; });
   if (f.health === 'gap') rows = rows.filter(function (r) { return DB.sizeGaps(r.p.id).length > 0; });
   else if (f.health) rows = rows.filter(function (r) { return r.health === f.health; });
-  if (f.q) {
-    var q = f.q.toLowerCase();
-    rows = rows.filter(function (r) {
-      return r.name.toLowerCase().indexOf(q) > -1 || r.p.brand.toLowerCase().indexOf(q) > -1;
-    });
-  }
+  /* Name and brand only, before — so a size, a SKU, a barcode and the
+     label code on the shop's own sticker all found nothing. DB.productMatch
+     is the one rule, shared with the warehouse's "Where is it?" box, and it
+     takes a scan an Arabic keyboard layout has mangled. */
+  if (f.q) rows = rows.filter(function (r) { return DB.productMatch(r.p, f.q); });
 
   /* Sorting by a column this person cannot see would order the whole table by
      an invisible number — and cost order and price order are close enough that
@@ -74,6 +73,54 @@ function productRows() {
   });
   return rows;
 }
+
+/* A scan while the catalogue is on screen goes into the search box. It owns
+   the scanner only when nothing is over the page — a drawer, a modal or the
+   palette means the scan was meant for that, and every one of those is
+   already checked ahead of this in the wedge router. */
+function prodScanOwns() {
+  return OG.view === 'products' &&
+         !document.querySelector('.modal-root .modal') &&
+         !document.querySelector('.drawer-root .drawer') &&
+         !document.body.hasAttribute('data-overlay');
+}
+
+/* One row left after a scan is the answer, so it opens — the way a scan at
+   the till adds the line rather than offering it. Several (a code shared by
+   the colours of one size, which is this shop's own rule) or none leaves the
+   list filtered and says what was scanned, because that IS the answer. */
+function prodScanned(code) {
+  OG.prod.q = String(code == null ? '' : code);
+  /* A scan must never be hidden by a filter somebody left on yesterday. */
+  OG.prod.type = '';
+  OG.prod.health = '';
+  render();
+  var rows = productRows();
+  if (rows.length === 1) { openProductDrawer(rows[0].p.id); return; }
+  toast(t(rows.length ? 'pr_scan_found' : 'pr_scan_none').replace('{n}', rows.length),
+        String(code).slice(0, 40), rows.length ? 'ok' : 'warn', 3500);
+}
+
+/* ---- the search box, the filters, and what is on ------------------------
+   All of it reads OG.prod and nothing else: a filter that lives on the DOM
+   does not survive a repaint, and this screen repaints on every live push,
+   every bulk action and every save. */
+
+function prodFindIcon() {
+  return '<svg class="pr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+    'stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>';
+}
+
+/* The filters that are ON — not the controls that exist. */
+function prodChips() {
+  var f = OG.prod, out = [];
+  if (f.type) out.push({ f: 'type', label: DB.typeLabels[f.type] || f.type });
+  if (f.health) out.push({ f: 'health', label: t(f.health === 'gap' ? 'gap_only' : f.health) });
+  /* "active" is the default and therefore not a filter somebody switched on. */
+  if (f.arch && f.arch !== 'active') out.push({ f: 'arch', label: t(f.arch === 'archived' ? 'bk_archived_only' : 'prod_arch_all') });
+  return out;
+}
+function prodFilterCount() { return prodChips().length; }
 
 function viewProducts() {
   var rows = productRows();
@@ -97,24 +144,67 @@ function viewProducts() {
           t('tab_add') + '</button>') +
     '</div></div>';
 
-  h += '<div class="filters">' +
-    '<input class="inp grow" type="text" placeholder="' + t('search_products') + '" value="' + esc(OG.prod.q) + '" data-change="prod-q">' +
-    '<select class="inp" data-change="prod-type"><option value="">' + t('all_types') + '</option>';
-  types.forEach(function (ty) {
-    h += '<option value="' + ty + '"' + (OG.prod.type === ty ? ' selected' : '') + '>' + DB.typeLabels[ty] + '</option>';
-  });
-  h += '</select>';
+  /* ONE BIG BOX, AND EVERYTHING ELSE BEHIND A BUTTON        (night shift 03)
+     The search box used to be one of five controls in a row, and it matched
+     the name and the brand only — not a size, not a SKU, not a barcode. Four
+     dropdowns sat beside it whether or not anybody was filtering, and the
+     only sign a filter was ON was the dropdown's own text, three controls
+     along.
+
+     Now: one box that takes a scan, a Filter button beside it, and every
+     filter that IS on drawn as a chip you can press to take off. What is
+     open and what is filtered live in OG.prod — module state, never a class
+     on the DOM, because this screen repaints on every tick and every save
+     (the Safeers menu learned that the hard way). */
+  h += '<div class="pr-find">' +
+    '<div class="pr-box">' + prodFindIcon() +
+      '<input class="inp" type="search" id="prodFind" autocomplete="off" ' +
+        'placeholder="' + esc(t('pr_find_ph')) + '" value="' + esc(OG.prod.q) + '" data-change="prod-q">' +
+      (OG.prod.q ? '<button class="pr-x" type="button" data-act="prod-q-clear" ' +
+        'aria-label="' + esc(t('pr_clear_filters')) + '">✕</button>' : '') +
+    '</div>' +
+    '<button class="btn' + (prodFilterCount() ? ' on' : '') + '" data-act="prod-filters">' +
+      esc(t('pr_filter')) + (prodFilterCount() ? ' <span class="pr-n">' + prodFilterCount() + '</span>' : '') +
+    '</button>' +
+    (allow('product.write')
+      ? '<button class="btn' + (OG.prod.select ? ' on' : '') + '" data-act="prod-select">' +
+          esc(t('pr_select')) + '</button>'
+      : '') +
+    '<span class="badge neutral pr-count">' + rows.length + ' / ' + DB.products.length + '</span>' +
+  '</div>';
+
+  /* The chips: one per filter that is actually on, each its own undo. */
+  var chips = prodChips();
+  if (chips.length) {
+    h += '<div class="pr-chips">' + chips.map(function (c) {
+      return '<button class="pr-chip" type="button" data-act="prod-chip-off" data-f="' + c.f + '">' +
+        esc(c.label) + '<span>✕</span></button>';
+    }).join('') + (chips.length > 1
+      ? '<button class="pr-chip pr-chip-all" type="button" data-act="prod-chip-off" data-f="all">' +
+          esc(t('pr_clear_filters')) + '</button>'
+      : '') + '</div>';
+  }
+
+  /* The panel itself, shut unless somebody asked for it — and it does NOT
+     re-render on open, because the search box above it holds a caret. */
+  h += '<div class="pr-filters"' + (OG.prod.filters ? '' : ' hidden') + ' id="prodFilters">' +
+    '<label class="field"><span>' + t('type') + '</span>' +
+      '<select class="inp" data-change="prod-type"><option value="">' + t('all_types') + '</option>' +
+      types.map(function (ty) {
+        return '<option value="' + ty + '"' + (OG.prod.type === ty ? ' selected' : '') + '>' +
+          esc(DB.typeLabels[ty]) + '</option>';
+      }).join('') + '</select></label>';
 
   /* Every option in this filter is a stock level. To someone who cannot see
      the stock column it is a dropdown that reorders the list for no visible
      reason. */
   if (allow('stock.read')) {
-    h += '<select class="inp" data-change="prod-health"><option value="">' + t('all_health') + '</option>';
-    ['healthy', 'low', 'critical', 'out', 'gap'].forEach(function (hh) {
-      h += '<option value="' + hh + '"' + (OG.prod.health === hh ? ' selected' : '') + '>' +
-           t(hh === 'gap' ? 'gap_only' : hh) + '</option>';
-    });
-    h += '</select>';
+    h += '<label class="field"><span>' + t('stock') + '</span>' +
+      '<select class="inp" data-change="prod-health"><option value="">' + t('all_health') + '</option>' +
+      ['healthy', 'low', 'critical', 'out', 'gap'].map(function (hh) {
+        return '<option value="' + hh + '"' + (OG.prod.health === hh ? ' selected' : '') + '>' +
+          t(hh === 'gap' ? 'gap_only' : hh) + '</option>';
+      }).join('') + '</select></label>';
   }
 
   /* Archived is not a stock level, so it gets a control of its own rather than
@@ -122,22 +212,24 @@ function viewProducts() {
      only product.write is sent archived rows at all (Cat.list includeHidden),
      so for anyone else this would filter a view of nothing. */
   if (allow('product.write')) {
-    h += '<select class="inp" data-change="prod-arch">';
-    [['all', 'prod_arch_all'], ['active', 'prod_arch_active'], ['archived', 'bk_archived_only']]
-      .forEach(function (o) {
-        h += '<option value="' + o[0] + '"' + (OG.prod.arch === o[0] ? ' selected' : '') + '>' +
-             t(o[1]) + '</option>';
-      });
-    h += '</select>';
+    h += '<label class="field"><span>' + t('pr_selling') + '</span>' +
+      '<select class="inp" data-change="prod-arch">' +
+      [['all', 'prod_arch_all'], ['active', 'prod_arch_active'], ['archived', 'bk_archived_only']]
+        .map(function (o) {
+          return '<option value="' + o[0] + '"' + (OG.prod.arch === o[0] ? ' selected' : '') + '>' +
+            t(o[1]) + '</option>';
+        }).join('') + '</select></label>';
   }
-
-  h += '<span class="badge neutral">' + rows.length + ' / ' + DB.products.length + '</span></div>';
+  h += '</div>';
 
   var cols = prodCols();
 
   /* Bulk select feeds bulk EDIT. No point offering the checkboxes to someone
      who cannot act on the selection. */
-  var bulk = allow('product.write');
+  /* The tick column is a mode now, not furniture: it was drawn on every row
+     for anybody with product.write, and the only thing it is for is the bulk
+     bar. Press Select to get it. */
+  var bulk = allow('product.write') && OG.prod.select;
 
   /* There used to be a barcode button at the end of every row — one-click
      label printing for a single product. It never worked reliably at the
@@ -364,10 +456,17 @@ function openProductDrawer(pid) {
       : t('yes')) + '</dd>' +
   '</dl></div></div>';
 
-  body += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
-    '<button class="btn btn-primary" data-act="prod-edit" data-id="' + p.id + '">' + t('edit_product') + '</button>' +
+  /* THE THREE QUICK EDITS FIRST (ns03). Changing a price is much the
+     commonest reason this drawer is opened and it took the whole nine-field
+     editor; adding a size or a colour was behind a button captioned "Add
+     more", then a segmented control. The rest — the full editor, stopping
+     the line, the two exports — is under the "…", which is where the
+     deliveries board put everything that is not the next step. */
+  body += '<div class="pr-acts">' +
     (allow('product.write')
-      ? '<button class="btn" data-cf="add-more" data-pid="' + p.id + '">' + t('cl_add_more') + '</button>'
+      ? '<button class="btn btn-primary" data-act="pq-open" data-id="' + p.id + '">' + t('pr_change_price') + '</button>' +
+        '<button class="btn" data-cf="add-more" data-pid="' + p.id + '" data-m="size">' + t('pr_add_size') + '</button>' +
+        '<button class="btn" data-cf="add-more" data-pid="' + p.id + '" data-m="colour">' + t('pr_add_colour') + '</button>'
       : '') +
     /* ONE print button. There were two here — this one drove the browser
        Label Studio (SKU text in the bars) and a second opened the 60x40
@@ -378,8 +477,24 @@ function openProductDrawer(pid) {
     (allow('label.print')
       ? '<button class="btn" data-act="labels-for" data-id="' + p.id + '">' + t('print_labels') + '</button>'
       : '') +
-    '<button class="btn btn-ghost" data-act="export-rec" data-rec="product" data-kind="pdf" data-id="' + p.id + '">' + t('rec_stock_sheet') + '</button>' +
-    '<button class="btn btn-ghost" data-act="export-rec" data-rec="product" data-kind="excel" data-id="' + p.id + '">' + t('export_excel') + '</button>' +
+    /* Everything that is not one of today's jobs. The menu is markup that
+       is already here, shown by a class — the drawer repaints on every save
+       and a popover built on click would be rebuilt out from under an open
+       one, which is the Safeers card menu's lesson. */
+    '<div class="pr-more">' +
+      '<button class="btn btn-ghost pr-dots" data-act="pr-menu" aria-label="' + esc(t('cb_more')) + '">…</button>' +
+      '<div class="pr-menu">' +
+        (allow('product.write')
+          ? '<button class="pr-mitem" data-act="prod-edit" data-id="' + p.id + '">' + t('edit_product') + '</button>'
+          : '') +
+        (allow('product.write')
+          ? '<button class="pr-mitem" data-act="' + (p.archived ? 'pr-resume' : 'pr-stop') + '" data-id="' + p.id + '">' +
+              t(p.archived ? 'pr_sell_again' : 'pr_stop_selling') + '</button>'
+          : '') +
+        '<button class="pr-mitem" data-act="export-rec" data-rec="product" data-kind="pdf" data-id="' + p.id + '">' + t('rec_stock_sheet') + '</button>' +
+        '<button class="pr-mitem" data-act="export-rec" data-rec="product" data-kind="excel" data-id="' + p.id + '">' + t('export_excel') + '</button>' +
+      '</div>' +
+    '</div>' +
   '</div>';
 
   openDrawer({ head: head, body: body, onOpen: function (root) {
@@ -496,11 +611,15 @@ function readProductEditor() {
   var g = function (id) { var el = document.getElementById(id); return el ? el.value : undefined; };
   var cur = g('peCur') || 'SYP';
   var exp = cur === 'USD' ? 2 : 0;
+  /* Desk.toMinor, NOT Number(String(v).replace(',', '.')) — which turned
+     "120,000" into 120.000 and saved a 120,000-lira shoe at ONE HUNDRED
+     AND TWENTY. The same bug as the shift boxes, on the screen where a
+     price is actually typed. One parser, and it reads every digit somebody
+     might use. */
   var minor = function (v) {
     if (v === undefined || String(v).trim() === '') return null;
-    var n = Number(String(v).replace(',', '.'));
-    if (!isFinite(n) || n < 0) return null;
-    return Math.round(n * Math.pow(10, exp));
+    var n = Desk.toMinor(v, cur);
+    return n > 0 ? n : (String(v).replace(/[^0-9]/g, '') === '' ? null : 0);
   };
   var web = document.getElementById('peWeb');
   var body = {
@@ -518,4 +637,83 @@ function readProductEditor() {
   var cost = minor(g('peCost'));
   if (cost !== null) body.cost_price = cost;
   return body;
+}
+/* ---- change the price, and nothing else ---------------------------------
+   Changing a price was the commonest reason the drawer was opened and it
+   took the whole edit modal — nine fields, one of which was the one wanted.
+   This is that one field, in the product's OWN currency and saying which,
+   because a dollar-priced shoe saved back as lira is a silent repeg at
+   today's rate (the reason srcCurrency exists at all). */
+function openQuickPrice(pid) {
+  var p = DB.product(pid);
+  if (!p) return;
+  if (!allow('product.write')) { toast(t('pr_change_price'), t('no_access'), 'err'); return; }
+  var cur = p.srcCurrency || CONFIG.BASE_CURRENCY || 'SYP';
+
+  openModal({
+    title: t('pr_change_price'), size: 'narrow',
+    body: '<div class="pq-who">' + thumb(p) + '<span><b>' + esc(p.name) + '</b>' +
+        '<small>' + dots(esc(p.brand), esc(p.colorway)) + '</small></span></div>' +
+      '<label class="field cb-big mt"><span>' + t('selling_price') + ' · <bdi dir="ltr">' + esc(cur) + '</bdi></span>' +
+        '<input class="inp num cb-big-in" id="pqPrice" type="text" inputmode="decimal" dir="ltr" ' +
+          'autocomplete="off" data-change="pq-price" value="' + esc(srcWhole(p.srcSellingPrice, cur)) + '"></label>' +
+      '<div class="cb-result" id="pqNow"></div>',
+    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+      '<button class="btn btn-primary" data-act="pq-save" data-id="' + p.id + '" data-cur="' + esc(cur) + '">' +
+        t('save') + '</button>',
+    onOpen: function () {
+      quickPriceHint();
+      if (!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) {
+        var el = document.getElementById('pqPrice');
+        if (el) { try { el.focus(); el.select(); } catch (e) {} }
+      }
+    }
+  });
+}
+
+/* The stored minor units as a person writes them — whole lira, or dollars
+   with their cents. */
+function srcWhole(minor, cur) {
+  var n = Number(minor) || 0;
+  if (!n) return '';
+  return cur === 'USD' ? (n / 100).toFixed(n % 100 ? 2 : 0) : String(n);
+}
+
+/* What will be true afterwards: the old price, the new one, and — only for
+   somebody allowed the numbers — what it does to the margin. */
+function quickPriceHint() {
+  var host = document.getElementById('pqNow');
+  var box = document.getElementById('pqPrice');
+  if (!host || !box) return;
+  var btn = document.querySelector('[data-act="pq-save"]');
+  var p = DB.product(+(btn ? btn.getAttribute('data-id') : 0));
+  if (!p) return;
+  var cur = btn.getAttribute('data-cur');
+  var now = Desk.toMinor(box.value, cur);
+  var was = Number(p.srcSellingPrice) || 0;
+
+  if (!now) { host.className = 'cb-why'; host.innerHTML = t('price_required'); return; }
+  host.className = 'cb-result';
+  var line = t('pr_price_was').replace('{was}', Desk.fmt(was, cur)).replace('{now}', Desk.fmt(now, cur));
+  if (seesProfit() && p.srcCostPrice > 0) {
+    line += ' · ' + t('margin') + ' ' + pct((now - p.srcCostPrice) / now * 100, 0);
+  }
+  host.innerHTML = line;
+}
+
+/* The drawer's "…", closed by a press anywhere else. Bound once, at the
+   document, in the CAPTURE phase so it runs before the delegated dispatcher
+   decides what the press meant — the same shape the deliveries board's row
+   menu uses, and for the same reason. */
+function closePrMenus() {
+  document.querySelectorAll('.pr-more.is-menu').forEach(function (m) { m.classList.remove('is-menu'); });
+}
+function bindPrMenuClose() {
+  if (bindPrMenuClose._on) return;
+  bindPrMenuClose._on = true;
+  document.addEventListener('click', function (e) {
+    var inside = e.target.closest && e.target.closest('.pr-more');
+    if (!inside) closePrMenus();
+    else if (e.target.closest('.pr-mitem')) setTimeout(closePrMenus, 0);
+  }, true);
 }

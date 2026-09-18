@@ -915,6 +915,43 @@ var ACTIONS = {
     });
   },
 
+  /* ---- the search box, the filter panel, the chips  (night shift 03) ---- */
+
+  /* The panel moves ONE attribute and never re-renders: the search box above
+     it holds a caret, and a repaint would take it mid-word. The same rule
+     Settings' folds follow, for the same reason. */
+  'prod-filters': function (el) {
+    OG.prod.filters = !OG.prod.filters;
+    var body = document.getElementById('prodFilters');
+    if (!body) { render(); return; }
+    if (OG.prod.filters) body.removeAttribute('hidden'); else body.setAttribute('hidden', '');
+    el.classList.toggle('on', OG.prod.filters || prodFilterCount() > 0);
+  },
+
+  'prod-q-clear': function () {
+    OG.prod.q = '';
+    render();
+    focusBack('[data-change="prod-q"]', 0);
+  },
+
+  /* A chip IS its own undo — pressing it takes that one filter off. */
+  'prod-chip-off': function (el) {
+    var f = el.getAttribute('data-f');
+    if (f === 'all') { OG.prod.type = ''; OG.prod.health = ''; OG.prod.arch = 'active'; }
+    else if (f === 'arch') OG.prod.arch = 'active';
+    else OG.prod[f] = '';
+    render();
+  },
+
+  /* Selection is a mode. Leaving it empties the selection too: a tick
+     column that is not on screen is a selection nobody can see, and the
+     bulk bar acting on one is exactly what the visibleIds pairing exists
+     to prevent. */
+  'prod-select': function () {
+    OG.prod.select = !OG.prod.select;
+    if (!OG.prod.select && typeof Bulk !== 'undefined') Bulk.clear('products');
+    render();
+  },
   'prod-sort': function (el) {
     var k = el.getAttribute('data-k');
     if (OG.prod.sort === k) OG.prod.dir *= -1; else { OG.prod.sort = k; OG.prod.dir = 1; }
@@ -1449,6 +1486,92 @@ var ACTIONS = {
     );
   },
 
+  /* ---- the three quick edits, and stopping a line  (night shift 03) ---- */
+
+  'pq-open': function (el) { openQuickPrice(+el.getAttribute('data-id')); },
+
+  /* A class, on markup already in the drawer. Closed by the same capture
+     listener the deliveries board uses (closeRowMenus in js/deliveries.js
+     runs first, so a press anywhere else shuts this too). */
+  'pr-menu': function (el) {
+    var wrap = el.parentNode;
+    var on = wrap.classList.contains('is-menu');
+    closePrMenus();
+    if (!on) wrap.classList.add('is-menu');
+    bindPrMenuClose();
+  },
+
+  'pq-save': function (el) {
+    var id = +el.getAttribute('data-id');
+    var cur = el.getAttribute('data-cur');
+    var p = DB.product(id);
+    var price = Desk.toMinor((document.getElementById('pqPrice') || {}).value, cur);
+    if (!p || !price) { toast(t('pr_change_price'), t('price_required'), 'err'); return; }
+    if (price === Number(p.srcSellingPrice)) { closeModal(); return; }
+    /* The currency goes with it, unchanged. `update` reads selling_price in
+       the units of whatever `currency` says, so leaving it out would read
+       the figure in the shop's base currency instead of the product's. */
+    Shop.write(
+      function () { return Shop.updateProduct(id, { currency: cur, selling_price: price }); },
+      null,
+      function () {
+        closeModal();
+        toast(t('pr_change_price'), Desk.fmt(price, cur), 'ok', 2500);
+        if (document.querySelector('.drawer-root .drawer')) openProductDrawer(id);
+      }
+    );
+  },
+
+  /* STOP SELLING IT — one button for what was only ever in the bulk bar,
+     beside Delete, with no confirmation, after which the row vanished
+     because the filter defaults to "active".
+
+     It writes `hidden` and NOTHING ELSE, and the sentence is still honest
+     about the website: GET /api/ext/products asks for `hidden = 0 AND
+     on_web = 1`, so an archived line is off the site whatever its own
+     switch says. Which is also why "Sell it again" can simply un-hide —
+     the website flag is where the person left it, so a product that was
+     never on the site does not quietly appear on it. */
+  'pr-stop': function (el) {
+    var id = +el.getAttribute('data-id');
+    var p = DB.product(id);
+    if (!p) return;
+    openModal({
+      title: t('pr_stop_selling'), size: 'narrow',
+      body: '<p><b>' + esc(p.name) + '</b></p><p>' + t('pr_stop_q') + '</p>' +
+        '<ul class="pr-stop-list"><li>' + t('pr_stop_shop') + '</li><li>' + t('pr_stop_web') + '</li>' +
+        '<li>' + t('pr_stop_keep') + '</li></ul>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+        '<button class="btn btn-primary" data-act="pr-stop-go" data-id="' + id + '">' +
+          t('pr_stop_selling') + '</button>'
+    });
+  },
+
+  'pr-stop-go': function (el) {
+    var id = +el.getAttribute('data-id');
+    Shop.write(
+      function () { return Shop.hideProduct(id, true); },
+      function () { var p = DB.product(id); if (p) p.archived = true; },
+      function () {
+        closeModal();
+        closeDrawer();
+        toast(t('pr_stop_selling'), t('pr_stopped'), 'ok', 4000,
+          { label: t('pr_sell_again'), attrs: 'data-act="pr-resume" data-id="' + id + '"' });
+      }
+    );
+  },
+
+  'pr-resume': function (el) {
+    var id = +el.getAttribute('data-id');
+    Shop.write(
+      function () { return Shop.hideProduct(id, false); },
+      function () { var p = DB.product(id); if (p) p.archived = false; },
+      function () {
+        toast(t('pr_sell_again'), t('pr_resumed'), 'ok', 3000);
+        if (document.querySelector('.drawer-root .drawer')) openProductDrawer(id);
+      }
+    );
+  },
   'prod-image': function () {
     var input = document.getElementById('prodFile');
     if (input) input.click();

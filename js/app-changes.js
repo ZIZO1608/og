@@ -40,6 +40,10 @@ var CHANGES = {
   'prod-type': function (el) { OG.prod.type = el.value; render(); },
   'prod-health': function (el) { OG.prod.health = el.value; render(); },
   'prod-arch': function (el) { OG.prod.arch = el.value; render(); },
+
+  /* The live line under the price box — never a render: the box holds a
+     caret and half a number. */
+  'pq-price': function () { quickPriceHint(); },
   /* Repaints the grid and the count only, so the box being typed into is
      never rebuilt and the caret stays put with no focusBack trick. */
   'cust-q': function (el) { OG.cust.q = el.value; repaintCustomers(); },

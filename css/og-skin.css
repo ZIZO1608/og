@@ -1828,3 +1828,93 @@ body:not([data-portal="yalla"]) .mn-weowe {
   display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
 }
 body:not([data-portal="yalla"]) .mn-weowe-v { font-size: 20px; font-weight: 700; color: var(--warning); }
+
+/* ======================================================================
+   THE PRODUCTS LIST — one box, and the filters behind a button (ns03)
+   The search was one of five controls in a row and matched the name and
+   the brand only. It is the whole width now, it takes a scan, and every
+   filter that is ON is a chip you press to take off. */
+body:not([data-portal="yalla"]) .pr-find {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+}
+body:not([data-portal="yalla"]) .pr-box {
+  position: relative; flex: 1 1 320px; min-width: 200px; display: flex; align-items: center;
+}
+body:not([data-portal="yalla"]) .pr-box .inp {
+  height: 48px; font-size: 16px; padding-inline-start: 42px; padding-inline-end: 38px; width: 100%;
+}
+body:not([data-portal="yalla"]) .pr-box .inp::-webkit-search-cancel-button { display: none; }
+body:not([data-portal="yalla"]) .pr-ico {
+  position: absolute; inset-inline-start: 14px; width: 18px; height: 18px;
+  color: var(--muted-foreground); pointer-events: none;
+}
+body:not([data-portal="yalla"]) .pr-x {
+  position: absolute; inset-inline-end: 8px; width: 26px; height: 26px; border: 0;
+  border-radius: 50%; background: var(--muted); color: var(--muted-foreground);
+  font-size: 12px; line-height: 1; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .pr-x:hover { color: var(--foreground); }
+body:not([data-portal="yalla"]) .pr-find .btn { height: 48px; }
+body:not([data-portal="yalla"]) .pr-find .btn.on {
+  border-color: var(--brand); background: rgba(198, 255, 0, .10);
+}
+body:not([data-portal="yalla"]) .pr-n {
+  display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px;
+  margin-inline-start: 6px; border-radius: 10px; background: var(--brand);
+  color: var(--primary-foreground); font-size: 11px; font-weight: 700;
+}
+body:not([data-portal="yalla"]) .pr-count { flex: none; }
+
+body:not([data-portal="yalla"]) .pr-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+body:not([data-portal="yalla"]) .pr-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 4px 10px;
+  background: rgba(198, 255, 0, .10); border: 1px solid var(--brand); border-radius: 999px;
+  color: var(--foreground); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .pr-chip span { color: var(--muted-foreground); font-size: 11px; }
+body:not([data-portal="yalla"]) .pr-chip:hover span { color: var(--foreground); }
+body:not([data-portal="yalla"]) .pr-chip-all {
+  background: none; border-color: var(--border); color: var(--muted-foreground);
+}
+
+body:not([data-portal="yalla"]) .pr-filters {
+  display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  padding: 14px; margin-bottom: 14px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+body:not([data-portal="yalla"]) .pr-filters[hidden] { display: none; }
+
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .pr-box { flex: 1 1 100%; }
+  body:not([data-portal="yalla"]) .pr-find .btn { flex: 1 1 auto; }
+}
+
+/* ---- the product drawer: three quick edits, then a "…" ------------------ */
+body:not([data-portal="yalla"]) .pr-acts {
+  display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center;
+}
+body:not([data-portal="yalla"]) .pr-more { position: relative; margin-inline-start: auto; }
+body:not([data-portal="yalla"]) .pr-dots { min-width: 44px; padding: 0 12px; font-size: 18px; line-height: 1; }
+body:not([data-portal="yalla"]) .pr-menu {
+  display: none; position: absolute; inset-inline-end: 0; bottom: calc(100% + 6px);
+  min-width: 200px; padding: 6px; z-index: 30;
+  background: var(--popover); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: 0 12px 28px rgba(0, 0, 0, .5);
+}
+body:not([data-portal="yalla"]) .pr-more.is-menu .pr-menu { display: block; }
+body:not([data-portal="yalla"]) .pr-mitem {
+  display: block; width: 100%; text-align: start; padding: 9px 11px;
+  background: none; border: 0; border-radius: 8px; color: var(--foreground);
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .pr-mitem:hover { background: var(--accent); }
+
+/* the price dialog's "who am I editing" line */
+body:not([data-portal="yalla"]) .pq-who { display: flex; gap: 10px; align-items: center; }
+body:not([data-portal="yalla"]) .pq-who span { display: grid; gap: 2px; min-width: 0; }
+body:not([data-portal="yalla"]) .pq-who small { color: var(--muted-foreground); font-size: 12px; }
+
+body:not([data-portal="yalla"]) .pr-stop-list {
+  margin: 10px 0 0; padding-inline-start: 18px; display: grid; gap: 6px;
+  color: var(--muted-foreground); font-size: 13px;
+}

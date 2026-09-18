@@ -864,6 +864,45 @@ var DB = {
      scan can name SEVERAL variants. Every scan path asks this and, when it
      gets more than one, lets ColourPick ask the person. The sku is the only
      code that is always one variant. */
+  /* "WHICH PRODUCT DOES THIS TEXT MEAN" — the one rule, so the Products
+     screen's search box and the warehouse's "Where is it?" box can never
+     disagree (custSearch's lesson, on the other half of the catalogue).
+     Every word has to match something: the name, the brand, the colourway,
+     the category in the screen's own language, or a size, a SKU, a barcode
+     or a label code.
+
+     A SCAN IS A SEARCH HERE, and that is why the digits are kept apart.
+     js/wedge.js reads `e.key`, so a gun fired into a machine on the Arabic
+     keyboard layout delivers a code whose LETTERS have been replaced and
+     whose DIGITS survive — the same fact the order desk and the handover
+     sheet match a slip by. A word of three or more digits therefore also
+     matches the digits of any code with the letters and dashes taken out of
+     both sides, so "OG-050-42" is found by whatever an Arabic layout made
+     of it. Arabic-Indic digits are folded first, for the same reason every
+     money box folds them. */
+  productMatch: function (p, query) {
+    var raw = String(query == null ? '' : query);
+    if (typeof Desk !== 'undefined' && Desk.foldDigits) raw = Desk.foldDigits(raw);
+    var q = raw.trim().toLowerCase();
+    if (!q) return true;
+
+    var hay = (p.name + ' ' + (p.brand || '') + ' ' + (p.colorway || '') + ' ' +
+               (DB.typeLabels[p.type] || p.type || '')).toLowerCase();
+    var digits = '';
+    DB.variantsOf(p.id).forEach(function (v) {
+      var codes = [v.size, v.sku, v.barcode || '', v.labelCode || ''].join(' ');
+      hay += ' ' + codes.toLowerCase();
+      /* the space between codes survives; the dashes and letters INSIDE one
+         do not, so OG-050-42 becomes 05042 and a mangled scan finds it */
+      digits += ' ' + codes.replace(/[^0-9 ]/g, '');
+    });
+
+    return q.split(/\s+/).every(function (w) {
+      if (hay.indexOf(w) > -1) return true;
+      var d = w.replace(/\D+/g, '');
+      return d.length >= 3 && digits.indexOf(d) > -1;
+    });
+  },
   variantsByCode: function (code) {
     code = String(code == null ? '' : code).trim();
     if (!code) return [];

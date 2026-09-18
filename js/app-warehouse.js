@@ -252,15 +252,11 @@ function loadWants() {
    to match somewhere — the product's own words, or one of its sizes and their
    three codes, so a scanned barcode or a typed size narrows to the one row.
    An empty box matches everything, which is the page as it always was. */
+/* One rule, DB.productMatch, shared with the Products screen's search box —
+   and it now takes a scan mangled by an Arabic keyboard layout, which this
+   box could not before. */
 function whFindMatch(p) {
-  var s = String(OG.wh.find || '').trim().toLowerCase();
-  if (!s) return true;
-  var hay = (p.name + ' ' + (p.brand || '') + ' ' + (p.colorway || '') + ' ' +
-             (DB.typeLabels[p.type] || p.type || '')).toLowerCase();
-  DB.variantsOf(p.id).forEach(function (v) {
-    hay += ' ' + v.size + ' ' + v.sku + ' ' + (v.barcode || '') + ' ' + (v.labelCode || '');
-  });
-  return s.split(/\s+/).every(function (w) { return hay.indexOf(w) > -1; });
+  return DB.productMatch(p, OG.wh.find);
 }
 
 /* ---- stock by place --------------------------------------------------------

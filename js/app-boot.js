@@ -257,6 +257,18 @@ function bindWedge() {
        the scan sheet on top of that would bury the map's answer. */
     if (typeof ShelfMap !== 'undefined' && ShelfMap.owns()) return;
 
+    /* THE PRODUCTS SCREEN'S SEARCH BOX OWNS IT (ns03). Scanning while
+       looking at the catalogue means ‘show me this one’, and the box is
+       better at that than the scan sheet is: js/wedge.js reads e.key, so
+       on the Arabic keyboard layout a gun delivers a code whose LETTERS
+       have been replaced — DB.variantsByCode finds nothing and handleScan
+       says the code is unknown, which is a lie about a sticker the shop
+       printed itself. DB.productMatch matches on the DIGITS, the way the
+       order desk and the handover sheet match a slip, so the row is found
+       either way. Nothing is open over the screen, or one of the owners
+       above would have taken it. */
+    if (prodScanOwns()) { prodScanned(code); return; }
+
     var now = Date.now();
     if (code === lastCode && (now - lastAt) < DUPE_MS) { lastAt = now; return; }
     lastCode = code; lastAt = now;

@@ -346,11 +346,16 @@ var ColourForm = (function () {
   /* -------------------------- the drawer: add a colour, or a size to one */
 
   var ADD = null;   /* { pid, mode: 'colour'|'size', hex, qty: {} } */
+  var PENDING_LABELS = null;   /* the lines offerLabels is about to print */
 
-  function openAdd(pid) {
+  function openAdd(pid, mode) {
     var p = DB.product(pid);
     if (!p) return;
     ADD = ADD && ADD.pid === pid ? ADD : { pid: pid, mode: 'colour', hex: '', qty: {}, nameEn: '', nameAr: '' };
+    /* "Add a size" and "Add a colour" are two buttons on the drawer now, so
+       the one that was pressed decides which half opens rather than leaving
+       somebody to find the segmented control inside. */
+    if (mode === 'size' || mode === 'colour') ADD.mode = mode;
     openModal({ title: t('cl_add_more') + ' · ' + esc(p.name), size: 'wide', body: '<div id="cfAdd">' + addBody() + '</div>',
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
             '<button class="btn btn-primary" data-cf="add-save">' + t('save') + '</button>',
@@ -413,22 +418,30 @@ var ColourForm = (function () {
   function saveAdd() {
     var pid = ADD.pid;
     var wh = (document.getElementById('cfaWh') || {}).value || DB.intakeWh;
+    /* What the product had BEFORE, so the sizes that come back new are the
+       ones that need a sticker — the server mints the SKUs and the codes, so
+       there is nothing to print until it answers. */
+    var had = {};
+    DB.variantsOf(pid).forEach(function (v) { had[v.sku] = true; });
+    var want = {};
     var send;
     if (ADD.mode === 'colour') {
       var en = ((document.getElementById('cfaEn') || {}).value || '').trim();
       var ar = ((document.getElementById('cfaAr') || {}).value || '').trim();
       if (!en && !ar) { toast(t('cl_new_colour'), t('cl_need_name'), 'warn'); return; }
-      var sizesOut = Object.keys(ADD.qty).filter(function (s) { return ADD.qty[s] !== '' && Number(ADD.qty[s]) >= 0; })
-        .map(function (s) { return { size: s, qty: Number(ADD.qty[s]) || 0 }; })
+      var sizesOut = Object.keys(ADD.qty).filter(function (s) { return ADD.qty[s] !== '' && Desk.toCount(ADD.qty[s]) >= 0; })
+        .map(function (s) { return { size: s, qty: Desk.toCount(ADD.qty[s]) }; })
         .filter(function (x) { return x.qty > 0; });
       if (!sizesOut.length) { toast(t('cl_new_colour'), t('cl_empty_warn').replace('{name}', en || ar), 'warn', 6000); return; }
+      sizesOut.forEach(function (x) { want[String(x.size)] = x.qty; });
       send = function () { return Shop.addColour(pid, { nameEn: en, nameAr: ar, hex: ADD.hex || undefined, sizes: sizesOut, whId: wh }); };
     } else {
       var size = ((document.getElementById('cfsSize') || {}).value || '').trim();
-      var qty = Math.floor(Number((document.getElementById('cfsQty') || {}).value) || 0);
+      /* Desk.toCount, not Number(): an Arabic keypad types ١٢. */
+      var qty = Desk.toCount((document.getElementById('cfsQty') || {}).value);
       var colourId = Number((document.getElementById('cfsColour') || {}).value);
       if (!size) { toast(t('cl_new_size'), t('cl_size'), 'warn'); return; }
-      if (qty < 0) { toast(t('cl_new_size'), t('cl_no_neg'), 'warn'); return; }
+      want[size] = qty;
       send = function () { return Shop.addSize(pid, { size: size, colourId: colourId, qty: qty, whId: wh }); };
     }
     /* Said only once the server has it — the dialog stays, with what was
@@ -440,6 +453,19 @@ var ColourForm = (function () {
       closeModal();
       return Shop.reload();
     }).then(function () {
+      /* THE BOXES CANNOT BE SCANNED UNLABELLED (ns03). A size or a colour
+         added here is stock that has just landed on a shelf with no sticker
+         on it, so the last step is the offer to print one per piece — the
+         same ending the Add-product form has had since night shift 02, and
+         the same preview every other "Print labels" button opens. */
+      var fresh = DB.variantsOf(pid).filter(function (v) { return !had[v.sku]; });
+      var lines = fresh.map(function (v) {
+        return { sku: v.sku, qty: Math.max(1, want[String(v.size)] || 1) };
+      });
+      if (lines.length && allow('label.print') && typeof Labels !== 'undefined') {
+        offerLabels(pid, lines);
+        return;
+      }
       toast(t('cl_add_more'), t('cl_saved'), 'ok', 2500);
       if (typeof openProductDrawer === 'function') openProductDrawer(pid);
     }).catch(function (err) {
@@ -448,11 +474,35 @@ var ColourForm = (function () {
     });
   }
 
+  /* One sticker per piece, and the count is said out loud — "Print 12
+     labels" is a different decision from "Print labels". Not printed
+     without being asked: a label run is paper, and the person may be
+     booking stock in before the roll is on the machine. */
+  function offerLabels(pid, lines) {
+    var pieces = lines.reduce(function (n, l) { return n + l.qty; }, 0);
+    openModal({
+      title: t('cl_saved'), size: 'narrow',
+      body: '<p>' + t('cl_print_q').replace('{n}', '<bdi dir="ltr">' + nf(pieces) + '</bdi>') + '</p>' +
+        '<p class="muted small">' + t('cl_print_why') + '</p>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cl_print_later') + '</button>' +
+        '<button class="btn btn-primary" data-cf="add-print">' +
+          '<span>' + t('cl_print_now').replace('{n}', '<bdi dir="ltr">' + nf(pieces) + '</bdi>') + '</span></button>',
+      /* Printing takes over from here, so the drawer is only put back when
+         they said Later — PENDING_LABELS is what says which happened. */
+      onClose: function () {
+        if (!PENDING_LABELS) return;
+        PENDING_LABELS = null;
+        if (typeof openProductDrawer === 'function') openProductDrawer(pid);
+      }
+    });
+    PENDING_LABELS = lines;
+  }
+
   document.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('[data-cf]') : null;
     if (!b) return;
     var a = b.getAttribute('data-cf');
-    if (a === 'add-more') { closeDrawer(); openAdd(+b.getAttribute('data-pid')); return; }
+    if (a === 'add-more') { closeDrawer(); openAdd(+b.getAttribute('data-pid'), b.getAttribute('data-m')); return; }
     if (!ADD) return;
     if (a === 'add-mode') { ADD.mode = b.getAttribute('data-m'); repaintAdd(); return; }
     if (a === 'add-hex') {
@@ -470,6 +520,13 @@ var ColourForm = (function () {
       return;
     }
     if (a === 'add-save') saveAdd();
+    if (a === 'add-print') {
+      var lines = PENDING_LABELS; PENDING_LABELS = null;
+      closeModal();
+      if (lines && typeof Labels !== 'undefined') {
+        Labels.openPreviewModal(lines, Labels.lastChoice().preset, Labels.lastChoice().station);
+      }
+    }
   });
   document.addEventListener('input', function (e) {
     var s = e.target.getAttribute && e.target.getAttribute('data-cf-add');
