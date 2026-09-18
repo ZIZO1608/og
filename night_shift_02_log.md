@@ -1,6 +1,6 @@
 # Night shift 02 — "fewer steps"
 
-Branch **`night-shift-02`**, six commits, nothing pushed and nothing merged.
+Branch **`night-shift-02`**, seven commits, nothing pushed and nothing merged.
 
 > **A note on where the branch came from.** The brief said to branch from main. `main` is
 > **13 commits behind `night-shift-01`**, and everything `CLAUDE.md` describes as built —
@@ -282,7 +282,7 @@ Nothing was deleted. Nothing lost a permission.
 
 ## 9. How it was verified
 
-Nine suites over CDP against the sandbox (`server/data-sandbox`, port 8190), **171 checks, all
+Ten suites over CDP against the sandbox (`server/data-sandbox`, port 8190), **228 checks, all
 green**, plus `cd server && npm test` (6). Every money and stock figure is read back out of the
 database through the API rather than off the screen that wrote it.
 
@@ -297,6 +297,7 @@ database through the API rather than off the screen that wrote it.
 | `p3-more` | 20 | the unordered delivery; the remembered place; the cashier offered no button **and refused 403 by hand on both routes** |
 | `p3-find` | 9 | the find box narrows by name and by barcode and keeps the caret; the move direction survives a reopen |
 | `p4-money` | 18 | six tabs and three folded; the expense dialog in one press; one lime button per row; the menu **hit-tested** as really on top, and closing on an outside press |
+| `final` | 69 | **every screen the account can open**, as owner (EN 1100, AR 390), warehouse (AR 390) and cashier (EN 1100) — including the fifteen this night did not touch: no raw i18n key anywhere, no sideways scroll at 390, no console errors |
 
 Each phase was walked in **English and Arabic**, at **1100 × 760** and **390 × 760**, as every role
 that can do the job and as one that must not. Every run asserts no sideways scroll at 390, no raw
