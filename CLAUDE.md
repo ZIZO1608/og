@@ -2090,6 +2090,35 @@ commonest reason it is opened and it stood eighth of nine — with the rest behi
   called "NS02 Check 123456" and "NS02 Check 654321" match and the save stops at the guard — which
   is the guard working, and worth handling in a suite rather than working around.
 
+## Quick fix (18 Sep 2026)
+
+Four fixes in an hour; the log is `quick_fix_log.md`. **No migration, no data change.** One thing
+to do by hand: `role_permissions` on the live database says `warehouse / cost.read = 1`, while
+`003_role_permissions.sql` seeds it 0 — the row is stored state, not a code default, so it is
+unticked in **Settings → Roles → Warehouse → "See what things cost"** and not migrated.
+
+- **I COMMITTED THE `.pos` COLLISION AGAIN, and the Gotchas section above had already named the
+  rule.** `.dlb-mi` was the deliveries card's METHOD ICON (32px, `flex:none`, `display:grid`);
+  night shift 02 gave the same name to the row menu's items as `display:block; width:100%` under
+  `body:not([data-portal="yalla"])`, which is (0,2,0) against (0,1,0). The icon took the whole head
+  row and pushed the invoice number, the money and the Paid pill out of the card onto the next
+  lane; the "empty lime band" people reported was that icon, stretched. The menu item is
+  `.dlb-mitem` now. **Grep for a class name before defining one** — third time in this repo, and
+  the first where the rule was already written down.
+- **A class put on a node by a click does not survive a screen that repaints itself.** The Safeers
+  page `repaint()`s whenever a load lands or a live event arrives, so the card menu opened and
+  vanished within half a second. What is open is held in module state (`S.menu`) and re-drawn. The
+  deliveries board gets away with the class because it only repaints on a pulse.
+- **A popover inside a card needs the CARD lifted, not the popover.** The next card is a later
+  sibling, so a `z-index` on the menu inside an unpositioned ancestor still paints under it — and
+  the press lands on the wrong card. Found by hit-testing (`document.elementFromPoint`), which is
+  the only way this kind of fault is ever found.
+- **`scroll-padding-bottom` is the missing half of the phone tab bar.** The bottom PADDING was
+  already right, so nothing rests under the bar at the end of a scroll — but `scrollIntoView`,
+  focusing a field and anchor jumps all park the target flush with the scrollport's bottom edge,
+  under a bar that floats over it. One property on `.view`, `.drawer-body` and `.modal-body`,
+  because scroll-margin on the items would have to be remembered on every new element for ever.
+
 ## Known open work
 
 - The supplier and payroll editors exist now (the Money screen, 055), and adding a colour or a size to an
