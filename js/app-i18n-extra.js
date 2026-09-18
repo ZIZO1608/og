@@ -530,6 +530,11 @@ var EXTRA_EN = {
 
   /* the review */
   rv_job_title: 'Your review', rv_job_sub: 'How did the shirts come out?', rv_ph: 'Anything Yalla Wear should know — quality, colours, timing',
+  /* fix 05 — the app updating itself, and which build is running */
+  up_new: 'OG System was updated',
+  up_reloading: 'Reloading to the new version…',
+  up_no_sw: 'no service worker',
+  up_pending: 'a new version is waiting',
   rv_save: 'Save review', rv_update: 'Update review', rv_saved: 'review saved — Yalla Wear can see it',
   rv_need_stars: 'Pick a number of stars first', yl_rating: 'Rating',
 
@@ -775,6 +780,10 @@ var EXTRA_AR = {
   pj_pic_change: 'غيّر التصميم',
 
   rv_job_title: 'تقييمك', rv_job_sub: 'كيف خرجت القمصان؟', rv_ph: 'أي شيء يجب أن تعرفه يلا وير — الجودة، الألوان، الوقت',
+  up_new: 'تحدّث OG System',
+  up_reloading: 'عم نعيد التحميل على النسخة الجديدة…',
+  up_no_sw: 'ما في service worker',
+  up_pending: 'في نسخة جديدة ناطرة',
   rv_save: 'حفظ التقييم', rv_update: 'تعديل التقييم', rv_saved: 'حُفظ التقييم — تراه يلا وير',
   rv_need_stars: 'اختر عدد النجوم أولاً', yl_rating: 'التقييم',
 

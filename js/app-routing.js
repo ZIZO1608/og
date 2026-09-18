@@ -85,6 +85,7 @@ function afterSettings() {
   if (typeof YALLA !== 'undefined' && YALLA.telegramLoad) YALLA.telegramLoad('tgHost', 'tgMeta');
   if (typeof MirrorUI !== 'undefined') MirrorUI.load();
   if (typeof RemindersUI !== 'undefined') RemindersUI.load();
+  if (typeof paintBuildLine === 'function') paintBuildLine();
 
   /* The shelf-assignment list — the same control the map's panel has,
      hitting the same route. Fetched here because the map's data is live

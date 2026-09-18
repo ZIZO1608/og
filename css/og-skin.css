@@ -2196,3 +2196,18 @@ body:not([data-portal="yalla"]) .fold-meta {
     scroll-padding-bottom: calc(62px + var(--tabbar-h) + 28px);
   }
 }
+
+/* ==========================================================================
+   FIX 05 — WHICH BUILD IS THIS
+   --------------------------------------------------------------------------
+   A footnote, not a card: the service worker's cache name and the branch the
+   server is on, drawn only for a developer. It is deliberately quiet — it is
+   read once, when somebody is asking "why does my change not show". */
+body:not([data-portal="yalla"]) .set-build {
+  margin: 20px 2px 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  opacity: .8;
+}

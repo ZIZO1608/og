@@ -1,5 +1,5 @@
 /* ==========================================================================
-   HOME — the jobs, as buttons                        [Home]        [data-hm]
+   HOME — the jobs, as buttons                   [Home]   [data-act="hm-go"]
    --------------------------------------------------------------------------
    Night shift 03. Every account opens here, and what it sees is a grid of
    four to six big buttons: the things that person DOES, in the order they do
@@ -227,7 +227,15 @@ var Home = (function () {
     h += '<div class="hm-grid">';
     list.forEach(function (j) {
       var c = countFor(j.id);
-      h += '<button class="hm-job" data-hm="go" data-id="' + j.id + '">' +
+      /* `data-act`, NOT a `data-hm` namespace. register() puts the handler in
+         ACTIONS, and ACTIONS is the `data-act` table — app-boot.js's one
+         listener reads `closest('[data-act]')` and nothing in the app has
+         ever listened for `data-hm`. Written as `data-hm="go"` this button
+         carried NO listener at all: every tile on every role's home did
+         nothing when pressed, for the whole of night shift 03, while 53
+         checks went green because they measured the tile and never pressed
+         it. See fix_05_log.md. */
+      h += '<button class="hm-job" type="button" data-act="hm-go" data-id="' + j.id + '">' +
         '<span class="hm-ico"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
           '<path d="' + j.icon + '"/></svg></span>' +
         '<span class="hm-t">' + t(typeof j.key === 'function' ? j.key() : j.key) + '</span>' +

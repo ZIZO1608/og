@@ -18,6 +18,7 @@
    ========================================================================== */
 
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
 import { dbFile } from './lib/env.js';
 import { createServer as createTlsServer } from 'node:https';
 import { resolve, dirname } from 'node:path';
@@ -111,6 +112,24 @@ const PUBLIC = new Set([
   'GET /api/health'
 ]);
 
+/* WHICH BRANCH, AND WHEN DID THIS PROCESS START. Read once, from .git/HEAD —
+   no dependency, no child process, and it is the only thing on this machine
+   that knows which branch the files on disk came from. A detached HEAD has
+   no ref name, so the short sha is the answer instead. Best-effort: a clone
+   with no .git (the published site) simply has no branch to report. */
+let BUILD = null;
+function buildInfo() {
+  if (BUILD) return BUILD;
+  let branch = null;
+  try {
+    const head = readFileSync(new URL('../.git/HEAD', import.meta.url), 'utf8').trim();
+    const m = head.match(/^ref:\s*refs\/heads\/(.+)$/);
+    branch = m ? m[1] : head.slice(0, 7);
+  } catch { /* no .git, or no permission: the branch is simply unknown */ }
+  BUILD = { branch, started: DB.nowIso() };
+  return BUILD;
+}
+
 /* --- health ---------------------------------------------------------------- */
 
 router.add('GET /api/health', (ctx) => {
@@ -130,7 +149,15 @@ router.add('GET /api/health', (ctx) => {
     warehouses: row.n, time: DB.nowIso(),
     shop: shop ? shop.value : null,
     https: !!SECURE_SERVER,
-    lan: lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`)
+    lan: lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`),
+    /* WHICH BUILD IS THIS. Only for a caller who is already signed in — the
+       route is in PUBLIC so the login screen can read it, and the payload a
+       STRANGER on the wifi gets must not grow a branch name. `user` is
+       resolved before the PUBLIC check, so a signed-in browser has it here.
+       The developer's label in Settings prints it beside the service
+       worker's cache name: between them they answer "which code is this
+       laptop actually running", which cost fix 05 its first hour. */
+    build: ctx.user ? buildInfo() : undefined
   });
 });
 

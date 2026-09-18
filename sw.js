@@ -14,7 +14,7 @@
    refresh does it), or browsers that already have the app will keep serving
    the old cached copy — cache-first with ignoreSearch, so no query string
    gets past it. */
-var CACHE = 'og-system-v270';
+var CACHE = 'og-system-v272';
 
 var SHELL = [
   './',
@@ -48,6 +48,7 @@ var SHELL = [
   'assets/icon-512.png',
   'js/vendor/chart.umd.min.js',
   'js/vendor/three.min.js',
+  'js/update.js',
   'js/api.js',
   'js/auth.js',
   'js/codes.js',
@@ -126,8 +127,30 @@ self.addEventListener('install', function (e) {
           console.warn('[sw] could not precache', url);
         });
       }));
-    }).then(function () { return self.skipWaiting(); })
+    })
+    /* NO skipWaiting HERE, and that is the point. It used to take over the
+       moment it had installed, so a page that had already parsed the OLD
+       files started being served the NEW ones for anything it fetched later
+       — the lazily injected Chart.js, three.js, an icon. Old code, new
+       files, and no reload to settle it.
+
+       The new worker WAITS instead. The page keeps its own consistent set
+       until js/update.js decides nobody is mid-sale, tells this worker to
+       take over (the message below) and reloads once. One page, one build.
+       fix_05_log.md has the story. */
   );
+});
+
+/* The page's two questions. `skip-waiting` is js/update.js saying it is safe
+   to swap; `version` is the developer's label in Settings asking which file
+   set is actually being served — the one thing that settles "am I looking at
+   the new build?" without anybody guessing. */
+self.addEventListener('message', function (e) {
+  var d = e.data || {};
+  if (d.type === 'skip-waiting') { self.skipWaiting(); return; }
+  if (d.type === 'version' && e.ports && e.ports[0]) {
+    e.ports[0].postMessage({ cache: CACHE });
+  }
 });
 
 self.addEventListener('activate', function (e) {

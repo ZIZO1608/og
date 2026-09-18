@@ -1299,6 +1299,35 @@ function viewSettings() {
     h += motionCard();
   }
 
+  /* WHICH BUILD IS THIS. Developer only, and the last thing on the page: two
+     facts that between them settle "am I even looking at the new code" —
+     the service worker's own cache name (the FILE SET this page is running)
+     and the branch the server is serving from. Fix 05 spent its first hour
+     on a bug the developer could see and the suites could not, and the
+     second question he had no way to answer was this one. */
+  if (roleOf() === 'developer') h += buildLine();
+
   h += '</div>';
   return h;
+}
+
+/* Drawn empty and filled by afterSettings, because the server half is a
+   request and this is a footnote, not a card. */
+function buildLine() {
+  return '<div class="set-build" id="setBuild" dir="ltr"></div>';
+}
+
+function paintBuildLine() {
+  var box = document.getElementById('setBuild');
+  if (!box || typeof Update === 'undefined') return;
+  var i = Update.info();
+  var bits = [];
+  if (i.sw) bits.push(esc(i.sw));
+  else bits.push(t('up_no_sw'));
+  API.get('/api/health').then(function (h) {
+    var b = h && h.build;
+    if (b && b.branch) bits.push(esc(b.branch));
+    if (i.pending) bits.push(t('up_pending'));
+    box.textContent = bits.join(' · ');
+  }).catch(function () { box.textContent = bits.join(' · '); });
 }
