@@ -879,14 +879,13 @@ body:not([data-portal="yalla"]) .dkp-amt .inp { flex: 1 1 150px; height: 46px; f
 .rc-hero { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; padding: 16px 18px;
            background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .rc-hero .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
-.rc-ring { position: relative; width: 64px; height: 64px; flex: none; }
-.rc-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.rc-ring circle { fill: none; stroke-width: 4; }
-.rc-ring .bg { stroke: var(--muted); }
-.rc-ring .fg { stroke: var(--brand); stroke-linecap: round; transition: stroke-dashoffset .6s ease; }
-.rc-ring b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-             font-size: 17px; font-weight: 800; }
-.rc-ring b small { font-size: 11px; font-weight: 600; color: var(--dim); }
+/* Was .rc-ring, an SVG progress ring with the figure written inside it. The
+   figure was the only part anybody read (ns02), so it is the whole thing now
+   and it is twice the size. `direction: ltr` because "3/9" is a number and
+   Arabic would otherwise put the total first. */
+.rc-count { flex: none; display: flex; align-items: baseline; gap: 1px; direction: ltr; }
+.rc-count b { font-size: 34px; font-weight: 800; line-height: 1; }
+.rc-count small { font-size: 15px; font-weight: 600; color: var(--dim); }
 .rc-hero-txt { flex: 1 1 140px; display: grid; gap: 2px; min-width: 0; }
 .rc-hero-txt b { font-size: 17px; font-weight: 700; }
 .rc-hero-txt small { font-size: 12px; color: var(--muted-foreground); }
@@ -1355,14 +1354,12 @@ body:not([data-portal="yalla"]) .rvw-hero { display: flex; flex-direction: colum
 .rvw-stars svg.on { fill: var(--brand); }
 .rvw-stars.is-lg svg { width: 24px; height: 24px; }
 .rvw-dist { display: flex; flex-direction: column; gap: 4px; justify-content: center; }
-.rvw-bar { display: grid; grid-template-columns: 40px 1fr 36px; align-items: center; gap: 10px; background: none; border: 0;
+.rvw-bar { display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 10px; background: none; border: 0;
   padding: 4px 6px; border-radius: 8px; color: var(--foreground); cursor: pointer; font: inherit; }
 .rvw-bar:hover, .rvw-bar.on { background: rgba(255,255,255,.05); }
 .rvw-bar.on .rvw-bar-n { color: var(--brand); }
 .rvw-bar-n { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: 13px; direction: ltr; }
 .rvw-bar-n svg { width: 12px; height: 12px; fill: var(--brand); }
-.rvw-bar-t { height: 8px; border-radius: 8px; background: rgba(255,255,255,.06); overflow: hidden; }
-.rvw-bar-t i { display: block; height: 100%; border-radius: 8px; background: var(--brand); }
 .rvw-bar-c { font-size: 12px; color: var(--muted-foreground); text-align: end; }
 .rvw-side-h { font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-foreground); margin-bottom: 10px; }
 .rvw-tagcs { display: flex; flex-wrap: wrap; gap: 6px; }

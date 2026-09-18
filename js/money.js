@@ -236,11 +236,18 @@ var Money = (function () {
       (canWrite ? '<div class="card-actions"><button class="btn btn-sm btn-primary" data-mn="add-expense">+ ' +
         t('mn_add') + '</button></div>' : '') + '</div><div class="card-body">';
     if (!cats.length) h += '<p class="muted">' + t('mn_no_expenses') + '</p>';
+    /* The bar between the name and the amount is gone (ns02). What a person
+       asks this card is "what did we spend it on, and how much" — both of
+       which are words and a figure. The share is spelled out for the same
+       reason the Reports tables now print theirs. */
+    var totCat = cats.reduce(function (a, c) { return a + byCat[c]; }, 0);
     cats.forEach(function (c) {
+      var share = totCat > 0 ? Math.round(byCat[c] / totCat * 100) : 0;
       h += '<div class="mn-cat">' +
         '<span class="mc-name">' + esc(Cashbook.catLabel(c)) + '</span>' +
-        '<span class="mc-bar"><i style="width:' + Math.round(byCat[c] / maxCat * 100) + '%"></i></span>' +
-        '<span class="mc-amt">' + moneyShort(byCat[c]) + '</span></div>';
+        '<span class="mc-amt">' + moneyShort(byCat[c]) +
+          (totCat > 0 ? ' <span class="muted"><bdi dir="ltr">' + share + '%</bdi></span>' : '') +
+        '</span></div>';
     });
     h += '</div></div>';
 

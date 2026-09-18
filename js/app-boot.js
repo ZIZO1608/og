@@ -323,9 +323,11 @@ function boot() {
   /* a scanned QR lands here — route after the shell exists */
   if (raw.indexOf('#open/') === 0) handleDeepLink(raw);
 
-  if (!Charts.has()) {
-    console.info('Chart.js unavailable — charts fall back to CSS bars.');
-  }
+  /* Chart.js is not loaded at boot any more (night shift 02) — it is fetched
+     the first time something asks to draw, which on most mornings is never.
+     So "is it there?" is no longer a question worth asking here: the answer
+     is always no, and it means nothing. Charts.ensure() reports its own
+     failure by falling back to CSS bars. */
 
   /* The line to Yalla Wear starts listening once the shell is up. It asks
      nothing for an account that cannot read the print jobs. */

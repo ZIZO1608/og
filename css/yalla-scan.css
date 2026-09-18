@@ -692,9 +692,7 @@ tr.sc-row-on td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
 
 .mn-cat { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: var(--fs-sm); }
 .mc-name { width: 106px; flex: none; color: var(--muted-foreground); }
-.mc-bar { flex: 1; height: 7px; background: var(--muted); border-radius: 4px; overflow: hidden; }
-.mc-bar i { display: block; height: 100%; background: var(--brand); border-radius: 4px; }
-.mc-amt { width: 66px; text-align: end; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
+.mc-amt { margin-inline-start: auto; text-align: end; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
 
 .tab-dot.on { background: var(--success); }
 

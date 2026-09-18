@@ -641,7 +641,9 @@ function salesExportSpec() {
      somebody hands a bank must not imply it is the whole year. */
   var cap = DB.cap('sales');
   return {
-    name: 'sales', sheet: 'Sales', title: t('recent_sales'), chartId: 'dashLine',
+    /* No chartId: #dashLine went with the dashboard's charts (ns02), and this
+       is the fallback spec for screens that never had one anyway. */
+    name: 'sales', sheet: 'Sales', title: t('recent_sales'),
     subtitle: sales.length + ' ' + t('invoices').toLowerCase() +
       (cap.capped ? ' · ' + t('cap_of').replace('{b}', nf(cap.total)) : ''),
     columns: [{ label: t('invoice') }, { label: t('date') }, { label: t('customer'), width: 22 },
@@ -797,7 +799,9 @@ function dashboardExportSpec() {
 
   return {
     name: 'dashboard', sheet: 'Dashboard', title: t('dash_title'),
-    subtitle: CONFIG.SHOP_NAME + ' · ' + fmtDate(new Date()) + ' · ' + scopeLabel, chartId: 'dashLine',
+    /* The dashboard has no chart to print any more — the exported PDF is the
+       figures and the tables, which is what it was mostly read for. */
+    subtitle: CONFIG.SHOP_NAME + ' · ' + fmtDate(new Date()) + ' · ' + scopeLabel,
     docUrl: deepLink('report', 'sales'),
     columns: columns,
     rows: rows,

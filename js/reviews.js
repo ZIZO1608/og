@@ -103,13 +103,16 @@ var Reviews = (function () {
   function summaryHtml() {
     var s = summary || { count: 0, average: null, distribution: [0, 0, 0, 0, 0], tags: {}, onWeb: 0, allowed: 0, delivered: 0 };
     var dist = s.distribution || [0, 0, 0, 0, 0];
-    var max = Math.max.apply(null, dist.concat([1]));
+    /* Five rows that FILTER the list, which is why they are still buttons.
+       The bar that used to sit in the middle of each is gone (ns02) — the
+       count was always beside it, and a histogram of five numbers is five
+       numbers. The row keeps its class so the tap target, the lit state and
+       the phone layout are untouched. */
     var bars = '';
     for (var n = 5; n >= 1; n--) {
       var c = dist[n - 1] || 0;
       bars += '<button type="button" class="rvw-bar' + (F.stars === String(n) ? ' on' : '') + '" data-act="rv-stars" data-val="' + n + '">' +
         '<span class="rvw-bar-n">' + n + svg(ICON.star) + '</span>' +
-        '<span class="rvw-bar-t"><i style="width:' + Math.round(c / max * 100) + '%"></i></span>' +
         '<span class="rvw-bar-c">' + nf(c) + '</span></button>';
     }
     var liked = TAGS.map(function (k) { return { k: k, n: (s.tags || {})[k] || 0 }; })

@@ -733,9 +733,20 @@ function repNone(cols, msg) {
    and written `width:NaN%` — which the browser drops silently, so the column
    goes blank and nobody can say when it stopped working. */
 function repBar(value, best, lime) {
-  var w = (best > 0 && value > 0) ? Math.max(3, Math.min(100, value / best * 100)) : 0;
-  return '<div class="bar-track"><i' + (lime ? ' class="lime"' : '') +
-         ' style="width:' + w.toFixed(1) + '%"></i></div>';
+  /* NIGHT SHIFT 02 — this drew a bar. It prints the share as a number now.
+     The share of the biggest row is a fact worth having and a bar is a
+     picture of it; on a phone, where these tables restack into cards, the
+     bar was a grey stripe in a card with no axis to read it against.
+
+     The column, its header and its width are untouched on purpose: five
+     tables call this, the phone card layout is addressed by column position,
+     and changing the shape of the table to change the shape of one cell is
+     how a layout breaks somewhere nobody looked. `lime` is kept in the
+     signature for the same reason — the callers pass it. */
+  var pct = (best > 0 && value > 0) ? Math.min(100, value / best * 100) : 0;
+  if (!pct) return '<span class="muted">—</span>';
+  return '<span class="num' + (lime ? ' lime' : '') + '"><bdi dir="ltr">' +
+         (pct >= 99.5 ? '100' : pct.toFixed(pct < 10 ? 1 : 0)) + '%</bdi></span>';
 }
 
 /* Refetch the snapshot for whatever window the chips and boxes now name.
@@ -810,15 +821,29 @@ function viewReports() {
      shelves. Same for the payroll, which has no dates on it at all. */
   var timeless = (tab === 'inventory' || tab === 'employees' || tab === 'suppliers');
 
-  h += '<div class="card mb"><div class="card-head"><h3>' + t(label) + '</h3>' +
-    '<div class="card-actions muted small">' +
-      (timeless ? esc(t('rp_as_of')) + ' <span dir="auto">' + esc(fmtDate(new Date())) + '</span>'
-                : '<span dir="auto">' + esc(repRangeLabel()) + '</span>') +
-    (OG.repLoading ? ' · ' + esc(t('loading')) : '') + '</div></div>' +
-    '<div class="card-body"><div class="chart-box" style="height:250px">' +
-      (repHasChart(tab) ? '<canvas id="repChart"></canvas>'
-                        : '<div class="chart-empty">' + esc(t('rp_empty_range')) + '</div>') +
-    '</div></div></div>';
+  /* The window this tab is answering for, said out loud. It used to be the
+     head of the chart card; the chart is gone for everyone but the owner, so
+     the sentence stands on its own rather than propping up an empty box. */
+  var when = (timeless
+    ? esc(t('rp_as_of')) + ' <span dir="auto">' + esc(fmtDate(new Date())) + '</span>'
+    : '<span dir="auto">' + esc(repRangeLabel()) + '</span>') +
+    (OG.repLoading ? ' · ' + esc(t('loading')) : '');
+
+  if (repHasChart(tab)) {
+    /* THE ONE CHART. Sales over the chosen window, base currency, owner
+       only — see repChartRoles(). The note under it is not decoration: the
+       canvas can plot one series, so dollars taken as dollars are NOT on it,
+       and a reader who does not know that reads a short month. */
+    h += '<div class="card mb"><div class="card-head"><h3>' + t(label) + '</h3>' +
+      '<div class="card-actions muted small">' + when + '</div></div>' +
+      '<div class="card-body"><div class="chart-box" style="height:250px">' +
+        '<canvas id="repChart"></canvas>' +
+      '</div>' +
+      '<div class="muted small mt">' + esc(t('rp_chart_base').replace('{c}', DB.repBase())) + '</div>' +
+      '</div></div>';
+  } else {
+    h += '<div class="rp-when muted small mb"><b>' + t(label) + '</b> · ' + when + '</div>';
+  }
 
   return h + repTable(tab);
 }
@@ -914,10 +939,30 @@ function repChartData(tab) {
   return null;
 }
 
-/* Is there anything worth drawing? A donut needs a positive slice; a bar or a
-   line only needs one figure that is not zero, because a month that lost
-   money is very much worth charting. */
+/* ------------------------------------------------- WHO GETS A PICTURE (ns02)
+
+   One chart survives in the whole shop, and it is this screen's Sales line.
+
+   The owner is shown this system in client meetings, so a clean line of
+   takings over the chosen window earns its place. Nobody else gets it: the
+   warehouse, the till and the delivery office are people doing a job with
+   their hands, and a chart is one more thing on the screen that cannot be
+   pressed.
+
+   The `developer` role is included deliberately. It holds every permission
+   and the full dashboard by design (server/lib/auth.js), and a developer
+   checking what the owner will see in a meeting has to be able to see it.
+   This is a DISPLAY choice, not a boundary — every figure behind the chart
+   is already gated by `report.read` on the server, and hiding a picture of
+   data somebody is allowed to read protects nothing. */
+function repChartRoles() { return roleOf() === 'owner' || roleOf() === 'developer'; }
+
+/* Is there anything worth drawing? A bar or a line only needs one figure that
+   is not zero, because a month that lost money is very much worth charting.
+   (The two donuts went with the other drawings; `positiveOnly` is kept
+   because repChartData still declares it and a future chart may want it.) */
 function repHasChart(tab) {
+  if (tab !== 'sales' || !repChartRoles()) return false;
   var d = repChartData(tab);
   if (!d || !d.values.length) return false;
   return d.values.some(d.positiveOnly
@@ -1338,13 +1383,14 @@ function expenseLabel(cat) {
    The description comes from repChartData, which is also what decided the
    canvas was worth drawing — so the two can no longer disagree. */
 function afterReports() {
+  /* The canvas exists only on the Sales tab and only for the owner
+     (repHasChart), so a null here is the ordinary case, not a fault. */
   var c = document.getElementById('repChart');
   if (!c || !DB.rep) return;
   var d = repChartData(repTab());
   if (!d) return;
 
-  var opts = { fmt: d.fmt, highlight: d.highlight };
-  if (d.kind === 'line') Charts.line(c, d.labels, d.values, opts);
-  else if (d.kind === 'donut') Charts.donut(c, d.labels, d.values, opts);
-  else Charts.bars(c, d.labels, d.values, opts);
+  /* Chart.js is fetched on this line and nowhere else in the shop.
+     Charts.line injects it itself and redraws when it lands. */
+  Charts.line(c, d.labels, d.values, { fmt: d.fmt, highlight: d.highlight });
 }

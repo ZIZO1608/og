@@ -3216,3 +3216,47 @@ var SAFEERS_AR = {
 };
 Object.keys(SAFEERS_EN).forEach(function (k) { I18N.en[k] = SAFEERS_EN[k]; });
 Object.keys(SAFEERS_AR).forEach(function (k) { I18N.ar[k] = SAFEERS_AR[k]; });
+
+/* ==========================================================================
+   NIGHT SHIFT 02 — "fewer steps"
+   --------------------------------------------------------------------------
+   Every key added or reworded by the simplification pass, in one block so the
+   two languages can be read against each other. Arabic here is shop Arabic,
+   the way it is said in Aleppo — "مو" rather than "مش", and the word the shop
+   already uses for a thing rather than the dictionary one.
+   ========================================================================== */
+var NS02_EN = {
+  /* -- the dashboard band that replaced the three charts -- */
+  dash_selling: 'What is selling',
+  dash_see_report: 'See the full report',
+  dash_nothing_sold: 'Nothing sold in this period',
+  dash_this_month: '{m} so far:',
+  dash_last_month: '{m}:',
+  dash_vs_last_month: 'against last month',
+
+  /* -- the product drawer, where the sparkline was -- */
+  pr_sold_6m: 'pairs sold in six months',
+  pr_last_2m: '{a} in the last two months, {b} in the two before that',
+  pr_none_sold: 'None sold yet',
+
+  /* -- the one chart left, on Reports -- */
+  rp_chart_base: 'The line is {c} only. Money taken in the other currency is in the table below, never folded in.'
+};
+
+var NS02_AR = {
+  dash_selling: 'شو عم ينباع',
+  dash_see_report: 'شوف التقرير كامل',
+  dash_nothing_sold: 'ما في شي انباع بهالفترة',
+  dash_this_month: '{m} لهلق:',
+  dash_last_month: '{m}:',
+  dash_vs_last_month: 'مقارنة بالشهر الماضي',
+
+  pr_sold_6m: 'جوز انباع بستة أشهر',
+  pr_last_2m: '{a} بآخر شهرين، و{b} بالشهرين يلي قبلن',
+  pr_none_sold: 'لسا ما انباع ولا واحد',
+
+  rp_chart_base: 'الخط بالـ{c} بس. المصاري يلي انقبضت بالعملة التانية موجودة بالجدول تحت، وما بتنجمع معها أبداً.'
+};
+
+Object.keys(NS02_EN).forEach(function (k) { I18N.en[k] = NS02_EN[k]; });
+Object.keys(NS02_AR).forEach(function (k) { I18N.ar[k] = NS02_AR[k]; });

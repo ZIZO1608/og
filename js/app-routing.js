@@ -262,6 +262,12 @@ function render() {
 
   host.className = 'view' + (entering ? '' : ' fade-in') +
                    (!partner && OG.view === 'pos' ? ' pos-view' : '');
+
+  /* The home screens do not count their numbers up (ns02, Motion.countAll).
+     Whichever of the four role homes VIEWS.dashboard chooses, it is this one
+     view id — so the switch belongs here rather than inside each of them. */
+  if (!partner && OG.view === 'dashboard') host.setAttribute('data-nocount', '');
+  else host.removeAttribute('data-nocount');
   host.innerHTML = partner ? YALLA.view() : (VIEWS[OG.view] || viewDashboard)();
   host.scrollTop = 0;
 

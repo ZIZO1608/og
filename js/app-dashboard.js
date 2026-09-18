@@ -135,18 +135,6 @@ function todoRow(a) {
        '<span class="alert-txt">' + text + '</span></div>');
 }
 
-/* A chart card that says "nothing here" in words rather than drawing an
-   empty axis. The canvas exists only when there is something to draw, so
-   afterDashboard() can test for it. */
-function chartCard(id, title, hasData, badge) {
-  return '<div class="card"><div class="card-head"><h3>' + title + '</h3>' +
-    (badge ? '<div class="card-actions">' + badge + '</div>' : '') + '</div>' +
-    '<div class="card-body"><div class="chart-box">' +
-      (hasData ? '<canvas id="' + id + '"></canvas>'
-               : '<div class="chart-empty">' + t('dash_chart_empty') + '</div>') +
-    '</div></div></div>';
-}
-
 function statBox(label, val, foot, extraCls, act) {
   return '<div class="stat' + (act ? ' clickable' : '') + (extraCls ? ' ' + extraCls : '') + '"' +
     (act || '') + '><span class="eyebrow">' + label + '</span>' +
@@ -359,24 +347,21 @@ function viewDashboard() {
     h += '</div>';
   }
 
-  /* ============================================================ BAND 3 -- */
+  /* ============================================================ BAND 3 --
+     WHAT IS SELLING. This was three charts: six months as a line, categories
+     as a doughnut, best sellers as horizontal bars. None of them was a thing
+     anybody could act on at eight in the morning, and all three were already
+     on the Reports screen as tables.
+
+     What a shopkeeper actually wants off this band is two lists and one
+     sentence: which shoes are moving, which kinds are moving, and whether
+     this month is bigger than last. So that is what it is now. Everything
+     the charts could show and this cannot is one press away on Reports,
+     which the card head says. */
   h += '<hr class="dash-tear">';
-  var hasMonthly = !!(charts && charts.monthly.some(function (m) { return m.count > 0; }));
-  var hasTypes = !!(charts && charts.byType.length);
-  var hasTop = !!(charts && charts.topProducts.length);
-  var usdOff = charts ? charts.monthly.reduce(function (a, m) { return a + (m.usd > 0 ? 1 : 0); }, 0) : 0;
-  var sixMonthCount = charts ? charts.monthly.reduce(function (a, m) { return a + m.count; }, 0) : 0;
 
   h += '<div class="dash-grid mt"><div>';
-  h += chartCard('dashLine', t('sales_6m'), hasMonthly,
-    '<span class="badge neutral"><bdi dir="ltr">' + nf(sixMonthCount) + '</bdi> ' + t('invoices') + '</span>');
-  if (usdOff && dashBase() === 'SYP') {
-    h += '<div class="muted small mt">' + t('dash_usd_not_drawn').replace('{n}', '<bdi dir="ltr">' + nf(usdOff) + '</bdi>') + '</div>';
-  }
-  h += '<div class="grid mt" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">' +
-    chartCard('dashDonut', t('sales_by_type'), hasTypes) +
-    chartCard('dashBars', t('best_sellers'), hasTop) +
-  '</div>';
+  h += sellingCard(charts);
 
   /* -- latest sales -- */
   h += '<div class="card mt"><div class="card-head"><h3>' + t('recent_sales') + '</h3>' +
@@ -405,59 +390,121 @@ function viewDashboard() {
   }
   h += '</div></div>';
 
-  /* -- right column: who sold, in the window -- */
-  h += '<div class="card"><div class="card-head"><h3>' + t('dash_by_staff') + '</h3></div>';
-  if (!staff) {
-    h += '<div class="cart-empty"><b>' + t('dash_no_staff') + '</b></div>';
-  } else if (!staff.length) {
-    h += '<div class="cart-empty"><b>' + t('dash_no_staff') + '</b></div>';
-  } else {
-    staff.forEach(function (p) {
-      h += '<div class="alert-row"><span class="alert-txt"><b>' + (p.name ? nm(p.name) : '—') + '</b>' +
-        '<small>' + moneyPair(p.syp, p.usd, true) + '</small></span>' +
-        '<span class="num"><bdi dir="ltr">' + nf(p.count) + '</bdi></span></div>';
-    });
-  }
-  h += '</div></div>';
+  /* "Who sold, in the window" used to be a second column here. It is gone,
+     for two reasons. It needs staff.read, which on this shop only the owner
+     has — so for everybody else it drew a card containing the words "no
+     staff", which is the zero-instead-of-absent mistake this file is careful
+     about everywhere else. And Reports → Employees is the same list, with
+     the payroll beside it. One place, and it is the right one. */
 
   h += '</div>';
   return h;
 }
 
-/* The three charts, in the shop's own currency. Each canvas exists only when
-   viewDashboard() found something to draw, so a missing one is not an
-   error — it is the "no sales" card standing where the chart would be. */
-function afterDashboard() {
-  var charts = dashBlock('charts');
-  if (!charts) return;
-  var base = dashBase().toLowerCase();
-  var sym = dashBase() === 'USD' ? '$' : '';
-  var fmtMoney = function (v) { return sym + Charts.compact(v); };
+/* ---------------------------------------------------- WHAT IS SELLING (ns02)
 
-  var line = document.getElementById('dashLine');
-  if (line) {
-    Charts.line(line,
-      charts.monthly.map(function (m) { return monthLabel(m.month); }),
-      charts.monthly.map(function (m) { return dashBase() === 'USD' ? m.usd / 100 : m.syp; }),
-      { fmt: fmtMoney });
+   The card that replaced the dashboard's three charts. Two short lists and
+   one sentence, because that is what the charts were being read for:
+
+     - which shoes are moving        (was: horizontal bars)
+     - which kinds are moving        (was: a doughnut)
+     - is this month bigger than last (was: a six-month line)
+
+   Five rows each, never more, with "See the full report" in the head for
+   anybody who wants the rest. Money is a pair everywhere else in this file
+   and it is a pair here: the share percentage is computed on the base
+   currency alone and says so by being the only number with a % on it.
+
+   `charts` may be absent — the block is not sent to an account that may not
+   have it — so this draws "unavailable", never an empty list. */
+function sellingCard(charts) {
+  var see = ifNav('reports',
+    '<button class="btn btn-ghost btn-sm" data-act="nav" data-view="reports" data-tab="sales">' +
+      t('dash_see_report') + '</button>');
+
+  var h = '<div class="card"><div class="card-head"><h3>' + t('dash_selling') + '</h3>' +
+    (see ? '<div class="card-actions">' + see + '</div>' : '') + '</div>';
+
+  if (!charts) {
+    return h + '<div class="cart-empty"><b>' + t('dash_unavailable') + '</b>' +
+      t('dash_unavailable_sub') + '</div></div>';
   }
 
-  var donut = document.getElementById('dashDonut');
-  if (donut) {
-    Charts.donut(donut,
-      charts.byType.map(function (x) { return DB.typeLabels[x.type] || x.type || '—'; }),
-      charts.byType.map(function (x) { return dashBase() === 'USD' ? x.usd / 100 : x[base]; }),
-      { fmt: fmtMoney });
+  /* A category that sold nothing in the window is not a fact worth a row —
+     "Boots · 0 SYP · 0%" is true and tells nobody anything, and three of
+     them in a row teaches the eye to skip the list. Same rule the Telegram
+     digests follow one level down. */
+  var top = (charts.topProducts || []).filter(function (x) { return x.units > 0; }).slice(0, 5);
+  var types = (charts.byType || []).filter(function (x) { return baseOf(x) > 0; }).slice(0, 5);
+  var monthly = charts.monthly || [];
+
+  /* The sentence that replaces the line. Only the last two buckets are
+     needed to answer "are we up or down", and both are in the payload
+     already — nothing new is computed and nothing is invented. A month with
+     no baseline behind it gets deltaTag's own "all new" rather than a
+     made-up percentage. */
+  var thisM = monthly.length ? monthly[monthly.length - 1] : null;
+  var lastM = monthly.length > 1 ? monthly[monthly.length - 2] : null;
+
+  h += '<div class="card-body"><div class="grid" ' +
+       'style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px">';
+
+  /* -- best sellers -- */
+  h += '<div><span class="eyebrow">' + t('best_sellers') + '</span>';
+  if (!top.length) {
+    h += '<div class="muted small mt">' + t('dash_nothing_sold') + '</div>';
+  } else {
+    top.forEach(function (x) {
+      /* rp_n_unit, not `units`: the latter is a column heading ("Units"),
+         and in Arabic it is the plural with the article on it, which under a
+         number reads as "5 the-units". The counted-noun keys exist for
+         exactly this and the Reports screen already uses them. */
+      h += '<div class="alert-row"><span class="alert-txt">' + esc(x.name || '—') + '</span>' +
+        '<span class="num"><b><bdi dir="ltr">' + nf(x.units) + '</bdi></b> ' +
+        '<span class="muted">' + t('rp_n_unit') + '</span></span></div>';
+    });
+  }
+  h += '</div>';
+
+  /* -- by category -- */
+  var tot = types.reduce(function (a, x) { return a + baseOf(x); }, 0);
+  h += '<div><span class="eyebrow">' + t('sales_by_type') + '</span>';
+  if (!types.length) {
+    h += '<div class="muted small mt">' + t('dash_nothing_sold') + '</div>';
+  } else {
+    types.forEach(function (x) {
+      var share = tot > 0 ? Math.round(baseOf(x) / tot * 100) : 0;
+      h += '<div class="alert-row"><span class="alert-txt">' +
+        esc(DB.typeLabels[x.type] || x.type || '—') + '</span>' +
+        '<span class="num"><b>' + moneyBase(baseOf(x)) + '</b>' +
+        (tot > 0 ? ' <span class="muted"><bdi dir="ltr">' + share + '%</bdi></span>' : '') +
+        '</span></div>';
+    });
+  }
+  h += '</div></div>';
+
+  /* -- the month against the one before it -- */
+  if (thisM) {
+    h += '<div class="mt" style="border-top:1px solid var(--border);padding-top:12px">' +
+      '<span class="muted small">' +
+        t('dash_this_month').replace('{m}', esc(monthLabel(thisM.month))) + ' ' +
+        '<b>' + moneyBase(baseOf(thisM)) + '</b>' +
+        (lastM ? ' · ' + t('dash_last_month').replace('{m}', esc(monthLabel(lastM.month))) +
+                 ' ' + moneyBase(baseOf(lastM)) : '') +
+      '</span>' +
+      (lastM ? deltaTag(baseOf(thisM), baseOf(lastM), t('dash_vs_last_month')) : '') +
+    '</div>';
   }
 
-  var bars = document.getElementById('dashBars');
-  if (bars) {
-    Charts.bars(bars,
-      charts.topProducts.map(function (x) { return x.name.length > 16 ? x.name.slice(0, 15) + '…' : x.name; }),
-      charts.topProducts.map(function (x) { return x.units; }),
-      { horizontal: true, highlight: 0, fmt: function (v) { return nf(v); } });
-  }
+  return h + '</div></div>';
 }
+
+/* There is nothing to draw after the dashboard renders any more — the three
+   charts became sellingCard(), which is plain markup and needs no hook. The
+   function stays because AFTER.dashboard names it and because a home screen
+   that grows a real after-hook later should find one here rather than wiring
+   a second call site. */
+function afterDashboard() { }
 
 /* ------------------------------------------------------- 7b. HOME, PER ROLE
 

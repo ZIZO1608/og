@@ -158,7 +158,16 @@ var Motion = (function () {
   function countAll(root) {
     root = root || document.getElementById('view');
     if (!root || reduced()) return;
-    root.querySelectorAll('.stat .val, .pdf-kpi b').forEach(count);
+    root.querySelectorAll('.stat .val, .pdf-kpi b').forEach(function (el) {
+      /* NIGHT SHIFT 02 — a home screen is the first thing somebody sees in
+         the morning, and numbers that spin up from zero before settling are
+         a number you cannot read for half a second. Anything inside a
+         [data-nocount] container is written once, at its real value. It is
+         opt-out rather than opt-in so every other screen keeps the effect
+         without being listed here. */
+      if (el.closest('[data-nocount]')) return;
+      count(el);
+    });
   }
 
   /* ------------------------------------------------- sliding nav indicator

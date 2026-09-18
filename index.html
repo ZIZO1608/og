@@ -55,8 +55,12 @@
 <div id="bulk-root"></div>
 <div id="print-root" class="print-root"></div>
 
-<!-- Chart.js vendored locally — no CDN; the server serves every file. -->
-<script src="js/vendor/chart.umd.min.js"></script>
+<!-- Chart.js is vendored locally (js/vendor/chart.umd.min.js) but is NOT
+     loaded here any more. It is 200 KB, there is one chart left in the shop —
+     Reports → Sales, for the owner — and the till was parsing all of it every
+     morning for a screen a cashier never opens. js/charts.js injects it on the
+     first draw, the way js/shelfroom.js injects three.js for the shelf map.
+     It stays in sw.js's precache list, so it is already on disk when asked. -->
 <!-- codes.js before data.js: data.js uses it to stamp valid EAN-13 check
      digits. yalla.js before the app-*.js files, same pattern as pos.js. -->
 <!-- api.js before auth.js: the login screen talks to the server through it. -->

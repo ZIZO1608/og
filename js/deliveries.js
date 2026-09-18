@@ -258,15 +258,12 @@ var Deliveries = (function () {
     return h + '</div></div>';
   }
 
-  /* The progress ring on his phone: done out of today's runs. */
+  /* Done out of today's runs. This was an SVG progress ring with the figure
+     written inside it; the figure was the only part anybody read, and on a
+     phone in one hand the ring was a 44px decoration around it. The numbers
+     are the whole of it now — bigger, and legible at arm's length. */
   function ring(done, all) {
-    var c = 119.38;                 /* 2π × 19 */
-    var p = all ? done / all : 0;
-    return '<div class="rc-ring">' +
-      '<svg viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="19"/>' +
-        '<circle class="fg" cx="22" cy="22" r="19" stroke-dasharray="' + c + '" stroke-dashoffset="' +
-        (c * (1 - p)).toFixed(2) + '"/></svg>' +
-      '<b>' + nf(done) + '<small>/' + nf(all) + '</small></b></div>';
+    return '<div class="rc-count"><b>' + nf(done) + '</b><small>/' + nf(all) + '</small></div>';
   }
 
   function driverView() {
@@ -331,10 +328,10 @@ var Deliveries = (function () {
              has to mean the sheet, or it reads as the work growing. */
           var all = rows.filter(function (d) { return d.handoverId === key; });
           var done = all.filter(isClosed).length;
-          var pct = all.length ? Math.round(done / all.length * 100) : 0;
+          /* The bar that used to sit here said exactly what the words beside
+             it already said ("4 of 11"), in a thinner and vaguer way. */
           h += '<div class="rc-sheet"><b><bdi dir="ltr">' + esc(key) + '</bdi></b>' +
-            '<span>' + t('dl_sheet_done').replace('{n}', nf(done)).replace('{of}', nf(all.length)) + '</span>' +
-            '<span class="rc-sheet-bar"><span style="width:' + pct + '%"></span></span></div>';
+            '<span>' + t('dl_sheet_done').replace('{n}', nf(done)).replace('{of}', nf(all.length)) + '</span></div>';
         }
         list.forEach(function (d) { stop++; h += runCard(d, stop, stop === 1); });
       });

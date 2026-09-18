@@ -311,9 +311,6 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
 
 /* ------------------------------------------------------------------ MISC */
 
-.sparkline { display: flex; align-items: flex-end; gap: 3px; height: 54px; }
-.sparkline i { flex: 1; background: var(--border-strong); min-height: 3px; border-radius: 3px 3px 0 0; transition: height var(--t); }
-.sparkline i.last { background: var(--brand); }
 
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; font-size: 13px; margin: 0; }
 .kv dt { color: var(--dim); font-size: 12px; align-self: center; }

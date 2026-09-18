@@ -1,11 +1,51 @@
 /* ==========================================================================
    OG SYSTEM — charts
-   Thin wrapper over Chart.js. If the CDN is unreachable (offline meeting
-   room, blocked wifi) every function silently falls back to a CSS-bar
+   Thin wrapper over Chart.js. If the library cannot be fetched (offline
+   meeting room, blocked wifi) every function silently falls back to a CSS-bar
    rendering so no screen ever breaks or shows an empty box.
+
+   NIGHT SHIFT 02 — Chart.js is LAZY now. There is one chart left in the shop
+   (Reports → Sales, for the owner) and two in the partner portal, and the
+   library is 200 KB that the till was parsing every morning for a screen a
+   cashier never opens. The <script> tag is gone from index.html; `ensure()`
+   injects it the first time something actually asks to draw, the way
+   js/shelfroom.js injects three.js for the shelf map.
+
+   Callers did not have to change: line/bars/donut inject the library
+   themselves and redraw when it lands, so `Charts.bars(c, …)` still means
+   what it meant. `Charts.compact()` is the app's number formatter and is
+   pure arithmetic — it never touches the library and never triggers a fetch.
    ========================================================================== */
 
 var Charts = (function () {
+
+  /* ---------------------------------------------------------- LAZY LOADING
+
+     Three states, and the third is the one that matters: a fetch that FAILED
+     must not be retried on every repaint of every screen. It latches, and
+     from then on every draw goes straight to the CSS bars — which is exactly
+     what the old "no CDN" path did, just decided once instead of never. */
+  var LIB = 'js/vendor/chart.umd.min.js';
+  var loading = false, failed = false, waiting = [];
+
+  function flush() {
+    var q = waiting; waiting = [];
+    q.forEach(function (fn) { try { fn(); } catch (e) { console.warn('chart', e); } });
+  }
+
+  function ensure(cb) {
+    if (typeof window.Chart !== 'undefined' || failed) { if (cb) cb(); return; }
+    if (cb) waiting.push(cb);
+    if (loading) return;
+    loading = true;
+    var s = document.createElement('script');
+    s.src = LIB;
+    s.async = true;
+    s.onload = function () { loading = false; flush(); };
+    /* Not an error anybody can act on — the screen still draws, in bars. */
+    s.onerror = function () { loading = false; failed = true; flush(); };
+    document.head.appendChild(s);
+  }
 
   /* The accent is read off the page, not baked in: the shop's lime and the
      partner portal's mint are the same token, --brand, on two bodies. */
@@ -141,12 +181,29 @@ var Charts = (function () {
     host.innerHTML = html;
   }
 
-  /* ------------------------------------------------------------- public API */
+  /* ------------------------------------------------------------- public API
+
+     Every draw starts here. It answers "should the caller stop now?" — yes
+     when the library is still coming (this redraws once it lands) and yes
+     when it is never coming (the CSS bars are already on screen). A caller
+     that gets `false` has a real `window.Chart` to work with. */
+  function notReady(redraw, canvas, labels, values, opts) {
+    if (has()) return false;
+    if (failed) { fallbackBars(canvas, labels, values, opts.fmt); return true; }
+    ensure(function () {
+      /* 200 KB is long enough for somebody to have left the screen, and
+         drawing into a canvas that is no longer on the page is how a stale
+         instance ends up in the registry under a live id. */
+      if (!canvas.isConnected) return;
+      redraw();
+    });
+    return true;
+  }
 
   function line(canvas, labels, values, opts) {
     opts = opts || {};
     if (!canvas) return;
-    if (!has()) return fallbackBars(canvas, labels, values, opts.fmt);
+    if (notReady(function () { line(canvas, labels, values, opts); }, canvas, labels, values, opts)) return;
     destroy(canvas.id);
     asked[canvas.id] = { kind: 'line', fmt: opts.fmt, highlight: opts.highlight, horizontal: !!opts.horizontal };
     try {
@@ -188,7 +245,7 @@ var Charts = (function () {
   function bars(canvas, labels, values, opts) {
     opts = opts || {};
     if (!canvas) return;
-    if (!has()) return fallbackBars(canvas, labels, values, opts.fmt);
+    if (notReady(function () { bars(canvas, labels, values, opts); }, canvas, labels, values, opts)) return;
     destroy(canvas.id);
     asked[canvas.id] = { kind: 'bars', fmt: opts.fmt, highlight: opts.highlight, horizontal: !!opts.horizontal };
     try {
@@ -227,7 +284,7 @@ var Charts = (function () {
   function donut(canvas, labels, values, opts) {
     opts = opts || {};
     if (!canvas) return;
-    if (!has()) return fallbackBars(canvas, labels, values, opts.fmt);
+    if (notReady(function () { donut(canvas, labels, values, opts); }, canvas, labels, values, opts)) return;
     destroy(canvas.id);
     asked[canvas.id] = { kind: 'donut', fmt: opts.fmt, highlight: opts.highlight, horizontal: !!opts.horizontal };
     try {
@@ -441,5 +498,5 @@ var Charts = (function () {
   }
 
   return { line: line, bars: bars, donut: donut, destroy: destroy, destroyAll: destroyAll,
-           has: has, compact: compact, printSnapshot: printSnapshot };
+           has: has, ensure: ensure, compact: compact, printSnapshot: printSnapshot };
 })();

@@ -221,7 +221,6 @@ function openProductDrawer(pid) {
   var total = DB.totalQty(pid);
   var gaps = DB.sizeGaps(pid);
   var trend = DB.productTrend(pid);
-  var max = Math.max.apply(null, trend.concat([1]));
 
   /* The picture is the button: press it to change it. Below the name, the
      address it lives at in the bucket - the one thing somebody wiring the
@@ -319,13 +318,31 @@ function openProductDrawer(pid) {
   });
   body += '</tbody></table></div></div>';
 
-  body += '<div class="card mb"><div class="card-head"><h3>' + t('sales_trend') + '</h3>' +
-    '<div class="card-actions muted small">' + trend.reduce(function (a, b) { return a + b; }, 0) + ' ' + t('units').toLowerCase() + '</div></div>' +
-    '<div class="card-body"><div class="sparkline">';
-  trend.forEach(function (v, i) {
-    body += '<i class="' + (i === trend.length - 1 ? 'last' : '') + '" style="height:' + Math.max(4, v / max * 100) + '%" title="' + v + '"></i>';
-  });
-  body += '</div></div></div>';
+  /* This was a twelve-bar sparkline of 15-day buckets. Nobody standing at a
+     shelf with a shoe in one hand reads a sparkline — and with no axis and
+     no dates on it, it could not say WHEN anything sold. Two sentences carry
+     everything it did: how many went in six months, and how the last two
+     months compare. `trend` is the same series; only the reading changed. */
+  var sold6 = trend.reduce(function (a, b) { return a + b; }, 0);
+  /* The last four buckets are two months, the four before them the two
+     before that — the series is 15-day buckets, so this is arithmetic on the
+     data already in hand, not a new statistic. */
+  var recent = trend.slice(-4).reduce(function (a, b) { return a + b; }, 0);
+  var before = trend.slice(-8, -4).reduce(function (a, b) { return a + b; }, 0);
+
+  body += '<div class="card mb"><div class="card-head"><h3>' + t('sales_trend') + '</h3></div>' +
+    '<div class="card-body">';
+  if (!sold6) {
+    body += '<div class="muted">' + t('pr_none_sold') + '</div>';
+  } else {
+    body += '<div><b class="big">' + nf(sold6) + '</b> ' + t('pr_sold_6m') + '</div>' +
+      '<div class="muted small mt">' +
+        t('pr_last_2m')
+          .replace('{a}', '<bdi dir="ltr">' + nf(recent) + '</bdi>')
+          .replace('{b}', '<bdi dir="ltr">' + nf(before) + '</bdi>') +
+      '</div>';
+  }
+  body += '</div></div>';
 
   body += '<div class="card"><div class="card-body"><dl class="kv">' +
     '<dt>' + t('brand') + '</dt><dd>' + esc(p.brand) + '</dd>' +
