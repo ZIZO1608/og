@@ -1633,12 +1633,12 @@ body:not([data-portal="yalla"]) .dlb-menu {
   border-radius: var(--radius); box-shadow: 0 14px 34px rgba(0,0,0,.55);
 }
 body:not([data-portal="yalla"]) .dlb-menu.on { display: block; }
-body:not([data-portal="yalla"]) .dlb-mi {
+body:not([data-portal="yalla"]) .dlb-mitem {
   display: block; width: 100%; padding: 9px 11px; text-align: start;
   background: none; border: 0; border-radius: 8px; color: var(--foreground);
   font: inherit; font-size: 13px; cursor: pointer; min-height: 38px;
 }
-body:not([data-portal="yalla"]) .dlb-mi:hover { background: rgba(255,255,255,.06); }
+body:not([data-portal="yalla"]) .dlb-mitem:hover { background: rgba(255,255,255,.06); }
 
 /* The four jobs on "Where the money is". A second row under the cash-book
    moves, so "record an expense" is not dressed as "move money between
@@ -1648,5 +1648,5 @@ body:not([data-portal="yalla"]) .cb-jobs { padding-top: 2px; }
 @media (max-width: 720px) {
   /* Under a thumb, and never off the edge of a phone. */
   body:not([data-portal="yalla"]) .dlb-menu { min-width: 200px; }
-  body:not([data-portal="yalla"]) .dlb-mi { min-height: 44px; font-size: 14px; }
+  body:not([data-portal="yalla"]) .dlb-mitem { min-height: 44px; font-size: 14px; }
 }

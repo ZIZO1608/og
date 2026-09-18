@@ -460,11 +460,11 @@ var Deliveries = (function () {
         if (d.method !== 'pickup' && !d.driverId && !d.companyId) {
           next = '<button class="btn btn-sm btn-primary" data-act="dl-assign" data-id="' + d.id + '">' +
                  t('dl_assign_btn') + '</button>';
-          rest += '<button class="dlb-mi" data-act="dl-go" data-id="' + d.id + '">' + t('dl_take') + '</button>';
+          rest += '<button class="dlb-mitem" data-act="dl-go" data-id="' + d.id + '">' + t('dl_take') + '</button>';
         } else if (d.method !== 'pickup') {
           next = '<button class="btn btn-sm btn-primary" data-act="dl-go" data-id="' + d.id + '">' +
                  t('dl_take') + '</button>';
-          rest += '<button class="dlb-mi" data-act="dl-assign" data-id="' + d.id + '">' + t('dl_assign_btn') + '</button>';
+          rest += '<button class="dlb-mitem" data-act="dl-assign" data-id="' + d.id + '">' + t('dl_assign_btn') + '</button>';
         } else {
           /* A pickup never goes out: it goes straight to collected. */
           next = '<button class="btn btn-sm btn-primary" data-act="dl-done" data-id="' + d.id + '">' +
@@ -475,27 +475,27 @@ var Deliveries = (function () {
                t('dl_done') + '</button>';
         /* Failed is not a step forward, and it is the one a tired hand must
            not hit instead of Delivered. */
-        rest += '<button class="dlb-mi" data-act="dl-fail" data-id="' + d.id + '">' + t('dl_fail') + '</button>';
+        rest += '<button class="dlb-mitem" data-act="dl-fail" data-id="' + d.id + '">' + t('dl_fail') + '</button>';
       }
     }
 
     if (d.order && d.remaining > 0 && (allow('delivery.desk') || allow('debt.collect'))) {
-      rest += '<button class="dlb-mi" data-act="dl-pay" data-id="' + esc(d.saleId) + '">' + t('dk_take_payment') + '</button>';
+      rest += '<button class="dlb-mitem" data-act="dl-pay" data-id="' + esc(d.saleId) + '">' + t('dk_take_payment') + '</button>';
     }
     /* It came back. Offered once it has actually gone somewhere — a parcel
        still waiting on the counter is cancelled, not returned. */
     if (d.order && allow('delivery.desk') && !d.voided &&
         (d.status === 'delivered' || d.status === 'failed' || d.status === 'out')) {
-      rest += '<button class="dlb-mi" data-act="rd-return" data-id="' + esc(d.saleId) + '">' + t('rd_return') + '</button>';
+      rest += '<button class="dlb-mitem" data-act="rd-return" data-id="' + esc(d.saleId) + '">' + t('rd_return') + '</button>';
     }
     /* The tracking link, on WhatsApp, from the card itself — "where is my
        order?" is asked of the board, not of the office's saved card. Only an
        order has a page to send, and a cancelled one has nothing to follow. */
     if (d.order && d.publicToken && allow('delivery.desk')) {
-      rest += '<button class="dlb-mi" data-act="dl-wa-track" data-id="' + esc(d.saleId) + '">' +
+      rest += '<button class="dlb-mitem" data-act="dl-wa-track" data-id="' + esc(d.saleId) + '">' +
               t('dl_wa_track_title') + '</button>';
     }
-    rest += '<button class="dlb-mi" data-act="dl-open" data-id="' + esc(d.saleId) + '">' + t('dl_open') + '</button>';
+    rest += '<button class="dlb-mitem" data-act="dl-open" data-id="' + esc(d.saleId) + '">' + t('dl_open') + '</button>';
 
     /* The menu is drawn in the row and shown by a class, not built on click:
        the board repaints on every live push, and a popover held in a variable
@@ -1021,7 +1021,7 @@ var Deliveries = (function () {
         if (!inside) closeRowMenus();
         /* A press on an item inside the menu runs its own action through the
            ordinary dispatcher; the menu closes either way. */
-        else if (e.target.closest('.dlb-mi')) setTimeout(closeRowMenus, 0);
+        else if (e.target.closest('.dlb-mitem')) setTimeout(closeRowMenus, 0);
       }, true);
     }
 
