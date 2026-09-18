@@ -61,7 +61,8 @@ var Home = (function () {
       icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
     { id: 'money', view: 'money', perm: 'money.read', key: 'nav_money',
       icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4' },
-    { id: 'closeday', view: 'money', tab: 'close', perm: ['money.count', 'money.move'], key: 'dc_tab',
+    { id: 'closeday', view: 'money', tab: 'close', perm: ['money.count', 'money.move'],
+      key: function () { return allow('money.move') ? 'dc_tab' : 'dc_count_title'; },
       icon: 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3' },
     { id: 'expense', view: 'money', tab: 'expenses', perm: 'money.write', key: 'cb_go_expense',
       icon: 'M12 5v14M5 12h14' },
@@ -229,7 +230,7 @@ var Home = (function () {
       h += '<button class="hm-job" data-hm="go" data-id="' + j.id + '">' +
         '<span class="hm-ico"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
           '<path d="' + j.icon + '"/></svg></span>' +
-        '<span class="hm-t">' + t(j.key) + '</span>' +
+        '<span class="hm-t">' + t(typeof j.key === 'function' ? j.key() : j.key) + '</span>' +
         (c ? '<span class="hm-c' + (c.tone ? ' ' + c.tone : '') + '">' +
                t(c.key).replace('{n}', '<bdi dir="ltr">' + nf(c.n) + '</bdi>') + '</span>' : '') +
       '</button>';

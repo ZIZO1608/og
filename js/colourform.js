@@ -282,8 +282,10 @@ var ColourForm = (function () {
     if (f === 'qty') {
       var s = el.getAttribute('data-size');
       if (el.value === '') { c.qty[s] = ''; patch(c); return; }
-      var n = Math.floor(Number(el.value));
-      if (!(n >= 0)) { n = 0; el.value = '0'; }
+      /* Desk.toCount, never Number(): an Arabic keypad types ١٢ and a
+         pasted count can carry a space. */
+      var n = Desk.toCount(el.value, { empty: null });
+      if (n === null) { n = 0; el.value = '0'; }
       c.qty[s] = n;
       patch(c);
       return;
@@ -472,9 +474,9 @@ var ColourForm = (function () {
   document.addEventListener('input', function (e) {
     var s = e.target.getAttribute && e.target.getAttribute('data-cf-add');
     if (!s || !ADD) return;
-    var n = Math.floor(Number(e.target.value));
-    if (e.target.value !== '' && !(n >= 0)) { n = 0; e.target.value = '0'; }
-    ADD.qty[s] = e.target.value === '' ? '' : n;
+    var n = Desk.toCount(e.target.value, { empty: null });
+    if (e.target.value !== '' && n === null) { n = 0; e.target.value = '0'; }
+    ADD.qty[s] = e.target.value === '' ? '' : (n === null ? 0 : n);
   });
 
   return {

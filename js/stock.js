@@ -131,8 +131,8 @@ var Stock = (function () {
 
   function set(sku, qty) {
     if (!S.active) return;
-    var n = parseInt(qty, 10);
-    if (qty === '' || qty === null || isNaN(n) || n < 0) {
+    var n = Desk.toCount(qty, { empty: null });
+    if (n === null || n === undefined) {
       /* Clearing the box means "not counted", which is deliberately different
          from counting zero. */
       delete S.active.counted[sku];

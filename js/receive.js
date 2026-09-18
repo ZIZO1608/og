@@ -377,7 +377,7 @@ var Receive = (function () {
   function setQty(sku, n) {
     var l = line(sku);
     if (!l) return;
-    l.qty = Math.max(0, Math.min(9999, Math.round(Number(n) || 0)));
+    l.qty = Desk.toCount(n, { max: 9999 });
   }
 
   /* ---------------------------------------------------------------- write */

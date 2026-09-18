@@ -142,9 +142,37 @@ var Desk = (function () {
      kinds appear the LAST one is always the decimal, whatever follows it.
      A fraction on a currency with no minor unit (lira) rounds to the nearest
      whole rather than being thrown away. */
-  function toMinor(typed, code) {
-    var s = String(typed === undefined || typed === null ? '' : typed).replace(/[^\d.,]/g, '');
-    if (!s) return 0;
+  /* ----------------------------------------------------------------------
+     THE DIGITS SOMEBODY ACTUALLY TYPES                     (night shift 03)
+     JS `\d` is ASCII only, so an Arabic phone keyboard's ١٢٠ was stripped to
+     nothing and every money box in the shop read ZERO — in an app whose
+     shop reads Arabic first. Arabic-Indic (٠-٩) and Persian (۰-۹) digits
+     are folded to ASCII here, once, for every parser below.
+
+     The Arabic separators are UNAMBIGUOUS where the Latin ones are not:
+     ٬ is always a thousands group, so it is simply dropped, and ٫ is always
+     the decimal, so it skips the "three digits after the separator means a
+     thousands group" guess entirely. A space — ordinary, no-break or narrow
+     — is a thousands group too, and was already thrown away by the
+     character class. */
+  function foldDigits(v) {
+    return String(v === undefined || v === null ? '' : v)
+      .replace(/[٠-٩۰-۹]/g, function (d) {
+        var c = d.charCodeAt(0);
+        return String(c >= 0x06F0 ? c - 0x06F0 : c - 0x0660);
+      });
+  }
+
+  /* ONE reading of a typed figure, for money and for a count alike: which
+     digits are the whole part and which are after the decimal. Three digits
+     after the last separator is a thousands group, anything else is the
+     decimal, and when both kinds appear the last one wins — unless ٫ said
+     so outright, which settles it. */
+  function figure(typed) {
+    var raw = foldDigits(typed);
+    var hardDec = raw.indexOf('٫') > -1;
+    var s = raw.replace(/٬/g, '').replace(/٫/g, '.').replace(/[^\d.,]/g, '');
+    if (!s.replace(/\D/g, '')) return null;
 
     var lastDot = s.lastIndexOf('.');
     var lastCom = s.lastIndexOf(',');
@@ -153,21 +181,44 @@ var Desk = (function () {
     if (sep > -1) {
       var after = s.length - sep - 1;
       var mixed = lastDot > -1 && lastCom > -1;
-      if (mixed || after !== 3) dec = sep;
+      if (hardDec || mixed || after !== 3) dec = sep;
     }
+    return {
+      whole: (dec > -1 ? s.slice(0, dec) : s).replace(/\D/g, ''),
+      frac: (dec > -1 ? s.slice(dec + 1) : '').replace(/\D/g, '')
+    };
+  }
 
-    var whole = (dec > -1 ? s.slice(0, dec) : s).replace(/\D/g, '');
-    var frac = (dec > -1 ? s.slice(dec + 1) : '').replace(/\D/g, '');
+  function toMinor(typed, code) {
+    var f = figure(typed);
+    if (!f) return 0;
     var e = expOf(code);
-    var v = Number(whole || '0');
+    var v = Number(f.whole || '0');
     if (!isFinite(v)) return 0;
 
     var minor = v * Math.pow(10, e);
-    if (frac) {
-      if (e > 0) minor += Number((frac + '00000000').slice(0, e));
-      else if (Number(frac.charAt(0)) >= 5) minor += 1;
+    if (f.frac) {
+      if (e > 0) minor += Number((f.frac + '00000000').slice(0, e));
+      else if (Number(f.frac.charAt(0)) >= 5) minor += 1;
     }
     return minor > 0 ? Math.round(minor) : 0;
+  }
+
+  /* A COUNTED THING — pairs, pieces, a quantity on a shelf. Whole numbers,
+     never negative, and it reads exactly the digits `toMinor` reads: four
+     places parsed a quantity with a bare Number() or parseInt(), and every
+     one of them turned "1 000" and "١٢" into 0 without a word.
+     `opts.empty` is what an EMPTY box means, which is not the same answer as
+     zero — the stock count has to tell "not counted" from "counted none". */
+  function toCount(typed, opts) {
+    opts = opts || {};
+    var f = figure(typed);
+    if (!f) return opts.empty === undefined ? 0 : opts.empty;
+    var n = Math.floor(Number(f.whole || '0'));
+    if (!isFinite(n) || n < 0) n = 0;
+    if (opts.max !== undefined) n = Math.min(opts.max, n);
+    if (opts.min !== undefined) n = Math.max(opts.min, n);
+    return n;
   }
 
   function wholeOf(minor, code) {
@@ -2693,7 +2744,7 @@ var Desk = (function () {
     if (!row) return;
     var k = el.getAttribute('data-k');
     row[k] = el.type === 'checkbox' ? !!el.checked
-      : (k === 'fee' ? Math.max(0, Math.round(Number(el.value) || 0)) : el.value);
+      : (k === 'fee' ? toCount(el.value) : el.value);
   }
 
   return {
@@ -2710,6 +2761,8 @@ var Desk = (function () {
     fmt: fmt,
     plain: moneyPlain,
     toMinor: toMinor,
+    toCount: toCount,
+    foldDigits: foldDigits,
     openOrder: openOrder,
     sendTrack: sendTrack,
     takePayment: takePayment,
