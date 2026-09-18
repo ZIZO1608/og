@@ -2081,3 +2081,118 @@ body:not([data-portal="yalla"]) .fold-meta {
 @media (max-width: 560px) {
   body:not([data-portal="yalla"]) .fold-meta { flex-basis: 100%; padding-inline-start: 26px; }
 }
+
+/* ==========================================================================
+   FIX 04 — THE TILL'S BOTTOM ON A PHONE
+   --------------------------------------------------------------------------
+   Reported as "the till's last 58px sit under the tab bar". Measured at 390
+   it was two faults, and both were worse than that: the Complete-sale button
+   was 426px BELOW the viewport and clipped away entirely, so a sale could not
+   be finished on a phone at all (rules 1 and 2); and the cart sheet was not
+   fixed to the screen, so scrolling the shoes took the whole cart off the top
+   of it (rule 0).
+
+   Why the button. At <=720 the cart is a fixed sheet — `.pos-right`, `bottom:
+   var(--tabbar-h)`, `max-height: 76vh`, `overflow: hidden` — holding a flex
+   column of head + lines + foot. The foot carries the customer, the
+   discount, the totals, eleven payment methods and the Pay button, and at
+   390px wide that is ~850px of content. The <=1080 block lifts the base
+   rule's `max-height: 64vh` off it (`.cart-foot { height:auto; max-height:
+   none }`) — right for 721–1080, where the cart is stacked and follows the
+   page down — and the base rule also says `flex: none`. So inside a 578px
+   sheet the foot kept its full 851px and the sheet's own `overflow: hidden`
+   cut it off at the sheet's bottom edge. Nothing was under the bar; the
+   bottom half of the cart did not exist.
+
+   The fix is layout only. Nothing about the sale, its steps or its buttons
+   moved.
+
+   The till is also the one screen that opts out of `.view`'s bottom padding
+   (`.view.pos-view { padding: 0 }`, two files up) — the panes own their own
+   padding there — so the padding and the scroll-padding that keep every
+   other screen clear of the bar have to be said again, on the till's own
+   scroller and on its own bottom-most pane. On this screen "the bar" is two
+   things: the phone tab bar, and the 62px collapsed cart sheet floating
+   above it. */
+@media (max-width: 720px) {
+
+  /* 0. THE CART SHEET WAS NOT FIXED TO THE SCREEN AT ALL.
+        `.pos-right` is `position: fixed`, and a fixed element resolves
+        against the viewport ONLY while no ancestor carries a transform.
+        #view carries one: `.fade-in` (every repaint) and `.mo-view` (a view
+        change) both END in `transform: none` and both fill `both`, so the
+        finished animation goes on applying that last keyframe and #view
+        keeps `transform: matrix(1, 0, 0, 1, 0, 0)` for as long as the
+        screen is up. An identity transform is still a transform, and it
+        makes #view the containing block for everything fixed inside it. So
+        the cart sheet SCROLLED WITH THE PRODUCT GRID: measured at 390,
+        scrolling to the end of the shoes took the summary bar, the total
+        and the whole pay sheet 2,210px off the top of the screen.
+
+        `backwards` is the cure and it costs nothing on the glass. The
+        from-state is still applied before the animation starts and it still
+        runs; once it has finished the element simply goes back to its own
+        style — which, for both of these, IS the last keyframe. The same
+        movement, with nothing left behind.
+
+        This is the stacking-context trap in css/shell.css one step on, and
+        the same one the order desk met in its sticky foot ("fills
+        backwards, not both"). Scoped to the phone till because that is the
+        one screen with something FIXED inside the view; whether `.fade-in`
+        should say `backwards` app-wide is question 3 in fix_04_log.md. */
+  body:not([data-portal="yalla"]) .view.pos-view.fade-in,
+  body:not([data-portal="yalla"]) .view.pos-view.mo-view,
+  body:not([data-portal="yalla"]) .view.pos-view.mo-view[data-dir] {
+    animation-fill-mode: backwards;
+  }
+
+  /* 1. THE FOOT MAY SHRINK. `flex: none` is what made it overflow; with
+        `0 1 auto` and `min-height: 0` it can never be taller than the room
+        the sheet has, and the base rule's own `overflow-y: auto` then
+        scrolls it. `overscroll-behavior: contain` keeps a flick inside the
+        cart instead of dragging the product grid behind it. */
+  body:not([data-portal="yalla"]) .cart-foot {
+    flex: 0 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+    /* so scrollIntoView (and a focused field) never parks something under
+       the sticky Pay button below */
+    scroll-padding-bottom: 64px;
+  }
+
+  /* 2. PAY STAYS ON THE GLASS. The foot scrolls now, and the one control
+        this whole screen exists for must not be the thing somebody has to
+        go looking for. Sticky to the foot's own bottom — which is the
+        sheet's bottom, which is the top of the tab bar — in a band of the
+        foot's own colour, or the totals show through its rounded corners as
+        they scroll past. */
+  body:not([data-portal="yalla"]) .cart-foot > [data-pos="complete"] {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    box-shadow: 0 0 0 6px var(--subtle), 0 -16px 16px -10px var(--subtle);
+  }
+
+  /* 3. A WINDOW SHORTER THAN ONE CART LINE. The lines box is `flex: 1`,
+        which is `flex-basis: 0`, so once the foot shrinks it is the
+        min-height that decides how much of the basket is on screen — and
+        90px against a cart line of 125–140px showed half a shoe, with the
+        top of the only line scrolled up behind the head. One whole line,
+        floor. */
+  body:not([data-portal="yalla"]) .cart-lines { min-height: 150px; }
+
+  /* 4. THE PRODUCT GRID CLEARS BOTH. It cleared the collapsed sheet (62px)
+        and not the bar under it, so the last row of shoes rested 34px
+        inside the sheet. */
+  body:not([data-portal="yalla"]) .pos-grid-wrap {
+    padding-bottom: calc(62px + var(--tabbar-h) + 24px);
+  }
+
+  /* 5. AND THE TILL'S OWN SCROLLER GETS THE SCROLL-PADDING `.view` HAS.
+        The rule above this one names `.view`, and `.view.pos-view` is the
+        same element — but the till's scrollport has the sheet over it as
+        well as the bar, so it needs the larger figure. */
+  body:not([data-portal="yalla"]) .view.pos-view {
+    scroll-padding-bottom: calc(62px + var(--tabbar-h) + 28px);
+  }
+}
