@@ -1650,3 +1650,22 @@ body:not([data-portal="yalla"]) .cb-jobs { padding-top: 2px; }
   body:not([data-portal="yalla"]) .dlb-menu { min-width: 200px; }
   body:not([data-portal="yalla"]) .dlb-mitem { min-height: 44px; font-size: 14px; }
 }
+
+/* ---- quick fix: the safeer card's "…" and its warning ------------------- */
+/* The card menu is drawn inside the card, and the NEXT card is a later
+   sibling — so without a stacking context of its own the menu paints
+   underneath it and the press lands on the wrong card. Lifting the action
+   row is enough; the cards themselves stay static. */
+body:not([data-portal="yalla"]) .sf-p-act { position: relative; z-index: 5; }
+body:not([data-portal="yalla"]) .sf-person { position: relative; }
+/* The card whose menu is open comes to the front of the pack. A later
+   sibling card would otherwise paint over the menu and swallow the press. */
+body:not([data-portal="yalla"]) .sf-person.is-menu { z-index: 30; }
+body:not([data-portal="yalla"]) .sf-filtered {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 0 10px;
+}
+body:not([data-portal="yalla"]) .sf-off-warn {
+  margin-top: 10px; padding: 10px 12px; border-radius: var(--radius);
+  background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.35);
+  color: #F59E0B; font-size: 12.5px;
+}

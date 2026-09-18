@@ -22,7 +22,7 @@ var Safeers = (function () {
   var S = {
     team: null, areas: [], rate: null, errands: [], parcels: [],
     filter: { safeer: '', status: 'open', date: '' },
-    loading: false, error: null, shown: null,
+    loading: false, error: null, shown: null, menu: null,
     mine: null, mineError: null, mineLoading: false
   };
 
@@ -111,7 +111,7 @@ var Safeers = (function () {
     h += '<div class="sf-team">';
     if (!S.team.length) h += '<div class="card"><div class="cart-empty"><b>' + t('sf_no_team') + '</b>' + t('sf_no_team_sub') + '</div></div>';
     S.team.forEach(function (p) {
-      h += '<div class="card sf-person' + (p.active ? '' : ' is-off') + '">' +
+      h += '<div class="card sf-person' + (p.active ? '' : ' is-off') + (S.menu === p.id ? ' is-menu' : '') + '">' +
         '<div class="sf-p-head">' +
           (typeof Desk !== 'undefined' && Desk.face ? Desk.face(p.id, p.name) : '') +
           '<div class="sf-p-who"><b>' + esc(p.name) + '</b>' +
@@ -138,12 +138,24 @@ var Safeers = (function () {
         '</div>';
       }
       if (allow('safeer.write')) {
+        /* "Their tasks" is what this card is pressed for. The two account
+           actions — a new password, and switching somebody off — are rarer
+           and one of them ends their sessions, so they moved behind a "…"
+           (quick fix). Same shape as the deliveries board's row menu: markup
+           already in the card, shown by a class, closed by an outside press. */
+        var acct = (allow('staff.write') || allow('access.write'))
+          ? '<button class="dlb-mitem" data-sf="password" data-id="' + p.id + '">' + t('ac_new_pw') + '</button>' +
+            '<button class="dlb-mitem" data-sf="active" data-id="' + p.id + '" data-on="' + (p.active ? '0' : '1') + '">' +
+              t(p.active ? 'ac_switch_off' : 'ac_switch_on') + '</button>'
+          : '';
         h += '<div class="sf-p-act">' +
           '<button class="btn btn-sm btn-ghost" data-sf="filter-person" data-id="' + p.id + '">' + t('sf_their_tasks') + '</button>' +
-          (allow('staff.write') || allow('access.write')
-            ? '<button class="btn btn-sm btn-ghost" data-sf="password" data-id="' + p.id + '">' + t('ac_new_pw') + '</button>' +
-              '<button class="btn btn-sm btn-ghost" data-sf="active" data-id="' + p.id + '" data-on="' + (p.active ? '0' : '1') + '">' +
-                t(p.active ? 'ac_switch_off' : 'ac_switch_on') + '</button>'
+          (acct
+            ? '<span class="dlb-more">' +
+                '<button class="btn btn-sm btn-ghost dlb-dots" data-sf="menu" data-id="' + p.id + '" ' +
+                  'aria-label="' + esc(t('sf_more_actions')) + '" title="' + esc(t('sf_more_actions')) + '">···</button>' +
+                '<span class="dlb-menu' + (S.menu === p.id ? ' on' : '') + '" data-menu="sf' + p.id + '">' + acct + '</span>' +
+              '</span>'
             : '') +
         '</div>';
       }
@@ -178,8 +190,23 @@ var Safeers = (function () {
         '<label class="field"><span>' + t('sf_since') + '</span><input class="inp" type="date" data-sf-f="date" value="' + esc(S.filter.date) + '"></label>' +
       '</div>';
     var rows = tasks();
+
+    /* THE LIST OPENS FILTERED, AND NEVER SAID SO (quick fix). `S.filter.status`
+       starts at 'open', which is the right default — but it meant somebody
+       seeing four rows out of twenty-four read the page as empty or cut off,
+       which is exactly how it was reported. It says which filter is on and
+       offers one press to drop the lot. */
+    var filtered = !!(S.filter.status || S.filter.safeer || S.filter.date);
+    if (filtered) {
+      h += '<div class="sf-filtered muted small">' +
+        t('sf_filtered').replace('{n}', '<bdi dir="ltr">' + nf(rows.length) + '</bdi>') +
+        ' <button class="btn btn-sm btn-ghost" data-sf="filter-clear">' + t('sf_show_all') + '</button>' +
+      '</div>';
+    }
+
     if (!rows.length) {
-      h += '<div class="cart-empty"><b>' + t('sf_no_tasks') + '</b>' + t('sf_no_tasks_sub') + '</div>';
+      h += '<div class="cart-empty"><b>' + t('sf_no_tasks') + '</b>' +
+        (filtered ? t('sf_no_tasks_filtered') : t('sf_no_tasks_sub')) + '</div>';
     } else {
       h += '<div class="table-wrap"><table class="tbl sf-tbl"><thead><tr>' +
         '<th>' + t('sf_task') + '</th><th>' + t('sf_area') + '</th><th>' + t('sf_safeer') + '</th>' +
@@ -191,9 +218,19 @@ var Safeers = (function () {
     return h;
   }
 
-  /* Parcels (the board's) and errands, one list. */
+  /* Parcels (the board's) and errands, one list.
+
+     The two halves are filtered in two different places and that is not an
+     oversight: the errands are asked for WITH the filter on the query string
+     (`load()`), so the server has already narrowed them, while the parcels
+     arrive from the board's own request and are narrowed here.
+
+     What WAS an oversight (quick fix): `since` was on the errands' query and
+     was read nowhere for the parcels, so picking a date changed half the list
+     and left the other half alone. */
   function tasks() {
     var f = S.filter;
+    var since = f.date ? new Date(f.date + 'T00:00:00').getTime() : 0;
     var out = [];
     S.parcels.forEach(function (d) {
       if (!d.driverId) return;
@@ -201,6 +238,14 @@ var Safeers = (function () {
       var st = d.status === 'delivered' ? 'done' : d.status;
       if (f.status === 'open' && !(st === 'waiting' || st === 'out')) return;
       if (f.status && f.status !== 'open' && f.status !== st) return;
+      if (since) {
+        /* The same instant the row is sorted and stamped by elsewhere: when
+           it closed if it has, else when it went out, else when it was given
+           to somebody. A parcel with no date at all is kept — dropping it
+           would hide a real task behind a filter about time. */
+        var at = new Date(d.closedAt || d.outAt || d.assignedAt || d.saleAt || '').getTime();
+        if (isFinite(at) && at < since) return;
+      }
       out.push({ type: 'parcel', id: d.id, title: d.saleId + ' · ' + (d.customerName || ''), area: d.city || d.address || '',
                  safeer: d.driverName, status: d.status, due: null, raw: d });
     });
@@ -393,6 +438,8 @@ var Safeers = (function () {
 
   document.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('[data-sf]') : null;
+    /* A press anywhere but inside a card menu shuts it. */
+    if (S.menu !== null && !(e.target.closest && e.target.closest('.dlb-more'))) { S.menu = null; repaint(); }
     if (!b) return;
     var a = b.getAttribute('data-sf');
     var id = +b.getAttribute('data-id');
@@ -403,6 +450,9 @@ var Safeers = (function () {
     if (a === 'new-errand') { newErrand(); return; }
     if (a === 'assign-parcel') { assignParcel(); return; }
     if (a === 'filter-person') { S.filter.safeer = String(id); load(); return; }
+    /* Drop every filter at once (quick fix) — the status one is on by
+       default, so "show everything" has to be one press and not three. */
+    if (a === 'filter-clear') { S.filter.safeer = ''; S.filter.status = ''; S.filter.date = ''; load(); return; }
     if (a === 'hide-once') { S.shown = null; repaint(); return; }
 
     if (a === 'errand-save') {
@@ -472,9 +522,45 @@ var Safeers = (function () {
       });
       return;
     }
+    /* The card's "…" (quick fix). One open at a time, and the OPEN ONE IS
+       HELD IN STATE, not as a class on the node: this page repaints itself
+       whenever a load lands or a live event arrives, and render() rebuilds
+       the cards — a class put straight on the element was gone within half a
+       second, which is exactly how it behaved when first written. */
+    if (a === 'menu') {
+      S.menu = (S.menu === id) ? null : id;
+      repaint();
+      return;
+    }
     if (a === 'active') {
       var on = b.getAttribute('data-on') === '1';
-      send(b, API.post('/api/safeers/' + id + '/active', { active: on }), t(on ? 'ac_now_on' : 'ac_now_off'), function () { load(); });
+      /* SWITCHING SOMEBODY OFF ENDS THEIR SESSIONS and takes the shop off
+         their phone mid-round, so it asks first and NAMES WHAT THEY ARE
+         STILL CARRYING (quick fix). Switching back on is harmless and does
+         not ask. `open` is the count this page already shows on the card. */
+      if (!on) {
+        var who = (S.team || []).filter(function (x) { return x.id === id; })[0];
+        var carrying = who ? Number(who.open) || 0 : 0;
+        openModal({
+          title: t('ac_switch_off'), size: 'narrow',
+          body: '<p>' + t('sf_off_q').replace('{name}', esc(who ? who.name : '')) + '</p>' +
+            (carrying
+              ? '<div class="sf-off-warn">' + t('sf_off_open')
+                  .replace('{n}', '<bdi dir="ltr">' + nf(carrying) + '</bdi>') + '</div>'
+              : ''),
+          foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+                '<button class="btn bk-danger" data-sf="active-go" data-id="' + id + '">' +
+                  t('ac_switch_off') + '</button>'
+        });
+        return;
+      }
+      send(b, API.post('/api/safeers/' + id + '/active', { active: on }), t('ac_now_on'), function () { load(); });
+      return;
+    }
+    if (a === 'active-go') {
+      send(b, API.post('/api/safeers/' + id + '/active', { active: false }), t('ac_now_off'), function () {
+        closeModal(); load();
+      });
       return;
     }
     if (a === 'settings-save') {

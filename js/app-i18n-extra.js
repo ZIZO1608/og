@@ -3226,6 +3226,13 @@ Object.keys(SAFEERS_AR).forEach(function (k) { I18N.ar[k] = SAFEERS_AR[k]; });
    already uses for a thing rather than the dictionary one.
    ========================================================================== */
 var NS02_EN = {
+  /* -- quick fix -- */
+  sf_filtered: 'Showing {n} tasks — the list is filtered.',
+  sf_show_all: 'Show everything',
+  sf_no_tasks_filtered: 'Nothing matches these filters. Try Show everything.',
+  sf_more_actions: 'More for this safeer',
+  sf_off_q: 'Switch {name} off? They are signed out at once and the shop leaves their phone.',
+  sf_off_open: 'They are still carrying {n} open task(s). Give those to somebody else first.',
   /* -- the money screen's fold, and its job buttons -- */
   mn_records: "Records",
   cb_go_expense: "Add an expense",
@@ -3319,12 +3326,18 @@ var NS02_EN = {
 };
 
 var NS02_AR = {
-  mn_records: "السجلات",
+  sf_filtered: 'عم يبيّن {n} مهمة — في فلترة شغالة.',
+  sf_show_all: 'عرض الكل',
+  sf_no_tasks_filtered: 'ما في شي مطابق للفلترة. جرّب عرض الكل.',
+  sf_more_actions: 'خيارات تانية للسفير',
+  sf_off_q: 'بدك تطفي {name}؟ رح ينقطع فوراً والمحل رح يطلع من تلفونه.',
+  sf_off_open: 'لسا معه {n} مهمة مفتوحة. عطيهن لحدا تاني أول شي.',
+  mn_records: "المزيد",
   cb_go_expense: "سجّل مصروف",
   cb_go_suppliers: "ادفع لمورّد",
   cb_go_salaries: "ادفع رواتب",
   dl_more_actions: "خيارات تانية للطرد",
-  wh_more_fields: "تفاصيل أكتر",
+  wh_more_fields: "المزيد من التفاصيل",
   wh_cost_blank: "اتركه فاضي إذا ما بتعرف",
   wh_save_no_labels: "احفظ بدون ملصقات",
   wh_open_it: "افتحه",
@@ -3342,11 +3355,11 @@ var NS02_AR = {
   wh_job_move: 'نقل بضاعة',
   wh_job_move_sub: 'من المستودع عالمحل',
   wh_job_move_open: 'امسح كل جوز، حدّد لوين رايح، وانقلهن كلهن دفعة وحدة.',
-  wh_job_find: 'وين الغرض؟',
+  wh_job_find: 'وين موجود؟',
   wh_job_find_sub: 'القياسات، ووين موجودة',
   wh_job_count_sub: 'دوّر بالمكان وتأكد',
   wh_job_add_sub: 'صنف ما باعه المحل من قبل',
-  wh_more: 'غير شي',
+  wh_more: 'المزيد',
 
   rc_tab: 'وصلت بضاعة',
   rc_tab_sub: 'سجّل إرسالية',
