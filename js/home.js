@@ -224,7 +224,13 @@ var Home = (function () {
         t('hm_none_sub') + '</div></div>';
     }
 
-    h += '<div class="hm-grid">';
+    /* `data-n` is the COUNT, and the grid's columns are chosen from it in
+       og-skin.css. `auto-fit, minmax(210px, 1fr)` fitted five across a 1100px
+       screen and left the sixth tile alone on a second row — a shape that
+       reads as "and one other thing" rather than as one set of jobs. There is
+       no :has() on this hardware, so the count is written here, where it is
+       already known. (fix 05, part 1) */
+    h += '<div class="hm-grid" data-n="' + list.length + '">';
     list.forEach(function (j) {
       var c = countFor(j.id);
       /* `data-act`, NOT a `data-hm` namespace. register() puts the handler in

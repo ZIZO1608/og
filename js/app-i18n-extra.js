@@ -3440,7 +3440,7 @@ var NS03_EN = {
   hm_none_sub: 'Ask the owner to give you the jobs you do.',
   hm_sell: 'Sell',
   hm_order: 'Take an order',
-  hm_staff: 'The people',
+  hm_staff: 'Staff',
   hm_c_orders: '{n} on the way',
   hm_c_low: '{n} running low',
   hm_c_products: '{n} products',
@@ -3547,7 +3547,7 @@ var NS03_EN = {
   pr_open_it: 'Open it',
 
   /* -- staff -- */
-  st_people: 'The people',
+  st_people: 'Staff',
   st_add_person: 'Add a person',
   st_working: 'Working',
   st_switched_off: 'Switched off',

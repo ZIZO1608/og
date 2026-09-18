@@ -1705,6 +1705,19 @@ body:not([data-portal="yalla"]) .hm-grid {
   display: grid; gap: 12px; margin: 6px 0 20px;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
+/* FIX 05 — THE GRID FITS THE COUNT, and the count is on the element.
+   `auto-fit` fills the row and then puts whatever is left over on a second
+   row by itself: six jobs at 1100px came out five and one, which reads as a
+   set of five with an afterthought under it. `data-n` is written by
+   Home.view() because :has() is not available on the shop's hardware. Six is
+   3 x 2, five is 3 + 2, four is 2 x 2 — no tile ever stands alone on a row
+   unless the account really has an odd one. */
+body:not([data-portal="yalla"]) .hm-grid[data-n="1"] { grid-template-columns: minmax(0, 320px); }
+body:not([data-portal="yalla"]) .hm-grid[data-n="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+body:not([data-portal="yalla"]) .hm-grid[data-n="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+body:not([data-portal="yalla"]) .hm-grid[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+body:not([data-portal="yalla"]) .hm-grid[data-n="5"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+body:not([data-portal="yalla"]) .hm-grid[data-n="6"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 body:not([data-portal="yalla"]) .hm-job {
   position: relative; display: flex; flex-direction: column; justify-content: center;
   align-items: flex-start; gap: 10px; min-height: 112px; padding: 18px;
@@ -1713,7 +1726,29 @@ body:not([data-portal="yalla"]) .hm-job {
   transition: border-color var(--t), transform var(--t);
 }
 body:not([data-portal="yalla"]) .hm-job:hover { border-color: var(--brand); }
-body:not([data-portal="yalla"]) .hm-job:active { transform: translateY(1px); }
+/* FIX 05 — A PRESS HAS TO BE VISIBLE, and a finger has no hover.
+   One pixel of travel is the whole of what a tap used to show, on a screen
+   where the next thing that happens is a whole new page: somebody who is not
+   sure their press landed presses again. The tile now also takes the lime
+   edge and a tint under the thumb, and `-webkit-tap-highlight-color` stops
+   Chrome's grey flash fighting it. */
+body:not([data-portal="yalla"]) .hm-job {
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color var(--t), transform var(--t), background var(--t);
+}
+body:not([data-portal="yalla"]) .hm-job:active {
+  transform: translateY(1px); border-color: var(--brand);
+  background: rgba(198, 255, 0, .07);
+}
+/* Reachable by keyboard, and SEEN to be. The tile is a real <button>, so Tab
+   lands on it and Enter is a click; without a ring nobody can tell where Tab
+   has got to. `:focus-visible` keeps the ring off a mouse press. */
+body:not([data-portal="yalla"]) .hm-job:focus-visible {
+  outline: 2px solid var(--brand); outline-offset: 2px; border-color: var(--brand);
+}
+/* Nothing inside the tile may take the press for itself — the whole tile is
+   the button, which is what "one tap anywhere on it" means. */
+body:not([data-portal="yalla"]) .hm-job > * { pointer-events: none; }
 body:not([data-portal="yalla"]) .hm-ico {
   width: 42px; height: 42px; flex: none; display: grid; place-items: center;
   border-radius: 12px; background: rgba(198,255,0,.10);
@@ -1738,8 +1773,18 @@ body:not([data-portal="yalla"]) .hm-fig {
 body:not([data-portal="yalla"]) .hm-fig b { font-size: 19px; font-weight: 700; }
 
 @media (max-width: 720px) {
-  /* Two columns, and six buttons fit a 390 x 760 screen without scrolling. */
+  /* Two columns, and six buttons fit a 390 x 760 screen without scrolling.
+     Six is 2 x 3 here. The count rules above are (0,3,1) and would otherwise
+     beat this one, so the phone states its own per-count columns. */
   body:not([data-portal="yalla"]) .hm-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  body:not([data-portal="yalla"]) .hm-grid[data-n="1"] { grid-template-columns: minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .hm-grid[data-n="2"],
+  body:not([data-portal="yalla"]) .hm-grid[data-n="3"],
+  body:not([data-portal="yalla"]) .hm-grid[data-n="4"],
+  body:not([data-portal="yalla"]) .hm-grid[data-n="5"],
+  body:not([data-portal="yalla"]) .hm-grid[data-n="6"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+  }
   body:not([data-portal="yalla"]) .hm-job { min-height: 96px; padding: 13px; gap: 7px; }
   body:not([data-portal="yalla"]) .hm-ico { width: 34px; height: 34px; }
   body:not([data-portal="yalla"]) .hm-ico svg { width: 19px; height: 19px; }
