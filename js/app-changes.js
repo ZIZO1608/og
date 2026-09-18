@@ -64,8 +64,10 @@ var CHANGES = {
      after ticking the bulk checkbox. No render() call, same reasoning as
      qlp-qty right below: a full table repaint mid-keystroke would rebuild
      this input and drop focus. */
-  'ms-from': function (el) { if (moveScan) { moveScan.from = el.value; moveScanRepaint(); } },
-  'ms-to':   function (el) { if (moveScan) { moveScan.to = el.value; moveScanRepaint(); } },
+  /* rememberMoveWay(): which way this machine carries stock, kept per machine
+     so ten trips the same way do not mean ten presses of the swap button. */
+  'ms-from': function (el) { if (moveScan) { moveScan.from = el.value; rememberMoveWay(); moveScanRepaint(); } },
+  'ms-to':   function (el) { if (moveScan) { moveScan.to = el.value; rememberMoveWay(); moveScanRepaint(); } },
   /* Typed over, not scanned: clamped to something sane, and 0 means remove. */
   'ms-qty': function (el) {
     if (!moveScan) return;
@@ -271,6 +273,15 @@ var CHANGES = {
     Stock.state.q = el.value;
     render();
     focusBack('[data-change="st-q"]', el.value.length);
+  },
+
+  /* "Where is it?" — the find box on Stock by place (ns02). Same shape as
+     st-q above: this panel is drawn by render(), so the box is rebuilt on
+     every keystroke and the caret has to be put back by hand. */
+  'wh-find': function (el) {
+    OG.wh.find = el.value;
+    render();
+    focusBack('[data-change="wh-find"]', el.value.length);
   },
 
   /* The at-risk window, and the one Settings number that actually reaches

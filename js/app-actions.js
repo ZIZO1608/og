@@ -1299,6 +1299,23 @@ var ACTIONS = {
        way in so opening the tab shows what is true now rather than what was
        true when it was last opened. */
     if (OG.wh.tab === 'wants') wantRows = null;
+    /* A delivery is a thing that happens once. Coming back to "Goods arrived"
+       starts a new one rather than resuming a half-counted pile from an hour
+       ago — the boxes on the floor now are not those boxes. */
+    if (OG.wh.tab === 'arrived' && typeof Receive !== 'undefined') Receive.reset();
+    render();
+    /* Moving stock IS the scan panel; the screen behind it is only there to
+       say so and to let somebody open it again. Opened after render() so the
+       modal is not drawn and then immediately painted over. */
+    if (OG.wh.tab === 'move' && typeof openMoveScan === 'function') openMoveScan();
+  },
+
+  /* The fold holding the warehouse's rarer panels. Per machine, like the
+     sidebar rail and the Settings folds: the back room wants the movement
+     log open and the office does not, on the same account. */
+  'wh-more': function () {
+    var open = (typeof whMoreOpen === 'function') && whMoreOpen();
+    try { localStorage.setItem(WH_MORE_KEY, open ? '0' : '1'); } catch (e) {}
     render();
   },
 
@@ -1332,6 +1349,7 @@ var ACTIONS = {
     var f = moveScan.from;
     moveScan.from = moveScan.to;
     moveScan.to = f;
+    rememberMoveWay();
     moveScanRepaint();
   },
   'ms-drop': function (el) {

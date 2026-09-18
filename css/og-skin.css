@@ -1460,3 +1460,144 @@ body.rtl .rvw-side-h { letter-spacing: 0; }
 body:not([data-portal="yalla"]) .dp-pop .dp-today { background: var(--brand); color: var(--brand-foreground); }
 body:not([data-portal="yalla"]) .dp-pop .dp-today:hover { background: var(--brand-dim); color: var(--brand-foreground); }
 body:not([data-portal="yalla"]) .dp-pop { border-radius: 14px; }
+
+/* ==========================================================================
+   NIGHT SHIFT 02 — the warehouse's four jobs, and Goods arrived
+   --------------------------------------------------------------------------
+   Scoped away from the Yalla Wear portal like everything else in this file.
+   No :has(), no very recent CSS — this runs on the shop's own laptop.
+   ========================================================================== */
+
+/* ---- the four (five) job buttons ---------------------------------------- */
+body:not([data-portal="yalla"]) .wh-jobs {
+  display: grid; gap: 10px; margin: 4px 0 18px;
+  grid-template-columns: repeat(auto-fit, minmax(198px, 1fr));
+}
+body:not([data-portal="yalla"]) .wh-job {
+  position: relative; display: flex; align-items: center; gap: 12px;
+  min-height: 62px; padding: 12px 14px; text-align: start;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); color: var(--foreground);
+  cursor: pointer; font: inherit; transition: border-color var(--t), background var(--t);
+}
+body:not([data-portal="yalla"]) .wh-job:hover { border-color: var(--border-strong); }
+body:not([data-portal="yalla"]) .wh-job.on { border-color: var(--brand); }
+/* Lime is spent on the primary action only — receiving is the one job on this
+   screen that brings something into the shop. */
+body:not([data-portal="yalla"]) .wh-job-primary.on { box-shadow: inset 0 0 0 1px var(--brand); }
+body:not([data-portal="yalla"]) .wh-job-ico { flex: none; width: 34px; height: 34px;
+  display: grid; place-items: center; border-radius: 10px; background: rgba(255,255,255,.05); }
+body:not([data-portal="yalla"]) .wh-job-ico svg { width: 19px; height: 19px; fill: none;
+  stroke: var(--muted-foreground); stroke-width: 1.7; }
+body:not([data-portal="yalla"]) .wh-job.on .wh-job-ico svg { stroke: var(--brand); }
+body:not([data-portal="yalla"]) .wh-job-primary .wh-job-ico { background: rgba(198,255,0,.10); }
+body:not([data-portal="yalla"]) .wh-job-t { display: grid; gap: 1px; min-width: 0; }
+body:not([data-portal="yalla"]) .wh-job-t b { font-size: 14.5px; font-weight: 700; }
+body:not([data-portal="yalla"]) .wh-job-t small { font-size: 11.5px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .wh-job .tab-dot { position: absolute; inset-inline-end: 10px; top: 10px; }
+
+/* ---- the fold holding the rarer panels ---------------------------------- */
+body:not([data-portal="yalla"]) .wh-more { margin-bottom: 16px; }
+body:not([data-portal="yalla"]) .wh-more-h {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 2px;
+  background: none; border: 0; color: var(--muted-foreground);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .wh-more-h:hover { color: var(--foreground); }
+body:not([data-portal="yalla"]) .wh-more-x { display: inline-grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 6px; border: 1px solid var(--border); font-size: 13px; }
+body:not([data-portal="yalla"]) .wh-more-b { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 2px; }
+
+/* "Move stock" is a modal; this is the screen behind it. */
+body:not([data-portal="yalla"]) .wh-open-panel {
+  display: grid; gap: 14px; justify-items: center; text-align: center;
+  padding: 44px 20px; background: var(--card);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+
+/* ---- goods arrived ------------------------------------------------------ */
+body:not([data-portal="yalla"]) .rc-wrap {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 18px;
+}
+body:not([data-portal="yalla"]) .rc-head h3 { font-size: 17px; font-weight: 700; margin: 0 0 2px; }
+body:not([data-portal="yalla"]) .rc-head p { margin: 0 0 14px; font-size: 13px; }
+
+body:not([data-portal="yalla"]) .rc-cards {
+  display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+body:not([data-portal="yalla"]) .rc-cards-alt { margin-top: 10px; }
+body:not([data-portal="yalla"]) .rc-card {
+  display: grid; gap: 4px; padding: 14px; text-align: start;
+  background: var(--popover, var(--card)); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--foreground); cursor: pointer; font: inherit;
+  transition: border-color var(--t);
+}
+body:not([data-portal="yalla"]) .rc-card:hover { border-color: var(--brand); }
+body:not([data-portal="yalla"]) .rc-card-top { display: flex; align-items: center;
+  justify-content: space-between; gap: 10px; font-size: 14.5px; }
+body:not([data-portal="yalla"]) .rc-card-who { font-size: 13px; font-weight: 600; }
+body:not([data-portal="yalla"]) .rc-card-when { font-size: 11.5px; }
+body:not([data-portal="yalla"]) .rc-card-plain { border-style: dashed; }
+
+body:not([data-portal="yalla"]) .rc-row-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+body:not([data-portal="yalla"]) .rc-find { max-width: 420px; }
+body:not([data-portal="yalla"]) .rc-hits { display: grid; gap: 6px; margin: 8px 0 14px; max-width: 520px; }
+body:not([data-portal="yalla"]) .rc-hit {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; text-align: start;
+  background: none; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--foreground); cursor: pointer; font: inherit;
+}
+body:not([data-portal="yalla"]) .rc-hit:hover { border-color: var(--brand); }
+body:not([data-portal="yalla"]) .rc-hit-t { display: grid; gap: 1px; min-width: 0; }
+body:not([data-portal="yalla"]) .rc-hit-t b { font-size: 13.5px; }
+body:not([data-portal="yalla"]) .rc-hit-t small { font-size: 11.5px; }
+
+body:not([data-portal="yalla"]) .rc-group { margin-bottom: 14px; }
+body:not([data-portal="yalla"]) .rc-group-h {
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted-foreground); padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .rc-line {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 0; border-bottom: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .rc-size { flex: 1 1 130px; font-weight: 600; font-size: 14px; }
+body:not([data-portal="yalla"]) .rc-owed { flex: 0 1 110px; font-size: 12px; }
+body:not([data-portal="yalla"]) .rc-step { display: flex; align-items: center; gap: 6px; }
+/* 40px+ under a thumb, on both steppers and on the remove. */
+body:not([data-portal="yalla"]) .rc-step .btn { min-width: 44px; min-height: 44px; font-size: 17px; }
+body:not([data-portal="yalla"]) .rc-step .inp { width: 74px; min-height: 44px; text-align: center;
+  font-weight: 700; direction: ltr; }
+body:not([data-portal="yalla"]) .rc-x { min-width: 44px; min-height: 44px; }
+body:not([data-portal="yalla"]) .rc-warn {
+  margin-top: 10px; padding: 10px 12px; border-radius: var(--radius);
+  background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.35);
+  color: #F59E0B; font-size: 12.5px;
+}
+
+body:not([data-portal="yalla"]) .rc-foot:empty { display: none; }
+body:not([data-portal="yalla"]) .rc-foot {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .rc-place { display: flex; align-items: center; gap: 8px;
+  margin-inline-start: auto; font-size: 12.5px; }
+body:not([data-portal="yalla"]) .rc-place .inp { min-height: 44px; }
+body:not([data-portal="yalla"]) .rc-why { flex-basis: 100%; }
+
+body:not([data-portal="yalla"]) .rc-done { display: grid; gap: 10px; justify-items: center;
+  text-align: center; padding: 26px 10px 8px; }
+body:not([data-portal="yalla"]) .rc-tick { width: 52px; height: 52px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 26px; font-weight: 800;
+  color: var(--brand); border: 2px solid var(--brand); }
+body:not([data-portal="yalla"]) .rc-done h3 { margin: 0; font-size: 19px; font-weight: 700; }
+body:not([data-portal="yalla"]) .rc-label-why { max-width: 460px; font-size: 12.5px; }
+
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .wh-jobs { grid-template-columns: 1fr 1fr; }
+  body:not([data-portal="yalla"]) .wh-job-t small { display: none; }
+  body:not([data-portal="yalla"]) .rc-wrap { padding: 14px 12px; }
+  body:not([data-portal="yalla"]) .rc-place { margin-inline-start: 0; flex-basis: 100%; }
+  body:not([data-portal="yalla"]) .rc-foot .btn-lg { flex: 1 1 100%; }
+}

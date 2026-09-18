@@ -38,8 +38,13 @@ var OG = {
      which is long after this line runs. Resolved where it is read, so the
      shop's own setting wins. shelfId '' is "not put away yet", which is a
      real and permanent state — stock.shelf_id is nullable on purpose. */
-  wh:   { tab: 'moves', place: 'all', type: 'sneakers', sizes: {}, name: '', img: null, imgSrc: null,
-          whId: null, shelfId: '' },
+  /* `arrived` since night shift 02. This was `moves` — the movement log —
+     so the warehouse opened every morning on an audit trail of what had
+     already happened, which is the one thing nobody walks into that room to
+     do. An account without stock.move never sees that panel at all and
+     viewWarehouse falls it back to the first job it does have. */
+  wh:   { tab: 'arrived', place: 'all', type: 'sneakers', sizes: {}, name: '', img: null, imgSrc: null,
+          whId: null, shelfId: '', find: '' },
   dir:  null,                                           // page-transition direction
   rep:  { tab: 'sales' },
   /* The Reports screen's own window, deliberately NOT shared with the

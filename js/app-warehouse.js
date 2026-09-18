@@ -17,75 +17,138 @@
    than a blank, so the form now says the codes arrive on save, and the
    labels are printed from the codes the server actually minted. */
 
+/* ---- the four questions (night shift 02) ---------------------------------
+
+   This screen used to open on a bar of six tabs — Stock movements, Stock by
+   place, Worth reordering, Add product, Stock count, Asked for — wrapping
+   onto two rows, with the landing tab being the movement log: an audit trail
+   of what already happened, first thing in the morning.
+
+   None of those words is a job. What somebody walks into this room to do is
+   one of four things, and each of them is a button now:
+
+       Goods arrived · Move stock · Where is it? · Count
+
+   Nothing was taken away. The rarer panels — the movement log, the purchase
+   orders, who is waiting for a size — are under "More", which remembers
+   whether it was open, per machine, like the Settings folds. Add product is
+   a fifth button because it is the other thing that starts here.
+
+   The tab ids did not change, so every deep link, every dashboard shortcut
+   (`data-act="home-wh"`) and `NAV_TAB_STATE.warehouse` still land where they
+   always did. */
+var WH_MORE_KEY = 'og.wh.more';
+
+function whMoreOpen() {
+  try { return localStorage.getItem(WH_MORE_KEY) === '1'; } catch (e) { return false; }
+}
+
+/* Every panel this screen can draw, with the permission it needs and whether
+   it is one of the four jobs or one of the rarer ones. ONE list — the buttons,
+   the More fold and the dispatch below all read it, so a panel cannot appear
+   in one and not the others. That was a real bug in the launcher's job table
+   and it is the same shape. */
+function whPanels() {
+  return [
+    /* -- the four jobs, plus the one that starts a product -- */
+    { id: 'arrived', label: t('rc_tab'), sub: t('rc_tab_sub'), job: true, primary: true,
+      icon: 'M3 7h18v4H3zM5 11v9h14v-9M9 15h6', need: 'stock.move' },
+    { id: 'move',    label: t('wh_job_move'), sub: t('wh_job_move_sub'), job: true,
+      icon: 'M4 8h12M12 4l4 4-4 4M20 16H8M12 12l-4 4 4 4', need: 'stock.move' },
+    { id: 'stock',   label: t('wh_job_find'), sub: t('wh_job_find_sub'), job: true,
+      icon: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M20 20l-4-4' },
+    { id: 'count',   label: t('st_count'), sub: t('wh_job_count_sub'), job: true,
+      icon: 'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3', need: 'stock.count', dot: !!Stock.active() },
+    { id: 'add',     label: t('tab_add'), sub: t('wh_job_add_sub'), job: true,
+      icon: 'M12 5v14M5 12h14', need: 'product.write' },
+
+    /* -- and the rest, under More -- */
+    { id: 'po',    label: t('tab_reorder'), need: 'stock.move' },
+    { id: 'moves', label: t('tab_moves'),   need: 'stock.move' },
+    { id: 'wants', label: t('wa_wants'),    need: 'customer.read' }
+  ].filter(function (x) { return !x.need || allow(x.need); });
+}
+
 function viewWarehouse() {
   var h = '<div class="page-head"><div><h1>' + t('warehouse_title') + '</h1>' +
     '<div class="sub">' + t('warehouse_sub') + '</div></div>' +
     '<div class="head-actions">' +
       '<span class="badge neutral">' + DB.liveVariants().length + ' SKU</span>' +
       '<span class="badge accent">' + nf(DB.liveVariants().reduce(function (a, v) { return a + v.qty; }, 0)) + ' ' + t('total_pieces').toLowerCase() + '</span>' +
-      /* The commonest job in this room, and it had no button: carry pairs out
-         of the back and onto the floor. In the header rather than inside a
-         tab because it is done from wherever somebody happens to be standing
-         in this screen. */
-      (allow('stock.move')
-        ? '<button class="btn btn-primary" data-act="ms-open">' + t('ms_title') + '</button>'
-        : '') +
       exportButtons() +
     '</div></div>';
 
+  var panels = whPanels();
   var openPOs = DB.purchaseOrders.filter(function (p) { return p.status !== 'received'; }).length;
-
   var floorGaps = DB.floorOuts().length;
 
-  /* Which tabs this person's job includes. A cashier has stock.read and
-     nothing else here: she is allowed to look in the back to answer "have you
-     got it in a 42", and that is all. Receiving, moving, ordering and counting
-     are somebody else's work, and a tab that opens onto a form the server will
-     refuse is worse than no tab. */
-  /* In the order the room works, left to right: what moved, what is where,
-     what is worth ordering, then the rarer jobs. Set by the shop, not by
-     frequency of use in the code. */
-  var tabs = [
-    /* The movement log is the audit trail for receiving, transferring and
-       counting. You get the history of the thing you can do — for a cashier
-       looking up whether a 42 is in the back, it is a wall of somebody else's
-       paperwork. */
-    { id: 'moves', label: t('tab_moves'), need: 'stock.move' },
-    { id: 'stock', label: t('wh_stock'), dot: !!floorGaps },
-    /* Purchase orders, under the name of the question the tab answers. */
-    { id: 'po',    label: t('tab_reorder'), dot: !!openPOs, need: 'stock.move' },
-    { id: 'add',   label: t('tab_add'),  need: 'product.write' },
-    { id: 'count', label: t('st_count'), dot: !!Stock.active(), need: 'stock.count' },
-    /* Who is waiting for something the shop did not have. This is the tab a
-       manager opens when a shipment lands — the wants were recorded by the
-       act of looking a size up at the till, so the list is already written.
-       customer.read, because every row names a person. */
-    { id: 'wants', label: t('wa_wants'), need: 'customer.read' }
-  ].filter(function (x) { return !x.need || allow(x.need); });
+  /* Landing on a panel this account cannot open — a remembered choice, a deep
+     link, a permission taken away while somebody was looking at it — falls
+     back to the first job they do have. `OG.wh.tab` is rewritten, not just
+     the local: leaving them to disagree drew a panel with nothing lit above
+     it, which is how the old bar behaved. */
+  if (!panels.some(function (x) { return x.id === OG.wh.tab; })) {
+    OG.wh.tab = (panels.filter(function (x) { return x.job; })[0] || panels[0]).id;
+  }
+  var tab = OG.wh.tab;
 
-  /* A tab bar with one tab in it is furniture. */
-  if (tabs.length > 1) {
-    h += '<div class="tabs">';
-    tabs.forEach(function (x) {
-      h += '<button class="tab ' + (OG.wh.tab === x.id ? 'on' : '') + '" data-act="wh-tab" data-tab="' + x.id + '">' +
-        x.label + (x.dot ? '<span class="tab-dot"></span>' : '') + '</button>';
+  var jobs = panels.filter(function (x) { return x.job; });
+  var rest = panels.filter(function (x) { return !x.job; });
+
+  /* A cashier has stock.read and nothing else here — one job, "Where is it?",
+     which is the whole reason she is allowed in: to answer "have you got it
+     in a 42". One button is furniture, so she gets the panel and no chrome. */
+  if (jobs.length > 1) {
+    h += '<div class="wh-jobs">';
+    jobs.forEach(function (x) {
+      var dot = x.id === 'po' ? openPOs : (x.id === 'stock' ? floorGaps : 0);
+      h += '<button class="wh-job' + (tab === x.id ? ' on' : '') +
+             (x.primary ? ' wh-job-primary' : '') + '" data-act="wh-tab" data-tab="' + x.id + '">' +
+        '<span class="wh-job-ico"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
+          '<path d="' + x.icon + '"/></svg></span>' +
+        '<span class="wh-job-t"><b>' + x.label + '</b><small>' + (x.sub || '') + '</small></span>' +
+        (x.dot || dot ? '<span class="tab-dot"></span>' : '') +
+      '</button>';
     });
     h += '</div>';
   }
 
-  /* Landing on a tab that is no longer there — a remembered choice, a deep
-     link — falls back to the first one she does have rather than rendering
-     a blank panel under no heading. */
-  var tab = OG.wh.tab;
-  if (!tabs.some(function (x) { return x.id === tab; })) tab = tabs[0].id;
+  if (rest.length) {
+    var open = whMoreOpen() || rest.some(function (x) { return x.id === tab; });
+    h += '<div class="wh-more' + (open ? ' open' : '') + '">' +
+      '<button class="wh-more-h" data-act="wh-more">' + t('wh_more') +
+        '<span class="wh-more-x">' + (open ? '−' : '+') + '</span></button>' +
+      (open
+        ? '<div class="wh-more-b">' + rest.map(function (x) {
+            var dot = x.id === 'po' ? openPOs : 0;
+            return '<button class="chip' + (tab === x.id ? ' on' : '') +
+              '" data-act="wh-tab" data-tab="' + x.id + '">' + x.label +
+              (dot ? '<span class="tab-dot"></span>' : '') + '</button>';
+          }).join('') + '</div>'
+        : '') +
+    '</div>';
+  }
 
-  h += (tab === 'stock') ? whStockTab()
-     : (tab === 'add')   ? whAddTab()
-     : (tab === 'po')    ? whPoTab()
-     : (tab === 'count') ? Stock.view()
-     : (tab === 'wants') ? whWantsTab()
+  h += (tab === 'arrived') ? Receive.tab()
+     : (tab === 'move')    ? whMoveTab()
+     : (tab === 'stock')   ? whStockTab()
+     : (tab === 'add')     ? whAddTab()
+     : (tab === 'po')      ? whPoTab()
+     : (tab === 'count')   ? Stock.view()
+     : (tab === 'wants')   ? whWantsTab()
      : whMovesTab();
   return h;
+}
+
+/* "Move stock" is the existing move-by-scan panel, which lives in a modal and
+   owns the scanner while it is open. Rather than rebuild it as a panel — it
+   works, and the scanner ownership in js/app-boot.js is keyed on the modal
+   being up — the job button opens it, and the screen behind says so. */
+function whMoveTab() {
+  return '<div class="wh-open-panel">' +
+    '<p class="muted">' + t('wh_job_move_open') + '</p>' +
+    '<button class="btn btn-primary btn-lg" data-act="ms-open">' + t('ms_title') + '</button>' +
+  '</div>';
 }
 
 /* ---- who is waiting -------------------------------------------------------
@@ -185,6 +248,21 @@ function loadWants() {
   });
 }
 
+/* Does this product answer what was typed into the find box? Every word has
+   to match somewhere — the product's own words, or one of its sizes and their
+   three codes, so a scanned barcode or a typed size narrows to the one row.
+   An empty box matches everything, which is the page as it always was. */
+function whFindMatch(p) {
+  var s = String(OG.wh.find || '').trim().toLowerCase();
+  if (!s) return true;
+  var hay = (p.name + ' ' + (p.brand || '') + ' ' + (p.colorway || '') + ' ' +
+             (DB.typeLabels[p.type] || p.type || '')).toLowerCase();
+  DB.variantsOf(p.id).forEach(function (v) {
+    hay += ' ' + v.size + ' ' + v.sku + ' ' + (v.barcode || '') + ' ' + (v.labelCode || '');
+  });
+  return s.split(/\s+/).every(function (w) { return hay.indexOf(w) > -1; });
+}
+
 /* ---- stock by place --------------------------------------------------------
    The question this page could not answer before: is that pair on the wall, or
    is it in the back? Pick a place, see every product in it, expand one to see
@@ -204,6 +282,16 @@ function whStockTab() {
       esc(DB.whName(w.id, ar)) + '</button>';
   });
   h += '</div>';
+
+  /* -- and a way to find one thing (ns02) --
+     This tab is the only per-size × per-place breakdown in the app, and it
+     had no search box at all: answering "have you got that in a 42" meant
+     scrolling the whole catalogue, grouped by type, with a customer waiting.
+     The box takes a name, a brand, a size, a SKU or a scanned barcode — the
+     boxes on these shelves DO carry a label, so the gun works here. */
+  h += '<label class="field wh-find"><span>' + t('wh_find') + '</span>' +
+    '<input class="inp" id="whFind" type="search" value="' + esc(OG.wh.find || '') + '" ' +
+      'placeholder="' + esc(t('wh_find_ph')) + '" data-change="wh-find"></label>';
 
   /* -- what is in the selected place -- */
   var emptyHere = DB.liveVariants().filter(function (v) {
@@ -241,7 +329,7 @@ function whStockTab() {
   var byType = {};
   /* Archived products keep their stock rows so old invoices resolve, but the
      warehouse is a list of what is here to sell — they do not belong on it. */
-  DB.products.filter(function (p) { return !p.archived; }).forEach(function (p) {
+  DB.products.filter(function (p) { return !p.archived && whFindMatch(p); }).forEach(function (p) {
     var n = DB.variantsOf(p.id).reduce(function (s, v) {
       return s + (whId === 'all' ? v.qty : DB.stockAt(v, whId));
     }, 0);
@@ -930,9 +1018,40 @@ var moveScan = null;   // { from, to, lines: [{ sku, qty }] }
 
 function moveScanOwns() { return !!moveScan; }
 
+/* Which way this machine last carried stock. Per MACHINE, like the sidebar
+   rail and the Settings folds: the back-room laptop spends its day going
+   store → floor and the office one does not. It was reset to store → floor on
+   every single open, so somebody doing ten trips the other way pressed the
+   swap button ten times. */
+var MS_WAY_KEY = 'og.wh.moveway';
+
+function moveWay() {
+  var from = DB.intakeWh, to = DB.defaultWh;
+  try {
+    var raw = localStorage.getItem(MS_WAY_KEY);
+    if (raw) {
+      var w = JSON.parse(raw);
+      var ok = function (id) { return DB.warehouses.some(function (x) { return x.id === id; }); };
+      /* A place that has since been renamed away, or a stored pair that has
+         gone the same on both ends, falls back rather than opening a panel
+         whose From and To are the same place. */
+      if (w && ok(w.from) && ok(w.to) && w.from !== w.to) { from = w.from; to = w.to; }
+    }
+  } catch (e) { /* private window, or somebody's hand-edited JSON */ }
+  return { from: from, to: to };
+}
+
+function rememberMoveWay() {
+  if (!moveScan || moveScan.from === moveScan.to) return;
+  try {
+    localStorage.setItem(MS_WAY_KEY, JSON.stringify({ from: moveScan.from, to: moveScan.to }));
+  } catch (e) {}
+}
+
 function openMoveScan() {
   if (!allow('stock.move')) { toast(t('wh_move'), t('no_access'), 'err'); return; }
-  moveScan = { from: DB.intakeWh, to: DB.defaultWh, lines: [] };
+  var way = moveWay();
+  moveScan = { from: way.from, to: way.to, lines: [] };
   openModal({
     title: t('ms_title'),
     /* Wide: this is a working surface with a table on it, not a question.
@@ -1133,7 +1252,13 @@ function moveScanCommit() {
   }).filter(function (x) { return x.qty > 0; });
   if (!plan.length) { toast(t('ms_title'), t('out_of_stock'), 'err'); return; }
 
-  var note = t('ms_note');
+  /* The reason column in the movement log used to read "Carried to the floor"
+     for EVERY move, whichever way the stock actually went — so a store→floor
+     and a floor→store move were indistinguishable in the one place somebody
+     looks when arguing about stock. It names both ends now. */
+  var note = t('ms_note_way')
+    .replace('{from}', DB.whName(from, OG.lang === 'ar'))
+    .replace('{to}', DB.whName(to, OG.lang === 'ar'));
   var moved = [], failed = [];
 
   Shop.write(
