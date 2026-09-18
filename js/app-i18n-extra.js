@@ -3226,6 +3226,13 @@ Object.keys(SAFEERS_AR).forEach(function (k) { I18N.ar[k] = SAFEERS_AR[k]; });
    already uses for a thing rather than the dictionary one.
    ========================================================================== */
 var NS02_EN = {
+  /* -- the money screen's fold, and its job buttons -- */
+  mn_records: "Records",
+  cb_go_expense: "Add an expense",
+  cb_go_suppliers: "Pay a supplier",
+  cb_go_salaries: "Pay wages",
+  /* -- the board's row menu -- */
+  dl_more_actions: "More for this parcel",
   /* -- the add-product form -- */
   wh_more_fields: "More details",
   wh_cost_blank: "leave blank if unknown",
@@ -3312,6 +3319,11 @@ var NS02_EN = {
 };
 
 var NS02_AR = {
+  mn_records: "السجلات",
+  cb_go_expense: "سجّل مصروف",
+  cb_go_suppliers: "ادفع لمورّد",
+  cb_go_salaries: "ادفع رواتب",
+  dl_more_actions: "خيارات تانية للطرد",
   wh_more_fields: "تفاصيل أكتر",
   wh_cost_blank: "اتركه فاضي إذا ما بتعرف",
   wh_save_no_labels: "احفظ بدون ملصقات",

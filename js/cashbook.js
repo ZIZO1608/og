@@ -151,6 +151,16 @@ var Cashbook = (function () {
         '</div></div>';
     }
 
+    /* THE JOBS, NOT JUST THE CASH-BOOK ONES (ns02). This row held the three
+       moves between places and nothing else, so "record an expense", "pay a
+       supplier", "pay somebody's wages" and "close the day" — the four things
+       this screen is actually opened for — each meant finding the right tab
+       first. They are buttons here now; each one lands on its own tab, and
+       the expense opens its dialog on the way, because there is nothing to
+       read on that tab first.
+
+       Every one is gated exactly as its tab is. A button that navigates to a
+       screen the server would refuse is worse than no button. */
     if (can) {
       h += '<div class="cb-actions mb">' +
         '<button class="btn btn-primary" data-cb="move">' + t('cb_move') + '</button>' +
@@ -159,6 +169,21 @@ var Cashbook = (function () {
         (c.started ? '<button class="btn btn-ghost" data-cb="start">' + t('cb_start_more') + '</button>' : '') +
         '</div>';
     }
+
+    var jump = '';
+    if (allow('money.write')) {
+      jump += '<button class="btn" data-cb="go-expense">' + t('cb_go_expense') + '</button>';
+    }
+    if (allow('money.read')) {
+      jump += '<button class="btn" data-cb="go-suppliers">' + t('cb_go_suppliers') + '</button>';
+    }
+    if (allow('staff.read')) {
+      jump += '<button class="btn" data-cb="go-salaries">' + t('cb_go_salaries') + '</button>';
+    }
+    if (allow('money.count') || allow('money.move')) {
+      jump += '<button class="btn" data-cb="go-close">' + t('dc_tab') + '</button>';
+    }
+    if (jump) h += '<div class="cb-actions cb-jobs mb">' + jump + '</div>';
 
     var groups = [
       { key: 'cb_g_cash', kinds: ['drawer', 'owner', 'extra'] },
@@ -860,6 +885,24 @@ var Cashbook = (function () {
     'go-close': function () {
       if (typeof Money !== 'undefined') Money.state.tab = 'close';
       go('money');
+    },
+
+    /* The four jobs, from the "Where the money is" tab (ns02). Each sets the
+       tab and re-renders; the expense also opens its dialog, because there is
+       nothing on that tab to read first — the list behind it is history. */
+    'go-expense': function () {
+      if (typeof Money === 'undefined') return;
+      Money.state.tab = 'expenses';
+      render();
+      Money.addExpense();
+    },
+    'go-suppliers': function () {
+      if (typeof Money !== 'undefined') Money.state.tab = 'suppliers';
+      render();
+    },
+    'go-salaries': function () {
+      if (typeof Money !== 'undefined') Money.state.tab = 'salaries';
+      render();
     },
 
     'dc-recount': function () { DC.recount = true; paintClose(); },

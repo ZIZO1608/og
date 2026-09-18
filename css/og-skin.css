@@ -1614,3 +1614,39 @@ body:not([data-portal="yalla"]) .cf-solo .cf-head,
 body:not([data-portal="yalla"]) .cf-solo .cf-palette { display: none; }
 body:not([data-portal="yalla"]) .cf-solo .cf-card { border: 0; padding: 0; background: none; }
 body:not([data-portal="yalla"]) .cf-solo .cf-chips { margin-bottom: 10px; }
+
+/* ---- the board's row menu (ns02) ----------------------------------------
+   One lime button for the parcel's next step, and a "…" for everything else.
+   The menu is markup already in the row, shown by a class — the board
+   repaints on every live push, and a popover built on click would be rebuilt
+   out from under an open one.
+
+   z-index 30, not 60: the topbar owns 20 and the phone tab bar 340, so this
+   sits above the board and under both. It is inside a row that scrolls, so it
+   is absolutely positioned rather than fixed. */
+body:not([data-portal="yalla"]) .dlb-more { position: relative; display: inline-block; }
+body:not([data-portal="yalla"]) .dlb-dots { min-width: 34px; font-size: 15px; letter-spacing: 1px; line-height: 1; }
+body:not([data-portal="yalla"]) .dlb-menu {
+  display: none; position: absolute; z-index: 30; inset-inline-end: 0; top: calc(100% + 4px);
+  min-width: 190px; padding: 5px; text-align: start;
+  background: var(--popover, var(--card)); border: 1px solid var(--border-strong, var(--border));
+  border-radius: var(--radius); box-shadow: 0 14px 34px rgba(0,0,0,.55);
+}
+body:not([data-portal="yalla"]) .dlb-menu.on { display: block; }
+body:not([data-portal="yalla"]) .dlb-mi {
+  display: block; width: 100%; padding: 9px 11px; text-align: start;
+  background: none; border: 0; border-radius: 8px; color: var(--foreground);
+  font: inherit; font-size: 13px; cursor: pointer; min-height: 38px;
+}
+body:not([data-portal="yalla"]) .dlb-mi:hover { background: rgba(255,255,255,.06); }
+
+/* The four jobs on "Where the money is". A second row under the cash-book
+   moves, so "record an expense" is not dressed as "move money between
+   places" — they are different kinds of act. */
+body:not([data-portal="yalla"]) .cb-jobs { padding-top: 2px; }
+
+@media (max-width: 720px) {
+  /* Under a thumb, and never off the edge of a phone. */
+  body:not([data-portal="yalla"]) .dlb-menu { min-width: 200px; }
+  body:not([data-portal="yalla"]) .dlb-mi { min-height: 44px; font-size: 14px; }
+}

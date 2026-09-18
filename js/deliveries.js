@@ -427,42 +427,86 @@ var Deliveries = (function () {
     '</div>';
   }
 
+  /* ONE NEXT STEP, AND A "…" FOR THE REST (night shift 02).
+
+     A row could carry NINE buttons — Assign, Take it out, Delivered, Failed,
+     Take a payment, It came back, WhatsApp, Open — all the same size, several
+     of them destructive, on a card the width of a phone. But a parcel is
+     always at exactly one point on one road, and from any point there is one
+     ordinary next thing:
+
+         waiting → Assign a driver → Send out → Delivered
+
+     That one is the lime button. Everything else a person might want to do to
+     this parcel — mark it failed, take a payment, record a return, send the
+     tracking link, open the order — goes behind a "…" on the row, which is
+     how it stops being a wall and starts being a decision.
+
+     Nothing is removed and no permission changed: every button behind the
+     dots carries the same gate it carried in the row. */
+  function closeRowMenus() {
+    document.querySelectorAll('.dlb-menu.on').forEach(function (m) { m.classList.remove('on'); });
+  }
+
   function rowActions(d) {
     if (d.voided) return '<span class="muted">—</span>';
-    var h = '<div class="dlb-acts">';
+
+    var next = '', rest = '';
+
     if (allow('delivery.write')) {
       if (d.status === 'waiting') {
-        h += '<button class="btn btn-sm" data-act="dl-assign" data-id="' + d.id + '">' + t('dl_assign_btn') + '</button>';
-        if (d.method !== 'pickup') {
-          h += '<button class="btn btn-sm btn-primary" data-act="dl-go" data-id="' + d.id + '">' + t('dl_take') + '</button>';
+        /* Assigned already? Then the next step is sending it, not choosing a
+           carrier again — that moves under the dots as "change the carrier". */
+        if (d.method !== 'pickup' && !d.driverId && !d.companyId) {
+          next = '<button class="btn btn-sm btn-primary" data-act="dl-assign" data-id="' + d.id + '">' +
+                 t('dl_assign_btn') + '</button>';
+          rest += '<button class="dlb-mi" data-act="dl-go" data-id="' + d.id + '">' + t('dl_take') + '</button>';
+        } else if (d.method !== 'pickup') {
+          next = '<button class="btn btn-sm btn-primary" data-act="dl-go" data-id="' + d.id + '">' +
+                 t('dl_take') + '</button>';
+          rest += '<button class="dlb-mi" data-act="dl-assign" data-id="' + d.id + '">' + t('dl_assign_btn') + '</button>';
         } else {
-          h += '<button class="btn btn-sm btn-primary" data-act="dl-done" data-id="' + d.id + '">' + t('dl_collected_btn') + '</button>';
+          /* A pickup never goes out: it goes straight to collected. */
+          next = '<button class="btn btn-sm btn-primary" data-act="dl-done" data-id="' + d.id + '">' +
+                 t('dl_collected_btn') + '</button>';
         }
       } else if (d.status === 'out') {
-        h += '<button class="btn btn-sm btn-primary" data-act="dl-done" data-id="' + d.id + '">' + t('dl_done') + '</button>' +
-             '<button class="btn btn-sm" data-act="dl-fail" data-id="' + d.id + '">' + t('dl_fail') + '</button>';
+        next = '<button class="btn btn-sm btn-primary" data-act="dl-done" data-id="' + d.id + '">' +
+               t('dl_done') + '</button>';
+        /* Failed is not a step forward, and it is the one a tired hand must
+           not hit instead of Delivered. */
+        rest += '<button class="dlb-mi" data-act="dl-fail" data-id="' + d.id + '">' + t('dl_fail') + '</button>';
       }
     }
+
     if (d.order && d.remaining > 0 && (allow('delivery.desk') || allow('debt.collect'))) {
-      h += '<button class="btn btn-sm" data-act="dl-pay" data-id="' + esc(d.saleId) + '">' + t('dk_take_payment') + '</button>';
+      rest += '<button class="dlb-mi" data-act="dl-pay" data-id="' + esc(d.saleId) + '">' + t('dk_take_payment') + '</button>';
     }
     /* It came back. Offered once it has actually gone somewhere — a parcel
        still waiting on the counter is cancelled, not returned. */
     if (d.order && allow('delivery.desk') && !d.voided &&
         (d.status === 'delivered' || d.status === 'failed' || d.status === 'out')) {
-      h += '<button class="btn btn-sm" data-act="rd-return" data-id="' + esc(d.saleId) + '">' +
-           t('rd_return') + '</button>';
+      rest += '<button class="dlb-mi" data-act="rd-return" data-id="' + esc(d.saleId) + '">' + t('rd_return') + '</button>';
     }
     /* The tracking link, on WhatsApp, from the card itself — "where is my
        order?" is asked of the board, not of the office's saved card. Only an
        order has a page to send, and a cancelled one has nothing to follow. */
     if (d.order && d.publicToken && allow('delivery.desk')) {
-      h += '<button class="btn btn-sm dlb-wa" data-act="dl-wa-track" data-id="' + esc(d.saleId) + '" title="' +
-           esc(t('dl_wa_track_title')) + '" aria-label="' + esc(t('dl_wa_track_title')) + '">' +
-           svg(ICON.wa) + '<span>' + t('dl_wa_track') + '</span></button>';
+      rest += '<button class="dlb-mi" data-act="dl-wa-track" data-id="' + esc(d.saleId) + '">' +
+              t('dl_wa_track_title') + '</button>';
     }
-    h += '<button class="btn btn-sm btn-ghost" data-act="dl-open" data-id="' + esc(d.saleId) + '">' + t('dl_open') + '</button>';
-    return h + '</div>';
+    rest += '<button class="dlb-mi" data-act="dl-open" data-id="' + esc(d.saleId) + '">' + t('dl_open') + '</button>';
+
+    /* The menu is drawn in the row and shown by a class, not built on click:
+       the board repaints on every live push, and a popover held in a variable
+       would be rebuilt out from under an open one. */
+    return '<div class="dlb-acts">' + next +
+      '<span class="dlb-more">' +
+        '<button class="btn btn-sm btn-ghost dlb-dots" data-act="dl-menu" data-id="' + d.id + '" ' +
+          'aria-label="' + esc(t('dl_more_actions')) + '" title="' + esc(t('dl_more_actions')) + '">···</button>' +
+        '<span class="dlb-menu" data-menu="' + d.id + '">' + rest + '</span>' +
+      '</span>' +
+    '</div>';
   }
 
   /* THE THREE MOMENTS OF ONE DAY, side by side: what is going out, what money
@@ -957,6 +1001,29 @@ var Deliveries = (function () {
     ACTIONS['dl-open'] = function (el) {
       if (typeof Desk !== 'undefined' && Desk.openOrder) Desk.openOrder(el.getAttribute('data-id'));
     };
+
+    /* The row's "…" (ns02). One menu open at a time, toggled by a class on
+       markup that is already in the row — the board repaints on every live
+       push, and a popover built on click would be rebuilt out from under an
+       open one. Closing on an outside press is bound once, at the document,
+       in the capture phase, so it runs before the delegated dispatcher
+       decides what the press meant. */
+    ACTIONS['dl-menu'] = function (el) {
+      var mine = el.parentNode.querySelector('.dlb-menu');
+      var wasOpen = mine && mine.classList.contains('on');
+      closeRowMenus();
+      if (mine && !wasOpen) mine.classList.add('on');
+    };
+    if (!register._menus) {
+      register._menus = true;
+      document.addEventListener('click', function (e) {
+        var inside = e.target.closest && e.target.closest('.dlb-more');
+        if (!inside) closeRowMenus();
+        /* A press on an item inside the menu runs its own action through the
+           ordinary dispatcher; the menu closes either way. */
+        else if (e.target.closest('.dlb-mi')) setTimeout(closeRowMenus, 0);
+      }, true);
+    }
 
     if (typeof CHANGES === 'undefined') return;
     CHANGES['dl-q'] = function (el) {

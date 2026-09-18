@@ -22,7 +22,7 @@
 
 var Money = (function () {
 
-  var S = { tab: 'now' };
+  var S = { tab: 'now', more: false };
 
   /* ------------------------------------------------------------- shell */
 
@@ -54,33 +54,62 @@ var Money = (function () {
     /* ONLY THE TABS THIS ACCOUNT MAY HAVE (054). A cashier reaches this
        screen to count the drawer and nothing else — the others read the
        shop's money, which the server does not send her anyway. */
+    /* NINE TABS BECAME SIX AND A FOLD (ns02). Every one of them is a real
+       screen and none was taken away — but nine across the top is nine
+       decisions before the first one, and two of them ("Close the shift" on
+       Shift, "Close the day" on Close) read as the same job.
+
+       The six are what somebody comes to this screen to DO. The three under
+       More are records rather than jobs: the cash book is the audit trail,
+       the debt book is read when a customer walks in, and the shift is the
+       older way of proving the drawer, which the day close has replaced. The
+       fold opens itself when the tab in it is the one on show, so a deep
+       link into any of them still lands with its own tab lit. */
     var staff = allow('staff.read');
-    var tabs = [];
-    if (reads) tabs.push(['now', t('cb_now')]);
-    if (counts) tabs.push(['close', t('dc_tab')]);
+    var profit = allow('profit.read');
+    var main = [], more = [];
+    if (reads) main.push(['now', t('cb_now')]);
+    if (counts) main.push(['close', t('dc_tab')]);
     if (reads) {
-      tabs.push(['book', t('cb_book')]);
-      tabs.push(['shift', t('mn_shift') + (open ? '<span class="tab-dot on"></span>' : '')]);
-      tabs.push(['expenses', t('mn_expenses')]);
-      tabs.push(['debt', t('mn_debt') + (owed ? '<span class="tab-dot"></span>' : '')]);
+      main.push(['expenses', t('mn_expenses')]);
       /* 055: what the shop owes the people it buys from. */
       var dueSup = (DB.suppliers || []).some(function (x) { return x.outstanding > 0; });
-      tabs.push(['suppliers', t('py_suppliers') + (dueSup ? '<span class="tab-dot"></span>' : '')]);
+      main.push(['suppliers', t('py_suppliers') + (dueSup ? '<span class="tab-dot"></span>' : '')]);
     }
-    if (staff) tabs.push(['salaries', t('py_salaries')]);
-    var profit = allow('profit.read');
-    if (profit) tabs.push(['statement', t('pl_tab')]);
-    if (!tabs.some(function (x) { return x[0] === S.tab; })) S.tab = tabs.length ? tabs[0][0] : 'close';
+    if (staff) main.push(['salaries', t('py_salaries')]);
+    if (profit) main.push(['statement', t('pl_tab')]);
+    if (reads) {
+      more.push(['book', t('cb_book')]);
+      more.push(['debt', t('mn_debt') + (owed ? '<span class="tab-dot"></span>' : '')]);
+      more.push(['shift', t('mn_shift') + (open ? '<span class="tab-dot on"></span>' : '')]);
+    }
+
+    var all = main.concat(more);
+    if (!all.some(function (x) { return x[0] === S.tab; })) S.tab = all.length ? all[0][0] : 'close';
 
     var h = '<div class="page-head"><div><h1>' + t('mn_title') + '</h1>' +
       '<div class="sub">' + t(reads ? 'mn_sub' : counts ? 'dc_sub' : staff ? 'py_sub' : 'pl_sub') + '</div></div>' +
       (reads || staff || profit ? '<div class="head-actions">' + exportButtons() + '</div>' : '') + '</div>';
 
-    if (tabs.length > 1) {
-      h += '<div class="tabs mb">' + tabs.map(function (x) {
+    if (all.length > 1) {
+      h += '<div class="tabs">' + main.map(function (x) {
         return '<button class="tab ' + (S.tab === x[0] ? 'on' : '') + '" data-mn="tab" data-t="' + x[0] + '">' +
           x[1] + '</button>';
       }).join('') + '</div>';
+
+      if (more.length) {
+        var openMore = S.more || more.some(function (x) { return x[0] === S.tab; });
+        h += '<div class="wh-more mb' + (openMore ? ' open' : '') + '">' +
+          '<button class="wh-more-h" data-mn="more">' + t('mn_records') +
+            '<span class="wh-more-x">' + (openMore ? '−' : '+') + '</span></button>' +
+          (openMore
+            ? '<div class="wh-more-b">' + more.map(function (x) {
+                return '<button class="chip ' + (S.tab === x[0] ? 'on' : '') +
+                  '" data-mn="tab" data-t="' + x[0] + '">' + x[1] + '</button>';
+              }).join('') + '</div>'
+            : '') +
+        '</div>';
+      }
     }
 
     return h + (S.tab === 'now' ? Cashbook.nowTab()
@@ -365,6 +394,12 @@ var Money = (function () {
 
   var ACT = {
     tab: function (el) { S.tab = el.getAttribute('data-t'); render(); },
+
+    /* The "Records" fold (ns02). Module state rather than localStorage: the
+       Money screen's tab is not remembered between sessions either, and a
+       fold that opens itself because its own tab is showing has to be able
+       to shut again without fighting a stored value. */
+    more: function () { S.more = !S.more; render(); },
 
     'open-shift': function () {
       openModal({
@@ -741,5 +776,9 @@ var Money = (function () {
     };
   }
 
-  return { view: view, exportSpec: exportSpec, state: S };
+  /* addExpense is exported so the 'Where the money is' tab can open it
+     directly (ns02) — the four job buttons there land on a tab, and for the
+     expense there is nothing to read on that tab first. */
+  return { view: view, exportSpec: exportSpec, state: S,
+           addExpense: function () { ACT['add-expense'](); } };
 })();
