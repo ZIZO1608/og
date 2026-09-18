@@ -63,10 +63,22 @@ function whPanels() {
       icon: 'M12 5v14M5 12h14', need: 'product.write' },
 
     /* -- and the rest, under More -- */
-    { id: 'po',    label: t('tab_reorder'), need: 'stock.move' },
+    /* BUYING NEEDS TO SEE WHAT THINGS COST (ns03). A purchase order is a
+       list of unit costs and a supplier balance; an account without
+       cost.read was offered the panel and then shown a table of dashes, and
+       "Worth reordering" ranks by money it may not read. The server has
+       always answered scrubCost to it — this is the browser catching up.
+       On this shop warehouse/cost.read is 1 in role_permissions while the
+       seed says 0; the owner unticks it by hand, and then this row goes. */
+    { id: 'po',    label: t('tab_reorder'), need: ['stock.move', 'cost.read'] },
     { id: 'moves', label: t('tab_moves'),   need: 'stock.move' },
     { id: 'wants', label: t('wa_wants'),    need: 'customer.read' }
-  ].filter(function (x) { return !x.need || allow(x.need); });
+  ].filter(function (x) {
+    if (!x.need) return true;
+    /* a list means EVERY one of them, unlike requirePerm's any-of: buying
+       needs both the stock permission and the cost one */
+    return Array.isArray(x.need) ? x.need.every(allow) : allow(x.need);
+  });
 }
 
 function viewWarehouse() {

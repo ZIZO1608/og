@@ -60,7 +60,9 @@ function setFoldRemember(id, open) {
    would have needed every one of them written by hand, and the keyboard half
    is the half that quietly never gets written. The <h3> stays outside it so
    Settings is still a page with headings rather than a stack of buttons. */
-function setFoldStart(id, title, meta) {
+/* `sub` is one plain line saying what this card changes — a folded page of
+   eleven bare nouns costs a click per answer (ns03). */
+function setFoldStart(id, title, meta, sub) {
   var open = setFoldIsOpen(id);
   return '<section class="card fold mb" data-fold="' + id + '" data-open="' + (open ? '1' : '0') + '">' +
     '<div class="card-head fold-head">' +
@@ -70,6 +72,7 @@ function setFoldStart(id, title, meta) {
         '<span class="fold-title">' + title + '</span>' +
         (meta ? '<span class="fold-meta muted small">' + meta + '</span>' : '') +
       '</button></h3>' +
+      (sub ? '<div class="fold-sub">' + sub + '</div>' : '') +
     '</div>' +
     '<div class="fold-body" id="fold-' + id + '">';
 }
@@ -78,7 +81,10 @@ function setFoldEnd() { return '</div></section>'; }
 
 /* A heading over a run of folds. Five of them across eleven cards is the
    difference between a list and a page. */
-function setSection(label) { return '<div class="set-sec">' + label + '</div>'; }
+function setSection(label, sub) {
+  return '<div class="set-sec">' + label +
+    (sub ? '<small>' + sub + '</small>' : '') + '</div>';
+}
 
 /* ------------------------------------------------------------ ROLES & ACCESS
 
@@ -683,14 +689,34 @@ function shelvesCard() {
    as .num dir="ltr" while holding "Aleppo, Syria": a phone number is a
    different field, it is in the receipt fold, and forcing LTR on an Arabic
    address reorders the phrase the same way it does a date. */
+/* EVERY BOX ON THIS CARD SAVES ITSELF                      (night shift 03)
+   The shop's name, phone, city and address went out only when somebody
+   found "Save changes" in the page head — beside eight cards that saved
+   themselves — and the one screen where that mattered most (the receipt's
+   header) is printed from exactly these four. They go through the same
+   debounced writer their neighbours use, and each one says "Saved" where it
+   stands rather than in a toast that has already gone by the time the eye
+   gets back to the field. */
 function brandingCard() {
-  return setFoldStart('brand', t('branding'), esc(CONFIG.SHOP_NAME)) +
+  return setFoldStart('brand', t('branding'), esc(CONFIG.SHOP_NAME), t('set_brand_sub')) +
     '<div class="card-body">' +
-    '<label class="field"><span>' + t('shop_name') + '</span>' +
+    '<label class="field"><span>' + t('shop_name') + savedPill('shop.name') + '</span>' +
       '<div class="set-brand-row">' +
         '<div class="brand-mark"><img src="assets/logo.svg" alt=""></div>' +
         '<input class="inp" id="setShopName" value="' + esc(CONFIG.SHOP_NAME) + '" data-change="set-shopname">' +
       '</div></label>' +
+    '<div class="set-two">' +
+      '<label class="field"><span>' + t('phone') + savedPill('shop.phone') + '</span>' +
+        '<input class="inp" dir="ltr" id="setPhone" value="' + esc(CONFIG.SHOP_PHONE || '') + '" ' +
+          'data-change="set-phone"></label>' +
+      '<label class="field"><span>' + t('city') + savedPill('shop.city') + '</span>' +
+        '<input class="inp" dir="auto" id="setCity" value="' + esc(CONFIG.SHOP_CITY || '') + '" ' +
+          'data-change="set-city"></label>' +
+    '</div>' +
+    '<label class="field"><span>' + t('address') + savedPill('shop.address') + '</span>' +
+      '<input class="inp" dir="auto" id="setAddr" value="' + esc(CONFIG.SHOP_ADDRESS) + '" ' +
+        'data-change="set-addr"></label>' +
+    '<div class="muted small">' + t('set_brand_where') + '</div>' +
     '<div class="lbl">' + t('accent_colour') + '</div>' +
     '<div class="swatch-row">' +
       '<div class="swatch" style="background:#C6FF00;border-color:var(--foreground);border-width:2px"><span>C6FF00</span></div>' +
@@ -699,10 +725,14 @@ function brandingCard() {
       '<div class="swatch" style="background:#F87171"><span>F87171</span></div>' +
       '<div class="swatch" style="background:#4ADE80"><span>4ADE80</span></div>' +
     '</div>' +
-    '<label class="field"><span>' + t('address') + '</span>' +
-      '<input class="inp" dir="auto" id="setAddr" value="' + esc(CONFIG.SHOP_ADDRESS) + '" ' +
-        'data-change="set-addr"></label>' +
     '</div>' + setFoldEnd();
+}
+
+/* The slot a "Saved" lands in, beside the field it belongs to. Empty until
+   the server has actually taken it — this is not an animation, it is the
+   answer. */
+function savedPill(key) {
+  return '<i class="set-saved" data-saved="' + esc(key) + '"></i>';
 }
 
 /* Every dollar price on every screen converts through this one number, so the
@@ -711,12 +741,15 @@ function rateCard() {
   /* The summary is an LTR run inside what may be an RTL page: unmarked, the
      leading 1 is dragged to the far end and the head reads 'USD = 130 SYP 1'. */
   return setFoldStart('rate', t('exchange_rate'),
-      '<span dir="ltr">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP</span>') +
+      '<span dir="ltr">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP</span>', t('set_rate_sub')) +
     '<div class="card-body">' +
-    '<label class="field"><span>' + t('rate_hint') + '</span>' +
-      '<input class="inp num" id="setRate" type="number" value="' + CONFIG.EXCHANGE_RATE + '" data-change="set-rate"></label>' +
-    '<div class="partner-note">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP · ' +
-      (OG.lang === 'ar' ? 'كل الأسعار في النظام تتحدّث فوراً' : 'every price in the system updates instantly') + '</div>' +
+    '<label class="field"><span>' + t('rate_hint') + savedPill('fx.rate') + '</span>' +
+      /* type=text, NOT number: a number box blanks itself on a comma and
+         refuses Arabic-Indic digits outright, and parseInt("13,000") is 13.
+         Desk.toCount reads every digit somebody might type. */
+      '<input class="inp num" id="setRate" type="text" inputmode="numeric" dir="ltr" autocomplete="off" ' +
+        'value="' + CONFIG.EXCHANGE_RATE + '" data-change="set-rate"></label>' +
+    '<div class="partner-note">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP · ' + t('set_rate_live') + '</div>' +
     '</div>' + setFoldEnd();
 }
 
@@ -1193,61 +1226,78 @@ function telegramCard() {
    the warehouse, then people, then the two switches nobody touches twice a
    year. The old two-column .set-grid is gone — with the bodies shut, a grid
    of heads reads as a wall of tiles, and a single column reads as a list. */
+/* FIVE PLAIN SECTIONS, MOST USED FIRST                     (night shift 03)
+   Six sections and nine different save behaviours, and a person could not
+   tell which kind they were looking at without pressing something: a
+   page-level "Save changes" for three cards, six cards with their own Save,
+   a per-row Save in Categories, and everything else saving on change.
+
+   Now: The shop · Money and prices · Deliveries · People · Advanced, every
+   fold carrying one line that says what it changes, and the page-level Save
+   is GONE — the four things behind it save themselves like their neighbours.
+
+   ADVANCED IS THE DEVELOPER'S, and that is display only: the mirror, the
+   reminders and the Telegram links are all `config.write` on the server and
+   a hand-sent request from anybody else still gets a 403. What hiding it
+   buys is that the owner, who has config.write, is not one mis-press away
+   from a boot pull that restores over his own shop. */
 function viewSettings() {
   var h = '<div class="page-head"><div><h1>' + t('settings_title') + '</h1>' +
-    '<div class="sub">' + t('settings_sub') + '</div></div>' +
+    '<div class="sub">' + t('set_saves_itself') + '</div></div>' +
     '<div class="head-actions">' +
       '<button class="btn btn-ghost btn-sm" data-act="set-folds" data-k="open">' + t('set_expand') + '</button>' +
       exportButtons() +
-      '<button class="btn btn-primary" data-act="settings-save">' + t('save_changes') + '</button></div></div>';
+    '</div></div>';
 
   h += '<div class="set-list">';
 
+  /* 1 — the shop itself, and the counter it stands on */
   h += setSection(t('setg_shop'));
   h += brandingCard();
-  h += rateCard();
-  /* The owner's own places for the cash book (053) — a safe, a bank. It
-     gates itself on config.write. */
-  if (typeof Cashbook !== 'undefined') h += Cashbook.settingsCard();
-  h += loyaltyCard();
-  h += customersCard();
-
-  h += setSection(t('setg_print'));
+  if (typeof CatSet !== 'undefined') h += CatSet.card();
+  h += shelvesCard();
   h += receiptSettingsCard();
   h += thermalLabelsCard();
   h += hardwareCard();
 
-  h += setSection(t('setg_wh'));
-  h += shelvesCard();
-  /* The product categories, in both languages (057). config.write only. */
-  if (typeof CatSet !== 'undefined') h += CatSet.card();
+  /* 2 — every number that decides what something costs or is worth */
+  h += setSection(t('setg_money'));
+  h += rateCard();
+  if (typeof Cashbook !== 'undefined') h += Cashbook.settingsCard();
+  h += loyaltyCard();
+  h += customersCard();
 
-  /* THE DELIVERY OFFICE'S OWN LISTS — payment methods, the transport offices
-     and couriers, the shipping price list, the shop's transfer details. They
-     were written (Desk.settingsCards in js/desk.js) and never drawn: nothing
-     here called them, so "add a company in Settings" sent the shop to a page
-     that did not have one. It draws its own section heading, gates itself on
-     config.write, and on a first visit fetches the office's settings and
-     redraws this page when they land. */
-  if (typeof Desk !== 'undefined' && Desk.settingsCards) h += Desk.settingsCards();
-  /* 060 — what a safeer is paid per delivery, and the areas a task can go to. */
+  /* 3 — THE DELIVERY OFFICE'S OWN LISTS: payment methods, the transport
+     offices and couriers, the shipping price list, the shop's transfer
+     details. They were written (Desk.settingsCards in js/desk.js) and never
+     drawn, so "add a company in Settings" sent the shop to a page that did
+     not have one. Each gates itself on config.write, and on a first visit
+     fetches the office's settings and redraws this page when they land. */
+  h += setSection(t('setg_deliv'));
+  if (typeof Desk !== 'undefined' && Desk.settingsCards) h += Desk.settingsCards({ bare: true });
   if (typeof Safeers !== 'undefined') h += Safeers.settingsCard();
 
+  /* 4 — who works here, and what each of them may do */
   h += setSection(t('setg_people'));
-  /* 059 — who can sign in, and what each person may do. access.write only. */
+  if (typeof Staff !== 'undefined') h += Staff.card();
   if (typeof AccessUI !== 'undefined') h += AccessUI.card();
   h += presenceCard();
   h += rolesCard();
 
-  h += setSection(t('setg_system'));
-  if (allow('config.write')) h += mirrorCard();
-  h += telegramCard();
-  /* The same gate as the mirror: these are switches on a thing that sends
-     messages to phones outside this building, and the routes behind them are
-     config.write anyway — a card that draws and then refuses to save is
-     worse than a card that is not there. */
-  if (allow('config.write')) h += remindersCard();
-  h += motionCard();
+  /* 5 — the things that can break the shop */
+  if (roleOf() === 'developer') {
+    h += setSection(t('setg_advanced'), t('setg_advanced_sub'));
+    h += mirrorCard();
+    h += telegramCard();
+    h += remindersCard();
+    h += motionCard();
+  } else {
+    /* Motion is a preference, not a danger, so it stays where anybody can
+       reach it rather than going behind the developer's door with the
+       mirror. */
+    h += setSection(t('setg_this_machine'));
+    h += motionCard();
+  }
 
   h += '</div>';
   return h;

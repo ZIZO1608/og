@@ -1427,9 +1427,21 @@ var Desk = (function () {
     return '<span class="muted">' + t('dk_fee_not_listed') + '</span>';
   }
 
+  /* THE LIST IS EMPTY ON THIS SHOP, and that is why every order stalls here.
+     Somebody who can fix it gets the door; somebody who cannot is told who
+     to ask, rather than being sent to a screen they may not open. */
+  function noPricesHint() {
+    var any = (boot.settings.prices || []).some(function (p) { return p && p.active !== false; });
+    if (any) return '';
+    return '<div class="dk-hint">' + (allow('config.write')
+      ? '<span class="clickable" data-act="dk-goto-prices">' + t('dk_no_prices') + ' →</span>'
+      : t('dk_no_prices_ask')) + '</div>';
+  }
+
   function feeHtml() {
     return '<div class="dk-fee"><span class="lbl">' + t('dk_shipping') + '</span>' +
       '<div class="dk-fee-line" id="dkFeeLine">' + feeLineHtml() + '</div>' +
+      noPricesHint() +
       '<div class="dk-fee-ctl">' +
         '<div class="seg-row">' +
           segBtn('dk-feemode', 'auto', S.feeMode === 'auto', t('dk_fee_shop')) +
@@ -2590,11 +2602,21 @@ var Desk = (function () {
       saveBtn('companies') + '</div>' + setFoldEnd();
   }
 
+  /* THE SHIPPING PRICE LIST, FILLABLE IN ONE SITTING       (night shift 03)
+     It ships EMPTY, so on this shop every single order stops on "Say what
+     the shipping is" until somebody presses Free or types a figure. That is
+     a data problem with a one-time fix, and this is the screen where the fix
+     happens — so it is laid out to be filled straight down: the city, the
+     price, the currency as two toggles, and a ✕ per row. Country and method
+     come first because they are the ones usually left alone.
+
+     NOTHING HERE INVENTS A PRICE. The list starts empty and stays empty
+     until the shop types its own numbers. */
   function pricesCard() {
     var countries = draft().countries.map(function (c) { return { id: c.id, label: (OG.lang === 'ar' ? c.ar : c.en) || c.id }; });
     var methods = [{ id: '', label: t('dks_any_method') }].concat(
       ['driver', 'office', 'courier', 'abroad'].map(function (m) { return { id: m, label: t('dk_m_' + m) }; }));
-    var currencies = (boot.currencies || []).map(function (c) { return { id: c.code, label: c.code }; });
+    var currencies = (boot.currencies || []).map(function (c) { return c.code; });
     var modes = [{ id: 'invoice', label: t('dk_fee_shop') }, { id: 'courier', label: t('dk_fee_to_courier') }];
 
     var rows = draft().prices.map(function (p, i) {
@@ -2602,18 +2624,43 @@ var Desk = (function () {
         sel('dks-p', i, 'country', p.country, countries) +
         inp('dks-p', i, 'city_en', p.city_en, t('dks_city_any')) +
         inp('dks-p', i, 'city_ar', p.city_ar, 'المدينة') +
+        /* The price, and the currency beside it as toggles rather than a
+           dropdown of two — the ns03 money-dialog rule, one screen along. */
+        inp('dks-p', i, 'fee', feeText(p), '0', 'num') +
+        curToggle(i, p.currency, currencies) +
         sel('dks-p', i, 'method', p.method || '', methods) +
-        inp('dks-p', i, 'fee', p.fee, '0', 'num') +
-        sel('dks-p', i, 'currency', p.currency, currencies) +
         sel('dks-p', i, 'fee_mode', p.fee_mode, modes) +
-        '<span>' + sw('dks-p', i, 'active', p.active !== false) + '</span></div>';
-    }).join('') || '<div class="dks-none">' + t('dks_no_prices') + '</div>';
+        '<span>' + sw('dks-p', i, 'active', p.active !== false) + '</span>' +
+        '<button type="button" class="dks-x" data-act="dks-del" data-k="prices" data-i="' + i + '" ' +
+          'title="' + esc(t('set_ship_del')) + '" aria-label="' + esc(t('set_ship_del')) + '">✕</button>' +
+      '</div>';
+    }).join('');
 
-    return setFoldStart('dk-prices', t('dks_prices'), nf(draft().prices.length)) +
-      '<div class="card-body"><div class="partner-note">' + t('dks_prices_note') + '</div>' +
-      '<div class="dks-list">' + rows + '</div>' +
-      '<button class="btn btn-sm mt" data-act="dks-add" data-k="prices">+ ' + t('dks_add_price') + '</button>' +
+    return setFoldStart('dk-prices', t('dks_prices'), nf(draft().prices.length), t('set_ship_sub')) +
+      '<div class="card-body">' +
+      (draft().prices.length
+        ? '<div class="partner-note">' + t('dks_prices_note') + '</div>'
+        : '<div class="cb-why">' + t('set_ship_empty') + '</div>') +
+      '<div class="dks-list dks-prices">' + rows + '</div>' +
+      '<button class="btn btn-sm mt" data-act="dks-add" data-k="prices">' + t('set_ship_add') + '</button>' +
       saveBtn('prices') + '</div>' + setFoldEnd();
+  }
+
+  /* The stored figure is minor units in the row's own currency, so it is
+     shown the way a person writes it and read back the same way. */
+  function feeText(p) {
+    var n = Number(p.fee) || 0;
+    if (!n) return '';
+    return moneyPlain(n, p.currency || boot.base || 'SYP');
+  }
+
+  function curToggle(i, value, list) {
+    if (list.length > 3) return sel('dks-p', i, 'currency', value, list.map(function (c) { return { id: c, label: c }; }));
+    return '<span class="dks-cur">' + list.map(function (c) {
+      return '<button type="button" class="chip' + (String(value) === c ? ' on' : '') + '" ' +
+        'data-act="dks-cur" data-i="' + i + '" data-v="' + esc(c) + '">' +
+        esc(c === 'USD' ? '$' : (OG.lang === 'ar' && c === 'SYP' ? 'ل.س' : c)) + '</button>';
+    }).join('') + '</span>';
   }
 
   function accountsCard() {
@@ -2635,10 +2682,13 @@ var Desk = (function () {
       '<div class="dks-list">' + rows + '</div>' + saveBtn('accounts') + '</div>' + setFoldEnd();
   }
 
-  function settingsCards() {
+  /* `bare` drops the heading: ns03 gave Settings a Deliveries section of its
+     own, and two headings one under the other is not a section. */
+  function settingsCards(opts) {
     if (!allow('config.write')) return '';
     if (!boot) { load(); return ''; }
-    return setSection(t('setg_delivery')) + methodsCard() + companiesCard() + pricesCard() + accountsCard();
+    return ((opts && opts.bare) ? '' : setSection(t('setg_delivery'))) +
+      methodsCard() + companiesCard() + pricesCard() + accountsCard();
   }
 
   /* One id per new row, from the name the person typed or a timestamp — the
@@ -2649,6 +2699,26 @@ var Desk = (function () {
     var id = base, n = 2;
     while (taken.indexOf(id) > -1) { id = base + '_' + n; n++; }
     return id;
+  }
+
+  /* One door into one Settings fold, from anywhere. Scrolled AFTER the page
+     has settled, and checked: navigating resets the view's scroll once the
+     new screen is in, so a scroll made on the first frame is undone a moment
+     later and the list sat off-screen. The office's settings may still be on
+     their way on a first visit, which is what the retries are for. */
+  function gotoSettingsFold(id) {
+    if (typeof closeModal === 'function') closeModal();
+    if (typeof setFoldRemember === 'function') setFoldRemember(id, true);
+    if (typeof go === 'function') go('settings');
+    var tries = 0;
+    (function find() {
+      var f = document.querySelector('[data-fold="' + id + '"]');
+      var r = f && f.getBoundingClientRect();
+      var inView = r && r.top >= 0 && r.top < window.innerHeight - 80;
+      if (inView && tries > 3) return;
+      if (f) f.scrollIntoView({ block: 'start' });
+      if (++tries < 50) setTimeout(find, 120);
+    })();
   }
 
   function registerSettings() {
@@ -2667,23 +2737,33 @@ var Desk = (function () {
     /* "Add one in Settings", from the office, the Assign dialog and the
        handover picker: straight to the companies list, already open, rather
        than to the top of an eleven-card page. */
-    ACTIONS['dk-goto-companies'] = function () {
-      if (typeof closeModal === 'function') closeModal();
-      if (typeof setFoldRemember === 'function') setFoldRemember('dk-companies', true);
-      if (typeof go === 'function') go('settings');
-      /* Scrolled after the page has settled, and checked: navigating resets
-         the view's scroll once the new screen is in, so a scroll made on the
-         first frame is undone a moment later and the list sat off-screen. */
-      var tries = 0;
-      (function find() {
-        var f = document.querySelector('[data-fold="dk-companies"]');
-        var r = f && f.getBoundingClientRect();
-        var inView = r && r.top >= 0 && r.top < window.innerHeight - 80;
-        if (inView && tries > 3) return;
-        if (f) f.scrollIntoView({ block: 'start' });
-        /* The office's settings may still be on their way on a first visit. */
-        if (++tries < 50) setTimeout(find, 120);
-      })();
+    /* Straight to the shipping price list, opened, and scrolled to AFTER the
+       page has settled — navigating resets the view's scroll once the screen
+       is in, so a first-frame scroll is undone. */
+    ACTIONS['dk-goto-prices'] = function () {
+      gotoSettingsFold('dk-prices');
+    };
+
+    ACTIONS['dk-goto-companies'] = function () { gotoSettingsFold('dk-companies'); };
+
+    /* A PRICE ROW MAY BE DELETED, and a method or a company may not: those
+       are frozen onto deliveries by id, while a delivery freezes its own fee
+       as a number. This is the one list here with a ✕. */
+    ACTIONS['dks-del'] = function (el) {
+      var i = Number(el.getAttribute('data-i'));
+      var d = draft();
+      if (el.getAttribute('data-k') !== 'prices' || !(i >= 0) || !d.prices[i]) return;
+      d.prices.splice(i, 1);
+      renderKeepScroll();
+    };
+
+    /* The currency toggle beside a price. */
+    ACTIONS['dks-cur'] = function (el) {
+      var i = Number(el.getAttribute('data-i'));
+      var d = draft();
+      if (!d.prices[i]) return;
+      d.prices[i].currency = el.getAttribute('data-v');
+      renderKeepScroll();
     };
 
     ACTIONS['dks-add'] = function (el) {
@@ -2744,7 +2824,7 @@ var Desk = (function () {
     if (!row) return;
     var k = el.getAttribute('data-k');
     row[k] = el.type === 'checkbox' ? !!el.checked
-      : (k === 'fee' ? toCount(el.value) : el.value);
+      : (k === 'fee' ? toMinor(el.value, row.currency || boot.base || 'SYP') : el.value);
   }
 
   return {

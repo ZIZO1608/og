@@ -587,6 +587,11 @@ var Safeers = (function () {
   return {
     view: view, after: after, load: load,
     myErrandsHtml: myErrandsHtml, loadMine: loadMine,
+    /* What this screen last loaded, for the staff card's “what is this
+       person still holding” sentence. Null when it has never been opened,
+       which is a different answer from none. */
+    errands: function () { return S.errands; },
+    parcels: function () { return S.parcels; },
     settingsCard: settingsCard,
     live: function () {
       if (OG.view === 'safeers') load();

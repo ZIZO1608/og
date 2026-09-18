@@ -203,5 +203,21 @@ var AccessUI = (function () {
     if (a === 'hide-once') { S.shown = null; keep(); }
   });
 
-  return { card: card, permLabel: permLabel, reset: function () { S.people = null; S.detail = null; S.open = null; S.shown = null; } };
+  return {
+    card: card, permLabel: permLabel,
+    /* “Change what they can do” on a person's staff card lands here: the same
+       switches, opened on that person, rather than a second copy of them. */
+    openFor: function (id) {
+      if (typeof setFoldRemember === 'function') setFoldRemember('access', true);
+      load();
+      openPerson(id);
+      var tries = 0;
+      (function find() {
+        var f = document.querySelector('[data-fold="access"]');
+        if (f) f.scrollIntoView({ block: 'start' });
+        if (++tries < 12) setTimeout(find, 140);
+      })();
+    },
+    reset: function () { S.people = null; S.detail = null; S.open = null; S.shown = null; }
+  };
 })();

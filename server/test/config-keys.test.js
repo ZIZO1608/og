@@ -59,7 +59,10 @@ function browserKeys() {
       }
     }
     for (const m of src.matchAll(/updates\['([^']+)'\]\s*=/g)) add(m[1], m.index);
-    for (const m of src.matchAll(/saveConfig\(\s*'([^']+)'\s*(\+)?/g)) add(m[1], m.index, !!m[2]);
+    /* saveSetting() joined saveConfig() in night shift 03: the same route and
+       the same debounce, with a "Saved" beside the box instead of a toast. A
+       writer the reader does not know about is a key nobody is checking. */
+    for (const m of src.matchAll(/save(?:Config|Setting)\(\s*'([^']+)'\s*(\+)?/g)) add(m[1], m.index, !!m[2]);
   }
   return found;
 }
@@ -89,7 +92,11 @@ test('keys with a route of their own, or no business being written here, stay re
   }
 });
 
-test('what Save changes sends is accepted whole', () => {
+/* The four the page-level "Save changes" used to send together. That button
+   is gone — every box on the shop card saves itself now — but they still
+   arrive as one batch whenever two change inside one debounce, and they must
+   still be accepted together. */
+test('what the shop card sends is accepted whole', () => {
   assert.equal(configRefusal({
     'loyalty.points_per_1000': '100', 'loyalty.point_value': '0.5',
     'shop.name': 'OG Sports', 'shop.address': 'Aleppo, Syria', 'shop.city': 'Aleppo', 'shop.phone': '0956 442 118'

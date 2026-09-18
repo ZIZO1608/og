@@ -2238,39 +2238,14 @@ var ACTIONS = {
      The rate is not a config key — it lives in fx_rates with its own
      endpoint, so that it can be frozen onto each sale — hence two requests
      rather than one. */
-  'settings-save': function (el) {
-    if (typeof Shop === 'undefined' || !Shop.live()) { render(); return; }
-    if (el) el.disabled = true;
+  /* `settings-save` is GONE (ns03). Every box behind it — the shop name, the
+     phone, the city, the address, the two loyalty numbers and the exchange
+     rate — saves itself now, beside the eight cards that always did. A page
+     with two kinds of saving is a page nobody can read.
 
-    var updates = {
-      'loyalty.points_per_1000': String(CONFIG.LOYALTY_POINTS_PER_1000),
-      'loyalty.point_value':     String(CONFIG.LOYALTY_POINT_VALUE),
-      'shop.name':               CONFIG.SHOP_NAME,
-      'shop.address':            CONFIG.SHOP_ADDRESS || '',
-      'shop.city':               CONFIG.SHOP_CITY || '',
-      'shop.phone':              CONFIG.SHOP_PHONE || ''
-    };
-
-    API.put('/api/config', { updates: updates })
-      .then(function () {
-        return API.post('/api/fx', { base: 'USD', quote: 'SYP', rate: CONFIG.EXCHANGE_RATE });
-      })
-      .then(function () { return Shop.reload(); })
-      .then(function () {
-        toast(t('save_changes'),
-          '1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' · ' +
-          CONFIG.LOYALTY_POINTS_PER_1000 + ' ' + t('points').toLowerCase() + '/1,000 · ' +
-          esc(CONFIG.SHOP_NAME), 'ok', 3600);
-      })
-      .catch(function (err) {
-        /* Reload so the screen shows what the server actually holds. Leaving
-           the typed values up after a failed save is how somebody walks away
-           believing the rate changed. */
-        toast(t('save_changes'), API.friendly(err), 'err', 6000);
-        Shop.reload();
-      })
-      .then(function () { if (el) el.disabled = false; });
-  },
+     The keys themselves have not moved: they go through saveSetting() in
+     js/app-changes.js, which server/test/config-keys.test.js reads exactly as
+     it read this object. */
 
   'new-sale': function () { closeModal(); go('pos'); }
 };

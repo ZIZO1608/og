@@ -232,16 +232,27 @@ var CHANGES = {
     saveConfig('loyalty.mode', v, t('ly_mode'), 0);
     render();
   },
+  /* THESE FOUR SAVE THEMSELVES NOW (ns03). They went out only when somebody
+     found "Save changes" in the page head, beside eight cards that saved on
+     change — and the receipt's header is printed from exactly these four. */
   'set-shopname': function (el) {
     var v = String(el.value || '').trim();
     if (!v) return;                       /* never let the shop become nameless */
     CONFIG.SHOP_NAME = v;
     renderSidebar(); renderTopbar();
-    focusBack('#setShopName', el.value.length);
+    saveSetting('shop.name', v);
   },
   'set-addr': function (el) {
     CONFIG.SHOP_ADDRESS = String(el.value || '');
-    focusBack('#setAddr', el.value.length);
+    saveSetting('shop.address', CONFIG.SHOP_ADDRESS);
+  },
+  'set-city': function (el) {
+    CONFIG.SHOP_CITY = String(el.value || '');
+    saveSetting('shop.city', CONFIG.SHOP_CITY);
+  },
+  'set-phone': function (el) {
+    CONFIG.SHOP_PHONE = String(el.value || '');
+    saveSetting('shop.phone', CONFIG.SHOP_PHONE);
   },
   'set-motion': function (el) {
     if (el.checked) document.body.removeAttribute('data-motion');
@@ -440,14 +451,23 @@ var CHANGES = {
     else saveConfig('alerts.quiet_from', v, t('tgo_title'), 600, String(v), tgOfficeReload);
   },
 
+  /* Desk.toCount, NOT parseInt: parseInt("13,000") is 13, and the box used
+     to be type=number, which blanks itself on a comma and refuses an Arabic
+     keypad's digits outright. The rate is the one number every dollar price
+     in the shop converts through. */
   'set-rate': function (el) {
-    var v = parseInt(el.value, 10);
-    if (v > 0) {
-      CONFIG.EXCHANGE_RATE = v;
-      render();
-      focusBack('#setRate', String(v).length);
-      toast(t('exchange_rate'), '1 USD = ' + nf(v) + ' SYP', 'ok', 2000);
-    }
+    var v = Desk.toCount(el.value);
+    if (!(v > 0)) return;
+    CONFIG.EXCHANGE_RATE = v;
+    /* No render(): the box holds a caret and half a number. The two places
+       that print the rate are repainted when the save lands. */
+    clearTimeout(RATE_SAVE_T);
+    RATE_SAVE_T = setTimeout(function () {
+      if (!API.live) return;
+      API.post('/api/fx', { base: 'USD', quote: 'SYP', rate: v })
+        .then(function () { markSaved('fx.rate'); return Shop.reload(); })
+        .catch(function (err) { toast(t('exchange_rate'), API.friendly(err), 'err', 5000); });
+    }, 700);
   }
 };
 
@@ -494,4 +514,34 @@ function focusBack(sel, caret) {
   if (!el) return;
   el.focus();
   try { el.setSelectionRange(caret, caret); } catch (e) {}
+}
+
+var RATE_SAVE_T = null;
+
+/* ONE SETTING, SAVED WHERE IT STANDS                      (night shift 03)
+   `saveConfig` toasts, which is right for a switch somebody flicked and
+   wrong for a box they are still typing in: the toast has gone by the time
+   the eye gets back to the field. This writes the same key through the same
+   route and puts a small "Saved" beside the box instead, which is the
+   answer rather than an animation — it appears only once the server has
+   actually taken it. */
+function saveSetting(key, value, wait) {
+  clearTimeout(CONFIG_SAVE_T[key]);
+  if (!API.live) return;
+  CONFIG_SAVE_T[key] = setTimeout(function () {
+    var updates = {};
+    updates[key] = String(value);
+    API.put('/api/config', { updates: updates })
+      .then(function () { markSaved(key); })
+      .catch(function (err) { toast(t('settings_title'), API.friendly(err), 'err', 5000); });
+  }, wait === undefined ? 700 : wait);
+}
+
+function markSaved(key) {
+  var el = document.querySelector('[data-saved="' + key + '"]');
+  if (!el) return;
+  el.textContent = t('cb_saved_now');
+  el.classList.add('on');
+  clearTimeout(el._t);
+  el._t = setTimeout(function () { el.classList.remove('on'); }, 2600);
 }
