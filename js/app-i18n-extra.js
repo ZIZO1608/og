@@ -2344,7 +2344,7 @@ Object.keys(REFRESH_AR).forEach(function (k) { I18N.ar[k] = REFRESH_AR[k]; });
    English mid-sentence inside an RTL layout. */
 var CASH_EN = {
   cb_now: 'Where it is',
-  cb_book: 'Cash book',
+  cb_book: 'Money history',
   cb_unavailable: 'The cash book is not available',
   cb_unavailable_sub: 'This account cannot read it, or the server has not sent it yet.',
   cb_all_money: 'All the shop\'s money',
@@ -2463,7 +2463,7 @@ var CASH_EN = {
 };
 var CASH_AR = {
   cb_now: 'أين المال',
-  cb_book: 'دفتر الصندوق',
+  cb_book: 'حركة المصاري',
   cb_unavailable: 'دفتر الصندوق غير متاح',
   cb_unavailable_sub: 'هذا الحساب لا يملك صلاحية قراءته، أو لم يرسله الخادم بعد.',
   cb_all_money: 'كل مال المحل',
@@ -3445,9 +3445,8 @@ var NS03_EN = {
   nav_g_shop: 'The shop',
 
   /* -- money, in plain words -- */
-  cb_money_history: 'Money history',
-  mn_who_owes: 'Who owes whom',
   mn_they_owe: 'They owe us',
+  mn_we_owe_none: 'Nothing owed to suppliers.',
   mn_we_owe: 'We owe them',
   cb_go_move: 'Move money',
   cb_go_exchange: 'Exchange',
@@ -3461,6 +3460,9 @@ var NS03_EN = {
   cb_more: 'More',
   cb_other: 'Other',
   cb_saved_now: 'Saved',
+  py_left_after: 'This month will still owe {x}.',
+  py_all_paid: 'This month will be paid in full.',
+  py_owes_after: 'This month will owe {x}.',
 
   /* -- products -- */
   pr_find: 'Find a product',
@@ -3541,9 +3543,8 @@ var NS03_AR = {
   nav_g_money: 'المصاري',
   nav_g_shop: 'المحل',
 
-  cb_money_history: 'حركة المصاري',
-  mn_who_owes: 'مين عليه لمين',
   mn_they_owe: 'عليهن إلنا',
+  mn_we_owe_none: 'ما في شي علينا لأصحاب البضاعة.',
   mn_we_owe: 'علينا إلهن',
   cb_go_move: 'حوّل مصاري',
   cb_go_exchange: 'صرافة',
@@ -3557,6 +3558,9 @@ var NS03_AR = {
   cb_more: 'المزيد',
   cb_other: 'غير هيك',
   cb_saved_now: 'انحفظ',
+  py_left_after: 'يبقى على هذا الشهر {x}.',
+  py_all_paid: 'يصير هذا الشهر مدفوع بالكامل.',
+  py_owes_after: 'يصير المستحق لهذا الشهر {x}.',
 
   pr_find: 'دوّر على منتج',
   pr_find_ph: 'الاسم أو الباركود، أو امسحه',

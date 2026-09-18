@@ -374,8 +374,18 @@ var Cashbook = (function () {
 
   /* ------------------------------------------------------------ the dialogs */
 
+  /* A change hook may name ANOTHER module's namespace: 'py:pay-hint' writes
+     data-pyc and so fires payables' own dispatcher. Without a prefix it is
+     this file's data-cbc. One helper set, five namespaces, no second copy. */
+  function hookAttr(change) {
+    if (!change) return '';
+    var i = String(change).indexOf(':');
+    if (i < 0) return ' data-cbc="' + esc(change) + '"';
+    return ' data-' + esc(change.slice(0, i)) + 'c="' + esc(change.slice(i + 1)) + '"';
+  }
+
   function placeSelect(id, selected, opts) {
-    return '<select class="inp" id="' + id + '"' + (opts && opts.change ? ' data-cbc="' + opts.change + '"' : '') + '>' +
+    return '<select class="inp" id="' + id + '"' + hookAttr(opts && opts.change) + '>' +
       pickable(opts).map(function (p) {
         return '<option value="' + esc(p.id) + '"' + (p.id === selected ? ' selected' : '') + '>' +
           esc(placeName(p.id)) + (p.active === false ? ' · ' + t('cb_off') : '') + '</option>';
@@ -383,7 +393,7 @@ var Cashbook = (function () {
   }
 
   function curSelect(id, selected, change) {
-    return '<select class="inp" id="' + id + '"' + (change ? ' data-cbc="' + change + '"' : '') + '>' +
+    return '<select class="inp" id="' + id + '"' + hookAttr(change) + '>' +
       currencies().map(function (c) {
         return '<option value="' + c + '"' + (c === selected ? ' selected' : '') + '>' + c + '</option>';
       }).join('') + '</select>';
@@ -391,7 +401,113 @@ var Cashbook = (function () {
 
   function amountBox(id, change) {
     return '<input class="inp num" id="' + id + '" type="text" inputmode="decimal" dir="ltr" autocomplete="off"' +
-      (change ? ' data-cbc="' + change + '"' : '') + '>';
+      hookAttr(change) + '>';
+  }
+
+  /* ====================================================================
+     ONE SHAPE FOR EVERY MONEY DIALOG                    (night shift 03)
+     --------------------------------------------------------------------
+     Eighteen dialogs, eighteen shapes. Some led with a category, some with
+     a currency, some with a place; the amount — the only thing anybody
+     opened the dialog to type — was second, third or fourth, and looked
+     exactly like the optional note under it. Currency was a `<select>`
+     holding two options in seven different places.
+
+     The pattern, and every part of it is below:
+
+       1  the AMOUNT first, big, focused, inputmode="decimal"
+       2  the currency as two big toggles, remembered per machine per job
+       3  from / to / category as CHIPS while there are few enough to show
+       4  the date and the note under one "More"
+       5  a sentence that says what will be true afterwards
+       6  refusals under the field that causes them, before the button
+
+     EVERY CONTROL KEEPS ITS ID. A chip row is visible buttons over a
+     hidden input with the id the handler already reads, which is what
+     `cbODir` has always done — so `move-go`, `add-expense-go` and the rest
+     are untouched and cannot drift from what is on screen. */
+
+  /* A row of chips backed by a hidden input. `change` names the same
+     `data-cbc` hook a <select> would have fired, so live hints keep working. */
+  function pickRow(id, items, sel, change) {
+    var h = '<div class="cb-pick" role="group">';
+    items.forEach(function (o) {
+      h += '<button type="button" class="cb-chip' + (String(o.v) === String(sel) ? ' on' : '') + '"' +
+        ' data-cb="pick" data-for="' + id + '" data-v="' + esc(String(o.v)) + '">' +
+        esc(o.label) + (o.sub ? '<small>' + esc(o.sub) + '</small>' : '') + '</button>';
+    });
+    /* The hook lives on the HIDDEN INPUT, not on the chips: a chip press
+       dispatches a real change event on it, so whichever module's
+       dispatcher owns that namespace hears it exactly as it hears a
+       <select>. */
+    return h + '</div><input type="hidden" id="' + id + '" value="' + esc(String(sel == null ? '' : sel)) + '"' +
+      hookAttr(change) + '>';
+  }
+
+  /* Which currency this machine used last for THIS job. A shop that pays
+     its suppliers in dollars and its wages in lira should not re-pick every
+     time; a shop that does not will never notice this exists. */
+  function lastCur(job, fallback) {
+    try {
+      var v = localStorage.getItem('og.cb.cur.' + job);
+      if (v && currencies().indexOf(v) > -1) return v;
+    } catch (e) { /* private window */ }
+    return fallback || base();
+  }
+  function rememberCur(job, cur) {
+    try { localStorage.setItem('og.cb.cur.' + job, cur); } catch (e) {}
+  }
+
+  /* Two big toggles, never a dropdown — there are two currencies in this
+     shop and there have only ever been two. More than four and it falls
+     back to the select, because eight chips is not a choice either. */
+  function curPick(id, sel, change) {
+    var list = currencies();
+    if (list.length > 4) return curSelect(id, sel, change);
+    return pickRow(id, list.map(function (c) { return { v: c, label: curWord(c) }; }), sel, change);
+  }
+
+  /* ل.س and $ are what is written on the notes; SYP and USD are what a
+     spreadsheet calls them. */
+  function curWord(c) {
+    if (c === 'SYP') return OG.lang === 'ar' ? 'ل.س' : 'SYP';
+    if (c === 'USD') return '$';
+    return c;
+  }
+
+  function placePick(id, sel, opts) {
+    var list = pickable(opts);
+    if (list.length > 5) return placeSelect(id, sel, opts);
+    return pickRow(id, list.map(function (p) {
+      return { v: p.id, label: placeName(p.id) + (p.active === false ? ' · ' + t('cb_off') : '') };
+    }), sel, opts && opts.change);
+  }
+
+  /* The amount, first and big. */
+  function bigAmount(id, label, change) {
+    return '<label class="field cb-big"><span>' + (label || t('cb_amount')) + '</span>' +
+      '<input class="inp num cb-big-in" id="' + id + '" type="text" inputmode="decimal" dir="ltr" ' +
+        'autocomplete="off" placeholder="0"' + hookAttr(change) + '></label>';
+  }
+
+  /* The rare half of a dialog: the date, the note, anything nobody fills in
+     on an ordinary night. Shut, and it does not re-render when opened — a
+     dialog is full of typed-but-unsaved values. */
+  function moreFold(inner) {
+    return '<div class="wh-fold cb-fold"><button class="wh-more-h" type="button" data-cb="dlg-more">' +
+      t('cb_more') + '<span class="wh-more-x">+</span></button>' +
+      '<div class="wh-fold-b" id="cbDlgMore" hidden>' + inner + '</div></div>';
+  }
+
+  /* The sentence under the button: what will be true once this is pressed.
+     Filled by each dialog's own live hook — this is only the slot. */
+  function resultLine(id, text) {
+    return '<div class="cb-result" id="' + (id || 'cbResult') + '">' + (text || '') + '</div>';
+  }
+
+  /* A refusal shown UNDER THE FIELD, before the button is pressed. */
+  function why(text) {
+    return text ? '<div class="cb-why">' + text + '</div>' : '';
   }
 
   function field(label, inner, cls) {
@@ -408,19 +524,35 @@ var Cashbook = (function () {
   /* ---- move ---- */
   function openMove(from) {
     var src = from || 'drawer';
+    var cur = lastCur('move');
     openModal({
       title: t('cb_move'), size: 'narrow',
-      body: field(t('cb_from'), placeSelect('cbFrom', src, { emptying: true, change: 'mv-hint' })) +
-        field(t('cb_to'), placeSelect('cbTo', src === 'owner' ? 'drawer' : 'owner'), 'mt') +
-        pair(field(t('cb_currency'), curSelect('cbCur', base(), 'mv-hint')),
-             field(t('mn_amount'), amountBox('cbAmt'))) +
-        field(t('cb_fee'), amountBox('cbFee'), 'mt') +
-        '<div class="muted small">' + t('cb_fee_hint') + '</div>' +
-        field(t('note'), '<input class="inp" id="cbNote" type="text" maxlength="300">', 'mt') +
-        '<div class="partner-note mt" id="cbHint">' + moveHint(src, base()) + '</div>',
+      /* The pattern (ns03): amount, currency, where from, where to, then
+         everything rare behind More, then the sentence. */
+      body: bigAmount('cbAmt', t('cb_amount'), 'mv-hint') +
+        field(t('cb_which_money'), curPick('cbCur', cur, 'mv-hint'), 'mt') +
+        field(t('cb_from_where'), placePick('cbFrom', src, { emptying: true, change: 'mv-hint' }), 'mt') +
+        field(t('cb_to'), placePick('cbTo', src === 'owner' ? 'drawer' : 'owner'), 'mt') +
+        moreFold(
+          field(t('cb_fee'), amountBox('cbFee')) +
+          '<div class="muted small">' + t('cb_fee_hint') + '</div>' +
+          field(t('note'), '<input class="inp" id="cbNote" type="text" maxlength="300">', 'mt')
+        ) +
+        '<div class="partner-note mt" id="cbHint">' + moveHint(src, cur) + '</div>',
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
-        '<button class="btn btn-primary" data-cb="move-go" data-op="' + newOp('mv') + '">' + t('cb_move') + '</button>'
+        '<button class="btn btn-primary" data-cb="move-go" data-op="' + newOp('mv') + '">' + t('cb_move') + '</button>',
+      onOpen: function () { focusAmount('cbAmt'); }
     });
+  }
+
+  /* The amount is what somebody came to type, so the caret starts in it —
+     except on a touch screen, where focusing throws the keyboard up over
+     the dialog the moment it opens. The same rule the order desk's scan box
+     and the receiving panel's search box follow. */
+  function focusAmount(id) {
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return;
+    var el = document.getElementById(id);
+    if (el) { try { el.focus(); } catch (e) {} }
   }
 
   function moveHint(from, cur) {
@@ -798,6 +930,31 @@ var Cashbook = (function () {
       render();
     },
 
+    /* A chip row's press (ns03). It writes the hidden input the handlers
+       already read, lights the chip, and then fires the SAME `data-cbc`
+       hook a <select> would have fired — so the live hints (the "X holds Y"
+       line, the exchange rate, the pay hint) keep working unchanged. */
+    pick: function (el) {
+      var id = el.getAttribute('data-for');
+      var box = document.getElementById(id);
+      if (box) box.value = el.getAttribute('data-v');
+      Array.prototype.forEach.call(el.parentNode.children, function (b) {
+        b.classList.toggle('on', b === el);
+      });
+      if (box) { try { box.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {} }
+    },
+
+    /* The dialog's own "More". One attribute, never a render — this dialog
+       is full of typed-but-unsaved values. */
+    'dlg-more': function (el) {
+      var body = document.getElementById('cbDlgMore');
+      if (!body) return;
+      var open = body.hasAttribute('hidden');
+      if (open) body.removeAttribute('hidden'); else body.setAttribute('hidden', '');
+      var x = el.querySelector('.wh-more-x');
+      if (x) x.textContent = open ? '−' : '+';
+    },
+
     'owner-dir': function (el) {
       var v = el.getAttribute('data-v');
       var box = document.getElementById('cbODir');
@@ -809,6 +966,7 @@ var Cashbook = (function () {
     },
 
     'move-go': function (el) {
+      rememberCur('move', val('cbCur') || base());
       var from = val('cbFrom'), to = val('cbTo'), cur = val('cbCur');
       var amount = toMinor(val('cbAmt'), cur);
       var fee = toMinor(val('cbFee'), cur);
@@ -1121,6 +1279,12 @@ var Cashbook = (function () {
     settingsCard: settingsCard,
     placeName: placeName,
     pickable: pickable,
+    /* The one money DIALOG PATTERN, shared with js/payables.js and
+       js/money.js (ns03) — the whole point is that there is one shape, so
+       there is one place it is built. */
+    bigAmount: bigAmount, curPick: curPick, placePick: placePick, pickRow: pickRow,
+    moreFold: moreFold, resultLine: resultLine, why: why, field: field,
+    lastCur: lastCur, rememberCur: rememberCur, curWord: curWord, focusAmount: focusAmount,
     /* The one money encoder and parser for the Money screen's other tabs
        (js/payables.js) — a second copy is how two figures stop agreeing. */
     money: signedPlain,

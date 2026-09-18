@@ -139,28 +139,34 @@ var Payables = (function () {
   }
 
   function openSupplierPay(id) {
-    var s = supplier(id);
-    if (!s) return;
+    var sup = supplier(id);
+    if (!sup) return;
+    var op = Cashbook.newOp ? Cashbook.newOp('sp') : ('sp-' + Date.now());
+    /* THE PATTERN (ns03): the amount first and pre-filled with what is owed,
+       the currency as toggles, the place as chips. The ids are unchanged, so
+       sup-pay-go reads exactly what it read before — including the currency
+       lock, which the server enforces either way. */
     openModal({
-      title: t('py_pay') + ' · ' + esc(s.name), size: 'narrow',
-      body: '<div class="stat"><span class="eyebrow">' + t('py_owed') + '</span><div class="val warn py-val">' +
-          m(s.outstanding, s.currency) + '</div></div>' +
-        '<div class="cb-pair">' +
-          field(t('cb_currency'), curSelect('pyPCur', s.currency).replace('<select', '<select data-pyc="pay-hint"')) +
-          field(t('mn_amount'), amountBox('pyPAmt', s.outstanding > 0 ? whole(s.outstanding, s.currency) : '').replace('<input', '<input data-pyc="pay-hint"')) +
-        '</div>' +
-        '<div class="partner-note mt" id="pyPHint" data-sup="' + s.id + '"></div>' +
-        field(t('mn_paid_from'), Cashbook.placeSelect('pyPPlace', 'owner'), 'mt') +
-        field(t('note'), '<input class="inp" id="pyPNote" maxlength="300">', 'mt') +
+      title: t('py_pay') + ' · ' + esc(sup.name), size: 'narrow',
+      body: stat(t('py_owed'), Cashbook.money(sup.outstanding, sup.currency)) +
+        Cashbook.bigAmount('pyPAmt', t('cb_amount'), 'py:pay-hint') +
+        Cashbook.field(t('cb_which_money'), Cashbook.curPick('pyPCur', sup.currency, 'py:pay-hint'), 'mt') +
+        Cashbook.field(t('cb_from_where'), Cashbook.placePick('pyPPlace', 'owner'), 'mt') +
+        '<div class="partner-note mt" id="pyPHint" data-sup="' + esc(sup.id) + '"></div>' +
+        Cashbook.moreFold(Cashbook.field(t('note'), '<input class="inp" id="pyPNote" type="text" maxlength="300">')) +
         '<div class="muted small mt">' + t('py_not_expense') + '</div>',
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
-        '<button class="btn btn-primary" data-py="sup-pay-go" data-id="' + s.id + '" data-op="' + Cashbook.newOp('sp') + '">' + t('py_pay') + '</button>'
+        '<button class="btn btn-primary" data-py="sup-pay-go" data-id="' + sup.id + '" data-op="' + op + '">' +
+          t('py_pay') + '</button>',
+      onOpen: function () {
+        var box = document.getElementById('pyPAmt');
+        if (box && sup.outstanding > 0) box.value = whole(sup.outstanding, sup.currency);
+        payHint();
+        Cashbook.focusAmount('pyPAmt');
+      }
     });
-    payHint();
   }
 
-  /* The estimate of what a payment in the other currency takes off the
-     debt. The server converts at its own rate; this says what it will be. */
   function payHint() {
     var host = document.getElementById('pyPHint');
     if (!host) return;
@@ -362,32 +368,66 @@ var Payables = (function () {
            (DB.employees || []).filter(function (e) { return String(e.id) === String(id); })[0] || null;
   }
 
-  /* One dialog for all four entries. Advance and salary pick a place; bonus
-     and deduction change what the month owes and move nothing. */
+  /* One dialog for all four entries — THE PATTERN (ns03). The amount comes
+     first, big, and pre-filled with what the month still owes; the four
+     entries are chips under it; the place is chips again, and only for the
+     two that actually move money. Under the button is the one sentence
+     nobody should have to work out in their head: what the month will owe
+     once this is saved. Every id is unchanged, so `pr-pay-go` reads exactly
+     what it read before. */
   function openPay(id, kind) {
     var p = person(id);
     if (!p) return;
     var kinds = allow('money.write') ? ['salary', 'advance', 'bonus', 'deduction'] : ['bonus', 'deduction'];
     if (kinds.indexOf(kind) < 0) kind = kinds[0];
+    var left = Math.max(0, p.left);
     openModal({
       title: esc(p.name) + ' · ' + esc(monthLabelOf(PR.month)), size: 'narrow',
       body: '<div class="py-two">' +
           '<div class="stat"><span class="eyebrow">' + t('py_month_owes') + '</span><div class="val py-val">' + m(p.due, p.currency) + '</div></div>' +
-          '<div class="stat"><span class="eyebrow">' + t('py_left') + '</span><div class="val warn py-val">' + m(Math.max(0, p.left), p.currency) + '</div></div>' +
+          '<div class="stat"><span class="eyebrow">' + t('py_left') + '</span><div class="val warn py-val">' + m(left, p.currency) + '</div></div>' +
         '</div>' +
-        '<div class="cb-seg mt py-kinds" role="group">' + kinds.map(function (k) {
-          return '<button type="button" class="' + (k === kind ? 'on' : '') + '" data-py="pay-kind" data-v="' + k + '">' + t('py_k_' + k) + '</button>';
-        }).join('') + '</div><input type="hidden" id="pyKKind" value="' + kind + '">' +
-        '<p class="muted small mt" id="pyKHint">' + t('py_hint_' + kind) + '</p>' +
-        field(t('mn_amount') + ' · ' + esc(p.currency),
-              amountBox('pyKAmt', kind === 'salary' && p.left > 0 ? whole(p.left, p.currency) : ''), 'mt') +
+        Cashbook.bigAmount('pyKAmt', t('cb_amount') + ' · ' + esc(p.currency), 'py:pay-left') +
+        Cashbook.field(t('cb_what_for'),
+          Cashbook.pickRow('pyKKind', kinds.map(function (k) { return { v: k, label: t('py_k_' + k) }; }), kind, 'py:pay-kind'), 'mt') +
+        '<p class="muted small" id="pyKHint">' + t('py_hint_' + kind) + '</p>' +
         '<div id="pyKPlaceWrap"' + (kind === 'salary' || kind === 'advance' ? '' : ' hidden') + '>' +
-          field(t('mn_paid_from'), Cashbook.placeSelect('pyKPlace', 'owner'), 'mt') + '</div>' +
-        field(t('note'), '<input class="inp" id="pyKNote" maxlength="300">', 'mt'),
+          Cashbook.field(t('mn_paid_from'), Cashbook.placePick('pyKPlace', 'owner'), 'mt') + '</div>' +
+        '<div class="partner-note mt" id="pyKLeft" data-left="' + left + '" data-cur="' + esc(p.currency) + '" hidden></div>' +
+        Cashbook.moreFold(Cashbook.field(t('note'), '<input class="inp" id="pyKNote" maxlength="300">')),
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
-        '<button class="btn btn-primary" data-py="pr-pay-go" data-id="' + p.id + '" data-left="' + Math.max(0, p.left) +
-          '" data-cur="' + esc(p.currency) + '" data-op="' + Cashbook.newOp('pp') + '">' + t('save') + '</button>'
+        '<button class="btn btn-primary" data-py="pr-pay-go" data-id="' + p.id + '" data-left="' + left +
+          '" data-cur="' + esc(p.currency) + '" data-op="' + Cashbook.newOp('pp') + '">' + t('save') + '</button>',
+      onOpen: function () {
+        var box = document.getElementById('pyKAmt');
+        if (box && kind === 'salary' && left > 0) box.value = whole(left, p.currency);
+        payLeft();
+        Cashbook.focusAmount('pyKAmt');
+      }
     });
+  }
+
+  /* What the month will owe afterwards — and, where the server would refuse,
+     the refusal UNDER THE FIELD rather than as a toast after the press. */
+  function payLeft() {
+    var host = document.getElementById('pyKLeft');
+    if (!host) return;
+    var cur = host.getAttribute('data-cur');
+    var left = Number(host.getAttribute('data-left')) || 0;
+    var kind = val('pyKKind');
+    var amt = Cashbook.toMinor(val('pyKAmt'), cur);
+    if (!amt) { host.innerHTML = ''; host.hidden = true; return; }
+    host.hidden = false;
+    if ((kind === 'salary' || kind === 'advance') && amt > left) {
+      host.className = 'cb-why mt';
+      host.innerHTML = t('py_more_than_left').replace('{x}', m(left, cur));
+      return;
+    }
+    host.className = 'partner-note mt';
+    var after = kind === 'bonus' ? left + amt : left - amt;
+    host.innerHTML = kind === 'bonus' || kind === 'deduction'
+      ? t('py_owes_after').replace('{x}', m(Math.max(0, after), cur))
+      : (after <= 0 ? t('py_all_paid') : t('py_left_after').replace('{x}', m(after, cur)));
   }
 
   function openRows(id) {
@@ -553,16 +593,6 @@ var Payables = (function () {
     'pr-rows': function (el) { openRows(el.getAttribute('data-id')); },
     'emp-edit': function (el) { openEmployeeEditor(el.getAttribute('data-id')); },
 
-    'pay-kind': function (el) {
-      var k = el.getAttribute('data-v');
-      document.getElementById('pyKKind').value = k;
-      Array.prototype.forEach.call(el.parentNode.children, function (b) { b.classList.toggle('on', b === el); });
-      var wrap = document.getElementById('pyKPlaceWrap');
-      if (wrap) wrap.hidden = !(k === 'salary' || k === 'advance');
-      var hint = document.getElementById('pyKHint');
-      if (hint) hint.textContent = t('py_hint_' + k);
-    },
-
     'pr-pay-go': function (el) {
       var id = el.getAttribute('data-id');
       var cur = el.getAttribute('data-cur');
@@ -619,7 +649,20 @@ var Payables = (function () {
   };
 
   var CHANGE = {
-    'pay-hint': function () { payHint(); }
+    'pay-hint': function () { payHint(); },
+    'pay-left': function () { payLeft(); },
+
+    /* The kind decides whether money moves at all, so it moves the place
+       row in and out and rewrites the line under it — a bonus that offered
+       a place to pay it from would be a lie about what the server does. */
+    'pay-kind': function (el) {
+      var k = el.value;
+      var wrap = document.getElementById('pyKPlaceWrap');
+      if (wrap) wrap.hidden = !(k === 'salary' || k === 'advance');
+      var hint = document.getElementById('pyKHint');
+      if (hint) hint.textContent = t('py_hint_' + k);
+      payLeft();
+    }
   };
 
   var bound = false;

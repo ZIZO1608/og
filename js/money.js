@@ -45,6 +45,16 @@ var Money = (function () {
       : Math.max(0, Math.round(Number(String(v || '').replace(/[^\d.]/g, '')) * (cur === 'USD' ? 100 : 1)));
   }
 
+  /* Which expense category this machine used last, so the chips lead with
+     it (ns03). Per machine like every other remembered choice: the office
+     books rent and the back room books transport. */
+  function lastCat() {
+    try { return localStorage.getItem('og.mn.cat') || ''; } catch (e) { return ''; }
+  }
+  function rememberCat(c) {
+    try { localStorage.setItem('og.mn.cat', c); } catch (e) {}
+  }
+
   function view() {
     var reads = allow('money.read');
     var counts = allow('money.count') || allow('money.move');
@@ -313,7 +323,8 @@ var Money = (function () {
     var age = DB.debtAgeing();
     var over30 = debts.filter(function (d) { return d.age > 30; }).length;
 
-    var h = '<div class="grid stat-row mb" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
+    var h = '<h3 class="mn-half">' + t('mn_they_owe') + '</h3>' +
+      '<div class="grid stat-row mb" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
       '<div class="stat"><span class="eyebrow">' + t('mn_owed_total') + '</span>' +
         '<div class="val' + (total ? ' warn' : '') + '">' + moneyStat(total) + '</div>' +
         '<div class="foot">' + (totalOther ? '+ ' + inCur(totalOther, other) + ' · ' : '') +
@@ -341,7 +352,7 @@ var Money = (function () {
 
     if (!debts.length) {
       return h + '<div class="card"><div class="cart-empty"><b>' + t('mn_no_debt') + '</b>' +
-             t('mn_no_debt_sub') + '</div></div>';
+             t('mn_no_debt_sub') + '</div></div>' + weOweCard();
     }
 
     h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
@@ -368,7 +379,25 @@ var Money = (function () {
             t('mn_settle') + '</button>' : '') + '</td></tr>';
     });
 
-    return h + '</tbody></table></div>';
+    return h + '</tbody></table></div>' + weOweCard();
+  }
+
+  /* The other half of the same question. It is a SUMMARY and a door, not a
+     second supplier screen: paying them is its own tab, and two places to
+     press Pay is how two of them get paid. */
+  function weOweCard() {
+    var by = {};
+    (DB.suppliers || []).forEach(function (x) {
+      if (x.outstanding > 0) by[x.currency] = (by[x.currency] || 0) + x.outstanding;
+    });
+    var curs = Object.keys(by);
+    return '<h3 class="mn-half">' + t('mn_we_owe') + '</h3>' +
+      '<div class="card"><div class="card-body mn-weowe">' +
+      (curs.length
+        ? '<div class="mn-weowe-v">' + curs.map(function (c) { return inCur(by[c], c); }).join(' · ') + '</div>'
+        : '<div class="muted">' + t('mn_we_owe_none') + '</div>') +
+      '<button class="btn btn-ghost" data-mn="tab" data-t="suppliers">' + t('py_suppliers') + ' →</button>' +
+      '</div></div>';
   }
 
   function fmtTime(d) {
@@ -410,7 +439,7 @@ var Money = (function () {
                     .map(function (e) { return '<option>' + esc(e.name) + '</option>'; }).join('') +
                 '</select></label>' +
               '<label class="field mt"><span>' + t('mn_float') + '</span>' +
-                '<input class="inp num" id="mnFloat" type="number" min="0" inputmode="decimal" value="0"></label>' +
+                '<input class="inp num" id="mnFloat" type="text" inputmode="decimal" dir="ltr" autocomplete="off" value="0"></label>' +
               '<div class="partner-note mt">' + t('mn_float_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-mn="open-shift-go">' + t('mn_open_shift') + '</button>'
@@ -419,7 +448,14 @@ var Money = (function () {
 
     'open-shift-go': function () {
       var user = (document.getElementById('mnUser') || {}).value;
-      var f = parseInt((document.getElementById('mnFloat') || {}).value, 10) || 0;
+      /* toMinor, NOT parseInt. parseInt("120,000") is 120 — and this shop
+         writes a hundred and twenty thousand exactly that way. Every other
+         amount box on this screen funnels through one parser (Desk.toMinor,
+         which knows a thousands group from a decimal point); these two shift
+         boxes were the last two that did not, and quick-fix giving them a
+         decimal keypad made it likelier that somebody would type the comma
+         the parser then truncated at. */
+      var f = toMinor((document.getElementById('mnFloat') || {}).value, base());
       /* Server-first, like everything in this file. The drawer is money, and
          a shift that looks open and is not means a day of sales stamped to
          nothing. The server is also where the one-open-shift rule actually
@@ -446,7 +482,7 @@ var Money = (function () {
       openModal({
         title: t('mn_close_shift') + ' · ' + s.id, size: 'narrow',
         body: '<label class="field"><span>' + t('mn_count_now') + '</span>' +
-                '<input class="inp num" id="mnCounted" type="number" min="0" inputmode="decimal" dir="ltr"></label>' +
+                '<input class="inp num" id="mnCounted" type="text" inputmode="decimal" dir="ltr" autocomplete="off"></label>' +
               '<div class="partner-note mt">' + t('mn_close_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
               '<button class="btn btn-primary" data-mn="close-shift-go">' + t('mn_close_shift') + '</button>'
@@ -457,7 +493,9 @@ var Money = (function () {
       var s = DB.currentShift();
       if (!s) return;
       var el = document.getElementById('mnCounted');
-      var counted = parseInt(el && el.value, 10);
+      var raw = String((el && el.value) || '').trim();
+      /* Same fix as the float above: one parser for every amount. */
+      var counted = raw === '' ? NaN : toMinor(raw, base());
       if (isNaN(counted) || counted < 0) { toast(t('mn_close_shift'), t('mn_count_needed'), 'warn'); return; }
 
       /* The difference comes back from the server rather than being worked
@@ -487,43 +525,45 @@ var Money = (function () {
        cash, a wallet — in either currency, on the day it was paid. */
     'add-expense': function () {
       var places = Cashbook.pickable();
-      var curs = (DB.cash && DB.cash.currencies ? DB.cash.currencies.map(function (c) { return c.code; }) : ['SYP', 'USD']);
+      /* THE PATTERN (ns03): amount, currency, what for, paid from, then the
+         date and the note under More. The category was a dropdown of nine;
+         it is chips now, LAST USED FIRST, which is the half night shift 02
+         skipped. Every id is unchanged, so add-expense-go is untouched. */
+      var cats = DB.expenseCategories.slice();
+      var last = lastCat();
+      if (last && cats.indexOf(last) > 0) { cats.splice(cats.indexOf(last), 1); cats.unshift(last); }
+      var cur = Cashbook.lastCur('expense');
+
       openModal({
         title: t('mn_add_expense'), size: 'narrow',
-        body: '<label class="field"><span>' + t('mn_category') + '</span>' +
-                '<select class="inp" id="mnCat">' +
-                  DB.expenseCategories.map(function (c) {
-                    return '<option value="' + esc(c) + '">' + esc(Cashbook.catLabel(c)) + '</option>';
-                  }).join('') + '</select></label>' +
-              '<div class="cb-pair">' +
-                '<label class="field"><span>' + t('cb_currency') + '</span><select class="inp" id="mnCur">' +
-                  curs.map(function (c) {
-                    return '<option value="' + c + '"' + (c === base() ? ' selected' : '') + '>' + c + '</option>';
-                  }).join('') + '</select></label>' +
-                '<label class="field"><span>' + t('mn_amount') + '</span>' +
-                  '<input class="inp num" id="mnAmt" type="text" inputmode="decimal" dir="ltr" autocomplete="off"></label>' +
-              '</div>' +
-              '<label class="field mt"><span>' + t('mn_paid_from') + '</span>' +
-                (places.length
-                  ? '<select class="inp" id="mnPlace">' + places.map(function (p) {
-                      return '<option value="' + esc(p.id) + '">' + esc(Cashbook.placeName(p.id)) + '</option>';
-                    }).join('') + '</select>'
-                  : '<select class="inp" id="mnMethod">' + debtMethods().map(function (m) {
-                      return '<option value="' + esc(m) + '">' + esc(DB.payLabel(m)) + '</option>';
-                    }).join('') + '</select>') +
-              '</label>' +
-              '<label class="field mt"><span>' + t('date') + '</span>' +
-                '<input class="inp" id="mnDate" type="date" dir="ltr" max="' + todayYmd() + '" value="' + todayYmd() + '"></label>' +
-              '<label class="field mt"><span>' + t('note') + '</span>' +
-                '<input class="inp" id="mnNote" type="text" maxlength="300"></label>' +
+        body: Cashbook.bigAmount('mnAmt', t('cb_amount')) +
+              Cashbook.field(t('cb_which_money'), Cashbook.curPick('mnCur', cur), 'mt') +
+              Cashbook.field(t('cb_what_for'), Cashbook.pickRow('mnCat',
+                cats.map(function (c) { return { v: c, label: Cashbook.catLabel(c) }; }), cats[0]), 'mt') +
+              (places.length
+                ? Cashbook.field(t('mn_paid_from'), Cashbook.placePick('mnPlace', places[0] && places[0].id), 'mt')
+                /* No cash place has been started yet, so there is nowhere to
+                   pay FROM — the question becomes which method it went out
+                   by, and the handler reads a different id for it. */
+                : Cashbook.field(t('payment'), Cashbook.pickRow('mnMethod',
+                    debtMethods().map(function (m) { return { v: m, label: DB.payLabel(m) }; }),
+                    debtMethods()[0]), 'mt')) +
+              Cashbook.moreFold(
+                Cashbook.field(t('date'),
+                  '<input class="inp" id="mnDate" type="date" dir="ltr" max="' + todayYmd() + '" value="' + todayYmd() + '">') +
+                Cashbook.field(t('note'), '<input class="inp" id="mnNote" type="text" maxlength="300">', 'mt')
+              ) +
               '<div class="partner-note mt">' + t('mn_expense_hint') + '</div>',
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
-              '<button class="btn btn-primary" data-mn="add-expense-go">' + t('save') + '</button>'
+              '<button class="btn btn-primary" data-mn="add-expense-go">' + t('save') + '</button>',
+        onOpen: function () { Cashbook.focusAmount('mnAmt'); }
       });
     },
 
     'add-expense-go': function () {
       var cur = (document.getElementById('mnCur') || {}).value || base();
+      Cashbook.rememberCur('expense', cur);
+      rememberCat((document.getElementById('mnCat') || {}).value || '');
       var amt = toMinor((document.getElementById('mnAmt') || {}).value, cur);
       if (!amt || amt <= 0) { toast(t('mn_add_expense'), t('mn_amount_needed'), 'warn'); return; }
       var place = (document.getElementById('mnPlace') || {}).value || null;

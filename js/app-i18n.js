@@ -560,7 +560,7 @@ var I18N = {
     cp_invoice: 'invoice', cp_job: 'print job',
     /* money */
     nav_money: 'Money', mn_title: 'Money', mn_sub: 'The drawer, the costs, and who owes you',
-    mn_shift: 'Shift', mn_expenses: 'Expenses', mn_debt: 'Debt book',
+    mn_shift: 'Shift', mn_expenses: 'Expenses', mn_debt: 'Who owes whom',
     mn_open_shift: 'Open a shift', mn_close_shift: 'Close the shift',
     mn_no_shift: 'No shift is open',
     mn_no_shift_sub: 'Open a shift with the cash you are starting with. Every sale gets attached to it, ' +
@@ -1337,7 +1337,7 @@ var I18N = {
     cp_cmd: 'أمر', cp_product: 'منتج', cp_customer: 'زبون',
     cp_invoice: 'فاتورة', cp_job: 'طلب طباعة',
     nav_money: 'المال', mn_title: 'المال', mn_sub: 'الصندوق، المصاريف، ومن له عليك',
-    mn_shift: 'الوردية', mn_expenses: 'المصاريف', mn_debt: 'دفتر الدين',
+    mn_shift: 'الوردية', mn_expenses: 'المصاريف', mn_debt: 'مين عليه لمين',
     mn_open_shift: 'افتح وردية', mn_close_shift: 'إغلاق الوردية',
     mn_no_shift: 'لا توجد وردية مفتوحة',
     mn_no_shift_sub: 'افتح وردية بالمبلغ الموجود في الصندوق. كل بيع يُربط بها، وعند الإغلاق ' +
