@@ -351,7 +351,17 @@ function openProductDrawer(pid) {
     (seesCost() ? '<dt>' + t('cost_price') + '</dt><dd>' + money(p.costPrice) + '</dd>' : '') +
     '<dt>' + t('selling_price') + '</dt><dd>' + money(p.sellingPrice) + '</dd>' +
     '<dt>' + t('last_sold') + '</dt><dd>' + p.lastSoldDaysAgo + ' ' + t('days_ago') + '</dd>' +
-    '<dt>' + t('visible') + '</dt><dd>' + (p.hidden ? t('no') : t('yes')) + '</dd>' +
+    /* TWO COLUMNS, TWO QUESTIONS, AND THEY USED TO SHARE A WORD (ns02).
+       `t('visible')` is "On website" and labels the Products column and the
+       edit checkbox, both of which write `on_web`. This row printed `hidden`
+       — the ARCHIVE flag — under the same word, so an archived product read
+       "On website: No" and a product deliberately taken off the site read
+       "On website: Yes". Opposite claims under one label. They are two rows
+       now, each saying which question it is answering. */
+    '<dt>' + t('pr_on_web') + '</dt><dd>' + (p.onWeb === false ? t('no') : t('yes')) + '</dd>' +
+    '<dt>' + t('pr_selling') + '</dt><dd>' + (p.hidden
+      ? '<span class="warn">' + t('pr_archived') + '</span>'
+      : t('yes')) + '</dd>' +
   '</dl></div></div>';
 
   body += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
@@ -421,22 +431,40 @@ function openProductEditor(pid) {
 
   openModal({
     title: t('edit_product') + ' · ' + esc(p.name),
+    /* EVERYDAY FIRST, THE REST BEHIND A FOLD (ns02). Nine boxes stood in one
+       grid, so changing a price — much the commonest reason anybody opens
+       this — meant reading past brand, made in, colourway, currency and the
+       shelf zone to find it. Name, category and the two prices are the fold's
+       outside; everything that changes once in a product's life is inside it.
+       Nothing was removed and every id is unchanged, so readProductEditor
+       still reads the same eight fields. */
     body:
       '<label class="field"><span>' + t('product_name') + '</span>' +
         '<input class="inp" id="peName" type="text" value="' + esc(p.name) + '"></label>' +
       '<div class="pe-grid">' +
         '<label class="field"><span>' + t('type') + '</span><select class="inp" id="peType">' + typeOpts + '</select></label>' +
-        '<label class="field"><span>' + t('brand') + '</span><input class="inp" id="peBrand" type="text" value="' + esc(p.brand || '') + '"></label>' +
-        '<label class="field"><span>' + t('made_in') + '</span><input class="inp" id="peMade" type="text" value="' + esc(p.madeIn || '') + '"></label>' +
-        '<label class="field"><span>' + t('colour') + '</span><input class="inp" id="peColour" type="text" value="' + esc(p.colorway || '') + '"></label>' +
-        '<label class="field"><span>' + t('currency') + '</span><select class="inp" id="peCur">' + curOpts + '</select></label>' +
-        '<label class="field"><span>' + t('shelf') + '</span><input class="inp" id="peShelf" type="text" value="' + esc(p.shelfZone || '') + '"></label>' +
+        '<label class="field"><span>' + t('selling_price') + '</span><input class="inp num" id="pePrice" type="number" min="0" step="' + step + '" value="' + major(p.srcSellingPrice) + '"></label>' +
         (seesCost()
           ? '<label class="field"><span>' + t('cost_price') + '</span><input class="inp num" id="peCost" type="number" min="0" step="' + step + '" value="' + major(p.srcCostPrice) + '"></label>'
           : '') +
-        '<label class="field"><span>' + t('selling_price') + '</span><input class="inp num" id="pePrice" type="number" min="0" step="' + step + '" value="' + major(p.srcSellingPrice) + '"></label>' +
       '</div>' +
-      '<label class="field pe-check"><input type="checkbox" id="peWeb"' + (p.onWeb !== false ? ' checked' : '') + '> <span>' + t('visible') + '</span></label>' +
+      /* The website switch says what it does. It used to be labelled
+         "Visible", the same word the drawer was printing the ARCHIVE flag
+         under — two opposite claims wearing one label. */
+      '<label class="field pe-check"><input type="checkbox" id="peWeb"' + (p.onWeb !== false ? ' checked' : '') + '> ' +
+        '<span>' + t('pr_on_web') + '</span></label>' +
+      '<div class="wh-fold"><button class="wh-more-h" type="button" data-act="pe-more">' +
+        t('wh_more_fields') + '<span class="wh-more-x">+</span></button>' +
+        '<div class="wh-fold-b" id="peMore" hidden>' +
+          '<div class="pe-grid">' +
+            '<label class="field"><span>' + t('brand') + '</span><input class="inp" id="peBrand" type="text" value="' + esc(p.brand || '') + '"></label>' +
+            '<label class="field"><span>' + t('made_in') + '</span><input class="inp" id="peMade" type="text" value="' + esc(p.madeIn || '') + '"></label>' +
+            '<label class="field"><span>' + t('colour') + '</span><input class="inp" id="peColour" type="text" value="' + esc(p.colorway || '') + '"></label>' +
+            '<label class="field"><span>' + t('currency') + '</span><select class="inp" id="peCur">' + curOpts + '</select></label>' +
+            '<label class="field"><span>' + t('shelf') + '</span><input class="inp" id="peShelf" type="text" value="' + esc(p.shelfZone || '') + '"></label>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
       '<div class="partner-note mt">' + t('pe_note') + '</div>',
     foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
           '<button class="btn btn-primary" data-act="prod-edit-save" data-id="' + p.id + '">' + t('save') + '</button>',

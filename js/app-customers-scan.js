@@ -1204,7 +1204,7 @@ function openDuplicateGuard(name, dupes) {
       '<td class="num">' + healthBadge(DB.totalQty(p.id)) + ' ' + DB.totalQty(p.id) + '</td>' +
       '<td class="num">' + money(p.sellingPrice) + '</td>' +
       '<td class="num"><b>' + Math.round(d.score * 100) + '%</b></td>' +
-      '<td><button class="btn btn-sm btn-primary" data-act="dup-open" data-id="' + p.id + '">' +
+      '<td><button class="btn btn-sm" data-act="dup-open" data-id="' + p.id + '">' +
         t('dup_use') + '</button></td></tr>';
   });
   h += '</tbody></table></div></div>';
@@ -1214,7 +1214,7 @@ function openDuplicateGuard(name, dupes) {
   openModal({
     title: t('dup_title'), size: 'wide', body: h,
     foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
-          '<button class="btn" data-act="dup-anyway">' + t('dup_anyway') + '</button>',
+          '<button class="btn btn-primary" data-act="dup-anyway">' + t('dup_anyway') + '</button>',
     /* Backing out of the guard is backing out of the save — and of the
        "print labels afterwards" that "Save & print" had armed. */
     onClose: function () { OG.wh.printAfter = false; }

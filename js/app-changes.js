@@ -128,16 +128,25 @@ var CHANGES = {
   'wh-type': function (el) { OG.wh.type = el.value; OG.wh.sizes = {}; render(); },
   'wh-name': function (el) { OG.wh.name = el.value; },
 
+  /* Brand, made in and the colourway (ns02). All three were plain <input>s
+     with no id and no data-change: `wh-save` never read them, the POST body
+     carried none of them, and anything typed was thrown away without a word.
+     They round-trip through OG.wh now, like the name, so a render cannot lose
+     them either. */
+  'wh-brand':    function (el) { OG.wh.brand = el.value; },
+  'wh-made':     function (el) { OG.wh.madeIn = el.value; },
+  'wh-colorway': function (el) { OG.wh.colorway = el.value; },
+
   /* Changing the room cannot leave the shelf choice standing: a shelf reaches
      its warehouse through its section, and a shelf id from the other building
      comes back as `wrong_warehouse` (server/lib/shelves.js:959) — by which
      time the product has already been created.
 
-     Repaints the one select rather than calling render(), and that is not a
-     preference. render() rebuilds #view wholesale, and #whCost / #whPrice
-     carry literal value="1050" / value="2250" in the markup — only #whName
-     round-trips through OG.wh. A render here would throw away prices somebody
-     had already typed. */
+     Repaints the one select rather than calling render(). Since ns02 every
+     box on this form round-trips through OG.wh, so a render here would no
+     longer lose a typed price — but rebuilding the whole screen to change one
+     select is still the wrong amount of work, and the shelf list is refilled
+     asynchronously underneath it. */
   'wh-warehouse': function (el) {
     OG.wh.whId = el.value;
     OG.wh.shelfId = '';
@@ -154,10 +163,15 @@ var CHANGES = {
     OG.wh.sizes[s] = el.value === '' ? '' : Math.max(0, parseInt(el.value, 10) || 0);
     repaintWhAdd();
   },
+  /* The price and cost boxes. They keep their value on OG.wh now rather than
+     living in the markup, so this stores first and then repaints only the
+     preview column — the whole screen no longer has to be rebuilt to change
+     one total, and the caret needs no restoring because the box being typed
+     into is not replaced. */
   'wh-recalc': function (el) {
-    var id = el.id, caret = el.value.length;
-    render();
-    focusBack('#' + id, caret);
+    if (el.id === 'whCost') OG.wh.cost = el.value;
+    else OG.wh.price = el.value;
+    repaintWhAdd();
   },
 
   /* Settings that actually apply. Every one of these used to be an input that

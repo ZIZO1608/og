@@ -44,7 +44,12 @@ var OG = {
      do. An account without stock.move never sees that panel at all and
      viewWarehouse falls it back to the first job it does have. */
   wh:   { tab: 'arrived', place: 'all', type: 'sneakers', sizes: {}, name: '', img: null, imgSrc: null,
-          whId: null, shelfId: '', find: '' },
+          whId: null, shelfId: '', find: '',
+          /* ns02: every box on the Add form round-trips through here now.
+             They were markup with literal values in it — brand and made-in
+             read by nothing, the two prices pre-filled with 1050 and 2250 —
+             so a render lost what had been typed and a save sent inventions. */
+          brand: '', madeIn: '', colorway: '', price: '', cost: '' },
   dir:  null,                                           // page-transition direction
   rep:  { tab: 'sales' },
   /* The Reports screen's own window, deliberately NOT shared with the

@@ -1310,6 +1310,28 @@ var ACTIONS = {
     if (OG.wh.tab === 'move' && typeof openMoveScan === 'function') openMoveScan();
   },
 
+  /* The edit modal's "More details" fold. One attribute, never a render:
+     this dialog is full of typed-but-unsaved values and a repaint would take
+     them — the same rule Settings' folds follow. Not remembered per machine
+     either, because a dialog is opened for one job and closed again. */
+  'pe-more': function (el) {
+    var body = document.getElementById('peMore');
+    if (!body) return;
+    var open = body.hasAttribute('hidden');
+    if (open) body.removeAttribute('hidden'); else body.setAttribute('hidden', '');
+    var x = el.querySelector('.wh-more-x');
+    if (x) x.textContent = open ? '−' : '+';
+  },
+
+  /* The Add-product form's 'More details' fold — brand, made in, the
+     colourway, the place and the shelf. Per machine, like every other fold
+     in the app: the back room fills these every time and the office does not. */
+  'wh-add-more': function () {
+    var open = (typeof whAddMoreOpen === 'function') && whAddMoreOpen();
+    try { localStorage.setItem(WH_ADD_MORE_KEY, open ? '0' : '1'); } catch (e) {}
+    render();
+  },
+
   /* The fold holding the warehouse's rarer panels. Per machine, like the
      sidebar rail and the Settings folds: the back room wants the movement
      log open and the office does not, on the same account. */
@@ -1550,8 +1572,20 @@ var ACTIONS = {
 
     var name = (document.getElementById('whName') || {}).value || OG.wh.name;
     var pieces = ColourForm.grand();
-    if (!name) { toast(t('product_name'), OG.lang === 'ar' ? 'اكتب اسم المنتج' : 'Enter a product name', 'err'); return; }
-    if (!pieces) { toast(t('size_matrix'), OG.lang === 'ar' ? 'أدخل الكميات' : 'Enter quantities per size', 'err'); return; }
+    /* These three used to be hard-coded bilingual literals with no i18n key,
+       so they could be neither translated properly nor renamed (ns02). */
+    if (!name) { toast(t('product_name'), t('err_name_needed'), 'err'); return; }
+    if (!pieces) { toast(t('size_matrix'), t('err_qty_needed'), 'err'); return; }
+
+    /* A BLANK SELLING PRICE IS NOT ZERO. `Number(...) || 0` saved it as 0 —
+       a real shoe in the catalogue at nothing — while the edit modal refused
+       the same blank. Two rules for one number; this is the other one now. */
+    var priceRaw = String(OG.wh.price === undefined || OG.wh.price === null ? '' : OG.wh.price).trim();
+    if (priceRaw === '' || !(Number(priceRaw) > 0)) {
+      toast(t('selling_price'), t('err_price_needed'), 'err');
+      focusBack('#whPrice', priceRaw.length);
+      return;
+    }
     /* 058 — the colours, or the reason they cannot go. Nothing typed is lost:
        the form's state stays in OG.wh.colours until the server says yes. */
     var built = ColourForm.payload();
@@ -1569,8 +1603,12 @@ var ACTIONS = {
     if (dupes.length && !OG.wh.dupeOk) { OG.wh.printAfter = printAfter; openDuplicateGuard(name, dupes); return; }
     OG.wh.dupeOk = false;
 
-    var cost = Number((document.getElementById('whCost') || {}).value) || 0;
-    var price = Number((document.getElementById('whPrice') || {}).value) || 0;
+    /* Off OG.wh, which is where every box on this form now keeps its value.
+       A blank cost stays 0 and is sent as 0 — `createWithVariants` takes it
+       as "not entered", which is the honest reading; a guessed cost poisons
+       every margin figure afterwards. The price is already known to be > 0. */
+    var cost = Number(OG.wh.cost) || 0;
+    var price = Number(priceRaw);
 
     /* Read NOW, not inside done() — done() runs after render() has rebuilt
        the form and cleared OG.wh, so by then both selects are gone.
@@ -1588,6 +1626,13 @@ var ACTIONS = {
         return Shop.newProduct({
           name: name,
           type: OG.wh.type,
+          /* Sent at last (ns02). The server's createWithVariants has always
+             accepted brand, madeIn and colorway; the form drew three boxes
+             for them that nothing read. Left out when blank rather than sent
+             as '' so the row keeps whatever default the server gives it. */
+          brand: OG.wh.brand || undefined,
+          madeIn: OG.wh.madeIn || undefined,
+          colorway: OG.wh.colorway || undefined,
           /* Entered in the shop's base currency. Whole units for SYP, which
              is what minor_exp 0 means — the number typed is the number
              stored. */
@@ -1628,11 +1673,19 @@ var ACTIONS = {
            opening stock has no stock row, and assign-shelf refuses one with
            `no_stock`. */
         var made = (res && res.variants) || [];
-        var act = id ? { label: t('view_all'),
+        /* The action said "View all" and opened the ONE product just made
+           (ns02). It says so now. */
+        var act = id ? { label: t('wh_open_it'),
                          attrs: 'data-act="open-new-product" data-id="' + id + '"' } : null;
         var line = name + ' · ' + pieces + ' pcs · ' + skus + ' SKU';
 
+        /* WHAT THE NEXT PRODUCT KEEPS. Name, picture, prices and quantities
+           are this product's and go; the category, the brand and the country
+           are the delivery's and stay, because the next box off the same pallet
+           is nearly always the same three. That is "add another like this",
+           without a second button to press. */
         OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null; OG.wh.imgSrc = null;
+        OG.wh.price = ''; OG.wh.cost = ''; OG.wh.colorway = '';
         ColourForm.reset();
         /* The room STAYS — the next box off the same delivery goes to the
            same place. The shelf does not: it now belongs to the product just

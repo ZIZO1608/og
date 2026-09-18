@@ -1601,3 +1601,16 @@ body:not([data-portal="yalla"]) .rc-label-why { max-width: 460px; font-size: 12.
   body:not([data-portal="yalla"]) .rc-place { margin-inline-start: 0; flex-basis: 100%; }
   body:not([data-portal="yalla"]) .rc-foot .btn-lg { flex: 1 1 100%; }
 }
+
+/* ---- a one-colour product shows no colour UI (ns02) --------------------
+   The heading, the chip, the two name boxes, the photo and the palette are
+   all about telling colours apart, and there is nothing to tell apart. The
+   size grid and "+ Add another colour" stay. Hidden rather than not drawn:
+   adding a second colour removes .cf-solo and everything is already there,
+   with whatever was typed in it. */
+body:not([data-portal="yalla"]) .cf-solo .cf-top,
+body:not([data-portal="yalla"]) .cf-solo .cf-chip,
+body:not([data-portal="yalla"]) .cf-solo .cf-head,
+body:not([data-portal="yalla"]) .cf-solo .cf-palette { display: none; }
+body:not([data-portal="yalla"]) .cf-solo .cf-card { border: 0; padding: 0; background: none; }
+body:not([data-portal="yalla"]) .cf-solo .cf-chips { margin-bottom: 10px; }

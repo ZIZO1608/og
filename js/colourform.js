@@ -51,7 +51,19 @@ var ColourForm = (function () {
 
   function html() {
     var cs = list();
-    var h = '<div class="cf" id="cfRoot">' +
+    /* ONE COLOUR SHOWS NO COLOUR UI (ns02). Most of what this shop sells is
+       one colourway, and the form was asking for a colour name in two
+       languages, a photo and a swatch off a twelve-square palette before
+       anybody could type a quantity — for a thing that is then never drawn
+       anywhere (DB.shownColour is null for a single-colour product).
+
+       `cf-solo` hides the heading, the chip, the names and the palette and
+       leaves the size grid. Nothing is removed: the moment "+ Add another
+       colour" is pressed there are two, the class goes, and both cards come
+       back with their names editable — including the first one's, which is
+       exactly when it starts to matter. A solo colour left unnamed is saved
+       as "Standard", in payload() below. */
+    var h = '<div class="cf' + (cs.length === 1 ? ' cf-solo' : '') + '" id="cfRoot">' +
       '<div class="cf-top"><span class="lbl">' + t('cl_colours') + '</span>' +
         '<span class="muted small">' + t('cl_first_hint') + '</span></div>' +
       '<div class="cf-chips" role="tablist">';
@@ -169,6 +181,20 @@ var ColourForm = (function () {
       if (!sz.length) {
         return { error: t('cl_empty_warn').replace('{name}', label(c, i)), key: c.key, empty: true };
       }
+      /* A SINGLE UNNAMED COLOUR IS "Standard", not a refusal (ns02).
+         `named` above is false for one colour, so the form does not ask for a
+         name — but the server refuses a colour with neither name
+         (`colour_name_required`, server/lib/catalogue.js), so anybody adding
+         a plain one-colour product without touching the colour card was
+         stopped by "colour 1 needs a name" pointing at a box the form had
+         told them was optional.
+
+         "Standard / أساسي" is not invented here: it is what migration 058
+         gave every product that existed before colours, and what the
+         server's own no-colours fallback uses. A product with one colour
+         shows no colour anywhere (DB.shownColour returns null for it), so
+         this name is never read out to anybody. */
+      if (!named && !en && !ar) { en = 'Standard'; ar = 'أساسي'; }
       out.push({ key: c.key, nameEn: en || undefined, nameAr: ar || undefined, hex: c.hex || undefined, sizes: sz, imgSrc: c.imgSrc });
     }
     if (!out.length) return { error: t('cl_need_colour') };

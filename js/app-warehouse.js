@@ -675,10 +675,21 @@ function poDueCell(po) {
     (late ? ' <span class="badge critical">' + t('po_overdue_badge') + '</span>' : '');
 }
 
+/* Whether the Add-product form's "More" fold is open, per machine — the back
+   room fills brand and shelf every time and the office never does. */
+var WH_ADD_MORE_KEY = 'og.wh.addmore';
+function whAddMoreOpen() {
+  try { return localStorage.getItem(WH_ADD_MORE_KEY) === '1'; } catch (e) { return false; }
+}
+
 function whAddTab() {
   var sizes = DB.sizeSets[OG.wh.type] || [];
   var totalPieces = 0, totalCost = 0, totalRev = 0;
-  var cost = Number(document.getElementById('whCost') && document.getElementById('whCost').value) || 0;
+  /* Off OG.wh, not off the DOM. The box is blank until somebody types in it
+     — it used to be born holding 1050 — so reading the element gave 0 for a
+     product whose cost had simply not been entered, which is a different
+     thing and the reason `blank is not zero` is a rule in this codebase. */
+  var cost = Number(OG.wh.cost) || 0;
 
   totalPieces = ColourForm.grand();
 
@@ -707,55 +718,99 @@ function whAddTab() {
     '<input type="file" id="whFile" accept="image/*" hidden>' +
   '</div>';
 
+  /* WHAT THE FORM ASKS FIRST, AND WHAT IT ASKS AT ALL (night shift 02).
+
+     Required first, in the order somebody has the information in their hand:
+     the name off the box, the category, what the shop will sell it for. Then
+     the sizes and their quantities, below. Everything else — brand, made in,
+     the colourway, where it lands, which shelf — is under ONE "More" fold,
+     shut by default and remembered per machine.
+
+     Two things here were not friction but defects:
+
+     - BRAND AND "MADE IN" WERE DEAD. Both were plain <input>s with no id and
+       no data-change; `wh-save` never read them and the POST body carried
+       neither, so anything typed was discarded in silence. They are wired to
+       OG.wh now and sent, and the server has always accepted them.
+
+     - THE PRICES WERE PRE-FILLED WITH 1050 AND 2250, as literal markup, and
+       were not cleared between products. A hurried save booked a real shoe at
+       2,250. They start empty, and a blank selling price is refused rather
+       than being saved as 0 (which `Number(...) || 0` was doing, while the
+       edit modal refused the same blank — two rules for one number). */
   h += '<div>' +
     '<label class="field"><span>' + t('product_name') + '</span>' +
       '<input class="inp" id="whName" type="text" value="' + esc(OG.wh.name) + '" placeholder="OG Heavyweight Tee" data-change="wh-name"></label>' +
-    '<div class="row2">' +
+    '<div class="' + (seesCost() ? 'row3' : 'row2') + '">' +
       '<label class="field"><span>' + t('type') + '</span><select class="inp" data-change="wh-type">' +
         DB.activeTypes().map(function (ty) {
           return '<option value="' + ty + '"' + (OG.wh.type === ty ? ' selected' : '') + '>' + DB.typeLabels[ty] + '</option>';
         }).join('') + '</select></label>' +
-      '<label class="field"><span>' + t('brand') + '</span><input class="inp" type="text" value="OG" placeholder="OG"></label>' +
-    '</div>' +
-    '<div class="' + (seesCost() ? 'row3' : 'row2') + '">' +
-      '<label class="field"><span>' + t('made_in') + '</span><input class="inp" type="text" value="Syria"></label>' +
+      '<label class="field"><span>' + t('selling_price') + '</span>' +
+        '<input class="inp num" id="whPrice" type="number" min="0" value="' + esc(OG.wh.price || '') +
+          '" placeholder="0" data-change="wh-recalc"></label>' +
       /* Someone booking goods in without cost.read enters what the shop sells
          it for, not what it was bought for. The field is left out rather than
          disabled, because a disabled box invites a guess — and a guessed cost
          price is worse than a missing one: it quietly poisons every margin
          and profit figure the manager reads afterwards. */
       (seesCost()
-        ? '<label class="field"><span>' + t('cost_price') + '</span><input class="inp num" id="whCost" type="number" value="1050" data-change="wh-recalc"></label>'
+        ? '<label class="field"><span>' + t('cost_price') + '</span>' +
+            '<input class="inp num" id="whCost" type="number" min="0" value="' + esc(OG.wh.cost || '') +
+              '" placeholder="' + esc(t('wh_cost_blank')) + '" data-change="wh-recalc"></label>'
         : '') +
-      '<label class="field"><span>' + t('selling_price') + '</span><input class="inp num" id="whPrice" type="number" value="2250" data-change="wh-recalc"></label>' +
     '</div>' +
     (seesCost() ? '' :
       '<div class="partner-note">' + t('wh_cost_later') + '</div>') +
-    /* WHERE IT LANDS AND WHERE IT GOES. Both left out entirely without
-       stock.move, for the same reason the cost box is: putting a pair on a
-       shelf is a stock movement, and the server refuses one from an account
-       that cannot make them. A select he can work but not save is worse than
-       no select — he would find out at the end, having already chosen.
-       Without it the goods still arrive, at the intake warehouse, unshelved. */
-    (allow('stock.move')
-      ? '<div class="row2">' +
-          '<label class="field"><span>' + t('wh_intake') + '</span>' +
-            '<select class="inp" data-change="wh-warehouse">' +
-              DB.warehouses.map(function (w) {
-                return '<option value="' + esc(w.id) + '"' + (w.id === whAddWh() ? ' selected' : '') +
-                  '>' + esc(DB.whName(w.id, OG.lang === 'ar')) + '</option>';
-              }).join('') +
-            '</select></label>' +
-          /* Painted empty and disabled because the rooms are live server
-             state, not part of the hydrated catalogue — bindWarehouse fills
-             it once they land. Disabled until then so nobody picks out of a
-             list that is about to be replaced. */
-          '<label class="field"><span>' + t('shelf_box') + '</span>' +
-            '<select class="inp" id="whShelf" data-change="wh-shelf" disabled>' +
-              '<option value="">' + t('loading') + '</option>' +
-            '</select></label>' +
-        '</div>'
-      : '') +
+
+    /* ---- everything rarer, behind one fold ---- */
+    '<div class="wh-fold' + (whAddMoreOpen() ? ' open' : '') + '">' +
+      '<button class="wh-more-h" data-act="wh-add-more">' + t('wh_more_fields') +
+        '<span class="wh-more-x">' + (whAddMoreOpen() ? '−' : '+') + '</span></button>' +
+      (whAddMoreOpen()
+        ? '<div class="wh-fold-b">' +
+            '<div class="row2">' +
+              '<label class="field"><span>' + t('brand') + '</span>' +
+                '<input class="inp" id="whBrand" type="text" value="' + esc(OG.wh.brand || '') +
+                  '" placeholder="OG" data-change="wh-brand"></label>' +
+              '<label class="field"><span>' + t('made_in') + '</span>' +
+                '<input class="inp" id="whMade" type="text" value="' + esc(OG.wh.madeIn || '') +
+                  '" placeholder="Syria" data-change="wh-made"></label>' +
+            '</div>' +
+            '<div class="row2">' +
+              '<label class="field"><span>' + t('colour') + '</span>' +
+                '<input class="inp" id="whWay" type="text" value="' + esc(OG.wh.colorway || '') +
+                  '" data-change="wh-colorway"></label>' +
+            /* WHERE IT LANDS AND WHERE IT GOES. Both left out entirely without
+               stock.move, for the same reason the cost box is: putting a pair
+               on a shelf is a stock movement, and the server refuses one from
+               an account that cannot make them. A select he can work but not
+               save is worse than no select — he would find out at the end,
+               having already chosen. Without it the goods still arrive, at the
+               intake warehouse, unshelved. */
+              (allow('stock.move')
+                ? '<label class="field"><span>' + t('wh_intake') + '</span>' +
+                    '<select class="inp" data-change="wh-warehouse">' +
+                      DB.warehouses.map(function (w) {
+                        return '<option value="' + esc(w.id) + '"' + (w.id === whAddWh() ? ' selected' : '') +
+                          '>' + esc(DB.whName(w.id, OG.lang === 'ar')) + '</option>';
+                      }).join('') +
+                    '</select></label>'
+                : '') +
+            '</div>' +
+            (allow('stock.move')
+              /* Painted empty and disabled because the rooms are live server
+                 state, not part of the hydrated catalogue — bindWarehouse
+                 fills it once they land. Disabled until then so nobody picks
+                 out of a list that is about to be replaced. */
+              ? '<label class="field"><span>' + t('shelf_box') + '</span>' +
+                  '<select class="inp" id="whShelf" data-change="wh-shelf" disabled>' +
+                    '<option value="">' + t('loading') + '</option>' +
+                  '</select></label>'
+              : '') +
+          '</div>'
+        : '') +
+    '</div>' +
   '</div></div>';
 
   /* 058 — colours, each with its own sizes and quantities (js/colourform.js).
@@ -768,11 +823,19 @@ function whAddTab() {
      on the sticker are issued by the server when the product is saved, so
      there is nothing true to print before that. One press saves, and the
      preview opens on the sizes just created with the quantities just booked. */
+  /* WHICH ONE IS THE PRIMARY (ns02). These were two buttons of the same size
+     side by side — "Save product to warehouse" in lime, and "Save & print
+     labels" beside it — with nothing to say that the first one prints
+     nothing, although the second is a superset of it and the boxes cannot be
+     scanned until they carry a sticker. Printing is the lime one now, and the
+     plain one says what it does NOT do. */
+  var canPrint = allow('label.print');
   h += '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">' +
-    '<button class="btn btn-primary btn-lg" data-act="wh-save">' + t('save_product') + '</button>' +
-    (allow('label.print')
-      ? '<button class="btn btn-lg" data-act="wh-save-print"' + (totalPieces ? '' : ' disabled') + '>' + t('wh_save_print') + '</button>'
-      : '') +
+    (canPrint
+      ? '<button class="btn btn-primary btn-lg" data-act="wh-save-print"' +
+          (totalPieces ? '' : ' disabled') + '>' + t('wh_save_print') + '</button>' +
+        '<button class="btn btn-lg" data-act="wh-save">' + t('wh_save_no_labels') + '</button>'
+      : '<button class="btn btn-primary btn-lg" data-act="wh-save">' + t('save_product') + '</button>') +
   '</div>';
 
   h += '</div></div>';
@@ -924,13 +987,14 @@ function fillWhShelves() {
 /* Everything that depends on the quantities, and nothing that holds focus. */
 function whAddPreview(sizes, totalPieces) {
   var h = '';
-  var cost = Number(document.getElementById('whCost') && document.getElementById('whCost').value) || 1050;
-  var totalCost, totalRev;
-  var priceEl = document.getElementById('whPrice');
-  var price = Number(priceEl && priceEl.value) || 2250;
-  cost = cost || 1050;
-  totalCost = totalPieces * cost;
-  totalRev = totalPieces * price;
+  /* Read off OG.wh and NOT defaulted to the old 1050 / 2250 (ns02). Those
+     numbers were invented, and the preview quoting them as "total cost" and
+     "expected revenue" over a product whose prices nobody had typed made an
+     invented figure look like arithmetic. Nothing typed, nothing claimed. */
+  var cost = Number(OG.wh.cost) || 0;
+  var price = Number(OG.wh.price) || 0;
+  var totalCost = totalPieces * cost;
+  var totalRev = totalPieces * price;
 
   /* No wrapping <div> here: #whPreview in whAddTab IS this column. */
   h += '<div class="card"><div class="card-head"><h3>' + t('wh_sizes_going_in') + '</h3></div>' +
@@ -957,12 +1021,19 @@ function whAddPreview(sizes, totalPieces) {
     '<div class="partner-note" style="margin:0 14px 14px">' + t('wh_codes_note') + '</div></div>';
 
   /* Expected revenue is selling price × pieces — no cost in it, so it stays
-     for everyone. Total cost does not. */
+     for everyone. Total cost does not.
+
+     A figure with no price behind it draws a dash, never a zero: "Expected
+     revenue 0" over a product whose price has not been typed yet is a claim,
+     and the wrong one. */
+  var dash = '<span class="muted">—</span>';
   h += '<div class="grid mt" style="grid-template-columns:' + (seesCost() ? '1fr 1fr' : '1fr') + '">' +
     (seesCost()
-      ? '<div class="stat"><span class="eyebrow">' + t('total_cost') + '</span><div class="val">' + moneyShort(totalCost) + '</div></div>'
+      ? '<div class="stat"><span class="eyebrow">' + t('total_cost') + '</span><div class="val">' +
+          (cost > 0 ? moneyShort(totalCost) : dash) + '</div></div>'
       : '') +
-    '<div class="stat"><span class="eyebrow">' + t('expected_revenue') + '</span><div class="val accent">' + moneyShort(totalRev) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('expected_revenue') + '</span><div class="val accent">' +
+      (price > 0 ? moneyShort(totalRev) : dash) + '</div></div>' +
   '</div>';
 
 

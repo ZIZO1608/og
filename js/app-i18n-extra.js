@@ -3226,6 +3226,18 @@ Object.keys(SAFEERS_AR).forEach(function (k) { I18N.ar[k] = SAFEERS_AR[k]; });
    already uses for a thing rather than the dictionary one.
    ========================================================================== */
 var NS02_EN = {
+  /* -- the add-product form -- */
+  wh_more_fields: "More details",
+  wh_cost_blank: "leave blank if unknown",
+  wh_save_no_labels: "Save without labels",
+  wh_open_it: "Open it",
+  err_name_needed: "Give the product a name.",
+  err_qty_needed: "Say how many of each size arrived.",
+  err_price_needed: "Say what the shop sells it for.",
+  /* -- the product drawer, where one word meant two things -- */
+  pr_on_web: "On the website",
+  pr_selling: "Still selling it",
+  pr_archived: "Archived — nothing is deleted",
   /* the movement log's reason column, which said one direction for both */
   ms_note_way: 'Carried from {from} to {to}',
   wh_find: 'Find a product',
@@ -3300,6 +3312,16 @@ var NS02_EN = {
 };
 
 var NS02_AR = {
+  wh_more_fields: "تفاصيل أكتر",
+  wh_cost_blank: "اتركه فاضي إذا ما بتعرف",
+  wh_save_no_labels: "احفظ بدون ملصقات",
+  wh_open_it: "افتحه",
+  err_name_needed: "حط اسم للمنتج.",
+  err_qty_needed: "قول كم إجا من كل قياس.",
+  err_price_needed: "قول بكم المحل بيبيعه.",
+  pr_on_web: "على الموقع",
+  pr_selling: "لسا عم ينباع",
+  pr_archived: "مؤرشف — ما انحذف شي",
   ms_note_way: 'نُقل من {from} إلى {to}',
   wh_find: 'دوّر على منتج',
   wh_find_ph: 'الاسم أو الماركة أو القياس أو الرمز أو الباركود',
