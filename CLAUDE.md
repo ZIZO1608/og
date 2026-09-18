@@ -688,6 +688,11 @@ is ever wanted again; it would need a data source first.
 
 ### Settings is an accordion, and a new card is a fold
 
+(**Night shift 03 regrouped this into five sections, dropped the page-level Save and put the
+mirror, the reminders and Telegram behind the developer’s door** — see that section. The fold
+machinery below is unchanged; `setFoldStart` gained a fourth argument, one plain line saying what
+the card changes.)
+
 Eleven unrelated jobs on one page — the receipt printer's paper width above the loyalty tiers above
 who is signed in. `viewSettings()` stacks them as folds under five headings; `setFoldStart(id, title,
 meta)` / `setFoldEnd()` in `js/app-settings.js` are the wrapper, `setSection(label)` the heading. Add a
@@ -769,6 +774,12 @@ anyone can send the request by hand.
 | warehouse | `viewBackHome()` — what arrived, what needs moving | same |
 | delivery | `viewRunsHome()` → `Deliveries.view()` | live server data |
 | manager | `viewDashboard()` — the full dashboard | `stat`, `card`, `tbl` markup (the three charts went in night shift 02) |
+
+**Night shift 03 replaced all four of those with ONE screen, `Home.view()`** — 4–6 big job
+buttons chosen by role and filtered by what the account may actually do — except the driver, who
+keeps his runs. The owner’s and the developer’s full dashboard is still drawn, under the buttons.
+See **Night shift 03** below; the four functions above still exist and `viewDashboard()` is still
+what that half of the owner’s home is.
 
 The partner never reaches it: `boot()` and `render()` both force `OG.print.partner = true` for that role.
 **There is no door between the two sides in either direction.** The `partner-view` toggle, the sidebar
@@ -924,8 +935,11 @@ the arc around the mark is the count. At the end everything pulls into the mark 
 **One, deliberately small: `cd server && npm test`** (`node --test`, no dependency, no server, no
 database). `server/test/config-keys.test.js` reads the browser's own source for every config key it
 sends through `PUT /api/config` and checks each against `CONFIG_WRITABLE` in
-`server/lib/config-writable.js` — the list the route itself uses. It exists because **Settings → Save
-changes never saved** (found and confirmed on a scratch server, 15 Sep 2026): the button sends
+`server/lib/config-writable.js` — the list the route itself uses. It reads an `updates` literal,
+`updates['x'] = …`, and both debounced writers, `saveConfig(…)` and `saveSetting(…)` — night
+shift 03 added the second when every box on the Settings shop card started saving itself, and a
+writer the reader does not know about is a key nobody is checking. It exists because
+**Settings → Save changes never saved** (found and confirmed on a scratch server, 15 Sep 2026): the button sends
 `shop.name`, `shop.address` and `shop.city` with the loyalty rate, the allow-list had never held those
 three, so the server refused the whole request with "shop.name cannot be changed here."; the exchange
 rate, posted only after that save, never went out; and the page reloaded the old name, address and rate
@@ -937,6 +951,16 @@ would long-poll the real Telegram bots.
 **Everything else was removed on request.** 986 checks (858 browser, 128 server) used to gate
 deployment. Nothing inspects a push now, so a change that breaks the till reaches the live site as fast
 as one that fixes it. Verify your own changes in a browser before pushing.
+
+**But the night shifts left their own, in the gitignored `_nightshift/`**, and they are the
+fastest way to find out whether a change broke something. They need the sandbox server on 8190
+and a headless Chrome on 9224 that the SHELL opens (a browser a test script spawns cannot bind
+its debugging port here) — the exact two commands are at the top of `PROGRESS.md`. The widest is
+`node _nightshift/ns03/sweep.mjs`: every screen every role can open, in English at 1100 and
+Arabic at 390, checking for a console error, a failed request, a raw i18n key, sideways scroll,
+anything drawn outside its card, and whether the last element on the page clears the phone bar.
+It reads the navigation from the app itself, so a screen added next year is swept without anybody
+remembering to add it.
 
 They are recoverable:
 
@@ -2119,22 +2143,279 @@ unticked in **Settings → Roles → Warehouse → "See what things cost"** and 
   under a bar that floats over it. One property on `.view`, `.drawer-body` and `.modal-body`,
   because scroll-margin on the items would have to be remembered on every new element for ever.
 
+## Night shift 03 (18 Sep 2026) — big buttons
+
+Built on branch `night-shift-03`, off `quick-fix`; the audit is `night_shift_03_audit.md`, the
+morning report is `night_shift_03_log.md`, and `PROGRESS.md` says where the run got to.
+**No migration, no `server/supabase/` file, no `mirror-lag.js` entry, no data change.** Two things
+to do by hand before the shop laptop runs it: untick **Warehouse → "See what things cost"**, and
+**fill the shipping price list** (it ships empty and stalls every order).
+
+### Every role opens on a verb — `js/home.js`
+
+`VIEWS.dashboard` was four different home screens made of figures. It is `Home.view()` now for
+everybody but the driver: **4–6 big job buttons**, and everything else one tap away under More.
+
+- **`JOBS` is one table** (`{id, view, tab, perm, key, icon}`) and `ORDER` is the per-role
+  sequence. Every entry is filtered by `navAllowed(view)` **and** its own permission, so a button
+  is only ever drawn to an account that can do the job. `MAX` is 6; `FALLBACK` reads for an
+  account given permissions its role does not normally carry.
+- **A `key` may be a FUNCTION of the account.** `closeday` says "Close the day" to somebody with
+  `money.move` and **"Count the drawer"** to somebody with only `money.count` — the cashier was
+  being offered a job she cannot do. **Words are derived from the permissions that are actually
+  stored, never from the role's name** (see the staff card below, which does the same).
+- **The owner's and the developer's dashboard is untouched**, under the buttons, under a
+  `.dash-tear`. They are the two who read the shop's figures.
+- **The driver keeps his runs.** A grid of buttons over the parcels in his hand is one more press
+  between him and the road.
+- The phone's menu is `ROLE_TABS` (Home + 2–3) and `MORE_GROUPS` (built from `NAV` itself minus
+  whatever is already a tab, under four plain headings). A group with nothing in it draws no
+  heading, which is what emptied the driver's More of its empty grid.
+
+### ONE SHAPE FOR EVERY MONEY DIALOG — `js/cashbook.js`
+
+Eighteen dialogs, eighteen shapes: some led with a category, some with a currency, some with a
+place, and the amount — the only thing anybody opened the dialog to type — stood second, third or
+fourth and looked exactly like the optional note under it. The pattern, and every part of it is in
+that file:
+
+1. the **amount first**, big, focused (never on a coarse pointer), `inputmode="decimal"`
+2. the **currency as two big toggles**, remembered per machine per job (`og.cb.cur.<job>`)
+3. from / to / category as **chips** while there are few enough to show (>5 falls back to a select)
+4. the date, the fee and the note under **one "More"**
+5. a **sentence** saying what will be true afterwards
+6. **refusals under the field** that causes them, before the button
+
+- **EVERY CONTROL KEEPS ITS ID.** A chip row is visible buttons over a hidden input carrying the
+  id the handler already reads — what `cbODir` has always done — so `move-go`, `add-expense-go`,
+  `sup-pay-go` and `pr-pay-go` are untouched and cannot drift from what is on screen.
+- **A chip press dispatches a real `change` on that hidden input**, so a live hint fires exactly
+  as it did from a `<select>`. **`hookAttr` lets a hook name another module's namespace** —
+  `'py:pay-hint'` writes `data-pyc` and so reaches payables' own dispatcher — which is why one
+  helper set serves cashbook, money and payables without a second copy of any of them.
+- Renames: **Cash book → Money history**, **Debt book → Who owes whom**, and that tab answers the
+  question in two halves — "They owe us" over the customer debts, "We owe them" as a summary and a
+  door to the Suppliers tab, where they are actually paid. The words were changed where they are
+  DEFINED, not at seven call sites.
+
+### EVERY FIGURE A PERSON TYPES GOES THROUGH ONE OF TWO PARSERS
+
+`Desk.toMinor` (money) and `Desk.toCount` (a counted thing), both reading the same digits through
+one `foldDigits` in `js/desk.js`. **`\d` in JavaScript is ASCII only**, so an Arabic phone
+keypad's ١٢٠ was stripped to nothing in an app whose shop reads Arabic first. Arabic-Indic
+(٠-٩) and Persian (۰-۹) digits fold to ASCII once; **٬ is always a thousands group and is
+dropped, ٫ is always the decimal and settles it outright**, skipping the "three digits after the
+separator" guess; ordinary, no-break and narrow spaces were already thrown away.
+
+Seven places had it wrong, each measured in the browser before the change:
+
+| Where | Was | Read as |
+|---|---|---|
+| the shift boxes | `parseInt("120,000", 10)` | 120 |
+| **the shipping price list** | `Number("120,000") \|\| 0` | **0 — the carriage saved as FREE** |
+| add-product quantities (×2) | `Math.floor(Number("١٢"))` | NaN → 0 |
+| the stock count | `parseInt("١٢", 10)` | NaN → "not counted" |
+| goods arrived | `Number("1 000") \|\| 0` | 0 |
+| **the product editor** | `Number(String(v).replace(',', '.'))` | a 120,000 shoe saved at **120** |
+| the exchange rate | `parseInt("13,000", 10)` | 13 |
+
+**No new `parseInt` / `parseFloat` / `Number` / unary `+` on typed input, anywhere.** A money box
+is `type="text" inputmode="decimal"`, never `type="number"` — a number box blanks itself on a
+comma and refuses Arabic digits outright.
+
+### The products list
+
+- **One full-width search box that takes a scan.** `DB.productMatch(p, q)` in `js/data.js` is the
+  one "which product does this text mean" rule — name, brand, colourway, the category in the
+  screen's language, a size, a SKU, a barcode, the label code — and `whFindMatch` was rewritten to
+  call it rather than keep the second copy that had already drifted.
+- **A SCAN IS A SEARCH HERE.** `js/wedge.js` reads `e.key`, so a gun fired into a machine on the
+  Arabic keyboard layout delivers a code whose LETTERS are replaced and whose digits survive — the
+  fact the order desk and the handover sheet already match a slip by. A word of three or more
+  digits matches the digits of any code with the letters and dashes taken out of both sides, so
+  `OG-050-42` is found by whatever the layout made of it. The Products screen owns the scanner
+  while it is on show (`prodScanOwns`): one row left opens, several or none leaves the list
+  filtered and says what was scanned.
+- **Filters behind a Filter button, as removable chips**, held in `OG.prod` — module state, never
+  a class on the DOM, because this screen repaints on every save and every live push.
+- **Selection is a mode.** The tick column was drawn on every row for anybody with
+  `product.write`; press Select. Leaving the mode empties the selection, or the bulk bar would act
+  on rows nobody can see.
+- **Three quick edits on the drawer**: Change the price (one field, in the product's OWN currency
+  and saying which), Add a size, Add a colour — the last two opening on the half that was asked
+  for and ending in **"Print N labels"**, one per piece booked in. The full editor, stopping the
+  line and the two exports moved under a `.pr-more` "…".
+- **"Stop selling it" writes `hidden` and NOTHING ELSE.** `GET /api/ext/products` asks for
+  `hidden = 0 AND on_web = 1`, so archived already beats the website switch — which is exactly why
+  "Sell it again" can simply un-hide and cannot put a product on the website that was never on it.
+
+### Settings is five sections that save themselves
+
+- **The shop · Money and prices · Deliveries · People and access · Advanced**, most used first,
+  every fold carrying one line saying what it changes (`setFoldStart(id, title, meta, sub)`).
+- **The page-level "Save changes" is GONE.** The shop's name, phone, city and address went out
+  only when somebody found a button in the page head, beside eight cards that saved on change —
+  and those four are what the receipt prints at the top. `saveSetting()` in `js/app-changes.js`
+  writes the same keys through the same route and puts a small **"Saved"** beside the box.
+  **`server/test/config-keys.test.js` was taught that writer**: a writer the reader does not know
+  about is a key nobody is checking.
+- **Advanced is the developer's** — the mirror, the reminders, the Telegram links. That is
+  DISPLAY: all three are `config.write` on the server and a hand-sent request from anybody else
+  still gets a 403. What hiding buys is that the owner, who holds `config.write`, is not one
+  mis-press from a boot pull that restores over his own shop.
+- **The shipping price list is laid out to be filled in one sitting** — a row per city, the price,
+  the currency as toggles, a ✕ per row, "Add a city" — and the order desk links straight to it
+  (`dk-goto-prices`, through the shared `gotoSettingsFold`). An empty list says
+  "No shipping prices yet — set them once →" to anybody with `config.write` and "Ask the manager"
+  to everybody else. **Nothing invents a price.**
+
+### The people — `js/staff.js`
+
+One hiring screen, where there were two with different fields and different behaviour (Settings →
+Access asked for a role off a dropdown of seven; the Safeers screen asked for a phone with the
+role implied, and offered no Copy on the password shown once).
+
+- **THE JOB LINES ARE GENERATED FROM `role_permissions`**, read live through `GET /api/roles` —
+  never from the role's name and never from `003_role_permissions.sql`, which this shop's database
+  differs from in at least two rows. On this shop the cashier holds `delivery.write`, so her line
+  says "carries the parcels", which is true here and would be wrong from the seed.
+- Adding a person is one dialog: name, phone, **five big job choices with a line each**, a
+  username suggested from the name and still editable, the password shown once with Copy.
+- **Reset and Switch off are under the card's "…"**, held in `S.menu` — this card repaints
+  whenever a load lands. **Switching somebody off names what they are still holding** — parcels,
+  errands, an open drawer, cash on them — in one sentence first, and offers the board to reassign
+  the parcels. Switching on asks nothing.
+- The card is gated on **`access.write`**, not `staff.write`: every route behind it is
+  `access.write` on the server, and a card that draws and then 403s on every button is worse than
+  no card.
+- **Buying needs `cost.read` now.** A purchase order is a list of unit costs and a supplier
+  balance, and "Worth reordering" ranks by money; `whPanels()`'s `need` may be a list, meaning
+  EVERY one of them (unlike `requirePerm`'s any-of).
+
+### The country follows the city
+
+Eleven rows in the sandbox are Aleppo addresses filed under JO or TR, **every one of them
+`method: driver`** — our own driver does not go to Amman, so this was never carelessness. Five
+separate ways for the pair to disagree, none guarded:
+
+1. changing the city never touched the country;
+2. the country lives in the DRAFT, which lives in `localStorage`, so one order to Amman left JO on
+   the next five;
+3. "use the last address" copied the two with independent fallbacks
+   (`r.dest.country || S.country`), so a destination carrying a city and no country kept the
+   PREVIOUS order's;
+4. picking a customer filled the city and never the country;
+5. a one-country shop drew no control at all, so a draft already carrying TR could never be
+   corrected from that screen.
+
+**`Desk.countryFor({country, city, method})` is the one rule**: the country is a question ONLY
+when the parcel is going abroad, a city the price list knows carries its own, and a draft holding
+another one is put right before it is drawn. The existing rows are history and were not edited.
+
+### The board card, and the driver's phone
+
+- **The destination is said once**: the city as the heading, the country only when the parcel is
+  leaving the country (`Desk.homeCountry()`, the owner's own list, never assumed to be SY), and
+  the typed address with the city taken off either end — people write "Aleppo, Seryan, near the
+  bakery" and the heading already says Aleppo. `withoutCity()` only ever strips a whole word at an
+  end, never from the middle where it may be a street name.
+- **The four unlabelled dots are gone from lane cards.** Three of them repeated the lane the card
+  sits in, and the fourth — "some money has arrived" — could contradict the green **Paid** pill two
+  inches above it. The rail stays on the table row, where there is no lane, and in the order
+  dialog, where it has its words.
+- **A parcel whose driver was switched off says so in amber.** Removing or disabling an account
+  re-points its WAITING parcels to the hidden "Former staff" record, and one already OUT keeps
+  that id for ever — the board drew a parcel on the road with a carrier nobody can call and said
+  nothing. `driverActive` is a read-only column off a join the query was already doing.
+  **The button is honest about what the server will accept**: Reassign while it is still on the
+  counter, and Delivered (with "Couldn't deliver" behind the dots) once it has left, because
+  `Deliveries.update` refuses a carrier change past `waiting` with `bad_status` — a parcel in one
+  person's hands going to a second is what the handover sheet exists to prevent.
+- **The pointer glow does not belong on a work screen.** `.mo-glow` (`css/tokens.css`) is
+  `position:fixed; z-index:1` on the BODY while a lane card is `position:relative; z-index:auto`,
+  so a 260px lime haze followed the mouse ACROSS the cards. One rule keyed on the `data-view` the
+  router already sets, off on deliveries · safeers · warehouse · money · desk · pos.
+- **The driver's home opens on "Cash on me"** — what is in his pocket and has not reached the
+  shop, the same rows `Orders.driverCash` counts, as a pair and never added. Each card says the
+  area on its own line, and **"Couldn't deliver" moved under a "…"** so Delivered is the only
+  button that size.
+
+### Safeers
+
+One lime button, **"Give a task"**, opening a sheet with two big choices — the header carried two
+buttons that were the same idea. **Refresh is gone**: the page reloads after every action, on
+every live push and when the window comes back, and says "Updated 1 min ago" instead. Each card is
+three big numbers (Open tasks · Done today · Cash on him) — **a real `0` where there is none, and
+`—` only where the account may not ask, which are different answers** — one button, and "this
+month" in the detail line. A missing pay rate is a dash plus an owner-only link straight to that
+setting, rather than printing "Settings → Safeers", a path most accounts cannot open. The
+always-open Add form is a quiet button and a dialog with Copy. The filters are behind a Filter
+button as removable chips, in `S.filter` / `S.filtersOpen`.
+
+### `variants.shelf` lies, and the catalogue stopped repeating it
+
+The column is written once, at insert, and the real assignment is `stock.shelf_id`, which never
+touches it — on this database it is set on **zero** rows while the product drawer, the count sheet
+and the scan sheet all printed it as the answer to "where is this size". `Cat.bundle`'s variants
+query now also answers **`shelf_at`**: the section key and shelf code of the place the stock
+actually is, most held first. `js/data.js` hydrates `shelf` from it and keeps the old column
+underneath as `shelfSaid`. No schema change and no row written.
+
+### Things that will bite you
+
+- **A figure typed by a person goes through `Desk.toMinor` or `Desk.toCount`.** Nothing else.
+  Add a check whenever you add an input; `_nightshift/ns03/p2-digits.mjs` is where they live.
+- **Words are derived from the permissions that are STORED**, not from the role's name and not
+  from the seed file. This database differs from `003_role_permissions.sql` in at least two rows
+  (`warehouse / cost.read`, `cashier / delivery.write`), and a screen that reads the seed
+  describes a job nobody here has.
+- **UI state that must survive a repaint lives in module state** — an open menu, an open filter
+  panel, which filters are on, a selection, a half-filled dialog. A class put on a node by a click
+  does not survive a screen that repaints itself. `S.menu` (safeers, staff), `OG.prod.filters`,
+  `S.filtersOpen` (safeers) all exist for that reason.
+- **A card that holds its actions in a flex ROW will push them out of a narrow grid column**, and
+  the NEXT card — a later sibling at the same z-index — paints over them. The staff card's dots
+  were the right size and the press landed on somebody else's avatar. Found by hit-testing. It is
+  a grid now.
+- **A `.table-wrap` exists to hold something wider than itself.** A sweep that measures "is
+  anything outside its card" has to skip what is inside one, or every wide table is a false
+  positive — and it has to measure twice, because the mirror card and the office's settings fetch
+  for themselves and a rectangle read mid-redraw never existed.
+- **TWO SUITES CANNOT RUN AT ONCE.** They share one Chrome profile and therefore one cookie jar:
+  the second one’s sign-out kills the first one’s session, and the first then collects 401s on
+  `/api/safeers`, `/api/errands` and `/api/deliveries` that have nothing to do with what it is
+  testing. Run them one after another.
+- **The shared Chrome profile carries the previous suite's session** for the moment before
+  `login()` signs it out, so `/api/deliveries`, `/api/safeers` and `/api/errands` answer a partner
+  session **403** and `/api/auth/logout` answers **401**, in a suite about something else. Start
+  the ledger after the login, as `sweep.mjs` does.
+- **`js/staff.js` is new and is in `sw.js`'s precache.** Adding a JS file means both.
+
+### How it was verified
+
+`cd server && npm test` (6), and over CDP on the sandbox: `ns03/p1-home` 53 · `ns03/p1-tabbar` 65
+· `ns03/p2-money` 39 · `ns03/p2-money-phone` 34 · `ns03/p2-digits` 36 · `ns03/p2-cashier` 22 ·
+`ns03/p3-products` 50 · `ns03/p3-products-phone` 17 · `ns03/p4-settings-staff` 43 ·
+`ns03/p5-safeers-board` 56, plus `ns03/sweep` over every screen every role can open in English at
+1100 and Arabic at 390. Every money move, every price, every new person, every reassignment and
+every Delivered was read back out of SQLite — never off the screen that wrote it. The ns02 and
+quick-fix suites re-run green; `qf-safeers` and `ns02/p2-edit` were updated where a control moved.
+
 ## Known open work
 
 - The supplier and payroll editors exist now (the Money screen, 055), and adding a colour or a size to an
   existing product has its dialog (night shift 01). Still no screen for cancelling a purchase order
   (`Shop.cancelPO`), kept on purpose, unwired, so the gap stays visible.
-- **Left by night shift 02, in its own words.** The `variants.shelf` column is printed by the
-  product drawer, the count sheet and the scan sheet and is written only at insert — the real
-  assignment is `stock.shelf_id`, which never touches it, so live it is blank and the column
-  lies. Archiving a product still exists only inside the bulk bar, beside Delete, with no
-  confirmation and no button of its own. The shipping price list ships EMPTY, so on a fresh shop
-  every order stalls on "Say what the shipping is" until somebody presses Free or types a number —
-  a data problem with a one-time fix, not a screen problem. Raising a purchase order is one click
-  longer than it was, because "Worth reordering" moved under the warehouse's More fold: receiving,
-  moving, finding and counting happen many times a day and buying does not, but say if that is
-  wrong. And **marking a parcel failed is one click longer on purpose** — it sat the same size and
-  colour as Delivered, and it is now behind the row's "…".
+- **Left by night shift 02 — the first three are CLOSED by night shift 03.** The `variants.shelf`
+  column is answered from `stock.shelf_id` now (`shelf_at`, on the catalogue's variants query);
+  archiving a product is **Stop selling it**, a button of its own with a question and an undo in
+  the toast; and the shipping price list is laid out to be filled in one sitting, with the order
+  desk linking straight to it. **The list itself is still EMPTY on the shop's database** — that is
+  data, not a screen, and nothing invents a price.
+  Raising a purchase order is still one click longer than it was, because "Worth reordering" is
+  under the warehouse's More fold — and since ns03 it also needs `cost.read`, because it is a list
+  of unit costs and a supplier balance. And **marking a parcel failed is one click longer on
+  purpose** — it sat the same size and colour as Delivered, and it is behind the row's "…".
 - **Server routes with no button.** A sale can be voided only by a hand-sent
   `POST /api/sales/:id/void`; the staff-account routes (`POST /api/users`, `/api/users/:id/reset`,
   `/api/users/:id/active`) have no Settings control. The permissions `refund` and `partner.read` gate

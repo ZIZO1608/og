@@ -18,6 +18,33 @@ That is Phase 1b, first.
 
 ---
 
+## The suites, and how to rerun them
+
+```bash
+# the server, in the sandbox and nowhere near the real files
+cd server && OG_ENV_FILE=server/.env.sandbox OG_DATA_DIR=server/data-sandbox OG_PORT=8190 \
+  OG_HTTPS=0 OG_SYNC_MINUTES=0 OG_PULL_AT_BOOT=0 OG_PUSH=0 node index.js
+
+# a headless Chrome the scripts attach to (the shell opens it, not the script)
+chrome --remote-debugging-port=9224 --user-data-dir=_nightshift/chrome --headless=new
+
+cd server && npm test                       # the one server test
+node _nightshift/ns03/p1-home.mjs           # the job home, per role
+node _nightshift/ns03/p1-tabbar.mjs         # the phone menu
+node _nightshift/ns03/p2-money.mjs          # the money dialogs, balances read from SQLite
+node _nightshift/ns03/p2-money-phone.mjs    # the same at 390, in Arabic
+node _nightshift/ns03/p2-digits.mjs         # every digit a person might type
+node _nightshift/ns03/p2-cashier.mjs        # what the cashier may see, and the 403s
+node _nightshift/ns03/p3-products.mjs       # the products list, and an Arabic-layout scan
+node _nightshift/ns03/p3-products-phone.mjs
+node _nightshift/ns03/p4-settings-staff.mjs # settings, the shipping list, the people
+node _nightshift/ns03/p5-safeers-board.mjs  # the country, the board, safeers, the driver
+node _nightshift/ns03/sweep.mjs             # every screen, every role, EN 1100 + AR 390
+node _nightshift/ns03/sweep.mjs wael        # …or one role
+```
+
+---
+
 ## Log
 
 | Time | What | Commit | Checks | Skipped |
@@ -25,3 +52,8 @@ That is Phase 1b, first.
 | 19:18 | run-through started | — | — | — |
 | 19:31 | Phase 1b — the two missing suites, `ns03/p1-home` and `ns03/p1-tabbar` | 712fdbb | 118 | Phase 1 code was already complete; only the proof was missing |
 | 19:45 | Phase 4 — Settings in five sections that save themselves, the shipping price list, the people as cards | 712fdbb | 43 | nothing |
+| 20:09 | Phase 5 — country follows the city, the board card, Safeers, the driver, the shelf | 66d1add | 56 | Reassign on a parcel already OUT — the server refuses it by design (question 4) |
+| 20:39 | Phase 6 — the sweep (`ns03/sweep.mjs`), the report, CLAUDE.md | (this commit) | 433 | the till under the phone bar (question 5) |
+
+**Every phase is done and committed. Nothing pushed, nothing merged.** The two things for the
+shop laptop, the nine questions and the whole story are in `night_shift_03_log.md`.

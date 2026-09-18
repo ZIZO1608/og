@@ -2067,3 +2067,17 @@ body:not([data-portal="yalla"]) .sf-p-detail { padding: 0 2px 2px; }
 body:not([data-portal="yalla"]) .sf-add-btn { margin: 4px 0 14px; }
 body:not([data-portal="yalla"]) .sf-filters[hidden] { display: none; }
 body:not([data-portal="yalla"]) .sf-filtered { align-self: center; }
+
+/* ---- a fold head's meta line must not leave the card -------------------
+   The mirror's "Supabase is not set up on this server." is 217px of text in
+   a 358px card that already holds a caret and a title, and the fold head is
+   a flex row: at 390 it ran 14px past the card's own edge (found by the
+   sweep, measured twice). It wraps onto its own line under the title on a
+   phone, and is clipped rather than pushed anywhere at any width. */
+body:not([data-portal="yalla"]) .fold-btn { flex-wrap: wrap; }
+body:not([data-portal="yalla"]) .fold-meta {
+  min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 560px) {
+  body:not([data-portal="yalla"]) .fold-meta { flex-basis: 100%; padding-inline-start: 26px; }
+}
