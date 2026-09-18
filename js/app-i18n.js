@@ -12,7 +12,7 @@
 var I18N = {
   en: {
     nav_main: 'Operations', nav_ops: 'Business',
-    nav_dashboard: 'Dashboard', nav_pos: 'Cashier', nav_products: 'Products',
+    nav_dashboard: 'Home', nav_pos: 'Cashier', nav_products: 'Products',
     nav_warehouse: 'Warehouse', nav_customers: 'Customers', nav_print: 'Print Jobs',
     nav_reports: 'Reports', nav_settings: 'Settings',
     tagline: 'Sneakers & Streetwear', live: 'OG System', search_top: 'Search the shop…', search_products: 'Search products…', search_customers: 'Search customers…',
@@ -819,7 +819,7 @@ var I18N = {
 
   ar: {
     nav_main: 'العمليات', nav_ops: 'الأعمال',
-    nav_dashboard: 'لوحة التحكم', nav_pos: 'الكاشير', nav_products: 'المنتجات',
+    nav_dashboard: 'الرئيسية', nav_pos: 'الكاشير', nav_products: 'المنتجات',
     nav_warehouse: 'المستودع', nav_customers: 'الزبائن', nav_print: 'أعمال الطباعة',
     nav_reports: 'التقارير', nav_settings: 'الإعدادات',
     tagline: 'أحذية وملابس ستريت وير', live: 'نظام OG', search_top: 'ابحث في المحل…', search_products: 'ابحث عن منتج…', search_customers: 'ابحث عن زبون…',

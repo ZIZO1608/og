@@ -69,6 +69,7 @@ var SHELL = [
   'js/wedge.js',
   'js/stock.js',
   'js/receive.js',
+  'js/home.js',
   'js/money.js',
   'js/cashbook.js',
   'js/payables.js',

@@ -3416,3 +3416,202 @@ var NS02_AR = {
 
 Object.keys(NS02_EN).forEach(function (k) { I18N.en[k] = NS02_EN[k]; });
 Object.keys(NS02_AR).forEach(function (k) { I18N.ar[k] = NS02_AR[k]; });
+
+/* ==========================================================================
+   NIGHT SHIFT 03 — "big buttons"
+   --------------------------------------------------------------------------
+   The job home, the money screen's plain words, the product quick edits and
+   the staff jobs. Arabic is shop Arabic — "مو", not "مش".
+   ========================================================================== */
+var NS03_EN = {
+  /* -- the job home -- */
+  hm_title: 'Your jobs',
+  hm_sub: 'Press the one you are doing',
+  hm_none: 'Nothing is set up for this account yet',
+  hm_none_sub: 'Ask the owner to give you the jobs you do.',
+  hm_sell: 'Sell',
+  hm_order: 'Take an order',
+  hm_staff: 'The people',
+  hm_c_orders: '{n} on the way',
+  hm_c_low: '{n} running low',
+  hm_c_products: '{n} products',
+  hm_c_todo: '{n} need you',
+
+  /* -- the menu -- */
+  nav_home: 'Home',
+  nav_g_sell: 'Selling',
+  nav_g_stock: 'Stock',
+  nav_g_money: 'Money',
+  nav_g_shop: 'The shop',
+
+  /* -- money, in plain words -- */
+  cb_money_history: 'Money history',
+  mn_who_owes: 'Who owes whom',
+  mn_they_owe: 'They owe us',
+  mn_we_owe: 'We owe them',
+  cb_go_move: 'Move money',
+  cb_go_exchange: 'Exchange',
+  cb_other_places: 'Other places',
+  cb_left_after: 'The {place} will have {amount} left.',
+  cb_confirm_pay: 'Pay {who} {amount} from the {place}?',
+  cb_amount: 'How much?',
+  cb_which_money: 'Which money?',
+  cb_from_where: 'From where?',
+  cb_what_for: 'What for?',
+  cb_more: 'More',
+  cb_other: 'Other',
+  cb_saved_now: 'Saved',
+
+  /* -- products -- */
+  pr_find: 'Find a product',
+  pr_find_ph: 'name, barcode, or scan it',
+  pr_filter: 'Filter',
+  pr_filters_on: 'Filters on',
+  pr_clear_filters: 'Clear',
+  pr_select: 'Select',
+  pr_low: 'Low',
+  pr_none_left: 'None left',
+  pr_change_price: 'Change the price',
+  pr_add_size: 'Add a size',
+  pr_add_colour: 'Add a colour',
+  pr_stop_selling: 'Stop selling it',
+  pr_stop_q: 'Hide it from the shop and the website? Nothing is deleted; you can bring it back.',
+  pr_sell_again: 'Sell it again',
+  pr_add_another: 'Add another like this',
+  pr_open_it: 'Open it',
+
+  /* -- staff -- */
+  st_people: 'The people',
+  st_add_person: 'Add a person',
+  st_working: 'Working',
+  st_switched_off: 'Switched off',
+  st_their_job: 'What is their job?',
+  st_change_perms: 'Change what they can do',
+  st_j_cashier: 'Cashier',
+  st_j_cashier_d: 'Sells, and counts the drawer at night',
+  st_j_warehouse: 'Warehouse',
+  st_j_warehouse_d: 'Receives, moves and counts the stock',
+  st_j_manager: 'Manager',
+  st_j_manager_d: 'Runs the shop day to day',
+  st_j_delivery: 'Safeer',
+  st_j_delivery_d: 'Carries the parcels and the errands',
+  st_j_owner: 'Owner',
+  st_j_owner_d: 'Everything, including the money',
+  st_off_holds: '{name} is still holding {n} thing(s): they will be left with nobody.',
+  st_pw_once: 'Write this down now — it is not shown again.',
+  st_copy: 'Copy',
+  st_copied: 'Copied',
+
+  /* -- safeers -- */
+  sf_give_task: 'Give a task',
+  sf_give_parcel: 'Deliver a parcel',
+  sf_give_errand: 'An errand',
+  sf_updated: 'Updated {n} min ago',
+  sf_updated_now: 'Updated just now',
+  sf_add_one: '+ Add a safeer',
+  sf_set_rate: 'Set the pay rate',
+  sf_filter: 'Filter',
+
+  /* -- the board -- */
+  dl_driver_off: 'Driver switched off — give it to someone else',
+  dl_reassign: 'Reassign',
+
+  /* -- the order desk -- */
+  dk_addr_ph: 'Street, building, landmark',
+  dk_no_prices: 'No shipping prices yet — set them once',
+  dk_no_prices_ask: 'Ask the manager to set the shipping prices.'
+};
+
+var NS03_AR = {
+  hm_title: 'شغلاتك',
+  hm_sub: 'اضغط يلي عم تعمله',
+  hm_none: 'لسا ما في شي محدّد لهالحساب',
+  hm_none_sub: 'اطلب من صاحب المحل يعطيك شغلاتك.',
+  hm_sell: 'بيع',
+  hm_order: 'سجّل طلب',
+  hm_staff: 'الموظفين',
+  hm_c_orders: '{n} جايين',
+  hm_c_low: '{n} قربوا يخلصوا',
+  hm_c_products: '{n} منتج',
+  hm_c_todo: '{n} بدهن منك',
+
+  nav_home: 'الرئيسية',
+  nav_g_sell: 'البيع',
+  nav_g_stock: 'المخزون',
+  nav_g_money: 'المصاري',
+  nav_g_shop: 'المحل',
+
+  cb_money_history: 'حركة المصاري',
+  mn_who_owes: 'مين عليه لمين',
+  mn_they_owe: 'عليهن إلنا',
+  mn_we_owe: 'علينا إلهن',
+  cb_go_move: 'حوّل مصاري',
+  cb_go_exchange: 'صرافة',
+  cb_other_places: 'أماكن تانية',
+  cb_left_after: 'رح يضل بـ{place} مبلغ {amount}.',
+  cb_confirm_pay: 'تدفع لـ{who} مبلغ {amount} من {place}؟',
+  cb_amount: 'قديش؟',
+  cb_which_money: 'أي عملة؟',
+  cb_from_where: 'من وين؟',
+  cb_what_for: 'لشو؟',
+  cb_more: 'المزيد',
+  cb_other: 'غير هيك',
+  cb_saved_now: 'انحفظ',
+
+  pr_find: 'دوّر على منتج',
+  pr_find_ph: 'الاسم أو الباركود، أو امسحه',
+  pr_filter: 'فلترة',
+  pr_filters_on: 'في فلترة',
+  pr_clear_filters: 'شيلها',
+  pr_select: 'اختار',
+  pr_low: 'قليل',
+  pr_none_left: 'ما ضل شي',
+  pr_change_price: 'غيّر السعر',
+  pr_add_size: 'ضيف قياس',
+  pr_add_colour: 'ضيف لون',
+  pr_stop_selling: 'وقّف بيعه',
+  pr_stop_q: 'تخبّيه عن المحل والموقع؟ ما رح ينحذف شي، وفيك ترجّعه.',
+  pr_sell_again: 'رجّع بيعه',
+  pr_add_another: 'ضيف واحد متله',
+  pr_open_it: 'افتحه',
+
+  st_people: 'الموظفين',
+  st_add_person: 'ضيف شخص',
+  st_working: 'شغّال',
+  st_switched_off: 'مطفي',
+  st_their_job: 'شو شغلته؟',
+  st_change_perms: 'غيّر صلاحياته',
+  st_j_cashier: 'كاشير',
+  st_j_cashier_d: 'بيبيع، وبيعدّ الصندوق بالليل',
+  st_j_warehouse: 'مستودع',
+  st_j_warehouse_d: 'بيستلم وبينقل وبيجرد البضاعة',
+  st_j_manager: 'مدير',
+  st_j_manager_d: 'بيدير المحل يوم بيوم',
+  st_j_delivery: 'سفير',
+  st_j_delivery_d: 'بيوصّل الطرود والمهام',
+  st_j_owner: 'صاحب المحل',
+  st_j_owner_d: 'كل شي، والمصاري كمان',
+  st_off_holds: '{name} لسا معه {n} شغلة: رح يضلوا بلا حدا.',
+  st_pw_once: 'سجّلها هلق — ما رح تنعرض مرة تانية.',
+  st_copy: 'انسخ',
+  st_copied: 'اننسخ',
+
+  sf_give_task: 'عطِ مهمة',
+  sf_give_parcel: 'وصّل طرد',
+  sf_give_errand: 'مهمة',
+  sf_updated: 'انحدّث من {n} دقيقة',
+  sf_updated_now: 'انحدّث هلق',
+  sf_add_one: '+ ضيف سفير',
+  sf_set_rate: 'حدّد الأجر',
+  sf_filter: 'فلترة',
+
+  dl_driver_off: 'السفير مطفي — عطيه لحدا تاني',
+  dl_reassign: 'عطيه لحدا تاني',
+
+  dk_addr_ph: 'الشارع، البناية، علامة مميزة',
+  dk_no_prices: 'لسا ما في أسعار شحن — حدّدها مرة وحدة',
+  dk_no_prices_ask: 'اطلب من المدير يحدّد أسعار الشحن.'
+};
+
+Object.keys(NS03_EN).forEach(function (k) { I18N.en[k] = NS03_EN[k]; });
+Object.keys(NS03_AR).forEach(function (k) { I18N.ar[k] = NS03_AR[k]; });

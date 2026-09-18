@@ -289,6 +289,7 @@ function boot() {
   if (typeof Desk !== 'undefined') Desk.register();
   if (typeof Road !== 'undefined') Road.register();
   if (typeof Receive !== 'undefined') Receive.register();
+  if (typeof Home !== 'undefined') Home.register();
   if (typeof Reviews !== 'undefined') Reviews.register();
   if (typeof Receipt !== 'undefined') Receipt.register();
   if (typeof Labels !== 'undefined') Labels.register();

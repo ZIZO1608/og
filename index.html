@@ -120,6 +120,10 @@
 <script src="js/app-export.js"></script>
 <script src="js/app-shell.js"></script>
 <script src="js/app-dashboard.js"></script>
+<!-- home.js draws the job grid and, for the owner, calls viewDashboard()
+     underneath it — so it loads after app-dashboard.js and before
+     app-routing.js, whose VIEWS literal names Home.view. -->
+<script src="js/home.js"></script>
 <script src="js/app-products.js"></script>
 <script src="js/app-print-labels.js"></script>
 <script src="js/app-warehouse.js"></script>

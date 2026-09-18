@@ -266,10 +266,42 @@ function renderSidebar() {
 
    Five is the ceiling — a sixth tab makes each one too narrow for a thumb, so
    the rest live behind More. */
+/* NIGHT SHIFT 03 — Home, the role's two or three most-used screens, and
+   More. The tabs were the same four for everybody (dashboard, pos, products,
+   print), which put Print Jobs — a screen most of the shop never opens — a
+   thumb away from the till, and buried the warehouse and the money behind
+   More for the people whose whole job they are.
+
+   ROLE_TABS names only the ORDER; every entry is still filtered by
+   navAllowed, so a cashier who cannot open the warehouse simply does not get
+   that tab and the next one moves up. Anything not in the role's list is
+   still reachable — it is in More, which now lists every screen the account
+   may open rather than a hand-written subset. */
 var TABS = ['dashboard', 'pos', 'products', 'print'];
-/* Money was missing here, so on a phone nobody could reach it at all — and the
-   night's count (054) is a cashier's job on whatever device is to hand. */
-var MORE_ITEMS = ['warehouse', 'shelfmap', 'money', 'desk', 'deliveries', 'safeers', 'reviews', 'customers', 'labels', 'reports', 'settings'];
+var ROLE_TABS = {
+  cashier:   ['dashboard', 'pos', 'customers'],
+  warehouse: ['dashboard', 'warehouse', 'products'],
+  manager:   ['dashboard', 'desk', 'deliveries'],
+  owner:     ['dashboard', 'money', 'deliveries'],
+  developer: ['dashboard', 'money', 'deliveries'],
+  delivery:  ['dashboard', 'products']
+};
+
+/* MORE IS EVERY OTHER SCREEN, not a list somebody has to remember to add to.
+   It is built from NAV itself minus whatever is already a tab, so a screen
+   added to NAV next year appears in More without a second edit — the bug
+   that hid the Money screen from every phone until 054 went looking for it. */
+var MORE_GROUPS = [
+  { key: 'nav_g_sell',  ids: ['pos', 'desk', 'customers', 'deliveries', 'safeers', 'reviews'] },
+  { key: 'nav_g_stock', ids: ['products', 'warehouse', 'shelfmap', 'labels', 'print'] },
+  { key: 'nav_g_money', ids: ['money', 'reports'] },
+  { key: 'nav_g_shop',  ids: ['settings'] }
+];
+
+function tabsFor() {
+  var want = ROLE_TABS[roleOf()] || TABS;
+  return want.filter(navAllowed).slice(0, 4);
+}
 
 function renderTabbar() {
   var host = document.getElementById('tabbar');
@@ -282,7 +314,7 @@ function renderTabbar() {
   }
 
   var h = '';
-  TABS.forEach(function (id) {
+  tabsFor().forEach(function (id) {
     var n = NAV.filter(function (x) { return x.id === id; })[0];
     if (!n || !navAllowed(id)) return;
     var b = navBadge(id);
@@ -294,7 +326,7 @@ function renderTabbar() {
 
   /* More always shows: even a role with no extra screens reaches sign out
      through it, and on a phone there is nowhere else to put that. */
-  var inMore = MORE_ITEMS.indexOf(OG.view) > -1;
+  var inMore = tabsFor().indexOf(OG.view) < 0;
   h += '<button class="tabbtn' + (inMore ? ' on' : '') + '" data-act="more-sheet">' +
     '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square">' +
       '<path d="M4 7h16M4 12h16M4 17h16"/></svg></span>' +
@@ -306,17 +338,29 @@ function renderTabbar() {
 /* Everything that did not fit in five tabs, plus the two shell switches that
    were dropped from the collapsed topbar. */
 function openMoreSheet() {
-  var h = '<div class="more-grid">';
-  MORE_ITEMS.forEach(function (id) {
-    var n = NAV.filter(function (x) { return x.id === id; })[0];
-    if (!n || !navAllowed(id)) return;
-    var b = navBadge(id);
-    h += '<button class="more-item' + (OG.view === id ? ' on' : '') + '" data-act="more-go" data-view="' + id + '">' +
-      '<span class="mi-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg></span>' +
-      '<span>' + t(n.key) + '</span>' +
-      (b ? '<span class="nav-badge">' + b + '</span>' : '') + '</button>';
+  /* Grouped under plain headings, and built from MORE_GROUPS — which covers
+     every screen in NAV — so nothing this account may open is missing from
+     here, whichever tabs its role happens to have. A group with nothing in
+     it draws no heading. */
+  var h = '';
+  var tabs = tabsFor();
+  MORE_GROUPS.forEach(function (g) {
+    var items = g.ids.filter(function (id) {
+      return navAllowed(id) && tabs.indexOf(id) < 0 &&
+             NAV.some(function (x) { return x.id === id; });
+    });
+    if (!items.length) return;
+    h += '<div class="more-group">' + t(g.key) + '</div><div class="more-grid">';
+    items.forEach(function (id) {
+      var n = NAV.filter(function (x) { return x.id === id; })[0];
+      var b = navBadge(id);
+      h += '<button class="more-item' + (OG.view === id ? ' on' : '') + '" data-act="more-go" data-view="' + id + '">' +
+        '<span class="mi-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg></span>' +
+        '<span>' + t(n.key) + '</span>' +
+        (b ? '<span class="nav-badge">' + b + '</span>' : '') + '</button>';
+    });
+    h += '</div>';
   });
-  h += '</div>';
 
   h += '<div class="more-rows">' +
     '<div class="more-row"><span>' + t('language') + '</span><div class="seg">' +

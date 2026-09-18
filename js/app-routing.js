@@ -21,12 +21,14 @@ var VIEWS = {
      A manager, and any role this does not name, gets the full dashboard. The
      partner never arrives here: boot() and render() send that account to its
      portal. */
+  /* NIGHT SHIFT 03 — home is the JOB GRID for everybody (js/home.js), and
+     for the owner and the developers their existing dashboard is drawn
+     underneath it, untouched. The driver keeps his own screen: his home
+     already IS his list of parcels, which is the same idea arrived at
+     first. `viewShiftHome` and `viewBackHome` are gone from this chooser —
+     the cashier's and the warehouse's figures live on the job grid now. */
   dashboard: function () {
-    var r = roleOf();
-    return r === 'cashier'   ? viewShiftHome()
-         : r === 'warehouse' ? viewBackHome()
-         : r === 'delivery'  ? viewRunsHome()
-         : viewDashboard();
+    return roleOf() === 'delivery' ? viewRunsHome() : Home.view();
   },
   money: function () { return Money.view(); },
   pos: function () { return POS.render(); },
@@ -54,12 +56,10 @@ var VIEWS = {
 
 var AFTER = {
   dashboard: function () {
-    var r = roleOf();
-    /* The charts only exist on the manager's dashboard. Calling afterDashboard
-       on a shift home would hand Chart.js three canvases that are not there. */
-    if (r === 'cashier' || r === 'warehouse') return;
-    if (r === 'delivery') return Deliveries.after();
-    afterDashboard();
+    if (roleOf() === 'delivery') return Deliveries.after();
+    /* Home.after runs the owner's dashboard hook and nobody else's — there is
+       nothing to do after a grid of buttons. */
+    return Home.after();
   },
   deliveries: function () { return Deliveries.after(); },
   reviews: function () { return Reviews.after(); },
