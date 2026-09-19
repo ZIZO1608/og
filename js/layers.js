@@ -84,8 +84,18 @@ var Layers = (function () {
 
   var marked = false;      /* a marker entry is on the history stack */
   var popSelf = false;     /* the next popstate is our own history.back() */
+  var pending = 0;         /* an unmark waiting to see whether a layer reopens */
 
   function mark() {
+    /* A DIALOG REPLACING A DIALOG IS NOT A CLOSE. openModal() closes the old
+       one before it draws the new one, so without this the marker was taken
+       off and put back in the same beat — and because history.back() is
+       ASYNC, the pop landed after the new push and removed the new marker
+       instead. The stack then had no marker while this module believed it
+       did, and the next close popped a real route entry: the money screen
+       walked back to whatever was open before it, on its own, after a save.
+       Found by a suite that went flaky rather than red. */
+    if (pending) { clearTimeout(pending); pending = 0; }
     if (marked) return;
     try { history.pushState({ ogLayer: 1 }, '', location.href); marked = true; }
     catch (e) { /* file://, or a browser refusing: no back gesture, nothing else */ }
@@ -96,13 +106,26 @@ var Layers = (function () {
   function unmark() {
     if (!marked) return;
     marked = false;
+    /* AND ONLY IF THE TOP OF THE STACK IS REALLY OURS. Anything else and the
+       back press belongs to the person, not to this module — a dialog must
+       never be able to navigate the shop backwards by closing itself. */
+    var st = null;
+    try { st = history.state; } catch (e) {}
+    if (!st || !st.ogLayer) return;
     popSelf = true;
     try { history.back(); } catch (e) { popSelf = false; }
     setTimeout(function () { popSelf = false; }, 500);
   }
 
-  /* Called after any close that did not come from a back press. */
-  function afterClose() { if (!anyOpen()) unmark(); }
+  /* Called after any close that did not come from a back press. The wait is
+     one turn of the loop: long enough for openModal to draw the dialog it is
+     replacing the old one with, short enough that nobody could press Back in
+     between. */
+  function afterClose() {
+    if (anyOpen()) return;
+    if (pending) clearTimeout(pending);
+    pending = setTimeout(function () { pending = 0; unmark(); }, 0);
+  }
 
   /* Called by go() BEFORE it writes the hash. Everything shuts, and the
      answer says whether the marker entry is free to be reused for the new
@@ -115,6 +138,7 @@ var Layers = (function () {
        asked for this cleanup would then be undone by it. Measured: `go()`
        with a dialog open landed on the screen behind, not the one asked
        for. Clear the flag, THEN close. */
+    if (pending) { clearTimeout(pending); pending = 0; }
     var reuse = marked;
     marked = false;
     closeAll();
@@ -219,6 +243,42 @@ var Layers = (function () {
     }, true);
 
     window.addEventListener('popstate', onPop);
+    watchViewport();
+  }
+
+  /* ---------------------------------------------------- the phone keyboard
+
+     A FIXED ELEMENT IS FIXED TO THE LAYOUT VIEWPORT, NOT TO WHAT YOU CAN
+     SEE. When the phone keyboard comes up the layout viewport does not
+     change at all, so a bottom sheet goes on sitting at the bottom of a page
+     that is now half covered — and the Save button, which is the only reason
+     the sheet was opened, is behind the keys. There is no CSS for this:
+     `100dvh` answers the browser chrome, not the keyboard.
+
+     `visualViewport` is what knows. Two variables come out of it and the
+     stylesheet does the rest: `--vvh`, how tall the visible part is, and
+     `--kb`, how much of the bottom the keyboard has taken. Both are plain
+     pixels, both have sane fallbacks in the CSS, and a browser without
+     visualViewport (none the shop owns) simply keeps those fallbacks. */
+  function watchViewport() {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    var root = document.documentElement;
+    var raf = 0;
+    function sync() {
+      raf = 0;
+      var kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      root.style.setProperty('--vvh', Math.round(vv.height) + 'px');
+      root.style.setProperty('--kb', kb + 'px');
+      /* 120px, because a browser's own toolbar shrinking as the page scrolls
+         is not a keyboard and must not move a sheet. */
+      document.body.classList.toggle('kb-open', kb > 120);
+    }
+    function queue() { if (!raf) raf = requestAnimationFrame(sync); }
+    vv.addEventListener('resize', queue);
+    vv.addEventListener('scroll', queue);
+    window.addEventListener('orientationchange', queue);
+    sync();
   }
 
   return {

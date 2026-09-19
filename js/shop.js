@@ -368,17 +368,27 @@ var Shop = (function () {
      `warning` in the body — which is what it always was — so the only caller
      went back to the success path and the argument was removed again. A
      shared function should not carry an escape hatch nobody uses. */
-  function write(send, mirror, done) {
+  /* `fail` is optional and is the whole of what fix 05 added here: without
+     it a refusal is a generic toast headed "Stock" and the caller never
+     hears, so a money dialog could not put the reason under the field that
+     caused it, could not keep what was typed, and could not take its own
+     button out of the spinner it had just put it in.
+
+     The ANSWER matters too. This refuses to start while another write is in
+     flight — right for a double-tapped button, and invisible to a caller
+     that has just started a spinner. It says `false` when it did not begin,
+     and `true` when it did. */
+  function write(send, mirror, done, fail) {
     if (!live()) {
       /* `mirror` returns whatever the local write produced — a new product,
          say — so `done` receives the same shape in both modes and the call
          site does not have to branch on which one it is in. */
       var local = mirror ? mirror() : null;
       if (done) done(local);
-      return;
+      return true;
     }
 
-    if (busy) return;
+    if (busy) return false;
     busy = true;
 
     var reply = null;
@@ -391,12 +401,14 @@ var Shop = (function () {
       })
       .catch(function (err) {
         busy = false;
+        if (typeof console !== 'undefined') console.error('[shop] write failed', err);
+        if (fail) { try { fail(err); return; } catch (e) { /* fall through to the toast */ } }
         if (typeof toast === 'function') {
           toast(typeof t === 'function' ? t('warehouse_title') : 'Stock',
                 API.friendly(err), 'err', 6000);
         }
-        if (typeof console !== 'undefined') console.error('[shop] write failed', err);
       });
+    return true;
   }
 
   return {

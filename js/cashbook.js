@@ -121,7 +121,75 @@ var Cashbook = (function () {
 
   /* ------------------------------------------------------------ the Now tab */
 
+  /* Which place's figure just moved, read once per paint of this tab. */
+  var flashed = null;
+
+  /* ------------------------------------------------------------ TODAY
+     FIX 05 — FIVE TO TEN PLAIN SENTENCES, and nothing to read sideways.
+
+     "What happened today" was answerable only by opening Money history and
+     reading a six-column table of kinds, references and signed minor units —
+     which is the right screen for an argument about a figure and the wrong
+     one for the question somebody actually walks over to ask. These are the
+     same rows, said: "450,000 SYP came into the drawer from a sale", "$60
+     went from the drawer to Sham Cash".
+
+     It is deliberately the LATEST TEN, said so on its face, with the whole
+     book one press away. A list that claims to be the day and is not is the
+     mistake this codebase has made most often. */
+  var TODAY_MAX = 10;
+
+  function startOfToday() {
+    var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
+  }
+
+  function todayRows() {
+    var page = DB.cashBook;
+    if (!page || !page.rows) return null;
+    var from = startOfToday();
+    return page.rows.filter(function (m) {
+      var at = Date.parse(m.at);
+      return at === at && at >= from;
+    });
+  }
+
+  /* One row, as a sentence. The money keeps its own currency and its own
+     isolate; the rest is words. */
+  function todayLine(m) {
+    var amt = '<bdi dir="ltr">' + esc(text(Math.abs(m.amount), m.currency)) + '</bdi>';
+    var place = esc(placeName(m.place));
+    var what = t('cb_k_' + m.kind);
+    var other = m.other_place ? esc(placeName(m.other_place)) : '';
+    var key = m.amount >= 0 ? 'cb_t_in' : 'cb_t_out';
+    var line = t(key).replace('{a}', amt).replace('{p}', place).replace('{w}', esc(what));
+    if (other) line += ' · ' + other;
+    return '<li class="cb-t-line"><span class="cb-t-dot' + (m.amount >= 0 ? ' up' : ' down') +
+      '" aria-hidden="true"></span><span>' + line + '</span>' +
+      '<small class="muted">' + esc(fmtTimeOnly(m.at)) + '</small></li>';
+  }
+
+  function todayCard() {
+    var rows = todayRows();
+    if (rows === null) return '';
+    var shown = rows.slice(0, TODAY_MAX);
+    var h = '<div class="card cb-today mb"><div class="card-head"><h3>' + t('cb_today') + '</h3>' +
+      '<div class="card-actions"><button class="btn btn-sm btn-ghost" data-mn="tab" data-t="book">' +
+        t('cb_today_more') + '</button></div></div><div class="card-body">';
+    if (!shown.length) {
+      h += '<div class="muted">' + t('cb_today_none') + '</div>';
+    } else {
+      h += '<ul class="cb-t-list">' + shown.map(todayLine).join('') + '</ul>';
+      if (rows.length > shown.length) {
+        h += '<div class="muted small cb-t-cap">' +
+          t('cb_today_cap').replace('{n}', '<bdi dir="ltr">' + nf(shown.length) + '</bdi>')
+            .replace('{t}', '<bdi dir="ltr">' + nf(rows.length) + '</bdi>') + '</div>';
+      }
+    }
+    return h + '</div></div>';
+  }
+
   function nowTab() {
+    flashed = takeFlash();
     var c = snap();
     if (!c) {
       return '<div class="card"><div class="cart-empty"><b>' + t('cb_unavailable') + '</b>' +
@@ -161,29 +229,51 @@ var Cashbook = (function () {
 
        Every one is gated exactly as its tab is. A button that navigates to a
        screen the server would refuse is worse than no button. */
+    /* FIX 05 — THE JOBS ARE TILES, THE SAME TILES AS THE JOB HOME.
+       They were two rows of small buttons, one row above the other, one
+       styled `btn-primary` and the rest not — seven things of three
+       different weights over the figures they act on. The shop's people meet
+       the job home first, every morning; this screen answers the same
+       question and should be the same shape. One grid, one size, one lime
+       primary, each with the icon its job carries there. */
+    var tiles = [];
     if (can) {
-      h += '<div class="cb-actions mb">' +
-        '<button class="btn btn-primary" data-cb="move">' + t('cb_move') + '</button>' +
-        '<button class="btn" data-cb="exchange">' + t('cb_exchange') + '</button>' +
-        '<button class="btn" data-cb="owner">' + t('cb_owner_btn') + '</button>' +
-        (c.started ? '<button class="btn btn-ghost" data-cb="start">' + t('cb_start_more') + '</button>' : '') +
-        '</div>';
+      tiles.push({ act: 'move', key: 'cb_move', primary: true,
+        icon: 'M4 8h12M12 4l4 4-4 4M20 16H8M12 12l-4 4 4 4' });
+      tiles.push({ act: 'exchange', key: 'cb_exchange',
+        icon: 'M7 8h11l-3-3M17 16H6l3 3' });
+      tiles.push({ act: 'owner', key: 'cb_owner_btn',
+        icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21v-1a7 7 0 0 1 14 0v1' });
     }
-
-    var jump = '';
     if (allow('money.write')) {
-      jump += '<button class="btn" data-cb="go-expense">' + t('cb_go_expense') + '</button>';
+      tiles.push({ act: 'go-expense', key: 'cb_go_expense', icon: 'M12 5v14M5 12h14' });
     }
     if (allow('money.read')) {
-      jump += '<button class="btn" data-cb="go-suppliers">' + t('cb_go_suppliers') + '</button>';
+      tiles.push({ act: 'go-suppliers', key: 'cb_go_suppliers',
+        icon: 'M3 7h18v4H3zM5 11v9h14v-9M9 15h6' });
     }
     if (allow('staff.read')) {
-      jump += '<button class="btn" data-cb="go-salaries">' + t('cb_go_salaries') + '</button>';
+      tiles.push({ act: 'go-salaries', key: 'cb_go_salaries',
+        icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' });
     }
     if (allow('money.count') || allow('money.move')) {
-      jump += '<button class="btn" data-cb="go-close">' + t('dc_tab') + '</button>';
+      tiles.push({ act: 'go-close', key: 'dc_tab', icon: 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3' });
     }
-    if (jump) h += '<div class="cb-actions cb-jobs mb">' + jump + '</div>';
+    if (c.started && can) {
+      tiles.push({ act: 'start', key: 'cb_start_more', icon: 'M12 5v14M5 12h14' });
+    }
+    if (tiles.length) {
+      h += '<div class="hm-grid cb-jobs" data-n="' + Math.min(tiles.length, 6) + '">' +
+        tiles.map(function (j) {
+          return '<button class="hm-job' + (j.primary ? ' is-primary' : '') +
+            '" type="button" data-cb="' + j.act + '">' +
+            '<span class="hm-ico"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
+              '<path d="' + j.icon + '"/></svg></span>' +
+            '<span class="hm-t">' + t(j.key) + '</span></button>';
+        }).join('') + '</div>';
+    }
+
+    h += todayCard();
 
     var groups = [
       { key: 'cb_g_cash', kinds: ['drawer', 'owner', 'extra'] },
@@ -223,7 +313,13 @@ var Cashbook = (function () {
 
     /* The chips sit UNDER the name, never beside it: beside it they took the
        width and a name like "Safe" was drawn one letter per line. */
+    /* FIX 05 — THE CARD THAT CHANGED SAYS SO. A transfer landed, the screen
+       redrew, and the only difference anywhere was one number among a dozen
+       — so the toast was the whole of the feedback and the place it happened
+       to had to be found by eye. `lit` is spent once, by the redraw that
+       follows the save. */
     var h = '<div class="cb-place' + (neg ? ' neg' : '') + (p.active === false ? ' off' : '') +
+      (p.id === flashed ? ' lit' : '') +
       '" data-place="' + esc(p.id) + '">' +
       '<div class="cb-ph"><span class="cb-ic">' + icon(p.kind) + '</span>' +
         '<div class="cb-nm"><b>' + esc(placeName(p.id)) + '</b><small>' + t('cb_kind_' + p.kind) + '</small>' +
@@ -483,12 +579,227 @@ var Cashbook = (function () {
     }), sel, opts && opts.change);
   }
 
-  /* The amount, first and big. */
-  function bigAmount(id, label, change) {
+  /* The amount, first and big.
+
+     FIX 05 — TWO THINGS LIVE ON IT NOW.
+
+     THE SYMBOL IS IN THE FIELD. `120000` in a box with the word "Amount"
+     over it and a currency toggle beside it is three places to look before
+     anybody knows what they have typed. `data-cur` names the toggle that
+     decides it, so the symbol follows the toggle without a second listener.
+
+     AND IT GROUPS AS YOU TYPE — carefully. 120000 becomes 120,000 the
+     moment the sixth digit lands, which is the difference between a hundred
+     and twenty thousand lira and a million and a bit at a glance. What it
+     will NOT do is touch a separator somebody typed themselves: in this shop
+     "12,50" means twelve and a half (`Desk.toMinor` settles it, and there is
+     a whole night shift about why), so a formatter that regrouped it as
+     1,250 would change the meaning of a figure while it was being written.
+     Digits alone are grouped; the moment there is a separator in the box it
+     is left exactly as it stands. */
+  function bigAmount(id, label, change, curId) {
     return '<label class="field cb-big"><span>' + (label || t('cb_amount')) + '</span>' +
-      '<input class="inp num cb-big-in" id="' + id + '" type="text" inputmode="decimal" dir="ltr" ' +
-        'autocomplete="off" placeholder="0"' + hookAttr(change) + '></label>';
+      '<span class="cb-money">' +
+        '<input class="inp num cb-big-in cb-money-in" id="' + id + '" type="text" inputmode="decimal" ' +
+          'dir="ltr" autocomplete="off" placeholder="0"' +
+          (curId ? ' data-cur="' + esc(curId) + '"' : '') + hookAttr(change) + '>' +
+        '<span class="cb-money-cur" id="' + id + 'Cur" aria-hidden="true"></span>' +
+      '</span></label>';
   }
+
+  /* --------------------------------------------------- grouping as you type
+
+     `only` is the digit set the box is already written in, so an Arabic
+     keypad's ١٢٠٠٠٠ groups with ٬ and an English one with a comma, and
+     neither is converted into the other under somebody's hands. */
+  var AR = '٠١٢٣٤٥٦٧٨٩', FA = '۰۱۲۳۴۵۶۷۸۹';
+  function isDigit(ch) {
+    return (ch >= '0' && ch <= '9') || AR.indexOf(ch) > -1 || FA.indexOf(ch) > -1;
+  }
+  function groupDigits(raw) {
+    var s = String(raw == null ? '' : raw);
+    /* A separator of any kind, anywhere: hands off. */
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charAt(i);
+      if (!isDigit(c) && c !== ' ' && c !== ',' && c !== '٬') return null;
+      if (c === ',' || c === '٬') continue;          /* our own grouping */
+      if (c === ' ') continue;
+    }
+    var digits = '';
+    for (var j = 0; j < s.length; j++) if (isDigit(s.charAt(j))) digits += s.charAt(j);
+    if (!digits) return digits === '' && s !== '' ? null : '';
+    var sep = AR.indexOf(digits.charAt(0)) > -1 || FA.indexOf(digits.charAt(0)) > -1 ? '٬' : ',';
+    var out = '';
+    for (var k = 0; k < digits.length; k++) {
+      if (k > 0 && (digits.length - k) % 3 === 0) out += sep;
+      out += digits.charAt(k);
+    }
+    return out;
+  }
+
+  /* THE CARET MUST NOT JUMP. Rewriting the value moves it to the end, so
+     the number of DIGITS before it is counted first and found again after —
+     a separator appearing in front of the caret must not push it a place. */
+  function regroup(el) {
+    var before = el.value, caret = el.selectionStart;
+    if (caret == null) caret = before.length;
+    var out = groupDigits(before);
+    if (out === null || out === before) return;
+    var seen = 0;
+    for (var i = 0; i < caret && i < before.length; i++) if (isDigit(before.charAt(i))) seen++;
+    el.value = out;
+    var pos = out.length, count = 0;
+    for (var j = 0; j < out.length; j++) {
+      if (isDigit(out.charAt(j))) {
+        count++;
+        if (count === seen) { pos = j + 1; break; }
+      }
+    }
+    if (seen === 0) pos = 0;
+    try { el.setSelectionRange(pos, pos); } catch (e) { /* not a text input */ }
+  }
+
+  /* The symbol in the field follows its own currency toggle. */
+  function paintMoneyCur(root) {
+    var host = root || document;
+    [].forEach.call(host.querySelectorAll('.cb-money-in'), function (el) {
+      var lab = document.getElementById(el.id + 'Cur');
+      if (!lab) return;
+      var curId = el.getAttribute('data-cur');
+      var cur = curId ? val(curId) : base();
+      lab.textContent = curWord(cur || base());
+    });
+  }
+
+  /* One listener for every money box in every dialog in the app.
+
+     THE MOMENT SOMEBODY TYPES A SEPARATOR THEMSELVES, THIS STOPS. In this
+     shop "12,50" means twelve and a half — `Desk.toMinor` settles it, and
+     there is a whole night shift about why — so a formatter that regrouped
+     it as 1,250 would change the meaning of a figure while it was being
+     written, which is the worst thing a money box can do. The latch is per
+     box and is lifted when the box is emptied.
+
+     `e.data` is the character that was inserted, which is how the separator
+     is caught at the moment it arrives; the value is checked as well, for a
+     paste and for a browser that does not carry it. */
+  var SEP = /[.,٫٬٫٬ ]/;
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('cb-money-in')) return;
+    /* No separator left in the box: there is nothing of anybody's to
+       protect, so grouping starts again. Deleting the comma out of "12,50"
+       gives "1250", and that groups. */
+    if (!SEP.test(el.value)) el.removeAttribute('data-nofmt');
+    if (el.value === '') return;
+    if (e.data && SEP.test(e.data)) { el.setAttribute('data-nofmt', '1'); return; }
+    /* A decimal point is never ours — we only ever write thousands
+       separators — and a paste arrives with no `data` at all, so the pasted
+       text is judged by what is now in the box. */
+    if (/[.٫٫]/.test(el.value) ||
+        (e.inputType === 'insertFromPaste' && SEP.test(el.value))) {
+      el.setAttribute('data-nofmt', '1');
+      return;
+    }
+    if (el.getAttribute('data-nofmt')) return;
+    regroup(el);
+  });
+
+  /* ==================================================================
+     FIX 05 — ONE WAY TO SAVE, FOR EVERY MONEY DIALOG.
+
+     What each of them did before: call Shop.write and say nothing until it
+     came back. On a shop wifi that is two or three seconds of a button that
+     looks exactly as it did before it was pressed — so it gets pressed
+     again. `Shop.write`'s own gate means the second press does not become a
+     second transfer, and the person pressing has no way to know that.
+
+     So: the button goes busy (a spinner, disabled, aria-busy) the moment it
+     is pressed, and NOTHING ELSE IN THE DIALOG MOVES — no layout shift, the
+     spinner takes the place of the caption at the same width.
+
+       - it lands   → the sheet closes, a toast says what happened, and the
+                      place whose figure changed is flagged so the card can
+                      light it when the screen redraws.
+       - it refuses → the button comes back, the reason is written UNDER THE
+                      FIELD that caused it, and every box keeps what was
+                      typed. Money is the one screen where re-typing an
+                      amount because the wifi blinked is unacceptable.
+       - no line    → "Not saved — check the connection and try again", in
+                      the same place, with the same values still there.
+
+     The `opId` is minted when the dialog OPENS (`newOp`), so even a press
+     that really does reach the server twice is one move: `applied_ops`
+     answers the second with the first one's result. The double-tap check in
+     `fix05/p4-money` proves that against SQLite. */
+
+  /* The place whose figure just changed, for the card to light. Module
+     state, because the screen is rebuilt by refreshAll() on the way. */
+  var flash = null;
+
+  function submit(el, send, done, opts) {
+    opts = opts || {};
+    if (!el || el.getAttribute('data-busy')) return;
+    var caption = el.innerHTML;
+    el.setAttribute('data-busy', '1');
+    el.setAttribute('aria-busy', 'true');
+    el.disabled = true;
+    el.style.minWidth = el.offsetWidth + 'px';     /* no layout shift */
+    el.innerHTML = '<span class="cb-spin" aria-hidden="true"></span>';
+
+    function back() {
+      el.removeAttribute('data-busy');
+      el.removeAttribute('aria-busy');
+      el.disabled = false;
+      el.innerHTML = caption;
+      el.style.minWidth = '';
+    }
+
+    /* SET BEFORE THE WRITE, because Shop.write redraws the whole shell
+       (refreshAll) BEFORE it calls back — so a flag set in the callback is
+       set after the paint that was meant to read it, and the card never
+       lights. Cleared again if the save is refused. */
+    flash = opts.flash || null;
+
+    var started = Shop.write(send, null, function (res) {
+      if (done) { try { done(res); } catch (e) { console.warn('money done', e); } }
+    }, function (err) {
+      flash = null;
+      back();
+      var box = whyBox(opts.whyId);
+      var msg = offlineish(err) ? t('cb_no_line') : API.friendly(err);
+      if (box) { box.innerHTML = esc(msg); box.scrollIntoView({ block: 'nearest' }); }
+      else toast(opts.title || t('mn_title'), msg, 'err', 6000);
+    });
+    /* Shop.write refuses to start while another write is in flight, and
+       says so by answering false. A button left spinning over a write that
+       never began is the one thing worse than no spinner. */
+    if (started === false) { flash = null; back(); }
+  }
+
+  function offlineish(err) {
+    return !!err && (err.code === 'offline' || err.code === 'timeout' ||
+                     err.status === 0 || err.status === undefined);
+  }
+
+  /* The refusal goes at the bottom of the dialog's own body, right above the
+     button that was pressed — so it is read on the way to pressing it again.
+     Made if it is not there, so no dialog has to remember a slot. */
+  function whyBox(id) {
+    var box = document.getElementById(id || 'cbWhy');
+    if (box) return box;
+    var body = document.querySelector('#modal-root .modal-body');
+    if (!body) return null;
+    box = document.createElement('div');
+    box.className = 'cb-why mt';
+    box.id = id || 'cbWhy';
+    box.setAttribute('role', 'alert');
+    body.appendChild(box);
+    return box;
+  }
+
+  /* Which card to light, read and spent once by the Now tab. */
+  function takeFlash() { var f = flash; flash = null; return f; }
 
   /* The rare half of a dialog: the date, the note, anything nobody fills in
      on an ordinary night. Shut, and it does not re-render when opened — a
@@ -529,7 +840,7 @@ var Cashbook = (function () {
       title: t('cb_move'), size: 'narrow',
       /* The pattern (ns03): amount, currency, where from, where to, then
          everything rare behind More, then the sentence. */
-      body: bigAmount('cbAmt', t('cb_amount'), 'mv-hint') +
+      body: bigAmount('cbAmt', t('cb_amount'), 'mv-hint', 'cbCur') +
         field(t('cb_which_money'), curPick('cbCur', cur, 'mv-hint'), 'mt') +
         field(t('cb_from_where'), placePick('cbFrom', src, { emptying: true, change: 'mv-hint' }), 'mt') +
         field(t('cb_to'), placePick('cbTo', src === 'owner' ? 'drawer' : 'owner'), 'mt') +
@@ -942,6 +1253,8 @@ var Cashbook = (function () {
         b.classList.toggle('on', b === el);
       });
       if (box) { try { box.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {} }
+      /* The symbol inside the amount box follows its own toggle. (fix 05) */
+      paintMoneyCur();
     },
 
     /* The dialog's own "More". One attribute, never a render — this dialog
@@ -974,12 +1287,12 @@ var Cashbook = (function () {
       if (!amount) { toast(t('cb_move'), t('mn_amount_needed'), 'warn'); return; }
       var body = { from: from, to: to, currency: cur, amount: amount, fee: fee || 0,
                    note: val('cbNote') || null, opId: el.getAttribute('data-op') };
-      Shop.write(function () { return Shop.cashTransfer(body); }, null, function () {
+      submit(el, function () { return Shop.cashTransfer(body); }, function () {
         closeModal();
         B.data = null;
         toast(t('cb_move'), placeName(from) + ' → ' + placeName(to) + ' · ' + text(amount, cur) +
           (fee ? ' · ' + t('cb_fee_short') + ' ' + text(fee, cur) : ''), 'ok', 4500);
-      });
+      }, { flash: to, title: t('cb_move') });
     },
 
     'exchange-go': function (el) {
@@ -992,14 +1305,14 @@ var Cashbook = (function () {
         place: val('cbXPlace'), give: { currency: gc, amount: ga }, get: { currency: rc, amount: ra },
         setRate: !!(set && set.checked), note: val('cbNote') || null, opId: el.getAttribute('data-op')
       };
-      Shop.write(function () { return Shop.cashExchange(body); }, null, function (res) {
+      submit(el, function () { return Shop.cashExchange(body); }, function (res) {
         closeModal();
         B.data = null;
         var msg = text(ga, gc) + ' → ' + text(ra, rc);
         if (res && res.rate) msg += ' · 1 USD = ' + nf(res.rate);
         if (res && res.rateSet) msg += ' · ' + t('cb_x_rate_set');
         toast(t('cb_exchange'), msg, res && res.warning ? 'warn' : 'ok', 6000);
-      });
+      }, { flash: body.place, title: t('cb_exchange') });
     },
 
     'owner-go': function (el) {
@@ -1009,11 +1322,11 @@ var Cashbook = (function () {
       var dir = val('cbODir') === 'in' ? 'in' : 'draw';
       var body = { direction: dir, place: val('cbOPlace'), currency: cur, amount: amount,
                    note: val('cbNote') || null, opId: el.getAttribute('data-op') };
-      Shop.write(function () { return Shop.cashOwner(body); }, null, function () {
+      submit(el, function () { return Shop.cashOwner(body); }, function () {
         closeModal();
         B.data = null;
         toast(t(dir === 'draw' ? 'cb_o_draw' : 'cb_o_in'), placeName(body.place) + ' · ' + text(amount, cur), 'ok', 4000);
-      });
+      }, { flash: body.place, title: t('cb_owner_btn') });
     },
 
     'check-go': function (el) {
@@ -1296,6 +1609,12 @@ var Cashbook = (function () {
     currencies: currencies,
     catLabel: catLabel,
     exportSpec: exportSpec,
-    openMove: openMove
+    openMove: openMove,
+
+    /* FIX 05 — the three things every money dialog in the app now shares,
+       wherever it is built. `paintMoney` is called by openModal itself. */
+    paintMoney: paintMoneyCur,
+    groupDigits: groupDigits,
+    submit: submit
   };
 })();

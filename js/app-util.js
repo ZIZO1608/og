@@ -556,20 +556,40 @@ function bindToastGestures(host) {
 function openModal(o) {
   closeModal();
   var root = document.getElementById('modal-root');
+  /* FIX 05 — ON A PHONE IT IS A SHEET, WHATEVER THE CALLER SAID.
+     A dialog in the middle of a phone screen puts its Save under the eye and
+     out of reach of the thumb, and the keyboard covers it the moment a field
+     takes focus. Three callers remembered to pass `sheet: window.innerWidth
+     < 720` and about forty did not, so it was decided per dialog by whoever
+     wrote it. It is decided here now, once: a phone gets a sheet, a desk
+     gets a dialog, and `sheet: false` is still honoured for the rare thing
+     that must not rise (nothing does today). */
+  var sheet = o.sheet === false ? false
+            : (o.sheet === true || (window.innerWidth || 1024) <= 720);
   root.innerHTML =
-    '<div class="modal-backdrop' + (o.sheet ? ' as-sheet' : '') + '" data-act="modal-backdrop">' +
-      '<div class="modal ' + (o.size || '') + (o.sheet ? ' sheet' : '') + '">' +
+    '<div class="modal-backdrop' + (sheet ? ' as-sheet' : '') + '" data-act="modal-backdrop">' +
+      '<div class="modal ' + (o.size || '') + (sheet ? ' sheet' : '') + '">' +
+        /* The grab handle. It is what says "this can be pulled down", and it
+           is the thing the pull is bound to. */
+        (sheet ? '<div class="sheet-grab" aria-hidden="true"><span></span></div>' : '') +
         (o.title ? '<div class="modal-head"><h3>' + o.title + '</h3>' +
           '<button class="x" data-act="modal-close" aria-label="Close">&times;</button></div>' : '') +
         '<div class="modal-body">' + o.body + '</div>' +
         (o.foot ? '<div class="modal-foot">' + o.foot + '</div>' : '') +
       '</div>' +
     '</div>';
+  if (sheet) bindSheetPull(root.querySelector('.modal.sheet'));
   /* BEFORE onOpen, and after closeModal() above has already cleared it — this
      function opens by clearing first, so the flag has to be re-raised here or
      it is only ever set by the drawer. */
   syncOverlay();
   if (o.onOpen) o.onOpen(root);
+  /* Any money box in the dialog gets the currency symbol drawn inside it.
+     Here rather than in each of the eighteen dialogs, for the reason the
+     sheet decision above is here. (fix 05) */
+  if (typeof Cashbook !== 'undefined' && Cashbook.paintMoney) {
+    try { Cashbook.paintMoney(root); } catch (e) {}
+  }
   /* Held on the module, not on the DOM, because closeModal() wipes innerHTML
      and there are four ways out of a modal — the ×, the backdrop, Escape, and
      another modal opening on top. A teardown that only runs on one of them is
@@ -578,6 +598,54 @@ function openModal(o) {
 }
 
 var modalOnClose = null;
+
+/* FIX 05 — PULL IT DOWN TO CLOSE IT.
+   Bound to the grab handle and the head only, never the body: a sheet full
+   of fields has to be scrollable, and a pull that starts on a list is a
+   scroll. Below the threshold it springs back, so a half-pull is not a lost
+   dialog; past it the sheet goes the way it came. */
+function bindSheetPull(sheet) {
+  if (!sheet) return;
+  var grip = sheet.querySelector('.sheet-grab');
+  var head = sheet.querySelector('.modal-head');
+  var y0 = 0, dy = 0, live = false, on = null;
+
+  function start(e) {
+    if (e.target && e.target.closest && e.target.closest('button, input, select, textarea, a')) return;
+    on = e.currentTarget; y0 = e.clientY; dy = 0; live = false;
+    sheet.style.transition = 'none';
+  }
+  function move(e) {
+    if (!on) return;
+    dy = e.clientY - y0;
+    if (!live) {
+      if (dy < 8) return;          /* downward, and past the slop */
+      live = true;
+      try { on.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+    sheet.style.transform = 'translateY(' + Math.max(0, dy) + 'px)';
+  }
+  function end() {
+    if (!on) return;
+    var went = live && dy > Math.max(90, sheet.offsetHeight * 0.22);
+    on = null; live = false;
+    sheet.style.transition = 'transform .18s cubic-bezier(.4,0,.2,1)';
+    if (went) {
+      sheet.style.transform = 'translateY(100%)';
+      setTimeout(function () { closeModal(); }, 170);
+      return;
+    }
+    sheet.style.transform = '';
+  }
+  [grip, head].forEach(function (el) {
+    if (!el) return;
+    el.style.touchAction = 'none';
+    el.addEventListener('pointerdown', start);
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  });
+}
 
 function closeModal() {
   var fn = modalOnClose;

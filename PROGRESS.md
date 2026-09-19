@@ -97,7 +97,8 @@ shop laptop, the nine questions and the whole story are in `night_shift_03_log.m
 | — | 0 — why the buttons did nothing; one build per page | 334152c | 11 (sw-update) + 6 (p0-namespaces) | the tiles carried `data-hm`, which nothing dispatches on |
 | — | 1 — the job tiles pressed, the grid, "Staff" | efba6ac | 173 (p1-tiles) + 63 (ns03/p1-home, repaired) | ns03/p1-home measured the tiles and never pressed one |
 | — | 2 — one cleanup for everything that floats | 0dfd08e | 48 (p2-layers) | the shelf card is on <body>, and render() only rewrites #view |
-| — | 3 — Safeers: every control pressed, and finished | — | 75 (p3-safeers) + 56 (ns03/p5, repaired) | every button already worked; ns03/p5 was spending its own fixture |
+| — | 3 — Safeers: every control pressed, and finished | 2c0040a | 75 (p3-safeers) + 56 (ns03/p5, repaired) | every button already worked; ns03/p5 was spending its own fixture |
+| — | 4 — Money: the screen, the dialogs, and what landed | — | 49 (p4-money) | every phone dialog is a sheet now, and the keyboard is answered |
 
 ```bash
 node _nightshift/fix05/p0-namespaces.mjs   # no button wired to a dead namespace (no browser)
@@ -105,6 +106,7 @@ node _nightshift/fix05/sw-update.mjs       # needs the SECOND Chrome on 9225
 node _nightshift/fix05/p1-tiles.mjs        # every tile, every role, click AND tap, EN/AR, 1100/390
 node _nightshift/fix05/p2-layers.mjs       # every floating layer, route change, Esc, outside, Back
 node _nightshift/fix05/p3-safeers.mjs      # every Safeers control, click AND tap, read back from SQLite
+node _nightshift/fix05/p4-money.mjs        # the money screen, the dialogs, a double tap and a pulled plug
 ```
 
 **Starting the two Chromes on Windows: QUOTE THE PROFILE PATH.** The repo lives under

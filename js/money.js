@@ -536,7 +536,7 @@ var Money = (function () {
 
       openModal({
         title: t('mn_add_expense'), size: 'narrow',
-        body: Cashbook.bigAmount('mnAmt', t('cb_amount')) +
+        body: Cashbook.bigAmount('mnAmt', t('cb_amount'), null, 'mnCur') +
               Cashbook.field(t('cb_which_money'), Cashbook.curPick('mnCur', cur), 'mt') +
               Cashbook.field(t('cb_what_for'), Cashbook.pickRow('mnCat',
                 cats.map(function (c) { return { v: c, label: Cashbook.catLabel(c) }; }), cats[0]), 'mt') +

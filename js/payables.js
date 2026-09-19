@@ -149,7 +149,7 @@ var Payables = (function () {
     openModal({
       title: t('py_pay') + ' · ' + esc(sup.name), size: 'narrow',
       body: stat(t('py_owed'), Cashbook.money(sup.outstanding, sup.currency)) +
-        Cashbook.bigAmount('pyPAmt', t('cb_amount'), 'py:pay-hint') +
+        Cashbook.bigAmount('pyPAmt', t('cb_amount'), 'py:pay-hint', 'pyPCur') +
         Cashbook.field(t('cb_which_money'), Cashbook.curPick('pyPCur', sup.currency, 'py:pay-hint'), 'mt') +
         Cashbook.field(t('cb_from_where'), Cashbook.placePick('pyPPlace', 'owner'), 'mt') +
         '<div class="partner-note mt" id="pyPHint" data-sup="' + esc(sup.id) + '"></div>' +
