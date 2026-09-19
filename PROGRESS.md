@@ -101,7 +101,7 @@ shop laptop, the nine questions and the whole story are in `night_shift_03_log.m
 | — | 4 — Money: the screen, the dialogs, and what landed | a58db4e | 49 (p4-money) | every phone dialog is a sheet now, and the keyboard is answered |
 | — | 5 — phone quality at six widths | fb06376 | 122 (p5-phone) + 1027 (ns03/sweep, extended) | the sweep now walks 360/375/390/414/430 and 740 landscape |
 | — | 6 — the devil pass, and a full shop | 2933536 | 52 (p6-devil) + 49 (p6-load) | a minus used to mean its opposite; 0.005 dollars used to mean five |
-| — | 7 — the style rules, enforced | — | 617 (p7-style) | Arabic was tracked on every screen and set in two faces |
+| — | 7 — the style rules, enforced | 7000244 | 617 (p7-style) | Arabic was tracked on every screen and set in two faces |
 
 ```bash
 node _nightshift/fix05/p0-namespaces.mjs   # no button wired to a dead namespace (no browser)
@@ -113,6 +113,13 @@ node _nightshift/fix05/p4-money.mjs        # the money screen, the dialogs, a do
 node _nightshift/fix05/p5-phone.mjs        # targets, fields, the sheet, rotation, at five phone widths
 node _nightshift/fix05/p6-devil.mjs        # rubbish in, three presses, deep links, two tabs, a dead session
 node _nightshift/fix05/p7-style.mjs        # the style rules, every screen, every role, EN/AR
+
+# everything, one at a time, which is the rule made into a script:
+bash _nightshift/fix05/run-all.sh
+
+# the before/after pictures (docs/img/fix-05/before|after):
+git checkout 15ef59c -- css js index.html sw.js && node _nightshift/fix05/shots.mjs before
+git checkout HEAD  -- css js index.html sw.js && node _nightshift/fix05/shots.mjs after
 
 # the load test is DESTRUCTIVE — it is run between a backup and a restore:
 #   1. stop the sandbox server
@@ -134,3 +141,11 @@ Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentL
   '--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2'
 # and the same on 9225 with _nightshift\chrome-fresh, for fix05/sw-update only
 ```
+
+**A run that goes red evenly across unrelated suites is usually the room.** The third fix-05 full
+pass was 23 red across eleven suites: 21 were one `<img>` — a product photograph in the public
+Supabase bucket — failing with `ERR_INTERNET_DISCONNECTED` because this laptop's wifi dropped
+mid-run, and the other two were the same outage slowing a save past the wait in front of it. Both
+re-ran green on their own. `quietErrors` in `cdp.mjs` now drops a NETWORK failure reaching that
+bucket and nothing else: a 404 or a 403 from it still goes red, and so does a dead line to the
+shop's own server on localhost.

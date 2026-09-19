@@ -2470,6 +2470,191 @@ Verified: `fix04/bring-back` 33 · `fix04/till` 88 (both languages at 390 as the
 owner, a cart of one and a cart of twelve, every control hit-tested, a real sale rung up on the
 phone and read back out of SQLite), plus `npm test`, `ns03/sweep` and `qf-board`.
 
+## Fix 05 (19 Sep 2026) — the buttons that did nothing, and one build per page
+
+Branch `fix-05`, off `fix-04`; eight commits, the log is `fix_05_log.md`. **No migration, no
+schema change, no `server/supabase/` file, no `mirror-lag.js` entry, no data change, and no server
+permission weakened.** Nothing to do by hand.
+
+It started as "the job-home buttons do nothing, the Safeers buttons do nothing, and Money looks no
+different" against 1131 green checks. There were **two** causes and only one of them was the
+cache, which is why it read as one mysterious fault.
+
+### A BUTTON WIRED TO A NAMESPACE NOBODY LISTENS FOR IS A DEAD BUTTON
+
+`js/home.js` drew every job tile as `<button class="hm-job" data-hm="go" data-id="…">` while its
+handler was registered as `ACTIONS['hm-go']` — and **`ACTIONS` is the table behind `data-act`**.
+Nothing in this app has ever listened for `data-hm`. So every tile, on every role's home, did
+nothing when pressed, for the whole of night shift 03, and 53 checks went green over it because
+`ns03/p1-home` MEASURED the tiles — they exist, there are four to six, they are 88px tall, the
+first hit-tests to itself — and pressed none of them.
+
+- **A measured button and a working button are different claims.** Every suite written since
+  presses the middle of what is PAINTED, through `Input.dispatchMouseEvent` and
+  `Input.dispatchTouchEvent`, and refuses a point that belongs to something else. `cdp.mjs` gained
+  `box()` / `press()` / `tap()` for exactly that, and a `key()` that performs the DEFAULT ACTION —
+  `keyDown` alone delivers the JavaScript event and no click, so Enter on a focused button looked
+  broken when it was not.
+- **`_nightshift/fix05/p0-namespaces.mjs` is the general rule**, read off the source in about a
+  second with no browser: no button in the app may carry a `data-*` namespace nothing dispatches
+  on, and no registered `data-act` handler may be unreachable from markup. It is verified to go
+  RED on the tile exactly as it was written. **Run it after adding any control.**
+
+### ONE PAGE, ONE BUILD — `js/update.js`
+
+`sw.js` called `self.skipWaiting()` on install, so a new worker took over a page that had already
+parsed the OLD files and served it the NEW ones for anything fetched later (the lazily injected
+Chart.js, three.js, an icon, a font). New markup, old handlers, no reload to settle it — the same
+symptom with none of the cause, and it is what the Safeers half of the report was: every control
+on that screen was pressed one at a time and all of them work.
+
+- The new worker **waits**. `Update.watch(reg)` (wired from `index.html`'s registration) notices
+  it, asks for one on focus and every five minutes, and when there is one it waits for
+  `Update.busy()` to be false — an overlay, a modal, a drawer, the refresh cover, **an open
+  basket**; deliberately NOT the order desk's draft, which is in localStorage with its own `opId`
+  and comes back exactly as it was. Then it toasts and reloads the tab ONCE.
+- `skip-waiting` and `version` are the worker's two messages. **Adding a JS file still means
+  adding it to `SHELL` and bumping `CACHE`** — that has not changed.
+- **Which build is this**: `GET /api/health` carries `build: { branch, started }` to a SIGNED-IN
+  caller only (a stranger on the wifi gets nothing), and Settings draws `og-system-v280 · fix-05`
+  at the bottom for the **developer role only**, with the cache name read back out of the worker
+  over a MessageChannel rather than guessed.
+
+### EVERYTHING THAT FLOATS SHUTS IN ONE PLACE — `js/layers.js`
+
+The reported "shelf popup that stays on screen" is the map's bay card (`.sm-peek`), which is
+appended to `<body>` — it has to be, the map repaints under it — and `render()` rewrites `#view`
+and never touches `<body>`. Fourteen things float outside `#view`, and fixing them one at a time
+is how the fifteenth is forgotten.
+
+- `Layers.route()` is called by `go()` **before it writes the hash**; `Layers.closeTop()` answers
+  Escape and the back gesture; `Layers.anyOpen()` is what a suite can ask. **Adding a floating
+  layer means `Layers.register(name, isOpen, close, rank)`** — low rank is topmost.
+- **Each closer takes the MODULE STATE with the node**, because these screens repaint themselves
+  and a class taken off a node comes straight back (the quick-fix lesson): `peekPin` on the map,
+  `S.menu` on the Safeers and Staff cards, `pick.open` on the order desk.
+- **The back gesture.** While a layer is open a marker entry sits on the history stack with the
+  SAME url — no hashchange, so no route change — and Back pops it: popstate sees the marker gone
+  and a layer open, and closes the layer instead of navigating. Two traps, both found by a suite
+  that went flaky rather than red, both worth not reintroducing: `route()` must drop the marker
+  BEFORE it closes anything (closing runs `syncOverlay` → `history.back()`, which undid the
+  navigation that asked for the cleanup), and a dialog REPLACING a dialog must not unmark and
+  remark in one beat (`history.back()` is async, so the pop removed the new marker). `unmark()`
+  also refuses outright unless `history.state.ogLayer` is really there.
+
+### EVERY PHONE DIALOG IS A BOTTOM SHEET, AND THE KEYBOARD IS ANSWERED
+
+`openModal` decides it now, not each of forty callers — three passed `sheet:` and the rest put
+their Save under the eye, out of thumb reach and behind the keyboard.
+
+- **A `position: fixed` element is fixed to the LAYOUT viewport, which the phone keyboard does not
+  change.** There is no CSS for this: `100dvh` answers the browser's toolbar, not the keyboard.
+  `js/layers.js` reads `visualViewport` into `--vvh` (what is visible) and `--kb` (what the
+  keyboard took), and the stylesheet stands the sheet on top of the keyboard with its confirm
+  button on the glass. `body.kb-open` is the flag, and it needs more than 120px of movement —
+  a toolbar sliding away as the page scrolls is not a keyboard.
+- A grab handle, a pull-down to close (bound to the handle and the head only — a pull that starts
+  on a list is a scroll), its own scroll with `overscroll-behavior: contain`, and the page behind
+  held still (`body[data-overlay] .view { overflow: hidden }` — `.view` is the scroller here, not
+  `<body>`).
+
+### MONEY
+
+- The jobs are the **same tiles as the job home** (`.hm-job`), one grid, one lime primary. A
+  "Today" card carries five to ten plain sentences instead of sending somebody to read six columns
+  of signed minor units. Places are bigger cards; the records stay behind one entry.
+- **`Cashbook.bigAmount` is the one money box in the app**, and it now carries the currency symbol
+  INSIDE the field and groups as you type — 120000 becomes 120,000 on the sixth digit, with the
+  caret held even for a digit typed into the middle, and Arabic-Indic digits grouped with `٬` and
+  never converted. **It stops dead the moment somebody types a separator themselves**: "12,50"
+  means twelve and a half here, and a formatter that regrouped it as 1,250 would change the
+  meaning of a figure while it was being written. Deleting the separator starts it again.
+- **`Cashbook.submit` is the one way a money dialog saves.** Spinner, disabled, in the button's own
+  width so nothing shifts; a second press never becomes a second click; the `opId` minted when the
+  dialog opened means even a press that reaches the server twice is one move. Success closes the
+  sheet, toasts, and **lights the card whose figure changed**. A refusal puts the reason under the
+  field and keeps every typed value; no line at all says "Not saved — check the connection and try
+  again" and keeps them too.
+- **`Shop.write(send, mirror, done, fail)`** gained the fourth argument and now ANSWERS whether it
+  started. Without either, a refusal was a generic toast headed "Stock", the caller never heard,
+  and a button could be left spinning over a write that never began.
+
+### PHONE QUALITY, MEASURED AT SIX WIDTHS
+
+`ns03/sweep` walks 360 · 375 · 390 · 414 · 430 portrait and 740 × 360 landscape now, in both
+languages, for every role — the two full passes keep every check and the five extra widths ask
+only what differs with width. **Under 16px an iPhone zooms the whole page in when a field takes
+focus**, and every field in the shop was 13.5px; they are 16px and 44px tall on a phone, with
+`inputmode` and `enterkeyhint` derived from what the field already is (`hintInputs`, called by
+render and by openModal). The top bar's bell, sync, presence pill and avatar were 34–38px with the
+account menu immediately beside them. `100dvh` replaces `100vh` **on phone widths only** — on a
+desk the two are the same number and it is not free, as fix 04's golden proved by re-aliasing.
+
+### THE TWO PARSERS
+
+`Desk.toMinor` / `Desk.toCount` are still the only way a typed figure becomes money or a count,
+and the devil pass found two things wrong with them:
+
+- **A minus was stripped with the punctuation**, so "-500" read as five hundred. Nothing in this
+  shop is ever negative — a correction is its own row — so a leading minus is now the same answer
+  as an empty box. `ns03/p2-digits` ASSERTED the old behaviour; a suite that asserts a bug
+  protects it.
+- **A thousands group cannot follow a bare zero.** "1.250" is twelve hundred and fifty, which is
+  how this shop writes it; "0.005" was five dollars and is now nothing.
+
+### THINGS THAT WILL BITE YOU
+
+- **Grep for a `data-*` namespace before inventing one, and check it has a dispatcher.** This is
+  the `.pos` class collision and the `firstName()` global, in a third shape. `fix05/p0-namespaces`
+  is the check.
+- **A suite that measures a control has not tested it.** Press the middle of what is painted, with
+  a real pointer event, and read what the app did out of the DATABASE.
+- **A suite must not spend its own fixture.** `ns03/p5` assigned a waiting parcel and sent it out
+  on every run with nothing sending one back, so it passed once and then reported a broken screen
+  for ever. `_nightshift/fix05/fixtures.mjs` makes what it needs through the shop's own routes —
+  and is honest about the rule it meets on the way: a parcel CANNOT be assigned to a switched-off
+  account (`bad_driver`), so the orphan is made the way the shop makes one.
+- **A byte-for-byte screenshot is a check about the browser.** Fix 04's golden went red with the
+  stylesheet provably unchanged, because this session's Chrome was started with different
+  command-line flags. `comparePng` in `fix04/golden-desk.mjs` asks whether anything MOVED instead.
+- **A hidden element's rectangle is all zeros**, and reading a floor off one puts the floor at 0.
+  The sweep read `#tabbar`'s top at widths where it is `display: none` and reported every screen
+  in landscape as 264px under a bar that was not there.
+- **Starting the harness Chrome on Windows: QUOTE THE PROFILE PATH.** The repo lives under a path
+  with a space in it, and an unquoted `--user-data-dir` reaches Chrome as three arguments — it
+  reads the last two as URLs and exits with `Multiple targets are not supported in headless mode`,
+  which names nothing that is true. The exact lines are at the end of `PROGRESS.md`.
+- **`Layers.route()` drops the history marker BEFORE it closes anything**, and `openModal`
+  replacing a dialog must not unmark and remark in the same beat. Both produced a screen that
+  navigated backwards by itself.
+- **THE CONSOLE-ARTEFACT FILTER IS ONE LIST, `quietErrors(T, extra)` IN `cdp.mjs`.** It was kept
+  in 39 copies and they had all drifted: one full pass went red on four suites, the next on a
+  different four, and neither had anything to do with what those suites test. The same second-copy
+  problem as `mirror-lag.js` and the panel’s job list, in a harness. What it drops is the shared
+  cookie jar’s 401s on the polling routes, and a NETWORK failure fetching a product photograph
+  from the public Supabase bucket — because no picture is a state every screen draws correctly,
+  so a dropped wifi is a check about the router. **A 404 or a 403 from that same bucket stays
+  red**, because that is a row pointing at a picture that is not there, and so does a dead line to
+  the shop’s own server. Both directions were measured before the rule was kept.
+- **A dropped wifi mid-run reads as eleven broken suites.** The third full pass was 23 red across
+  eleven suites; 21 were that one `<img>`, and the other two were the same outage slowing a save
+  past the wait in front of it. Both re-ran green on their own with the line back. Before hunting
+  a fault that is spread evenly across unrelated suites, check the room.
+
+### How it was verified
+
+`cd server && npm test` (6), and every suite one at a time (`bash _nightshift/fix05/run-all.sh`,
+which is the one-at-a-time rule made into a script). The fix-05 suites: `p0-namespaces` 6 ·
+`sw-update` 11 · `p1-tiles` 173 · `p2-layers` 48 · `p3-safeers` 75 · `p4-money` 49 · `p5-phone` 122
+· `p6-devil` 52 · `p7-style` 617, plus `p6-load` 49 (destructive — run between a backup and a
+restore; 500 products, 200 parcels and 300 money events, measured at 1,532 / 626 / 1,922 after
+three runs, then the database put back). `ns03/sweep` is 1027 over six viewports. Every money
+move, every errand and every product was read back out of SQLite, never off the screen that wrote
+it. **WebKit was not driven** — there is no Safari on Windows and the only way to a WebKit build
+here is an npm install, which this repo does not have and will not grow for a test; the iOS risks
+that ARE addressed are listed in `fix_05_log.md`, and what remains untested is named there as
+untested.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
@@ -2564,6 +2749,19 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
 
 ## Known open work
 
+- **Left by fix 05, and all five are decisions rather than faults** (`fix_05_log.md` §6).
+  **Cairo for the app's own Arabic** — vendored at weight 700 only, so adopting it sets every
+  Arabic screen in one bold weight; doing it properly needs 400/600/700 woff2, a converter and a
+  build step this repo does not have, and it changes how the whole thing looks, so it is the
+  owner's. **Two tabs saving one product** both answer 200 and the last one wins, silently;
+  telling the first it was overwritten needs a row version, which is a schema change. **Whether
+  `.fade-in` should say `backwards` app-wide** — fix 04's question 3, still open: a filling
+  animation that ends in `transform: none` leaves an identity transform, which makes its element a
+  containing block for anything `position: fixed` inside it, and it has now bitten the till and
+  the order desk. **`out` → `waiting` for a parcel whose carrier was switched off** is still fix
+  04's question 1. And **"one lime primary per card or row"** is the rule written into the style
+  rules, which is not quite the "one per screen" the brief asked for — the board draws one per
+  ROW on purpose (night shift 02), and enforcing one per screen would undo that.
 - The supplier and payroll editors exist now (the Money screen, 055), and adding a colour or a size to an
   existing product has its dialog (night shift 01). Still no screen for cancelling a purchase order
   (`Shop.cancelPO`), kept on purpose, unwired, so the gap stays visible.
