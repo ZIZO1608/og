@@ -104,6 +104,26 @@ var Safeers = (function () {
 
   /* --------------------------------------------------------------- views */
 
+  /* The shape of what is coming: three person cards and the task card, drawn
+     as grey blocks. Held to three because that is the commonest team size
+     here and a skeleton that promises more than arrives jumps as badly as
+     one that promises less. */
+  function skeleton() {
+    var card = '<div class="card sf-person is-sk">' +
+      '<div class="sf-p-head"><span class="sk sk-b sk-face"></span>' +
+        '<span class="sf-p-who"><span class="sk sk-b sk-l"></span><span class="sk sk-b sk-s"></span></span>' +
+        '<span class="sk sk-b sk-pill"></span></div>' +
+      '<div class="sf-p-stats"><div><span class="sk sk-b sk-s"></span><span class="sk sk-b sk-n"></span></div>' +
+        '<div><span class="sk sk-b sk-s"></span><span class="sk sk-b sk-n"></span></div>' +
+        '<div><span class="sk sk-b sk-s"></span><span class="sk sk-b sk-n"></span></div></div>' +
+      '<div class="sf-p-act"><span class="sk sk-b sk-btn"></span></div></div>';
+    return '<div class="sr-only" role="status">' + t('sf_loading') + '</div>' +
+      '<div class="sf-team" aria-hidden="true">' + card + card + card + '</div>' +
+      '<div class="card mt is-sk" aria-hidden="true"><div class="card-body">' +
+        '<span class="sk sk-b sk-row"></span><span class="sk sk-b sk-row"></span>' +
+        '<span class="sk sk-b sk-row"></span></div></div>';
+  }
+
   function statusBadge(st) {
     var cls = st === 'done' || st === 'delivered' ? 'healthy' : st === 'failed' ? 'critical' : st === 'out' ? 'accent' : 'neutral';
     return '<span class="badge ' + cls + '">' + t('sf_st_' + st) + '</span>';
@@ -128,14 +148,36 @@ var Safeers = (function () {
         '<small>' + esc(API.friendly(S.error)) + '</small>' +
         '<button class="btn btn-sm" data-sf="reload">' + t('retry') + '</button></div>';
     }
-    if (!S.team) { if (!S.loading && !S.error) load(); return h + '<div class="card"><div class="card-body muted">…</div></div>'; }
+    /* FIX 05 — A SHAPE, NOT AN ELLIPSIS. The page used to draw one card
+       holding "…" while the team loaded, so the whole screen jumped when the
+       answer came: a card of three dots became four people, a filter bar and
+       a table. Skeletons hold the space the real thing will take, so nothing
+       moves when it arrives. `aria-hidden` because a screen reader has
+       nothing to read here, and `role="status"` above it says what is going
+       on in words. */
+    if (!S.team) {
+      if (!S.loading && !S.error) load();
+      return h + skeleton();
+    }
 
     /* ---- the team ---- */
     var money = S.rate !== undefined;
-    h += '<div class="sf-team">';
-    if (!S.team.length) h += '<div class="card"><div class="cart-empty"><b>' + t('sf_no_team') + '</b>' + t('sf_no_team_sub') + '</div></div>';
-    S.team.forEach(function (p) { h += personCard(p, money); });
-    h += '</div>';
+    var canHire = allow('safeer.write') && (allow('staff.write') || allow('access.write'));
+    if (!S.team.length) {
+      /* FIX 05 — AN EMPTY STATE WITH ONE ACTION ON IT. It used to say "Add
+         one below", and below was a quiet ghost button somebody had to go
+         and find. The one thing to do is on the card that says there is
+         nothing; an account that may not hire anybody is told to ask. */
+      h += '<div class="card sf-empty"><div class="cart-empty"><b>' + t('sf_no_team') + '</b>' +
+        (canHire ? t('sf_no_team_sub') : t('sf_no_team_ask')) +
+        (canHire ? '<button class="btn btn-primary sf-empty-act" data-sf="add-open">' +
+          t('sf_add_one') + '</button>' : '') +
+        '</div></div>';
+    } else {
+      h += '<div class="sf-team">';
+      S.team.forEach(function (p) { h += personCard(p, money); });
+      h += '</div>';
+    }
 
     if (S.shown) {
       h += '<div class="ac-once" role="status"><b>' + esc(t('ac_pw_once').replace('{name}', S.shown.name)) + '</b>' +
@@ -148,7 +190,7 @@ var Safeers = (function () {
     /* A QUIET BUTTON, NOT AN ALWAYS-OPEN FORM. Three empty boxes and a Save
        sat between the people and their tasks, on a page nobody opens to hire
        anybody — adding a safeer happens once. */
-    if (allow('safeer.write') && (allow('staff.write') || allow('access.write'))) {
+    if (canHire && S.team.length) {
       h += '<button class="btn btn-ghost sf-add-btn" data-sf="add-open">' + t('sf_add_one') + '</button>';
     }
 
@@ -224,7 +266,10 @@ var Safeers = (function () {
         (typeof Desk !== 'undefined' && Desk.face ? Desk.face(p.id, p.name) : '') +
         '<div class="sf-p-who"><b>' + esc(p.name) + '</b>' +
           '<small>' + (p.phone ? '<bdi dir="ltr">' + esc(p.phone) + '</bdi> · ' : '') + '<bdi dir="ltr">' + esc(p.username) + '</bdi></small></div>' +
-        '<span class="badge ' + (!p.active ? 'neutral' : p.busy ? 'accent' : 'healthy') + '">' +
+        /* Free · On a task · Switched off. One pill, three states, and the
+           word is the state — never a colour on its own, which is no answer
+           at all to somebody who cannot tell two greens apart. */
+        '<span class="badge sf-pill ' + (!p.active ? 'neutral' : p.busy ? 'accent' : 'healthy') + '">' +
           t(!p.active ? 'sf_off' : p.busy ? 'sf_busy' : 'sf_free') + '</span>' +
       '</div>' +
       '<div class="sf-p-stats">' +
@@ -721,6 +766,11 @@ var Safeers = (function () {
     /* For the suite: repaint the way a load landing does, to prove the
        filter panel and the open menu are module state and not a class. */
     repaintForTest: repaint,
+    /* And put the screen back to the state a person arriving on it is in —
+       the team is module state and survives a route change, so once it has
+       loaded the skeleton is never drawn again. This is how a check can see
+       the loading frame without pretending the network is slow. */
+    forgetForTest: function () { S.team = null; S.at = 0; },
     /* FIX 05 — the card menu, for the one route-change cleanup. It is module
        state on purpose (the page repaints on every live push), which is
        exactly why leaving the screen has to clear it: come back, and the

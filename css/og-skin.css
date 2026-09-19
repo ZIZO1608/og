@@ -2256,3 +2256,132 @@ body:not([data-portal="yalla"]) .set-build {
   font-variant-numeric: tabular-nums;
   opacity: .8;
 }
+
+/* ==========================================================================
+   FIX 05 — SAFEERS, FINISHED
+   --------------------------------------------------------------------------
+   Every control on this screen already worked (measured, one real pointer
+   press at a time). What it did not look like was a finished screen: cards
+   of different heights on a ragged auto-fill grid, three numbers with no
+   labels to speak of, buttons a thumb misses, and "…" while it loaded.
+
+   ONE SPACING SCALE — 8 / 12 / 16 / 24 — and nothing between them.
+   ========================================================================== */
+
+/* Three across, two, then one. `auto-fill, minmax(300px, 1fr)` gave four
+   narrow cards on a wide screen and two-and-a-gap on a laptop; the count is
+   said here instead, so the same screen is the same shape every time. */
+body:not([data-portal="yalla"]) .sf-team {
+  display: grid; gap: 16px; align-items: stretch;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+@media (max-width: 1180px) {
+  body:not([data-portal="yalla"]) .sf-team { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .sf-team { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}
+
+/* EQUAL HEIGHTS, and the actions on the floor of the card. Without the auto
+   margin a card with no phone number sat with its button half way up while
+   the one beside it had its button at the bottom — the eye reads that as two
+   different kinds of card. */
+body:not([data-portal="yalla"]) .sf-person {
+  height: 100%; padding: 16px; display: grid; gap: 12px;
+  align-content: start; grid-template-rows: auto auto auto 1fr;
+  transition: border-color var(--t), transform var(--t), background var(--t);
+}
+body:not([data-portal="yalla"]) .sf-person .sf-p-act { margin-top: auto; align-self: end; }
+body:not([data-portal="yalla"]) .sf-person:hover { border-color: var(--brand); }
+body:not([data-portal="yalla"]) .sf-person.is-off { opacity: .62; }
+
+/* The head: face, name, pill — one line, aligned with every other card's. */
+body:not([data-portal="yalla"]) .sf-p-head { display: flex; align-items: center; gap: 12px; }
+body:not([data-portal="yalla"]) .sf-p-who { flex: 1; min-width: 0; }
+body:not([data-portal="yalla"]) .sf-p-who b {
+  display: block; font-size: 15.5px; font-weight: 700; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+body:not([data-portal="yalla"]) .sf-p-who small {
+  display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px;
+}
+body:not([data-portal="yalla"]) .sf-pill { flex: none; align-self: flex-start; }
+
+/* THREE EQUAL NUMBERS, each under a small label. `font-variant-numeric:
+   tabular-nums` so the three columns line up whatever the digits are. */
+body:not([data-portal="yalla"]) .sf-p-stats {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  padding: 12px 0 0; border-top: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .sf-p-stats > div { min-width: 0; }
+body:not([data-portal="yalla"]) .sf-p-stats .eyebrow {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--dim); line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+body:not([data-portal="yalla"]) .sf-p-stats b {
+  display: block; font-size: 19px; font-weight: 700; margin-top: 4px;
+  font-variant-numeric: tabular-nums; line-height: 1.2;
+}
+/* Tracked Arabic pulls the joined letters apart, and Arabic has no case —
+   so the label keeps its size and loses the spacing. */
+body.rtl:not([data-portal="yalla"]) .sf-p-stats .eyebrow {
+  letter-spacing: 0; text-transform: none;
+}
+
+body:not([data-portal="yalla"]) .sf-p-detail { padding: 0; font-size: 12px; }
+
+/* A THUMB IS 44px. These were 32px pills in a row of 6px gaps. */
+body:not([data-portal="yalla"]) .sf-p-act { display: flex; flex-wrap: wrap; gap: 8px; }
+body:not([data-portal="yalla"]) .sf-p-act .btn {
+  min-height: 44px; padding-inline: 16px; font-size: 13.5px;
+}
+body:not([data-portal="yalla"]) .sf-p-act .dlb-dots {
+  min-width: 44px; min-height: 44px; padding-inline: 10px;
+}
+body:not([data-portal="yalla"]) .sf-p-act .btn:active { transform: translateY(1px); }
+
+/* The empty state carries the one thing to do. */
+body:not([data-portal="yalla"]) .sf-empty .cart-empty { padding: 32px 24px; }
+body:not([data-portal="yalla"]) .sf-empty-act { margin-top: 16px; min-height: 44px; }
+
+body:not([data-portal="yalla"]) .sf-add-btn { margin: 0 0 16px; min-height: 44px; }
+
+/* The skeleton. Grey blocks the size of the thing that is coming, so the
+   screen does not jump when it lands. */
+body:not([data-portal="yalla"]) .sk-b { display: block; }
+body:not([data-portal="yalla"]) .sk-face { width: 38px; height: 38px; border-radius: 50%; flex: none; }
+body:not([data-portal="yalla"]) .sk-l { width: 60%; height: 13px; }
+body:not([data-portal="yalla"]) .sk-s { width: 42%; height: 9px; margin-top: 6px; }
+body:not([data-portal="yalla"]) .sk-pill { width: 58px; height: 20px; border-radius: 999px; flex: none; }
+body:not([data-portal="yalla"]) .sk-n { width: 34px; height: 19px; margin-top: 6px; }
+body:not([data-portal="yalla"]) .sk-btn { width: 108px; height: 44px; border-radius: var(--radius); }
+body:not([data-portal="yalla"]) .sk-row { width: 100%; height: 34px; margin-bottom: 8px; }
+body:not([data-portal="yalla"]) .card.is-sk { pointer-events: none; }
+
+/* Said out loud for a screen reader, drawn for nobody. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* The filter row and the task table keep the same scale as the cards. */
+body:not([data-portal="yalla"]) .sf-filters { gap: 12px; margin-bottom: 12px; }
+body:not([data-portal="yalla"]) .sf-tbl td, body:not([data-portal="yalla"]) .sf-tbl th { vertical-align: middle; }
+body:not([data-portal="yalla"]) .sf-tbl .btn { min-height: 36px; }
+@media (max-width: 720px) {
+  /* The table is cards here (labelWideTables), so its buttons are under a
+     thumb like everything else on a phone. */
+  body:not([data-portal="yalla"]) .sf-tbl .btn { min-height: 44px; padding-inline: 14px; }
+  body:not([data-portal="yalla"]) .sf-act { white-space: normal; display: flex; flex-wrap: wrap; gap: 8px; }
+  body:not([data-portal="yalla"]) .sf-act .btn + .btn { margin-inline-start: 0; }
+}
+
+/* A HEAD BUTTON IS A BUTTON. `.page-head .head-actions .btn` is 38px, which
+   is fine under a mouse and misses under a thumb — it is the one lime action
+   on half the screens in the shop ("Give a task", "New order", "Add a
+   product"). Phone only; the desk keeps its quieter height. (fix 05) */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .page-head .head-actions .btn { min-height: 44px; }
+}
