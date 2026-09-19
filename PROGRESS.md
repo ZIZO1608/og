@@ -185,3 +185,9 @@ bash _nightshift/with-chrome.sh fix06/safeer-connections  # 9  — the role × r
 bash _nightshift/with-chrome.sh fix06/safeer-audit        # a report, not a gate: what each control did
 node _nightshift/fix06/db-check.mjs <path to og.db>       # read-only: permissions, team, rate, areas
 ```
+
+**The first full pass with a browser per suite (19 Sep 2026): 2,945 passed, 0 failed, 37 of 38
+suites, and not one 401.** The shared-jar flakes are gone. The one suite that did not finish,
+`ns03/p2-money`, re-ran 39/39 on its own; its cause is a real fault in the app and not the
+harness — a Save pressed while another save is still reloading is dropped in silence (CLAUDE.md,
+Known open work; `bash _nightshift/with-chrome.sh fix06/dropped-press` shows it).

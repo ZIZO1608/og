@@ -2835,6 +2835,18 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
 
 ## Known open work
 
+- **A PRESS DURING ANOTHER SAVE'S RELOAD IS DROPPED IN SILENCE** (found 19 Sep 2026 by the first
+  full pass with a browser per suite). `Shop.write()` allows one write at a time and holds the
+  lock through the whole-shop `load()` that follows a save; it answers `false` when it did not
+  start. **Only `Cashbook.submit` reads that answer.** The other 37 call sites — payables' wages,
+  supplier and employee saves, `app-actions.js`, `money.js`, `receive.js`, the till — ignore it,
+  so a Save pressed while the previous save is still reloading sends nothing, shows no spinner
+  and no toast, and leaves the dialog open. `_nightshift/fix06/dropped-press.mjs` reproduces it
+  on the wages dialog by holding the lock for two seconds. It is what made `ns03/p2-money` hang
+  once in 38 suites: the supplier payment's reload was still running when the bonus was saved.
+  Not fixed, because the cure is a decision: route every money save through `Cashbook.submit`,
+  or make `Shop.write` itself toast "still saving — press again" when it refuses, or queue the
+  second write. The third is wrong for a double-tap, which is what the lock exists for.
 - **Left by fix 05, and all five are decisions rather than faults** (`fix_05_log.md` §6).
   **Cairo for the app's own Arabic** — vendored at weight 700 only, so adopting it sets every
   Arabic screen in one bold weight; doing it properly needs 400/600/700 woff2, a converter and a
