@@ -2515,3 +2515,127 @@ body:not([data-portal="yalla"]) .btn[data-busy] { opacity: .85; cursor: progress
 @media (prefers-reduced-motion: reduce) {
   body:not([data-portal="yalla"]) .cb-spin { animation-duration: 2.4s; }
 }
+
+/* ==========================================================================
+   FIX 05 — PHONE QUALITY
+   --------------------------------------------------------------------------
+   Measured at 360, 375, 390, 414 and 430 portrait and at 740 landscape, in
+   both languages, as every role. What follows is only what was wrong at one
+   of those widths — there is no width here that nothing was measured at.
+   ========================================================================== */
+
+/* A FIELD UNDER 16px MAKES AN IPHONE ZOOM THE WHOLE PAGE IN when it takes
+   focus, and there is no way back out but a pinch. `.inp` is 13.5px, which
+   is right under a mouse and wrong under a thumb — so the phone gets 16px
+   and the height that goes with it. This is the single commonest iOS
+   complaint about a web app and it is one rule. */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .inp,
+  body:not([data-portal="yalla"]) select.inp,
+  body:not([data-portal="yalla"]) textarea.inp {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  body:not([data-portal="yalla"]) textarea.inp { min-height: 76px; }
+
+  /* 44 x 44 UNDER A THUMB, and 8px between one target and the next. */
+  body:not([data-portal="yalla"]) .btn,
+  body:not([data-portal="yalla"]) .tab,
+  body:not([data-portal="yalla"]) .chip,
+  body:not([data-portal="yalla"]) .pr-chip,
+  body:not([data-portal="yalla"]) .seg,
+  body:not([data-portal="yalla"]) .more-item {
+    min-height: 44px;
+  }
+  body:not([data-portal="yalla"]) .btn.btn-sm { min-height: 44px; padding-inline: 14px; }
+  body:not([data-portal="yalla"]) .tabs,
+  body:not([data-portal="yalla"]) .pr-chips,
+  body:not([data-portal="yalla"]) .card-actions,
+  body:not([data-portal="yalla"]) .head-actions,
+  body:not([data-portal="yalla"]) .modal-foot { gap: 8px; }
+
+  /* THE NOTCH AND THE ROUNDED CORNERS. A landscape iPhone puts 44px of
+     nothing down one side, and text ran under it. */
+  body:not([data-portal="yalla"]) .view {
+    padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  /* A PRESS HAS TO SHOW. Chrome's own grey flash is replaced by the shop's
+     own feedback, so a press reads as the app answering rather than as the
+     browser noticing. */
+  body:not([data-portal="yalla"]) .btn:active:not(:disabled),
+  body:not([data-portal="yalla"]) .chip:active,
+  body:not([data-portal="yalla"]) .pr-chip:active,
+  body:not([data-portal="yalla"]) .tab:active,
+  body:not([data-portal="yalla"]) .cb-chip:active,
+  body:not([data-portal="yalla"]) .more-item:active { transform: scale(.975); }
+}
+
+/* 100dvh, NOT 100vh. On a phone `100vh` is the viewport with the browser's
+   toolbars HIDDEN, which is taller than the screen ever is while they are
+   showing — so the shell was always a little too tall and the last row of
+   whatever was on screen sat under the address bar. `dvh` is the one that
+   moves with the chrome. Both are written, oldest first, so a browser that
+   does not know `dvh` keeps exactly what it had. */
+/* AND ONLY WHERE A DYNAMIC TOOLBAR EXISTS. `dvh` and `vh` are the same
+   number on a desk — there is no chrome that comes and goes — so applying it
+   there buys nothing and is not free: measured, it moved the whole desktop
+   till by a fraction of a pixel and re-aliased every glyph on it, which is
+   how fix 04's byte-for-byte golden caught it. A phone is where the address
+   bar slides away, so a phone is where this belongs.
+
+   The till is deliberately NOT restated. Under 900px the base stylesheet
+   stacks it and sets `height: auto` so the product list scrolls with the
+   page, and a `body:not(...)` rule here would beat that plain `.pos`
+   selector — the `.pos` collision this repo has now made four times. */
+@media (max-width: 900px) {
+  body:not([data-portal="yalla"]) #app { height: 100vh; height: 100dvh; }
+}
+
+/* A picture with no size reserved is a row that jumps when it lands. Every
+   thumbnail in the shop is a fixed box already; this is the one that is
+   not — the product tile's own image. */
+body:not([data-portal="yalla"]) .pcard-img { aspect-ratio: 1 / 1; }
+
+/* The camera scanner's button is the one control somebody uses one-handed
+   in a doorway with a box under the other arm. */
+body:not([data-portal="yalla"]) .sc-cam-btn,
+body:not([data-portal="yalla"]) [data-act="scan-camera"],
+body:not([data-portal="yalla"]) [data-sc="camera"] { min-height: 52px; min-width: 52px; }
+
+/* THE TOP BAR IS UNDER A THUMB TOO. The bell, the sync button, the presence
+   pill and the account avatar were 34–38px on a phone — small enough that a
+   miss opens whatever is beside them, and the two things beside the bell are
+   the account menu and the shop's own live pill. The bar is 62px tall, so
+   44px fits with room. (fix 05) */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .topbar .icon-btn,
+  body:not([data-portal="yalla"]) .topbar .nt-bell,
+  body:not([data-portal="yalla"]) .topbar .live-who,
+  body:not([data-portal="yalla"]) .topbar .avatar-btn,
+  body:not([data-portal="yalla"]) .topbar button {
+    min-width: 44px; min-height: 44px;
+  }
+  body:not([data-portal="yalla"]) .topbar .nt-bell,
+  body:not([data-portal="yalla"]) .topbar .icon-btn { width: 44px; height: 44px; }
+  /* The presence pill carries words, so it keeps its own width. */
+  body:not([data-portal="yalla"]) .topbar .live-who { min-width: 44px; width: auto; }
+  body:not([data-portal="yalla"]) .topbar { gap: 8px; }
+}
+
+/* THE THREE THAT WERE STILL TOO SMALL, found at 360 and at every width up
+   to 430: the fold head that opens Records and More (32px), the board's
+   Lanes/List pair (37 x 30) and Settings' own fold chevron, which is the
+   button the press actually lands on and was 28px wide. (fix 05) */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .wh-more-h { min-height: 44px; padding-inline: 14px; }
+  body:not([data-portal="yalla"]) .dlb-vbtn { min-height: 44px; min-width: 56px; }
+  body:not([data-portal="yalla"]) .fold-btn { min-width: 44px; }
+  /* A tick box stays the size a tick box is, and the label around it is what
+     a thumb hits — 44px of it. */
+  body:not([data-portal="yalla"]) input[type="checkbox"],
+  body:not([data-portal="yalla"]) input[type="radio"] { min-width: 22px; min-height: 22px; }
+  body:not([data-portal="yalla"]) label.switch,
+  body:not([data-portal="yalla"]) .bk-box,
+  body:not([data-portal="yalla"]) .cb-check { min-height: 44px; display: flex; align-items: center; }
+}

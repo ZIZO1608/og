@@ -590,6 +590,8 @@ function openModal(o) {
   if (typeof Cashbook !== 'undefined' && Cashbook.paintMoney) {
     try { Cashbook.paintMoney(root); } catch (e) {}
   }
+  /* …and every field in it gets the right phone keyboard. (fix 05) */
+  if (typeof hintInputs === 'function') { try { hintInputs(root); } catch (e) {} }
   /* Held on the module, not on the DOM, because closeModal() wipes innerHTML
      and there are four ways out of a modal — the ×, the backdrop, Escape, and
      another modal opening on top. A teardown that only runs on one of them is

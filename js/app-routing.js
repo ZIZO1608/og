@@ -229,6 +229,38 @@ function labelWideTables(root) {
   });
 }
 
+/* FIX 05 — THE PHONE KEYBOARD IS A DIFFERENT KEYBOARD FOR EVERY FIELD, and
+   it is one attribute away. Without `inputmode` a phone opens the full
+   letter keyboard for a quantity and somebody hunts for the digits; without
+   `enterkeyhint` the return key says "return" on a form whose only sensible
+   answer is "search" or "done".
+
+   Derived from what the field already is, never guessed: a `type="number"`
+   or a `.num` box is a number, a `type="tel"` is a phone pad, a `type="date"`
+   has its own picker and is left alone. Nothing that already carries the
+   attribute is touched, so a field that made its own decision keeps it —
+   the money boxes say `decimal` and mean it. */
+function hintInputs(root) {
+  if (!root || !root.querySelectorAll) return;
+  var list = root.querySelectorAll('input:not([data-hinted]), textarea:not([data-hinted])');
+  [].forEach.call(list, function (el) {
+    el.setAttribute('data-hinted', '');
+    var type = (el.getAttribute('type') || 'text').toLowerCase();
+    if (type === 'date' || type === 'checkbox' || type === 'radio' ||
+        type === 'hidden' || type === 'file' || type === 'color') return;
+    if (!el.getAttribute('inputmode')) {
+      if (type === 'tel') el.setAttribute('inputmode', 'tel');
+      else if (type === 'email') el.setAttribute('inputmode', 'email');
+      else if (type === 'number' || el.classList.contains('num')) el.setAttribute('inputmode', 'decimal');
+      else if (type === 'search') el.setAttribute('inputmode', 'search');
+    }
+    if (!el.getAttribute('enterkeyhint') && el.tagName !== 'TEXTAREA') {
+      if (type === 'search' || el.id === 'globalSearch') el.setAttribute('enterkeyhint', 'search');
+      else el.setAttribute('enterkeyhint', 'done');
+    }
+  });
+}
+
 function render() {
   Charts.destroyAll();
   var host = document.getElementById('view');
@@ -278,6 +310,7 @@ function render() {
   try { Bulk.paint(); } catch (e) { console.warn('bulk paint', e); }
 
   try { labelWideTables(host); } catch (e) { console.warn('table labels', e); }
+  try { hintInputs(host); } catch (e) { console.warn('input hints', e); }
 
   if (entering) {
     try {
