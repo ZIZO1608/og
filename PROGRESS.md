@@ -99,7 +99,8 @@ shop laptop, the nine questions and the whole story are in `night_shift_03_log.m
 | — | 2 — one cleanup for everything that floats | 0dfd08e | 48 (p2-layers) | the shelf card is on <body>, and render() only rewrites #view |
 | — | 3 — Safeers: every control pressed, and finished | 2c0040a | 75 (p3-safeers) + 56 (ns03/p5, repaired) | every button already worked; ns03/p5 was spending its own fixture |
 | — | 4 — Money: the screen, the dialogs, and what landed | a58db4e | 49 (p4-money) | every phone dialog is a sheet now, and the keyboard is answered |
-| — | 5 — phone quality at six widths | — | 122 (p5-phone) + 1027 (ns03/sweep, extended) | the sweep now walks 360/375/390/414/430 and 740 landscape |
+| — | 5 — phone quality at six widths | fb06376 | 122 (p5-phone) + 1027 (ns03/sweep, extended) | the sweep now walks 360/375/390/414/430 and 740 landscape |
+| — | 6 — the devil pass, and a full shop | — | 52 (p6-devil) + 49 (p6-load) | a minus used to mean its opposite; 0.005 dollars used to mean five |
 
 ```bash
 node _nightshift/fix05/p0-namespaces.mjs   # no button wired to a dead namespace (no browser)
@@ -109,6 +110,14 @@ node _nightshift/fix05/p2-layers.mjs       # every floating layer, route change,
 node _nightshift/fix05/p3-safeers.mjs      # every Safeers control, click AND tap, read back from SQLite
 node _nightshift/fix05/p4-money.mjs        # the money screen, the dialogs, a double tap and a pulled plug
 node _nightshift/fix05/p5-phone.mjs        # targets, fields, the sheet, rotation, at five phone widths
+node _nightshift/fix05/p6-devil.mjs        # rubbish in, three presses, deep links, two tabs, a dead session
+
+# the load test is DESTRUCTIVE — it is run between a backup and a restore:
+#   1. stop the sandbox server
+#   2. cp server/data-sandbox/og.db{,-wal,-shm} somewhere aside
+#   3. start it, then:
+node _nightshift/fix05/p6-load.mjs         # 500 products, 200 parcels, 300 money events
+#   4. stop it, put the three files back, start it again
 ```
 
 **Starting the two Chromes on Windows: QUOTE THE PROFILE PATH.** The repo lives under

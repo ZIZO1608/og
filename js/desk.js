@@ -171,6 +171,16 @@ var Desk = (function () {
   function figure(typed) {
     var raw = foldDigits(typed);
     var hardDec = raw.indexOf('٫') > -1;
+
+    /* A MINUS IN FRONT MEANS NOTHING, NOT ITS OPPOSITE (fix 05). Every
+       figure this shop types is a quantity or an amount, and neither has a
+       negative — a correction is its own row, never a sign in a box. The
+       minus used to be stripped with the rest of the punctuation, so "-500"
+       read as five hundred and a slipped finger moved money the way the
+       typed figure said it should not. A leading minus is now the same
+       answer as an empty box: nothing. */
+    if (/^[^\d]*[-−–—]/.test(raw)) return null;
+
     var s = raw.replace(/٬/g, '').replace(/٫/g, '.').replace(/[^\d.,]/g, '');
     if (!s.replace(/\D/g, '')) return null;
 
@@ -181,7 +191,14 @@ var Desk = (function () {
     if (sep > -1) {
       var after = s.length - sep - 1;
       var mixed = lastDot > -1 && lastCom > -1;
-      if (hardDec || mixed || after !== 3) dec = sep;
+      /* A THOUSANDS GROUP CANNOT FOLLOW A BARE ZERO (fix 05). The
+         three-digits rule is right for "1.250" — twelve hundred and fifty,
+         which is how this shop writes it — and wrong for "0.005", where it
+         read the whole part as 0005 and made half a cent into five dollars.
+         Nothing is ever written "0,500" meaning five hundred. */
+      var head = s.slice(0, sep).replace(/\D/g, '');
+      var zeroHead = head === '' || /^0+$/.test(head);
+      if (hardDec || mixed || after !== 3 || zeroHead) dec = sep;
     }
     return {
       whole: (dec > -1 ? s.slice(0, dec) : s).replace(/\D/g, ''),
