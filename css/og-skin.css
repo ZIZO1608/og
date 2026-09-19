@@ -2742,3 +2742,35 @@ body.rtl:not([data-portal="yalla"]) .strong-num,
 body.rtl:not([data-portal="yalla"]) .dash-hero-val,
 body.rtl:not([data-portal="yalla"]) .cc-stats div b,
 body.rtl:not([data-portal="yalla"]) .bk-count b { unicode-bidi: isolate; }
+
+/* ==========================================================================
+   FIX 06 — the Safeers card: a link that looks like one, and a quiet nothing
+   --------------------------------------------------------------------------
+   `.link` had a rule only inside `.pic-line`, so the owner's "Set the pay
+   rate" on this card has always drawn as the browser's own grey button. It
+   and the new "Take it in" under Cash on him are text links: underlined,
+   because colour alone is no signal, and a full 44px tall under a thumb.
+   No letter-spacing anywhere here, so nothing for the RTL block to undo. */
+body:not([data-portal="yalla"]) .sf-person .link {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 600;
+  color: var(--foreground); cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+body:not([data-portal="yalla"]) .sf-person .link:hover { color: var(--brand); }
+body:not([data-portal="yalla"]) .sf-p-stats .sf-handin {
+  display: block; margin-top: 4px; font-size: 12px; text-align: start;
+}
+/* An <a> wearing .btn is a button, so no web-link underline — this was true of
+   Call and Map on the driver's phone as well, so it is said once for all. The break
+   is a zero-height full-width flex item: reaching him is one row, his tasks
+   and the dots the next, at every card width. */
+body:not([data-portal="yalla"]) a.btn { text-decoration: none; }
+body:not([data-portal="yalla"]) .sf-p-act .sf-p-break { flex-basis: 100%; height: 0; }
+body:not([data-portal="yalla"]) .sf-p-detail > div + div { margin-top: 2px; }
+body:not([data-portal="yalla"]) .sf-mine-none { padding: 12px 4px 4px; line-height: 1.6; }
+body:not([data-portal="yalla"]) .sf-mine-none b { color: var(--foreground); font-weight: 600; }
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .sf-person .link {
+    min-height: 44px; display: inline-flex; align-items: center;
+  }
+}

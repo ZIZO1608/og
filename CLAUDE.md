@@ -2741,6 +2741,34 @@ presses every visible `[data-sf]` control in turn and says what each one actuall
   `run-all.sh` goes through it. `cdp.mjs` reads its port inside `tab()`, because an ESM import is
   evaluated before the importing module's body and a port assigned after the import never applied.
 
+### The card, the same evening — four things it did not do
+
+No migration, no route, no permission: every figure and every route below already existed.
+`_nightshift/fix06/polish.mjs` (31) presses each one at 1280 in English and 390 in Arabic.
+
+- **His number was text.** The commonest thing anybody does with a driver on the road is ring
+  him, and the card printed digits to retype. It is a real `tel:` link and the shop's own
+  WhatsApp composer (`WA.compose` over `WA.both` — a bilingual greeting and nothing else; what he
+  is being written to ABOUT is typed by the person before anything leaves). Drawn for anybody who
+  may see the card, not only for who may give tasks, and **not at all for a safeer with no number
+  — which on this shop is both real ones** (`safeer1`, `safeer2`); the phone is set when the
+  account is made and there is still no editor for it.
+- **The week was never drawn.** `done.week` and `earned.week` have ridden on `GET /api/safeers`
+  since the screen was written. The detail is two lines now — the work (this week · this month),
+  then the pay (today · week · month) — because five figures joined with dots broke wherever the
+  card's width happened to fall.
+- **"Cash on him" was a dead end.** It is followed by a link to the board's **Cash back** tab
+  (`Road.setTab('cash')` then `go('deliveries')`). **A door, not a second hand-in**: the money
+  write stays in one place, with its own question and its own open-drawer rule. `canHandIn()`
+  draws it only where the route would accept the press (`delivery.desk` or `debt.collect`, and
+  the deliveries screen reachable).
+- **No errands drew NOTHING on his phone**, which is indistinguishable from the block being
+  broken. One quiet line, and it says new ones arrive by themselves, because they do.
+- Found on the way: **`.link` had a rule only inside `.pic-line`**, so the owner's "Set the pay
+  rate" on this card has always drawn as the browser's grey default button; and **an `<a>` wearing
+  `.btn` kept its web-link underline** — Call and Map on the driver's phone too. Both are in the
+  `FIX 06` block at the end of `og-skin.css`.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both

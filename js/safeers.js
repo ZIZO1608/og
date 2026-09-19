@@ -258,6 +258,14 @@ var Safeers = (function () {
      without money.read, "earned" was a sentence with no rate in it, and cash
      was a bare em dash. Now — zero is 0, and — means "this account may not
      ask", which are different answers. "This month" is in the detail line. */
+  /* The hand-in route is delivery.desk or debt.collect, and the tab it lives
+     on is the deliveries screen — both, or the door opens onto a 403. */
+  function canHandIn() {
+    return (allow('delivery.desk') || allow('debt.collect')) &&
+      typeof navAllowed === 'function' && navAllowed('deliveries') &&
+      typeof Road !== 'undefined' && !!Road.setTab;
+  }
+
   function personCard(p, money) {
     var acctBits = (allow('staff.write') || allow('access.write'))
       ? '<button class="dlb-mitem" data-sf="password" data-id="' + p.id + '">' + t('ac_new_pw') + '</button>' +
@@ -288,7 +296,15 @@ var Safeers = (function () {
             /* absent, not zero: this account may not ask about money */
             ? '<b class="muted" title="' + esc(t('sf_cash_hidden')) + '">—</b>'
             : (p.cash && p.cash.length
-              ? p.cash.map(function (c) { return '<b><bdi dir="ltr">' + fmt(c.amount, c.currency) + '</bdi></b>'; }).join('')
+              ? p.cash.map(function (c) { return '<b><bdi dir="ltr">' + fmt(c.amount, c.currency) + '</bdi></b>'; }).join('') +
+                /* THE FIGURE WAS A DEAD END. It said he is holding money and
+                   offered nothing to do about it; taking it in meant knowing
+                   that the hand-in lives on another screen, on its third tab.
+                   This is a DOOR to that tab, not a second hand-in: the money
+                   write stays in one place (Road's Cash back), with its own
+                   question and its own open-drawer rule. Drawn only to an
+                   account the route will actually accept. */
+                (canHandIn() ? '<button class="link sf-handin" data-sf="cash-tab">' + t('sf_hand_in') + '</button>' : '')
               : '<b><bdi dir="ltr">' + fmt(0, (S.rate && S.rate.currency) || 'SYP') + '</bdi></b>')) +
         '</div>' +
       '</div>';
@@ -296,19 +312,37 @@ var Safeers = (function () {
     /* The detail line: this month, and what he has earned — with the owner's
        way to fix a missing rate, rather than the words "Settings → Safeers",
        which is a path most people cannot open. */
-    var detail = [t('sf_month') + ' ' + nf(p.done.month)];
-    if (money) {
-      detail.push(t('sf_earned') + ' ' + (p.earned
-        ? '<bdi dir="ltr">' + fmt(p.earned.today, p.earned.currency) + '</bdi>'
-        : '—'));
-    }
-    h += '<div class="sf-p-detail muted small">' + detail.join(' · ') +
-      (money && !p.earned && allow('config.write')
-        ? ' · <button class="link" data-sf="set-rate">' + t('sf_set_rate') + '</button>'
-        : '') + '</div>';
+    /* today is one of the three big numbers; the week and the month are here.
+       The server has sent `done.week` and `earned.week` since the screen was
+       written and nothing drew either — and a week (Saturday first) is the
+       span a shop actually talks about a driver's work in. Each figure is its
+       own isolate, inside its own sentence. */
+    function said(key, html) { return t(key).replace('{n}', '<bdi dir="ltr">' + html + '</bdi>'); }
+    /* TWO SENTENCES, TWO LINES. Joined with dots they were five figures in
+       one run that broke wherever the card's width happened to fall. */
+    var work = said('sf_done_week', nf(p.done.week)) + ' · ' + said('sf_done_month', nf(p.done.month));
+    var pay = !money ? '' : (p.earned
+      ? t('sf_earned') + ' <bdi dir="ltr">' + fmt(p.earned.today, p.earned.currency) + '</bdi>' +
+        ' · ' + said('sf_earned_week', fmt(p.earned.week, p.earned.currency)) +
+        ' · ' + said('sf_earned_month', fmt(p.earned.month, p.earned.currency))
+      : t('sf_earned') + ' —' +
+        (allow('config.write') ? ' · <button class="link" data-sf="set-rate">' + t('sf_set_rate') + '</button>' : ''));
+    h += '<div class="sf-p-detail muted small"><div>' + work + '</div>' + (pay ? '<div>' + pay + '</div>' : '') + '</div>';
 
+    /* HIS NUMBER WAS TEXT. The commonest thing anybody does with a driver who
+       is out on the road is ring him, and the card printed the digits for
+       somebody to retype into a phone. A real tel: link, and the shop's own
+       WhatsApp composer — which shows the message before it goes, and writes
+       it in both languages like every other WhatsApp text here. Drawn for
+       anybody who may see the card, not only for who may give tasks. */
+    var reach = p.phone
+      ? '<a class="btn btn-sm" href="tel:' + esc(String(p.phone).replace(/[^\d+]/g, '')) + '">' + t('dl_call') + '</a>' +
+        '<button class="btn btn-sm" data-sf="wa" data-id="' + p.id + '">' + t('sf_wa') + '</button>'
+      : '';
+    if (!allow('safeer.write') && reach) h += '<div class="sf-p-act">' + reach + '</div>';
     if (allow('safeer.write')) {
       h += '<div class="sf-p-act">' +
+        (reach ? reach + '<span class="sf-p-break" aria-hidden="true"></span>' : '') +
         '<button class="btn btn-sm" data-sf="filter-person" data-id="' + p.id + '">' + t('sf_their_tasks') + '</button>' +
         (acctBits
           ? '<span class="dlb-more">' +
@@ -558,7 +592,14 @@ var Safeers = (function () {
        loop in after(); this one only showed itself when something was already
        wrong, which is the worst time to find it. */
     if (S.mine === null) { if (!S.mineLoading && !S.mineTried) loadMine(); return h + '</div>'; }
-    if (!S.mine.length) return h + '</div>';
+    /* NOTHING IS AN ANSWER TOO. With no errands this block drew nothing at
+       all, which on his phone is indistinguishable from the block being
+       broken, or never having loaded. One quiet line under his runs — and it
+       says new ones arrive by themselves, because they do (a live push). */
+    if (!S.mine.length) {
+      return h + '<div class="sf-mine-none muted small"><b>' + t('sf_mine_none') + '</b> ' +
+        t('sf_mine_none_sub') + '</div></div>';
+    }
     h += '<div class="rc-sheet"><b>' + t('sf_my_errands') + '</b><span>' + nf(S.mine.length) + '</span></div>';
     S.mine.forEach(function (e) {
       h += '<div class="card sf-card">' +
@@ -684,6 +725,21 @@ var Safeers = (function () {
     if (a === 'new-errand') { newErrand(); return; }
     if (a === 'assign-parcel') { assignParcel(); return; }
     if (a === 'filter-person') { S.filter.safeer = String(id); load(); return; }
+    if (a === 'wa') {
+      var who2 = (S.team || []).filter(function (x) { return String(x.id) === String(id); })[0];
+      if (!who2 || !who2.phone || typeof WA === 'undefined') return;
+      if (S.menu) { S.menu = null; repaint(); }
+      /* a greeting and nothing else: what he is being written to ABOUT is
+         typed by the person, in the box, before anything leaves */
+      WA.compose({ to: who2.phone, text: WA.both([WA.hi(who2.name, true), ''], [WA.hi(who2.name, false), '']) });
+      return;
+    }
+    if (a === 'cash-tab') {
+      if (!canHandIn()) return;
+      Road.setTab('cash');
+      if (typeof go === 'function') go('deliveries');
+      return;
+    }
     /* Drop every filter at once (quick fix) — the status one is on by
        default, so "show everything" has to be one press and not three. */
     if (a === 'filter-clear') { S.filter.safeer = ''; S.filter.status = ''; S.filter.date = ''; load(); return; }
