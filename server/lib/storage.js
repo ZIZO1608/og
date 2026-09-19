@@ -124,5 +124,16 @@ export function decodeDataUrl(dataUrl) {
   if (!m) { const e = new Error('Not a picture this accepts (JPEG, PNG or WebP).'); e.code = 'bad_image'; throw e; }
   const type = m[1];
   const ext = type === 'image/jpeg' ? 'jpg' : type === 'image/png' ? 'png' : 'webp';
-  return { type, ext, bytes: Buffer.from(m[2], 'base64') };
+  const bytes = Buffer.from(m[2], 'base64');
+  /* BY CONTENT, NOT BY NAME (audit 06). The type above is whatever the sender
+     wrote in front of the comma; the bucket is public and serves the object
+     under that type. So the first bytes have to be what that type really
+     starts with — a page or a script sent as "image/png" is refused here
+     rather than parked on a public URL with the shop's name on it. */
+  const is = (sig, at = 0) => bytes.length >= at + sig.length && sig.every((b, i) => bytes[at + i] === b);
+  const real = type === 'image/jpeg' ? is([0xFF, 0xD8, 0xFF])
+    : type === 'image/png' ? is([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+    : is([0x52, 0x49, 0x46, 0x46]) && is([0x57, 0x45, 0x42, 0x50], 8);
+  if (!real) { const e = new Error('That file is not the kind of picture it says it is (JPEG, PNG or WebP).'); e.code = 'bad_image'; throw e; }
+  return { type, ext, bytes };
 }

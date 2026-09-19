@@ -270,19 +270,49 @@ async function syncSettingsTail(log, want) {
    correct cursor is the highest id already pushed. Same rebuild trap as the
    seq cursor: a cursor ahead of the highest id that exists can only mean
    the table was rebuilt underneath us — rewind and replay. */
+/* THE BOOKMARK IS A NUMBER, AND ONE OF THESE TABLES HAS TEXT IDS (audit 06).
+   sync_state.last_seq is BIGINT in the mirror. Ten of the append-only tables
+   have integer ids; `expenses` has 'EX-0018'. Bookmarked as it stood, the
+   first expense anybody recorded was pushed and then its bookmark —
+   last_seq: "EX-0018" — was refused by Postgres ("invalid input syntax for
+   type bigint"), which is not a missing-table error, so it THREW out of the
+   Partner block: debt payments, read marks, the cash book, the day closes and
+   both ledgers never went up again, on any run, and every run read as a
+   failure. It could not be seen against a fake that stores whatever it is
+   given; it was found by loading the pushed rows into a real Postgres.
+
+   So the key is numeric for every table: the id itself, or for a text id the
+   number after its prefix — the same expression lib/money.js mints the next
+   id from, so the two cannot disagree. `appendKey` is exported because the
+   check reads these bookmarks too. */
+const keyCache = new Map();
+export function appendKey(table, d = DB.get()) {
+  if (keyCache.has(table)) return keyCache.get(table);
+  let expr = 'id';
+  try {
+    const col = d.prepare(`SELECT type FROM pragma_table_info('${table}') WHERE name = 'id'`).get();
+    if (col && !/INT/i.test(String(col.type))) expr = "CAST(SUBSTR(id, INSTR(id, '-') + 1) AS INTEGER)";
+  } catch { /* no such table: the caller's own query says so */ }
+  keyCache.set(table, expr);
+  return expr;
+}
+
 async function syncAppendOnly(log, table, mapRow) {
   const cursorId = `sync:${table}:maxid`;
   const c = await cursor(cursorId, `highest ${table}.id pushed`);
-  let lastId = c.last_seq;
+  const key = appendKey(table);
+  /* a bookmark written before this fix may be text on a fake, or absent on a
+     real project (where the write was refused): either way, start from 0 */
+  let lastId = Number.isFinite(Number(c.last_seq)) ? Number(c.last_seq) : 0;
 
-  const highest = DB.get().prepare(`SELECT MAX(id) AS m FROM ${table}`).get().m;
+  const highest = DB.get().prepare(`SELECT MAX(${key}) AS m FROM ${table}`).get().m;
   if (highest !== null && lastId > highest) {
     log.warn(`${table}: cursor at ${lastId} but the table only reaches ${highest} — ` +
              'it was rebuilt underneath us. Rewinding and replaying.');
     lastId = 0;
   }
 
-  const rows = DB.get().prepare(`SELECT * FROM ${table} WHERE id > ? ORDER BY id ASC`).all(lastId);
+  const rows = DB.get().prepare(`SELECT * FROM ${table} WHERE ${key} > ? ORDER BY ${key} ASC`).all(lastId);
   if (!rows.length) { log.tick(`${table.padEnd(17)}nothing new`); return 0; }
 
   const BATCH = 500;
@@ -291,7 +321,8 @@ async function syncAppendOnly(log, table, mapRow) {
     await SB.insert(table, mapRow ? slice.map(mapRow) : slice, { upsert: true });
   }
 
-  const top = rows[rows.length - 1].id;
+  const top = key === 'id' ? rows[rows.length - 1].id
+    : DB.get().prepare(`SELECT ${key} AS k FROM ${table} WHERE id = ?`).get(rows[rows.length - 1].id).k;
   await advance(cursorId, {
     last_seq: top,
     last_push_at: new Date().toISOString(),
@@ -1018,13 +1049,14 @@ function detect() {
   }
   for (const t of APPEND) {
     let m;
-    try { m = d.prepare(`SELECT MAX(id) AS m FROM ${t}`).get().m; } catch { continue; }
+    const k = appendKey(t, d);
+    try { m = d.prepare(`SELECT MAX(${k}) AS m FROM ${t}`).get().m; } catch { continue; }
     if (m === null) continue;
     const c = cursors.get(`sync:${t}:maxid`);
-    const last = c ? c.last_seq : 0;
+    const last = c && Number.isFinite(Number(c.last_seq)) ? Number(c.last_seq) : 0;
     if (m > last || last > m) {
       changed.add(t);
-      behind += last > m ? m : d.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE id > ?`).get(last).n;
+      behind += last > m ? m : d.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE ${k} > ?`).get(last).n;
     }
   }
   for (const t of WHOLE) {
@@ -1068,10 +1100,11 @@ export function unpushed() {
   }
   for (const t of APPEND) {
     let m;
-    try { m = d.prepare(`SELECT MAX(id) AS m FROM ${t}`).get().m; } catch { continue; }
+    const k = appendKey(t, d);
+    try { m = d.prepare(`SELECT MAX(${k}) AS m FROM ${t}`).get().m; } catch { continue; }
     if (m === null) continue;
     const l = local.get(`sync:${t}:maxid`);
-    const n = d.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE id > ?`).get(l ? l.last_seq : 0).n;
+    const n = d.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE ${k} > ?`).get(l && Number.isFinite(Number(l.last_seq)) ? Number(l.last_seq) : 0).n;
     if (n) { byTable[t] = n; total += n; }
   }
   /* The whole tables carry no log. Two of them carry a timestamp, which is
@@ -1116,7 +1149,7 @@ export async function resetCursorsAfterPull({ log = tailLog() } = {}) {
   }
   for (const t of APPEND) {
     let m;
-    try { m = d.prepare(`SELECT MAX(id) AS m FROM ${t}`).get().m; } catch { continue; }
+    try { m = d.prepare(`SELECT MAX(${appendKey(t, d)}) AS m FROM ${t}`).get().m; } catch { continue; }
     rows.push({ id: `sync:${t}:maxid`, last_seq: m || 0, last_push_at: now, note: `reset: pulled onto ${host}` });
   }
   rows.push({ id: 'shop', last_seq: 0, last_push_at: now, note: `pulled onto ${host}` });

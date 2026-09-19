@@ -208,3 +208,5 @@ node _nightshift/audit06/routes.mjs             # every HTTP route, read off ser
 ```
 
 15:12 — Part 0 — (with Part 1) — guard 33, baseline 2944+1 red (fixture) — fixed 2 harness — skipped: test-service checks, no server/.env.test
+15:38 — Part 1 — 557e6bd — p1-one-laptop 37 — fixed 3 (drift pw_box, unlogged colours, wrong exit code) — skipped: two real machines, a real project
+15:38 — Part 2 — (next commit) — p2-schema 16 (PGlite), p2-sync 41 (fake PostgREST) — fixed 3 (text-id bookmark, 029 second lock, image type by content) — skipped: anon-key probe of the REAL test project, storage bucket write/list probe, real network faults

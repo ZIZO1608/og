@@ -354,7 +354,12 @@ for (const t of tables) {
   if (cur && missing.length) {
     for (const k of missing) {
       const parts = k.split('\u0000');
-      if (cur.kind === 'id') { if (Number(parts[0]) <= cur.at) stranded++; continue; }
+      /* a text id ('EX-0018') is bookmarked by the number after its prefix — lib/mirror.js appendKey() */
+      if (cur.kind === 'id') {
+        const n = /^-?\d+$/.test(String(parts[0])) ? Number(parts[0]) : Number(String(parts[0]).slice(String(parts[0]).indexOf('-') + 1));
+        if (Number.isFinite(n) && n <= Number(cur.at)) stranded++;
+        continue;
+      }
       const top = db.prepare('SELECT MAX(seq) AS m FROM change_log WHERE tbl = ? AND row_id = ?')
                     .get(t, parts.join(':')).m;
       if (top !== null && top <= cur.at) stranded++;
@@ -481,7 +486,7 @@ for (const c of cursors) {
   let top;
   try {
     top = byId
-      ? db.prepare(`SELECT MAX(id) AS m FROM "${tbl}"`).get().m
+      ? db.prepare(`SELECT MAX(${(await import('../lib/mirror.js')).appendKey(tbl, db)}) AS m FROM "${tbl}"`).get().m
       : db.prepare('SELECT MAX(seq) AS m FROM change_log WHERE tbl = ?').get(tbl).m;
   } catch { continue; }
   live++;
