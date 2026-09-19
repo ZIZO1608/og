@@ -379,6 +379,12 @@ router.add('POST /api/safeers/:id/active', requirePerm('safeer.write', async (ct
   try { sendOk(ctx.res, { user: People.setActive(id, !!b.active, ctx.user.id) }); }
   catch (e) { safeerFail(ctx.res, e); }
 }));
+router.add('POST /api/safeers/:id/phone', requirePerm('safeer.write', async (ctx) => {
+  const id = Number(ctx.params.id);
+  if (!Safeers.isSafeer(id)) return sendError(ctx.res, 404, 'not_found', 'No such safeer.');
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { user: People.setPhone(id, b.phone) }); } catch (e) { safeerFail(ctx.res, e); }
+}));
 router.add('POST /api/safeers/:id/password', requirePerm('safeer.write', async (ctx) => {
   const id = Number(ctx.params.id);
   if (!Safeers.isSafeer(id)) return sendError(ctx.res, 404, 'not_found', 'No such safeer.');

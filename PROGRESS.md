@@ -211,3 +211,16 @@ node _nightshift/audit06/routes.mjs             # every HTTP route, read off ser
 15:38 — Part 1 — 557e6bd — p1-one-laptop 37 — fixed 3 (drift pw_box, unlogged colours, wrong exit code) — skipped: two real machines, a real project
 15:38 — Part 2 — (next commit) — p2-schema 16 (PGlite), p2-sync 41 (fake PostgREST) — fixed 3 (text-id bookmark, 029 second lock, image type by content) — skipped: anon-key probe of the REAL test project, storage bucket write/list probe, real network faults
 16:04 — Part 3 — (this commit) — p3-telegram 25, p3-push 12 (every request intercepted / a local receiver) — fixed 3 (4,096 clamp, 429 retries its own chat, a stranger cannot tell a command from a typo) — skipped: real _test bots and a real phone, og-track (needs the test project)
+
+**Two sessions, one sandbox (19 Sep 2026, evening).** `_nightshift/audit06/start-sandbox.mjs` kills
+whatever listens on its port before it starts, so a second session running suites against 8190
+loses its server mid-run — a batch went red that way (desktop-sized buttons "on a phone", a login
+page that never loaded), none of it real. When somebody else owns 8190, take a copy:
+
+```bash
+node _nightshift/fix06/private-sandbox.mjs 8191 <a folder outside the repo>   # VACUUM INTO + the guarded starter
+SB=http://localhost:8191 OG_TEST_DB=<that folder>/og.db bash _nightshift/with-chrome.sh fix06/polish   # 37
+```
+
+`cdp.mjs` reads `SB` for the address; a suite that reads SQLite itself needs `OG_TEST_DB` (only
+`fix06/polish` honours it so far — the older suites name the shared file).

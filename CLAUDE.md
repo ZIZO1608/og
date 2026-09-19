@@ -2743,16 +2743,22 @@ presses every visible `[data-sf]` control in turn and says what each one actuall
 
 ### The card, the same evening — four things it did not do
 
-No migration, no route, no permission: every figure and every route below already existed.
-`_nightshift/fix06/polish.mjs` (31) presses each one at 1280 in English and 390 in Arabic.
+No migration and no permission changed; one small route (the phone number, below).
+`_nightshift/fix06/polish.mjs` (37) presses each one at 1280 in English and 390 in Arabic.
 
 - **His number was text.** The commonest thing anybody does with a driver on the road is ring
   him, and the card printed digits to retype. It is a real `tel:` link and the shop's own
   WhatsApp composer (`WA.compose` over `WA.both` — a bilingual greeting and nothing else; what he
   is being written to ABOUT is typed by the person before anything leaves). Drawn for anybody who
-  may see the card, not only for who may give tasks, and **not at all for a safeer with no number
-  — which on this shop is both real ones** (`safeer1`, `safeer2`); the phone is set when the
-  account is made and there is still no editor for it.
+  may see the card, not only for who may give tasks, and not at all for a safeer with no number.
+- **His number could be typed once, when the account was made, and never again** — and the
+  accounts `users:rebuild` makes carry none, so on this shop **both real safeers had no number and
+  the two buttons above would never have appeared for them**. The card's "…" has **Phone number**:
+  one field, `POST /api/safeers/:id/phone` (`safeer.write`, 404 for a login that is not a safeer,
+  the one new route in fix 06) → `People.setPhone`. Kept as typed with the digits folded to ASCII
+  (an Arabic keypad writes ٠٩٣٣), refused as `bad_phone` when it is not a number, and an empty box
+  removes it. `users.phone` already existed, and `users` goes to the mirror whole by content hash,
+  so there is no migration, no `change_log` row and no mirror file.
 - **The week was never drawn.** `done.week` and `earned.week` have ridden on `GET /api/safeers`
   since the screen was written. The detail is two lines now — the work (this week · this month),
   then the pay (today · week · month) — because five figures joined with dots broke wherever the

@@ -267,11 +267,15 @@ var Safeers = (function () {
   }
 
   function personCard(p, money) {
-    var acctBits = (allow('staff.write') || allow('access.write'))
+    /* His number, from the card. It could only be typed when the account was
+       made, and the accounts users:rebuild makes have none — so Call and
+       WhatsApp below would never have appeared for the shop's real safeers. */
+    var phoneBit = '<button class="dlb-mitem" data-sf="phone" data-id="' + p.id + '">' + t('sf_phone_set') + '</button>';
+    var acctBits = phoneBit + ((allow('staff.write') || allow('access.write'))
       ? '<button class="dlb-mitem" data-sf="password" data-id="' + p.id + '">' + t('ac_new_pw') + '</button>' +
         '<button class="dlb-mitem" data-sf="active" data-id="' + p.id + '" data-on="' + (p.active ? '0' : '1') + '">' +
           t(p.active ? 'ac_switch_off' : 'ac_switch_on') + '</button>'
-      : '';
+      : '');
 
     var h = '<div class="card sf-person' + (p.active ? '' : ' is-off') + (S.menu === p.id ? ' is-menu' : '') + '">' +
       '<div class="sf-p-head">' +
@@ -732,6 +736,27 @@ var Safeers = (function () {
       /* a greeting and nothing else: what he is being written to ABOUT is
          typed by the person, in the box, before anything leaves */
       WA.compose({ to: who2.phone, text: WA.both([WA.hi(who2.name, true), ''], [WA.hi(who2.name, false), '']) });
+      return;
+    }
+    if (a === 'phone') {
+      var who3 = (S.team || []).filter(function (x) { return String(x.id) === String(id); })[0];
+      if (!who3) return;
+      S.menu = null; repaint();
+      openModal({
+        title: t('sf_phone_set') + ' — ' + who3.name, size: 'narrow',
+        body: '<label class="field"><span>' + t('phone') + '</span>' +
+          '<input class="inp" id="sfPhoneEdit" dir="ltr" type="tel" inputmode="tel" maxlength="24" autocomplete="off" value="' + esc(who3.phone || '') + '"></label>' +
+          '<div class="muted small">' + t('sf_phone_hint') + '</div>',
+        foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+          '<button class="btn btn-primary" data-sf="phone-save" data-id="' + who3.id + '">' + t('save') + '</button>'
+      });
+      return;
+    }
+    if (a === 'phone-save') {
+      send(b, API.post('/api/safeers/' + id + '/phone', { phone: v('sfPhoneEdit') }), t('sf_phone_saved'), function () {
+        closeModal();
+        load();
+      });
       return;
     }
     if (a === 'cash-tab') {

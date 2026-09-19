@@ -98,6 +98,23 @@ export function setActive(id, active, byUserId) {
   return shape(Auth.findById(id));
 }
 
+/* A PHONE NUMBER COULD BE SET ONCE, WHEN THE ACCOUNT WAS MADE, AND NEVER AGAIN.
+   The accounts `users:rebuild` makes carry none at all, so the shop's two real
+   safeers could not be rung from their own card. It is kept as typed (the way
+   People.add keeps it) with the digits folded to ASCII — an Arabic keypad
+   writes ٠٩٣٣ — and an empty box removes it. `users` goes to the mirror whole,
+   by content hash, so there is no change_log row to write. */
+export function setPhone(id, phone) {
+  const u = Auth.findById(id);
+  if (!u || Auth.isHiddenUser(u)) throw fail('no such person', 'not_found', 404);
+  const p = String(phone ?? '').trim()
+    .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06F0));
+  if (p && !/^\+?[\d\s()-]{6,24}$/.test(p)) throw fail('That does not look like a phone number.', 'bad_phone');
+  DB.get().prepare('UPDATE users SET phone = ?, updated_at = ? WHERE id = ?').run(p || null, DB.nowIso(), id);
+  return shape(Auth.findById(id));
+}
+
 /* Every column anywhere that names a user, read from the schema itself so a
    table added next month is covered. */
 export function userRefs(d = DB.get()) {
