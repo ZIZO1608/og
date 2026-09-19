@@ -272,9 +272,13 @@ var Safeers = (function () {
         '<span class="badge sf-pill ' + (!p.active ? 'neutral' : p.busy ? 'accent' : 'healthy') + '">' +
           t(!p.active ? 'sf_off' : p.busy ? 'sf_busy' : 'sf_free') + '</span>' +
       '</div>' +
+      /* EVERY FIGURE IN ITS OWN ISOLATE. A bare run of digits beside Arabic
+         is reordered by the bidi algorithm, which is how "1 USD = 130 SYP"
+         came out "USD = 130 SYP 1" on the Settings card. These two were
+         bare — the cash figure below already had its isolate. (fix 05) */
       '<div class="sf-p-stats">' +
-        '<div><span class="eyebrow">' + t('sf_open') + '</span><b>' + nf(p.open) + '</b></div>' +
-        '<div><span class="eyebrow">' + t('sf_done_today') + '</span><b>' + nf(p.done.today) + '</b></div>' +
+        '<div><span class="eyebrow">' + t('sf_open') + '</span><b><bdi dir="ltr">' + nf(p.open) + '</bdi></b></div>' +
+        '<div><span class="eyebrow">' + t('sf_done_today') + '</span><b><bdi dir="ltr">' + nf(p.done.today) + '</bdi></b></div>' +
         '<div><span class="eyebrow">' + t('sf_cash_on_him') + '</span>' +
           (!money
             /* absent, not zero: this account may not ask about money */

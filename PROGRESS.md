@@ -100,7 +100,8 @@ shop laptop, the nine questions and the whole story are in `night_shift_03_log.m
 | — | 3 — Safeers: every control pressed, and finished | 2c0040a | 75 (p3-safeers) + 56 (ns03/p5, repaired) | every button already worked; ns03/p5 was spending its own fixture |
 | — | 4 — Money: the screen, the dialogs, and what landed | a58db4e | 49 (p4-money) | every phone dialog is a sheet now, and the keyboard is answered |
 | — | 5 — phone quality at six widths | fb06376 | 122 (p5-phone) + 1027 (ns03/sweep, extended) | the sweep now walks 360/375/390/414/430 and 740 landscape |
-| — | 6 — the devil pass, and a full shop | — | 52 (p6-devil) + 49 (p6-load) | a minus used to mean its opposite; 0.005 dollars used to mean five |
+| — | 6 — the devil pass, and a full shop | 2933536 | 52 (p6-devil) + 49 (p6-load) | a minus used to mean its opposite; 0.005 dollars used to mean five |
+| — | 7 — the style rules, enforced | — | 617 (p7-style) | Arabic was tracked on every screen and set in two faces |
 
 ```bash
 node _nightshift/fix05/p0-namespaces.mjs   # no button wired to a dead namespace (no browser)
@@ -111,6 +112,7 @@ node _nightshift/fix05/p3-safeers.mjs      # every Safeers control, click AND ta
 node _nightshift/fix05/p4-money.mjs        # the money screen, the dialogs, a double tap and a pulled plug
 node _nightshift/fix05/p5-phone.mjs        # targets, fields, the sheet, rotation, at five phone widths
 node _nightshift/fix05/p6-devil.mjs        # rubbish in, three presses, deep links, two tabs, a dead session
+node _nightshift/fix05/p7-style.mjs        # the style rules, every screen, every role, EN/AR
 
 # the load test is DESTRUCTIVE — it is run between a backup and a restore:
 #   1. stop the sandbox server

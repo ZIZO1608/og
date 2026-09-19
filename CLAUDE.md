@@ -2470,6 +2470,98 @@ Verified: `fix04/bring-back` 33 · `fix04/till` 88 (both languages at 390 as the
 owner, a cart of one and a cart of twelve, every control hit-tested, a real sale rung up on the
 phone and read back out of SQLite), plus `npm test`, `ns03/sweep` and `qf-board`.
 
+## The style rules
+
+Written down in fix 05, after a pass that asked every screen every role can open, in both
+languages, whether it kept them — and found eleven that did not. They are not opinions about
+taste: each one is a rule the shop already lived by in most places, and the places that had
+drifted are where the eye notices something is wrong without being able to say what.
+
+**`_nightshift/fix05/p7-style.mjs` enforces them.** A rule nobody measures is a paragraph.
+
+### Spacing — 8 · 12 · 16 · 24 · 32, and nothing between
+
+One scale, in that order of preference. 8 between things that belong together (a button and the
+button beside it), 12 inside a card, 16 between cards, 24 between a card and the next heading,
+32 at the top of a section. A gap of 13 or 18 is not a decision anybody made; it is a number
+somebody nudged until it looked right on the screen they had open.
+
+### One lime primary per place a decision is made
+
+`--brand` is the shop's one loud colour and it means *this is the thing to do here*. The rule is
+**not** one per screen: night shift 02 settled that a board row draws one lime button for its own
+next step (waiting → Assign → Send out → Delivered), and a screen of twelve parcels is twelve
+separate decisions, each with one answer. So: **one lime primary in the page head, and at most
+one inside any one card or row.** Two in the same place is two answers to one question.
+
+Everything else is `.btn` (quiet) or `.btn-ghost` (quieter). A destructive action is
+`.bk-danger`, behind a hairline, last — and `og-skin.css` has to restate that class, because its
+own two-class `.btn` rule beats a one-class one.
+
+### One card, one button set, one heading
+
+- Every panel is `.card` and takes its radius, its border and its background from that one rule.
+  A panel that invents its own will drift within a month.
+- Every screen opens with one `<h1>` inside `.page-head`, 27px, on the same edge as every other
+  screen's. The two exceptions are deliberate: the till is a full-bleed working surface where a
+  heading would cost a row of the product grid, and the shelf map's header is the room's own
+  controls.
+- A job the person DOES is a tile (`.hm-job`), the same tile on the job home and on the money
+  screen. A job is not sometimes a tile and sometimes a small button.
+
+### Empty, loading, error — three states, one shape each
+
+- **Empty** is `.cart-empty`: a bold line saying what is not there, a plain line saying why, and —
+  where there is one — **the one action that fixes it, on the card**. "Add one below" pointing at a
+  ghost button somebody has to go and find is not an empty state.
+- **Loading** is a skeleton the shape of what is coming, not "…" and not a spinner in the middle
+  of the page. A card of three dots that becomes four people, a filter bar and a table makes the
+  whole screen jump. Say it in words too, for a screen reader (`.sr-only[role=status]`).
+- **Error** is the server's own sentence, in the person's language, in the place that caused it —
+  under the field for a refusal, on the card for a screen that could not load. Never a code.
+- **A save with no line** says "Not saved — check the connection and try again" and **keeps what
+  was typed**. Money is the one screen where re-typing an amount because the wifi blinked is
+  unacceptable.
+- **Toasts** are `ok` · `warn` · `err`, one line of what happened and one of detail, below the
+  bar. A toast is never the only record of something that failed.
+
+### Arabic
+
+- **Zero letter-spacing, everywhere.** Latin letters stand apart and a little negative tracking
+  tightens a headline; Arabic letters JOIN, and tracking pulls the joins open so a word comes
+  apart into its letters. `og-skin.css` zeroes it under `body.rtl` for everything, with one
+  exception — an explicit Latin run (`[dir="ltr"]`, `<bdi>`, `<code>`) keeps what it was given.
+- **One face.** Montserrat has no Arabic glyphs at all, so every Arabic screen is really set in
+  whatever comes next in the stack. There were two stacks — `body.rtl` named Tahoma and
+  `--font-head` named system-ui — so on a machine with one and not the other, a heading and the
+  paragraph under it were two different Arabic faces. `body.rtl` redefines `--font-head` and
+  `--font-body` as well as its own `font-family`, which reaches the ten small rules across four
+  stylesheets that ask for the token.
+- **Cairo is NOT adopted, and that is a decision.** It is vendored at weight 700 only, for the
+  thermal label where a thin fallback smudges (`assets/fonts/fonts.css` says so at length).
+  Adopting it for the app would set every Arabic screen in one bold weight, with no woff2
+  converter and no build step to make the others.
+- **Every figure is its own bidi run.** A run of digits beside Arabic is reordered unless it is
+  isolated: "1 USD = 130 SYP" is drawn "USD = 130 SYP 1". Use `<bdi dir="ltr">` in markup, or
+  `unicode-bidi: isolate` in CSS for a slot written inline on thirty screens (`.stat .val`). Do
+  **not** force `direction: ltr` — that left-aligns a figure inside a right-aligned card.
+- **A sign goes INSIDE the isolate with its figure.** Two isolates side by side are reordered and
+  "−$81.50" comes out "$81.50−".
+- **No English sentence on an Arabic screen.** A product name, a username, a SKU and a currency
+  code are DATA and stay as they are; a label, a button or a heading in English is a missing
+  string. Every new string goes in `I18N.en` **and** `I18N.ar`, in Syrian Arabic — "مو" not "مش",
+  "المزيد" for More.
+- **No raw key on screen**, ever. `ns03/sweep` greps for the app's own key families on every
+  screen in both languages.
+
+### A thumb is 44px
+
+On a phone, everything pressable is at least 44px tall with 8px between it and the next thing;
+every field is at least 16px (under that an iPhone zooms the whole page in on focus and there is
+no way back but a pinch) with the right `inputmode` and `enterkeyhint`; every dialog is a bottom
+sheet with a grab handle, its own scroll and the confirm button above the keyboard; and nothing
+comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
+
 ## Known open work
 
 - The supplier and payroll editors exist now (the Money screen, 055), and adding a colour or a size to an

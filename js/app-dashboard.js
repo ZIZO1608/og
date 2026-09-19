@@ -135,10 +135,24 @@ function todoRow(a) {
        '<span class="alert-txt">' + text + '</span></div>');
 }
 
+/* FIX 05 — A BARE FIGURE GETS ITS OWN ISOLATE.
+   A run of digits next to Arabic is reordered by the bidi algorithm unless
+   it is in one: "1 USD = 130 SYP" is drawn "USD = 130 SYP 1", and "105K"
+   beside an Arabic caption walks to the wrong end of it. Most callers pass a
+   figure that is already wrapped — moneyPair and friends do it themselves —
+   so only a value with NO markup of its own and a digit in it is touched,
+   which is exactly the handful the style pass found on Reports and Print. */
+function isolateFigure(v) {
+  var s = String(v === undefined || v === null ? '' : v);
+  if (/<[a-z!\/]/i.test(s)) return s;             /* it brought its own markup */
+  if (!/[0-9٠-٩۰-۹]/.test(s)) return s;
+  return '<bdi dir="ltr">' + s + '</bdi>';
+}
+
 function statBox(label, val, foot, extraCls, act) {
   return '<div class="stat' + (act ? ' clickable' : '') + (extraCls ? ' ' + extraCls : '') + '"' +
     (act || '') + '><span class="eyebrow">' + label + '</span>' +
-    '<div class="val">' + val + '</div>' +
+    '<div class="val">' + isolateFigure(val) + '</div>' +
     (foot ? '<div class="foot">' + foot + '</div>' : '') + '</div>';
 }
 

@@ -2639,3 +2639,106 @@ body:not([data-portal="yalla"]) [data-sc="camera"] { min-height: 52px; min-width
   body:not([data-portal="yalla"]) .bk-box,
   body:not([data-portal="yalla"]) .cb-check { min-height: 44px; display: flex; align-items: center; }
 }
+
+/* ==========================================================================
+   FIX 05 — ARABIC IS NEVER TRACKED
+   --------------------------------------------------------------------------
+   Latin letters stand apart and a little negative tracking tightens a
+   headline; Arabic letters JOIN, and tracking pulls the joins open so a word
+   comes apart into its letters. This file has zeroed it one selector at a
+   time since it was written — `.stat .eyebrow`, `.field > span`, `table.tbl
+   th`, the delivery office's steps, the road's figures — which is eleven
+   rules and a growing list of things somebody forgot.
+
+   So it is said once, for everything: under `body.rtl` nothing is tracked.
+   The single exception is anything explicitly marked as a Latin run — a SKU,
+   a code, a figure in its own `dir="ltr"` isolate — which is not Arabic and
+   keeps whatever it was given. Measured before this: every Arabic screen in
+   the shop carried −0.07px on its body text and −0.98px on its heading.
+   ========================================================================== */
+body.rtl:not([data-portal="yalla"]),
+body.rtl:not([data-portal="yalla"]) h1,
+body.rtl:not([data-portal="yalla"]) h2,
+body.rtl:not([data-portal="yalla"]) h3,
+body.rtl:not([data-portal="yalla"]) .page-head h1,
+body.rtl:not([data-portal="yalla"]) .eyebrow,
+body.rtl:not([data-portal="yalla"]) .btn,
+body.rtl:not([data-portal="yalla"]) .tab,
+body.rtl:not([data-portal="yalla"]) .chip,
+body.rtl:not([data-portal="yalla"]) .badge,
+body.rtl:not([data-portal="yalla"]) .set-sec,
+body.rtl:not([data-portal="yalla"]) .mn-half,
+body.rtl:not([data-portal="yalla"]) .more-group,
+body.rtl:not([data-portal="yalla"]) .stat .val,
+body.rtl:not([data-portal="yalla"]) .hm-t,
+body.rtl:not([data-portal="yalla"]) .sub,
+body.rtl:not([data-portal="yalla"]) .muted,
+body.rtl:not([data-portal="yalla"]) .small,
+body.rtl:not([data-portal="yalla"]) p,
+body.rtl:not([data-portal="yalla"]) b,
+body.rtl:not([data-portal="yalla"]) small,
+body.rtl:not([data-portal="yalla"]) span,
+body.rtl:not([data-portal="yalla"]) div,
+body.rtl:not([data-portal="yalla"]) label,
+body.rtl:not([data-portal="yalla"]) li,
+body.rtl:not([data-portal="yalla"]) td,
+body.rtl:not([data-portal="yalla"]) th { letter-spacing: 0; }
+/* A Latin run inside an Arabic page is still Latin: a SKU, an invoice
+   number, a figure in its own isolate. It keeps what it was given. */
+body.rtl:not([data-portal="yalla"]) [dir="ltr"],
+body.rtl:not([data-portal="yalla"]) bdi,
+body.rtl:not([data-portal="yalla"]) code { letter-spacing: normal; }
+
+/* ONE ARABIC FACE, NOT TWO. Montserrat has no Arabic glyphs at all, so every
+   Arabic screen is really set in whatever comes next in the stack — and there
+   were two stacks: `body.rtl` names Tahoma after Segoe UI, while
+   `--font-head` (which h1–h4 take) names system-ui. On a machine that has
+   one and not the other, a heading and the paragraph under it are two
+   different Arabic faces on one screen. Said once here, and the headings
+   take it too.
+
+   NOT Cairo, and that is a decision. It is vendored at weight 700 only, for
+   the thermal label where a thin fallback smudges — adopting it for the app
+   would set every Arabic screen in one bold weight, with no woff2 converter
+   and no build step to make the others. It is suggestion 1 in
+   fix_05_log.md, for the owner. (fix 05) */
+body.rtl:not([data-portal="yalla"]) {
+  --font-ar: 'Montserrat', 'Segoe UI', Tahoma, sans-serif;
+  /* The two TOKENS as well, not only this element: ten small rules across
+     four stylesheets reach for var(--font-head) — the bulk bar's count, the
+     dashboard hero, the invoice totals, the customer card's figures — and
+     each of them was pulling the other stack back in one element at a time.
+     Redefined here, every one of them follows. */
+  --font-head: 'Montserrat', 'Segoe UI', Tahoma, sans-serif;
+  --font-body: 'Montserrat', 'Segoe UI', Tahoma, sans-serif;
+  font-family: var(--font-ar);
+}
+body.rtl:not([data-portal="yalla"]) h1,
+body.rtl:not([data-portal="yalla"]) h2,
+body.rtl:not([data-portal="yalla"]) h3,
+body.rtl:not([data-portal="yalla"]) h4,
+body.rtl:not([data-portal="yalla"]) .stat .val,
+body.rtl:not([data-portal="yalla"]) .btn,
+body.rtl:not([data-portal="yalla"]) button,
+body.rtl:not([data-portal="yalla"]) input,
+body.rtl:not([data-portal="yalla"]) select,
+body.rtl:not([data-portal="yalla"]) textarea { font-family: var(--font-ar); }
+
+/* EVERY FIGURE SLOT IS ITS OWN BIDI RUN. `<bdi>` is the markup answer and
+   most figures in the shop already carry one — but a `.val` is written
+   inline on about thirty screens and a rule reaches all of them at once.
+   `unicode-bidi: isolate` is exactly what `<bdi>` sets, so this is the same
+   answer said in CSS: the number inside is resolved on its own and cannot
+   be walked to the far end of the Arabic sentence around it. Direction is
+   deliberately NOT forced — that would left-align a figure inside a
+   right-aligned card. (fix 05) */
+body.rtl:not([data-portal="yalla"]) .stat .val,
+body.rtl:not([data-portal="yalla"]) .stat .foot,
+body.rtl:not([data-portal="yalla"]) .hm-fig b,
+body.rtl:not([data-portal="yalla"]) .sf-p-stats b,
+body.rtl:not([data-portal="yalla"]) .cb-bal b,
+body.rtl:not([data-portal="yalla"]) .cb-line b,
+body.rtl:not([data-portal="yalla"]) .strong-num,
+body.rtl:not([data-portal="yalla"]) .dash-hero-val,
+body.rtl:not([data-portal="yalla"]) .cc-stats div b,
+body.rtl:not([data-portal="yalla"]) .bk-count b { unicode-bidi: isolate; }
