@@ -1,7 +1,7 @@
 /* ==========================================================================
    Back up the database — and prove the backup is readable
    --------------------------------------------------------------------------
-   The work lives in lib/backup.js, which the boot pull (lib/restore.js)
+   The work lives in lib/backup.js, which the disaster restore (lib/restore.js)
    uses too; this file prints. VACUUM INTO, not a file copy — a consistent
    snapshot of a database that is actively being used — and every backup is
    then REOPENED and checked. An untested backup is not a backup, it is a

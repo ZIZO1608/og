@@ -11,17 +11,19 @@
      0   everything that could be mirrored was
      1   the run finished but a table the mirror lacks was skipped
          (the warehouse layout or the loyalty tables — see the lines above)
-     2   REFUSED: this mirror belongs to another database (lib/lineage.js)
+     2   REFUSED: this computer isn't the shop — the mirror belongs to another
+         database (lib/lineage.js)
 
    SQLite stays the real system — this only ever READS from it and WRITES
    to Supabase, never the other way around. Safe to run repeatedly: every
    table is a cursor over change_log, so a run that dies halfway just picks
    up where it left off next time.
 
-   OG_SYNC_TAKEOVER=1 (or --takeover) claims the mirror for this database
-   when it belongs to another — a decision made by a person, once, and
-   followed by npm run supabase:reconcile. Claim the mirror in the panel
-   root does exactly that sequence.
+   THERE IS NO TAKEOVER (audit 06). OG_SYNC_TAKEOVER and --takeover are gone:
+   the mirror's owner changes only through the disaster restore
+   (npm run supabase:restore -- --wipe). --claim-unclaimed claims a mirror
+   that has history and NO owner row at all — a first claim, never a change
+   of owner — and is followed by npm run supabase:reconcile.
    ========================================================================== */
 
 import { resolve, dirname } from 'node:path';
@@ -45,7 +47,7 @@ const DB_FILE = dbFile();
 
 if (!SB.isConfigured()) {
   console.error('Supabase is not configured — run npm run supabase:check first.');
-  process.exit(1);
+  await SB.exit(1);
 }
 
 DB.open(DB_FILE);
@@ -55,17 +57,13 @@ const log = Mirror.consoleLog();
 /* FIRST, before a single row moves: is this mirror ours? Exit 2 — distinct
    from a failed push — so whatever ran this can tell "refused" from "broke". */
 {
-  const lin = await Lineage.guard({ takeover: Lineage.takeoverRequested() });
+  const lin = await Lineage.guard({ claimUnclaimed: Lineage.claimUnclaimedRequested() });
   if (!lin.ok) {
     log.head('Whose mirror is this?');
     for (const line of Lineage.refusal(lin.other)) console.log(line);
-    process.exit(2);
+    await SB.exit(2);
   }
   if (lin.claimed) log.tick(`mirror claimed for this database (${lin.mine.slice(0, 8)}…)`);
-  if (lin.tookOver) {
-    log.warn(`mirror taken over from ${lin.tookOver.host} — run npm run supabase:reconcile ` +
-             'afterwards; its bookmarks and rows are not this database\'s.');
-  }
 }
 
 await Mirror.loadCursors();
@@ -79,13 +77,13 @@ console.log('  Check the Supabase dashboard — Table Editor — to see the rows
    than by taking the run down halfway through. */
 if (r.layoutFailed) {
   log.warn('  The warehouse layout is NOT in the mirror. Exit 1.\n');
-  process.exit(1);
+  await SB.exit(1);
 }
 if (r.loyaltyFailed) {
   log.warn('  The stamp cards and the wants list are NOT in the mirror. Exit 1.\n');
-  process.exit(1);
+  await SB.exit(1);
 }
 if (r.cashFailed) {
   log.warn('  The cash book is NOT in the mirror — run server/supabase/021_cash_book.sql. Exit 1.\n');
-  process.exit(1);
+  await SB.exit(1);
 }

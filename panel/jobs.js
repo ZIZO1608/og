@@ -205,7 +205,7 @@ export const JOBS = {
   mirrorSync: {
     label: 'Full sync',
     group: 'cloud',
-    blurb: 'One complete push, printed. Use the shop\u2019s own Sync now while it is open — two writers on one set of bookmarks is the thing lineage exists to prevent.',
+    blurb: 'One complete push, printed. Use the shop\u2019s own Sync now while it is open — two writers on one set of bookmarks is the thing the owner guard exists to prevent.',
     while: 'shut',
     cwd: 'server',
     steps: () => [['node', ['scripts/supabase-sync.js']]]
@@ -221,53 +221,25 @@ export const JOBS = {
     steps: () => [['node', ['scripts/supabase-reconcile.js']]]
   },
 
-  claim: {
-    label: 'Claim the mirror',
-    group: 'cloud',
-    blurb: 'Tells the cloud that THIS laptop is the shop from now on, then syncs and reconciles. A decision made by a person, once. The other laptop stops mirroring the moment it next tries.',
-    danger: 'CLAIM',
-    while: 'shut',
-    cwd: 'server',
-    env: { OG_SYNC_TAKEOVER: '1' },
-    steps: () => [
-      ['node', ['scripts/supabase-sync.js', '--takeover']],
-      ['node', ['scripts/supabase-reconcile.js']],
-      ['node', ['scripts/supabase-check.js']]
-    ]
-  },
-
+  /* THE DISASTER RESTORE, and the ONLY thing that changes which computer owns
+     the cloud copy (audit 06). The shop's laptop is dead, stolen or wiped and
+     this clean machine has to become the shop: the database here is copied
+     and moved aside, the whole shop is rebuilt from the cloud copy in one
+     transaction, this machine mints a new owner id and claims the mirror, and
+     the old laptop - if it ever comes back - is refused from then on. The
+     panel closes the shop first and opens it again after (aroundShop), and
+     opens it again after a refusal too: lib/restore.js leaves the file as it
+     was. It refuses by itself while the shop's own computer is plainly still
+     working (owner_active, exit 2), while rows here never reached the cloud
+     (unpushed_local), without the vault key, and on a mirror short of a
+     column. There is no Claim the mirror and no Take the shop here any more:
+     the shop does not move between laptops. */
   restore: {
-    label: 'Restore from cloud',
+    label: 'Restore the shop from the cloud',
     group: 'cloud',
-    blurb: 'Moves this machine\u2019s og.db aside and rebuilds the whole shop from the cloud copy. Everything here that never reached the mirror is gone.',
+    blurb: 'FOR A NEW LAPTOP, AFTER THE SHOP\u2019S OWN IS GONE. Moves this machine\u2019s og.db aside, rebuilds the whole shop from the cloud copy, and makes THIS computer the shop from now on \u2014 the old one can never send to the cloud copy again. Everything here that never reached the cloud is replaced. Refuses while the shop\u2019s computer is still working.',
     danger: 'RESTORE',
     while: 'shut',
-    aroundShop: true,
-    cwd: 'server',
-    steps: () => [['node', ['scripts/supabase-restore.js', '--wipe']]]
-  },
-
-  /* THE HANDOVER. The same command as `restore`, offered from the mirror card
-     with the words the situation actually calls for. The shop runs on one
-     laptop at a time (lib/lineage.js, lib/restore.js); when the cloud copy
-     belongs to the other one, this is how it comes here: the whole shop is
-     pulled down, this machine mints a new lineage and claims the mirror, and
-     the other laptop is refused the moment it next tries. The panel closes
-     the shop here first and opens it again after, so nobody has to know that
-     the wipe refuses while a server is answering on the port.
-     Two refusals worth knowing by name, because they are the two a person can
-     fix: busy_elsewhere (the other laptop is open - quit the panel there,
-     wait a minute) and unpushed_local (rows here never reached the cloud -
-     Claim the mirror keeps them instead, if this machine is the truth). */
-  takeShop: {
-    label: 'Take the shop here',
-    group: 'cloud',
-    blurb: 'Pulls the whole shop down from the cloud onto this machine and makes this the laptop that owns the mirror. Close the shop on the other laptop first. Whatever is on this machine that never reached the cloud is replaced by the cloud copy.',
-    danger: 'TAKE',
-    while: 'shut',
-    /* public, and still refused unless the mirror belongs to another laptop
-       (the shopkeeper's handover) — see the handover check in ask() in panel.js */
-    public: true,
     aroundShop: true,
     cwd: 'server',
     steps: () => [['node', ['scripts/supabase-restore.js', '--wipe']]]

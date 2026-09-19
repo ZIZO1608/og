@@ -1097,7 +1097,7 @@ export async function adoptCursorsLocally() {
   for (const [id, c] of cursors) if (id.startsWith('sync:')) noteLocal(id, c.last_seq);
 }
 
-/* After the boot pull. The local change_log is empty and the restore wrote
+/* After the disaster restore. The local change_log is empty and the restore wrote
    outside it, so every seq bookmark points into a log that no longer exists
    — the exact "cursor outlives its log" trap the rewind in syncTable()
    catches, one table at a time, each with a warning that would be a lie
@@ -1133,10 +1133,52 @@ export async function resetCursorsAfterPull({ log = tailLog() } = {}) {
   log.tick(`${rows.length - 1} bookmark(s) reset for ${host}`);
 }
 
+/* ROWS A MIGRATION MADE, WHICH NOTHING EVER LOGGED (audit 06).
+   A cursor-shape table is pushed by replaying change_log, so a row with no log
+   entry exists here and nowhere else — and nothing reports it. Every write
+   path in lib/ logs. A MIGRATION cannot: 058 gave each existing product its
+   first colour with plain INSERTs, so on any shop older than 058 those colours
+   never reached the mirror, while the variants pointing at them did (the
+   mirror's colour_id carries no foreign key, so nothing refused and nothing
+   healed). It stayed invisible until a restore was actually run end to end:
+   the rebuilt database failed its foreign keys at COMMIT and the restore put
+   the old file back. The shop could not have been rebuilt from its cloud copy.
+
+   So before every full run, a table listed here has its never-logged rows
+   logged — ordinary 'update' entries, which the cursor then pushes like any
+   other. Deliberately a SHORT LIST and not every cursor table: after a
+   disaster restore NO row has a log entry (the restore writes outside the
+   log, and the bookmarks are reset to say so), and healing everything would
+   re-push the whole shop. A MIGRATION THAT INSERTS INTO A CURSOR-SHAPE TABLE
+   ADDS THAT TABLE HERE, or writes its own change_log rows. */
+const MIGRATION_MADE = ['product_colours'];
+export function logUnlogged({ log = tailLog() } = {}) {
+  const d = DB.get();
+  let total = 0;
+  for (const t of MIGRATION_MADE) {
+    let pk;
+    try {
+      pk = d.prepare(`SELECT name FROM pragma_table_info('${t}') WHERE pk > 0`).all().map((c) => c.name);
+    } catch { continue; }
+    if (pk.length !== 1) continue;
+    const missing = d.prepare(
+      `SELECT x.${pk[0]} AS id FROM ${t} x
+        LEFT JOIN (SELECT DISTINCT row_id FROM change_log WHERE tbl = ?) c ON c.row_id = CAST(x.${pk[0]} AS TEXT)
+       WHERE c.row_id IS NULL`
+    ).all(t);
+    if (!missing.length) continue;
+    DB.tx(() => { for (const r of missing) DB.logChange(t, r.id, 'update', null, 'never logged (made by a migration) — logged so the mirror gets it'); });
+    total += missing.length;
+    log.tick(`${t} — ${missing.length} row(s) a migration made were never logged; logged now, pushed below`);
+  }
+  return total;
+}
+
 /* Everything, in order, the way the CLI has always done it. Settings and
    users are rewritten whole here — the reconcile relies on that. */
 export async function fullRun({ log = consoleLog() } = {}) {
   if (!cursorsLoaded) await loadCursors();
+  try { logUnlogged({ log }); } catch (e) { log.warn(`could not look for never-logged rows — ${e.message}`); }
   const r = await walk(log, null);
   await SB.update('sync_state', { id: 'shop' }, {
     last_push_at: new Date().toISOString(),

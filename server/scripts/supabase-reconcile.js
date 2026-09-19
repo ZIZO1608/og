@@ -159,9 +159,9 @@ console.log('');
 console.log(`${BOLD}  OG SYSTEM — reconcile Supabase with the shop${OFF}`);
 if (DRY) dim('dry run — nothing will be written or deleted');
 
-if (!SB.isConfigured()) { bad('Supabase is not configured.'); process.exit(1); }
+if (!SB.isConfigured()) { bad('Supabase is not configured.'); await SB.exit(1); }
 const reach = await SB.ping();
-if (!reach.ok) { bad(`Cannot reach Supabase — ${reach.message}`); process.exit(1); }
+if (!reach.ok) { bad(`Cannot reach Supabase — ${reach.message}`); await SB.exit(1); }
 tick(`Connected to ${SB.projectUrl()}`);
 
 DB.open(dbFile());
@@ -169,16 +169,15 @@ DB.open(dbFile());
 /* Whose mirror is this? A reconcile from the wrong machine is the most
    destructive thing in this folder — it deletes every row the other
    database has that this one has not. Refused unless this database owns the
-   mirror, or --takeover says it should from now on. See lib/lineage.js. */
+   mirror; there is no switch that lifts it (audit 06). See lib/lineage.js. */
 {
-  const lin = await Lineage.guard({ takeover: Lineage.takeoverRequested() });
+  const lin = await Lineage.guard();
   if (!lin.ok) {
     head('Whose mirror is this?');
     for (const line of Lineage.refusal(lin.other)) console.log(line);
-    process.exit(2);
+    await SB.exit(2);
   }
   if (lin.claimed) tick(`mirror claimed for this database (${lin.mine.slice(0, 8)}…)`);
-  if (lin.tookOver) warn(`mirror taken over from ${lin.tookOver.host} — its rows go below.`);
 }
 
 const plan = [];
@@ -237,7 +236,7 @@ if (DRY) {
   dim(`${plan.reduce((a, p) => a + p.local.length, 0)} row(s) would be pushed ` +
       `(${totalMissing} of them not in Supabase at all).`);
   dim(`${totalOrphans} row(s) would be deleted from Supabase.`);
-  process.exit(0);
+  await SB.exit(0);
 }
 
 /* Upsert parents first. */

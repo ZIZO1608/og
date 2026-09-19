@@ -191,3 +191,20 @@ suites, and not one 401.** The shared-jar flakes are gone. The one suite that di
 `ns03/p2-money`, re-ran 39/39 on its own; its cause is a real fault in the app and not the
 harness — a Save pressed while another save is still reloading is dropped in silence (CLAUDE.md,
 Known open work; `bash _nightshift/with-chrome.sh fix06/dropped-press` shows it).
+
+---
+
+## Audit 06 (branch `audit-06`, off `fix-05`)
+
+`server/.env.test` does not exist on this machine, so every part that needs a real test service
+(a test Supabase project, `_test` bots) is SKIPPED and says so; the cloud copy is stood in for by
+`_nightshift/audit06/fake-postgrest.mjs`, a stateful fake that keeps rows.
+
+```bash
+node _nightshift/audit06/guard-proof.mjs        # 33 — the key guard aborts on anything that looks real
+node _nightshift/audit06/start-sandbox.mjs      # (re)start the sandbox on 8190 with the guard's environment
+node _nightshift/audit06/p1-one-laptop.mjs      # 37 — shop pushes, dev refused by every door, no boot pull, disaster restore compared row for row
+node _nightshift/audit06/routes.mjs             # every HTTP route, read off server/index.js
+```
+
+15:12 — Part 0 — (with Part 1) — guard 33, baseline 2944+1 red (fixture) — fixed 2 harness — skipped: test-service checks, no server/.env.test

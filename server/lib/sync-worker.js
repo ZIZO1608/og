@@ -38,13 +38,15 @@
    over the same cursor rows is exactly the race the lineage guard exists
    to refuse between machines, and it is not allowed inside one either.
 
-   IT ASKS WHOSE MIRROR IT IS BEFORE EVERY PUSH, not only at boot. The shop
-   moves between laptops now (lib/restore.js — the baton): the laptop that
-   boots next pulls the mirror and claims it, and THIS one, if still up,
-   must stop writing the moment it next tries. One small GET per push — and
-   a push only happens when something changed. While live it also beats the
-   `shop` heartbeat every two minutes, which is how the next laptop tells
-   "closed last night" from "working right now".
+   IT ASKS WHOSE MIRROR IT IS BEFORE EVERY PUSH, not only at boot. One
+   laptop is the shop (audit 06) and the mirror records which; any other
+   machine is REFUSED here, on every push, for as long as it runs. The owner
+   only ever changes through the disaster restore (lib/restore.js), and the
+   machine that lost the mirror that way must stop writing the moment it next
+   tries — so the question is asked every time. One small GET per push, and a
+   push only happens when something changed. There is no heartbeat any more:
+   it existed so a second laptop could tell "closed last night" from "working
+   right now" before pulling at boot, and nothing pulls at boot.
 
    AND IT COLLECTS OG-TRACK'S INBOX. While live — once after the boot run,
    then every minute — lib/inbox.js takes the reviews and Notify me that the
@@ -72,7 +74,6 @@ const FIRST_RUN_MS = 20 * 1000;      /* boot is the busiest second the machine h
 const DEBOUNCE_MS = 2 * 1000;
 const TICK_MS = 10 * 1000;
 const RECHECK_LINEAGE_MS = 10 * 60 * 1000;
-const HEARTBEAT_MS = 2 * 60 * 1000;   /* lib/lineage.js STALE_MS is five of these */
 const INBOX_MS = 60 * 1000;           /* og-track's inbox, lib/inbox.js */
 const BACKOFF_MIN_MS = 10 * 1000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
@@ -92,15 +93,13 @@ const state = {
   nextRetryAt: null,
   lastFullAt: null,
   lastFullOk: null,
-  refusedBy: null,
-  pull: null              /* what the boot pull did, or why it did not (lib/restore.js) */
+  refusedBy: null
 };
 
 let debounce = null;
 let tick = null;
 let fullTimer = null;
 let lineageTimer = null;
-let heartbeatTimer = null;
 let inboxTimer = null;
 let inboxBusy = false;
 let inboxFailing = false;
@@ -137,14 +136,9 @@ function pause() {
 function tell() {
   /* The payload carries no shop data — mode, counts and timestamps only —
      and the manager's Settings fold repaints from it without a poll. The
-     pull's backup path stays off the wire: it is a location on this disk,
-     and this goes to every open tab on the shop's side. */
+     panel gets the same object up the pipe. */
   const s = status();
-  /* The panel gets the whole thing, backup path included: it is the process
-     that started this one, on this machine, and "which file was moved aside"
-     is exactly what somebody standing at the laptop needs. */
   PanelLink.tell('mirror', { mirror: s });
-  if (s.pull) s.pull = { ...s.pull, backup: undefined, tables: undefined };
   Live.notify('og', { mirror: s });
 }
 
@@ -158,7 +152,7 @@ async function run(kind) {
   try {
     /* Still ours? Another laptop may have taken the baton since the last
        push. A network failure here falls through to the ordinary catch. */
-    const lin = await Lineage.guard({ takeover: false });
+    const lin = await Lineage.guard();
     if (!lin.ok) { refuseLineage(lin); return null; }
     out = kind === 'full'
       ? await Mirror.fullRun({ log })
@@ -244,26 +238,29 @@ function schedule(ms = DEBOUNCE_MS) {
   debounce.unref();
 }
 
-/* Is this mirror ours? Refused is a mode, not an error: nothing is pushed,
-   the reason is on the Settings fold, and it is asked again every ten
-   minutes in case the other machine has stopped or somebody ran
-   the panel's Claim the mirror. */
+/* Is this mirror ours? Refused is a mode, not an error: nothing is pushed
+   and the reason is on the Settings fold and the panel. It is asked again
+   every ten minutes — the one way it can change is a disaster restore run ON
+   THIS MACHINE, which restarts the shop anyway, so the timer is a backstop
+   for a mirror whose owner row somebody repaired by hand. */
 /* The refused branch, shared by the boot check and the per-push check. */
 function refuseLineage(lin) {
   state.mode = 'refused';
   state.refusedBy = lin.other ? `${lin.other.host} (${String(lin.other.id).slice(0, 8)}…)` : null;
   state.lastError = lin.other
-    ? `the mirror belongs to ${state.refusedBy} — Take the shop here in the panel, or Claim the mirror if THIS machine holds the truth`
-    : 'nobody has claimed this mirror yet — Claim the mirror in the panel if THIS machine is the shop';
+    ? `${Lineage.NOT_THE_SHOP} (it belongs to ${state.refusedBy})`
+    : 'This cloud copy has been written to before and no computer owns it yet — npm run supabase:sync -- --claim-unclaimed, once, on the shop\'s computer';
+  state.unclaimed = !lin.other;
   console.log(`  [mirror] refused: ${state.lastError}`);
   tell();
 }
 
 async function checkLineage() {
   try {
-    const lin = await Lineage.guard({ takeover: false });
+    const lin = await Lineage.guard();
     if (!lin.ok) { refuseLineage(lin); return false; }
     state.refusedBy = null;
+    state.unclaimed = false;
     if (lin.claimed) console.log('  [mirror] claimed the mirror for this database');
     return true;
   } catch (err) {
@@ -322,17 +319,8 @@ function arm() {
   const every = fullMinutes();
   fullTimer = setInterval(() => run('full'), every * 60 * 1000);
   fullTimer.unref();
-  heartbeatTimer = setInterval(beat, HEARTBEAT_MS);
-  heartbeatTimer.unref();
   inboxTimer = setInterval(collectInbox, INBOX_MS);
   inboxTimer.unref();
-}
-
-/* "Still here." Only while live and idle; a failure says nothing — the next
-   real push's own handling covers a line that has gone down. */
-function beat() {
-  if (state.mode !== 'live' || state.busy) return;
-  SB.update('sync_state', { id: 'shop' }, { last_push_at: new Date().toISOString() }).catch(() => {});
 }
 
 /* og-track's inbox (lib/inbox.js): the reviews and Notify me customers left on
@@ -364,9 +352,6 @@ async function collectInbox() {
     inboxBusy = false;
   }
 }
-
-/* What the boot pull did, for the status line and the Settings fold. */
-export function notePull(result) { state.pull = result || null; }
 
 export function start() {
   if (state.mode !== 'off' || lineageTimer) return;
@@ -439,7 +424,6 @@ export function stop() {
   if (tick) { clearInterval(tick); tick = null; }
   if (fullTimer) { clearInterval(fullTimer); fullTimer = null; }
   if (lineageTimer) { clearInterval(lineageTimer); lineageTimer = null; }
-  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
   if (inboxTimer) { clearInterval(inboxTimer); inboxTimer = null; }
   if (unhook) { unhook(); unhook = null; }
   state.mode = 'off';
@@ -462,7 +446,7 @@ export function status() {
     fullEveryMinutes: fullMinutes(),
     lastFullAt: state.lastFullAt,
     lastFullOk: state.lastFullOk,
-    pull: state.pull,
+    unclaimed: !!state.unclaimed,
     denied: Mirror.refusals(),
     /* kept for anything that still reads the old name */
     everyMinutes: fullMinutes()

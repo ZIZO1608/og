@@ -105,9 +105,8 @@ var PI18N = (function () {
     d_server_signal: 'it stopped on its own ({signal})',
     d_cloud_live: 'in step',
     d_cloud_live_behind: '{n} waiting to go up',
-    d_cloud_pulled: 'the shop was pulled down from the cloud',
     d_cloud_offline: 'cannot reach the cloud right now',
-    d_cloud_refused: 'the cloud copy belongs to {by}',
+    d_cloud_refused: 'this computer isn\u2019t the shop \u2014 the cloud copy belongs to {by}',
     d_cloud_none: 'no cloud copy is set up',
     d_cloud_manual: 'switched off — by hand only',
 
@@ -160,11 +159,11 @@ var PI18N = (function () {
     cloudLive: 'In step',
     cloudStarting: 'Starting',
     cloudOffline: 'Cannot reach it',
-    cloudRefused: 'Refused',
+    cloudRefused: 'Not the shop',
     cloudWaiting: '{n} waiting',
     cloudPushed: 'sent {ago}',
     cloudNone: 'No cloud copy is set up on this computer.',
-    cloudBelongs: 'The cloud copy belongs to {by}.',
+    cloudNotShop: 'This computer isn\u2019t the shop. It can\u2019t send to the cloud copy.',
     syncNow: 'Send to the cloud now',
 
     /* ---------------------------------------------------------- the jobs */
@@ -205,7 +204,7 @@ var PI18N = (function () {
     r_job_unknown: 'There is no such tool.',
     r_needs_shut: '“{label}” needs the shop closed first.',
     r_sync_no_shop: 'The shop is not running, so there is nothing to send.',
-    r_sync_refused: 'This computer is not the shop, so it cannot send to the cloud copy.',
+    r_sync_refused: 'This computer isn\u2019t the shop. It can\u2019t send to the cloud copy.',
 
     /* --------------------------------------------------------- the asks */
     typeToConfirm: 'Type {word} to confirm',
@@ -272,9 +271,9 @@ var PI18N = (function () {
     tpReadyBody: 'Print one receipt and one label now? Readable words mean it works; strange symbols mean the wrong driver is installed.',
     tpPrint: 'Print a test',
     tpNotNow: 'Not now',
-    hoTitle: 'The shop is open on the other laptop',
-    hoBody: '{by} has the shop right now. To work here instead, quit OG System on that laptop, wait a minute, then take the shop here. Anything on this computer that never reached the cloud is replaced.',
-    hoGo: 'Take the shop here',
+    hoTitle: 'This computer isn\u2019t the shop',
+    hoBody: 'It can\u2019t send to the cloud copy \u2014 that belongs to {by}. Everything you do here is kept on this computer only.',
+    hoBodyNobody: 'It can\u2019t send to the cloud copy, which no computer owns yet. Everything you do here is kept on this computer only.',
 
     /* ---------------------------------------------------- the connections */
     connTitle: 'Connections',
@@ -316,7 +315,7 @@ var PI18N = (function () {
     cc_shop_closed: 'Not checked — the shop is closed',
     cc_mirror_silent: 'No word from it yet',
     cc_mirror_off: 'Switched off on this computer',
-    cc_mirror_refused: 'Belongs to {by}',
+    cc_mirror_refused: 'This computer isn\u2019t the shop \u2014 the cloud copy belongs to {by}',
     cc_mirror_offline: 'Cannot reach it · {behind} waiting',
     cc_mirror_live: 'In step · {behind} waiting',
     cc_mirror_live0: 'In step',
@@ -382,9 +381,9 @@ var PI18N = (function () {
     infoCache: 'Browser cache',
     infoBranch: 'Code branch',
     infoDb: 'Database',
-    infoBaton: 'Who has the shop',
+    infoBaton: 'Who owns the cloud copy',
     baton_here: 'This computer',
-    baton_elsewhere: 'Another laptop ({by})',
+    baton_elsewhere: 'Another computer ({by}) \u2014 this one can\u2019t send',
     baton_off: 'No cloud copy set up',
     baton_unknown: 'Not known — the shop is closed',
 
@@ -472,9 +471,8 @@ var PI18N = (function () {
     d_server_signal: 'توقف من تلقاء نفسه ({signal})',
     d_cloud_live: 'متطابقة',
     d_cloud_live_behind: '{n} بانتظار الرفع',
-    d_cloud_pulled: 'تم سحب المحل من السحابة',
     d_cloud_offline: 'تعذّر الوصول إلى السحابة الآن',
-    d_cloud_refused: 'النسخة السحابية تعود إلى {by}',
+    d_cloud_refused: 'هذا الكمبيوتر مو كمبيوتر المحل — النسخة السحابية تابعة لـ {by}',
     d_cloud_none: 'لا توجد نسخة سحابية معدّة',
     d_cloud_manual: 'متوقفة — يدوياً فقط',
 
@@ -521,11 +519,11 @@ var PI18N = (function () {
     cloudLive: 'متطابقة',
     cloudStarting: 'جارٍ البدء',
     cloudOffline: 'تعذّر الوصول',
-    cloudRefused: 'مرفوضة',
+    cloudRefused: 'مو كمبيوتر المحل',
     cloudWaiting: '{n} بالانتظار',
     cloudPushed: 'أُرسلت {ago}',
     cloudNone: 'لا توجد نسخة سحابية معدّة على هذا الكمبيوتر.',
-    cloudBelongs: 'النسخة السحابية تعود إلى {by}.',
+    cloudNotShop: 'هذا الكمبيوتر مو كمبيوتر المحل. ما بيقدر يبعت للنسخة السحابية.',
     syncNow: 'أرسل إلى السحابة الآن',
 
     /* ---------------------------------------------------------- the jobs */
@@ -565,7 +563,7 @@ var PI18N = (function () {
     r_job_unknown: 'لا توجد أداة بهذا الاسم.',
     r_needs_shut: '«{label}» يحتاج المحل مغلقاً أولاً.',
     r_sync_no_shop: 'المحل غير مشغّل، فليس هناك ما يُرسل.',
-    r_sync_refused: 'هذا الكمبيوتر ليس هو المحل، لذلك لا يستطيع الإرسال إلى النسخة السحابية.',
+    r_sync_refused: 'هذا الكمبيوتر مو كمبيوتر المحل. ما بيقدر يبعت للنسخة السحابية.',
 
     /* --------------------------------------------------------- the asks */
     typeToConfirm: 'اكتب {word} للتأكيد',
@@ -632,9 +630,9 @@ var PI18N = (function () {
     tpReadyBody: 'هل تطبع إيصالاً واحداً وملصقاً واحداً الآن؟ الكلمات المقروءة تعني أنها تعمل، والرموز الغريبة تعني أن التعريف الخطأ مثبّت.',
     tpPrint: 'اطبع تجربة',
     tpNotNow: 'ليس الآن',
-    hoTitle: 'المحل مفتوح على اللابتوب الآخر',
-    hoBody: '{by} معه المحل الآن. للعمل هنا بدلاً منه، أغلق OG System على ذلك اللابتوب، انتظر دقيقة، ثم خذ المحل إلى هنا. أي شيء على هذا الكمبيوتر لم يصل إلى السحابة سيُستبدل.',
-    hoGo: 'خذ المحل إلى هنا',
+    hoTitle: 'هذا الكمبيوتر مو كمبيوتر المحل',
+    hoBody: 'ما بيقدر يبعت للنسخة السحابية — هي تابعة لـ {by}. كل شي بتعمله هون بيضل على هذا الكمبيوتر بس.',
+    hoBodyNobody: 'ما بيقدر يبعت للنسخة السحابية، وما في كمبيوتر مالكها لسا. كل شي بتعمله هون بيضل على هذا الكمبيوتر بس.',
 
     /* ---------------------------------------------------- the connections */
     connTitle: 'الاتصالات',
@@ -676,7 +674,7 @@ var PI18N = (function () {
     cc_shop_closed: 'لم يُفحص — المحل مغلق',
     cc_mirror_silent: 'لا خبر منها بعد',
     cc_mirror_off: 'متوقفة على هذا الكمبيوتر',
-    cc_mirror_refused: 'تعود إلى {by}',
+    cc_mirror_refused: 'هذا الكمبيوتر مو كمبيوتر المحل — النسخة السحابية تابعة لـ {by}',
     cc_mirror_offline: 'تعذّر الوصول · {behind} بالانتظار',
     cc_mirror_live: 'متطابقة · {behind} بالانتظار',
     cc_mirror_live0: 'متطابقة',
@@ -742,9 +740,9 @@ var PI18N = (function () {
     infoCache: 'ذاكرة المتصفح',
     infoBranch: 'فرع الكود',
     infoDb: 'قاعدة البيانات',
-    infoBaton: 'من معه المحل',
+    infoBaton: 'مين مالك النسخة السحابية',
     baton_here: 'هذا الكمبيوتر',
-    baton_elsewhere: 'لابتوب آخر ({by})',
+    baton_elsewhere: 'كمبيوتر تاني ({by}) — هذا ما بيقدر يبعت',
     baton_off: 'لا توجد نسخة سحابية معدّة',
     baton_unknown: 'غير معروف — المحل مغلق',
 

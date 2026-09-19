@@ -2,7 +2,7 @@
    OG SYSTEM — backups, as a library                              [backup.js]
    --------------------------------------------------------------------------
    scripts/backup.js used to hold all of this and could only run as its own
-   process. The boot pull (lib/restore.js) needs the same things from inside
+   process. The disaster restore (lib/restore.js) needs the same things from inside
    the server — a consistent snapshot, proof that it opens, the pruning — and
    one more the script never had: moving the live database aside so a fresh
    one can be built in its place, and putting it back when that goes wrong.
@@ -109,7 +109,7 @@ export function prune(dir, keep) {
 }
 
 /* --------------------------------------------------------- moving aside
-   For the boot pull. The live database is moved out of the way so a fresh
+   For the disaster restore. The live database is moved out of the way so a fresh
    one can be built where it stood; if that fails, it is moved back. */
 
 /* The two files SQLite may leave beside a WAL-mode database. */

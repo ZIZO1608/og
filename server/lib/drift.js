@@ -1,7 +1,7 @@
 /* ==========================================================================
    OG SYSTEM — is any column here unknown to the mirror?             [drift.js]
    --------------------------------------------------------------------------
-   The body of scripts/mirror-drift.js, as a library, because the boot pull
+   The body of scripts/mirror-drift.js, as a library, because the disaster restore
    (lib/restore.js) has to ask the same question before it wipes anything —
    in the OTHER direction. READ-ONLY on both sides. Writes nothing, anywhere.
 
@@ -64,7 +64,14 @@ const AHEAD_OK = { users: ['pw_enc'] };
    through (lib/mirror.js syncUsers), so their absence there is the design,
    not drift. The old script left users out altogether; the pull needs the
    rest of the table checked, so the exception is spelled out instead. */
-const LOCAL_ONLY = { users: ['pw_hash', 'pw_salt', 'pw_hint', 'must_change'] };
+/* pw_box (059) belongs here too. It is the readable password sealed for the
+   developer panel, it crosses ONLY inside pw_enc, and the mirror has no such
+   column by design — but it was never added to this list, so from the day 059
+   landed every restore refused with "users is missing pw_box" and no flag
+   could lift it (--force waives declared windows, not undeclared ones). The
+   shop could not have been rebuilt from its own cloud copy. Found in audit 06
+   by actually running a restore end to end. */
+const LOCAL_ONLY = { users: ['pw_hash', 'pw_salt', 'pw_hint', 'must_change', 'pw_box'] };
 
 function localCols(table) {
   try { return DB.get().prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name); }

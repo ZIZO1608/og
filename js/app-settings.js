@@ -1062,7 +1062,11 @@ var MirrorUI = (function () {
     if (s.mode === 'off') return { tone: 'off', text: t('mir_off') };
     if (s.mode === 'starting') return { tone: 'wait', text: t('mir_starting') };
     if (s.mode === 'refused') {
-      return { tone: 'bad', text: t('mir_refused').replace('{host}', s.refusedBy || t('mir_nobody')) };
+      /* ONE SHOP LAPTOP (audit 06): the plain sentence, and who the cloud
+         copy belongs to underneath it. No button — nothing here can change
+         the owner, and nothing should. */
+      return { tone: 'bad', text: t('mir_refused'),
+               why: s.refusedBy ? t('mir_refused_by').replace('{host}', s.refusedBy) : t('mir_nobody') };
     }
     if (s.mode === 'offline') {
       var w = until(s.nextRetryAt);
@@ -1101,7 +1105,6 @@ var MirrorUI = (function () {
       (v.why ? '<div class="muted small mt-xs"><span dir="auto">' + esc(v.why) + '</span></div>' : '') +
       '</div></div>';
     h += deniedBlock(s.denied);
-    h += pullLine(s.pull);
     h += '<div class="mir-facts">';
     h += fact(t('mir_last_push'), s.lastPushAt ? ago(s.lastPushAt) : t('mir_never'));
     h += fact(t('mir_behind'), s.behind === null || s.behind === undefined ? '—' : String(s.behind));
@@ -1130,38 +1133,6 @@ var MirrorUI = (function () {
   function fact(label, value) {
     return '<div class="mir-fact"><div class="muted small">' + label + '</div>' +
            '<div><span dir="auto">' + esc(value) + '</span></div></div>';
-  }
-
-  /* The boot pull's own line: what this laptop did with the cloud copy when
-     the server started, or why it did not (lib/restore.js — the baton).
-     Absent on a server from before it, and silent when the pull is simply
-     off. Numbers sit in dir="ltr" or Arabic drags them to the far end. */
-  function pullLine(p) {
-    if (!p || p.reason === 'disabled' || p.reason === 'not_configured') return '';
-    var ltr = function (n) { return '<span dir="ltr">' + esc(String(n)) + '</span>'; };
-    var text, why = '', tone;
-    if (p.did) {
-      text = t('mir_pulled').replace('{n}', ltr(p.rows || 0)).replace('{ago}', ago(p.at) || '');
-      if (p.from && p.from.host) text += ' · ' + t('mir_pull_from').replace('{host}', esc(p.from.host));
-      if (p.warning) why = t('mir_pull_warning_' + p.warning);
-      tone = p.warning ? 'warn' : 'ok';
-    } else {
-      var d = p.detail || {};
-      var key = 'mir_pull_' + p.reason;
-      var w = t(key);
-      if (w === key) w = esc(p.message || p.reason);
-      w = w.replace('{host}', esc(d.host || (p.from && p.from.host) || ''))
-           .replace('{n}', ltr(d.n || 0))
-           .replace('{file}', esc((d.files && d.files[0]) || 'server/supabase/CATCH-UP.sql'));
-      text = t('mir_pull_none').replace('{why}', w);
-      tone = (p.reason === 'own_lineage' || p.reason === 'mirror_empty') ? 'ok' : 'warn';
-    }
-    return '<div class="mir-state mir-pull ' + tone + '"><span class="mir-dot ' + tone + '"></span><div>' +
-      '<div class="muted small">' + t('mir_pull') + '</div>' +
-      '<div class="mir-line"><span dir="auto">' + text + '</span></div>' +
-      (why ? '<div class="muted small mt-xs"><span dir="auto">' + esc(why) + '</span></div>' : '') +
-      (p.did && p.backup ? '<div class="muted small mt-xs">' + ltr(t('mir_pull_backup').replace('{file}', p.backup)) + '</div>' : '') +
-      '</div></div>';
   }
 
   function load() {
@@ -1240,7 +1211,7 @@ function telegramCard() {
    reminders and the Telegram links are all `config.write` on the server and
    a hand-sent request from anybody else still gets a 403. What hiding it
    buys is that the owner, who has config.write, is not one mis-press away
-   from a boot pull that restores over his own shop. */
+   from a restore that replaces his own shop. */
 function viewSettings() {
   var h = '<div class="page-head"><div><h1>' + t('settings_title') + '</h1>' +
     '<div class="sub">' + t('set_saves_itself') + '</div></div>' +

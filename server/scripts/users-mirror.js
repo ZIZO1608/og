@@ -61,12 +61,12 @@ async function main() {
 
   const g = await Lineage.guard({ readOnly: true });
   if (!g.ok || g.unclaimed) {
-    console.log('\n  Refused: this laptop does not hold the mirror (the baton).');
+    console.log("\n  Refused: this computer isn't the shop — it does not own the cloud copy.");
     for (const l of Lineage.refusal(g.other)) console.log('  ' + l);
     console.log('');
     exit(2);
   }
-  line(`baton    : this database owns the mirror ✓`);
+  line(`owner    : this database owns the mirror ✓`);
 
   const remote = await SB.select('users', { select: 'id,username', limit: 10000 });
   const localIds = new Set(local.map((u) => u.id));

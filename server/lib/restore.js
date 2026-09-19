@@ -4,32 +4,31 @@
    The other direction. lib/mirror.js pushes SQLite to Supabase and never
    reads back, which is right for a mirror — but it means a shop machine that
    loses its database has its data sitting in Supabase with no way home. This
-   is the way home, and since the baton (below) it is also how the shop moves
-   from one laptop to another.
+   is the way home.
 
-   Two callers, one implementation:
+   ONE SHOP LAPTOP (audit 06). This file used to run at every boot: the shop
+   moved between laptops, and whichever booted with the other closed wiped its
+   own database and pulled the mirror ("the baton"). That is gone. NOTHING
+   HERE RUNS BY ITSELF ANY MORE. index.js does not call it; a server that
+   starts, starts on its own database, always.
 
-     scripts/supabase-restore.js   the CLI — restore in place (--force,
-                                   --dry-run), or the whole wipe-and-pull
-                                   (--wipe), printed for a person
-     index.js, at boot             pullAtBoot(): the wipe-and-pull, guarded,
-                                   before the server listens
+   One caller, two jobs:
 
-   SQLite REMAINS the real system while the server is up. What changed is
-   WHICH machine's SQLite: the shop runs on one laptop at a time, and which
-   laptop that is changes between sessions. So:
+     scripts/supabase-restore.js   restore in place (--force, --dry-run), or
+                                   THE DISASTER RESTORE (--wipe), which is
+                                   also the panel's "Restore the shop from
+                                   the cloud" (danger word RESTORE)
 
-   THE BATON. Booting means "I am the writer now". The pull takes a verified
-   copy, moves the old database aside, opens a fresh one, writes the whole
-   mirror into it in ONE transaction, mints a NEW lineage id and claims the
-   mirror with it (lib/lineage.js), and resets the bookmarks to match the
-   empty local log. From then on the live mirror pushes as it always has. The
-   laptop that had the baton, if it is still up, fails its next lineage check
-   and stops pushing (lib/sync-worker.js); whatever it writes after that stays
-   on it, and when IT next boots, the `unpushed_local` guard below refuses to
-   wipe those rows and says how many.
+   THE DISASTER RESTORE — pull(). The shop's laptop is dead, stolen or wiped,
+   and a clean machine has to become the shop. It takes a verified copy of
+   whatever database is here and moves it aside, opens a fresh one, writes
+   the whole mirror into it in ONE transaction, then mints a NEW owner id and
+   claims the mirror with it (lib/lineage.js), and resets the bookmarks to
+   match the empty local log. From then on THIS machine is the shop and the
+   old one — if it ever comes back — is the one refused. IT IS THE ONLY WAY
+   THE MIRROR'S OWNER CHANGES.
 
-   A fresh id, on purpose. The restored `config` carries the OTHER laptop's
+   A fresh id, on purpose. The restored `config` carries the OLD laptop's
    `sync.lineage`, because config is mirrored whole. Inheriting it would make
    two databases indistinguishable to the one guard that exists to tell them
    apart — the two-writer incident of 2026-08-30, with extra steps.
@@ -37,7 +36,8 @@
    NEVER LOSES DATA. NEVER OPENS AN EMPTY SHOP. Every guard returns to the
    local copy with a reason; nothing here calls process.exit. The refusals
    are the design, not the error path: the one thing this must never do is
-   quietly replace a database that holds something the mirror has not.
+   quietly replace a database that holds something the mirror has not, or
+   take the mirror off a shop that is plainly still open (`owner_active`).
 
    ACCOUNTS. Only with the vault (lib/credvault.js): a user row on its own is
    an account nobody can sign in to. A box that opens gives the account back
@@ -53,7 +53,6 @@ import { randomBytes } from 'node:crypto';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 
-import { maybe } from './env.js';
 import * as DB from './db.js';
 import * as SB from './supabase.js';
 import * as Vault from './credvault.js';
@@ -483,18 +482,7 @@ export async function restoreInPlace({ dbFile, force = false, dryRun = false, lo
   return { ok: true, reason: 'restored', ...applied };
 }
 
-/* -------------------------------------------------------- the boot pull */
-
-/* OG_PULL_AT_BOOT=0 (or --no-pull) turns it off. Otherwise on whenever the
-   mirror is configured — the switch a development copy sets, alongside
-   OG_SYNC_MINUTES=0, which refuses on its own (guard `sync_off`). */
-export function enabled() {
-  if (process.argv.includes('--no-pull')) return false;
-  const raw = maybe('OG_PULL_AT_BOOT');
-  return raw === null || !/^(0|false|no|off)$/i.test(String(raw).trim());
-}
-
-export const STALE_MS = Lineage.STALE_MS;
+/* -------------------------------------------------- the disaster restore */
 
 /* The wipe-and-pull. Every step before the move is READ-ONLY on both sides.
    Returns a PullResult and never throws for a reason it can name:
@@ -503,9 +491,15 @@ export const STALE_MS = Lineage.STALE_MS;
        rows, tables, accounts:{restored,disabled}, backup, warning }
 
    `reason` is one of: not_configured sync_off vault_off unreachable
-   own_lineage mirror_empty busy_elsewhere unpushed_local drift fetch_failed
-   accounts_unreadable dry_run backup_failed restore_failed — or `pulled`. */
-export async function pull({ dbFile, log = Mirror.consoleLog(), takeover = false, force = false, dryRun = false } = {}) {
+   own_lineage mirror_empty owner_active unpushed_local drift fetch_failed
+   accounts_unreadable dry_run backup_failed restore_failed — or `pulled`.
+
+   --force lifts exactly three of them, each a thing a person may know better
+   than this code: own_lineage (this machine's own database is the broken
+   one), owner_active (the laptop was stolen twenty minutes ago) and
+   unpushed_local (what is here is not worth keeping). It lifts nothing that
+   protects the restore itself. */
+export async function pull({ dbFile, log = Mirror.consoleLog(), force = false, dryRun = false } = {}) {
   const started = Date.now();
   const at = new Date().toISOString();
   const host = hostname();
@@ -528,25 +522,32 @@ export async function pull({ dbFile, log = Mirror.consoleLog(), takeover = false
   if (!reach.ok) return refuse('unreachable', `Cannot reach Supabase — ${reach.message}. Started on the local copy.`, { why: reach.reason });
   log.tick(`Connected to ${SB.projectUrl()}`);
 
-  /* Whose mirror is it, and is anybody on it right now? */
+  /* Whose mirror is it, and is its owner still open for business? */
   const mine = Lineage.localId({ create: false });
   const other = await Lineage.remote();
-  const beat = await Lineage.heartbeat();
+  const seenAt = await Lineage.ownerSeen();
   if (other) from = { host: other.host, id: other.id, since: other.since };
 
-  if (other && mine && other.id === mine) {
-    return answer(false, 'own_lineage', 'The mirror is this machine\'s own copy — nothing to pull.');
+  if (other && mine && other.id === mine && !force) {
+    return refuse('own_lineage',
+      'This computer already is the shop — the cloud copy is a copy of THIS database, so there is nothing to bring back. ' +
+      'If this database is the broken one, run it again with --force. Nothing was touched.');
   }
-  if (!other && !beat.at) {
-    return answer(false, 'mirror_empty', 'The mirror has never been synced — nothing to pull. This machine will claim it.');
+  if (!other && !seenAt) {
+    return refuse('mirror_empty', 'The cloud copy has never been written to — there is no shop in it to restore. Nothing was touched.');
   }
-  const seen = [beat.at, other && other.since].filter(Boolean).map((s) => new Date(s).getTime());
+  /* THE SHOP IS STILL OPEN. A restore takes the mirror away from its owner
+     for good, and the commonest reason to be standing here by mistake is a
+     developer's laptop holding the shop's keys. An owner that pushed inside
+     the last ninety minutes is not a dead laptop. */
+  const seen = [seenAt, other && other.since].filter(Boolean).map((t) => new Date(t).getTime());
   const ageMs = seen.length ? Date.now() - Math.max(...seen) : Infinity;
-  if (ageMs < Lineage.STALE_MS && !takeover) {
-    const who = other ? other.host : 'another machine';
-    return refuse('busy_elsewhere',
-      `${who} is working on the shop right now (seen ${Math.round(ageMs / 1000)} s ago). Nothing was wiped.`,
-      { host: who, seconds: Math.round(ageMs / 1000) });
+  if (other && (!mine || other.id !== mine) && ageMs < Lineage.OWNER_ACTIVE_MS && !force) {
+    const mins = Math.max(1, Math.round(ageMs / 60000));
+    return refuse('owner_active',
+      `The shop's computer (${other.host}) sent to the cloud copy ${mins} minute(s) ago — it is still working. ` +
+      'Restoring here would lock it out for good. If that computer really is gone, run it again with --force. Nothing was touched.',
+      { host: other.host, minutes: mins });
   }
 
   /* Anything here the cloud has not got? Measured against what THIS machine
@@ -558,8 +559,8 @@ export async function pull({ dbFile, log = Mirror.consoleLog(), takeover = false
     const what = [unpushed.total ? `${unpushed.total} change(s)` : null,
                   unpushed.outbox ? `${unpushed.outbox} unsent message(s)` : null].filter(Boolean).join(' and ');
     return refuse('unpushed_local',
-      `${what} on this machine never reached the cloud, and the cloud now belongs to ${who}. Nothing was wiped — ` +
-      'Claim the mirror in the panel to keep them, or npm run supabase:restore -- --wipe --force to discard them.',
+      `${what} on this computer never reached the cloud copy (it belongs to ${who}), and a restore would throw them away. ` +
+      'Nothing was touched. If they are not worth keeping: npm run supabase:restore -- --wipe --force.',
       { n: unpushed.total, outbox: unpushed.outbox, byTable: unpushed.byTable, host: who });
   }
 
@@ -636,7 +637,8 @@ export async function pull({ dbFile, log = Mirror.consoleLog(), takeover = false
   log.tick(`${applied.rows} row(s) restored; ${applied.users.added} account(s) can sign in` +
            (applied.users.disabled ? `, ${applied.users.disabled} kept disabled` : ''));
 
-  /* ---- the baton: a NEW id, claimed; bookmarks that match an empty log --- */
+  /* ---- THE OWNER CHANGES HERE, and nowhere else: a NEW id, claimed; and
+     bookmarks that match an empty log ------------------------------------- */
   const warnings = [];
   try {
     Lineage.forget();
@@ -645,7 +647,7 @@ export async function pull({ dbFile, log = Mirror.consoleLog(), takeover = false
     log.tick(`mirror claimed for ${host} (${id.slice(0, 8)}…)` + (other ? `, taken over from ${other.host}` : ''));
   } catch (e) {
     warnings.push('claim_failed');
-    log.warn(`could not claim the mirror — ${e.message}. Use Claim the mirror in the panel.`);
+    log.warn(`could not claim the cloud copy — ${e.message}. This computer will be refused when it pushes; run the restore again once the line is back.`);
   }
   try {
     await Mirror.loadCursors();
@@ -658,31 +660,11 @@ export async function pull({ dbFile, log = Mirror.consoleLog(), takeover = false
   try { Backup.prune(Backup.BACKUP_DIR, 30); } catch { /* housekeeping */ }
 
   return answer(true, 'pulled',
-    `Pulled ${applied.rows} rows from the cloud` + (other ? ` (taken over from ${other.host})` : '') +
+    `Restored ${applied.rows} rows from the cloud copy` + (other ? ` — this computer is the shop now, not ${other.host}` : '') +
     (warnings.length ? ` — ${warnings.join(', ')}` : ''),
     null, {
       rows: applied.rows, tables: applied.perTable,
       accounts: { restored: applied.users.added, disabled: applied.users.disabled },
       backup: target, warning: warnings[0] || null, warnings
     });
-}
-
-/* What index.js calls before it listens. Whatever happens in here, the
-   server must have a database to serve afterwards. */
-export async function pullAtBoot({ dbFile, log = Mirror.consoleLog() } = {}) {
-  const at = new Date().toISOString();
-  const host = hostname();
-  if (!enabled()) return { did: false, at, host, reason: 'disabled', message: 'Boot pull is off (OG_PULL_AT_BOOT=0).' };
-  if (!SB.isConfigured()) return { did: false, at, host, reason: 'not_configured', message: 'Supabase is not set up on this server.' };
-
-  log.head('The cloud copy');
-  try {
-    const r = await pull({ dbFile, log, takeover: Lineage.takeoverRequested(), force: false });
-    log.line((r.did ? '  ✓ ' : '  · ') + r.message);
-    return r;
-  } catch (e) {
-    try { DB.get(); } catch { try { DB.open(dbFile); } catch { /* index.js fails loudly on the next DB.get() */ } }
-    log.warn(`boot pull failed unexpectedly — ${e.message}. Started on the local copy.`);
-    return { did: false, at, host, reason: 'restore_failed', message: `Unexpected failure — ${e.message}. Started on the local copy.` };
-  }
 }

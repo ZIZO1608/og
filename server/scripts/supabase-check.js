@@ -94,7 +94,7 @@ if (!secret) {
 if (failed) {
   console.log(head('Result'));
   console.log(cross('Not connected yet — fix the above and run this again.\n'));
-  process.exit(1);
+  await SB.exit(1);
 }
 
 console.log(head('3. Reaching the project'));
@@ -113,7 +113,7 @@ if (!res.ok) {
   }
   console.log(head('Result'));
   console.log(cross('Not connected.\n'));
-  process.exit(1);
+  await SB.exit(1);
 }
 
 console.log(tick(`Project answered at ${res.url}`));
@@ -162,7 +162,7 @@ if (QUICK || found === 0) {
   console.log(found === 0
     ? '  Next: push the schema, then run this again.\n'
     : `  ${DIM}Wiring only — run without --quick to compare the shop against the mirror.${OFF}\n`);
-  process.exit(0);
+  await SB.exit(0);
 }
 
 const DB = await import('../lib/db.js');
@@ -442,16 +442,16 @@ try {
     /* Red, because the next sync from this machine is refused until a person
        decides — a mirror that quietly stopped moving is the thing the whole
        check exists to catch. */
-    console.log(cross('nobody has claimed this mirror yet — every sync is refused (exit 2) until one database does'));
-    console.log(`      If THIS machine is the shop:  ${BOLD}OG_SYNC_TAKEOVER=1 npm run supabase:sync${OFF}  once, then reconcile.`);
+    console.log(cross('this cloud copy has history and no owner — every sync is refused (exit 2) until one database claims it'));
+    console.log(`      If THIS machine is the shop:  ${BOLD}npm run supabase:sync -- --claim-unclaimed${OFF}  once, then reconcile.`);
     console.log('      If it is a dev or test copy:  OG_SYNC_MINUTES=0 in server/.env, or a project of its own.');
     failed = true;
   } else {
     const since = String(lin.other.since || '?').slice(0, 16).replace('T', ' ');
     console.log(cross(`the mirror belongs to ANOTHER database: ${lin.other.host}, since ${since} UTC`));
-    console.log('      Every sync and reconcile from this machine is refused (exit 2) until a person decides:');
-    console.log(`      this machine IS the shop   → ${BOLD}OG_SYNC_TAKEOVER=1 npm run supabase:sync${OFF}, then reconcile;`);
-    console.log('      this is a dev or test copy → OG_SYNC_MINUTES=0 in server/.env, or a project of its own.');
+    console.log("      This computer isn't the shop. It can't send to the cloud copy — every sync and reconcile is refused (exit 2).");
+    console.log('      a dev or test copy              → OG_SYNC_MINUTES=0, or a test project of its own;');
+    console.log(`      the shop's laptop is gone for good → ${BOLD}npm run supabase:restore -- --wipe${OFF} on the new one (the only way the owner changes).`);
     failed = true;
   }
 } catch (e) {
@@ -553,7 +553,7 @@ if (!Vault.isEnabled()) {
 console.log(head('Result'));
 if (failed) {
   console.log(cross('The mirror is NOT a faithful copy of the shop. Fix the red lines above.\n'));
-  process.exit(1);
+  await SB.exit(1);
 }
 console.log(`  \x1b[32mConnected, and the mirror matches the shop.\x1b[0m`);
 console.log(`  ${DIM}${matched} table(s) compared${ahead.length ? `, ${ahead.length} with extra rows there` : ''}.${OFF}\n`);

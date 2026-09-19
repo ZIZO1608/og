@@ -338,6 +338,8 @@ function devInfo() {
     cache: readCacheName(),
     branch,
     database: dbFile(),
+    /* WHO OWNS THE CLOUD COPY. Still called `baton` on the wire so an older
+       window keeps drawing; nothing passes between laptops any more. */
     baton: !m ? { state: 'unknown' }
       : m.mode === 'refused' ? { state: 'elsewhere', by: m.refusedBy || null }
       : m.configured ? { state: 'here', lineage } : { state: 'off' }
@@ -548,18 +550,13 @@ function stepFromMirror(m) {
   if (m.mode === 'off') return step('cloud', 'skip', { code: 'cloud_manual' });
   if (m.mode === 'starting') return step('cloud', 'run');
   if (m.mode === 'refused') {
-    return step('cloud', 'warn', {
-      code: 'cloud_refused',
-      by: m.refusedBy || null,
-      why: (m.pull && m.pull.message) || null
-    });
+    return step('cloud', 'warn', { code: 'cloud_refused', by: m.refusedBy || null });
   }
   if (m.mode === 'offline') return step('cloud', 'warn', { code: 'cloud_offline', why: m.lastError || null });
   step('cloud', 'ok', {
     code: 'cloud_live',
     behind: m.behind == null ? null : m.behind,
-    at: m.lastOkAt || null,
-    pulled: m.pull && m.pull.did ? (m.pull.tables ? m.pull.tables.length : true) : 0
+    at: m.lastOkAt || null
   });
 }
 
@@ -969,7 +966,7 @@ function tellTabs() {
      warn    tell the open tabs a refresh is coming, so they cover themselves
              with "Updating…" instead of a failing page while the shop is down
      stop    close the shop gracefully
-     start   open it again (the boot pull runs as on any start)
+     start   open it again (an ordinary start)
      answer  wait until it says it is ready
      tabs    tell every tab to drop its caches and reload
 
@@ -977,7 +974,7 @@ function tellTabs() {
    reloads on its own: it was told `refreshing`, and the next hello it hears
    is from the fresh shop (js/pulse.js). */
 const REFRESH_STEPS = ['files', 'warn', 'stop', 'start', 'answer', 'tabs'];
-const ANSWER_LIMIT_MS = 5 * 60 * 1000;   // the boot pull can hold a start for minutes
+const ANSWER_LIMIT_MS = 5 * 60 * 1000;   // generous on purpose: a first boot runs every migration
 
 function refreshStep(id, st, extra) {
   const r = state.refresh;
@@ -1144,9 +1141,9 @@ function runJob(name, args = {}) {
 
   let i = 0;
   /* Whether the shop was open when this began, so it is put back the way it
-     was found - including after a refusal. A handover that fails leaves the
-     local copy exactly as it was (lib/restore.js puts the file back), and a
-     shop left closed over a refusal reads as a crash. */
+     was found - including after a refusal. A restore that is refused leaves
+     the local copy exactly as it was (lib/restore.js puts the file back), and
+     a shop left closed over a refusal reads as a crash. */
   const reopen = !!(spec.aroundShop && child);
 
   const done = (code) => {
@@ -1157,11 +1154,11 @@ function runJob(name, args = {}) {
     state.swCache = readCacheName();
     pushState();
     say(code ? '  ' + spec.label + ' stopped.' : '  ' + spec.label + ' - done.', code ? 'err' : 'note');
-    /* The two refusals a person can act on, said in the panel's own words
-       under the script's - 2 is busy_elsewhere by contract, and 1 with
-       "never reached the cloud" is unpushed_local. */
+    /* The refusal worth saying twice, in the panel's own words under the
+       script's: exit 2 is owner_active by contract (scripts/supabase-restore.js). */
     if (spec.aroundShop && code === 2) {
-      say('  The other laptop is still open. Quit OG System there, wait a minute, then try again.', 'err');
+      say('  The shop\'s own computer is still working, so nothing was restored here.', 'err');
+      say('  This is for a NEW laptop after the old one is gone for good.', 'err');
     }
     push('done', { name, code, label: spec.label });
     if (reopen || (spec.aroundShop && code === 0)) {
@@ -1354,11 +1351,11 @@ async function ask(action, args) {
     checkConnections(only).catch(() => {});
     return { ok: true };
   }
-  /* Take the shop here is a shopkeeper's button only while the handover is
-     actually the situation; otherwise it is a developer's tool like the rest. */
-  const handover = !!(state.mirror && state.mirror.mode === 'refused');
-  const isPublicJob = action === 'job' && JOBS[args.name] && JOBS[args.name].public &&
-    (args.name !== 'takeShop' || handover);
+  /* The public jobs are the two printer tests and nothing else. The handover
+     button ("Take the shop here") that used to be public while the mirror was
+     refused is gone with the two-laptop system (audit 06): the one job that
+     can change the cloud copy's owner is a developer's, behind a typed word. */
+  const isPublicJob = action === 'job' && JOBS[args.name] && JOBS[args.name].public === true;
   if (!PUBLIC_ACTIONS.has(action) && !isPublicJob) {
     if (!devOn()) { refuse(action === 'job' ? args.name : action, 'locked'); return { ok: false, code: 'locked' }; }
     touchDev();
@@ -1378,9 +1375,9 @@ function act(action, args) {
     if (!child) return startServer();
     const dying = child;
     stopServer();
-    /* Waiting for the exit rather than a fixed delay: the boot pull can hold
-       the next start for a minute, and starting a second server while the
-       first still holds the port is the one thing preflight cannot fix. */
+    /* Waiting for the exit rather than a fixed delay: starting a second
+       server while the first still holds the port is the one thing preflight
+       cannot fix. */
     const wait = setInterval(() => {
       if (child === dying) return;
       clearInterval(wait);
@@ -1398,9 +1395,7 @@ function act(action, args) {
       return refuse('sync', 'sync_no_shop');
     }
     if (state.mirror && state.mirror.mode === 'refused') {
-      say('  This machine is not the shop, so it cannot push to the cloud copy.', 'err');
-      say('  Take the shop here (pull the cloud copy down), or Claim the mirror if THIS', 'err');
-      say('  machine holds the truth. Either way, close the shop on the other laptop first.', 'err');
+      say('  This computer isn\'t the shop. It can\'t send to the cloud copy.', 'err');
       return refuse('sync', 'sync_refused');
     }
     try { child.send({ type: 'sync' }); } catch { /* gone */ }

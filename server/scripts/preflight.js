@@ -165,16 +165,13 @@ if (!envFileExists()) {
     hint('Push by hand any time with:  npm run supabase:sync');
   } else {
     ok(`Supabase configured — every change is mirrored within seconds once the server is up (full pass every ${mins} min).`);
-    /* The baton (lib/restore.js): when another laptop had the shop last, it
-       is pulled from the cloud at startup. Two things stop that before it
-       starts, and both are better said here than in a refusal at 9am. */
-    const pullOff = /^(0|false|no|off)$/i.test(String(maybe('OG_PULL_AT_BOOT') || '').trim());
-    if (pullOff) {
-      hint('Boot pull is OFF (OG_PULL_AT_BOOT=0) — this machine keeps its own database.');
-    } else if (!maybe('OG_VAULT_KEY')) {
-      warn('The boot pull will be refused: OG_VAULT_KEY is blank, so no account could come back.');
+    /* One shop laptop (audit 06): nothing is pulled at startup. The cloud
+       copy is only ever read back by the disaster restore, and that needs
+       the vault key — better said here than on the day the laptop dies. */
+    if (!maybe('OG_VAULT_KEY')) {
+      warn('OG_VAULT_KEY is blank — a restore from the cloud copy could bring back NO account. Set it, and keep a copy off this machine.');
     } else {
-      ok('Boot pull is on — when another laptop had the shop last, it is pulled from the cloud at startup.');
+      ok('OG_VAULT_KEY is set — the shop could be restored from the cloud copy onto a new laptop (npm run supabase:restore -- --wipe).');
     }
   }
   hint('Check it properly with:  npm run supabase:check');

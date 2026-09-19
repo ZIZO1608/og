@@ -1,5 +1,5 @@
 /* ==========================================================================
-   OG SYSTEM — whose mirror is this?
+   OG SYSTEM — whose mirror is this?                             [lineage.js]
    --------------------------------------------------------------------------
    One Supabase project can only ever be the copy of ONE database. Two
    machines pointed at the same project do not share it — they fight over
@@ -15,29 +15,39 @@
    .env against the same project. The mirror lost every sale, every
    delivery, and carried the two staff lists side by side.
 
-   THE GUARD. The first database to sync under this code writes a random id
-   into the mirror (sync_state row `lineage`, with the machine's hostname and
-   the date) and keeps the same id in its own config table. Every later run —
-   sync and reconcile — compares the two first and REFUSES, saying whose the
-   mirror is, when they differ. Refusing is the point: the alternative was a
-   silent deletion ten minutes after the other machine's, forever.
+   ONE SHOP LAPTOP (audit 06). The shop used to move between laptops: a boot
+   pull replaced the local database from the mirror, a heartbeat said who was
+   working, and "Claim the mirror" took the mirror off the other machine.
+   All of that is gone. What is left is one rule:
 
-   Deliberately claimable, never automatic: OG_SYNC_TAKEOVER=1 (or
-   --takeover) rewrites the row so THIS machine owns the mirror from now on
-   and the other one is the one refused. That is a decision about which
-   machine is the shop, and it is made by a person, once.
+   THE OWNER GUARD. The mirror records which database owns it — a random id
+   in sync_state row `lineage`, with the machine's hostname and the date —
+   and the owner keeps the same id in its own config table. Every push (the
+   live worker before EVERY run, the sync CLI, the reconcile, users:mirror)
+   compares the two first and REFUSES when they differ:
 
-   The id lives in `config`, so a restore onto a new machine carries it
-   across and the rebuilt shop continues as the same lineage rather than
-   being refused by its own mirror.
+       This computer isn't the shop. It can't send to the cloud copy.
 
-   THE BATON (lib/restore.js) deliberately breaks that last rule. When the
-   shop moves between laptops, the boot pull restores the mirror — config
-   and the other laptop's id with it — and then calls forget() and claims a
-   FRESH id. Two databases under one id are two databases this guard cannot
-   tell apart, and the other laptop's moved-aside file still holds the old
-   one. The worker re-checks before every push (lib/sync-worker.js), so the
-   laptop that lost the baton stops writing the moment it tries.
+   There is no takeover switch. OG_SYNC_TAKEOVER and --takeover are gone, and
+   so is the panel's Claim the mirror. THE ONLY WAY THE OWNER CHANGES is the
+   disaster restore (lib/restore.js → `npm run supabase:restore -- --wipe`,
+   the panel's "Restore the shop from the cloud"): it rebuilds the whole shop
+   on a clean machine, then forget()s the id the restored config carried,
+   mints a NEW one and claims the mirror with it. A new id on purpose — the
+   dead laptop's database still holds the old one, and two databases under
+   one id are two databases this guard cannot tell apart. If that laptop ever
+   comes back, it is the one refused.
+
+   A NEVER-SYNCED project is claimed on the spot: a brand-new shop must not
+   be made to run a second command to start mirroring. A project WITH history
+   and NO owner row (a mirror older than this guard) is claimed only by
+   `npm run supabase:sync -- --claim-unclaimed`: there is no owner there to
+   take anything from, so that is a first claim, not a change of owner — and
+   "whichever machine ticks first" must still never decide it.
+
+   The id lives in `config` under sync.lineage. og-track's inbox RPCs compare
+   it too (lib/inbox.js), so only the owner collects what customers left on
+   the public page.
    ========================================================================== */
 
 import { randomUUID } from 'node:crypto';
@@ -85,69 +95,77 @@ async function everSynced() {
   return !!(r && r.last_push_at);
 }
 
-/* The `shop` heartbeat itself: when the holder last pushed, or — since the
-   baton — last said it was alive (lib/sync-worker.js beats every two
-   minutes while live). lib/restore.js reads it to tell "closed last night"
-   from "working right now". */
-export async function heartbeat() {
-  const [r] = await SB.select('sync_state', { eq: { id: 'shop' } });
-  return { at: (r && r.last_push_at) || null, note: (r && r.note) || null };
+/* When did the mirror last hear from the database that owns it? The newest
+   last_push_at on any bookmark: a cursor moves on every push that landed, and
+   the `shop` row at the end of every full run (hourly while the shop is
+   open). Read ONLY by the disaster restore, to refuse taking the mirror off a
+   shop that is plainly still working (lib/restore.js, `owner_active`). */
+export async function ownerSeen() {
+  const rows = await SB.select('sync_state', { limit: 1000 });
+  let newest = null;
+  for (const r of rows) {
+    if (r.id === ROW || !r.last_push_at) continue;
+    if (!newest || String(r.last_push_at) > newest) newest = String(r.last_push_at);
+  }
+  return newest;
 }
 
-/* Younger than this and somebody is on the mirror; older and they have
-   closed the laptop. Five missed two-minute beats of slack for a flaky line;
-   a laptop shut at night is stale ten minutes later. */
-export const STALE_MS = 10 * 60 * 1000;
+/* An owner that pushed this recently is open for business. A full run lands
+   every OG_SYNC_MINUTES (60) on an idle shop, so ninety minutes is one missed
+   run of slack; a laptop that died at noon is past it by two. */
+export const OWNER_ACTIVE_MS = 90 * 60 * 1000;
 
-/* Drop this database's id so the next localId() mints a fresh one. The boot
-   pull calls this after restoring — see THE BATON in the header. */
+/* Drop this database's id so the next localId() mints a fresh one. ONLY the
+   disaster restore calls this, after rebuilding the shop — see the header. */
 export function forget() {
   DB.get().prepare('DELETE FROM config WHERE key = ?').run(KEY);
 }
 
-/* { ok: true, mine, claimed?, tookOver? }
+/* { ok: true, mine, claimed? }
    { ok: false, mine, other }              — another database owns it
-   { ok: false, mine, unclaimed: true }    — history, but nobody has claimed it
-   readOnly: never writes anywhere (the check).
+   { ok: false, mine, unclaimed: true }    — history, but no owner row at all
+   readOnly: never writes anywhere (the check, users:mirror's dry run).
 
-   A NEVER-SYNCED project is claimed on the spot: a brand-new shop must not be
-   made to run a second command to start mirroring. A project WITH history and
-   no claim is not: the code that adds this guard arrives on two machines at
-   different times, and "whichever ticks first wins" would have handed the
-   shop's mirror to the development copy — the exact fight this exists to
-   end. So one person, once, says which machine is the shop. */
-export async function guard({ takeover = false, readOnly = false } = {}) {
+   claimUnclaimed: claim a mirror that HAS history and NO owner row. It can
+   never move an existing owner — that branch does not look at it. */
+export async function guard({ claimUnclaimed = false, readOnly = false } = {}) {
   const mine = localId({ create: !readOnly });
   const other = await remote();
   if (!other) {
     if (readOnly) return { ok: true, mine, unclaimed: true };
-    if (takeover || !(await everSynced())) { await claim(mine); return { ok: true, mine, claimed: true }; }
+    if (claimUnclaimed || !(await everSynced())) { await claim(mine); return { ok: true, mine, claimed: true }; }
     return { ok: false, mine, unclaimed: true };
   }
   if (mine && other.id === mine) return { ok: true, mine };
-  if (takeover && !readOnly) {
-    await claim(mine);
-    return { ok: true, mine, tookOver: other };
-  }
   return { ok: false, mine, other };
 }
 
-export function takeoverRequested() {
-  return process.env.OG_SYNC_TAKEOVER === '1' || process.argv.includes('--takeover');
+export function claimUnclaimedRequested() {
+  return process.argv.includes('--claim-unclaimed');
 }
+
+/* The one sentence, for every place that has to say it (the worker's status,
+   the CLI, the panel, the Settings fold). Both languages live in the two i18n
+   tables; this is the log's copy. */
+export const NOT_THE_SHOP = "This computer isn't the shop. It can't send to the cloud copy.";
 
 /* The refusal, as lines. The first begins with '!' so lib/sync-worker.js
    picks it as the reason for the log, the Sync button and the bell. */
 export function refusal(other) {
   const first = other
-    ? `! This mirror belongs to another database: ${other.host}, since ` +
+    ? `! ${NOT_THE_SHOP} The cloud copy belongs to ${other.host}, since ` +
       `${other.since ? String(other.since).slice(0, 16).replace('T', ' ') : '?'} UTC. Nothing was pushed.`
-    : '! This mirror has been synced before and no database has claimed it yet. Nothing was pushed.';
-  return [
+    : '! This cloud copy has been written to before and no computer owns it yet. Nothing was pushed.';
+  return other ? [
     first,
     `    Two machines on one Supabase project overwrite each other's bookmarks and delete each`,
-    `    other's rows — that is the 2026-08-30 and 2026-09-03 incidents. One database must own it.`,
-    `    If THIS machine is the shop:   OG_SYNC_TAKEOVER=1 npm run supabase:sync   (once), then reconcile.`,
-    `    If it is a test or dev copy:   set OG_SYNC_MINUTES=0 in server/.env, or give it its own project.`
+    `    other's rows — that is the 2026-08-30 and 2026-09-03 incidents. One database owns it.`,
+    `    A development copy:  set OG_SYNC_MINUTES=0, or point it at its own test project.`,
+    `    The shop's laptop is gone for good:  npm run supabase:restore -- --wipe   on the NEW laptop`,
+    `    (the panel's "Restore the shop from the cloud"). That is the only way the owner changes.`
+  ] : [
+    first,
+    `    If THIS machine is the shop and holds the data:  npm run supabase:sync -- --claim-unclaimed`,
+    `    (once), then npm run supabase:reconcile.`
   ];
 }

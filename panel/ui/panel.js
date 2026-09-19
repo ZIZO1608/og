@@ -500,7 +500,6 @@
     if (c === 'server_spawn') return tHtml('d_server_spawn', { why: esc(d.why || '') });
     if (c === 'cloud_refused') return tHtml('d_cloud_refused', { by: esc(d.by || '?') });
     if (c === 'cloud_live') {
-      if (d.pulled) return esc(t('d_cloud_pulled'));
       if (d.behind) return tHtml('d_cloud_live_behind', { n: ltr(d.behind) });
       return esc(t('d_cloud_live'));
     }
@@ -508,19 +507,22 @@
     return esc(t('d_' + c));
   }
 
-  /* THE HANDOVER, and only when the situation is the handover: the cloud
-     copy belongs to the other laptop. Then "Take the shop here" is a
-     shopkeeper's button — typed-confirmed with TAKE, and refused by the panel
-     in any other situation. */
+  /* THIS COMPUTER ISN'T THE SHOP (audit 06). The cloud copy belongs to another
+     database, so nothing from here is sent to it. One plain sentence and NO
+     BUTTON: the card used to offer "Take the shop here", which moved the shop
+     between laptops; the shop does not move any more, and the one thing that
+     changes the cloud copy's owner — the disaster restore — is a developer's
+     job behind a typed word, not something to offer a shopkeeper at 8 am.
+     The box keeps its id (#handover) and its styles. */
   function paintHandover() {
     var box = $('handover');
     var m = state.mirror;
-    if (!m || m.mode !== 'refused' || !JOBS.takeShop) { box.hidden = true; box.innerHTML = ''; return; }
+    if (!m || m.mode !== 'refused') { box.hidden = true; box.innerHTML = ''; return; }
     box.innerHTML = '<div class="ho-ic">' + svg('warn') + '</div>' +
       '<div class="ho-body"><b>' + esc(t('hoTitle')) + '</b>' +
-      '<small>' + tHtml('hoBody', { by: '<bdi>' + esc(m.refusedBy || '?') + '</bdi>' }) + '</small></div>' +
-      '<button class="btn btn-sm btn-hot" data-job="takeShop"' + (state.job ? ' disabled' : '') + '>' +
-      esc(t('hoGo')) + '</button>';
+      '<small>' + (m.refusedBy
+        ? tHtml('hoBody', { by: '<bdi>' + esc(m.refusedBy) + '</bdi>' })
+        : esc(t('hoBodyNobody'))) + '</small></div>';
     box.hidden = false;
   }
 
@@ -697,7 +699,7 @@
     var h = '<span class="pip"></span><span class="what">' + esc(t('cloud')) + '</span>';
 
     if (!m.configured) h += '<span>' + esc(t('cloudNone')) + '</span>';
-    else if (m.mode === 'refused') h += '<span>' + tHtml('cloudBelongs', { by: '<bdi>' + esc(m.refusedBy || '?') + '</bdi>' }) + '</span>';
+    else if (m.mode === 'refused') h += '<span>' + esc(t('cloudNotShop')) + '</span>';
     else {
       var bits = [];
       if (m.behind) bits.push(tHtml('cloudWaiting', { n: ltr(m.behind) }));
@@ -1259,9 +1261,9 @@
   /* THE TYPED WORD. The panel checks it too: a hand-sent request carries no
      disabled button. */
   function askDanger(name, job) {
-    var body = name === 'takeShop' ? t('hoBody', { by: (state.mirror && state.mirror.refusedBy) || '?' }) : job.blurb;
+    var body = job.blurb;
     openAsk(
-      '<h3>' + esc(name === 'takeShop' ? t('hoGo') : job.label) + '</h3>' +
+      '<h3>' + esc(job.label) + '</h3>' +
       '<p>' + esc(body) + '</p>' +
       '<div class="field">' +
       '<label for="askWord">' + tHtml('typeToConfirm', { word: '<span class="word" dir="ltr">' + esc(job.danger) + '</span>' }) + '</label>' +

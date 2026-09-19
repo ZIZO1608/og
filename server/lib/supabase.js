@@ -268,7 +268,11 @@ export async function ping() {
   }
   try {
     const { base } = config();
-    const res = await fetch(`${base}/rest/v1/`, { headers: headers() });
+    const res = await fetch(`${base}/rest/v1/`, { headers: headers(), signal: AbortSignal.timeout(TIMEOUT_MS) });
+    /* Read it, even though only the status matters: a response whose body is
+       never consumed keeps its socket half-open, and a script that exits with
+       one in that state dies inside libuv on Windows (see exit() below). */
+    try { await res.arrayBuffer(); } catch { /* the status is what we came for */ }
     if (res.status === 401 || res.status === 403) {
       return { ok: false, reason: 'bad_key', message: `Key rejected (HTTP ${res.status}).` };
     }
@@ -284,4 +288,29 @@ export async function ping() {
     const why = err.cause?.code || err.cause?.message || err.message;
     return { ok: false, reason: 'unreachable', message: `Cannot reach ${base} — ${why}` };
   }
+}
+
+/* LEAVE WITH THE EXIT CODE YOU MEANT (audit 06). On Windows, process.exit()
+   straight after a fetch can die inside libuv — "Assertion failed:
+   !(handle->flags & UV_HANDLE_CLOSING)" — and the process then reports
+   0xC0000409 instead of the code it was given. Measured here at about one run
+   in twelve. That is not cosmetic: the panel reads exit 2 from the restore as
+   "the shop's computer is still working" and says so in its own words, CI-ish
+   callers tell "refused" (2) from "broke" (1), and a crash code is neither.
+   Tearing down fetch's connection pool first, then giving the handles a
+   moment, lets the sockets finish closing; the race keeps a stuck pool from
+   holding a finished script open. */
+export async function exit(code = 0) {
+  process.exitCode = code;
+  try {
+    const pool = globalThis[Symbol.for('undici.globalDispatcher.1')];
+    if (pool && typeof pool.destroy === 'function') {
+      await Promise.race([pool.destroy(), new Promise((r) => setTimeout(r, 1500))]);
+    }
+    /* …and a moment for the handles to finish closing. Measured on this
+       machine against a refused reconcile: 25 ms still died 5 runs in 8,
+       300 ms died 0 in 12. It is paid once, on the way out of a script. */
+    await new Promise((r) => setTimeout(r, 300));
+  } catch { /* leaving anyway */ }
+  process.exit(code);
 }

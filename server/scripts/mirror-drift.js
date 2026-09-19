@@ -4,7 +4,7 @@
    Run:  cd server && npm run supabase:drift
 
    READ-ONLY on both sides. Writes nothing, anywhere. The comparison lives in
-   lib/drift.js — the boot pull asks it the same question before it wipes
+   lib/drift.js — the disaster restore asks it the same question before it wipes
    anything — and this file prints the answer.
 
    It is deliberately NOT the same job as supabase:check. That answers "is the
@@ -40,9 +40,9 @@ const dim  = (m) => console.log(`    ${DIM}${m}${OFF}`);
 console.log('');
 console.log(`${BOLD}  OG SYSTEM — mirror schema drift${OFF}`);
 
-if (!SB.isConfigured()) { bad('Supabase is not configured.'); process.exit(1); }
+if (!SB.isConfigured()) { bad('Supabase is not configured.'); await SB.exit(1); }
 const reach = await SB.ping();
-if (!reach.ok) { bad(`Cannot reach Supabase — ${reach.message}`); process.exit(1); }
+if (!reach.ok) { bad(`Cannot reach Supabase — ${reach.message}`); await SB.exit(1); }
 tick(`Connected to ${SB.projectUrl()}`);
 
 /* openReadOnly, not open: DB.open() applies pending migrations, and a check
@@ -82,7 +82,7 @@ if (!r.undeclared.length && !r.declared.length && !r.missingTables.length) {
 if (r.ahead.length) {
   head('Columns the mirror has that this machine has not');
   for (const x of r.ahead) dim(`${x.table} — ${x.cols.join(', ')}`);
-  dim('Harmless for the sync. The boot pull refuses on it: this program is behind the mirror — git pull.');
+  dim('Harmless for the sync. The restore refuses on it: this program is behind the mirror — git pull.');
 }
 
 /* An entry whose columns THIS mirror already has is not a dead entry: a
@@ -106,20 +106,20 @@ if (stale) {
      naming a column nothing sends any more can never fire, and the next real
      rejection on that table goes uncaught. */
   bad(`${stale} entr${stale === 1 ? 'y' : 'ies'} in lib/mirror-lag.js ${stale === 1 ? 'does' : 'do'} not match this schema any more.`);
-  process.exit(1);
+  await SB.exit(1);
 }
 if (r.undeclared.length) {
   bad(`${r.undeclared.length} table(s) are being rejected with nothing to catch them.`);
-  process.exit(1);
+  await SB.exit(1);
 }
 if (r.missingTables.length) {
   bad(`${r.missingTables.length} table(s) do not exist in Supabase at all.`);
   dim('Run the matching file in server/supabase/ — supabase:check names which.');
-  process.exit(1);
+  await SB.exit(1);
 }
 if (r.declared.length) {
   warn(`${r.declared.length} table(s) are mirroring one or more columns short.`);
   dim('The shop keeps working; a RESTORE from this mirror would not put those back.');
-  process.exit(1);
+  await SB.exit(1);
 }
 tick('The mirror can accept every row this machine would send it.');
