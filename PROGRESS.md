@@ -149,3 +149,39 @@ mid-run, and the other two were the same outage slowing a save past the wait in 
 re-ran green on their own. `quietErrors` in `cdp.mjs` now drops a NETWORK failure reaching that
 bucket and nothing else: a 404 or a 403 from it still goes red, and so does a dead line to the
 shop's own server on localhost.
+
+**ONE SUITE, ONE BROWSER — `_nightshift/with-chrome.sh` (19 Sep 2026).** The suites used to share
+the Chrome the shell opens on 9224, which is one profile and therefore one cookie jar: a suite's
+sign-in ended the previous suite's session, and whatever page was still polling collected 401s that
+had nothing to do with what it was testing. Running them one at a time did not cure it — the LAST
+suite's session is still in the jar when the next one starts. The runner gives each run its own
+`--user-data-dir` in the system temp and its own debugging port (9300–9899, proved free by asking
+`/json/version` first), starts Chrome with the same flags as the line above, runs the suite, and
+takes the whole tree away again (`taskkill /T`, because headless Chrome is a tree).
+
+```bash
+bash _nightshift/with-chrome.sh ns03/sweep          # any suite, by its path under _nightshift/
+bash _nightshift/with-chrome.sh fix06/no-loops
+bash _nightshift/fix05/run-all.sh                   # every suite, each through the runner
+```
+
+- `cdp.mjs` reads the port when `tab()` is called, not when the module loads. An ESM import is
+  evaluated before the body of the module that imports it, so `process.env.CDP = '9225'` written
+  after the import — which is what `fix05/sw-update` did — had never taken effect.
+- `CDP_OWNED=1` tells a suite the browser it was handed is already its own and already fresh;
+  `sw-update` no longer reaches for the second shell Chrome by name when it is set.
+- The shell Chromes on 9224 / 9225 still work for running one suite by hand with `node`.
+- A run ends with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` now and then. That is
+  Node on Windows tearing down after `process.exit()` with a socket still open; it is printed
+  after the summary and changes no result.
+
+**Fix 06 suites** (the Safeers loop — see CLAUDE.md):
+
+```bash
+bash _nightshift/with-chrome.sh fix06/no-loops            # 7  — red on the old code: 1,884 and 384
+bash _nightshift/with-chrome.sh fix06/idle                # every owner screen, 6 quiet seconds, counted
+bash _nightshift/with-chrome.sh fix06/safeer-phone        # 13 — a real tap, read back from SQLite
+bash _nightshift/with-chrome.sh fix06/safeer-connections  # 9  — the role × route matrix
+bash _nightshift/with-chrome.sh fix06/safeer-audit        # a report, not a gate: what each control did
+node _nightshift/fix06/db-check.mjs <path to og.db>       # read-only: permissions, team, rate, areas
+```

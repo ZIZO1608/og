@@ -2655,6 +2655,92 @@ here is an npm install, which this repo does not have and will not grow for a te
 that ARE addressed are listed in `fix_05_log.md`, and what remains untested is named there as
 untested.
 
+## Fix 06 (19 Sep 2026) — the screen that was asking the shop 235 times a second
+
+Branch `fix-05`; **no migration, no schema change, no server change, no permission
+weakened.** One file of app code, `js/safeers.js`.
+
+The Safeers screen was reported as "still not working" after fix 05 had pressed every control on
+it and found them all sound. Both reports were true. The controls work; **the screen was redrawing
+itself two or three hundred times a second**, so a press that landed between one rewrite and the
+next went to a node that no longer existed.
+
+### AFTER() → LOAD() → REPAINT() → RENDER() → AFTER()
+
+`render()` ends by calling the screen's after-hook. `Safeers.after()` called `load()`. `load()`
+called `repaint()` when its answer landed. `repaint()` called `render()`. **Measured on the code as
+it stood: 1,884 requests to `/api/safeers`, `/api/errands` and `/api/deliveries` in eight idle
+seconds** — about 235 a second, per open tab — and 384 on a single navigation onto the screen.
+After the fix, in the same eight seconds: **zero**.
+
+- `after()` now asks only when there is nothing, when the shop has been written to since
+  (`Shop.loadedAt()` moves on every reload), or when what it holds is more than `FRESH_MS` (20 s)
+  old — the same number the focus handler already used for "just looked". **A live push and every
+  action still call `load()` directly**, which is what keeps the screen current; the guard only
+  stops it chasing its own tail.
+- **It also explains the quick-fix note about the card menu "opening and vanishing within half a
+  second".** That was treated by holding the open menu in module state, which was right — and
+  nobody asked why the screen was repainting twice a second in the first place. The symptom was
+  fixed and the cause left in.
+- **Safeers was the only screen with this shape**, and that is not luck: the board and the reviews
+  page write `#view` themselves (`host.innerHTML = view()`) and so never re-enter `render()`, and
+  the order desk guards its load behind `if (!boot)`. Safeers is the one that repainted through
+  the app's own `render()`. `_nightshift/fix06/idle.mjs` now asks the question of every screen the
+  owner can open, by counting requests while nobody touches anything.
+
+### The second one, which only showed itself when the shop could not be reached
+
+`myErrandsHtml()` — the safeer's own errands, drawn under his runs on his phone — asked for them
+while drawing, and `loadMine()` ended in `render()`. On the happy path that stops, because
+`S.mine` is no longer null. **On a failure it did not**: the request failed, `S.mine` stayed null,
+`render()` ran, the draw asked again — an unbounded retry loop on a phone that had just lost the
+shop's wifi, which is the worst possible moment to spin. `S.mineTried` makes it ask once; the
+error card's Retry and a live push are how it comes back.
+
+### And one thing the loop had been hiding
+
+"Updated 3 minutes ago" was only ever current because the screen was repainting constantly. With
+the loop closed it would have frozen at "just now" and lied for the rest of the afternoon — the
+screen's one claim about how old what you are reading is. One 30-second interval writes **that one
+element's text** and never repaints, because this page holds an open card menu, a filter panel and
+a half-typed dialog, and redrawing takes all three away.
+
+### What was NOT wrong
+
+Worth writing down, because it was all checked before the cause was found: the routes are all
+registered on the live server (`/api/safeers` answers 401, not 404); `role_permissions` holds
+`safeer.read` and `safeer.write` for owner, developer and manager; the pay rate and the areas are
+set; every one of the eight connections answers each role correctly (`fix06/safeer-connections`
+prints the matrix — the manager's 403 on `PUT /api/safeers/settings` is `config.write` doing its
+job, not a fault); and the safeer's own phone works end to end, with a real tap moving an errand to
+`out` and read back out of SQLite.
+
+### How it was verified
+
+`fix06/no-loops` 7 — **and it was run against the old code first, where it goes red with 1,884 and
+384** — `fix06/safeer-phone` 13 (two errands made through the office's own route, tapped on a
+390px phone, read back from SQLite, another safeer's errand 404 to him), `fix06/safeer-connections`
+9, `fix06/idle` over every screen, plus `ns02/qf-safeers` 22, `ns03/p5-safeers-board` 56,
+`fix05/p3-safeers` 71 and `ns03/sweep`. `fix06/safeer-audit` is the report that found it: it
+presses every visible `[data-sf]` control in turn and says what each one actually did.
+
+### Things that will bite you
+
+- **A screen whose `repaint()` goes through the app's `render()` must not load from its
+  after-hook.** `render()` calls the after-hook; that is the loop. Either repaint by writing
+  `#view` yourself, as the board and the reviews page do, or guard the load — never both halves.
+- **Count the requests.** Every suite on this screen was green throughout, because each one
+  navigated, waited, and asserted a DOM that was always correct — it was just being rebuilt three
+  hundred times between the assertions. A screen that is redrawing itself passes every check you
+  can write about its markup. `fix06/idle.mjs` is the check that cannot miss it.
+- **A drawing function that starts a fetch must be able to stop asking.** `myErrandsHtml()` was
+  right to load on first draw and wrong to do it again after a failure; the flag is the difference.
+- **Every suite gets its own browser now: `bash _nightshift/with-chrome.sh <suite>`.** A temp
+  profile and a free port per run, so no suite can end another's session — the shared cookie jar
+  is what the "two suites cannot run at once" rule and half of `quietErrors` were working around.
+  `run-all.sh` goes through it. `cdp.mjs` reads its port inside `tab()`, because an ESM import is
+  evaluated before the importing module's body and a port assigned after the import never applied.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both

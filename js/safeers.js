@@ -24,7 +24,7 @@ var Safeers = (function () {
     filter: { safeer: '', status: 'open', date: '' },
     filtersOpen: false, at: 0,
     loading: false, error: null, shown: null, menu: null,
-    mine: null, mineError: null, mineLoading: false
+    mine: null, mineError: null, mineLoading: false, mineTried: false
   };
 
   function fmt(minor, currency) {
@@ -80,6 +80,9 @@ var Safeers = (function () {
      every live push, and when the window comes back — which is what somebody
      pressing Refresh was asking for. Never while a dialog is open: that is
      somebody in the middle of something. */
+  /* HOW LONG AN ANSWER IS STILL GOOD FOR. Read by the focus handler and by
+     after() — the two places that decide whether to ask the shop again. */
+  var FRESH_MS = 20000;
   var focusBound = false;
   function bindFocus() {
     if (focusBound) return;
@@ -87,7 +90,7 @@ var Safeers = (function () {
     window.addEventListener('focus', function () {
       if (OG.view !== 'safeers') return;
       if (document.querySelector('#modal-root .modal')) return;
-      if (S.at && Date.now() - S.at < 20000) return;   /* just looked */
+      if (S.at && Date.now() - S.at < FRESH_MS) return;   /* just looked */
       load();
     });
   }
@@ -137,6 +140,7 @@ var Safeers = (function () {
      long ago that was. */
   function view() {
     bindFocus();
+    tick();
     var h = '<div class="page-head"><div><h1>' + t('nav_safeers') + '</h1><div class="sub">' + t('sf_sub') + '</div></div>' +
       '<div class="head-actions">' +
         '<span class="muted small" id="sfWhen">' + updatedLine() + '</span>' +
@@ -337,6 +341,28 @@ var Safeers = (function () {
     return mins < 1 ? t('sf_updated_now') : t('sf_updated').replace('{n}', nf(mins));
   }
 
+  /* "UPDATED 3 MINUTES AGO" HAS TO AGE BY ITSELF.
+     -----------------------------------------------------------------------
+     It used to, by accident: the screen was repainting two or three times a
+     second, so the line was always freshly written. With that loop closed the
+     line would have frozen at "just now" and quietly lied for the rest of the
+     afternoon — the screen's one claim about how old what you are reading is.
+
+     So one interval, and it writes ONE ELEMENT'S TEXT. Never a repaint: this
+     page holds an open card menu, a filter panel and a half-typed dialog, and
+     the whole reason the loop was a bug is that redrawing takes those away. */
+  var ticking = null;
+  function tick() {
+    if (ticking) return;
+    ticking = setInterval(function () {
+      if (OG.view !== 'safeers') return;             /* left for another screen */
+      var el = document.getElementById('sfWhen');
+      if (!el) return;
+      var line = updatedLine();
+      if (el.textContent !== line) el.textContent = line;
+    }, 30000);
+  }
+
   /* Parcels (the board's) and errands, one list.
 
      The two halves are filtered in two different places and that is not an
@@ -394,8 +420,31 @@ var Safeers = (function () {
       '<td class="sf-act">' + act + '</td></tr>';
   }
 
+  /* AFTER() MUST NOT ASK AGAIN FOR WHAT load() HAS JUST DRAWN.
+     -----------------------------------------------------------------------
+     render() ends by calling after(); repaint() calls render(); and load()
+     calls repaint() when its answer lands. So an after() that always loads is
+     a LOOP — and it was one: /api/safeers, /api/errands and /api/deliveries
+     three times a second, for ever, on every tab with the screen open, with
+     the whole of #view replaced under whatever finger was on it. That is why
+     the screen was reported as not working. A press that landed between a
+     mousedown and the next rewrite went to a node that no longer existed, an
+     open card menu was redrawn out from under the hand, and the shop's own
+     server was answering three requests a second per tab for nothing.
+
+     It also explains the quick-fix note about the card menu "opening and
+     vanishing within half a second". That was treated by holding the open
+     menu in module state, which was right — but nobody asked why the screen
+     was repainting twice a second in the first place.
+
+     So: ask when there is nothing, when the shop has been written to since
+     (Shop.loadedAt moves on every reload), or when the answer has gone stale.
+     A live push and every action still call load() directly, which is what
+     keeps the screen current — this only stops it chasing its own tail. */
   function after() {
-    load();
+    var age = S.at ? Date.now() - S.at : Infinity;
+    var wrote = typeof Shop !== 'undefined' && Shop.loadedAt && Shop.loadedAt() > S.at;
+    if (!S.loading && (age >= FRESH_MS || wrote)) load();
     if (typeof labelWideTables === 'function') labelWideTables();
   }
 
@@ -477,6 +526,7 @@ var Safeers = (function () {
   function loadMine() {
     if (S.mineLoading) return;
     S.mineLoading = true;
+    S.mineTried = true;
     API.get('/api/errands?status=open').then(function (r) {
       S.mineLoading = false;
       S.mine = r.errands || [];
@@ -496,7 +546,18 @@ var Safeers = (function () {
       h += '<div class="card sf-offline"><b>' + t(offline(S.mineError) ? 'sf_offline' : 'sf_failed') + '</b>' +
         '<button class="btn btn-sm" data-sf="mine-reload">' + t('retry') + '</button></div>';
     }
-    if (S.mine === null) { if (!S.mineLoading) loadMine(); return h + '</div>'; }
+    /* ASK ONCE, NOT FOR EVER.
+       This is drawn by the driver's home, loadMine() ends in render(), and
+       render() draws this again — so on the happy path it stops (S.mine is no
+       longer null) and ON A FAILURE IT DID NOT: the request failed, S.mine
+       stayed null, render() ran, this asked again, and a safeer whose phone
+       had lost the shop's wifi sat in an unbounded retry loop with the screen
+       redrawing as fast as the requests could fail. The error card above has a
+       Retry on it, a live push calls loadMine() itself, and that is how it
+       comes back — not by hammering a line that is down. Same family as the
+       loop in after(); this one only showed itself when something was already
+       wrong, which is the worst time to find it. */
+    if (S.mine === null) { if (!S.mineLoading && !S.mineTried) loadMine(); return h + '</div>'; }
     if (!S.mine.length) return h + '</div>';
     h += '<div class="rc-sheet"><b>' + t('sf_my_errands') + '</b><span>' + nf(S.mine.length) + '</span></div>';
     S.mine.forEach(function (e) {
@@ -619,7 +680,7 @@ var Safeers = (function () {
       });
       return;
     }
-    if (a === 'mine-reload') { S.mineError = null; S.mine = null; loadMine(); render(); return; }
+    if (a === 'mine-reload') { S.mineError = null; S.mine = null; S.mineTried = false; loadMine(); render(); return; }
     if (a === 'new-errand') { newErrand(); return; }
     if (a === 'assign-parcel') { assignParcel(); return; }
     if (a === 'filter-person') { S.filter.safeer = String(id); load(); return; }
