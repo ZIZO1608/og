@@ -509,9 +509,31 @@ function removeChat(side, id) {
 
 /* ------------------------------------------------------------------- api */
 
+/* TELEGRAM REFUSES A MESSAGE OVER 4,096 CHARACTERS (a caption over 1,024) with
+   a 400, and a 400 here is retried twelve times and then marked failed — so a
+   message that is too long is a message that can NEVER arrive, however many
+   times it is tried. Nothing clamped it (audit 06): every template is short
+   today, but a /queue with forty jobs or a digest on a busy morning is
+   assembled from live rows. Cut on a line boundary and say it was cut, in
+   both languages, rather than lose the whole message. */
+const TEXT_MAX = 4096, CAPTION_MAX = 1024;
+export function clampText(text, max = TEXT_MAX) {
+  const s = String(text == null ? '' : text);
+  /* .length is UTF-16 units, which is how Telegram counts; an emoji is two */
+  if (s.length <= max) return s;
+  const tail = '\n… (الرسالة أطول من هيك — الباقي بالنظام · cut short — the rest is in OG System)';
+  let cut = s.slice(0, max - tail.length);
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);      // never half an emoji
+  const nl = cut.lastIndexOf('\n');
+  if (nl > cut.length * 0.6) cut = cut.slice(0, nl);
+  return cut + tail;
+}
+
 async function call(side, method, body, timeoutMs = SEND_TIMEOUT_MS) {
   const tk = token(side);
   if (!tk) throw new Error(`no token for ${side}`);
+  if (body && typeof body.text === 'string') body = { ...body, text: clampText(body.text, TEXT_MAX) };
+  if (body && typeof body.caption === 'string') body = { ...body, caption: clampText(body.caption, CAPTION_MAX) };
   const res = await fetch(`https://api.telegram.org/bot${tk}/${method}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1229,16 +1251,30 @@ async function drain() {
          than a missing one on a phone that has blocked the bot. */
       let landed = 0;
       const failures = [];
+      const deliver = (c) => (photo && row.attempts === 0)
+        ? call(side, 'sendPhoto', Object.assign(
+            { chat_id: c.id, photo, caption: text },
+            markup ? { reply_markup: markup } : null))
+        : call(side, 'sendMessage', Object.assign(
+            { chat_id: c.id, text, disable_web_page_preview: true },
+            markup ? { reply_markup: markup } : null));
       for (const c of targets) {
         try {
-          if (photo && row.attempts === 0) {
-            await call(side, 'sendPhoto', Object.assign(
-              { chat_id: c.id, photo, caption: text },
-              markup ? { reply_markup: markup } : null));
-          } else {
-            await call(side, 'sendMessage', Object.assign(
-              { chat_id: c.id, text, disable_web_page_preview: true },
-              markup ? { reply_markup: markup } : null));
+          try {
+            await deliver(c);
+          } catch (e) {
+            /* 429 IS "WAIT, THEN SEND" — THE ONE FAILURE THAT IS SAFE TO RETRY
+               FOR THIS CHAT ALONE (audit 06). It used to wait out retry_after
+               and then move on to the NEXT chat, so the chat that was told to
+               wait never got the message at all whenever any other chat took
+               it (the row is marked sent on the first one that lands). A 429
+               is Telegram saying nothing was delivered, so a second try here
+               cannot be a duplicate. Once, and never for longer than half a
+               minute — a drain held for an hour is worse than a late message. */
+            const wait = Number(e && e.retryAfter);
+            if (!(wait > 0) || wait > 30) throw e;
+            await new Promise((r) => setTimeout(r, (wait + 1) * 1000).unref());
+            await deliver(c);
           }
           landed++;
         } catch (e) {
@@ -1255,7 +1291,9 @@ async function drain() {
             dropCommands(side, c.id).catch(() => {});
             console.log(`  Telegram: ${side} dropped ${c.title} — the bot was blocked or removed there`);
           }
-          if (e.retryAfter) await new Promise((r) => setTimeout(r, (Number(e.retryAfter) + 1) * 1000).unref());
+          /* still rate-limited after its one retry, or told to wait longer
+             than this drain will: let the others go, a little later */
+          if (e.retryAfter) await new Promise((r) => setTimeout(r, Math.min(Number(e.retryAfter) + 1, 5) * 1000).unref());
         }
       }
 

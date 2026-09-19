@@ -465,7 +465,14 @@ export async function handle({ side, chat, text, msg, linked } = {}) {
      Start button or a code that was wrong or had expired, and both want the
      same answer: what this bot is and how to join it. */
   const known = ['start', 'help', 'queue', 'today', 'late', 'job', 'status', 'mute', 'unmute'];
-  if (known.indexOf(cmd) < 0) return false;
+  /* AN UNLINKED CHAT MUST NOT BE ABLE TO TELL A COMMAND FROM A TYPO (audit 06).
+     The unknown-command test used to come first, so a stranger typing /today
+     got the link-code line and one typing /nonsense got silence — which is a
+     way to read this bot's command list one word at a time, the very hint the
+     paragraph below promises not to give. For an unlinked chat EVERY slash
+     word now takes the same road. A linked chat's unknown command still falls
+     through, as before. */
+  if (known.indexOf(cmd) < 0 && linked) return false;
 
   /* AN UNLINKED CHAT IS TOLD NOTHING ABOUT THE SHOP — but pressing Start and
      getting silence is how a bot reads as broken, and the person pressing it
