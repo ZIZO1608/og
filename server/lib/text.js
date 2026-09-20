@@ -29,7 +29,7 @@
    Syria-only rule turned a Jordanian number into a Syrian one — a WhatsApp
    link that opened a stranger's chat, and a customer who could never be
    found by the number they gave. Anything else comes back as its digits,
-   untouched. The parity table in CUSTOMERS.md is the test for this pair. */
+   untouched. The parity table in docs/customers.md is the test for this pair. */
 export function normPhone(s) {
   var d = String(s == null ? '' : s).replace(/\D/g, '');
   if (d.indexOf('00') === 0) d = d.slice(2);

@@ -240,7 +240,7 @@ var Home = (function () {
          carried NO listener at all: every tile on every role's home did
          nothing when pressed, for the whole of night shift 03, while 53
          checks went green because they measured the tile and never pressed
-         it. See fix_05_log.md. */
+         it. See docs/history/fix-05.md. */
       h += '<button class="hm-job" type="button" data-act="hm-go" data-id="' + j.id + '">' +
         '<span class="hm-ico"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
           '<path d="' + j.icon + '"/></svg></span>' +

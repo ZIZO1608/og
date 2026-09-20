@@ -2429,7 +2429,7 @@ var DB = {
      international one: Syria 0… → 963, Jordan 07… → 962, Turkey 05…
      (eleven digits) → 90, and a 00 prefix or a trunk zero kept after the
      country code dropped. server/lib/text.js says why at length; the parity
-     table in CUSTOMERS.md is the test for the pair. */
+     table in docs/customers.md is the test for the pair. */
   normPhone: function (s) {
     var d = String(s == null ? '' : s).replace(/\D/g, '');
     if (d.indexOf('00') === 0) d = d.slice(2);

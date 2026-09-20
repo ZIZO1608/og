@@ -955,7 +955,7 @@ as one that fixes it. Verify your own changes in a browser before pushing.
 **But the night shifts left their own, in the gitignored `_nightshift/`**, and they are the
 fastest way to find out whether a change broke something. They need the sandbox server on 8190
 and a headless Chrome on 9224 that the SHELL opens (a browser a test script spawns cannot bind
-its debugging port here) — the exact two commands are at the top of `PROGRESS.md`. The widest is
+its debugging port here) — the exact two commands are at the top of `docs/progress.md`. The widest is
 `node _nightshift/ns03/sweep.mjs`: every screen every role can open, in English at 1100 and
 Arabic at 390, checking for a console error, a failed request, a raw i18n key, sideways scroll,
 anything drawn outside its card, and whether the last element on the page clears the phone bar.
@@ -1839,7 +1839,7 @@ same family as screenshotting a popover mid-fade.
 
 ## Night shift 01 (17 Sep 2026) — colours, categories, the date picker, partner invoices
 
-Built on branch `night-shift-01`, verified on a sandbox copy; the night's log is `night_shift_log.md`.
+Built on branch `night-shift-01`, verified on a sandbox copy; the night's log is `docs/history/night-shift-01.md`.
 **Mirror files 024–026 must be run in the Supabase dashboard BEFORE the shop laptop runs this code**
 (026 above all — see "Colours").
 
@@ -1939,8 +1939,8 @@ currencies (409 `job_not_done` / `already_invoiced` / `invoice_exists` / `mixed_
 
 ## Night shift 02 (18 Sep 2026) — fewer steps
 
-Built on branch `night-shift-02`; the audit that starts it is `night_shift_02_audit.md` and the
-morning report is `night_shift_02_log.md`. **No migration, no `server/supabase/` file, no
+Built on branch `night-shift-02`; the audit that starts it is `docs/history/night-shift-02.md` and the
+morning report is `docs/history/night-shift-02.md`. **No migration, no `server/supabase/` file, no
 `mirror-lag.js` entry, no config key** — every flow here uses routes and columns that already
 existed. The people who use this system are not computer people and the owner keeps his records
 on paper; the whole pass is about the number of decisions between somebody and the job they came
@@ -2116,7 +2116,7 @@ commonest reason it is opened and it stood eighth of nine — with the rest behi
 
 ## Quick fix (18 Sep 2026)
 
-Four fixes in an hour; the log is `quick_fix_log.md`. **No migration, no data change.** One thing
+Four fixes in an hour; the log is `docs/history/quick-fix.md`. **No migration, no data change.** One thing
 to do by hand: `role_permissions` on the live database says `warehouse / cost.read = 1`, while
 `003_role_permissions.sql` seeds it 0 — the row is stored state, not a code default, so it is
 unticked in **Settings → Roles → Warehouse → "See what things cost"** and not migrated.
@@ -2145,8 +2145,8 @@ unticked in **Settings → Roles → Warehouse → "See what things cost"** and 
 
 ## Night shift 03 (18 Sep 2026) — big buttons
 
-Built on branch `night-shift-03`, off `quick-fix`; the audit is `night_shift_03_audit.md`, the
-morning report is `night_shift_03_log.md`, and `PROGRESS.md` says where the run got to.
+Built on branch `night-shift-03`, off `quick-fix`; the audit is `docs/history/night-shift-03.md`, the
+morning report is `docs/history/night-shift-03.md`, and `docs/progress.md` says where the run got to.
 **No migration, no `server/supabase/` file, no `mirror-lag.js` entry, no data change.** Two things
 to do by hand before the shop laptop runs it: untick **Warehouse → "See what things cost"**, and
 **fill the shipping price list** (it ships empty and stalls every order).
@@ -2403,7 +2403,7 @@ quick-fix suites re-run green; `qf-safeers` and `ns02/p2-edit` were updated wher
 
 ## Fix 04 (18 Sep 2026) — the parcel that cannot come back, and the till's bottom
 
-Branch `fix-04`, off `night-shift-03`; the log is `fix_04_log.md`. **No migration, no schema
+Branch `fix-04`, off `night-shift-03`; the log is `docs/history/fix-04.md`. **No migration, no schema
 change, no data change, and no server permission weakened.** Nothing to do by hand.
 
 ### A parcel on the road with "Former staff" on it is STUCK, and that is the schema
@@ -2426,7 +2426,7 @@ to prove nothing was written while proving it.
   grants store credit, and **still closes the delivery as `failed`, never back to `waiting`**.
 - So the only way to satisfy the ask is to add `failed → waiting` to that table — a new server
   rule, against the module's own stated invariant ("delivered and failed are the end"), which is
-  the stop condition the brief wrote. It is question 1 in `fix_04_log.md` and the owner's to
+  the stop condition the brief wrote. It is question 1 in `docs/history/fix-04.md` and the owner's to
   answer. Night shift 03's board is already honest about it: Reassign only while the parcel is on
   the counter, Delivered (and "Couldn't deliver" under the dots) once it has left.
 
@@ -2472,7 +2472,7 @@ phone and read back out of SQLite), plus `npm test`, `ns03/sweep` and `qf-board`
 
 ## Fix 05 (19 Sep 2026) — the buttons that did nothing, and one build per page
 
-Branch `fix-05`, off `fix-04`; eight commits, the log is `fix_05_log.md`. **No migration, no
+Branch `fix-05`, off `fix-04`; eight commits, the log is `docs/history/fix-05.md`. **No migration, no
 schema change, no `server/supabase/` file, no `mirror-lag.js` entry, no data change, and no server
 permission weakened.** Nothing to do by hand.
 
@@ -2623,7 +2623,7 @@ and the devil pass found two things wrong with them:
 - **Starting the harness Chrome on Windows: QUOTE THE PROFILE PATH.** The repo lives under a path
   with a space in it, and an unquoted `--user-data-dir` reaches Chrome as three arguments — it
   reads the last two as URLs and exits with `Multiple targets are not supported in headless mode`,
-  which names nothing that is true. The exact lines are at the end of `PROGRESS.md`.
+  which names nothing that is true. The exact lines are at the end of `docs/progress.md`.
 - **`Layers.route()` drops the history marker BEFORE it closes anything**, and `openModal`
   replacing a dialog must not unmark and remark in the same beat. Both produced a screen that
   navigated backwards by itself.
@@ -2652,7 +2652,7 @@ three runs, then the database put back). `ns03/sweep` is 1027 over six viewports
 move, every errand and every product was read back out of SQLite, never off the screen that wrote
 it. **WebKit was not driven** — there is no Safari on Windows and the only way to a WebKit build
 here is an npm install, which this repo does not have and will not grow for a test; the iOS risks
-that ARE addressed are listed in `fix_05_log.md`, and what remains untested is named there as
+that ARE addressed are listed in `docs/history/fix-05.md`, and what remains untested is named there as
 untested.
 
 ## Fix 06 (19 Sep 2026) — the screen that was asking the shop 235 times a second
@@ -2881,7 +2881,7 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
   Not fixed, because the cure is a decision: route every money save through `Cashbook.submit`,
   or make `Shop.write` itself toast "still saving — press again" when it refuses, or queue the
   second write. The third is wrong for a double-tap, which is what the lock exists for.
-- **Left by fix 05, and all five are decisions rather than faults** (`fix_05_log.md` §6).
+- **Left by fix 05, and all five are decisions rather than faults** (`docs/history/fix-05.md` §6).
   **Cairo for the app's own Arabic** — vendored at weight 700 only, so adopting it sets every
   Arabic screen in one bold weight; doing it properly needs 400/600/700 woff2, a converter and a
   build step this repo does not have, and it changes how the whole thing looks, so it is the
@@ -2916,7 +2916,7 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
   waiting` to `NEXT` in `lib/deliveries.js`** — a new rule against that module's own stated
   invariant, and a decision about whether a revived parcel keeps its `closed_at` and the "could
   not be delivered" line already sent to the customer's tracking page. Question 1 in
-  `fix_04_log.md`.
+  `docs/history/fix-04.md`.
 - **Server routes with no button.** A sale can be voided only by a hand-sent
   `POST /api/sales/:id/void`; the staff-account routes (`POST /api/users`, `/api/users/:id/reset`,
   `/api/users/:id/active`) have no Settings control. The permissions `refund` and `partner.read` gate
@@ -2979,7 +2979,7 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
 - **Customers, still open**: the printed loyalty card (held on the ruler test — the app believes a
   sticker is 30 × 30 mm and `labels60.js` was built for 60 × 40), a lint for the cap family, merge
   with no undo, a one-currency credit limit, a wants tab with no "arrived" filter. The full list
-  with reasons is `CUSTOMERS.md` → "Still open".
+  with reasons is `docs/customers.md` → "Still open".
 - **Web Push dies when the shop moves laptops.** The VAPID pair lives in `push_keys`, which is per
   laptop and deliberately not mirrored (migration 048), and so is `push_subscriptions`. The laptop
   that takes the baton mints a new pair, publishes its public half to config `push.public_key`, and
@@ -3020,7 +3020,7 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
 `adjustPoints`), `server/lib/text.js` (`normPhone`, `foldName`), `server/lib/loyalty.js`,
 `server/lib/wants.js`, `server/lib/capped.js`; the screen, the profile and the drawer are
 `js/app-customers-scan.js`; migrations `028` to `034`. Built in stages over 31 Aug – 3 Sep 2026 —
-**`CUSTOMERS.md` is the record**: the owner's decisions, what each stage built, how it was proved,
+**`docs/customers.md` is the record**: the owner's decisions, what each stage built, how it was proved,
 and what is still open. This section is how it works now.
 
 - **Money on a customer is a pair**, like everywhere else: `spent_syp` / `spent_usd`, plus
@@ -3035,7 +3035,7 @@ and what is still open. This section is how it works now.
   a live holder wins over an archived one.
 - **Identity is `foldName` + `normPhone`** — Arabic diacritics, tatweel and the alef/ta-marbuta/ya
   variants folded; `0933…` and `+963 933…` the same number — with **twins in `js/data.js`** that
-  carry a "keep in step" comment and a nineteen-row parity table in `CUSTOMERS.md`. `custSearch()`
+  carry a "keep in step" comment and a nineteen-row parity table in `docs/customers.md`. `custSearch()`
   is the one "which customer does this text mean" rule; the attach, merge and job-link pickers all
   use it. It had been written three times before it was one.
 - **The grid caps at 60 cards** (`CUST_RENDER_CAP`), and `customerRowsShown()` is what **both** the
@@ -3044,7 +3044,7 @@ and what is still open. This section is how it works now.
   `{ rows, shown, total, capped }` from `server/lib/capped.js` with `capped = total > shown` (never
   `shown === limit` — a table of exactly 200 rows is not truncated), and the screen says so through
   `cappedNote` / `cappedCount`. A number derived from a truncated set is the mistake this codebase
-  has made most often; the sweep that closed seven of them is in `CUSTOMERS.md`.
+  has made most often; the sweep that closed seven of them is in `docs/customers.md`.
 - **Quiet is per customer, computed on the server** beside `sizes`: `median_gap_days` is the
   median gap between non-voided purchases (`null` under three — never `0`, which reads as "comes in
   daily"), quiet after `median × customer.quiet_multiplier_tenths / 10` floored at
@@ -3119,7 +3119,7 @@ and what is still open. This section is how it works now.
   **does not navigate** (`POS.refresh()`, not `render()`, which would lose a half-typed discount);
   with an empty basket it opens the profile. `POS.saleOpen()` (a basket with a line) is the same
   guard `#open/customer/<id>` uses. **Printing the card is held** on the ruler test — see
-  `CUSTOMERS.md`.
+  `docs/customers.md`.
 - `print_jobs.customer_id` is set by the till and backfilled **only where a `sale_id` proves it**,
   never by name or phone; a person links the rest from the job drawer. Yalla Wear receives no
   customer field on any job — that route stripped `price` alone for a while, and it was live.
@@ -3180,7 +3180,7 @@ holding a transaction can use it — `DB.tx` refuses to nest), the delivery row,
   **digits** (`^\D{0,4}-?(\d{3,})$`). A global `e.code` fix is a separate decision.
 - **`normPhone` knew only Syria**, turning a Jordanian `07…` into a Syrian number — a WhatsApp link
   to a stranger. Jordan, Turkey, `00` prefixes and trunk zeros now; the parity table in
-  `CUSTOMERS.md` is the test, and `js/whatsapp.js` no longer keeps a third copy.
+  `docs/customers.md` is the test, and `js/whatsapp.js` no longer keeps a third copy.
 
 **The owner's lists live in `config` as JSON** — `pay.methods`, `pay.accounts`,
 `delivery.companies`, `delivery.countries`, `delivery.prices`, `delivery.wh`, `delivery.print` —

@@ -1,4 +1,4 @@
-# CUSTOMERS.md — the customers rebuild, 31 Aug – 3 Sep 2026
+# docs/customers.md — the customers rebuild, 31 Aug – 3 Sep 2026
 
 One file in place of twelve. The rebuild of the Customers screen and everything under it —
 migrations `028` to `034`, six server modules, the profile, loyalty, debt, merge, the loyalty card
