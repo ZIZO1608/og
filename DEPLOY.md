@@ -40,13 +40,13 @@ The two ways this bites, both of which have already happened here:
   `ERR_MODULE_NOT_FOUND` at startup, before the port is bound.
   `server/lib/backup-schedule.js` was in exactly that state until it was
   committed; check for others with `git status --short` and look for `??`.
-- **A file committed but its caller not** is silent. That is the state
-  `server/lib/backup-schedule.js` is in right now: the module is in git, but
-  the `import` and the `BackupSchedule.start()` that use it are part of the
-  uncommitted work on `server/index.js`. So a clone built today has the nightly
-  backup on disk and never runs it — the startup lines say "Backups:" on the
-  laptop and say nothing in the container. Commit `server/index.js` and it
-  starts working, with no other change.
+- **A file committed but its caller not** is silent, and it is the one to watch
+  for. `server/lib/backup-schedule.js` was committed a few minutes before the
+  `import` and the `BackupSchedule.start()` in `server/index.js` were, and in
+  between, a clone carried the nightly backup on disk and never ran it: the
+  laptop printed a "Backups:" line at startup and the container printed
+  nothing. Both halves are in now. Nothing warns about this — only booting a
+  clone does.
 
 A clone is easy to check before trusting it:
 
@@ -77,7 +77,7 @@ The two that must be right, because the container is behind Coolify's proxy:
 
 | name | value | what happens without it |
 |---|---|---|
-| `OG_ORIGINS` | `https://pos.ogsports1.com` | **blank allows every origin.** Any page in any tab can send writes while a manager is logged in. Fine on a shop's own wifi; not on the internet. |
+| `OG_ORIGINS` | `https://pos.ogsports1.com` | left blank, a write is accepted only when the browser says it came from the address it was sent to (Origin host == Host, audit 06). That is safe, but it is a fallback: naming the hostname is the check that still holds if anything ever sits in front of this one. |
 | `OG_TRUST_PROXY` | `1` | every visitor shares one IP for login throttling, so one person mistyping their password five times locks out the shop. |
 
 Already set in the image, override only if you know why: `OG_PORT=8090`,

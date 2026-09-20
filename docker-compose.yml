@@ -19,9 +19,9 @@ services:
 
     environment:
       # ---- the two that MUST be right behind a proxy ----------------------
-      #  A blank OG_ORIGINS allows every origin (originAllowed() in
-      #  lib/http.js). On a laptop on the shop's own wifi that is a considered
-      #  choice; on the public internet it is not. Name the real hostname.
+      #  Left blank, originAllowed() (lib/http.js) falls back to "the Origin
+      #  header's host must be the Host header" — safe, and it needs no
+      #  configuration. Naming the real hostname is still the stronger answer.
       OG_ORIGINS: "${OG_ORIGINS:-http://localhost:8090}"
       OG_TRUST_PROXY: "${OG_TRUST_PROXY:-1}"
 
