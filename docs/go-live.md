@@ -67,10 +67,11 @@ from it stops advertising a pair that was sold in the shop an hour ago.
 ## Phase 2 — the tunnel  ·  ~45 min  ·  low risk, one gate
 
 > **The step-by-step is [deploy/shop-proxy/README.md](../deploy/shop-proxy/README.md)**,
-> which is the route actually taken: Tailscale between the laptop and the VPS,
-> and a small nginx proxy in Coolify holding the name. Cloudflare Tunnel was
-> the first plan and was dropped — it needs the whole zone on Cloudflare, and
-> moving nameservers under a live store is a risk taken for nothing.
+> which is the route actually taken: self-hosted WireGuard between the laptop
+> and the VPS, and a small nginx proxy in Coolify holding the name. Cloudflare
+> Tunnel was the first plan and was dropped — it needs the whole zone on
+> Cloudflare, and moving nameservers under a live store is a risk taken for
+> nothing.
 
 This puts the shop's own system back on the internet. It was there before,
 through the same hostname, until 16 Sep 2026.
@@ -92,11 +93,23 @@ not after.
 **2.1 DNS, at Hostinger.** One record: `shop` → `152.239.114.129`. The `@` and
 `www` records belong to the live store — leave them alone.
 
-**2.2 Tailscale, then the proxy.** Tailscale on the laptop and on the VPS puts
-them on one private network with no port opened on the shop's router, then the
-container built from `deploy/shop-proxy/Dockerfile` holds the public name and
-forwards to the laptop. Every step, every value and the two things that go
-wrong are in **[deploy/shop-proxy/README.md](../deploy/shop-proxy/README.md)**.
+**2.2 WireGuard, then the proxy.** A WireGuard link between the laptop and the
+VPS puts them on one private network (`10.8.0.0/24`) with no port opened on the
+shop's router, then the container built from `deploy/shop-proxy/Dockerfile`
+holds the public name and forwards to the laptop. Every step, every value and
+the four things that go wrong are in
+**[deploy/shop-proxy/README.md](../deploy/shop-proxy/README.md)**.
+
+> **NOT Tailscale, and not ZeroTier.** Both were tried and neither can be used
+> from Syria. What sanctions reach is not the encryption — it is the US
+> company's **login server**, the part that introduces the two machines to each
+> other. Self-hosted WireGuard has no such part: the VPS already has a public
+> IP and is its own meeting point, so there is no account to create and nothing
+> that can refuse the shop for being where it is.
+
+> **`AllowedIPs = 10.8.0.1/32` on the laptop, never `0.0.0.0/0`.** The second
+> would send every byte the shop laptop sends through Germany — the till, the
+> browser, Windows Update — and the shop would stop the moment the VPS did.
 
 > **Two settings in that proxy are not tuning, they are requirements.**
 > `proxy_buffering off`, because `/api/live` is a server-sent-event stream and
@@ -105,10 +118,10 @@ wrong are in **[deploy/shop-proxy/README.md](../deploy/shop-proxy/README.md)**.
 > `proxy_set_header X-Forwarded-Proto https`, or the shop redirects browsers
 > to its own `:8443`, a port nothing out here carries.
 
-> **Disable key expiry on both machines** in the Tailscale admin console.
-> Without it the key expires in a few months, the link stops, and
-> `shop.ogsports1.com` starts showing "the shop is not connected" with nothing
-> in the shop having changed.
+> **`PersistentKeepalive = 25` on the laptop.** The shop's router forgets an
+> idle connection after a minute or two, and without that line the link works
+> until it goes quiet and then silently stops — `shop.ogsports1.com` showing
+> "the shop is not connected" with nothing in the shop having changed.
 
 **2.3 The laptop needs no changes.** Checked on 20 Sep 2026:
 `OG_ORIGINS` already lists `https://shop.ogsports1.com` from the first tunnel,

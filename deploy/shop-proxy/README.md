@@ -1,7 +1,7 @@
 # `shop.ogsports1.com` — putting the shop online without moving it
 
-Written for whoever sets it up, at the VPS and at the shop laptop. About 45
-minutes, most of it waiting.
+Written for whoever sets it up, at the VPS and at the shop laptop. About an
+hour, most of it copying keys between two windows.
 
 ## What this builds
 
@@ -10,7 +10,7 @@ minutes, most of it waiting.
         │  https://shop.ogsports1.com
         ▼
    VPS (Coolify + this proxy)          152.239.114.129
-        │  private Tailscale link
+        │  private WireGuard link, 10.8.0.0/24
         ▼
    shop laptop  ── OG System.exe ── the database, both printers
 ```
@@ -27,6 +27,21 @@ What you get:
   goes away
 - the internet comes back → the cloud copy catches up by itself, no button
 - no ports opened on the shop's router, and no static IP needed there
+
+## Why WireGuard, and not Tailscale or ZeroTier
+
+Both of those were tried and neither can be used from Syria. They are US
+companies, and the part that breaks is not the encryption — it is the **login
+server** that introduces your two machines to each other. That is the piece
+sanctions reach.
+
+WireGuard has no company in it. It is software on your own two machines, and
+the "meeting point" is your own VPS, which already has a public IP. There is
+no account to create, no login to be refused, and nothing that can stop
+working because of where the shop is.
+
+It is also in the Linux kernel and has a signed Windows installer, so neither
+end depends on a service staying in business.
 
 ---
 
@@ -53,68 +68,128 @@ It must answer `152.239.114.129`. Usually 5–30 minutes.
 
 ---
 
-## 2. Tailscale on the shop laptop — 5 minutes
+## 2. WireGuard on the VPS — 10 minutes
 
-Tailscale is a private network between your machines. Nothing is exposed to
-the internet by it; the two computers simply find each other.
+SSH in (hPanel → VPS → **Browser terminal**, or `ssh root@152.239.114.129`).
 
-1. Download from **tailscale.com/download/windows**, install
-2. Sign in — **use an account you will still have in two years**, not a
-   throwaway. Google or Microsoft sign-in is fine.
-3. Tailscale sits in the tray. Leave it running.
+**2a. Install it and make the server's keys:**
 
-**Then, once, in the admin console** at `login.tailscale.com/admin/machines`:
+```bash
+apt update && apt install -y wireguard
+cd /etc/wireguard
+umask 077
+wg genkey | tee server.key | wg pubkey > server.pub
+echo "SERVER PUBLIC KEY:"; cat server.pub
+echo "SERVER PRIVATE KEY:"; cat server.key
+```
 
-- find the laptop → **⋯** → **Disable key expiry**
+Copy both somewhere for a moment. The **public** key goes to the laptop; the
+**private** key stays here and goes in the file below.
 
-> ⚠️ Do this. Without it the machine's key expires in a few months, the link
-> stops, and `shop.ogsports1.com` starts showing "the shop is not connected"
-> with nothing in the shop having changed.
+**2b. Write the config** — `nano /etc/wireguard/wg0.conf`:
+
+```ini
+[Interface]
+Address    = 10.8.0.1/24
+ListenPort = 51820
+PrivateKey = PASTE_SERVER_PRIVATE_KEY_HERE
+
+[Peer]
+# the shop laptop — its public key goes here after step 3
+PublicKey  = PASTE_LAPTOP_PUBLIC_KEY_HERE
+AllowedIPs = 10.8.0.2/32
+```
+
+Save (Ctrl+O, Enter, Ctrl+X). Leave the laptop's key as a placeholder for now.
+
+**2c. Open the port and start it:**
+
+```bash
+ufw allow 51820/udp   || true
+systemctl enable --now wg-quick@wg0
+wg show
+```
+
+`wg show` should print an interface called `wg0`. It will say no handshake yet
+— nothing is connected at the other end.
 
 ---
 
-## 3. Tailscale on the VPS — 3 minutes
+## 3. WireGuard on the shop laptop — 10 minutes
 
-SSH in (hPanel → VPS → **Browser terminal**, or `ssh root@152.239.114.129`):
+**3a.** Download the Windows installer from **wireguard.com/install** and run
+it.
 
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-tailscale up
+**3b.** Open WireGuard → **Add Tunnel** → **Add empty tunnel…**
+
+It generates a key pair and shows the **public key** at the top. **Copy that
+public key** — it goes back to the VPS in step 4.
+
+**3c.** Name it `og-shop` and make the config read exactly this, keeping the
+`PrivateKey` line it generated for you:
+
+```ini
+[Interface]
+PrivateKey = (leave the line it already made)
+Address    = 10.8.0.2/24
+
+[Peer]
+PublicKey           = PASTE_SERVER_PUBLIC_KEY_HERE
+Endpoint            = 152.239.114.129:51820
+AllowedIPs          = 10.8.0.1/32
+PersistentKeepalive = 25
 ```
 
-It prints a URL. Open it in a browser, sign in with **the same account**, and
-the VPS joins. Disable key expiry for this machine too.
+**Save.** Do not activate yet.
+
+> ### 🔴 `AllowedIPs = 10.8.0.1/32` — get this one right
+>
+> It means "only send traffic for the VPS down this tunnel."
+>
+> If you write `0.0.0.0/0` instead, **every byte the shop laptop sends goes
+> through Germany** — the till, the browser, Windows Update, everything. The
+> shop would get slower and the whole thing would stop the moment the VPS did.
+> That is not what this tunnel is for.
+
+> ### `PersistentKeepalive = 25`
+>
+> The shop's router forgets an idle connection after a minute or two. This
+> sends one tiny packet every 25 seconds so the path stays open, which is what
+> lets the VPS start a conversation with a laptop that has no public address.
+> Without it the link works until it goes quiet, then silently stops.
 
 ---
 
-## 4. Find the laptop's private address — 1 minute
+## 4. Introduce them — 2 minutes
 
-On the **VPS**:
-
-```bash
-tailscale status
-```
-
-You get a line per machine:
-
-```
-100.94.18.7     og-laptop    zizo@   windows  -
-100.71.203.44   vps-hostinger ...
-```
-
-**Write down the laptop's `100.x.y.z`.** That is its address on the private
-network, and it does not change.
-
-Now prove the VPS can reach the shop — with `OG System.exe` **running** on the
-laptop:
+Back on the **VPS**, put the laptop's public key in:
 
 ```bash
-curl -s http://100.94.18.7:8090/api/health
+nano /etc/wireguard/wg0.conf     # replace PASTE_LAPTOP_PUBLIC_KEY_HERE
+systemctl restart wg-quick@wg0
 ```
 
-(substitute your own address)
+Then on the **laptop**, in the WireGuard app, press **Activate**.
 
-**Expected:**
+Within a few seconds the app shows **"latest handshake"** and bytes moving.
+
+**Make it permanent:** the WireGuard Windows app installs an activated tunnel
+as a service, so it comes back after a reboot. Confirm it by restarting the
+laptop and checking the tunnel is active before anyone opens the shop.
+
+---
+
+## 5. The checkpoint — the step that proves everything
+
+On the **VPS**, with `OG System.exe` **running** on the laptop:
+
+```bash
+wg show                                     # a recent handshake?
+ping -c 3 10.8.0.2                          # does the laptop answer?
+curl -s http://10.8.0.2:8090/api/health     # does the SHOP answer?
+```
+
+**Expected from the last one:**
 
 ```json
 {"ok":true,"warehouses":2,"time":"...","shop":"OG Sports","https":false,...}
@@ -123,26 +198,39 @@ curl -s http://100.94.18.7:8090/api/health
 🛑 **Do not go on until you see that.** Everything after this assumes it works.
 
 <details>
-<summary>If it hangs or refuses</summary>
+<summary>If the handshake never happens</summary>
 
-- Is `OG System.exe` actually running on the laptop? The panel should say the
-  shop is open.
+- **Firewall on the VPS:** `ufw status` — UDP **51820** must be allowed. Also
+  check Hostinger's own firewall panel; some plans have one in hPanel on top
+  of `ufw`.
+- **Keys swapped.** The most common mistake by far: each side must hold the
+  OTHER machine's public key. `wg show` on the VPS prints the peer key it
+  expects — compare it with the one the laptop's app displays.
+- **The shop's ISP blocks UDP 51820.** Rare, but it happens. Change
+  `ListenPort` on the VPS and `Endpoint` on the laptop to **51820 → 443**, and
+  reopen the firewall for `443/udp`. UDP 443 is what QUIC uses, so it is
+  almost never filtered. (Nothing else on the VPS uses UDP 443 — Coolify's
+  proxy uses TCP 443.)
+</details>
+
+<details>
+<summary>If the handshake works but curl hangs</summary>
+
+- Is `OG System.exe` actually running? The panel should say the shop is open.
 - **Windows Firewall** is the usual answer. On the laptop, in an
   Administrator PowerShell:
 
   ```powershell
-  New-NetFirewallRule -DisplayName "OG System from Tailscale" -Direction Inbound -Protocol TCP -LocalPort 8090 -RemoteAddress 100.64.0.0/10 -Action Allow
+  New-NetFirewallRule -DisplayName "OG System over WireGuard" -Direction Inbound -Protocol TCP -LocalPort 8090 -RemoteAddress 10.8.0.0/24 -Action Allow
   ```
 
-  That allows port 8090 **only** from the private network, not from the wider
+  That allows port 8090 **only** from the private tunnel, not from the wider
   internet.
-- `tailscale ping 100.94.18.7` from the VPS tells you whether the two machines
-  can see each other at all, separately from whether the shop is listening.
 </details>
 
 ---
 
-## 5. The Coolify app — 10 minutes
+## 6. The Coolify app — 10 minutes
 
 **+ New Resource** → **Private Repository (with deploy key)** → the same
 `og-deploy` key and `git@github.com:ZIZO1608/og.git` as before.
@@ -150,7 +238,7 @@ curl -s http://100.94.18.7:8090/api/health
 | Field | Value |
 |---|---|
 | Branch | `main` |
-| Build Pack | `Dockerfile` |
+| Build strategy | `Dockerfile` |
 | **Dockerfile Location** | **`/deploy/shop-proxy/Dockerfile`** |
 | Base Directory | `/` |
 | Ports Exposes | `8080` |
@@ -163,7 +251,10 @@ build variable):
 
 | Key | Value |
 |---|---|
-| `SHOP_UPSTREAM` | `http://100.94.18.7:8090` ← your laptop's address |
+| `SHOP_UPSTREAM` | `http://10.8.0.2:8090` |
+
+That address is fixed — you chose it in step 3. It never changes, which is one
+more thing WireGuard makes simpler than a service that hands out addresses.
 
 **Health check path** (under Health Checks, if Coolify asks):
 `/__proxy_health`
@@ -172,9 +263,14 @@ No persistent storage. No other variables.
 
 Then **Deploy**.
 
+> **A container reaching 10.8.0.2.** The proxy runs in Docker, and Docker
+> routes anything it does not recognise through the host — which is where the
+> `wg0` interface lives. So it works with no extra configuration. If it ever
+> does not, `sysctl net.ipv4.ip_forward=1` on the VPS is the thing to check.
+
 ---
 
-## 6. Check it
+## 7. Check it
 
 | Where | What |
 |---|---|
@@ -191,7 +287,7 @@ error. That is this proxy telling the truth.
 
 ---
 
-## 7. One setting in the shop, afterwards
+## 8. One setting in the shop, afterwards
 
 Sign in as the owner → **Settings** → set **`shop.public_url`** to
 `https://shop.ogsports1.com`.
@@ -202,6 +298,22 @@ set, and it has been empty since the first tunnel was retired in September.
 The laptop needs nothing else: `OG_ORIGINS` already lists
 `https://shop.ogsports1.com` and `OG_TRUST_PROXY=1` is already set, both left
 over from the old tunnel.
+
+---
+
+## If WireGuard itself is ever blocked
+
+An SSH reverse tunnel does the same job over TCP and needs nothing installed
+on either machine — Windows 10 and later ship `ssh.exe`, and the VPS already
+runs `sshd`. From the **laptop**:
+
+```powershell
+ssh -N -R 127.0.0.1:8090:127.0.0.1:8090 root@152.239.114.129
+```
+
+Then `SHOP_UPSTREAM=http://172.17.0.1:8090` (the Docker host, since the
+forward lands on the VPS's own loopback). It needs a wrapper to restart itself
+and to run at boot, which is why it is the fallback rather than the plan.
 
 ---
 

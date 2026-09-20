@@ -2,7 +2,7 @@
 #  shop.ogsports1.com — the front door
 # -----------------------------------------------------------------------------
 #  This runs on the VPS and forwards to the shop's laptop over the private
-#  network (Tailscale). It holds no data and makes no decisions: every request
+#  network (WireGuard). It holds no data and makes no decisions: every request
 #  is answered by the server in the shop, which is the only machine that has
 #  the database, the printers, and the right to write anything.
 #
@@ -10,7 +10,7 @@
 #  envsubst step (files in /etc/nginx/templates are rendered into
 #  /etc/nginx/conf.d). Set it in Coolify to the laptop's private address:
 #
-#      SHOP_UPSTREAM=http://100.x.y.z:8090
+#      SHOP_UPSTREAM=http://10.8.0.2:8090
 #
 #  PLAIN http AND PORT 8090, not 8443. The laptop's certificate is self-signed
 #  and nginx would refuse it with an error about nothing you did. The shop's

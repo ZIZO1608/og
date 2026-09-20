@@ -5,7 +5,7 @@
 # -----------------------------------------------------------------------------
 #  A reverse proxy and nothing else. It holds no database, no key and no state:
 #  every request is answered by the shop's own server on the laptop in Aleppo,
-#  reached over the private Tailscale network.
+#  reached over a private WireGuard link the VPS itself hosts.
 #
 #  WHY THIS EXISTS AT ALL. The shop must keep selling when the internet dies,
 #  so the server has to be in the same room as the till: the price, the stock
@@ -20,10 +20,10 @@
 #      Base Directory       /
 #      Ports Exposes        8080
 #      Domains              https://shop.ogsports1.com
-#      Environment          SHOP_UPSTREAM=http://100.x.y.z:8090
+#      Environment          SHOP_UPSTREAM=http://10.8.0.2:8090
 #      Health check path    /__proxy_health
 #
-#  deploy/shop-proxy/README.md has the whole walkthrough, Tailscale included.
+#  deploy/shop-proxy/README.md has the whole walkthrough, WireGuard included.
 # =============================================================================
 
 FROM nginx:alpine
