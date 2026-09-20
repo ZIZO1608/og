@@ -13,6 +13,7 @@ arriving at this repository needs first: `README.md`, `CLAUDE.md` and
 
 | | |
 |---|---|
+| [go-live.md](go-live.md) | **Putting the shop online, in the safe order** — the public page, the tunnel, the outage drill, and the one thing that must never happen (two servers writing one shop). |
 | [connections-map.md](connections-map.md) | **Every connection that leaves the process** — the cloud copy, the bots, the printers, the phones, the panel. Read it before touching any of them, and keep it current: a connection added and not written here is one nobody knows is there. |
 | [customers.md](customers.md) | The customer half in full: the owner's decisions, what each stage built, how it was proved, and what is still open. `CLAUDE.md`'s Customers section is the summary; this is the record. |
 | [progress.md](progress.md) | Where the last run got to, and — at the top — **the two commands that start the sandbox server and the headless Chrome** the test suites need. |
