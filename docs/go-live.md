@@ -6,9 +6,10 @@ the next, so you can stop after any of them.
 
 > **The shape, in one line.** The shop's own system stays on the laptop in
 > Aleppo — that is what makes the till work when the internet dies — and a
-> tunnel makes the same server reachable at `shop.ogsports1.com`. The VPS
-> carries the public page at `ogsports1.com`, which is the one thing the
-> laptop cannot do. There is never a second copy of the shop's data.
+> small proxy on the VPS makes that same server reachable at
+> `shop.ogsports1.com`. The apex, `ogsports1.com`, is somebody else's job:
+> it already runs the online store. There is never a second copy of the
+> shop's data.
 
 ---
 
@@ -32,61 +33,44 @@ outage stops nothing but the view from outside.
 
 ---
 
-## Phase 1 — the public page  ·  ~20 min  ·  no risk
+## Phase 1 — the public page  ·  the domain is already taken, by a real store
 
-Nothing here touches the shop. If it all goes wrong, a marketing page is down.
+`ogsports1.com` **already serves a working online store** — a Next.js
+application with a cart, a checkout and sign-in, on this same VPS, its
+certificate already issued. Found on 20 Sep 2026 by asking the domain rather
+than by being told about it.
 
-**1.1 DNS, at Hostinger** (hPanel → Domains → DNS / Nameservers):
+So the static page in `site/` **is not deployed, and must not be**. Pointing a
+second Coolify application at that domain would leave two of them claiming it;
+the best case is a failed deploy and the worst is the store going dark. A
+one-page site could not out-rank a store with product pages anyway.
 
-```
-Type: A    Name: @      Value: <the VPS IP>    TTL: default
-Type: A    Name: www    Value: <the VPS IP>    TTL: default
-```
+`site/` stays in the repository as a working reference for the parts the store
+may still be missing — the bilingual `hreflang` pair, the
+`SportingGoodsStore` structured data, and a `robots.txt` that names the AI
+crawlers one by one. `site/README.md` explains each.
 
-Wait until `nslookup ogsports1.com` answers with the VPS IP before the next
-step — Let's Encrypt fails on a name that does not resolve yet, and then
-retries on a back-off that wastes ten minutes of your evening.
-
-**1.2 Coolify** → New Resource → Private Repository (GitHub App) →
-`ZIZO1608/og`:
-
-| setting | value |
-|---|---|
-| Branch | `audit-06` |
-| Build Pack | `Dockerfile` |
-| **Dockerfile Location** | **`/site/Dockerfile`** |
-| Base Directory | `/` |
-| Ports Exposes | **`8080`** |
-| Domain | `https://ogsports1.com` |
-| Build Argument | `SITE_URL=https://ogsports1.com` |
-
-No volume, no environment variables, no keys.
-
-**1.3 Check it:**
+**The useful work on that store is a different job**, and the biggest piece of
+it is a door the POS has had built for exactly this purpose which nothing has
+ever called:
 
 ```
-https://ogsports1.com/              the Arabic page
-https://ogsports1.com/en/           the English one
-https://ogsports1.com/robots.txt    Allow, and a Sitemap: line
-https://ogsports1.com/sitemap.xml   two URLs
+GET /api/ext/products      the published catalogue, behind OG_WEB_API_KEY
 ```
 
-**1.4 Tell the search engines** — this is the step that actually does
-something, and none of it is automatic:
-
-- **Google Search Console** → add `ogsports1.com` → submit `/sitemap.xml`
-- **Bing Webmaster Tools** → the same sitemap (several AI assistants read
-  Bing's index)
-- **Google Business Profile** → claim the pin the page already links. For
-  "sports shop in Aleppo" this matters *more* than the website does, and what
-  makes the pair work is that the name, the city and the Instagram link match
-  the page exactly.
-- Put `ogsports1.com` in the **Instagram and Telegram bios**. The page's
-  `sameAs` claims those accounts; a link back from the profile proves it.
+Real products, real sizes, real prices, an `inStock` flag per size, with
+archived lines and anything not marked for the web filtered out. A store fed
+from it stops advertising a pair that was sold in the shop an hour ago.
 
 ---
 
-## Phase 2 — the tunnel  ·  ~20 min  ·  low risk, one gate
+## Phase 2 — the tunnel  ·  ~45 min  ·  low risk, one gate
+
+> **The step-by-step is [deploy/shop-proxy/README.md](../deploy/shop-proxy/README.md)**,
+> which is the route actually taken: Tailscale between the laptop and the VPS,
+> and a small nginx proxy in Coolify holding the name. Cloudflare Tunnel was
+> the first plan and was dropped — it needs the whole zone on Cloudflare, and
+> moving nameservers under a live store is a risk taken for nothing.
 
 This puts the shop's own system back on the internet. It was there before,
 through the same hostname, until 16 Sep 2026.
@@ -105,30 +89,26 @@ the 12 real people plus the hidden Former-staff record. If that ever changes,
 `npm run users:rebuild -- --apply` is the fix, and it runs before the tunnel,
 not after.
 
-**2.1 Nameservers to Cloudflare.** A Cloudflare Tunnel needs the zone on
-Cloudflare. Add the site (free plan), let it import the existing records, and
-**check the MX records came across before switching** if any email uses this
-domain. Then set Cloudflare's two nameservers at Hostinger. Propagation is
-usually under an hour.
+**2.1 DNS, at Hostinger.** One record: `shop` → `152.239.114.129`. The `@` and
+`www` records belong to the live store — leave them alone.
 
-**2.2 The tunnel.** Cloudflare → **Zero Trust** → Networks → **Tunnels** →
-Create a tunnel → name it `og-shop` → it gives you a Windows install command
-carrying a token. Run that on the shop laptop. Then add a public hostname:
+**2.2 Tailscale, then the proxy.** Tailscale on the laptop and on the VPS puts
+them on one private network with no port opened on the shop's router, then the
+container built from `deploy/shop-proxy/Dockerfile` holds the public name and
+forwards to the laptop. Every step, every value and the two things that go
+wrong are in **[deploy/shop-proxy/README.md](../deploy/shop-proxy/README.md)**.
 
-```
-Hostname:  shop.ogsports1.com
-Service:   http://localhost:8090
-```
+> **Two settings in that proxy are not tuning, they are requirements.**
+> `proxy_buffering off`, because `/api/live` is a server-sent-event stream and
+> `/api/labels/next` is a 25-second long-poll — buffering waits for a response
+> that is deliberately never going to end. And
+> `proxy_set_header X-Forwarded-Proto https`, or the shop redirects browsers
+> to its own `:8443`, a port nothing out here carries.
 
-> **`http://localhost:8090`, not `https://…:8443`.** The local certificate is
-> self-signed, and the connector refuses it with an error about nothing you
-> did. The server is built for this: browsers get sent to HTTPS, machines
-> carry on over plain HTTP.
-
-> **One connector per token.** A second `cloudflared` running the same token
-> is a high-availability pair as far as Cloudflare is concerned, and it takes
-> requests away from the laptop without a word. That cost a day of diagnosis
-> on this project once already.
+> **Disable key expiry on both machines** in the Tailscale admin console.
+> Without it the key expires in a few months, the link stops, and
+> `shop.ogsports1.com` starts showing "the shop is not connected" with nothing
+> in the shop having changed.
 
 **2.3 The laptop needs no changes.** Checked on 20 Sep 2026:
 `OG_ORIGINS` already lists `https://shop.ogsports1.com` from the first tunnel,

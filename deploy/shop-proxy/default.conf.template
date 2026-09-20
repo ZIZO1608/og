@@ -1,0 +1,98 @@
+# =============================================================================
+#  shop.ogsports1.com — the front door
+# -----------------------------------------------------------------------------
+#  This runs on the VPS and forwards to the shop's laptop over the private
+#  network (Tailscale). It holds no data and makes no decisions: every request
+#  is answered by the server in the shop, which is the only machine that has
+#  the database, the printers, and the right to write anything.
+#
+#  ${SHOP_UPSTREAM} is substituted at container start by the nginx image's own
+#  envsubst step (files in /etc/nginx/templates are rendered into
+#  /etc/nginx/conf.d). Set it in Coolify to the laptop's private address:
+#
+#      SHOP_UPSTREAM=http://100.x.y.z:8090
+#
+#  PLAIN http AND PORT 8090, not 8443. The laptop's certificate is self-signed
+#  and nginx would refuse it with an error about nothing you did. The shop's
+#  server is built for exactly this: browsers get redirected to HTTPS, machines
+#  carry on over plain HTTP, and it trusts X-Forwarded-Proto when
+#  OG_TRUST_PROXY=1 — which is already set on the laptop.
+# =============================================================================
+
+#  Needed so a WebSocket upgrade passes through and an ordinary request does
+#  not carry a stray Connection header. `map` is legal here: conf.d is
+#  included inside the http block.
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+server {
+  #  IPv4 only on purpose. Coolify's proxy reaches this container over the
+  #  docker network, which is IPv4, and a `listen [::]` line stops nginx
+  #  starting outright on a host whose kernel has IPv6 switched off.
+  listen      8080;
+  server_name _;
+
+  #  THE PROXY'S OWN PULSE, answered here and never forwarded. Coolify health
+  #  checks this container, and the container is healthy whenever nginx is
+  #  running — the shop being closed for the night is not a fault in the
+  #  proxy, and a health check that said otherwise would have Coolify
+  #  restarting this thing every thirty seconds all night.
+  location = /__proxy_health {
+    access_log off;
+    add_header Content-Type text/plain;
+    return 200 "proxy ok\n";
+  }
+
+  #  A PRODUCT PHOTOGRAPH IS BIGGER THAN NGINX'S DEFAULT. The browser shrinks
+  #  a phone photo to ~420px before it is sent, but it travels as a base64
+  #  data URL, which is about a third bigger again. nginx's default limit is
+  #  1 MB and would refuse it with a 413 before the shop's own, friendlier
+  #  limit ever saw it.
+  client_max_body_size 12m;
+
+  location / {
+    proxy_pass ${SHOP_UPSTREAM};
+    proxy_http_version 1.1;
+
+    #  The shop must see the name the visitor typed, not this container's.
+    #  It is what originAllowed() checks and what every generated link uses.
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host  $host;
+
+    #  The public leg of this journey IS https, even though this hop is not.
+    #  Without it the shop would redirect browsers to its own :8443, a port
+    #  nothing out here carries, and every page would fail to open.
+    proxy_set_header X-Forwarded-Proto https;
+
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+
+    #  BUFFERING OFF IS NOT A TUNING CHOICE, IT IS REQUIRED. Two things here
+    #  hold a response open for a long time and must arrive as they happen:
+    #  GET /api/live is a server-sent-event stream (the board, the bell and
+    #  the partner thread all repaint from it), and GET /api/labels/next is a
+    #  25-second long-poll the label agent lives on. With buffering on, nginx
+    #  waits for a response that is deliberately never going to end.
+    proxy_buffering off;
+    proxy_cache     off;
+
+    #  Longer than any of those holds. The live stream sends its own ': ping'
+    #  heartbeat, so an idle timeout here would cut a healthy connection.
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+
+    #  When the laptop is off, asleep, or the shop's internet is down, say so
+    #  in words instead of showing nginx's grey 502.
+    proxy_next_upstream off;
+    error_page 502 503 504 = @shop_closed;
+  }
+
+  location @shop_closed {
+    default_type text/html;
+    return 503 '<!doctype html><meta charset="utf-8"><title>OG System</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{background:#0A0A0B;color:#FAFAFA;font-family:Segoe UI,Tahoma,system-ui,sans-serif;display:grid;place-items:center;min-height:100%;margin:0}div{max-width:30rem;padding:2rem;text-align:center;line-height:1.7}b{color:#C6FF00;font-size:1.25rem}p{color:#A1A1AA}</style><div><p><b>&#1575;&#1604;&#1605;&#1581;&#1604; &#1605;&#1588; &#1605;&#1608;&#1589;&#1608;&#1604; &#1607;&#1604;&#1571;</b></p><p>&#1575;&#1604;&#1580;&#1607;&#1575;&#1586; &#1605;&#1591;&#1601;&#1610; &#1571;&#1608; &#1575;&#1604;&#1606;&#1578; &#1605;&#1602;&#1591;&#1608;&#1593; &#1576;&#1575;&#1604;&#1605;&#1581;&#1604;. &#1575;&#1604;&#1603;&#1575;&#1588;&#1610;&#1585; &#1588;&#1594;&#1617;&#1575;&#1604; &#1593;&#1575;&#1583;&#1610; &#1607;&#1606;&#1575;&#1603;.</p><hr style="border:0;border-top:1px solid #232327;margin:1.5rem 0"><p><b>The shop is not connected</b></p><p>The laptop is off, or the shop&#39;s internet is down. The till in the shop is still working normally &#8212; only this view from outside is unavailable.</p></div>';
+  }
+}
