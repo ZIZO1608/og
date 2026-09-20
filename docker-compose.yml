@@ -5,14 +5,7 @@
 #  the domain, the certificate and the volume. This is for a local run, and for
 #  anyone who would rather deploy with plain `docker compose` on the VPS.
 #
-#      docker compose up --build                  the shop, on :8090
-#      docker compose --profile site up --build   the shop AND the public page
-#
-#  THE PUBLIC PAGE IS BEHIND A PROFILE ON PURPOSE. The deployment being set up
-#  is the shop's own system, one container, on a hostname nobody advertises.
-#  The page at site/ is a separate job with a separate domain (site/README.md
-#  says how), and a service that starts when nobody asked for it is how two
-#  half-finished things end up live at once.
+#      docker compose up --build       the shop, on :8090
 # =============================================================================
 
 services:
@@ -76,22 +69,6 @@ services:
       interval: 30s
       timeout: 5s
       start_period: 20s
-      retries: 3
-
-  site:
-    profiles: ["site"]
-    build:
-      context: .
-      dockerfile: site/Dockerfile
-      args:
-        SITE_URL: "${SITE_URL:-https://ogsports1.com}"
-    restart: unless-stopped
-    ports:
-      - "${SITE_PORT:-8080}:8080"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
-      interval: 30s
-      timeout: 5s
       retries: 3
 
 volumes:

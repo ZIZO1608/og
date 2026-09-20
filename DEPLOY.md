@@ -22,21 +22,38 @@ a hostname nobody advertises (`pos.ogsports1.com` is the suggestion), and it is
 
 ---
 
-## 2. Before the first deploy — one thing is missing from git
+## 2. Before the first deploy — COOLIFY BUILDS A CLONE, NOT THIS FOLDER
 
-`server/lib/backup-schedule.js` is **imported by `server/index.js` and is not
-committed**. Coolify builds from a GitHub clone, so the container will crash on
-startup with `ERR_MODULE_NOT_FOUND` until it is in the repository:
+Nothing on the laptop's disk reaches the server. What gets built is what has
+been **committed and pushed**, so anything still sitting in the working tree is
+simply not in the image — and the failure is quiet: the shop comes up, on older
+code, and behaves like the laptop did a week ago.
 
 ```bash
-git add server/lib/backup-schedule.js
-git commit -m "the nightly backup schedule, which index.js imports"
+git status --short          # must be empty of app changes before a deploy
+git push
 ```
 
-Check nothing else is in the same state before every deploy:
+The two ways this bites, both of which have already happened here:
+
+- **A file imported but never committed** is a crash, and a loud one:
+  `ERR_MODULE_NOT_FOUND` at startup, before the port is bound.
+  `server/lib/backup-schedule.js` was in exactly that state until it was
+  committed; check for others with `git status --short` and look for `??`.
+- **A file committed but its caller not** is silent. That is the state
+  `server/lib/backup-schedule.js` is in right now: the module is in git, but
+  the `import` and the `BackupSchedule.start()` that use it are part of the
+  uncommitted work on `server/index.js`. So a clone built today has the nightly
+  backup on disk and never runs it — the startup lines say "Backups:" on the
+  laptop and say nothing in the container. Commit `server/index.js` and it
+  starts working, with no other change.
+
+A clone is easy to check before trusting it:
 
 ```bash
-git status --short          # anything under server/lib/ marked ?? is a crash
+git archive HEAD | tar -x -C /tmp/clone && cd /tmp/clone
+node --test "server/test/*.test.js"
+node server/index.js        # a fresh database, migrations, /api/health
 ```
 
 ---
