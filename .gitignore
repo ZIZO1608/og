@@ -38,6 +38,13 @@ docs/proof/
 docs/*.pdf
 docs/_*.html
 
+# ---- the Windows launcher binary --------------------------------------------
+# panel/build-exe.ps1 compiles panel/launcher/OGSystem.cs with the csc.exe that
+# ships inside Windows. It used to be committed so a fresh clone had something
+# to double-click; it is not any more, because the shop is deployed as a
+# container and a Windows binary cannot run in one. One command rebuilds it.
+*.exe
+
 # ---- tooling and OS junk ----------------------------------------------------
 .claude/
 .serena/

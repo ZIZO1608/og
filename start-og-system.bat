@@ -1,19 +1,20 @@
 @echo off
 REM ===========================================================================
-REM  There is one launcher now, and it is "OG System.exe" in this folder.
+REM  Starts the OG System control panel on this machine.
 REM
-REM  This file is kept as a shortcut to it, and for one reason only: the shop's
-REM  laptop has a desktop icon and a pinned taskbar entry pointing HERE, and
-REM  deleting it would end with somebody standing in front of a till on a
-REM  Monday morning with nothing to double-click. It does no work of its own.
+REM  It used to start "OG System.exe", which lived beside this file. That .exe
+REM  is no longer committed: the repository is deployed from GitHub as a
+REM  container now, and a 66 KB Windows binary in the image (and in every
+REM  clone) is weight nothing on a server can run. panel/build-exe.ps1 still
+REM  builds it from panel/launcher/OGSystem.cs if the shop wants the tray icon
+REM  back on its own laptop:
 REM
-REM  What used to be in this file - the port check, the certificate trust
-REM  check, the printer check, opening the browser, and then holding a console
-REM  window open for as long as the shop was open - is all in the panel now,
-REM  with a Stop button, a terminal you can scroll, and the addresses as links.
+REM      powershell -ExecutionPolicy Bypass -File panel/build-exe.ps1
 REM
-REM  push.bat, claim-mirror.bat and make-deploy.bat are gone: they are the
-REM  Publish, Claim the mirror and Build dist buttons. They are still in git
-REM  history if one is ever wanted back.
+REM  This file is kept for one reason: the shop laptop has a desktop icon and a
+REM  pinned taskbar entry pointing HERE, and deleting it would end with
+REM  somebody standing in front of a till on a Monday morning with nothing to
+REM  double-click. It starts the panel directly, which is what the .exe did.
 REM ===========================================================================
-start "" "%~dp0OG System.exe"
+cd /d "%~dp0"
+start "OG System" node panel/panel.js

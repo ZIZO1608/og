@@ -46,6 +46,17 @@
 *.otf  binary
 
 # Minified vendor code: real, but not ours to review.
+# ---- the container build -----------------------------------------------------
+#  These are read by Linux tools that treat a trailing carriage return as
+#  part of the value:
+#  a CRLF Dockerfile can break a RUN line, and a CRLF .dockerignore can stop a
+#  pattern matching, which would put server/.env into the image. They have no
+#  extension, so * text=auto is the only rule that would otherwise reach them.
+Dockerfile      text eol=lf
+.dockerignore   text eol=lf
+*.conf          text eol=lf
+*.env.example   text eol=lf
+
 js/vendor/* linguist-vendored
 
 # Test harnesses are not the project's headline language stat.

@@ -1,0 +1,64 @@
+# =============================================================================
+#  WHAT NEVER GOES INTO THE IMAGE
+# -----------------------------------------------------------------------------
+#  Two kinds of thing are excluded here, and only one of them is about size.
+#
+#  The first is SECRETS AND THE SHOP'S OWN DATA. server/data/ holds og.db —
+#  real customers, real sales, real sealed passwords — and server/data/certs/
+#  holds a private key. server/.env holds the Supabase service key, both
+#  Telegram tokens and OG_VAULT_KEY. An image is a file anybody who can pull
+#  it can unpack; none of this may ever be baked into one. The database
+#  arrives at run time on a volume, the keys as environment variables.
+#
+#  The second is EVERYTHING THAT CANNOT RUN IN A CONTAINER ANYWAY: the Windows
+#  launcher, the print agent, the test harnesses, the Flutter port, the docs.
+# =============================================================================
+
+# ---- the shop's data and its keys -------------------------------------------
+server/data/
+server/data-sandbox/
+server/data-sandbox2/
+server/backups/
+server/.env
+server/.env.*
+ACCOUNTS.private.md
+
+# ---- git, CI and editor -----------------------------------------------------
+.git/
+.github/
+.gitignore
+.gitattributes
+.claude/
+.serena/
+.vscode/
+.idea/
+
+# ---- the Windows launcher and the print agent -------------------------------
+#  panel/ is a tray application for the shop's laptop and the .exe it builds;
+#  agent/ talks to a USB label printer. Neither has anything to reach from a
+#  VPS, and both would only be weight.
+panel/
+agent/
+*.exe
+*.bat
+*.ps1
+
+# ---- test harnesses and scratch ---------------------------------------------
+#  Files starting with `_` are refused by serveStatic anyway (lib/http.js);
+#  keeping them out of the image means they are not there to refuse.
+_nightshift/
+_*.html
+*.log
+*.tmp
+
+# ---- things that are not the app --------------------------------------------
+dist/
+flutter_app/
+docs/
+*.md
+!server/README.md
+
+# ---- docker's own ------------------------------------------------------------
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -1,0 +1,98 @@
+# =============================================================================
+#  OG SYSTEM — for running the whole thing on one machine
+# -----------------------------------------------------------------------------
+#  Coolify does not need this file: it builds ./Dockerfile itself and manages
+#  the domain, the certificate and the volume. This is for a local run, and for
+#  anyone who would rather deploy with plain `docker compose` on the VPS.
+#
+#      docker compose up --build                  the shop, on :8090
+#      docker compose --profile site up --build   the shop AND the public page
+#
+#  THE PUBLIC PAGE IS BEHIND A PROFILE ON PURPOSE. The deployment being set up
+#  is the shop's own system, one container, on a hostname nobody advertises.
+#  The page at site/ is a separate job with a separate domain (site/README.md
+#  says how), and a service that starts when nobody asked for it is how two
+#  half-finished things end up live at once.
+# =============================================================================
+
+services:
+
+  pos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+
+    environment:
+      # ---- the two that MUST be right behind a proxy ----------------------
+      #  A blank OG_ORIGINS allows every origin (originAllowed() in
+      #  lib/http.js). On a laptop on the shop's own wifi that is a considered
+      #  choice; on the public internet it is not. Name the real hostname.
+      OG_ORIGINS: "${OG_ORIGINS:-http://localhost:8090}"
+      OG_TRUST_PROXY: "${OG_TRUST_PROXY:-1}"
+
+      # ---- the one that must be the SAME value as the laptop's -------------
+      #  OG_VAULT_KEY opens the sealed passwords already in og.db. A NEW value
+      #  here does not fail loudly — it just cannot open the boxes that are
+      #  there. Copy the line out of the laptop's server/.env; do not invent a
+      #  new one unless this is a brand-new shop.
+      OG_VAULT_KEY: "${OG_VAULT_KEY:-}"
+
+      # ---- optional, all off unless set ------------------------------------
+      #  The cloud copy. ONE PROJECT, ONE WRITER: if the laptop still syncs to
+      #  this project, leave these blank here. lib/lineage.js will refuse the
+      #  second writer, which is the guard working, not a fault.
+      #  The code takes either name for the secret key.
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY:-}"
+      OG_SYNC_MINUTES: "${OG_SYNC_MINUTES:-0}"
+
+      #  The bots. Only ever ONE container per token — two long-polls on one
+      #  token fight over getUpdates and each drops half the messages.
+      OG_TELEGRAM_TOKEN_OG: "${OG_TELEGRAM_TOKEN_OG:-}"
+      OG_TELEGRAM_TOKEN_YALLA: "${OG_TELEGRAM_TOKEN_YALLA:-}"
+
+      #  The website's bearer key for /api/ext/*. No key and every route under
+      #  that prefix answers 503, which is right for a shop with no website.
+      OG_WEB_API_KEY: "${OG_WEB_API_KEY:-}"
+
+      #  A second copy of each nightly backup, on another mount. A backup on
+      #  the same volume as the database protects against a mistake, not
+      #  against losing the volume.
+      OG_BACKUP_COPY_DIR: "${OG_BACKUP_COPY_DIR:-}"
+
+    volumes:
+      #  THE SHOP. og.db, its WAL, backups/ and certs/ all live here, and the
+      #  image holds no copy. Lose this volume and you lose the shop.
+      - og-data:/app/server/data
+
+    ports:
+      - "${OG_PORT:-8090}:8090"
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  site:
+    profiles: ["site"]
+    build:
+      context: .
+      dockerfile: site/Dockerfile
+      args:
+        SITE_URL: "${SITE_URL:-https://ogsports1.com}"
+    restart: unless-stopped
+    ports:
+      - "${SITE_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  og-data:

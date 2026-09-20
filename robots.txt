@@ -1,5 +1,6 @@
-# Unreleased client demo — please stay out.
-# GitHub Pages cannot send X-Robots-Tag headers, so index.html also carries
+# This origin is the shop's own system — the till, stock, customers, money.
+# Every screen is behind a login and there is nothing here to index, so the
+# answer to every crawler is the same one. index.html also carries
 # <meta name="robots" content="noindex, nofollow, noarchive">.
 User-agent: *
 Disallow: /
