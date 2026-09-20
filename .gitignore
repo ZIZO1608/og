@@ -14,6 +14,11 @@
 # every push. Committing it invites the two copies to disagree.
 dist/
 
+# ---- the public page build output -------------------------------------------
+# Assembled by site/build.mjs (and by site/Dockerfile, in a container). The
+# sources are site/*.html, site/style.css and assets/; this is their output.
+site/dist/
+
 # ---- the Flutter port -------------------------------------------------------
 # Kept out for now: it has never compiled cleanly end to end, and the web app
 # is what gets demoed. Delete this line to bring it in — its own

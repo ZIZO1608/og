@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ogsports1.com — every public page, and there are two of them: the Arabic
+  page and its English twin. They are listed as alternates of each other
+  rather than as two unrelated URLs, so a search engine shows an Arabic
+  reader the Arabic one.
+
+  A sitemap may only ever name pages that exist and answer 200. Listing a URL
+  that 404s costs trust; listing the shop's own till would be worse than that.
+  <lastmod> is stamped by site/build.mjs at build time, so it is the date the
+  page was actually last published rather than a date somebody remembered to
+  edit.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+
+  <url>
+    <loc>https://ogsports1.com/</loc>
+    <xhtml:link rel="alternate" hreflang="ar"        href="https://ogsports1.com/"/>
+    <xhtml:link rel="alternate" hreflang="en"        href="https://ogsports1.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ogsports1.com/"/>
+    <lastmod>2026-09-20</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <url>
+    <loc>https://ogsports1.com/en/</loc>
+    <xhtml:link rel="alternate" hreflang="ar"        href="https://ogsports1.com/"/>
+    <xhtml:link rel="alternate" hreflang="en"        href="https://ogsports1.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ogsports1.com/"/>
+    <lastmod>2026-09-20</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+</urlset>

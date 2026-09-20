@@ -1,0 +1,113 @@
+/* ==========================================================================
+   OG SPORTS — the public page
+   --------------------------------------------------------------------------
+   The shop's own skin, cut down to what one page needs: near-black, one lime
+   accent spent on one action, soft corners, weight doing the talking. The
+   tokens are the same values as css/tokens.css so the page and the app look
+   like one shop; they are restated here rather than imported because this
+   page is served by nginx from a different container and must stand alone.
+
+   Arabic is the first language of this page, so every rule is written for RTL
+   first and the English page carries dir="ltr" on the same markup.
+   ========================================================================== */
+
+:root {
+  --bg:        #0A0A0B;
+  --card:      #141417;
+  --line:      #232327;
+  --ink:       #FAFAFA;
+  --muted:     #A1A1AA;
+  --brand:     #C6FF00;
+  --brand-ink: #0A0A0B;
+  --radius:    16px;
+  --head: 'Montserrat', 'Segoe UI', system-ui, sans-serif;
+  --body: 'Montserrat', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Montserrat has no Arabic glyphs at all, so an Arabic page set in it is
+   really set in whatever comes next. Naming the stack rather than leaving it
+   to chance is what stops a heading and the paragraph under it coming out in
+   two different faces on a machine that has one and not the other. */
+html[lang="ar"] {
+  --head: 'Cairo', 'Tahoma', 'Segoe UI', sans-serif;
+  --body: 'Tahoma', 'Segoe UI', 'Noto Naskh Arabic', sans-serif;
+}
+/* Tracked Arabic pulls the joins open and a word comes apart into letters. */
+html[lang="ar"] * { letter-spacing: 0 !important; }
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
+
+h1, h2, h3 { font-family: var(--head); font-weight: 700; line-height: 1.25; margin: 0 0 12px; }
+h1 { font-size: clamp(30px, 6vw, 48px); letter-spacing: -0.02em; }
+h2 { font-size: clamp(22px, 4vw, 28px); margin-top: 0; }
+h3 { font-size: 18px; }
+p  { margin: 0 0 16px; color: var(--muted); }
+p.lead { color: var(--ink); font-size: clamp(17px, 2.4vw, 20px); }
+a  { color: var(--brand); }
+
+/* ---- the bar ---------------------------------------------------------- */
+.bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 18px 0; border-bottom: 1px solid var(--line);
+}
+.mark { display: flex; align-items: center; gap: 10px; font-family: var(--head); font-weight: 700; font-size: 18px; color: var(--ink); text-decoration: none; }
+.mark img { width: 32px; height: 32px; border-radius: 8px; }
+.lang { font-size: 14px; font-weight: 600; text-decoration: none; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); }
+.lang:hover { border-color: var(--brand); }
+
+/* ---- hero ------------------------------------------------------------- */
+.hero { padding: 56px 0 40px; }
+.kicker { font-family: var(--head); font-weight: 700; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--brand); margin: 0 0 14px; }
+html[lang="ar"] .kicker { letter-spacing: 0; text-transform: none; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 14px 22px; border-radius: 999px; text-decoration: none;
+  font-family: var(--head); font-weight: 700; font-size: 15px;
+  border: 1px solid var(--line); color: var(--ink); background: var(--card);
+  min-height: 48px;
+}
+.btn:hover { border-color: #3A3A40; }
+.btn-primary { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.btn-primary:hover { background: #A8DA00; border-color: #A8DA00; }
+.btn img { width: 18px; height: 18px; }
+
+/* ---- cards ------------------------------------------------------------ */
+section { padding: 40px 0; border-top: 1px solid var(--line); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+.card h3 { margin-bottom: 6px; }
+.card p  { margin: 0; font-size: 15px; }
+
+ul.plain { margin: 0; padding: 0; list-style: none; }
+ul.plain li { padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+ul.plain li:last-child { border-bottom: 0; }
+ul.plain b { color: var(--ink); font-weight: 600; }
+
+/* ---- footer ----------------------------------------------------------- */
+footer { padding: 32px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+footer a { color: var(--muted); }
+footer a:hover { color: var(--brand); }
+.foot-row { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; }
+
+/* Every figure and every Latin run is its own bidi island, or Arabic drags
+   the leading number to the far end. */
+bdi { unicode-bidi: isolate; }
+
+@media (max-width: 520px) {
+  .hero { padding: 36px 0 28px; }
+  .btn  { width: 100%; justify-content: center; }
+}

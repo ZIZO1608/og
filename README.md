@@ -16,6 +16,7 @@ working manual and it is kept current; trust it over this file.
 |---|---|
 | `index.html`, `css/`, `js/` | the app — vanilla HTML/CSS/JS, no framework, no bundler, **no build step** |
 | `server/` | the API and the static server — Node, `node:sqlite`, **zero dependencies** |
+| `site/` | the public page at ogsports1.com — two static pages, nginx, its own container |
 | `panel/` | the Windows control panel for the shop's own laptop |
 | `agent/` | the print agent for the label printer |
 | `docs/` | everything written down that is not the manual — see [docs/README.md](docs/README.md) |

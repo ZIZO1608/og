@@ -1,0 +1,84 @@
+# =============================================================================
+#  ogsports1.com — the PUBLIC shop page
+# -----------------------------------------------------------------------------
+#  This file belongs to the public site only. The shop's own system (the till,
+#  stock, customers, money) is a different machine on a different hostname
+#  (shop.ogsports1.com) and carries its own robots.txt, which says
+#  Disallow: / and means it.
+#
+#  EVERY CRAWLER HERE IS ALLOWED ON PURPOSE, including the ones that collect
+#  text for AI assistants. This page exists to be read and quoted: somebody
+#  asking an assistant where to buy sportswear in Aleppo should be able to be
+#  told about this shop, and an assistant can only say what it was allowed to
+#  read. Turning any of them off is one line — change Allow to Disallow under
+#  that agent's name.
+# =============================================================================
+
+User-agent: *
+Allow: /
+
+# ---- search engines ---------------------------------------------------------
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: YandexBot
+Allow: /
+
+# ---- AI answers and AI training ---------------------------------------------
+#  Google-Extended and Applebot-Extended are not crawlers. They are the
+#  permission switches for Gemini and Apple Intelligence over pages Googlebot
+#  and Applebot have already fetched, so they are the two that decide whether
+#  this shop can be mentioned in an AI answer at all.
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: meta-externalagent
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+# ---- the map for all of them -------------------------------------------------
+Sitemap: https://ogsports1.com/sitemap.xml
