@@ -461,9 +461,20 @@ async function checkOne(id, ctx) {
           if (m > newest) newest = m;
         }
       } catch { newest = 0; }
+      /* WHAT THE LAST ATTEMPT SAID (audit 06). The shop now backs itself up
+         daily (server/lib/backup-schedule.js) and writes the outcome beside
+         the copies. A backup that FAILED is red with its reason — before
+         this the row could only ever say how old the newest file was, so a
+         backup failing every night looked exactly like a quiet folder. */
+      let last = null;
+      try { last = JSON.parse(readFileSync(join(backupDir(), 'backup-status.json'), 'utf8')); } catch { last = null; }
+      if (last && last.ok === false && (!newest || new Date(last.at).getTime() >= newest - 60000)) {
+        return row('bad', 'backup_failed', { why: String(last.reason || '?').slice(0, 160) });
+      }
       if (!newest) return row('warn', 'backup_none');
       const hours = Math.round((Date.now() - newest) / 3600000);
-      return row(hours > 48 ? 'warn' : 'ok', 'backup_age', { hours });
+      const sameDisk = !(last && last.elsewhere);
+      return row(hours > 48 ? 'warn' : 'ok', sameDisk ? 'backup_age_here' : 'backup_age', { hours });
     }
     case 'vault':
       return Vault.isEnabled() ? row('ok', 'vault_ok') : row('bad', 'vault_none');

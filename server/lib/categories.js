@@ -66,6 +66,10 @@ function cleanName(v, lang) {
                lang === 'ar' ? 'name_ar_required' : 'name_en_required');
   }
   if (s.length > 40) throw fail('a name is at most 40 characters', 'name_too_long');
+  /* A category's name is drawn on the till's chips, in every category list and
+     on the product badge. The screens escape it (audit 06 found seven that did
+     not); this is the second lock — markup has no business in a category's name. */
+  if (/[<>]/.test(s)) throw fail('a name cannot contain < or >', 'bad_name');
   return s;
 }
 

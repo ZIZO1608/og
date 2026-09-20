@@ -1052,7 +1052,7 @@ var ACTIONS = {
       return L;
     }
     WA.compose({
-      title: po.id + ' · ' + sup.name,
+      title: esc(po.id) + ' · ' + esc(sup.name),   /* a dialog title is HTML — a supplier's name is data (audit 06) */
       to: sup.contact, name: sup.name, kind: 'purchase-order',
       text: WA.both(part(true), part(false)),
       note: pieces + ' ' + t('pieces') + ' · ' + money(total)

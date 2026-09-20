@@ -62,7 +62,7 @@ function viewPrintLabels() {
     '<input class="inp grow" type="text" placeholder="' + t('search_products') + '" value="' + esc(f.q) + '" data-change="lbf-q">' +
     '<select class="inp" data-change="lbf-type"><option value="">' + t('all_types') + '</option>';
   types.forEach(function (ty) {
-    h += '<option value="' + ty + '"' + (f.type === ty ? ' selected' : '') + '>' + DB.typeLabels[ty] + '</option>';
+    h += '<option value="' + ty + '"' + (f.type === ty ? ' selected' : '') + '>' + esc(DB.typeLabels[ty] || ty) + '</option>';
   });
   h += '</select>';
 
@@ -204,7 +204,7 @@ function quickPickerBodyHTML() {
   var vs = DB.variantsOf(quickPick.pid);
 
   var h = '<div style="display:flex;gap:12px;align-items:center;margin-bottom:14px">' +
-    thumb(p, 'lg') + '<div><span class="eyebrow">' + dots(esc(p.brand), DB.typeLabels[p.type]) + '</span>' +
+    thumb(p, 'lg') + '<div><span class="eyebrow">' + dots(esc(p.brand), esc(DB.typeLabels[p.type] || '')) + '</span>' +
     '<h3 style="font-size:16px;margin:2px 0 3px">' + esc(p.name) + '</h3></div></div>';
 
   h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">' +

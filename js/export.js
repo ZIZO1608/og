@@ -894,7 +894,7 @@ var Export = (function () {
     }
 
     openModal({
-      title: t('ex_pdf_preview') + ' · ' + (spec.title || ''),
+      title: t('ex_pdf_preview') + ' · ' + esc(spec.title || ''),   /* a report's title can carry a customer's name (audit 06) */
       size: 'wide',
       body: buildPdfHtml(spec),
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +

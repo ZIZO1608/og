@@ -58,6 +58,7 @@ import * as Labels from './lib/labels.js';
 import * as SyncWorker from './lib/sync-worker.js';
 import * as Telegram from './lib/telegram.js';
 import * as Reminders from './lib/reminders.js';
+import * as BackupSchedule from './lib/backup-schedule.js';
 import * as Live from './lib/live.js';
 import * as Tracking from './lib/tracking.js';
 import * as Office from './lib/office-alerts.js';
@@ -71,7 +72,7 @@ import { CONFIG_WRITABLE, configRefusal } from './lib/config-writable.js';
 import { lanAddresses } from './lib/net.js';
 import { timingSafeEqual } from 'node:crypto';
 import {
-  readJson, sendOk, sendError, sendErrorDetail, sendJson, parseCookies,
+  readJson, sendOk, sendError, sendErrorDetail, sendJson, parseCookies, CSP,
   serveStatic, makeRouter, originAllowed
 } from './lib/http.js';
 
@@ -202,10 +203,16 @@ router.add('POST /api/auth/hint', async (ctx) => {
   if (typeof username !== 'string') {
     return sendError(ctx.res, 400, 'bad_request', 'username is required');
   }
-  if (Auth.recentFailures(username) >= 8) {
+  if (Auth.recentFailures('hint:' + username) >= 8) {
     return sendError(ctx.res, 429, 'too_many_attempts', 'Too many attempts.');
   }
-  Auth.recordAttempt(username, clientIp(ctx.req), false);
+  /* ITS OWN COUNTER (audit 06). This used to record a failed LOGIN against
+     the username, so nine requests to this PUBLIC route — no password, no
+     session — locked anybody out of the shop for fifteen minutes: the owner
+     at 8 am, by anyone on the wifi. The hint door is still throttled exactly
+     as hard, but under its own name, so asking for a hint can never spend a
+     login attempt. */
+  Auth.recordAttempt('hint:' + username, clientIp(ctx.req), false);
   sendOk(ctx.res, { hint: Auth.hintFor(username) });
 });
 
@@ -2144,7 +2151,8 @@ router.add('GET /api/statement', requirePerm('profit.read', (ctx) => {
    "due in 2 days" does not make a read alert come back unread. */
 router.add('POST /api/notifications/read', async (ctx) => {
   const b = await readJson(ctx.req);
-  sendOk(ctx.res, Alerts.markRead(ctx.user, b.key || null));
+  /* a key is a short string; anything else marks nothing rather than reaching SQLite as an object */
+  sendOk(ctx.res, Alerts.markRead(ctx.user, typeof b.key === 'string' ? b.key.slice(0, 200) : null));
 });
 
 /* -------------------------------------------------------- purchase orders */
@@ -3026,12 +3034,14 @@ router.add('GET /api/labels/next', requirePerm('label.print', async (ctx) => {
 
 router.add('POST /api/labels/:id/done', requirePerm('label.print', async (ctx) => {
   const b = await readJson(ctx.req);
-  sendOk(ctx.res, Labels.complete(Number(ctx.params.id), b.claimToken, 'done', null));
+  try { sendOk(ctx.res, Labels.complete(Number(ctx.params.id), String(b.claimToken || ''), 'done', null)); }
+  catch (e) { sendError(ctx.res, e.status || 409, e.code || 'not_claimed', e.message); }
 }));
 
 router.add('POST /api/labels/:id/failed', requirePerm('label.print', async (ctx) => {
   const b = await readJson(ctx.req);
-  sendOk(ctx.res, Labels.complete(Number(ctx.params.id), b.claimToken, 'failed', String(b.error || 'unknown error')));
+  try { sendOk(ctx.res, Labels.complete(Number(ctx.params.id), String(b.claimToken || ''), 'failed', String(b.error || 'unknown error').slice(0, 500))); }
+  catch (e) { sendError(ctx.res, e.status || 409, e.code || 'not_claimed', e.message); }
 }));
 
 router.add('POST /api/labels/:id/cancel', requirePerm('label.print', (ctx) => {
@@ -3397,6 +3407,11 @@ async function handle(req, res) {
           'X-Content-Type-Options': 'nosniff',
           'X-Frame-Options': 'DENY',
           'Referrer-Policy': 'no-referrer',
+          /* The one page a stranger opens. Same policy as the app (lib/http.js):
+             its script and its styles are inline, its live line and its push
+             subscription go to this origin and nowhere else. */
+          'Content-Security-Policy': CSP,
+          'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
           /* A receipt is personal and must not sit in a shared cache, and it
              is not something a search engine should keep a copy of. */
           'Cache-Control': 'private, no-store',
@@ -3424,8 +3439,11 @@ async function handle(req, res) {
         console.error(`[${DB.nowIso()}] ${req.method} ${path} —`, err);
       }
       if (!res.headersSent) {
-        sendError(res, status, status >= 500 ? 'server_error' : 'bad_request',
-          status >= 500 ? 'Something went wrong on the server.' : err.message);
+        /* the body reader names its own refusals (too_large, bad_json) so the
+           app can say them in the person's language */
+        sendError(res, status, status >= 500 ? 'server_error' : (err.code && /^[a-z_]+$/.test(err.code) ? err.code : 'bad_request'),
+          status >= 500 ? 'Something went wrong on the server.' : err.message,
+          status === 413 ? { Connection: 'close' } : {});
       } else {
         res.end();
       }
@@ -3682,6 +3700,9 @@ if (runDirectly) {
        this callback for the reason SyncWorker is — nothing may begin before
        the till is answering. */
     Reminders.start();
+    /* A verified copy every day the shop is open, without anybody pressing
+       anything (audit 06) — lib/backup-schedule.js says why. */
+    BackupSchedule.start();
     /* Who a push service writes to when something is wrong with our pushes:
        the shop's own https address when it has one. */
     try { Push.setContact(Orders.publicBase()); } catch { /* the default stands */ }
@@ -3742,6 +3763,7 @@ if (runDirectly) {
        racing the five-second hard exit below — and a reminder queued DURING a
        shutdown is a message about a shop that is closing. */
     try { Reminders.stop(); } catch (e) { /* already down */ }
+    try { BackupSchedule.stop(); } catch (e) { /* already down */ }
     try { Telegram.stop(); } catch (e) { /* already down */ }
     try { SyncWorker.stop(); } catch (e) { /* already down */ }
     if (SECURE_SERVER) { try { SECURE_SERVER.close(); } catch (e) { /* already down */ } }

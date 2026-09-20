@@ -74,9 +74,18 @@ export function send(bytes, { host, port = 9100 } = {}) {
   });
 }
 
+/* A DEADLINE, LIKE ITS TCP SIBLING ABOVE (audit 06). `copy /b` to a Windows
+   share blocks for as long as the spooler does — a printer that is paused, a
+   queue with a stuck job, a share on a machine that has gone to sleep — and
+   with no timeout the request that asked for the receipt simply never came
+   back: the till's own 15 s limit called it "timeout" while this process went
+   on holding a cmd.exe for ever. Eight seconds is generous for handing a few
+   kilobytes to a local queue, and the child is killed when it passes. */
+const USB_TIMEOUT_MS = 8000;
 function execFileP(cmd, args) {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, (err, stdout, stderr) => {
+    execFile(cmd, args, { timeout: USB_TIMEOUT_MS, windowsHide: true }, (err, stdout, stderr) => {
+      if (err && err.killed) err.message = 'the printer queue did not take the job within ' + (USB_TIMEOUT_MS / 1000) + ' s';
       if (err) reject(Object.assign(err, { stderr }));
       else resolve(stdout);
     });

@@ -752,7 +752,7 @@ function whAddTab() {
     '<div class="' + (seesCost() ? 'row3' : 'row2') + '">' +
       '<label class="field"><span>' + t('type') + '</span><select class="inp" data-change="wh-type">' +
         DB.activeTypes().map(function (ty) {
-          return '<option value="' + ty + '"' + (OG.wh.type === ty ? ' selected' : '') + '>' + DB.typeLabels[ty] + '</option>';
+          return '<option value="' + ty + '"' + (OG.wh.type === ty ? ' selected' : '') + '>' + esc(DB.typeLabels[ty] || ty) + '</option>';
         }).join('') + '</select></label>' +
       '<label class="field"><span>' + t('selling_price') + '</span>' +
         '<input class="inp num" id="whPrice" type="number" min="0" value="' + esc(OG.wh.price || '') +

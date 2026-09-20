@@ -1395,7 +1395,7 @@ function openScanResult(raw) {
   var h = '<div class="sc-hit">' +
     thumbBox(p, 'sc-photo') +
     '<div class="sc-hit-txt"><b>' + esc(p.name) + '</b>' +
-      '<span>' + dots(esc(p.brand), DB.typeLabels[p.type], esc(p.colorway)) + '</span>' +
+      '<span>' + dots(esc(p.brand), esc(DB.typeLabels[p.type] || ''), esc(p.colorway)) + '</span>' +
       '<span class="num">' + esc(v.barcode) + '</span>' +
       '<span class="num sc-sku">' + esc(v.sku) + '</span></div>' +
     healthBadge(v.qty) +

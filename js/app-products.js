@@ -259,7 +259,7 @@ function viewProducts() {
         '<small>' + dots(esc(r.p.brand), esc(r.p.colorway),
           (gaps.length ? '<span style="color:var(--destructive);font-weight:600">' + t('size') + ' ' + gaps.join('/') + ' = 0</span>' : '')) +
         '</small></span></div></td>',
-      type: '<td><span class="badge neutral">' + DB.typeLabels[r.type] + '</span></td>',
+      type: '<td><span class="badge neutral">' + esc(DB.typeLabels[r.type] || r.type || '') + '</span></td>',
       qty: '<td class="num"><b>' + nf(r.qty) + '</b> <span class="muted small">' + t('pieces') + '</span></td>',
       cost: '<td class="num muted">' + money(r.cost) + '</td>',
       price: '<td class="num"><b>' + money(r.price) + '</b></td>',
@@ -324,7 +324,7 @@ function openProductDrawer(pid) {
         ? '<button class="thumb-btn" data-act="prod-image" title="' + esc(t('img_change')) + '">' + thumb(p, 'lg') + '</button>' +
           '<input type="file" id="prodFile" accept="image/*" hidden>'
         : thumb(p, 'lg')) +
-      '<div><span class="eyebrow">' + DB.typeLabels[p.type] + ' · ' + esc(p.brand) + '</span>' +
+      '<div><span class="eyebrow">' + esc(DB.typeLabels[p.type] || '') + ' · ' + esc(p.brand) + '</span>' +
       '<h3 style="font-size:18px;margin:3px 0 4px">' + esc(p.name) + '</h3>' +
       healthBadge(total) + ' <span class="badge neutral">' + esc(p.colorway) + '</span>' +
       (canPic

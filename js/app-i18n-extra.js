@@ -2962,6 +2962,10 @@ var CATS_EN = {
   err_unauthenticated: 'You have been signed out. Please sign in again.',
   err_forbidden: 'Your account does not have access to this.',
   err_server_error: 'Something went wrong on the server.',
+  /* audit 06 — the body reader's two refusals. NOT err_invalid: friendly() prefers a key over the server's sentence, and 'invalid' is the code a hundred useful refusals share */
+  err_too_large: 'That is too much to send at once. Try a smaller picture or a shorter note.',
+  err_bad_json: 'The shop could not read that. Reload the page and try again.',
+  err_bad_name: 'A name cannot contain < or >.',
   err_bad_credentials: 'That username and password do not match.',
   err_too_many_attempts: 'Too many tries. Wait a few minutes and try again.',
   err_disabled: 'This account is switched off. Ask the owner.'
@@ -2983,6 +2987,9 @@ var CATS_AR = {
   err_unauthenticated: 'تم تسجيل خروجك. سجّل الدخول مجدداً.',
   err_forbidden: 'حسابك لا يملك صلاحية لهذا.',
   err_server_error: 'حدث خطأ في الخادم.',
+  err_too_large: 'هاد كتير لينبعت دفعة وحدة. جرّب صورة أصغر أو ملاحظة أقصر.',
+  err_bad_json: 'المحل ما قدر يقرا هالطلب. حدّث الصفحة وجرّب مرة تانية.',
+  err_bad_name: 'الاسم ما بيصير يكون فيه < أو >.',
   err_bad_credentials: 'اسم المستخدم وكلمة المرور غير متطابقين.',
   err_too_many_attempts: 'محاولات كثيرة. انتظر بضع دقائق ثم حاول.',
   err_disabled: 'هذا الحساب موقوف. اسأل صاحب المتجر.'

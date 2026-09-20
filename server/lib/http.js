@@ -25,23 +25,44 @@ export function readJson(req) {
     let size = 0;
     const chunks = [];
 
+    let refused = false;
     req.on('data', (c) => {
+      if (refused) return;                       /* drained, not kept */
       size += c.length;
       if (size > MAX_BODY) {
-        reject(Object.assign(new Error('body too large'), { status: 413 }));
-        req.destroy();
+        /* SAY SO, THEN HANG UP (audit 06). This used to destroy the socket on
+           the spot, so the sender got a connection reset — which the app
+           reports as "offline" — instead of the 413 this promise carries.
+           The rest of the upload is read and thrown away, nothing of it is
+           kept in memory, and the socket is cut a moment after the answer
+           has had time to leave. */
+        refused = true;
+        chunks.length = 0;
+        reject(Object.assign(new Error('That is too much to send at once.'), { status: 413, code: 'too_large' }));
+        setTimeout(() => { try { req.destroy(); } catch { /* gone */ } }, 1500).unref();
         return;
       }
       chunks.push(c);
     });
 
     req.on('end', () => {
+      if (refused) return;
       if (!chunks.length) return resolve({});
+      let parsed;
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       } catch {
-        reject(Object.assign(new Error('body is not valid JSON'), { status: 400 }));
+        return reject(Object.assign(new Error('That request could not be read.'), { status: 400, code: 'bad_json' }));
       }
+      /* EVERY ROUTE READS A JSON OBJECT, AND THE WIRE CAN SEND ANYTHING (audit
+         06). `null`, `[]`, `"text"` and `123` are all valid JSON, and a
+         handler that does `const { name } = await readJson(req)` dies on the
+         first one: sixty-odd routes answered a hand-sent `null` with a 500.
+         Refused here, once, rather than remembered in a hundred handlers. */
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return reject(Object.assign(new Error('That request could not be read.'), { status: 400, code: 'bad_json' }));
+      }
+      resolve(parsed);
     });
 
     req.on('error', reject);
@@ -75,8 +96,25 @@ export function sendJson(res, status, body, headers = {}) {
 
 /* One shape for every failure, so the client never has to guess. `code` is for
    code to branch on; `error` is for a person to read. */
+/* WHAT THE DATABASE SAID IS NOT FOR THE PERSON ASKING (audit 06). About a
+   hundred handlers end in `sendError(res, e.status || 400, e.code || 'invalid',
+   e.message)`, which is right for the shop's own refusals ("Only 2 left") and
+   wrong for anything the runtime threw: a hand-sent `true` where a name
+   belonged came back as "Provided value cannot be bound to SQLite parameter 1"
+   with code ERR_INVALID_ARG_TYPE, and a bad id as "FOREIGN KEY constraint
+   failed". That names the engine and the schema to whoever is probing. One
+   place, so no handler has to remember: a message or a code that is the
+   runtime's is replaced, and the original goes to the operator's log. */
+const INTERNAL = /sqlite|constraint failed|cannot be bound|no such (table|column)|syntax error|near "|Cannot read propert|is not a function|is not iterable|is not defined|of undefined|of null|Unexpected token|node:|\.js:\d|[A-Z]:\\/i;
+const RUNTIME_CODE = /^(ERR_|SQLITE_|E[A-Z]{3,}$)/;
 export function sendError(res, status, code, message, headers = {}) {
-  sendJson(res, status, { ok: false, code, error: message }, headers);
+  let c = code, m = message;
+  if (RUNTIME_CODE.test(String(c || '')) || INTERNAL.test(String(m || ''))) {
+    console.error(`[${new Date().toISOString()}] refused without detail (${status} ${c}): ${m}`);
+    c = status >= 500 ? 'server_error' : 'invalid';
+    m = status >= 500 ? 'Something went wrong on the server.' : 'That request was not understood.';
+  }
+  sendJson(res, status, { ok: false, code: c, error: m }, headers);
 }
 
 /* A failure that carries the number the caller needs to act on: how many are
@@ -125,11 +163,64 @@ export function parseCookies(req) {
 export function originAllowed(req, allowedOrigins) {
   const origin = req.headers.origin;
   if (!origin) return true;
-  if (!allowedOrigins || !allowedOrigins.length) return true;
-  return allowedOrigins.includes(origin);
+  if (allowedOrigins && allowedOrigins.length) return allowedOrigins.includes(origin);
+  /* NO LIST IS NOT "EVERY ORIGIN" ANY MORE (audit 06). OG_ORIGINS ships blank
+     and the shop runs with it blank, so this check did nothing at all on the
+     one install that matters — a blank list allowed everything. With no list,
+     the only origin that may change state is THE ONE THE REQUEST WAS SENT TO:
+     the Origin header's host must be the Host header. That is every real use —
+     the till on localhost, a phone on the Wi-Fi address, the https port — and
+     needs no configuration, while a page on any other site is refused however
+     it got the browser to send the request. A machine (the print agent, a
+     script, the website's server) sends no Origin and was already let through
+     above. OG_ORIGINS is still the way to name an origin that differs from the
+     host, such as a public hostname in front of a proxy. */
+  try { return new URL(origin).host.toLowerCase() === String(req.headers.host || '').toLowerCase(); }
+  catch { return false; }
 }
 
 /* -------------------------------------------------------- security headers */
+
+/* WHAT THE PAGE MAY LOAD, AND WHERE IT MAY SEND (audit 06). There was no
+   Content-Security-Policy at all. This one is written to break nothing, so it
+   is honest about what it cannot do: the app has an inline script in
+   index.html, a handful of inline handlers and style attributes everywhere,
+   so script-src and style-src keep 'unsafe-inline' and an INJECTED inline
+   script is not stopped here — escaping is what stops that (js/app-util.js
+   esc(), and openModal's title since this audit). What it does stop:
+
+     - a script, frame or object loaded from anywhere but this server
+     - connect-src 'self': a page that has been tricked cannot fetch() or
+       beacon the customer list to somebody else's server — the API, the live
+       channel and the service worker are all same-origin
+     - <base> and <form action> pointed elsewhere
+     - being framed (frame-ancestors, beside X-Frame-Options for old browsers)
+
+   img-src takes https: because product photographs live in the public
+   Supabase bucket, and data:/blob: because the till draws receipts and QR
+   codes into canvases. media-src blob: is the camera scanner's preview.
+   The same value is exported for the customer's tracking page (index.js). */
+export const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "media-src 'self' blob:",
+  "connect-src 'self'",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "frame-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'"
+].join('; ');
+
+/* The camera is the barcode scanner's, on this origin only. Nothing here asks
+   for a microphone, a location or a payment sheet, so nothing embedded or
+   injected may either. */
+export const PERMISSIONS = 'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()';
 
 function securityHeaders() {
   return {
@@ -138,7 +229,9 @@ function securityHeaders() {
     /* The app is not meant to be embedded anywhere; framing it is how
        clickjacking works. */
     'X-Frame-Options': 'DENY',
-    'Referrer-Policy': 'same-origin'
+    'Referrer-Policy': 'same-origin',
+    'Content-Security-Policy': CSP,
+    'Permissions-Policy': PERMISSIONS
   };
 }
 

@@ -14,7 +14,7 @@
    refresh does it), or browsers that already have the app will keep serving
    the old cached copy — cache-first with ignoreSearch, so no query string
    gets past it. */
-var CACHE = 'og-system-v286';
+var CACHE = 'og-system-v287';
 
 var SHELL = [
   './',
@@ -138,7 +138,7 @@ self.addEventListener('install', function (e) {
        The new worker WAITS instead. The page keeps its own consistent set
        until js/update.js decides nobody is mid-sale, tells this worker to
        take over (the message below) and reloads once. One page, one build.
-       fix_05_log.md has the story. */
+       docs/history/fix-05.md has the story. */
   );
 });
 

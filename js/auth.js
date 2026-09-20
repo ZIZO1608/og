@@ -271,7 +271,12 @@ var Auth = (function () {
     mount();
     setTimeout(function () {
       var el = document.querySelector('.gate');
-      if (el) show(el, 'Your session ended. Please sign in again.');
+      /* In the gate's own two languages (audit 06): this was the one English
+         literal on the sign-in screen, and it is the sentence somebody reads
+         at the moment they are least sure what happened. What they were
+         doing is still there underneath — nothing was reloaded. */
+      if (el) show(el, L('Your session ended. Sign in again — what you were doing is still here.',
+                         'انتهت جلستك. سجّل دخولك مرة تانية — اللي كنت عم تشتغل عليه لسا موجود.'));
     }, 50);
   }
 

@@ -742,7 +742,7 @@
       return tHtml('cc_mirror_denied', { tables: ltr(listOf(a.tables || [])) }) +
         '<code class="sql" dir="ltr">' + esc(a.sql || '') + '</code>';
     }
-    if (c === 'backup_age' && !a.hours) c = 'backup_recent';
+    if ((c === 'backup_age' || c === 'backup_age_here') && !a.hours) c = c === 'backup_age' ? 'backup_recent' : 'backup_recent_here';
     var parts = {};
     var k;
     for (k in a) {

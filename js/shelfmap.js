@@ -3491,7 +3491,7 @@ var ShelfMap = (function () {
       '</small>';
 
     openModal({
-      title: sec ? (sec.key + ' · ' + sec.name) : t('sm_new_rack'),
+      title: sec ? (esc(sec.key) + ' · ' + esc(sec.name)) : t('sm_new_rack'),   /* a rack's name is typed by a person (audit 06) */
       size: 'narrow',
       body: b,
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +

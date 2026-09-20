@@ -438,7 +438,7 @@ var POS = (function () {
           '<span class="qty-tag' + (q <= CONFIG.STOCK_LOW ? ' low' : '') + '">' + q + '</span></span>' +
         '<span class="pcard-body"><b>' + esc(p.name) + '</b>' +
           '<span class="price">' + money(p.sellingPrice) + '</span>' +
-          '<small>' + DB.typeLabels[p.type] + '</small></span>' +
+          '<small>' + esc(DB.typeLabels[p.type] || '') + '</small></span>' +
       '</button>';
     });
     return h;
@@ -810,7 +810,7 @@ var POS = (function () {
         '<div class="pos-cats">' +
           '<button class="chip' + (S.cat === '' ? ' on' : '') + '" data-pos="cat" data-c="">' + t('all_products') + '</button>';
     cats.forEach(function (c) {
-      h += '<button class="chip' + (S.cat === c ? ' on' : '') + '" data-pos="cat" data-c="' + c + '">' + DB.typeLabels[c] + '</button>';
+      h += '<button class="chip' + (S.cat === c ? ' on' : '') + '" data-pos="cat" data-c="' + esc(c) + '">' + esc(DB.typeLabels[c] || c) + '</button>';
     });
     h += '</div>' +
         '<div class="pos-grid-wrap"><div class="pos-grid" id="posGrid">' + gridHtml() + '</div></div>' +
@@ -910,7 +910,7 @@ var POS = (function () {
     var p = DB.product(pid);
     var vs = DB.variantsOf(pid);
     var body = '<div style="display:flex;gap:12px;align-items:center;margin-bottom:14px">' +
-      thumb(p, 'lg') + '<div><span class="eyebrow">' + dots(esc(p.brand), DB.typeLabels[p.type]) + '</span>' +
+      thumb(p, 'lg') + '<div><span class="eyebrow">' + dots(esc(p.brand), esc(DB.typeLabels[p.type] || '')) + '</span>' +
       '<h3 style="font-size:16px;margin:2px 0 3px">' + esc(p.name) + '</h3>' +
       '<div class="strong-num" style="font-size:17px">' + money(p.sellingPrice) + '</div></div></div>' +
       '<div class="lbl">' + t('pick_size') + '</div><div class="size-pop">';
