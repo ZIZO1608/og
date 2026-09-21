@@ -816,9 +816,10 @@ Conventions that are non-negotiable and easy to break:
 
 ### The startup notices are one list with two readers
 
-The eight standing conditions the server prints after its address block — no accounts · a retired
+The standing conditions the server prints after its address block — no accounts · a retired
 test account is active · the demo catalogue is loaded · `OG_SECURE` unset · the certificate no
-longer names this address · it expires in N days · there is no certificate · `OG_ORIGINS` unset —
+longer names this address · it expires in N days · there is no certificate · `OG_ORIGINS` unset
+(and since night shift 04: `OG_TRUST_PROXY` set and ignored · a proxy with no public origin) —
 are collected once into `notices[]` as `{ code, level, args, lines }` and then read twice.
 
 `lines` is printed exactly as before, in the same order, so **the terminal output is byte-identical**;
@@ -2928,8 +2929,8 @@ sandbox environment, bogus tokens and no Supabase keys. `p1-throttle` 12 · `p2-
 PostgREST) · `p3-sql` 14 (PGlite, 001 + 030 + 031 twice) · og-bridge `npm test` 25 · `p4-parity` 26
 (four shop days, a lira sale, a dollar sale, a voided sale, a return — every figure equal to the
 till's own dashboard, Money, deliveries, statement and sales answers, to the unit) · `p4-page` 15 ·
-`p5-queue` 31 · `nglint` 2 · `npm test` 6 · `fix05/p0-namespaces` 6 · `ns03/sweep` over every screen
-every role can open. Every new check was seen red — on the old code or by breaking the rule on
+`p5-queue` 31 · `nglint` 2 · `npm test` 6 · `fix05/p0-namespaces` 6 · `ns03/sweep` 1027/0 over every
+screen every role can open, six widths, both languages. Every new check was seen red — on the old code or by breaking the rule on
 purpose — and each commit lists which.
 ## Night shift 05 (22 Sep 2026) — the live fix shipped, one certificate, nginx run for real
 
