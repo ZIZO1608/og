@@ -1059,7 +1059,8 @@ over it (one full run, printed, exit 0/1/2 as before) and `server/lib/sync-worke
    rewritten whole, every cursor walked, every guard exercised. The reconcile relies on this.
 
 `pushChanged()` asks SQLite locally which tables moved past their bookmark and walks only those,
-in the same FK order as the full run, so an idle shop makes **no request at all**. Bookmarks are
+in the same FK order as the full run, so an idle shop makes **no request at all** (on
+`night/online-offline`, one every two minutes on purpose — the beat, under night shift 04). Bookmarks are
 read from `sync_state` once at boot (`loadCursors`) and held in memory — this process is the only
 writer, which is what the lineage guard guarantees. A foreign-key refusal naming a missing parent
 (`Key (sale_id)=(INV-2102) is not present in table "sales"`) **heals itself**: the parent is
@@ -2826,6 +2827,12 @@ machine could try eight passwords on every account in the building.
   ordinary guarded fast push and stamps `sync_state.shop` **only when nothing moved and nothing is
   waiting** (`Mirror.beat()`). A stuck table stops the beat on purpose — the snapshot then says the
   mirror is old, which is true.
+  **THIS DELIBERATELY BREAKS "AN IDLE SHOP MAKES NO REQUEST AT ALL"** (the live-mirror section's
+  rule), and Ahmad accepted it in night shift 05. One small write every two minutes is the price
+  of a snapshot that can tell "open and quiet" from "cut off": without it, a shop that sold nothing
+  since 14:00 and a shop whose line died at 14:00 leave the same mirror behind, and the owner
+  reading `/snapshot` from outside cannot tell which he is looking at. It fires only when idle, so
+  a busy shop pays nothing extra. It stays on this branch until the outage drill.
 - **"The shop's internet is down"** (`Shop.fail`, amber `.is-road`): nginx answers `/api/` with its
   own `503 shop_unreachable`, and `API.ping()` reads it as `'road'`. A device whose last session was
   an owner, manager or developer (`og.lastRole` — the ROLE only, cleared at sign-out) also gets a link
