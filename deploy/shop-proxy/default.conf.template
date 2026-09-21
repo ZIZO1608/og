@@ -149,12 +149,13 @@ server {
   #  THE LIVE STREAM. GET /api/live is a server-sent-event stream the board,
   #  the bell and the partner thread repaint from; it is deliberately never
   #  going to end, and buffering would wait for it to. to-till.conf turns
-  #  buffering off for everything, and says so again here by name because
-  #  this is the one route that breaks the moment somebody "tunes" it back on.
+  #  buffering off for everything — it is NOT repeated here: nginx refuses a
+  #  directive set twice in one block ("proxy_buffering" directive is
+  #  duplicate), so the second copy stopped the container starting at all.
+  #  Found by the first real `nginx -t` (night shift 05). If this route ever
+  #  needs its own proxy settings, move them out of to-till.conf first.
   location = /api/live {
     include /etc/nginx/og/to-till.conf;
-    proxy_buffering off;
-    proxy_cache     off;
     error_page 502 503 504 = @api_closed;
   }
 
