@@ -303,19 +303,45 @@ var Shop = (function () {
         : 'The page is newer than the server serving it: it asked for something the server does not know.';
     }
 
+    /* THE ROAD, NOT THE SERVER (night shift 04). On shop.ogsports1.com the
+       VPS proxy answered and the till behind it did not: the laptop in the
+       shop is most likely fine and still selling — it is the shop's internet
+       that dropped. "Check the shop server is running" sends somebody at
+       home to worry about a till nobody can reach. A manager, owner or
+       developer whose session this device held is also pointed at the
+       snapshot: the last figures the cloud copy received, read-only. */
+    var road = !!(err && err.code === 'shop_unreachable');
+    var snapshot = '';
+    if (road) {
+      title = ar ? 'الإنترنت مقطوع عن المحل' : 'The shop’s internet is down';
+      msg = ar
+        ? 'الصندوق بالمحل غالباً شغّال وعم يبيع عادي — بس ما في طريق يوصلّه من هون هلأ.'
+        : 'The till in the shop is most likely working and selling as usual — there is just no way to reach it from here right now.';
+      steps = [ar ? 'جرّب بعد شوي — بيرجع لحالو لمّا يرجع النت للمحل.' : 'Try again in a little while — it comes back by itself when the shop’s internet does.',
+               ar ? 'إذا كنت بالمحل، افتح النظام من الواي فاي تبع المحل.' : 'If you are in the shop, open the system on the shop’s wifi instead.'];
+      var role = '';
+      try { role = localStorage.getItem('og.lastRole') || ''; } catch (e) { /* private window */ }
+      if (role === 'owner' || role === 'manager' || role === 'developer') {
+        snapshot = '<p class="boot-fail-snap"><a class="btn" href="/snapshot">' +
+          (ar ? 'شوف آخر أرقام وصلت للنسخة السحابية' : 'See the last figures the cloud copy received') +
+          '</a></p>';
+      }
+    }
+
     document.body.innerHTML =
       '<div class="boot-fail" dir="' + (ar ? 'rtl' : 'ltr') + '">' +
-        '<div class="boot-fail-card">' +
+        '<div class="boot-fail-card' + (road ? ' is-road' : '') + '">' +
           '<div class="gate-mark"><img src="assets/logo.svg" alt="OG"></div>' +
           '<h1>' + title + '</h1>' +
           '<p class="boot-fail-why">' + esc(msg) + '</p>' +
-          '<p>' + (ar
+          (road ? '' : '<p>' + (ar
             ? 'التطبيق لن يعمل بدون الخادم. البيع الآن يعني بيعاً لا يُحفَظ في أي مكان.'
             : 'The app will not run without the server. Selling now would mean ' +
-              'selling into nothing.') + '</p>' +
+              'selling into nothing.') + '</p>') +
           '<ol>' +
             steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') +
           '</ol>' +
+          snapshot +
           '<button class="btn btn-primary" onclick="location.reload()">' +
             (ar ? 'إعادة المحاولة' : 'Try again') + '</button>' +
         '</div>' +

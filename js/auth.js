@@ -49,8 +49,22 @@ var Auth = (function () {
   function refresh() {
     if (!API.live) return Promise.resolve(user);
     return API.get('/api/auth/me')
-      .then(function (d) { user = d.user; return user; })
+      .then(function (d) { user = d.user; remember(user); return user; })
       .catch(function () { return user; });
+  }
+
+  /* WHOSE DEVICE THIS WAS (night shift 04). When the shop's internet drops,
+     the page on shop.ogsports1.com can no longer ask the till who is signed
+     in — and the owner is exactly the person who should then be pointed at
+     the snapshot of the last-synced figures. So the ROLE, and nothing else,
+     is kept on this device while a session is open, and forgotten at
+     sign-out. It decides one link on a failure screen; the snapshot has its
+     own login, so a wrong answer here opens nothing. */
+  function remember(u) {
+    try {
+      if (u && u.role) localStorage.setItem('og.lastRole', u.role);
+      else localStorage.removeItem('og.lastRole');
+    } catch (e) { /* private window: the link is simply not offered */ }
   }
 
   /* ----------------------------------------------------------------- screen */
@@ -188,6 +202,7 @@ var Auth = (function () {
       API.post('/api/auth/login', { username: username, password: password })
         .then(function (data) {
           user = data.user;
+          remember(user);
           dismiss(el);
 
           /* A password reset by a manager lands here. Let them in, but say so
@@ -255,6 +270,7 @@ var Auth = (function () {
       .catch(function () { /* going anyway; a failed logout must not trap anyone */ })
       .then(function () {
         user = null;
+        remember(null);
         /* Reload rather than tearing the app down by hand. Everything in
            memory belonged to the person who just left, and the surest way to
            be certain none of it is still on screen is to start again. */
@@ -302,6 +318,7 @@ var Auth = (function () {
         return API.get('/api/auth/me')
           .then(function (data) {
             user = data.user;
+            remember(user);
             started = true;
             release();
           })
@@ -316,16 +333,16 @@ var Auth = (function () {
          back to generated data handed a cashier a till that looked completely
          normal and threw every sale away — and a banner is a thing you stop
          seeing by the second day. */
-      stop(release);
+      stop(release, verdict);
     });
   }
 
   /* No app at all: the reason, and how to fix it. An empty screen would be
      read as "the shop has no stock" rather than "this machine cannot reach
      the server", and those call for very different next actions. */
-  function stop(release) {
+  function stop(release, verdict) {
     var e = new Error('The shop server is not answering.');
-    e.code = 'offline';
+    e.code = verdict === 'road' ? 'shop_unreachable' : 'offline';
     if (typeof Shop !== 'undefined' && Shop.fail) return Shop.fail(e);
 
     /* shop.js is the one that draws it properly. If even that is missing,

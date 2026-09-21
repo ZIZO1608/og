@@ -4,28 +4,61 @@
 #  This runs on the VPS and forwards to the shop's laptop over the private
 #  network (WireGuard). It holds no data and makes no decisions: every request
 #  is answered by the server in the shop, which is the only machine that has
-#  the database, the printers, and the right to write anything.
+#  the database, the printers, and the right to write anything. The one
+#  exception is /snapshot, the owner's read-only view of the cloud copy, which
+#  is og-bridge's (vps/og-bridge/) and never touches the laptop.
 #
-#  ${SHOP_UPSTREAM} is substituted at container start by the nginx image's own
-#  envsubst step (files in /etc/nginx/templates are rendered into
-#  /etc/nginx/conf.d). Set it in Coolify to the laptop's private address:
+#  Three values are substituted at container start by the nginx image's own
+#  envsubst step (the Dockerfile's NGINX_ENVSUBST_FILTER names them):
 #
-#      SHOP_UPSTREAM=http://10.8.0.2:8090
+#      SHOP_UPSTREAM    https://10.8.0.2:8443   the laptop's end of the tunnel
+#      SHOP_TLS_NAME    og-till                 the name its certificate carries
+#      BRIDGE_UPSTREAM  http://og-bridge:8787   og-bridge on the coolify network
 #
-#  PLAIN http AND PORT 8090, not 8443. The laptop's certificate is self-signed
-#  and nginx would refuse it with an error about nothing you did. The shop's
-#  server is built for exactly this: browsers get redirected to HTTPS, machines
-#  carry on over plain HTTP, and it trusts X-Forwarded-Proto when
-#  OG_TRUST_PROXY=1 — which is already set on the laptop.
+#  HTTPS TO THE LAPTOP, AND ITS CERTIFICATE PINNED (night shift 04). This used
+#  to be plain http to :8090 — the tunnel is encrypted, but plain http meant
+#  anything that could answer on 10.8.0.2 was believed to be the shop. Now
+#  nginx accepts exactly ONE certificate: the till's own, copied here by hand.
+#
+#  ┌─ THE TILL'S CERTIFICATE ──────────────────────────────────────────────────┐
+#  │ Copy server/data/certs/og-cert.pem (the PUBLIC half — never og-key.pem)   │
+#  │ from the laptop to the VPS at                                             │
+#  │     /data/og/till.pem                                                     │
+#  │ and mount it in Coolify (Storages → directory mount /data/og) at         │
+#  │     /etc/nginx/og-till                                                    │
+#  │ AFTER EVERY `npm run cert` ON THE LAPTOP IT MUST BE COPIED AGAIN and the  │
+#  │ container restarted: a new certificate is a new key, and until then      │
+#  │ every request is refused and the page says the shop is unreachable.      │
+#  │ With no file mounted the image falls back to a placeholder that matches  │
+#  │ nothing — the proxy starts, and says so in its log, rather than crash-   │
+#  │ looping. MORNING.md has the exact scp line.                               │
+#  └───────────────────────────────────────────────────────────────────────────┘
+#
+#  WHY A NAME AND NOT THE IP. nginx checks an upstream certificate against
+#  proxy_ssl_name with OpenSSL's X509_check_host, which matches DNS names
+#  ONLY — an IP address in the certificate is never compared (checked:
+#  `openssl x509 -checkhost 127.0.0.1` says NO on a certificate whose
+#  `-checkip 127.0.0.1` says yes). So the laptop's certificate carries the
+#  fixed DNS name og-till (server/lib/net.js), and that is what is verified.
+#  The security is the pin itself: only that one certificate is trusted.
 # =============================================================================
 
 #  Needed so a WebSocket upgrade passes through and an ordinary request does
 #  not carry a stray Connection header. `map` is legal here: conf.d is
-#  included inside the http block.
+#  included inside the http block — and so is limit_req_zone.
 map $http_upgrade $connection_upgrade {
   default upgrade;
   ''      close;
 }
+
+#  RATE LIMITS, per visitor ($binary_remote_addr is the visitor once the
+#  real_ip rules below have run). Generous: the app polls, streams and loads
+#  a dozen things at sign-in. The till has its own login throttle; these are
+#  the proxy's own, so a flood stops here instead of crossing the tunnel.
+limit_req_zone $binary_remote_addr zone=og_api:10m   rate=20r/s;
+limit_req_zone $binary_remote_addr zone=og_login:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=og_snap:10m  rate=30r/m;
+limit_req_status 429;
 
 server {
   #  IPv4 only on purpose. Coolify's proxy reaches this container over the
@@ -48,6 +81,11 @@ server {
   real_ip_header    X-Forwarded-For;
   real_ip_recursive on;
 
+  #  Docker's own DNS, so og-bridge is looked up per request rather than once
+  #  at start: nginx refuses to START when a proxy_pass host does not resolve,
+  #  and og-bridge being down must never take the shop's front door with it.
+  resolver 127.0.0.11 valid=30s ipv6=off;
+
   #  THE PROXY'S OWN PULSE, answered here and never forwarded. Coolify health
   #  checks this container, and the container is healthy whenever nginx is
   #  running — the shop being closed for the night is not a fault in the
@@ -66,55 +104,93 @@ server {
   #  limit ever saw it.
   client_max_body_size 12m;
 
-  location / {
-    proxy_pass ${SHOP_UPSTREAM};
+  #  THE VPS'S OWN DOOR IS NOT A PUBLIC DOOR. og-bridge reaches /api/vps/ over
+  #  the tunnel directly, never through here. The till also answers 404 to
+  #  anything this proxy carries there (it arrives with X-OG-Client-IP); this
+  #  line means it is never even asked.
+  location ^~ /api/vps/ {
+    return 404;
+  }
+
+  #  THE OWNER'S SNAPSHOT — og-bridge, not the laptop. It is the one page that
+  #  must work exactly when the laptop cannot be reached. og-bridge has its
+  #  own login (password + authenticator code) and its own throttle; it reads
+  #  the visitor's address from X-OG-Client-IP, which is overwritten here.
+  location = /snapshot {
+    limit_req zone=og_snap burst=20 nodelay;
+    set $bridge ${BRIDGE_UPSTREAM};
+    proxy_pass $bridge;
     proxy_http_version 1.1;
-
-    #  The shop must see the name the visitor typed, not this container's.
-    #  It is what originAllowed() checks and what every generated link uses.
     proxy_set_header Host              $host;
-    proxy_set_header X-Forwarded-Host  $host;
-
-    #  WHO THE VISITOR IS — the one header the till believes, and only from
-    #  this proxy's own tunnel address (OG_PROXY_ADDR on the laptop). SET, so
-    #  whatever the visitor sent under this name is thrown away; $remote_addr
-    #  is the address the real_ip rules above worked out. X-Forwarded-For and
-    #  X-Real-IP are deliberately NOT sent on: the till ignores them, and a
-    #  header nobody reads is a header somebody later starts trusting.
     proxy_set_header X-OG-Client-IP    $remote_addr;
     proxy_set_header X-Forwarded-For   "";
-    proxy_set_header X-Real-IP         "";
-
-    #  The public leg of this journey IS https, even though this hop is not.
-    #  Without it the shop would redirect browsers to its own :8443, a port
-    #  nothing out here carries, and every page would fail to open.
     proxy_set_header X-Forwarded-Proto https;
+    error_page 502 503 504 = @bridge_down;
+  }
+  location ^~ /snapshot/ {
+    limit_req zone=og_snap burst=20 nodelay;
+    set $bridge ${BRIDGE_UPSTREAM};
+    proxy_pass $bridge;
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-OG-Client-IP    $remote_addr;
+    proxy_set_header X-Forwarded-For   "";
+    proxy_set_header X-Forwarded-Proto https;
+    error_page 502 503 504 = @bridge_down;
+  }
 
-    proxy_set_header Upgrade    $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
+  #  Signing in gets its own, tighter limit on top of the till's own throttle.
+  location = /api/auth/login {
+    limit_req zone=og_login burst=10 nodelay;
+    include /etc/nginx/og/to-till.conf;
+    error_page 502 503 504 = @api_closed;
+  }
 
-    #  BUFFERING OFF IS NOT A TUNING CHOICE, IT IS REQUIRED. Two things here
-    #  hold a response open for a long time and must arrive as they happen:
-    #  GET /api/live is a server-sent-event stream (the board, the bell and
-    #  the partner thread all repaint from it), and GET /api/labels/next is a
-    #  25-second long-poll the label agent lives on. With buffering on, nginx
-    #  waits for a response that is deliberately never going to end.
+  #  THE LIVE STREAM. GET /api/live is a server-sent-event stream the board,
+  #  the bell and the partner thread repaint from; it is deliberately never
+  #  going to end, and buffering would wait for it to. to-till.conf turns
+  #  buffering off for everything, and says so again here by name because
+  #  this is the one route that breaks the moment somebody "tunes" it back on.
+  location = /api/live {
+    include /etc/nginx/og/to-till.conf;
     proxy_buffering off;
     proxy_cache     off;
+    error_page 502 503 504 = @api_closed;
+  }
 
-    #  Longer than any of those holds. The live stream sends its own ': ping'
-    #  heartbeat, so an idle timeout here would cut a healthy connection.
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
+  location /api/ {
+    limit_req zone=og_api burst=80 nodelay;
+    include /etc/nginx/og/to-till.conf;
+    error_page 502 503 504 = @api_closed;
+  }
 
-    #  When the laptop is off, asleep, or the shop's internet is down, say so
-    #  in words instead of showing nginx's grey 502.
-    proxy_next_upstream off;
+  location / {
+    limit_req zone=og_api burst=80 nodelay;
+    include /etc/nginx/og/to-till.conf;
     error_page 502 503 504 = @shop_closed;
   }
 
+  #  THE APP ASKS, AND IS TOLD WHICH IT IS. The page is usually already on the
+  #  phone (the service worker keeps it), so when the laptop cannot be reached
+  #  the first thing that fails is /api/health — and the app reads this code
+  #  to say "the shop's internet is down" rather than "the server is not
+  #  answering" (js/api.js ping → 'road', js/shop.js).
+  location @api_closed {
+    default_type application/json;
+    add_header Cache-Control no-store always;
+    return 503 '{"ok":false,"code":"shop_unreachable","error":"The shop cannot be reached from outside right now."}';
+  }
+
+  location @bridge_down {
+    default_type text/plain;
+    add_header Cache-Control no-store always;
+    return 503 "The snapshot is not available right now.\n";
+  }
+
+  #  A phone with nothing cached yet gets this page instead of the app.
   location @shop_closed {
     default_type text/html;
-    return 503 '<!doctype html><meta charset="utf-8"><title>OG System</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{background:#0A0A0B;color:#FAFAFA;font-family:Segoe UI,Tahoma,system-ui,sans-serif;display:grid;place-items:center;min-height:100%;margin:0}div{max-width:30rem;padding:2rem;text-align:center;line-height:1.7}b{color:#C6FF00;font-size:1.25rem}p{color:#A1A1AA}</style><div><p><b>&#1575;&#1604;&#1605;&#1581;&#1604; &#1605;&#1588; &#1605;&#1608;&#1589;&#1608;&#1604; &#1607;&#1604;&#1571;</b></p><p>&#1575;&#1604;&#1580;&#1607;&#1575;&#1586; &#1605;&#1591;&#1601;&#1610; &#1571;&#1608; &#1575;&#1604;&#1606;&#1578; &#1605;&#1602;&#1591;&#1608;&#1593; &#1576;&#1575;&#1604;&#1605;&#1581;&#1604;. &#1575;&#1604;&#1603;&#1575;&#1588;&#1610;&#1585; &#1588;&#1594;&#1617;&#1575;&#1604; &#1593;&#1575;&#1583;&#1610; &#1607;&#1606;&#1575;&#1603;.</p><hr style="border:0;border-top:1px solid #232327;margin:1.5rem 0"><p><b>The shop is not connected</b></p><p>The laptop is off, or the shop&#39;s internet is down. The till in the shop is still working normally &#8212; only this view from outside is unavailable.</p></div>';
+    add_header Cache-Control no-store always;
+    return 503 '<!doctype html><meta charset="utf-8"><title>OG System</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{background:#0A0A0B;color:#FAFAFA;font-family:Segoe UI,Tahoma,system-ui,sans-serif;display:grid;place-items:center;min-height:100%;margin:0}div{max-width:30rem;padding:2rem;text-align:center;line-height:1.7}b{color:#FBBF24;font-size:1.25rem}p{color:#A1A1AA}</style><div><p><b>&#1575;&#1604;&#1573;&#1606;&#1578;&#1585;&#1606;&#1578; &#1605;&#1602;&#1591;&#1608;&#1593; &#1593;&#1606; &#1575;&#1604;&#1605;&#1581;&#1604;</b></p><p>&#1575;&#1604;&#1589;&#1606;&#1583;&#1608;&#1602; &#1576;&#1575;&#1604;&#1605;&#1581;&#1604; &#1594;&#1575;&#1604;&#1576;&#1575;&#1611; &#1588;&#1594;&#1617;&#1575;&#1604; &#1608;&#1593;&#1605; &#1610;&#1576;&#1610;&#1593; &#1593;&#1575;&#1583;&#1610; &#8212; &#1576;&#1587; &#1605;&#1575; &#1601;&#1610; &#1591;&#1585;&#1610;&#1602; &#1610;&#1608;&#1589;&#1604;&#1617;&#1607; &#1605;&#1606; &#1607;&#1608;&#1606; &#1607;&#1604;&#1571;.</p><hr style="border:0;border-top:1px solid #232327;margin:1.5rem 0"><p><b>The shop&#39;s internet is down</b></p><p>The till in the shop is most likely working and selling as usual &#8212; there is just no way to reach it from here right now. It comes back by itself.</p></div>';
   }
 }

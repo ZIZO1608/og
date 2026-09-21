@@ -161,10 +161,26 @@ var API = (function () {
       return request('GET', '/api/health')
         .then(function () { return 'up'; })
         .catch(function (err) {
+          /* 'road' (night shift 04): the VPS proxy in front of
+             shop.ogsports1.com answered, but the till behind it did not —
+             the laptop is fine, the shop's internet is not. nginx says so
+             with its own code; a bare 502/504 on a public name is read the
+             same way, in case an older proxy is still in front. */
+          if (err && err.code === 'shop_unreachable') return 'road';
+          if (err && (err.status === 502 || err.status === 504) && API.publicHost()) return 'road';
           /* An HTTP status means SOMETHING is serving this origin and it has
              no /api. Status 0 means the request never arrived anywhere. */
           return (err && err.status > 0) ? 'none' : 'down';
         });
+    },
+
+    /* Is this page on a public name (shop.ogsports1.com) rather than the
+       shop's own wifi address, localhost or a .local name? */
+    publicHost: function () {
+      var h = String(location.hostname || '').toLowerCase();
+      if (!h || h === 'localhost' || /.local$/.test(h) || h.indexOf('.') < 0) return false;
+      if (/^d+.d+.d+.d+$/.test(h) || h.indexOf(':') >= 0) return false;
+      return true;
     }
   };
 })();

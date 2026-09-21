@@ -1,0 +1,53 @@
+# Included by every location that goes to the laptop (default.conf.template).
+# Rendered by 15-og-till.sh — NOT by the image's template step, which would
+# drop it into conf.d at http level, where location directives stop nginx.
+
+proxy_pass ${SHOP_UPSTREAM};
+proxy_http_version 1.1;
+
+# The till's own certificate is the ONLY one trusted (see the box at the top
+# of default.conf.template). Verified by NAME: nginx never compares an IP.
+proxy_ssl_verify              on;
+proxy_ssl_trusted_certificate /etc/nginx/og/till.pem;
+proxy_ssl_verify_depth        1;
+proxy_ssl_name                ${SHOP_TLS_NAME};
+proxy_ssl_server_name         off;
+proxy_ssl_session_reuse       on;
+proxy_ssl_protocols           TLSv1.2 TLSv1.3;
+
+# The shop must see the name the visitor typed, not this container's.
+# It is what originAllowed() checks and what every generated link uses.
+proxy_set_header Host              $host;
+proxy_set_header X-Forwarded-Host  $host;
+
+# WHO THE VISITOR IS — the one header the till believes, and only from this
+# proxy's tunnel address (OG_PROXY_ADDR on the laptop). SET, so whatever the
+# visitor sent under this name is thrown away; $remote_addr is what the
+# real_ip rules worked out. X-Forwarded-For and X-Real-IP are deliberately NOT
+# sent on: the till ignores them, and a header nobody reads is a header
+# somebody later starts trusting.
+proxy_set_header X-OG-Client-IP    $remote_addr;
+proxy_set_header X-Forwarded-For   "";
+proxy_set_header X-Real-IP         "";
+proxy_set_header X-Forwarded-Proto https;
+
+proxy_set_header Upgrade    $http_upgrade;
+proxy_set_header Connection $connection_upgrade;
+
+# BUFFERING OFF IS NOT A TUNING CHOICE, IT IS REQUIRED. GET /api/live is a
+# server-sent-event stream and GET /api/labels/next a 25-second long-poll the
+# label agent lives on; with buffering on nginx waits for a response that is
+# deliberately never going to end.
+proxy_buffering off;
+proxy_cache     off;
+
+# Say "not connected" quickly when the laptop is off or the line is down,
+# instead of a phone spinning for a minute.
+proxy_connect_timeout 5s;
+
+# Longer than any of those holds. The live stream sends its own ': ping'
+# heartbeat, so an idle timeout here would cut a healthy connection.
+proxy_read_timeout 3600s;
+proxy_send_timeout 3600s;
+
+proxy_next_upstream off;
