@@ -79,3 +79,7 @@ _nightshift/
 # Passwords written by `npm run users:rebuild --apply`, in whichever data
 # folder it ran against.
 ACCOUNTS.private.md
+
+# Tools downloaded for local tests (night shift 05: the Windows nginx build).
+# Never committed; Publish runs git add.
+_tools/
