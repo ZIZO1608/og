@@ -2774,3 +2774,34 @@ body:not([data-portal="yalla"]) .sf-mine-none b { color: var(--foreground); font
     min-height: 44px; display: inline-flex; align-items: center;
   }
 }
+
+/* ==========================================================================
+   NIGHT SHIFT 04 — the write queue's button and list (js/writequeue.js).
+   The Sync button's own dot, amber while a write waits, red when refused.
+   ========================================================================== */
+body:not([data-portal="yalla"]) .wq-btn { position: relative; color: var(--warning); border-color: var(--warning-border); }
+body:not([data-portal="yalla"]) .wq-btn[data-mode="bad"] { color: #ff5c5c; border-color: #7a2a2a; }
+body:not([data-portal="yalla"]) .wq-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+body:not([data-portal="yalla"]) .wq-btn::after {
+  content: ''; position: absolute; top: 5px; inset-inline-end: 5px; width: 7px; height: 7px; border-radius: 50%;
+  background: #f5b93e;
+}
+body:not([data-portal="yalla"]) .wq-btn[data-mode="bad"]::after { background: #ff5c5c; box-shadow: 0 0 0 3px rgba(255, 92, 92, .22); }
+body:not([data-portal="yalla"]) .wq-count {
+  position: absolute; bottom: -4px; inset-inline-end: -4px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--card); border: 1px solid currentColor; font-size: 10px; font-weight: 700;
+  line-height: 14px; text-align: center;
+}
+body:not([data-portal="yalla"]) .wq-note { margin: 0 0 16px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .wq-row {
+  display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  padding: 12px 0; border-top: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .wq-row:first-child { border-top: 0; }
+body:not([data-portal="yalla"]) .wq-what { display: grid; gap: 4px; min-width: 0; }
+body:not([data-portal="yalla"]) .wq-what small { color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .wq-state { font-size: 13px; font-weight: 600; }
+body:not([data-portal="yalla"]) .wq-warn { color: var(--warning); }
+body:not([data-portal="yalla"]) .wq-bad { color: #ff5c5c; }
+body:not([data-portal="yalla"]) .wq-acts { display: flex; gap: 8px; }
+body:not([data-portal="yalla"]) .wq-acts .btn { min-height: 44px; }

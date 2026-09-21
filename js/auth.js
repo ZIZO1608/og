@@ -61,6 +61,9 @@ var Auth = (function () {
      sign-out. It decides one link on a failure screen; the snapshot has its
      own login, so a wrong answer here opens nothing. */
   function remember(u) {
+    /* The write queue (js/writequeue.js) waits for the person who pressed
+       Save; now that somebody is signed in, theirs may go. */
+    if (u && typeof WriteQueue !== 'undefined') { try { WriteQueue.resume(); } catch (e) { /* */ } }
     try {
       if (u && u.role) localStorage.setItem('og.lastRole', u.role);
       else localStorage.removeItem('og.lastRole');

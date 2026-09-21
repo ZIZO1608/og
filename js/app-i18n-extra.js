@@ -3749,3 +3749,35 @@ var NS03_AR = {
 
 Object.keys(NS03_EN).forEach(function (k) { I18N.en[k] = NS03_EN[k]; });
 Object.keys(NS03_AR).forEach(function (k) { I18N.ar[k] = NS03_AR[k]; });
+
+/* ---- night shift 04: the write queue (js/writequeue.js) ------------------ */
+var NS04_EN = {
+  wq_title: 'Waiting on this device',
+  wq_explain: 'Saved on this device while it could not reach the shop. Each one sends by itself, in order, once the connection is back.',
+  wq_saved: 'Saved on this device — it will send by itself.',
+  wq_sent_1: 'Sent the one waiting on this device.',
+  wq_sent_n: 'Sent the {n} waiting on this device.',
+  wq_state_wait: 'Waiting for the connection',
+  wq_state_refused: 'The shop refused it',
+  wq_paused: 'Your session ended. Sign in again and these send by themselves.',
+  wq_retry: 'Try again',
+  wq_dismiss: 'Remove',
+  wq_empty: 'Nothing is waiting on this device.',
+  wq_kind_hand: 'Hand-over sheet {id}'
+};
+var NS04_AR = {
+  wq_title: 'ناطرة على هالجهاز',
+  wq_explain: 'انحفظت على هالجهاز لمّا ما قدر يوصل للمحل. كل وحدة بتنبعت لحالها، بالترتيب، أول ما يرجع الاتصال.',
+  wq_saved: 'انحفظت على هالجهاز — رح تنبعت لحالها.',
+  wq_sent_1: 'انبعتت اللي كانت ناطرة على هالجهاز.',
+  wq_sent_n: 'انبعتوا الـ{n} اللي كانوا ناطرين على هالجهاز.',
+  wq_state_wait: 'ناطرة الاتصال',
+  wq_state_refused: 'المحل رفضها',
+  wq_paused: 'انتهت جلستك. سجّل دخولك مرة تانية وبينبعتوا لحالهن.',
+  wq_retry: 'جرّب مرة تانية',
+  wq_dismiss: 'شيلها',
+  wq_empty: 'ما في شي ناطر على هالجهاز.',
+  wq_kind_hand: 'ورقة التسليم {id}'
+};
+Object.keys(NS04_EN).forEach(function (k) { I18N.en[k] = NS04_EN[k]; });
+Object.keys(NS04_AR).forEach(function (k) { I18N.ar[k] = NS04_AR[k]; });

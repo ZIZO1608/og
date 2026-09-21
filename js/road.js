@@ -180,6 +180,9 @@ var Road = (function () {
     API.post(url, body || {})
       .then(function (r) {
         busy = false;
+        /* Saved on this device while the wifi was down (js/writequeue.js):
+           not "handed over" yet, and nothing of the server's to go on. */
+        if (r && r.queued) { toast(t('rd_title'), t('wq_saved'), 'warn', 8000); return; }
         if (okMsg) toast(t('rd_title'), okMsg, 'ok');
         if (then) then(r);
       })
