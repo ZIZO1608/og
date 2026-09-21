@@ -22,10 +22,10 @@ server/data-ns04/
 server/.env.ns04
 
 # ---- other deployments: the VPS half and its proxy (night shift 04) -------
-# og-bridge carries its own dependency (pg) and the proxy is nginx; neither is
-# the shop, and neither belongs inside the shop's image.
+# og-bridge carries its own dependency (pg) and is not the shop. NOT deploy/:
+# deploy/shop-proxy builds with the repository root as its context, so this
+# file applies to it too, and ignoring deploy/ would break its COPY lines.
 vps/
-deploy/
 _handover/
 server/backups/
 server/.env
