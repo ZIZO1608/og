@@ -2775,6 +2775,55 @@ No migration and no permission changed; one small route (the phone number, below
   `.btn` kept its web-link underline** — Call and Map on the driver's phone too. Both are in the
   `FIX 06` block at the end of `og-skin.css`.
 
+## Night shift 05 (22 Sep 2026) — the live fix shipped, one certificate, nginx run for real
+
+Main got **only** the proxy fix from night shift 04's Phase 1 (b6e0940, cherry-picked from
+bbfde0d), plus `OG_CERT_EXTRA_SANS` (2432253) and `_tools/` in `.gitignore` (3cf675f). Everything
+else (the VPS's door, og-bridge, `/snapshot`, the write queue, the beat) stays on
+**`night/online-offline`**, rebased onto this main and **not merged**. It merges after the owner's
+outage drill (the end of `MORNING.md` on that branch).
+
+- **`server/lib/proxy.js` decides who the visitor is.** A visitor header (`X-OG-Client-IP`) is
+  believed **only from the socket `OG_PROXY_ADDR` names**. It is unset on the live `.env` tonight,
+  so no header is believed from anyone, and a forged `X-Forwarded-For` is recorded as the socket
+  (checked on the live server: `127.0.0.1`). **`OG_TRUST_PROXY` is retired**. It believed any
+  caller's header, which let one attacker spread guesses across invented addresses. It was deleted
+  from the live `.env`, and a startup notice names it if it comes back.
+- **Sign-in is limited per ADDRESS too**: 20 failures in 15 minutes from one address answer 429,
+  whatever usernames are tried (`server/lib/auth.js`). Before this, the only limit was per
+  username, so one address could try every account. Checked on the live server from `127.0.0.2`
+  with invented usernames: 20 × 401, then 429. **Those `ns05-probe-*` rows are in the live
+  `login_attempts`**. They are harmless, and nobody signs in with those names.
+- **`OG_CERT_EXTRA_SANS`** (`extraSans()` in `server/lib/net.js`): comma-separated IPs and DNS
+  names, merged into what `net.js` finds, for `npm run cert` and for the `cert_address` startup
+  notice. The live `.env` has `10.8.0.2,10.10.99.9`: the WireGuard end (go-live §2.2) and the shop
+  Wi-Fi. That way the certificate is made **once**, with every name, whatever network the laptop is
+  on the night it runs. Every certificate also carries the fixed DNS name **`og-till`**, which is the
+  one nginx verifies (`X509_check_host` compares DNS names only; see `deploy/shop-proxy`).
+- **The certificate made tonight** (valid to 24 Dec 2028) names DNS `localhost, DESKTOP-TG3H1NS,
+  DESKTOP-TG3H1NS.local, og-till` and IP `127.0.0.1, 10.132.90.237 (ZeroTier), 172.20.10.2 (the
+  phone hotspot it was on), 10.102.4.158 (PIA), 10.8.0.2, 10.10.99.9`. The three incidental
+  addresses do no harm. The old certificate is in `server/data/certs.bak-ns05/` (gitignored). **It
+  is a new key**, so every phone sees the "not a known authority" warning once more. The till
+  itself prompts for administrator on the panel's first Start (`trust-cert --check` → the trust
+  run), because `cert:trust` needs elevation and the night shift had none.
+- **The one restart** was at **01:43 Damascus**, after every precondition held: inside 00:30–07:00,
+  no sale, payment or stock write for 30 minutes, a verified backup
+  (`og-2026-09-21T22-26-48-910.db`, integrity ok, `sales` and `variants` equal to live), and the
+  sandbox suites green on main. All the checks passed and **rollback did not run**. The harness then
+  crashed on its own last request (a stale keep-alive socket, ECONNRESET) before sending the
+  graceful `{type:'stop'}`, so the server exited with its parent instead of shutting down cleanly.
+  The database was checked afterwards: integrity ok, no broken foreign keys, WAL present and
+  replayed on the next open. The shop was stopped before the night shift started and was left
+  stopped; the panel's next Start runs this main.
+- `supabase:check` was **red before the restart and exactly as red after** (`users` lacks `pw_box`
+  and `last_login_at` in the mirror; eight mirrored accounts this database does not have). This is
+  older than tonight and is not caused by it.
+- **nginx was run, not linted** (the Windows build from nginx.org, signature checked, in
+  `_tools/nginx/`; `tools/nginx-harness.mjs` on the branch). The first real `nginx -t` **failed**:
+  `/api/live` repeated `proxy_buffering off`, which `to-till.conf` already sets, and nginx refuses a
+  duplicate. The container would never have started. Fixed on the branch.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
