@@ -78,11 +78,12 @@ export const QUERIES = {
            WHERE NOT p.hidden
            GROUP BY v.sku, v.size, p.name`,
 
-  /* The last twenty sales, voided ones included and marked. */
+  /* sales.js recent(): the last twenty NON-VOIDED sales, newest first —
+     the till's own list. A voided sale is taken off it, as it is there. */
   lastSales: `SELECT id, at, currency, total, voided, payment, cashier_id
-                FROM sales ORDER BY at DESC, id DESC LIMIT 20`,
+                FROM sales WHERE NOT voided ORDER BY at DESC LIMIT 20`,
   lastItems: `SELECT sale_id, name, size, qty FROM sale_items
-               WHERE sale_id IN (SELECT id FROM sales ORDER BY at DESC, id DESC LIMIT 20)
+               WHERE sale_id IN (SELECT id FROM sales WHERE NOT voided ORDER BY at DESC LIMIT 20)
                ORDER BY sale_id, id`
 };
 
