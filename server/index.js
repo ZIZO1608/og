@@ -69,7 +69,7 @@ import * as PanelLink from './lib/panel-link.js';
 import * as Storage from './lib/storage.js';
 import * as SB from './lib/supabase.js';
 import { CONFIG_WRITABLE, configRefusal } from './lib/config-writable.js';
-import { lanAddresses } from './lib/net.js';
+import { lanAddresses, extraSans } from './lib/net.js';
 import * as Fwd from './lib/proxy.js';
 import { isIP } from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
@@ -3656,6 +3656,8 @@ if (runDirectly) {
         try { const u = new URL(o); if (u.protocol === 'https:' && isIP(u.hostname)) wanted.add(u.hostname); } catch { /* not a URL */ }
       }
       if (Fwd.tunnelAddr()) wanted.add(Fwd.tunnelAddr());
+      /* and every IP OG_CERT_EXTRA_SANS promised the certificate would carry */
+      for (const ip of extraSans().ip) wanted.add(ip);
       wanted.delete('127.0.0.1');
       const missing = TLS.uncovered([...wanted]);
       const left = TLS.daysLeft();

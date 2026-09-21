@@ -9,6 +9,7 @@
    ========================================================================== */
 
 import { networkInterfaces, hostname } from 'node:os';
+import { isIP } from 'node:net';
 import { maybe } from './env.js';
 
 /* Real network cards first, then the ones that are probably a VPN. Kept in
@@ -32,6 +33,24 @@ export function lanAddresses() {
   return real.concat(other);
 }
 
+/* OG_CERT_EXTRA_SANS (night shift 05): names the certificate must carry that
+   this machine cannot see from its own network cards at the moment the
+   certificate is made — the WireGuard end that is not up yet, the shop
+   wifi's address while the laptop is somewhere else. Comma-separated; an IP
+   goes in as an IP, anything else as a DNS name. Made ONCE with every name
+   it will ever need, because every regeneration is one more "not a known
+   authority" warning on every phone in the shop. */
+export function extraSans() {
+  const out = { ip: [], dns: [] };
+  for (const raw of String(maybe('OG_CERT_EXTRA_SANS', '') || '').split(',')) {
+    const v = raw.trim();
+    if (!v) continue;
+    if (isIP(v)) { if (out.ip.indexOf(v) < 0) out.ip.push(v); }
+    else if (/^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/.test(v)) { if (out.dns.indexOf(v) < 0) out.dns.push(v); }
+  }
+  return out;
+}
+
 /* Just the addresses a browser might be pointed at, for the certificate. */
 export function certNames() {
   const ips = lanAddresses().map((n) => n.address);
@@ -41,6 +60,8 @@ export function certNames() {
      door that never opens. */
   const tunnel = String(maybe('OG_TUNNEL_ADDR', '') || '').trim();
   if (tunnel && ips.indexOf(tunnel) < 0) ips.push(tunnel);
+  const extra = extraSans();
+  for (const ip of extra.ip) if (ips.indexOf(ip) < 0 && ip !== '127.0.0.1') ips.push(ip);
   const host = String(hostname() || '').split('.')[0];
   return {
     dns: ['localhost'].concat(host && host.toLowerCase() !== 'localhost' ? [host, host + '.local'] : [])
@@ -48,7 +69,8 @@ export function certNames() {
          checks an upstream certificate's DNS names only — never its IP
          addresses — so pinning needs a name that does not change with the
          laptop's hostname. */
-      .concat(['og-till']),
+      .concat(['og-till'])
+      .concat(extra.dns.filter((d) => d !== 'og-till' && d.toLowerCase() !== 'localhost' && d !== host && d !== host + '.local')),
     ip: ['127.0.0.1'].concat(ips)
   };
 }
