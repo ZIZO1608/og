@@ -72,6 +72,9 @@ server/data/certs/
 server/data-sandbox/
 server/data-sandbox2/
 server/.env.sandbox
+server/data-ns04/
+server/.env.ns04
+_handover/
 _nightshift/
 # Passwords written by `npm run users:rebuild --apply`, in whichever data
 # folder it ran against.

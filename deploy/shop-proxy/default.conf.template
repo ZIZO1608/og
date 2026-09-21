@@ -34,6 +34,20 @@ server {
   listen      8080;
   server_name _;
 
+  #  THE VISITOR'S REAL ADDRESS. Coolify's own proxy (Traefik) terminates TLS
+  #  in front of this container and reaches it over the docker network, so
+  #  the socket here is Traefik, and the visitor is in X-Forwarded-For —
+  #  which Traefik APPENDS to. Trusting only private (docker) addresses and
+  #  walking from the right, nginx takes the rightmost address that is NOT
+  #  ours: Traefik's own entry for the visitor. Anything the visitor typed
+  #  into X-Forwarded-For sits to the left of it and is never chosen.
+  set_real_ip_from  10.0.0.0/8;
+  set_real_ip_from  172.16.0.0/12;
+  set_real_ip_from  192.168.0.0/16;
+  set_real_ip_from  127.0.0.1;
+  real_ip_header    X-Forwarded-For;
+  real_ip_recursive on;
+
   #  THE PROXY'S OWN PULSE, answered here and never forwarded. Coolify health
   #  checks this container, and the container is healthy whenever nginx is
   #  running — the shop being closed for the night is not a fault in the
@@ -59,9 +73,17 @@ server {
     #  The shop must see the name the visitor typed, not this container's.
     #  It is what originAllowed() checks and what every generated link uses.
     proxy_set_header Host              $host;
-    proxy_set_header X-Real-IP         $remote_addr;
-    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Host  $host;
+
+    #  WHO THE VISITOR IS — the one header the till believes, and only from
+    #  this proxy's own tunnel address (OG_PROXY_ADDR on the laptop). SET, so
+    #  whatever the visitor sent under this name is thrown away; $remote_addr
+    #  is the address the real_ip rules above worked out. X-Forwarded-For and
+    #  X-Real-IP are deliberately NOT sent on: the till ignores them, and a
+    #  header nobody reads is a header somebody later starts trusting.
+    proxy_set_header X-OG-Client-IP    $remote_addr;
+    proxy_set_header X-Forwarded-For   "";
+    proxy_set_header X-Real-IP         "";
 
     #  The public leg of this journey IS https, even though this hop is not.
     #  Without it the shop would redirect browsers to its own :8443, a port

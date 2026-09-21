@@ -123,9 +123,11 @@ the four things that go wrong are in
 > until it goes quiet and then silently stops — `shop.ogsports1.com` showing
 > "the shop is not connected" with nothing in the shop having changed.
 
-**2.3 The laptop needs no changes.** Checked on 20 Sep 2026:
-`OG_ORIGINS` already lists `https://shop.ogsports1.com` from the first tunnel,
-and `OG_TRUST_PROXY=1` is set.
+**2.3 The laptop needs four lines** (night shift 04 — `MORNING.md` has them
+exact). `OG_ORIGINS` already lists `https://shop.ogsports1.com`; add
+`OG_PROXY_ADDR=10.8.0.1`, `OG_TUNNEL_ADDR=10.8.0.2` and `OG_VPS_API_KEY`, and
+delete `OG_TRUST_PROXY`, which is retired: it believed the first
+`X-Forwarded-For` entry from any connection on the wifi.
 
 **2.4 Check it** from a phone **on mobile data, not the shop wifi** —
 otherwise you are testing the LAN and learning nothing:

@@ -70,6 +70,8 @@ import * as Storage from './lib/storage.js';
 import * as SB from './lib/supabase.js';
 import { CONFIG_WRITABLE, configRefusal } from './lib/config-writable.js';
 import { lanAddresses } from './lib/net.js';
+import * as Fwd from './lib/proxy.js';
+import { isIP } from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
 import {
   readJson, sendOk, sendError, sendErrorDetail, sendJson, parseCookies, CSP,
@@ -3240,16 +3242,10 @@ function requirePerm(perm, handler) {
   };
 }
 
-function clientIp(req) {
-  /* Behind a reverse proxy the socket address is the proxy. Trust the
-     forwarded header only when a proxy is actually configured, otherwise a
-     client can spoof it and slip the login throttle. */
-  const fwd = req.headers['x-forwarded-for'];
-  if (fwd && process.env.OG_TRUST_PROXY === '1') {
-    return String(fwd).split(',')[0].trim();
-  }
-  return req.socket.remoteAddress || null;
-}
+/* Who is on the other end: lib/proxy.js. A forwarded address is believed only
+   from OG_PROXY_ADDR's own socket (night shift 04) — OG_TRUST_PROXY believed
+   the first X-Forwarded-For entry from anybody. */
+const clientIp = Fwd.clientIp;
 
 /* ------------------------------------------------------------------- server */
 
@@ -3470,11 +3466,12 @@ function httpHandler(req, res) {
      TLS itself and forwards to plain http on this port has carried the
      request over HTTPS for its whole public life, and redirecting it to
      <public host>:8443 sends the visitor to a port the proxy does not carry.
-     So believe the proxy header when we are trusting the proxy anyway —
-     OG_TRUST_PROXY, which the login throttle already needs (or every remote
-     visitor shares one address). */
+     The proxy's header is believed only from the proxy's own socket
+     (OG_PROXY_ADDR, lib/proxy.js) — never from whoever sends it. The proxy
+     in deploy/shop-proxy/ talks https to :8443 and never lands here; this is
+     for the fallback routes (the SSH reverse tunnel) that forward to http. */
   const fwd = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
-  if (process.env.OG_TRUST_PROXY === '1' && fwd === 'https') return handle(req, res);
+  if (Fwd.viaProxy(req) && fwd === 'https') return handle(req, res);
 
   const host = String(req.headers.host || 'localhost').split(':')[0];
   res.writeHead(302, {
@@ -3650,7 +3647,17 @@ if (runDirectly) {
        address this machine answers on? An IP that moved is a browser that
        refuses to connect at all, which reads as "the system is down". */
     if (SECURE_SERVER) {
-      const missing = TLS.uncovered(lanAddresses().filter((x) => !x.note).map((x) => x.address));
+      /* Every address somebody may type (night shift 04): the cards net.js
+         reports, every https IP origin OG_ORIGINS lists (the phones' address
+         — 10.10.99.9 was missing and nothing said so, because the check read
+         net.js alone), and the tunnel's own end, which the VPS proxy pins. */
+      const wanted = new Set(lanAddresses().filter((x) => !x.note).map((x) => x.address));
+      for (const o of ORIGINS) {
+        try { const u = new URL(o); if (u.protocol === 'https:' && isIP(u.hostname)) wanted.add(u.hostname); } catch { /* not a URL */ }
+      }
+      if (Fwd.tunnelAddr()) wanted.add(Fwd.tunnelAddr());
+      wanted.delete('127.0.0.1');
+      const missing = TLS.uncovered([...wanted]);
       const left = TLS.daysLeft();
       if (missing.length) note('cert_address', 'warn', { addresses: missing }, [
         '',
@@ -3678,6 +3685,37 @@ if (runDirectly) {
       '    outside the shop, e.g.',
       '      OG_ORIGINS=http://og-shop:8090'
     ]);
+
+    /* Night shift 04: OG_TRUST_PROXY believed the first X-Forwarded-For
+       entry from ANY connection. It is read by nothing now; a laptop that
+       still has it set is told what replaced it, so nobody goes looking for
+       why "trusting the proxy" stopped doing anything. */
+    if (process.env.OG_TRUST_PROXY) note('trust_proxy_retired', 'info', {}, [
+      '',
+      '    OG_TRUST_PROXY is set and is IGNORED. A forwarded address is now',
+      '    believed only from the proxy itself: set OG_PROXY_ADDR to the',
+      '    VPS\'s tunnel address and delete the OG_TRUST_PROXY line.'
+    ]);
+
+    /* THE PUBLIC NAME. With a proxy configured, browsers arrive at the till
+       carrying Origin: https://<public name>, and a list without it refuses
+       every write they make ("Request rejected") while reads work — which
+       looks like a broken shop, not a missing setting. */
+    if (Fwd.proxyAddr()) {
+      const publicNames = ORIGINS.filter((o) => {
+        try {
+          const u = new URL(o);
+          return u.protocol === 'https:' && !isIP(u.hostname) && u.hostname.includes('.') &&
+            !u.hostname.endsWith('.local');
+        } catch { return false; }
+      });
+      if (!publicNames.length) note('proxy_no_origin', 'warn', { proxy: Fwd.proxyAddr() }, [
+        '',
+        `    OG_PROXY_ADDR is set (${Fwd.proxyAddr()}) but OG_ORIGINS names no public`,
+        '    address, so every write from outside is refused. Add, e.g.',
+        '      OG_ORIGINS=https://shop.ogsports1.com,…'
+      ]);
+    }
 
     /* Reader one: the terminal, in the order and the words it has always
        used. Reader two is the ready line further down. */

@@ -39,6 +39,13 @@ const SESSION_MS = SESSION_DAYS * 24 * 60 * 60 * 1000;
 const MAX_FAILS = 8;
 const FAIL_WINDOW_MS = 15 * 60 * 1000;
 
+/* AND per address (night shift 04). Per username alone, one machine could
+   try eight passwords on every account in the building, each within its
+   limit. Twenty, not eight: a shared till is one address for every cashier,
+   and a morning of typos must not lock the counter out. Only meaningful now
+   that the address is the real one — lib/proxy.js. */
+const MAX_FAILS_IP = 20;
+
 /* 059 — owner and developer hold everything; the rest as before. */
 export const ROLES = ['owner', 'developer', 'manager', 'cashier', 'warehouse', 'delivery', 'partner'];
 
@@ -496,6 +503,20 @@ export function recentFailures(username) {
   return row ? row.n : 0;
 }
 
+/* Failed SIGN-INS from one address. The hint door records its own rows as
+   'hint:<name>' failures (audit 06) and is throttled on those by itself;
+   counting them here would let a stranger spend the till's attempts by
+   asking for hints, the very thing that counter was split out to stop. */
+export function recentFailuresFrom(ip) {
+  if (!ip) return 0;
+  const since = new Date(Date.now() - FAIL_WINDOW_MS).toISOString();
+  const row = get().prepare(
+    `SELECT COUNT(*) AS n FROM login_attempts
+     WHERE ip = ? AND ok = 0 AND at > ? AND username NOT LIKE 'hint:%'`
+  ).get(ip, since);
+  return row ? row.n : 0;
+}
+
 export function recordAttempt(username, ip, ok) {
   get().prepare(
     'INSERT INTO login_attempts (username, ip, ok, at) VALUES (?, ?, ?, ?)'
@@ -506,7 +527,7 @@ export function recordAttempt(username, ip, ok) {
    "wrong username or password" for both cases, because the difference is a
    free list of who works here. */
 export async function login(username, password, ip, userAgent) {
-  if (recentFailures(username) >= MAX_FAILS) {
+  if (recentFailures(username) >= MAX_FAILS || recentFailuresFrom(ip) >= MAX_FAILS_IP) {
     return { ok: false, reason: 'too_many_attempts' };
   }
 

@@ -81,10 +81,13 @@ there is required to run the shop on this machine.
   hashed either way so the timing matches.
 - **Permissions**: the `role_permissions` table, deny by default, checked on
   the server (`requirePerm`). What the browser hides is a courtesy.
-- **`OG_ORIGINS`**: left blank, every origin may change data. Set it the moment
-  the shop is reachable from anywhere but its own network.
-- **`OG_TRUST_PROXY=1`** only behind a reverse proxy you control — otherwise
-  anyone can forge `X-Forwarded-For` and walk past the login throttle.
+- **`OG_ORIGINS`**: left blank, only the address a request was sent to may
+  change data (audit 06). List the public name once the shop is reachable from
+  outside, or every save made there is refused.
+- **`OG_PROXY_ADDR`** is the proxy's own address. Only a request whose SOCKET is
+  that address has its `X-OG-Client-IP` believed; everybody else is their
+  socket, whatever they send. `OG_TRUST_PROXY` is retired and ignored.
+- **Login throttle**: 8 failures per username and 20 per address, in 15 minutes.
 
 **Never commit** `.env`, `data/` or `backups/` (all gitignored): the repository
 is public, and the database holds real customers and takings. Git keeps history,

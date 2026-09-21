@@ -129,10 +129,10 @@ button, the `cloudflare` npm scripts, the `OG_CF_*` settings and every fallback 
 were removed. The server no longer reports a `public` address in `/api/health` or the panel's
 `ready` payload, so the launcher's address card shows the local and Wi-Fi addresses only.
 Customers reach their order page through og-track on Railway (`receipt.public_url`); Telegram job
-links appear only when `shop.public_url` is set. If the shop is ever put on the internet again,
-`OG_ORIGINS` must list that hostname (blank allows every origin — `originAllowed()` in
-`lib/http.js`) and `OG_TRUST_PROXY=1` belongs with it, or every remote visitor shares one address
-for login throttling. A second connector on one tunnel token is a high-availability pair to
+links appear only when `shop.public_url` is set. The shop is back on the internet through the
+VPS proxy since night shift 04 — see that section: `OG_ORIGINS` must list the hostname (blank
+allows only the address the request was sent to — `originAllowed()` in `lib/http.js`, audit 06),
+and `OG_PROXY_ADDR` names the proxy's own address. **`OG_TRUST_PROXY` is retired and ignored**. A second connector on one tunnel token is a high-availability pair to
 Cloudflare and takes requests away from this laptop without a word — the same shape as the
 `lineage.js` problem, one layer down. The full story is in git history (`git log -- server/scripts/cloudflare.js`).
 

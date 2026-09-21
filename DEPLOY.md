@@ -78,7 +78,7 @@ The two that must be right, because the container is behind Coolify's proxy:
 | name | value | what happens without it |
 |---|---|---|
 | `OG_ORIGINS` | `https://pos.ogsports1.com` | left blank, a write is accepted only when the browser says it came from the address it was sent to (Origin host == Host, audit 06). That is safe, but it is a fallback: naming the hostname is the check that still holds if anything ever sits in front of this one. |
-| `OG_TRUST_PROXY` | `1` | every visitor shares one IP for login throttling, so one person mistyping their password five times locks out the shop. |
+| `OG_PROXY_ADDR` | the proxy container's **fixed** address | every visitor shares the proxy's address for login throttling (20 failures per address per 15 minutes), so strangers mistyping add up and lock everybody out. The proxy must also OVERWRITE `X-OG-Client-IP` with the visitor's address — Coolify's own proxy does not, so this route needs `deploy/shop-proxy/` in front as well. `OG_TRUST_PROXY` is retired (night shift 04) and ignored. |
 
 Already set in the image, override only if you know why: `OG_PORT=8090`,
 `OG_HTTPS=0` (Coolify terminates TLS; a second self-signed certificate inside
@@ -117,7 +117,8 @@ Fill in the four values from the laptop's `server/.env` — never from git.
 ```dotenv
 # --- required behind the proxy ---------------------------------------------
 OG_ORIGINS=https://pos.ogsports1.com
-OG_TRUST_PROXY=1
+# the fixed address the proxy's requests arrive FROM (see the table above)
+OG_PROXY_ADDR=
 
 # --- the same value as the laptop's, or the sealed passwords stay shut ------
 OG_VAULT_KEY=
@@ -199,7 +200,7 @@ half-written file — take the backup, copy the backup.
 This app was built for a laptop on a shop's own network. Four things change
 when it has a public address:
 
-1. **`OG_ORIGINS` and `OG_TRUST_PROXY`** — §3. Neither is optional here.
+1. **`OG_ORIGINS` and `OG_PROXY_ADDR`** — §3. Neither is optional here.
 2. **The five old test accounts.** `hussam`, `lubna`, `maher`, `talal`, `yalla`
    were all created on one password **that is still in this repository's git
    history and cannot be taken out of it**. On this laptop's database three of

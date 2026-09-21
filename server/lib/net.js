@@ -9,6 +9,7 @@
    ========================================================================== */
 
 import { networkInterfaces, hostname } from 'node:os';
+import { maybe } from './env.js';
 
 /* Real network cards first, then the ones that are probably a VPN. Kept in
    that order rather than filtered, because "probably" is not "certainly" and
@@ -34,9 +35,20 @@ export function lanAddresses() {
 /* Just the addresses a browser might be pointed at, for the certificate. */
 export function certNames() {
   const ips = lanAddresses().map((n) => n.address);
+  /* The WireGuard end the VPS proxy connects to (night shift 04). Named even
+     when the tunnel is down at the moment the certificate is made, because
+     the proxy pins THIS certificate and a name missing from it is a front
+     door that never opens. */
+  const tunnel = String(maybe('OG_TUNNEL_ADDR', '') || '').trim();
+  if (tunnel && ips.indexOf(tunnel) < 0) ips.push(tunnel);
   const host = String(hostname() || '').split('.')[0];
   return {
-    dns: ['localhost'].concat(host && host.toLowerCase() !== 'localhost' ? [host, host + '.local'] : []),
+    dns: ['localhost'].concat(host && host.toLowerCase() !== 'localhost' ? [host, host + '.local'] : [])
+      /* og-till: the fixed NAME the proxy verifies (proxy_ssl_name). nginx
+         checks an upstream certificate's DNS names only — never its IP
+         addresses — so pinning needs a name that does not change with the
+         laptop's hostname. */
+      .concat(['og-till']),
     ip: ['127.0.0.1'].concat(ips)
   };
 }
