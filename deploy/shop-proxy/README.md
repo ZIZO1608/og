@@ -186,7 +186,7 @@ On the **VPS**, with `OG System.exe` **running** on the laptop:
 ```bash
 wg show                                     # a recent handshake?
 ping -c 3 10.8.0.2                          # does the laptop answer?
-curl -s http://10.8.0.2:8090/api/health     # does the SHOP answer?
+curl -sk https://10.8.0.2:8443/api/health   # does the SHOP answer?
 ```
 
 **Expected from the last one:**
@@ -221,11 +221,12 @@ curl -s http://10.8.0.2:8090/api/health     # does the SHOP answer?
   Administrator PowerShell:
 
   ```powershell
-  New-NetFirewallRule -DisplayName "OG System over WireGuard" -Direction Inbound -Protocol TCP -LocalPort 8090 -RemoteAddress 10.8.0.0/24 -Action Allow
+  New-NetFirewallRule -DisplayName "OG System over WireGuard" -Direction Inbound -Protocol TCP -LocalPort 8443 -RemoteAddress 10.8.0.1 -Action Allow
   ```
 
-  That allows port 8090 **only** from the private tunnel, not from the wider
-  internet.
+  That allows the shop's https port **only** from the VPS's end of the
+  tunnel. `MORNING.md` has the whole firewall script (night shift 04), which
+  also narrows the LAN side.
 </details>
 
 ---
@@ -251,7 +252,25 @@ build variable):
 
 | Key | Value |
 |---|---|
-| `SHOP_UPSTREAM` | `http://10.8.0.2:8090` |
+| `SHOP_UPSTREAM` | `https://10.8.0.2:8443` |
+| `SHOP_TLS_NAME` | `og-till` |
+| `BRIDGE_UPSTREAM` | `http://og-bridge:8787` |
+
+**Storage** → **+ Add** → Directory mount: source `/data/og` on the VPS,
+destination `/etc/nginx/og-till`. It holds `till.pem`, the laptop's **public**
+certificate (night shift 04 — the proxy trusts that one certificate and no
+other). Copy it from the laptop, and again after every `npm run cert` there:
+
+```bash
+# on the laptop, from the repository root
+scp server/data/certs/og-cert.pem root@152.239.114.129:/data/og/till.pem
+```
+
+Then restart the container. Its log prints the pinned certificate's
+fingerprint at every start; without a certificate it says so and every
+request gets the "shop's internet is down" answer rather than a crash loop.
+The certificate must name `og-till` — made by `npm run cert` from night shift
+04 on.
 
 That address is fixed — you chose it in step 3. It never changes, which is one
 more thing WireGuard makes simpler than a service that hands out addresses.
@@ -295,9 +314,11 @@ Sign in as the owner → **Settings** → set **`shop.public_url`** to
 Telegram messages about a print job carry a link to the job only when that is
 set, and it has been empty since the first tunnel was retired in September.
 
-The laptop needs nothing else: `OG_ORIGINS` already lists
-`https://shop.ogsports1.com` and `OG_TRUST_PROXY=1` is already set, both left
-over from the old tunnel.
+The laptop needs four lines in `server/.env` (night shift 04, exact in
+`MORNING.md`): `OG_PROXY_ADDR=10.8.0.1` (the only socket whose
+`X-OG-Client-IP` is believed), `OG_TUNNEL_ADDR=10.8.0.2`, `OG_VPS_API_KEY`,
+and `OG_ORIGINS` still listing `https://shop.ogsports1.com`. Delete
+`OG_TRUST_PROXY` — it is retired, and a startup notice says so while it is set.
 
 ---
 
@@ -311,8 +332,10 @@ runs `sshd`. From the **laptop**:
 ssh -N -R 127.0.0.1:8090:127.0.0.1:8090 root@152.239.114.129
 ```
 
-Then `SHOP_UPSTREAM=http://172.17.0.1:8090` (the Docker host, since the
-forward lands on the VPS's own loopback). It needs a wrapper to restart itself
+Then forward 8443 instead of 8090 and keep `SHOP_UPSTREAM=https://172.17.0.1:8443`
+(the Docker host, since the forward lands on the VPS's own loopback). On the
+laptop the proxy then arrives from 127.0.0.1, so `OG_PROXY_ADDR=127.0.0.1` —
+which makes any local process that sends `X-OG-Client-IP` "the proxy" too. It needs a wrapper to restart itself
 and to run at boot, which is why it is the fallback rather than the plan.
 
 ---
