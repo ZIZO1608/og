@@ -17,6 +17,8 @@
 #    Then:    .\till-side.ps1 -ServerPublicKey <the VPS key from vps-side.sh>
 #    Check only (no admin, changes nothing):  .\till-side.ps1 -CheckOnly
 #    Remove the tunnel:                        .\till-side.ps1 -Remove
+#    Reuse the key the VPS already trusts:     -KeyFile <path>  (day shift 06: _secrets\wg-till.key)
+#    Install through PIA anyway (at home):     -AllowPia  (the verdict is then about PIA's line)
 # =============================================================================
 param(
   [string]$ServerPublicKey = '',
@@ -25,7 +27,9 @@ param(
   [string]$Vps = '10.8.0.1',
   [string]$Name = 'og-shop',
   [switch]$CheckOnly,
-  [switch]$Remove
+  [switch]$Remove,
+  [string]$KeyFile = '',
+  [switch]$AllowPia
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,7 +38,7 @@ $WgExe = Join-Path $WgDir 'wireguard.exe'
 $Wg = Join-Path $WgDir 'wg.exe'
 $ConfDir = Join-Path $env:ProgramData 'OGSystem\wg'
 $Conf = Join-Path $ConfDir ($Name + '.conf')
-$KeyFile = Join-Path $ConfDir ($Name + '.key')
+if (-not $KeyFile) { $KeyFile = Join-Path $ConfDir ($Name + '.key') }
 $VpsHost = $Endpoint.Split(':')[0]
 
 function Say([string]$t, [string]$c = 'Gray') { Write-Host $t -ForegroundColor $c }
@@ -57,12 +61,15 @@ if (Test-Path $piactl) {
 $piaAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
   $_.Status -eq 'Up' -and ($_.InterfaceDescription -match 'PIA|Private Internet Access' -or $_.Name -match 'PIA')
 })
-if (($piaState -and $piaState -ne 'Disconnected') -or $piaAdapters.Count -gt 0) {
+$piaOn = (($piaState -and $piaState -ne 'Disconnected') -or $piaAdapters.Count -gt 0)
+if ($piaOn -and -not $AllowPia) {
   Say ('PIA is connected (' + ($(if ($piaState) { 'piactl: ' + $piaState } else { 'adapter up: ' + $piaAdapters[0].Name })) + ').') Red
   Say 'Disconnect PIA first. Through PIA this test says nothing about the shop''s own line.'
+  Say '(-AllowPia installs the tunnel anyway; the verdict is then about PIA''s line, not the shop''s.)'
   exit 3
 }
-Say 'PIA: not connected.' Green
+if ($piaOn) { Say 'PIA: connected, and -AllowPia was given. This verdict is about PIA''s line, NOT the shop''s.' Yellow }
+else { Say 'PIA: not connected.' Green }
 
 if ($CheckOnly) { Say 'Check only: nothing changed.'; exit 0 }
 
