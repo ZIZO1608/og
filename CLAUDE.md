@@ -2824,6 +2824,51 @@ outage drill (the end of `MORNING.md` on that branch).
   `/api/live` repeated `proxy_buffering off`, which `to-till.conf` already sets, and nginx refuses a
   duplicate. The container would never have started. Fixed on the branch.
 
+## Day shift 07 (22 Sep 2026) — the domain is live, and the proxy address is staged
+
+`shop.ogsports1.com` works from outside. The path is a phone, then the VPS's nginx (the Coolify
+resource built from **main**, `deploy/shop-proxy`, 52dc392), then WireGuard, then this laptop's
+8443. The tunnel (`og-shop`, 10.8.0.2 ↔ 10.8.0.1) and Supabase both work from the shop's own line
+with PIA off. The owner checked both, and `supabase:check` read 57 then 58 tables row for row. The
+eight ghost accounts were removed from the mirror with `users:mirror -- --apply`; there are 13
+accounts on both sides. `night/online-offline` is still not merged.
+
+- **`supabase:check` is green on main** (06d893a, the fix from the branch's 096a66b, one file).
+  `pw_box` and `last_login_at` are local-only by design. They went red on every run from migration
+  059 on, and the fix was to teach the check, not to add them to the mirror.
+- **A PUSH TO MAIN REDEPLOYS THE PUBLIC PROXY.** Coolify rebuilds the shop-proxy resource on every
+  push to `main`: its image tag is the commit hash. It came back healthy in under two minutes,
+  and nothing in the shop changes. But a push of a broken `deploy/shop-proxy` would take the
+  public address down. The shop itself is unaffected, because the Wi-Fi goes straight to the
+  laptop.
+- **`OG_PROXY_ADDR=10.8.0.1` is in the live `server/.env`, NOT YET IN EFFECT.** It was the only
+  change. The file as it was before is `server/.env.bak-proxy` (git-ignored). It takes effect at
+  the next Stop → Start in the panel. Until then, every outside visitor is 10.8.0.1 to the till:
+  one address, one 20-failure sign-in limit shared by all of them.
+- **Proved on a sandbox before the edit**, a `VACUUM INTO` copy on 8190 with
+  `OG_PROXY_ADDR=10.8.0.1`, deleted afterwards:
+  - a sign-in from the VPS through the tunnel carrying `X-OG-Client-IP: 203.0.113.7` was recorded
+    as `203.0.113.7`;
+  - one from the VPS with no header was recorded as `10.8.0.1` (og-bridge's case);
+  - from this laptop, on `127.0.0.1` and on `10.8.0.2`, the same header (and a forged
+    `X-Forwarded-For`) was ignored, and the socket was recorded.
+  - Each check was broken once on purpose: `OG_PROXY_ADDR=10.8.0.9` made the VPS probe record
+    10.8.0.1, and `OG_PROXY_ADDR=127.0.0.1` made the laptop's forged header believed.
+  - Both nginx templates on main overwrite `X-OG-Client-IP` with `$remote_addr` (after the
+    `real_ip` walk through Traefik's `X-Forwarded-For`) and blank `X-Forwarded-For`, so a visitor
+    cannot pre-fill it.
+- **Read-only VPS checks, all passed:**
+  - the till peer's last handshake was under 2 minutes old;
+  - the proxy's last 50 log lines had no emerg, error or crit, and the pinned certificate shows
+    `DNS:og-till` and `IP Address:10.8.0.2`;
+  - `/api/health` through the domain returned the till's own answer;
+  - `/api/vps/health` from outside answered 404;
+  - the public certificate is Let's Encrypt `YR2`, for `shop.ogsports1.com`, valid to
+    21 Dec 2026, and verifies.
+- **`DRILL-TONIGHT.md`** at the root is the outage drill for main as it is: 15 minutes with the
+  router's internet cable out. The branch-only parts are named and left out: `/snapshot`,
+  og-bridge, the heartbeat, `apply.ps1`.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
