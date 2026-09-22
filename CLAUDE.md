@@ -2989,6 +2989,95 @@ outage drill (the end of `MORNING.md` on that branch).
   `/api/live` repeated `proxy_buffering off`, which `to-till.conf` already sets, and nginx refuses a
   duplicate. The container would never have started. Fixed on the branch.
 
+## Day shift 06 (22 Sep 2026) — the VPS end of the tunnel, a handshake with no install, and tonight staged
+
+On `night/online-offline`, **not merged**. The live folder stayed on `main`; the live server and
+its `.env` were not touched, and nothing was deleted anywhere. `TONIGHT.md` is the ordered list
+for Ahmad (it replaces `MORNING.md`). `DAY06-COOLIFY.md` and `DAY06-VPS-STEPS.md` are the console
+halves nobody at this keyboard could do.
+
+- **Measure the brief's facts; do not take them.** Three were wrong on the day:
+  - the shell was **not** elevated (`net session` exit 2), although the brief said it was;
+  - the laptop was on a **phone hotspot** (172.20.10.2), not "home Wi-Fi", and later on the
+    **shop LAN** (10.10.99.9, SSID "A PLUS 3");
+  - PIA's exit address changed mid-session.
+
+  Each changed what could be done. Everything needing administrator was staged, not attempted; a
+  UAC prompt with nobody at the keyboard hangs. The instructions attached to the wrong facts still
+  held: PIA stayed on, and no no-PIA test ran.
+- **The VPS end of WireGuard is up**: `wg0` on `10.8.0.1`, UDP 51820, `wg-quick@wg0` enabled at
+  boot, the till's key its only peer, set up by `tools/wg-test/vps-side.sh` over SSH. ufw is
+  inactive and was left so. No Docker, Coolify, iptables or forwarding change.
+- **`tools/wg-test/handshake.mjs` speaks WireGuard's handshake itself** (Noise_IKpsk2, whitepaper
+  §5.4) over a plain UDP socket: no WireGuard install, no administrator.
+  - X25519 and ChaCha20-Poly1305 are `node:crypto`. BLAKE2s is written out, because Node's
+    `blake2s256` can be neither keyed nor shortened, and WireGuard's MAC needs both.
+  - It was checked against Node's hash at nine lengths, RFC 7693, the keyed reference vectors and
+    RFC 7748's X25519 vector.
+  - A VPS that answers has proved the UDP path both ways, its own key, and that it holds this key
+    as a peer. It proves **nothing** about the Windows tunnel service or 10.8.0.x routing; that is
+    `till-side.ps1`.
+  - `genkey` writes the private key to a file and prints only the public one (tested on a dummy
+    first). Through PIA: **NO ANSWER** before the peer existed, while tcpdump on the VPS saw the
+    148-byte initiations arrive (so hPanel does not drop UDP 51820); then **WORKS**, In 148 / Out
+    92 in tcpdump. The answer is decrypted and checked, not just received.
+- **`tools/wg-test/shop-verdict.ps1` is the shop's verdict with no install**: it refuses while PIA
+  is connected, then prints WORKS / UDP BLOCKED / VPS UNREACHABLE. `till-side.ps1` gained
+  **`-KeyFile`**, because without it the script makes a new key the VPS does not know, and
+  **`-AllowPia`**.
+- **THE VPS WENT DARK TO THIS LAPTOP AT ABOUT 09:14 UTC**: first every port, then only 80/443
+  came back. SSH and UDP 51820 stayed dead for the rest of the shift, while `github.com:22`
+  answered over the same path. It reads like a reboot (the WireGuard install's `needrestart` had
+  deferred unattended-upgrades) followed by a filter on 22 and 51820. It is diagnosed in
+  `DAY06-VPS-STEPS.md` rather than guessed at. As a result, the certificate copy, the `dig` and
+  the `curl` through the tunnel are blocked, with their commands written down.
+- **`supabase:check`'s "users missing pw_box, last_login_at" was the check's bug, not the
+  mirror's.** `syncUsers` names its columns by hand and sends neither:
+  - `pw_box` is the readable password, sealed for the developer panel, and crosses only inside
+    `pw_enc`. `lib/drift.js` has listed it as local-only since audit 06; the check's own list never
+    learned it.
+  - `last_login_at` is this machine's record.
+
+  The brief said to ADD both columns to the mirror. That was refused: a column nothing writes
+  stays NULL forever, and a `pw_box` column in Supabase is one `SELECT *` away from a password
+  list. The check learned the rule instead. Against the live data, three red lines became two, and
+  both are the 8 accounts.
+- **The 8 accounts** (ids 1–7 and 10) are the five old test accounts, `mirrortest`, the
+  2026-09-05 `owner` and `zaren`. `users:rebuild` removed them here and the mirror kept them;
+  three are **active** there, so a restore would hand back three manager logins. The repair is
+  `npm run users:mirror -- --apply`, whose dry run (read-only, run today) re-points all eight to
+  Former staff #21. `server/supabase/032_extra_accounts.sql` has a read-only look, a reversible
+  switch-off, and a raw `DELETE` **commented out**, with the reason not to use it. Nothing was
+  deleted. The check's hint said "no script deletes an account"; it names `users:mirror` now.
+- **`tools/tonight/apply.ps1` (over `apply.mjs`) puts `server/.env.next` live, or puts the old one
+  back.** It **requires the shop CLOSED in the window**. The panel holds the server, and a server a
+  script starts stops when the script does: that is how night shift 05's check ended its server.
+  - It refuses outside 00:30–07:00 Damascus without `-Now`; while anything answers on the port;
+    after a sale, payment, stock or money write in 30 minutes; when `.env` has changed since the
+    staging, or the staged file adds any key but `OG_PROXY_ADDR` / `OG_VPS_API_KEY` /
+    `OG_ORIGINS`; and when the repository's backup fails or does not match live.
+  - It then checks health, a real sign-in, a forged `X-Forwarded-For` / `X-OG-Client-IP` read back
+    from `login_attempts` as `127.0.0.1`, and the mirror, and stops the server with
+    `{type:'stop'}`.
+  - Requests go without keep-alive: night shift 05 crashed on a stale socket.
+  - On the sandbox every refusal fired once, a clean run passed, and a staged `OG_PROXY_ADDR=127.0.0.1`
+    **failed the forged-header check (8.8.8.8 believed) and rolled back by itself** (exit 2).
+- **`server/scripts/till-firewall.ps1` is a dry run unless `-Apply`**; `-Undo` acts immediately,
+  as the emergency path. The tunnel rule is **8443 only**, from `10.8.0.1`. The LAN rule names
+  `10.10.99.0/24` instead of `LocalSubnet`, because Windows computes `LocalSubnet` over EVERY
+  interface, so ZeroTier's, PIA's and the tunnel's subnets would all have counted as the shop
+  Wi-Fi. The dry run warns if the laptop's own address is outside the LAN rule. In PowerShell 5.1,
+  `0xFFFFFFFF` is the Int32 −1, so the subnet mask is computed arithmetically.
+- **Both Coolify resources build from `night/online-offline` until the merge.** `main` has only
+  the old plain-http proxy and no `vps/og-bridge/`, so building from `main` would deploy the
+  unpinned proxy.
+- **Secrets, by file**, all in `_secrets/` (ignored through `.git/info/exclude` as well, which
+  covers every checkout):
+  - `wg-till.key` (private), `wg-till.pub`, `wg-vps.pub`;
+  - `og_vps.txt` (the `og_vps` database password);
+  - `og_vps_api_key.txt`;
+  - two tcpdump captures.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both

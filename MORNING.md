@@ -1,3 +1,5 @@
+> **Superseded by `TONIGHT.md` (day shift 06, 22 Sep 2026).** Kept for its history; follow TONIGHT.md.
+
 # Morning — after night shift 05
 
 For Ahmad. Night shift 04 wrote this checklist; night shift 05 did part of it. Every step is
