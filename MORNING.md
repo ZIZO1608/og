@@ -1,36 +1,77 @@
-# Morning — night shift 04 (online / offline)
+# Morning — after night shift 05
 
-For Ahmad. Branch **`night/online-offline`**, not merged, not published. Review first; then these
-steps **in this order**. Nothing below was done tonight: every one of them needs administrator,
-the live `server/.env`, the VPS, Supabase or Coolify, which the night shift was not allowed to touch.
+For Ahmad. Night shift 04 wrote this checklist; night shift 05 did part of it. Every step is
+marked **DONE TONIGHT**, **YOURS** or **CHANGED**. Work top to bottom.
 
-Addresses this work expects: laptop's tunnel end **10.8.0.2**, VPS's tunnel end **10.8.0.1**,
-VPS public **152.239.114.129**, shop wifi address **10.10.99.9**.
+- **main** (`631a292`, pushed): the proxy fix only (b6e0940), `OG_CERT_EXTRA_SANS` (2432253),
+  `_tools/` ignored, docs. Started on the till at 01:43, checked, then stopped again; see
+  CLAUDE.md, night shift 05.
+- **`night/online-offline`** (pushed, **not merged**): everything else, rebased onto
+  that main. It merges only after the drill at the end of this page passes.
+
+Addresses: laptop's tunnel end **10.8.0.2**, VPS's tunnel end **10.8.0.1**, VPS public
+**152.239.114.129**, shop Wi-Fi **10.10.99.9**.
 
 ---
 
-## 1. ZeroTier is installed and joined on this laptop — decide, then leave
+## 0. YOURS, first: change the owner's password
 
-Found on 21 Sep: service `ZeroTierOneService` running, network **`76fc96e49897c3c8`** joined and
-approved, this laptop at **10.132.90.237**. The route chosen is WireGuard (commit 8c46670), so this
-network is unused. It only worked here because the PIA VPN was also up; it proves nothing about the
-shop's own line.
+During the night shift, a masking command failed and **printed `abode`'s password into the Claude
+session transcript on this laptop** (`%USERPROFILE%\.claude\projects\…`). It went nowhere else, but
+it is now in a file. Changing passwords was forbidden tonight, so it was not changed. Sign in as a
+developer → Settings → Access → `abode` → **New password**, and give him the new one.
 
-To leave it (Administrator PowerShell):
+## 1. YOURS: the WireGuard test (NEW; do this before anything on the VPS)
+
+Everything below the tunnel depends on one unknown: **does the shop's own internet line carry
+WireGuard's UDP?** Syrian lines sometimes drop UDP. Test it before spending any time on Coolify.
+
+**At the shop, on the shop's own line, with PIA disconnected** (the script refuses otherwise:
+through PIA the answer is about PIA's line, not the shop's).
+
+1. Install WireGuard for Windows on the laptop:
+   <https://download.wireguard.com/windows-client/wireguard-installer.exe>
+2. On the VPS, as root: `bash tools/wg-test/vps-side.sh`. It installs WireGuard, makes the keys
+   once, writes `wg0.conf` (10.8.0.1/24, UDP 51820), opens 51820/udp in ufw if ufw is on, and
+   prints **the VPS public key**. It refuses to overwrite a `wg0.conf` it did not write, and it
+   touches no Docker or Coolify network. **Also check hPanel's own firewall lets UDP 51820 in.**
+3. On the laptop, in an **Administrator** PowerShell:
+   ```powershell
+   cd "D:\DESKTOP\OG System Demo"
+   powershell -ExecutionPolicy Bypass -File tools\wg-test\till-side.ps1
+   ```
+   It prints **this laptop's public key**. Back on the VPS: `bash tools/wg-test/vps-side.sh <that key>`.
+4. On the laptop again:
+   `powershell -ExecutionPolicy Bypass -File tools\wg-test\till-side.ps1 -ServerPublicKey <the VPS key>`
+
+**Pass** looks like `WORKS - the tunnel is up and 10.8.0.1 answers in 38 ms (4/4 pings).` Leave
+the tunnel installed.
+
+- `UDP BLOCKED` → read `tools/wg-test/FALLBACK.md`. Try UDP port 443 or 53 first; then wstunnel
+  (recommended); a reverse SSH tunnel is the one-afternoon stopgap. The script removes the tunnel
+  again.
+- `VPS UNREACHABLE` → the VPS is down or its firewall drops everything. The tunnel is removed again.
+
+*Seen failing tonight, nothing else:* the laptop has no WireGuard, so `-CheckOnly` stopped at
+"not installed"; `vps-side.sh` refused without root; `bash -n` passed. Neither has been run
+against the VPS. That was forbidden tonight.
+
+## 2. YOURS: ZeroTier is still installed and joined
+
+Service `ZeroTierOneService` is running on network **`76fc96e49897c3c8`**, as **10.132.90.237**.
+WireGuard is the chosen route, so this network is unused. To leave it (Administrator PowerShell):
 
 ```powershell
 & "C:\ProgramData\ZeroTier\One\zerotier-one_x64.exe" -q leave 76fc96e49897c3c8
-& "C:\ProgramData\ZeroTier\One\zerotier-one_x64.exe" -q listnetworks
 ```
 
-To remove it entirely: Settings → Apps → **ZeroTier One** → Uninstall. Leaving it joined while
-step 2 has not run means node.exe accepts connections from that network on every port.
+or uninstall it entirely (Settings → Apps → ZeroTier One). The new certificate names its address.
+That is harmless and needs no action.
 
-## 2. The firewall: node.exe is open to every address on Public and Private
+## 3. YOURS: the firewall (node.exe is open on every port, to every address)
 
-Four inbound rules called "Node.js JavaScript Runtime" allow node.exe in on every port, from any
-address. The script switches them off and allows only the shop's two ports (8090, 8443) from the
-shop's wifi and from the VPS's tunnel end. Look first, then run (Administrator PowerShell):
+The night shift was not elevated, and was told never to touch the firewall. Unchanged from night
+shift 04 (Administrator PowerShell):
 
 ```powershell
 cd "D:\DESKTOP\OG System Demo"
@@ -38,75 +79,91 @@ powershell -ExecutionPolicy Bypass -File server\scripts\till-firewall.ps1 -WhatI
 powershell -ExecutionPolicy Bypass -File server\scripts\till-firewall.ps1
 ```
 
-Then open `https://10.10.99.9:8443` from a phone on the shop wifi. To undo: `… -Undo`.
+**Pass**: `https://10.10.99.9:8443` still opens from a phone on the shop Wi-Fi. `… -Undo` reverses it.
+The script is on the branch. Run it from the branch worktree, or after the merge.
 
-## 3. WireGuard, exactly as `deploy/shop-proxy/README.md` §2–5 says
+## 4. CHANGED: the lines in `server/.env`
 
-VPS `10.8.0.1/24` listening on UDP 51820; laptop `10.8.0.2/24`, `AllowedIPs = 10.8.0.1/32` (never
-`0.0.0.0/0`), `PersistentKeepalive = 25`. Stop at README §5 until the handshake shows. The firewall
-rule there is already covered by step 2.
+**Done tonight** (backup of the old file: `server/.env.bak-ns05`, gitignored):
+- `OG_TRUST_PROXY=1` **deleted**.
+- `OG_CERT_EXTRA_SANS=10.8.0.2,10.10.99.9` **added**. It replaces the old `OG_TUNNEL_ADDR` step;
+  **do not add `OG_TUNNEL_ADDR`**. It only ever named the certificate, and this does that already.
+- `OG_ORIGINS`: untouched; it already lists `https://shop.ogsports1.com`.
 
-## 4. The four lines in `server/.env`
-
+**Yours, and only once step 1 said WORKS:**
 ```dotenv
 OG_PROXY_ADDR=10.8.0.1
-OG_TUNNEL_ADDR=10.8.0.2
-OG_VPS_API_KEY=<paste the output of: openssl rand -hex 32>
 ```
+Until then, leave it unset. Unset means no visitor header is believed from anyone, which is the
+safe state for a till with no proxy in front of it.
 
-**Leave `OG_ORIGINS` as it is**: checked read-only on 21 Sep, it already lists
-`https://shop.ogsports1.com` (the startup notice only checks that a public name is there).
-**Delete the `OG_TRUST_PROXY=1` line**: it is retired, and while it stays a startup
-notice says it is being ignored. Keep the `OG_VPS_API_KEY` value; og-bridge needs the same one (step 7).
+**Yours, after the merge:** `OG_VPS_API_KEY=<openssl rand -hex 32>`. The door it opens is branch
+code. Keep the value, because og-bridge needs the same one (step 8).
 
-## 5. A new certificate: the tunnel address and the name `og-till`
+## 5. DONE TONIGHT, except the trust: the certificate
 
-The current one names `127.0.0.1, 192.168.1.16, 10.171.5.29`. It does **not** name the shop wifi
-address **10.10.99.9**, so phones there already get a name mismatch, and it names two addresses
-that are gone. **Disconnect PIA first**, and do step 1 first, or their addresses go in too.
+Made once, with every name. It is valid to **24 Dec 2028**:
+DNS `localhost, DESKTOP-TG3H1NS, DESKTOP-TG3H1NS.local, og-till`;
+IP `127.0.0.1, 10.132.90.237, 172.20.10.2, 10.102.4.158, 10.8.0.2, 10.10.99.9`.
+The old one is in `server/data/certs.bak-ns05/`.
+
+- **YOURS, the till:** the panel's first Start of the day finds the new certificate untrusted and
+  asks for **administrator once** (Windows' UAC prompt). Press Yes. Or run it yourself now:
+  `cd server && npm run cert:trust`. **Pass**: `https://localhost:8443` opens with a padlock, not
+  a red page.
+- **Every phone and tablet sees the warning once more.** This is a new key, so each device shows
+  "your connection is not private / not a known authority" one time. Somebody presses
+  **Advanced → Continue**, and from then on it is quiet. The difference from before: phones on the
+  shop Wi-Fi at **`https://10.10.99.9:8443`** now get a certificate that names that address. The
+  old one did not, so they were also getting a name mismatch.
+- **Copy the PUBLIC half to the VPS** (needed from step 8; never `og-key.pem`):
+  ```bash
+  scp server/data/certs/og-cert.pem root@152.239.114.129:/data/og/till.pem
+  ```
+  The repository does not keep a copy in `deploy/shop-proxy/`. The VPS mount is the only place.
+  **Copy it again after every `npm run cert`**, then restart the proxy and og-bridge.
+
+## 6. CHANGED: restarting the shop
+
+**Main's part is done**: restarted once at 01:43, with every check green. The shop was stopped
+before the night shift, and it is stopped now. Open it normally in the morning.
+**The drill needs the branch running on the till**, because the amber screen, the VPS's door and
+the write queue are branch code. The evening of the drill, after closing (the night shift's own
+worktree for the branch was removed, so the live folder can switch):
 
 ```bash
-cd server && npm run cert
+cd "D:/DESKTOP/OG System Demo" && git fetch && git switch night/online-offline
 ```
 
-Check what it named: it must be **127.0.0.1, 10.10.99.9, 10.8.0.2** and DNS **localhost,
-DESKTOP-TG3H1NS, DESKTOP-TG3H1NS.local, og-till**:
+Then the panel's **Restart** (the Full refresh).
+If the drill fails: `git switch main`, then Restart, and the till is back on tonight's main.
+If it passes: merge, `git switch main && git pull`, then Restart.
+**Pass**: no startup notice about `OG_TRUST_PROXY`, the public origin or the certificate's addresses.
 
-```bash
-openssl x509 -in server/data/certs/og-cert.pem -noout -ext subjectAltName
-```
+## 7. YOURS: Supabase, three files, in order, in the SQL Editor
 
-Then, as Administrator: `cd server && npm run cert:untrust` and `npm run cert:trust`. **Every phone
-sees the "not a known authority" warning once more**, and somebody presses continue on each.
-
-## 6. Restart the shop on this code
-
-The panel's **Restart** (the Full refresh), once the branch is merged and pulled. The startup notices
-should now show nothing about `OG_TRUST_PROXY`, the public origin or the certificate's addresses.
-
-## 7. Supabase: three files, in order, in the SQL Editor
-
-1. `server/supabase/029_second_lock.sql` — only if it has not been run (it only revokes; safe twice).
-2. `server/supabase/030_erp_access.sql` — then, **on its own**, with a new password
-   (`openssl rand -hex 24`): `ALTER ROLE og_vps PASSWORD '<password>';` — it cannot sign in before this.
-   Read the list the file prints at the end: every table but `users` and `sync_state`, and
-   `users` with `SELECT` only.
-3. `server/supabase/031_till_status.sql` — the last line prints `lineage_id` and `beat_at`.
+1. `server/supabase/029_second_lock.sql`: only if it has not been run (it only revokes, so it is
+   safe to run twice).
+2. `server/supabase/030_erp_access.sql`, then on its own, with a new password
+   (`openssl rand -hex 24`): `ALTER ROLE og_vps PASSWORD '<password>';`. Read the list it prints:
+   every table except `users` and `sync_state`, and `users` with `SELECT` only.
+3. `server/supabase/031_till_status.sql`. Its last line prints `lineage_id` and `beat_at`.
 
 Download the database certificate: Supabase → Project Settings → Database → **SSL** → Download.
 
-## 8. The VPS: the two files, then og-bridge, then the proxy
+**Also, older than tonight:** `npm run supabase:check` is red because the mirror's `users` has no
+`pw_box` or `last_login_at`, and it holds eight accounts this database does not have. It was red
+before the restart and exactly as red after. Look at it before the drill, or the drill's last check
+cannot go green (see step 10).
+
+## 8. YOURS: the VPS (og-bridge, then the proxy)
 
 ```bash
-# on the laptop, from the repository root: the PUBLIC certificate, never og-key.pem
-scp server/data/certs/og-cert.pem root@152.239.114.129:/data/og/till.pem
 scp <downloaded supabase certificate> root@152.239.114.129:/data/og/supabase-ca.crt
 ssh root@152.239.114.129 "chmod 644 /data/og/*"
 ```
 
-**Copy `till.pem` again after every `npm run cert`**, then restart both containers.
-
-**og-bridge** — Coolify → + New Resource → this repository, branch `main`:
+**og-bridge**: Coolify → + New Resource → this repository, branch **`night/online-offline`** for the drill (switch it to `main` after the merge):
 
 | Field | Value |
 |---|---|
@@ -118,62 +175,138 @@ ssh root@152.239.114.129 "chmod 644 /data/og/*"
 | Health check path | `/healthz` |
 | Storage | directory mount `/data/og` → `/etc/og-till` |
 
-Environment (from `vps/og-bridge/.env.example`): `OG_TILL_URL=https://10.8.0.2:8443`,
-`OG_TILL_CA=/etc/og-till/till.pem`, `OG_VPS_API_KEY=<step 4>`, `OG_MIRROR_URL` = the **session
-pooler** string with the user written `og_vps.<project-ref>` and the step-7 password,
-`OG_MIRROR_CA=/etc/og-till/supabase-ca.crt`, `OG_SNAPSHOT_USERS` from step 9.
+Environment (see `vps/og-bridge/.env.example`):
 
-**The proxy** (`deploy/shop-proxy`) — redeploy with `SHOP_UPSTREAM=https://10.8.0.2:8443`,
-`SHOP_TLS_NAME=og-till`, `BRIDGE_UPSTREAM=http://og-bridge:8787`, and storage `/data/og` →
-`/etc/nginx/og-till`. Its log prints the pinned certificate's fingerprint at every start.
+| Variable | Value |
+|---|---|
+| `OG_TILL_URL` | `https://10.8.0.2:8443` |
+| `OG_TILL_CA` | `/etc/og-till/till.pem` |
+| `OG_VPS_API_KEY` | the value from step 4 |
+| `OG_MIRROR_URL` | the **session pooler** string, with user `og_vps.<project-ref>` and the step 7 password |
+| `OG_MIRROR_CA` | `/etc/og-till/supabase-ca.crt` |
+| `OG_SNAPSHOT_USERS` | from step 9 |
 
-Checks:
+**The proxy** (`deploy/shop-proxy`): redeploy with these settings:
+
+| Setting | Value |
+|---|---|
+| `SHOP_UPSTREAM` | `https://10.8.0.2:8443` |
+| `SHOP_TLS_NAME` | `og-till` |
+| `BRIDGE_UPSTREAM` | `http://og-bridge:8787` |
+| Storage | `/data/og` → `/etc/nginx/og-till` |
+
+**CHANGED: nginx has been run for real now**: nginx 1.31.6 on this laptop, the real template,
+`tools/nginx-harness.mjs`. The first `nginx -t` **failed** on a duplicate `proxy_buffering` line;
+it is fixed on the branch. Then, through nginx to the branch's server (sandbox) with the till's
+certificate pinned, 14 checks passed:
+
+1. `nginx -t` passes on the real config, and nginx starts.
+2. The proxy's own `/__proxy_health` answers 200.
+3. `/` reaches the till through the pinned https upstream and serves the app's page.
+4. `/api/health` through the proxy is the till's own answer.
+5. `/api/vps/health` from outside is 404, even with the right key.
+6. The same key works on the tunnel side, so that 404 comes from the proxy, not the key.
+7. `/snapshot` reaches og-bridge and shows its sign-in page.
+8. A forged `X-OG-Client-IP` is overwritten by nginx.
+9. The rightmost untrusted `X-Forwarded-For` entry is taken as the visitor.
+10. A real sign-in works through the proxy.
+11. The first `/api/live` event arrives in under 2 s.
+12. The live stream is still open after 30 s.
+13. The sign-in rate limit trips.
+14. The API rate limit trips on a burst.
+
+With a **different** certificate pinned, 4 checks passed:
+
+1. nginx starts.
+2. `/api/` answers `503 shop_unreachable`.
+3. A page request gets the "shop's internet is down" page.
+4. The error log names the certificate verification failure.
+
+Each check was seen red once. One gap: removing the stream's buffering setting on purpose did
+**not** turn check 11 red (nginx streams server-sent events promptly anyway, and the till sends
+`X-Accel-Buffering: no`). A 5 s read timeout did turn it red.
+
+**Checks on the VPS**:
 
 ```bash
-# on the VPS — does the till answer the VPS's door?
+# on the VPS: does the till answer the VPS's door?
 curl -s --cacert /data/og/till.pem --resolve og-till:8443:10.8.0.2 \
   -H "Authorization: Bearer <OG_VPS_API_KEY>" https://og-till:8443/api/vps/health
 # og-bridge's view of the world: "live" while the till answers
 docker exec $(docker ps -qf name=og-bridge) wget -qO- localhost:8787/healthz
 ```
 
-**nginx was not run through `nginx -t` tonight** (no nginx, Docker or WSL on this laptop), only a
-structural lint. If the container will not start, its log names the line.
-
-**Confirm the visitor's real address arrives.** Sign in once from a phone on mobile data, then on
-the laptop:
+**Confirm that the visitor's real address arrives.** Sign in once from a phone on mobile data,
+then run this on the laptop:
 
 ```bash
 node -e "const {DatabaseSync}=require('node:sqlite');const d=new DatabaseSync('server/data/og.db',{readOnly:true});console.log(d.prepare('SELECT username, ip, at FROM login_attempts ORDER BY id DESC LIMIT 3').all())"
 ```
 
-The `ip` must be the phone's public address, not `10.x` or `172.x`. If it is Coolify's own, the
-Traefik version on the VPS does not append to `X-Forwarded-For` the way the config assumes; tell
-the next session.
+**Pass**: `ip` is the phone's public address, not `10.x` or `172.x`. (Ignore the `ns05-probe-*`
+rows. They are from the throttle check tonight.)
 
-## 9. Enrol the owner for the snapshot
+## 9. YOURS: enrol the owner for the snapshot
 
 ```bash
 node vps/og-bridge/src/snapshot-user.js
 ```
 
-It asks for a username and a password (12+ characters), prints `OG_SNAPSHOT_USERS=[…]` for og-bridge's
-environment, and draws a QR code. Scan it with an authenticator app on the owner's phone (Google
-Authenticator, Microsoft Authenticator, 2FAS). Redeploy og-bridge, then sign in at
-`https://shop.ogsports1.com/snapshot` with the password and the 6-digit code. Clear the terminal:
-the secret is on it.
+It prints `OG_SNAPSHOT_USERS=[…]` and a QR code. The owner scans the QR with an authenticator app.
+Redeploy og-bridge, then sign in at `https://shop.ogsports1.com/snapshot`. Clear the terminal
+afterwards, because the secret is on it.
+
+---
+
+## 10. The drill (after hours, before merging)
+
+This proves the design: the shop works when its internet does not, and the outside world is told
+the truth. Take about half an hour after closing. Steps 1–9 must be done. You need somebody at the
+till and a phone **on mobile data** (not the shop Wi-Fi).
+
+1. **Before.** On the phone, open `https://shop.ogsports1.com`. It must show the app, signed in.
+   Open `https://shop.ogsports1.com/snapshot` and note today's takings.
+   On the laptop, `cd server && npm run supabase:check` must be green (see step 7's note).
+2. **Pull the cable.** Unplug the shop router's **internet** cable (WAN), not its power: the Wi-Fi
+   must stay up. Start a 15-minute timer. Leave PIA alone; this is the line, not the laptop.
+3. **The till keeps selling.** On the till, ring up one real small sale (or a test product you void
+   afterwards), paid in cash.
+   **Pass**: the receipt prints, the sale appears in Invoices, and nothing on the till says it is
+   offline.
+4. **Outside says the internet is down.** On the phone (mobile data), reload
+   `https://shop.ogsports1.com`.
+   **Pass**: the amber **"The shop's internet is down"** screen, with a link to the snapshot, and
+   not "the server is not answering" or a browser error. On a phone with nothing cached, the proxy's
+   bilingual page with the same words.
+5. **The snapshot shows the right numbers, with their age.** Open `/snapshot` on the phone.
+   **Pass**: the figures from step 1 (without the sale from step 3, which is still on the till),
+   and a line saying how old they are, which keeps growing: "Last synced 14:02 — 6 min ago".
+   It must not claim to be live.
+6. **Reconnect** after 15 minutes. Plug the WAN cable back in.
+7. **The mirror catches up.** Within about a minute, the panel's Connections card shows the cloud
+   copy row green, and Settings → Mirror shows no rows waiting.
+   **Pass**: `/snapshot` says "The shop is online" with Open the shop, and its figures include step 3's sale, synced "just now".
+   `https://shop.ogsports1.com` shows the app again after a reload.
+8. **The check is green.** `cd server && npm run supabase:check`.
+   **Pass**: exit 0, and every table matches by primary key.
+
+If all eight pass, merge `night/online-offline` and do step 6's restart. If any fails, write down
+which step and what the screen said, and do not merge.
 
 ---
 
 ## Skipped tonight, and why
 
-- **Everything above**: administrator, the live `.env`, the live server, the VPS, Coolify, Hostinger
-  DNS and Supabase were all out of bounds. The SQL is in files; the settings are in `.env.example`.
-- **`nginx -t`**: no nginx, Docker or WSL here. A structural lint (`_nightshift/ns04/nglint.cjs`)
-  passed and was seen to fail on a missing `;` and a stray `{`.
-- **The handed-over zip** (`og-offline-network.zip`) was not in `_handover/` or `D:\Downloads`. Every
-  piece was written from the prompt's specs; `_handover/` is gitignored for when it turns up.
-- **`erp.submit()`**: left out, as asked.
-- **The write queue carries one route** — the hand-over sheet. Every other warehouse and delivery
-  write fails at least one of the four rules; the table is in CLAUDE.md, night shift 04.
-- **ZeroTier**: not left, not removed (step 1 is yours).
+- **`cert:trust`, the firewall, the WireGuard install**: `net session` said not elevated. The
+  firewall was forbidden in any case.
+- **The VPS, Coolify, Hostinger DNS, the live Supabase**: all out of bounds. Nothing was written
+  to any of them.
+- **Graceful stop after the live check**: the check script crashed on its own last request (a stale
+  keep-alive socket) before sending the stop. The server exited without its shutdown handler. The
+  database was checked afterwards: integrity ok, no broken foreign keys.
+- **The developer session from the live check** (`zizo`, created 22:43Z) is still in `sessions`.
+  Removing it meant writing to the live database outside the server, or starting it a second time,
+  and neither was allowed. It expires by itself in 14 days, or it ends when `zizo` signs out.
+- **`p3-sql` was not re-run after the rebase**: PGlite is not on this machine tonight. The rebase
+  changed nothing under `vps/` or `server/supabase/` (checked with `git diff`), so night shift 04's
+  result stands.
