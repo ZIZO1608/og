@@ -205,9 +205,20 @@ const LOCAL_ONLY = new Set(['sessions', 'login_attempts', 'applied_ops',
    password list. The absence of these four columns is the design working.
 
    Keyed by table so a column named pw_hash on some future table is not
-   silently exempted along with this one. */
+   silently exempted along with this one.
+
+   pw_box and last_login_at (migration 059) were never added here, so from 059
+   on this check went red on every run with "users missing in Supabase:
+   pw_box, last_login_at" — and day shift 06 was sent to ADD them to the
+   mirror. That would have been the wrong repair twice over. syncUsers names
+   its columns by hand and sends neither: pw_box is the READABLE password
+   sealed for the developer panel and crosses only inside pw_enc (lib/drift.js
+   already lists it as local-only since audit 06), and last_login_at is this
+   machine's record of who signed in here, which a restore has no use for.
+   A mirror column for either would sit NULL for ever — and a pw_box column
+   in Supabase is one careless SELECT * away from a password list. */
 const LOCAL_ONLY_COLS = {
-  users: new Set(['pw_hash', 'pw_salt', 'pw_hint', 'must_change'])
+  users: new Set(['pw_hash', 'pw_salt', 'pw_hint', 'must_change', 'pw_box', 'last_login_at'])
 };
 
 const tables = db.prepare(
@@ -427,7 +438,7 @@ if (ahead.some((a) => !WHOLE.has(a.t)) && !behind.length) {
 }
 if (ahead.some((a) => a.t === 'users')) {
   /* Never a script's call — see 7, which names them. */
-  console.log(`\n      ${DIM}users: no script deletes an account. See 7 below.${OFF}`);
+  console.log(`\n      ${DIM}users: the sync never deletes an account; 'npm run users:mirror' (dry run, then -- --apply) re-points their history to Former staff and removes them. See 7 below.${OFF}`);
 }
 if (ahead.some((a) => WHOLE.has(a.t) && a.t !== 'users')) {
   console.log(`\n      ${DIM}${ahead.filter((a) => WHOLE.has(a.t) && a.t !== 'users').map((a) => a.t).join(', ')}: ` +
