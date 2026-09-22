@@ -1,4 +1,4 @@
-# Tonight — after day shift 06 and 06b (22 Sep 2026)
+# Tonight — after day shifts 06, 06b and 07 (22 Sep 2026)
 
 For Ahmad. It replaces `MORNING.md`. Every item is marked:
 - **DONE TODAY**;
@@ -9,6 +9,37 @@ Branch `night/online-offline`, pushed, **not merged**. The live folder stays on 
 item 14. Secrets live in `D:\DESKTOP\OG System Demo\_secrets\` (git-ignored); this page names
 files, never values.
 
+## Day shift 07 — what changed
+
+- **DONE: `shop.ogsports1.com` is live.** A phone on mobile data reaches the till through the
+  VPS nginx, then WireGuard. The proxy is the Coolify resource built from **`main`**
+  (`deploy/shop-proxy`, 52dc392), not from this branch. The owner verified it, and the day
+  shift checked it again from the VPS:
+  - `/api/health` returns the till's own answer;
+  - `/api/vps/health` answers 404 from outside;
+  - Let's Encrypt `YR2`, valid to 21 Dec 2026;
+  - the pinned certificate shows `DNS:og-till` and `IP Address:10.8.0.2`;
+  - no errors in the proxy's log.
+  **A push to `main` redeploys that proxy.**
+- **DONE: the tunnel works on the shop's own line, PIA off.** Owner: `ping 10.8.0.1` 11/11, about
+  53 ms. That settles E.
+- **DONE: Supabase works on the shop's own line, PIA off.** `supabase:check` matched 57 tables row
+  for row. It was 58 after the next item.
+- **DONE: the 8 ghost accounts are gone from the mirror.** Owner:
+  `npm --prefix server run users:mirror -- --apply`. It removed exactly 8 and moved 0 references.
+  There are 13 accounts on both sides. That settles item 8 and `032`.
+- **DONE: the checker fix is on `main`** (06d893a, from 096a66b). `supabase:check` on main is fully
+  green: 58 tables, 13 accounts.
+- **DONE, NOT IN EFFECT: `OG_PROXY_ADDR=10.8.0.1` is in the live `server/.env`.** It is the only
+  line added. The old file is `server/.env.bak-proxy`.
+  - It takes effect at the next **Stop → Start** in the panel. Until then, every outside visitor is
+    10.8.0.1 to the till, sharing one 20-failure sign-in limit.
+  - It was proved first on a sandbox from the VPS through the tunnel (details in `main`'s
+    CLAUDE.md, Day shift 07).
+  - `.env.next` still passes `apply.ps1`'s staging check: it now adds only `OG_VPS_API_KEY`.
+- **DONE: `DRILL-TONIGHT.md` on `main`** is the outage drill for main as it is. The full drill below
+  (item 15) waits for this branch.
+
 ## Only you can do these (consoles the day shift cannot reach)
 
 **C. YOURS (Supabase dashboard → SQL Editor): four pastes, in this order, each on its own.**
@@ -18,14 +49,18 @@ files, never values.
    `ALTER ROLE og_vps PASSWORD '<paste>';`. Clear the editor afterwards.
 4. `server/supabase/031_till_status.sql`. Its last line prints `lineage_id` and `beat_at`.
 
-Then `server/supabase/032_extra_accounts.sql` **step 1 only** (a `SELECT`) to see the 8 accounts,
-and optionally step 2 (switch the three active ones off). Download the SSL certificate: Project
+~~Then `server/supabase/032_extra_accounts.sql`~~ **Not needed: the 8 accounts were removed (day shift 07).** ~~**step 1 only** (a `SELECT`) to see the 8 accounts,
+and optionally step 2 (switch the three active ones off).~~ Download the SSL certificate: Project
 Settings → Database → **SSL**. It goes to the VPS in D.
 
-**D. YOURS (Coolify), after C:** `DAY06-COOLIFY.md`. Both resources are built from
-`night/online-offline`.
+**D. YOURS (Coolify), after C:** `DAY06-COOLIFY.md`, **og-bridge only**, which is built from
+`night/online-offline`. The shop-proxy half is DONE (day shift 07); it is built from `main`, which
+now carries the same `deploy/shop-proxy`. Do not switch the proxy to the branch.
 
-**E. YOURS (at the shop, PIA OFF): the one test that decides the route.** No install and no admin
+**E. DONE (day shift 07, the owner): the tunnel answers on the shop line with PIA off** (ping
+10.8.0.1 11/11). The verdict script below is no longer needed; it is kept for a new line or ISP.
+
+~~The one test that decides the route.~~ No install and no admin
 needed:
 
 ```powershell
@@ -77,11 +112,12 @@ It refuses while PIA is connected, on purpose.
    - ZeroTier stays installed and its service keeps running, with no networks.
    - To rejoin (administrator): `zerotier-one_x64.exe -q join 76fc96e49897c3c8`, or from ZeroTier
      Central.
-7. **DONE TODAY: `supabase:check`'s two red columns were the check's own mistake.** `pw_box` and
+7. **DONE TODAY, and on `main` since day shift 07 (06d893a): `supabase:check`'s two red columns were the check's own mistake.** `pw_box` and
    `last_login_at` are local-only by design (see the commit), and the check on the branch now
    knows it. No column is added to Supabase: a `pw_box` there would be one careless query away
    from a password list.
-8. **YOURS: the 8 accounts in the mirror.**
+8. **DONE (day shift 07, the owner): the 8 accounts in the mirror.** `users:mirror -- --apply`
+   removed exactly 8 (0 references moved); 13 accounts on both sides. What it was:
    - Ids 1–5: `hussam`, `lubna`, `maher`, `talal`, `yalla`.
    - Id 6: `mirrortest`, **active**.
    - Id 7: `owner`, **active**.
@@ -101,7 +137,7 @@ It refuses while PIA is connected, on purpose.
 9. **DONE TODAY: two secrets generated.** `_secrets/og_vps.txt` is the `og_vps` database password
    (C.3, and the `OG_MIRROR_URL` in D). `_secrets/og_vps_api_key.txt` is og-bridge's key to the
    till (D, and `server/.env.next`).
-10. **DONE TODAY: `server/.env.next` staged.** It is the live `.env` plus `OG_PROXY_ADDR=10.8.0.1`
+10. **DONE TODAY: `server/.env.next` staged.** **Since day shift 07 the live `.env` already has `OG_PROXY_ADDR=10.8.0.1`, so `.env.next` now adds only `OG_VPS_API_KEY`; the staging check was re-run and still passes (0 lines lost).** It is the live `.env` plus `OG_PROXY_ADDR=10.8.0.1`
     and `OG_VPS_API_KEY`. `OG_ORIGINS` already listed `https://shop.ogsports1.com`. The live
     `.env` was **not** touched.
 11. **YOURS: enrol the owner for `/snapshot`.** No account was created today. Either:
@@ -159,4 +195,4 @@ It refuses while PIA is connected, on purpose.
 15. **YOURS: the drill.** `tools/tonight/drill.md`, with PIA **off**. It includes the switch back
     to `main` if anything fails. The shop must open tomorrow on `main` unless all eight steps
     passed.
-16. **YOURS, after the proxy works:** Settings → `shop.public_url` = `https://shop.ogsports1.com`.
+16. **YOURS, now (the proxy works):** Settings → `shop.public_url` = `https://shop.ogsports1.com`.
