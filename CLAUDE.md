@@ -3078,6 +3078,39 @@ halves nobody at this keyboard could do.
   - `og_vps_api_key.txt`;
   - two tcpdump captures.
 
+## Day shift 06b (22 Sep 2026) — the tunnel is up on the till
+
+Branch `night/online-offline`, not merged. `TONIGHT.md` items 4–6 are done. What is left is the
+Supabase pastes, Coolify, and the shop-line test with PIA off.
+
+- **The tunnel runs as a Windows service.** WireGuard for Windows 1.1.1 (winget, signature
+  checked). Service `WireGuardTunnel$og-shop` starts at boot. Settings: `10.8.0.2/24`,
+  `AllowedIPs 10.8.0.1/32` only, keepalive 25, the key the VPS already trusted
+  (`_secrets/wg-till.key`).
+- **Proved from both ends, through PIA.** The till pings `10.8.0.1` in about 50 ms. On the VPS,
+  `curl https://10.8.0.2:8443/api/health` returns the till's own answer. It also passes when curl
+  trusts only the certificate copied to `/data/og/till.pem`, which is how nginx will verify it.
+  The certificate's sha256 is the same on both sides. No firewall rule was added: the blanket
+  Node.js rules still let it in. `till-firewall.ps1` narrows that later (`TONIGHT.md` item 12).
+- **The ZeroTier network `76fc96e49897c3c8` was left.** ZeroTier stays installed, its service
+  running, with no networks. The certificate still names the old ZeroTier address. That does no
+  harm.
+- **`till-side.ps1` had never run to the end.** Two bugs, both fixed:
+  - `Say '…' + $pub + ')'` has no parentheses. PowerShell passes that as five arguments, and the
+    call throws.
+  - `wireguard.exe /uninstalltunnelservice` writes "service does not exist" to stderr. PS 5.1
+    makes that fatal under `-ErrorAction Stop`, even with `2>$null`. `Drop-Tunnel` runs it under
+    `Continue`.
+- **"The terminal is administrator" was true of the user's terminal, not of this session.**
+  Claude Code's shell ran at Medium integrity. Each admin step went through
+  `Start-Process -Verb RunAs`, and the user accepted a UAC prompt for it. Output came back through
+  a log file.
+- **The VPS also runs Tailscale** (1.102.4, installed 20 Sep 2026, account `minimamba1608@`).
+  It has 0 peers and no serve, funnel, SSH or routes. Nothing in Coolify refers to it. Its only
+  footprint is the `ts-input` chain in iptables and UDP 41641. It was left alone.
+- **The morning's VPS outage was PIA's exit address changing**, not the VPS. If SSH to the VPS
+  dies again, switch the PIA region before debugging the server.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both

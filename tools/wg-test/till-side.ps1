@@ -43,6 +43,10 @@ $VpsHost = $Endpoint.Split(':')[0]
 
 function Say([string]$t, [string]$c = 'Gray') { Write-Host $t -ForegroundColor $c }
 
+# wireguard.exe writes "no such service" to stderr when there is nothing to
+# remove, and PS 5.1 turns that into a terminating error under Stop.
+function Drop-Tunnel { $ErrorActionPreference = 'Continue'; & $WgExe /uninstalltunnelservice $Name 2>$null | Out-Null }
+
 # ---- 1. WireGuard for Windows present? ------------------------------------
 if (-not (Test-Path $WgExe) -or -not (Test-Path $Wg)) {
   Say 'WireGuard for Windows is not installed.' Red
@@ -80,7 +84,7 @@ if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 }
 
 if ($Remove) {
-  & $WgExe /uninstalltunnelservice $Name 2>$null
+  Drop-Tunnel
   Say ('Tunnel ' + $Name + ' removed (keys kept in ' + $ConfDir + ').') Green
   exit 0
 }
@@ -96,7 +100,7 @@ $priv = (Get-Content $KeyFile -Raw).Trim()
 $pub = ($priv | & $Wg pubkey).Trim()
 Say ''
 Say ('THIS LAPTOP''S PUBLIC KEY:  ' + $pub) Cyan
-Say '(on the VPS:  bash vps-side.sh ' + $pub + ')'
+Say ('(on the VPS:  bash vps-side.sh ' + $pub + ')')
 
 if (-not $ServerPublicKey) {
   Say ''
@@ -117,7 +121,7 @@ $lines = @(
   'PersistentKeepalive = 25'
 )
 [IO.File]::WriteAllLines($Conf, $lines)
-& $WgExe /uninstalltunnelservice $Name 2>$null | Out-Null
+Drop-Tunnel
 Start-Sleep -Seconds 2
 & $WgExe /installtunnelservice $Conf
 Say ('Tunnel ' + $Name + ' installed (AllowedIPs ' + $Vps + '/32 only - nothing else goes through it).') Green
@@ -152,7 +156,7 @@ foreach ($p in 443, 22) {
   $t = Test-NetConnection -ComputerName $VpsHost -Port $p -WarningAction SilentlyContinue
   if ($t.TcpTestSucceeded) { $tcp = $true; Say ('  the VPS answers on TCP ' + $p) }
 }
-& $WgExe /uninstalltunnelservice $Name 2>$null | Out-Null
+Drop-Tunnel
 if ($tcp) {
   Say 'UDP BLOCKED - no handshake in 60 s while the VPS answers on TCP. The shop''s ISP drops UDP.' Red
   Say 'The tunnel was removed again. Read tools/wg-test/FALLBACK.md.'

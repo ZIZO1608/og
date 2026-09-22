@@ -1,4 +1,4 @@
-# Tonight — after day shift 06 (22 Sep 2026)
+# Tonight — after day shift 06 and 06b (22 Sep 2026)
 
 For Ahmad. It replaces `MORNING.md`. Every item is marked:
 - **DONE TODAY**;
@@ -11,15 +11,6 @@ files, never values.
 
 ## Only you can do these (consoles the day shift cannot reach)
 
-**A. YOURS: change `abode`'s password FIRST.** Night shift 05 printed it into a session transcript.
-The account row has not changed since 17 Sep, so the leaked password still works. Sign in as a
-developer → Settings → Access → `abode` → **New password**, and give it to him.
-
-**B. YOURS (hPanel): the VPS stopped answering SSH and WireGuard at about 09:14 UTC.** The web
-ports still answer. It looks like a reboot followed by something dropping TCP 22 and UDP 51820.
-`DAY06-VPS-STEPS.md` step 1 has the hPanel browser-terminal commands and the firewall check.
-Everything that needs the VPS waits for this.
-
 **C. YOURS (Supabase dashboard → SQL Editor): four pastes, in this order, each on its own.**
 1. `server/supabase/029_second_lock.sql`. It only revokes, so it is safe to run twice.
 2. `server/supabase/030_erp_access.sql`.
@@ -31,7 +22,7 @@ Then `server/supabase/032_extra_accounts.sql` **step 1 only** (a `SELECT`) to se
 and optionally step 2 (switch the three active ones off). Download the SSL certificate: Project
 Settings → Database → **SSL**. It goes to the VPS in D.
 
-**D. YOURS (Coolify), after B, C and item 6:** `DAY06-COOLIFY.md`. Both resources are built from
+**D. YOURS (Coolify), after C:** `DAY06-COOLIFY.md`. Both resources are built from
 `night/online-offline`.
 
 **E. YOURS (at the shop, PIA OFF): the one test that decides the route.** No install and no admin
@@ -45,7 +36,7 @@ powershell -ExecutionPolicy Bypass -File tools\wg-test\shop-verdict.ps1
 Run it after item 14 (it is branch code), or now from any checkout of the branch.
 - **WORKS:** go on.
 - **UDP BLOCKED:** read `tools/wg-test/FALLBACK.md`; do not deploy the proxy yet.
-- **VPS UNREACHABLE:** do B first.
+- **VPS UNREACHABLE:** the VPS answered through PIA today, so look at the VPS in hPanel.
 
 It refuses while PIA is connected, on purpose.
 
@@ -62,28 +53,30 @@ It refuses while PIA is connected, on purpose.
    WireGuard handshake from Node. The VPS's tcpdump showed the packets arriving before the peer
    existed and a 148 → 92 byte answer after. This proves PIA's path, **not** the shop's bare line;
    that is E.
-4. **YOURS (administrator): WireGuard for Windows and the tunnel service.** This shell was not
-   elevated. `net session` said so, although the brief said otherwise. In an **Administrator**
-   PowerShell:
-
-   ```powershell
-   winget install --id WireGuard.WireGuard -e
-   cd "D:\DESKTOP\OG System Demo"
-   powershell -ExecutionPolicy Bypass -File tools\wg-test\till-side.ps1 -KeyFile "D:\DESKTOP\OG System Demo\_secrets\wg-till.key" -ServerPublicKey p3m2Hr3XweLmuD6qXhfs97NQ5o1HZvcqpNu0wx0NThc=
-   ```
-
-   - `-KeyFile` reuses the key the VPS already trusts. Without it the script would make a new key,
-     and the VPS would not know it.
-   - At home with PIA on, add `-AllowPia`.
-   - The tunnel is split: `AllowedIPs 10.8.0.1/32` only, `PersistentKeepalive 25`, a service
-     that starts at boot.
-   - **Pass:** `WORKS - … answers in N ms`.
-5. **BLOCKED (VPS dark, B): the till's certificate on the VPS, the `dig`, and the `curl` through
-   the tunnel.** Commands and pass values are in `DAY06-VPS-STEPS.md` step 2.
-6. **YOURS: leave ZeroTier**, network **`76fc96e49897c3c8`**, once item 4 says WORKS. It needs
-   administrator:
-   `& "C:\ProgramData\ZeroTier\One\zerotier-one_x64.exe" -q leave 76fc96e49897c3c8`.
-   Rejoin from ZeroTier Central if ever wanted. Do not uninstall it.
+4. **DONE (06b): WireGuard for Windows and the tunnel service.**
+   - WireGuard 1.1.1 from winget: winget checked the installer's hash, and the Authenticode
+     signature (`WireGuard LLC`) is valid.
+   - Tunnel `og-shop`: `10.8.0.2/24`, `AllowedIPs 10.8.0.1/32` only, `PersistentKeepalive 25`,
+     with the key from `_secrets/wg-till.key`.
+   - Service `WireGuardTunnel$og-shop`: running, starts automatically at boot.
+   - `till-side.ps1 -AllowPia` said `WORKS - 10.8.0.1 answers in 55 ms (4/4)`.
+   - Two script bugs were fixed on the way (CLAUDE.md, Day shift 06b).
+   - To remove the tunnel: `till-side.ps1 -Remove` (administrator).
+5. **DONE (06b): the tunnel proved from the VPS end, the certificate copied, the `dig` done.**
+   - `curl -sk https://10.8.0.2:8443/api/health` on the VPS returns the till's own answer
+     (`"shop":"OG Sports"`).
+   - `/data/og/till.pem` on the VPS: the sha256 is `9dd18412…5fe0` on both sides, and
+     `openssl x509 -checkhost og-till` matches.
+   - A curl that trusts only that certificate
+     (`--cacert /data/og/till.pem --resolve og-till:8443:10.8.0.2`) gets the same answer. That is
+     what nginx will do.
+   - `dig +short shop.ogsports1.com A` gives `152.239.114.129`, from the VPS and from 1.1.1.1.
+   - All of this went through PIA. The shop's bare line is still E.
+6. **DONE (06b): left ZeroTier network `76fc96e49897c3c8`** ("og vps", was 10.132.90.237), after
+   item 5 passed.
+   - ZeroTier stays installed and its service keeps running, with no networks.
+   - To rejoin (administrator): `zerotier-one_x64.exe -q join 76fc96e49897c3c8`, or from ZeroTier
+     Central.
 7. **DONE TODAY: `supabase:check`'s two red columns were the check's own mistake.** `pw_box` and
    `last_login_at` are local-only by design (see the commit), and the check on the branch now
    knows it. No column is added to Supabase: a `pw_box` there would be one careless query away
