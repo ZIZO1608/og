@@ -346,6 +346,14 @@ async function collectInbox() {
   inboxBusy = true;
   try {
     const out = await Inbox.collect({ lineage: Lineage.localId({ create: false }) });
+    /* Night requests (lib/requests.js) ride the same pass, and say what they
+       did on their own line whatever the og-track half answered. */
+    const rq = out.requests || {};
+    if (rq.stored || rq.conflicts || rq.unreadable) {
+      console.log(`  [requests] ${rq.stored || 0} new waiting for the shop` +
+                  (rq.unreadable ? `, ${rq.unreadable} unreadable` : '') +
+                  (rq.conflicts ? `, ${rq.conflicts} decided elsewhere — see above` : ''));
+    }
     if (out.error || out.skipped) {
       if (!inboxFailing) console.log(`  [inbox] not collected: ${out.error || out.skipped}`);
       inboxFailing = true;

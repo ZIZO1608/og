@@ -31,6 +31,10 @@
       are reported as rejected with that code. Anything else — a locked
       database, a bug — leaves the item pending for the next pass.
    5. NEVER THROWS. The mirror and the till do not wait for this.
+   6. NIGHT REQUESTS ride the same pass (lib/requests.js, 035's
+      inbox.requests): taken after og-track's items, in their own try, so a
+      failure of either never stops the other. They are NOT applied — they
+      wait in "Waiting for the shop" for a person to accept or reject.
    ========================================================================== */
 
 import { get, nowIso } from './db.js';
@@ -40,6 +44,7 @@ import * as Reviews from './reviews.js';
 import * as Tracking from './tracking.js';
 import * as Live from './live.js';
 import * as Telegram from './telegram.js';
+import * as Requests from './requests.js';
 
 const BATCH = 50;
 const KEEP_MS = 30 * 24 * 60 * 60 * 1000;
@@ -148,12 +153,16 @@ async function pass(lineage) {
 
 /* One pass over what is waiting. { taken, applied, rejected, pending,
    reported, unreported }, { skipped: reason } (not_owner: this laptop does
-   not own the mirror), or { error } when Supabase could not be asked. */
+   not own the mirror), or { error } when Supabase could not be asked — and,
+   beside whichever of those, .requests: what lib/requests.js collected. */
 export async function collect({ lineage } = {}) {
   if (!lineage) return { skipped: 'no_lineage' };
+  let out;
   try {
-    return await pass(lineage);
+    out = await pass(lineage);
   } catch (e) {
-    return { error: String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 300) };
+    out = { error: String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 300) };
   }
+  out.requests = await Requests.collect({ lineage });
+  return out;
 }

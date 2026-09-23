@@ -65,6 +65,7 @@ import * as Tracking from './lib/tracking.js';
 import * as Office from './lib/office-alerts.js';
 import * as Push from './lib/webpush.js';
 import * as Reviews from './lib/reviews.js';
+import * as Requests from './lib/requests.js';
 import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
 import * as Storage from './lib/storage.js';
@@ -1465,6 +1466,19 @@ router.add('GET /api/orders/bootstrap', requirePerm(['delivery.desk', 'delivery.
 router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
   const b = await readJson(ctx.req);
   const str = (v) => (typeof v === 'string' && v ? v : null);
+  /* An order the desk is saving for a night request ("Open in the order
+     desk", lib/requests.js): the request must still be waiting, and the
+     delivery note carries its marker, which is how the request is known to
+     be an order on any laptop. A retried Save (the same opId, already
+     applied) is let through so it gets its first order back. */
+  const reqRef = str(b.requestRef);
+  let marker = '';
+  if (reqRef) {
+    try { marker = Requests.forOrder(reqRef); }
+    catch (e) {
+      if (!(e.code === 'decided' && str(b.opId) && Requests.appliedOp(str(b.opId)))) return requestFail(ctx.res, e);
+    }
+  }
   try {
     const out = Orders.create({
       lines: Array.isArray(b.lines) ? b.lines : [],
@@ -1473,7 +1487,7 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       currency: str(b.currency),
       discount: Number(b.discount) || 0,
       channel: str(b.channel),
-      note: str(b.note),
+      note: marker ? (marker + (str(b.note) || '')).trim() : str(b.note),
       dest: b.dest && typeof b.dest === 'object' ? b.dest : {},
       method: b.method,
       companyId: str(b.companyId),
@@ -1488,6 +1502,7 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       unlimitedDiscount: Auth.can(ctx.user, 'discount.unlimited'),
       opId: str(b.opId)
     });
+    if (reqRef && !out.replayed) Requests.markAccepted(reqRef, out.sale.id, ctx.user.id);
     Live.notify('og', { deliveries: true });
     if (!out.replayed) Tracking.moved(out.sale.id, ctx.user.id);
     sendOk(ctx.res, {
@@ -1521,6 +1536,55 @@ router.add('POST /api/orders/:id/payments', requirePerm(['delivery.desk', 'debt.
 
 router.add('GET /api/orders/last-destination/:id', requirePerm('delivery.desk', (ctx) => {
   sendOk(ctx.res, { dest: Orders.lastDestination(Number(ctx.params.id)) });
+}));
+
+/* ---- "Waiting for the shop": night requests (061, lib/requests.js) ------
+   What staff left at /night while the shop was shut. Nothing here happened
+   by itself: Accept makes the order through Orders.create — the function
+   POST /api/orders calls — and Reject records why. The office's job, so
+   delivery.desk, like the order desk; adding a NEW customer on the way also
+   needs customer.write, as it does there. */
+function requestFail(res, e) {
+  if (e && e.status) {
+    return sendErrorDetail(res, e.status, e.code, e.message,
+      { state: e.state ?? undefined, saleId: e.saleId ?? undefined, skus: e.skus ?? undefined });
+  }
+  return orderFail(res, e);
+}
+
+router.add('GET /api/requests', requirePerm('delivery.desk', (ctx) => {
+  sendOk(ctx.res, Requests.list());
+}));
+
+router.add('POST /api/requests/:ref/accept', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const r = Requests.accept(ctx.params.ref, b, ctx.user);
+    Live.notify('og', { deliveries: true });
+    if (r.out && !r.out.replayed) Tracking.moved(r.saleId, ctx.user.id);
+    const d = DB.get();
+    sendOk(ctx.res, {
+      sale: r.out ? scrubCost(r.out.sale, ctx.user) : { id: r.saleId },
+      order: Deliveries.bySale(r.saleId, ctx.user),
+      money: r.out ? r.out.money : Orders.money(d, r.saleId),
+      replayed: !r.out || !!r.out.replayed,
+      request: Requests.one(ctx.params.ref)
+    });
+  } catch (e) { requestFail(ctx.res, e); }
+}));
+
+router.add('POST /api/requests/:ref/reject', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { request: Requests.reject(ctx.params.ref, b, ctx.user) });
+  } catch (e) { requestFail(ctx.res, e); }
+}));
+
+router.add('POST /api/requests/:ref/prepare', requirePerm('delivery.desk', async (ctx) => {
+  await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { draft: Requests.prepare(ctx.params.ref, ctx.user) });
+  } catch (e) { requestFail(ctx.res, e); }
 }));
 
 /* ------------------------------------------------------------ the handover
