@@ -75,6 +75,14 @@ const DEBOUNCE_MS = 2 * 1000;
 const TICK_MS = 10 * 1000;
 const RECHECK_LINEAGE_MS = 10 * 60 * 1000;
 const INBOX_MS = 60 * 1000;           /* og-track's inbox, lib/inbox.js */
+/* The beat (night shift 04). og-bridge on the VPS tells "the shop's internet
+   is down" from "the shop is idle" by how old the mirror's `shop` row is, and
+   an idle shop pushes nothing — so every two minutes a beat run does the
+   ordinary guarded fast push and, ONLY when nothing moved and nothing is
+   waiting, stamps the row. A table stuck waiting stops the beat on purpose:
+   the snapshot then says the mirror is old, which is the truth. Ten minutes
+   of silence (five beats) is og-bridge's line. */
+const BEAT_MS = 2 * 60 * 1000;
 const BACKOFF_MIN_MS = 10 * 1000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 
@@ -101,6 +109,7 @@ let tick = null;
 let fullTimer = null;
 let lineageTimer = null;
 let inboxTimer = null;
+let beatTimer = null;
 let inboxBusy = false;
 let inboxFailing = false;
 let unhook = null;
@@ -157,6 +166,7 @@ async function run(kind) {
     out = kind === 'full'
       ? await Mirror.fullRun({ log })
       : await Mirror.pushChanged({ log });
+    if (kind === 'beat' && !out.pushed && !out.behind && out.ok) await Mirror.beat();
     /* A tick that found nothing is not a run anybody needs counted. */
     if (kind === 'full' || out.pushed) state.runs++;
     state.lastOkAt = new Date().toISOString();
@@ -321,6 +331,8 @@ function arm() {
   fullTimer.unref();
   inboxTimer = setInterval(collectInbox, INBOX_MS);
   inboxTimer.unref();
+  beatTimer = setInterval(() => run('beat'), BEAT_MS);
+  beatTimer.unref();
 }
 
 /* og-track's inbox (lib/inbox.js): the reviews and Notify me customers left on
@@ -329,14 +341,15 @@ function arm() {
    decide whether this laptop owns the mirror. A failure is said once, not
    every minute, and a pass that found nothing says nothing. */
 async function collectInbox() {
-  if (state.mode !== 'live' || inboxBusy) return;
+  if (state.mode !== 'live') return { skipped: 'mirror_' + state.mode };
+  if (inboxBusy) return { skipped: 'busy' };
   inboxBusy = true;
   try {
     const out = await Inbox.collect({ lineage: Lineage.localId({ create: false }) });
     if (out.error || out.skipped) {
       if (!inboxFailing) console.log(`  [inbox] not collected: ${out.error || out.skipped}`);
       inboxFailing = true;
-      return;
+      return out;
     }
     if (inboxFailing) console.log('  [inbox] collecting again');
     inboxFailing = false;
@@ -345,13 +358,21 @@ async function collectInbox() {
                   (out.pending ? `, ${out.pending} left pending` : '') +
                   (out.unreported ? ` — not reported back yet: ${out.unreported}` : ''));
     }
+    return out;
   } catch (err) {
     if (!inboxFailing) console.log(`  [inbox] not collected: ${reason(err)}`);
     inboxFailing = true;
+    return { error: reason(err) };
   } finally {
     inboxBusy = false;
   }
 }
+
+/* og-bridge's POST /api/vps/collect: a customer just left a review on the
+   public page and the VPS says so, rather than waiting for the minute. The
+   SAME function the timer calls, so the one `inboxBusy` flag makes the two
+   single-flight — a second caller is told `busy`, never run twice. */
+export function collectInboxNow() { return collectInbox(); }
 
 export function start() {
   if (state.mode !== 'off' || lineageTimer) return;
@@ -425,6 +446,7 @@ export function stop() {
   if (fullTimer) { clearInterval(fullTimer); fullTimer = null; }
   if (lineageTimer) { clearInterval(lineageTimer); lineageTimer = null; }
   if (inboxTimer) { clearInterval(inboxTimer); inboxTimer = null; }
+  if (beatTimer) { clearInterval(beatTimer); beatTimer = null; }
   if (unhook) { unhook(); unhook = null; }
   state.mode = 'off';
 }

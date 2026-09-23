@@ -95,6 +95,11 @@ var API = (function () {
           var data = null;
           try { data = text ? JSON.parse(text) : null; } catch (e) { /* not json */ }
 
+          /* Night shift 04: every answer says whether the till was reached
+             (js/reach.js). The VPS proxy's own shop_unreachable is NOT the
+             till speaking. */
+          if (typeof Reach !== 'undefined') Reach.report(res.status, data && data.code);
+
           if (res.ok) return data;
 
           var code = (data && data.code) || 'server_error';
@@ -116,6 +121,7 @@ var API = (function () {
         /* fetch rejects for exactly two reasons worth separating: we aborted
            it, or the network never carried it. Both look identical to the
            caller otherwise, and they need different advice. */
+        if (typeof Reach !== 'undefined') Reach.report(0, null);
         if (err && err.name === 'AbortError') {
           throw ApiError('timeout', MESSAGES.timeout, 0);
         }
@@ -123,18 +129,41 @@ var API = (function () {
       });
   }
 
+  /* WRITES GO THROUGH THE QUEUE'S DOOR (night shift 04, js/writequeue.js).
+     A write that is not on its list is handed straight back to request() and
+     behaves exactly as it always did; one that is on it may answer
+     { ok: true, queued: true } — saved on this device, sent by itself. */
+  function write(method, path, body) {
+    if (typeof WriteQueue !== 'undefined' && WriteQueue.allowed(method, path)) {
+      return WriteQueue.send(method, path, body);
+    }
+    return request(method, path, body);
+  }
+
+  if (typeof Reach !== 'undefined') Reach.start();
+  if (typeof WriteQueue !== 'undefined') {
+    WriteQueue.start({
+      currentUser: function () { return typeof Auth !== 'undefined' && Auth.user ? Auth.user() : null; },
+      transport: request,
+      onSent: function (n) {
+        if (typeof toast === 'function' && typeof t === 'function') toast(t('wq_title'), t(n === 1 ? 'wq_sent_1' : 'wq_sent_n').replace('{n}', n), 'ok');
+        if (typeof Deliveries !== 'undefined' && Deliveries.load) Deliveries.load();
+      }
+    });
+  }
+
   return {
     live: LIVE,
 
     get:   function (path) { return request('GET', path); },
-    post:  function (path, body) { return request('POST', path, body || {}); },
-    put:   function (path, body) { return request('PUT', path, body || {}); },
+    post:  function (path, body) { return write('POST', path, body || {}); },
+    put:   function (path, body) { return write('PUT', path, body || {}); },
     /* Editing one field of a product or a customer is a partial update, and
        the routes are written as PATCH because that is what they do. A PUT
        here would say "replace the whole row", which is the request that
        blanks a phone number by leaving it out. */
-    patch: function (path, body) { return request('PATCH', path, body || {}); },
-    del:   function (path) { return request('DELETE', path); },
+    patch: function (path, body) { return write('PATCH', path, body || {}); },
+    del:   function (path) { return write('DELETE', path); },
 
     friendly: friendly,
 
@@ -161,10 +190,26 @@ var API = (function () {
       return request('GET', '/api/health')
         .then(function () { return 'up'; })
         .catch(function (err) {
+          /* 'road' (night shift 04): the VPS proxy in front of
+             shop.ogsports1.com answered, but the till behind it did not —
+             the laptop is fine, the shop's internet is not. nginx says so
+             with its own code; a bare 502/504 on a public name is read the
+             same way, in case an older proxy is still in front. */
+          if (err && err.code === 'shop_unreachable') return 'road';
+          if (err && (err.status === 502 || err.status === 504) && API.publicHost()) return 'road';
           /* An HTTP status means SOMETHING is serving this origin and it has
              no /api. Status 0 means the request never arrived anywhere. */
           return (err && err.status > 0) ? 'none' : 'down';
         });
+    },
+
+    /* Is this page on a public name (shop.ogsports1.com) rather than the
+       shop's own wifi address, localhost or a .local name? */
+    publicHost: function () {
+      var h = String(location.hostname || '').toLowerCase();
+      if (!h || h === 'localhost' || /.local$/.test(h) || h.indexOf('.') < 0) return false;
+      if (/^d+.d+.d+.d+$/.test(h) || h.indexOf(':') >= 0) return false;
+      return true;
     }
   };
 })();

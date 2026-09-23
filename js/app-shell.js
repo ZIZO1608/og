@@ -425,6 +425,11 @@ function renderTopbar() {
             '<path d="M21 4v5h-5M3 20v-5h5"/></svg></button>'
       : '') +
 
+    /* What this device is holding for the till (night shift 04): shown only
+       while something waits (amber) or was refused (red). Its own slot, so
+       the queue repaints it without a render. */
+    '<span id="wqSlot">' + wqButton() + '</span>' +
+
     '<div class="seg">' +
       '<button data-act="lang" data-val="en" class="' + (OG.lang === 'en' ? 'on' : '') + '">EN</button>' +
       '<button data-act="lang" data-val="ar" class="' + (OG.lang === 'ar' ? 'on' : '') + '">ع</button>' +
@@ -626,3 +631,44 @@ function runSearch(q) {
   if (!h) h = '<div class="sr-item muted">' + t('no_results') + '</div>';
   box.innerHTML = '<div class="search-results">' + h + '</div>';
 }
+
+
+/* ---- the write queue's button (night shift 04, js/writequeue.js) ----------
+   The Sync button's dot, for the one list only this device holds: amber while
+   a write waits for the shop's wifi, red when the shop refused one. Nothing at
+   all while the list is empty. */
+function wqButton() {
+  if (typeof WriteQueue === 'undefined') return '';
+  var list = WriteQueue.list();
+  if (!list.length) return '';
+  var refused = list.some(function (x) { return x.state === 'refused'; });
+  var label = t('wq_title') + ' · ' + list.length;
+  return '<button class="icon-btn wq-btn" data-act="wq-open" data-mode="' + (refused ? 'bad' : 'warn') + '"' +
+    ' title="' + esc(label) + '" aria-label="' + esc(label) + '">' +
+    '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="M4 7h16M4 12h10M4 17h7"/><path d="M17 14v6M14 17h6"/></svg>' +
+    '<span class="wq-count"><bdi dir="ltr">' + list.length + '</bdi></span></button>';
+}
+function wqPaint() {
+  var slot = document.getElementById('wqSlot');
+  if (slot) slot.innerHTML = wqButton();
+  if (document.getElementById('wqList')) document.getElementById('wqList').innerHTML = wqListHtml();
+}
+function wqListHtml() {
+  var list = typeof WriteQueue !== 'undefined' ? WriteQueue.list() : [];
+  if (!list.length) return '<div class="cart-empty"><b>' + esc(t('wq_empty')) + '</b></div>';
+  var head = WriteQueue.paused() ? '<p class="wq-note wq-bad">' + esc(t('wq_paused')) + '</p>' : '';
+  return head + list.map(function (x) {
+    var what = x.kind === 'hand'
+      ? t('wq_kind_hand').replace('{id}', decodeURIComponent((x.path.split('/')[3]) || ''))
+      : x.method + ' ' + x.path;
+    var state = x.state === 'refused'
+      ? '<span class="wq-state wq-bad">' + esc(t('wq_state_refused')) + (x.message ? ' — ' + esc(x.message) : '') + '</span>'
+      : '<span class="wq-state wq-warn">' + esc(t('wq_state_wait')) + '</span>';
+    return '<div class="wq-row"><div class="wq-what"><b>' + esc(what) + '</b>' +
+      '<small><bdi dir="ltr">' + esc(fmtDateTime(new Date(x.at))) + '</bdi></small>' + state + '</div>' +
+      '<div class="wq-acts"><button class="btn" data-act="wq-retry" data-id="' + esc(x.id) + '">' + esc(t('wq_retry')) + '</button>' +
+      (x.state === 'refused' ? '<button class="btn btn-ghost" data-act="wq-dismiss" data-id="' + esc(x.id) + '">' + esc(t('wq_dismiss')) + '</button>' : '') +
+      '</div></div>';
+  }).join('');
+}
+if (typeof WriteQueue !== 'undefined') WriteQueue.on(function () { wqPaint(); });

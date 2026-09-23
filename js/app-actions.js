@@ -117,6 +117,13 @@ var ACTIONS = {
      The button reports the real verdict — it spins while the server works and
      then says what happened. A button that always flashes green teaches
      people to stop believing it, which is worse than no button. */
+  /* The write queue's list (night shift 04). */
+  'wq-open': function () {
+    openModal({ title: t('wq_title'), body: '<p class="wq-note">' + esc(t('wq_explain')) + '</p><div id="wqList">' + wqListHtml() + '</div>' });
+  },
+  'wq-retry': function (el) { WriteQueue.retry(el.getAttribute('data-id')); },
+  'wq-dismiss': function (el) { WriteQueue.dismiss(el.getAttribute('data-id')); },
+
   'sync-now': function (el) {
     if (el.disabled) return;
     el.disabled = true;

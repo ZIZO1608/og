@@ -1220,6 +1220,17 @@ export async function fullRun({ log = consoleLog() } = {}) {
   return { ok: !r.layoutFailed && !r.loyaltyFailed && !r.cashFailed && !r.refused.length, ...r };
 }
 
+/* The beat (night shift 04; lib/sync-worker.js says when it is called). The
+   `shop` row's last_push_at is what og-bridge's erp.till_status() reads as
+   "the mirror was complete at this moment"; ownerSeen() already reads it as
+   "the owner is working", which a beat makes true for an idle shop too. */
+export async function beat() {
+  await SB.update('sync_state', { id: 'shop' }, {
+    last_push_at: new Date().toISOString(),
+    note: 'alive: nothing waiting'
+  });
+}
+
 /* Only what moved. No request at all when nothing did. */
 export async function pushChanged({ log = tailLog() } = {}) {
   if (!cursorsLoaded) await loadCursors();

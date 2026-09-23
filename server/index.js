@@ -56,6 +56,7 @@ import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
 import * as SyncWorker from './lib/sync-worker.js';
+import * as Lineage from './lib/lineage.js';
 import * as Telegram from './lib/telegram.js';
 import * as Reminders from './lib/reminders.js';
 import * as BackupSchedule from './lib/backup-schedule.js';
@@ -2455,6 +2456,22 @@ router.add('GET /api/ext/print-jobs/:id', (ctx) => {
   sendOk(ctx.res, { job: webJob(j) });
 });
 
+/* --- the VPS's door (night shift 04) ---------------------------------------
+   og-bridge, on the VPS, asks two things of the till over the WireGuard
+   tunnel: "are you there, and which database are you" (so it never mistakes
+   a dev copy for the shop), and "collect og-track's inbox now". A bearer key
+   (OG_VPS_API_KEY), checked in the request pipeline beside /api/ext/, and a
+   404 for anything the PUBLIC proxy carried: the front door must never reach
+   this one, and nginx refuses the prefix before it gets here as well. */
+router.add('GET /api/vps/health', (ctx) => {
+  DB.get().prepare('SELECT 1').get();
+  sendOk(ctx.res, { lineage: Lineage.localId({ create: false }), build: buildInfo() });
+});
+
+router.add('POST /api/vps/collect', async (ctx) => {
+  sendOk(ctx.res, { collect: await SyncWorker.collectInboxNow() });
+});
+
 /* What the website may know: where the job is and the shop's verdict —
    never what the printer charges. */
 function webJob(j) {
@@ -3278,6 +3295,22 @@ async function handle(req, res) {
            session; compared in constant time. With no key configured the
            door does not exist, which is the state on a shop that has no
            website yet. */
+        /* The VPS's door (night shift 04). Same shape as the website's
+           below — and a request the public proxy carried (it arrives from
+           OG_PROXY_ADDR WITH a visitor's address) is told the door does not
+           exist, before the key is even looked at. */
+        if (path.startsWith('/api/vps/')) {
+          if (Fwd.forwardedVisitor(req)) return sendError(res, 404, 'not_found', 'No such endpoint.');
+          const want = process.env.OG_VPS_API_KEY || '';
+          if (!want) return sendError(res, 503, 'not_configured', 'OG_VPS_API_KEY is not set on this server.');
+          const got = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+          const a = Buffer.from(got), b = Buffer.from(want);
+          if (!got || a.length !== b.length || !timingSafeEqual(a, b)) {
+            return sendError(res, 401, 'bad_key', 'The API key is missing or wrong.');
+          }
+          return await hit.handler({ req, res, url, params: hit.params, user: null, token: null });
+        }
+
         if (path.startsWith('/api/ext/')) {
           const want = process.env.OG_WEB_API_KEY || '';
           if (!want) return sendError(res, 503, 'not_configured', 'OG_WEB_API_KEY is not set on this server.');

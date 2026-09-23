@@ -14,7 +14,7 @@
    refresh does it), or browsers that already have the app will keep serving
    the old cached copy — cache-first with ignoreSearch, so no query string
    gets past it. */
-var CACHE = 'og-system-v287';
+var CACHE = 'og-system-v290';
 
 var SHELL = [
   './',
@@ -50,6 +50,8 @@ var SHELL = [
   'js/vendor/three.min.js',
   'js/update.js',
   'js/layers.js',
+  'js/reach.js',
+  'js/writequeue.js',
   'js/api.js',
   'js/auth.js',
   'js/codes.js',
@@ -188,6 +190,12 @@ self.addEventListener('fetch', function (e) {
      the public receipt: one customer's invoice must never be handed to the
      next person who scans a code on the same device. */
   if (url.pathname.indexOf('/api/') === 0 || url.pathname.indexOf('/i/') === 0) return;
+
+  /* THE OWNER'S SNAPSHOT IS NEVER CACHED EITHER (night shift 04). On
+     shop.ogsports1.com /snapshot is og-bridge's page of the shop's costs and
+     profit. Cache-first would keep it on the device — shown again after
+     signing out, and long after the figures moved. */
+  if (url.pathname === '/snapshot' || url.pathname.indexOf('/snapshot/') === 0) return;
 
   e.respondWith(
     caches.match(req, { ignoreSearch: true }).then(function (hit) {
