@@ -185,17 +185,24 @@ export async function collect({ lineage, rpc = defaultRpc } = {}) {
     return { error: short(e) };
   } finally {
     busy = false;
+    if (owed) flushSoon({ rpc: owed });
   }
 }
 
 /* After a decision: tell the cloud now rather than at the next minute.
-   Best effort, never in the way of the answer the person is waiting for. */
+   Best effort, never in the way of the answer the person is waiting for.
+   ONE REPORT AT A TIME, AND NONE DROPPED: a decision made while a report is
+   already on the wire (two accepts pressed in a row) is OWED, and goes out
+   the moment that one lands — skipping it left the second and third
+   decisions waiting a whole minute for the next pass (found by roundtrip). */
+let owed = null;
 export function flushSoon({ rpc = defaultRpc } = {}) {
   if (process.env.OG_NIGHT_REQUESTS === '0') return;
   if (rpc === defaultRpc && !SB.isConfigured()) return;
+  if (busy) { owed = rpc; return; }
+  owed = null;
+  busy = true;
   setImmediate(async () => {
-    if (busy) return;               /* the pass in progress reports it */
-    busy = true;
     try {
       const lineage = Lineage.localId({ create: false });
       if (lineage) await report(lineage, rpc);
@@ -203,6 +210,7 @@ export function flushSoon({ rpc = defaultRpc } = {}) {
       console.error(`[${nowIso()}] a decision was not reported yet (the next pass will) — ${short(e)}`);
     } finally {
       busy = false;
+      if (owed) flushSoon({ rpc: owed });
     }
   });
 }

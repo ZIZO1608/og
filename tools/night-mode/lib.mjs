@@ -113,9 +113,16 @@ export async function asRole(db, role, fn, { readOnly = role === 'og_vps' } = {}
 
 /* A pg-Pool-shaped object over PGlite, running every statement as og_vps with
    the read-only default — what og-bridge's mirror.js holds in production. */
-export function ogVpsPool(db) {
+/* One queue for everything that touches a PGlite database. PGlite is ONE
+   connection and SET ROLE is connection-wide, so two callers interleaving —
+   the night app's og_vps pool and a PostgREST stand-in running as
+   service_role — would each run as the other's role. */
+export function makeSerial() {
   let chain = Promise.resolve();
-  const serial = (fn) => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
+  return (fn) => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
+}
+
+export function ogVpsPool(db, { serial = makeSerial() } = {}) {
   const run = (text, params) => db.query(text, params || []);
   const enter = async () => { await db.exec('SET ROLE og_vps; SET default_transaction_read_only = on'); };
   const leave = async () => { try { await db.exec('ROLLBACK'); } catch { /* none open */ } await db.exec('RESET default_transaction_read_only; RESET ROLE'); };

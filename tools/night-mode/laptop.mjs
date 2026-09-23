@@ -17,21 +17,25 @@
    refuse an account without delivery.desk. Everything is read back from
    SQLite, never off a response alone.
 
-   No Supabase, no Telegram (bogus tokens), no network. The env is set BEFORE
+   No Supabase, no Telegram (no tokens at all), no network. The env is set BEFORE
    any server module is imported, so nothing reads a real server/.env.
    ========================================================================== */
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
-import { request } from 'node:http';
+import { request, createServer } from 'node:http';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER = resolve(HERE, '..', '..', 'server');
 const SCR = join(tmpdir(), 'og-night-laptop-' + process.pid);
-const PORT = Number(process.env.OG_NIGHT_TEST_PORT || 8191);
+/* A port nothing is listening on right now: other sessions run their own
+   sandboxes on this machine, and a fixed number collided with one. */
+const PORT = Number(process.env.OG_NIGHT_TEST_PORT) || await new Promise((ok) => {
+  const s = createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); });
+});
 const LIN = 'lin-laptop-test-0001';
 const PW = 'night-laptop-test-pass';
 
@@ -40,10 +44,14 @@ mkdirSync(join(SCR, 'data'), { recursive: true });
 const ENV = join(SCR, '.env');
 const ENVS = {
   OG_PORT: String(PORT), OG_HTTPS: '0', OG_SECURE: '0', OG_ORIGINS: '', OG_SYNC_MINUTES: '0', OG_PULL_AT_BOOT: '0',
-  OG_PUSH: '0', OG_TELEGRAM_TOKEN_OG: '000000:sandbox-bogus-og', OG_TELEGRAM_TOKEN_YALLA: '000000:sandbox-bogus-yalla'
+  OG_PUSH: '0'
 };
 writeFileSync(ENV, Object.entries(ENVS).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
 Object.assign(process.env, ENVS, { OG_ENV_FILE: ENV, OG_DATA_DIR: join(SCR, 'data'), SUPABASE_URL: '', SUPABASE_SERVICE_ROLE_KEY: '' });
+/* No bot at all: OG_ENV_FILE keeps any real server/.env out, and a bogus
+   token would still be sent to Telegram by the bot's first getMe. */
+delete process.env.OG_TELEGRAM_TOKEN_OG;
+delete process.env.OG_TELEGRAM_TOKEN_YALLA;
 
 let passed = 0, failed = 0;
 const check = (name, ok, detail = '') => {
