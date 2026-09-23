@@ -19,6 +19,12 @@
    SESSIONS live in memory, 12 hours. A restart signs the owner out; that is
    the price of keeping no session table anywhere.
 
+   NIGHT MODE (night.js) uses the same door with its own cookie, its own path
+   and its own accounts (OG_NIGHT_USERS), each carrying a ROLE — owner,
+   manager or staff. A session also keeps a form token, so every POST a page
+   sends can be checked against the session that drew it. /snapshot's
+   defaults are unchanged.
+
    node:crypto only.
    ========================================================================== */
 import { scrypt, randomBytes, timingSafeEqual, createHmac } from 'node:crypto';
@@ -106,33 +112,44 @@ export function newTotpSecret() { return base32Encode(randomBytes(20)); }
 export const COOKIE = 'og_snap';
 export const SESSION_MS = 12 * 60 * 60 * 1000;
 
-export function parseUsers(json) {
+/* `roles`, when given, is the list a line's role must be one of (night mode);
+   a line without one of them is dropped rather than let in with no role. */
+export function parseUsers(json, { roles = null } = {}) {
   let list;
   try { list = JSON.parse(json || '[]'); } catch { list = []; }
   const out = new Map();
   for (const u of Array.isArray(list) ? list : []) {
     if (u && typeof u.user === 'string' && u.user && parseHash(u.scrypt) && base32Decode(u.totpSecret).length >= 10) {
-      out.set(u.user.toLowerCase(), { user: u.user, scrypt: u.scrypt, totpSecret: u.totpSecret });
+      if (roles && !roles.includes(u.role)) continue;
+      out.set(u.user.toLowerCase(), { user: u.user, scrypt: u.scrypt, totpSecret: u.totpSecret, role: roles ? u.role : null });
     }
   }
   return out;
 }
 
-export function makeAuth({ users, now = () => Date.now(), max = 5, windowMs = 15 * 60 * 1000 }) {
+export function makeAuth({ users, now = () => Date.now(), max = 5, windowMs = 15 * 60 * 1000,
+                           cookieName = COOKIE, path = '/snapshot', sessionMs = SESSION_MS }) {
   const fails = new Map();       /* key -> [ms, ...] */
   const lastStep = new Map();    /* user -> last TOTP step accepted */
-  const sessions = new Map();    /* token -> { user, exp } */
+  const sessions = new Map();    /* token -> { user, role, csrf, exp } */
 
   const recent = (key) => {
     const since = now() - windowMs;
     const list = (fails.get(key) || []).filter((t) => t > since);
-    fails.set(key, list);
+    if (list.length) fails.set(key, list); else fails.delete(key);
     return list.length;
   };
   const fail = (key) => { const l = fails.get(key) || []; l.push(now()); fails.set(key, l); };
+  /* A door on the internet is asked by strangers with invented names from
+     invented addresses; what they leave behind must not grow for ever. */
+  const tidy = () => {
+    if (fails.size > 5000) for (const k of [...fails.keys()]) recent(k);
+    if (sessions.size > 500) for (const [t, s] of sessions) if (s.exp <= now()) sessions.delete(t);
+  };
 
   return {
     async login({ user, password, code, ip }) {
+      tidy();
       const name = String(user || '').trim().toLowerCase().slice(0, 64);
       const ipKey = 'ip:' + (ip || '?');
       const uKey = 'u:' + name;
@@ -148,20 +165,32 @@ export function makeAuth({ users, now = () => Date.now(), max = 5, windowMs = 15
       }
       lastStep.set(name, step);
       const token = randomBytes(32).toString('hex');
-      sessions.set(token, { user: u.user, exp: now() + SESSION_MS });
-      return { ok: true, token, user: u.user };
+      sessions.set(token, { user: u.user, role: u.role || null, csrf: randomBytes(24).toString('hex'), exp: now() + sessionMs });
+      return { ok: true, token, user: u.user, role: u.role || null };
     },
     session(token) {
+      const s = this.who(token);
+      return s ? s.user : null;
+    },
+    /* The whole session — { user, role, csrf } — or null. */
+    who(token) {
       if (!token || typeof token !== 'string') return null;
       const s = sessions.get(token);
       if (!s) return null;
       if (s.exp <= now()) { sessions.delete(token); return null; }
-      return s.user;
+      return { user: s.user, role: s.role, csrf: s.csrf };
+    },
+    /* Does a form's token belong to this session? Constant time. */
+    formOk(token, sent) {
+      const s = this.who(token);
+      if (!s || typeof sent !== 'string' || !sent) return false;
+      const a = Buffer.from(sent), b = Buffer.from(s.csrf);
+      return a.length === b.length && timingSafeEqual(a, b);
     },
     logout(token) { sessions.delete(token); },
     cookie(token) {
-      return `${COOKIE}=${token}; HttpOnly; Secure; SameSite=Strict; Path=/snapshot; Max-Age=${SESSION_MS / 1000}`;
+      return `${cookieName}=${token}; HttpOnly; Secure; SameSite=Strict; Path=${path}; Max-Age=${sessionMs / 1000}`;
     },
-    clearCookie() { return `${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/snapshot; Max-Age=0`; }
+    clearCookie() { return `${cookieName}=; HttpOnly; Secure; SameSite=Strict; Path=${path}; Max-Age=0`; }
   };
 }

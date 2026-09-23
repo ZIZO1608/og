@@ -139,3 +139,27 @@ export function ogVpsPool(db) {
     end: async () => {}
   };
 }
+
+/* Orders in the mirror, one in each state the night app draws: a sale with
+   payment 'order' and its delivery row, its lines, and one cancelled. */
+export async function seedOrders(db) {
+  await db.exec(`
+    INSERT INTO sales (id, at, customer_id, customer_name, cashier_id, wh_id, payment, currency, subtotal, total, fx_rate, fx_base, voided, created_at) VALUES
+      ('INV-3001', now() - interval '5 hours', 81, 'Nour Haddad', 7, 'store', 'order', 'SYP', 450000, 450000, 130, 'USD', false, now()),
+      ('INV-3002', now() - interval '4 hours', 82, 'Rami Khoury', 7, 'store', 'order', 'SYP', 520000, 520000, 130, 'USD', false, now()),
+      ('INV-3003', now() - interval '3 hours', 81, 'Nour Haddad', 7, 'store', 'order', 'SYP', 900000, 900000, 130, 'USD', false, now()),
+      ('INV-3004', now() - interval '2 hours', 82, 'Rami Khoury', 7, 'store', 'order', 'SYP', 450000, 450000, 130, 'USD', true, now()),
+      ('INV-3005', now() - interval '1 hours', 82, 'Rami Khoury', 7, 'floor', 'cash', 'SYP', 450000, 450000, 130, 'USD', false, now());
+    INSERT INTO sale_items (id, sale_id, sku, product_id, name, size, qty, unit_price, unit_cost, src_currency, src_unit_price) VALUES
+      (9001, 'INV-3001', 'OG-050-42', 50, 'Samba OG', '42', 1, 450000, 300000, 'SYP', 450000),
+      (9002, 'INV-3002', 'OG-051-42', 51, 'Air Force 1', '42', 1, 520000, 350000, 'SYP', 520000),
+      (9003, 'INV-3003', 'OG-050-42', 50, 'Samba OG', '42', 2, 450000, 300000, 'SYP', 450000),
+      (9004, 'INV-3004', 'OG-050-43', 50, 'Samba OG', '43', 1, 450000, 300000, 'SYP', 450000),
+      (9005, 'INV-3005', 'OG-050-42', 50, 'Samba OG', '42', 1, 450000, 300000, 'SYP', 450000);
+    INSERT INTO deliveries (id, sale_id, status, address, phone, currency, assigned_at, method, city) VALUES
+      (701, 'INV-3001', 'waiting', 'New Aleppo', '0933 123 456', 'SYP', now(), 'driver', 'Aleppo'),
+      (702, 'INV-3002', 'out', 'Al-Furqan', '+963 944 555 666', 'SYP', now(), 'driver', 'Aleppo'),
+      (703, 'INV-3003', 'delivered', 'New Aleppo', '0933 123 456', 'SYP', now(), 'driver', 'Aleppo'),
+      (704, 'INV-3004', 'waiting', '', '+963 944 555 666', 'SYP', now(), 'pickup', null);
+  `);
+}

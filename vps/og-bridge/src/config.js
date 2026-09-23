@@ -33,6 +33,16 @@ export const config = {
      each line made by `node src/snapshot-user.js`. */
   snapshotUsers: env('OG_SNAPSHOT_USERS', '[]'),
 
+  /* NIGHT MODE (night.js): its own accounts — JSON [{ "user", "role",
+     "scrypt", "totpSecret" }], role owner | manager | staff, each line made by
+     `node src/night-user.js`. Empty means nobody can sign in at /night. */
+  nightUsers: env('OG_NIGHT_USERS', '[]'),
+  /* 'off' keeps night mode READ-ONLY: look things up, send no request. The
+     switch to reach for if requests ever misbehave. */
+  nightSubmit: env('OG_NIGHT_SUBMIT', 'on'),
+  /* Requests per night account per hour, counted here before 035's own 30. */
+  nightMaxPerHour: Number(env('OG_NIGHT_MAX_PER_HOUR', '20')),
+
   /* The proxy's own network, the only peers whose X-OG-Client-IP is believed
      (the nginx container reaches og-bridge over the docker network). */
   proxyNets: env('OG_BRIDGE_PROXY_NETS', '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16')
