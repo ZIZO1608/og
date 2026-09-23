@@ -753,6 +753,23 @@ function rateCard() {
     '</div>' + setFoldEnd();
 }
 
+/* What one printed piece costs a WEBSITE customer (print.unit_price). The
+   website shows it at checkout (web_checkout, from the mirror) and every
+   print job the website sends is priced at it (Partner.webPrices). Empty
+   until the owner types it — the website then says "price by phone" rather
+   than inventing one. The lira moves, so it is one box and saves itself. */
+function webPrintCard() {
+  var v = CONFIG.WEB_PRINT_PRICE;
+  return setFoldStart('webprint', t('set_webprint'),
+      v ? '<span dir="ltr">' + nf(v) + ' SYP</span>' : t('set_webprint_unset'), t('set_webprint_sub')) +
+    '<div class="card-body">' +
+    '<label class="field"><span>' + t('set_webprint_label') + savedPill('print.unit_price') + '</span>' +
+      '<input class="inp num" id="setWebPrint" type="text" inputmode="numeric" dir="ltr" autocomplete="off" ' +
+        'value="' + (v || '') + '" data-change="set-webprint"></label>' +
+    '<div class="partner-note">' + t('set_webprint_note') + '</div>' +
+    '</div>' + setFoldEnd();
+}
+
 /* The loyalty rules — and since Stage D these actually SAVE.
 
    Every input here used to write to CONFIG in memory and nothing else, so the
@@ -1235,6 +1252,7 @@ function viewSettings() {
   h += setSection(t('setg_money'));
   h += rateCard();
   if (typeof Cashbook !== 'undefined') h += Cashbook.settingsCard();
+  h += webPrintCard();
   h += loyaltyCard();
   h += customersCard();
 

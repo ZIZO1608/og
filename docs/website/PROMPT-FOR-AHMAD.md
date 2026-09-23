@@ -197,7 +197,8 @@ It answers from the shop's own Settings, so it works with the laptop off:
     { "id": "shamcash", "en": "Sham Cash", "ar": "شام كاش",
       "details": { "en": "Sham Cash 0933 … — OG Sports", "ar": "شام كاش 0933 … — أو جي" } }
   ],
-  "print": { "unitPrice": 950, "currency": "SYP" }
+  "print": { "unitPrice": 950, "currency": "SYP",
+             "clubs": [ { "code": "bar", "en": "Barcelona 26/27 · Fan Edition", "ar": "برشلونة" } ] }
 }
 ```
 
@@ -252,6 +253,11 @@ Then:
 `print.unitPrice` (in `print.currency`) is the price of **one printed piece**. If it is
 `null`, the shop has not set it yet, so show "Price confirmed by phone" and do not make one up.
 
+`print.clubs` is the list of clubs the shop prints kits for. A print job's `clubCode` must be
+one of these `code` values, copied exactly as given (they are lower-case, e.g. `bar`). A code
+that is not on the list is not refused, but the shirt is then recorded with no club, so offer
+clubs from this list rather than typing your own.
+
 ---
 
 ## 5. Placing the order — `web_order_submit`
@@ -284,7 +290,7 @@ POST /rest/v1/rpc/web_order_submit
       "qty": 1, "price": 450000, "currency": "SYP" }
   ],
   "prints": [
-    { "design": "Barcelona home 24/25", "clubCode": "BAR", "note": null,
+    { "design": "Barcelona home 24/25", "clubCode": "bar", "note": null,
       "lines": [
         { "printName": "ZAVEN", "number": "10", "size": "L", "qty": 1 },
         { "printName": "ZOHRAB", "number": "7", "size": "M", "qty": 2 }
@@ -314,7 +320,7 @@ POST /rest/v1/rpc/web_order_submit
 | `payment.method` | For `transfer` only: an `id` from `web_checkout.transfer` (e.g. `shamcash`). |
 | `payment.reference` | Optional: the transfer number the customer typed. |
 | `items[]` | Up to 40 lines. **`sku` and `qty` (1–20) are what count.** `productId`, `colourId`, `name`, `size`, `price` and `currency` are what the customer saw, shown to the shop for comparison. |
-| `prints[]` | Up to 10 jobs. `design` is required. Then either `lines[]` (named shirts: `printName`, `number`, `size`, `qty` 1–50, up to 40 lines) or a plain `qty` (1–500) for unnamed pieces. `clubCode`, `note`, `price`, `currency` are optional. |
+| `prints[]` | Up to 10 jobs. `design` is required. Then either `lines[]` (named shirts: `printName`, `number`, `size`, `qty` 1–50, up to 40 lines) or a plain `qty` (1–500) for unnamed pieces. `clubCode` (one of `web_checkout.print.clubs[].code`), `note`, `price`, `currency` are optional. The shop prices every print at `print.unitPrice`, never at the `price` sent. |
 | | At least one item **or** one print is required. |
 | `shown` | Optional: totals **per currency**, exactly as the customer saw them. Never convert currencies into one total here. |
 | `note` | Optional: the customer's comment. |

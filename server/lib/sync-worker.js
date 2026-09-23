@@ -68,6 +68,7 @@ import * as PanelLink from './panel-link.js';
 import * as Lineage from './lineage.js';
 import * as Mirror from './mirror.js';
 import * as Inbox from './inbox.js';
+import * as WebOrders from './weborders.js';
 
 const DEFAULT_FULL_MINUTES = 60;
 const FIRST_RUN_MS = 20 * 1000;      /* boot is the busiest second the machine has */
@@ -103,6 +104,10 @@ let lineageTimer = null;
 let inboxTimer = null;
 let inboxBusy = false;
 let inboxFailing = false;
+let webBusy = false;
+let webFailing = false;
+let webAgain = false;
+let webSoonTimer = null;
 let unhook = null;
 
 export function fullMinutes() {
@@ -307,8 +312,10 @@ async function boot() {
      server left behind and seeds the settings hashes the fast lane compares
      against. */
   await run('full');
-  /* Then whatever og-track's inbox gathered while the laptop was shut. */
+  /* Then whatever og-track's inbox gathered while the laptop was shut, and
+     the orders the website left in the cloud. */
   collectInbox();
+  collectWeb();
 }
 
 function arm() {
@@ -319,8 +326,48 @@ function arm() {
   const every = fullMinutes();
   fullTimer = setInterval(() => run('full'), every * 60 * 1000);
   fullTimer.unref();
-  inboxTimer = setInterval(collectInbox, INBOX_MS);
+  inboxTimer = setInterval(() => { collectInbox(); collectWeb(); }, INBOX_MS);
   inboxTimer.unref();
+}
+
+/* The website's orders (lib/weborders.js): collected on the inbox's minute,
+   under the same rules — only while live, one pass at a time, the lineage id
+   sent so Supabase decides who owns the shop, a failure said once. */
+async function collectWeb() {
+  if (state.mode !== 'live') return;
+  if (webBusy) { webAgain = true; return; }
+  webBusy = true;
+  try {
+    const out = await WebOrders.collect({ lineage: Lineage.localId({ create: false }) });
+    if (out.error || out.skipped) {
+      if (!webFailing) console.log(`  [web orders] not collected: ${out.error || out.skipped}`);
+      webFailing = true;
+      return;
+    }
+    if (webFailing) console.log('  [web orders] collecting again');
+    webFailing = false;
+    if (out.fresh || out.updated || out.prints || out.bad || out.unreported) {
+      console.log(`  [web orders] ${out.fresh} new, ${out.updated} updated, ${out.prints} print job(s) sent` +
+                  (out.bad ? `, ${out.bad} left in the cloud` : '') +
+                  (out.unreported ? ` — not reported back yet: ${out.unreported}` : ''));
+    }
+  } catch (err) {
+    if (!webFailing) console.log(`  [web orders] not collected: ${reason(err)}`);
+    webFailing = true;
+  } finally {
+    webBusy = false;
+    /* A decision made while a pass was running is told on the next one, now. */
+    if (webAgain) { webAgain = false; webSoon(); }
+  }
+}
+
+/* A person just accepted or rejected a website order: tell the website now
+   rather than on the next minute. */
+export function webSoon() {
+  if (state.mode !== 'live') return;
+  clearTimeout(webSoonTimer);
+  webSoonTimer = setTimeout(collectWeb, 400);
+  if (webSoonTimer.unref) webSoonTimer.unref();
 }
 
 /* og-track's inbox (lib/inbox.js): the reviews and Notify me customers left on
@@ -425,6 +472,7 @@ export function stop() {
   if (fullTimer) { clearInterval(fullTimer); fullTimer = null; }
   if (lineageTimer) { clearInterval(lineageTimer); lineageTimer = null; }
   if (inboxTimer) { clearInterval(inboxTimer); inboxTimer = null; }
+  if (webSoonTimer) { clearTimeout(webSoonTimer); webSoonTimer = null; }
   if (unhook) { unhook(); unhook = null; }
   state.mode = 'off';
 }

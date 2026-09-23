@@ -311,6 +311,34 @@ export function nextJobId(d = DB.get()) {
   return 'P-' + ((top || 1029) + 1);
 }
 
+/* ------------------------------------------------------ the website's price
+   What a print job raised by the website costs the customer and what Yalla
+   Wear charges, per piece. One copy, read by the old print door
+   (POST /api/ext/print-jobs) and by lib/weborders.js. print.unit_price is set
+   in Settings → Money and prices; the fallbacks are the numbers that door has
+   always used. The till's own figure (CONFIG.KIT_PRINT_PRICE) is separate. */
+export function webPrices(d = DB.get()) {
+  const num = (k, fb) => {
+    const r = d.prepare('SELECT value FROM config WHERE key = ?').get(k);
+    const n = r ? Number(r.value) : NaN;
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : fb;
+  };
+  return { price: num('print.unit_price', 950), cost: num('print.partner_unit_cost', 460) };
+}
+
+/* A club named by somebody outside the shop (the website), as the code the
+   shop stores — print_job_lines.club_code is a foreign key to clubs, so a
+   code the shop does not have ("BAR" for "bar", or a club it never added)
+   used to fail the WHOLE print job. Matched without regard to case; unknown
+   or archived is null, and the shirt is still printed — the design says
+   which club it is. */
+export function clubCodeFor(code, d = DB.get()) {
+  const c = String(code == null ? '' : code).trim();
+  if (!c) return null;
+  const r = d.prepare('SELECT code FROM clubs WHERE lower(code) = lower(?) AND archived = 0').get(c);
+  return r ? r.code : null;
+}
+
 /* --------------------------------------------------------------- writing */
 
 export function create({

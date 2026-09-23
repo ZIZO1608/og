@@ -488,6 +488,13 @@ var Pulse = (function () {
         if (typeof Safeers !== 'undefined' && !modalOpen()) Safeers.live();
         return;
       }
+      /* A website order arrived, or somebody accepted or rejected one
+         (server/lib/weborders.js): the screen asks again, and the bell. */
+      if (d.web) {
+        if (typeof WebOrders !== 'undefined' && OG.view === 'weborders' && !modalOpen()) WebOrders.load();
+        if (canAsk()) tick();
+        return;
+      }
       if (!d.who && canAsk()) tick();
     });
     es.onerror = function () {

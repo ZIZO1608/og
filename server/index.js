@@ -64,6 +64,7 @@ import * as Tracking from './lib/tracking.js';
 import * as Office from './lib/office-alerts.js';
 import * as Push from './lib/webpush.js';
 import * as Reviews from './lib/reviews.js';
+import * as WebOrders from './lib/weborders.js';
 import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
 import * as Storage from './lib/storage.js';
@@ -1432,6 +1433,10 @@ function orderFail(res, e) {
   if (e.code === 'bad_settings') {
     return sendErrorDetail(res, 400, 'bad_settings', e.message, { path: e.path ?? null });
   }
+  /* lib/weborders.js carries its own status. */
+  if (['test_order', 'web_rejected', 'web_accepted', 'bad_code'].includes(e.code) && e.status) {
+    return sendError(res, e.status, e.code, e.message);
+  }
   /* A sheet that cannot go names every parcel holding it up, so the person at
      the counter takes those off the pile rather than guessing. */
   if (e.code === 'handover_blocked') {
@@ -1464,14 +1469,21 @@ router.add('GET /api/orders/bootstrap', requirePerm(['delivery.desk', 'delivery.
 router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
   const b = await readJson(ctx.req);
   const str = (v) => (typeof v === 'string' && v ? v : null);
+  /* A website order being accepted (js/weborders.js → the desk, filled in).
+     Its opId is fixed to the order's own ref, never the desk's, so two people
+     pressing Accept on one website order make ONE order: the second Save
+     replays the first. A rejected or test order is refused before anything
+     is written. */
+  const webRef = str(b.webRef);
   try {
+    if (webRef) WebOrders.forAccept(webRef);
     const out = Orders.create({
       lines: Array.isArray(b.lines) ? b.lines : [],
       whId: str(b.whId),
       customerId: b.customerId ? Number(b.customerId) : null,
       currency: str(b.currency),
       discount: Number(b.discount) || 0,
-      channel: str(b.channel),
+      channel: webRef ? 'web' : str(b.channel),
       note: str(b.note),
       dest: b.dest && typeof b.dest === 'object' ? b.dest : {},
       method: b.method,
@@ -1485,16 +1497,73 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       userId: ctx.user.id,
       /* Read from the caller's role, never from the request. */
       unlimitedDiscount: Auth.can(ctx.user, 'discount.unlimited'),
-      opId: str(b.opId)
+      opId: webRef ? WebOrders.opIdFor(webRef) : str(b.opId)
     });
     Live.notify('og', { deliveries: true });
     if (!out.replayed) Tracking.moved(out.sale.id, ctx.user.id);
+    /* The order is written; now the website hears it was accepted. A failure
+       here is only bookkeeping — the Save replays on the same opId. */
+    if (webRef) {
+      try {
+        WebOrders.accepted(webRef, out.sale.id, ctx.user.id);
+        Live.notify('og', { web: true });
+        SyncWorker.webSoon();
+      } catch (e) { console.error(`[${new Date().toISOString()}] web order ${webRef} accepted as ${out.sale.id} but not marked — ${e.message}`); }
+    }
     sendOk(ctx.res, {
       sale: scrubCost(out.sale, ctx.user),
       order: Deliveries.bySale(out.sale.id, ctx.user),
       money: out.money,
       replayed: !!out.replayed
     });
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* ---- the website's orders (lib/weborders.js) -------------------------------
+   A queue the office works through: collected from the cloud every minute,
+   confirmed by a phone call, then Accepted through the order desk above (its
+   Save carries webRef) or Rejected here with a reason the website shows the
+   customer. delivery.web throughout (062 — the cashier's too); Accepting is the
+   desk's Save and so still delivery.desk. The customer match only with
+   customer.read, and never a cost. */
+router.add('GET /api/web-orders', requirePerm('delivery.web', (ctx) => {
+  const sp = new URL(ctx.req.url, 'http://x').searchParams;
+  sendOk(ctx.res, WebOrders.list({
+    state: sp.get('state') || 'new',
+    limit: sp.get('limit'),
+    seesCustomers: Auth.can(ctx.user, 'customer.read')
+  }));
+}));
+
+/* The photo of the transfer receipt the customer uploaded. It shows somebody
+   else's bank details, so never cached. */
+router.add('GET /api/web-orders/:ref/proof', requirePerm('delivery.web', (ctx) => {
+  const p = WebOrders.proofPath(ctx.params.ref);
+  if (!p) return sendError(ctx.res, 404, 'not_found', 'No photo for this order.');
+  const type = p.endsWith('.png') ? 'image/png' : p.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+  ctx.res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+  ctx.res.end(readFileSync(p));
+}));
+
+/* Who the order is for, found by phone or made from what the website sent —
+   only now, when a person has said the order is real. */
+router.add('POST /api/web-orders/:ref/customer', requirePerm('delivery.web', (ctx) => {
+  if (!Auth.can(ctx.user, 'customer.write')) {
+    return sendError(ctx.res, 403, 'forbidden', 'Adding a customer needs permission to edit customers.');
+  }
+  try {
+    WebOrders.forAccept(ctx.params.ref);
+    sendOk(ctx.res, WebOrders.customerFor(ctx.params.ref, ctx.user.id));
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+router.add('POST /api/web-orders/:ref/reject', requirePerm('delivery.web', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const out = WebOrders.reject(ctx.params.ref, { code: b.code, note: b.note, userId: ctx.user.id });
+    Live.notify('og', { web: true });
+    SyncWorker.webSoon();
+    sendOk(ctx.res, out);
   } catch (e) { orderFail(ctx.res, e); }
 }));
 
@@ -2365,7 +2434,7 @@ function bump() {
    stock away in the back room holds neither a print nor a delivery
    permission. The event carries a flag and nothing else — the map refetches
    through GET /api/sections, which is stock.read already. */
-router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write', 'delivery.read', 'delivery.desk', 'stock.read'], (ctx) => {
+router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write', 'delivery.read', 'delivery.desk', 'delivery.web', 'stock.read'], (ctx) => {
   /* The name rides along so the other company's screen can say who is
      here. Yalla Wear is two people and the shop wants the one who is
      actually reading, not the company. */
@@ -2378,12 +2447,13 @@ router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.w
    website raises a job exactly the way the till does — source 'web',
    sent to Yalla Wear in the same transaction when every shirt is named —
    and reads back where it is and what the shop thought of it. It never
-   receives the printer's price. */
-function webPrices() {
-  const d = DB.get();
-  const num = (k, fb) => Number((d.prepare('SELECT value FROM config WHERE key = ?').get(k) || {}).value) || fb;
-  return { price: num('print.unit_price', 950), cost: num('print.partner_unit_cost', 460) };
-}
+   receives the printer's price.
+
+   SUPERSEDED for the website by its orders (lib/weborders.js): a print job
+   now travels inside the order, so the office sees the whole order in one
+   place. Kept for anything already calling it. The price is
+   Partner.webPrices(), the one copy both doors read. */
+const webPrices = () => Partner.webPrices();
 
 router.add('POST /api/ext/print-jobs', async (ctx) => {
   const b = await readJson(ctx.req);
@@ -2396,7 +2466,7 @@ router.add('POST /api/ext/print-jobs', async (ctx) => {
     }
     const px = webPrices();
     const lines = Array.isArray(b.lines) ? b.lines.map((l) => ({
-      clubCode: l.clubCode ?? null, printName: l.printName ?? l.name ?? null,
+      clubCode: Partner.clubCodeFor(l.clubCode), printName: l.printName ?? l.name ?? null,
       number: l.number ?? null, size: l.size ?? null, qty: Number(l.qty) || 1,
       unitCost: px.cost
     })) : [];

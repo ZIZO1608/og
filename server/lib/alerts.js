@@ -199,6 +199,18 @@ export function list(user, { limit = MAX_ROWS } = {}) {
 
   const low = criticalLevel();
 
+  /* WEBSITE ORDERS WAITING FOR A PHONE CALL (lib/weborders.js). First, because
+     somebody is waiting on the other end and a website order nobody calls
+     back is a customer lost. Keyed on the count, like `critical`: one more
+     order brings a read row back. The screen's own permission (062). */
+  if (can('delivery.web')) {
+    const w = d.prepare("SELECT COUNT(*) AS n FROM web_orders WHERE state = 'new'").get();
+    if (w && w.n) {
+      out.push({ key: 'web_new:' + w.n, kind: 'web_new', args: { n: w.n },
+                 icon: '⇣', tone: 'amber', view: 'weborders' });
+    }
+  }
+
   /* THE MIRROR HAS STOPPED. Computed like everything else here — from the
      sync worker's memory of its last runs, never a stored row — and shown only
      to whoever can act on it. One failed run is a bad connection; three in a

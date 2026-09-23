@@ -535,6 +535,81 @@ var Desk = (function () {
     });
   }
 
+  /* A WEBSITE ORDER, ACCEPTED (js/weborders.js). The desk is filled in from
+     what the customer ordered and the person walks it step by step as they
+     would any order — the bag, the customer, how it travels, the address, the
+     money — and presses the same Save. Nothing here is trusted because the
+     website sent it: every line is priced by the server from the product
+     table, and a size the shop does not know is left out and said.
+
+     webRef rides the draft to the Save, which makes the server write the
+     order under the website order's own opId (two people accepting at once
+     make one order) and mark it accepted. A half-typed order already on the
+     desk is asked about first, exactly as New order does. */
+  var pendingWeb = null;
+
+  function fromWeb(o, customerId) {
+    return ensureBoot().then(function () {
+      var fill = function () {
+        var print = S ? S.print : printPref();
+        S = fresh();
+        S.print = print;
+        saved = null;
+        var skipped = 0;
+        S.lines = (o.items || []).filter(function (i) {
+          var ok = i && i.known && DB.variantBySku(i.sku);
+          if (!ok) skipped++;
+          return ok;
+        }).map(function (i) { return { sku: i.sku, qty: Math.max(1, Math.floor(Number(i.qty) || 1)) }; });
+        S.channel = 'web';
+        S.webRef = o.ref;
+        S.opId = 'weborder:' + o.ref;
+        var dl = o.delivery || {};
+        if (METHODS.indexOf(dl.method) > -1) S.method = dl.method;
+        if (S.method !== 'pickup') {
+          S.city = dl.city || '';
+          S.address = dl.address || '';
+          if (dl.country) S.country = dl.country;
+        }
+        S.phone = dl.phone || (o.customer && o.customer.phone) || '';
+        if (dl.recipient) { S.someoneElse = true; S.recipient = dl.recipient; }
+        if (customerId && DB.customer(customerId)) S.customerId = customerId;
+        else S.custQ = (o.customer && o.customer.phone) || '';
+        syncCountry();
+        /* Cash at the door where the door can take it; a transfer is the
+           whole amount, on the method the customer said, with the number they
+           typed — the person checks the account before pressing Save. */
+        var pay = o.payment || {};
+        S.plan = pay.type === 'cod' && receiptOk() ? 'receipt' : 'full';
+        S.planTouched = true;
+        planPrefill();
+        if (S.pays.length && pay.type === 'transfer') {
+          var offered = DB.payMethodsFor('desk').some(function (m) { return m.id === pay.method; });
+          if (offered) S.pays[0].method = pay.method;
+          if (pay.reference) S.pays[0].txnRef = pay.reference;
+        }
+        S.note = [t('wo_desk_note').replace('{ref}', o.ref), dl.note, o.note]
+          .filter(function (x) { return x && String(x).trim(); }).join(' · ').slice(0, 480);
+        S.step = 0;
+        S.maxStep = 0;
+        saveDraft();
+        if (OG.view === 'desk') repaint();
+        else go('desk');
+        if (skipped) toast(t('wo_title'), t('wo_desk_skipped').replace('{n}', nf(skipped)), 'warn', 6000);
+      };
+      var busyDraft = S && !saved && S.webRef !== o.ref &&
+        (S.lines.length || S.customerId || String(S.address || '').trim());
+      if (!busyDraft) { fill(); return; }
+      pendingWeb = fill;
+      openModal({
+        title: t('wo_accept'), size: 'narrow',
+        body: '<div class="partner-note">' + t('dk_new_sure').replace('{n}', nf(pieces())) + '</div>',
+        foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+              '<button class="btn btn-primary" data-act="dk-web-go">' + t('dk_new_yes') + '</button>'
+      });
+    });
+  }
+
   /* What the chosen plan means, as a payment row ready to be typed over — so
      the commonest order is two taps. Called from wherever the plan can move,
      which is both the plan chips and the travel method (a courier cannot be
@@ -2168,11 +2243,15 @@ var Desk = (function () {
       fee: String(S.feeTyped).trim() === '' ? null : toMinor(S.feeTyped, tt.currency),
       plan: S.plan,
       payments: pays,
-      opId: S.opId
+      opId: S.opId,
+      /* A website order being accepted: the server writes it under that
+         order's own opId and tells the website (lib/weborders.js). */
+      webRef: S.webRef || null
     }).then(function (r) {
       busy = false;
       saved = { order: r.order, money: r.money };
       dropDraft();
+      if (S.webRef && typeof WebOrders !== 'undefined') WebOrders.stale();
       var print = S.print;
       S = fresh();
       S.print = print;
@@ -2340,6 +2419,12 @@ var Desk = (function () {
 
     ACTIONS['dk-new'] = function () { askNew(); };
     ACTIONS['dk-new-go'] = function () { closeModal(); startNew(); };
+    ACTIONS['dk-web-go'] = function () {
+      closeModal();
+      var f = pendingWeb;
+      pendingWeb = null;
+      if (f) f();
+    };
     ACTIONS['dk-reload'] = function () { bootErr = null; boot = null; repaint(); load(); };
     ACTIONS['dk-camera'] = function () {
       if (typeof Scan === 'undefined') return;
@@ -2957,6 +3042,7 @@ var Desk = (function () {
     openOrder: openOrder,
     sendTrack: sendTrack,
     takePayment: takePayment,
+    fromWeb: fromWeb,
     /* The pictures the board, the road and the order dialog share, so a
        parcel is drawn one way wherever it appears. */
     methodIcon: methodIconSvg,

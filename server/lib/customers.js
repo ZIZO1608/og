@@ -449,6 +449,24 @@ function phoneHolder(d, phone, exceptId) {
   return null;
 }
 
+/* The customer a website order belongs to: a LIVE record holding this number
+   (never an archived or merged-away one — an order must land on somebody the
+   shop still serves), or null. The same pass and the same normPhone as
+   phoneHolder, so the two can never disagree about what "this number" is. */
+export function findByPhone(phone) {
+  const want = normPhone(phone);
+  if (!want) return null;
+  const rows = get().prepare(
+    `SELECT id, name, phone FROM customers
+      WHERE archived = 0 AND merged_into IS NULL AND phone IS NOT NULL AND phone <> ''
+      ORDER BY id`
+  ).all();
+  for (const r of rows) {
+    if (normPhone(r.phone) === want) return { id: r.id, name: r.name };
+  }
+  return null;
+}
+
 /* A duplicate phone is a WARNING, not a refusal, and — since Stage C — not an
    error either. Two people genuinely share a number (a household, a shop
    landline), so the row is written and the caller is told; but the same

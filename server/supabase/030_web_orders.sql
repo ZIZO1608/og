@@ -533,7 +533,13 @@ begin
     'print', jsonb_build_object(
       'unitPrice', (select case when btrim(c.value) ~ '^[0-9]{1,13}$' then btrim(c.value)::bigint end
                       from public.config c where c.key = 'print.unit_price'),
-      'currency', v_base)
+      'currency', v_base,
+      -- The clubs the shop prints (clubs is mirrored whole). A print line's
+      -- clubCode must be one of these codes; anything else is printed with no
+      -- club on the line (Partner.clubCodeFor), never refused.
+      'clubs', (select coalesce(jsonb_agg(jsonb_build_object('code', k.code, 'en', k.name, 'ar', coalesce(k.name_ar, k.name))
+                                          order by k.name), '[]'::jsonb)
+                  from public.clubs k where not k.archived))
   );
 end;
 $$;

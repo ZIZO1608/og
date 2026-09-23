@@ -87,6 +87,11 @@ export const ALL_PERMISSIONS = [
      with a destination and a payment plan, and who does that is the
      manager's decision. */
   { perm: 'delivery.desk',   group: 'delivery',  label: 'Take remote orders at the delivery office' },
+  /* 062 — the Website orders page: see what the website sent, call, reject.
+     Accepting one is the desk's Save, so it still needs delivery.desk. The
+     `delivery.` prefix is what keeps it FORBIDDEN to the partner: every
+     website order carries a customer's name and phone number. */
+  { perm: 'delivery.web',    group: 'delivery',  label: 'See and answer website orders' },
   /* 060 — the delivery team page: who is on the road, their errands, their pay. */
   { perm: 'safeer.read',     group: 'delivery',  label: 'See the delivery team (Safeers)' },
   { perm: 'safeer.write',    group: 'delivery',  label: 'Manage Safeers and their tasks' },

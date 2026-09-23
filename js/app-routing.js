@@ -38,6 +38,7 @@ var VIEWS = {
   deliveries: function () { return Deliveries.view(); },
   /* What customers said about their delivery (js/reviews.js). */
   reviews: function () { return Reviews.view(); },
+  weborders: function () { return WebOrders.view(); },
   safeers: function () { return Safeers.view(); },
   /* The delivery office: a till for orders that do not walk in. */
   desk: function () { return Desk.view(); },
@@ -63,6 +64,7 @@ var AFTER = {
   },
   deliveries: function () { return Deliveries.after(); },
   reviews: function () { return Reviews.after(); },
+  weborders: function () { return WebOrders.after(); },
   safeers: function () { return Safeers.after(); },
   desk: function () { return Desk.after(); },
   customers: function () { if (OG.custId) afterCustomerProfile(OG.custId); },

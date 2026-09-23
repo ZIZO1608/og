@@ -20,8 +20,10 @@
 
 /* alerts.* (052) is the office's order alerts on Telegram: when the shop shuts
    and opens, and which of them go out at any hour. Named key by key — the
-   prefix alone would let anything under it be written. */
-export const CONFIG_WRITABLE = /^receipt\.|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes)$|^alerts\.(quiet_from|quiet_to|urgent)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
+   prefix alone would let anything under it be written.
+   print.unit_price is what one printed piece costs a WEBSITE customer
+   (Partner.webPrices, lib/weborders.js) — the one print key, named alone. */
+export const CONFIG_WRITABLE = /^receipt\.|^print\.unit_price$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes)$|^alerts\.(quiet_from|quiet_to|urgent)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
 
 /* The first reason a batch of updates may not be saved, or null. One bad key
    refuses the whole batch: nothing is written unless all of it can be. */

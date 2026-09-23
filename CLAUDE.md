@@ -2869,6 +2869,90 @@ accounts on both sides. `night/online-offline` is still not merged.
   router's internet cable out. The branch-only parts are named and left out: `/snapshot`,
   og-bridge, the heartbeat, `apply.ps1`.
 
+## Website orders (23–24 Sep 2026) — the website leaves an order in the cloud; a person says yes
+
+Branch `web-orders` (built in the worktree `D:\DESKTOP\og-web-orders`). Ahmad's OG Sports website
+is built from **`docs/website/PROMPT-FOR-AHMAD.md`, which is THE contract** — the only copy of the
+order JSON, the checkout answer and the reason codes; change it there and nowhere else. Migration
+`061_web_orders.sql` (local only), mirror-project file `server/supabase/030_web_orders.sql` (run by
+hand; `verify_030_web_orders.sql` checks it), `server/lib/weborders.js`, `js/weborders.js`.
+
+The owner decided:
+
+- **A website order waits for a person.** Nothing moves stock or money until somebody calls the
+  customer and presses Accept.
+- **Payment** is cash on delivery (our driver or a pickup only — the desk's `receipt_not_allowed`
+  rule, enforced at the cloud door too), or a transfer with a photo of the receipt, sent with the
+  order or later.
+- **Print jobs go straight to Yalla Wear** the moment the laptop collects the order, then follow
+  their own pipeline.
+- **Orders wait in Supabase while the laptop is shut**, so the website never needs the laptop to
+  take one.
+
+How it fits together:
+
+- **The cloud door (030).** Schema `web` is NOT exposed. The website calls four `public.web_*`
+  functions with the publishable key AND the website key, whose SHA-256 is in `web.settings` (the
+  live key was made in the SQL editor on 23 Sep; `npm run web:key` makes one locally too). The
+  laptop calls `web_orders_take` / `web_orders_mark` with the service key and its lineage id —
+  og-track's inbox rule, so a dev copy collects nothing. `web_checkout` answers from the MIRRORED
+  config (transfer methods = those with text in "Where customers send the money", the shipping
+  list, countries, the rate, `print.unit_price`, the clubs), so it works with the laptop shut.
+- **The collector** runs on the inbox's minute in `sync-worker.js` (`collectWeb`, only while the
+  mirror is live; `SyncWorker.webSoon()` after a decision). A new order becomes a `web_orders` row
+  (`new`); its transfer photo is saved in `<data>/web-proofs/`; its prints go through
+  `Partner.create` (`source 'web'`, `autoSend`, priced by **`Partner.webPrices()`** — the one copy
+  the old `/api/ext/print-jobs` door reads too), with `job_ids` written after each job so a crash
+  never raises one twice. **A TEST- ref sends nothing to Yalla Wear and can never be accepted.**
+- **EVERY ORDER TAKEN IS REPORTED BACK, changed or not.** The cloud hands an order over for as long
+  as it thinks another lineage holds it; one this laptop already had (the shop moved away and
+  back) changed nothing locally and was re-taken every minute for ever — twenty of them would have
+  kept every new order out of the take's LIMIT 20. Found by running the end-to-end suite twice
+  against one cloud; the suite now covers "and back again" and was seen red without the fix.
+- **An order still waiting for a yes follows the shop to another laptop** (the take gives it to a
+  new lineage) with its print job ids, which arrived with the mirror — never sent twice. Decided
+  orders never come back. `web_orders` is LOCAL_ONLY (`supabase-check.js`): the cloud holds the
+  queue and an accepted order lives on as its sale.
+- **Accept is the order desk.** `POST /api/web-orders/:ref/customer` finds the customer by phone
+  (`Customers.findByPhone`, live records only) or makes one from what the website sent (source
+  `online`, only with `customer.write`); then `Desk.fromWeb(order, customerId)` fills the draft —
+  lines by SKU (an unknown SKU is left out and said), method, address, cash-at-the-door or a full
+  transfer on the customer's method and number — and the person walks the five steps and presses
+  the desk's own Save. The Save carries `webRef`; `POST /api/orders` then forces
+  **`opId = weborder:<ref>`** (not `web:` — the old print door already uses that prefix in
+  `applied_ops`) and `channel 'web'`, so two people accepting one order make ONE order, and marks
+  it accepted. A rejected or TEST- order is refused before anything is written.
+- **Reject** takes one of `no_answer · out_of_stock · customer_cancelled · unpaid · duplicate ·
+  test · other` — the website shows the customer the same reason in their language. Final both
+  ways: no reject after accept, no accept after reject.
+- **The club on a print line is a foreign key** (`print_job_lines.club_code → clubs`). The website
+  sending "BAR" for "bar" failed the WHOLE print job; `Partner.clubCodeFor()` matches without case
+  and drops an unknown club rather than the job, in both doors.
+- **Who sees it: `delivery.web` (062)** — "See and answer website orders", owner · developer ·
+  manager · **cashier** by the owner's request (24 Sep 2026), off for warehouse, delivery and the
+  partner (FORBIDDEN by the `delivery.` prefix: every order carries a name and a phone). The page,
+  the list, the photo, the customer step, Reject, the bell's `web_new` and `/api/live` all ask for
+  it. **Accept is the desk's Save and still needs `delivery.desk`**, which 062 does NOT grant: a
+  cashier sees the order, calls, rejects, and reads "the owner turns the delivery office on in
+  Settings → Access" where Accept would be. Turning it on for her is a person's decision, 059's rule.
+- **The screen** (`#weborders`, sidebar and the phone's More): New · Accepted ·
+  Rejected; each card says who (and whether the shop knows them), where, how it is paid (with the
+  photo, `no-store`), every line as the SHOP prices and stocks it with what the website showed
+  only when it differs, and every print with where Yalla Wear has it. Paints `#view` itself and
+  loads from `after()` only when stale — 0 requests idle (`fix06/idle`). The bell's first row is
+  `web_new` (keyed on the count). Settings → Money and prices has **Website print price**
+  (`print.unit_price`, in `CONFIG_WRITABLE`).
+- **A digits-only `<bdi>` inside an Arabic chip is left-to-right**, so a margin on it lands on the
+  far side of the number ("جديدة22"); the gap is the chip's `gap`. The first check measured the
+  margin and passed over the fault — it now measures the pixels between the word and the number.
+
+**Verified** on a sandbox (a `VACUUM INTO` copy, `server/.env.sandbox` in the worktree on 8192,
+bogus Telegram tokens, `OG_PUSH=0`, `SUPABASE_URL` pointing at `_nightshift/web-orders/
+fake-supabase.mjs` — PGlite running the real 001…030 SQL behind a PostgREST stand-in):
+`audit06/web-orders-sql.mjs` 72 · `web-orders/e2e.mjs` 57 (twice in a row, and red without the
+report-everything fix) · `web-orders/ui.mjs` 29 (Accept pressed, the desk walked and saved for
+real, Arabic at 390) · `fix05/p0-namespaces` 6 and `fix06/idle` on the branch · `npm test` 6.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
@@ -3019,34 +3103,14 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
   never built).
 - **An exchange return is not linked to the order that replaced it.** `order_returns.new_sale_id`
   stays NULL: the `linkExchange` helper was never called and was removed on 16 Sep 2026.
-- **Website orders: the contract and the cloud door are written; the shop side is NOT built**
-  (23 Sep 2026). Ahmad builds the OG Sports website from `docs/website/PROMPT-FOR-AHMAD.md`,
-  which is THE contract. That file is the only copy of the order JSON, so change it there and
-  nowhere else. The owner decided:
-  - a website order WAITS for a person's Accept before stock moves;
-  - payment is cash on delivery (our driver or pickup only), or a transfer with a photo of the
-    receipt;
-  - print jobs go STRAIGHT to Yalla Wear when collected, then follow their own pipeline;
-  - orders wait in Supabase while the laptop is shut.
-
-  `server/supabase/030_web_orders.sql` is the cloud door, **not run yet**. It has schema `web`
-  (not exposed) and four website functions (`public.web_order_submit` / `_proof` / `_status`,
-  `web_checkout`), gated by the SHA-256 of `OG_WEB_API_KEY` (`npm run web:key` prints the line).
-  It also has two laptop functions (`web_orders_take` / `_mark`), gated by the service key and
-  the lineage id. Tested: `_nightshift/audit06/web-orders-sql.mjs`, 71 checks in PGlite.
-
-  Still to build on the shop side:
-  - a collector beside `inbox.js` (store locally; send prints with `Partner.create`; mark
-    `received`);
-  - a local-only `web_orders` table;
-  - the **Website orders** screen (Accept = open the order desk prefilled, with `channel: 'web'`
-    and `opId: web:<ref>`; Reject with a code from the prompt's list; the `TEST-` badge);
-  - a `dl_web` Telegram alert.
-
-  `/api/ext/products` stays the catalogue. The old `POST /api/ext/print-jobs` stays but the
-  website is told not to use it. **Two print prices disagree**: `CONFIG.KIT_PRINT_PRICE` is 180
-  in the app, while `webPrices()` defaults to 950 and `print.unit_price` is not set. That is the
-  owner's to settle.
+- **Website orders — what is still open** (see **Website orders** above). No Telegram alert for
+  a new website order yet: the bell and the screen say it, a phone does not buzz (a `dl_web` kind
+  in `office-alerts.js` is the way). A website print job that is finished has no set road to the
+  customer or way of being paid — it is priced on the job, as the till's are, and the owner has
+  not said whether it rides in the order's parcel. **Two print prices disagree**:
+  `CONFIG.KIT_PRINT_PRICE` is 180 in the app, `print.unit_price` (the website's, Settings → Money
+  and prices) falls back to 950 while unset. A print job already sent to Yalla Wear is not
+  cancelled by rejecting its website order.
 - **Telegram job messages carry no link.** `publicBase()` in `server/lib/telegram.js` reads
   `shop.public_url` only (the `OG_CF_HOSTNAME` fallback went with the tunnel on 16 Sep), and it is
   never set, so no link line is added. It is not the tracking base (`receipt.public_url`, the

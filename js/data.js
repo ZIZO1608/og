@@ -2647,6 +2647,8 @@ var DB = {
     /* 028_customers_foundation: the at-risk line and the stamp-card rules.
        Read here so a screen can say CONFIG.AT_RISK_DAYS rather than 90. */
     CONFIG.AT_RISK_DAYS            = num('customer.at_risk_days', CONFIG.AT_RISK_DAYS);
+    /* 061: what one printed piece costs a website customer; null = not set. */
+    CONFIG.WEB_PRINT_PRICE         = num('print.unit_price', null);
     /* 029_customer_rhythm: the multiplier and floor on a customer's own gap. */
     CONFIG.QUIET_MULTIPLIER_TENTHS = num('customer.quiet_multiplier_tenths', CONFIG.QUIET_MULTIPLIER_TENTHS);
     CONFIG.QUIET_FLOOR_DAYS        = num('customer.quiet_floor_days', CONFIG.QUIET_FLOOR_DAYS);

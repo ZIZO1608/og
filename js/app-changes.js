@@ -254,6 +254,14 @@ var CHANGES = {
     CONFIG.SHOP_PHONE = String(el.value || '');
     saveSetting('shop.phone', CONFIG.SHOP_PHONE);
   },
+  /* The website's print price, whole lira, through the one counted-figure
+     parser (Arabic digits, a thousands comma). Nothing below 1 is sent. */
+  'set-webprint': function (el) {
+    var v = Desk.toCount(el.value);
+    if (!(v > 0)) return;
+    CONFIG.WEB_PRINT_PRICE = v;
+    saveSetting('print.unit_price', v);
+  },
   'set-motion': function (el) {
     if (el.checked) document.body.removeAttribute('data-motion');
     else document.body.setAttribute('data-motion', 'off');
