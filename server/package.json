@@ -21,6 +21,7 @@
     "dev": "node --watch index.js",
     "createuser": "node scripts/createuser.js",
     "botfather": "node scripts/botfather.js",
+    "web:key": "node scripts/web-key.js",
     "backup": "node scripts/backup.js",
     "warehouse:one-room": "node scripts/warehouse-one-room.js",
     "supabase:check": "node scripts/supabase-check.js",

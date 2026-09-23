@@ -3019,10 +3019,34 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
   never built).
 - **An exchange return is not linked to the order that replaced it.** `order_returns.new_sale_id`
   stays NULL: the `linkExchange` helper was never called and was removed on 16 Sep 2026.
-- **There are endpoints but no website.** `/api/ext/print-jobs` and `/api/ext/products` are both
-  live behind `OG_WEB_API_KEY`; nothing calls either yet. The catalogue side is complete — the
-  flag, the mirror column, the editor and the read door — so what is missing is the site itself,
-  not anything here.
+- **Website orders: the contract and the cloud door are written; the shop side is NOT built**
+  (23 Sep 2026). Ahmad builds the OG Sports website from `docs/website/PROMPT-FOR-AHMAD.md`,
+  which is THE contract. That file is the only copy of the order JSON, so change it there and
+  nowhere else. The owner decided:
+  - a website order WAITS for a person's Accept before stock moves;
+  - payment is cash on delivery (our driver or pickup only), or a transfer with a photo of the
+    receipt;
+  - print jobs go STRAIGHT to Yalla Wear when collected, then follow their own pipeline;
+  - orders wait in Supabase while the laptop is shut.
+
+  `server/supabase/030_web_orders.sql` is the cloud door, **not run yet**. It has schema `web`
+  (not exposed) and four website functions (`public.web_order_submit` / `_proof` / `_status`,
+  `web_checkout`), gated by the SHA-256 of `OG_WEB_API_KEY` (`npm run web:key` prints the line).
+  It also has two laptop functions (`web_orders_take` / `_mark`), gated by the service key and
+  the lineage id. Tested: `_nightshift/audit06/web-orders-sql.mjs`, 71 checks in PGlite.
+
+  Still to build on the shop side:
+  - a collector beside `inbox.js` (store locally; send prints with `Partner.create`; mark
+    `received`);
+  - a local-only `web_orders` table;
+  - the **Website orders** screen (Accept = open the order desk prefilled, with `channel: 'web'`
+    and `opId: web:<ref>`; Reject with a code from the prompt's list; the `TEST-` badge);
+  - a `dl_web` Telegram alert.
+
+  `/api/ext/products` stays the catalogue. The old `POST /api/ext/print-jobs` stays but the
+  website is told not to use it. **Two print prices disagree**: `CONFIG.KIT_PRINT_PRICE` is 180
+  in the app, while `webPrices()` defaults to 950 and `print.unit_price` is not set. That is the
+  owner's to settle.
 - **Telegram job messages carry no link.** `publicBase()` in `server/lib/telegram.js` reads
   `shop.public_url` only (the `OG_CF_HOSTNAME` fallback went with the tunnel on 16 Sep), and it is
   never set, so no link line is added. It is not the tracking base (`receipt.public_url`, the
