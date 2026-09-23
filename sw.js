@@ -14,7 +14,7 @@
    refresh does it), or browsers that already have the app will keep serving
    the old cached copy — cache-first with ignoreSearch, so no query string
    gets past it. */
-var CACHE = 'og-system-v290';
+var CACHE = 'og-system-v291';
 
 var SHELL = [
   './',
@@ -95,6 +95,7 @@ var SHELL = [
   'js/deliveries.js',
   'js/reviews.js',
   'js/desk.js',
+  'js/requests.js',
   'js/road.js',
   'js/app-state.js',
   'js/app-i18n.js',
@@ -196,6 +197,14 @@ self.addEventListener('fetch', function (e) {
      profit. Cache-first would keep it on the device — shown again after
      signing out, and long after the figures moved. */
   if (url.pathname === '/snapshot' || url.pathname.indexOf('/snapshot/') === 0) return;
+
+  /* NOR IS NIGHT MODE. /night is og-bridge's app on the VPS for when the
+     shop cannot be reached — the same origin as this one. Cache-first would
+     keep a customer's phone number and the night's stock on the device long
+     after they moved, and serve them after signing out; and a navigation it
+     cannot fetch would be answered with THIS app's shell, which is exactly
+     the page that cannot work at that moment. The network, or nothing. */
+  if (url.pathname === '/night' || url.pathname.indexOf('/night/') === 0) return;
 
   e.respondWith(
     caches.match(req, { ignoreSearch: true }).then(function (hit) {

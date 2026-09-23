@@ -312,7 +312,18 @@ var Shop = (function () {
        snapshot: the last figures the cloud copy received, read-only. */
     var road = !!(err && err.code === 'shop_unreachable');
     var snapshot = '';
+    var night = '';
     if (road) {
+      /* NIGHT MODE, for everybody (og-bridge's /night): stock, customers and
+         orders read from the cloud copy, and a request left for the shop to
+         accept when it is back. It has its own sign-in — this device's
+         session is the till's and means nothing there. This, not the
+         proxy's own page, is what a phone that already has the app sees. */
+      night = '<p class="boot-fail-snap"><a class="btn btn-primary" href="/night">' +
+        (ar ? 'وضع الليل' : 'Night mode') + '</a></p>' +
+        '<p>' + (ar
+          ? 'البضاعة والزبائن والطلبات من النسخة السحابية — وفيك تترك طلب للمحل يرد عليه لمّا يرجع.'
+          : 'Stock, customers and orders from the cloud copy — and you can leave a request the shop answers when it is back.') + '</p>';
       title = ar ? 'الإنترنت مقطوع عن المحل' : 'The shop’s internet is down';
       msg = ar
         ? 'الصندوق بالمحل غالباً شغّال وعم يبيع عادي — بس ما في طريق يوصلّه من هون هلأ.'
@@ -341,8 +352,10 @@ var Shop = (function () {
           '<ol>' +
             steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') +
           '</ol>' +
+          night +
           snapshot +
-          '<button class="btn btn-primary" onclick="location.reload()">' +
+          /* One lime button per place: on the road that is Night mode. */
+          '<button class="btn' + (road ? '' : ' btn-primary') + '" onclick="location.reload()">' +
             (ar ? 'إعادة المحاولة' : 'Try again') + '</button>' +
         '</div>' +
       '</div>';

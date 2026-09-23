@@ -48,6 +48,7 @@ var NAV = [
   { id: 'shelfmap',   key: 'nav_shelfmap', group: 'main', icon: 'M3 5h18v6H3zM3 13h18v6H3zM9 5v6M15 5v6M9 13v6M15 13v6' },
   { id: 'money',      key: 'nav_money',     group: 'main', icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4' },
   { id: 'desk',       key: 'nav_desk',      group: 'ops',  icon: 'M3 7h18v4H3zM5 11v9h14v-9M9 7V4h6v3M10 15h4' },
+  { id: 'requests',   key: 'nav_requests',  group: 'ops',  icon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z' },
   { id: 'deliveries', key: 'nav_deliveries',group: 'ops',  icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
   { id: 'safeers',    key: 'nav_safeers',   group: 'ops',  icon: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M12 20v-1a5 5 0 0 1 10 0v1' },
   { id: 'reviews',    key: 'nav_reviews',   group: 'ops',  icon: 'M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.85 1.03-6L3.3 9.6l6-.9z' },
@@ -83,6 +84,9 @@ var NAV_PERM = {
   /* The office writes orders — a sale with a destination and a payment plan
      — which is a different job from reading the board. */
   desk:       'delivery.desk',
+  /* What staff left at /night while the shop was shut (js/requests.js):
+     the office decides, so the office's permission. */
+  requests:   'delivery.desk',
   deliveries: 'delivery.read',
   /* The office's: a driver holds delivery.read and has no business reading
      what every customer said, and the partner never reaches any of this. */
@@ -146,6 +150,8 @@ if (typeof Motion !== 'undefined') {
 
 function navBadge(id) {
   if (id === 'print') { var n = DB.printJobs.filter(function (j) { return DB.isOverdue(j); }).length; return n ? n : 0; }
+  /* Night requests waiting for somebody to accept or turn them down. */
+  if (id === 'requests') return typeof Requests !== 'undefined' ? Requests.count() : 0;
   /* How many products the shop sells. Archived lines are left out so this
      agrees with the list on the screen — viewProducts() filters on the same
      !p.archived, and a badge saying 4 above a table showing 3 rows is read as
@@ -292,7 +298,7 @@ var ROLE_TABS = {
    added to NAV next year appears in More without a second edit — the bug
    that hid the Money screen from every phone until 054 went looking for it. */
 var MORE_GROUPS = [
-  { key: 'nav_g_sell',  ids: ['pos', 'desk', 'customers', 'deliveries', 'safeers', 'reviews'] },
+  { key: 'nav_g_sell',  ids: ['pos', 'desk', 'requests', 'customers', 'deliveries', 'safeers', 'reviews'] },
   { key: 'nav_g_stock', ids: ['products', 'warehouse', 'shelfmap', 'labels', 'print'] },
   { key: 'nav_g_money', ids: ['money', 'reports'] },
   { key: 'nav_g_shop',  ids: ['settings'] }
