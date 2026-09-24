@@ -2077,7 +2077,10 @@ body:not([data-portal="yalla"]) .st-job.on small { color: var(--foreground); }
    followed the mouse ACROSS THE CARDS rather than behind them, on the one
    screen where somebody is reading numbers off them. It is a decoration for
    a screen you look at; these are screens you work on. One rule, keyed on
-   the data-view the router already sets. */
+   the data-view the router already sets. Settings joined them on 24 Sep
+   2026: it is the longest page in the shop, and a haze trailing the mouse
+   down twenty thousand pixels of forms is paint for nothing. */
+body[data-view="settings"] .mo-glow,
 body[data-view="deliveries"] .mo-glow,
 body[data-view="safeers"] .mo-glow,
 body[data-view="warehouse"] .mo-glow,

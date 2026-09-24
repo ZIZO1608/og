@@ -281,6 +281,21 @@ function render() {
      user is typing. This is the difference between polish and a twitch. */
   var entering = (typeof Motion !== 'undefined') && Motion.claim();
 
+  /* SETTINGS KEEPS ITS PLACE (24 Sep 2026). Every repaint below put the view
+     back at the top, which is right for arriving on a screen and was wrong on
+     this one: Settings is twenty-odd folds, over twenty thousand pixels with
+     them open, and it was redrawn by a currency toggle, by Add a city, and by
+     loaders landing a moment after a tap. Each threw the page back to the
+     top, which the owner reported as "I can't scroll". A repaint of Settings
+     over Settings keeps the scroll and the focused box, and plays no
+     entrance fade; arriving from another screen still starts at the top.
+     Read before data-view is rewritten — that is how "the same screen" is
+     known. */
+  var same = !entering && !partner && OG.view === 'settings' &&
+             document.body.getAttribute('data-view') === 'settings';
+  var keepY = same ? host.scrollTop : 0;
+  var keepFocus = same ? focusKey(host) : null;
+
   document.body.setAttribute('data-view', partner ? 'yalla' : OG.view);
   if (partner) document.body.setAttribute('data-portal', 'yalla');
   else document.body.removeAttribute('data-portal');
@@ -295,7 +310,7 @@ function render() {
       ' · ' + (typeof CONFIG !== 'undefined' && CONFIG.SHOP_NAME ? CONFIG.SHOP_NAME : 'OG System');
   } catch (e) {}
 
-  host.className = 'view' + (entering ? '' : ' fade-in') +
+  host.className = 'view' + (entering || same ? '' : ' fade-in') +
                    (!partner && OG.view === 'pos' ? ' pos-view' : '');
 
   /* The home screens do not count their numbers up (ns02, Motion.countAll).
@@ -304,7 +319,7 @@ function render() {
   if (!partner && OG.view === 'dashboard') host.setAttribute('data-nocount', '');
   else host.removeAttribute('data-nocount');
   host.innerHTML = partner ? YALLA.view() : (VIEWS[OG.view] || viewDashboard)();
-  host.scrollTop = 0;
+  host.scrollTop = keepY;
 
   if (partner) { try { YALLA.after(); } catch (e) { console.warn('yalla after', e); } }
   else if (AFTER[OG.view]) { try { AFTER[OG.view](); } catch (e) { console.warn('after hook', e); } }
@@ -313,6 +328,13 @@ function render() {
 
   try { labelWideTables(host); } catch (e) { console.warn('table labels', e); }
   try { hintInputs(host); } catch (e) { console.warn('input hints', e); }
+
+  /* Again after the hooks: the phone's table cards and the after-hook change
+     heights under the scroll put back above. */
+  if (same) {
+    host.scrollTop = keepY;
+    if (keepFocus) refocus(host, keepFocus);
+  }
 
   if (entering) {
     try {

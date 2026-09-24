@@ -79,6 +79,30 @@ function setFoldStart(id, title, meta, sub) {
 
 function setFoldEnd() { return '</div></section>'; }
 
+/* ONE FOLD, REDRAWN WHERE IT STANDS (24 Sep 2026). `html` is what the card's
+   own function returns; its fold replaces the one on the page with the same
+   id, and nothing else on the page moves. A loader that lands, a switch in
+   Access, a row added to the price list — each used to redraw all of
+   Settings (thousands of elements, a tenth of a second on this laptop, every
+   other card's typing lost) for the sake of one card. Returns false when the
+   fold is not on the page or the card drew no fold (its permission has gone),
+   and the caller then redraws the page, which keeps its place. */
+function setFoldRepaint(id, html) {
+  if (OG.view !== 'settings') return false;
+  var old = document.querySelector('#view .fold[data-fold="' + id + '"]');
+  if (!old) return false;
+  var box = document.createElement('div');
+  box.innerHTML = html || '';
+  var fresh = box.querySelector('.fold[data-fold="' + id + '"]');
+  if (!fresh) return false;
+  var key = focusKey(old);
+  old.parentNode.replaceChild(fresh, old);
+  try { labelWideTables(fresh); } catch (e) { /* only the phone's table cards */ }
+  try { hintInputs(fresh); } catch (e) { /* only the keyboard hints */ }
+  refocus(fresh, key);
+  return true;
+}
+
 /* A heading over a run of folds. Five of them across eleven cards is the
    difference between a list and a page. */
 function setSection(label, sub) {
@@ -154,7 +178,7 @@ function rolesCard() {
   return h;
 }
 
-/* Pull the live matrix, then repaint Settings once. Called from afterSettings
+/* Pull the live matrix, then redraw its own fold. Called from afterSettings
    so it only runs when the screen is actually open. */
 function loadRoleMatrix() {
   if (ROLE_MATRIX) return;
@@ -162,7 +186,7 @@ function loadRoleMatrix() {
   API.get('/api/roles')
     .then(function (m) {
       ROLE_MATRIX = { roles: m.roles, permissions: m.permissions };
-      if (OG.view === 'settings') render();
+      if (OG.view === 'settings' && !setFoldRepaint('roles', rolesCard())) render();
     })
     .catch(function () { /* the card keeps its placeholder; nothing else breaks */ });
 }
@@ -200,10 +224,13 @@ function loadStaffPresence() {
   if (Date.now() - STAFF_PRESENCE_AT < PRESENCE_FRESH_MS) return;
   STAFF_PRESENCE_AT = Date.now();
 
+  /* Since 24 Sep 2026 the answer redraws the presence fold alone. Before, it
+     redrew the whole page — so any tap more than thirty seconds after the
+     last read was followed, a moment later, by the page jumping to the top. */
   API.get('/api/staff/presence')
     .then(function (r) {
       STAFF_PRESENCE = r.staff || [];
-      if (OG.view === 'settings') render();
+      if (OG.view === 'settings' && !setFoldRepaint('presence', presenceCard())) render();
     })
     .catch(function () {
       /* The card keeps its placeholder. The stamp stays set on purpose — a
@@ -615,7 +642,7 @@ function thermalLabelsCard() {
     API.get('/api/labels/queue').then(function (res) {
       OG.labelQueueLoading = false;
       OG.labelQueue = res.jobs || [];
-      if (OG.view === 'settings') render();
+      if (OG.view === 'settings' && !setFoldRepaint('labels', thermalLabelsCard())) render();
     }).catch(function () { OG.labelQueueLoading = false; OG.labelQueue = []; });
   }
   var jobs = OG.labelQueue || [];

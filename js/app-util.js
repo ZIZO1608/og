@@ -240,6 +240,42 @@ function esc(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/* WHERE THE CARET WAS, across a repaint (24 Sep 2026). A redraw replaces the
+   box somebody is in with a new one, and the new one has no focus. focusKey
+   names the focused control inside `root` by what it IS — its id, or its tag
+   and data-* attributes, which every control here carries for the delegated
+   handlers — and refocus finds the new one by that name and puts the focus
+   and the caret back, without scrolling. Nothing focused inside `root`, or a
+   control with nothing to be known by: null, and nothing is done. */
+function focusKey(root) {
+  var el = document.activeElement;
+  if (!el || !root || el === root || !root.contains(el) || typeof CSS === 'undefined' || !CSS.escape) return null;
+  var sel = el.id ? '#' + CSS.escape(el.id) : '';
+  if (!sel) {
+    var bits = [];
+    for (var i = 0; i < el.attributes.length; i++) {
+      var a = el.attributes[i];
+      if (a.name.indexOf('data-') === 0) bits.push('[' + a.name + '="' + CSS.escape(a.value) + '"]');
+    }
+    if (!bits.length) return null;
+    sel = el.tagName.toLowerCase() + bits.join('');
+  }
+  var key = { sel: sel, s: null, e: null };
+  try { key.s = el.selectionStart; key.e = el.selectionEnd; } catch (e) { /* not a text box */ }
+  return key;
+}
+
+function refocus(root, key) {
+  if (!root || !key) return;
+  var el = null;
+  try { el = root.querySelector(key.sel); } catch (e) { return; }
+  if (!el || el.disabled) return;
+  try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
+  if (key.s !== null && key.s !== undefined) {
+    try { el.setSelectionRange(key.s, key.e); } catch (e) { /* not a text box */ }
+  }
+}
+
 function deltaTag(now, before, suffix) {
   var tail = '<span class="muted" style="font-weight:500">' + (suffix || '') + '</span>';
   /* No baseline to divide by — "100%" would be a lie, so say what it is. */
