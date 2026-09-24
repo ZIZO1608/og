@@ -712,6 +712,19 @@ card by writing one that returns `setFoldStart(…) + … + setFoldEnd()` and ca
 - Which folds are open lives in `localStorage` under `og.settings.open`, per MACHINE like the sidebar
   rail: the till wants the printer open and the office wants the roles grid, on the same account. Only
   open ones are stored, so a card added later starts shut.
+- **A card redraws ITSELF, never the page — `setFoldRepaint(id, html)`** (24 Sep 2026). The owner
+  reported Settings as "laggy, and I can't scroll": `render()` sets `scrollTop = 0`, and over twenty
+  thousand pixels of open folds it was being called by Add a city (a bare `render()`), and by three
+  loaders a moment after any tap (who is online, the roles grid, the label queue), each throwing the page
+  back to the top — and every switch in Access rebuilt some 3,600 elements, twice. Now the fold with that
+  id is replaced where it stands (the focused box and its caret put back, `focusKey` / `refocus` in
+  `js/app-util.js`); the loaders, Access, Staff and the four delivery folds (`renderKeepScroll` in
+  `js/desk.js`) all go through it. It answers false when the fold is not on the page, and the caller
+  then renders — which on Settings **keeps its place**: `render()` holds the scroll, the focus and no
+  entrance fade for a repaint of Settings over Settings (`same` in `js/app-routing.js`); arriving from
+  another screen still starts at the top. Add a city keeps its button under the pointer. The pointer glow
+  is off on Settings. `_nightshift/settings-scroll/jump.mjs` (17, laptop and `PHONE=1`) was red on the old
+  code with the page going from 2,701 to 0.
 
 ### What is left of the seeded generator
 

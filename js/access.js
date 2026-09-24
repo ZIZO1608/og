@@ -18,7 +18,7 @@
 
 var AccessUI = (function () {
 
-  var S = { people: null, open: null, detail: null, loading: false, shown: null };
+  var S = { people: null, open: null, detail: null, loading: false, shown: null, sw: null };
 
   function permLabel(p) {
     var k = 'perm_' + String(p.perm).replace(/\./g, '_');
@@ -36,12 +36,19 @@ var AccessUI = (function () {
     }, function () { S.loading = false; });
   }
 
+  /* Redraws this card alone (24 Sep 2026): a switch used to redraw the whole
+     of Settings twice a tap — once when it saved, once when the list came
+     back — thousands of elements for one card. The switch being saved is
+     disabled meanwhile, which takes the focus off it, so it is named in
+     S.sw and given the focus back once the card is new. */
   function keep() {
-    var v = document.querySelector('.view');
-    var y = v ? v.scrollTop : 0;
-    render();
-    v = document.querySelector('.view');
-    if (v) v.scrollTop = y;
+    if (OG.view !== 'settings') return;
+    if (!setFoldRepaint('access', card())) render();
+    if (S.sw) {
+      var el = document.querySelector('[data-ac-sw="' + S.sw.perm + '"][data-id="' + S.sw.id + '"]');
+      if (el && !el.disabled) { try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); } }
+      S.sw = null;
+    }
   }
 
   function card() {
@@ -141,6 +148,7 @@ var AccessUI = (function () {
     if (!perm) return;
     var id = +el.getAttribute('data-id');
     var on = el.checked;
+    S.sw = { perm: perm, id: id };
     el.disabled = true;
     API.put('/api/access/' + id + '/perm', { perm: perm, allowed: on }).then(function (r) {
       var row = (r.permissions || []).filter(function (x) { return x.perm === perm; })[0];

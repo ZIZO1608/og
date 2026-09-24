@@ -61,12 +61,10 @@ var Staff = (function () {
     }, function () { S.loading = false; });
   }
 
+  /* This card alone, not the whole of Settings (24 Sep 2026). */
   function keep() {
-    var v = document.querySelector('.view');
-    var y = v ? v.scrollTop : 0;
-    render();
-    v = document.querySelector('.view');
-    if (v) v.scrollTop = y;
+    if (OG.view !== 'settings') return;
+    if (!setFoldRepaint('staff', card())) render();
   }
 
   /* The matrix arrives as whatever `Auth.permissionMatrix()` returns; this

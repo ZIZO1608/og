@@ -2726,9 +2726,20 @@ var Desk = (function () {
       (ph ? ' placeholder="' + esc(ph) + '"' : '') + '>';
   }
 
-  /* Settings redraws whole after a save; the page must stay where the person
-     was working, not jump back to Branding at the top. */
+  /* After a save, a toggle, a row added or taken away: the four delivery
+     folds are redrawn where they stand and nothing else on Settings moves
+     (24 Sep 2026 — each of these used to redraw the whole page). The whole
+     page only when the folds are not on it yet: a first visit, while the
+     office's settings are still on their way. The page must stay where the
+     person was working either way, not jump back to Branding at the top. */
   function renderKeepScroll() {
+    if (OG.view === 'settings' && boot && typeof setFoldRepaint === 'function' && allow('config.write')) {
+      var ok = setFoldRepaint('dk-methods', methodsCard());
+      ok = setFoldRepaint('dk-companies', companiesCard()) && ok;
+      ok = setFoldRepaint('dk-prices', pricesCard()) && ok;
+      ok = setFoldRepaint('dk-accounts', accountsCard()) && ok;
+      if (ok) return;
+    }
     if (typeof render !== 'function') return;
     var v = document.querySelector('.view');
     var y = v ? v.scrollTop : 0;
@@ -2968,7 +2979,16 @@ var Desk = (function () {
           country: (d.countries[0] || {}).id || 'SY', city_en: '', city_ar: '', method: '',
           fee: 0, currency: (boot.base || 'SYP'), fee_mode: 'invoice', active: true });
       }
-      if (typeof render === 'function') render();
+      /* Was a bare render(), which put Settings back at the top, far from
+         the list being filled in (24 Sep 2026). Now the list alone is
+         redrawn, and the Add button is kept under the pointer: the new row
+         lands just above it, so a second press is in the same place as the
+         first rather than one row further down each time. */
+      var was = el.getBoundingClientRect().top;
+      renderKeepScroll();
+      var again = document.querySelector('[data-act="dks-add"][data-k="' + k + '"]');
+      var view = document.getElementById('view');
+      if (again && view) view.scrollTop += again.getBoundingClientRect().top - was;
       /* The row just added is empty, so the caret goes into its name. */
       var change = k === 'methods' ? 'dks-m' : k === 'companies' ? 'dks-c' : null;
       if (change) {
