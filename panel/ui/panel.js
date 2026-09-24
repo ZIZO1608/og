@@ -34,7 +34,8 @@
   var state = {
     server: 'stopped', ready: null, mirror: null, job: null,
     swCache: null, stale: false, steps: [], who: null,
-    dev: null, connections: [], connChecking: false
+    dev: null, connections: [], connChecking: false,
+    links: null, lights: [], lightsAt: 0, lightsChecking: false
   };
   var JOBS = {};
   var view = 'shop';
@@ -256,7 +257,8 @@
     copy:  '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
     again: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>',
     print: '<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7" rx="1.5"/><path d="M7 14h10v6H7z"/>',
-    power: '<path d="M12 3v8"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/>'
+    power: '<path d="M12 3v8"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/>',
+    expand: '<path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/>'
   };
 
   /* An arrow is a glyph that POINTS somewhere, so it turns with the language;
@@ -361,15 +363,25 @@
     $('hTitle').textContent = title;
     $('hSub').innerHTML = sub;
 
+    /* THE OPEN SHOP IS A CONTROL ROOM: the mark beside the headline rather
+       than above it, so the lights and the two codes come up the screen. A
+       shop opening, closing or shut keeps the centred column it has always
+       had — that is where the boot's step list lives. */
+    var hero = $('scShop').firstElementChild;
+    hero.classList.toggle('open', running);
+    hero.classList.toggle('wide', state.server !== 'starting' && state.server !== 'stopping');
+
     paintRing(running, fail);
     paintActs(running, fail);
     paintSteps(running);
     paintHandover();
     paintVerdict(running);
-    paintAddrs(running);
+    paintLights();
+    paintLinks(running);
     paintNotices(running);
     paintCloud(running);
     paintConn($('connShop'), false);
+    paintFull();
   }
 
   /* While the shop opens, the line under the headline is the step that is
@@ -550,6 +562,17 @@
     var list = allNotices();
     var bad = 0, i;
     for (i = 0; i < list.length; i++) if (list[i].level !== 'info') bad++;
+    /* The lights count too. "Everything is ready" in green a hand's width
+       from a red tunnel light is the screen contradicting itself. */
+    var lights = state.lights || [];
+    var certNotice = false;
+    for (i = 0; i < list.length; i++) if (list[i].code === 'cert_address') certNotice = true;
+    for (i = 0; i < lights.length; i++) {
+      if (lights[i].state !== 'warn' && lights[i].state !== 'bad') continue;
+      /* one fault, one count: the server's own cert_address card says it too */
+      if (lights[i].code === 'wifi_uncovered' && certNotice) continue;
+      bad++;
+    }
 
     box.hidden = false;
     if (!bad) {
@@ -562,32 +585,6 @@
     }
   }
 
-  /* ---------------------------------------------------------- the address */
-
-  function paintAddrs(running) {
-    var box = $('addrs');
-    if (!running || !state.ready) { box.hidden = true; return; }
-    var r = state.ready;
-    var here = r.https || r.http;
-    var lan = (r.lan || [])[0] || null;
-
-    var h = '<div class="card">';
-    h += '<h3>' + esc(t('onThisComputer')) + '</h3>';
-    if (here) h += addrRow(here);
-    if (r.https && r.http) h += '<p class="hint addr-hint">' + esc(t('plainNoPadlock')) + ': ' + ltr(r.http) + '</p>';
-
-    h += '<h3 style="margin-top:15px">' + esc(t('onAPhone')) + '</h3>';
-    if (lan) h += addrRow(lan);
-    else h += '<p class="hint">' + esc(t('noWifi')) + '</p>';
-    h += '</div>';
-
-    /* THE CODE IS FOR THE WIFI ADDRESS, NEVER localhost. */
-    var qr = lan ? qrFor(lan) : '';
-    box.className = 'addrs' + (qr ? '' : ' solo');
-    box.innerHTML = h + qr;
-    box.hidden = false;
-  }
-
   function addrRow(url) {
     return '<div class="addr">' +
       '<span class="url" dir="ltr">' + esc(url) + '</span>' +
@@ -597,18 +594,361 @@
       '</div>';
   }
 
-  function qrFor(url) {
-    if (typeof Codes === 'undefined' || !Codes.qrSVG) return '';
-    var s;
+  /* ================================================= the lights (panel polish)
+     Five lights for what a phone depends on, pushed by the panel process
+     every fifteen seconds while this window is open (panel/lib/lights.js).
+     A light is a code and its values; the words are written here. Nothing on
+     this card starts, stops or makes anything — a light that is not green
+     SAYS what to do, and a person does it. */
+
+  var LIGHT_ORDER = ['server', 'wifi', 'tunnel', 'cloud', 'public'];
+  var EVERY_S = 15;
+
+  function lightOf(id) {
+    var rows = state.lights || [];
+    for (var i = 0; i < rows.length; i++) if (rows[i].id === id) return rows[i];
+    return null;
+  }
+
+  function clockS(ms) {
+    var d = new Date(ms);
+    return two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds());
+  }
+
+  function publicHost() {
+    var p = state.links && state.links.public && state.links.public.url;
+    if (!p) return 'shop.ogsports1.com';
+    return p.replace(/^https?:\/\//, '');
+  }
+
+  /* A light's sentence. A time is drawn as an age that the ten-second tick
+     keeps true without repainting anything else ([data-ago]). */
+  function lightWords(l) {
+    var a = l.args || {}, c = l.code, p = {}, k;
+    if (c === 'tun_ok' && a.ms == null) c = 'tun_ok0';
+    /* short values never break; a host name may, at its dots */
+    function nw(s) { return '<span dir="ltr" class="nw">' + esc(s) + '</span>'; }
+    for (k in a) {
+      if (!Object.prototype.hasOwnProperty.call(a, k)) continue;
+      var v = a[k];
+      if (k === 'at') p.ago = '<span dir="ltr" class="nw" data-ago="' + esc(v || '') + '">' + esc(ago(v)) + '</span>';
+      /* the unit inside the isolate with its number, or Arabic reorders them */
+      else if (k === 'ms') p.ms = nw((v == null ? '?' : v) + ' ms');
+      else if (k === 'ports') p.ports = nw((v || []).join(' · '));
+      else if (k === 'tables') p.tables = ltr(listOf(v || []));
+      else if (k === 'by') p.by = '<bdi>' + esc(v) + '</bdi>';
+      else if (k === 'host') p.host = ltr(v);
+      else p[k] = nw(v == null ? '?' : v);
+    }
+    return tHtml('lt_' + c, p);
+  }
+
+  function paintLights() {
+    var box = $('lights');
+    /* While the shop opens or closes, the step list is the whole story. */
+    if (state.server === 'starting' || state.server === 'stopping') { box.hidden = true; return; }
+    var checking = !!state.lightsChecking;
+    var h = '<div class="lhead"><h3>' + esc(t('lightsTitle')) + '</h3>' +
+      '<span class="lat">' + (state.lightsAt
+        ? tHtml('lightsAt', { time: ltr(clockS(state.lightsAt)), n: ltr(EVERY_S) })
+        : esc(t('lightsFirst'))) + '</span>' +
+      '<span class="spacer"></span>' +
+      '<button class="btn btn-sm btn-ghost' + (checking ? ' spinning' : '') + '" data-q="lights"' + (checking ? ' disabled' : '') + '>' +
+        svg('again') + '<span>' + esc(t(checking ? 'lightsChecking' : 'lightsCheck')) + '</span></button></div>';
+
+    h += '<div class="lrow">';
+    for (var i = 0; i < LIGHT_ORDER.length; i++) {
+      var id = LIGHT_ORDER[i];
+      var l = lightOf(id);
+      var st = l ? l.state : 'wait';
+      h += '<div class="lt ' + st + '" data-light="' + id + '">' +
+        '<span class="ldot" aria-hidden="true"></span>' +
+        '<span class="lname">' + esc(t('l_' + id)) + '</span>' +
+        '<span class="lwords">' + (l ? lightWords(l) : esc(t('lightsChecking'))) + '</span>' +
+        '</div>';
+    }
+    h += '</div>' + helpCards();
+    box.innerHTML = h;
+    box.hidden = false;
+  }
+
+  /* What to do under a light that is not green. A code missing here gets no
+     card: its tile already says enough (the shop is closed — the big button
+     above; the cloud belongs to another laptop — the handover card). */
+  var HELP = {
+    srv_silent: 'srv_silent', srv_no_https: 'srv_no_https',
+    wifi_none: 'wifi_none', wifi_uncovered: 'wifi_uncovered', wifi_no_cert: 'wifi_no_cert', wifi_plain: 'wifi_plain',
+    tun_down_here: 'tun_down_here', tun_no_reply: 'tun_no_reply',
+    pub_no_till: 'pub_no_till', pub_silent: 'pub_silent', pub_dns: 'pub_silent', pub_other: 'pub_other',
+    cloud_offline_long: 'cloud_offline_long', cloud_behind: 'cloud_offline_long'
+  };
+
+  /* The pinned certificate lives on the VPS as well (deploy/shop-proxy/README.md);
+     keep this line in step with that file's. */
+  var SCP = 'scp server/data/certs/og-cert.pem root@152.239.114.129:/data/og/till.pem';
+
+  function cmdLine(s) {
+    return '<span class="cmd"><code dir="ltr">' + esc(s) + '</code>' +
+      '<button class="cp' + (copiedUrl === s ? ' done' : '') + '" data-copy="' + esc(s) + '">' +
+      esc(copiedUrl === s ? t('copied') : t('copy')) + '</button></span>';
+  }
+
+  function certSteps(parts) {
+    return '<ol class="fix">' +
+      '<li>' + esc(t('lh_fix1')) + '</li>' +
+      '<li>' + esc(t('lh_fix2')) + cmdLine('cd server') + cmdLine('npm run cert') + '</li>' +
+      '<li>' + esc(t('lh_fix3')) + '</li>' +
+      '<li>' + tHtml('lh_fix4', parts) + cmdLine(SCP) + '</li>' +
+      '<li>' + esc(t('lh_fix5')) + '</li>' +
+      '</ol><small class="tip">' + tHtml('lh_fix_tip', parts) + '</small>';
+  }
+
+  function helpCards() {
+    var rows = state.lights || [], h = '';
+    for (var i = 0; i < rows.length; i++) {
+      var l = rows[i];
+      if (l.state !== 'warn' && l.state !== 'bad') continue;
+      var key = HELP[l.code];
+      if (!key) continue;
+      var parts = {
+        address: ltr((l.args && l.args.address) || ''),
+        host: ltr((l.args && l.args.host) || publicHost()),
+        peer: ltr((l.args && l.args.peer) || '')
+      };
+      h += '<div class="lh ' + l.state + '" data-help="' + esc(l.code) + '">' +
+        '<span class="ic">' + svg('warn') + '</span>' +
+        '<div><b>' + tHtml('lh_' + key, parts) + '</b>' +
+        '<p>' + tHtml('lh_' + key + '_b', parts) + '</p>' +
+        (key === 'wifi_uncovered' ? certSteps(parts) : '') +
+        '</div></div>';
+    }
+    return h ? '<div class="lhelp">' + h + '</div>' : '';
+  }
+
+  /* ======================================= the two addresses (panel polish)
+     Two QR codes a phone can be pointed at: the Wi-Fi address, which works
+     with the internet down, and the public one. THE CODE HOLDS EXACTLY THE
+     WORDS PRINTED UNDER IT, and the Wi-Fi one is never localhost —
+     panel/lib/links.js decides both, and panel/test/qr.test.js decodes the
+     codes back to prove it. */
+
+  /* The logo spends part of error correction H. panel/test/qr.test.js reads
+     this number out of this file and proves what is left still repairs
+     everything the logo hides — change it and the test measures the new one. */
+  var QR_LOGO = { logo: '/ui/icon.png', logoRatio: 0.18 };
+
+  function qrSvg(text, size) {
+    if (!text || typeof Codes === 'undefined' || !Codes.qrSVG) return '';
     try {
-      s = Codes.qrSVG(url, {
-        size: 118, dark: '#0A0A0B', light: '#FAFAFA', style: 'rounded',
-        logo: '/ui/icon.png', logoRatio: 0.2
-      });
+      return Codes.qrSVG(text, { size: size, dark: '#0A0A0B', light: '#FFFFFF', logo: QR_LOGO.logo, logoRatio: QR_LOGO.logoRatio }) || '';
     } catch (e) { return ''; }
-    if (!s) return '';
-    return '<div class="qrcard"><div class="paper">' + s + '</div>' +
-      '<span class="cap">' + esc(t('pointCamera')) + '</span></div>';
+  }
+
+  /* THE TWO LANGUAGES AT ONCE. The codes are for anybody who walks up to the
+     counter, whichever language this laptop is set to, so their labels carry
+     both — the screen's language first and larger. */
+  function bi(key) {
+    var rtl = PI18N.isRTL();
+    return { main: (rtl ? PI18N.ar : PI18N.en)[key], other: (rtl ? PI18N.en : PI18N.ar)[key], lang: rtl ? 'en' : 'ar' };
+  }
+  function otherSpan(b, cls) {
+    return '<span class="' + (cls || '') + ' alt" lang="' + b.lang + '" dir="' + (b.lang === 'ar' ? 'rtl' : 'ltr') + '">' + esc(b.other) + '</span>';
+  }
+  function biStack(key, cls) {
+    var b = bi(key);
+    return '<span class="' + cls + '">' + esc(b.main) + '</span>' + otherSpan(b, cls);
+  }
+  function biLine(key) {
+    var b = bi(key);
+    return esc(b.main) + ' · ' + otherSpan(b, '');
+  }
+
+  function urlOf(which) {
+    var L = state.links || {};
+    return which === 'wifi' ? (L.lan && L.lan.url) || null : (L.public && L.public.url) || null;
+  }
+
+  function qcard(which) {
+    var L = state.links || {};
+    var url = urlOf(which);
+    var k = which === 'wifi' ? 'q_wifi' : 'q_pub';
+    var h = '<article class="qcard" data-card="' + which + '">' +
+      '<header class="qhead">' + biStack(k + '_t', 'qt') + '<span class="qsub">' + biLine(k + '_s') + '</span></header>';
+    if (!url) return h + '<p class="qempty">' + esc(t('noWifi')) + '</p></article>';
+
+    h += '<button class="qpaper" data-q="full" data-which="' + which + '" aria-label="' + esc(t('q_full')) + '">' + qrSvg(url, 232) + '</button>' +
+      '<div class="qurl" dir="ltr">' + esc(url) + '</div>' +
+      '<div class="qacts">' +
+        '<button class="chip" data-q="full" data-which="' + which + '">' + svg('expand') + '<span>' + esc(t('q_full')) + '</span></button>' +
+        '<button class="chip' + (copiedUrl === url ? ' done' : '') + '" data-copy="' + esc(url) + '">' +
+          svg(copiedUrl === url ? 'tick' : 'copy') + '<span>' + esc(copiedUrl === url ? t('copied') : t('copy')) + '</span></button>' +
+      '</div>';
+
+    if (which === 'wifi') {
+      if (L.lan.covered === false) h += '<p class="qwarn">' + svg('warn') + '<span>' + esc(t('q_badCert')) + '</span></p>';
+      h += pickHtml();
+    } else {
+      var pl = lightOf('public');
+      if (pl && pl.state === 'bad') h += '<p class="qwarn bad">' + svg('warn') + '<span>' + esc(t('q_badPublic')) + '</span></p>';
+      if (L.public.problem) h += '<p class="qwarn">' + svg('warn') + '<span>' + esc(t('q_pubInvalid')) + '</span></p>';
+      else if (L.public.source === 'default' && devOn()) h += '<p class="qnote">' + esc(t('q_pubDefault')) + '</p>';
+    }
+    return h + '</article>';
+  }
+
+  /* The laptop has more than one address: say which the code shows, and let
+     somebody pick another. A pill is only ever one of this laptop's own
+     addresses — the panel refuses anything else. */
+  function pickHtml() {
+    var L = state.links || {};
+    var c = L.candidates || [];
+    if (c.length < 2) return '';
+    var h = '<div class="qpick"><span class="qpick-l">' + tHtml('q_many', { n: ltr(c.length) }) + '</span><div class="qpills">';
+    for (var i = 0; i < c.length; i++) {
+      var on = !!(L.lan && L.lan.address === c[i].address);
+      var tag = c[i].shop ? t('q_shopnet') : c[i].virtual ? t('q_overlay') : (c[i].name || '');
+      h += '<button class="pill' + (on ? ' on' : '') + (c[i].virtual ? ' dim' : '') + '" data-q="pick" data-addr="' + esc(c[i].address) + '" aria-pressed="' + on + '">' +
+        '<span dir="ltr">' + esc(c[i].address) + '</span>' +
+        (tag ? '<small>' + esc(tag) + '</small>' : '') +
+        (c[i].covered === false ? '<small class="bad">' + esc(t('q_uncoveredTag')) + '</small>' : '') +
+        '</button>';
+    }
+    h += '</div>';
+    if (L.lan && L.lan.picked) h += '<button class="link sm" data-q="auto">' + esc(t('q_auto')) + '</button>';
+    return h + '</div>';
+  }
+
+  function paintLinks(running) {
+    var box = $('links');
+    var L = state.links;
+    if (!running || !L) { box.hidden = true; return; }
+    var r = state.ready || {};
+    var here = r.https || r.http || L.here;
+    var rule = bi('q_rule');
+
+    var h = '<div class="lhead"><h3>' + esc(t('qTitle')) + '</h3></div>' +
+      '<div class="qrs">' + qcard('wifi') + qcard('public') + '</div>' +
+      '<div class="qrule"><b>' + esc(rule.main) + '</b>' + otherSpan(rule, 'rule2') +
+        '<small>' + esc(t('q_rule_why')) + '</small></div>' +
+      '<div class="qfoot">' +
+        '<span class="here"><span class="hl">' + esc(t('onThisComputer')) + '</span>' + (here ? addrRow(here) : '') + '</span>' +
+        '<button class="btn btn-sm btn-ghost" data-q="print">' + svg('print') + '<span>' + esc(t('q_print')) + '</span></button>' +
+      '</div>';
+    if (r.https && r.http) h += '<p class="hint qplain">' + esc(t('plainNoPadlock')) + ': ' + ltr(r.http) + '</p>';
+
+    box.innerHTML = h;
+    box.hidden = false;
+  }
+
+  /* ---------------------------------------------------------- full screen
+     One code filling the window — and the whole screen, when the browser
+     allows it — for holding a phone up to the laptop. Escape, the Close
+     button or leaving full screen all put it away. */
+
+  var full = null;        // 'wifi' | 'public' while shown
+  var fullPainted = '';
+
+  function openFull(which) {
+    if (!urlOf(which)) return;
+    full = which;
+    fullPainted = '';
+    paintFull();
+    var el = $('qrFull');
+    try {
+      if (el.requestFullscreen && !document.fullscreenElement) {
+        var p = el.requestFullscreen();
+        if (p && p.catch) p.catch(function () { /* the window is enough */ });
+      }
+    } catch (e) { /* the window is enough */ }
+  }
+
+  function closeFull() {
+    if (!full) return;
+    full = null;
+    fullPainted = '';
+    $('qrFull').hidden = true;
+    $('qrFull').innerHTML = '';
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        var p = document.exitFullscreen();
+        if (p && p.catch) p.catch(function () { /* already out */ });
+      }
+    } catch (e) { /* already out */ }
+  }
+
+  function paintFull() {
+    var el = $('qrFull');
+    if (!full) { el.hidden = true; return; }
+    var url = urlOf(full);
+    if (!url) { closeFull(); return; }
+    var sig = full + '|' + url + '|' + PI18N.lang();
+    if (sig === fullPainted) return;   // the state pushes every few seconds; the code does not move
+    fullPainted = sig;
+    var k = full === 'wifi' ? 'q_wifi' : 'q_pub';
+    var other = full === 'wifi' ? 'public' : 'wifi';
+    el.innerHTML = '<div class="qf-box">' +
+      '<header class="qhead">' + biStack(k + '_t', 'qt') + '<span class="qsub">' + biLine(k + '_s') + '</span></header>' +
+      '<div class="qf-paper">' + qrSvg(url, 960) + '</div>' +
+      '<div class="qf-url" dir="ltr">' + esc(url) + '</div>' +
+      '<p class="qf-how">' + esc(bi('q_how').main) + '</p>' +
+      '<p class="qf-how">' + otherSpan(bi('q_how'), '') + '</p>' +
+      '<div class="qf-foot">' +
+        (urlOf(other) ? '<button class="chip" data-q="fullswap">' + svg('again') + '<span>' + esc(t('q_other')) + '</span></button>' : '') +
+        '<button class="chip" data-q="fullclose">' + svg('cross') + '<span>' + esc(t('close')) + '</span></button>' +
+      '</div></div>';
+    el.hidden = false;
+  }
+
+  document.addEventListener('fullscreenchange', function () {
+    /* Escape in real full screen is taken by the browser before this page
+       sees it; leaving full screen that way means "put it away". */
+    if (!document.fullscreenElement && full) closeFull();
+  });
+
+  /* ------------------------------------------------------- the paper cards
+     An A6 card per code, through the browser's own print dialog: the mark,
+     the code, the address, one line saying what to do — Arabic and English
+     on every card, whatever language this laptop is set to. */
+
+  function pcard(which, url, shop) {
+    var k = which === 'wifi' ? 'q_wifi' : 'q_pub';
+    var need = which === 'wifi' ? 'q_wifi_need' : 'q_pub_need';
+    var EN = PI18N.en, AR = PI18N.ar;
+    return '<section class="pcard" data-card="' + which + '">' +
+      '<header class="pc-top"><img src="/assets/logo.svg" alt=""><span class="pc-shop">' + esc(shop) + '</span></header>' +
+      '<h1 class="pc-t" lang="ar" dir="rtl">' + esc(AR[k + '_t']) + '</h1>' +
+      '<p class="pc-t2">' + esc(EN[k + '_t']) + '</p>' +
+      '<p class="pc-sub"><span lang="ar" dir="rtl">' + esc(AR[k + '_s']) + '</span> · <span>' + esc(EN[k + '_s']) + '</span></p>' +
+      '<div class="pc-qr">' + qrSvg(url, 600) + '</div>' +
+      '<p class="pc-url" dir="ltr">' + esc(url) + '</p>' +
+      '<p class="pc-how" lang="ar" dir="rtl">' + esc(AR.q_how) + '</p>' +
+      '<p class="pc-how">' + esc(EN.q_how) + '</p>' +
+      '<footer class="pc-rule">' +
+        '<span lang="ar" dir="rtl">' + esc(AR[need]) + ' ' + esc(AR.q_rule) + '</span>' +
+        '<span>' + esc(EN[need]) + ' ' + esc(EN.q_rule) + '</span>' +
+      '</footer></section>';
+  }
+
+  function printCards() {
+    var cards = [];
+    if (urlOf('wifi')) cards.push(['wifi', urlOf('wifi')]);
+    if (urlOf('public')) cards.push(['public', urlOf('public')]);
+    if (!cards.length) { toast('warn', t('q_printNone')); return; }
+    var shop = (state.ready && state.ready.shop) || 'OG System';
+    var h = '';
+    for (var i = 0; i < cards.length; i++) h += pcard(cards[i][0], cards[i][1], shop);
+    $('printArea').innerHTML = h;
+    /* The mark and the code's logo are the same files the screen already
+       shows, so they are in the cache; a breath lets them decode. */
+    window.setTimeout(function () { window.print(); }, 200);
+  }
+
+  function pickAddress(address) {
+    ask('lanpick', { address: address || '' }).then(function (r) {
+      if (r && r.ok) {
+        if (address) toast('ok', t('q_picked', { address: address }));
+      } else toast('warn', t('q_pickGone'));
+    });
   }
 
   /* ---------------------------------------------------------- the notices */
@@ -710,7 +1050,9 @@
   function paintCloud(running) {
     var box = $('cloudline');
     var m = state.mirror;
-    if (!running || !m) { box.hidden = true; return; }
+    /* The cloud light says this to everybody now (panel polish). The line
+       stays for a developer, because it carries Send to the cloud now. */
+    if (!running || !m || !devOn()) { box.hidden = true; return; }
     var mo = MODE[m.mode] || MODE.off;
     var h = '<span class="pip"></span><span class="what">' + esc(t('cloud')) + '</span>';
 
@@ -1527,8 +1869,24 @@
   document.addEventListener('click', function (e) {
     var el = e.target.closest ? e.target.closest(
       '[data-do],[data-job],[data-url],[data-ask],[data-go],[data-copy],[data-tab],[data-conn],' +
-      '[data-reveal],[data-hide],[data-copypw],[data-reset],[data-accload],[data-infoload]') : null;
+      '[data-reveal],[data-hide],[data-copypw],[data-reset],[data-accload],[data-infoload],[data-q]') : null;
     if (!el || el.disabled) return;
+
+    /* THE LIGHTS AND THE CODES (panel polish). Every one of these reads, or
+       draws, or prints. None of them can open or close the shop: the only
+       things sent to the panel are 'lights' (check again) and 'lanpick'
+       (which of this laptop's own addresses the code shows). */
+    if (el.hasAttribute('data-q')) {
+      var q = el.getAttribute('data-q');
+      if (q === 'lights') { state.lightsChecking = true; paintLights(); return void send('lights'); }
+      if (q === 'full') return openFull(el.getAttribute('data-which'));
+      if (q === 'fullswap') { var nextFull = full === 'wifi' ? 'public' : 'wifi'; full = nextFull; fullPainted = ''; return paintFull(); }
+      if (q === 'fullclose') return closeFull();
+      if (q === 'print') return printCards();
+      if (q === 'pick') return pickAddress(el.getAttribute('data-addr'));
+      if (q === 'auto') return pickAddress('');
+      return;
+    }
 
     if (el.hasAttribute('data-ask')) {
       if (el.getAttribute('data-ask') === 'no') closeAsk();
@@ -1609,6 +1967,7 @@
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+      if (full) return closeFull();
       if (!$('ask').hidden) return closeAsk();
       if (view !== 'shop') return go('shop');
     }
@@ -1645,9 +2004,13 @@
   drawMarkIn();
   go('shop');
 
-  /* "43s ago" is only true for a second. */
+  /* "43s ago" is only true for a second. The lights' ages are rewritten in
+     place rather than repainted, so a button somebody is about to press does
+     not move under the pointer. */
   window.setInterval(function () {
     if (view === 'shop' && isRunning()) paintCloud(true);
+    var ages = document.querySelectorAll('[data-ago]');
+    for (var i = 0; i < ages.length; i++) ages[i].textContent = ago(ages[i].getAttribute('data-ago'));
   }, 10000);
 
   /* The come-back countdown: the one line, not the screen, so a hand

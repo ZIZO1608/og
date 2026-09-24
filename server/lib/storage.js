@@ -116,6 +116,13 @@ export function pathFor(productId, ext) {
   return `products/${productId}/${Date.now().toString(36)}.${ext}`;
 }
 
+/* 066 — one photo of a colour, as two files: `size` is 'l' (the website's)
+   or 's' (the till's). Both share the stamp, so the pair is easy to find in
+   the bucket, and the stamp is new on every upload for the CDN reason above. */
+export function pathForPhoto(productId, colourId, stamp, size, ext) {
+  return `products/${productId}/colours/${colourId}/photos/${stamp}-${size}.${ext}`;
+}
+
 /* A data URL from the browser into bytes and a type. Only the three image
    types the bucket accepts; anything else is refused by name rather than
    stored as "octet-stream" that no <img> will draw. */

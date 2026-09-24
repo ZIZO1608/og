@@ -37,6 +37,7 @@ import { argv } from 'node:process';
 
 import { load } from '../lib/env.js';
 import * as DB from '../lib/db.js';
+import * as Photos from '../lib/photos.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DB_FILE = dbFile();
@@ -273,6 +274,10 @@ const removed = DB.tx(() => {
     const shelfIds = many(
       `SELECT id FROM shelves WHERE product_id IN (${inList(ids)})`, ...ids
     ).map((r) => r.id);
+    /* 066 — the photos before the colours, logged. Their files stay in the
+       bucket: this script runs offline, and a file nobody points at is only
+       a file. */
+    Photos.removeForProducts(d, ids, null);
     /* 058 — the colours go first, logged, or the mirror keeps them. */
     try {
       const cols = many(`SELECT id FROM product_colours WHERE product_id IN (${inList(ids)})`, ...ids);

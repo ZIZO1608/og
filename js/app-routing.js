@@ -39,6 +39,8 @@ var VIEWS = {
   /* What customers said about their delivery (js/reviews.js). */
   reviews: function () { return Reviews.view(); },
   weborders: function () { return WebOrders.view(); },
+  /* How customers pay, and what the website offers (js/desk.js, 031). */
+  payments: function () { return Desk.payView(); },
   safeers: function () { return Safeers.view(); },
   /* The delivery office: a till for orders that do not walk in. */
   desk: function () { return Desk.view(); },
@@ -65,6 +67,7 @@ var AFTER = {
   deliveries: function () { return Deliveries.after(); },
   reviews: function () { return Reviews.after(); },
   weborders: function () { return WebOrders.after(); },
+  payments: function () { return Desk.payAfter(); },
   safeers: function () { return Safeers.after(); },
   desk: function () { return Desk.after(); },
   customers: function () { if (OG.custId) afterCustomerProfile(OG.custId); },
@@ -162,32 +165,9 @@ function bindWarehouse() {
      catalogue, so the select paints empty and is filled once they land. */
   fillWhShelves();
 
-  var box = document.getElementById('whDrop');
-  var input = document.getElementById('whFile');
-  if (!box || !input) return;
-
-  input.addEventListener('change', function () {
-    takeProductImage(input.files && input.files[0]);
-    /* Cleared so picking the SAME file twice still fires a change event. */
-    input.value = '';
-  });
-
-  ['dragenter', 'dragover'].forEach(function (ev) {
-    box.addEventListener(ev, function (e) {
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-      box.classList.add('drop');
-    });
-  });
-  ['dragleave', 'dragend'].forEach(function (ev) {
-    box.addEventListener(ev, function () { box.classList.remove('drop'); });
-  });
-  box.addEventListener('drop', function (e) {
-    e.preventDefault();
-    box.classList.remove('drop');
-    var dt = e.dataTransfer;
-    takeProductImage(dt && dt.files && dt.files[0]);
-  });
+  /* The Add-product form's one picture box, its file input and its drop
+     target went in 066: each colour card carries its own photo slots, which
+     js/photos.js binds (a drop onto a slot included). */
 }
 
 /* Paste, bound once at the document. Scoped tightly: it must never swallow a

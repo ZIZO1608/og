@@ -28,7 +28,7 @@ export const FORMER = 'former-staff';
    from mirror.js, which pulls in the whole HTTP client. */
 const LOGGED = new Set([
   'products', 'variants', 'stock', 'customers', 'sales', 'deliveries', 'rooms', 'sections', 'shelves',
-  'wants', 'product_colours', 'order_payments', 'handovers', 'order_returns', 'customer_credit',
+  'wants', 'product_colours', 'product_photos', 'order_payments', 'handovers', 'order_returns', 'customer_credit',
   'order_reviews', 'print_jobs', 'partner_invoices', 'job_messages', 'suppliers', 'employees',
   'purchase_orders', 'shifts', 'stock_counts', 'job_reviews', 'day_closes', 'errands'
 ]);

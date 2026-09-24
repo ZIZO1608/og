@@ -8,14 +8,16 @@
 
    STATE LIVES IN OG.wh.colours, so a failed save, a tab switch or a language
    switch loses nothing that was typed:
-     [{ key, nameEn, nameAr, hex, qty: { '42': 3 }, imgSrc }]
+     [{ key, nameEn, nameAr, hex, qty: { '42': 3 }, photos }]
+   `photos` is the colour's photos waiting for the product to exist (066):
+   { model, product, extra: [] }, each already shrunk by Photos.read().
 
    Typing a quantity never repaints the form (the caret stays); it patches
    the card's total, the grand total and the preview column. Adding or
    removing a colour, or picking a swatch, repaints — those are clicks.
 
-   Events are delegated: data-cf (click), data-cf-in (input), data-cf-file
-   (a colour's photo input).
+   Events are delegated: data-cf (click), data-cf-in (input). The photo slots
+   in each card belong to js/photos.js (data-ph).
    ========================================================================== */
 
 var ColourForm = (function () {
@@ -29,7 +31,10 @@ var ColourForm = (function () {
   ];
 
   var seq = 0;
-  function blank() { return { key: 'c' + (++seq) + Date.now().toString(36), nameEn: '', nameAr: '', hex: '', qty: {}, imgSrc: null }; }
+  function blank() {
+    return { key: 'c' + (++seq) + Date.now().toString(36), nameEn: '', nameAr: '', hex: '', qty: {}, photos: Photos.blankDrafts() };
+  }
+  function hasPhotos(c) { var d = c.photos; return !!(d && (d.model || d.product || (d.extra && d.extra.length))); }
 
   function list() {
     if (!OG.wh.colours || !OG.wh.colours.length) OG.wh.colours = [blank()];
@@ -89,12 +94,7 @@ var ColourForm = (function () {
   function card(c, i) {
     var h = '<section class="cf-card" data-cf-card="' + c.key + '">' +
       '<div class="cf-head">' +
-        '<div class="cf-photo' + (c.imgSrc ? ' has-img' : '') + '" data-cf="photo" data-k="' + c.key + '" title="' + esc(t('cl_photo_add')) + '">' +
-          (c.imgSrc
-            ? '<img src="' + c.imgSrc + '" alt=""><button class="up-x" data-cf="photo-clear" data-k="' + c.key + '">✕</button>'
-            : '<span class="cp-sw cp-big" style="background:' + (c.hex || '#3F3F46') + '"></span><small>' + t('cl_photo') + '</small>') +
-        '</div>' +
-        '<input type="file" accept="image/*" hidden data-cf-file="' + c.key + '">' +
+        '<span class="cp-sw cp-big cf-head-sw" style="background:' + (c.hex || '#3F3F46') + '"></span>' +
         '<div class="cf-names">' +
           '<label class="field"><span>' + t('cl_name_en') + '</span>' +
             '<input class="inp" dir="ltr" maxlength="40" data-cf-in="nameEn" data-k="' + c.key + '" value="' + esc(c.nameEn) + '" placeholder="Black"></label>' +
@@ -126,6 +126,10 @@ var ColourForm = (function () {
     h += '</div>' +
       '<div class="cf-foot"><span>' + t('cl_total') + '</span><b class="num" data-cf-total="' + c.key + '"><bdi dir="ltr">' +
         nf(colourTotal(c)) + '</bdi> ' + t('pieces') + '</b></div>' +
+      /* 066 — this colour's photos, model first. Drawn in a one-colour form
+         too (cf-solo hides the head, not this): the website needs them
+         whether or not anybody names the colour. */
+      Photos.formStrip(c) +
     '</section>';
     return h;
   }
@@ -195,7 +199,7 @@ var ColourForm = (function () {
          shows no colour anywhere (DB.shownColour returns null for it), so
          this name is never read out to anybody. */
       if (!named && !en && !ar) { en = 'Standard'; ar = 'أساسي'; }
-      out.push({ key: c.key, nameEn: en || undefined, nameAr: ar || undefined, hex: c.hex || undefined, sizes: sz, imgSrc: c.imgSrc });
+      out.push({ key: c.key, nameEn: en || undefined, nameAr: ar || undefined, hex: c.hex || undefined, sizes: sz, photos: c.photos || null });
     }
     if (!out.length) return { error: t('cl_need_colour') };
     return { colours: out };
@@ -227,7 +231,7 @@ var ColourForm = (function () {
     }
     if (!c) return;
     if (a === 'remove') {
-      var any = colourTotal(c) > 0 || c.nameEn || c.nameAr || c.imgSrc;
+      var any = colourTotal(c) > 0 || c.nameEn || c.nameAr || hasPhotos(c);
       if (!any) { OG.wh.colours = list().filter(function (x) { return x !== c; }); keepScroll(render); return; }
       openModal({
         title: t('cl_remove'),
@@ -258,13 +262,6 @@ var ColourForm = (function () {
       patch(c);
       return;
     }
-    if (a === 'photo') {
-      if (e.target.closest('[data-cf="photo-clear"]')) return;
-      var f = document.querySelector('[data-cf-file="' + c.key + '"]');
-      if (f) f.click();
-      return;
-    }
-    if (a === 'photo-clear') { e.stopPropagation(); c.imgSrc = null; keepScroll(render); }
   });
 
   document.addEventListener('input', function (e) {
@@ -296,17 +293,6 @@ var ColourForm = (function () {
   document.addEventListener('change', function (e) {
     var el = e.target;
     if (el.getAttribute && el.getAttribute('data-cf-in') === 'hex') { keepScroll(render); return; }
-    var key = el.getAttribute && el.getAttribute('data-cf-file');
-    if (!key) return;
-    var c = find(key);
-    var file = el.files && el.files[0];
-    el.value = '';
-    if (!c || !file) return;
-    readImageFile(file, function (src, err) {
-      if (err) { toast(t('image'), t('up_err_' + err), 'err', 4000); return; }
-      c.imgSrc = src;
-      keepScroll(render);
-    });
   });
 
   /* ------------------------------------------- the drawer: colour × size */
@@ -539,6 +525,9 @@ var ColourForm = (function () {
   return {
     matrix: matrix, openAdd: openAdd,
     html: html, list: list, grand: grand, colourTotal: colourTotal,
-    payload: payload, flag: flag, reset: reset, label: label, sizes: sizes
+    payload: payload, flag: flag, reset: reset, label: label, sizes: sizes,
+    /* 066 — js/photos.js reaches a colour's draft photos through this.
+       No key: the first colour, where a pasted photo goes. */
+    colour: function (key) { return key == null ? list()[0] : find(key); }
   };
 })();

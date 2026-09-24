@@ -42,7 +42,7 @@ import { MIRROR_LAG } from './mirror-lag.js';
    password hash can pass through) cannot drift this way and are left out. */
 export const PUSHED = [
   'products', 'variants', 'stock', 'customers', 'sales', 'sale_items',
-  'deliveries', 'rooms', 'sections', 'shelves', 'product_colours',
+  'deliveries', 'rooms', 'sections', 'shelves', 'product_colours', 'product_photos',
   'fx_rates', 'stock_movements', 'print_log', 'label_print_log',
   'suppliers', 'employees',
   'print_jobs', 'print_job_lines', 'print_job_stages', 'job_reviews',

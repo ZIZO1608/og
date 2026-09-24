@@ -78,8 +78,9 @@ const count = (what) => events().filter((e) => e.what === what).length;
 const panelLog = () => { try { return readFileSync(join(LOGS, 'panel.log'), 'utf8'); } catch { return ''; } };
 async function until(fn, ms, step = 50) {
   const end = Date.now() + ms;
-  while (Date.now() < end) { if (fn()) return true; await sleep(step); }
-  return !!fn();
+  /* awaited, so a check that has to ask the panel (async) really waits */
+  while (Date.now() < end) { if (await fn()) return true; await sleep(step); }
+  return !!(await fn());
 }
 
 /* ---- the panel ------------------------------------------------------------ */
@@ -159,7 +160,9 @@ try {
   await act('start');
   check('opened again by hand, and falls over once more', await until(() => count('crash') >= 2, 8000));
   const starts4 = count('start');
-  s = await state();
+  /* The stand-in writes "crash" a moment BEFORE it exits, so the panel may
+     not have heard the exit yet: wait for the come-back to be scheduled. */
+  await until(async () => { s = await state(); return !!(s && s.revive); }, 3000);
   check('while it waits, the panel says so (revive pending, with its time)', s && s.revive && s.revive.at > Date.now() - 2000 && s.revive.n === 1, JSON.stringify(s && s.revive));
   await act('stop');
   await sleep(2500);

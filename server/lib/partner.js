@@ -504,7 +504,7 @@ function placeOrder(d, row, userId = null) {
 }
 
 /* The design picture. Only this writes the column — never a general update
-   path — for the reason Cat.setImage is the only writer of products.image_url:
+   path — for the reason lib/photos.js is the only writer of products.image_url:
    a client that could put any address into an <img> on every till, and into a
    Telegram sendPhoto, is not a feature. Returns the previous URL so the
    caller can tidy the old object up. */

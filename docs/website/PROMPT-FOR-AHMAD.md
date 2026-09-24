@@ -1,10 +1,27 @@
-# OG Sports website ↔ OG System — connecting the orders (contract v1)
+# OG Sports website ↔ OG System — connecting the orders (contract v1.2)
 
 > **For Ahmad, and for the AI helping him build the OG Sports website.**
 > Paste this whole file in as the brief. It is the contract between the website and the
 > shop's system (OG System). The shop side is being built to exactly this. If something
 > here does not fit the website, ask before changing it. Do not work around it: both sides
 > have to agree.
+
+> **v1.2 (24 Sep 2026) — every product has real photos.** Each colour of a product now has at
+> least two photos: **first somebody wearing it (the model photo), second the product on its
+> own**, and then any extra photos. A colour appears in `/api/ext/products` **only once it has
+> both**, and a product with no colour ready is not in the list at all. Every product and every
+> colour now carries a `photos` list, model first, each photo in two sizes (§3). Nothing was
+> removed or renamed: `image.url` and a colour's `imageUrl` are still there and are now the
+> model photo. The short list of what to change is `docs/website/UPDATE-PRODUCT-PHOTOS.md`.
+
+> **v1.1 (24 Sep 2026) — payment methods are live.** The shop's owner now decides, from OG
+> System, which transfer methods the website offers, the colour of each one's button, and
+> whether cash on delivery is offered at all. A change reaches the cloud within seconds.
+> What changed for the website: `web_checkout` gained `cod`, `version`, `updatedAt` and a
+> `color` per transfer method, and must now be read **every time a checkout opens** (§4);
+> `web_order_submit` has two new refusals, `method_gone` and `cod_off` (§6). Nothing was
+> removed or renamed, so a website built on v1 keeps working. The short list of what to
+> change is `docs/website/UPDATE-PAYMENT-METHODS.md`.
 
 ---
 
@@ -128,13 +145,23 @@ Returns **the whole published catalogue** in one answer:
       "category": { "id": "sneakers", "en": "Sneakers", "ar": "أحذية رياضية" },
       "colorway": "Cloud White / Core Black",
       "madeIn": "Vietnam",
-      "image": { "bg": "#1E293B", "initials": "SO", "url": "https://…/product-images/products/50/….jpg" },
+      "image": { "bg": "#1E293B", "initials": "SO",
+                 "url": "https://…/product-images/products/50/colours/3/photos/mufq…-l.jpg",
+                 "thumbUrl": "https://…/product-images/products/50/colours/3/photos/mufq…-s.jpg" },
+      "photos": [
+        { "kind": "model",   "url": "https://…-l.jpg", "thumbUrl": "https://…-s.jpg", "width": 1280, "height": 1600 },
+        { "kind": "product", "url": "https://…-l.jpg", "thumbUrl": "https://…-s.jpg", "width": 1600, "height": 1600 },
+        { "kind": "extra",   "url": "https://…-l.jpg", "thumbUrl": "https://…-s.jpg", "width": 1600, "height": 1200 }
+      ],
       "price": 450000,
       "currency": "SYP",
       "minorExp": 0,
       "sizes":   [ { "size": "42", "sku": "OG-050-42", "colourId": 3, "inStock": true } ],
       "colours": [
-        { "id": 3, "en": "White", "ar": "أبيض", "hex": "#F5F5F5", "imageUrl": null,
+        { "id": 3, "en": "White", "ar": "أبيض", "hex": "#F5F5F5",
+          "imageUrl": "https://…-l.jpg",
+          "photos": [ { "kind": "model", "url": "…", "thumbUrl": "…", "width": 1280, "height": 1600 },
+                      { "kind": "product", "url": "…", "thumbUrl": "…", "width": 1600, "height": 1600 } ],
           "sizes": [ { "size": "42", "sku": "OG-050-42", "inStock": true } ] }
       ],
       "inStock": true,
@@ -156,9 +183,33 @@ Rules:
 - **A size is identified by its `sku`.** That is what you send back in an order. Sizes with
   `inStock: false` are shown but not buyable. Quantities are deliberately never sent.
 - **Colours:** a product may have several colours (`colours[]`), each with its own sizes,
-  SKUs and photo. When there is only one colour, you don't need to show a colour picker.
-- **Photos:** `image.url` (or a colour's `imageUrl`) when there is one. When there is none,
-  draw a coloured block with `image.bg` and `image.initials`. Never use stock photos.
+  SKUs and photos. When there is only one colour, you don't need to show a colour picker.
+- **Photos (v1.2).** The shop's rule: every colour has **at least two** photos before it is
+  published — **1. the model photo** (somebody wearing it) and **2. the product photo** (the
+  product on its own) — plus any number of extras.
+  - **Only colours with both photos are in the answer.** A colour still waiting for photos is
+    left out completely: its swatch, its sizes and its SKUs. A product with no colour ready is
+    not in the list at all, exactly like a product the shop switched off. You don't need to
+    check anything: show what you are given.
+  - **`photos` is already in the order to show**: the model first, the product second, then
+    the extras. Don't sort it. `kind` is `model`, `product` or `extra`.
+  - **Each photo has two files.** `url` is large (at most 1600 px on the long side) for the
+    product page and a zoom; `thumbUrl` is small (at most 480 px) for grids, carts and the
+    order page. `width` and `height` are the large file's size, so you can reserve the space
+    before it loads (they may be `null` for an old photo).
+  - **The product's `photos` are its first colour's.** When the customer picks another colour,
+    show **that colour's** `photos`. `image.url` / `image.thumbUrl` (the product's first photo)
+    and a colour's `imageUrl` (its first photo) are the model photo, kept for a site built on v1.1.
+  - A nice product card: the **product photo** by default and the **model photo** on hover (or
+    the other way round). That is the owner's reason for asking for two.
+  - **The files live on the shop's Supabase Storage** (public, `https://<project>.supabase.co/
+    storage/v1/object/public/product-images/…`), so they load **even when the shop's laptop is
+    off**. If your framework needs image hosts listed (Next.js `images.remotePatterns`, a CSP
+    `img-src`), allow that host.
+  - **A replaced photo gets a new address and the old file is deleted.** Never keep your own
+    copy of a photo URL longer than your 5-minute product copy, or you will show broken images.
+  - `image.bg` and `image.initials` are still sent for a placeholder while a photo loads.
+    Never use stock photos.
 - **Money is in minor units.** Displayed amount = `price / 10^minorExp`. SYP has
   `minorExp` 0 (whole lira: `450,000 SYP`). USD has 2 (cents: `2500` → `$25.00`).
   **Some products are priced in USD and some in SYP.** Show each in its own currency and
@@ -172,13 +223,25 @@ Rules:
 
 ## 4. Checkout: what the shop ships, charges, and accepts
 
-### `web_checkout` — call it when the checkout opens (cache it for 10 minutes)
+### `web_checkout` — call it EVERY time a checkout opens
 
 ```json
 POST /rest/v1/rpc/web_checkout      { "p_key": "…" }
 ```
 
-It answers from the shop's own Settings, so it works with the laptop off:
+It answers from the shop's own Settings, so it works with the laptop off. **The owner changes
+these from OG System and the change is in the cloud within seconds**, so:
+
+- Call it every time a customer opens the checkout. Your server may keep the answer for **at
+  most 60 seconds**; never longer (v1 said 10 minutes — that is gone).
+- While a checkout page stays open, ask your server again every 60 seconds. When `version` is
+  different from the one the page was drawn with, redraw the delivery and payment choices
+  **and keep the cart and everything the customer typed**. If the method they had picked has
+  gone, clear only that choice and say so (§6, `method_gone`).
+- `version` changes exactly when something this answer shows changes, and never otherwise, so
+  comparing it is all you need. `updatedAt` is when the owner last changed any of it.
+- When the call fails (no line, 5xx), keep using your last good answer. `web_order_submit`
+  checks the payment again anyway.
 
 ```json
 {
@@ -187,6 +250,7 @@ It answers from the shop's own Settings, so it works with the laptop off:
   "currencies": [ { "code": "SYP", "minorExp": 0 }, { "code": "USD", "minorExp": 2 } ],
   "rate": { "base": "USD", "quote": "SYP", "rate": 130, "at": "2026-08-24T10:00:00Z" },
   "travel": ["driver", "office", "courier", "abroad", "pickup"],
+  "cod": true,
   "codAllowed": ["driver", "pickup"],
   "countries": [ { "id": "SY", "en": "Syria", "ar": "سوريا", "currency": "SYP", "dial": "963" } ],
   "shipping": [
@@ -194,13 +258,24 @@ It answers from the shop's own Settings, so it works with the laptop off:
       "fee": 15000, "currency": "SYP", "customerPaysCourier": false }
   ],
   "transfer": [
-    { "id": "shamcash", "en": "Sham Cash", "ar": "شام كاش",
+    { "id": "sham", "en": "Sham Cash", "ar": "شام كاش", "color": "#16a34a",
       "details": { "en": "Sham Cash 0933 … — OG Sports", "ar": "شام كاش 0933 … — أو جي" } }
   ],
   "print": { "unitPrice": 950, "currency": "SYP",
-             "clubs": [ { "code": "bar", "en": "Barcelona 26/27 · Fan Edition", "ar": "برشلونة" } ] }
+             "clubs": [ { "code": "bar", "en": "Barcelona 26/27 · Fan Edition", "ar": "برشلونة" } ] },
+  "version": "3f1c9a0e5b7d2c4a8e6f1b3d5a7c9e0f",
+  "updatedAt": "2026-09-24T11:12:58.410Z"
 }
 ```
+
+- `transfer` is **in the order the owner lists them**. Show them in that order.
+- `color` is the owner's colour for that method's button (`#rrggbb`, lower case), or `null`
+  for none. Use it as the accent (a border, a dot, the selected state). Keep the text readable:
+  white text on the colour, or the colour as a border on your normal button. `null` means your
+  normal button.
+- `details.en` / `details.ar` are the shop's own account text. Copy them exactly. A method the
+  owner has switched on always has both, but older data can have one of them `null`: then show
+  the other one.
 
 ### How the customer receives it (`delivery.method`)
 
@@ -239,14 +314,18 @@ Then:
 
 - **`cod`** (cash on delivery, or cash at the shop for a pickup) is only allowed when the
   method is in `codAllowed` (`driver` or `pickup`). For every other method, hide the cash
-  option.
+  option. **When `cod` is `false` the owner has switched cash off on the website:
+  `codAllowed` is empty and cash is not offered for any method** — transfer only.
 - **`transfer`** (Sham Cash, or another transfer office) is allowed for every method:
-  1. Show the methods in `transfer`, and for the chosen one show its `details` in the page's
-     language. Those details are the shop's own account text, so copy them exactly.
+  1. Show the methods in `transfer`, in their order and colour, and for the chosen one show
+     its `details` in the page's language. Those details are the shop's own account text, so
+     copy them exactly.
   2. The customer transfers the money and uploads **a photo or screenshot of the transfer
      receipt**, and may type the transfer number.
   3. The photo can come **with the order** or **later**, from their order page (section 7).
      Only offer methods that appear in `transfer`. If `transfer` is empty, offer cash only.
+     If `transfer` is empty **and** `cod` is `false`, the shop is not taking payment on the
+     website right now: show "Please message us to order" (§8) instead of the Order button.
 
 ### Print jobs
 
@@ -317,7 +396,7 @@ POST /rest/v1/rpc/web_order_submit
 | `delivery.recipient`, `delivery.phone` | Optional: when somebody else receives it. |
 | `delivery.note` | Optional, for the driver. |
 | `payment.type` | `cod` or `transfer`. `cod` only with `driver` or `pickup`. |
-| `payment.method` | For `transfer` only: an `id` from `web_checkout.transfer` (e.g. `shamcash`). |
+| `payment.method` | For `transfer` only: an `id` from `web_checkout.transfer` (e.g. `sham`). |
 | `payment.reference` | Optional: the transfer number the customer typed. |
 | `items[]` | Up to 40 lines. **`sku` and `qty` (1–20) are what count.** `productId`, `colourId`, `name`, `size`, `price` and `currency` are what the customer saw, shown to the shop for comparison. |
 | `prints[]` | Up to 10 jobs. `design` is required. Then either `lines[]` (named shirts: `printName`, `number`, `size`, `qty` 1–50, up to 40 lines) or a plain `qty` (1–500) for unnamed pieces. `clubCode` (one of `web_checkout.print.clubs[].code`), `note`, `price`, `currency` are optional. The shop prices every print at `print.unitPrice`, never at the `price` sent. |
@@ -369,6 +448,8 @@ confirm it."**
 | `bad_city` | no city | Please choose your city. / اختار مدينتك. |
 | `bad_country` | not a two-letter code | (a website bug: fix the form) |
 | `cod_not_here` | cash on delivery outside Aleppo or pickup | Cash on delivery is only in Aleppo. Please pay by transfer. / الدفع عند الاستلام بس بحلب — ادفع بتحويل لو سمحت. |
+| `cod_off` | cash on delivery while the owner has it off (the page was older than the change) | Cash on delivery isn't available right now. Please pay by transfer. / الدفع عند الاستلام مو متاح هلّق — ادفع بتحويل لو سمحت. **Then call `web_checkout` again, redraw the payment choices, keep the cart.** |
+| `method_gone` | a transfer method the website no longer offers (the owner changed it after the page loaded) | This payment method just changed. Please choose again. / طريقة الدفع هي تغيّرت هلّق — اختار من جديد لو سمحت. **Then call `web_checkout` again, redraw the payment choices, keep the cart and every field the customer typed.** |
 | `bad_payment` | transfer without a method | Please choose how you'll transfer. / اختار طريقة التحويل. |
 | `bad_proof` | the photo is not a JPEG, PNG or WebP, or is too big | That photo didn't work. Please try another. / الصورة ما زبطت — جرّب صورة تانية. |
 | `empty` | nothing in the order | Your cart is empty. / السلة فاضية. |
@@ -470,6 +551,8 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
 | Print price unknown | السعر منأكّدلك ياه على التلفون | Price confirmed by phone |
 | Courier fee | أجرة التوصيل بتندفع للمندوب عند الاستلام | Delivery fee is paid to the courier on arrival |
 | Something went wrong | صار في مشكلة — جرّب كمان مرة أو تواصل معنا | Something went wrong. Please try again or contact us. |
+| Payment choices changed while the page was open | طرق الدفع تغيّرت — اختار من جديد لو سمحت | The payment options changed. Please choose again. |
+| No way to pay on the website right now | راسلنا لنكمّل طلبك | Please message us to order |
 
 ---
 
@@ -483,6 +566,13 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
 - Test a retry: send the same order twice and check the second answer has `"replayed": true`.
 - Test with the laptop off (ask the shop): the products still show from your saved copy, and
   an order is still accepted as `waiting`.
+- **Test a live change (v1.1)** with the shop on the phone: open the checkout, ask the owner to
+  switch a transfer method off (or change its colour, or switch cash on delivery off) in OG
+  System → Payment methods (its own page in the menu) and press Save. Within about a minute your open page
+  shows the new choices without a reload (the `version` changed), and a fresh page shows them
+  at once. Then pick the method that was taken away on a page that still shows it and press
+  Order: the answer is `method_gone`, the page redraws the choices, and the cart is untouched.
+  Do the same with cash on delivery for `cod_off`.
 
 ---
 
@@ -492,7 +582,12 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
 - ✅ Save the order and its `ref` **before** sending it, and retry with the identical object.
 - ✅ Show prices in the product's own currency. Show totals per currency.
 - ✅ Refresh products every 5 minutes, and keep the last good copy.
-- ✅ Show the shop's transfer details exactly as `web_checkout` gives them.
+- ✅ Read `web_checkout` every time a checkout opens (60 seconds of caching at most), and
+  redraw an open checkout when its `version` changes.
+- ✅ Show the shop's transfer details exactly as `web_checkout` gives them, in its order and
+  colours.
+- ❌ Don't hard-code a payment method, its account number, or its colour. They are the
+  owner's, and he changes them from the shop.
 - ❌ **Don't use `POST /api/ext/print-jobs`** (the old print door). Print jobs go **inside the
   order**, in `prints[]`, so the shop sees the whole order in one place.
 - ❌ Don't show stock quantities, or invent a photo, a price, a delivery fee or a print price
@@ -504,8 +599,13 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
 ## 11. Done means
 
 - [ ] Products come from `/api/ext/products`, refresh every 5 minutes, survive the laptop being off.
-- [ ] Checkout reads `web_checkout`: delivery options, fee estimate, cash only where allowed,
-      transfer details, print price.
+- [ ] Every product shows its photos in the order given (model, product, extras), `thumbUrl`
+      in grids and `url` on the product page; picking a colour shows that colour's photos.
+- [ ] Checkout reads `web_checkout` on every open (≤ 60 s cache): delivery options, fee
+      estimate, cash only where allowed and only while `cod` is true, transfer methods in
+      order with their colours and details, print price.
+- [ ] An open checkout redraws itself when `version` changes, keeping the cart.
+- [ ] `method_gone` and `cod_off` re-read the checkout and ask the customer to choose again.
 - [ ] `web_order_submit` with a saved `ref` and safe retries, and every refusal shown in both languages.
 - [ ] Transfer photo compressed and sent with the order or later (`web_order_proof`).
 - [ ] Order page using `web_order_status`: the four states, rejection reasons, print progress,

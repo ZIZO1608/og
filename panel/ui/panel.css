@@ -331,12 +331,6 @@ body.rtl .ring { transform: rotate(-90deg) scaleY(-1); }
 
 /* ======================================================== the addresses */
 
-.addrs {
-  margin-top: 24px; width: 100%;
-  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: stretch;
-}
-.addrs.solo { grid-template-columns: 1fr; }
-
 .card {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius-lg); padding: 15px 17px;
@@ -376,23 +370,6 @@ body.rtl svg.ic-dir { transform: scaleX(-1); }
 .addr .cp.done { color: var(--brand); border-color: var(--brand-border); background: var(--brand-soft); }
 
 .hint { font-size: 11px; color: var(--dim); line-height: 1.45; }
-.addr-hint { margin-top: 10px; }
-
-/* The QR. White because a code has to be dark-on-light to scan; it is the
-   one white rectangle in the whole window and it earns it.
-
-   NOT `.qr` — js/codes.js puts class="qr" on the <svg> it returns, and a
-   container sharing that name would hand the picture a grid, a card
-   background and 13px of padding. That is the `.pos` collision this codebase
-   already paid for once, in CSS instead of JavaScript. */
-.qrcard {
-  display: grid; place-items: center; gap: 8px;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 13px;
-}
-.qrcard .paper { background: #FAFAFA; border-radius: var(--radius-sm); padding: 6px; line-height: 0; }
-.qrcard .paper svg { display: block; width: 118px; height: 118px; }
-.qrcard .cap { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); text-align: center; }
 
 /* ========================================================== the notices */
 
@@ -649,11 +626,6 @@ body.rtl .toast { animation-name: toastInR; }
   .stage .mark { width: 66px; height: 66px; border-radius: 16px; }
   .hero h2 { font-size: 22px; }
   .steps { margin-top: 18px; }
-  .addrs { margin-top: 16px; }
-}
-@media (max-width: 720px) {
-  .addrs { grid-template-columns: 1fr; }
-  .qrcard { justify-self: start; }
 }
 
 /* ===================================================== night shift 01
@@ -930,6 +902,239 @@ body.rtl .devchip { padding: 3px 11px 3px 3px; }
 
 body.rtl .conn-head h3, body.rtl .acc-th span, body.rtl .pw-dots { letter-spacing: 0; }
 
+/* ===================================================== panel polish
+   The open shop as a control room: the mark beside the headline, five
+   lights, two QR codes big enough to scan from where a phone is held, a
+   full-screen code and an A6 card for the counter. Lime still means one
+   thing — good, live, the thing to press — and is spent on a green light
+   and the primary button, nowhere else. Read from a metre away: the words
+   that matter are 14–21px, never the 11px of a developer screen. */
+
+/* ------------------------------------------------ the header, when open */
+/* Wide whenever the lights are on screen — five tiles in 620px is five
+   squeezed tiles — and a control room once the shop is open. */
+.hero.wide, .hero.open { max-width: 1040px; }
+@media (min-width: 900px) {
+  .hero.open { grid-template-columns: auto minmax(0, 1fr); column-gap: 28px; align-items: center; justify-items: stretch; }
+  .hero.open > * { grid-column: 1 / -1; }
+  .hero.open > .stage { grid-column: 1; grid-row: 1 / span 4; width: 104px; height: 104px; margin: 0; }
+  .hero.open > .stage .mark { width: 76px; height: 76px; border-radius: 18px; }
+  .hero.open > h2 { grid-column: 2; grid-row: 1; text-align: start; font-size: 30px; }
+  .hero.open > .sub { grid-column: 2; grid-row: 2; text-align: start; margin-top: 3px; font-size: 13.5px; }
+  .hero.open > .verdict { grid-column: 2; grid-row: 3; justify-self: start; margin-top: 8px; font-size: 13.5px; }
+  .hero.open > .acts { grid-column: 2; grid-row: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+  .hero.open .acts .chips { margin-top: 0; justify-content: flex-start; }
+}
+
+/* ------------------------------------------------------------ the lights */
+.lights, .links { width: 100%; margin-top: 26px; text-align: start; }
+.lhead { display: flex; align-items: center; gap: 12px; padding: 0 2px 10px; min-height: 31px; }
+.lhead h3 { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted-foreground); }
+.lhead .lat { font-size: 11.5px; color: var(--dim); }
+.lhead .spacer { margin-inline-start: auto; }
+.lhead .btn svg { width: 13px; height: 13px; }
+.lhead .btn.spinning svg { animation: spin 1s linear infinite; }
+
+/* Fitted to the column it sits in, not to the window: five across in the
+   wide column, fewer as it narrows. */
+.lrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); gap: 10px; }
+
+.lt {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr); align-content: start;
+  column-gap: 10px; row-gap: 6px; min-height: 96px;
+  padding: 15px 15px 16px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  transition: border-color var(--d-3) var(--e-std), background var(--d-3) var(--e-std);
+}
+.ldot {
+  width: 14px; height: 14px; border-radius: 50%; align-self: center;
+  background: var(--border-strong);
+  transition: background var(--d-3) var(--e-std), box-shadow var(--d-3) var(--e-std);
+}
+.lname { font-size: 15px; font-weight: 700; letter-spacing: -.015em; align-self: center; }
+.lwords { grid-column: 1 / -1; font-size: 13px; color: var(--muted-foreground); line-height: 1.45; overflow-wrap: anywhere; }
+/* an address, a pair of ports, "41 ms" — never broken across two lines;
+   a long host name may wrap at its dots rather than leave the tile */
+.lwords .nw { white-space: nowrap; }
+
+.lt.ok .ldot { background: var(--brand); box-shadow: 0 0 0 4px rgb(198 255 0 / .13), 0 0 16px rgb(198 255 0 / .5); }
+.lt.warn { border-color: var(--warning-border); }
+.lt.warn .ldot { background: var(--warning); box-shadow: 0 0 0 4px rgb(251 191 36 / .14), 0 0 14px rgb(251 191 36 / .35); }
+.lt.warn .lwords { color: var(--warning); }
+.lt.bad { border-color: var(--destructive-border); background: linear-gradient(180deg, rgb(248 113 113 / .07), transparent 70%), var(--card); }
+.lt.bad .ldot { background: var(--destructive); box-shadow: 0 0 0 4px rgb(248 113 113 / .16), 0 0 14px rgb(248 113 113 / .4); }
+.lt.bad .lwords { color: var(--destructive); }
+.lt.off .lwords, .lt.wait .lwords { color: var(--dim); }
+.lt.wait .ldot { animation: beat 1.2s ease-in-out infinite; }
+
+/* what to do under a light that is not green */
+.lhelp { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.lh {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 12px;
+  padding: 14px 16px; background: var(--card); border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--warning); border-radius: var(--radius);
+}
+.lh.bad { border-inline-start-color: var(--destructive); }
+.lh .ic { color: var(--warning); padding-top: 1px; }
+.lh.bad .ic { color: var(--destructive); }
+.lh .ic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lh b { display: block; font-size: 14px; margin-bottom: 4px; }
+.lh p { font-size: 13px; color: var(--muted-foreground); line-height: 1.55; }
+.lh .fix { margin: 10px 0 4px; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--foreground); }
+.lh .fix li::marker { color: var(--warning); font-weight: 700; }
+.lh .tip { display: block; margin-top: 6px; font-size: 12px; color: var(--dim); line-height: 1.5; }
+.cmd { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.cmd code {
+  flex: 1; min-width: 0; padding: 6px 9px; border-radius: var(--radius-sm);
+  background: var(--app); border: 1px solid var(--border-strong); color: var(--foreground);
+  font: 500 12px/1.4 'Cascadia Mono', Consolas, monospace; overflow-wrap: anywhere; text-align: left; user-select: text;
+}
+.cp {
+  flex: none; height: 26px; padding: 0 9px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); color: var(--muted-foreground); font-size: 11px; font-weight: 600;
+  transition: background var(--t), color var(--t), border-color var(--t);
+}
+.cp:hover { background: var(--card-hover); color: var(--foreground); }
+.cp.done { color: var(--brand); border-color: var(--brand-border); background: var(--brand-soft); }
+
+/* ------------------------------------------------------------- the codes */
+.qrs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .qrs { grid-template-columns: minmax(0, 1fr); } }
+
+.qcard {
+  display: flex; flex-direction: column; align-items: center; gap: 13px;
+  padding: 20px 18px 18px; text-align: center;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+.qhead { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.qhead .qt { font-size: 21px; font-weight: 700; letter-spacing: -.025em; color: var(--foreground); }
+.qhead .qt.alt { font-size: 16px; font-weight: 600; color: var(--muted-foreground); }
+.qhead .qsub { margin-top: 6px; font-size: 13px; color: var(--muted-foreground); }
+/* The one white thing on the screen, because a code has to be dark on light
+   to scan. NOT `.qr`: js/codes.js puts that class on the <svg> itself. */
+.qpaper {
+  background: #FFFFFF; padding: 12px; border-radius: 14px; line-height: 0;
+  cursor: zoom-in; box-shadow: 0 22px 44px -22px rgb(0 0 0 / .95), 0 0 0 1px rgb(255 255 255 / .06);
+  transition: transform var(--t), box-shadow var(--t);
+}
+.qpaper:hover { transform: scale(1.012); box-shadow: 0 26px 50px -22px rgb(0 0 0 / .95), 0 0 0 1px var(--brand-border); }
+.qpaper svg { display: block; width: 232px; height: 232px; }
+.qurl { font-size: 21px; font-weight: 700; letter-spacing: -.01em; color: var(--foreground); overflow-wrap: anywhere; user-select: text; }
+.qacts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.chip.done { color: var(--brand); border-color: var(--brand-border); background: var(--brand-soft); }
+.qwarn { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--warning); text-align: start; max-width: 380px; }
+.qwarn.bad { color: var(--destructive); }
+.qwarn svg { width: 15px; height: 15px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.qnote { font-size: 11.5px; color: var(--dim); }
+.qempty { font-size: 13px; color: var(--muted-foreground); max-width: 320px; padding: 60px 0; }
+
+.qpick { width: 100%; padding-top: 13px; border-top: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.qpick-l { font-size: 12.5px; color: var(--muted-foreground); }
+.qpills { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.pill {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border-strong);
+  color: var(--muted-foreground); font-size: 13px; font-weight: 700;
+  transition: background var(--t), color var(--t), border-color var(--t);
+}
+.pill small { font-size: 10.5px; font-weight: 600; color: var(--dim); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill small.bad { color: var(--warning); }
+.pill:hover { background: var(--card-hover); color: var(--foreground); }
+.pill.on { color: var(--brand); border-color: var(--brand-border); background: var(--brand-soft); }
+.pill.dim { opacity: .72; }
+
+.qrule {
+  margin-top: 14px; padding: 13px 18px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-lg);
+}
+.qrule b { font-size: 16px; letter-spacing: -.015em; }
+.qrule .rule2 { font-size: 15px; font-weight: 600; }
+.qrule small { margin-top: 4px; font-size: 12px; color: var(--dim); max-width: 640px; line-height: 1.5; }
+
+.qfoot { margin-top: 14px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
+.qfoot .here { flex: 1; min-width: 260px; display: flex; align-items: center; gap: 12px; }
+.qfoot .hl { flex: none; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+/* Copy and the arrow sit beside the address they act on, not a screen away */
+.qfoot .addr { flex: none; min-width: 0; }
+.qfoot .addr .url { flex: none; }
+.qfoot .btn svg { width: 14px; height: 14px; }
+.qplain { margin-top: 6px; }
+
+/* The other language, beside the first: Arabic joins its letters, so no
+   tracking ever reaches it — whatever the rule it sits inside asked for. */
+[lang='ar'], [lang='ar'] * { letter-spacing: 0 !important; }
+
+/* ------------------------------------------------------- full screen */
+.qfull {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center; padding: 22px;
+  background: radial-gradient(60% 55% at 50% 45%, rgb(198 255 0 / .05), transparent 70%), var(--app);
+  animation: fade .16s ease both; overflow: auto;
+}
+.qf-box { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+.qf-box .qhead .qt { font-size: 32px; }
+.qf-box .qhead .qt.alt { font-size: 22px; }
+.qf-box .qhead .qsub { font-size: 15px; }
+.qf-paper {
+  --side: min(78vw, calc(100vh - 330px));
+  width: var(--side); height: var(--side); min-width: 220px; min-height: 220px;
+  padding: 2.4%; background: #FFFFFF; border-radius: 20px; line-height: 0;
+  box-shadow: 0 30px 80px -30px rgb(0 0 0 / .95);
+}
+.qf-paper svg { display: block; width: 100%; height: 100%; }
+.qf-url { font-size: clamp(22px, 3.2vw, 44px); font-weight: 700; letter-spacing: -.015em; user-select: text; }
+.qf-how { font-size: 15px; color: var(--muted-foreground); }
+.qf-how + .qf-how { margin-top: -10px; }
+.qf-foot { display: flex; gap: 8px; }
+.qf-foot .chip { height: 38px; padding: 0 16px; font-size: 13px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lt.wait .ldot, .lhead .btn.spinning svg { animation: none; }
+  .qpaper, .qpaper:hover { transform: none; transition: none; }
+  .qfull { animation: none; }
+}
+
+/* ---------------------------------------------------------- on paper */
+.print-area { display: none; }
+
+@media print {
+  /* A6, portrait, edge to edge: the card draws its own margin. */
+  @page { size: 105mm 148mm; margin: 0; }
+  html, body { height: auto !important; overflow: visible !important; display: block !important; background: #FFFFFF !important; }
+  body > *:not(.print-area) { display: none !important; }
+  .print-area { display: block !important; }
+}
+
+.pcard {
+  width: 105mm; height: 147.6mm; overflow: hidden;
+  padding: 7mm 8mm 6mm; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  background: #FFFFFF; color: #0A0A0B;
+  font-family: Montserrat, 'Segoe UI', Tahoma, sans-serif;
+  break-after: page; page-break-after: always;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.pcard:last-child { break-after: auto; page-break-after: auto; }
+/* The budget, top to bottom, is 135 mm inside the margins — checked by the
+   preview harness, which measures every card for anything running off it. */
+.pc-top { display: flex; align-items: center; gap: 2.2mm; margin-bottom: 2.5mm; }
+.pc-top img { width: 8mm; height: 8mm; border-radius: 1.8mm; }
+.pc-shop { font-size: 10pt; font-weight: 700; letter-spacing: -.01em; }
+.pc-t { margin: 0; font-size: 17pt; font-weight: 700; line-height: 1.2; font-family: 'Segoe UI', Tahoma, sans-serif; }
+.pc-t2 { margin: .3mm 0 0; font-size: 13pt; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.pc-sub { margin: 1.2mm 0 0; font-size: 8.5pt; color: #3F3F46; line-height: 1.35; }
+.pc-qr { margin-top: 3mm; width: 54mm; height: 54mm; line-height: 0; }
+.pc-qr svg { width: 100%; height: 100%; display: block; }
+.pc-url { margin: 2.5mm 0 0; font-size: 12pt; font-weight: 700; letter-spacing: -.01em; }
+.pc-how { margin: 1.2mm 0 0; font-size: 8pt; color: #27272A; line-height: 1.3; }
+.pc-how[lang='ar'] { margin-top: 2.2mm; font-size: 9.5pt; font-family: 'Segoe UI', Tahoma, sans-serif; }
+.pc-rule {
+  margin-top: auto; width: 100%; padding-top: 2mm; border-top: .3mm solid #D4D4D8;
+  display: flex; flex-direction: column; gap: .6mm; font-size: 7pt; color: #52525B; line-height: 1.3;
+}
+.pc-rule [lang='ar'] { font-size: 8pt; font-family: 'Segoe UI', Tahoma, sans-serif; }
+
 /* ============================================================== Arabic */
 
 /* Tracked capitals are an English typographic device. Arabic is a joined
@@ -940,7 +1145,7 @@ body.rtl {
   letter-spacing: 0;
 }
 body.rtl h1, body.rtl h2, body.rtl h3,
-body.rtl .card h3, body.rtl .gh, body.rtl .qrcard .cap,
+body.rtl .card h3, body.rtl .gh,
 body.rtl .tag-pill, body.rtl .ask label, body.rtl .ask .word,
 body.rtl .lang-btn, body.rtl .hero h2 { letter-spacing: 0; }
 

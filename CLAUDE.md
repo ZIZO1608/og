@@ -3249,6 +3249,93 @@ English at 1100 and Arabic at 390, the refusal in both languages, the list press
 away, the domain's cover after the patience window, Keep waiting, and the cover leaving by itself.
 Plus every earlier suite.
 
+## Payment methods on the website (24 Sep 2026)
+
+Branch `web-payments`. The owner decides on the **Payment methods** page (`#payments`, its own
+entry in the sidebar and the phone's More → Money group, gated `config.write`) which transfer
+methods the website's checkout offers, each one's button colour, and whether cash on delivery is
+offered there at all; the page reads back what the website actually shows. Cloud
+file `server/supabase/031_web_payments.sql` (standalone like 030, run by hand AFTER 030; checked
+by `verify_031_web_payments.sql`), `server/lib/webcheckout.js`, the page in `js/desk.js`
+(`Desk.payView` / `Desk.payAfter`, registered in `VIEWS` / `AFTER` / `NAV` / `NAV_PERM`).
+
+- **It was a fold in Settings and moved to a page of its own** (the owner's call, 24 Sep): the
+  methods on the left, "What the website shows" pinned beside them (stacked below 1200px), three
+  counts at the top, and ONE Save in a sticky bar (`.pay-bar`, the `.dk-nav` offsets) that is
+  quiet and disabled until something changes. Everything repaints inside `#payPage`
+  (`repaintMethods` keeps the caret; `paintPayChrome` moves only the bar while typing) — never
+  `render()`. `payAfter` loads the office's settings when missing, refreshes them when over a
+  minute old and nothing is typed, then asks the website at most once a minute. Settings keeps a
+  one-line card with **Open** (`payLinkCard`) where the fold was. The draft is SHARED with the
+  Settings folds (companies, prices), so each Save keeps the other place's unsaved parts.
+- **`label.switch` on a phone was a blob** (fix 05's 44px rule stretched the `inset: 0` track to
+  40 × 44). The label keeps the 44px; the track (`label.switch > i`) is held at 22px, centred —
+  app-wide, in the fix 05 block of `og-skin.css`.
+Contract `docs/website/PROMPT-FOR-AHMAD.md` is v1.1; the brief for the website is
+`docs/website/UPDATE-PAYMENT-METHODS.md`. No local migration: it is all config.
+
+- **`pay.methods[].web`** (the "On the website" switch) and **`pay.methods[].color`**
+  (`#rrggbb` from a fixed palette), and config **`web.cod`** (`'0'` = no cash on delivery on the
+  website; missing = on). All written by `PUT /api/delivery/settings` (`Orders.saveSettings`),
+  never by `PUT /api/config`.
+- **THE RULE LIVES IN THREE PLACES — keep them in step**: `web.transfer_methods()` in 031 (the
+  cloud: what `web_checkout` lists AND what `web_order_submit` accepts), `Orders.onWeb` /
+  `Orders.webProblem` (the laptop's Save refuses `web:true` without the account in both
+  languages), and `webOn` / `webWhy` / `freezeWeb` in `js/desk.js` (the switch is locked with
+  the reason before the Save could refuse). `WebCheckout.expected()` is built on `Orders.onWeb`.
+  A method is offered only when it is active, **the order desk can take it (`desk`)** — a
+  website order is accepted there, and Card is seeded `desk:false` — not a system method, and
+  its account is written.
+- **`web` MISSING is the old 030 rule** (any account text puts a method on the website), so the
+  live site did not lose its methods the moment 031 was run. **It survives a Save only for a
+  method that rule has on the website at that moment** (judged on the accounts BEFORE the
+  Save); `cleanMethods` writes every other one `web:false`, and the browser's `freezeWeb` does
+  the same to its draft — so typing an account for a WhatsApp message can never put a method
+  on the website by itself (found by the review; it did at first). A live legacy method with
+  one language says "On the website now, but only in English — write it in Arabic too".
+- **Switched off, or taken off the office, is off the website too** (`web:false`, written by
+  both the browser and `cleanMethods`), and switching it back on is a fresh decision on the
+  switch. Clearing the account under an active method that is on the website is refused,
+  never a quiet switch-off.
+- **The accounts are no longer a fold of their own**: "Where customers send the money" is on
+  each method's row, and the methods, their accounts and `webCod` go up as ONE request, so one
+  transaction writes all three or none.
+- **"Live on the website ✓" is read from the cloud, not assumed.** `GET /api/web-checkout` /
+  `POST /api/web-checkout/check` (`config.write`; POST pushes the mirror's fast lane first) call
+  the SAME `public.web_checkout` the website calls, with `OG_WEB_API_KEY`, and compare it with
+  `expected()`. 031 grants `web_checkout` to `service_role` for exactly this. The reasons it can
+  give (`not_configured`, `no_key`, `bad_key`, `not_installed`, `old_sql` — 030 without 031,
+  `unreachable`) each have a sentence in both languages (`dks_wr_*`), and the mirror's state
+  explains a difference (`dks_wm_*`). The panel repaints `#dksWeb` alone and asks at most once a
+  minute on drawing the card open, never while idle (the fix06 rule; the UI suite counts it).
+  **The report fits the browser's 15 s**: ≤ 2 s waiting for a running push, ≤ 5 s for its own
+  (raced; the push carries on in the background), ≤ 6 s for the cloud (`SB.rpc` takes
+  `timeoutMs` now) — a slow line comes back as `unreachable`, never as a request that timed out.
+  A website order whose method was taken off since is accepted on cash with a toast saying so
+  (`wo_desk_method_gone`), for the person to choose how it was paid.
+- **`web_checkout` answers `cod`, `version` (md5 of the answer, so it moves exactly when what the
+  customer sees moves) and `updatedAt`**; the website now reads it on every checkout open and
+  redraws an open page when `version` changes. `web_order_submit` refuses `method_gone` and
+  `cod_off` — a page left open across a change cannot place an order on a method the owner took
+  away. A refused order is not stored, so its `ref` can be sent again.
+- **Verified**: `_nightshift/audit06/web-pay-sql.mjs` 53 (031 in PGlite: the legacy rule, the
+  switch, both languages, the desk, colours, order, cod, `method_gone`/`cod_off`, replays, a
+  refused ref re-sent, version, grants, broken config) and `web-orders-sql.mjs` 72 re-run with
+  031 in (its SQL_DIR now defaults to this repo); `_nightshift/web-pay/` — `setup.mjs` +
+  `fake-cloud.mjs` (the audit06 stateful fake for the laptop's REAL mirror push, PGlite running
+  001…031 on the config the mirror pushed) + `server.mjs` 61 (Save → mirror → cloud → read back,
+  refusals writing nothing, the order door, a cloud failure recovering by itself, the legacy
+  freeze, switched-off and desk-less methods, every reason code) + `ui.mjs` 54 (the page reached
+  from the sidebar and from Settings' Open, every control pressed, English 1280 and Arabic 390,
+  the phone switch measured as a 40 × 22 pill in a 44px label, results read from SQLite and from
+  the cloud, zero idle requests, a cashier refused the page); `ns03/sweep` against the same
+  scratch shop (it reads the navigation, so the new page is swept too). An adversarial review (3 angles,
+  a skeptic per finding) confirmed 7 defects, all fixed and covered above; 4 were refuted. The
+  rig: `node _nightshift/web-pay/setup.mjs`, then `fake-cloud.mjs` and the server with
+  `OG_ENV_FILE`/`OG_DATA_DIR` pointing at the scratch folder it prints (port 8196).
+  **By hand, once**: run `031_web_payments.sql` then `verify_031_web_payments.sql` in the
+  Supabase SQL editor, and give Ahmad `UPDATE-PAYMENT-METHODS.md`.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
@@ -5333,6 +5420,97 @@ a visual.
   `npm run supabase:reconcile` (the Reconcile button) refills it, or a restore hands back a catalogue
   with no pictures. `014` had never been appended to `CATCH-UP.sql`; it is now, with `015`.
 - The website row (`GET /api/ext/products`) carries `image.url` beside the block.
+
+**Superseded in part by 066 (below):** `products.image_url` and `product_colours.image_url` are now
+DERIVED from a colour's photos, `Cat.setImage` / `Cat.setColourImage` are gone, and the drawer's
+picture opens the photo manager. What is above about the bucket, the new path on every replace and
+positioning a picture still holds.
+
+## A colour's photos — the model, the product, and more (066, 24 Sep 2026)
+
+Migration `066_product_photos.sql`, `server/lib/photos.js`, `js/photos.js` (global `Photos`,
+`data-ph`), mirror file `server/supabase/036_product_photos.sql` (+ `verify_036_…`), website
+contract v1.2 (`docs/website/PROMPT-FOR-AHMAD.md` §3, short brief
+`docs/website/UPDATE-PRODUCT-PHOTOS.md`). **The owner's rule: every COLOUR of every product has at
+least two photos — 1. somebody wearing it (`model`), 2. the product on its own (`product`) — plus up
+to 8 `extra`; a colour missing either is left out of the website, and the shop still sells it.**
+The owner chose per colour (not per product) and "stays off the website" (not "cannot be saved").
+
+- **Numbered 066 locally and 036 in the mirror on purpose**: 063–065 and 030–035 are taken on
+  unmerged branches (night mode, always-on, merge-prep). The migration runner applies any file it
+  has not recorded, in name order, so a gap is harmless.
+- **One `model` and one `product` per colour** is a partial unique index locally — adding into a
+  taken slot REPLACES it (the row keeps its id; the old two files are returned as `previous` for the
+  route to delete). **The mirror has NO such index**: a swap is two rows changing at once and the
+  mirror receives them one upsert at a time, so a unique index there would refuse the swap halfway
+  and stop every photo after it. `verify_036` checks the index is absent.
+- **Every photo is two files**: the browser (`Photos.read`) makes a ≤ 1600 px JPEG (`url`, the
+  website's) and a ≤ 480 px one (`thumb_url`, the till's) from ONE file, **painted on white** — a
+  transparent PNG turned into a JPEG goes black where it was clear. Stored at
+  `products/<pid>/colours/<cid>/photos/<stamp>-l|s.jpg`, a new stamp every upload.
+- **`POST /api/products/:id/photos`** `{colourId, kind, full, thumb, width, height}` reads a body up
+  to 4 MB (`readJson(req, {max})` — everything else keeps 1 MB). The order is the error handling:
+  `Photos.assertCanAdd` BEFORE anything is uploaded (so a refusal leaves no orphan file), then both
+  files, then the row — and if the row is refused, the two files just uploaded are taken down.
+  `PATCH /api/photos/:id` `{kind}` moves a photo into a slot (whoever held it takes the old place —
+  "these two are the wrong way round" is one press) or `{move: ±1}` reorders an extra;
+  `DELETE /api/photos/:id`. All `product.write`. Codes: `bad_colour`, `bad_kind`, `too_many` (409),
+  `bad_image`, `too_large`, `not_configured` / `storage_failed` (503).
+- **`products.image_url` and `product_colours.image_url` are DERIVED** by `cover()` in
+  `lib/photos.js`, in the same transaction as every photo change, and nothing else writes them: the
+  SMALL file of the product photo, else the model, else the first extra. So every existing renderer
+  — thumbnails, the till's tiles, the colour sheet, the shelf map's box atlas — shows photos with no
+  change, at till size. The product photo comes first there because at a till the shoe identifies
+  the shoe.
+- **The old one-picture routes stay for a tab running yesterday's code**: `POST
+  /api/products/:id/image` and `/api/colours/:id/image` put `{dataUrl}` into that colour's PRODUCT
+  slot (the one small file standing in for both sizes) and `{clear}` removes it.
+- **066 carried the shop's existing pictures over as PRODUCT photos** (a colour's own on it, the
+  product's on its first colour, never the same file twice), because it cannot be known whether an
+  old picture showed somebody wearing it; the owner swaps one into the model slot with one press.
+  Those rows were made without change_log entries, so `product_photos` is in `MIGRATION_MADE`.
+- **The website** (`Cat.webList` / `webById` / `webRow`): only colours that pass `Photos.isReady` are
+  sent — swatch, sizes and SKUs — a product with none is absent (and `webById` 404s), and each
+  product and colour carries `photos` in display order (`Photos.ordered`: model, product, extras by
+  `sort`). `image.url` and a colour's `imageUrl` became the MODEL photo's large file (v1.1 kept).
+  **The moment 066 ran, every product the shop had left the website** — none had two photos — which
+  is the owner's rule working. `Cat.webPhotoGap()` counts shown vs waiting.
+- **Deleting** a product (`Cat.remove`) and the demo purge delete and log the photos first
+  (`Photos.removeForProducts`), and the route takes their files out of the bucket after the commit.
+- **The mirror**: `product_photos` is cursor shape behind its own guard straight after the colours,
+  in `CURSOR_TABLES`, `restore.js ORDER`, `drift.js PUSHED`, the reconcile's list and people.js's
+  `LOGGED`. Until `036` is run the table is skipped by name, the photos wait on the laptop (no
+  reconcile needed afterwards) — and **the boot pull refuses with `drift`**. Found on the way and
+  fixed for this table: **the fast lane asked a table Supabase has not got every ten seconds and
+  logged "pushed product_photos" each time** (it was changed and not refused). `missingAt` in
+  `mirror.js` now paces it to once a minute and keeps it out of what is reported as pushed.
+- **The screens** (all `js/photos.js`, state in `S` — never the DOM — and `#phRoot` repainted,
+  never `render()` under it): the manager dialog (`Photos.open(pid, cid)`, a chip per colour with
+  ✓ or 1/2, the two numbered slots, extras, "…" menus: Replace · Make this the model/product photo ·
+  Move earlier/later · Remove, which needs two presses), the drawer card (`Photos.card`, first in the
+  drawer, and the drawer's thumbnail opens the manager), the Products list's camera mark beside the
+  website switch (`Photos.mark`, `n/2` for one colour, `k/m` colours for several — it opens the
+  manager) and a **Photos filter** (`OG.prod.photos`: Needs photos / Photos done). The Add-product
+  form lost its single picture box: **each colour card carries its own slots** (`Photos.formStrip`,
+  drafts on `c.photos` in `OG.wh.colours`, drawn in a one-colour form too), sent after the save by
+  `Photos.sendDrafts` one at a time; a pasted picture lands in the first colour's first empty slot.
+  ONE hidden file input on `<body>` (`#phFile`), so no repaint can take it away between the press
+  and the file arriving; `multiple` only for extras. The drawer's "On website" row says "Waiting for
+  photos" when the switch is on and no colour is ready.
+- **Verified** on a scratch copy of the sandbox (port 8197, a Supabase Storage stand-in): 22 checks
+  of the library (migration carry-over, replace, swap, reorder, the cap, the cover, logging), 41 over
+  HTTP (two files per photo, only ready colours on the website, model first, no cost, replace
+  deleting the old files, a 900 KB photo over the old 1 MB body limit, storage down → 503 and no
+  orphan file, the cashier refused, the legacy routes, deleting a product clearing its bucket
+  folder), and 43 in a browser with the real file chooser (the list mark and filter, the drawer card,
+  both slots, extras, swap and two-press remove read back from SQLite, the till cover, the
+  Add-product form saving a product with its two photos, Arabic at 390 with nothing outside the sheet
+  and no raw key), plus `npm test` and `fix05/p0-namespaces`. **The page's CSP allows `https:`
+  images only**, so a test against a plain-http storage stand-in needs `Page.setBypassCSP` to see the
+  photos; the real bucket is https.
+- **By hand, once**: run `server/supabase/036_product_photos.sql`, then
+  `verify_036_product_photos.sql`, in the Supabase SQL editor — until then the laptop cannot hand
+  the shop to another laptop (`drift`) — and give Ahmad `docs/website/UPDATE-PRODUCT-PHOTOS.md`.
 
 ## The drawer
 

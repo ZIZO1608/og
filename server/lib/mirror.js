@@ -423,6 +423,10 @@ export const TABLES = {
      a foreign key in the mirror, so the order does not matter there, and a
      project without 026 still mirrors the shop. */
   product_colours: { parseKey: numKey, fetchLocal: byId('product_colours'), mapRow: (r) => r },
+  /* 066 — a colour's photos: the two addresses in the bucket, the slot and
+     the order. Cursor shape (a photo is replaced in place, moved between
+     slots, removed), pushed behind its own guard straight after the colours. */
+  product_photos: { parseKey: numKey, fetchLocal: byId('product_photos'), mapRow: (r) => r },
   stock: {
     parseKey: (rowId) => { const [sku, wh_id] = rowId.split(':'); return { sku, wh_id }; },
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM stock WHERE sku = ? AND wh_id = ?').get(key.sku, key.wh_id),
@@ -715,7 +719,7 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
 /* Every table this library pushes, for the check and the status. */
 /* handover_lines and order_return_lines are not here on purpose: each rides
    on its parent's afterUpsert, the way sale_items ride on their sale. */
-export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours',
+export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours', 'product_photos',
                               'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews', 'errands',
                               ...PARTNER, ...DRAWER, 'day_closes'];
 
@@ -736,6 +740,15 @@ const REFUSED = /permission denied for (?:table|relation|sequence|schema)|\b4250
 const denied = new Map();
 
 export function refusals() { return [...denied.values()]; }
+
+/* A TABLE SUPABASE HAS NOT GOT YET, asked by the fast lane at most once a
+   minute — the same pacing a refused one gets. Without it the ten-second
+   tick asked for a table nobody had created, every ten seconds, and logged
+   "pushed product_photos" each time (the table was in the changed set and not
+   refused), which is a lie in the one log that says whether the mirror is
+   healthy. The full run always asks. Kept apart from `denied`: that one is
+   drawn as a GRANT to run, and a missing table needs its file, not a GRANT. */
+const missingAt = new Map();
 
 export function grantSql(table) {
   return `GRANT SELECT, INSERT, UPDATE, DELETE ON public.${table} TO service_role;`;
@@ -879,6 +892,31 @@ async function walk(log, only) {
       if (!MISSING_TABLE.test(String(e.message))) throw e;
       log.warn('Supabase is missing product_colours — skipped, everything else still went up.');
       log.line('    Run server/supabase/026_colours.sql in the SQL editor.');
+      }
+    }
+    await breathe();
+  }
+
+  /* 066 — the colours' photos, behind a guard of their own. Until 036 is run
+     the table is skipped by name and everything else still goes up; the
+     photos wait here (the bookmark does not move) and land on the first run
+     after it. The FILES are already in the bucket either way — what waits is
+     only the list of which file is which. */
+  if (want('product_photos')) {
+    log.head('Photos');
+    try {
+      await syncTable(log, 'product_photos', { phase: 'upsert' });
+      await syncTable(log, 'product_photos', { phase: 'delete' });
+      touched.push('product_photos');
+      denied.delete('product_photos');
+      missingAt.delete('product_photos');
+    } catch (e) {
+      if (noteRefused(log, 'product_photos', e)) { /* skipped, named */ }
+      else {
+      if (!MISSING_TABLE.test(String(e.message))) throw e;
+      missingAt.set('product_photos', Date.now());
+      log.warn('Supabase is missing product_photos — skipped, everything else still went up.');
+      log.line('    Run server/supabase/036_product_photos.sql in the SQL editor.');
       }
     }
     await breathe();
@@ -1184,7 +1222,7 @@ export async function resetCursorsAfterPull({ log = tailLog() } = {}) {
    log, and the bookmarks are reset to say so), and healing everything would
    re-push the whole shop. A MIGRATION THAT INSERTS INTO A CURSOR-SHAPE TABLE
    ADDS THAT TABLE HERE, or writes its own change_log rows. */
-const MIGRATION_MADE = ['product_colours'];
+const MIGRATION_MADE = ['product_colours', 'product_photos'];
 export function logUnlogged({ log = tailLog() } = {}) {
   const d = DB.get();
   let total = 0;
@@ -1231,6 +1269,8 @@ export async function pushChanged({ log = tailLog() } = {}) {
   for (const t of [...det.changed]) {
     const d = denied.get(t);
     if (d && now - new Date(d.at).getTime() < 60 * 1000) det.changed.delete(t);
+    const m = missingAt.get(t);
+    if (m && now - m < 60 * 1000) det.changed.delete(t);
   }
   if (!det.changed.size) return { pushed: false, tables: [], behind: det.behind, ok: !denied.size, refused: refusals() };
   const r = await walk(log, det.changed);
@@ -1240,7 +1280,7 @@ export async function pushChanged({ log = tailLog() } = {}) {
   });
   const after = detect();
   /* only what actually went up is reported as pushed */
-  const tables = [...det.changed].filter((t) => !denied.has(t));
+  const tables = [...det.changed].filter((t) => !denied.has(t) && !missingAt.has(t));
   return { pushed: tables.length > 0, tables, behind: after ? after.behind : 0,
            ok: !r.layoutFailed && !r.loyaltyFailed && !r.cashFailed && !r.refused.length, ...r };
 }
