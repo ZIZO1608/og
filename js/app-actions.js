@@ -52,6 +52,11 @@ function giftDays(raw) {
 }
 
 var ACTIONS = {
+  /* The exchange-rate feed's two buttons (Settings → Exchange rate). "Check
+     now" asks the feed and applies by the card's rules; "Use it" is the one
+     press past the jump guard — FxFeedUI in js/app-settings.js. */
+  'fx-check': function () { FxFeedUI.check(); },
+  'fx-apply': function () { FxFeedUI.apply(); },
   nav: function (el) { navTo(el.getAttribute('data-view'), el.getAttribute('data-tab')); },
 
   /* Collapse the sidebar to an icon rail, and remember it. Re-rendered rather

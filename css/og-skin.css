@@ -3215,23 +3215,62 @@ body:not([data-portal="yalla"]) .ph-state.warn b { color: var(--warning); }
 body:not([data-portal="yalla"]) .ph-state.ok b { color: var(--brand); }
 body:not([data-portal="yalla"]) .ph-foot { margin: 12px 0 0; }
 
-/* The drawer card: a row per colour. */
-body:not([data-portal="yalla"]) .ph-row {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px 12px;
-  padding: 8px 0; border-top: 1px solid var(--border);
+/* The drawer's gallery: the chosen photo big and whole (contain — this is
+   where somebody checks what the website will show), every photo of the
+   colour underneath, arrows over the photo, and a swipe (pan-y, so a sideways
+   swipe is the gallery's and not the browser's Back). */
+body:not([data-portal="yalla"]) .ph-gal { display: grid; gap: 12px; }
+body:not([data-portal="yalla"]) .ph-gal .ph-chips { margin-bottom: 0; }
+body:not([data-portal="yalla"]) .ph-gal-main {
+  position: relative; aspect-ratio: 1 / 1; border-radius: 14px; overflow: hidden;
+  background: var(--subtle); border: 1px solid var(--border); touch-action: pan-y;
 }
-body:not([data-portal="yalla"]) .ph-row:first-child { border-top: 0; padding-top: 0; }
-body:not([data-portal="yalla"]) .ph-row-name { grid-column: 1 / -1; }
-body:not([data-portal="yalla"]) .ph-strip { display: flex; gap: 6px; align-items: center; }
-body:not([data-portal="yalla"]) .ph-mini {
-  width: 36px; height: 45px; border-radius: 8px; object-fit: cover; background: #FFFFFF; flex: none; display: block;
+body:not([data-portal="yalla"]) .ph-gal-img { position: absolute; inset: 0; display: block; }
+body:not([data-portal="yalla"]) .ph-gal-img img {
+  width: 100%; height: 100%; object-fit: contain; display: block;
+  background-size: contain; background-position: center; background-repeat: no-repeat;
 }
-body:not([data-portal="yalla"]) .ph-mini-empty {
-  display: grid; place-items: center; background: var(--subtle); border: 1px dashed var(--warning-border);
-  color: var(--muted-foreground); font-size: 11px; font-weight: 700;
+body:not([data-portal="yalla"]) .ph-gal-count {
+  position: absolute; bottom: 8px; inset-inline-end: 8px; z-index: 2; padding: 2px 8px;
+  border-radius: var(--radius-full); background: rgba(10, 10, 12, .78); color: #FFFFFF;
+  font-size: 11px; font-weight: 700;
 }
-body:not([data-portal="yalla"]) .ph-more { font-size: 12px; color: var(--muted-foreground); }
-body:not([data-portal="yalla"]) .ph-row-state { font-size: 12.5px; min-width: 0; }
+body:not([data-portal="yalla"]) .ph-gal-nav {
+  position: absolute; top: 50%; z-index: 3; width: 40px; height: 40px; margin-top: -20px;
+  display: grid; place-items: center; border: 0; border-radius: 50%; cursor: pointer;
+  background: rgba(10, 10, 12, .72); color: #FFFFFF;
+}
+body:not([data-portal="yalla"]) .ph-gal-nav:hover { background: rgba(10, 10, 12, .9); }
+body:not([data-portal="yalla"]) .ph-gal-nav.prev { inset-inline-start: 8px; }
+body:not([data-portal="yalla"]) .ph-gal-nav.next { inset-inline-end: 8px; }
+body:not([data-portal="yalla"]) .ph-gal-nav svg { width: 20px; height: 20px; }
+body:not([data-portal="yalla"]) .ph-gal-nav.next svg { transform: scaleX(-1); }
+body.rtl .ph-gal-nav.prev svg { transform: scaleX(-1); }
+body.rtl .ph-gal-nav.next svg { transform: none; }
+body:not([data-portal="yalla"]) .ph-gal-thumbs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+body:not([data-portal="yalla"]) .ph-gal-thumb {
+  position: relative; flex: none; width: 56px; height: 70px; padding: 0; cursor: pointer;
+  border-radius: 10px; overflow: hidden; border: 2px solid transparent;
+  background: var(--subtle); background-clip: padding-box;
+}
+body:not([data-portal="yalla"]) .ph-gal-thumb.on { border-color: var(--foreground); }
+body:not([data-portal="yalla"]) .ph-gal-thumb:not(.on) img { opacity: .6; }
+body:not([data-portal="yalla"]) .ph-gal-thumb:not(.on):hover img { opacity: 1; }
+body:not([data-portal="yalla"]) .ph-gal-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+body:not([data-portal="yalla"]) .ph-gal-thumb span {
+  position: absolute; top: 3px; inset-inline-start: 3px; padding: 0 5px; border-radius: var(--radius-full);
+  background: rgba(10, 10, 12, .78); color: #FFFFFF; font-size: 10px; font-weight: 700; line-height: 16px;
+}
+body:not([data-portal="yalla"]) .ph-gal-empty {
+  display: grid; justify-items: center; gap: 6px; padding: 24px 16px; text-align: center;
+  border: 1px dashed var(--warning-border); border-radius: 14px; background: var(--subtle);
+}
+body:not([data-portal="yalla"]) .ph-gal-empty svg { width: 28px; height: 28px; color: var(--warning); }
+body:not([data-portal="yalla"]) .ph-gal-empty small { font-size: 12px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ph-gal-foot {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  font-size: 12.5px;
+}
 body:not([data-portal="yalla"]) .ok-text { color: var(--brand); font-weight: 600; }
 
 /* The Add-product form: the slots under each colour's sizes. */
@@ -3263,8 +3302,33 @@ body:not([data-portal="yalla"]) .ph-mark.ok svg { color: var(--brand); }
   body:not([data-portal="yalla"]) .ph-dots { width: 40px; height: 40px; }
   body:not([data-portal="yalla"]) .ph-x { width: 36px; height: 36px; }
   body:not([data-portal="yalla"]) .ph-menu button { min-height: 44px; }
-  body:not([data-portal="yalla"]) .ph-row { grid-template-columns: minmax(0, 1fr) auto; }
-  body:not([data-portal="yalla"]) .ph-row .ph-strip { grid-column: 1 / -1; }
-  body:not([data-portal="yalla"]) .ph-row .btn { min-height: 44px; }
+  body:not([data-portal="yalla"]) .ph-gal-nav { width: 44px; height: 44px; margin-top: -22px; }
+  body:not([data-portal="yalla"]) .ph-gal-foot .btn { min-height: 44px; }
 }
 body.rtl .ph-tag, body.rtl .ph-chip, body.rtl .ph-mark, body.rtl .ph-state b { letter-spacing: 0; }
+
+/* ==========================================================================
+   THE EXCHANGE-RATE FEED (Settings → Exchange rate; FxFeedUI in
+   js/app-settings.js). A block under the rate box: what the feed says as a
+   quiet status card, one lime button only when there is a rate to use, the
+   switch, and four small fields on the 8/12/16 scale.
+   ========================================================================== */
+body:not([data-portal="yalla"]) .fxf { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .fxf-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+body:not([data-portal="yalla"]) .fxf-sub { color: var(--muted-foreground); font-size: var(--fs-sm); line-height: 1.45; }
+body:not([data-portal="yalla"]) .fxf-status {
+  display: grid; gap: 6px; padding: 12px; border-radius: var(--radius);
+  background: var(--secondary); border: 1px solid var(--border); font-size: var(--fs-sm); line-height: 1.5;
+}
+body:not([data-portal="yalla"]) .fxf-status.warn { border-color: var(--warning-border, #F59E0B66); }
+body:not([data-portal="yalla"]) .fxf-status.bad { border-color: var(--destructive-border); }
+body:not([data-portal="yalla"]) .fxf-makes { font-weight: 600; color: var(--foreground); }
+body:not([data-portal="yalla"]) .fxf-ok { color: var(--success); }
+body:not([data-portal="yalla"]) .fxf-err { color: var(--destructive); }
+body:not([data-portal="yalla"]) .fxf-held { color: #F59E0B; font-weight: 600; }
+body:not([data-portal="yalla"]) .fxf-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 8px; }
+body:not([data-portal="yalla"]) .fxf-sw { display: flex; align-items: center; gap: 12px; margin: 16px 0 12px; }
+body:not([data-portal="yalla"]) .fxf-sw > span { display: flex; flex-direction: column; gap: 2px; }
+body:not([data-portal="yalla"]) .fxf-sw small { font-size: var(--fs-xs); }
+body:not([data-portal="yalla"]) .fxf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+body.rtl .fxf-makes, body.rtl .fxf-held, body.rtl .fxf-head b { letter-spacing: 0; }

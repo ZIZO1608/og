@@ -788,8 +788,161 @@ function rateCard() {
       '<input class="inp num" id="setRate" type="text" inputmode="numeric" dir="ltr" autocomplete="off" ' +
         'value="' + CONFIG.EXCHANGE_RATE + '" data-change="set-rate"></label>' +
     '<div class="partner-note">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP · ' + t('set_rate_live') + '</div>' +
+    FxFeedUI.html() +
     '</div>' + setFoldEnd();
 }
+
+/* ---- the live exchange-rate feed (server/lib/fxfeed.js) -------------------
+   The block under the rate box: what the feed says, what that makes for the
+   shop, whether it was applied or HELD by the jump guard, and the five
+   switches. Drawn from the last status this tab holds (S.st) and repainted
+   through setFoldRepaint('rate', …) — never render(), the fold has a box
+   with a caret in it. Loaded from afterSettings() at most once a minute,
+   and at once after a press or a live `fx` event. config.write only, which
+   is what the server's three routes say too. */
+var FxFeedUI = (function () {
+  var S = { st: null, at: 0, busy: false };
+
+  function fill(key, args) {
+    var s = t(key);
+    Object.keys(args || {}).forEach(function (k) { s = s.split('{' + k + '}').join(args[k]); });
+    return s;
+  }
+  function ltr(s) { return '<bdi dir="ltr">' + s + '</bdi>'; }
+  function ago(iso) {
+    if (!iso) return '';
+    var ms = Date.now() - new Date(iso).getTime();
+    if (!isFinite(ms)) return '';
+    var m = Math.round(ms / 60000);
+    if (m < 1) return t('fxf_ago_now');
+    if (m < 60) return fill('fxf_ago_min', { n: ltr(m) });
+    if (m < 48 * 60) return fill('fxf_ago_h', { n: ltr(Math.round(m / 60)) });
+    return fill('fxf_ago_d', { n: ltr(Math.round(m / 1440)) });
+  }
+  function sideWord(side) { return t('fxf_side_' + side).split(' ')[0]; }
+
+  function html() {
+    if (typeof allow !== 'function' || !allow('config.write')) return '';
+    var s = S.st;
+    var h = '<div class="fxf"><div class="fxf-head"><b>' + t('fxf_title') + '</b>' +
+      '<span class="fxf-sub">' + t('fxf_sub') + '</span></div>';
+    if (!s) return h + '<div class="partner-note">' + t(S.busy ? 'fxf_checking' : 'fxf_never') + '</div></div>';
+    if (!s.configured) return h + '<div class="partner-note">' + t('fxf_not_configured') + '</div></div>';
+
+    var tone = 'ok', err = '';
+    if (s.error === 'loading') { err = t('fxf_loading'); tone = 'warn'; }
+    else if (s.error === 'unreachable') { err = t('fxf_unreachable'); tone = 'warn'; }
+    else if (s.error === 'refused') { err = t('fxf_refused'); tone = 'bad'; }
+    else if (s.error === 'bad_answer') { err = t('fxf_bad'); tone = 'warn'; }
+    else if (s.error === 'write_failed') { err = t('fxf_write_failed'); tone = 'bad'; }
+    else if (!s.raw) { err = t('fxf_never'); tone = 'warn'; }
+    if (s.held) tone = 'warn';
+
+    h += '<div class="fxf-status ' + tone + '">';
+    if (s.raw) {
+      h += '<div>' + fill('fxf_says', { sell: ltr(nf(s.raw.sell)), buy: ltr(nf(s.raw.buy)), ago: ago(s.lastOkAt) }) + '</div>';
+      if (s.candidate) {
+        h += '<div class="fxf-makes">' + fill('fxf_makes', {
+          rate: ltr(nf(s.candidate)), side: sideWord(s.side), scale: ltr(nf(s.scale))
+        }) + '</div>';
+      }
+    }
+    if (err) h += '<div class="fxf-err">' + err + '</div>';
+    if (s.held) {
+      h += '<div class="fxf-held">' + fill('fxf_held', {
+        rate: ltr(nf(s.held.rate)), current: ltr(nf(s.held.current)), pct: ltr(s.held.pct)
+      }) + '</div>';
+    } else if (s.candidate && s.current !== null && s.candidate === s.current) {
+      h += '<div class="fxf-ok">' + t('fxf_same') + '</div>';
+    } else if (s.candidate && s.current !== null) {
+      h += '<div>' + fill('fxf_would', { current: ltr(nf(s.current)), rate: ltr(nf(s.candidate)) }) + '</div>';
+    }
+    h += '</div>';
+
+    /* One lime button on the card: "Use it" when there is something to use,
+       and Check now stays quiet beside it. */
+    var canUse = !!(s.candidate && s.candidate !== s.current);
+    var dis = S.busy ? ' disabled' : '';
+    h += '<div class="fxf-line">' +
+      '<button class="btn" data-act="fx-check"' + dis + '><span>' + t(S.busy ? 'fxf_checking' : 'fxf_check') + '</span></button>' +
+      (canUse ? '<button class="btn btn-primary" data-act="fx-apply"' + dis + '><span>' +
+        fill('fxf_use', { rate: ltr(nf(s.candidate)) }) + '</span></button>' : '') +
+      '</div>';
+    var when = [];
+    if (s.applied && s.applied.rate) when.push(fill('fxf_last', { rate: ltr(nf(s.applied.rate)), ago: ago(s.applied.at) }));
+    if (s.on && s.nextAt) {
+      var mins = Math.max(0, Math.round((new Date(s.nextAt).getTime() - Date.now()) / 60000));
+      when.push(fill('fxf_next', { n: ltr(mins) }));
+    }
+    if (when.length) h += '<div class="fxf-sub">' + when.join(' · ') + '</div>';
+
+    h += '<div class="fxf-sw"><label class="switch"><input type="checkbox" data-change="fx-on"' + (s.on ? ' checked' : '') + '><i></i></label>' +
+      '<span><b>' + t('fxf_on') + savedPill('fx.feed_on') + '</b><small class="fxf-sub">' + t('fxf_on_sub') + '</small></span></div>';
+    h += '<div class="fxf-grid">' +
+      '<label class="field"><span>' + t('fxf_side') + savedPill('fx.feed_side') + '</span>' +
+        '<select class="inp" data-change="fx-side">' +
+        ['sell', 'buy', 'mid'].map(function (k) {
+          return '<option value="' + k + '"' + (s.side === k ? ' selected' : '') + '>' + t('fxf_side_' + k) + '</option>';
+        }).join('') + '</select></label>' +
+      '<label class="field"><span>' + t('fxf_minutes') + savedPill('fx.feed_minutes') + '</span>' +
+        '<input class="inp num" type="text" inputmode="numeric" dir="ltr" autocomplete="off" value="' + s.minutes + '" data-change="fx-minutes"></label>' +
+      '<label class="field"><span>' + t('fxf_scale') + savedPill('fx.feed_scale') + '</span>' +
+        '<input class="inp num" type="text" inputmode="numeric" dir="ltr" autocomplete="off" value="' + s.scale + '" data-change="fx-scale"></label>' +
+      '<label class="field"><span>' + t('fxf_jump') + savedPill('fx.feed_max_jump_pct') + '</span>' +
+        '<input class="inp num" type="text" inputmode="numeric" dir="ltr" autocomplete="off" value="' + s.jumpPct + '" data-change="fx-jump"></label>' +
+      '</div>';
+    if (s.on) h += '<div class="partner-note">' + t('fxf_typed_note') + '</div>';
+    return h + '</div>';
+  }
+
+  function repaint() {
+    if (typeof rateCard !== 'function') return;
+    setFoldRepaint('rate', rateCard());
+  }
+  function take(st) {
+    S.st = st; S.at = Date.now(); S.busy = false;
+    if (st && st.current) CONFIG.EXCHANGE_RATE = st.current;
+    repaint();
+  }
+  function load(force) {
+    if (typeof allow !== 'function' || !allow('config.write') || !API.live) return;
+    if (!force && S.st && Date.now() - S.at < 60000) return;
+    API.get('/api/fx/feed').then(take).catch(function () { /* the card keeps what it had */ });
+  }
+  function post(path) {
+    if (S.busy) return;
+    S.busy = true; repaint();
+    var before = S.st && S.st.current;
+    API.post(path, {}).then(function (st) {
+      take(st);
+      if (st && st.current && st.current !== before) {
+        toast(t('fxf_toast'), fill('fxf_toast_feed', { rate: nf(st.current) }), 'ok', 4000);
+      }
+    }).catch(function (err) {
+      S.busy = false; repaint();
+      toast(t('exchange_rate'), API.friendly(err), 'err', 5000);
+    });
+  }
+  /* A live `fx` event: the feed (or another tab's press) wrote a row. The
+     number every dollar price converts through is taken at once; the card,
+     if it is on screen, is refetched. */
+  function live(fx) {
+    if (!fx || !(fx.rate > 0)) return;
+    var changed = CONFIG.EXCHANGE_RATE !== fx.rate;
+    CONFIG.EXCHANGE_RATE = fx.rate;
+    if (changed) toast(t('fxf_toast'), fill(fx.from === 'hand' ? 'fxf_toast_hand' : 'fxf_toast_feed', { rate: nf(fx.rate) }), 'ok', 4000);
+    if (OG.view === 'settings') load(true);
+  }
+  return {
+    html: html,
+    load: load,
+    reload: function () { load(true); },
+    check: function () { post('/api/fx/feed/check'); },
+    apply: function () { post('/api/fx/feed/apply'); },
+    live: live,
+    status: function () { return S.st; }
+  };
+})();
 
 /* What one printed piece costs a WEBSITE customer (print.unit_price). The
    website shows it at checkout (web_checkout, from the mirror) and every

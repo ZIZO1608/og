@@ -57,6 +57,12 @@ services:
       #  that prefix answers 503, which is right for a shop with no website.
       OG_WEB_API_KEY: "${OG_WEB_API_KEY:-}"
 
+      #  The live exchange-rate feed (server/lib/fxfeed.js). Only the MAIN
+      #  server asks it (a standby runs no workers); no key, no feed, and the
+      #  rate stays whatever Settings says. The URL has a default.
+      OG_FX_KEY: "${OG_FX_KEY:-}"
+      OG_FX_URL: "${OG_FX_URL:-}"
+
       #  A second copy of each nightly backup, on another mount. A backup on
       #  the same volume as the database protects against a mistake, not
       #  against losing the volume.

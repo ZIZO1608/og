@@ -478,6 +478,32 @@ var CHANGES = {
         .then(function () { markSaved('fx.rate'); return Shop.reload(); })
         .catch(function (err) { toast(t('exchange_rate'), API.friendly(err), 'err', 5000); });
     }, 700);
+  },
+
+  /* The live feed's switches, on the same fold (FxFeedUI, js/app-settings.js).
+     Each writes one fx.feed_* key through PUT /api/config; the side and the
+     divisor change what the feed's number MEANS, so the card asks the feed
+     again once the save has landed. */
+  'fx-on': function (el) {
+    saveSetting('fx.feed_on', el.checked ? '1' : '0', 0, FxFeedUI.check);
+  },
+  'fx-side': function (el) {
+    saveSetting('fx.feed_side', el.value, 0, FxFeedUI.check);
+  },
+  'fx-minutes': function (el) {
+    var v = Desk.toCount(el.value);
+    if (!(v >= 1 && v <= 1440)) return;
+    saveSetting('fx.feed_minutes', v, 700, FxFeedUI.reload);
+  },
+  'fx-scale': function (el) {
+    var v = Desk.toCount(el.value);
+    if (!(v >= 1)) return;
+    saveSetting('fx.feed_scale', v, 700, FxFeedUI.check);
+  },
+  'fx-jump': function (el) {
+    var v = Desk.toCount(el.value);
+    if (!(v >= 0)) return;
+    saveSetting('fx.feed_max_jump_pct', v, 700, FxFeedUI.check);
   }
 };
 
@@ -535,14 +561,14 @@ var RATE_SAVE_T = null;
    route and puts a small "Saved" beside the box instead, which is the
    answer rather than an animation — it appears only once the server has
    actually taken it. */
-function saveSetting(key, value, wait) {
+function saveSetting(key, value, wait, after) {
   clearTimeout(CONFIG_SAVE_T[key]);
   if (!API.live) return;
   CONFIG_SAVE_T[key] = setTimeout(function () {
     var updates = {};
     updates[key] = String(value);
     API.put('/api/config', { updates: updates })
-      .then(function () { markSaved(key); })
+      .then(function () { markSaved(key); if (after) after(); })
       .catch(function (err) { toast(t('settings_title'), API.friendly(err), 'err', 5000); });
   }, wait === undefined ? 700 : wait);
 }

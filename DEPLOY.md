@@ -138,6 +138,9 @@ OG_TELEGRAM_TOKEN_YALLA=
 # --- optional --------------------------------------------------------------
 OG_WEB_API_KEY=
 OG_BACKUP_COPY_DIR=
+# the live exchange-rate feed — only on the ONE main server (a standby copy
+# never asks it); leave blank and the rate stays whatever Settings says
+OG_FX_KEY=
 ```
 
 `OG_PORT`, `OG_HTTPS`, `OG_SECURE`, `NODE_ENV`, `OG_DATA_DIR` and `TZ` are

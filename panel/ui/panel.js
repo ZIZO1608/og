@@ -1081,7 +1081,7 @@
      for everybody — "the label printer is not set up" is a thing a
      shopkeeper can act on by phoning somebody. The fixes are a developer's. */
 
-  var CONN_ORDER = ['server', 'always', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'backup', 'vault'];
+  var CONN_ORDER = ['server', 'always', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'fxfeed', 'backup', 'vault'];
   var CONN_ICON = { ok: 'tick', warn: 'warn', bad: 'cross', skip: 'dash' };
   var CONN_FIX = {
     always: {

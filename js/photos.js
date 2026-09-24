@@ -194,39 +194,116 @@ var Photos = (function () {
     return typeof allow === 'function' && allow('product.write') && typeof Shop !== 'undefined' && Shop.live();
   }
 
-  function mini(photo, n) {
-    if (photo) return '<img class="ph-mini" src="' + esc(photo.thumbUrl) + '" alt="" loading="lazy">';
-    return '<span class="ph-mini ph-mini-empty" aria-hidden="true"><bdi dir="ltr">' + n + '</bdi></span>';
+  /* ------------------------------------------------------------ the drawer's gallery
+
+     EVERY PHOTO, BIG, WHERE SOMEBODY LOOKS AT THE PRODUCT. The drawer used to
+     squeeze a colour's photos into 36 px thumbnails, so a product with its
+     model, its product and two more read as four smudges (the owner, 24 Sep:
+     "make the 4 images appear"). Now: the chosen photo large and whole
+     (contain, never cropped — this is where somebody checks what the website
+     will show), every photo of that colour underneath in the website's own
+     order, arrows and a swipe to walk them, and a chip per colour when there
+     is more than one.
+
+     Which photo is showing lives in G, never on the DOM: the drawer is redrawn
+     when the manager closes and on a save, and a gallery that jumped back to
+     photo 1 on every redraw would be one nobody could look through. A step or
+     a pick repaints the gallery alone (repaintGal), never the drawer. */
+
+  var G = { pid: null, cid: null, i: 0 };
+
+  var CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>';
+
+  function galColour(p) {
+    var cs = colours(p);
+    if (G.pid === p.id && cs.some(function (c) { return c.id === G.cid; })) return G.cid;
+    var has = cs.filter(function (c) { return list(p).some(function (x) { return x.colourId === c.id; }); })[0];
+    return (has || cs[0]).id;
+  }
+
+  function photoLabel(ph, n) {
+    return ph.kind === 'extra' ? t('ph_photo_n').replace('{n}', n) : n + ' ' + t('ph_slot_' + ph.kind);
+  }
+
+  function gallery(p) {
+    var cs = colours(p), many = cs.length > 1, edit = canEdit();
+    var cid = galColour(p);
+    if (G.pid !== p.id || G.cid !== cid) { G.pid = p.id; G.cid = cid; G.i = 0; }
+    /* list(p) is already in the website's order: model, product, extras. */
+    var photos = list(p).filter(function (x) { return x.colourId === cid; });
+    if (G.i >= photos.length || G.i < 0) G.i = 0;
+    var miss = missing(p, cid);
+    var h = '<div class="ph-gal" data-ph-gal="' + p.id + '">';
+
+    if (many) {
+      h += '<div class="ph-chips">' + cs.map(function (x) {
+        var r = ready(p, x.id), n = 2 - missing(p, x.id).length;
+        return '<button class="ph-chip' + (x.id === cid ? ' on' : '') + '" data-ph="g-colour" data-pid="' + p.id + '" data-cid="' + x.id + '">' +
+          DB.swatch(x) + '<b>' + esc(colourLabel(x)) + '</b>' +
+          '<span class="ph-chip-n' + (r ? ' ok' : '') + '">' + (r ? '✓' : '<bdi dir="ltr">' + n + '/2</bdi>') + '</span></button>';
+      }).join('') + '</div>';
+    }
+
+    if (photos.length) {
+      var ph = photos[G.i], n = G.i + 1;
+      h += '<div class="ph-gal-main" data-ph-swipe="' + p.id + '">' +
+        /* The small file behind the large one, so a step shows something at
+           once and sharpens when the big file lands. */
+        '<a class="ph-gal-img" href="' + esc(ph.url) + '" target="_blank" rel="noopener" title="' + esc(t('ph_open_full')) + '">' +
+          '<img src="' + esc(ph.url) + '" alt="' + esc(photoLabel(ph, n)) + '" style="background-image:url(&quot;' + esc(ph.thumbUrl) + '&quot;)"></a>' +
+        '<span class="ph-tag">' + esc(photoLabel(ph, n)) + '</span>' +
+        (photos.length > 1
+          ? '<span class="ph-gal-count"><bdi dir="ltr">' + n + ' / ' + photos.length + '</bdi></span>' +
+            '<button class="ph-gal-nav prev" data-ph="g-step" data-pid="' + p.id + '" data-d="-1" aria-label="' + esc(t('ph_prev')) + '">' + CHEV + '</button>' +
+            '<button class="ph-gal-nav next" data-ph="g-step" data-pid="' + p.id + '" data-d="1" aria-label="' + esc(t('ph_next')) + '">' + CHEV + '</button>'
+          : '') +
+      '</div>';
+      if (photos.length > 1) {
+        h += '<div class="ph-gal-thumbs">' + photos.map(function (x, i) {
+          return '<button class="ph-gal-thumb' + (i === G.i ? ' on' : '') + '" data-ph="g-pick" data-pid="' + p.id + '" data-i="' + i + '" ' +
+            'aria-label="' + esc(photoLabel(x, i + 1)) + '"><img src="' + esc(x.thumbUrl) + '" alt="" loading="lazy">' +
+            '<span><bdi dir="ltr">' + (i + 1) + '</bdi></span></button>';
+        }).join('') + '</div>';
+      }
+    } else {
+      h += '<div class="ph-gal-empty">' + CAM + '<b>' + t('ph_none_yet') + '</b><small>' + t('ph_rule') + '</small></div>';
+    }
+
+    h += '<div class="ph-gal-foot">' + (miss.length
+        ? '<span class="warn">' + esc(t('ph_missing') + ': ' + missingWords(miss)) + '</span>'
+        : '<span class="ok-text">✓ ' + esc(t('ph_ready')) + '</span>') +
+      (edit ? '<button class="btn btn-sm' + (miss.length ? ' btn-primary' : '') + '" data-ph="open" data-pid="' + p.id +
+        '" data-cid="' + cid + '">' + t(miss.length ? 'ph_add_btn' : 'ph_edit_btn') + '</button>' : '') +
+    '</div>';
+    return h + '</div>';
+  }
+
+  function repaintGal(pid) {
+    var el = document.querySelector('[data-ph-gal="' + pid + '"]');
+    var p = DB.product(pid);
+    if (el && p) el.outerHTML = gallery(p);
+  }
+
+  function stepGal(pid, d) {
+    var p = DB.product(pid);
+    if (!p) return;
+    var n = list(p).filter(function (x) { return x.colourId === galColour(p); }).length;
+    if (n < 2) return;
+    G.i = (G.i + d + n) % n;
+    repaintGal(pid);
   }
 
   /* ------------------------------------------------------------ the drawer card */
 
   function card(p) {
-    var cs = colours(p);
-    if (!cs.length) return '';
-    var many = cs.length > 1, edit = canEdit();
+    if (!colours(p).length) return '';
     var st = webState(p);
     var badge = st === 'live' ? '<span class="badge healthy">' + t('ph_on_web') + '</span>'
       : st === 'waiting' ? '<span class="badge low">' + t('ph_web_waiting') + '</span>'
       : '<span class="badge neutral">' + t('ph_off_web') + '</span>';
-    var h = '<div class="card mb ph-card"><div class="card-head"><h3>' + t('ph_title') + '</h3>' +
-      '<div class="card-actions">' + badge + '</div></div><div class="card-body">';
-    cs.forEach(function (c) {
-      var s = slots(p, c.id), miss = missing(p, c.id);
-      h += '<div class="ph-row">' +
-        (many ? '<span class="line-colour ph-row-name">' + DB.swatch(c) + '<b>' + esc(colourLabel(c)) + '</b></span>' : '') +
-        '<div class="ph-strip">' + mini(s.model, 1) + mini(s.product, 2) +
-          s.extras.slice(0, 3).map(function (x) { return mini(x); }).join('') +
-          (s.extras.length > 3 ? '<span class="ph-more"><bdi dir="ltr">+' + (s.extras.length - 3) + '</bdi></span>' : '') +
-        '</div>' +
-        '<div class="ph-row-state">' + (miss.length
-          ? '<span class="warn">' + esc(t('ph_missing') + ': ' + missingWords(miss)) + '</span>'
-          : '<span class="ok-text">✓ ' + esc(t('ph_ready')) + '</span>') + '</div>' +
-        (edit ? '<button class="btn btn-sm' + (miss.length ? ' btn-primary' : '') + '" data-ph="open" data-pid="' + p.id +
-          '" data-cid="' + c.id + '">' + t(miss.length ? 'ph_add_btn' : 'ph_edit_btn') + '</button>' : '') +
-      '</div>';
-    });
-    return h + '</div></div>';
+    return '<div class="card mb ph-card"><div class="card-head"><h3>' + t('ph_title') + '</h3>' +
+      '<div class="card-actions">' + badge + '</div></div><div class="card-body">' + gallery(p) + '</div></div>';
   }
 
   /* ------------------------------------------------------------ the manager dialog */
@@ -514,6 +591,10 @@ var Photos = (function () {
     var kind = b.getAttribute('data-kind');
 
     if (a === 'open') { open(Number(b.getAttribute('data-pid')), cid, { fromDrawer: true }); return; }
+    /* the drawer's gallery */
+    if (a === 'g-colour') { G.pid = Number(b.getAttribute('data-pid')); G.cid = cid; G.i = 0; repaintGal(G.pid); return; }
+    if (a === 'g-pick') { G.i = Number(b.getAttribute('data-i')) || 0; repaintGal(Number(b.getAttribute('data-pid'))); return; }
+    if (a === 'g-step') { stepGal(Number(b.getAttribute('data-pid')), Number(b.getAttribute('data-d')) || 1); return; }
     if (a === 'colour') { S.cid = cid; S.menu = null; S.arm = null; repaint(); return; }
     if (a === 'pick') { S.menu = null; choose({ pid: S.pid, cid: cid, kind: kind }); return; }
     if (a === 'menu') { e.preventDefault(); S.menu = S.menu === id ? null : id; S.arm = null; repaint(); return; }
@@ -547,6 +628,24 @@ var Photos = (function () {
       repaintForm(key);
     }
   });
+
+  /* A swipe across the big photo walks the gallery — towards the reading
+     direction is the next photo, so in Arabic a swipe to the right is next.
+     A touch that barely moved is a tap, and opens the photo as the link says. */
+  var swipe = null;
+  document.addEventListener('touchstart', function (e) {
+    var el = e.target.closest && e.target.closest('[data-ph-swipe]');
+    swipe = el && e.touches.length === 1
+      ? { pid: Number(el.getAttribute('data-ph-swipe')), x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  }, { passive: true });
+  document.addEventListener('touchend', function (e) {
+    if (!swipe || !e.changedTouches.length) return;
+    var dx = e.changedTouches[0].clientX - swipe.x, dy = e.changedTouches[0].clientY - swipe.y, pid = swipe.pid;
+    swipe = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    var rtl = document.body.classList.contains('rtl');
+    stepGal(pid, (dx < 0) !== rtl ? 1 : -1);
+  }, { passive: true });
 
   /* An open "…" menu shuts on a press anywhere else — in the capture phase,
      before the dispatcher, the way the board's row menu does it. */

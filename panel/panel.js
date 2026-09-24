@@ -381,7 +381,7 @@ function deniedSig(m) {
   return m && m.denied ? m.denied.map((d) => d.table).sort().join(',') : '';
 }
 
-const CONN_IDS = ['server', 'always', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'backup', 'vault'];
+const CONN_IDS = ['server', 'always', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'fxfeed', 'backup', 'vault'];
 
 async function checkOne(id, ctx) {
   const row = (st, code, args) => ({ id, state: st, code, args: args || {}, at: Date.now() });
@@ -480,6 +480,36 @@ async function checkOne(id, ctx) {
         const r = await fetch('https://www.gstatic.com/generate_204', { signal: AbortSignal.timeout(5000) });
         return r.status < 500 ? row('ok', 'net_ok') : row('warn', 'net_bad');
       } catch { return row('bad', 'net_none'); }
+    }
+    case 'fxfeed': {
+      /* The live exchange-rate feed (server/lib/fxfeed.js): asked once, read
+         only, the answer turned into the shop's number with the same divisor
+         and side the server uses, beside the rate the shop is on now. */
+      const key = process.env.OG_FX_KEY && String(process.env.OG_FX_KEY).trim();
+      if (!key) return row('warn', 'fx_no_key');
+      const url = (process.env.OG_FX_URL && String(process.env.OG_FX_URL).trim()) ||
+        'https://aumzkcizwfnvnncggfpq.supabase.co/functions/v1/exchange-rates';
+      let scale = 100, side = 'sell', shop = null;
+      const d = readOnlyDb();
+      try {
+        const c = (k) => { const r = d && d.prepare('SELECT value FROM config WHERE key = ?').get(k); return r ? r.value : null; };
+        if (Number(c('fx.feed_scale')) >= 1) scale = Number(c('fx.feed_scale'));
+        if (['sell', 'buy', 'mid'].includes(c('fx.feed_side'))) side = c('fx.feed_side');
+        const r = d && d.prepare("SELECT rate FROM fx_rates WHERE base = 'USD' AND quote = 'SYP' ORDER BY set_at DESC, id DESC LIMIT 1").get();
+        shop = r ? r.rate : null;
+      } catch { /* an older database */ }
+      finally { try { d && d.close(); } catch { /* closed */ } }
+      try {
+        const r = await fetch(url, { headers: { 'x-api-key': key }, signal: AbortSignal.timeout(6000) });
+        const j = await r.json().catch(() => ({}));
+        if (r.status === 401 || r.status === 403 || j.error) return row('bad', 'fx_refused');
+        if (j.status === 'loading') return row('warn', 'fx_loading');
+        const usd = (j.data && j.data.USD) || (j.buy !== undefined ? j : null);
+        if (!usd || !(Number(usd.buy) > 0) || !(Number(usd.sell) > 0)) return row('warn', 'fx_bad');
+        const v = side === 'buy' ? Number(usd.buy) : side === 'mid' ? (Number(usd.buy) + Number(usd.sell)) / 2 : Number(usd.sell);
+        const rate = Math.round(v / scale);
+        return row(shop === null || rate === shop ? 'ok' : 'warn', 'fx_ok', { rate, shop: shop === null ? '?' : shop });
+      } catch { return row('warn', 'fx_unreachable'); }
     }
     case 'backup': {
       let newest = 0;

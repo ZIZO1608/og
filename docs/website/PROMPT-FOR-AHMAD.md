@@ -184,6 +184,15 @@ Rules:
   `inStock: false` are shown but not buyable. Quantities are deliberately never sent.
 - **Colours:** a product may have several colours (`colours[]`), each with its own sizes,
   SKUs and photos. When there is only one colour, you don't need to show a colour picker.
+  With more than one (the full brief is `docs/website/UPDATE-PRODUCT-COLOURS.md`):
+  - **Draw a swatch per colour** from `colours[]`, in the order given: `hex` for the swatch
+    (`null` = a neutral one), `ar` / `en` for its name. The first colour is chosen by default.
+  - **Choosing a colour switches its `photos` and its `sizes` together.** The same size has a
+    different SKU in each colour (`OG-057-39`, `OG-057-C2-39`), and the order sends the chosen
+    colour's SKU.
+  - **The top-level `sizes` mixes every colour's sizes** (each size once per colour, with
+    `colourId`). Never draw it as the size picker unfiltered, or every size appears twice.
+  - Show the colour's swatch and name on every cart line and on the order page.
 - **Photos (v1.2).** The shop's rule: every colour has **at least two** photos before it is
   published — **1. the model photo** (somebody wearing it) and **2. the product photo** (the
   product on its own) — plus any number of extras.
@@ -276,6 +285,13 @@ these from OG System and the change is in the cloud within seconds**, so:
 - `details.en` / `details.ar` are the shop's own account text. Copy them exactly. A method the
   owner has switched on always has both, but older data can have one of them `null`: then show
   the other one.
+- `rate` is the shop's dollar rate **in the redenominated lira** (1 USD = 138 SYP, not 13,800),
+  and since 24 Sep 2026 it **follows the market feed by itself**: the shop's server reads the
+  exchange-rates function every ten minutes and writes the new rate, which reaches this answer
+  within seconds. Do not call the exchange-rates function from the website for prices — use this
+  `rate`, so the website and the till always agree on the same number, and the shop's guard
+  (a jump the owner has to confirm) applies to both. `version` moves when the rate does, so an
+  open checkout redraws its lira prices exactly as it does for a new method.
 
 ### How the customer receives it (`delivery.method`)
 

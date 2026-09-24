@@ -3336,6 +3336,38 @@ Contract `docs/website/PROMPT-FOR-AHMAD.md` is v1.1; the brief for the website i
   **By hand, once**: run `031_web_payments.sql` then `verify_031_web_payments.sql` in the
   Supabase SQL editor, and give Ahmad `UPDATE-PAYMENT-METHODS.md`.
 
+## The exchange rate follows a live feed (24 Sep 2026)
+
+`server/lib/fxfeed.js`, `GET /api/fx/feed` · `POST /api/fx/feed/check` · `POST /api/fx/feed/apply`
+(all `config.write`), `FxFeedUI` in `js/app-settings.js` (the block under the rate box in
+Settings → Exchange rate), the `fxfeed` row on the panel's Connections card, and
+`server/test/fxfeed.test.js` (9 checks, a faked fetch on a throwaway database). **No migration,
+no mirror file**: a rate from the feed is `Cat.setRate` — the same `fx_rates` row the box
+writes, logged, pushed by the fast lane — and `web_checkout` reads the newest row from the
+mirror, so the website follows the till within seconds and its `version` moves. There is no
+second path to the website; the contract (§4) tells Ahmad to use `rate` and never the feed.
+
+- **The key lives in `server/.env` (`OG_FX_KEY`; `OG_FX_URL` has a default) and nowhere else**
+  — not in `config`, which every login is handed. No key, no feed, and the card says so.
+- **The feed answers in OLD lira** (`data.USD.{buy, sell}`, 13,675 / 13,750 on the day it was
+  wired), the shop is on the redenominated lira (135). `fx.feed_scale` (100) is the divisor,
+  `fx.feed_side` (`sell` — what the shop pays for a dollar — · `buy` · `mid`) the side, and the
+  result is whole lira. Its documented shape (`{currency, buy, sell}`) and a `status: 'loading'`
+  answer (its own first minute, retried in 60 s) are both read.
+- **A row is written only when the rounded rate differs from the shop's**, and **a jump past
+  `fx.feed_max_jump_pct` (20 %) is HELD**: nothing written, the card and the log say so, and
+  "Use it now" applies it with the person's id on the row. `fx.feed_on = '0'` watches without
+  writing. `fx.feed_minutes` (10) is the timer; the feed is asked 15 s after boot. `fx.feed_last`
+  is the feed's own record (JSON, config, mirrored) and is NOT on `CONFIG_WRITABLE`; the five
+  switches are, with their values checked in `configRefusal`.
+- **A write pushes `Live.notify('og', { fx })`**: every open tab takes the new
+  `CONFIG.EXCHANGE_RATE` at once and toasts, and never `render()`s. The card repaints itself
+  through `setFoldRepaint('rate', …)` and loads from `afterSettings` at most once a minute.
+- **One main server runs it** (started beside the reminders, not on a standby), stopped by name
+  in `shutdown()`.
+- **`saveSetting(key, value, wait, after)` grew a fourth argument** so a switch can ask the feed
+  again once the save has landed — the side and the divisor change what the number means.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
@@ -5488,7 +5520,13 @@ The owner chose per colour (not per product) and "stays off the website" (not "c
   never `render()` under it): the manager dialog (`Photos.open(pid, cid)`, a chip per colour with
   ✓ or 1/2, the two numbered slots, extras, "…" menus: Replace · Make this the model/product photo ·
   Move earlier/later · Remove, which needs two presses), the drawer card (`Photos.card`, first in the
-  drawer, and the drawer's thumbnail opens the manager), the Products list's camera mark beside the
+  drawer, and the drawer's thumbnail opens the manager) — **a gallery**, not a strip: the chosen
+  photo big and whole (`object-fit: contain`, the small file as its background while the large one
+  loads), every photo of the colour underneath in the website's order, arrows and a swipe (towards
+  the reading direction is next, so right in Arabic; `touch-action: pan-y`), a chip per colour. Which
+  photo is showing is `G` in module state, so a drawer redraw keeps it; a step repaints
+  `[data-ph-gal]` alone. The owner asked for it the same evening: four photos in 36 px thumbnails
+  "did not appear". The Products list's camera mark beside the
   website switch (`Photos.mark`, `n/2` for one colour, `k/m` colours for several — it opens the
   manager) and a **Photos filter** (`OG.prod.photos`: Needs photos / Photos done). The Add-product
   form lost its single picture box: **each colour card carries its own slots** (`Photos.formStrip`,

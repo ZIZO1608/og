@@ -477,6 +477,14 @@ var Pulse = (function () {
         if (typeof ShelfMap !== 'undefined' && ShelfMap.live) ShelfMap.live(d.shelves);
         return;
       }
+      /* The exchange rate moved — the live feed wrote a row, or somebody
+         pressed "Use it". Every dollar price converts through that number,
+         so the tab takes it at once and says so; nothing here calls
+         render(), a repaint mid-sale is a lost sale. */
+      if (d.fx) {
+        if (typeof FxFeedUI !== 'undefined') FxFeedUI.live(d.fx);
+        return;
+      }
       if (d.deliveries) {
         var onBoard = OG.view === 'deliveries' ||
                       (OG.view === 'dashboard' && roleOf() === 'delivery');

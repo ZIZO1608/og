@@ -29,7 +29,7 @@
    links are built on it, the launcher draws it as the "from anywhere" QR, and
    go-live.md has told the owner to set it in Settings since night shift 04,
    when this list still refused it. Checked by publicUrlProblem() below. */
-export const CONFIG_WRITABLE = /^receipt\.|^print\.unit_price$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^alerts\.(quiet_from|quiet_to|urgent)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
+export const CONFIG_WRITABLE = /^receipt\.|^print\.unit_price$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^fx\.feed_(on|side|minutes|scale|max_jump_pct)$|^alerts\.(quiet_from|quiet_to|urgent)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
 
 /* What is wrong with a value for shop.public_url, or null when it will do.
    Strict, because the value goes into a QR code taped to a counter and into a
@@ -72,6 +72,13 @@ export function configRefusal(updates) {
       const p = publicUrlProblem(updates[k]);
       if (p) return p;
     }
+    /* The exchange-rate feed's five switches (lib/fxfeed.js). fx.feed_last is
+       the feed's own record and is deliberately NOT on the list. */
+    if (k === 'fx.feed_side' && !['sell', 'buy', 'mid'].includes(String(updates[k]))) return 'fx.feed_side must be sell, buy or mid.';
+    if (k === 'fx.feed_on' && !['0', '1'].includes(String(updates[k]))) return 'fx.feed_on must be 1 or 0.';
+    if (k === 'fx.feed_minutes' && !(Number(updates[k]) >= 1 && Number(updates[k]) <= 1440)) return 'fx.feed_minutes must be between 1 and 1440.';
+    if (k === 'fx.feed_scale' && !(Number(updates[k]) >= 1)) return 'fx.feed_scale must be a number of 1 or more.';
+    if (k === 'fx.feed_max_jump_pct' && !(Number(updates[k]) >= 0)) return 'fx.feed_max_jump_pct must be 0 or more.';
   }
   return null;
 }
