@@ -193,7 +193,8 @@ const LOCAL_ONLY = new Set(['sessions', 'login_attempts', 'applied_ops',
                             'schema_migrations', 'change_log',
                             'partner_events', 'sync_local',
                             'push_keys', 'push_subscriptions', 'push_seen',
-                            'inbox_applied', 'web_orders']);
+                            'inbox_applied', 'web_orders',
+                            'receipt_jobs']);
 
 /* Columns that exist here and MUST NOT exist there. The column check below
    would otherwise report the most important security property of this mirror

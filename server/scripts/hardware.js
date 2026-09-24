@@ -218,11 +218,15 @@ function readConfig() {
    place its queue name is written down. No config file means this machine is
    not the label station, and there is nothing here to check. */
 function readAgent() {
-  const file = resolve(ROOT, 'agent', 'agent-config.json');
+  const file = process.env.OG_AGENT_CONFIG ? resolve(process.env.OG_AGENT_CONFIG) : resolve(ROOT, 'agent', 'agent-config.json');
   if (!existsSync(file)) return null;
   try {
     const c = JSON.parse(readFileSync(file, 'utf8'));
-    return { share: String(c.printerShare || ''), station: String(c.station || '') };
+    return {
+      share: String(c.printerShare || ''), station: String(c.station || ''),
+      /* receipt.transport = 'agent' (064): the same agent prints receipts. */
+      receiptShare: String(c.receiptShare || ''), receiptStation: String(c.receiptStation || '')
+    };
   } catch {
     return null;
   }
@@ -385,12 +389,28 @@ async function check() {
   if (!cfg) {
     warn('No database yet, so there is no printer setup to check against.');
     hint('The server creates it on this run — start again afterwards.');
-  } else if (cfg.receipt.transport === 'usb') {
-    const at = unc(cfg.receipt.share);
+  } else if (cfg.receipt.transport === 'agent' && !(agent && agent.receiptShare)) {
+    /* Receipts are queued on the server for the shop laptop's print agent
+       (lib/receipt-queue.js) — how it works once the VPS is the main server,
+       which cannot reach a USB cable in the shop. */
+    if (agent) {
+      HW.receipt = 'person';
+      humans.push('Receipts are sent to the print agent, but agent\\agent-config.json has no receiptShare. Add "receiptShare": "\\\\\\\\localhost\\\\OGRECEIPT" there.');
+    } else {
+      HW.receipt = 'none';
+      warn('Receipts wait for the shop\'s print agent, and this computer is not one.');
+      hint('If the receipt printer is plugged in HERE, see agent\\README.md.');
+    }
+  } else if (cfg.receipt.transport === 'usb' || cfg.receipt.transport === 'agent') {
+    const viaAgent = cfg.receipt.transport === 'agent';
+    const sharePath = viaAgent ? agent.receiptShare : cfg.receipt.share;
+    const at = unc(sharePath);
     HW.receipt = 'none';
     if (!at) {
       HW.receipt = 'person';
-      humans.push(`The receipt printer is set to USB, but receipt.printer_share ("${cfg.receipt.share}") is not a share name like \\\\localhost\\OGRECEIPT. Fix it in Settings.`);
+      humans.push(viaAgent
+        ? `agent\\agent-config.json has receiptShare "${sharePath}", which is not a share name like \\\\localhost\\OGRECEIPT.`
+        : `The receipt printer is set to USB, but receipt.printer_share ("${sharePath}") is not a share name like \\\\localhost\\OGRECEIPT. Fix it in Settings.`);
     } else if (!isHere(at.host, facts.computer)) {
       HW.receipt = 'elsewhere';
       warn(`The receipt printer is shared from ${at.host}, not from this computer.`);
@@ -433,7 +453,7 @@ async function check() {
   /* The agent's config is checked whenever it exists, whatever the transport
      says, because it is the thing that proves a label printer is plugged in
      HERE and names the queue it is expected to be behind. */
-  if (agent) {
+  if (agent && agent.share) {
     const at = unc(agent.share);
     if (!at) {
       HW.label = 'person';
@@ -451,17 +471,26 @@ async function check() {
       actions.push(...p.actions);
     }
 
-    /* Having the queue is half of it — the agent is what puts jobs into it. */
-    const task = spawnSync('schtasks.exe', ['/query', '/tn', 'OGLabelAgent'], { encoding: 'utf8', windowsHide: true });
-    if (task.status === 0) ok('The label print agent is registered to start with this computer.');
-    else {
-      warn('The label print agent is not registered to start with this computer.');
-      hint('Double-click agent\\install-agent.bat once. Until then label jobs just queue up.');
-    }
   } else if (cfg && cfg.label.transport !== 'tcp') {
     HW.label = 'none';
-    warn('Label jobs wait for a print agent, and this computer is not one.');
+    warn('Label jobs wait for a print agent with a label printer, and this computer has none.');
     hint('If the label printer is plugged in HERE, see agent\\README.md.');
+  }
+
+  /* Having the queues is half of it — the agent is what puts jobs into them.
+     One agent (one scheduled task, still called OGLabelAgent from before it
+     printed receipts too) for labels and receipts alike. */
+  if (agent && (agent.share || agent.receiptShare)) {
+    const what = [agent.share && 'label', agent.receiptShare && 'receipt'].filter(Boolean).join(' and ');
+    const task = spawnSync('schtasks.exe', ['/query', '/tn', 'OGLabelAgent'], { encoding: 'utf8', windowsHide: true });
+    if (task.status === 0) ok(`The print agent (${what}) is registered to start with this computer.`);
+    else {
+      warn(`The print agent (${what}) is not registered to start with this computer.`);
+      hint(`Double-click agent\\install-agent.bat once. Until then ${what} jobs just queue up.`);
+      /* A receipt the agent never picks up is a receipt that never prints:
+         for the till, that is not "ok". */
+      if (agent.receiptShare && cfg && cfg.receipt.transport === 'agent' && HW.receipt === 'ok') HW.receipt = 'person';
+    }
   }
 
   /* ---- 3: the scanner --------------------------------------------------- */

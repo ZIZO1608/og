@@ -73,6 +73,7 @@ import { CONFIG_WRITABLE, configRefusal } from './lib/config-writable.js';
 import { lanAddresses, extraSans } from './lib/net.js';
 import * as Fwd from './lib/proxy.js';
 import * as Standby from './lib/standby.js';
+import * as ReceiptQueue from './lib/receipt-queue.js';
 import { isIP } from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
 import {
@@ -3125,6 +3126,34 @@ router.add('GET /api/labels/next', requirePerm('label.print', async (ctx) => {
   if (!station) return sendError(ctx.res, 400, 'invalid', 'station is required');
   const job = await Labels.next({ station });
   sendOk(ctx.res, { job });
+}));
+
+/* THE RECEIPT AGENT'S THREE DOORS (lib/receipt-queue.js, migration 064) —
+   the label agent's shape, for receipts queued when receipt.transport is
+   'agent'. Gated on sale.reprint, the till's own printing permission: a
+   receipt carries the sale and the customer's name, which is more than a
+   label does. The long-poll, like /api/labels/next, is for the agent only. */
+router.add('GET /api/receipts/next', requirePerm('sale.reprint', async (ctx) => {
+  const station = ctx.url.searchParams.get('station');
+  if (!station) return sendError(ctx.res, 400, 'invalid', 'station is required');
+  sendOk(ctx.res, { job: await ReceiptQueue.next({ station }) });
+}));
+
+router.add('POST /api/receipts/:id/done', requirePerm('sale.reprint', async (ctx) => {
+  const b = await readJson(ctx.req);
+  sendOk(ctx.res, ReceiptQueue.complete(Number(ctx.params.id), String(b.claimToken || ''), 'done', null));
+}));
+
+router.add('POST /api/receipts/:id/failed', requirePerm('sale.reprint', async (ctx) => {
+  const b = await readJson(ctx.req);
+  sendOk(ctx.res, ReceiptQueue.complete(Number(ctx.params.id), String(b.claimToken || ''), 'failed',
+    String(b.error || 'unknown error').slice(0, 500)));
+}));
+
+router.add('GET /api/receipts/:id', requirePerm('sale.reprint', (ctx) => {
+  const j = ReceiptQueue.jobState(Number(ctx.params.id));
+  if (!j) return sendError(ctx.res, 404, 'not_found', 'No such print job.');
+  sendOk(ctx.res, { job: j, agent: ReceiptQueue.agent() });
 }));
 
 router.add('POST /api/labels/:id/done', requirePerm('label.print', async (ctx) => {

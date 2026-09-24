@@ -117,11 +117,16 @@ function config() {
 
 /* The label queue's name lives in the print agent's config, which is the one
    place it is written down — the same file scripts/hardware.js reads. */
-function agentShare() {
-  const file = resolve(ROOT, 'agent', 'agent-config.json');
-  if (!existsSync(file)) return '';
-  try { return JSON.parse(readFileSync(file, 'utf8')).printerShare || ''; } catch { return ''; }
+function agentConfig() {
+  const file = process.env.OG_AGENT_CONFIG ? resolve(process.env.OG_AGENT_CONFIG) : resolve(ROOT, 'agent', 'agent-config.json');
+  if (!existsSync(file)) return {};
+  try { return JSON.parse(readFileSync(file, 'utf8')) || {}; } catch { return {}; }
 }
+const agentShare = () => String(agentConfig().printerShare || '');
+/* receipt.transport = 'agent' (064): the server queues receipts for the print
+   agent, and this is the queue that agent prints them into. The test goes
+   straight to it — it is the printer that is being tested, not the queue. */
+const agentReceiptShare = () => String(agentConfig().receiptShare || '');
 
 function stamp() {
   const d = new Date();
@@ -155,7 +160,9 @@ function receiptBytes(cfg) {
   line('--------------------------------');
   line(`Shop  : ${cfg.shop.replace(/[^\x20-\x7e]/g, '')}`);
   line(`When  : ${stamp()}`);
-  line(`Sent  : ${cfg.receipt.transport === 'usb' ? cfg.receipt.share : `${cfg.receipt.host}:${cfg.receipt.port}`}`);
+  line(`Sent  : ${cfg.receipt.transport === 'usb' ? cfg.receipt.share
+    : cfg.receipt.transport === 'agent' ? agentReceiptShare() + ' (agent)'
+    : `${cfg.receipt.host}:${cfg.receipt.port}`}`);
   line('--------------------------------');
   line();
   line('If you can READ this slip, the');
@@ -203,6 +210,16 @@ function labelBytes(cfg) {
 
 async function sendReceipt(cfg) {
   const r = cfg.receipt;
+  if (r.transport === 'agent') {
+    const share = agentReceiptShare();
+    if (!share) {
+      warn('Receipts go through the print agent, and this computer\'s agent has no receipt queue.');
+      hint('Add "receiptShare" to agent/agent-config.json on the laptop the receipt printer is plugged into.');
+      return null;
+    }
+    if (!DRY) await Printer.sendUsb(receiptBytes(cfg), { printerShare: share });
+    return share;
+  }
   if (r.transport === 'usb') {
     if (!r.share) {
       warn('The receipt printer is set to USB but no queue name is saved.');

@@ -418,16 +418,27 @@ function receiptSettingsCard() {
   h += '<h4 class="set-h">' + t('rc3_g_printer') + '</h4>';
 
   var usb = CONFIG.RECEIPT_TRANSPORT === 'usb';
+  /* THE SHOP LAPTOP'S AGENT (online first): the printer is on the shop's
+     laptop and this server may not be — receipts wait for agent/print-agent.js
+     there (server/lib/receipt-queue.js). */
+  var agent = CONFIG.RECEIPT_TRANSPORT === 'agent';
+  var tcp = !usb && !agent;
   h += '<label class="field"><span>' + t('rc3_transport') + '</span>' +
-    '<div class="chip-row" id="rcTransport" data-v="' + (usb ? 'usb' : 'tcp') + '">' +
-      '<button class="chip ' + (!usb ? 'on' : '') + '"' +
+    '<div class="chip-row" id="rcTransport" data-v="' + (usb ? 'usb' : agent ? 'agent' : 'tcp') + '">' +
+      '<button class="chip ' + (tcp ? 'on' : '') + '"' +
         ' data-act="rc-transport" data-k="tcp">' + t('rc3_transport_network') + '</button>' +
       '<button class="chip ' + (usb ? 'on' : '') + '"' +
         ' data-act="rc-transport" data-k="usb">' + t('rc3_transport_usb') + '</button>' +
+      '<button class="chip ' + (agent ? 'on' : '') + '"' +
+        ' data-act="rc-transport" data-k="agent">' + t('rc3_transport_agent') + '</button>' +
     '</div></label>';
 
   h += '<div class="row2" id="rcTransportFields">';
-  if (usb) {
+  if (agent) {
+    h += '<label class="field" style="grid-column:1/-1"><span>' + t('rc3_station') + '</span>' +
+      '<input class="inp" dir="ltr" id="rcStation" value="' + esc(CONFIG.RECEIPT_STATION) + '"></label>' +
+      '<div class="partner-note" style="grid-column:1/-1">' + t('rc3_agent_hint') + '</div>';
+  } else if (usb) {
     h += '<label class="field" style="grid-column:1/-1"><span>' + t('rc3_printer_share') + '</span>' +
       '<input class="inp num" dir="ltr" id="rcShare" value="' + esc(CONFIG.RECEIPT_PRINTER_SHARE) + '"></label>' +
       '<div class="partner-note" style="grid-column:1/-1">' + t('rc3_printer_share_hint') + '</div>';

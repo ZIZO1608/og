@@ -23,6 +23,7 @@
 import { get, nowIso } from './db.js';
 import * as Printer from './printer.js';
 import * as Orders from './orders.js';
+import * as ReceiptQueue from './receipt-queue.js';
 
 /* ------------------------------------------------------------------ data */
 
@@ -137,6 +138,26 @@ export function send({ saleId, userId, bytes, copies, opId, kind }) {
   ).all();
   const at = (k) => cfg.find(r => r.key === k)?.value;
   const transport = at('receipt.transport') || 'tcp';
+
+  /* AGENT: the printer is on the shop's laptop and this server may not be
+     (the VPS, once it is the main server). The bytes wait in receipt_jobs
+     (064) for agent/print-agent.js, and the till is told whether that agent
+     has been heard from — a receipt queued for an agent that went quiet will
+     not come out, and the cashier should know it now. Queued is the answer,
+     not printed; the print history is written when the agent reports. The
+     opId is recorded at the queue, so a retried press is the same job. */
+  if (transport === 'agent') {
+    const jobId = ReceiptQueue.enqueue({ saleId, kind, copies, bytesB64: Buffer.from(bytes).toString('base64'), userId });
+    const a = ReceiptQueue.agent();
+    const result = { ok: true, queued: true, jobId, agentHere: a.here, agentSeenAgoMs: a.ageMs };
+    if (opId) {
+      get().prepare(
+        `INSERT INTO applied_ops (op_id, at, user_id, kind, result)
+         VALUES (?, ?, ?, 'print', ?)`
+      ).run(opId, nowIso(), userId ?? null, JSON.stringify(result));
+    }
+    return Promise.resolve(result);
+  }
 
   /* USB: a printer plugged into this same machine, no network interface —
      reached with a raw `copy /b` to a Generic/Text-Only printer share (see

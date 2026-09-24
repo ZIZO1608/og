@@ -943,7 +943,16 @@ var Receipt = (function () {
       (pendingOpId[slot] = 'pr-' + kind + '-' + saleId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
 
     return API.post('/api/print', { saleId: saleId, bytes: bytesB64, copies: copies, opId: opId, kind: kind })
-      .then(function (res) { delete pendingOpId[slot]; return res; });
+      .then(function (res) {
+        delete pendingOpId[slot];
+        /* Queued for the shop laptop's agent (receipt.transport 'agent'), and
+           that agent has not been heard from: say so now, while the customer
+           is still at the counter, not when they ask where their receipt is. */
+        if (res && res.queued && !res.agentHere && typeof toast === 'function') {
+          toast(t('print_receipt'), t('rc_agent_away'), 'warn', 8000);
+        }
+        return res;
+      });
   }
 
   /* Builds both copies and mails them to the LAN printer in one socket

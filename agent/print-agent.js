@@ -25,6 +25,17 @@
    XP-235B as a Generic / Text Only printer -> share it as OGLABEL) so a
    `copy /b` at the spooler delivers TSPL bytes untouched, with no driver
    reinterpreting them.
+
+   RECEIPTS TOO (online first, 24 Sep 2026). When the shop's server is not
+   this laptop — the VPS, after the switch — it cannot reach the USB receipt
+   printer either, so with receipt.transport = 'agent' the till's receipts
+   wait on the server (receipt_jobs, 064) and this agent prints them. Two
+   more keys, both optional; without "receiptShare" nothing about receipts
+   runs and the agent is exactly what it was:
+       "receiptShare":   "\\\\localhost\\OGRECEIPT",
+       "receiptStation": "shop"          (the server's receipt.station)
+   The account needs sale.reprint for receipts, as well as label.print for
+   labels. OG_AGENT_CONFIG names another config file (a test's).
    ========================================================================== */
 
 import { request as httpRequest } from 'node:http';
@@ -39,7 +50,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 let CFG;
 try {
-  CFG = JSON.parse(readFileSync(join(HERE, 'agent-config.json'), 'utf8'));
+  CFG = JSON.parse(readFileSync(process.env.OG_AGENT_CONFIG || join(HERE, 'agent-config.json'), 'utf8'));
 } catch (e) {
   console.error('[agent] could not read agent-config.json next to this file:', e.message);
   console.error('[agent] copy agent-config.example.json to agent-config.json and fill it in.');
@@ -47,7 +58,6 @@ try {
 }
 
 let cookie = null;          // session cookie, in memory only — never written to disk
-let backoffMs = 1000;
 const MAX_BACKOFF_MS = 30000;
 
 /* ------------------------------------------------------------- http client
@@ -144,20 +154,44 @@ async function printJob(job) {
   }
 }
 
-async function pollLoop() {
+/* A receipt's bytes are already every copy, cut and all (js/receipt.js packs
+   both copies into one job), so they go to the spooler ONCE. */
+async function printReceipt(job) {
+  const tmp = join(tmpdir(), `ogreceipt-${job.id}.prn`);
+  try {
+    writeFileSync(tmp, Buffer.from(job.bytesB64, 'base64'));
+    await execFileP('cmd.exe', ['/c', 'copy', '/b', tmp, CFG.receiptShare]);
+    await api('POST', `/api/receipts/${job.id}/done`, { claimToken: job.claimToken });
+    console.log(`[agent] printed receipt ${job.saleId || job.id}`);
+  } catch (e) {
+    console.error(`[agent] receipt ${job.id} failed:`, e.message);
+    try {
+      await api('POST', `/api/receipts/${job.id}/failed`, { claimToken: job.claimToken, error: String(e.message || e) });
+    } catch (e2) {
+      console.error('[agent] could not even report the failure:', e2.message);
+    }
+  } finally {
+    try { unlinkSync(tmp); } catch { /* already gone, or never written */ }
+  }
+}
+
+/* One long-poll loop per queue, each with its own backoff: a label station
+   the server refuses must not slow the receipts down, or the other way. */
+async function pollLoop(name, path, print) {
+  let wait = 1000;
   for (;;) {
     try {
       await ensureLoggedIn();
-      const res = await api('GET', `/api/labels/next?station=${encodeURIComponent(CFG.station)}`);
-      backoffMs = 1000; // a clean round trip, however it answered, resets the backoff
-      if (res && res.job) await printJob(res.job);
+      const res = await api('GET', path);
+      wait = 1000; // a clean round trip, however it answered, resets the backoff
+      if (res && res.job) await print(res.job);
       // else: nothing pending. The server already held the connection for
       // ~25s, so looping straight back around here is not a busy-loop.
     } catch (e) {
       if (e.status === 401) cookie = null; // force a fresh login next time round
-      console.error('[agent] poll failed:', e.message);
-      await sleep(backoffMs);
-      backoffMs = Math.min(MAX_BACKOFF_MS, backoffMs * 2);
+      console.error(`[agent] ${name} poll failed:`, e.message);
+      await sleep(wait);
+      wait = Math.min(MAX_BACKOFF_MS, wait * 2);
     }
   }
 }
@@ -167,5 +201,12 @@ async function pollLoop() {
 process.on('uncaughtException', (e) => console.error('[agent] uncaught exception, continuing:', e));
 process.on('unhandledRejection', (e) => console.error('[agent] unhandled rejection, continuing:', e));
 
-console.log(`[agent] starting — station "${CFG.station}", server ${CFG.serverUrl}`);
-pollLoop();
+if (CFG.printerShare && CFG.station) {
+  console.log(`[agent] labels — station "${CFG.station}", server ${CFG.serverUrl}`);
+  pollLoop('labels', `/api/labels/next?station=${encodeURIComponent(CFG.station)}`, printJob);
+}
+if (CFG.receiptShare) {
+  const st = CFG.receiptStation || 'shop';
+  console.log(`[agent] receipts — station "${st}", server ${CFG.serverUrl}`);
+  pollLoop('receipts', `/api/receipts/next?station=${encodeURIComponent(st)}`, printReceipt);
+}

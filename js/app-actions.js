@@ -1203,7 +1203,9 @@ var ACTIONS = {
        other transport's settings stay whatever they were on the server,
        so switching back later doesn't come back to a blanked-out host or
        share path. */
-    if (transport === 'usb') {
+    if (transport === 'agent') {
+      updates['receipt.station'] = ((document.getElementById('rcStation') || {}).value || '').trim() || 'shop';
+    } else if (transport === 'usb') {
       updates['receipt.printer_share'] = (document.getElementById('rcShare') || {}).value || '';
     } else {
       updates['receipt.printer_host'] = (document.getElementById('rcHost') || {}).value || '';

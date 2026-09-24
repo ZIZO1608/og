@@ -167,6 +167,9 @@ var CONFIG = {
      queue — see server/lib/printer.js's sendUsb()). */
   RECEIPT_TRANSPORT: 'tcp',
   RECEIPT_PRINTER_SHARE: '\\\\localhost\\OGRECEIPT',
+  /* …or 'agent': receipts wait on the server for the print agent on the
+     shop's laptop at this station (server/lib/receipt-queue.js). */
+  RECEIPT_STATION: 'shop',
   /* Show the rendered receipt and print it when somebody approves, rather
      than firing the printer the moment a sale closes. */
   RECEIPT_CONFIRM_PRINT: true,
@@ -2718,6 +2721,7 @@ var DB = {
     CONFIG.RECEIPT_WIDTH_DOTS   = num('receipt.width_dots', CONFIG.RECEIPT_WIDTH_DOTS);
     if (cfg['receipt.transport'] !== undefined) CONFIG.RECEIPT_TRANSPORT = cfg['receipt.transport'];
     if (cfg['receipt.printer_share'] !== undefined) CONFIG.RECEIPT_PRINTER_SHARE = cfg['receipt.printer_share'];
+    if (cfg['receipt.station'] !== undefined && cfg['receipt.station'] !== '') CONFIG.RECEIPT_STATION = cfg['receipt.station'];
     if (cfg['receipt.instagram'] !== undefined) CONFIG.RECEIPT_INSTAGRAM = cfg['receipt.instagram'];
     if (cfg['receipt.telegram'] !== undefined) CONFIG.RECEIPT_TELEGRAM = cfg['receipt.telegram'];
     if (cfg['receipt.maps_url'] !== undefined) CONFIG.RECEIPT_MAPS_URL = cfg['receipt.maps_url'];

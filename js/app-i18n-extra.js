@@ -3913,12 +3913,21 @@ var WEBORDERS_AR = {
 Object.keys(WEBORDERS_EN).forEach(function (k) { I18N.en[k] = WEBORDERS_EN[k]; });
 Object.keys(WEBORDERS_AR).forEach(function (k) { I18N.ar[k] = WEBORDERS_AR[k]; });
 
-/* ---- the standby copy (js/standby.js, server/lib/standby.js) ------------- */
+/* ---- online first: the standby copy (js/standby.js, server/lib/standby.js)
+   and receipts printed by the shop laptop's agent (server/lib/receipt-queue.js) */
 var STANDBY_EN = {
-  err_standby_read_only: 'This is the standby copy — it is read-only. Make the change on the main server.'
+  err_standby_read_only: 'This is the standby copy — it is read-only. Make the change on the main server.',
+  rc3_transport_agent: 'The shop laptop’s agent',
+  rc3_station: 'Station name',
+  rc3_agent_hint: 'For when this server is not the shop’s laptop (the online server). Receipts wait here and the print agent on the shop’s laptop prints them — its agent-config.json needs "receiptShare" and this same station name. A receipt nobody printed within 10 minutes is dropped, not printed late.',
+  rc_agent_away: 'The shop’s print agent is not connected — this receipt prints when it is, if that is within 10 minutes.'
 };
 var STANDBY_AR = {
-  err_standby_read_only: 'هاي نسخة احتياطية للقراءة بس — اعمل التغيير على السيرفر الرئيسي.'
+  err_standby_read_only: 'هاي نسخة احتياطية للقراءة بس — اعمل التغيير على السيرفر الرئيسي.',
+  rc3_transport_agent: 'برنامج الطباعة على لابتوب المحل',
+  rc3_station: 'اسم المحطة',
+  rc3_agent_hint: 'لما يكون هالسيرفر مو لابتوب المحل (السيرفر الأونلاين). الإيصالات بتستنى هون وبرنامج الطباعة على لابتوب المحل بيطبعها — ملف agent-config.json لازم فيه "receiptShare" ونفس اسم المحطة. الإيصال يلي ما انطبع خلال 10 دقايق بينلغى، ما بينطبع متأخر.',
+  rc_agent_away: 'برنامج الطباعة بالمحل مو متصل — الإيصال بينطبع لما يتصل، إذا كان خلال 10 دقايق.'
 };
 Object.keys(STANDBY_EN).forEach(function (k) { I18N.en[k] = STANDBY_EN[k]; });
 Object.keys(STANDBY_AR).forEach(function (k) { I18N.ar[k] = STANDBY_AR[k]; });
