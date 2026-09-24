@@ -325,7 +325,16 @@
      and the two want different next actions from whoever is standing there. */
   function died() {
     var f = failedStep();
-    return !!(f && f.detail && f.detail.code === 'server_died');
+    return !!(f && f.detail && (f.detail.code === 'server_died' || f.detail.code === 'server_gave_up'));
+  }
+
+  /* The shop fell over and is coming back by itself (panel.js, scheduleRevive):
+     a countdown, never a spinner pretending to know more than it does. */
+  function reviving() { return !!(state.revive && !state.revive.gaveUp && state.server === 'stopped'); }
+  function reviveLine() {
+    var r = state.revive;
+    var s = Math.max(0, Math.ceil((r.at - Date.now()) / 1000));
+    return tHtml('revivingIn', { s: ltr(s), n: ltr(r.n) });
   }
 
   /* ------------------------------------------------------------- the shop */
@@ -339,6 +348,7 @@
     else if (state.server === 'stopping') { title = t('shopClosing'); sub = ''; }
     else if (foreign()) { title = t('shopElsewhere'); sub = esc(t('shopElsewhereSub')); }
     else if (running) { title = t('shopOpen'); sub = shopSub(); }
+    else if (reviving()) { title = t('reviving'); sub = reviveLine(); }
     else if (fail) {
       /* ONE SENTENCE: which step, and what it said. The list itself is a
          developer's to read. */
@@ -433,6 +443,11 @@
       row += printBtn;
       row += '<button class="chip stop" data-do="askstop"' + (foreign() ? ' disabled' : '') + '>' +
         svg('power') + '<span>' + esc(t('stopShop')) + '</span></button>';
+    } else if (reviving()) {
+      /* It will open by itself; the person standing there may open it now, or
+         keep it shut (Stop is how "stay closed" is said to the panel). */
+      h += '<button class="btn btn-primary btn-lg" data-do="start">' + esc(t('openNow')) + '</button>';
+      row += '<button class="chip stop" data-do="stop">' + svg('power') + '<span>' + esc(t('leaveClosed')) + '</span></button>';
     } else if (fail) {
       h += '<button class="btn btn-primary btn-lg" data-do="start">' + esc(t('tryAgain')) + '</button>';
       if (devOn()) {
@@ -498,6 +513,7 @@
         : tHtml('d_server_died', { exit: ltr(d.exit == null ? '?' : d.exit) });
     }
     if (c === 'server_spawn') return tHtml('d_server_spawn', { why: esc(d.why || '') });
+    if (c === 'server_gave_up') return tHtml('d_server_gave_up', { n: ltr(d.n) });
     if (c === 'cloud_refused') return tHtml('d_cloud_refused', { by: esc(d.by || '?') });
     if (c === 'cloud_live') {
       if (d.behind) return tHtml('d_cloud_live_behind', { n: ltr(d.behind) });
@@ -723,9 +739,13 @@
      for everybody — "the label printer is not set up" is a thing a
      shopkeeper can act on by phoning somebody. The fixes are a developer's. */
 
-  var CONN_ORDER = ['server', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'backup', 'vault'];
+  var CONN_ORDER = ['server', 'always', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'backup', 'vault'];
   var CONN_ICON = { ok: 'tick', warn: 'warn', bad: 'cross', skip: 'dash' };
   var CONN_FIX = {
+    always: {
+      always_missing: 'alwaysOn', always_switched_off: 'alwaysOn', always_elsewhere: 'alwaysOn',
+      always_sleeps: 'alwaysOn', always_lid: 'alwaysOn', always_signin: 'alwaysCheck', always_plain: 'alwaysCheck'
+    },
     https: { https_none: 'cert', https_address: 'cert', https_expiring: 'cert', https_untrusted: 'certTrust' },
     receipt: { hw_fix: 'hardwareInstall', hw_person: 'hardware', hw_none: 'hardware' },
     label: { hw_fix: 'hardwareInstall', hw_person: 'hardware', hw_none: 'hardware' },
@@ -1629,4 +1649,10 @@
   window.setInterval(function () {
     if (view === 'shop' && isRunning()) paintCloud(true);
   }, 10000);
+
+  /* The come-back countdown: the one line, not the screen, so a hand
+     reaching for "Open it now" is not chasing a button being redrawn. */
+  window.setInterval(function () {
+    if (view === 'shop' && reviving()) $('hSub').innerHTML = reviveLine();
+  }, 1000);
 })();

@@ -68,7 +68,12 @@ FROM node:24-alpine AS runtime
 #  long-poll and the mirror push), so what this buys is that the handler is
 #  reached the same way whether the container is stopped by Coolify, by
 #  `docker stop`, or by the host shutting down.
-RUN apk add --no-cache tini
+#  tzdata: the zone files TZ below points at. Receipts, the bell and the
+#  Telegram messages format dates in the PROCESS's own zone (receipt.js,
+#  alerts.js, telegram.js), and a VPS runs in UTC — a sale at 21:30 in Aleppo
+#  would print 18:30 on its receipt. Reminders and the day close use the
+#  shop's own setting (shop.tz_minutes) and are not affected either way.
+RUN apk add --no-cache tini tzdata
 
 #  Defaults for a proxied deployment. Every one can be overridden in Coolify.
 #
@@ -80,17 +85,23 @@ RUN apk add --no-cache tini
 #                 only redirect browsers to :8443 — a port the proxy does not
 #                 carry, so every page would fail to open.
 #  OG_SECURE=1    the public origin IS https, so session cookies get Secure.
-#  OG_TRUST_PROXY=1
-#                 believe X-Forwarded-For and X-Forwarded-Proto. Without it
-#                 every visitor shares one address for login throttling, so one
-#                 person getting their password wrong five times locks out the
-#                 shop — and httpHandler cannot tell a request that arrived over
-#                 HTTPS from one that did not.
+#  OG_DATA_DIR    the database, the certificates AND THE BACKUPS in one folder,
+#                 the one on the volume. Unset, the backups went to
+#                 /app/server/backups — inside the container, gone at the next
+#                 redeploy, while DEPLOY.md said they were on the volume.
+#  TZ             the shop's day, for everything that prints a time.
+#
+#  OG_TRUST_PROXY is RETIRED (night shift 04): the server ignores it and prints
+#  a notice while it is set. It believed any caller's X-Forwarded-For. Its
+#  replacement is OG_PROXY_ADDR — the ONE address a proxy's requests arrive
+#  from, whose X-OG-Client-IP is then believed (server/lib/proxy.js). Behind
+#  the shop-proxy nginx that is the nginx container's address; see DEPLOY.md.
 ENV NODE_ENV=production
 ENV OG_PORT=8090
 ENV OG_HTTPS=0
 ENV OG_SECURE=1
-ENV OG_TRUST_PROXY=1
+ENV OG_DATA_DIR=/app/server/data
+ENV TZ=Asia/Damascus
 
 WORKDIR /app
 COPY --from=build --chown=node:node /out /app
@@ -99,8 +110,8 @@ COPY --from=build --chown=node:node /out /app
 #  not part of the image: see DEPLOY.md for the volume. Created and owned here
 #  so the unprivileged user can write to it on the first boot, when DB.open()
 #  creates og.db and applies every migration.
-RUN mkdir -p /app/server/data /app/server/backups \
-    && chown -R node:node /app/server/data /app/server/backups
+RUN mkdir -p /app/server/data/backups \
+    && chown -R node:node /app/server/data
 
 #  Not root. Nothing here needs a privileged port or a device.
 USER node

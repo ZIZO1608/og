@@ -42,7 +42,10 @@ const SHOP_PORT = Number(process.env.OG_PORT || 8090);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
-const SERVER = join(ROOT, 'server');
+/* OG_PANEL_SERVER_DIR: a TEST points the panel at a stand-in server folder
+   (tools/always-on/panel.mjs) — a fake index.js it can make fall over, and
+   fake check scripts that never raise a Windows prompt. Never set on a shop. */
+const SERVER = process.env.OG_PANEL_SERVER_DIR ? resolve(process.env.OG_PANEL_SERVER_DIR) : join(ROOT, 'server');
 const UI = join(HERE, 'ui');
 
 const PORT = Number(process.env.OG_PANEL_PORT || 8099);
@@ -70,7 +73,8 @@ const state = {
   who: null,       // who has the shop open, asked for before Stop
   dev: null,       // { who, until } while the developer section is unlocked
   connections: [], // the Connections card: { id, state, code, args, at }
-  connChecking: false
+  connChecking: false,
+  revive: null     // { at, s, n } while a fallen shop waits to come back; { gaveUp, n } when it will not
 };
 
 let child = null;  // the shop
@@ -370,7 +374,7 @@ function deniedSig(m) {
   return m && m.denied ? m.denied.map((d) => d.table).sort().join(',') : '';
 }
 
-const CONN_IDS = ['server', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'backup', 'vault'];
+const CONN_IDS = ['server', 'always', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'backup', 'vault'];
 
 async function checkOne(id, ctx) {
   const row = (st, code, args) => ({ id, state: st, code, args: args || {}, at: Date.now() });
@@ -379,6 +383,24 @@ async function checkOne(id, ctx) {
       if (!child && !(state.ready && state.ready.foreign)) return row('skip', 'server_closed');
       const h = await withTimeout(askTheShop(), 5000, null);
       return h ? row('ok', 'server_ok', { shop: h.shop || '' }) : row('bad', 'server_silent');
+    }
+    /* Will the shop come back by itself after a power cut (scripts/always-on.js).
+       The first thing that has to be true of a till nobody is standing at. */
+    case 'always': {
+      if (process.platform !== 'win32') return row('skip', 'always_na');
+      const r = await runCapture(['scripts/always-on.js', '--json'], 20000);
+      const m = /OG_ALWAYS_JSON (\{.*\})/.exec(r.out);
+      let f = null;
+      try { f = m ? JSON.parse(m[1]) : null; } catch { f = null; }
+      if (!f) return row('skip', 'timeout');
+      if (f.startup.state !== 'ok') return row('warn', 'always_' + f.startup.state);
+      if (f.power.sleep === 'on' || f.power.hibernate === 'on') {
+        return row('warn', 'always_sleeps', { minutes: f.power.sleep === 'on' ? f.power.sleepMinutes : f.power.hibernateMinutes });
+      }
+      if (f.power.lid === 'on') return row('warn', 'always_lid');
+      if (f.signIn.plainPassword) return row('warn', 'always_plain');
+      if (f.signIn.state !== 'ok') return row('warn', 'always_signin');
+      return row('ok', 'always_ok');
     }
     case 'https': {
       if (!TLS.have()) return row('warn', 'https_none');
@@ -606,7 +628,17 @@ function runQuiet(argv, cwd = SERVER) {
 
    Every one of the three reports its own exit code as a step, and NOT ONE OF
    THEM MAY FAIL THE BOOT. That was the .bat's loudest rule and it is kept to
-   the letter here: a warn is drawn amber and the shop opens anyway. */
+   the letter here: a warn is drawn amber and the shop opens anyway.
+
+   NOR MAY ONE HOLD IT. The two fixes that ask Windows for permission — trusting
+   the certificate, installing a printer — wait for somebody to press Yes on
+   the prompt. Awaited here, before the server starts, a laptop that came back
+   from a power cut at three in the morning sat on that prompt with the shop
+   shut until somebody walked in and pressed it. So this only CHECKS (free,
+   silent), and whatever it can fix is done by runLaterFixes() once the shop
+   has said it is ready. */
+let laterFixes = [];
+
 async function morning() {
   if (checkedThisSession) return;
   checkedThisSession = true;
@@ -621,14 +653,12 @@ async function morning() {
     pf === 0 || pf === 3 ? null : { code: 'preflight_exit', exit: pf });
 
   /* The certificate, and whether Windows trusts it. --check is free and
-     silent; only a 4 - made, not yet trusted - leads to the prompt, once. */
+     silent; a 4 - made, not yet trusted - is fixed once the shop is open. */
   if (existsSync(join(dataDir(), 'certs', 'og-cert.pem'))) {
     step('padlock', 'run');
     if (await runQuiet(['scripts/trust-cert.js', '--check']) === 4) {
-      say('');
-      const trusted = await runQuiet(['scripts/trust-cert.js']);
-      step('padlock', trusted === 0 ? 'ok' : 'warn',
-        { code: trusted === 0 ? 'padlock_now' : 'padlock_untrusted' });
+      laterFixes.push('padlock');
+      step('padlock', 'warn', { code: 'padlock_later' });
     } else {
       step('padlock', 'ok', { code: 'padlock_trusted' });
     }
@@ -640,32 +670,122 @@ async function morning() {
   }
 
   /* The printers and the scanner. 4 means something is missing that can be
-     installed from here: do it, then ASK AGAIN rather than assuming it
-     worked. 1 means a person is needed - it is said, and the shop opens
-     anyway. */
+     installed from here: that is done once the shop is open. 1 means a person
+     is needed - it is said, and the shop opens anyway. */
   say('');
   step('printers', 'run');
-  let hw = await runQuiet(['scripts/hardware.js']);
-  const installed = hw === 4;
-  if (hw === 4) {
-    say('');
-    say('  Setting up the printers. This may ask for permission.', 'note');
-    await runQuiet(['scripts/hardware.js', '--install']);
-    say('');
-    say('  Checking again...', 'note');
-    hw = await runQuiet(['scripts/hardware.js']);
-  }
+  const hw = await runQuiet(['scripts/hardware.js']);
+  if (hw === 4) laterFixes.push('printers');
   if (hw === 1) {
     say('');
     say('  The shop still opens and still takes money - it is the PRINTING that', 'err');
     say('  will not work until the above is sorted out.', 'err');
   }
   step('printers', hw === 0 ? 'ok' : 'warn',
-    hw === 0 ? (installed ? { code: 'printers_installed' } : null)
-             : { code: hw === 1 ? 'printers_person' : 'printers_exit', exit: hw });
+    hw === 0 ? null
+      : { code: hw === 4 ? 'printers_later' : hw === 1 ? 'printers_person' : 'printers_exit', exit: hw });
 
   checkedAt = Date.now();
   say('');
+}
+
+/* What morning() found it could fix, done AFTER the shop is open. Each one may
+   raise a Windows prompt; the shop is already taking money while it waits. */
+async function runLaterFixes() {
+  if (!laterFixes.length) return;
+  const todo = laterFixes;
+  laterFixes = [];
+
+  if (todo.includes('padlock')) {
+    step('padlock', 'run', { code: 'padlock_asking' });
+    say('');
+    const trusted = await runQuiet(['scripts/trust-cert.js']);
+    step('padlock', trusted === 0 ? 'ok' : 'warn',
+      { code: trusted === 0 ? 'padlock_now' : 'padlock_untrusted' });
+  }
+
+  if (todo.includes('printers')) {
+    step('printers', 'run', { code: 'printers_asking' });
+    say('');
+    say('  Setting up the printers. This may ask for permission.', 'note');
+    await runQuiet(['scripts/hardware.js', '--install']);
+    say('');
+    say('  Checking again...', 'note');
+    const hw = await runQuiet(['scripts/hardware.js']);
+    if (hw === 1) {
+      say('');
+      say('  The shop is open and taking money - it is the PRINTING that', 'err');
+      say('  will not work until the above is sorted out.', 'err');
+    }
+    step('printers', hw === 0 ? 'ok' : 'warn',
+      hw === 0 ? { code: 'printers_installed' }
+        : { code: hw === 1 ? 'printers_person' : 'printers_exit', exit: hw });
+  }
+  pushState();
+}
+
+/* ------------------------------------------------- it comes back by itself
+
+   A shop that fell over used to stay down until somebody opened this window
+   and pressed Try again — at three in the morning, nobody. Now an exit that
+   nobody asked for (Stop, Restart, the Full refresh, a job that closes the
+   shop around itself and Quit all go through stopServer(), which marks the
+   exit as wanted) brings it back after a pause that grows: 3 s, 10 s, 30 s,
+   a minute, two.
+
+   But a server that falls over again every time it starts is broken, not
+   unlucky — a bad edit, a migration that refuses — and restarting it for ever
+   fills the log and hides the first error under a thousand copies of itself.
+   So the sixth fall inside fifteen minutes stops the retrying, says so, and
+   leaves Try again to a person. A shop that stays up for fifteen minutes has
+   its slate wiped by the window moving on.
+
+   OG_PANEL_REVIVE=0 switches it off; OG_PANEL_REVIVE_DELAYS=1,2 shortens the
+   pauses for a test. */
+const REVIVE_ON = process.env.OG_PANEL_REVIVE !== '0';
+const REVIVE_DELAYS_S = String(process.env.OG_PANEL_REVIVE_DELAYS || '3,10,30,60,120')
+  .split(',').map(Number).filter((n) => Number.isFinite(n) && n > 0);
+const REVIVE_WINDOW_MS = 15 * 60 * 1000;
+const REVIVE_TRIES = 5;
+
+let stopAsked = false;   // set by stopServer(): the exit that follows was wanted
+let falls = [];          // when the shop stopped without being asked, inside the window
+let reviveTimer = null;
+
+function cancelRevive() {
+  if (reviveTimer) clearTimeout(reviveTimer);
+  reviveTimer = null;
+  state.revive = null;
+}
+
+function scheduleRevive() {
+  if (!REVIVE_ON || quitting) return;
+  const now = Date.now();
+  falls = falls.filter((t) => now - t < REVIVE_WINDOW_MS);
+  falls.push(now);
+  if (falls.length > REVIVE_TRIES) {
+    cancelRevive();
+    state.revive = { gaveUp: true, n: falls.length };
+    step('server', 'fail', { code: 'server_gave_up', n: falls.length });
+    say('  It has stopped ' + falls.length + ' times in 15 minutes, so it is left closed.', 'err');
+    say('  Something in it is broken: read the lines above, then press Try again.', 'err');
+    return pushState();
+  }
+  const s = REVIVE_DELAYS_S[Math.min(falls.length - 1, REVIVE_DELAYS_S.length - 1)] || 3;
+  state.revive = { at: now + s * 1000, s, n: falls.length };
+  say('  Opening it again in ' + s + ' s (' + falls.length + ' of ' + REVIVE_TRIES + ' tries in 15 minutes).', 'note');
+  reviveTimer = setTimeout(async () => {
+    reviveTimer = null;
+    state.revive = null;
+    /* A job took charge of the shop in the meantime: leave it to the job. */
+    if (job && state.job && JOBS[state.job.name] &&
+        (JOBS[state.job.name].while === 'shut' || JOBS[state.job.name].aroundShop)) return pushState();
+    await startServer();
+    /* The port held by something else, or the spawn refused: that is another
+       fall, and it goes round the same rule rather than stopping here. */
+    if (!child && state.server === 'stopped' && !(state.ready && state.ready.foreign)) scheduleRevive();
+  }, s * 1000);
+  pushState();
 }
 
 /* Is anything on the shop's port, and if so is it the shop.
@@ -699,6 +819,9 @@ async function askTheShop() {
 
 async function startServer() {
   if (child || state.server === 'starting') return;
+  /* Any start — a person's, the Full refresh's, a job's — replaces a pending
+     come-back; the timer must not fire a second start behind it. */
+  cancelRevive();
   state.server = 'starting';
   resetSteps();
   state.who = null;
@@ -796,6 +919,8 @@ async function startServer() {
       pushState();
       /* the Connections card, now that there is a shop to ask — never waited on */
       setTimeout(() => { checkConnections().catch(() => {}); }, 1500);
+      /* the fixes that may ask Windows for permission, now that nothing waits on them */
+      runLaterFixes().catch(() => {});
       return;
     }
     if (m.type === 'mirror') {
@@ -824,6 +949,11 @@ async function startServer() {
 
   child.on('exit', (code, signal) => {
     const wasStopping = state.server === 'stopping';
+    /* Asked for through stopServer(), or not. Only the second comes back by
+       itself: the server saying "stopping" on its own way down is not a
+       person asking. */
+    const asked = stopAsked;
+    stopAsked = false;
     child = null;
     state.server = 'stopped';
     state.ready = null;
@@ -836,7 +966,7 @@ async function startServer() {
        show as a tick. Somebody asked for it — Stop, Restart, a job that
        closes the shop around itself — and it is finished; nobody asked, and
        it fell over, which is a failure and is drawn as one. */
-    if (wasStopping) resetSteps();
+    if (wasStopping && asked) resetSteps();
     else {
       step('server', 'fail', { code: 'server_died', exit: code == null ? null : code, signal: signal || null });
       /* And "Open for business" stops being true the moment it stops being
@@ -851,7 +981,8 @@ async function startServer() {
     pushState();
     say('');
     const how = code ? '  (exit ' + code + ')' : signal ? '  (' + signal + ')' : '';
-    say('  The shop is closed.' + how, 'note');
+    say(asked ? '  The shop is closed.' + how : '  The shop stopped by itself.' + how, asked ? 'note' : 'err');
+    if (!asked) scheduleRevive();
   });
 }
 
@@ -860,8 +991,15 @@ async function startServer() {
    the fallback for a process that has stopped listening to anything at all,
    and it leaves the WAL to replay on the next open rather than a clean close. */
 function stopServer() {
-  if (!child) return;
+  if (!child) {
+    /* Closed already, perhaps waiting to come back by itself: Stop means
+       stay closed. */
+    if (state.revive) { cancelRevive(); say('  Left closed, as asked.', 'note'); pushState(); }
+    return;
+  }
   const dying = child;
+  stopAsked = true;
+  cancelRevive();
   state.server = 'stopping';
   pushState();
   say('  Stopping...', 'note');
@@ -1143,6 +1281,12 @@ function runJob(name, args = {}) {
     return refuse(name, 'needs_shut', { label: spec.label });
   }
 
+  /* A job that needs the shop SHUT must not have it come back underneath it:
+     a restore that moves og.db aside while a revived server opens it is two
+     writers on one file. Whoever started the job has taken charge of the
+     shop, so a pending come-back is dropped. */
+  if (spec.while === 'shut' || spec.aroundShop) cancelRevive();
+
   const steps = spec.steps(args);
   const cwd = spec.cwd === 'server' ? SERVER : ROOT;
   state.job = { name, label: spec.label, started: Date.now() };
@@ -1379,7 +1523,9 @@ async function ask(action, args) {
 }
 
 function act(action, args) {
-  if (action === 'start') return startServer();
+  /* A person pressing Open (or Try again) wipes the slate: whatever made the
+     shop give up has presumably been looked at. */
+  if (action === 'start') { falls = []; cancelRevive(); return startServer(); }
   if (action === 'stop') return stopServer();
 
   if (action === 'restart') {

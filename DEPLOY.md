@@ -83,7 +83,10 @@ The two that must be right, because the container is behind Coolify's proxy:
 Already set in the image, override only if you know why: `OG_PORT=8090`,
 `OG_HTTPS=0` (Coolify terminates TLS; a second self-signed certificate inside
 would redirect browsers to `:8443`, a port the proxy does not carry),
-`OG_SECURE=1`, `NODE_ENV=production`.
+`OG_SECURE=1`, `NODE_ENV=production`, `OG_DATA_DIR=/app/server/data` (the
+database, the certificates **and the backups** in the one folder on the
+volume) and `TZ=Asia/Damascus` (receipts, the bell and Telegram print times in
+the process's own zone, and a VPS runs in UTC; the image carries `tzdata`).
 
 Optional, all of them off by default:
 
@@ -137,8 +140,10 @@ OG_WEB_API_KEY=
 OG_BACKUP_COPY_DIR=
 ```
 
-`OG_PORT`, `OG_HTTPS`, `OG_SECURE` and `NODE_ENV` are already right in the
-image — leave them out unless you are changing one on purpose.
+`OG_PORT`, `OG_HTTPS`, `OG_SECURE`, `NODE_ENV`, `OG_DATA_DIR` and `TZ` are
+already right in the image — leave them out unless you are changing one on
+purpose. **Do not copy `OG_TRUST_PROXY` across**: it is retired, the server
+ignores it and prints a notice while it is set.
 
 **Four keys in the laptop's `.env` are dead and should not be copied across**
 (nothing reads them any more — the tunnel was retired and the boot pull was
@@ -155,6 +160,11 @@ the laptop's file at the same time.
 `og.db`, its WAL, `backups/` and `certs/` all live there. **The image holds no
 copy.** Add it as a persistent volume in Coolify *before* the first start; a
 container recreated without one comes up as an empty shop.
+
+`backups/` is there because the image sets `OG_DATA_DIR` to this folder. Until
+24 Sep 2026 it did not, and the nightly backups went to `/app/server/backups`,
+inside the container, where every redeploy threw them away — while this
+paragraph said they were on the volume.
 
 ### The first start
 

@@ -163,6 +163,39 @@ export const JOBS = {
     steps: () => [['node', ['scripts/hardware.js', '--install']]]
   },
 
+  /* THE SHOP OPENS BY ITSELF. After a power cut or a Windows update in the
+     night, the laptop must bring the shop back with nobody at it:
+     OG System in this account's sign-in list, no sleep and no hibernate on
+     mains power, the lid ignored on mains. No administrator prompt. Windows
+     signing in by itself and the BIOS's "power on after power loss" are a
+     person's to do; the check says how. */
+  alwaysOn: {
+    label: 'Open the shop by itself',
+    group: 'machine',
+    blurb: 'Starts OG System when Windows signs in, and keeps the laptop from sleeping on mains power, so the shop comes back by itself after a power cut. No permission prompt.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/always-on.js', '--apply']]]
+  },
+
+  alwaysCheck: {
+    label: 'Check it opens by itself',
+    group: 'machine',
+    blurb: 'Starts with Windows, never sleeps, signs in by itself, and the BIOS: what is set and what a person still has to do. Changes nothing.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/always-on.js']]]
+  },
+
+  alwaysOff: {
+    label: 'Stop opening by itself',
+    group: 'machine',
+    blurb: 'Takes OG System out of the Windows sign-in list. The power settings are left as they are.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/always-on.js', '--undo']]]
+  },
+
   /* --------------------------------------------------------- the padlock */
   cert: {
     label: 'Make certificate',

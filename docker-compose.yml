@@ -23,7 +23,13 @@ services:
       #  header's host must be the Host header" — safe, and it needs no
       #  configuration. Naming the real hostname is still the stronger answer.
       OG_ORIGINS: "${OG_ORIGINS:-http://localhost:8090}"
-      OG_TRUST_PROXY: "${OG_TRUST_PROXY:-1}"
+      #  The ONE address a proxy's requests arrive from; its X-OG-Client-IP is
+      #  then believed as the visitor (lib/proxy.js). Blank: every visitor is
+      #  their socket, which behind a proxy means one shared sign-in limit.
+      #  (OG_TRUST_PROXY is retired and ignored — do not set it.)
+      OG_PROXY_ADDR: "${OG_PROXY_ADDR:-}"
+      #  The shop's day, for every time printed on a receipt or a message.
+      TZ: "${TZ:-Asia/Damascus}"
 
       # ---- the one that must be the SAME value as the laptop's -------------
       #  OG_VAULT_KEY opens the sealed passwords already in og.db. A NEW value
@@ -57,8 +63,9 @@ services:
       OG_BACKUP_COPY_DIR: "${OG_BACKUP_COPY_DIR:-}"
 
     volumes:
-      #  THE SHOP. og.db, its WAL, backups/ and certs/ all live here, and the
-      #  image holds no copy. Lose this volume and you lose the shop.
+      #  THE SHOP. og.db, its WAL, backups/ and certs/ all live here (the image
+      #  sets OG_DATA_DIR to this folder, which is what puts backups/ on it),
+      #  and the image holds no copy. Lose this volume and you lose the shop.
       - og-data:/app/server/data
 
     ports:
