@@ -221,6 +221,16 @@ function fail(message, code, status = 400) {
   const e = new Error(message); e.code = code; e.status = status; return e;
 }
 
+/* 067 — the shop prices in dollars, and the lira follows the rate. A lira
+   price would stand still while the dollar moved, which is the thing the
+   owner asked to end. The currency column stays (and allows SYP) because
+   every sale before 067 still names the currency it was priced in. */
+function assertDollars(currency) {
+  if (currency !== 'USD') {
+    throw fail('Prices are entered in dollars; the lira price follows the exchange rate.', 'prices_in_dollars');
+  }
+}
+
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 /* A colour as typed: both names (either may stand in for the other), an
@@ -391,7 +401,33 @@ function webColours(p, photos) {
     .map((c) => ({ c, photos: photos.filter((x) => x.colourId === c.id).map(webPhoto) }));
 }
 
-function webRow(p, allSizes, ready) {
+/* 067 — the rate the website's lira prices are worked out at: the newest
+   USD→SYP row, the one web_checkout hands the site as well. */
+export function webRate() {
+  const r = get().prepare(
+    `SELECT rate, set_at FROM fx_rates WHERE base = 'USD' AND quote = 'SYP' AND rate > 0
+      ORDER BY set_at DESC, id DESC LIMIT 1`).get();
+  return r ? { rate: r.rate, at: r.set_at } : null;
+}
+
+/* 067 — the price in both currencies, ready to show: the site never works
+   the lira out itself. Dollars × the rate, rounded to the whole lira — the
+   arithmetic of convert() in lib/sales.js (what the till charges) and toBase
+   in js/data.js. A row still in lira (a database 067 had no rate for) goes
+   the other way. No rate: the other currency is null, never a guess.
+   KEEP IN STEP with web.product_prices() in supabase/037_web_products.sql. */
+function webPrices(p, fx) {
+  const usd = p.currency === 'USD' ? p.selling_price
+            : fx ? Math.round(p.selling_price / fx.rate * 100) : null;
+  const syp = p.currency === 'SYP' ? p.selling_price
+            : fx ? Math.round(p.selling_price / 100 * fx.rate) : null;
+  return { USD: { amount: usd, minorExp: 2 }, SYP: { amount: syp, minorExp: 0 } };
+}
+
+/* KEEP IN STEP with web.product_row() in supabase/037_web_products.sql —
+   the website reads the same answer from the cloud copy while this laptop
+   is shut, and the two must not disagree about a single field. */
+function webRow(p, allSizes, ready, fx) {
   const ids = new Set(ready.map((r) => r.c.id));
   const sizes = allSizes.filter((v) => ids.has(v.colour_id));
   const first = ready[0].photos;
@@ -418,6 +454,10 @@ function webRow(p, allSizes, ready) {
     price: p.selling_price,
     currency: p.currency,
     minorExp: minorExp(p.currency),
+    /* 067 — every product is priced in dollars; `prices.SYP` is that price
+       at `rate`, which is what the till charges today. Show the lira. */
+    prices: webPrices(p, fx),
+    rate: fx,
     sizes: sizes.map((v) => ({ size: v.size, sku: v.sku, colourId: v.colour_id ?? null, inStock: v.total > 0 })),
     /* 058 — each colour, its photos, and which of its sizes are in stock.
        Only the colours with both photos (066). `imageUrl` is kept for a site
@@ -448,7 +488,7 @@ function webSizes(productIds) {
             COALESCE((SELECT SUM(qty) FROM stock s WHERE s.sku = v.sku), 0) AS total
        FROM variants v
       WHERE v.product_id IN (${marks})
-      ORDER BY v.product_id, v.size`
+      ORDER BY v.product_id, v.size, v.sku`
   ).all(...productIds);
   const by = {};
   for (const v of rows) (by[v.product_id] ??= []).push(v);
@@ -463,10 +503,11 @@ export function webList() {
   ).all();
   const sizes = webSizes(rows.map((p) => p.id));
   const photos = Photos.byProduct();
+  const fx = webRate();
   const out = [];
   for (const p of rows) {
     const ready = webColours(p, photos[p.id] ?? []);
-    if (ready.length) out.push(webRow(p, sizes[p.id] ?? [], ready));
+    if (ready.length) out.push(webRow(p, sizes[p.id] ?? [], ready, fx));
   }
   return out;
 }
@@ -484,7 +525,7 @@ export function webById(id) {
      the same 404 as one switched off. */
   const ready = webColours(p, Photos.ofProduct(p.id));
   if (!ready.length) return null;
-  return webRow(p, webSizes([p.id])[p.id] ?? [], ready);
+  return webRow(p, webSizes([p.id])[p.id] ?? [], ready, webRate());
 }
 
 export function byId(id) {
@@ -649,6 +690,7 @@ export function createWithVariants({
   Categories.assertUsable(type);            // 057: a real, switched-on category
   if (!currency) throw new Error('currency is required');
   minorExp(currency);                       // throws if the currency is unknown
+  assertDollars(currency);                  // 067: every price is a dollar price
 
   /* 058: a list of colours, each with its own sizes. A caller that sends
      only `sizes` (an older browser, a script) gets one colour — the
@@ -742,12 +784,20 @@ export function update(id, fields, userId) {
       const cur = get().prepare('SELECT type FROM products WHERE id = ?').get(id);
       Categories.assertUsable(v, { current: cur ? cur.type : null });
     }
-    if (k === 'currency') minorExp(v);   // validate before writing
+    if (k === 'currency') { minorExp(v); assertDollars(v); }   // validate before writing
     sets.push(`${k} = ?`);
     args.push(v);
   }
 
   if (!sets.length) throw new Error('nothing to update');
+
+  /* 067 — a price written onto a product still in lira (a database 067 could
+     not convert, having no rate) would be read as lira. Refuse it; the same
+     request carrying currency 'USD' is the way through. */
+  if (('selling_price' in fields || 'cost_price' in fields) && fields.currency === undefined) {
+    const cur = get().prepare('SELECT currency FROM products WHERE id = ?').get(id);
+    if (cur) assertDollars(cur.currency);
+  }
 
   return tx((d) => {
     args.push(nowIso(), id);

@@ -1872,6 +1872,20 @@ var POS = (function () {
      shoes is a queue at the counter. */
   function saleOpen() { return S.cart.length > 0; }
 
+  /* 067 — the rate moved and DB.reprice worked every lira price out again.
+     A basket line carries its price, so it is taken again from the product:
+     the server charges the rate of the moment, and a basket still adding up
+     yesterday's lira would show one total and print another. Only the cart
+     and the grid are repainted, never render() — the discount box may hold
+     half a number. */
+  function reprice() {
+    S.cart.forEach(function (l) {
+      var p = DB.product(l.productId);
+      if (p) { l.price = p.sellingPrice; l.cost = p.costPrice; }
+    });
+    if (document.getElementById('cartLines')) paintCart();
+  }
+
   return {
     render: render,
     after: after,
@@ -1885,6 +1899,7 @@ var POS = (function () {
        basket without a full render(), which would rebuild the cart and lose
        anything half-typed in the discount box. */
     refresh: paintFoot,
+    reprice: reprice,
     state: S
   };
 })();

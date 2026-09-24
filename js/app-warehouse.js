@@ -697,7 +697,7 @@ function whAddTab() {
      — it used to be born holding 1050 — so reading the element gave 0 for a
      product whose cost had simply not been entered, which is a different
      thing and the reason `blank is not zero` is a rule in this codebase. */
-  var cost = Number(OG.wh.cost) || 0;
+  var cost = usdCents(OG.wh.cost);
 
   totalPieces = ColourForm.grand();
 
@@ -742,18 +742,24 @@ function whAddTab() {
         DB.activeTypes().map(function (ty) {
           return '<option value="' + ty + '"' + (OG.wh.type === ty ? ' selected' : '') + '>' + esc(DB.typeLabels[ty] || ty) + '</option>';
         }).join('') + '</select></label>' +
-      '<label class="field"><span>' + t('selling_price') + '</span>' +
-        '<input class="inp num" id="whPrice" type="number" min="0" value="' + esc(OG.wh.price || '') +
-          '" placeholder="0" data-change="wh-recalc"></label>' +
+      /* 067 — IN DOLLARS. The lira is the dollar price at today's rate and
+         follows it by itself; the line under the box says what it comes to.
+         A text box with a decimal keypad, never type=number, which blanks
+         itself on a comma and refuses an Arabic keypad's digits. */
+      '<label class="field"><span>' + t('pr_price_usd') + '</span>' +
+        '<input class="inp num" id="whPrice" type="text" inputmode="decimal" dir="ltr" value="' + esc(OG.wh.price || '') +
+          '" placeholder="0.00" data-change="wh-recalc">' +
+        '<small class="pr-lira muted" id="whPriceLira">' + liraHint(usdCents(OG.wh.price)) + '</small></label>' +
       /* Someone booking goods in without cost.read enters what the shop sells
          it for, not what it was bought for. The field is left out rather than
          disabled, because a disabled box invites a guess — and a guessed cost
          price is worse than a missing one: it quietly poisons every margin
          and profit figure the manager reads afterwards. */
       (seesCost()
-        ? '<label class="field"><span>' + t('cost_price') + '</span>' +
-            '<input class="inp num" id="whCost" type="number" min="0" value="' + esc(OG.wh.cost || '') +
-              '" placeholder="' + esc(t('wh_cost_blank')) + '" data-change="wh-recalc"></label>'
+        ? '<label class="field"><span>' + t('pr_cost_usd') + '</span>' +
+            '<input class="inp num" id="whCost" type="text" inputmode="decimal" dir="ltr" value="' + esc(OG.wh.cost || '') +
+              '" placeholder="' + esc(t('wh_cost_blank')) + '" data-change="wh-recalc">' +
+            '<small class="pr-lira muted" id="whCostLira">' + liraHint(usdCents(OG.wh.cost)) + '</small></label>'
         : '') +
     '</div>' +
     (seesCost() ? '' :
@@ -987,8 +993,9 @@ function whAddPreview(sizes, totalPieces) {
      numbers were invented, and the preview quoting them as "total cost" and
      "expected revenue" over a product whose prices nobody had typed made an
      invented figure look like arithmetic. Nothing typed, nothing claimed. */
-  var cost = Number(OG.wh.cost) || 0;
-  var price = Number(OG.wh.price) || 0;
+  /* 067 — typed in dollars; the totals below are drawn in lira at today's rate. */
+  var cost = DB.liraOf(usdCents(OG.wh.cost), 'USD') || 0;
+  var price = DB.liraOf(usdCents(OG.wh.price), 'USD') || 0;
   var totalCost = totalPieces * cost;
   var totalRev = totalPieces * price;
 

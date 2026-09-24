@@ -46,6 +46,11 @@ var CHANGES = {
   /* The live line under the price box — never a render: the box holds a
      caret and half a number. */
   'pq-price': function () { quickPriceHint(); },
+  /* 067 — the product editor's dollar boxes: the lira line under the box. */
+  'pe-lira': function (el) {
+    var hint = document.getElementById(el.id + 'Lira');
+    if (hint) hint.innerHTML = liraHint(usdCents(el.value));
+  },
   /* Repaints the grid and the count only, so the box being typed into is
      never rebuilt and the caret stays put with no focusBack trick. */
   'cust-q': function (el) { OG.cust.q = el.value; repaintCustomers(); },
@@ -177,6 +182,9 @@ var CHANGES = {
   'wh-recalc': function (el) {
     if (el.id === 'whCost') OG.wh.cost = el.value;
     else OG.wh.price = el.value;
+    /* 067 — the lira it comes to, under the box; only that line is written. */
+    var hint = document.getElementById(el.id + 'Lira');
+    if (hint) hint.innerHTML = liraHint(usdCents(el.value));
     repaintWhAdd();
   },
 

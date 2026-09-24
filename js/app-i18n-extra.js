@@ -4368,3 +4368,23 @@ var SHOPWRITE_AR = {
 };
 Object.keys(SHOPWRITE_EN).forEach(function (k) { I18N.en[k] = SHOPWRITE_EN[k]; });
 Object.keys(SHOPWRITE_AR).forEach(function (k) { I18N.ar[k] = SHOPWRITE_AR[k]; });
+
+/* 067 — every product is priced in dollars; the lira follows the rate. */
+var USDPRICE_EN = {
+  pr_price_usd: 'Selling price ($)',
+  pr_cost_usd: 'Cost price ($)',
+  pr_lira_is: '≈ {lira} at 1 USD = {rate} SYP',
+  fxf_toast_typed: '1 USD = {rate} SYP · typed in Settings',
+  pr_usd_note: 'Prices are in dollars. The lira price follows the exchange rate by itself — on the till and on the website.',
+  err_prices_in_dollars: 'Prices are entered in dollars now, and the lira price follows the exchange rate. Reload the page and try again.'
+};
+var USDPRICE_AR = {
+  pr_price_usd: 'سعر البيع ($)',
+  pr_cost_usd: 'سعر التكلفة ($)',
+  pr_lira_is: '≈ {lira} على سعر ١ دولار = {rate} ل.س',
+  fxf_toast_typed: '١ دولار = {rate} ل.س · مكتوب بالإعدادات',
+  pr_usd_note: 'الأسعار بالدولار. سعر الليرة بيمشي مع سعر الصرف لحالو — عالكاشير وعالموقع.',
+  err_prices_in_dollars: 'الأسعار صارت تنكتب بالدولار، وسعر الليرة بيمشي مع سعر الصرف. حدّث الصفحة وجرّب مرة تانية.'
+};
+Object.keys(USDPRICE_EN).forEach(function (k) { I18N.en[k] = USDPRICE_EN[k]; });
+Object.keys(USDPRICE_AR).forEach(function (k) { I18N.ar[k] = USDPRICE_AR[k]; });

@@ -3339,3 +3339,8 @@ body:not([data-portal="yalla"]) .fxf-sw > span { display: flex; flex-direction: 
 body:not([data-portal="yalla"]) .fxf-sw small { font-size: var(--fs-xs); }
 body:not([data-portal="yalla"]) .fxf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
 body.rtl .fxf-makes, body.rtl .fxf-held, body.rtl .fxf-head b { letter-spacing: 0; }
+
+/* 067 — the lira a dollar price comes to, under the box. Held at one line's
+   height even while empty, so typing the first digit does not push the
+   form down by a line. */
+body:not([data-portal="yalla"]) .pr-lira { display: block; min-height: 18px; margin-top: 4px; font-size: var(--fs-xs); font-weight: 600; }

@@ -1688,7 +1688,7 @@ var ACTIONS = {
        a real shoe in the catalogue at nothing — while the edit modal refused
        the same blank. Two rules for one number; this is the other one now. */
     var priceRaw = String(OG.wh.price === undefined || OG.wh.price === null ? '' : OG.wh.price).trim();
-    if (priceRaw === '' || !(Number(priceRaw) > 0)) {
+    if (priceRaw === '' || !(usdCents(priceRaw) > 0)) {
       toast(t('selling_price'), t('err_price_needed'), 'err');
       focusBack('#whPrice', priceRaw.length);
       return;
@@ -1714,8 +1714,8 @@ var ACTIONS = {
        A blank cost stays 0 and is sent as 0 — `createWithVariants` takes it
        as "not entered", which is the honest reading; a guessed cost poisons
        every margin figure afterwards. The price is already known to be > 0. */
-    var cost = Number(OG.wh.cost) || 0;
-    var price = Number(priceRaw);
+    var cost = usdCents(OG.wh.cost);
+    var price = usdCents(priceRaw);
 
     /* Read NOW, not inside done() — done() runs after render() has rebuilt
        the form and cleared OG.wh, so by then both selects are gone.
@@ -1741,10 +1741,9 @@ var ACTIONS = {
           brand: OG.wh.brand || undefined,
           madeIn: OG.wh.madeIn || undefined,
           colorway: OG.wh.colorway || undefined,
-          /* Entered in the shop's base currency. Whole units for SYP, which
-             is what minor_exp 0 means — the number typed is the number
-             stored. */
-          currency: CONFIG.BASE_CURRENCY,
+          /* 067 — entered in dollars, sent in cents. The lira is worked out
+             from it at the rate of the moment, on the till and the website. */
+          currency: 'USD',
           costPrice: cost,
           sellingPrice: price,
           imageBg: bg || undefined,
