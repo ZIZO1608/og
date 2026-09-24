@@ -110,3 +110,32 @@ test('a session ends after 12 hours; logout ends it at once', async () => {
   a.logout(r2.token);
   assert.equal(a.who(r2.token), null);
 });
+
+test('guesses sent all at once are counted before the hash: five get an answer, the rest are refused', async () => {
+  const clock = { t: T0 };
+  const a = await door(clock);
+  const all = await Promise.all(Array.from({ length: 20 }, (_, i) =>
+    a.login({ user: 'sara', password: 'guess-' + i, code: '123456', ip: '6.6.6.' + i })));
+  const hashed = all.filter((r) => r.reason === 'bad').length;
+  assert.equal(hashed, 5, 'only five were let as far as the password: ' + all.map((r) => r.reason).join(','));
+  assert.equal(all.filter((r) => r.reason === 'throttled').length, 15);
+  /* …and so from one address, across names. */
+  const b = await door({ t: T0 });
+  const one = await Promise.all(Array.from({ length: 12 }, (_, i) =>
+    b.login({ user: 'nobody' + i, password: 'x', code: '1', ip: '7.7.7.7' })));
+  assert.equal(one.filter((r) => r.reason === 'bad').length, 5);
+});
+
+test('a sign-in that succeeds takes its own count back', async () => {
+  const clock = { t: T0 };
+  const a = await door(clock);
+  for (let i = 0; i < 4; i++) {
+    clock.t = T0 + i * 30000;
+    const r = await a.login({ user: 'sara', password: 'the-night-password', code: codeAt(clock.t), ip: '8.8.8.8' });
+    assert.equal(r.ok, true, 'sign-in ' + i);
+  }
+  /* Four successes and four failures would be past five; four successes are none. */
+  for (let i = 0; i < 4; i++) await a.login({ user: 'sara', password: 'x', code: '1', ip: '8.8.8.8' });
+  clock.t = T0 + 5 * 30000;
+  assert.equal((await a.login({ user: 'sara', password: 'the-night-password', code: codeAt(clock.t), ip: '8.8.8.8' })).ok, true);
+});

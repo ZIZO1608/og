@@ -350,6 +350,9 @@ on the laptop accepts it. The laptop stays the only writer of shop data.
 
 - It has its own rate limit (`og_night`, 60 a minute per visitor) and its own
   "not available right now" page (`@night_down`) for when og-bridge is down.
+- Its sign-in POST (`/night/login`) also sits in the till's sign-in zone
+  (`og_login`, 10 a minute, 5 at once per visitor), on top of og-bridge's own
+  five-failure throttle.
 - The "shop's internet is down" page (`@shop_closed`) links to it. Phones that
   already have the app get the same button on the app's own down screen.
 - `tools/night-mode/proxy.mjs` checks the change is additions only, runs

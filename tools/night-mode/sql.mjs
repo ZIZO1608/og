@@ -142,6 +142,36 @@ const full = await submit('sara', op(), good({ customer: { name: 'Late', phone: 
 check('with 1,000 undecided in all, a new one is refused full', full.code === 'full', JSON.stringify(full));
 await db.query(`DELETE FROM inbox.requests WHERE ref LIKE 'W-%'`);
 
+/* ---- refs past 9999 do not collide ----------------------------------------- */
+await db.query("SELECT setval(pg_get_serial_sequence('inbox.requests', 'id'), 12344)");
+const big = await submit('sara', op(), good({ customer: { name: 'Past ten thousand', phone: '0933 777 888' } }));
+check('the 12,345th request is N-12345, not a clash with N-1234', big.ok && big.ref === 'N-12345', JSON.stringify(big));
+await db.query("SELECT setval(pg_get_serial_sequence('inbox.requests', 'id'), 1233)");
+await submit('sara', op(), good({ customer: { name: 'Number 1234', phone: '0933 777 889' } }));
+const ref1234 = await one("SELECT ref FROM inbox.requests WHERE payload->'customer'->>'name' = 'Number 1234'");
+check('…and N-1234 still exists beside it', ref1234 && ref1234.ref === 'N-1234');
+/* A clash on anything but (source, op) is a fault and is RAISED — the first
+   version answered every unique_violation with op_taken, "this form was
+   already used", which would have hidden a ref collision behind a wrong word. */
+await db.query("SELECT setval(pg_get_serial_sequence('inbox.requests', 'id'), 1233)");
+const clash = await submit('sara', op(), good({ customer: { name: 'Clash', phone: '0933 777 891' } }))
+  .then((r) => ({ answered: r }), (e) => ({ raised: e.message }));
+check('a clash on the id or the ref is raised as the fault it is, not answered op_taken',
+  clash.raised && /unique constraint/.test(clash.raised) && !/requests_op_unique/.test(clash.raised), JSON.stringify(clash));
+await db.query("SELECT setval(pg_get_serial_sequence('inbox.requests', 'id'), (SELECT max(id) FROM inbox.requests))");
+
+/* ---- the built payload is measured too ---------------------------------------- */
+/* The request is small; the names the mirror adds to it are not. Four lines
+   of a 2,100-character product name is past 8 KB only once it is built. */
+const names = await db.query('SELECT id, name FROM public.products WHERE id IN (50, 51)');
+await db.query("UPDATE public.products SET name = repeat('N', 2100) WHERE id IN (50, 51)");
+const before = (await one('SELECT count(*)::int AS n FROM inbox.requests')).n;
+const bloated = await submit('sara', op(), good({ customer: { name: 'Big one', phone: '0933 777 890' },
+  items: ['OG-050-42', 'OG-050-43', 'OG-051-42', 'OG-051-C2-42'].map((sku) => ({ sku, qty: 1 })) }));
+for (const p of names.rows) await db.query('UPDATE public.products SET name = $1 WHERE id = $2', [p.name, p.id]);
+check('a payload the mirror’s names make too big is refused too_big, not a constraint crash', bloated.code === 'too_big', JSON.stringify(bloated));
+check('…and nothing was written', (await one('SELECT count(*)::int AS n FROM inbox.requests')).n === before);
+
 /* ---- og_vps is still SELECT-only, and cannot reach the table ------------ */
 const writes = await one(`
   SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace

@@ -23,7 +23,7 @@ import { esc, fmtMoney, clock } from './snapshot-page.js';
 
 export { esc };
 
-const fill = (t, v) => String(t).replace(/\{(\w+)\}/g, (_, k) => (v[k] === undefined ? '' : v[k]));
+export const fill = (t, v) => String(t).replace(/\{(\w+)\}/g, (_, k) => (v[k] === undefined ? '' : v[k]));
 
 export const WORDS = {
   en: {
@@ -77,7 +77,8 @@ export const WORDS = {
       op_taken: 'This form was already used. Start the request again.', unsupported: 'The request could not be read.', too_big: 'The request is too big.',
       bad_user: 'This account cannot send requests.', bad_op: 'This form expired. Send it again.', off: 'Requests are switched off tonight.',
       rate: 'Too many requests from this account in the last hour.', down: 'The cloud copy did not answer. Nothing was sent — try again.',
-      form: 'This page is out of date. Open it again and send it again.'
+      form: 'This page is out of date. Open it again and send it again.',
+      changed: 'Your earlier send did reach the shop, as {ref} — without the changes you made after it. They are still here: send again to make a second request with them, or start again.'
     },
     downTitle: 'The cloud copy is not answering', downSub: 'Night mode cannot read anything right now. Try again in a minute.', retry: 'Try again',
     formTitle: 'This page is out of date', formSub: 'Open it again from the start and do it once more. Nothing was sent.',
@@ -134,7 +135,8 @@ export const WORDS = {
       op_taken: 'هالفورم انستعمل قبل. ابدأ الطلب من جديد.', unsupported: 'ما قدرنا نقرا الطلب.', too_big: 'الطلب كبير كتير.',
       bad_user: 'هالحساب ما فيه يبعت طلبات.', bad_op: 'هالفورم قديم. ابعته مرة تانية.', off: 'الطلبات مسكّرة الليلة.',
       rate: 'طلبات كتير من هالحساب بآخر ساعة.', down: 'النسخة السحابية ما ردّت. ما انبعت شي — جرّب مرة تانية.',
-      form: 'هالصفحة قديمة. افتحها من جديد وابعت مرة تانية.'
+      form: 'هالصفحة قديمة. افتحها من جديد وابعت مرة تانية.',
+      changed: 'الإرسال الأول وصل للمحل برقم {ref} — بس بدون التغييرات اللي عملتها بعده. التغييرات لسا هون: ابعت مرة تانية لتعمل طلب تاني فيها، أو ابدأ من الأول.'
     },
     downTitle: 'النسخة السحابية ما عم ترد', downSub: 'وضع الليل ما فيه يقرا شي هلأ. جرّب بعد دقيقة.', retry: 'جرّب مرة تانية',
     formTitle: 'هالصفحة قديمة', formSub: 'افتحها من الأول وعيد مرة تانية. ما انبعت شي.',
@@ -261,7 +263,8 @@ input:focus,select:focus,textarea:focus,.btn:focus-visible,a:focus-visible{outli
 .line{display:grid;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
 .line:first-child{border-top:0;padding-top:0}
 .line-top{display:flex;justify-content:space-between;gap:12px;font-weight:600}
-.line form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.line-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.def{position:absolute;width:1px;height:1px;min-height:0;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .seg input{position:absolute;opacity:0;width:1px;height:1px;min-height:0;pointer-events:none}
 .seg label{display:flex;align-items:center;justify-content:center;min-height:48px;padding:8px 12px;border:1px solid var(--line2);border-radius:var(--r);font-weight:600;text-align:center;cursor:pointer}
@@ -530,21 +533,26 @@ export function requestPage(ctx, { draft, info = {}, errors = {}, submitOn = tru
       : Number(i.qty) < l.qty ? `<span class="chip warn">${fill(esc(W.low), { n: num(i.qty), time: at })}</span>` : '';
     return `<div class="line"><div class="line-top"><span>${esc(i.name || l.sku)}${colour ? ' · ' + esc(colour) : ''}</span>${fig(i.size || '')}</div>
       ${stock ? `<div>${stock}</div>` : ''}
-      <form method="post" action="/night/request/line">${hidden(csrf, lang)}<input type="hidden" name="sku" value="${esc(l.sku)}">
-        <select name="qty" aria-label="${esc(W.qty)}">${Array.from({ length: 20 }, (_, n) => `<option${n + 1 === l.qty ? ' selected' : ''}>${n + 1}</option>`).join('')}</select>
-        <button class="btn small" type="submit" name="do" value="set">${esc(W.update)}</button>
-        <button class="btn small quiet" type="submit" name="do" value="remove">${esc(W.remove)}</button></form></div>`;
+      <div class="line-ctl">
+        <select name="q.${esc(l.sku)}" aria-label="${esc(W.qty)}">${Array.from({ length: 20 }, (_, n) => `<option${n + 1 === l.qty ? ' selected' : ''}>${n + 1}</option>`).join('')}</select>
+        <button class="btn small" type="submit" formaction="/night/request/save">${esc(W.update)}</button>
+        <button class="btn small quiet" type="submit" formaction="/night/request/save" name="do" value="remove:${esc(l.sku)}">${esc(W.remove)}</button></div></div>`;
   }).join('');
   const c = draft.customer || {};
   const m = draft.method === 'pickup' ? 'pickup' : draft.method === 'delivery' ? 'delivery' : '';
   const off = submitOn ? '' : `<p class="alert warn" role="status">${esc(W.off)}</p>`;
+  /* ONE form. Every button but Send posts the whole of it to /save, so none of
+     them can throw away what was typed somewhere else on the page. The hidden
+     button is FIRST, which makes it the form's default: Enter in a box saves
+     and stays, and never sends, forgets the customer or opens another page. */
   const body = `
 <div class="head"><h1>${esc(W.reqTitle)}</h1></div>
 ${message ? `<p class="alert bad" role="alert">${message}</p>` : ''}${off}
+<form class="stack" method="post" action="/night/request" novalidate>${hidden(csrf, lang)}
+<button class="def" type="submit" formaction="/night/request/save" tabindex="-1" aria-hidden="true">${esc(W.update)}</button>
 <section class="card stack"><h2>${esc(W.lines)}</h2>${errOf('items')}
   ${draft.lines.length ? `<div>${lines}</div>` : `<p class="note">${esc(W.reqEmpty)}</p>`}
-  <div><a class="btn" href="/night/stock">${ic('box')}${esc(draft.lines.length ? W.addMore : W.reqFind)}</a></div></section>
-<form class="stack" method="post" action="/night/request" novalidate>${hidden(csrf, lang)}
+  <div><button class="btn" type="submit" formaction="/night/request/save?next=stock">${ic('box')}${esc(draft.lines.length ? W.addMore : W.reqFind)}</button></div></section>
 <section class="card stack"><h2>${esc(W.who)}</h2>
   ${c.id ? `<div class="known"><span class="chip brand">${fill(esc(W.known), { id: fig('#' + c.id) })}</span>
     <button class="btn small quiet" type="submit" formaction="/night/request/save?next=forget">${esc(W.forget)}</button></div>` : ''}

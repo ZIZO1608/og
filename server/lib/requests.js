@@ -41,6 +41,9 @@ import * as Shape from './request-shape.js';
 const TAKE = 20;
 const MARK = 50;
 const DECIDED_SHOWN = 30;
+/* The screen draws the oldest this many; the count says how many there are.
+   A flood from a stolen night account must not become one enormous page. */
+const WAITING_SHOWN = 100;
 
 const fail = (message, code, status, extra) => Object.assign(new Error(message), { code, status }, extra || {});
 const short = (e) => String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 300);
@@ -52,6 +55,9 @@ const defaultRpc = (fn, args) => SB.rpc(fn, args);
    the one before it (the marker travels in the mirror with the delivery). */
 function markedSale(d, ref) {
   const m = Shape.marker(ref);
+  /* The marker ends at its own "]", so it is the whole note of an order made
+     from a request with no note, and the front of one with a note — and
+     "[req N-0042]" can never be the front of "[req N-00420]". */
   const r = d.prepare(
     `SELECT d.sale_id AS id FROM deliveries d JOIN sales s ON s.id = d.sale_id
       WHERE s.voided = 0 AND substr(d.note, 1, ?) = ?
@@ -86,7 +92,7 @@ function store(d, it) {
 }
 
 /* Tell the cloud what this laptop holds, and note what it confirmed. */
-async function report(lineage, rpc, extra = []) {
+async function report(lineage, rpc, extra = [], unreadable = []) {
   const d = get();
   const pending = d.prepare(
     `SELECT * FROM shop_requests WHERE reported_at IS NULL
@@ -95,14 +101,26 @@ async function report(lineage, rpc, extra = []) {
   const byRef = new Map(pending.map((r) => [r.ref, r]));
   for (const r of extra) if (!byRef.has(r.ref) && byRef.size < MARK) byRef.set(r.ref, r);
   const rows = [...byRef.values()];
-  if (!rows.length) return { reported: 0, conflicts: 0 };
+  /* Something in the cloud this code cannot read is turned down, once, with
+     that reason — left alone it would come back first in every take and,
+     twenty of them, stand in front of every request behind it. */
+  const bad = unreadable.slice(0, Math.max(0, MARK - rows.length)).map((ref) => ({ ref, state: 'rejected', code: 'unreadable' }));
+  if (!rows.length && !bad.length) return { reported: 0, conflicts: 0 };
 
-  const done = await rpc('requests_mark', { p_lineage: lineage, p_items: rows.map(Shape.markFor) });
+  const done = await rpc('requests_mark', { p_lineage: lineage, p_items: rows.map(Shape.markFor).concat(bad) });
   if (!done || done.ok !== true) return { reported: 0, conflicts: 0, unreported: (done && done.code) || 'bad_answer' };
 
   let reported = 0, conflicts = 0;
   const at = nowIso();
-  const seen = d.prepare('UPDATE shop_requests SET reported_at = ? WHERE ref = ?');
+  /* ONLY IF THE ROW IS STILL WHAT WAS SENT. A person may accept or turn one
+     down while this answer is on its way back; marking that row "reported"
+     from an answer about its old state would bury the decision for good
+     (correctness review). The owed flush then sends it. */
+  const confirm = d.prepare(
+    `UPDATE shop_requests SET reported_at = ?
+      WHERE ref = ? AND state = ? AND coalesce(sale_id, '') = coalesce(?, '') AND reported_at IS NULL`
+  );
+  const seen = { run: (when, ref) => { const r = byRef.get(ref); return confirm.run(when, ref, r.state, r.sale_id ?? null); } };
   for (const a of Array.isArray(done.items) ? done.items : []) {
     const row = byRef.get(a && a.ref);
     if (!row) continue;
@@ -143,9 +161,14 @@ async function pass(lineage, rpc) {
   const items = Array.isArray(took.items) ? took.items : [];
   const count = { taken: items.length, stored: 0, unreadable: 0, reported: 0, conflicts: 0 };
   const received = [];
+  const unreadable = [];
   for (const raw of items) {
     const it = Shape.fromCloud(raw);
-    if (!it) { count.unreadable++; continue; }
+    if (!it) {
+      count.unreadable++;
+      if (raw && Shape.REF.test(String(raw.ref || ''))) unreadable.push(raw.ref);
+      continue;
+    }
     try {
       if (store(d, it)) count.stored++;
     } catch (e) {
@@ -159,7 +182,7 @@ async function pass(lineage, rpc) {
     try { Live.notify('og', { requests: true }); } catch { /* the screen catches up on load */ }
   }
   try {
-    const r = await report(lineage, rpc, received);
+    const r = await report(lineage, rpc, received, unreadable);
     count.reported = r.reported;
     count.conflicts = r.conflicts;
     if (r.unreported) count.unreported = r.unreported;
@@ -220,7 +243,25 @@ export function flushSoon({ rpc = defaultRpc } = {}) {
 /* The request's customer, found here: the hinted one while its phone still
    matches, else whoever holds that phone. Never an archived or merged-away
    record. null when nobody here is that person. */
-function findCustomer(d, c) {
+/* Every live customer by their phone, normalised — the first (lowest id) for
+   each number. Built ONCE per list, not once per request: the till is one
+   thread, and a list of many requests each scanning the whole customer table
+   stalled it (security review). */
+function phoneBook(d) {
+  const map = new Map();
+  const rows = d.prepare(
+    `SELECT id, name, phone FROM customers
+      WHERE archived = 0 AND merged_into IS NULL AND phone IS NOT NULL AND phone <> ''
+      ORDER BY id`
+  ).all();
+  for (const r of rows) {
+    const k = normPhone(r.phone);
+    if (k && !map.has(k)) map.set(k, r);
+  }
+  return map;
+}
+
+function findCustomer(d, c, book = null) {
   const want = normPhone(c && c.phone);
   const hint = Number(c && c.id);
   if (want && Number.isSafeInteger(hint) && hint > 0) {
@@ -228,13 +269,8 @@ function findCustomer(d, c) {
     if (r && !r.archived && !r.merged_into && normPhone(r.phone) === want) return { id: r.id, name: r.name, phone: r.phone, by: 'hint' };
   }
   if (!want) return null;
-  const rows = d.prepare(
-    `SELECT id, name, phone FROM customers
-      WHERE archived = 0 AND merged_into IS NULL AND phone IS NOT NULL AND phone <> ''
-      ORDER BY id`
-  ).all();
-  for (const r of rows) if (normPhone(r.phone) === want) return { id: r.id, name: r.name, phone: r.phone, by: 'phone' };
-  return null;
+  const r = (book || phoneBook(d)).get(want);
+  return r ? { id: r.id, name: r.name, phone: r.phone, by: 'phone' } : null;
 }
 
 function customerFor(d, payload, user, source) {
@@ -275,11 +311,11 @@ function unknownSkus(d, payload) {
 
 /* ---------------------------------------------------------------- shape */
 
-function shape(d, row, s, packFrom, base) {
+function shape(d, row, s, packFrom, base, book = null) {
   const p = Shape.parsePayload(row.payload) || {};
   const c = p.customer || {};
   const dl = p.delivery || {};
-  const match = findCustomer(d, c);
+  const match = findCustomer(d, c, book);
   const stockOf = d.prepare('SELECT wh_id, qty FROM stock WHERE sku = ?');
   const asked = new Map((Array.isArray(p.items) ? p.items : []).map((i) => [i && i.sku, i || {}]));
   const lines = Shape.items(p).map((i) => {
@@ -330,14 +366,16 @@ function context(d) {
 export function list() {
   const d = get();
   const { s, packFrom, base } = context(d);
-  const waiting = d.prepare("SELECT * FROM shop_requests WHERE state = 'waiting' ORDER BY asked_at, ref").all();
+  const waiting = d.prepare("SELECT * FROM shop_requests WHERE state = 'waiting' ORDER BY asked_at, ref LIMIT ?").all(WAITING_SHOWN);
+  const count = d.prepare("SELECT count(*) AS n FROM shop_requests WHERE state = 'waiting'").get().n;
   const decided = d.prepare(
     "SELECT * FROM shop_requests WHERE state <> 'waiting' ORDER BY coalesce(decided_at, received_at) DESC, ref DESC LIMIT ?"
   ).all(DECIDED_SHOWN);
+  const book = phoneBook(d);
   return {
-    waiting: waiting.map((r) => shape(d, r, s, packFrom, base)),
-    decided: decided.map((r) => shape(d, r, s, packFrom, base)),
-    count: waiting.length
+    waiting: waiting.map((r) => shape(d, r, s, packFrom, base, book)),
+    decided: decided.map((r) => shape(d, r, s, packFrom, base, book)),
+    count
   };
 }
 

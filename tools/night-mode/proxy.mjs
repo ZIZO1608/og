@@ -124,6 +124,18 @@ try {
   check('/night/stock?q= reaches the bridge with its query', n2.status === 200 && n2.body.startsWith('bridge:/night/stock?q=samba'), n2.body);
   const sn = await get('/snapshot');
   check('/snapshot still reaches the bridge', sn.status === 200 && sn.body.startsWith('bridge:/snapshot'));
+  /* The sign-in POST has the till's sign-in zone on top of og-bridge's own
+     throttle: 10 a minute per visitor, 5 at once — the seventh in a burst
+     is 429 at the door and never reaches the bridge. */
+  const lg = await get('/night/login', { 'X-Forwarded-For': '9.9.9.1' });
+  check('/night/login reaches the bridge, with the visitor\'s address', lg.status === 200 && lg.body.startsWith('bridge:/night/login') && /ip=9\.9\.9\.1 /.test(lg.body), lg.body);
+  const burst = [];
+  for (let i = 0; i < 8; i++) burst.push((await get('/night/login', { 'X-Forwarded-For': '9.9.9.2' })).status);
+  check('…eight sign-ins at once from one visitor: the first six through, then 429', burst.slice(0, 6).every((c) => c === 200) && burst.slice(6).every((c) => c === 429), burst.join(','));
+  check('…another visitor is not held up by it', (await get('/night/login', { 'X-Forwarded-For': '9.9.9.3' })).status === 200);
+  const pages = [];
+  for (let i = 0; i < 8; i++) pages.push((await get('/night/stock', { 'X-Forwarded-For': '9.9.9.2' })).status);
+  check('…and the rest of night mode is not in the sign-in zone', pages.every((c) => c === 200), pages.join(','));
   const nx = await get('/nightly');
   check('/nightly is NOT night mode (it goes to the till, here dead → the down page)', nx.status === 503 && !nx.body.startsWith('bridge:'));
   const home = await get('/');

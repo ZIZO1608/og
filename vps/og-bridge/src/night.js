@@ -15,8 +15,13 @@
 
    And ONE write, a request (035's erp.request_submit through mirror.submit):
 
-     POST /night/request/add | /line | /customer | /save | /clear   the draft
-     POST /night/request                                            send it
+     POST /night/request/add | /customer | /save | /clear   the draft
+     POST /night/request                                    send it
+
+   The request page is ONE form: every button on it but Send posts the whole
+   of it to /save (with a line to change or remove, and where to go next), so
+   nothing typed is lost by pressing the wrong one. Enter saves; only the Send
+   button sends. /line is kept as another name for /save.
 
    The draft lives in this process's memory beside the session, with the
    idempotency key it will be sent under — a form sent twice on a slow line is
@@ -40,6 +45,7 @@ export const ROLES = ['owner', 'manager', 'staff'];
 const SEES_ALL = new Set(['owner', 'manager']);
 const COOKIE = 'og_night';
 const LANG_COOKIE = 'og_night_lang';
+const NEVER_KEPT = { 'Cache-Control': 'no-store', Vary: '*' };
 
 /* A refusal from the SQL → the field of the form it belongs under. */
 const FIELD = {
@@ -83,7 +89,7 @@ export function nightRoutes({ config, mirror, road, log = () => {}, now = () => 
   let slow = { at: 0 };              /* currencies and places: they hardly move */
   let today = { at: 0, day: null, f: null };
 
-  const fresh = () => ({ lines: [], customer: null, method: '', city: '', address: '', note: '', op: newOp() });
+  const fresh = () => ({ lines: [], customer: null, method: '', city: '', address: '', note: '', op: newOp(), sentAs: null });
   function draftOf(token) {
     if (!drafts.has(token)) drafts.set(token, fresh());
     if (drafts.size > 500) for (const t of [...drafts.keys()]) if (!auth.who(t)) drafts.delete(t);
@@ -112,19 +118,25 @@ export function nightRoutes({ config, mirror, road, log = () => {}, now = () => 
   }
   const langCookie = (lang) => `${LANG_COOKIE}=${lang}; Secure; SameSite=Strict; Path=/night; Max-Age=31536000`;
 
+  /* VARY: * ON EVERY ANSWER. The shop's own service worker (sw.js) caches any
+     same-origin 200 it fetches, and one installed before its /night exclusion
+     would otherwise keep a night page — a customer's phone number, the
+     night's stock — on the phone after sign-out. Cache.put() refuses a
+     response that varies on everything, so no worker, old or new, can store
+     one; no-store is advice a worker never reads (security review). */
   function page(res, status, html, extra = {}) {
     res.writeHead(status, {
-      'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': P.CSP,
+      'Content-Type': 'text/html; charset=utf-8', ...NEVER_KEPT, 'Content-Security-Policy': P.CSP,
       'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'DENY',
       'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', ...extra
     });
     res.end(html);
   }
   function go(res, location, extra = {}) {
-    res.writeHead(303, { Location: location, 'Cache-Control': 'no-store', ...extra });
+    res.writeHead(303, { Location: location, ...NEVER_KEPT, ...extra });
     res.end();
   }
-  const refused = (res) => { res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }); res.end('Refused.\n'); };
+  const refused = (res) => { res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', ...NEVER_KEPT }); res.end('Refused.\n'); };
 
   /* ------------------------------------------------------------- the draft */
 
@@ -136,6 +148,16 @@ export function nightRoutes({ config, mirror, road, log = () => {}, now = () => 
     if (form.city !== undefined) d.city = String(form.city).slice(0, 200);
     if (form.address !== undefined) d.address = String(form.address).slice(0, 1000);
     if (form.note !== undefined) d.note = String(form.note).slice(0, 2000);
+    /* The lines are in the same form as everything else (q.<sku> is a line's
+       quantity), so no button on the page can throw away what was typed in
+       another part of it — the first version had a form per line, and
+       changing a quantity lost a half-typed address (correctness review). */
+    for (const l of d.lines) {
+      const v = form['q.' + l.sku];
+      if (v !== undefined) l.qty = whole(v, 1, 20) || l.qty;
+    }
+    const rm = /^remove:(.{1,64})$/.exec(String(form.do || ''));
+    if (rm) d.lines = d.lines.filter((l) => l.sku !== rm[1]);
   }
 
   async function skuInfo(skus) {
@@ -164,6 +186,12 @@ export function nightRoutes({ config, mirror, road, log = () => {}, now = () => 
     recent.set(user, hour);
     if (hour.length >= perHour) return showRequest(res, ctx, d, { message: P.esc(W.err.rate), status: 429 });
 
+    /* What was first sent under this op. A send that failed on the line may
+       have landed all the same, and sending again with the same op answers
+       with THAT request — so if the draft changed in between, the change is
+       not in it, and saying "sent" would be a lie (correctness review). */
+    const sending = JSON.stringify(built.request);
+    if (d.sentAs == null) d.sentAs = sending;
     let r;
     try {
       r = await mirror.submit(user, d.op, built.request);
@@ -175,12 +203,22 @@ export function nightRoutes({ config, mirror, road, log = () => {}, now = () => 
     if (!r || r.ok !== true) {
       const code = (r && r.code) || 'unsupported';
       log(`[night] ${user}'s request refused: ${code}`);
+      /* Refused before anything was written: this op is still unused. */
+      d.sentAs = null;
       if (code === 'op_taken' || code === 'bad_op') d.op = newOp();
       const field = FIELD[code];
       if (field) return showRequest(res, ctx, d, { errors: { [field]: code, sku: r && r.sku }, status: 422 });
       return showRequest(res, ctx, d, { message: P.esc(W.err[code] || W.err.unsupported), status: 422 });
     }
-    if (!r.replayed) hour.push(now());
+    /* A replay is a request that landed on an earlier try and was never
+       counted then. */
+    hour.push(now());
+    if (r.replayed && d.sentAs !== sending) {
+      log(`[night] ${user}'s earlier send had landed as ${r.ref}; the changes since wait under a new op`);
+      d.op = newOp();
+      d.sentAs = null;
+      return showRequest(res, ctx, d, { message: P.fill(P.esc(W.err.changed), { ref: P.fig(r.ref) }), status: 409 });
+    }
     log(`[night] ${user} sent ${r.ref}${r.replayed ? ' (again)' : ''}`);
     drafts.set(token, fresh());
     return go(res, '/night/requests?sent=' + encodeURIComponent(r.ref));
@@ -220,14 +258,6 @@ export function nightRoutes({ config, mirror, road, log = () => {}, now = () => 
         const q = String(form.q || '').slice(0, 80);
         return go(res, '/night/stock?added=1' + (q ? '&q=' + encodeURIComponent(q) : ''));
       }
-      if (p === '/night/request/line') {
-        const i = d.lines.findIndex((l) => l.sku === String(form.sku || ''));
-        if (i > -1) {
-          if (form.do === 'remove') d.lines.splice(i, 1);
-          else d.lines[i].qty = whole(form.qty, 1, 20) || d.lines[i].qty;
-        }
-        return go(res, '/night/request');
-      }
       if (p === '/night/request/customer') {
         const id = whole(form.id, 1, 1e12);
         if (!id) { if (d.customer) d.customer.id = null; return go(res, '/night/request'); }
@@ -239,10 +269,12 @@ export function nightRoutes({ config, mirror, road, log = () => {}, now = () => 
         }
         return go(res, '/night/request');
       }
-      if (p === '/night/request/save') {
+      /* Every button on the request page but Send and Start again: the whole
+         form is kept, then a line changed or removed, then where to go. */
+      if (p === '/night/request/save' || p === '/night/request/line') {
         saveTyped(d, form);
         const next = url.searchParams.get('next');
-        if (next === 'forget') { d.customer.id = null; return go(res, '/night/request'); }
+        if (next === 'forget') { if (d.customer) d.customer.id = null; return go(res, '/night/request'); }
         return go(res, next === 'customers' ? '/night/customers' : next === 'stock' ? '/night/stock' : '/night/request');
       }
       if (p === '/night/request/clear') {

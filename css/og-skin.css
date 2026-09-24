@@ -2889,6 +2889,8 @@ body:not([data-portal="yalla"]) .rq-opt {
   background: transparent; color: var(--foreground); font: 600 14px/1.3 inherit; font-family: inherit; cursor: pointer;
 }
 body:not([data-portal="yalla"]) .rq-opt.on { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+body:not([data-portal="yalla"]) .rq-opt:disabled { opacity: .45; cursor: not-allowed; }
+body:not([data-portal="yalla"]) .rq-capped { margin: 0 0 16px; color: var(--muted-foreground); font-size: 13px; }
 body:not([data-portal="yalla"]) .rq-sentence { margin: 0; color: var(--muted-foreground); line-height: 1.6; }
 body:not([data-portal="yalla"]) .rq-err { margin: 0; min-height: 1em; color: var(--destructive); font-weight: 600; }
 @media (max-width: 720px) {

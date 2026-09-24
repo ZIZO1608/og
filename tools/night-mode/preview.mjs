@@ -153,10 +153,16 @@ try {
       await c.send('Network.setCookie', { name, value, domain: 'localhost', path: '/', httpOnly: true, url: `http://localhost:${laptop.port}/` });
     }
     await c.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-    await go(c, `http://localhost:${laptop.port}/`, 'true');
+    /* The language is set once the app has FINISHED booting: boot's own
+       applyLang() writes og.lang from the language it started in, and a key
+       set while it was still booting was written straight back (the first
+       run photographed the English laptop in Arabic). */
+    await go(c, `http://localhost:${laptop.port}/?b=${lang}`, "!document.getElementById('bootSplash') && document.querySelector('.topbar')");
     await c.eval(`localStorage.setItem('og.lang', '${lang}'); true`);
     await go(c, `http://localhost:${laptop.port}/?v=${lang}#requests`,
       "!document.getElementById('bootSplash') && document.querySelector('.rq-card')");
+    const shown = await c.eval(`document.documentElement.getAttribute('lang') || (document.body.classList.contains('rtl') ? 'ar' : 'en')`);
+    if (shown !== lang) throw new Error(`the laptop drew ${shown}, not ${lang}`);
     await sleep(800);
     await shot(c, `laptop-waiting-${lang}.png`, { height: 1500 });
     /* …and the Accept dialog over it. */

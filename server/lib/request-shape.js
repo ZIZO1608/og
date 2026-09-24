@@ -5,7 +5,7 @@
    can be decided on paper, so a test can hold it without a shop:
 
      - the six reasons a request is turned down;
-     - the MARKER at the front of an order's delivery note ("[req N-0042] "),
+     - the MARKER at the front of an order's delivery note ("[req N-0042]"),
        which is how a request already made into an order is recognised on any
        laptop — deliveries.note is mirrored, sales carry no note of their own;
      - what an Accept, a Reject may say;
@@ -26,7 +26,14 @@ export const ACCEPT_METHODS = ['pickup', 'driver'];
 export const REF = /^[A-Za-z0-9][A-Za-z0-9_-]{2,39}$/;
 export const SOURCES = ['night', 'web'];
 
-export const marker = (ref) => `[req ${ref}] `;
+/* Ends at its own bracket, so trimming a note can never change it: the first
+   version carried a trailing space, a note-less order was stored without it,
+   and the guard against a second order could not see it (both reviews). */
+export const marker = (ref) => `[req ${ref}]`;
+export const noteWith = (ref, note) => {
+  const n = String(note || '').trim();
+  return (n ? marker(ref) + ' ' + n : marker(ref)).slice(0, 500);
+};
 
 const fail = (message, code, status, extra) => Object.assign(new Error(message), { code, status }, extra || {});
 
@@ -57,6 +64,12 @@ export function checkAccept(body, payload) {
   const method = b.method === undefined || b.method === null || b.method === '' ? defaultMethod(payload) : b.method;
   if (!ACCEPT_METHODS.includes(method)) {
     throw fail('a transport office, a courier or abroad is paid before sending — open it in the order desk', 'bad_method', 400);
+  }
+  /* A pickup request carries no address: our driver would have nowhere to go,
+     and Orders.create would refuse it with a sentence about the destination. */
+  const addr = payload && payload.delivery && String(payload.delivery.address || '').trim();
+  if (method === 'driver' && !addr) {
+    throw fail('this request has no address — open it in the order desk to add one', 'needs_address', 400);
   }
   let fee = null;
   if (b.fee !== undefined && b.fee !== null && b.fee !== '') {
@@ -104,7 +117,7 @@ export function orderBody({ ref, source, payload, customerId, method, fee, feeMo
     currency: null,
     discount: 0,
     channel: source === 'web' ? 'web' : 'other',
-    note: (marker(ref) + String((payload && payload.note) || '')).trim().slice(0, 500),
+    note: noteWith(ref, payload && payload.note),
     dest: pickup ? {} : {
       country: countryFor(d.country, countries),
       city: String(d.city || '').trim(),

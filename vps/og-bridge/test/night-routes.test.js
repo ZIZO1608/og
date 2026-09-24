@@ -116,6 +116,7 @@ function cspOk(res) {
   if (/<script/i.test(res.text)) return '<script> on the page';
   if (/\sstyle\s*=/i.test(res.text)) return 'a style= attribute';
   if (res.headers['cache-control'] !== 'no-store') return 'not no-store';
+  if (res.headers.vary !== '*') return 'not Vary: *';
   if (res.headers['x-frame-options'] !== 'DENY') return 'frames allowed';
   return null;
 }
@@ -223,8 +224,8 @@ test('the draft: add, change, remove, pick a customer, and the request goes once
     await s.go('POST', '/night/request/add', { cookie, body: form({ t, sku: 'OG-050-43', qty: 1 }) });
     let page = await s.go('GET', '/night/request', { cookie });
     assert.match(page.text, /<option selected>3<\/option>/, 'the same size added twice is one line of 3');
-    await s.go('POST', '/night/request/line', { cookie, body: form({ t, sku: 'OG-050-43', do: 'remove' }) });
-    await s.go('POST', '/night/request/line', { cookie, body: form({ t, sku: 'OG-050-42', do: 'set', qty: 2 }) });
+    await s.go('POST', '/night/request/save', { cookie, body: form({ t, 'q.OG-050-42': 3, 'q.OG-050-43': 1, do: 'remove:OG-050-43' }) });
+    await s.go('POST', '/night/request/save', { cookie, body: form({ t, 'q.OG-050-42': 2 }) });
     await s.go('POST', '/night/request/customer', { cookie, body: form({ t, id: 81 }) });
     page = await s.go('GET', '/night/request', { cookie });
     assert.match(page.text, /value="Nour Haddad"/);
@@ -370,5 +371,111 @@ test('logging out needs the form token, then the session is gone', async () => {
     const out = await s.go('POST', '/night/logout', { cookie, body: form({ t }) });
     assert.equal(out.status, 303);
     assert.equal((await s.go('GET', '/night/stock', { cookie })).status, 303);
+  } finally { await s.close(); }
+});
+
+test('every answer carries Vary: * — no service worker, old or new, can keep a night page', async () => {
+  const s = await serve();
+  try {
+    const signin = await s.go('GET', '/night');
+    assert.equal(signin.headers.vary, '*');
+    const bounce = await s.go('GET', '/night/stock');
+    assert.equal(bounce.status, 303);
+    assert.equal(bounce.headers.vary, '*');
+    const { cookie, t } = await s.signIn('sara');
+    const cross = await s.go('POST', '/night/request/save', { cookie, body: form({ t }), origin: 'https://evil.example' });
+    assert.equal(cross.status, 403);
+    assert.equal(cross.headers.vary, '*');
+    for (const p of ['/night', '/night/stock?q=samba', '/night/request', '/night/requests', '/night/orders']) {
+      const r = await s.go('GET', p, { cookie });
+      assert.equal(r.headers.vary, '*', p);
+      assert.equal(r.headers['cache-control'], 'no-store', p);
+    }
+  } finally { await s.close(); }
+});
+
+test('the request page is ONE form: no button on it throws away what was typed elsewhere', async () => {
+  const s = await serve();
+  try {
+    const { cookie, t } = await s.signIn('sara');
+    await s.go('POST', '/night/request/add', { cookie, body: form({ t, sku: 'OG-050-42', qty: 1 }) });
+    await s.go('POST', '/night/request/add', { cookie, body: form({ t, sku: 'OG-050-43', qty: 1 }) });
+    const page = await s.go('GET', '/night/request?lang=en', { cookie });
+    const forms = page.text.match(/<form[^>]*>/g) || [];
+    const reqForms = forms.filter((f) => /\/night\/request/.test(f));
+    assert.equal(reqForms.length, 1, 'one form for the lines, the customer and the delivery: ' + reqForms.join(' '));
+    /* The first submit button in the form is the default one Enter presses:
+       it saves, and it is not Send, Forget, Start again or another page. */
+    const inForm = page.text.slice(page.text.indexOf(reqForms[0]));
+    const first = /<button[^>]*type="submit"[^>]*>/.exec(inForm)[0];
+    assert.match(first, /formaction="\/night\/request\/save"/, first);
+    assert.doesNotMatch(first, /next=/, first);
+    assert.match(inForm, /formaction="\/night\/request\/save\?next=stock"/, 'Add more saves on the way to the stock');
+    assert.match(inForm, /name="q\.OG-050-42"/);
+    assert.match(inForm, /name="do" value="remove:OG-050-43"/);
+    assert.equal(cspOk(page), null, 'the hidden default button is styled by the hashed sheet, not a style=');
+
+    /* Half-typed, then a line removed: the typing is kept. */
+    const typed = { t, name: 'Nour Haddad', phone: '0933 123 456', method: 'delivery', city: 'Aleppo', address: 'New Aleppo, near the bakery', note: 'Call after 6' };
+    const rm = await s.go('POST', '/night/request/save', { cookie, body: form({ ...typed, 'q.OG-050-42': 4, 'q.OG-050-43': 1, do: 'remove:OG-050-43' }) });
+    assert.equal(rm.status, 303);
+    assert.equal(rm.headers.location, '/night/request');
+    let after = await s.go('GET', '/night/request', { cookie });
+    assert.match(after.text, /value="Nour Haddad"/);
+    assert.match(after.text, />New Aleppo, near the bakery</);
+    assert.match(after.text, />Call after 6</);
+    assert.match(after.text, /id="m-delivery" value="delivery" checked/);
+    assert.match(after.text, /<option selected>4<\/option>/, 'the quantity changed with it');
+    assert.doesNotMatch(after.text, /q\.OG-050-43/);
+
+    /* Add more: saved, then to the stock. */
+    const more = await s.go('POST', '/night/request/save?next=stock', { cookie, body: form({ ...typed, address: 'Changed on the way out', 'q.OG-050-42': 4 }) });
+    assert.equal(more.headers.location, '/night/stock');
+    after = await s.go('GET', '/night/request', { cookie });
+    assert.match(after.text, />Changed on the way out</);
+
+    /* The old name for it still works the same way. */
+    await s.go('POST', '/night/request/line', { cookie, body: form({ ...typed, 'q.OG-050-42': 2 }) });
+    after = await s.go('GET', '/night/request', { cookie });
+    assert.match(after.text, /<option selected>2<\/option>/);
+    assert.equal(s.mirror.calls.filter((c) => c.fn === 'submit').length, 0, 'saving never sends');
+  } finally { await s.close(); }
+});
+
+test('a send that landed on a failed try, then edited: not called sent, the edits kept under a new op', async () => {
+  const s = await serve();
+  try {
+    const { cookie, t } = await s.signIn('sara');
+    await s.go('POST', '/night/request/add', { cookie, body: form({ t, sku: 'OG-050-42', qty: 1 }) });
+    const first = form({ t, name: 'Nour', phone: '0933123456', method: 'pickup', lang: 'en' });
+    s.mirror.fail = true;                   /* it lands, but the answer is lost */
+    assert.equal((await s.go('POST', '/night/request', { cookie, body: first })).status, 503);
+    s.mirror.fail = false;
+    /* The person changes the quantity and sends again: the SQL replays the
+       first one under the same op. */
+    s.mirror.next = { ok: true, ref: 'N-0042', state: 'waiting', replayed: true };
+    const again = await s.go('POST', '/night/request', { cookie, body: first + '&' + form({ 'q.OG-050-42': 3 }) });
+    assert.equal(again.status, 409);
+    assert.match(again.text, /did reach the shop, as <bdi dir="ltr" class="fig">N-0042<\/bdi>/);
+    assert.match(again.text, /<option selected>3<\/option>/, 'the edit is still in the draft');
+    const ops = s.mirror.calls.filter((c) => c.fn === 'submit').map((c) => c.op);
+    assert.equal(ops[0], ops[1], 'the second try asked with the same op');
+    /* Sending now is a second request with the edit, under a new op. */
+    s.mirror.next = null;
+    const third = await s.go('POST', '/night/request', { cookie, body: first + '&' + form({ 'q.OG-050-42': 3 }) });
+    assert.equal(third.status, 303);
+    const sub = s.mirror.calls.filter((c) => c.fn === 'submit');
+    assert.notEqual(sub[2].op, sub[1].op);
+    assert.equal(sub[2].req.items[0].qty, 3);
+
+    /* The same thing sent again unchanged is simply the same request. */
+    await s.go('POST', '/night/request/add', { cookie, body: form({ t, sku: 'OG-050-42', qty: 1 }) });
+    s.mirror.fail = true;
+    await s.go('POST', '/night/request', { cookie, body: first });
+    s.mirror.fail = false;
+    s.mirror.next = { ok: true, ref: 'N-0043', state: 'waiting', replayed: true };
+    const same = await s.go('POST', '/night/request', { cookie, body: first });
+    assert.equal(same.status, 303);
+    assert.equal(same.headers.location, '/night/requests?sent=N-0043');
   } finally { await s.close(); }
 });

@@ -15,7 +15,13 @@ const payload = {
 const countries = [{ id: 'SY', active: true }, { id: 'JO', active: true }, { id: 'TR', active: false }];
 
 test('the marker is what a delivery note starts with', () => {
-  assert.equal(S.marker('N-0042'), '[req N-0042] ');
+  assert.equal(S.marker('N-0042'), '[req N-0042]');
+  /* No trailing space to lose when a note is trimmed, and one ref can never
+     be the front of another. */
+  assert.equal(S.noteWith('N-0042', null), '[req N-0042]');
+  assert.equal(S.noteWith('N-0042', '  '), '[req N-0042]');
+  assert.equal(S.noteWith('N-0042', ' Call after 6 '), '[req N-0042] Call after 6');
+  assert.ok(!'[req N-00420]'.startsWith(S.marker('N-0042')));
 });
 
 test('the order body: our driver, pay on receipt, priced by the server, marked, once', () => {
@@ -73,6 +79,8 @@ test('Accept: pickup and our driver only; the default follows the request', () =
   assert.throws(() => S.checkAccept({ method: 'driver', fee: -1 }, payload), (e) => e.code === 'bad_fee');
   assert.throws(() => S.checkAccept({ method: 'driver', fee: 1.5 }, payload), (e) => e.code === 'bad_fee');
   assert.equal(S.checkAccept({ method: 'pickup', fee: 5000 }, payload).fee, null, 'a pickup carries no fee');
+  assert.throws(() => S.checkAccept({ method: 'driver' }, { ...payload, delivery: { method: 'pickup' } }),
+    (e) => e.code === 'needs_address' && e.status === 400, 'our driver needs an address to go to');
   assert.equal(S.checkAccept({ method: 'driver', whId: 'floor' }, payload).whId, 'floor');
   assert.equal(S.checkAccept({ method: 'driver', whId: "x'; drop" }, payload).whId, null);
 });

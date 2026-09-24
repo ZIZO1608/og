@@ -195,6 +195,57 @@ try {
   const viaMarker = Requests.accept(r1, { method: 'driver' }, owner);
   check('…and even Accept pressed on it finds the order by its marker, making nothing', viaMarker.out === null && viaMarker.saleId === sale1 && salesN() === s0 + 1);
 
+  /* The same move, for a request with NO note of its own: the delivery note
+     is then the bare marker. The first marker carried a trailing space the
+     trimmed note did not, the guard could not see the order, and the re-taken
+     request became a second one (both reviews — every request above had a
+     note). */
+  const AF_WHITE = sku('Air Force 1', '42', 'White');
+  const rNone = ask(req({ note: null, items: [{ sku: AF_WHITE, qty: 1 }] }));
+  await collect();
+  const aNone = Requests.accept(rNone, { method: 'driver' }, owner);
+  check('a request with no note: its delivery note is the bare marker', d.prepare('SELECT note FROM deliveries WHERE sale_id = ?').get(aNone.saleId).note === `[req ${rNone}]`);
+  await collect();
+  cloud.get(rNone).state = 'received'; cloud.get(rNone).takenBy = 'another-laptop'; cloud.get(rNone).saleId = null;
+  d.prepare('DELETE FROM shop_requests WHERE ref = ?').run(rNone);
+  const sNone = salesN();
+  await collect();
+  check('…re-taken after a move it still arrives accepted with the SAME order, and no second sale',
+    row(rNone) && row(rNone).state === 'accepted' && row(rNone).sale_id === aNone.saleId && salesN() === sNone, JSON.stringify(row(rNone)));
+
+  /* A person decides while "received" is still on the wire: that answer is
+     about the old row and must not mark the decision as told (correctness
+     review — the decision was buried for good). */
+  const rRace = ask(req({ items: [{ sku: AF_WHITE, qty: 1 }] }));
+  let raced = null;
+  const racing = async (fn, args) => {
+    const out = await rpc(fn, args);
+    if (fn === 'requests_mark' && !raced && args.p_items.some((x) => x.ref === rRace && x.state === 'received')) {
+      raced = Requests.accept(rRace, { method: 'driver' }, owner);
+    }
+    return out;
+  };
+  await Requests.collect({ lineage: LIN, rpc: racing });
+  check('a decision made while "received" was on the wire stays unreported', raced && row(rRace).state === 'accepted' && !row(rRace).reported_at, JSON.stringify(row(rRace)));
+  await collect();
+  check('…and the next pass tells the cloud, which then holds it', cloud.get(rRace).state === 'accepted' && cloud.get(rRace).saleId === raced.saleId && row(rRace).reported_at);
+
+  /* Something in the cloud this code cannot read. */
+  const rBad = ask(req({}));
+  cloud.get(rBad).payload = { v: 2, what: 'a shape from next year' };
+  await collect();
+  check('an unreadable request is turned down as unreadable, not left to block the queue',
+    cloud.get(rBad).state === 'rejected' && cloud.get(rBad).code === 'unreadable' && !row(rBad));
+
+  /* A pickup has no address: our driver would have nowhere to go. */
+  const rPick = ask(req({ delivery: { method: 'pickup' } }));
+  await collect();
+  const noAddr = tryIt(() => Requests.accept(rPick, { method: 'driver' }, owner));
+  check('our driver for a request with no address: 400 needs_address, still waiting',
+    !noAddr.ok && noAddr.e.code === 'needs_address' && row(rPick).state === 'waiting');
+  Requests.reject(rPick, { code: 'other', note: 'test tidy-up' }, owner);
+  await collect();
+
   /* ---- pickup, and the customer rules -------------------------------------- */
   const a2 = Requests.accept(r2, {}, owner);
   const d2 = d.prepare('SELECT * FROM deliveries WHERE sale_id = ?').get(a2.saleId);

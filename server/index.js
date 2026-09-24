@@ -66,6 +66,7 @@ import * as Office from './lib/office-alerts.js';
 import * as Push from './lib/webpush.js';
 import * as Reviews from './lib/reviews.js';
 import * as Requests from './lib/requests.js';
+import * as RequestShape from './lib/request-shape.js';
 import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
 import * as Storage from './lib/storage.js';
@@ -1472,9 +1473,8 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
      be an order on any laptop. A retried Save (the same opId, already
      applied) is let through so it gets its first order back. */
   const reqRef = str(b.requestRef);
-  let marker = '';
   if (reqRef) {
-    try { marker = Requests.forOrder(reqRef); }
+    try { Requests.forOrder(reqRef); }
     catch (e) {
       if (!(e.code === 'decided' && str(b.opId) && Requests.appliedOp(str(b.opId)))) return requestFail(ctx.res, e);
     }
@@ -1487,7 +1487,7 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       currency: str(b.currency),
       discount: Number(b.discount) || 0,
       channel: str(b.channel),
-      note: marker ? (marker + (str(b.note) || '')).trim() : str(b.note),
+      note: reqRef ? RequestShape.noteWith(reqRef, str(b.note)) : str(b.note),
       dest: b.dest && typeof b.dest === 'object' ? b.dest : {},
       method: b.method,
       companyId: str(b.companyId),

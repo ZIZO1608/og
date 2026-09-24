@@ -115,8 +115,13 @@ var Requests = (function () {
         '<span class="sr-only" role="status">' + esc(t('rq_loading')) + '</span>';
     }
     var w = data.waiting || [];
+    /* The server sends the oldest hundred and the true count; a list that
+       stops short says so rather than passing itself off as all of them. */
+    var capped = (data.count || 0) > w.length
+      ? '<p class="rq-capped" role="status">' + t('rq_capped').replace('{shown}', fig(nf(w.length))).replace('{total}', fig(nf(data.count))) + '</p>'
+      : '';
     var body = w.length
-      ? '<div class="rq-list">' + w.map(card).join('') + '</div>'
+      ? capped + '<div class="rq-list">' + w.map(card).join('') + '</div>'
       : '<div class="card"><div class="cart-empty"><b>' + t('rq_empty') + '</b><span>' + t('rq_empty_why') + '</span></div></div>';
     return head + body + decidedHtml();
   }
@@ -208,8 +213,15 @@ var Requests = (function () {
       .replace('{name}', '<bdi dir="auto">' + esc((r.customer && r.customer.name) || '—') + '</bdi>').replace('{n}', fig(nf(pieces)));
   }
 
+  /* A pickup request carries no address, and our driver needs one: the server
+     refuses it (needs_address), so the button is not offered. */
+  function hasAddress(r) {
+    return !!(r && r.delivery && String(r.delivery.address || '').trim());
+  }
+
   function acceptBody(r) {
     var pickup = A.method === 'pickup';
+    var noAddr = !hasAddress(r);
     var feeCur = (r.fee && r.fee.currency) || CONFIG.BASE_CURRENCY || 'SYP';
     var feeHint = r.fee ? t('rq_fee_list').replace('{fee}', moneyOf(r.fee.fee, r.fee.currency)) : t('rq_fee_none');
     var places = (DB.warehouses || []).map(function (w) {
@@ -218,8 +230,10 @@ var Requests = (function () {
     return '<div class="rq-dlg">' +
       '<div class="rq-toggle" role="group" aria-label="' + esc(t('rq_how')) + '">' +
         '<button type="button" class="rq-opt' + (pickup ? ' on' : '') + '" data-act="rq-method" data-val="pickup" aria-pressed="' + pickup + '">' + t('rq_m_pickup') + '</button>' +
-        '<button type="button" class="rq-opt' + (!pickup ? ' on' : '') + '" data-act="rq-method" data-val="driver" aria-pressed="' + !pickup + '">' + t('rq_m_driver') + '</button>' +
+        '<button type="button" class="rq-opt' + (!pickup ? ' on' : '') + '" data-act="rq-method" data-val="driver" aria-pressed="' + !pickup + '"' +
+          (noAddr ? ' disabled aria-describedby="rqNoAddr"' : '') + '>' + t('rq_m_driver') + '</button>' +
       '</div>' +
+      (noAddr ? '<p class="rq-hint" id="rqNoAddr">' + t('rq_no_address') + '</p>' : '') +
       '<div class="rq-fee"' + (pickup ? ' hidden' : '') + '>' +
         '<label class="field"><span>' + t('rq_fee') + ' · ' + esc(feeCur) + '</span>' +
           '<input class="inp" id="rqFee" type="text" inputmode="decimal" autocomplete="off" dir="ltr" placeholder="' + esc(r.fee ? Desk.plain(r.fee.fee, r.fee.currency) : '') + '"></label>' +
@@ -233,7 +247,7 @@ var Requests = (function () {
   function openAccept(ref) {
     var r = find(ref);
     if (!r) return;
-    A = { ref: ref, method: r.delivery && r.delivery.method === 'pickup' ? 'pickup' : 'driver' };
+    A = { ref: ref, method: r.delivery && r.delivery.method === 'pickup' || !hasAddress(r) ? 'pickup' : 'driver' };
     openModal({
       title: t('rq_accept_title').replace('{ref}', fig(ref)), size: 'narrow',
       body: acceptBody(r),
@@ -245,8 +259,8 @@ var Requests = (function () {
 
   function setMethod(m) {
     if (!A) return;
-    A.method = m === 'pickup' ? 'pickup' : 'driver';
     var r = find(A.ref);
+    A.method = m === 'pickup' || !hasAddress(r) ? 'pickup' : 'driver';
     var root = document.getElementById('modal-root');
     if (!r || !root) return;
     root.querySelectorAll('.rq-opt').forEach(function (b) {

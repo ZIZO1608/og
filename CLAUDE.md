@@ -3198,7 +3198,12 @@ both in the worktree `D:\DESKTOP\og-night` and gitignored. This section is what 
   - A request not yet decided follows the lineage, so it is taken again by the laptop that takes
     the baton.
 - **Limits:** 20 lines, 20 of a size, 60 pieces · 5 undecided per phone · 30 per night user an
-  hour · 1,000 undecided in all.
+  hour · 1,000 undecided in all · 8 KB, measured again AFTER the mirror's names are added (the
+  caller's request is small; a long product name is not).
+- **Refs are `N-0042` to `N-9999`, then `N-10000`.** `lpad` CUTS a longer number to its width, so
+  the first version would have made the 12,345th request `N-1234`.
+- **Only `requests_op_unique` is a replay.** Every other `unique_violation` is re-raised: the first
+  version answered them all "this form was already used", which would have hidden a ref clash.
 
 ### og-bridge — `/night`
 
@@ -3216,6 +3221,19 @@ both in the worktree `D:\DESKTOP\og-night` and gitignored. This section is what 
   بتستنى المحل». The time is `erp.till_status().beat_at`.
 - **The draft** lives in memory beside the session, with the idempotency `op` it is sent under,
   so a form sent twice on a slow line is one request.
+  - **A send that landed but whose answer was lost, then EDITED, is not called "sent".** The SQL
+    replays the FIRST request under that op; og-bridge remembers what it first sent (`sentAs`),
+    says the earlier send arrived as N-xxxx without the changes, and keeps the edits under a new op.
+- **The request page is ONE form.** Lines are `q.<sku>` inside it, and every button but Send posts
+  the whole form to `/night/request/save` (`do=remove:<sku>`, `?next=stock|customers|forget`). With
+  a form per line, changing a quantity threw away a half-typed address. **A hidden save button is
+  the form's FIRST submit button**, so Enter saves and stays; it never sends or forgets the customer.
+- **Every answer carries `Vary: *`** besides `no-store`. A shop service worker installed before the
+  `/night` exclusion caches any same-origin 200; `Cache.put()` refuses a response that varies on
+  everything, so no worker, old or new, can keep a night page on a phone.
+- **The throttle counts an attempt BEFORE the scrypt await** and takes it back on success. Counted
+  after, twenty guesses sent at once all passed the check while the first was being hashed. This
+  is `snapshot-auth.js`, so `/snapshot` gets the fix too.
 - **Switches:** `OG_NIGHT_SUBMIT=off` makes night mode read-only (the kill switch).
   `OG_NIGHT_MAX_PER_HOUR` (20) sets the per-account limit. **`OG_VAULT_KEY` never goes to the
   VPS.**
@@ -3235,32 +3253,41 @@ both in the worktree `D:\DESKTOP\og-night` and gitignored. This section is what 
 - **APPLIED ONCE, THREE WAYS:**
   - a decision needs the row to be `waiting`;
   - the order carries opId `req:<ref>`;
-  - its delivery note starts with the **marker `[req N-0042] `**. `deliveries.note` is mirrored
-    and sales have no note of their own, so a request re-taken after the shop moved laptops
-    arrives already an order.
+  - its delivery note starts with the **marker `[req N-0042]`** (`RequestShape.noteWith`).
+    `deliveries.note` is mirrored and sales have no note of their own, so a request re-taken after
+    the shop moved laptops arrives already an order. **The marker ends at its own bracket**: the
+    first version carried a trailing space, a note-less order was stored trimmed, and the guard
+    could not see it.
 - **The decision goes back** straight away (`flushSoon`), and again on every collect until the
-  cloud confirms it.
+  cloud confirms it. **The confirmation is conditional** on the row still being what was reported,
+  so a decision made while a report was in flight is not marked reported by the older answer.
+- **Our driver needs an address.** A pickup request has none, so Accept refuses `driver` with
+  `needs_address`, and the dialog disables that button and says why.
+- **A row the laptop cannot read** is reported `rejected` / `unreadable` instead of sitting in the
+  cloud for ever. The list draws the oldest 100 waiting and says so when there are more.
 
 ### Front-end edits outside the new screen
 
 - **`sw.js` returns early for `/night`**, as it does for `/snapshot`. Cache-first would keep night
   pages on the device, and answer a navigation with this app's shell, which is the page that
-  cannot work at that moment. `CACHE` v291.
+  cannot work at that moment. `CACHE` v292.
 - **The app's own "shop's internet is down" screen** (`js/shop.js`) has a Night mode button for
   every role. A phone that already has the app sees this screen, never the proxy's page.
 
 ### The proxy
 
 `/night` and `/night/*` go to og-bridge exactly as `/snapshot` does. They have their own limit
-(`og_night`) and their own down page. The proxy's down page gains the button. Additions only:
+(`og_night`) and their own down page. **`/night/login` also sits in `og_login`** (the till's
+sign-in zone, burst 5). The proxy's down page gains the button. Additions only:
 `tools/night-mode/proxy.mjs` proves it, runs a real `nginx -t`, and routes real requests.
 
 ### Tests — `tools/night-mode/` (PGlite via `OG_PGLITE`, nginx via `OG_NGINX`; nothing installed)
 
-`sql.mjs` 96 · `bridge.mjs` 35 · `laptop.mjs` 62 · `roundtrip.mjs` 35 (night → cloud → laptop →
-decision → night, over HTTP, read back from SQLite and Postgres) · `proxy.mjs` 22. Also og-bridge
-`node --test` 59 (25 old) and server `npm test` 15 (6 old). `preview.mjs` takes the 390 px
-screenshots in both languages.
+`sql.mjs` 101 · `bridge.mjs` 35 · `laptop.mjs` 68 · `roundtrip.mjs` 35 (night → cloud → laptop →
+decision → night, over HTTP, read back from SQLite and Postgres) · `proxy.mjs` 26. Also og-bridge
+`node --test` 64 (25 old) and server `npm test` 15 (6 old). `preview.mjs` takes the 390 px
+screenshots in both languages, and refuses to save a laptop shot drawn in the wrong one.
+Every check added for the two reviews was seen red on the old code first.
 
 ### Things that will bite you
 
@@ -3278,6 +3305,9 @@ screenshots in both languages.
   another session's server. The scripts pick a free one.
 - **Heredocs with Arabic in them break the Bash tool here**. Write scripts with Arabic to a file
   first.
+- **Set `og.lang` only after the app has finished booting.** Boot's `applyLang()` writes the key
+  from the language it started in, so a key set mid-boot is written straight back. The first
+  preview saved the "English" laptop screens in Arabic, byte for byte the same files.
 
 ## The style rules
 

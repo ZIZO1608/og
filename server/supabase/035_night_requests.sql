@@ -235,6 +235,7 @@ DECLARE
   v_payload jsonb;
   v_id      bigint;
   v_ref     text;
+  v_cons    text;
 BEGIN
   IF p_user IS NULL OR p_user !~ '^[a-z0-9._-]{2,32}$' THEN RETURN inbox.req_no('bad_user'); END IF;
   IF p_op IS NULL OR p_op !~ '^[A-Za-z0-9_-]{16,64}$' THEN RETURN inbox.req_no('bad_op'); END IF;
@@ -364,15 +365,25 @@ BEGIN
     'note', v_note
   );
 
+  -- The built payload carries the mirror's names, so it is measured again.
+  IF octet_length(v_payload::text) > 8192 THEN RETURN inbox.req_no('too_big'); END IF;
+
+  -- N-0042 up to N-9999, then N-10000: lpad CUTS a longer number to the
+  -- width it is given, so 'N-' || lpad('12345', 4, '0') would be N-1234 —
+  -- a second request with the first one's number (correctness review).
   v_id := nextval(pg_get_serial_sequence('inbox.requests', 'id'));
-  v_ref := 'N-' || lpad(v_id::text, 4, '0');
+  v_ref := 'N-' || CASE WHEN v_id < 10000 THEN lpad(v_id::text, 4, '0') ELSE v_id::text END;
   INSERT INTO inbox.requests (id, ref, source, op, payload, phone_digits, by_user)
   VALUES (v_id, v_ref, 'night', p_op, v_payload, v_digits, p_user)
   RETURNING * INTO v_row;
 
   RETURN jsonb_build_object('ok', true, 'ref', v_row.ref, 'state', v_row.state, 'at', v_row.created_at);
 EXCEPTION WHEN unique_violation THEN
-  -- The same op at the same instant, from two tabs: the second reads the first.
+  -- The same op at the same instant, from two tabs: the second reads the
+  -- first. ONLY that constraint is a replay — anything else is a real fault,
+  -- raised as one, never passed off as "this form was already used".
+  GET STACKED DIAGNOSTICS v_cons = CONSTRAINT_NAME;
+  IF v_cons IS DISTINCT FROM 'requests_op_unique' THEN RAISE; END IF;
   SELECT * INTO v_row FROM inbox.requests r WHERE r.source = 'night' AND r.op = p_op;
   IF FOUND AND v_row.by_user = p_user THEN
     RETURN jsonb_build_object('ok', true, 'ref', v_row.ref, 'state', v_row.state,

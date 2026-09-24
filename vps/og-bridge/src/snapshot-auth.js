@@ -12,7 +12,9 @@
                once — the same six digits cannot be replayed in its window.
 
    THROTTLE: five failures in fifteen minutes, counted per username AND per
-   address; either one refuses. An unknown username is hashed against dummy
+   address; either one refuses. An attempt is counted the moment it starts
+   and taken back if it succeeds, so guesses sent in parallel cannot all slip
+   in while the first is still being hashed. An unknown username is hashed against dummy
    bytes exactly like a known one, the way the till's login does it, so the
    time taken says nothing about who has an account.
 
@@ -139,7 +141,13 @@ export function makeAuth({ users, now = () => Date.now(), max = 5, windowMs = 15
     if (list.length) fails.set(key, list); else fails.delete(key);
     return list.length;
   };
-  const fail = (key) => { const l = fails.get(key) || []; l.push(now()); fails.set(key, l); };
+  const fail = (key, at = now()) => { const l = fails.get(key) || []; l.push(at); fails.set(key, l); };
+  const unfail = (key, at) => {
+    const l = fails.get(key);
+    const i = l ? l.indexOf(at) : -1;
+    if (i > -1) l.splice(i, 1);
+    if (l && !l.length) fails.delete(key);
+  };
   /* A door on the internet is asked by strangers with invented names from
      invented addresses; what they leave behind must not grow for ever. */
   const tidy = () => {
@@ -154,15 +162,19 @@ export function makeAuth({ users, now = () => Date.now(), max = 5, windowMs = 15
       const ipKey = 'ip:' + (ip || '?');
       const uKey = 'u:' + name;
       if (recent(uKey) >= max || recent(ipKey) >= max) return { ok: false, reason: 'throttled' };
+      /* COUNTED BEFORE THE HASH, taken back on success. scrypt takes a tenth
+         of a second, and counted only after it, fifty guesses sent at once
+         all passed the check above before the first one was counted
+         (security review). */
+      const at = now();
+      fail(uKey, at); fail(ipKey, at);
       const u = users.get(name) || null;
       /* Hash whether or not the name exists. */
       const pwOk = await verifyPassword(String(password || ''), u ? u.scrypt : null);
       const step = u ? totpStep(u.totpSecret, code, now()) : null;
       const fresh = step !== null && step > (lastStep.get(name) ?? -Infinity);
-      if (!u || !pwOk || !fresh) {
-        fail(uKey); fail(ipKey);
-        return { ok: false, reason: 'bad' };
-      }
+      if (!u || !pwOk || !fresh) return { ok: false, reason: 'bad' };
+      unfail(uKey, at); unfail(ipKey, at);
       lastStep.set(name, step);
       const token = randomBytes(32).toString('hex');
       sessions.set(token, { user: u.user, role: u.role || null, csrf: randomBytes(24).toString('hex'), exp: now() + sessionMs });

@@ -170,6 +170,21 @@ server {
     proxy_set_header X-Forwarded-Proto https;
     error_page 502 503 504 = @night_down;
   }
+  #  Night mode's sign-in: the POST that carries a password. The same zone as
+  #  the till's own sign-in below, on top of og-bridge's throttle (five
+  #  failures per name and per address) — so guessing is slow at the door as
+  #  well as behind it. The page itself is GET /night and stays in og_night.
+  location = /night/login {
+    limit_req zone=og_login burst=5 nodelay;
+    set $bridge ${BRIDGE_UPSTREAM};
+    proxy_pass $bridge;
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-OG-Client-IP    $remote_addr;
+    proxy_set_header X-Forwarded-For   "";
+    proxy_set_header X-Forwarded-Proto https;
+    error_page 502 503 504 = @night_down;
+  }
 
   #  Signing in gets its own, tighter limit on top of the till's own throttle.
   location = /api/auth/login {
