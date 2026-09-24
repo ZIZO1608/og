@@ -2953,6 +2953,69 @@ fake-supabase.mjs` — PGlite running the real 001…030 SQL behind a PostgREST 
 report-everything fix) · `web-orders/ui.mjs` 29 (Accept pressed, the desk walked and saved for
 real, Arabic at 390) · `fix05/p0-namespaces` 6 and `fix06/idle` on the branch · `npm test` 6.
 
+## Always on (24 Sep 2026) — the shop comes back by itself
+
+Branch `feature/always-on`, off `main`. Phase 0 of the owner's online-first plan (the VPS becomes
+the shop's server and the laptop its offline standby), and useful whichever way that goes: after a
+power cut or a Windows update at night, the laptop must bring the shop back **with nobody at it**.
+No migration, no server change, no schema change.
+
+- **THE MORNING CHECKS COULD HOLD THE SHOP SHUT.** `morning()` awaited `trust-cert.js` and
+  `hardware.js --install` before the server started, and both wait for somebody to press Yes on a
+  Windows prompt (`Start-Process -Verb RunAs -Wait`). That was fine at eight with a person there.
+  At three in the morning after a power cut, the shop stayed closed on an unanswered prompt.
+  `morning()` now only CHECKS (free, silent), and `runLaterFixes()` does the fixes after the shop
+  says `ready`. The steps say `padlock_later` / `printers_later`, then `…_asking` while the prompt
+  is up.
+- **A SERVER THAT FALLS OVER COMES BACK** (`scheduleRevive()` in `panel/panel.js`).
+  - Every stop somebody asks for goes through `stopServer()`, which sets `stopAsked`: Stop,
+    Restart, the Full refresh, a job's `aroundShop`, Quit. Any other exit comes back after 3 s,
+    10 s, 30 s, 60 s, 120 s.
+  - **The sixth fall inside 15 minutes gives up** (`server_gave_up`) and says so. A server that
+    dies every time it starts is broken, and a restart loop buries its first error.
+  - Open resets it. Stop during the wait keeps it shut ("Left closed, as asked").
+  - A job that needs the shop shut cancels a pending come-back: a revived server under a restore
+    is two writers on one file.
+  - The Shop screen says "The shop stopped — opening it again", with a live countdown and Open it
+    now / Leave it closed.
+  - `OG_PANEL_REVIVE=0` switches it off; `OG_PANEL_REVIVE_DELAYS` shortens the pauses for a test.
+- **`npm run always-on`** (`server/scripts/always-on.js`) covers five things:
+  - **Starts with Windows.** The HKCU Run value `OGSystem` points at this folder's
+    `OG System.exe`, and it is not switched off in Task Manager's Startup tab (that tab writes
+    `StartupApproved\Run`, first byte 03).
+  - **Never sleeps or hibernates on mains.**
+  - **The lid does nothing on mains.**
+  - `--apply` sets those three with **no administrator prompt**: powercfg writes the active plan's
+    values unelevated, tried on a throwaway plan copy first.
+  - **Windows signing in by itself** is only CHECKED. It needs the password, so it is a person's
+    job; Sysinternals Autologon keeps the password encrypted. A plain-text `DefaultPassword` is
+    detected by NAME, never read.
+  - **The BIOS's "power on after power loss"** no program can see; the printout says how to set it.
+  - The panel's Connections card has an **Opens by itself** row, and the Tools screen has three
+    jobs (`alwaysOn`, `alwaysCheck`, `alwaysOff`).
+  - **powercfg's words are in the machine's language**, so the script reads the last two hex values
+    (AC, then DC) and never matches text. A plan that HIDES a setting (this laptop's "Turbo" hides
+    the lid) reports nothing; that is `none`, not a fault.
+- **The container** (`Dockerfile`, `docker-compose.yml`):
+  - **`OG_DATA_DIR=/app/server/data`**, so the backups are on the volume at last. They used to go
+    to `/app/server/backups` inside the container, and a redeploy threw them away while DEPLOY.md
+    said otherwise.
+  - **`TZ=Asia/Damascus`, with `tzdata`.** Receipts, the bell and Telegram print times in the
+    process's own zone, and a VPS runs in UTC.
+  - **The retired `OG_TRUST_PROXY=1` is gone**, with `OG_PROXY_ADDR` in its place in the compose
+    file.
+- **Verified:**
+  - `tools/always-on/check.mjs`: 23. The real script on this Windows machine, under a test value
+    name and a throwaway power-plan copy. The real Run value and the active plan are compared
+    before and after.
+  - `tools/always-on/panel.mjs`: 21. A real panel against a stand-in server folder
+    (`OG_PANEL_SERVER_DIR`): the prompt fix after `ready`, a fall and its come-back after the
+    pause, Stop, Stop during the wait, the sixth fall given up on, and Open after it. **12 of them
+    went red** with the old order and no come-back.
+  - `tools/always-on/preview.mjs`: the window in both languages.
+  - `npm test`: 6.
+  - The `.exe` was not rebuilt: `OGSystem.cs` did not change.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
