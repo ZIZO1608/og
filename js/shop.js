@@ -465,12 +465,12 @@ var Shop = (function () {
     /* 058 — colours */
     addColour:  function (pid, body) { return API.post('/api/products/' + pid + '/colours', body); },
     updateColour: function (id, body) { return API.patch('/api/colours/' + id, body); },
-    setColourImage: function (id, dataUrl) { return API.post('/api/colours/' + id + '/image', { dataUrl: dataUrl }); },
     addSize:    function (pid, body) { return API.post('/api/products/' + pid + '/variants', body); },
-    /* The picture, already shrunk by readImageFile, to the bucket; null clears. */
-    setProductImage: function (id, dataUrl) {
-      return API.post('/api/products/' + id + '/image', dataUrl ? { dataUrl: dataUrl } : { clear: true });
-    },
+    /* 066 — a colour's photos: the model, the product, the extras. `body`
+       carries both sizes, already made by Photos.read(). */
+    addPhoto: function (pid, body) { return API.post('/api/products/' + pid + '/photos', body); },
+    patchPhoto: function (id, body) { return API.patch('/api/photos/' + id, body); },
+    removePhoto: function (id) { return API.del('/api/photos/' + id); },
     updateProduct: function (id, fields) { return API.patch('/api/products/' + id, fields); },
     /* Refused with `has_history` when it would cost the shop a record. */
     deleteProduct: function (id) { return API.del('/api/products/' + id); },

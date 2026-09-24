@@ -65,9 +65,11 @@ import * as Office from './lib/office-alerts.js';
 import * as Push from './lib/webpush.js';
 import * as Reviews from './lib/reviews.js';
 import * as WebOrders from './lib/weborders.js';
+import * as WebCheckout from './lib/webcheckout.js';
 import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
 import * as Storage from './lib/storage.js';
+import * as Photos from './lib/photos.js';
 import * as SB from './lib/supabase.js';
 import { CONFIG_WRITABLE, configRefusal } from './lib/config-writable.js';
 import { lanAddresses, extraSans } from './lib/net.js';
@@ -668,7 +670,11 @@ router.add('PATCH /api/products/:id', requirePerm('product.write', async (ctx) =
    not who is asking. */
 router.add('DELETE /api/products/:id', requirePerm('product.write', (ctx) => {
   try {
-    sendOk(ctx.res, Cat.remove(Number(ctx.params.id), ctx.user.id));
+    const r = Cat.remove(Number(ctx.params.id), ctx.user.id);
+    /* Its photos' files, after the commit — housekeeping; the rows are gone. */
+    for (const f of r.files || []) Storage.removeObject(Storage.pathOfUrl(f)).catch(() => {});
+    const { files, ...answer } = r;
+    sendOk(ctx.res, answer);
   } catch (e) {
     if (e.code === 'not_found') return sendError(ctx.res, 404, 'not_found', e.message);
     if (e.code === 'has_history') return sendErrorDetail(ctx.res, 409, 'has_history', e.message, e.detail);
@@ -676,34 +682,120 @@ router.add('DELETE /api/products/:id', requirePerm('product.write', (ctx) => {
   }
 }));
 
-/* A product's photograph. The browser sends the picture it already shrank
-   (a data URL, tens of KB); this puts the bytes in the public bucket and the
-   address on the row. `{ clear: true }` takes it off. The old file is
-   removed on a replace so the bucket holds one picture per product, and a
-   remove that fails is not an error - the row is what the shop reads.
-   503 not_configured is the honest answer on a server with no Supabase:
-   the product is saved either way, only the picture has nowhere to go. */
-router.add('POST /api/products/:id/image', requirePerm('product.write', async (ctx) => {
-  const id = Number(ctx.params.id);
-  const b = await readJson(ctx.req);
+/* 066 — A COLOUR'S PHOTOGRAPHS. The model wearing it, the product on its
+   own, and extras (lib/photos.js says why each is what it is). The browser
+   sends each photo TWICE, already shrunk: `full` for the website (at most
+   1600 px) and `thumb` for the till (at most 480 px). Both go into the
+   public bucket, and the row holds the two addresses.
+
+   The order matters and is the whole of the error handling:
+   1. the checks (a real colour of this product, a slot, room for an extra)
+      run BEFORE anything is uploaded, so a refusal leaves no orphan file;
+   2. the two files go up;
+   3. the row is written — and if that refuses (the answer changed in the
+      meantime) the two files just uploaded are taken down again;
+   4. the files of a photo this one REPLACED are taken down last. A remove
+      that fails is not an error: the row is what the shop reads.
+   503 not_configured is the honest answer on a server with no Supabase —
+   the product is saved either way, only the photo has nowhere to go. */
+const PHOTO_BODY = 4 * 1024 * 1024;
+
+function photoError(ctx, e) {
+  if (e.code === 'not_found') return sendError(ctx.res, 404, 'not_found', e.message);
+  if (['bad_image', 'too_large', 'bad_kind', 'bad_colour'].includes(e.code)) return sendError(ctx.res, e.status === 413 ? 413 : 400, e.code, e.message);
+  if (e.code === 'too_many') return sendError(ctx.res, 409, e.code, e.message);
+  if (e.code === 'bad_json') return sendError(ctx.res, 400, e.code, e.message);
+  if (e.code === 'not_ready') return sendError(ctx.res, 503, e.code, e.message);
+  /* Unreachable, refused, a bucket that could not be made: the shop keeps
+     selling and the person is told the photo did not land. */
+  sendError(ctx.res, 503, 'storage_failed', e.message);
+}
+
+const dropFiles = (list) => { for (const f of list) if (f) Storage.removeObject(Storage.pathOfUrl(f)).catch(() => {}); };
+
+async function putPhoto(userId, { productId, colourId, kind, full, thumb, width, height }) {
+  Photos.assertCanAdd({ productId, colourId, kind });
+  if (!SB.isConfigured()) {
+    const e = new Error('Photos need Supabase, which is not set up on this server.'); e.code = 'not_configured'; throw e;
+  }
+  const big = Storage.decodeDataUrl(full);
+  const small = thumb ? Storage.decodeDataUrl(thumb) : null;
+  const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const url = await Storage.putObject(Storage.pathForPhoto(productId, colourId, stamp, 'l', big.ext), big.bytes, big.type);
+  let thumbUrl = url;
+  if (small) {
+    try { thumbUrl = await Storage.putObject(Storage.pathForPhoto(productId, colourId, stamp, 's', small.ext), small.bytes, small.type); }
+    catch (e) { dropFiles([url]); throw e; }
+  }
+  let r;
   try {
-    if (b && b.clear) {
-      const r = Cat.setImage(id, null, ctx.user.id);
-      if (r.previous) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
-      return sendOk(ctx.res, { imageUrl: null });
-    }
-    if (!SB.isConfigured()) return sendError(ctx.res, 503, 'not_configured', 'Pictures need Supabase, which is not set up on this server.');
-    const pic = Storage.decodeDataUrl(b && b.dataUrl);
-    const url = await Storage.putObject(Storage.pathFor(id, pic.ext), pic.bytes, pic.type);
-    const r = Cat.setImage(id, url, ctx.user.id);
-    if (r.previous && r.previous !== url) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
-    sendOk(ctx.res, { imageUrl: url });
+    r = Photos.add({ productId, colourId, kind, url, thumbUrl, width: Number(width), height: Number(height), userId });
+  } catch (e) { dropFiles([url, thumbUrl === url ? null : thumbUrl]); throw e; }
+  dropFiles(r.previous.filter((f) => f !== url && f !== thumbUrl));
+  return r.photo;
+}
+
+router.add('POST /api/products/:id/photos', requirePerm('product.write', async (ctx) => {
+  try {
+    const b = await readJson(ctx.req, { max: PHOTO_BODY });
+    const productId = Number(ctx.params.id);
+    const photo = await putPhoto(ctx.user.id, {
+      productId, colourId: Number(b.colourId) || Cat.firstColourId(productId), kind: String(b.kind || ''),
+      full: b.full, thumb: b.thumb, width: b.width, height: b.height
+    });
+    sendOk(ctx.res, { photo });
   } catch (e) {
-    if (e.code === 'not_found') return sendError(ctx.res, 404, 'not_found', e.message);
-    if (e.code === 'bad_image' || e.code === 'too_large') return sendError(ctx.res, 400, e.code, e.message);
-    /* Unreachable, refused, a bucket that could not be made: the shop keeps
-       selling and the person is told the picture did not land. */
-    sendError(ctx.res, 503, 'storage_failed', e.message);
+    if (e.code === 'not_configured') return sendError(ctx.res, 503, 'not_configured', e.message);
+    photoError(ctx, e);
+  }
+}));
+
+/* Into another slot (`kind` — "these two are the wrong way round" is one
+   press), or an extra one place along (`move`: -1 or 1). No files move. */
+router.add('PATCH /api/photos/:id', requirePerm('product.write', async (ctx) => {
+  try {
+    const b = await readJson(ctx.req);
+    const id = Number(ctx.params.id);
+    const photo = b.kind !== undefined ? Photos.setKind(id, String(b.kind), ctx.user.id)
+      : Photos.move(id, Number(b.move) < 0 ? -1 : 1, ctx.user.id);
+    sendOk(ctx.res, { photo });
+  } catch (e) { photoError(ctx, e); }
+}));
+
+router.add('DELETE /api/photos/:id', requirePerm('product.write', (ctx) => {
+  try {
+    const r = Photos.remove(Number(ctx.params.id), ctx.user.id);
+    dropFiles(r.previous);
+    sendOk(ctx.res, { id: r.id, productId: r.productId });
+  } catch (e) { photoError(ctx, e); }
+}));
+
+/* THE ONE-PICTURE ROUTES, KEPT FOR A TAB STILL RUNNING YESTERDAY'S CODE.
+   Before 066 a product and a colour each had one picture. A browser that has
+   not reloaded yet still sends `{ dataUrl }` here, so it lands where a
+   picture of the shoe belongs — the PRODUCT photo of that colour (the
+   product's first colour when no colour is named) — and `{ clear: true }`
+   takes that photo off. The one small file stands in for both sizes. */
+async function legacyPicture(ctx, productId, colourId) {
+  const b = await readJson(ctx.req);
+  if (b && b.clear) {
+    const held = Photos.ofProduct(productId).find((x) => x.colourId === colourId && x.kind === 'product');
+    if (held) dropFiles(Photos.remove(held.id, ctx.user.id).previous);
+    return sendOk(ctx.res, { imageUrl: null });
+  }
+  const photo = await putPhoto(ctx.user.id, { productId, colourId, kind: 'product', full: b && b.dataUrl });
+  sendOk(ctx.res, { imageUrl: photo.thumbUrl });
+}
+
+router.add('POST /api/products/:id/image', requirePerm('product.write', async (ctx) => {
+  try {
+    const productId = Number(ctx.params.id);
+    const colourId = Cat.firstColourId(productId);
+    if (!colourId) return sendError(ctx.res, 404, 'not_found', `No product with id ${productId}.`);
+    await legacyPicture(ctx, productId, colourId);
+  } catch (e) {
+    if (e.code === 'not_configured') return sendError(ctx.res, 503, 'not_configured', e.message);
+    photoError(ctx, e);
   }
 }));
 
@@ -745,29 +837,15 @@ router.add('PATCH /api/colours/:id', requirePerm('product.write', async (ctx) =>
   }
 }));
 
-/* A colour's own photograph — the product picture's route, keyed by product
-   AND colour, a new path on every replace. */
+/* A colour's one picture, from before 066 — see legacyPicture above. */
 router.add('POST /api/colours/:id/image', requirePerm('product.write', async (ctx) => {
-  const id = Number(ctx.params.id);
-  const b = await readJson(ctx.req);
   try {
-    const c = Cat.colourById(id);
+    const c = Cat.colourById(Number(ctx.params.id));
     if (!c) return sendError(ctx.res, 404, 'not_found', 'No such colour.');
-    if (b && b.clear) {
-      const r = Cat.setColourImage(id, null, ctx.user.id);
-      if (r.previous) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
-      return sendOk(ctx.res, { imageUrl: null });
-    }
-    if (!SB.isConfigured()) return sendError(ctx.res, 503, 'not_configured', 'Pictures need Supabase, which is not set up on this server.');
-    const pic = Storage.decodeDataUrl(b && b.dataUrl);
-    const url = await Storage.putObject(Storage.pathForColour(c.productId, id, pic.ext), pic.bytes, pic.type);
-    const r = Cat.setColourImage(id, url, ctx.user.id);
-    if (r.previous && r.previous !== url) Storage.removeObject(Storage.pathOfUrl(r.previous)).catch(() => {});
-    sendOk(ctx.res, { imageUrl: url });
+    await legacyPicture(ctx, c.productId, c.id);
   } catch (e) {
-    if (e.code === 'not_found') return sendError(ctx.res, 404, 'not_found', e.message);
-    if (e.code === 'bad_image' || e.code === 'too_large') return sendError(ctx.res, 400, e.code, e.message);
-    sendError(ctx.res, 503, 'storage_failed', e.message);
+    if (e.code === 'not_configured') return sendError(ctx.res, 503, 'not_configured', e.message);
+    photoError(ctx, e);
   }
 }));
 
@@ -1744,6 +1822,20 @@ router.add('PUT /api/delivery/settings', requirePerm('config.write', async (ctx)
   const b = await readJson(ctx.req);
   try { sendOk(ctx.res, { settings: Orders.saveSettings(b) }); }
   catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* WHAT THE WEBSITE'S CHECKOUT SHOWS, read back from the cloud with the
+   website's own key (lib/webcheckout.js, server/supabase/031). The same
+   question the website asks, so "Live on the website ✓" is a fact about the
+   website and not about this laptop. config.write: the answer carries the
+   shop's transfer accounts. POST pushes what is waiting first — the check
+   straight after a Save. */
+router.add('GET /api/web-checkout', requirePerm('config.write', async (ctx) => {
+  sendOk(ctx.res, await WebCheckout.report());
+}));
+
+router.add('POST /api/web-checkout/check', requirePerm('config.write', async (ctx) => {
+  sendOk(ctx.res, await WebCheckout.report({ push: true }));
 }));
 
 /* A WhatsApp message the office opened for a customer. wa.me cannot say

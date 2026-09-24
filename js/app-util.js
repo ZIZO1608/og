@@ -380,19 +380,11 @@ function readImageFile(file, done) {
   fr.readAsDataURL(file);
 }
 
-/* Everything that can hand us a picture funnels through here, so the toast,
-   the validation and the repaint are written once. */
+/* A picture pasted or dropped onto the Add-product form. Since 066 a
+   product's photos belong to its colours, so it goes into the first colour's
+   first empty slot — the model photo, then the product photo, then an extra. */
 function takeProductImage(file) {
-  readImageFile(file, function (src, err) {
-    if (err) {
-      toast(t('image'), t('up_err_' + err), 'err', 4000);
-      return;
-    }
-    OG.wh.imgSrc = src;
-    OG.wh.img = null;
-    render();
-    toast(t('image'), t('up_ok'), 'ok', 2000);
-  });
+  if (file) Photos.takeFirstEmpty(file);
 }
 
 /* The picture to the bucket, and the row to match. One place for the three
@@ -406,14 +398,6 @@ function takeProductImage(file) {
    half a second copy always ends up missing. */
 function uploadJobDesign(id, dataUrl, then) {
   return uploadImageThrough(function () { return Shop.setJobImage(id, dataUrl); }, then);
-}
-
-function uploadColourImage(id, dataUrl, then) {
-  return uploadImageThrough(function () { return Shop.setColourImage(id, dataUrl); }, then);
-}
-
-function uploadProductImage(id, dataUrl, then) {
-  return uploadImageThrough(function () { return Shop.setProductImage(id, dataUrl); }, then);
 }
 
 function uploadImageThrough(send, then) {

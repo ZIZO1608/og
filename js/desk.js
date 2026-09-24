@@ -583,9 +583,14 @@ var Desk = (function () {
         S.plan = pay.type === 'cod' && receiptOk() ? 'receipt' : 'full';
         S.planTouched = true;
         planPrefill();
+        var payGone = null;
         if (S.pays.length && pay.type === 'transfer') {
           var offered = DB.payMethodsFor('desk').some(function (m) { return m.id === pay.method; });
           if (offered) S.pays[0].method = pay.method;
+          /* Taken off since the customer paid on it (switched off, or off
+             the office): the row stays on cash for the person to correct,
+             and the toast says so rather than leaving it to be noticed. */
+          else payGone = pay.method || '?';
           if (pay.reference) S.pays[0].txnRef = pay.reference;
         }
         S.note = [t('wo_desk_note').replace('{ref}', o.ref), dl.note, o.note]
@@ -596,6 +601,11 @@ var Desk = (function () {
         if (OG.view === 'desk') repaint();
         else go('desk');
         if (skipped) toast(t('wo_title'), t('wo_desk_skipped').replace('{n}', nf(skipped)), 'warn', 6000);
+        if (payGone) {
+          var gm = DB.payMethod ? DB.payMethod(payGone) : null;
+          var gname = gm ? (OG.lang === 'ar' ? (gm.ar || gm.en) : (gm.en || gm.ar)) : payGone;
+          toast(t('wo_title'), t('wo_desk_method_gone').replace('{m}', gname), 'warn', 8000);
+        }
       };
       var busyDraft = S && !saved && S.webRef !== o.ref &&
         (S.lines.length || S.customerId || String(S.address || '').trim());
@@ -2708,7 +2718,10 @@ var Desk = (function () {
   var setDraft = null;
 
   function draft() {
-    if (!setDraft) setDraft = JSON.parse(JSON.stringify(boot.settings));
+    if (!setDraft) {
+      setDraft = JSON.parse(JSON.stringify(boot.settings));
+      freezeWeb(setDraft.methods, setDraft.accounts || {});
+    }
     return setDraft;
   }
 
@@ -2733,11 +2746,10 @@ var Desk = (function () {
      office's settings are still on their way. The page must stay where the
      person was working either way, not jump back to Branding at the top. */
   function renderKeepScroll() {
+    if (OG.view === 'payments') { if (repaintMethods()) return; }
     if (OG.view === 'settings' && boot && typeof setFoldRepaint === 'function' && allow('config.write')) {
-      var ok = setFoldRepaint('dk-methods', methodsCard());
-      ok = setFoldRepaint('dk-companies', companiesCard()) && ok;
+      var ok = setFoldRepaint('dk-companies', companiesCard());
       ok = setFoldRepaint('dk-prices', pricesCard()) && ok;
-      ok = setFoldRepaint('dk-accounts', accountsCard()) && ok;
       if (ok) return;
     }
     if (typeof render !== 'function') return;
@@ -2761,27 +2773,399 @@ var Desk = (function () {
       t('save') + '</button></div>';
   }
 
-  function methodsCard() {
-    var rows = draft().methods.map(function (m, i) {
-      var locked = !!m.system;
-      return '<div class="dks-row">' +
-        '<div class="dks-names">' + inp('dks-m', i, 'en', m.en, 'English') + inp('dks-m', i, 'ar', m.ar, 'العربية') +
-          '<small class="muted"><bdi dir="ltr">' + esc(m.id) + '</bdi>' +
-            (locked ? ' · ' + t('dks_system') : '') + '</small></div>' +
-        '<div class="dks-flags">' +
-          '<span title="' + esc(t('dks_f_active')) + '">' + t('dks_f_active') + sw('dks-m', i, 'active', m.active !== false, locked) + '</span>' +
-          '<span title="' + esc(t('dks_f_till')) + '">' + t('dks_f_till') + sw('dks-m', i, 'till', !!m.till, locked) + '</span>' +
-          '<span title="' + esc(t('dks_f_desk')) + '">' + t('dks_f_desk') + sw('dks-m', i, 'desk', !!m.desk, locked) + '</span>' +
-          '<span title="' + esc(t('dks_f_ref')) + '">' + t('dks_f_ref') + sw('dks-m', i, 'ref', !!m.ref, locked) + '</span>' +
-          '<span title="' + esc(t('dks_f_drawer')) + '">' + t('dks_f_drawer') + sw('dks-m', i, 'drawer', !!m.drawer, true) + '</span>' +
-        '</div></div>';
+  /* ------------------------------------------------ PAYMENT METHODS (031)
+     One card for everything about how a customer pays: the method, where the
+     customer sends the money, whether the WEBSITE offers it, the colour its
+     button wears there, and whether the website takes cash at the door. It
+     used to be two folds with two Saves — the methods here, the accounts in
+     "Where customers send the money" — and the cloud decided what the website
+     showed from the second alone, so typing an account for a WhatsApp message
+     put a method on the website without anybody choosing to.
+
+     THE RULE IS THE SERVER'S, drawn here so the switch never offers what the
+     Save would refuse: webWhy() is Orders.webProblem (server/lib/orders.js),
+     webOn() is Orders.onWeb, and web.transfer_methods() in
+     server/supabase/031_web_payments.sql is the cloud's copy. Keep all of
+     them in step.
+
+     THE PANEL AT THE FOOT IS READ BACK FROM THE CLOUD (GET /api/web-checkout)
+     — the same function the website calls, with the website's own key — so
+     "Live on the website ✓" is a fact about the website, not about this
+     laptop. It repaints ALONE (#dksWeb), never through render(): this card
+     holds typed-but-unsaved values. */
+
+  var WEB_COLORS = [
+    ['#16a34a', 'green'], ['#0d9488', 'teal'], ['#0ea5e9', 'sky'], ['#2563eb', 'blue'],
+    ['#7c3aed', 'violet'], ['#db2777', 'pink'], ['#dc2626', 'red'], ['#ea580c', 'orange'],
+    ['#ca8a04', 'gold'], ['#64748b', 'slate']
+  ];
+  var HEX = /^#[0-9a-f]{6}$/;
+  var webChk = { data: null, at: 0, busy: false, err: null, seq: 0 };
+  /* The reasons lib/webcheckout.js can give, and the mirror's words — each
+     has a sentence in both languages (dks_wr_* / dks_wm_*). */
+  var WEB_REASONS = ['not_configured', 'no_key', 'bad_key', 'not_installed', 'old_sql', 'unreachable', 'refused', 'unreadable', 'error'];
+  var WEB_MIRROR = ['not_configured', 'off', 'refused', 'offline', 'starting', 'denied'];
+
+  function accOf(m) {
+    var a = (draft().accounts || {})[m.id];
+    return a && typeof a === 'object' ? a : {};
+  }
+  function hasText(v) { return !!String(v == null ? '' : v).trim(); }
+
+  /* Orders.webProblem, in the browser. */
+  function webWhy(m) {
+    if (!m || m.system) return 'system';
+    if (m.active === false) return 'off';
+    if (!m.desk) return 'no_desk';
+    var a = accOf(m);
+    if (!hasText(a.en)) return 'no_en';
+    if (!hasText(a.ar)) return 'no_ar';
+    return null;
+  }
+  /* Orders.onWeb, in the browser. `web` missing is a method saved before the
+     switch existed, on the website under the old rule (any account text) —
+     freezeWeb() has already written every OTHER such method off, exactly as
+     the server's Save does, so typing an account never turns a switch on. */
+  function onWebWith(m, acc) {
+    if (!m || m.system || m.active === false || !m.desk) return false;
+    if (m.web === false) return false;
+    var a = (acc && acc[m.id]) || {};
+    if (m.web === true) return hasText(a.en) && hasText(a.ar);
+    return hasText(a.en) || hasText(a.ar);
+  }
+  function webOn(m) { return onWebWith(m, draft().accounts || {}); }
+  /* The switch as drawn: what the owner asked for, even while a missing
+     account stops it reaching the website (the row says why). */
+  function webAsked(m) {
+    if (!m || m.system) return false;
+    return m.web === undefined ? webOn(m) : m.web === true;
+  }
+  /* A list saved before the switch existed: a method the old rule has on
+     the website NOW keeps no `web` (so nothing leaves the site unasked), and
+     every other one is written off, in the draft, the way the server writes
+     it on Save. Run on every copy taken from the server, and on the copy the
+     draft is compared with, so the freeze itself is never "unsaved". */
+  function freezeWeb(methods, acc) {
+    (methods || []).forEach(function (m) {
+      if (m && !m.system && m.web === undefined && !onWebWith(m, acc)) m.web = false;
+    });
+    return methods;
+  }
+
+  /* What the website WILL show once this draft is saved — expected() in
+     server/lib/webcheckout.js, in the browser. */
+  function draftView() {
+    return {
+      transfer: draft().methods.filter(webOn).map(function (m) {
+        var a = accOf(m);
+        return { id: m.id, en: m.en, ar: m.ar, color: HEX.test(m.color || '') ? m.color : null,
+                 details: { en: hasText(a.en) ? String(a.en).trim() : null, ar: hasText(a.ar) ? String(a.ar).trim() : null } };
+      }),
+      cod: draft().webCod !== false
+    };
+  }
+
+  /* Anything typed that the server has not got yet. Empty account boxes are
+     dropped on the server, so they are dropped here before comparing. */
+  function payShape(s) {
+    var acc = {};
+    Object.keys((s && s.accounts) || {}).forEach(function (k) {
+      var a = s.accounts[k] || {};
+      if (hasText(a.en) || hasText(a.ar)) acc[k] = { en: String(a.en || '').trim(), ar: String(a.ar || '').trim() };
+    });
+    var methods = freezeWeb(JSON.parse(JSON.stringify((s && s.methods) || [])), (s && s.accounts) || {});
+    return JSON.stringify({ m: methods, a: acc, c: !s || s.webCod !== false });
+  }
+  function payDirty() { return !!(boot && boot.settings) && payShape(draft()) !== payShape(boot.settings); }
+
+  function methodRow(m, i) {
+    var locked = !!m.system;
+    var a = accOf(m);
+    /* Every method that could go on the website gets its account boxes —
+       not only those asking for a reference, or the row would ask for an
+       account with nowhere to type it. */
+    var showAcc = !locked && (m.active !== false || hasText(a.en) || hasText(a.ar));
+    return '<div class="dks-row dks-mrow">' +
+      '<div class="dks-names">' + inp('dks-m', i, 'en', m.en, 'English') + inp('dks-m', i, 'ar', m.ar, 'العربية') +
+        '<small class="muted"><bdi dir="ltr">' + esc(m.id) + '</bdi>' +
+          (locked ? ' · ' + t('dks_system') : '') + '</small></div>' +
+      '<div class="dks-flags">' +
+        '<span title="' + esc(t('dks_f_active')) + '">' + t('dks_f_active') + sw('dks-m', i, 'active', m.active !== false, locked) + '</span>' +
+        '<span title="' + esc(t('dks_f_till')) + '">' + t('dks_f_till') + sw('dks-m', i, 'till', !!m.till, locked) + '</span>' +
+        '<span title="' + esc(t('dks_f_desk')) + '">' + t('dks_f_desk') + sw('dks-m', i, 'desk', !!m.desk, locked) + '</span>' +
+        '<span title="' + esc(t('dks_f_ref')) + '">' + t('dks_f_ref') + sw('dks-m', i, 'ref', !!m.ref, locked) + '</span>' +
+        '<span title="' + esc(t('dks_f_drawer')) + '">' + t('dks_f_drawer') + sw('dks-m', i, 'drawer', !!m.drawer, true) + '</span>' +
+      '</div>' +
+      (showAcc
+        ? '<div class="dks-acc dks-acc-in"><span class="dks-acc-h">' + t('dks_accounts') + '</span>' +
+            '<input class="inp" type="text" data-change="dks-a" data-i="' + esc(m.id) + '" data-k="en" value="' +
+              esc(a.en || '') + '" placeholder="' + esc(t('dks_acc_ph')) + '" dir="auto">' +
+            '<input class="inp" type="text" data-change="dks-a" data-i="' + esc(m.id) + '" data-k="ar" value="' +
+              esc(a.ar || '') + '" placeholder="' + esc(t('dks_acc_ph_ar')) + '" dir="auto">' +
+          '</div>'
+        : '') +
+      (locked ? '' : '<div class="dks-web" id="dksW-' + i + '">' + webRowHtml(m, i) + '</div>') +
+    '</div>';
+  }
+
+  /* The website half of one row: the switch, why it cannot be on, and the
+     colour. Its own id, so typing an account repaints this and nothing else. */
+  function webRowHtml(m, i) {
+    var why = webWhy(m);
+    var asked = webAsked(m);
+    var h = '<label class="dks-web-sw"><span>' + t('dks_web_on') + '</span>' +
+      sw('dks-m', i, 'web', asked, !asked && !!why) + '</label>';
+    if (asked && m.web === undefined && (why === 'no_en' || why === 'no_ar')) {
+      /* Saved before the switch existed, and on the website under the old
+         rule with its account in one language: it IS live, so say that, and
+         what is missing. */
+      h += '<small class="dks-web-why warn">' + t('dks_web_legacy_' + why) + '</small>';
+    } else if (why && (asked || why !== 'off')) {
+      h += '<small class="dks-web-why' + (asked ? ' warn' : '') + '">' + t('dks_web_why_' + why) + '</small>';
+    } else if (asked) {
+      h += '<small class="dks-web-why ok">' + t('dks_web_yes') + '</small>';
+    }
+    if (asked) {
+      var cur = HEX.test(m.color || '') ? m.color : '';
+      h += '<div class="dks-swatches" role="group" aria-label="' + esc(t('dks_color')) + '">' +
+        '<span class="dks-sw-h">' + t('dks_color') + '</span>' +
+        '<button type="button" class="dks-swatch none' + (cur ? '' : ' on') + '" data-act="dks-color" data-i="' + i +
+          '" data-v="" aria-pressed="' + (cur ? 'false' : 'true') + '" title="' + esc(t('dks_color_none')) +
+          '" aria-label="' + esc(t('dks_color_none')) + '"></button>' +
+        WEB_COLORS.map(function (c) {
+          var on = cur === c[0];
+          return '<button type="button" class="dks-swatch' + (on ? ' on' : '') + '" style="--c:' + c[0] + '" data-act="dks-color" data-i="' + i +
+            '" data-v="' + c[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '" title="' + esc(t('dks_c_' + c[1])) +
+            '" aria-label="' + esc(t('dks_c_' + c[1])) + '"></button>';
+        }).join('') +
+      '</div>';
+    }
+    return h;
+  }
+
+  /* THE PAYMENT METHODS PAGE (`#payments`, its own screen since 24 Sep 2026 —
+     it was a fold in Settings, the eleventh card on a long page, for the one
+     thing the owner changes most and whose effect reaches customers). The
+     methods on the left, what the website shows pinned beside them, one Save
+     in a bar that stays on the glass. Gated on config.write (NAV_PERM), like
+     every route it calls. Everything is repainted INSIDE #payPage, never
+     through render(): the page holds typed-but-unsaved accounts. */
+  function payInner() {
+    var d = draft();
+    var rows = d.methods.map(methodRow).join('');
+    var onSite = d.methods.filter(webOn).length;
+    var active = d.methods.filter(function (m) { return m.active !== false; }).length;
+    var dirty = payDirty();
+    return '<div class="pay-main">' +
+        '<div class="pay-stats">' +
+          '<div class="pay-stat"><b><bdi>' + nf(active) + '</bdi></b><span>' + t('pay_stat_active') + '</span></div>' +
+          '<div class="pay-stat"><b><bdi>' + nf(onSite) + '</bdi></b><span>' + t('pay_stat_web') + '</span></div>' +
+          '<div class="pay-stat"><b>' + t(d.webCod !== false ? 'pay_on' : 'pay_off') + '</b><span>' + t('pay_stat_cod') + '</span></div>' +
+        '</div>' +
+        '<label class="dks-cod"><span class="dks-cod-t"><b>' + t('dks_cod') + '</b><small>' + t('dks_cod_sub') + '</small></span>' +
+          '<span class="switch"><input type="checkbox" data-change="dks-cod"' + (d.webCod !== false ? ' checked' : '') +
+          ' aria-label="' + esc(t('dks_cod')) + '"><i></i></span></label>' +
+        '<div class="partner-note">' + t('dks_methods_note') + '</div>' +
+        '<div class="dks-list" id="payList">' + rows + '</div>' +
+        '<button class="btn btn-sm mt" data-act="dks-add" data-k="methods">+ ' + t('dks_add_method') + '</button>' +
+        '<div class="pay-bar' + (dirty ? ' dirty' : '') + '">' +
+          '<span class="pay-bar-t">' + t(dirty ? 'pay_unsaved' : 'pay_all_saved') + '</span>' +
+          '<button class="btn btn-primary" data-act="dks-save" data-k="methods"' + (dirty ? '' : ' disabled') + '>' + t('save') + '</button>' +
+        '</div>' +
+      '</div>' +
+      '<aside class="pay-side"><div class="dks-wp" id="dksWeb">' + webPanelHtml() + '</div></aside>';
+  }
+
+  function payView() {
+    var head = '<div class="page-head"><div><h1>' + t('nav_payments') + '</h1>' +
+      '<div class="sub">' + t('dks_methods_sub') + '</div></div></div>';
+    if (!allow('config.write')) return head;
+    if (!boot) {
+      if (payErr) {
+        return head + '<div class="card"><div class="cart-empty"><b>' + esc(payErr) + '</b>' +
+          '<button class="btn btn-sm mt" data-act="pay-retry">' + t('retry') + '</button></div></div>';
+      }
+      return head + '<div class="pay-page" id="payPage"><div class="pay-skel" aria-busy="true"><i></i><i></i><i></i></div>' +
+        '<span class="sr-only" role="status">' + t('pay_loading') + '</span></div>';
+    }
+    return head + '<div class="pay-page" id="payPage">' + payInner() + '</div>';
+  }
+
+  var payErr = null;
+  var payBootAt = 0;
+
+  /* On arrival: the office's settings if they are not here yet, or fresh
+     ones if what is held is over a minute old and nothing is being typed
+     (another laptop, or the office screen, may have changed them). Then the
+     website, at most once a minute. Never a loop: nothing here re-enters
+     render(). */
+  function payAfter() {
+    if (!allow('config.write')) return;
+    var stale = !boot || (!payDirty() && Date.now() - payBootAt > 60000);
+    if (stale) {
+      API.get('/api/orders/bootstrap').then(function (b) {
+        boot = b;
+        payErr = null;
+        payBootAt = Date.now();
+        if (!S) S = loadDraft() || fresh();
+        if (!S.whId) S.whId = b.settings.wh;
+        if (!payDirty() || !setDraft) { setDraft = null; draft(); }
+        if (OG.view === 'payments') {
+          var host = document.getElementById('payPage');
+          if (host) repaintMethods();
+          else if (typeof render === 'function') render();
+        }
+        maybeCheckWeb();
+      }).catch(function (err) {
+        payErr = API.friendly(err || {});
+        if (OG.view === 'payments' && !boot && typeof render === 'function') render();
+      });
+      return;
+    }
+    maybeCheckWeb();
+  }
+
+  /* The page redrawn where it stands: the caret and the scroll stay put. */
+  function repaintMethods() {
+    if (OG.view !== 'payments') return false;
+    var host = document.getElementById('payPage');
+    if (!host) return false;
+    var key = typeof focusKey === 'function' ? focusKey(host) : null;
+    host.innerHTML = payInner();
+    try { hintInputs(host); } catch (e) { /* only the keyboard hints */ }
+    if (key && typeof refocus === 'function') refocus(host, key);
+    return true;
+  }
+  /* Only the Save bar and the numbers above the list: what typing changes,
+     without touching the box being typed in. */
+  function paintPayChrome() {
+    var host = document.getElementById('payPage');
+    if (!host) return;
+    var dirty = payDirty();
+    var bar = host.querySelector('.pay-bar');
+    if (bar) {
+      bar.classList.toggle('dirty', dirty);
+      var tx = bar.querySelector('.pay-bar-t');
+      if (tx) tx.textContent = t(dirty ? 'pay_unsaved' : 'pay_all_saved');
+      var btn = bar.querySelector('[data-act="dks-save"]');
+      if (btn) btn.disabled = !dirty;
+    }
+  }
+
+  function methodName(id, list) {
+    var m = (list || []).filter(function (x) { return x && x.id === id; })[0] ||
+            draft().methods.filter(function (x) { return x.id === id; })[0];
+    if (!m) return id;
+    return OG.lang === 'ar' ? (m.ar || m.en || id) : (m.en || m.ar || id);
+  }
+
+  /* The phone-shaped picture of the checkout's payment step, and one line of
+     truth under it. What it draws: the cloud's own answer when the draft is
+     saved and the cloud could be asked; otherwise what the draft WILL show,
+     and the line says which. */
+  function webPanelHtml() {
+    var data = webChk.data;
+    var dirty = payDirty();
+    var live = !dirty && data && data.cloud;
+    var view = live ? data.cloud : draftView();
+    var ar = OG.lang === 'ar';
+
+    var methods = (view.transfer || []).map(function (m) {
+      var c = HEX.test(m.color || '') ? m.color : '';
+      var det = m.details || {};
+      var line = ar ? (det.ar || det.en) : (det.en || det.ar);
+      return '<div class="dks-wp-m"' + (c ? ' style="--c:' + c + '"' : '') + '>' +
+        '<i class="dks-wp-dot" aria-hidden="true"></i>' +
+        '<span><b>' + esc(ar ? (m.ar || m.en) : (m.en || m.ar)) + '</b>' +
+          (line ? '<small dir="auto">' + esc(line) + '</small>' : '') + '</span></div>';
+    }).join('') || '<div class="dks-wp-none">' + t('dks_wp_none') + '</div>';
+
+    var phone = '<div class="dks-wp-phone" aria-label="' + esc(t('dks_wp_title')) + '">' +
+      '<div class="dks-wp-bar">' + t('dks_wp_checkout') + '</div>' +
+      '<div class="dks-wp-sec">' + t('dks_wp_pay') + '</div>' + methods +
+      '<div class="dks-wp-cod ' + (view.cod ? 'yes' : 'no') + '">' + t(view.cod ? 'dks_wp_cod_yes' : 'dks_wp_cod_no') + '</div>' +
+    '</div>';
+
+    return '<div class="dks-wp-head"><b>' + t('dks_wp_title') + '</b>' +
+        '<span class="muted small">' + t(live ? 'dks_wp_from_cloud' : 'dks_wp_from_draft') + '</span></div>' +
+      '<div class="dks-wp-body">' + phone + '<div class="dks-wp-side">' + webStatusHtml(dirty) + '</div></div>';
+  }
+
+  function webStatusHtml(dirty) {
+    var data = webChk.data;
+    var line = function (tone, text, sub) {
+      return '<div class="dks-wp-st ' + tone + '" role="status"><span>' + text + '</span>' +
+        (sub ? '<small>' + sub + '</small>' : '') + '</div>';
+    };
+    var again = '<button type="button" class="btn btn-ghost btn-sm dks-wp-again" data-act="dks-web-check">' + t('dks_wp_again') + '</button>';
+    if (webChk.busy) {
+      return line('busy', '<i class="dks-wp-spin" aria-hidden="true"></i>' + t(webChk.busy === 'push' ? 'dks_wp_sending' : 'dks_wp_checking'));
+    }
+    if (dirty) return line('warn', t('dks_wp_unsaved'));
+    if (webChk.err) return line('warn', t('dks_wp_fail'), esc(webChk.err)) + again;
+    if (!data) return line('idle', t('dks_wp_not_yet')) + again;
+
+    var when = data.checkedAt ? t('dks_wp_at').replace('{t}', '<bdi>' + esc(fmtTimeOnly(data.checkedAt)) + '</bdi>') : '';
+    if (data.cloud && data.inStep) return line('ok', t('dks_wp_live'), when) + again;
+
+    var parts = [];
+    if (data.reason) parts.push(t(WEB_REASONS.indexOf(data.reason) > -1 ? 'dks_wr_' + data.reason : 'dks_wr_error'));
+    var mode = data.mirror && data.mirror.mode;
+    if (data.cloud && mode && mode !== 'live') parts.push(t(WEB_MIRROR.indexOf(mode) > -1 ? 'dks_wm_' + mode : 'dks_wm_offline'));
+    if (data.cloud && mode === 'live' && !data.inStep) parts.push(t('dks_wm_live_behind'));
+    var diffs = (data.diffs || []).slice(0, 5).map(function (x) {
+      return '<li>' + t('dks_wd_' + x.kind).replace('{m}', '<b>' + esc(methodName(x.id, data.expected && data.expected.transfer)) + '</b>') + '</li>';
     }).join('');
-    var meta = nf(draft().methods.filter(function (m) { return m.active !== false; }).length) + ' ' + t('dks_active');
-    return setFoldStart('dk-methods', t('dks_methods'), meta) +
-      '<div class="card-body"><div class="partner-note">' + t('dks_methods_note') + '</div>' +
-      '<div class="dks-list">' + rows + '</div>' +
-      '<button class="btn btn-sm mt" data-act="dks-add" data-k="methods">+ ' + t('dks_add_method') + '</button>' +
-      saveBtn('methods') + '</div>' + setFoldEnd();
+    return line('warn', t(data.cloud ? 'dks_wp_differs' : 'dks_wp_cannot'), parts.filter(Boolean).join(' ') + (when ? ' · ' + when : '')) +
+      (diffs ? '<ul class="dks-wp-diffs">' + diffs + '</ul>' : '') + again;
+  }
+
+  function paintWeb() {
+    var host = document.getElementById('dksWeb');
+    if (host) host.innerHTML = webPanelHtml();
+  }
+  function paintWebRow(i) {
+    var host = document.getElementById('dksW-' + i);
+    var m = draft().methods[i];
+    if (host && m) host.innerHTML = webRowHtml(m, i);
+  }
+
+  /* Ask the cloud. Once at a time; a failure is kept and SAID, never retried
+     by itself — the fix06 rule: a draw that starts a fetch must be able to
+     stop asking. */
+  /* A push (after a Save) always goes, and makes any read still on its way
+     stale — `seq` drops an answer that is no longer the latest question, so
+     a slow read taken BEFORE the Save can never paint over the one after. */
+  function checkWeb(push) {
+    if (!allow('config.write')) return;
+    if (webChk.busy && !push) return;
+    var seq = webChk.seq = (webChk.seq || 0) + 1;
+    webChk.busy = push ? 'push' : 'check';
+    webChk.err = null;
+    paintWeb();
+    var ask = push ? API.post('/api/web-checkout/check', {}) : API.get('/api/web-checkout');
+    ask.then(function (r) {
+      if (seq !== webChk.seq) return;
+      webChk.data = r;
+      if (push && r && r.inStep) toast(t('dks_methods'), t('dks_wp_live_toast'), 'ok', 4500);
+    }).catch(function (err) {
+      if (seq !== webChk.seq) return;
+      /* friendly() first: it has the sentence in the screen's language
+         (err_offline, err_timeout); err.message is always English. */
+      webChk.err = API.friendly(err || {});
+    }).then(function () {
+      if (seq !== webChk.seq) return;
+      webChk.at = Date.now();
+      webChk.busy = false;
+      paintWeb();
+    });
+  }
+  /* On drawing the card open: at most once a minute, and only after the
+     frame the card is drawn in (the panel it paints must exist). */
+  function maybeCheckWeb() {
+    if (webChk.busy || (webChk.at && Date.now() - webChk.at < 60000)) return;
+    webChk.at = Date.now();
+    setTimeout(function () { checkWeb(false); }, 0);
   }
 
   function companiesCard() {
@@ -2862,32 +3246,27 @@ var Desk = (function () {
     }).join('') + '</span>';
   }
 
-  function accountsCard() {
-    var acc = draft().accounts || {};
-    var rows = draft().methods.filter(function (m) { return m.ref && m.active !== false; }).map(function (m) {
-      var a = acc[m.id] || {};
-      return '<div class="dks-row"><div class="dks-names"><b>' +
-        esc(OG.lang === 'ar' ? (m.ar || m.en) : (m.en || m.ar)) + '</b></div>' +
-        '<div class="dks-acc">' +
-          '<input class="inp" type="text" data-change="dks-a" data-i="' + esc(m.id) + '" data-k="en" value="' +
-            esc(a.en || '') + '" placeholder="' + esc(t('dks_acc_ph')) + '">' +
-          '<input class="inp" type="text" data-change="dks-a" data-i="' + esc(m.id) + '" data-k="ar" value="' +
-            esc(a.ar || '') + '" placeholder="بالعربية">' +
-        '</div></div>';
-    }).join('') || '<div class="dks-none">' + t('dks_no_transfer') + '</div>';
-
-    return setFoldStart('dk-accounts', t('dks_accounts'), '') +
-      '<div class="card-body"><div class="partner-note">' + t('dks_accounts_note') + '</div>' +
-      '<div class="dks-list">' + rows + '</div>' + saveBtn('accounts') + '</div>' + setFoldEnd();
-  }
-
   /* `bare` drops the heading: ns03 gave Settings a Deliveries section of its
-     own, and two headings one under the other is not a section. */
+     own, and two headings one under the other is not a section. "Where
+     customers send the money" is no longer a fold of its own: it is written
+     on each method's row (031), beside the switch that puts it on the
+     website. */
   function settingsCards(opts) {
     if (!allow('config.write')) return '';
     if (!boot) { load(); return ''; }
     return ((opts && opts.bare) ? '' : setSection(t('setg_delivery'))) +
-      methodsCard() + companiesCard() + pricesCard() + accountsCard();
+      payLinkCard() + companiesCard() + pricesCard();
+  }
+
+  /* The payment methods moved to their own page; Settings keeps a door to it
+     where the fold used to be, so nobody who remembers it here is lost. */
+  function payLinkCard() {
+    var d = draft();
+    var onSite = d.methods.filter(webOn).length;
+    return '<section class="card mb pay-link"><div class="card-body">' +
+      '<div><b>' + t('nav_payments') + '</b><small>' + t('pay_link_sub').replace('{n}', '<bdi>' + nf(onSite) + '</bdi>') + '</small></div>' +
+      '<button class="btn btn-sm" data-act="nav" data-view="payments">' + t('pay_open') + '</button>' +
+    '</div></section>';
   }
 
   /* One id per new row, from the name the person typed or a timestamp — the
@@ -2923,7 +3302,25 @@ var Desk = (function () {
   function registerSettings() {
     if (typeof ACTIONS === 'undefined' || typeof CHANGES === 'undefined') return;
 
-    CHANGES['dks-m'] = function (el) { setField(draft().methods, el); };
+    /* A method's switches change what its row shows (the account boxes, the
+       website half, the colours), so they redraw the card where it stands; a
+       NAME being typed repaints only the preview, never the box under the
+       caret. */
+    CHANGES['dks-m'] = function (el) {
+      setField(draft().methods, el);
+      var k = el.getAttribute('data-k');
+      /* Switched off in the shop, or taken from the order desk: off the
+         website too (the server writes the same), and coming back is a fresh
+         decision on the switch. */
+      var row = draft().methods[Number(el.getAttribute('data-i'))];
+      if (row && (k === 'active' || k === 'desk') && !el.checked && row.web !== false) row.web = false;
+      if (el.type === 'checkbox') {
+        if (!repaintMethods()) renderKeepScroll();
+        return;
+      }
+      paintWeb();
+      paintPayChrome();
+    };
     CHANGES['dks-c'] = function (el) { setField(draft().companies, el); };
     CHANGES['dks-p'] = function (el) { setField(draft().prices, el); };
     CHANGES['dks-a'] = function (el) {
@@ -2931,7 +3328,39 @@ var Desk = (function () {
       var acc = draft().accounts || (draft().accounts = {});
       acc[id] = acc[id] || { en: '', ar: '' };
       acc[id][el.getAttribute('data-k')] = el.value;
+      /* Typing the account is what lets the website switch turn on: that
+         row's website half and the preview follow every keystroke. */
+      var i = -1;
+      draft().methods.forEach(function (m, n) { if (m.id === id) i = n; });
+      if (i > -1) paintWebRow(i);
+      paintWeb();
+      paintPayChrome();
     };
+    CHANGES['dks-cod'] = function (el) {
+      draft().webCod = !!el.checked;
+      repaintMethods();
+    };
+
+    /* A colour for the method's button on the website. One of the palette's,
+       or none — never a free hex, which is how a white button on a white
+       page happens. */
+    ACTIONS['dks-color'] = function (el) {
+      var i = Number(el.getAttribute('data-i'));
+      var m = draft().methods[i];
+      if (!m) return;
+      var v = el.getAttribute('data-v') || '';
+      /* No colour is NO KEY, the way the server stores it — a null here
+         would read as an unsaved change that is not one. */
+      if (HEX.test(v)) m.color = v; else delete m.color;
+      paintWebRow(i);
+      paintWeb();
+      paintPayChrome();
+      var again = document.querySelector('#dksW-' + i + ' [data-act="dks-color"][data-v="' + v + '"]');
+      if (again) { try { again.focus({ preventScroll: true }); } catch (e) { again.focus(); } }
+    };
+
+    ACTIONS['dks-web-check'] = function () { checkWeb(false); };
+    ACTIONS['pay-retry'] = function () { payErr = null; if (typeof render === 'function') render(); };
 
     /* "Add one in Settings", from the office, the Assign dialog and the
        handover picker: straight to the companies list, already open, rather
@@ -2969,8 +3398,10 @@ var Desk = (function () {
       var k = el.getAttribute('data-k');
       var d = draft();
       if (k === 'methods') {
+        /* A new method starts OFF the website: going on it is a decision,
+           made on the row once the account is written in both languages. */
         d.methods.push({ id: makeId('method', d.methods.map(function (m) { return m.id; })),
-          en: '', ar: '', ref: true, drawer: false, till: false, desk: true, debt: true, active: true });
+          en: '', ar: '', ref: true, drawer: false, till: false, desk: true, debt: true, active: true, web: false });
       } else if (k === 'companies') {
         d.companies.push({ id: makeId('company', d.companies.map(function (c) { return c.id; })),
           en: '', ar: '', kind: 'office', phone: '', active: true });
@@ -3010,17 +3441,44 @@ var Desk = (function () {
         toast(t('setg_delivery'), t(k === 'companies' ? 'dks_need_name_c' : 'dks_need_name_m'), 'warn', 5000);
         return;
       }
-      if (k === 'methods') body.methods = d.methods;
+      /* A method asked onto the website without its account in both
+         languages: said here, on the row's own words, before the server
+         refuses the same thing in English. */
+      if (k === 'methods') {
+        var stuck = d.methods.filter(function (m) {
+          return m.web === true && m.active !== false && m.desk && webWhy(m);
+        })[0];
+        if (stuck) {
+          toast(t('dks_methods'), methodName(stuck.id) + ' · ' + t('dks_web_why_' + webWhy(stuck)), 'warn', 7000);
+          return;
+        }
+      }
+      /* The methods, their accounts and the cash-on-delivery switch travel as
+         ONE request, so the one transaction writes all three or none. */
+      if (k === 'methods') { body.methods = d.methods; body.accounts = d.accounts || {}; body.webCod = d.webCod !== false; }
       else if (k === 'companies') body.companies = d.companies;
       else if (k === 'prices') body.prices = d.prices;
       else body.accounts = d.accounts || {};
 
+      el.disabled = true;
       API.put('/api/delivery/settings', body).then(function (r) {
+        /* The draft is shared by the Payment methods page and the Settings
+           folds: a Save keeps whatever the OTHER place has typed and not yet
+           saved, rather than wiping it with the server's copy. */
+        var old = d;
         boot.settings = r.settings;
         setDraft = JSON.parse(JSON.stringify(r.settings));
-        toast(t('setg_delivery'), t('dks_saved'), 'ok', 3000);
+        freezeWeb(setDraft.methods, setDraft.accounts || {});
+        if (k !== 'methods') { setDraft.methods = old.methods; setDraft.accounts = old.accounts; setDraft.webCod = old.webCod; }
+        if (k !== 'companies') setDraft.companies = old.companies;
+        if (k !== 'prices') setDraft.prices = old.prices;
+        toast(t('setg_delivery'), t(k === 'methods' ? 'dks_saved_web' : 'dks_saved'), 'ok', 3000);
         renderKeepScroll();
+        /* Straight to the cloud, then read it back: the panel says whether
+           the website shows it, rather than the toast guessing. */
+        if (k === 'methods') checkWeb(true);
       }).catch(function (err) {
+        el.disabled = false;
         toast(t('setg_delivery'), (err.message || API.friendly(err)) +
           (err.detail && err.detail.path ? ' · ' + err.detail.path : ''), 'err', 8000);
       });
@@ -3042,6 +3500,9 @@ var Desk = (function () {
     owns: owns,
     scanned: scanned,
     settingsCards: settingsCards,
+    /* The Payment methods page (`#payments`). */
+    payView: payView,
+    payAfter: payAfter,
 
     /* FIX 05 — the two drop lists, for the one route-change cleanup. Both
        are drawn inside the office's own panel, so leaving the screen takes

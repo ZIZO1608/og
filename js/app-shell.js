@@ -47,6 +47,7 @@ var NAV = [
   { id: 'warehouse',  key: 'nav_warehouse', group: 'main', icon: 'M3 20V9l9-5 9 5v11M7 20v-7h10v7' },
   { id: 'shelfmap',   key: 'nav_shelfmap', group: 'main', icon: 'M3 5h18v6H3zM3 13h18v6H3zM9 5v6M15 5v6M9 13v6M15 13v6' },
   { id: 'money',      key: 'nav_money',     group: 'main', icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4' },
+  { id: 'payments',   key: 'nav_payments',  group: 'main', icon: 'M3 6h18v12H3zM3 10h18M7 15h4M15 15h2' },
   { id: 'desk',       key: 'nav_desk',      group: 'ops',  icon: 'M3 7h18v4H3zM5 11v9h14v-9M9 7V4h6v3M10 15h4' },
   { id: 'deliveries', key: 'nav_deliveries',group: 'ops',  icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
   { id: 'safeers',    key: 'nav_safeers',   group: 'ops',  icon: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M12 20v-1a5 5 0 0 1 10 0v1' },
@@ -89,6 +90,10 @@ var NAV_PERM = {
      what every customer said, and the partner never reaches any of this. */
   reviews: 'delivery.desk',
   weborders: 'delivery.web',
+  /* The shop's payment methods, their accounts and what the website offers:
+     the same gate as every route behind the page (PUT /api/delivery/settings,
+     /api/web-checkout). */
+  payments: 'config.write',
   /* 060 — the delivery team: owner, developer, manager. A safeer's own
      tasks reach him on his home screen instead. */
   safeers: 'safeer.read',
@@ -296,7 +301,7 @@ var ROLE_TABS = {
 var MORE_GROUPS = [
   { key: 'nav_g_sell',  ids: ['pos', 'desk', 'weborders', 'customers', 'deliveries', 'safeers', 'reviews'] },
   { key: 'nav_g_stock', ids: ['products', 'warehouse', 'shelfmap', 'labels', 'print'] },
-  { key: 'nav_g_money', ids: ['money', 'reports'] },
+  { key: 'nav_g_money', ids: ['money', 'payments', 'reports'] },
   { key: 'nav_g_shop',  ids: ['settings'] }
 ];
 

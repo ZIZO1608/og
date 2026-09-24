@@ -20,7 +20,10 @@ const MAX_BODY = 1024 * 1024;   // 1 MB. Nothing this API accepts is close.
 /* Read and parse a JSON body. Rejects anything oversized as it streams rather
    than after buffering it, so a large upload cannot exhaust memory before the
    limit is noticed. */
-export function readJson(req) {
+/* `max` is for the one route that carries a product photo at website size
+   (066): a 1600 px JPEG as a data URL is most of a megabyte on its own, plus
+   its small copy. Everything else keeps the megabyte. */
+export function readJson(req, { max = MAX_BODY } = {}) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
@@ -29,7 +32,7 @@ export function readJson(req) {
     req.on('data', (c) => {
       if (refused) return;                       /* drained, not kept */
       size += c.length;
-      if (size > MAX_BODY) {
+      if (size > max) {
         /* SAY SO, THEN HANG UP (audit 06). This used to destroy the socket on
            the spot, so the sender got a connection reset — which the app
            reports as "offline" — instead of the 413 this promise carries.

@@ -79,7 +79,13 @@
 
       <div class="handover" id="handover" hidden></div>
       <div class="verdict" id="verdict" hidden></div>
-      <div class="addrs" id="addrs" hidden></div>
+
+      <!-- Panel polish. Five lights for what a phone depends on, then the two
+           addresses a phone is given, as QR codes. Everything in these two
+           sections only READS: a light that is not green says what to do. -->
+      <section class="lights" id="lights" hidden aria-live="polite"></section>
+      <section class="links" id="links" hidden></section>
+
       <div class="notices" id="notices" hidden></div>
       <div class="cloudline" id="cloudline" hidden></div>
       <div class="conn" id="connShop"></div>
@@ -133,7 +139,11 @@
 
 <div id="refresh" class="rf" hidden role="dialog" aria-modal="true" aria-live="polite"></div>
 <div id="ask" class="ask" hidden role="dialog" aria-modal="true"></div>
+<!-- One QR filling the screen, for pointing a phone at the laptop. -->
+<div id="qrFull" class="qfull" hidden role="dialog" aria-modal="true"></div>
 <div id="toasts" class="toasts"></div>
+<!-- The A6 cards. Filled when Print is pressed; drawn only on paper. -->
+<div id="printArea" class="print-area" aria-hidden="true"></div>
 
 <script src="/ui/i18n.js"></script>
 <!-- The shop's own encoders, served by the panel. js/codes.js already holds a

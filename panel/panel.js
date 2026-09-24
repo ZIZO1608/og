@@ -22,7 +22,7 @@
 import { createServer } from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync, createWriteStream } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, networkInterfaces } from 'node:os';
 import { dirname, join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
@@ -34,11 +34,14 @@ import { verifyPassword } from '../server/lib/auth.js';
 import * as Vault from '../server/lib/credvault.js';
 import * as TLS from '../server/lib/tls.js';
 import { lanAddresses } from '../server/lib/net.js';
+import * as Links from './lib/links.js';
+import * as Lights from './lib/lights.js';
 
 /* The shop's own server/.env, read the way the server reads it, so the
    panel's idea of which port to check is never a second guess at it. */
 loadServerEnv();
 const SHOP_PORT = Number(process.env.OG_PORT || 8090);
+const HTTPS_PORT = Number(process.env.OG_HTTPS_PORT || 8443);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -70,7 +73,11 @@ const state = {
   who: null,       // who has the shop open, asked for before Stop
   dev: null,       // { who, until } while the developer section is unlocked
   connections: [], // the Connections card: { id, state, code, args, at }
-  connChecking: false
+  connChecking: false,
+  links: null,     // the two addresses a phone is given — see panel/lib/links.js
+  lights: [],      // the five status lights — see panel/lib/lights.js
+  lightsAt: 0,
+  lightsChecking: false
 };
 
 let child = null;  // the shop
@@ -499,6 +506,149 @@ async function checkConnections(only) {
   pushState();
 }
 
+/* ============================================= the addresses and the lights
+   Panel polish (24 Sep 2026). The Shop screen gives a phone two addresses —
+   the Wi-Fi one, which works with the internet down, and the public one —
+   as QR codes, and shows five lights for what those two depend on. The
+   rules live in panel/lib/links.js and panel/lib/lights.js, where they are
+   tested; this is only the wiring.
+
+   EVERY CHECK HERE READS. Nothing in this block starts or stops the shop,
+   makes a certificate or writes a setting: a light that is amber says what
+   to do, and a person does it. It runs every fifteen seconds while a window
+   is open to read it, and not at all while the panel sits in the tray. */
+
+/* The one thing the panel remembers between sessions: which address the
+   Wi-Fi code shows, when somebody chose one. Beside panel.log, not in the
+   repository — it is a fact about this laptop. */
+const PREFS = join(LOG_DIR, 'panel-prefs.json');
+function readPrefs() {
+  try { return JSON.parse(readFileSync(PREFS, 'utf8')) || {}; } catch { return {}; }
+}
+function writePrefs(p) {
+  try { mkdirSync(LOG_DIR, { recursive: true }); writeFileSync(PREFS, JSON.stringify(p, null, 2) + '\n'); }
+  catch { /* best-effort: the choice still holds until the panel closes */ }
+}
+let lanPick = readPrefs().lanPick || null;
+
+function readConfigValue(key) {
+  const d = readOnlyDb();
+  try { const r = d && d.prepare('SELECT value FROM config WHERE key = ?').get(key); return r ? r.value : null; }
+  catch { return null; }
+  finally { try { d && d.close(); } catch { /* closed */ } }
+}
+
+/* Whether the shop serves — or, while closed, WOULD serve — the padlock.
+   The running shop's own word when there is one. */
+function expectSecure() {
+  if (state.ready) return !!state.ready.secure;
+  return TLS.have() && process.env.OG_HTTPS !== '0';
+}
+
+function computeLinks() {
+  const ifaces = networkInterfaces();
+  const names = {};
+  for (const [name, list] of Object.entries(ifaces)) {
+    for (const a of list || []) if (a && a.family === 'IPv4') names[a.address] = name;
+  }
+  const meta = TLS.have() ? TLS.meta() : null;
+  const ranked = Links.rankAddresses(lanAddresses(), {
+    names,
+    tunnel: String(process.env.OG_TUNNEL_ADDR || '').trim(),
+    certIps: meta && Array.isArray(meta.ip) ? meta.ip : null
+  });
+  const address = Links.pickAddress(ranked, lanPick);
+  const chosen = ranked.find((r) => r.address === address) || null;
+  const secure = expectSecure();
+  return {
+    secure,
+    lan: chosen ? {
+      address,
+      url: Links.shopUrl(address, { secure, httpsPort: HTTPS_PORT, httpPort: SHOP_PORT }),
+      shop: chosen.shop,
+      covered: chosen.covered,
+      picked: address === lanPick
+    } : null,
+    candidates: ranked.map((r) => ({ address: r.address, name: r.name, shop: r.shop, virtual: r.virtual, covered: r.covered })),
+    public: Links.publicLink(readConfigValue('shop.public_url')),
+    here: secure ? 'https://localhost:' + HTTPS_PORT : 'http://localhost:' + SHOP_PORT
+  };
+}
+
+let lightsRun = null;
+function lightsTick() {
+  if (lightsRun) return lightsRun;
+  state.lightsChecking = true;
+  lightsRun = (async () => {
+    try {
+      const links = computeLinks();
+      state.links = links;
+      const peer = String(process.env.OG_PROXY_ADDR || '').trim() || Lights.DEFAULT_PEER;
+      const tunnelAddr = String(process.env.OG_TUNNEL_ADDR || '').trim();
+      const [http, https, reply, pub] = await Promise.all([
+        Lights.httpHealth('http://127.0.0.1:' + SHOP_PORT + '/api/health', { timeoutMs: 2500 }),
+        links.secure ? Lights.localHttps(HTTPS_PORT, { timeoutMs: 2500 }) : Promise.resolve(null),
+        Lights.ping(peer, { timeoutMs: 1500 }),
+        Lights.httpHealth(links.public.url + '/api/health', { timeoutMs: 6000 })
+      ]);
+      const at = Date.now();
+      const next = [
+        Lights.serverLight({ server: state.server, http, https, httpsExpected: links.secure, httpPort: SHOP_PORT, httpsPort: HTTPS_PORT }),
+        Lights.wifiLight({ lan: links.lan, secure: links.secure, certExists: TLS.have() }),
+        Lights.tunnelLight({
+          peer,
+          configured: !!(process.env.OG_PROXY_ADDR || tunnelAddr),
+          localAddr: tunnelAddr || null,
+          localUp: tunnelAddr ? Lights.hasAddress(networkInterfaces(), tunnelAddr) : null,
+          reply
+        }),
+        cloudNow(at),
+        Lights.publicLight({ url: links.public.url, res: pub, shopUp: !!(http && http.ok), ours: lanAddresses().map((a) => a.address) })
+      ].map((l) => ({ ...l, at }));
+      /* A colour that CHANGES is written to panel.log, so "the public light
+         was red at three o'clock" can be answered after the window closed.
+         Steady states are not: that would be a line every fifteen seconds. */
+      for (const l of next) {
+        const was = state.lights.find((x) => x.id === l.id);
+        if (was && was.state !== l.state) say('  Status: ' + l.id + ' ' + was.state + ' -> ' + l.state + ' (' + l.code + ')', l.state === 'bad' ? 'err' : 'note');
+      }
+      state.lights = next;
+      state.lightsAt = at;
+    } catch (e) {
+      say('  The status check itself failed: ' + e.message, 'err');
+    } finally {
+      state.lightsChecking = false;
+      lightsRun = null;
+      pushState();
+    }
+  })();
+  return lightsRun;
+}
+
+function cloudNow(at) {
+  return Lights.cloudLight(state.mirror, { running: !!child, foreign: !child && !!(state.ready && state.ready.foreign), now: at });
+}
+
+/* The cloud light follows the mirror's own messages between ticks: it costs
+   nothing, and the server says something every few seconds while it is open. */
+function refreshCloudLight() {
+  const i = state.lights.findIndex((l) => l.id === 'cloud');
+  if (i < 0) return;
+  const at = Date.now();
+  state.lights[i] = { ...cloudNow(at), at };
+}
+
+/* After the shop opens or closes, the lights should not wait up to fifteen
+   seconds to agree with the headline. */
+let lightsSoonTimer = null;
+function lightsSoon(ms = 700) {
+  if (lightsSoonTimer) return;
+  lightsSoonTimer = setTimeout(() => { lightsSoonTimer = null; if (watchers.size) lightsTick(); }, ms);
+  lightsSoonTimer.unref();
+}
+
+setInterval(() => { if (watchers.size) lightsTick(); }, Lights.EVERY_MS).unref();
+
 /* ------------------------------------------------------------- the steps */
 
 /* What opening the shop actually CONSISTS of, in the order this file does it.
@@ -735,6 +885,7 @@ async function startServer() {
       for (const id of ['checks', 'padlock', 'printers', 'cloud']) step(id, 'skip', { code: 'foreign' });
       step('server', 'skip', { code: 'foreign' });
       step('open', 'ok', { code: 'open_foreign', shop: health.shop || null });
+      lightsSoon();
       pushState();
       say('');
       say('  The shop is already open - started somewhere else, not from here.', 'note');
@@ -796,12 +947,14 @@ async function startServer() {
       pushState();
       /* the Connections card, now that there is a shop to ask — never waited on */
       setTimeout(() => { checkConnections().catch(() => {}); }, 1500);
+      lightsSoon();
       return;
     }
     if (m.type === 'mirror') {
       const before = deniedSig(state.mirror);
       state.mirror = m.mirror;
       stepFromMirror(m.mirror);
+      refreshCloudLight();
       /* the Connections row follows the refused-table list the moment it changes */
       if (deniedSig(m.mirror) !== before) checkConnections('mirror').catch(() => {});
       return pushState();
@@ -848,6 +1001,8 @@ async function startServer() {
     }
     /* the Connections card's first two rows are facts about this process */
     if (state.connections.length) checkConnections('server').then(() => checkConnections('mirror')).catch(() => {});
+    refreshCloudLight();
+    lightsSoon();
     pushState();
     say('');
     const how = code ? '  (exit ' + code + ')' : signal ? '  (' + signal + ')' : '';
@@ -1322,8 +1477,12 @@ const server = createServer(async (req, res) => {
       Connection: 'keep-alive'
     });
     res.write('retry: 2000\n\n');
+    /* The addresses are drawn from the first frame; the lights follow a
+       moment later, because two of them go out over the network. */
+    try { state.links = computeLinks(); } catch { /* drawn on the first tick instead */ }
     res.write('event: hello\ndata: ' + JSON.stringify({ state: snapshot(), lines: devOn() ? LINES : [], jobs: catalogue() }) + '\n\n');
     watchers.add(res);
+    lightsSoon(50);
     const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* gone */ } }, 20000);
     beat.unref();
     req.on('close', () => {
@@ -1351,7 +1510,7 @@ const server = createServer(async (req, res) => {
 
 /* THE GATE. What a shopkeeper may do without the developer unlock; everything
    else is refused HERE, whatever the window drew — a hand-sent POST included. */
-const PUBLIC_ACTIONS = new Set(['start', 'stop', 'restart', 'refresh', 'open', 'who', 'lock', 'unlock', 'connections', 'devstate']);
+const PUBLIC_ACTIONS = new Set(['start', 'stop', 'restart', 'refresh', 'open', 'who', 'lock', 'unlock', 'connections', 'devstate', 'lights', 'lanpick']);
 
 async function ask(action, args) {
   if (action === 'unlock') return devAuth(args.username, args.password);
@@ -1360,6 +1519,24 @@ async function ask(action, args) {
   if (action === 'connections') {
     const only = args.only && CONN_IDS.includes(args.only) ? args.only : null;
     checkConnections(only).catch(() => {});
+    return { ok: true };
+  }
+  /* The status lights, now rather than at the next tick. Read-only. */
+  if (action === 'lights') { lightsTick(); return { ok: true }; }
+  /* WHICH ADDRESS THE WI-FI CODE SHOWS, when the laptop has several and the
+     one the panel chose is not the one the phones are on. Public, because
+     it changes nothing but a picture, and only ever to one of this laptop's
+     own addresses: anything else is refused rather than put in a code.
+     An empty address goes back to the panel's own choice. */
+  if (action === 'lanpick') {
+    const a = String(args.address || '').trim();
+    if (a && !computeLinks().candidates.some((c) => c.address === a)) return { ok: false, code: 'no_address' };
+    lanPick = a || null;
+    writePrefs({ ...readPrefs(), lanPick });
+    say('  The Wi-Fi code now shows ' + (lanPick || 'the address the panel chooses') + '.', 'note');
+    state.links = computeLinks();
+    pushState();
+    lightsTick();
     return { ok: true };
   }
   /* The public jobs are the two printer tests and nothing else. The handover

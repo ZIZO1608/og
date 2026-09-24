@@ -95,7 +95,10 @@ export function settings(d = get()) {
     countries: arr(cfgJson(d, 'delivery.countries', [])),
     prices: arr(cfgJson(d, 'delivery.prices', [])),
     wh: cfg(d, 'delivery.wh') || 'store',
-    print: cfg(d, 'delivery.print') || 'slip'
+    print: cfg(d, 'delivery.print') || 'slip',
+    /* Cash on delivery on the WEBSITE (031). Missing is on — the website
+       offered it before the switch existed. */
+    webCod: cfg(d, 'web.cod') !== '0'
   };
 }
 
@@ -1187,7 +1190,53 @@ function methodUsed(d, id) {
          hit('SELECT 1 FROM order_payments WHERE method = ? LIMIT 1');
 }
 
-function cleanMethods(d, list, current, bad) {
+/* THE WEBSITE'S RULE, the laptop's half. A method is offered on the
+   website's checkout only when somebody switched it on there AND a customer
+   could actually pay it: switched on in the shop, not one of the till's own
+   bookkeeping methods, and with the account written in BOTH languages — the
+   website is Arabic first with English one tap away, and half a sentence in
+   one of them is how a customer sends money to the wrong place.
+   server/supabase/031_web_payments.sql (web.transfer_methods) is the cloud's
+   half of the same rule; lib/webcheckout.js compares the two. Keep all three
+   in step. Null when the method may go on the website. */
+export function webProblem(m, accounts) {
+  if (!m || SYSTEM_METHODS[m.id] || m.system) return 'system';
+  if (m.active === false) return 'off';
+  /* A website order is accepted at the ORDER DESK, which records the
+     transfer on this method — one the desk cannot take could never be
+     accepted as paid (Card is seeded that way). */
+  if (!m.desk) return 'no_desk';
+  const a = accounts && typeof accounts === 'object' ? accounts[m.id] : null;
+  if (!a || !String(a.en || '').trim()) return 'no_en';
+  if (!String(a.ar || '').trim()) return 'no_ar';
+  return null;
+}
+
+/* Is it on the website? `web` missing is a list saved before the switch
+   existed: 030's rule (any account text puts it on) still holds for it, so
+   the live site did not lose its methods the day this shipped. It survives a
+   Save ONLY for a method that rule has on the website at that moment —
+   cleanMethods writes every other one OFF — so typing an account for a
+   WhatsApp message can never put a method on the website by itself. */
+export function onWeb(m, accounts) {
+  if (!m || SYSTEM_METHODS[m.id] || m.system || m.active === false || !m.desk) return false;
+  if (m.web === true) return !webProblem(m, accounts);
+  if (m.web === false) return false;
+  const a = accounts && typeof accounts === 'object' ? accounts[m.id] : null;
+  return !!(a && typeof a === 'object' && (String(a.en || '').trim() || String(a.ar || '').trim()));
+}
+
+const WEB_WHY = {
+  system: 'is part of how the till works and is never offered on the website',
+  off: 'is switched off — switch it on first',
+  no_desk: 'cannot be taken at the delivery office, which is where a website order is accepted — switch Office on first',
+  no_en: 'needs its account written in English before it can go on the website',
+  no_ar: 'needs its account written in Arabic before it can go on the website'
+};
+
+const HEX = /^#[0-9a-f]{6}$/;
+
+function cleanMethods(d, list, current, bad, accounts, savedAccounts) {
   if (!Array.isArray(list)) throw bad('methods', 'the payment methods must be a list');
   const seen = new Set();
   const out = list.map((m, i) => {
@@ -1208,6 +1257,31 @@ function cleanMethods(d, list, current, bad) {
       active: m.active !== false
     };
     if (SYSTEM_METHODS[id]) Object.assign(row, SYSTEM_METHODS[id], { system: true });
+    else {
+      if (m.web !== undefined) row.web = m.web === true;
+      else {
+        /* Not sent: a list saved before the switch existed. It keeps 030's
+           rule only while that rule has it on the website RIGHT NOW (judged
+           on the accounts as they were before this Save); every other
+           method is written OFF, so nothing reaches the website that nobody
+           switched on. */
+        const was = current.find((x) => x && x.id === id);
+        if (!(was && was.web === undefined && onWeb(was, savedAccounts))) row.web = false;
+      }
+      /* A method switched off in the shop, or taken away from the order
+         desk, leaves the website with it — and coming back is a fresh
+         decision, never automatic. */
+      if (row.web !== false && (!row.active || !row.desk)) row.web = false;
+      if (row.web) {
+        const why = webProblem(row, accounts);
+        if (why) throw bad(`${at}.web`, `${row.en} ${WEB_WHY[why]}`);
+      }
+      if (m.color !== undefined && m.color !== null && m.color !== '') {
+        const c = String(m.color).trim().toLowerCase();
+        if (!HEX.test(c)) throw bad(`${at}.color`, `${row.en}: a colour is written #rrggbb`);
+        row.color = c;
+      }
+    }
     return row;
   });
 
@@ -1326,12 +1400,28 @@ export function saveSettings(patch) {
     const currencies = new Set(d.prepare('SELECT code FROM currencies').all().map((r) => r.code));
     const writes = {};
 
-    if (patch.methods !== undefined) writes['pay.methods'] = cleanMethods(d, patch.methods, s.methods, bad);
+    /* The accounts first: whether a method may be on the website depends on
+       them, and a patch carrying both is judged against what it will write,
+       not against what it is replacing. */
+    if (patch.accounts !== undefined) writes['pay.accounts'] = cleanAccounts(patch.accounts, bad);
+    const accounts = writes['pay.accounts'] ? JSON.parse(writes['pay.accounts']) : s.accounts;
+    if (patch.methods !== undefined) {
+      writes['pay.methods'] = cleanMethods(d, patch.methods, s.methods, bad, accounts, s.accounts);
+    } else if (writes['pay.accounts']) {
+      /* Details cleared under a method that is on the website: refused, never
+         a quiet switch-off — the owner decides what customers are offered. */
+      s.methods.forEach((m, i) => {
+        if (m && m.web === true && m.active !== false && m.desk) {
+          const why = webProblem(m, accounts);
+          if (why) throw bad(`methods[${i}].web`, `${m.en || m.id} ${WEB_WHY[why]}`);
+        }
+      });
+    }
+    if (patch.webCod !== undefined) writes['web.cod'] = patch.webCod === false ? '0' : '1';
     if (patch.companies !== undefined) writes['delivery.companies'] = cleanCompanies(d, patch.companies, bad);
     if (patch.countries !== undefined) writes['delivery.countries'] = cleanCountries(patch.countries, currencies, bad);
     const countries = writes['delivery.countries'] ? JSON.parse(writes['delivery.countries']) : s.countries;
     if (patch.prices !== undefined) writes['delivery.prices'] = cleanPrices(patch.prices, countries, currencies, bad);
-    if (patch.accounts !== undefined) writes['pay.accounts'] = cleanAccounts(patch.accounts, bad);
     if (patch.wh !== undefined) {
       if (!d.prepare('SELECT 1 FROM warehouses WHERE id = ?').get(String(patch.wh))) {
         throw bad('wh', 'there is no such place');

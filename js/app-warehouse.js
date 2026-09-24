@@ -707,24 +707,12 @@ function whAddTab() {
   h += '<div class="card"><div class="card-head"><h3>' + t('tab_add') + '</h3>' +
     '<div class="card-actions muted small">' + t('matrix_hint') + '</div></div><div class="card-body">';
 
-  h += '<div class="grid" style="grid-template-columns:150px minmax(0,1fr);gap:16px;align-items:start">';
-
-  /* Three ways in, because people reach for different ones: click to browse,
-     drag a file onto the square, or just paste a screenshot. The hidden file
-     input is the real control — the box is its label. */
-  h += '<div><span class="lbl">' + t('image') + '</span>' +
-    '<div class="upload-box' + (OG.wh.imgSrc ? ' has-img' : '') + '" id="whDrop" data-act="wh-image">' +
-      (OG.wh.imgSrc
-        ? '<img class="up-img" src="' + OG.wh.imgSrc + '" alt="">' +
-          '<span class="up-swap">' + t('up_swap') + '</span>' +
-          '<button class="up-x" data-act="wh-image-clear" title="' + esc(t('remove')) + '">✕</button>'
-        : '<span class="up-empty">' +
-            '<svg viewBox="0 0 24 24" stroke-linecap="square">' +
-              '<path d="M3 16l5-5 4 4 3-3 6 6M3 5h18v14H3zM8.5 9.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></svg>' +
-            '<b>' + t('up_pick') + '</b><small>' + t('up_hint') + '</small></span>') +
-    '</div>' +
-    '<input type="file" id="whFile" accept="image/*" hidden>' +
-  '</div>';
+  /* THE ONE PICTURE BOX THAT STOOD HERE IS GONE (066). A product's photos
+     belong to its colours now — the model wearing it, then the product on
+     its own — and each colour card below carries its own slots, one-colour
+     products included. A picture pasted onto this form still lands: in the
+     first colour's first empty slot (takeProductImage → Photos). */
+  h += '<div>';
 
   /* WHAT THE FORM ASKS FIRST, AND WHAT IT ASKS AT ALL (night shift 02).
 

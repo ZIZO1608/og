@@ -40,6 +40,8 @@ var CHANGES = {
   'prod-type': function (el) { OG.prod.type = el.value; render(); },
   'prod-health': function (el) { OG.prod.health = el.value; render(); },
   'prod-arch': function (el) { OG.prod.arch = el.value; render(); },
+  /* 066 — products whose photos are not all there, or are. */
+  'prod-photos': function (el) { OG.prod.photos = el.value; render(); },
 
   /* The live line under the price box — never a render: the box holds a
      caret and half a number. */

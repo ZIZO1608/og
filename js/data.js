@@ -2808,6 +2808,11 @@ var DB = {
         colours: (p.colours || []).map(function (c) {
           return { id: c.id, nameEn: c.nameEn, nameAr: c.nameAr, hex: c.hex || '', imageUrl: c.imageUrl || null };
         }),
+        /* 066 — every photo of every colour, the model first (js/photos.js). */
+        photos: (p.photos || []).map(function (x) {
+          return { id: x.id, colourId: x.colourId, kind: x.kind, url: x.url, thumbUrl: x.thumbUrl || x.url,
+                   width: x.width || null, height: x.height || null };
+        }),
         costPrice: toBase(p.cost_price, p.currency),
         sellingPrice: toBase(p.selling_price, p.currency),
         /* Kept beside the converted figures rather than instead of them: a

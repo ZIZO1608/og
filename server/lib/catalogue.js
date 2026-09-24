@@ -15,6 +15,7 @@ import { get, nowIso, tx, logChange } from './db.js';
 import * as Categories from './categories.js';
 import * as Stock from './stock.js';
 import { foldName } from './text.js';
+import * as Photos from './photos.js';
 
 /* Currency codes come from the database, so adding one is a migration rather
    than an edit here. */
@@ -189,7 +190,11 @@ export function list({ includeHidden = false } = {}) {
     (bySize[v.product_id] ??= []).push({ ...v, wh: byWh[v.sku] ?? {} });
   }
 
-  return rows.map(p => ({ ...p, colours: colours[p.id] ?? [], variants: bySize[p.id] ?? [] }));
+  /* 066 — every photo of every colour, model first. Not sensitive: the same
+     files are on a public bucket and on the website. */
+  const photos = Photos.byProduct();
+  return rows.map(p => ({ ...p, colours: colours[p.id] ?? [], variants: bySize[p.id] ?? [],
+                          photos: photos[p.id] ?? [] }));
 }
 
 /* ---- colours (058) -------------------------------------------------------
@@ -331,16 +336,6 @@ export function updateColour(id, { nameEn, nameAr, hex }, userId) {
   });
 }
 
-export function setColourImage(id, url, userId) {
-  return tx((d) => {
-    const row = d.prepare('SELECT image_url FROM product_colours WHERE id = ?').get(id);
-    if (!row) throw fail('no such colour', 'not_found', 404);
-    d.prepare('UPDATE product_colours SET image_url = ?, updated_at = ? WHERE id = ?').run(url || null, nowIso(), id);
-    logChange('product_colours', id, 'update', userId, null);
-    return { id, previous: row.image_url || null, imageUrl: url || null };
-  });
-}
-
 export function colourById(id) {
   const c = get().prepare('SELECT * FROM product_colours WHERE id = ?').get(id);
   return c ? { id: c.id, productId: c.product_id, nameEn: c.name_en, nameAr: c.name_ar, hex: c.hex, imageUrl: c.image_url } : null;
@@ -376,7 +371,30 @@ export function colourById(id) {
    "this product LEFT the site" — the row simply stops being returned — so a
    site built on deltas would advertise withdrawn goods forever. A few hundred
    products is a small answer; fetch the whole list and replace. */
-function webRow(p, sizes) {
+/* 066 — WHAT THE WEBSITE MAY SHOW IS DECIDED BY THE PHOTOS. A colour goes
+   out only once it has its model photo AND its product photo (the owner's
+   rule); a colour missing either is left out whole — its swatch, its sizes
+   and its stock — and a product with no colour ready is not published at
+   all. Nothing about the shop changes: the till sells it, the labels print.
+
+   `photos` is in the order the website shows them: the model first, the
+   product second, then the extras. Each carries both files — `url` for the
+   product page (at most 1600 px), `thumbUrl` for a grid (at most 480 px) —
+   and the large one's size, so a page can hold the space before it loads. */
+function webPhoto(x) {
+  return { kind: x.kind, url: x.url, thumbUrl: x.thumbUrl, width: x.width, height: x.height };
+}
+
+function webColours(p, photos) {
+  return coloursOf(p.id)
+    .filter((c) => Photos.isReady(photos, c.id))
+    .map((c) => ({ c, photos: photos.filter((x) => x.colourId === c.id).map(webPhoto) }));
+}
+
+function webRow(p, allSizes, ready) {
+  const ids = new Set(ready.map((r) => r.c.id));
+  const sizes = allSizes.filter((v) => ids.has(v.colour_id));
+  const first = ready[0].photos;
   return {
     id: p.id,
     name: p.name,
@@ -386,10 +404,13 @@ function webRow(p, sizes) {
     category: catNames(p.type),
     colorway: p.colorway ?? null,
     madeIn: p.made_in ?? null,
-    /* The shop has no photographs — the app draws a colour block with the
-       product's initials, and that is the whole of its artwork. Sent as-is so
-       a site can draw the same placeholder rather than invent a different one. */
-    image: { bg: p.image_bg ?? null, initials: p.image_initials ?? null, url: p.image_url ?? null },
+    /* The first ready colour's first photo — the model wearing it. `bg` and
+       `initials` stay, for a page that wants a placeholder while it loads. */
+    image: { bg: p.image_bg ?? null, initials: p.image_initials ?? null,
+             url: first[0].url, thumbUrl: first[0].thumbUrl },
+    /* 066 — the first ready colour's photos, for a page that shows one
+       gallery per product. Each colour also carries its own, below. */
+    photos: first,
     /* Minor units of `currency`, with the exponent, because SYP is whole lira
        and USD is cents and a page that divides by 100 for both is wrong half
        the time. Never converted here: the shop prices some goods in dollars,
@@ -398,9 +419,11 @@ function webRow(p, sizes) {
     currency: p.currency,
     minorExp: minorExp(p.currency),
     sizes: sizes.map((v) => ({ size: v.size, sku: v.sku, colourId: v.colour_id ?? null, inStock: v.total > 0 })),
-    /* 058 — each colour, its picture, and which of its sizes are in stock. */
-    colours: coloursOf(p.id).map((c) => ({
-      id: c.id, en: c.nameEn, ar: c.nameAr, hex: c.hex, imageUrl: c.imageUrl,
+    /* 058 — each colour, its photos, and which of its sizes are in stock.
+       Only the colours with both photos (066). `imageUrl` is kept for a site
+       built on v1.1 and is the colour's first photo, the model. */
+    colours: ready.map(({ c, photos }) => ({
+      id: c.id, en: c.nameEn, ar: c.nameAr, hex: c.hex, imageUrl: photos[0].url, photos,
       sizes: sizes.filter((v) => v.colour_id === c.id).map((v) => ({ size: v.size, sku: v.sku, inStock: v.total > 0 }))
     })),
     inStock: sizes.some((v) => v.total > 0),
@@ -439,7 +462,27 @@ export function webList() {
       ORDER BY p.name`
   ).all();
   const sizes = webSizes(rows.map((p) => p.id));
-  return rows.map((p) => webRow(p, sizes[p.id] ?? []));
+  const photos = Photos.byProduct();
+  const out = [];
+  for (const p of rows) {
+    const ready = webColours(p, photos[p.id] ?? []);
+    if (ready.length) out.push(webRow(p, sizes[p.id] ?? [], ready));
+  }
+  return out;
+}
+
+/* For the shop's own screens: how many products the website would show, and
+   how many are held back only by photos. Same rule as webList, one copy. */
+export function webPhotoGap() {
+  const rows = get().prepare(
+    `SELECT p.id FROM products p WHERE p.hidden = 0 AND p.on_web = 1 AND p.demo = 0`
+  ).all();
+  const photos = Photos.byProduct();
+  let shown = 0, waiting = 0;
+  for (const p of rows) {
+    if (webColours(p, photos[p.id] ?? []).length) shown++; else waiting++;
+  }
+  return { shown, waiting };
 }
 
 /* Null for a product that is archived, off the site, demo or simply absent —
@@ -451,7 +494,11 @@ export function webById(id) {
       WHERE p.id = ? AND p.hidden = 0 AND p.on_web = 1 AND p.demo = 0`
   ).get(id);
   if (!p) return null;
-  return webRow(p, webSizes([p.id])[p.id] ?? []);
+  /* A product whose colours are all waiting for photos is "not published",
+     the same 404 as one switched off. */
+  const ready = webColours(p, Photos.ofProduct(p.id));
+  if (!ready.length) return null;
+  return webRow(p, webSizes([p.id])[p.id] ?? [], ready);
 }
 
 export function byId(id) {
@@ -535,26 +582,26 @@ export function remove(id, userId) {
       logChange('variants', sku, 'delete', userId, 'product deleted');
     }
     db.prepare('DELETE FROM variants WHERE product_id = ?').run(id);
+    /* 066 — the photos before the colours they hang on, logged; their files
+       are handed back for the route to take out of the bucket. */
+    const files = Photos.removeForProducts(db, [id], userId);
     for (const c of coloursOf(id)) logChange('product_colours', c.id, 'delete', userId, 'product deleted');
     try { db.prepare('DELETE FROM product_colours WHERE product_id = ?').run(id); } catch { /* before 058 */ }
     db.prepare('DELETE FROM products WHERE id = ?').run(id);
     logChange('products', id, 'delete', userId, 'deleted by hand');
-    return { id, name: p.name, variants: skus.length };
+    return { id, name: p.name, variants: skus.length, files };
   });
 }
 
-/* The picture's address, set by the upload route only - never through
-   `update()`'s EDITABLE list, because a client that could write any URL into
-   an <img> on every till is not a feature. NULL clears it. */
-export function setImage(id, url, userId) {
-  const d = get();
-  const row = d.prepare('SELECT id, image_url FROM products WHERE id = ?').get(id);
-  if (!row) { const e = new Error(`No product with id ${id}.`); e.code = 'not_found'; throw e; }
-  tx(() => {
-    d.prepare('UPDATE products SET image_url = ?, updated_at = ? WHERE id = ?').run(url, nowIso(), id);
-    logChange('products', id, 'update', userId, url ? 'picture' : 'picture removed');
-  });
-  return { id, previous: row.image_url || null, imageUrl: url || null };
+/* products.image_url is not set here any more (066): it is derived from the
+   colours' photos by lib/photos.js, the only writer of it — never through
+   `update()`'s EDITABLE list either, because a client that could write any
+   URL into an <img> on every till is not a feature. */
+
+/* The first colour of a product — where a picture sent without a colour goes. */
+export function firstColourId(productId) {
+  const c = get().prepare('SELECT id FROM product_colours WHERE product_id = ? ORDER BY sort, id LIMIT 1').get(productId);
+  return c ? c.id : null;
 }
 
 /* Attach a scanned code to an existing variant — either a fresh barcode (the

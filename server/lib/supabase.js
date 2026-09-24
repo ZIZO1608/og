@@ -248,11 +248,14 @@ export async function remove(table, match) {
 /* `schema` addresses a function outside `public`: PostgREST takes the schema
    from the Content-Profile header, never from the path — track.inbox_take is
    POST rpc/inbox_take with Content-Profile: track (lib/inbox.js). */
-export async function rpc(fn, args = {}, { schema = null } = {}) {
+/* `timeoutMs` shortens the 30 s deadline for a caller that has a person
+   waiting on a browser request (which gives up at 15 s). */
+export async function rpc(fn, args = {}, { schema = null, timeoutMs = 0 } = {}) {
   const { body } = await call(`rpc/${fn}`, {
     method: 'POST',
     headers: schema ? { 'Content-Profile': schema } : undefined,
-    body: JSON.stringify(args)
+    body: JSON.stringify(args),
+    timeoutMs: timeoutMs || undefined
   });
   return body;
 }

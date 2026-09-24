@@ -26,7 +26,7 @@ var OG = {
      here rather than on the DOM: this screen repaints on every save and
      every live push, and a class put on a node by a click does not survive
      that — the Safeers card menu, one screen along. */
-  prod: { type: '', health: '', arch: 'active', q: '', sort: 'name', dir: 1, filters: false, select: false },
+  prod: { type: '', health: '', arch: 'active', photos: '', q: '', sort: 'name', dir: 1, filters: false, select: false },
   /* img = a colour block, imgSrc = a real photo as a data URL. Only one is
      ever set; imgSrc wins wherever both are checked. */
   /* `place` is which warehouse the Stock tab is showing: 'all' | a warehouse

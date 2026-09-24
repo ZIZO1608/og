@@ -2641,6 +2641,12 @@ body:not([data-portal="yalla"]) [data-sc="camera"] { min-height: 52px; min-width
   body:not([data-portal="yalla"]) label.switch,
   body:not([data-portal="yalla"]) .bk-box,
   body:not([data-portal="yalla"]) .cb-check { min-height: 44px; display: flex; align-items: center; }
+  /* ...but the TRACK stays a 40 x 22 pill in the middle of that 44px. It is
+     `inset: 0` on the label, so the taller label stretched it into a 40 x 44
+     blob with the knob stuck at the top — every switch drawn with <label
+     class="switch"> on a phone (the Settings delivery folds, the Payment
+     methods page) looked broken. Found on the Payment methods page, 24 Sep. */
+  body:not([data-portal="yalla"]) label.switch > i { inset: auto 0; top: 50%; height: 22px; margin-top: -11px; }
 }
 
 /* ==========================================================================
@@ -2864,3 +2870,320 @@ body:not([data-portal="yalla"]) .wo-skel i {
   body:not([data-portal="yalla"]) .wo-foot .btn { flex: 1 1 auto; min-height: 44px; }
   body:not([data-portal="yalla"]) .wo-contact .btn { min-height: 44px; }
 }
+
+/* ==========================================================================
+   PAYMENT METHODS ON THE WEBSITE (031) — js/desk.js methodsCard()
+   Each method's row carries where customers send the money, the switch that
+   puts it on the website, and its colour there; the card ends in a picture
+   of the website's payment step, read back from the cloud. Colours are the
+   owner's data (one of a fixed palette), handed in as --c.
+   ========================================================================== */
+body:not([data-portal="yalla"]) .dks-mrow > .dks-acc-in,
+body:not([data-portal="yalla"]) .dks-mrow > .dks-web { grid-column: 1 / -1; }
+body:not([data-portal="yalla"]) .dks-acc-in {
+  display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+body:not([data-portal="yalla"]) .dks-acc-h {
+  grid-column: 1 / -1; font-size: 11.5px; font-weight: 600; color: var(--muted-foreground);
+}
+body:not([data-portal="yalla"]) .dks-web {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  padding-top: 10px; border-top: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .dks-web-sw {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .dks-web-why { font-size: 12px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .dks-web-why.warn { color: var(--warning); }
+body:not([data-portal="yalla"]) .dks-web-why.ok { color: var(--success); }
+body:not([data-portal="yalla"]) .dks-swatches {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%;
+}
+body:not([data-portal="yalla"]) .dks-sw-h { font-size: 11.5px; font-weight: 600; color: var(--muted-foreground); margin-inline-end: 4px; }
+body:not([data-portal="yalla"]) .dks-swatch {
+  width: 30px; height: 30px; border-radius: var(--radius-full); padding: 0; cursor: pointer;
+  background: var(--c, transparent); border: 2px solid var(--border);
+  box-shadow: 0 0 0 2px transparent; transition: box-shadow var(--t), transform var(--t);
+}
+body:not([data-portal="yalla"]) .dks-swatch:hover { transform: scale(1.06); }
+body:not([data-portal="yalla"]) .dks-swatch.on { border-color: var(--background); box-shadow: 0 0 0 2px var(--foreground); }
+body:not([data-portal="yalla"]) .dks-swatch.none {
+  background: linear-gradient(135deg, transparent 45%, var(--muted-foreground) 45%, var(--muted-foreground) 55%, transparent 55%);
+}
+body:not([data-portal="yalla"]) .dks-swatch:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+body:not([data-portal="yalla"]) .dks-cod {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 14px; margin: 12px 0; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer;
+}
+body:not([data-portal="yalla"]) .dks-cod-t { display: grid; gap: 2px; }
+body:not([data-portal="yalla"]) .dks-cod-t small { font-size: 12px; color: var(--muted-foreground); }
+
+body:not([data-portal="yalla"]) .dks-wp {
+  margin-top: 16px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--card);
+}
+body:not([data-portal="yalla"]) .dks-wp-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 12px; }
+body:not([data-portal="yalla"]) .dks-wp-body { display: grid; gap: 16px; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); align-items: start; }
+body:not([data-portal="yalla"]) .dks-wp-phone {
+  display: grid; gap: 8px; padding: 12px; border-radius: 22px;
+  border: 1px solid var(--border-strong); background: var(--background); box-shadow: var(--shadow-md);
+}
+body:not([data-portal="yalla"]) .dks-wp-bar {
+  text-align: center; font-size: 12px; font-weight: 700; color: var(--muted-foreground);
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .dks-wp-sec { font-size: 11.5px; font-weight: 700; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .dks-wp-m {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-radius: 12px;
+  background: var(--card); border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--c, var(--border-strong));
+}
+body:not([data-portal="yalla"]) .dks-wp-m > span { display: grid; gap: 2px; min-width: 0; }
+body:not([data-portal="yalla"]) .dks-wp-m b { font-size: 13px; }
+body:not([data-portal="yalla"]) .dks-wp-m small { font-size: 11.5px; color: var(--muted-foreground); overflow-wrap: anywhere; }
+body:not([data-portal="yalla"]) .dks-wp-dot {
+  flex: none; width: 12px; height: 12px; margin-top: 3px; border-radius: var(--radius-full);
+  background: var(--c, var(--muted-foreground));
+}
+body:not([data-portal="yalla"]) .dks-wp-none { font-size: 12px; color: var(--muted-foreground); padding: 6px 2px; }
+body:not([data-portal="yalla"]) .dks-wp-cod { font-size: 12px; font-weight: 600; padding: 8px 2px 2px; border-top: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .dks-wp-cod.yes { color: var(--success); }
+body:not([data-portal="yalla"]) .dks-wp-cod.no { color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .dks-wp-side { display: grid; gap: 10px; align-content: start; }
+body:not([data-portal="yalla"]) .dks-wp-st {
+  display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radius); font-size: 13.5px; font-weight: 700;
+  border: 1px solid var(--border); background: var(--background);
+}
+body:not([data-portal="yalla"]) .dks-wp-st > span { display: inline-flex; align-items: center; gap: 8px; }
+body:not([data-portal="yalla"]) .dks-wp-st small { font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .dks-wp-st.ok { color: var(--success); border-color: var(--success-border); background: var(--success-soft); }
+body:not([data-portal="yalla"]) .dks-wp-st.warn { color: var(--warning); border-color: var(--warning-border); background: var(--warning-soft); }
+body:not([data-portal="yalla"]) .dks-wp-st.busy,
+body:not([data-portal="yalla"]) .dks-wp-st.idle { color: var(--foreground); }
+body:not([data-portal="yalla"]) .dks-wp-spin {
+  width: 14px; height: 14px; border-radius: var(--radius-full); flex: none;
+  border: 2px solid var(--border-strong); border-top-color: var(--brand); animation: cbSpin .8s linear infinite;
+}
+body:not([data-portal="yalla"]) .dks-wp-diffs { margin: 0; padding-inline-start: 18px; font-size: 12.5px; display: grid; gap: 4px; }
+body:not([data-portal="yalla"]) .dks-wp-again { justify-self: start; }
+@media (prefers-reduced-motion: reduce) {
+  body:not([data-portal="yalla"]) .dks-wp-spin { animation: none; }
+  body:not([data-portal="yalla"]) .dks-swatch { transition: none; }
+}
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .dks-wp-body { grid-template-columns: minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .dks-acc-in { grid-template-columns: minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .dks-swatch { width: 44px; height: 44px; }
+  body:not([data-portal="yalla"]) .dks-web-sw,
+  body:not([data-portal="yalla"]) .dks-cod { min-height: 44px; }
+  body:not([data-portal="yalla"]) .dks-wp-again { min-height: 44px; }
+}
+
+/* ==========================================================================
+   THE PAYMENT METHODS PAGE (#payments) — js/desk.js payView()
+   The methods on the left, what the website shows pinned beside them, one
+   Save in a bar that stays on the glass. The bar's sticky offset takes back
+   .view's bottom padding exactly as .dk-nav does (96px desk, tab bar + 28px
+   phone) — change .view's padding and these move with it.
+   ========================================================================== */
+body:not([data-portal="yalla"]) .pay-page {
+  display: grid; gap: 24px; align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+}
+body:not([data-portal="yalla"]) .pay-main { min-width: 0; }
+body:not([data-portal="yalla"]) .pay-side { position: sticky; top: 16px; min-width: 0; }
+body:not([data-portal="yalla"]) .pay-side .dks-wp { margin-top: 0; }
+body:not([data-portal="yalla"]) .pay-side .dks-wp-body { grid-template-columns: minmax(0, 1fr); }
+body:not([data-portal="yalla"]) .pay-stats {
+  display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 12px;
+}
+body:not([data-portal="yalla"]) .pay-stat {
+  display: grid; gap: 2px; padding: 12px 16px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--card);
+}
+body:not([data-portal="yalla"]) .pay-stat b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+body:not([data-portal="yalla"]) .pay-stat span { font-size: 12px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .pay-main > .partner-note { margin-bottom: 12px; }
+body:not([data-portal="yalla"]) .pay-bar {
+  position: sticky; bottom: -84px; z-index: 6; margin-top: 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; background: #0D0D10; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: 0 -16px 28px -22px rgb(0 0 0 / .9);
+}
+body:not([data-portal="yalla"]) .pay-bar::after {
+  content: ''; position: absolute; top: calc(100% + 1px); left: -1px; right: -1px; height: 24px;
+  background: var(--background); pointer-events: none;
+}
+body:not([data-portal="yalla"]) .pay-bar-t { font-size: 13px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .pay-bar.dirty .pay-bar-t { color: var(--warning); font-weight: 600; }
+body:not([data-portal="yalla"]) .pay-bar .btn { min-width: 120px; }
+body:not([data-portal="yalla"]) .pay-bar .btn[disabled] { opacity: .45; box-shadow: none; cursor: default; }
+body:not([data-portal="yalla"]) .pay-skel { display: grid; gap: 12px; }
+body:not([data-portal="yalla"]) .pay-skel i {
+  display: block; height: 96px; border-radius: var(--radius); background: var(--card);
+  border: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .pay-link .card-body {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+body:not([data-portal="yalla"]) .pay-link .card-body > div { display: grid; gap: 2px; min-width: 0; }
+body:not([data-portal="yalla"]) .pay-link small { font-size: 12px; color: var(--muted-foreground); }
+@media (max-width: 1200px) {
+  body:not([data-portal="yalla"]) .pay-page { grid-template-columns: minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .pay-side { position: static; }
+  body:not([data-portal="yalla"]) .pay-side .dks-wp-body { grid-template-columns: minmax(0, 280px) minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .pay-bar { bottom: -20px; }
+  body:not([data-portal="yalla"]) .pay-bar .btn { min-height: 44px; }
+  body:not([data-portal="yalla"]) .pay-side .dks-wp-body { grid-template-columns: minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .pay-stat b { font-size: 18px; }
+  body:not([data-portal="yalla"]) .pay-link .btn { min-height: 44px; }
+}
+
+/* ==========================================================================
+   066 — A COLOUR'S PHOTOS (js/photos.js)
+   The manager dialog, the drawer card, the Add-product slots and the mark on
+   the Products list. Slots are 4:5, the shape of a person standing — the
+   model photo is the first thing the website shows. Lime is spent only on a
+   finished colour's tick; a missing photo is amber, the shop's word for
+   "not yet", never red: nothing is broken.
+   ========================================================================== */
+body:not([data-portal="yalla"]) .ph-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px;
+}
+body:not([data-portal="yalla"]) .ph-grid-sm { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+body:not([data-portal="yalla"]) .ph-tile {
+  position: relative; aspect-ratio: 4 / 5; min-width: 0; border-radius: 14px; overflow: visible;
+  border: 1px solid var(--border); background: var(--card); color: var(--foreground);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px; text-align: center; font: inherit;
+}
+body:not([data-portal="yalla"]) button.ph-tile { cursor: pointer; }
+body:not([data-portal="yalla"]) .ph-tile.empty { border-style: dashed; border-color: var(--border-strong); background: var(--subtle); }
+body:not([data-portal="yalla"]) .ph-tile.empty.req { border-color: var(--warning-border); }
+body:not([data-portal="yalla"]) .ph-tile.empty:hover,
+body:not([data-portal="yalla"]) .ph-tile.ph-add:hover { border-color: var(--brand-border); }
+body:not([data-portal="yalla"]) .ph-tile.empty b,
+body:not([data-portal="yalla"]) .ph-tile.ph-add b { font-size: 13px; font-weight: 700; line-height: 1.3; }
+body:not([data-portal="yalla"]) .ph-tile small { font-size: 11.5px; color: var(--muted-foreground); line-height: 1.35; }
+body:not([data-portal="yalla"]) .ph-tile.ph-add { border-style: dashed; background: none; }
+body:not([data-portal="yalla"]) .ph-cam svg { width: 28px; height: 28px; color: var(--warning); display: block; }
+body:not([data-portal="yalla"]) .ph-plus { font-size: 26px; line-height: 1; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ph-img {
+  position: absolute; inset: 0; border-radius: 13px; overflow: hidden; background: #FFFFFF; display: block;
+}
+body:not([data-portal="yalla"]) .ph-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+body:not([data-portal="yalla"]) .ph-tag {
+  position: absolute; top: 8px; inset-inline-start: 8px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: var(--radius-full);
+  background: rgba(10, 10, 12, .78); color: #FFFFFF; font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+body:not([data-portal="yalla"]) .ph-tile.empty .ph-tag { background: var(--muted); color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ph-dots {
+  position: absolute; top: 6px; inset-inline-end: 6px; z-index: 3; width: 32px; height: 32px;
+  border-radius: 10px; border: 0; background: rgba(10, 10, 12, .78); color: #FFFFFF;
+  font-size: 18px; line-height: 1; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .ph-x {
+  position: absolute; top: 6px; inset-inline-end: 6px; z-index: 3; width: 28px; height: 28px;
+  border-radius: 9px; border: 0; background: rgba(10, 10, 12, .78); color: #FFFFFF; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .ph-menu {
+  position: absolute; top: 42px; inset-inline-end: 6px; z-index: 30; min-width: 190px;
+  display: grid; padding: 6px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--popover); box-shadow: var(--shadow-lg);
+}
+body:not([data-portal="yalla"]) .ph-menu button {
+  text-align: start; padding: 9px 10px; border: 0; border-radius: 8px; background: none;
+  color: var(--foreground); font: inherit; font-size: 13px; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .ph-menu button:hover { background: var(--muted); }
+body:not([data-portal="yalla"]) .ph-menu .ph-danger { color: var(--destructive); border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; }
+body:not([data-portal="yalla"]) .ph-menu .ph-danger.armed { background: var(--destructive-soft); font-weight: 700; }
+body:not([data-portal="yalla"]) .ph-tile.busy .ph-img img { opacity: .45; }
+body:not([data-portal="yalla"]) .ph-spin {
+  position: relative; z-index: 2; display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 10px; border-radius: var(--radius-full); background: rgba(10, 10, 12, .8); color: #FFFFFF;
+  font-size: 12px; font-weight: 600;
+}
+body:not([data-portal="yalla"]) .ph-spin i {
+  width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .35);
+  border-top-color: #FFFFFF; animation: phSpin .8s linear infinite;
+}
+@keyframes phSpin { to { transform: rotate(360deg); } }
+
+/* The dialog: a chip per colour, one line saying where this colour stands. */
+body:not([data-portal="yalla"]) .ph-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+body:not([data-portal="yalla"]) .ph-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 12px;
+  border-radius: var(--radius-full); border: 1px solid var(--border); background: var(--card);
+  color: var(--foreground); font: inherit; font-size: 13px; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .ph-chip.on { border-color: var(--foreground); }
+body:not([data-portal="yalla"]) .ph-chip-n { font-size: 11.5px; font-weight: 700; color: var(--warning); }
+body:not([data-portal="yalla"]) .ph-chip-n.ok { color: var(--brand); }
+body:not([data-portal="yalla"]) .ph-state {
+  display: grid; gap: 2px; padding: 10px 12px; margin-bottom: 12px; border-radius: 12px; border: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .ph-state b { font-size: 13.5px; }
+body:not([data-portal="yalla"]) .ph-state span { font-size: 12.5px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ph-state.warn { border-color: var(--warning-border); background: var(--warning-soft); }
+body:not([data-portal="yalla"]) .ph-state.warn b { color: var(--warning); }
+body:not([data-portal="yalla"]) .ph-state.ok b { color: var(--brand); }
+body:not([data-portal="yalla"]) .ph-foot { margin: 12px 0 0; }
+
+/* The drawer card: a row per colour. */
+body:not([data-portal="yalla"]) .ph-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px 12px;
+  padding: 8px 0; border-top: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .ph-row:first-child { border-top: 0; padding-top: 0; }
+body:not([data-portal="yalla"]) .ph-row-name { grid-column: 1 / -1; }
+body:not([data-portal="yalla"]) .ph-strip { display: flex; gap: 6px; align-items: center; }
+body:not([data-portal="yalla"]) .ph-mini {
+  width: 36px; height: 45px; border-radius: 8px; object-fit: cover; background: #FFFFFF; flex: none; display: block;
+}
+body:not([data-portal="yalla"]) .ph-mini-empty {
+  display: grid; place-items: center; background: var(--subtle); border: 1px dashed var(--warning-border);
+  color: var(--muted-foreground); font-size: 11px; font-weight: 700;
+}
+body:not([data-portal="yalla"]) .ph-more { font-size: 12px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ph-row-state { font-size: 12.5px; min-width: 0; }
+body:not([data-portal="yalla"]) .ok-text { color: var(--brand); font-weight: 600; }
+
+/* The Add-product form: the slots under each colour's sizes. */
+body:not([data-portal="yalla"]) .ph-form { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .cf-solo .ph-form { border-top: 0; padding-top: 0; }
+body:not([data-portal="yalla"]) .ph-form-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
+body:not([data-portal="yalla"]) .ph-form-top .lbl { margin: 0; }
+body:not([data-portal="yalla"]) .ph-form .ph-tile.empty b { font-size: 12px; }
+body:not([data-portal="yalla"]) .ph-form .ph-cam svg { width: 22px; height: 22px; }
+body:not([data-portal="yalla"]) .cf-head-sw { align-self: center; justify-self: center; }
+/* The form's tiles are narrow: the remove button goes to the bottom corner,
+   where it cannot sit on the slot's label. */
+body:not([data-portal="yalla"]) .ph-form .ph-x { top: auto; bottom: 6px; }
+
+/* The Products list: the camera beside the website switch. */
+body:not([data-portal="yalla"]) .pr-web { display: inline-flex; align-items: center; gap: 8px; }
+body:not([data-portal="yalla"]) .pr-web-ph { border: 0; background: none; padding: 4px; margin: -4px; cursor: pointer; color: inherit; }
+body:not([data-portal="yalla"]) .ph-mark {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700;
+  color: var(--warning); white-space: nowrap;
+}
+body:not([data-portal="yalla"]) .ph-mark svg { width: 16px; height: 16px; }
+body:not([data-portal="yalla"]) .ph-mark.ok { color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ph-mark.ok svg { color: var(--brand); }
+
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .ph-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  body:not([data-portal="yalla"]) .ph-grid-sm { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body:not([data-portal="yalla"]) .ph-dots { width: 40px; height: 40px; }
+  body:not([data-portal="yalla"]) .ph-x { width: 36px; height: 36px; }
+  body:not([data-portal="yalla"]) .ph-menu button { min-height: 44px; }
+  body:not([data-portal="yalla"]) .ph-row { grid-template-columns: minmax(0, 1fr) auto; }
+  body:not([data-portal="yalla"]) .ph-row .ph-strip { grid-column: 1 / -1; }
+  body:not([data-portal="yalla"]) .ph-row .btn { min-height: 44px; }
+}
+body.rtl .ph-tag, body.rtl .ph-chip, body.rtl .ph-mark, body.rtl .ph-state b { letter-spacing: 0; }

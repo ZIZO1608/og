@@ -61,6 +61,8 @@ const dim  = (m) => console.log(`    ${DIM}${m}${OFF}`);
 const TABLES = [
   { name: 'products',   key: 'id' },
   { name: 'product_colours', key: 'id' },
+  /* 066 — a colour's photos, after the colour they hang on. */
+  { name: 'product_photos', key: 'id' },
   { name: 'variants',   key: 'sku' },
   { name: 'stock',      key: ['sku', 'wh_id'] },
   /* The only repair path for a shelf whose log entry was consumed by a run

@@ -937,7 +937,7 @@ var ACTIONS = {
   /* A chip IS its own undo — pressing it takes that one filter off. */
   'prod-chip-off': function (el) {
     var f = el.getAttribute('data-f');
-    if (f === 'all') { OG.prod.type = ''; OG.prod.health = ''; OG.prod.arch = 'active'; }
+    if (f === 'all') { OG.prod.type = ''; OG.prod.health = ''; OG.prod.arch = 'active'; OG.prod.photos = ''; }
     else if (f === 'arch') OG.prod.arch = 'active';
     else OG.prod[f] = '';
     render();
@@ -1454,14 +1454,6 @@ var ACTIONS = {
       }
     );
   },
-  /* Opens the real file picker. This used to pick a random colour from a
-     palette and toast "Image uploaded", which is why choosing a picture
-     appeared to fail — nothing was ever read from disk. */
-  'wh-image': function () {
-    var input = document.getElementById('whFile');
-    if (input) input.click();
-  },
-
   /* The product drawer's picture: pick a file, shrink it, send it. Same
      reader as the Add-product form, so what the bucket gets is the same
      420 px picture either way. */
@@ -1572,23 +1564,8 @@ var ACTIONS = {
       }
     );
   },
-  'prod-image': function () {
-    var input = document.getElementById('prodFile');
-    if (input) input.click();
-  },
-  'prod-image-clear': function (el) {
-    var id = +el.getAttribute('data-id');
-    Shop.setProductImage(id, null).then(function () {
-      return Shop.reload();
-    }).then(function () { openProductDrawer(id); toast(t('image'), t('img_removed'), 'ok', 2000); })
-      .catch(function (err) { toast(t('image'), API.friendly(err), 'err', 6000); });
-  },
-
-  'wh-image-clear': function () {
-    OG.wh.imgSrc = null;
-    OG.wh.img = null;
-    render();
-  },
+  /* 066 — the drawer's picture opens the product's photos. */
+  'prod-image': function (el) { Photos.open(+el.getAttribute('data-id'), null, { fromDrawer: true }); },
 
   /* Save, then print labels for what was just saved. The old button printed
      BEFORE saving, from barcodes the browser had invented — see the note at
@@ -1741,8 +1718,9 @@ var ACTIONS = {
     var shelfId = (allow('stock.move') && OG.wh.shelfId) ? Number(OG.wh.shelfId) : null;
     var shelfCode = shelfId ? whShelfCode() : '';
     var skus = built.colours.reduce(function (a, c) { return a + c.sizes.length; }, 0);
-    var colourPics = built.colours.map(function (c) { return c.imgSrc || null; });
-    var imgSrc = OG.wh.imgSrc, bg = OG.wh.img;
+    /* 066 — each colour's photos, waiting for the product to exist. */
+    var colourPhotos = built.colours.map(function (c) { return c.photos || null; });
+    var bg = OG.wh.img;
 
     Shop.write(
       function () {
@@ -1778,16 +1756,13 @@ var ACTIONS = {
       function (res) {
         var id = res && (res.productId !== undefined ? res.productId : res.id);
 
-        /* The picture goes up AFTER the row exists, because the bucket path
-           is keyed on the product id. Fire-and-report: the product is saved
-           either way, and a picture that did not land (no internet, no
-           Supabase on this server) is said, not silently dropped - he can
-           add it later from the product drawer. */
-        if (imgSrc && id !== undefined && Shop.live()) uploadProductImage(id, imgSrc);
-        /* Each colour's own photo, once its row exists (the path is keyed on it). */
-        ((res && res.colours) || []).forEach(function (c, i) {
-          if (colourPics[i] && Shop.live()) uploadColourImage(c.id, colourPics[i]);
-        });
+        /* The photos go up AFTER the rows exist, because the bucket path is
+           keyed on the product and the colour (066). Fire-and-report: the
+           product is saved either way, and a photo that did not land (no
+           internet, no Supabase on this server) is said, not silently
+           dropped — it can be added from the product's drawer. res.colours
+           is in the order the form sent them, which is colourPhotos' order. */
+        if (id !== undefined) Photos.sendDrafts(id, res && res.colours, colourPhotos);
 
         /* createWithVariants answers { productId, variants:[{sku,size,barcode}] },
            so the SKUs the server has just minted are already here — nothing

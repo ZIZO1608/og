@@ -50,6 +50,10 @@ function productRows() {
   });
 
   if (f.type) rows = rows.filter(function (r) { return r.type === f.type; });
+  /* 066 — "needs photos" is every colour that has not got both of its two;
+     "ready" is a product with every colour done. */
+  if (f.photos === 'missing') rows = rows.filter(function (r) { return Photos.readyCount(r.p) < (r.p.colours || []).length; });
+  else if (f.photos === 'ready') rows = rows.filter(function (r) { return (r.p.colours || []).length && Photos.readyCount(r.p) === r.p.colours.length; });
   if (f.health === 'gap') rows = rows.filter(function (r) { return DB.sizeGaps(r.p.id).length > 0; });
   else if (f.health) rows = rows.filter(function (r) { return r.health === f.health; });
   /* Name and brand only, before — so a size, a SKU, a barcode and the
@@ -118,6 +122,7 @@ function prodChips() {
   if (f.health) out.push({ f: 'health', label: t(f.health === 'gap' ? 'gap_only' : f.health) });
   /* "active" is the default and therefore not a filter somebody switched on. */
   if (f.arch && f.arch !== 'active') out.push({ f: 'arch', label: t(f.arch === 'archived' ? 'bk_archived_only' : 'prod_arch_all') });
+  if (f.photos) out.push({ f: 'photos', label: t(f.photos === 'missing' ? 'ph_f_missing' : 'ph_f_ready') });
   return out;
 }
 function prodFilterCount() { return prodChips().length; }
@@ -219,6 +224,14 @@ function viewProducts() {
           return '<option value="' + o[0] + '"' + (OG.prod.arch === o[0] ? ' selected' : '') + '>' +
             t(o[1]) + '</option>';
         }).join('') + '</select></label>';
+    /* 066 — which products the website is still waiting on. */
+    h += '<label class="field"><span>' + t('ph_title') + '</span>' +
+      '<select class="inp" data-change="prod-photos">' +
+      [['', 'ph_f_all'], ['missing', 'ph_f_missing'], ['ready', 'ph_f_ready']]
+        .map(function (o) {
+          return '<option value="' + o[0] + '"' + (OG.prod.photos === o[0] ? ' selected' : '') + '>' +
+            t(o[1]) + '</option>';
+        }).join('') + '</select></label>';
   }
   h += '</div>';
 
@@ -266,8 +279,13 @@ function viewProducts() {
       margin: '<td class="num">' + pct(r.margin, 0) + '</td>',
       health: '<td class="nowrap">' + healthBadge(r.qty) +
         (gaps.length ? ' <span class="badge critical">' + t('size_gap') + '</span>' : '') + '</td>',
-      onWeb: '<td onclick="event.stopPropagation()"><label class="switch"><input type="checkbox"' +
-        (r.p.onWeb ? ' checked' : '') + ' data-change="toggle-visible" data-id="' + r.p.id + '"><i></i></label></td>'
+      /* 066 — the switch says what the shop WANTS; the camera beside it says
+         whether the website can have it yet (both photos of a colour). */
+      /* The stop is on the switch alone: a press on the camera must reach the
+         dispatcher, which finds its own data-act before the row's. */
+      onWeb: '<td><span class="pr-web"><label class="switch" onclick="event.stopPropagation()"><input type="checkbox"' +
+        (r.p.onWeb ? ' checked' : '') + ' data-change="toggle-visible" data-id="' + r.p.id + '"><i></i></label>' +
+        '<button class="pr-web-ph" data-act="prod-image" data-id="' + r.p.id + '">' + Photos.mark(r.p) + '</button></span></td>'
     };
 
     /* Dimmed, not dropped: the row stays where the finger left it so the
@@ -314,31 +332,30 @@ function openProductDrawer(pid) {
   var gaps = DB.sizeGaps(pid);
   var trend = DB.productTrend(pid);
 
-  /* The picture is the button: press it to change it. Below the name, the
-     address it lives at in the bucket - the one thing somebody wiring the
-     website, or checking the mirror, actually asks for. */
+  /* The picture is the button: press it to open the product's photos (066),
+     where every colour's model and product photos live. The line under the
+     name says what the website is waiting for, when it is waiting. */
   var canPic = allow('product.write') && typeof Shop !== 'undefined' && Shop.live();
   var head =
     '<div style="display:flex;gap:12px;align-items:flex-start;flex:1">' +
       (canPic
-        ? '<button class="thumb-btn" data-act="prod-image" title="' + esc(t('img_change')) + '">' + thumb(p, 'lg') + '</button>' +
-          '<input type="file" id="prodFile" accept="image/*" hidden>'
+        ? '<button class="thumb-btn" data-act="prod-image" data-id="' + p.id + '" title="' + esc(t('ph_title')) + '">' + thumb(p, 'lg') + '</button>'
         : thumb(p, 'lg')) +
       '<div><span class="eyebrow">' + esc(DB.typeLabels[p.type] || '') + ' · ' + esc(p.brand) + '</span>' +
       '<h3 style="font-size:18px;margin:3px 0 4px">' + esc(p.name) + '</h3>' +
       healthBadge(total) + ' <span class="badge neutral">' + esc(p.colorway) + '</span>' +
       (canPic
-        ? '<div class="pic-line">' +
-            (p.image && p.image.src
-              ? '<a href="' + esc(p.image.src) + '" target="_blank" rel="noopener" dir="ltr">' + esc(t('img_open')) + '</a>' +
-                ' · <button class="link" data-act="prod-image-clear" data-id="' + p.id + '">' + esc(t('img_remove')) + '</button>'
-              : '<button class="link" data-act="prod-image">' + esc(t('img_add')) + '</button>') +
-          '</div>'
+        ? '<div class="pic-line">' + Photos.mark(p) +
+            ' <button class="link" data-act="prod-image" data-id="' + p.id + '">' + esc(t('ph_manage')) + '</button></div>'
         : '') +
       '</div>' +
     '</div>';
 
   var body = '';
+
+  /* 066 — the photos, first: the website shows nothing of a colour until it
+     has its two, and this is where somebody finds that out. */
+  body += Photos.card(p);
 
   if (gaps.length) {
     body += '<div class="alert-row alert-danger" style="margin-bottom:14px">' +
@@ -450,7 +467,7 @@ function openProductDrawer(pid) {
        "On website: No" and a product deliberately taken off the site read
        "On website: Yes". Opposite claims under one label. They are two rows
        now, each saying which question it is answering. */
-    '<dt>' + t('pr_on_web') + '</dt><dd>' + (p.onWeb === false ? t('no') : t('yes')) + '</dd>' +
+    '<dt>' + t('pr_on_web') + '</dt><dd>' + Photos.webLine(p) + '</dd>' +
     '<dt>' + t('pr_selling') + '</dt><dd>' + (p.hidden
       ? '<span class="warn">' + t('pr_archived') + '</span>'
       : t('yes')) + '</dd>' +
@@ -497,19 +514,7 @@ function openProductDrawer(pid) {
     '</div>' +
   '</div>';
 
-  openDrawer({ head: head, body: body, onOpen: function (root) {
-    var input = root.querySelector('#prodFile');
-    if (!input) return;
-    input.addEventListener('change', function () {
-      var file = input.files && input.files[0];
-      input.value = '';
-      if (!file) return;
-      readImageFile(file, function (src, err) {
-        if (err) { toast(t('image'), t('up_err_' + err), 'err', 4000); return; }
-        uploadProductImage(p.id, src, function () { openProductDrawer(p.id); });
-      });
-    });
-  } });
+  openDrawer({ head: head, body: body });
 }
 
 
