@@ -412,6 +412,7 @@ function applyLang() {
   document.documentElement.lang = ar ? 'ar' : 'en';
   document.documentElement.dir = ar ? 'rtl' : 'ltr';
   document.body.classList.toggle('rtl', ar);
+  if (typeof Standby !== 'undefined') Standby.repaint();
   if (typeof DB !== 'undefined' && DB.relabelTypes) DB.relabelTypes();
   /* The login screen and the splash read this before any app code runs;
      nothing wrote it until now, so the gate was English for everybody. */

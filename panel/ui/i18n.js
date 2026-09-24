@@ -156,6 +156,10 @@ var PI18N = (function () {
     /* The three the boot found rather than the server: the step list goes
        away once the shop is open, so anything amber on it has to survive as
        a card here or it is simply lost. */
+    n_standby: 'This is the standby copy',
+    n_standby_b: 'A read-only copy of {upstream}, refreshed every few minutes. Changes are made on the main server.',
+    n_standby_no_key: 'The standby cannot fetch a copy',
+    n_standby_no_key_b: 'OG_COPY_KEY is not set on this computer — it must be the same value as the main server’s.',
     n_padlock_untrusted: 'Windows does not trust the padlock',
     n_padlock_untrusted_b: 'The browser opens on a red “not private” page every time. This can be fixed on this computer, once.',
     n_printers_person: 'The printers need somebody to look at them',
@@ -545,6 +549,10 @@ var PI18N = (function () {
     n_proxy_no_origin_b: 'بروكسي الـVPS مضبوط ({proxy}) بس OG_ORIGINS ما فيه العنوان العام، فكل حفظ من برّا عم ينرفض. ضيف https://shop.ogsports1.com على OG_ORIGINS.',
     n_stale: 'المحل يعمل بنسخة أقدم مما على هذا الكمبيوتر',
     n_stale_b: 'ملفات في server/ تغيّرت بعد تشغيل المحل. سيبقى يعمل بما شُغّل به حتى يُعاد تشغيله.',
+    n_standby: 'هذه هي النسخة الاحتياطية',
+    n_standby_b: 'نسخة للقراءة فقط من {upstream}، تتجدد كل كم دقيقة. التغييرات تصير على السيرفر الرئيسي.',
+    n_standby_no_key: 'النسخة الاحتياطية لا تستطيع جلب نسخة',
+    n_standby_no_key_b: 'OG_COPY_KEY غير مضبوط على هذا الكمبيوتر — لازم يكون نفس قيمة السيرفر الرئيسي.',
     n_padlock_untrusted: 'ويندوز لا يثق بالقفل',
     n_padlock_untrusted_b: 'المتصفح يفتح على صفحة حمراء «غير آمن» في كل مرة. يمكن إصلاح هذا على هذا الكمبيوتر مرة واحدة.',
     n_printers_person: 'الطابعات تحتاج من ينظر فيها',

@@ -112,6 +112,14 @@ server {
     return 404;
   }
 
+  #  THE WHOLE DATABASE IS NOT A PUBLIC DOOR EITHER. /api/copy/ hands a standby
+  #  (server/lib/standby.js) a copy of everything, behind its own key, and the
+  #  till already answers 404 to a visitor this proxy carries there; this line
+  #  means it is never even asked.
+  location ^~ /api/copy/ {
+    return 404;
+  }
+
   #  THE OWNER'S SNAPSHOT — og-bridge, not the laptop. It is the one page that
   #  must work exactly when the laptop cannot be reached. og-bridge has its
   #  own login (password + authenticator code) and its own throttle; it reads

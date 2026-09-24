@@ -3912,3 +3912,13 @@ var WEBORDERS_AR = {
 };
 Object.keys(WEBORDERS_EN).forEach(function (k) { I18N.en[k] = WEBORDERS_EN[k]; });
 Object.keys(WEBORDERS_AR).forEach(function (k) { I18N.ar[k] = WEBORDERS_AR[k]; });
+
+/* ---- the standby copy (js/standby.js, server/lib/standby.js) ------------- */
+var STANDBY_EN = {
+  err_standby_read_only: 'This is the standby copy — it is read-only. Make the change on the main server.'
+};
+var STANDBY_AR = {
+  err_standby_read_only: 'هاي نسخة احتياطية للقراءة بس — اعمل التغيير على السيرفر الرئيسي.'
+};
+Object.keys(STANDBY_EN).forEach(function (k) { I18N.en[k] = STANDBY_EN[k]; });
+Object.keys(STANDBY_AR).forEach(function (k) { I18N.ar[k] = STANDBY_AR[k]; });

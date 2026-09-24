@@ -72,6 +72,7 @@ import * as SB from './lib/supabase.js';
 import { CONFIG_WRITABLE, configRefusal } from './lib/config-writable.js';
 import { lanAddresses, extraSans } from './lib/net.js';
 import * as Fwd from './lib/proxy.js';
+import * as Standby from './lib/standby.js';
 import { isIP } from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
 import {
@@ -105,6 +106,21 @@ const ORIGINS = (process.env.OG_ORIGINS || '')
 /* ------------------------------------------------------------------ routes */
 
 const router = makeRouter();
+
+/* A STANDBY takes no writes (lib/standby.js) — only these, so somebody can
+   sign in to read it. Everything else that is not a GET answers 503
+   standby_read_only; the app says it in the person's language. */
+const STANDBY_OK = new Set([
+  'POST /api/auth/login',
+  'POST /api/auth/logout',
+  'POST /api/auth/hint'
+]);
+
+/* THE COPY DOOR (lib/standby.js). The whole database, for the standby to
+   follow — behind OG_COPY_KEY, never for a visitor the public proxy carried,
+   and never from a standby (a copy of a copy is a second place for the truth
+   to go stale). The handler runs in the pipeline below, before any session. */
+router.add('GET /api/copy/db', (ctx) => Standby.sendCopy(ctx.res));
 
 /* Anything not in here requires a valid session. Denying by default means a
    new endpoint is locked until someone deliberately opens it. */
@@ -152,6 +168,13 @@ router.add('GET /api/health', (ctx) => {
     shop: shop ? shop.value : null,
     https: !!SECURE_SERVER,
     lan: lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`),
+    /* THE MAIN SERVER, OR ITS STANDBY COPY (lib/standby.js). Public on
+       purpose: the app draws "a read-only copy, as of 14:05" from it before
+       anybody has signed in, and a time is not a secret. */
+    role: Standby.role(),
+    standby: Standby.isStandby() ? {
+      copyAt: Standby.status().copyAt, reachable: Standby.status().reachable
+    } : undefined,
     /* WHICH BUILD IS THIS. Only for a caller who is already signed in — the
        route is in PUBLIC so the login screen can read it, and the payload a
        STRANGER on the wifi gets must not grow a branch name. `user` is
@@ -3344,6 +3367,26 @@ async function handle(req, res) {
           return sendError(res, 404, 'not_found', 'No such endpoint.');
         }
 
+        /* The copy door: the other server, over the private road, with the
+           key. A visitor the public proxy carried is told there is no such
+           thing — the same 404 an unknown path gets. */
+        if (path.startsWith('/api/copy/')) {
+          if (Fwd.forwardedVisitor(req) || Standby.isStandby()) {
+            return sendError(res, 404, 'not_found', 'No such endpoint.');
+          }
+          const k = Standby.copyKeyCheck(req);
+          if (k === 'not_configured') return sendError(res, 503, 'not_configured', 'OG_COPY_KEY is not set on this server.');
+          if (k !== 'ok') return sendError(res, 401, 'bad_key', 'The copy key is missing or wrong.');
+          return await hit.handler({ req, res, url, params: hit.params, user: null, token: null });
+        }
+
+        /* A STANDBY IS READ-ONLY. Refused here, before any handler, so no
+           route — today's or one added next year — can write to a copy that
+           the next swap throws away. */
+        if (Standby.isStandby() && req.method !== 'GET' && req.method !== 'HEAD' && !STANDBY_OK.has(key)) {
+          return sendError(res, 503, 'standby_read_only', Standby.readOnlyMessage());
+        }
+
         /* The website's door. A bearer key from server/.env instead of a
            session; compared in constant time. With no key configured the
            door does not exist, which is the state on a shop that has no
@@ -3402,6 +3445,11 @@ async function handle(req, res) {
         return res.end(req.method === 'HEAD' ? undefined : Tracking.WORKER);
       }
       const part = /^\/i\/([0-9a-f]{32})\/(live|push|review|manifest\.webmanifest)$/.exec(path);
+      /* A customer's review or Notify me, sent to a STANDBY, would land in a
+         copy the next swap throws away: it belongs to the main server. */
+      if (part && Standby.isStandby() && req.method === 'POST') {
+        return sendError(res, 503, 'standby_read_only', Standby.readOnlyMessage());
+      }
       if (part) {
         const sale = Receipt.byToken(part[1]);
         if (!sale || !sale.order) return sendError(res, 404, 'not_found', 'Not found.');
@@ -3762,6 +3810,19 @@ if (runDirectly) {
        entry from ANY connection. It is read by nothing now; a laptop that
        still has it set is told what replaced it, so nobody goes looking for
        why "trusting the proxy" stopped doing anything. */
+    /* A STANDBY says so first, in the words that matter: whose copy, and that
+       it takes no writes (lib/standby.js). */
+    if (Standby.isStandby()) note('standby', 'info', { upstream: process.env.OG_UPSTREAM || '' }, [
+      '',
+      '    STANDBY: a read-only copy of ' + (process.env.OG_UPSTREAM || '(OG_UPSTREAM is not set)') + ',',
+      '    refreshed every ' + (Number(process.env.OG_STANDBY_MINUTES) || 5) + ' minutes. Writes are refused, and the',
+      '    workers (Telegram, reminders, the cloud mirror, backups) stay with the main server.'
+    ]);
+    if (Standby.isStandby() && !process.env.OG_COPY_KEY) note('standby_no_key', 'warn', {}, [
+      '',
+      '    OG_COPY_KEY is not set, so this standby cannot fetch a copy.'
+    ]);
+
     if (process.env.OG_TRUST_PROXY) note('trust_proxy_retired', 'info', {}, [
       '',
       '    OG_TRUST_PROXY is set and is IGNORED. A forwarded address is now',
@@ -3798,33 +3859,42 @@ if (runDirectly) {
        after every commit and prints one line per push — see
        lib/sync-worker.js for why a failed mirror must never disturb a sale. */
     console.log('');
-    SyncWorker.start();
+    /* A STANDBY RUNS NONE OF THE WORKERS. Each of them — the mirror, the
+       bots, the reminders, the backups, the push key — belongs to exactly one
+       server, and two of any one of them is everything twice or nothing at
+       all (the mirror's lineage guard exists because it happened). It runs
+       only its own loop: fetch, check, swap. */
+    if (Standby.isStandby()) {
+      Standby.start();
+    } else {
+      SyncWorker.start();
 
-    /* The Telegram line, same shape: drains the partner_events outbox on a
-       timer and long-polls each bot for a link code. Off with no token. */
-    Telegram.start();
+      /* The Telegram line, same shape: drains the partner_events outbox on a
+         timer and long-polls each bot for a link code. Off with no token. */
+      Telegram.start();
 
-    /* And the other half of it: the standing conditions nothing else would
-       ever mention, queued into the same outbox on a one-minute tick. After
-       Telegram.start() because it queues into what that drains, and inside
-       this callback for the reason SyncWorker is — nothing may begin before
-       the till is answering. */
-    Reminders.start();
-    /* A verified copy every day the shop is open, without anybody pressing
-       anything (audit 06) — lib/backup-schedule.js says why. */
-    BackupSchedule.start();
-    /* Who a push service writes to when something is wrong with our pushes:
-       the shop's own https address when it has one. */
-    try { Push.setContact(Orders.publicBase()); } catch { /* the default stands */ }
-    /* og-track's page subscribes browsers with this laptop's public key, which
-       it reads from the mirror's config. Published at every boot, and only
-       when it differs: after a disaster restore the config that came back
-       carries the DEAD laptop's key, and this replaces it with this machine's
-       own before anything mirrors it. */
-    try {
-      if (Push.publishKey()) console.log('  Web Push: public key published to config push.public_key');
-    } catch (e) {
-      console.log(`  Web Push: could not publish the public key — ${e.message}`);
+      /* And the other half of it: the standing conditions nothing else would
+         ever mention, queued into the same outbox on a one-minute tick. After
+         Telegram.start() because it queues into what that drains, and inside
+         this callback for the reason SyncWorker is — nothing may begin before
+         the till is answering. */
+      Reminders.start();
+      /* A verified copy every day the shop is open, without anybody pressing
+         anything (audit 06) — lib/backup-schedule.js says why. */
+      BackupSchedule.start();
+      /* Who a push service writes to when something is wrong with our pushes:
+         the shop's own https address when it has one. */
+      try { Push.setContact(Orders.publicBase()); } catch { /* the default stands */ }
+      /* og-track's page subscribes browsers with this laptop's public key, which
+         it reads from the mirror's config. Published at every boot, and only
+         when it differs: after a disaster restore the config that came back
+         carries the DEAD laptop's key, and this replaces it with this machine's
+         own before anything mirrors it. */
+      try {
+        if (Push.publishKey()) console.log('  Web Push: public key published to config push.public_key');
+      } catch (e) {
+        console.log(`  Web Push: could not publish the public key — ${e.message}`);
+      }
     }
 
     /* The panel is watching a pipe, not this window. Everything it needs to
@@ -3876,6 +3946,7 @@ if (runDirectly) {
     try { BackupSchedule.stop(); } catch (e) { /* already down */ }
     try { Telegram.stop(); } catch (e) { /* already down */ }
     try { SyncWorker.stop(); } catch (e) { /* already down */ }
+    try { Standby.stop(); } catch (e) { /* not a standby */ }
     if (SECURE_SERVER) { try { SECURE_SERVER.close(); } catch (e) { /* already down */ } }
     server.close(() => { DB.close(); process.exit(0); });
     /* If a connection refuses to drain, do not hang forever. The live SSE

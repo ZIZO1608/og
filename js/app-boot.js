@@ -366,6 +366,9 @@ function boot() {
    happened first would show an empty shop, and a cashier who scanned in that
    moment would be told the product does not exist. */
 function start() {
+  /* On a standby copy every screen says so, from the login gate on (js/standby.js). */
+  if (typeof Standby !== 'undefined') Standby.watch();
+
   /* The loading screen (js/splash.js), on black, while the server is asked.
      Between the page opening and the first paint there are two round trips
      (is the cookie good, then the whole shop) and on shop wifi that is long

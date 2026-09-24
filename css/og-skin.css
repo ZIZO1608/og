@@ -2861,3 +2861,26 @@ body:not([data-portal="yalla"]) .wo-skel i {
   body:not([data-portal="yalla"]) .wo-foot .btn { flex: 1 1 auto; min-height: 44px; }
   body:not([data-portal="yalla"]) .wo-contact .btn { min-height: 44px; }
 }
+
+/* ========================================================================
+   THE STANDBY COPY (js/standby.js, server/lib/standby.js). A read-only copy
+   of the main server must never look like the shop: one amber strip across
+   the top of every screen, from the login gate on, and the app moved down
+   under it rather than covered. Red when the copy has lost the main server.
+   ======================================================================== */
+.standby-strip {
+  position: fixed; inset-inline: 0; top: 0; z-index: 1000; height: 28px;
+  display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px;
+  background: #2A2110; color: #FBBF24; border-bottom: 1px solid #7C5410;
+  font: 600 12px/1 var(--font-body, Montserrat, system-ui, sans-serif);
+  white-space: nowrap; overflow: hidden;
+}
+.standby-strip > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.standby-strip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.standby-strip.is-cut { background: #2B1416; color: #F87171; border-bottom-color: #7F2226; }
+body.is-standby #app { margin-top: 28px; height: calc(100vh - 28px); }
+@media (max-width: 720px) {
+  body.is-standby:not([data-portal="yalla"]) #app,
+  body.is-standby #app { height: calc(100vh - 28px); height: calc(100dvh - 28px); }
+}
+body.rtl .standby-strip { letter-spacing: 0; }
