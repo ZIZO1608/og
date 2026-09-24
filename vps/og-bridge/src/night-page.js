@@ -35,7 +35,7 @@ export const WORDS = {
     signinTitle: 'OG System · night mode', signinSub: 'For when the shop is closed or cannot be reached. You can look things up, and leave requests the shop will answer.',
     user: 'Username', password: 'Password', code: 'Code from the authenticator app', signin: 'Sign in',
     bad: 'Wrong username, password or code.', throttled: 'Too many tries. Wait 15 minutes and try again.',
-    hello: 'Good evening, {user}', liveTitle: 'The shop is online right now',
+    hello: 'Hello, {user}', liveTitle: 'The shop is online right now',
     liveSub: 'The full system is answering. Use it for anything real — night mode is only the cloud copy.', openShop: 'Open the full system',
     homeNote: 'Everything here is read from the cloud copy. A request you leave waits until somebody at the shop accepts it.',
     today: 'Today, as of {time}', takings: 'Takings', sales: '{n} sales', sale1: '1 sale', noSales: 'No sales yet today.',
@@ -55,7 +55,7 @@ export const WORDS = {
     reqTitle: 'New request', reqEmpty: 'Nothing in the request yet.', reqFind: 'Find it in stock',
     lines: 'What they want', qty: 'Quantity', update: 'Change', remove: 'Remove', addMore: 'Add more',
     zero: 'none in stock at {time}', low: 'only {n} in stock at {time}',
-    who: 'Who is it for', pickCustomer: 'Choose a known customer', known: 'Known customer · #{id}', forget: 'Not them',
+    who: 'Who is it for', pickCustomer: 'Choose a known customer', known: 'Known customer · {id}', forget: 'Not them',
     how: 'How it reaches them', pickup: 'They collect it from the shop', delivery: 'Deliver it',
     cityPh: 'Aleppo', addressPh: 'Area, street, a landmark', notePh: 'Anything the shop should know',
     send: 'Send to the shop', sendNote: 'Nothing changes now. The shop checks the stock and the price, and accepts or turns it down.',
@@ -92,7 +92,7 @@ export const WORDS = {
     signinTitle: 'OG System · وضع الليل', signinSub: 'لمّا يكون المحل مسكّر أو ما عم يرد. فيك تدوّر على شي، وتترك طلبات المحل بيرد عليها.',
     user: 'اسم المستخدم', password: 'كلمة السر', code: 'الرمز من تطبيق المصادقة', signin: 'دخول',
     bad: 'اسم المستخدم أو كلمة السر أو الرمز غلط.', throttled: 'محاولات كتير. استنى ربع ساعة وجرّب مرة تانية.',
-    hello: 'مسا الخير يا {user}', liveTitle: 'المحل شغّال هلأ',
+    hello: 'أهلا يا {user}', liveTitle: 'المحل شغّال هلأ',
     liveSub: 'النظام الكامل عم يرد. استعمله لأي شي حقيقي — وضع الليل هو بس النسخة السحابية.', openShop: 'افتح النظام الكامل',
     homeNote: 'كل شي هون مقروء من النسخة السحابية. الطلب اللي بتتركه بيستنى لحتى حدا بالمحل يوافق عليه.',
     today: 'اليوم، لحد الساعة {time}', takings: 'المبيعات', sales: '{n} فاتورة', sale1: 'فاتورة وحدة', noSales: 'ما في مبيعات لهلأ اليوم.',
@@ -112,7 +112,7 @@ export const WORDS = {
     reqTitle: 'طلب جديد', reqEmpty: 'ما في شي بالطلب لسا.', reqFind: 'دوّر عالبضاعة',
     lines: 'شو بدّو', qty: 'الكمية', update: 'غيّر', remove: 'شيل', addMore: 'زيد شي',
     zero: 'ما في منه الساعة {time}', low: 'في بس {n} الساعة {time}',
-    who: 'لمين الطلب', pickCustomer: 'اختار زبون معروف', known: 'زبون معروف · #{id}', forget: 'مو هو',
+    who: 'لمين الطلب', pickCustomer: 'اختار زبون معروف', known: 'زبون معروف · {id}', forget: 'مو هو',
     how: 'كيف بيوصله', pickup: 'بياخده من المحل', delivery: 'بدّو توصيل',
     cityPh: 'حلب', addressPh: 'المنطقة، الشارع، علامة قريبة', notePh: 'أي شي لازم يعرفه المحل',
     send: 'ابعت الطلب للمحل', sendNote: 'ما في شي بيتغيّر هلأ. المحل بيتأكد من البضاعة والسعر، وبيوافق أو بيرفض.',
@@ -241,6 +241,7 @@ input:focus,select:focus,textarea:focus,.btn:focus-visible,a:focus-visible{outli
 .sz-q{display:grid;gap:2px}
 .sz-q b{font-size:15px}
 .sz-q span{font-size:12px;color:var(--muted)}
+.sz-q .pl{white-space:nowrap;margin-inline-end:8px}
 .sz.zero .sz-n,.sz.zero .sz-q b{color:var(--dim)}
 .addf{display:flex;gap:8px;align-items:center}
 .addf select{min-width:64px}
@@ -420,7 +421,7 @@ export function stockPage(ctx, { q = '', products = [], warehouses = [], exps = 
       const head = p.multi && s.colour !== lastColour
         ? `<div class="colour">${esc(lang === 'ar' ? (s.colourAr || s.colour) : (s.colour || s.colourAr))}</div>` : '';
       lastColour = s.colour;
-      const places = Object.entries(s.places).filter(([, n]) => n > 0).map(([w, n]) => `${esc(whName(w))} ${num(n)}`).join(' · ');
+      const places = Object.entries(s.places).filter(([, n]) => n > 0).map(([w, n]) => `<span class="pl">${esc(whName(w))} ${num(n)}</span>`).join(' ');
       const inReq = draft.get(s.sku);
       return `${head}<div class="sz${s.total ? '' : ' zero'}"><span class="sz-n">${fig(s.size)}</span>
         <span class="sz-q"><b>${s.total ? num(s.total) : esc(W.none)}</b>${places ? `<span>${places}</span>` : ''}${inReq ? `<span class="chip brand">${fill(esc(W.inRequest), { n: num(inReq) })}</span>` : ''}</span>
@@ -545,7 +546,7 @@ ${message ? `<p class="alert bad" role="alert">${message}</p>` : ''}${off}
   <div><a class="btn" href="/night/stock">${ic('box')}${esc(draft.lines.length ? W.addMore : W.reqFind)}</a></div></section>
 <form class="stack" method="post" action="/night/request" novalidate>${hidden(csrf, lang)}
 <section class="card stack"><h2>${esc(W.who)}</h2>
-  ${c.id ? `<div class="known"><span class="chip brand">${fill(esc(W.known), { id: fig(c.id) })}</span>
+  ${c.id ? `<div class="known"><span class="chip brand">${fill(esc(W.known), { id: fig('#' + c.id) })}</span>
     <button class="btn small quiet" type="submit" formaction="/night/request/save?next=forget">${esc(W.forget)}</button></div>` : ''}
   <label class="f">${esc(W.name)}<input name="name" value="${esc(c.name || '')}" maxlength="80" autocomplete="off" enterkeyhint="next"></label>${errOf('name')}
   <label class="f">${esc(W.phone)}<input name="phone" value="${esc(c.phone || '')}" type="tel" inputmode="tel" dir="ltr" maxlength="40" autocomplete="off" enterkeyhint="next"></label>${errOf('phone')}
@@ -592,13 +593,13 @@ export function requestsPage(ctx, { items = [], scope = 'mine', canAll = false, 
       return `${esc(i.name || i.sku)}${colour ? ' · ' + esc(colour) : ''} ${fig((i.size || '') + ' ×' + i.qty)}`;
     }).join('<br>');
     const why = r.state === 'rejected'
-      ? `<p class="alert bad small">${esc(W.reason[r.code] || W.reason.other)}${r.note ? ' — ' + esc(r.note) : ''}</p>` : '';
+      ? `<p class="alert bad small">${esc(W.reason[r.code] || W.reason.other)}${r.note ? ' — <bdi dir="auto">' + esc(r.note) + '</bdi>' : ''}</p>` : '';
     return `<section class="card req"><div class="req-top"><b>${fig(r.ref)}</b>${chip(r)}</div>
       <div class="item-sub">${when(r.at, tz, now, W)}${scope === 'all' && r.byUser ? ' · ' + fill(esc(W.by), { user: esc(r.byUser) }) : ''}</div>
-      <dl class="dl"><dt>${esc(W.name)}</dt><dd>${esc(cu.name || '')} ${cu.phone ? fig(cu.phone) : ''}</dd>
-        <dt>${esc(W.how)}</dt><dd>${esc(d.method === 'pickup' ? W.pickup : W.delivery)}${d.city ? ' · ' + esc(d.city) : ''}${d.address ? '<br>' + esc(d.address) : ''}</dd>
+      <dl class="dl"><dt>${esc(W.name)}</dt><dd><bdi dir="auto">${esc(cu.name || '')}</bdi> ${cu.phone ? fig(cu.phone) : ''}</dd>
+        <dt>${esc(W.how)}</dt><dd>${esc(d.method === 'pickup' ? W.pickup : W.delivery)}${d.city ? ' · <bdi dir="auto">' + esc(d.city) + '</bdi>' : ''}${d.address ? '<br><bdi dir="auto">' + esc(d.address) + '</bdi>' : ''}</dd>
         <dt>${esc(W.lines)}</dt><dd>${lines}</dd>
-        ${p.note ? `<dt>${esc(W.noteLabel)}</dt><dd>${esc(p.note)}</dd>` : ''}</dl>${why}</section>`;
+        ${p.note ? `<dt>${esc(W.noteLabel)}</dt><dd dir="auto">${esc(p.note)}</dd>` : ''}</dl>${why}</section>`;
   }).join('');
   const toggle = canAll ? `<nav class="filters"><a class="btn small${scope === 'mine' ? ' on' : ''}" href="/night/requests">${esc(W.mine)}</a>
     <a class="btn small${scope === 'all' ? ' on' : ''}" href="/night/requests?all=1">${esc(W.everyone)}</a></nav>` : '';

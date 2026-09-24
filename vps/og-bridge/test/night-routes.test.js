@@ -334,7 +334,7 @@ test('stock, customers and orders pages: read-only, hashed CSP, both languages',
     const { cookie } = await s.signIn('sara');
     const st = await s.go('GET', '/night/stock?q=samba%2042', { cookie });
     assert.match(st.text, /Samba OG/);
-    assert.match(st.text, /الصالة <bdi dir="ltr" class="fig">2<\/bdi> · المستودع <bdi dir="ltr" class="fig">3<\/bdi>/);
+    assert.match(st.text, /<span class="pl">الصالة <bdi dir="ltr" class="fig">2<\/bdi><\/span> <span class="pl">المستودع <bdi dir="ltr" class="fig">3<\/bdi><\/span>/);
     assert.match(st.text, /لحد الساعة/);
     const en = await s.go('GET', '/night/customers?q=0933&lang=en', { cookie });
     assert.match([].concat(en.headers['set-cookie']).join(';'), /og_night_lang=en/);

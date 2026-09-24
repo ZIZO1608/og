@@ -130,7 +130,7 @@ var Requests = (function () {
       : '<span class="rq-chip">' + t('rq_new_customer') + '</span>';
     var where = dl.method === 'pickup'
       ? t('rq_pickup')
-      : t('rq_delivery') + (dl.city ? ' · ' + esc(dl.city) : '') + (dl.address ? '<br><span class="rq-addr">' + esc(dl.address) + '</span>' : '');
+      : t('rq_delivery') + (dl.city ? ' · <bdi dir="auto">' + esc(dl.city) + '</bdi>' : '') + (dl.address ? '<br><span class="rq-addr" dir="auto">' + esc(dl.address) + '</span>' : '');
 
     var totals = {};
     var lines = (r.lines || []).map(function (l) {
@@ -145,7 +145,7 @@ var Requests = (function () {
       else if (here < l.qty) chip = '<span class="rq-chip warn">' + t('rq_only_here').replace('{n}', fig(nf(here))).replace('{wh}', esc(whName(r.packFrom))) + '</span>';
       else chip = '<span class="rq-chip ok">' + t('rq_have_here').replace('{n}', fig(nf(here))).replace('{wh}', esc(whName(r.packFrom))) + '</span>';
       if (l.known && l.currency) totals[l.currency] = (totals[l.currency] || 0) + l.price * l.qty;
-      return '<li class="rq-line"><div class="rq-line-top"><span class="rq-line-name">' + esc(name) +
+      return '<li class="rq-line"><div class="rq-line-top"><span class="rq-line-name" dir="auto">' + esc(name) +
           (colour ? ' · ' + esc(colour) : '') + '</span>' +
           '<span class="rq-line-qty">' + fig((size || '') + ' ×' + l.qty) + '</span></div>' +
         '<div class="rq-line-sub">' + chip + (l.known ? '<span class="rq-price">' + moneyOf(l.price, l.currency) + '</span>' : '') + '</div></li>';
@@ -164,7 +164,7 @@ var Requests = (function () {
       '<header class="rq-head"><div class="rq-id">' + svg(ICON.moon, 'rq-ico') +
         '<b>' + fig(r.ref) + '</b><span class="rq-chip">' + t(r.source === 'web' ? 'rq_src_web' : 'rq_src_night') + '</span></div>' +
         '<small class="rq-when">' + esc(fmtDateTime(r.askedAt)) + (r.byUser ? ' · ' + t('rq_by').replace('{user}', esc(r.byUser)) : '') + '</small></header>' +
-      '<div class="rq-who"><b>' + esc(c.name || '—') + '</b>' + who +
+      '<div class="rq-who"><b dir="auto">' + esc(c.name || '—') + '</b>' + who +
         (tel ? '<a class="rq-tel" href="tel:' + esc(tel) + '">' + svg(ICON.phone) + fig(c.phone) + '</a>' : '') + '</div>' +
       '<div class="rq-where">' + svg(dl.method === 'pickup' ? ICON.bag : ICON.pin) + '<span>' + where + '</span></div>' +
       '<ul class="rq-lines">' + lines + '</ul>' +
@@ -185,8 +185,8 @@ var Requests = (function () {
     var rows = d.map(function (r) {
       var st = r.state === 'accepted'
         ? '<span class="rq-chip ok">' + t('rq_accepted') + '</span> <button class="rq-link" data-act="rq-order" data-id="' + esc(r.saleId || '') + '">' + fig(r.saleId || '') + '</button>'
-        : '<span class="rq-chip bad">' + t('rq_rejected') + '</span> <span class="rq-why">' + esc(reasonText(r.code)) + (r.reason ? ' — ' + esc(r.reason) : '') + '</span>';
-      return '<li class="rq-done"><div class="rq-done-top"><b>' + fig(r.ref) + '</b><span>' + esc((r.customer && r.customer.name) || '') + '</span></div>' +
+        : '<span class="rq-chip bad">' + t('rq_rejected') + '</span> <span class="rq-why">' + esc(reasonText(r.code)) + (r.reason ? ' — <bdi dir="auto">' + esc(r.reason) + '</bdi>' : '') + '</span>';
+      return '<li class="rq-done"><div class="rq-done-top"><b>' + fig(r.ref) + '</b><span dir="auto">' + esc((r.customer && r.customer.name) || '') + '</span></div>' +
         '<div class="rq-done-st">' + st + '</div>' +
         '<small class="rq-when">' + esc(fmtDateTime(r.decidedAt)) + (r.decidedByName ? ' · ' + esc(r.decidedByName) : '') +
           (r.reported ? '' : ' · <span class="rq-unsent">' + t('rq_unsent') + '</span>') + '</small></li>';
@@ -200,9 +200,16 @@ var Requests = (function () {
     return ((data && data.waiting) || []).filter(function (r) { return r.ref === ref; })[0] || null;
   }
 
+  /* What pressing the button will do, in one sentence — "1 piece", never
+     "1 pieces". */
+  function willSay(r, pickup) {
+    var pieces = (r.lines || []).reduce(function (n, l) { return n + l.qty; }, 0);
+    return t((pickup ? 'rq_will_pickup' : 'rq_will_driver') + (pieces === 1 ? '_1' : ''))
+      .replace('{name}', '<bdi dir="auto">' + esc((r.customer && r.customer.name) || '—') + '</bdi>').replace('{n}', fig(nf(pieces)));
+  }
+
   function acceptBody(r) {
     var pickup = A.method === 'pickup';
-    var pieces = (r.lines || []).reduce(function (n, l) { return n + l.qty; }, 0);
     var feeCur = (r.fee && r.fee.currency) || CONFIG.BASE_CURRENCY || 'SYP';
     var feeHint = r.fee ? t('rq_fee_list').replace('{fee}', moneyOf(r.fee.fee, r.fee.currency)) : t('rq_fee_none');
     var places = (DB.warehouses || []).map(function (w) {
@@ -213,12 +220,12 @@ var Requests = (function () {
         '<button type="button" class="rq-opt' + (pickup ? ' on' : '') + '" data-act="rq-method" data-val="pickup" aria-pressed="' + pickup + '">' + t('rq_m_pickup') + '</button>' +
         '<button type="button" class="rq-opt' + (!pickup ? ' on' : '') + '" data-act="rq-method" data-val="driver" aria-pressed="' + !pickup + '">' + t('rq_m_driver') + '</button>' +
       '</div>' +
-      '<label class="field rq-fee"' + (pickup ? ' hidden' : '') + '><span>' + t('rq_fee') + ' · ' + esc(feeCur) + '</span>' +
-        '<input id="rqFee" type="text" inputmode="decimal" autocomplete="off" dir="ltr" placeholder="' + esc(r.fee ? Desk.plain(r.fee.fee, r.fee.currency) : '') + '">' +
-        '<small class="muted">' + feeHint + '</small></label>' +
-      '<label class="field"><span>' + t('rq_from') + '</span><select id="rqWh">' + places + '</select></label>' +
-      '<p class="rq-sentence">' + t(pickup ? 'rq_will_pickup' : 'rq_will_driver')
-        .replace('{name}', esc((r.customer && r.customer.name) || '—')).replace('{n}', fig(nf(pieces))) + '</p>' +
+      '<div class="rq-fee"' + (pickup ? ' hidden' : '') + '>' +
+        '<label class="field"><span>' + t('rq_fee') + ' · ' + esc(feeCur) + '</span>' +
+          '<input class="inp" id="rqFee" type="text" inputmode="decimal" autocomplete="off" dir="ltr" placeholder="' + esc(r.fee ? Desk.plain(r.fee.fee, r.fee.currency) : '') + '"></label>' +
+        '<p class="rq-hint">' + feeHint + '</p></div>' +
+      '<label class="field"><span>' + t('rq_from') + '</span><select class="inp" id="rqWh">' + places + '</select></label>' +
+      '<p class="rq-sentence">' + willSay(r, pickup) + '</p>' +
       '<p class="rq-err" id="rqErr" role="alert"></p>' +
     '</div>';
   }
@@ -249,10 +256,8 @@ var Requests = (function () {
     });
     var fee = root.querySelector('.rq-fee');
     if (fee) fee.hidden = A.method === 'pickup';
-    var pieces = (r.lines || []).reduce(function (n, l) { return n + l.qty; }, 0);
     var s = root.querySelector('.rq-sentence');
-    if (s) s.innerHTML = t(A.method === 'pickup' ? 'rq_will_pickup' : 'rq_will_driver')
-      .replace('{name}', esc((r.customer && r.customer.name) || '—')).replace('{n}', fig(nf(pieces)));
+    if (s) s.innerHTML = willSay(r, A.method === 'pickup');
   }
 
   function sendAccept() {

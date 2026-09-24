@@ -79,7 +79,7 @@ try {
   const s1 = await go('GET', '/night/stock?q=' + q('samba'), { cookie: staff.cookie });
   check('stock: "samba" finds Samba OG', s1.status === 200 && hasRow(s1.text, 'Samba OG') && !hasRow(s1.text, 'Air Force 1'), s1.status);
   check('stock: the quantity per place is drawn (floor 2 · storage 3)',
-    /الصالة <bdi dir="ltr" class="fig">2<\/bdi> · المستودع <bdi dir="ltr" class="fig">3<\/bdi>/.test(s1.text));
+    /<span class="pl">الصالة <bdi dir="ltr" class="fig">2<\/bdi><\/span> <span class="pl">المستودع <bdi dir="ltr" class="fig">3<\/bdi><\/span>/.test(s1.text));
   const s2 = await go('GET', '/night/stock?q=' + q('nike 42'), { cookie: staff.cookie });
   check('stock: "nike 42" — every word must match — finds Air Force 1 only', hasRow(s2.text, 'Air Force 1') && !hasRow(s2.text, 'Samba OG'));
   check('stock: a two-colour product names its colours', hasRow(s2.text, 'أبيض') && hasRow(s2.text, 'أسود'));
