@@ -899,9 +899,22 @@ var FxFeedUI = (function () {
     if (typeof rateCard !== 'function') return;
     setFoldRepaint('rate', rateCard());
   }
+  /* 067 — the lira price of every product is the dollar price at this rate,
+     so a new rate re-prices the catalogue in place (DB.reprice) and the till
+     takes its basket again. The products list repaints only when nothing is
+     open over it and no box has the caret; otherwise its next repaint (every
+     save and every live push) brings the new lira. */
+  function follow(rate) {
+    if (!DB.reprice(rate)) return;
+    if (OG.view === 'pos' && typeof POS !== 'undefined' && POS.reprice) POS.reprice();
+    else if (OG.view === 'products' && !document.body.hasAttribute('data-overlay')) {
+      var a = document.activeElement;
+      if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) render();
+    }
+  }
   function take(st) {
     S.st = st; S.at = Date.now(); S.busy = false;
-    if (st && st.current) CONFIG.EXCHANGE_RATE = st.current;
+    if (st && st.current) follow(st.current);
     repaint();
   }
   function load(force) {
@@ -929,8 +942,8 @@ var FxFeedUI = (function () {
   function live(fx) {
     if (!fx || !(fx.rate > 0)) return;
     var changed = CONFIG.EXCHANGE_RATE !== fx.rate;
-    CONFIG.EXCHANGE_RATE = fx.rate;
-    if (changed) toast(t('fxf_toast'), fill(fx.from === 'hand' ? 'fxf_toast_hand' : 'fxf_toast_feed', { rate: nf(fx.rate) }), 'ok', 4000);
+    follow(fx.rate);
+    if (changed) toast(t('fxf_toast'), fill(fx.from === 'hand' ? 'fxf_toast_hand' : fx.from === 'typed' ? 'fxf_toast_typed' : 'fxf_toast_feed', { rate: nf(fx.rate) }), 'ok', 4000);
     if (OG.view === 'settings') load(true);
   }
   return {

@@ -620,25 +620,25 @@ var Bulk = (function () {
       var p = Number(pctEl && pctEl.value) || 0;
       var list = selProducts();
       var before = list.map(function (x) { return x.sellingPrice; });
-      list.forEach(function (x) {
-        x.sellingPrice = Math.max(1000, Math.round(x.sellingPrice * (1 + p / 100) / 1000) * 1000);
-      });
       /* A price is stored in the product's OWN currency. x.sellingPrice is the
          lira-converted figure the screens draw, so sending that back would
          turn a dollar-priced shoe into a lira-priced one at today's rate —
          and one pass through this button would silently repeg the catalogue.
          The percentage goes onto srcSellingPrice, in srcCurrency, which
-         hydrate keeps beside the converted value for exactly this. */
-      var srcBefore = list.map(function (x) { return x.srcSellingPrice; });
+         hydrate keeps beside the converted value for exactly this.
+
+         067 — every price is dollars: the percentage goes onto the dollar
+         price (a product still in lira is taken at today's rate first), and
+         the lira the screens draw follows from it. */
+      var srcBefore = list.map(function (x) { return usdOf(x.srcSellingPrice, x.srcCurrency); });
       var priced = function (x, val) {
-        return Shop.updateProduct(x.id, {
-          selling_price: val,
-          currency: x.srcCurrency || CONFIG.BASE_CURRENCY
-        });
+        return Shop.updateProduct(x.id, { selling_price: val, currency: 'USD' });
       };
-      list.forEach(function (x) {
-        if (x.srcSellingPrice != null) {
-          x.srcSellingPrice = Math.max(1, Math.round(x.srcSellingPrice * (1 + p / 100)));
+      list.forEach(function (x, i) {
+        if (srcBefore[i] != null) {
+          x.srcSellingPrice = Math.max(1, Math.round(srcBefore[i] * (1 + p / 100)));
+          x.srcCurrency = 'USD';
+          x.sellingPrice = DB.liraOf(x.srcSellingPrice, 'USD');
         }
       });
       pushRows(list, function (x) { return priced(x, x.srcSellingPrice); });

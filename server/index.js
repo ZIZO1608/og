@@ -741,14 +741,20 @@ router.add('GET /api/config', (ctx) => {
 
 router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
+  let set;
   try {
-    sendOk(ctx.res, Cat.setRate({
+    set = Cat.setRate({
       base: b.base ?? 'USD', quote: b.quote ?? 'SYP',
       rate: Number(b.rate), userId: ctx.user.id
-    }));
+    });
   } catch (e) {
-    sendError(ctx.res, 400, 'invalid', e.message);
+    return sendError(ctx.res, 400, 'invalid', e.message);
   }
+  sendOk(ctx.res, set);
+  /* 067 — every price is dollars and the lira follows the rate, so every
+     open tab must hear a rate typed by hand exactly as it hears the feed's:
+     the till re-prices its basket on it (DB.reprice). The same event. */
+  if (set.base === 'USD') Live.notify('og', { fx: { rate: set.rate, at: set.at, from: 'typed' } });
 }));
 
 /* The live exchange-rate feed (lib/fxfeed.js). Status for the Settings card;
@@ -2832,7 +2838,7 @@ router.add('GET /api/ext/reviews', (ctx) => {
 
 router.add('GET /api/ext/products', (ctx) => {
   const products = Cat.webList();
-  sendOk(ctx.res, { products, count: products.length, generatedAt: new Date().toISOString() });
+  sendOk(ctx.res, { products, count: products.length, rate: Cat.webRate(), generatedAt: new Date().toISOString() });
 });
 
 router.add('GET /api/ext/products/:id', (ctx) => {

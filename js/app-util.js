@@ -180,6 +180,36 @@ function moneyPair(syp, usd, compact) {
   return parts.length ? parts.join(' + ') : '—';
 }
 
+/* ---- 067: prices are dollars, the lira follows the rate --------------------
+   A price box takes dollars (cents through Desk.toMinor — "12,50" is twelve
+   and a half, an Arabic keypad's digits fold); the line under it says what
+   that is in lira at today's rate, the figure the till will charge. */
+function usdCents(typed) { return Desk.toMinor(typed, 'USD'); }
+/* A stored price as dollar cents: as it is for a dollar product, at today's
+   rate for one still in lira. null stays null — blank is not zero. */
+function usdOf(minor, cur) {
+  if (minor == null) return null;
+  if (cur === 'USD') return minor;
+  return Math.round(minor / CONFIG.EXCHANGE_RATE * 100);
+}
+function liraHint(cents) {
+  if (!(cents > 0)) return '';
+  return t('pr_lira_is')
+    .split('{lira}').join('<bdi dir="ltr">' + moneySypRaw(DB.liraOf(cents, 'USD')) + '</bdi>')
+    .split('{rate}').join('<bdi dir="ltr">' + nf(CONFIG.EXCHANGE_RATE) + '</bdi>');
+}
+/* A product's selling price as the shop now reads it: the dollars, then the
+   lira at today's rate. A product still in lira (a database 067 had no rate
+   for) shows its lira alone. */
+function priceBoth(p, cost) {
+  if (!p) return '—';
+  var lira = cost ? p.costPrice : p.sellingPrice;
+  var src = cost ? p.srcCostPrice : p.srcSellingPrice;
+  if (p.srcCurrency !== 'USD') return '<bdi dir="ltr">' + money(lira) + '</bdi>';
+  return '<bdi dir="ltr">' + moneyUsdRaw(src) + '</bdi> · ' +
+    '<bdi dir="ltr">' + moneySypRaw(lira) + '</bdi>';
+}
+
 var MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 var MONTHS_AR = ['كانون٢', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'تشرين١', 'تشرين٢', 'كانون١'];
 

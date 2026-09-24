@@ -7,7 +7,7 @@
 --  photograph), 016 (a print job's design picture), 017 (the delivery office),
 --  018 (the road), 019 (order reviews), 020 (free-standing racks), 021 (the
 --  cash book), 022 (closing the day) and 023 (suppliers and salaries).
---  Then 024 to 029, and 036 (a colour's photos, local 066). 030 and 031 are the
+--  Then 024 to 029, and 036 (a colour's photos, local 066). 030, 031 and 037 are the
 --  website's own functions (schema web), NOT tables the mirror pushes: they stay
 --  standalone files, each run once with its verify_ file after it.
 --

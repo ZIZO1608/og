@@ -2626,8 +2626,40 @@ var DB = {
      replace working screens with empty ones. */
   live: false,
 
+  /* 067 — every product is priced in dollars and every screen reads the lira.
+     One conversion, the server's (convert() in server/lib/sales.js): dollars
+     × the rate, rounded to the whole lira. `rate` defaults to the shop's. */
+  liraOf: function (minor, cur, rate) {
+    var r = rate || CONFIG.EXCHANGE_RATE;
+    if (minor == null) return minor;
+    if (cur === 'USD') return Math.round(minor / 100 * r);
+    return minor;
+  },
+
+  /* The rate at which products[].sellingPrice / costPrice were worked out. */
+  priceRate: 0,
+
+  /* 067 — the rate moved (the feed, or somebody typed it): work every lira
+     price out again from the dollar price, in place, without a reload. The
+     till charges at the rate of the moment, so a screen still showing
+     yesterday's lira would disagree with the receipt. Answers whether
+     anything changed; the caller repaints what it owns. */
+  reprice: function (rate) {
+    rate = Number(rate);
+    if (!(rate > 0)) return false;
+    CONFIG.EXCHANGE_RATE = rate;
+    if (rate === DB.priceRate) return false;
+    DB.priceRate = rate;
+    products.forEach(function (p) {
+      p.costPrice = DB.liraOf(p.srcCostPrice, p.srcCurrency, rate);
+      p.sellingPrice = DB.liraOf(p.srcSellingPrice, p.srcCurrency, rate);
+    });
+    return true;
+  },
+
   hydrate: function (payload) {
     var rate = Number(payload.rate) || CONFIG.EXCHANGE_RATE;
+    DB.priceRate = rate;
     var cfg = payload.config || {};
 
     /* ---- settings ------------------------------------------------------
@@ -2772,11 +2804,7 @@ var DB = {
        server would use, so the figure on the shelf edge and the figure on the
        receipt cannot drift apart. The source is kept so the price editor can
        hand back what it was given rather than a round-tripped approximation. */
-    function toBase(minor, cur) {
-      if (!cur || cur === CONFIG.BASE_CURRENCY) return minor;
-      if (cur === 'USD') return Math.round(minor / 100 * rate);
-      return minor;
-    }
+    function toBase(minor, cur) { return DB.liraOf(minor, cur, rate); }
 
     /* ---- categories (057) ---- */
     if (payload.categories && payload.categories.length) {

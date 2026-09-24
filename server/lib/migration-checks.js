@@ -37,6 +37,44 @@ function stockByProduct(d) {
 }
 
 export const CHECKS = {
+  /* 067 converts every lira price into dollars at the newest rate. Each
+     product must come out the same money: back in lira at that rate it may
+     differ only by the rounding of a cent (half a cent's worth of lira, plus
+     the whole-lira rounding) — anything more is a wrong divisor. */
+  '067_usd_prices.sql': {
+    before(d) {
+      const r = d.prepare(
+        `SELECT rate FROM fx_rates WHERE base = 'USD' AND quote = 'SYP' AND rate > 0
+          ORDER BY set_at DESC, id DESC LIMIT 1`).get();
+      return {
+        rate: r ? r.rate : null,
+        count: d.prepare('SELECT COUNT(*) AS n FROM products').get().n,
+        lira: d.prepare(
+          `SELECT id, name, selling_price, cost_price FROM products WHERE currency = 'SYP'`).all()
+      };
+    },
+    after(d, snap) {
+      const n = d.prepare('SELECT COUNT(*) AS n FROM products').get().n;
+      if (n !== snap.count) throw new Error(`the product count changed (${snap.count} → ${n}) — nothing was changed`);
+      if (snap.rate == null) return;
+      const left = d.prepare("SELECT COUNT(*) AS n FROM products WHERE currency <> 'USD'").get().n;
+      if (left) throw new Error(`${left} product(s) are still not priced in dollars — nothing was changed`);
+      const slack = snap.rate / 200 + 1;
+      const one = d.prepare('SELECT selling_price, cost_price FROM products WHERE id = ?');
+      for (const was of snap.lira) {
+        const is = one.get(was.id);
+        for (const k of ['selling_price', 'cost_price']) {
+          const back = Math.round(is[k] / 100 * snap.rate);
+          if (Math.abs(back - was[k]) > slack) {
+            throw new Error(
+              `product ${was.id} "${was.name}": ${k} was ${was[k]} SYP and came out ` +
+              `${is[k]} cents (${back} SYP at ${snap.rate}) — nothing was changed`);
+          }
+        }
+      }
+    }
+  },
+
   /* 059 rebuilds users (for the role check) — every account, every session
      and every row that points at one must come through untouched. */
   '059_access.sql': {

@@ -274,8 +274,9 @@ function viewProducts() {
         '</small></span></div></td>',
       type: '<td><span class="badge neutral">' + esc(DB.typeLabels[r.type] || r.type || '') + '</span></td>',
       qty: '<td class="num"><b>' + nf(r.qty) + '</b> <span class="muted small">' + t('pieces') + '</span></td>',
-      cost: '<td class="num muted">' + money(r.cost) + '</td>',
-      price: '<td class="num"><b>' + money(r.price) + '</b></td>',
+      /* 067 — the dollars it is priced in, then the lira at today's rate. */
+      cost: '<td class="num muted">' + priceBoth(r.p, true) + '</td>',
+      price: '<td class="num"><b>' + priceBoth(r.p) + '</b></td>',
       margin: '<td class="num">' + pct(r.margin, 0) + '</td>',
       health: '<td class="nowrap">' + healthBadge(r.qty) +
         (gaps.length ? ' <span class="badge critical">' + t('size_gap') + '</span>' : '') + '</td>',
@@ -457,8 +458,8 @@ function openProductDrawer(pid) {
     '<dt>' + t('brand') + '</dt><dd>' + esc(p.brand) + '</dd>' +
     '<dt>' + t('made_in') + '</dt><dd>' + esc(p.madeIn) + '</dd>' +
     '<dt>' + t('colour') + '</dt><dd>' + esc(p.colorway) + '</dd>' +
-    (seesCost() ? '<dt>' + t('cost_price') + '</dt><dd>' + money(p.costPrice) + '</dd>' : '') +
-    '<dt>' + t('selling_price') + '</dt><dd>' + money(p.sellingPrice) + '</dd>' +
+    (seesCost() ? '<dt>' + t('cost_price') + '</dt><dd>' + priceBoth(p, true) + '</dd>' : '') +
+    '<dt>' + t('selling_price') + '</dt><dd>' + priceBoth(p) + '</dd>' +
     '<dt>' + t('last_sold') + '</dt><dd>' + p.lastSoldDaysAgo + ' ' + t('days_ago') + '</dd>' +
     /* TWO COLUMNS, TWO QUESTIONS, AND THEY USED TO SHARE A WORD (ns02).
        `t('visible')` is "On website" and labels the Products column and the
@@ -536,18 +537,16 @@ function openProductEditor(pid) {
   if (!p) return;
   if (!allow('product.write')) { toast(t('edit_product'), t('no_access'), 'err'); return; }
 
-  var cur = p.srcCurrency || CONFIG.BASE_CURRENCY || 'SYP';
-  var exp = cur === 'USD' ? 2 : 0;
+  /* 067 — every price is dollars; the lira follows the rate. A product
+     still in lira (a database 067 had no rate for) opens with its price in
+     dollars at today's rate, and saves as dollars. */
   var major = function (minor) {
-    return minor == null ? '' : (exp ? (minor / Math.pow(10, exp)).toFixed(exp) : String(minor));
+    var c = usdOf(minor, p.srcCurrency);
+    return c == null ? '' : (c / 100).toFixed(2);
   };
   var typeOpts = DB.activeTypes([p.type]).map(function (k) {
     return '<option value="' + k + '"' + (p.type === k ? ' selected' : '') + '>' + esc(DB.typeLabels[k]) + '</option>';
   }).join('');
-  var curOpts = ['SYP', 'USD'].map(function (c) {
-    return '<option value="' + c + '"' + (cur === c ? ' selected' : '') + '>' + c + '</option>';
-  }).join('');
-  var step = exp ? '0.01' : '1';
 
   openModal({
     title: t('edit_product') + ' · ' + esc(p.name),
@@ -563,9 +562,11 @@ function openProductEditor(pid) {
         '<input class="inp" id="peName" type="text" value="' + esc(p.name) + '"></label>' +
       '<div class="pe-grid">' +
         '<label class="field"><span>' + t('type') + '</span><select class="inp" id="peType">' + typeOpts + '</select></label>' +
-        '<label class="field"><span>' + t('selling_price') + '</span><input class="inp num" id="pePrice" type="number" min="0" step="' + step + '" value="' + major(p.srcSellingPrice) + '"></label>' +
+        '<label class="field"><span>' + t('pr_price_usd') + '</span><input class="inp num" id="pePrice" type="text" inputmode="decimal" dir="ltr" data-change="pe-lira" value="' + major(p.srcSellingPrice) + '">' +
+          '<small class="pr-lira muted" id="pePriceLira">' + liraHint(usdOf(p.srcSellingPrice, p.srcCurrency)) + '</small></label>' +
         (seesCost()
-          ? '<label class="field"><span>' + t('cost_price') + '</span><input class="inp num" id="peCost" type="number" min="0" step="' + step + '" value="' + major(p.srcCostPrice) + '"></label>'
+          ? '<label class="field"><span>' + t('pr_cost_usd') + '</span><input class="inp num" id="peCost" type="text" inputmode="decimal" dir="ltr" data-change="pe-lira" value="' + major(p.srcCostPrice) + '">' +
+              '<small class="pr-lira muted" id="peCostLira">' + liraHint(usdOf(p.srcCostPrice, p.srcCurrency)) + '</small></label>'
           : '') +
       '</div>' +
       /* The website switch says what it does. It used to be labelled
@@ -580,30 +581,14 @@ function openProductEditor(pid) {
             '<label class="field"><span>' + t('brand') + '</span><input class="inp" id="peBrand" type="text" value="' + esc(p.brand || '') + '"></label>' +
             '<label class="field"><span>' + t('made_in') + '</span><input class="inp" id="peMade" type="text" value="' + esc(p.madeIn || '') + '"></label>' +
             '<label class="field"><span>' + t('colour') + '</span><input class="inp" id="peColour" type="text" value="' + esc(p.colorway || '') + '"></label>' +
-            '<label class="field"><span>' + t('currency') + '</span><select class="inp" id="peCur">' + curOpts + '</select></label>' +
             '<label class="field"><span>' + t('shelf') + '</span><input class="inp" id="peShelf" type="text" value="' + esc(p.shelfZone || '') + '"></label>' +
           '</div>' +
         '</div>' +
       '</div>' +
-      '<div class="partner-note mt">' + t('pe_note') + '</div>',
+      '<div class="partner-note mt">' + t('pr_usd_note') + ' ' + t('pe_note') + '</div>',
     foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
           '<button class="btn btn-primary" data-act="prod-edit-save" data-id="' + p.id + '">' + t('save') + '</button>',
     onOpen: function () {
-      /* Changing the currency changes what the price boxes MEAN, so the step
-         and the shown figure follow it: 2,250 lira is not $2,250. The boxes
-         are cleared rather than converted — a conversion at today's rate is
-         exactly the repeg the source figures exist to prevent. */
-      var sel = document.getElementById('peCur');
-      if (sel) sel.addEventListener('change', function () {
-        var e2 = sel.value === 'USD' ? 2 : 0;
-        ['peCost', 'pePrice'].forEach(function (id) {
-          var el = document.getElementById(id);
-          if (!el) return;
-          el.step = e2 ? '0.01' : '1';
-          if (sel.value !== cur) el.value = '';
-          else el.value = major(id === 'peCost' ? p.srcCostPrice : p.srcSellingPrice);
-        });
-      });
       setTimeout(function () { var n = document.getElementById('peName'); if (n) { n.focus(); n.select(); } }, 30);
     }
   });
@@ -614,8 +599,7 @@ function openProductEditor(pid) {
    written as zero, because zero is a claim about what the shop paid. */
 function readProductEditor() {
   var g = function (id) { var el = document.getElementById(id); return el ? el.value : undefined; };
-  var cur = g('peCur') || 'SYP';
-  var exp = cur === 'USD' ? 2 : 0;
+  var cur = 'USD';                          /* 067 — every price is dollars */
   /* Desk.toMinor, NOT Number(String(v).replace(',', '.')) — which turned
      "120,000" into 120.000 and saved a 120,000-lira shoe at ONE HUNDRED
      AND TWENTY. The same bug as the shift boxes, on the screen where a
@@ -653,7 +637,7 @@ function openQuickPrice(pid) {
   var p = DB.product(pid);
   if (!p) return;
   if (!allow('product.write')) { toast(t('pr_change_price'), t('no_access'), 'err'); return; }
-  var cur = p.srcCurrency || CONFIG.BASE_CURRENCY || 'SYP';
+  var cur = 'USD';                          /* 067 — every price is dollars */
 
   openModal({
     title: t('pr_change_price'), size: 'narrow',
@@ -661,7 +645,7 @@ function openQuickPrice(pid) {
         '<small>' + dots(esc(p.brand), esc(p.colorway)) + '</small></span></div>' +
       '<label class="field cb-big mt"><span>' + t('selling_price') + ' · <bdi dir="ltr">' + esc(cur) + '</bdi></span>' +
         '<input class="inp num cb-big-in" id="pqPrice" type="text" inputmode="decimal" dir="ltr" ' +
-          'autocomplete="off" data-change="pq-price" value="' + esc(srcWhole(p.srcSellingPrice, cur)) + '"></label>' +
+          'autocomplete="off" data-change="pq-price" value="' + esc(srcWhole(usdOf(p.srcSellingPrice, p.srcCurrency), cur)) + '"></label>' +
       '<div class="cb-result" id="pqNow"></div>',
     foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
       '<button class="btn btn-primary" data-act="pq-save" data-id="' + p.id + '" data-cur="' + esc(cur) + '">' +
@@ -695,15 +679,17 @@ function quickPriceHint() {
   if (!p) return;
   var cur = btn.getAttribute('data-cur');
   var now = Desk.toMinor(box.value, cur);
-  var was = Number(p.srcSellingPrice) || 0;
+  var was = Number(usdOf(p.srcSellingPrice, p.srcCurrency)) || 0;
 
   if (!now) { host.className = 'cb-why'; host.innerHTML = t('price_required'); return; }
   host.className = 'cb-result';
   var line = t('pr_price_was').replace('{was}', Desk.fmt(was, cur)).replace('{now}', Desk.fmt(now, cur));
-  if (seesProfit() && p.srcCostPrice > 0) {
-    line += ' · ' + t('margin') + ' ' + pct((now - p.srcCostPrice) / now * 100, 0);
+  var costUsd = usdOf(p.srcCostPrice, p.srcCurrency);
+  if (seesProfit() && costUsd > 0) {
+    line += ' · ' + t('margin') + ' ' + pct((now - costUsd) / now * 100, 0);
   }
-  host.innerHTML = line;
+  /* 067 — and what that is in lira today, the figure the till will charge. */
+  host.innerHTML = line + '<br>' + liraHint(now);
 }
 
 /* The drawer's "…", closed by a press anywhere else. Bound once, at the
