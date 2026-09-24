@@ -1179,7 +1179,7 @@ it rejects the **whole batch**, not the column:
   on a new project). **`021_cash_book.sql`, `022_day_close.sql` and `023_payables.sql` (local 053–055)
   are outstanding as of 16 Sep 2026** — until they are run the boot pull refuses with `drift`; run them
   in that order, then `npm run supabase:reconcile` (023 adds `employees.pay_day`, which the sync pushes
-  without until then); see "The money". **`server/supabase/CATCH-UP.sql` is `008`–`023` concatenated** (the last three are the outstanding ones) — one
+  without until then); see "The money". **`server/supabase/CATCH-UP.sql` is `008`–`029` and `036` concatenated** (036 appended 25 Sep 2026, when `audit06/p2-schema` went red on the photos table it lacked; `030` and `031` are the website's functions, not pushed tables, and stay standalone) — one
   paste instead of four visits; it is generated, every statement is `IF NOT EXISTS`, and re-running it
   is safe. **`016`, `017` and `018` were applied on 2026-09-12** — `supabase:drift` reads green, all
   45 pushed tables column for column, and the six new tables (`order_payments`, `handovers`,
@@ -2753,6 +2753,10 @@ presses every visible `[data-sf]` control in turn and says what each one actuall
   is what the "two suites cannot run at once" rule and half of `quietErrors` were working around.
   `run-all.sh` goes through it. `cdp.mjs` reads its port inside `tab()`, because an ESM import is
   evaluated before the importing module's body and a port assigned after the import never applied.
+  **Its cleanup kills by the temp profile's name, never by `$!`** (25 Sep 2026): in Git Bash `$!`
+  is the MSYS process id, not the Windows one, and `taskkill //PID $! //T //F` took down unrelated
+  process trees on the machine the live shop runs on. The chrome.exe processes are found by the
+  unique `--user-data-dir` on their command line, and nothing else can match it.
 
 ### The card, the same evening — four things it did not do
 
@@ -3462,18 +3466,14 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
 
 ## Known open work
 
-- **A PRESS DURING ANOTHER SAVE'S RELOAD IS DROPPED IN SILENCE** (found 19 Sep 2026 by the first
-  full pass with a browser per suite). `Shop.write()` allows one write at a time and holds the
-  lock through the whole-shop `load()` that follows a save; it answers `false` when it did not
-  start. **Only `Cashbook.submit` reads that answer.** The other 37 call sites — payables' wages,
-  supplier and employee saves, `app-actions.js`, `money.js`, `receive.js`, the till — ignore it,
-  so a Save pressed while the previous save is still reloading sends nothing, shows no spinner
-  and no toast, and leaves the dialog open. `_nightshift/fix06/dropped-press.mjs` reproduces it
-  on the wages dialog by holding the lock for two seconds. It is what made `ns03/p2-money` hang
-  once in 38 suites: the supplier payment's reload was still running when the bonus was saved.
-  Not fixed, because the cure is a decision: route every money save through `Cashbook.submit`,
-  or make `Shop.write` itself toast "still saving — press again" when it refuses, or queue the
-  second write. The third is wrong for a double-tap, which is what the lock exists for.
+- **A press during another save's reload is SAID now, not dropped** (fixed 25 Sep 2026). `Shop.write()`
+  still allows one write at a time and holds the lock through the whole-shop `load()` after a save
+  (so a double tap never saves twice), but when it refuses it toasts "Still saving the last change —
+  wait a moment, then press again" (`shop_still_saving`, at most every two seconds) for all 38
+  callers at once; the dialog stays open with what was typed. Before, 37 of them ignored the
+  `false` and the press vanished; `Cashbook.submit` only put its button back. Queueing the second
+  write was rejected (wrong for a double tap). `_nightshift/fix06/dropped-press.mjs` is a gate now:
+  the toast, nothing sent, the typed amount kept, and the next press saving.
 - **Left by fix 05, and all five are decisions rather than faults** (`docs/history/fix-05.md` §6).
   **Cairo for the app's own Arabic** — vendored at weight 700 only, so adopting it sets every
   Arabic screen in one bold weight; doing it properly needs 400/600/700 woff2, a converter and a
@@ -3523,8 +3523,11 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
   in `office-alerts.js` is the way). A website print job that is finished has no set road to the
   customer or way of being paid — it is priced on the job, as the till's are, and the owner has
   not said whether it rides in the order's parcel. **Two print prices disagree**:
-  `CONFIG.KIT_PRINT_PRICE` is 180 in the app, `print.unit_price` (the website's, Settings → Money
-  and prices) falls back to 950 while unset. A print job already sent to Yalla Wear is not
+  `CONFIG.KIT_PRINT_PRICE` is 180 in the app and the till charges 950 a piece (`js/pos.js`), while
+  `print.unit_price` (the website's, Settings → Money and prices) has NO fallback since 25 Sep
+  2026: unset, the website says "price by phone" and the job reaches Yalla Wear unpriced (0),
+  to be priced on the call. It used to fall back to 950 in `Partner.webPrices()` only, so one order
+  carried two prices. The shop reads it with the cloud's own rule (`^[0-9]{1,13}$`). A print job already sent to Yalla Wear is not
   cancelled by rejecting its website order.
 - **Telegram job messages carry no link.** `publicBase()` in `server/lib/telegram.js` reads
   `shop.public_url` only (the `OG_CF_HOSTNAME` fallback went with the tunnel on 16 Sep), and it is
@@ -5506,7 +5509,8 @@ The owner chose per colour (not per product) and "stays off the website" (not "c
   product and colour carries `photos` in display order (`Photos.ordered`: model, product, extras by
   `sort`). `image.url` and a colour's `imageUrl` became the MODEL photo's large file (v1.1 kept).
   **The moment 066 ran, every product the shop had left the website** — none had two photos — which
-  is the owner's rule working. `Cat.webPhotoGap()` counts shown vs waiting.
+  is the owner's rule working. (`Cat.webPhotoGap()` counted shown vs waiting and was never called
+  from anywhere; it was removed on 25 Sep 2026 with the storage paths 066 made unused.)
 - **Deleting** a product (`Cat.remove`) and the demo purge delete and log the photos first
   (`Photos.removeForProducts`), and the route takes their files out of the bucket after the commit.
 - **The mirror**: `product_photos` is cursor shape behind its own guard straight after the colours,

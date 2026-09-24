@@ -19,8 +19,9 @@ the site and the till never show two different numbers.
 - **Use `web_checkout.rate` for every lira figure.** Do not call the exchange-rates function from
   the site for prices: it answers in **old lira** (13,750), the shop works in the redenominated
   lira (138), and the shop's guard would not apply. One number, one place.
-- `rate.at` is when the shop last set it. If it is older than a day, the feed may be down on the
-  shop's side; the price is still the shop's price.
+- `rate.at` is when the rate last **moved**. The feed writes nothing while the market is still,
+  so an old `rate.at` is normal on a quiet week and says nothing about whether the feed is
+  working. The price is the shop's price either way.
 
 ## Nothing to run
 

@@ -248,7 +248,9 @@ these from OG System and the change is in the cloud within seconds**, so:
   **and keep the cart and everything the customer typed**. If the method they had picked has
   gone, clear only that choice and say so (§6, `method_gone`).
 - `version` changes exactly when something this answer shows changes, and never otherwise, so
-  comparing it is all you need. `updatedAt` is when the owner last changed any of it.
+  comparing it is all you need. `updatedAt` is when the owner last changed one of the settings
+  behind it (methods, shipping, countries, the print price). It does **not** move when the rate
+  moves by itself; `version` does.
 - When the call fails (no line, 5xx), keep using your last good answer. `web_order_submit`
   checks the payment again anyway.
 
@@ -257,7 +259,7 @@ these from OG System and the change is in the cloud within seconds**, so:
   "ok": true,
   "baseCurrency": "SYP",
   "currencies": [ { "code": "SYP", "minorExp": 0 }, { "code": "USD", "minorExp": 2 } ],
-  "rate": { "base": "USD", "quote": "SYP", "rate": 130, "at": "2026-08-24T10:00:00Z" },
+  "rate": { "base": "USD", "quote": "SYP", "rate": 138, "at": "2026-09-24T20:12:21Z" },
   "travel": ["driver", "office", "courier", "abroad", "pickup"],
   "cod": true,
   "codAllowed": ["driver", "pickup"],
@@ -414,8 +416,8 @@ POST /rest/v1/rpc/web_order_submit
 | `payment.type` | `cod` or `transfer`. `cod` only with `driver` or `pickup`. |
 | `payment.method` | For `transfer` only: an `id` from `web_checkout.transfer` (e.g. `sham`). |
 | `payment.reference` | Optional: the transfer number the customer typed. |
-| `items[]` | Up to 40 lines. **`sku` and `qty` (1–20) are what count.** `productId`, `colourId`, `name`, `size`, `price` and `currency` are what the customer saw, shown to the shop for comparison. |
-| `prints[]` | Up to 10 jobs. `design` is required. Then either `lines[]` (named shirts: `printName`, `number`, `size`, `qty` 1–50, up to 40 lines) or a plain `qty` (1–500) for unnamed pieces. `clubCode` (one of `web_checkout.print.clubs[].code`), `note`, `price`, `currency` are optional. The shop prices every print at `print.unitPrice`, never at the `price` sent. |
+| `items[]` | Up to 40 lines. **`sku` and `qty` (1–20) are what count.** The SKU alone decides the product, the colour and the size (each colour of a size has its own SKU). `name`, `size`, `price` and `currency` are what the customer saw: the shop shows its own price and notes the one the customer saw when they differ. `productId` and `colourId` are accepted and not used. |
+| `prints[]` | Up to 10 jobs. `design` is required. Then either `lines[]` (named shirts: `printName`, `number`, `size`, `qty` 1–50, up to 40 lines) or a plain `qty` (1–500) for unnamed pieces. `clubCode` (one of `web_checkout.print.clubs[].code`), `note`, `price`, `currency` are optional. The shop prices every print at `print.unitPrice`, never at the `price` sent. When `print.unitPrice` is `null` (the owner has not set it), show "price by phone": the job reaches the printer unpriced and the price is agreed on the call. |
 | | At least one item **or** one print is required. |
 | `shown` | Optional: totals **per currency**, exactly as the customer saw them. Never convert currencies into one total here. |
 | `note` | Optional: the customer's comment. |

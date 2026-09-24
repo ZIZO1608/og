@@ -10,7 +10,7 @@
    ONE WAY THE RATE IS SET, STILL. A rate from the feed is `Cat.setRate` — a
    new `fx_rates` row, logged, mirrored on the fast lane a couple of seconds
    later — exactly what the Settings box writes. The website's checkout
-   (`web_checkout`, server/supabase/030) reads the newest `fx_rates` row from
+   (`web_checkout`, server/supabase/031) reads the newest `fx_rates` row from
    the mirror, so it follows within seconds of the laptop, and its `version`
    moves so an open checkout redraws. There is no second path to the website:
    the feed's key stays in server/.env and never reaches a browser or the

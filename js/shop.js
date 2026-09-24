@@ -343,6 +343,7 @@ var Shop = (function () {
      inside it. Two taps would be two transfers, and unlike a sale there is no
      opId to make the repeat harmless. */
   var busy = false;
+  var busySaidAt = 0;   // when a refused press was last told "still saving"
   var loadedAt = 0;
 
   /* Every write in the app goes through here.
@@ -388,7 +389,20 @@ var Shop = (function () {
       return true;
     }
 
-    if (busy) return false;
+    if (busy) {
+      /* ONE WRITE AT A TIME is right (a double tap must not save twice), but a
+         press refused here used to vanish: 37 of the 38 callers ignore the
+         false, so a Save pressed while the last save was still reloading sent
+         nothing, showed nothing and left the dialog open. Said here, once, for
+         every caller — at most every two seconds, so a hand pressing again
+         and again hears it once. */
+      var now = Date.now();
+      if (typeof toast === 'function' && now - busySaidAt > 2000) {
+        busySaidAt = now;
+        toast(t('shop_still_saving'), t('shop_still_saving_sub'), 'warn', 3500);
+      }
+      return false;
+    }
     busy = true;
 
     var reply = null;

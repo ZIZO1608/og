@@ -211,7 +211,7 @@ var WebOrders = (function () {
           stock + '</div>' +
         '<div class="wo-qty">×' + ltr(i.qty) + '</div>' +
         '<div class="wo-price">' + money(i.price, i.currency, i.minorExp) +
-          (differs ? '<div class="wo-warn">' + t('wo_shown') + ' ' + money(sh.price, sh.currency, sh.currency === 'USD' ? 2 : 0) + '</div>' : '') +
+          (differs ? '<div class="wo-warn">' + t('wo_shown') + ' ' + money(sh.price, sh.currency, sh.minorExp != null ? sh.minorExp : (sh.currency === 'USD' ? 2 : 0)) + '</div>' : '') +
         '</div></div>';
     }).join('');
     return '<div class="wo-block"><div class="wo-k">' + svg(ICON.box) + t('wo_items') + '</div>' + rows + '</div>';

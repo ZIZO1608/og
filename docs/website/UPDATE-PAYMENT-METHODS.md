@@ -49,7 +49,7 @@ The answer has four new fields:
 | `transfer[].color` | The button colour, `#rrggbb` (lower case), or `null` = your normal button. |
 | `transfer` order | The owner's order. Show them in this order. |
 | `version` | Changes exactly when anything in this answer changes, and never otherwise. |
-| `updatedAt` | When the owner last changed any of it. For display or logs only. |
+| `updatedAt` | When the owner last changed one of the settings behind it. It does not move when the rate moves by itself (`version` does). For display or logs only. |
 
 `details.en` / `details.ar`: copy them exactly, in the page's language. Older data can have one
 of the two `null`: show the other one.

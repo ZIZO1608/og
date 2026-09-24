@@ -831,6 +831,9 @@ router.add('PUT /api/config', requirePerm('config.write', async (ctx) => {
     );
     for (const k of keys) stmt.run(k, String(updates[k]), at);
   });
+  /* A feed switch changed (how often, which side, the divisor, on/off): ask
+     the feed again in a moment rather than on a timer that may be 24 h out. */
+  if (keys.some((k) => k.startsWith('fx.feed_'))) { try { FxFeed.soon(); } catch (e) { /* the feed is off */ } }
 
   const config = {};
   for (const r of DB.get().prepare('SELECT key, value FROM config').all()) config[r.key] = r.value;
@@ -2795,7 +2798,7 @@ router.add('POST /api/ext/print-jobs', async (ctx) => {
       customer: b.customer, phone: b.phone ?? null, design: b.design, kind, qty,
       priority: b.priority === 'urgent' ? 'urgent' : 'normal',
       deadline: b.deadline ?? null,
-      price: Number.isFinite(Number(b.price)) ? Math.round(Number(b.price)) : qty * px.price,
+      price: Number.isFinite(Number(b.price)) ? Math.round(Number(b.price)) : (px.price == null ? 0 : qty * px.price),
       cost: kind === 'bulk' ? qty * px.cost : null,
       currency: b.currency === 'USD' ? 'USD' : 'SYP',
       lines, source: 'web', autoSend: true, userId: null

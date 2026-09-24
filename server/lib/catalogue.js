@@ -438,7 +438,7 @@ function catNames(id) {
 
 const WEB_COLS =
   `p.id, p.name, p.brand, p.type, p.colorway, p.made_in, p.image_bg,
-   p.image_initials, p.image_url, p.currency, p.selling_price, p.updated_at`;
+   p.image_initials, p.currency, p.selling_price, p.updated_at`;
 
 function webSizes(productIds) {
   if (!productIds.length) return {};
@@ -469,20 +469,6 @@ export function webList() {
     if (ready.length) out.push(webRow(p, sizes[p.id] ?? [], ready));
   }
   return out;
-}
-
-/* For the shop's own screens: how many products the website would show, and
-   how many are held back only by photos. Same rule as webList, one copy. */
-export function webPhotoGap() {
-  const rows = get().prepare(
-    `SELECT p.id FROM products p WHERE p.hidden = 0 AND p.on_web = 1 AND p.demo = 0`
-  ).all();
-  const photos = Photos.byProduct();
-  let shown = 0, waiting = 0;
-  for (const p of rows) {
-    if (webColours(p, photos[p.id] ?? []).length) shown++; else waiting++;
-  }
-  return { shown, waiting };
 }
 
 /* Null for a product that is archived, off the site, demo or simply absent —

@@ -67,8 +67,9 @@ size appears twice, or the photos never change.
      but greyed out and cannot be chosen;
    - a size already chosen stays chosen if the new colour has it in stock, and is cleared if not.
 3. **Add to cart sends the SKU of the chosen colour and size** (from `colour.sizes[].sku`), plus
-   `colourId`. In the order (`web_order_submit`, `items[]`), `sku` is what counts. `colourId` and
-   the colour's name are shown to the shop for comparison.
+   `colourId`. In the order (`web_order_submit`, `items[]`), `sku` is what counts: each colour of
+   a size has its own SKU, and the shop reads the colour from it. `colourId` is accepted and not
+   used, so a wrong SKU is a wrong colour.
 4. **Every cart line, the checkout and the order page show the colour**: a small swatch and the
    colour's name beside the size. Two colours of one product in the cart are two separate lines.
 5. **Links can open a colour**: `…/product/57?colour=10` opens the product page with colour 10

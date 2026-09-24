@@ -318,12 +318,24 @@ export function nextJobId(d = DB.get()) {
    in Settings → Money and prices; the fallbacks are the numbers that door has
    always used. The till's own figure (CONFIG.KIT_PRINT_PRICE) is separate. */
 export function webPrices(d = DB.get()) {
-  const num = (k, fb) => {
+  const raw = (k) => {
     const r = d.prepare('SELECT value FROM config WHERE key = ?').get(k);
-    const n = r ? Number(r.value) : NaN;
-    return Number.isFinite(n) && n > 0 ? Math.round(n) : fb;
+    return r == null || r.value == null ? '' : String(r.value).trim();
   };
-  return { price: num('print.unit_price', 950), cost: num('print.partner_unit_cost', 460) };
+  /* THE PRICE IS READ EXACTLY AS THE CLOUD READS IT (031 web_checkout:
+     `^[0-9]{1,13}$`, else null) — whole digits, no fallback. It used to fall
+     back to 950 while the key was unset, so the website told the customer
+     "price by phone" and the shop sent the job to Yalla Wear at 950 a piece:
+     one order, two prices. null here is "not set": the job is raised at 0,
+     which is what a print job with no price has always been, and the price
+     is agreed on the call and entered on the job. */
+  const p = raw('print.unit_price');
+  const price = /^[0-9]{1,13}$/.test(p) && Number(p) > 0 ? Number(p) : null;
+  /* The printer's cost is the shop's own side of the margin and is never
+     shown to the website, so its default stays (the till's number). */
+  const c = Number(raw('print.partner_unit_cost'));
+  const cost = Number.isFinite(c) && c > 0 ? Math.round(c) : 460;
+  return { price, cost };
 }
 
 /* A club named by somebody outside the shop (the website), as the code the

@@ -4355,3 +4355,16 @@ var FXFEED_AR = {
 };
 Object.keys(FXFEED_EN).forEach(function (k) { I18N.en[k] = FXFEED_EN[k]; });
 Object.keys(FXFEED_AR).forEach(function (k) { I18N.ar[k] = FXFEED_AR[k]; });
+
+/* Shop.write refuses a second save while the first is still reloading (one
+   write at a time, so a double tap never saves twice) — and now says so. */
+var SHOPWRITE_EN = {
+  shop_still_saving: 'Still saving the last change',
+  shop_still_saving_sub: 'Wait a moment, then press again.'
+};
+var SHOPWRITE_AR = {
+  shop_still_saving: 'لسا عم نحفظ التغيير اللي قبل',
+  shop_still_saving_sub: 'استنى لحظة، وبعدين اكبس مرة تانية.'
+};
+Object.keys(SHOPWRITE_EN).forEach(function (k) { I18N.en[k] = SHOPWRITE_EN[k]; });
+Object.keys(SHOPWRITE_AR).forEach(function (k) { I18N.ar[k] = SHOPWRITE_AR[k]; });

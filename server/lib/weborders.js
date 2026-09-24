@@ -136,7 +136,7 @@ function sendPrints(ref) {
       phone: who.phone ? String(who.phone).slice(0, 40) : null,
       design: String(p.design || ref).slice(0, 120),
       kind, qty, priority: 'normal', deadline: null,
-      price: qty * px.price,
+      price: px.price == null ? 0 : qty * px.price,   // no website print price set: agreed on the call
       cost: kind === 'bulk' ? qty * px.cost : null,
       currency, lines, customerId: holder ? holder.id : null,
       source: 'web', autoSend: true, userId: null
@@ -403,6 +403,12 @@ function itemsOf(d, o, whId) {
                     size: it && it.size != null ? String(it.size).slice(0, 20) : null,
                     price: Number.isFinite(Number(it && it.price)) ? Number(it.price) : null,
                     currency: it && it.currency ? String(it.currency).slice(0, 3) : null };
+  /* What the customer saw is drawn in ITS currency's own decimals, from the
+     currencies table — the screen used to guess (USD 2, anything else 0). */
+  if (shown.currency) {
+    const cu = d.prepare('SELECT minor_exp FROM currencies WHERE code = ?').get(shown.currency);
+    shown.minorExp = cu ? cu.minor_exp : null;
+  }
     if (!v) return { sku, qty, known: false, shown };
     return {
       sku, qty, known: true, shown,

@@ -3304,6 +3304,13 @@ body:not([data-portal="yalla"]) .ph-mark.ok svg { color: var(--brand); }
   body:not([data-portal="yalla"]) .ph-menu button { min-height: 44px; }
   body:not([data-portal="yalla"]) .ph-gal-nav { width: 44px; height: 44px; margin-top: -22px; }
   body:not([data-portal="yalla"]) .ph-gal-foot .btn { min-height: 44px; }
+  /* The camera mark on the Products list opens the photo manager, so it is a
+     thumb's target on a phone: it measured 47 x 27 (fix05/p5-phone). No
+     negative margin here, or the larger box reaches over the website switch. */
+  body:not([data-portal="yalla"]) .pr-web-ph {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 44px; min-height: 44px; margin: 0; padding: 4px 6px;
+  }
 }
 body.rtl .ph-tag, body.rtl .ph-chip, body.rtl .ph-mark, body.rtl .ph-state b { letter-spacing: 0; }
 
