@@ -3016,6 +3016,104 @@ No migration, no server change, no schema change.
   - `npm test`: 6.
   - The `.exe` was not rebuilt: `OGSystem.cs` did not change.
 
+## Online first, phases 1 and 2 (24 Sep 2026) — a standby copy, and receipts from anywhere
+
+Same branch (`feature/always-on`). The owner's plan: `shop.ogsports1.com` is the shop all the time,
+the VPS becomes the one main server, and the laptop becomes the standby the shop falls back on when
+the internet goes. These two phases are what that needs before the switch, and **both change nothing
+until somebody sets them**: `OG_ROLE` defaults to `primary`, and `receipt.transport` stays whatever
+it is. The plan (phases 0–4, the waves, the owner's four answers) is `_handover/ONLINE-FIRST-PLAN.md`
+in the night-mode worktree; the live steps are `_handover/ONLINE-FIRST.md` here.
+
+### One writer and a read-only copy — `server/lib/standby.js`
+
+- **`OG_ROLE=primary | standby`**, one setting and the same code on both machines. Today the laptop
+  is primary and the VPS can be its standby. After the switch it is the other way round.
+- **The primary hands out copies**: `GET /api/copy/db` is a `VACUUM INTO` snapshot, streamed and
+  deleted. **It is the whole database** (accounts, sealed passwords, customers), so its door is
+  shut three ways:
+  - `OG_COPY_KEY` as a bearer, compared in constant time (503 while no key is set, 401 for a
+    wrong one);
+  - **404 for anything the public proxy carried** (`Fwd.forwardedVisitor`), and for a standby, so
+    a visitor is never told the door exists;
+  - nginx answering `location ^~ /api/copy/ { return 404; }` in `deploy/shop-proxy`.
+- **The standby follows**: every `OG_STANDBY_MINUTES` (5) it fetches from `OG_UPSTREAM`, runs
+  `Backup.verify` on it (integrity and foreign keys), and swaps it in. The swap is `DB.close`,
+  rename, `DB.open`, then `Auth.invalidatePermissions()`, because a permission cache from the old
+  file is a security bug. The previous file is kept as `og.db.prev`.
+  - Over HTTPS to the laptop, `OG_UPSTREAM_CA` pins the till's own certificate and
+    `OG_UPSTREAM_NAME` (`og-till`) is the name checked, the same name nginx already verifies.
+- **A standby refuses every write**: 503 `standby_read_only` in the request pipeline, before any
+  route. Only sign-in, sign-out and the password hint pass (`STANDBY_OK`).
+  - **It runs none of the workers.** The bots, the reminders, the mirror, the backups and the
+    inbox belong to the one main server, or everything happens twice.
+  - `/api/health` carries `role` and `standby: { copyAt, reachable }`. Every screen, the login
+    gate included, carries a fixed amber strip, "Standby copy, read only · data as of 14:19"
+    (`js/standby.js`, `sb_strip_*`, `body.is-standby`). It turns red when the main server cannot
+    be reached. A copy that looks exactly like the shop would take a sale and refuse it with no
+    reason anybody could see.
+- **Sign-ins made ON the standby survive a swap; sessions that came WITH a copy never do.** The
+  next copy would throw away a session written here, so `carryLocal()` moves across the sessions
+  made since the last copy. Nothing else is carried: if the main server has since signed that
+  person out, or switched the account off, the standby must not keep them in.
+  - **`readCopy(next)` runs BEFORE `carryLocal()`.** The first version remembered which tokens
+    came with the copy after carrying, so the carried sessions counted as "came with it" and were
+    dropped at the next swap. The second swap lost every sign-in.
+- **This is a copy, not a sync.** Nothing flows from the standby back. Working through a cut and
+  sending it back afterwards is phase 3 (the outbox, lent invoice numbers), built on this.
+
+### Receipts through the shop laptop's agent — migration 064, `lib/receipt-queue.js`
+
+Once the VPS is the main server, it cannot reach a USB cable in Aleppo. So
+**`receipt.transport = 'agent'`** (Settings → Receipt printer → "The shop laptop's agent") queues
+the till's rendered bytes in `receipt_jobs` for `receipt.station` (`shop`), and
+`agent/print-agent.js` on the laptop long-polls `GET /api/receipts/next`, prints with `copy /b`, and
+reports done or failed. That is the label agent's pattern, run by the same process. The agent only
+ever makes outgoing requests, so nothing is opened on the shop's router.
+
+- **Claim, lease, token**, as `label_print_jobs`: a stale or wrong-token completion changes
+  nothing, and a lease that runs out goes back to the queue.
+- **A receipt not printed within 10 minutes is EXPIRED, never printed late.** It was for somebody
+  at the counter, and a slip out of nowhere at 4 pm is worse than none.
+  - `print_log` is written when paper did or did not come out, including the expiry with its
+    reason, **never when the job is queued**, because a queued job proves nothing.
+  - `logPrint` skips a sale that is not in `sales` (the foreign key).
+- **The till is told whether anybody is listening.** The answer to `POST /api/print` carries
+  `agentHere`: the station's agent has asked within the last minute, which is an in-memory map on
+  purpose. `js/receipt.js` toasts `rc_agent_away` at once, rather than when the customer asks for
+  the slip.
+- **One agent, two loops.** Each loop runs only when its printer is named: `printerShare` and
+  `station` for labels, `receiptShare` and `receiptStation` for receipts. Each loop keeps its own
+  backoff, so a dead label queue does not slow receipts.
+  - **`receiptShare` goes ONLY on the laptop with the receipt printer.** A second agent with it
+    would take some of the station's receipts and fail them into a queue that does not exist.
+    That is why it is not in `agent-config.example.json`.
+- **The login needs `sale.reprint`** (cashier, manager). The warehouse role does not have it.
+- **`OG_AGENT_CONFIG`** points the agent, `hardware.js` and `test-print.js` at another config
+  file. It is for tests only.
+- **`hardware.js` knows the agent now.** It checks the agent's receipt queue the way it checks a
+  USB one, and checks the `OGLabelAgent` task for whichever printers the agent has. A receipt-only
+  agent is not scolded for having no label share.
+- **`test-print.js` prints straight to that queue.** The printer is what is being tested, not the
+  queue.
+- `receipt_jobs` is **local-only** (`supabase-check.js` `LOCAL_ONLY`). It holds delivery state,
+  like `partner_events`, and there is no mirror file.
+
+### How it was verified
+
+- `tools/always-on/standby.mjs` 34: two real servers, the copy and its three doors, the swap, the
+  read-only refusals, the workers not started, sign-ins across two swaps, and HTTPS pinning. **3 of
+  them went red** without the guards.
+- `standby-ui.mjs` 18: a browser on a real standby. The strip is checked from the login gate on,
+  in both languages, with the time isolated and the top bar not covered. A Save pressed on the
+  copy is refused in words, and nothing is written on either server.
+- `receipts.mjs` 23: a real server, **the real agent** printing into a file, bytes compared, the
+  opId replay, expiry, a stale token, and hardware and test-print against a test agent config
+  (read-only, no paper). **Expiry goes red when it is switched off.**
+- `receipts-ui.mjs` 19: the chip, the station box and Save, pressed in English at 1100 and Arabic
+  at 390, and read back out of SQLite.
+- Plus `npm test` 6, `check.mjs` 23 and `panel.mjs` 21.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both

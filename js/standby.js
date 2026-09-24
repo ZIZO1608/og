@@ -16,18 +16,20 @@ var Standby = (function () {
   var info = null;   // null on the main server, { copyAt, reachable } on a standby
   var timer = null;
 
-  function lang() { return (typeof OG !== 'undefined' && OG.lang) || 'en'; }
-  function words() {
-    var ar = lang() === 'ar';
+  /* The words are sb_strip_* in js/app-i18n-extra.js; the time is slotted in
+     as its own isolated run, or Arabic drags "14:05" to the far end. */
+  function paintWords(el) {
     var at = info && info.copyAt ? clockOf(info.copyAt) : null;
-    if (ar) {
-      return at
-        ? 'نسخة احتياطية للقراءة فقط · البيانات من الساعة ' + at + ' · التغييرات بتصير على السيرفر الرئيسي'
-        : 'نسخة احتياطية للقراءة فقط · لسا ما وصلت نسخة من السيرفر الرئيسي';
+    var parts = t(at ? 'sb_strip_at' : 'sb_strip_none').split('{at}');
+    el.textContent = '';
+    el.appendChild(document.createTextNode(parts[0]));
+    if (parts.length > 1) {
+      var b = document.createElement('bdi');
+      b.setAttribute('dir', 'ltr');
+      b.textContent = at;
+      el.appendChild(b);
+      el.appendChild(document.createTextNode(parts[1]));
     }
-    return at
-      ? 'Standby copy, read only · data as of ' + at + ' · changes are made on the main server'
-      : 'Standby copy, read only · no copy has arrived from the main server yet';
   }
   function clockOf(iso) {
     var d = new Date(iso);
@@ -50,9 +52,8 @@ var Standby = (function () {
     }
     document.body.classList.add('is-standby');
     el.className = 'standby-strip' + (info.reachable === false ? ' is-cut' : '');
-    /* The time is its own bidi run, or Arabic drags it to the far end. */
-    el.innerHTML = '<span class="dot" aria-hidden="true"></span><span dir="auto"></span>';
-    el.lastChild.textContent = words();
+    el.innerHTML = '<span class="dot" aria-hidden="true"></span><span></span>';
+    paintWords(el.lastChild);
   }
 
   function check() {
