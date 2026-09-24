@@ -1538,7 +1538,7 @@ router.add('GET /api/orders/last-destination/:id', requirePerm('delivery.desk', 
   sendOk(ctx.res, { dest: Orders.lastDestination(Number(ctx.params.id)) });
 }));
 
-/* ---- "Waiting for the shop": night requests (061, lib/requests.js) ------
+/* ---- "Waiting for the shop": night requests (063, lib/requests.js) ------
    What staff left at /night while the shop was shut. Nothing here happened
    by itself: Accept makes the order through Orders.create — the function
    POST /api/orders calls — and Reject records why. The office's job, so

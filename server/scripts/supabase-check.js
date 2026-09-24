@@ -188,7 +188,7 @@ const db = DB.get();
    Left off this list they read as missing mirror tables on every run, which
    is exactly the false alarm this list exists to prevent. inbox_applied (050)
    is this machine's record of what it did with og-track's inbox, and
-   shop_requests (061) its working copy of night mode's requests — the shared
+   shop_requests (063) its working copy of night mode's requests — the shared
    state of those is the cloud's inbox.requests (035), not a mirrored table. */
 const LOCAL_ONLY = new Set(['sessions', 'login_attempts', 'applied_ops',
                             'label_print_jobs', 'label_code_seq',

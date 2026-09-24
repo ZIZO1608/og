@@ -236,7 +236,7 @@ export function list(user, { limit = MAX_ROWS } = {}) {
     }
   }
 
-  /* NIGHT REQUESTS (061, lib/requests.js). Somebody asked for these while
+  /* NIGHT REQUESTS (063, lib/requests.js). Somebody asked for these while
      the shop was shut and is waiting for a call back — a sale that has not
      closed. One row with the count, keyed on the NEWEST waiting request, so a
      request that arrives after the row was read makes it bold again. Read

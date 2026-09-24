@@ -8,7 +8,7 @@
    1. COLLECTED WITH THE INBOX. Inbox.collect() calls collect() every minute
       the mirror is live (and when og-bridge says the road came back). It
       takes what is waiting (requests_take), keeps a copy in shop_requests
-      (061, local-only), and tells the cloud "received" — which is what night
+      (063, local-only), and tells the cloud "received" — which is what night
       mode shows as "the shop has it". OG_NIGHT_REQUESTS=0 switches it off.
    2. NOTHING IS APPLIED BY ITSELF. accept() makes the order through
       Orders.create — the function POST /api/orders calls — so the stock is

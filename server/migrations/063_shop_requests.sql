@@ -1,5 +1,5 @@
 -- =============================================================================
---  061 — "Waiting for the shop": the requests this laptop collected (night mode)
+--  063 — "Waiting for the shop": the requests this laptop collected (night mode)
 -- -----------------------------------------------------------------------------
 --  While the laptop is off or out of reach, staff at shop.ogsports1.com/night
 --  (og-bridge) can leave a REQUEST: a customer, some sizes, delivery or
@@ -19,6 +19,11 @@
 --
 --  No foreign keys, like partner_events (041): a request must never be the
 --  reason a sale or a user row cannot change.
+--
+--  063, not 061: main took 061 and 062 for the website's orders while this
+--  was being written (061_web_orders, 062_web_orders_perm). The runner keys on
+--  the file NAME and sorts, so a gap on this branch alone is harmless, and once
+--  merged the three run in order.
 -- =============================================================================
 
 CREATE TABLE shop_requests (

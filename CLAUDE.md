@@ -3240,7 +3240,7 @@ both in the worktree `D:\DESKTOP\og-night` and gitignored. This section is what 
 
 ### The laptop
 
-- **Storage.** Migration `061`: `shop_requests`, **local-only**. It is on `supabase-check.js`'s
+- **Storage.** Migration `063` (main holds 061/062 for website orders): `shop_requests`, **local-only**. It is on `supabase-check.js`'s
   `LOCAL_ONLY` list, and there is no `logChange`.
 - **Collecting.** `lib/requests.js` rides `Inbox.collect()`: every minute the mirror is live, and
   on og-bridge's collect-now. `OG_NIGHT_REQUESTS=0` switches collecting off.
