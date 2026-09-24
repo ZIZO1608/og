@@ -3161,6 +3161,124 @@ accounts on both sides. `night/online-offline` is still not merged.
   router's internet cable out. The branch-only parts are named and left out: `/snapshot`,
   og-bridge, the heartbeat, `apply.ps1`.
 
+## Night mode (24 Sep 2026) — `/night`, and "Waiting for the shop"
+
+Branch `feature/night-mode`, off `merge/online-offline`. **Nothing deployed, nothing run against
+Supabase.** The plan is `_handover/NIGHT-MODE-PLAN.md` and the report `_handover/NIGHT-MODE.md`,
+both in the worktree `D:\DESKTOP\og-night` and gitignored. This section is what travels.
+
+**When the laptop is off or out of reach, `shop.ogsports1.com/night` still answers.**
+- **What it is.** A small app served by **og-bridge** (`vps/og-bridge/src/night*.js`) that reads
+  the mirror as `og_vps`: stock by product and size per place, a customer lookup, recent orders
+  with their status, and today's numbers for the owner and the manager only.
+- **The one write** is a **request**: a customer, sizes, delivery or pickup. It waits in the cloud
+  until **a person on the laptop accepts it** (a normal order through `Orders.create`) or turns it
+  down with a reason. **The laptop stays the only writer of shop data.**
+
+### The cloud — `server/supabase/035_night_requests.sql` (run by hand, after 030 and 031)
+
+- **`inbox.requests`**, beside og-track's `inbox.items`, which is untouched. `inbox.items` is taken
+  and applied in one pass. A request is decided by a person, later, and the answer travels back
+  (`waiting → received → accepted | rejected`), which is web-orders' shape. **Generic on
+  purpose**: `source` is `night` or `web`, so the website's orders can arrive here later.
+- **`og_vps` gains EXECUTE on `erp.request_submit` and `erp.requests_list`, and no table privilege
+  at all.**
+  - Its sessions stay read-only by default (030). An INSERT inside a SECURITY DEFINER function
+    still fails in a read-only transaction, so **`mirror.submit()` is the ONLY path in og-bridge
+    that opens `BEGIN READ WRITE`**, and `bridge.mjs` / `roundtrip.mjs` assert it from the SQL
+    log.
+  - **The file's last block fails the whole run** if `og_vps` can write to any relation, or can
+    reach `inbox.requests` directly.
+- **The payload is built by the function from the mirror.** Names, sizes and colours come from
+  `public.variants` / `products` / `product_colours`, never from the caller. The laptop
+  re-resolves every SKU and prices it from its own table anyway.
+- **The laptop's two doors** are `public.requests_take` and `public.requests_mark`, for the
+  service key and the mirror's lineage only.
+  - A decision is final.
+  - A request not yet decided follows the lineage, so it is taken again by the laptop that takes
+    the baton.
+- **Limits:** 20 lines, 20 of a size, 60 pieces · 5 undecided per phone · 30 per night user an
+  hour · 1,000 undecided in all.
+
+### og-bridge — `/night`
+
+- **Sign-in** is the snapshot's door (`snapshot-auth.js`: scrypt + TOTP + throttle) with night's
+  own accounts.
+  - Accounts: `OG_NIGHT_USERS`, roles `owner | manager | staff`, made by `node src/night-user.js`.
+  - Cookie `og_night` on `/night`.
+  - A per-session form token on **every** POST, beside the Origin check.
+- **Roles.** Staff never see money, and it is not even queried for them. Staff list only their
+  own requests.
+- **No script at all.** The stylesheet is one constant, and its SHA-256 is the CSP's `style-src`
+  (no `unsafe-inline`, no `style=` attribute; a test hashes each page's `<style>` against its
+  header). No remote font — a render-blocking stylesheet on a slow line is a blank page.
+- **Honesty.** Every page carries the banner: «وضع الليل · البيانات من الساعة HH:MM · التغييرات
+  بتستنى المحل». The time is `erp.till_status().beat_at`.
+- **The draft** lives in memory beside the session, with the idempotency `op` it is sent under,
+  so a form sent twice on a slow line is one request.
+- **Switches:** `OG_NIGHT_SUBMIT=off` makes night mode read-only (the kill switch).
+  `OG_NIGHT_MAX_PER_HOUR` (20) sets the per-account limit. **`OG_VAULT_KEY` never goes to the
+  VPS.**
+
+### The laptop
+
+- **Storage.** Migration `061`: `shop_requests`, **local-only**. It is on `supabase-check.js`'s
+  `LOCAL_ONLY` list, and there is no `logChange`.
+- **Collecting.** `lib/requests.js` rides `Inbox.collect()`: every minute the mirror is live, and
+  on og-bridge's collect-now. `OG_NIGHT_REQUESTS=0` switches collecting off.
+- **The screen** is **"Waiting for the shop"** (`js/requests.js`, nav `requests`,
+  `delivery.desk`), with a bell row `requests_waiting`.
+- **Accept** is one press for a pickup or our own driver, on plan `receipt`.
+  - A transport office, courier or abroad is paid before sending, so it goes through **Open in
+    the order desk**: `Desk.fromRequest`, then the desk's own Save with `requestRef`.
+  - **Creating a new customer on the way needs `customer.write`**, as it does in the desk.
+- **APPLIED ONCE, THREE WAYS:**
+  - a decision needs the row to be `waiting`;
+  - the order carries opId `req:<ref>`;
+  - its delivery note starts with the **marker `[req N-0042] `**. `deliveries.note` is mirrored
+    and sales have no note of their own, so a request re-taken after the shop moved laptops
+    arrives already an order.
+- **The decision goes back** straight away (`flushSoon`), and again on every collect until the
+  cloud confirms it.
+
+### Front-end edits outside the new screen
+
+- **`sw.js` returns early for `/night`**, as it does for `/snapshot`. Cache-first would keep night
+  pages on the device, and answer a navigation with this app's shell, which is the page that
+  cannot work at that moment. `CACHE` v291.
+- **The app's own "shop's internet is down" screen** (`js/shop.js`) has a Night mode button for
+  every role. A phone that already has the app sees this screen, never the proxy's page.
+
+### The proxy
+
+`/night` and `/night/*` go to og-bridge exactly as `/snapshot` does. They have their own limit
+(`og_night`) and their own down page. The proxy's down page gains the button. Additions only:
+`tools/night-mode/proxy.mjs` proves it, runs a real `nginx -t`, and routes real requests.
+
+### Tests — `tools/night-mode/` (PGlite via `OG_PGLITE`, nginx via `OG_NGINX`; nothing installed)
+
+`sql.mjs` 96 · `bridge.mjs` 35 · `laptop.mjs` 62 · `roundtrip.mjs` 35 (night → cloud → laptop →
+decision → night, over HTTP, read back from SQLite and Postgres) · `proxy.mjs` 22. Also og-bridge
+`node --test` 59 (25 old) and server `npm test` 15 (6 old). `preview.mjs` takes the 390 px
+screenshots in both languages.
+
+### Things that will bite you
+
+- **PGlite is ONE connection, and `SET ROLE` is connection-wide.** Every caller goes through
+  `makeSerial()` in `lib.mjs`. Otherwise the PostgREST stand-in (as `service_role`) interleaves
+  with the `og_vps` pool, and each runs as the other.
+- **`flushSoon()` must not drop a decision** made while a report is in flight. It is *owed* and
+  sent when that report lands. The first version made the second and third decisions of a busy
+  minute wait for the next collect (found by `roundtrip.mjs`).
+- **A chip is `inline-block`, not `inline-flex`.** In a flex row the text before a figure is its
+  own item and loses its trailing space ("Back storage:2"). This is the `.btn` trap again.
+- **Typed text gets `dir="auto"`** (names, addresses, notes, reasons). An English note in an Arabic
+  layout otherwise prints its full stop at the front.
+- **Other sessions run their own sandboxes on this machine.** A fixed test port (8192) was held by
+  another session's server. The scripts pick a free one.
+- **Heredocs with Arabic in them break the Bash tool here**. Write scripts with Arabic to a file
+  first.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
