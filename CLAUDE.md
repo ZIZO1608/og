@@ -3372,6 +3372,73 @@ second path to the website; the contract (§4) tells Ahmad to use `rate` and nev
 - **`saveSetting(key, value, wait, after)` grew a fourth argument** so a switch can ask the feed
   again once the save has landed — the side and the divisor change what the number means.
 
+## Prices are dollars, the lira follows the rate (067, cloud 037 — 25 Sep 2026)
+
+The owner's rule: every product is priced in **dollars**, and the lira price is the dollar price
+at the rate of the moment. That rate follows the feed above, so the lira moves by itself and
+**no lira price is stored anywhere**. The conversion is one rule in three places, and all three
+must stay the same: dollars × rate, rounded to the whole lira. They are `convert()` in
+`server/lib/sales.js` (what the till charges, frozen into the sale), `DB.liraOf` / `toBase` in
+`js/data.js` (what every screen draws) and `webPrices()` in `server/lib/catalogue.js` (the
+website).
+
+- **Migration `067_usd_prices.sql` converts every lira product once**, at the newest USD→SYP
+  rate. The price becomes cents: the same money, give or take a cent's rounding (4,700 at 135
+  becomes $34.81, which is 4,699 back in lira).
+  - It writes a `change_log` row per product before the UPDATE, so the mirror receives the
+    change.
+  - `lib/migration-checks.js` refuses anything further than a cent's rounding off and names the
+    product; a check with a wrong divisor was seen red.
+  - A database with no rate is left alone.
+  - On the sandbox copy: 46 products converted, the worst difference 1 lira at 138.
+- **A lira price is refused:** `createWithVariants` and `update` answer 400 `prices_in_dollars`
+  (`assertDollars`), and a price written onto a product still in lira is refused the same way.
+  The `currency` column and its CHECK stay, because every sale before 067 names the currency it
+  was priced in.
+- **Every price box takes dollars.** That covers Add product, the product editor (the `#peCur`
+  select is gone), Change the price and the bulk price change.
+  - Each box is text with `inputmode=decimal`, read through `usdCents()` (`Desk.toMinor` with
+    `USD`).
+  - The small `.pr-lira` line under it (`liraHint()`) says what it comes to at today's rate, and
+    only that line repaints while typing.
+  - The products list and drawer read `$34.99 · 4,829 SYP` (`priceBoth()`).
+  - `usdOf()` reads a stored price as cents, converting at today's rate a product still in lira.
+- **A new rate re-prices the shop in place.** `FxFeedUI.follow()` → `DB.reprice(rate)` works
+  every `sellingPrice` / `costPrice` out again from `srcSellingPrice` / `srcCostPrice`.
+  - `POS.reprice()` then takes the open basket's line prices again and repaints the cart and the
+    grid, never `render()`. The server charges the rate of the moment, and a basket adding up
+    yesterday's lira would show one total and print another.
+  - `POST /api/fx` (a rate typed in Settings) now sends the same `Live.notify('og', { fx })` as
+    the feed, with `from: 'typed'` and its own toast (`fxf_toast_typed`).
+  - Measured: a basket at 9,900 went to 10,761 with no reload, and the sale landed at 10,761
+    with `fx_rate` 150.
+- **The website gets both prices, ready to show:** `prices: { USD: {amount, minorExp: 2}, SYP:
+  {amount, minorExp: 0} }` plus `rate`, on every product. The laptop's feed carries a top-level
+  `rate` as well. `price` / `currency` / `minorExp` stay for older sites. The website never
+  computes the lira (contract v1.3, `docs/website/UPDATE-USD-PRICES.md`).
+- **`server/supabase/037_web_products.sql` serves the SAME answer from the mirror**:
+  `public.web_products(p_key)` and `public.web_product(p_key, p_id)`, so the shop window works
+  with the laptop shut.
+  - It needs the website key, as `web_checkout` does, and `version` is an md5 of the answer.
+  - **This is the rule's second copy.** `web.product_row()` / `web.product_prices()` there and
+    `webRow()` / `webPrices()` here say KEEP IN STEP. The lira is `floor(price / 100 * rate +
+    0.5)` in double precision, because numeric rounding disagreed with JavaScript by a lira at
+    the halves.
+  - Sizes order by size then SKU on both sides (`webSizes` gained the SKU for this).
+  - `_nightshift/usd-prices/parity.mjs` (40 checks, in the `og-usd-prices` worktree) builds a
+    shop through the real lib, copies it into PGlite running 001…037, and compares the two
+    field for field. It also checks the lira against the till's `convert()` at three rates, and
+    that the version moves. It was seen going red (13 failures) against a deliberately broken
+    037.
+  - **037 is standalone like 030 and 031, not part of `CATCH-UP.sql`.** Run it after 036, then
+    `verify_037_web_products.sql` (9 rows).
+- **Labels print the dollar price** (`Cat.fromMinor(selling_price, currency)`), so a sticker
+  never goes stale when the rate moves.
+- Verified: `npm test` (25, including `test/usd-prices.test.js`), the parity suite, and
+  `_nightshift/usd-prices/ui.mjs` (26). The UI suite presses the add form, the editor, the till
+  across a rate change, a real sale read back from SQLite, and Arabic at 390. `fix05/p0-namespaces`
+  and `fix06/idle` also pass.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both

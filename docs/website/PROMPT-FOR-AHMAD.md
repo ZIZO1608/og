@@ -1,10 +1,19 @@
-# OG Sports website ↔ OG System — connecting the orders (contract v1.2)
+# OG Sports website ↔ OG System — connecting the orders (contract v1.3)
 
 > **For Ahmad, and for the AI helping him build the OG Sports website.**
 > Paste this whole file in as the brief. It is the contract between the website and the
 > shop's system (OG System). The shop side is being built to exactly this. If something
 > here does not fit the website, ask before changing it. Do not work around it: both sides
 > have to agree.
+
+> **v1.3 (25 Sep 2026) — prices are dollars, the lira follows the rate, and products come from
+> the cloud.** Every product is now priced in **US dollars**, and its lira price is the dollar
+> price at the shop's current rate, which follows the market by itself. Each product carries
+> **both, ready to show**: `prices.SYP` (show it large) and `prices.USD` (show it small beside
+> it). **Never work the lira out yourself.** Products now come from the Supabase function
+> **`web_products`**, so the shop window works **even with the shop's laptop switched off**;
+> `GET /api/ext/products` still answers the same thing while the laptop is on. Nothing was
+> removed or renamed. The short list of what to change is `docs/website/UPDATE-USD-PRICES.md`.
 
 > **v1.2 (24 Sep 2026) — every product has real photos.** Each colour of a product now has at
 > least two photos: **first somebody wearing it (the model photo), second the product on its
@@ -64,8 +73,9 @@ compare them.
 
 | What | Where | When it works |
 |---|---|---|
-| **Products** (read-only) | `GET https://shop.ogsports1.com/api/ext/...` | Only while the shop laptop is on and online |
+| **Products** (read-only) | Supabase functions `web_products` / `web_product` (v1.3) | Always |
 | **Orders, checkout info, order status** | Supabase functions (`POST {SUPABASE_URL}/rest/v1/rpc/...`) | Always |
+| Products, the old door (same answer) | `GET https://shop.ogsports1.com/api/ext/...` | Only while the shop laptop is on and online |
 
 The shop gives you three values:
 
@@ -80,6 +90,10 @@ browser downloads, or into the page source. The browser talks to *your* server; 
 talks to OG System. Anyone holding the website key can place orders in the shop's name.
 
 ### Calling the products door
+
+Products are a Supabase function like the others (v1.3): `og('web_products', {})` with the
+helper below, or `og('web_product', { p_id: 50 })` for one. The old door on the shop laptop
+gives exactly the same products while the laptop is on:
 
 ```http
 GET https://shop.ogsports1.com/api/ext/products
@@ -130,12 +144,13 @@ async function og(fn, params) {
 
 ## 3. Products
 
-### `GET /api/ext/products`
+### `web_products` (and `GET /api/ext/products`, the same answer)
 
 Returns **the whole published catalogue** in one answer:
 
 ```json
 {
+  "ok": true,
   "products": [
     {
       "id": 50,
@@ -153,9 +168,12 @@ Returns **the whole published catalogue** in one answer:
         { "kind": "product", "url": "https://…-l.jpg", "thumbUrl": "https://…-s.jpg", "width": 1600, "height": 1600 },
         { "kind": "extra",   "url": "https://…-l.jpg", "thumbUrl": "https://…-s.jpg", "width": 1600, "height": 1200 }
       ],
-      "price": 450000,
-      "currency": "SYP",
-      "minorExp": 0,
+      "price": 3499,
+      "currency": "USD",
+      "minorExp": 2,
+      "prices": { "USD": { "amount": 3499, "minorExp": 2 },
+                  "SYP": { "amount": 4829, "minorExp": 0 } },
+      "rate": { "rate": 138, "at": "2026-09-25T08:10:00.000Z" },
       "sizes":   [ { "size": "42", "sku": "OG-050-42", "colourId": 3, "inStock": true } ],
       "colours": [
         { "id": 3, "en": "White", "ar": "أبيض", "hex": "#F5F5F5",
@@ -169,17 +187,24 @@ Returns **the whole published catalogue** in one answer:
     }
   ],
   "count": 1,
-  "generatedAt": "2026-09-23T10:00:00.000Z"
+  "rate": { "rate": 138, "at": "2026-09-25T08:10:00.000Z" },
+  "version": "5b0f0c1e8a4d3c2b1a09f8e7d6c5b4a3",
+  "generatedAt": "2026-09-25T08:12:00.000Z"
 }
 ```
+
+(The laptop's `/api/ext/products` has no `ok` and no `version`; everything else is identical.)
 
 Rules:
 
 - **Keep your own copy and refresh it every 5 minutes.** When the shop answers, **replace
   your whole list** with the new one. A product that is missing from the new list has been
   taken off the website by the shop. Hide it. There is no "changes since" feed on purpose.
-- **When the shop does not answer** (laptop off, internet down), keep showing your last good
-  copy. The shop checks stock by phone before confirming anyway.
+  `version` changes exactly when something shown changed (a price, the rate, a photo, a size
+  selling out), so an unchanged `version` means there is nothing to redraw.
+- **`web_products` answers from the cloud copy, so it answers with the laptop off** (v1.3).
+  If it does not answer at all (internet down), keep showing your last good copy. The shop
+  checks stock by phone before confirming anyway.
 - **A size is identified by its `sku`.** That is what you send back in an order. Sizes with
   `inStock: false` are shown but not buyable. Quantities are deliberately never sent.
 - **Colours:** a product may have several colours (`colours[]`), each with its own sizes,
@@ -219,12 +244,24 @@ Rules:
     copy of a photo URL longer than your 5-minute product copy, or you will show broken images.
   - `image.bg` and `image.initials` are still sent for a placeholder while a photo loads.
     Never use stock photos.
-- **Money is in minor units.** Displayed amount = `price / 10^minorExp`. SYP has
-  `minorExp` 0 (whole lira: `450,000 SYP`). USD has 2 (cents: `2500` → `$25.00`).
-  **Some products are priced in USD and some in SYP.** Show each in its own currency and
-  never convert it silently.
-- `GET /api/ext/products/:id` returns `{ "product": {...} }` for one product, or 404 if it is
-  not published.
+- **Prices (v1.3): every product is priced in dollars, and the lira is worked out for you.**
+  `prices.SYP.amount` is the dollar price at the shop's current `rate`, rounded to the whole
+  lira: **exactly what the shop's till charges today.** Show it **large** (`4,829 ل.س`), and
+  `prices.USD` **small** beside it (`$34.99`).
+  - **Never compute the lira yourself** and never cache a rate of your own. The rate follows the
+    market by itself, and `prices.SYP` follows it within seconds.
+  - Money is in minor units: displayed amount = `amount / 10^minorExp`. SYP has `minorExp` 0
+    (whole lira), USD has 2 (cents: `3499` → `$34.99`).
+  - `prices.SYP.amount` is `null` only if the shop has no rate at all. Then show the dollar
+    price alone.
+  - `price` / `currency` / `minorExp` are the product's own price (now always dollars), kept
+    for a site built before v1.3.
+  - Cart and order totals: add up `prices.SYP.amount`, and send those lira figures as the
+    item `price` with `currency: "SYP"` and in `shown` (§5). The shop re-prices every line
+    when it accepts the order, so a rate that moved in between is settled on the call.
+- `web_product` with `p_id` returns `{ "ok": true, "product": {...} }` for one product, or
+  `{ "ok": false, "code": "not_found" }` if it is not published. `GET /api/ext/products/:id`
+  returns `{ "product": {...} }` or 404.
 - `GET /api/ext/reviews?limit=50` returns delivery reviews the customer allowed **and** the
   shop approved, if you want a reviews section.
 
@@ -293,7 +330,9 @@ these from OG System and the change is in the cloud within seconds**, so:
   within seconds. Do not call the exchange-rates function from the website for prices — use this
   `rate`, so the website and the till always agree on the same number, and the shop's guard
   (a jump the owner has to confirm) applies to both. `version` moves when the rate does, so an
-  open checkout redraws its lira prices exactly as it does for a new method.
+  open checkout redraws its lira prices exactly as it does for a new method. **Product prices
+  come ready in lira from `web_products`** (`prices.SYP`, §3), worked out at this same rate:
+  use those for products, and this `rate` only for a figure the shop quotes in dollars.
 
 ### How the customer receives it (`delivery.method`)
 
@@ -598,7 +637,8 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
 
 - ✅ Keep the three secrets on the server only.
 - ✅ Save the order and its `ref` **before** sending it, and retry with the identical object.
-- ✅ Show prices in the product's own currency. Show totals per currency.
+- ✅ Show each product's `prices.SYP` large and `prices.USD` small (v1.3). Show totals per currency.
+- ❌ Don't work the lira price out yourself, and don't keep a rate of your own for products.
 - ✅ Refresh products every 5 minutes, and keep the last good copy.
 - ✅ Read `web_checkout` every time a checkout opens (60 seconds of caching at most), and
   redraw an open checkout when its `version` changes.
@@ -616,7 +656,10 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
 
 ## 11. Done means
 
-- [ ] Products come from `/api/ext/products`, refresh every 5 minutes, survive the laptop being off.
+- [ ] Products come from `web_products` (the laptop's `/api/ext/products` only as a fallback),
+      refresh every 5 minutes, and still show with the laptop off.
+- [ ] Every price shows `prices.SYP` large and `prices.USD` small, and follows a rate change
+      without the website computing anything.
 - [ ] Every product shows its photos in the order given (model, product, extras), `thumbUrl`
       in grids and `url` on the product page; picking a colour shows that colour's photos.
 - [ ] Checkout reads `web_checkout` on every open (≤ 60 s cache): delivery options, fee
