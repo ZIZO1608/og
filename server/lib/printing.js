@@ -24,6 +24,20 @@ import { get, nowIso } from './db.js';
 import * as Printer from './printer.js';
 import * as Orders from './orders.js';
 import * as ReceiptQueue from './receipt-queue.js';
+import { isStandby } from './standby.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/* The receipt queue the shop laptop's print agent prints into — the same
+   file agent/print-agent.js, hardware.js and test-print.js read. */
+function agentReceiptShare() {
+  const file = process.env.OG_AGENT_CONFIG
+    ? resolve(process.env.OG_AGENT_CONFIG)
+    : resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'agent', 'agent-config.json');
+  if (!existsSync(file)) return '';
+  try { return String(JSON.parse(readFileSync(file, 'utf8')).receiptShare || ''); } catch { return ''; }
+}
 
 /* ------------------------------------------------------------------ data */
 
@@ -146,7 +160,14 @@ export function send({ saleId, userId, bytes, copies, opId, kind }) {
      not come out, and the cashier should know it now. Queued is the answer,
      not printed; the print history is written when the agent reports. The
      opId is recorded at the queue, so a retried press is the same job. */
-  if (transport === 'agent') {
+  /* …UNLESS THIS IS THE SHOP LAPTOP ITSELF, serving the till while the
+     internet is down (lib/standby.js). The printer is plugged into this very
+     machine, and the queue on the main server cannot be reached — so the
+     slip goes straight to the queue the agent would have printed into
+     (agent-config.json's receiptShare), or the USB share in Settings. */
+  const localShare = transport === 'agent' && isStandby()
+    ? (agentReceiptShare() || at('receipt.printer_share') || '') : null;
+  if (transport === 'agent' && localShare === null) {
     const jobId = ReceiptQueue.enqueue({ saleId, kind, copies, bytesB64: Buffer.from(bytes).toString('base64'), userId });
     const a = ReceiptQueue.agent();
     const result = { ok: true, queued: true, jobId, agentHere: a.here, agentSeenAgoMs: a.ageMs };
@@ -164,7 +185,9 @@ export function send({ saleId, userId, bytes, copies, opId, kind }) {
      server/lib/printer.js's header). TCP stays the default so an existing
      network-connected receipt printer keeps working with no config change
      at all. */
-  const sendPromise = transport === 'usb'
+  const sendPromise = localShare !== null
+    ? Printer.sendUsb(bytes, { printerShare: localShare })
+    : transport === 'usb'
     ? Printer.sendUsb(bytes, { printerShare: at('receipt.printer_share') || '' })
     : Printer.send(bytes, { host: at('receipt.printer_host') || '', port: Number(at('receipt.printer_port')) || 9100 });
 

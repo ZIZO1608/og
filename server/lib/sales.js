@@ -29,6 +29,8 @@ import { randomBytes } from 'node:crypto';
 import { get, nowIso, tx, logChange } from './db.js';
 import * as Stock from './stock.js';
 import * as Cash from './cashbook.js';
+import * as Loans from './loans.js';
+import * as Scope from './scope.js';
 
 /* The address the printed QR points at.
 
@@ -77,14 +79,52 @@ export function convert(amount, from, to, rate) {
 
 /* ------------------------------------------------------------------- ids */
 
-export function nextInvoiceId() {
+export function nextInvoiceId(d = get()) {
+  const scope = Scope.current();
+
+  /* A SALE MADE OFFLINE, REPLAYED HERE (lib/loans.js). It keeps the number
+     printed on its receipt — once this server has checked the number really
+     was lent to the laptop sending it, and is not already a sale. */
+  if (scope && scope.lentInvoice) {
+    Loans.checkLent(d, scope.holder, scope.lentInvoice);
+    return scope.lentInvoice;
+  }
+
+  /* THE LAPTOP ITSELF, SELLING WHILE THE LINE IS DOWN: only on the numbers
+     the main server lent it. None left is a sale refused in words — a number
+     made up here would be somebody else's sale on the main server. */
+  if (scope && scope.offlineHolder) {
+    const n = Loans.nextLent(d, scope.offlineHolder);
+    if (n == null) {
+      const e = new Error('This laptop has no offline invoice numbers left. They are lent by the main server — sell on it once the internet is back.');
+      e.code = 'no_offline_numbers';
+      throw e;
+    }
+    return 'INV-' + n;
+  }
+
   /* Highest existing number, not a count: a deleted draft or a gap must never
-     hand the same invoice number to two sales. */
-  const r = get().prepare(
+     hand the same invoice number to two sales. Numbers lent to the shop
+     laptop are stepped over, so its offline receipts never collide. */
+  const r = d.prepare(
     `SELECT MAX(CAST(SUBSTR(id, 5) AS INTEGER)) AS n
        FROM sales WHERE id LIKE 'INV-%'`
   ).get();
-  return 'INV-' + ((r && r.n ? r.n : 2100) + 1);
+  return 'INV-' + Loans.skipLent(d, (r && r.n ? r.n : 2100) + 1);
+}
+
+/* The drawer a replayed sale belongs to: the shift the till saw, if this
+   server has it and it was open at the sale's own time. Otherwise the shift
+   open now, as for any sale. */
+function shiftFor(d, at) {
+  const scope = Scope.current();
+  if (scope && scope.shiftId) {
+    const s = d.prepare('SELECT id, opened_at, closed_at FROM shifts WHERE id = ?').get(scope.shiftId);
+    if (s && s.opened_at <= at && (!s.closed_at || s.closed_at >= at)) return { id: s.id };
+  }
+  return d.prepare(
+    'SELECT id FROM shifts WHERE closed_at IS NULL ORDER BY opened_at DESC LIMIT 1'
+  ).get();
 }
 
 /* ------------------------------------------------------------- the sale */
@@ -124,7 +164,7 @@ export function record({
 
   const run = (d) => {
     const at = nowIso();
-    const saleId = nextInvoiceId();
+    const saleId = nextInvoiceId(d);
 
     /* The currency the receipt is denominated in. */
     const settle = currency || d.prepare(
@@ -431,9 +471,7 @@ export function record({
        request. A till that can name its own shift can post a sale into
        somebody else's closed count — the same reason prices come from the
        product table and not from the client. */
-    const openShift = d.prepare(
-      'SELECT id FROM shifts WHERE closed_at IS NULL ORDER BY opened_at DESC LIMIT 1'
-    ).get();
+    const openShift = shiftFor(d, at);
 
     d.prepare(
       `INSERT INTO sales

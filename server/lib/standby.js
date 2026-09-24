@@ -42,12 +42,15 @@ import {
   statSync, unlinkSync, writeFileSync
 } from 'node:fs';
 import { join } from 'node:path';
+import { hostname } from 'node:os';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import * as DB from './db.js';
 import { dbFile, dataDir } from './env.js';
 import * as Backup from './backup.js';
 import * as Auth from './auth.js';
+import * as Outbox from './outbox.js';
+import * as Loans from './loans.js';
 
 export const role = () => (String(process.env.OG_ROLE || '').toLowerCase() === 'standby' ? 'standby' : 'primary');
 export const isStandby = () => role() === 'standby';
@@ -88,6 +91,27 @@ export function sendCopy(res) {
 
 const STATE_FILE = () => join(dataDir(), 'standby.json');
 
+/* ---- which laptop this is, and where it answers ----------------------------
+   The main server lends invoice numbers to a NAME (lib/loans.js), and the
+   domain's page offers this laptop's own addresses when the main server stops
+   answering. OG_STANDBY_ID, or the machine's name. */
+export function holder() {
+  const raw = String(process.env.OG_STANDBY_ID || hostname() || '')
+    .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  return raw || 'shop-laptop';
+}
+let localUrls = () => [];
+/* Where people go back to once the line is back: the domain. */
+export const home = () => process.env.OG_STANDBY_HOME || process.env.OG_UPSTREAM || null;
+
+/* ---- the patience rule (online first, phase 3) ----------------------------
+   A line that flickers must not throw the shop from one address to the other
+   ten times an hour: DOWN is twenty seconds with no answer at all, BACK is a
+   minute of steady answers. Asked every five seconds. */
+const PROBE_MS = () => Number(process.env.OG_STANDBY_PROBE_MS) || 5000;
+const DOWN_MS = () => Number(process.env.OG_STANDBY_DOWN_MS) || 20000;
+const UP_MS = () => Number(process.env.OG_STANDBY_UP_MS) || 60000;
+
 const state = {
   upstream: null,
   copyAt: null,      // when the MAIN server took the copy now being served
@@ -96,7 +120,17 @@ const state = {
   lastError: null,   // a code, or null
   reachable: null,   // did the last fetch reach the main server
   swaps: 0,
-  busy: false
+  busy: false,
+  /* following — a read-only copy, the main server answering
+     offline   — the main server silent: the till's writes are taken here
+     sending   — it is back: the outbox is going up, oldest first
+     closing   — all sent: the fresh copy is being fetched and swapped in */
+  mode: 'following',
+  downSince: null,
+  upSince: null,
+  offlineSince: null,
+  backAt: null,      // when the last outage ended with everything sent
+  sentLast: 0
 };
 /* Sessions and sign-in attempts that came WITH the current copy. Anything
    not in here was made on this standby, and is what gets carried across. In
@@ -118,42 +152,99 @@ function saveState() {
 }
 
 export function status() {
+  if (!isStandby()) return { role: role() };
+  const c = Outbox.counts();
+  let numbersLeft = null;
+  try { numbersLeft = Loans.unused(DB.get(), holder()); } catch { numbersLeft = null; }
   return {
     role: role(),
-    upstream: isStandby() ? (process.env.OG_UPSTREAM || null) : undefined,
-    copyAt: isStandby() ? state.copyAt : undefined,
-    tookAt: isStandby() ? state.tookAt : undefined,
-    reachable: isStandby() ? state.reachable : undefined,
-    lastError: isStandby() ? state.lastError : undefined
+    upstream: process.env.OG_UPSTREAM || null,
+    copyAt: state.copyAt,
+    tookAt: state.tookAt,
+    reachable: state.reachable,
+    lastError: state.lastError,
+    mode: state.mode,
+    offlineSince: state.offlineSince,
+    backAt: state.backAt,
+    sentLast: state.sentLast,
+    waiting: c.waiting,
+    waitingSales: c.sales,
+    attention: c.attention,
+    numbersLeft,
+    home: home()
   };
 }
 
-/* GET the copy into `target`. The main server's own certificate is the only
-   one trusted when OG_UPSTREAM_CA names it (a self-signed laptop); a public
-   one (Let's Encrypt) needs nothing. */
+export const mode = () => state.mode;
+/* The till's writes are taken here only while the main server is silent —
+   and while what was taken is still going up, so a sale rung up in the
+   minute the line came back is not refused at the counter. */
+export const takesWrites = () => isStandby() && (state.mode === 'offline' || state.mode === 'sending');
+
+/* One request to the main server. The main server's own certificate is the
+   only one trusted when OG_UPSTREAM_CA names it (a self-signed laptop); a
+   public one (Let's Encrypt) needs nothing. */
+function upstreamOpts(url, method, headers, timeout) {
+  const https = url.protocol === 'https:';
+  const opts = {
+    method,
+    headers: {
+      Authorization: 'Bearer ' + (process.env.OG_COPY_KEY || ''),
+      'X-OG-Standby-Id': holder(),
+      'X-OG-Standby-Urls': localUrls().join(','),
+      ...headers
+    },
+    timeout
+  };
+  if (https && process.env.OG_UPSTREAM_CA) {
+    opts.ca = readFileSync(process.env.OG_UPSTREAM_CA);
+    /* The certificate is checked against this NAME (the till's is `og-till`),
+       not against the address it was reached at. */
+    if (process.env.OG_UPSTREAM_NAME) opts.servername = process.env.OG_UPSTREAM_NAME;
+  }
+  if (https && process.env.OG_UPSTREAM_NAME) {
+    const want = process.env.OG_UPSTREAM_NAME;
+    opts.checkServerIdentity = (_host, cert) => {
+      const names = String(cert.subjectaltname || '').split(',').map((s) => s.trim().replace(/^DNS:/, ''));
+      return names.includes(want) ? undefined : new Error('certificate does not name ' + want);
+    };
+  }
+  return { https, opts };
+}
+
+/* A small JSON request (the probe, the replay). */
+function upstreamJson(method, path, body, timeout) {
+  return new Promise((resolve) => {
+    let url, u;
+    try { url = new URL(path, process.env.OG_UPSTREAM); } catch { return resolve({ ok: false, code: 'no_upstream' }); }
+    const text = body === undefined ? null : JSON.stringify(body);
+    try {
+      u = upstreamOpts(url, method, text ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(text) } : {}, timeout);
+    } catch { return resolve({ ok: false, code: 'no_ca' }); }
+    const req = (u.https ? httpsRequest : httpRequest)(url, u.opts, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        let json = null;
+        try { json = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { json = null; }
+        resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json, reached: true });
+      });
+      res.on('error', () => resolve({ ok: false, code: 'cut_off', reached: true }));
+    });
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    req.on('error', (e) => resolve({ ok: false, code: e.message === 'timeout' ? 'timeout' : 'unreachable' }));
+    if (text) req.write(text);
+    req.end();
+  });
+}
+
+/* GET the copy into `target`. */
 function fetchCopy(target) {
   return new Promise((resolve) => {
-    let url;
+    let url, u;
     try { url = new URL('/api/copy/db', process.env.OG_UPSTREAM); } catch { return resolve({ ok: false, code: 'no_upstream' }); }
-    const https = url.protocol === 'https:';
-    const opts = {
-      method: 'GET',
-      headers: { Authorization: 'Bearer ' + (process.env.OG_COPY_KEY || '') },
-      timeout: 60000
-    };
-    if (https && process.env.OG_UPSTREAM_CA) {
-      try { opts.ca = readFileSync(process.env.OG_UPSTREAM_CA); } catch { return resolve({ ok: false, code: 'no_ca' }); }
-      /* The certificate is checked against this NAME (the till's is `og-till`),
-         not against the address it was reached at. */
-      if (process.env.OG_UPSTREAM_NAME) opts.servername = process.env.OG_UPSTREAM_NAME;
-    }
-    if (https && process.env.OG_UPSTREAM_NAME) {
-      const want = process.env.OG_UPSTREAM_NAME;
-      opts.checkServerIdentity = (_host, cert) => {
-        const names = String(cert.subjectaltname || '').split(',').map((s) => s.trim().replace(/^DNS:/, ''));
-        return names.includes(want) ? undefined : new Error('certificate does not name ' + want);
-      };
-    }
+    try { u = upstreamOpts(url, 'GET', {}, 60000); } catch { return resolve({ ok: false, code: 'no_ca' }); }
+    const { https, opts } = u;
     const req = (https ? httpsRequest : httpRequest)(url, opts, (res) => {
       if (res.statusCode !== 200) {
         res.resume();
@@ -237,6 +328,9 @@ function renameRetry(from, to) {
    has whenever anything here fails. */
 export async function refresh() {
   if (state.busy) return { ok: false, code: 'busy' };
+  /* A COPY NEVER OVERWRITES WORK THAT HAS NOT BEEN SENT. Sales taken here
+     while the line was down live in og.db until the main server has them. */
+  if (Outbox.holdsCopy()) return { ok: false, code: 'holds' };
   state.busy = true;
   state.lastTry = DB.nowIso();
   const cur = dbFile();
@@ -250,6 +344,11 @@ export async function refresh() {
 
     const v = Backup.verify(next);
     if (!v.ok) { state.lastError = 'bad_copy'; rmSync(next, { force: true }); return { ok: false, code: 'bad_copy', why: v.reason }; }
+
+    /* Asked again at the last moment: a sale can have been rung up here
+       while the copy was downloading. Everything from here to the swap is
+       synchronous, so nothing can slip in after this. */
+    if (Outbox.holdsCopy()) { rmSync(next, { force: true }); return { ok: false, code: 'holds' }; }
 
     const fresh = readCopy(next);
     const carried = carryLocal(next, cur);
@@ -288,31 +387,146 @@ export async function refresh() {
   }
 }
 
+/* ---- asking whether the main server is there ------------------------------ */
+async function probe() {
+  const r = await upstreamJson('GET', '/api/health', undefined, 5000);
+  return !!(r.ok && r.json && r.json.ok);
+}
+
+let sending = false;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms).unref());
+
+/* THE LINE IS BACK: send what was done here, oldest first, through the main
+   server's own routes; then — and only once nothing is left to send — take a
+   fresh copy and go back to following. A refused entry is kept for a person
+   and does not stop the rest. */
+async function sendLoop(log) {
+  if (sending) return;
+  sending = true;
+  state.sentLast = 0;
+  try {
+    while (state.mode === 'sending' || state.mode === 'closing') {
+      const batch = Outbox.batch(20);
+      if (!batch.length) {
+        if (Outbox.holdsCopy()) { await sleep(1000); continue; }   // a write still being taken
+        state.mode = 'closing';
+        const r = await refresh();
+        if (r.ok) {
+          Outbox.afterSwap();
+          state.mode = 'following';
+          state.backAt = DB.nowIso();
+          state.offlineSince = null;
+          log(`  [standby] back to following — ${state.sentLast} change(s) sent, fresh copy as of ${r.copyAt}`);
+          break;
+        }
+        state.mode = 'sending';
+        if (r.code !== 'holds') await sleep(PROBE_MS());
+        continue;
+      }
+      const res = await upstreamJson('POST', '/api/copy/replay', { holder: holder(), entries: batch }, 60000);
+      if (!res.ok || !res.json || !Array.isArray(res.json.results)) {
+        log(`  [standby] could not send: ${res.code || ('HTTP ' + res.status)} — will try again`);
+        await sleep(PROBE_MS());
+        continue;
+      }
+      let stop = false;
+      for (const r of res.json.results) {
+        if (stop) break;
+        if (r.status >= 200 && r.status < 300) { Outbox.markSent(r.uuid, r.body); state.sentLast++; }
+        else if (r.status >= 500) stop = true;                     // the main server's trouble — try again
+        else Outbox.markRefused(r.uuid, r.body && r.body.code, r.body && r.body.error);
+      }
+      if (stop) await sleep(PROBE_MS());
+    }
+  } finally {
+    sending = false;
+  }
+}
+
+async function probeTick(log) {
+  const ok = await probe();
+  const now = Date.now();
+  state.reachable = ok;
+  if (ok) { state.downSince = null; if (state.upSince == null) state.upSince = now; }
+  else { state.upSince = null; if (state.downSince == null) state.downSince = now; }
+
+  if (state.mode === 'following' && !ok && now - state.downSince >= DOWN_MS()) {
+    state.mode = 'offline';
+    state.offlineSince = DB.nowIso();
+    log('  [standby] the main server has not answered for ' + Math.round((now - state.downSince) / 1000) +
+      ' s — taking the till\'s sales here and keeping a list to send');
+  } else if (state.mode === 'offline' && ok && now - state.upSince >= UP_MS()) {
+    state.mode = 'sending';
+    log(`  [standby] the main server is back — sending ${Outbox.counts().waiting} change(s)`);
+    sendLoop(log);
+  } else if ((state.mode === 'sending' || state.mode === 'closing') && !ok) {
+    state.mode = 'offline';
+    log('  [standby] the line dropped again while sending — waiting for it');
+  }
+}
+
 /* The standby's own loop. The first copy is fetched straight away; a standby
    with no copy at all serves an empty shop, which says "no copy yet" rather
    than pretending. */
-export function start(log = console.log) {
+export function start(log = console.log, opts = {}) {
   if (!isStandby()) return;
+  if (typeof opts.localUrls === 'function') localUrls = opts.localUrls;
   loadState();
   /* After a restart nothing is known to be local — see copyTokens. */
   copyTokens = null;
   copyAttemptMax = null;
+
+  /* A laptop that stopped with work not yet sent starts OFFLINE, so it
+     neither takes a copy over that work nor turns the till away. */
+  const found = Outbox.recover((opId) => {
+    const r = DB.get().prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
+    try { return r ? JSON.parse(r.result) : null; } catch { return null; }
+  });
+  if (found.unsure) log(`  [standby] ${found.unsure} change(s) were being saved when the laptop stopped — listed for a person`);
+  state.mode = Outbox.holdsCopy() ? 'offline' : 'following';
+  if (state.mode === 'offline') {
+    state.offlineSince = state.offlineSince || DB.nowIso();
+    log(`  [standby] ${Outbox.counts().waiting} change(s) from the last outage are still to send`);
+  }
+
   const tick = async () => {
+    if (state.mode !== 'following') return;
     const r = await refresh();
     if (r.ok) log(`  [standby] copy of ${process.env.OG_UPSTREAM} as of ${r.copyAt}` +
       (r.carried && (r.carried.sessions || r.carried.attempts) ? ` (kept ${r.carried.sessions} sign-in(s) made here)` : ''));
-    else if (r.code !== 'busy') log(`  [standby] no fresh copy: ${r.code}${r.why ? ' — ' + r.why : ''}; still serving the one from ${state.copyAt || 'nowhere yet'}`);
+    else if (r.code !== 'busy' && r.code !== 'holds') log(`  [standby] no fresh copy: ${r.code}${r.why ? ' — ' + r.why : ''}; still serving the one from ${state.copyAt || 'nowhere yet'}`);
   };
   tick();
   timer = setInterval(tick, everyMs());
   timer.unref();
+
+  let probing = false;
+  probeTimer = setInterval(async () => {
+    if (probing) return;
+    probing = true;
+    try { await probeTick(log); } finally { probing = false; }
+  }, PROBE_MS());
+  probeTimer.unref();
+}
+let probeTimer = null;
+
+export function stop() {
+  if (timer) clearInterval(timer);
+  if (probeTimer) clearInterval(probeTimer);
+  timer = null; probeTimer = null;
+  state.mode = 'stopped';
+  Outbox.close();
 }
 
-export function stop() { if (timer) clearInterval(timer); timer = null; }
-
 /* The one sentence a refused write carries, in English; the app shows its
-   own words for the code (err_standby_read_only). */
+   own words for the code (err_standby_read_only / err_needs_internet). */
 export function readOnlyMessage() {
+  if (takesWrites()) {
+    return 'This needs the internet. The till works offline; this does not yet — it opens again when the line is back.';
+  }
+  if (state.mode === 'closing') {
+    return 'The internet is back and the shop is switching to the main server — try again in a moment, there.';
+  }
   return 'This is the standby copy' + (state.copyAt ? ' (as of ' + state.copyAt + ')' : '') +
     ' — it is read-only. Changes are made on the main server.';
 }

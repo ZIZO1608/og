@@ -19,6 +19,7 @@
    ========================================================================== */
 
 import { get, nowIso, tx, logChange } from './db.js';
+import * as Scope from './scope.js';
 
 /* Movements that legitimately reduce stock, for readable errors. */
 const TYPES = new Set(['received', 'sold', 'damaged', 'returned', 'transfer', 'count']);
@@ -178,7 +179,29 @@ export function sellLines(d, { lines, whId, userId, saleId }) {
     merged.set(l.sku, (merged.get(l.sku) ?? 0) + l.qty);
   }
 
+  /* A SALE MADE WHILE THE INTERNET WAS DOWN, replayed here (lib/scope.js).
+     The shoes have left the shop and the money is in the drawer, so it
+     stands even when this server thinks there were fewer (the owner's rule,
+     24 Sep 2026): the pair may have sold online meanwhile, or the count was
+     wrong. Stock stops at 0, never below, and the difference is a movement
+     of its own — a count correction marked `oversold`, which the bell reads
+     as "count this shelf" (lib/alerts.js). Never for an ordinary sale: at the
+     till, "only 2 left" is still the answer. */
+  const scope = Scope.current();
+  const allowShort = !!(scope && scope.allowShort);
+
   for (const [sku, qty] of merged) {
+    if (allowShort) {
+      d.prepare('INSERT INTO stock (sku, wh_id, qty) VALUES (?, ?, 0) ON CONFLICT DO NOTHING').run(sku, whId);
+      const have = d.prepare('SELECT qty FROM stock WHERE sku = ? AND wh_id = ?').get(sku, whId).qty;
+      if (have < qty) {
+        apply(d, {
+          sku, whId, delta: qty - have, type: 'count',
+          note: `${saleId || 'a sale'} was sold offline with ${have} left here — count this shelf`,
+          userId, refType: 'oversold', refId: saleId
+        });
+      }
+    }
     taken.push(apply(d, {
       sku, whId, delta: -qty, type: 'sold',
       note: saleId ? `sold on ${saleId}` : 'sold',

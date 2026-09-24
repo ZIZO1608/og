@@ -147,6 +147,11 @@ try {
     check(`[${lang}] Save writes transport = agent and station "${station}" to the database`,
       saved['receipt.transport'] === 'agent' && saved['receipt.station'] === station, JSON.stringify(saved['receipt.transport']) + ' ' + saved['receipt.station']);
 
+    /* The database is written before the answer leaves the server; the page
+       then hydrates that answer and redraws the card. A press in between is
+       drawn over by the late answer — a race only a script is fast enough to
+       lose — so wait for the redraw (a fresh, enabled Save) first. */
+    await waitFor("(() => { const b = document.querySelector('[data-fold=\"receipt\"] [data-act=\"rc-save-config\"]'); return !!b && !b.disabled; })()");
     /* Back to the network printer — and the station is kept for next time. */
     await press('#rcTransport [data-k="tcp"]');
     check(`[${lang}] the network choice brings its own boxes back`, await waitFor("!!document.getElementById('rcHost') && !document.getElementById('rcStation')"));

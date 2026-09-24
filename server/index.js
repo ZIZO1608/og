@@ -74,6 +74,10 @@ import { lanAddresses, extraSans } from './lib/net.js';
 import * as Fwd from './lib/proxy.js';
 import * as Standby from './lib/standby.js';
 import * as ReceiptQueue from './lib/receipt-queue.js';
+import * as Loans from './lib/loans.js';
+import * as Outbox from './lib/outbox.js';
+import * as Scope from './lib/scope.js';
+import { Readable } from 'node:stream';
 import { isIP } from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
 import {
@@ -114,14 +118,161 @@ const router = makeRouter();
 const STANDBY_OK = new Set([
   'POST /api/auth/login',
   'POST /api/auth/logout',
-  'POST /api/auth/hint'
+  'POST /api/auth/hint',
+  /* Local effects only: a slip out of this laptop's own printer (its print
+     log goes with the next copy), and a person putting away an entry of the
+     outbox that could not be sent (lib/outbox.js, a file of its own). */
+  'POST /api/print',
+  'POST /api/standby/outbox/dismiss'
 ]);
 
 /* THE COPY DOOR (lib/standby.js). The whole database, for the standby to
    follow — behind OG_COPY_KEY, never for a visitor the public proxy carried,
    and never from a standby (a copy of a copy is a second place for the truth
-   to go stale). The handler runs in the pipeline below, before any session. */
-router.add('GET /api/copy/db', (ctx) => Standby.sendCopy(ctx.res));
+   to go stale). The handler runs in the pipeline below, before any session.
+
+   Before the snapshot, the laptop asking is LENT invoice numbers if it is
+   short of them (lib/loans.js), and its own addresses are noted for the
+   domain's page — so the loan travels inside the very copy it is handed. */
+router.add('GET /api/copy/db', (ctx) => {
+  const who = String(ctx.req.headers['x-og-standby-id'] || '');
+  if (Loans.validHolder(who)) {
+    try {
+      DB.tx((d) => {
+        Loans.topUp(d, who);
+        Loans.noteStandby(d, who, String(ctx.req.headers['x-og-standby-urls'] || '').split(',').map((s) => s.trim()).filter(Boolean));
+      });
+    } catch (e) {
+      /* A copy without a fresh loan is still a copy; the laptop sells on
+         what it already holds. */
+      console.error('  [copy] could not lend numbers to ' + who + ': ' + e.message);
+    }
+  }
+  return Standby.sendCopy(ctx.res);
+});
+
+/* THE REPLAY (online first, phase 3). What the shop laptop did while the
+   internet was down, sent back as the requests the till made (lib/outbox.js),
+   each one run through THIS server's own route — the same handler, the same
+   permission of the same person, the same rules — inside a scope that says
+   when it really happened, which lent number it printed and which shift the
+   till saw (lib/scope.js). Nothing here merges rows.
+
+   Every entry is answered once: its uuid is an applied op, so a batch whose
+   answer was lost on the way back is answered again rather than applied
+   again. */
+const REPLAY_WINDOW_MS = 14 * 86400000;
+router.add('POST /api/copy/replay', async (ctx) => {
+  const b = await readJson(ctx.req);
+  const holder = String(b.holder || '');
+  if (!Loans.validHolder(holder)) return sendError(ctx.res, 400, 'bad_holder', 'No such laptop.');
+  const entries = Array.isArray(b.entries) ? b.entries.slice(0, 50) : [];
+  const results = [];
+  for (const e of entries) results.push(await replayOne(holder, e || {}));
+  sendOk(ctx.res, { results });
+});
+
+async function replayOne(holder, e) {
+  const uuid = String(e.uuid || '');
+  if (!/^[0-9a-f-]{36}$/.test(uuid)) return { uuid, status: 400, body: { ok: false, code: 'bad_entry', error: 'No entry id.' } };
+  const opId = 'rp:' + uuid;
+  const seen = DB.get().prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
+  if (seen) {
+    let body = null;
+    try { body = JSON.parse(seen.result); } catch { body = null; }
+    return { uuid, status: 200, body, replayed: true };
+  }
+  const method = String(e.method || '');
+  const path = String(e.path || '');
+  const kind = Outbox.kindOf(method, path);
+  const hit = kind ? router.match(method, path) : null;
+  if (!kind || !hit) return { uuid, status: 400, body: { ok: false, code: 'not_replayable', error: 'That cannot be sent from the laptop.' } };
+  const user = Auth.findById(Number(e.userId));
+  if (!user) return { uuid, status: 409, body: { ok: false, code: 'unknown_user', error: 'The person who did this has no account here.' } };
+
+  /* The real time, within reason: not in the future, not older than a
+     fortnight. A laptop's clock is a laptop's clock. */
+  const now = Date.now();
+  const t = Date.parse(e.at);
+  const at = new Date(Number.isFinite(t) ? Math.min(now, Math.max(t, now - REPLAY_WINDOW_MS)) : now).toISOString();
+
+  const text = JSON.stringify(e.body && typeof e.body === 'object' ? e.body : {});
+  const req = Readable.from([Buffer.from(text)]);
+  req.headers = { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(text)) };
+  req.method = method;
+  req.url = path;
+  req.socket = { remoteAddress: 'replay:' + holder };
+  const res = captureRes();
+
+  try {
+    await Scope.run({
+      at, holder, allowShort: true,
+      shiftId: typeof e.shiftId === 'string' ? e.shiftId : null,
+      lentInvoice: kind.kind === 'sale' && typeof e.localRef === 'string' && /^INV-\d+$/.test(e.localRef) ? e.localRef : null
+    }, () => hit.handler({ req, res, url: new URL(path, 'http://replay'), params: hit.params, user, token: null }));
+  } catch (err) {
+    return { uuid, status: 500, body: { ok: false, code: 'server_error', error: err.message } };
+  }
+  let body = null;
+  try { body = JSON.parse(res.text || 'null'); } catch { body = null; }
+  if (res.status >= 200 && res.status < 300) {
+    try {
+      DB.get().prepare('INSERT OR IGNORE INTO applied_ops (op_id, at, user_id, kind, result) VALUES (?, ?, ?, ?, ?)')
+        .run(opId, new Date().toISOString(), user.id, 'replay', JSON.stringify(body));
+    } catch { /* the route's own opId still guards a sale */ }
+  }
+  return { uuid, status: res.status || 500, body };
+}
+
+/* A response that is only listened to — the replay's, whose answer goes back
+   to the laptop inside the batch rather than onto a socket. */
+function captureRes() {
+  return {
+    status: 0, text: '', headersSent: false,
+    writeHead(s) { this.status = s; this.headersSent = true; return this; },
+    setHeader() {}, getHeader() { return undefined; }, write(c) { this.text += String(c); return true; },
+    end(c) { if (c !== undefined) this.text += String(c); }, on() { return this; }
+  };
+}
+
+/* THE LAPTOP ITSELF, OFFLINE. One of the till's writes (lib/outbox.js KINDS),
+   taken here because the main server is silent: written down BEFORE it runs,
+   run through the ordinary route on the numbers the main server lent this
+   laptop, then kept for the replay — or crossed off, when the route refused
+   it and so nothing happened. */
+async function offlineWrite(kind, { req, res, url, hit, user, token }) {
+  const body = await readJson(req);
+  const at = new Date().toISOString();
+  const uuid = Outbox.begin({ kind: kind.kind, method: req.method, path: url.pathname, body, user, at });
+  const text = JSON.stringify(body);
+  const again = Readable.from([Buffer.from(text)]);
+  again.headers = req.headers; again.method = req.method; again.url = req.url; again.socket = req.socket;
+
+  /* Watch what the route answers, and still answer the till. */
+  let status = 0, out = '';
+  const writeHead = res.writeHead.bind(res), end = res.end.bind(res);
+  res.writeHead = (s, ...rest) => { status = s; return writeHead(s, ...rest); };
+  res.end = (c, ...rest) => { if (c !== undefined && typeof c !== 'function') out += String(c); return end(c, ...rest); };
+
+  let ok = false, localRef = null, shiftId = null;
+  try {
+    await Scope.run({ at, offlineHolder: Standby.holder() },
+      () => hit.handler({ req: again, res, url, params: hit.params, user, token }));
+    ok = status >= 200 && status < 300;
+    if (ok) {
+      let j = null;
+      try { j = JSON.parse(out); } catch { j = null; }
+      if (kind.kind === 'sale' && j && j.sale) {
+        localRef = j.sale.id;
+        const row = DB.get().prepare('SELECT shift_id FROM sales WHERE id = ?').get(j.sale.id);
+        shiftId = row ? row.shift_id : null;
+      }
+      if (kind.kind === 'cust_new' && j && j.customer) localRef = j.customer.id;
+    }
+  } finally {
+    Outbox.finish(uuid, { ok, localRef, shiftId });
+  }
+}
 
 /* Anything not in here requires a valid session. Denying by default means a
    new endpoint is locked until someone deliberately opens it. */
@@ -173,9 +324,23 @@ router.add('GET /api/health', (ctx) => {
        purpose: the app draws "a read-only copy, as of 14:05" from it before
        anybody has signed in, and a time is not a secret. */
     role: Standby.role(),
-    standby: Standby.isStandby() ? {
-      copyAt: Standby.status().copyAt, reachable: Standby.status().reachable
-    } : undefined,
+    /* Offline or not, how much is waiting, and where to go back to: the
+       strip on every screen of the laptop reads it (js/standby.js). Counts
+       and times only — what the waiting sales ARE is behind a sign-in
+       (GET /api/standby/outbox). */
+    standby: Standby.isStandby() ? (() => {
+      const s = Standby.status();
+      return {
+        copyAt: s.copyAt, reachable: s.reachable, mode: s.mode, offlineSince: s.offlineSince,
+        backAt: s.backAt, sentLast: s.sentLast, waiting: s.waiting, waitingSales: s.waitingSales,
+        attention: s.attention, numbersLeft: s.numbersLeft, home: s.home
+      };
+    })() : undefined,
+    /* ON THE MAIN SERVER: where the shop laptop answers, for the page to
+       offer when this server stops answering ("continue on the shop's own
+       server"). The shop's own staff only — a stranger, and the print partner
+       (another company), are not told the shop's internal addresses. */
+    standbys: (!Standby.isStandby() && ctx.user && ctx.user.role !== 'partner') ? Loans.standbys() : undefined,
     /* WHICH BUILD IS THIS. Only for a caller who is already signed in — the
        route is in PUBLIC so the login screen can read it, and the payload a
        STRANGER on the wifi gets must not grow a branch name. `user` is
@@ -186,6 +351,24 @@ router.add('GET /api/health', (ctx) => {
     build: ctx.user ? buildInfo() : undefined
   });
 });
+
+/* --- the laptop's outbox (lib/outbox.js) ------------------------------------
+   What the laptop did offline that the main server REFUSED, or that cannot be
+   known to have happened (the laptop stopped mid-save). Money may have
+   changed hands for any of them, so a person with the authority to void a
+   sale reads them and puts each away once it is dealt with. Only on a
+   standby; 404 anywhere else, like a path that does not exist. */
+router.add('GET /api/standby/outbox', requirePerm(['config.write', 'void'], (ctx) => {
+  if (!Standby.isStandby()) return sendError(ctx.res, 404, 'not_found', 'No such endpoint.');
+  sendOk(ctx.res, { entries: Outbox.attention(), counts: Outbox.counts() });
+}));
+
+router.add('POST /api/standby/outbox/dismiss', requirePerm(['config.write', 'void'], async (ctx) => {
+  if (!Standby.isStandby()) return sendError(ctx.res, 404, 'not_found', 'No such endpoint.');
+  const b = await readJson(ctx.req);
+  if (!Outbox.dismiss(b.uuid)) return sendError(ctx.res, 404, 'not_found', 'Nothing to put away.');
+  sendOk(ctx.res, { counts: Outbox.counts() });
+}));
 
 /* --- auth ------------------------------------------------------------------ */
 
@@ -1300,6 +1483,11 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
     }
     if (e.code === 'unknown_customer') {
       return sendError(ctx.res, 409, 'unknown_customer', e.message);
+    }
+    /* Selling offline (lib/loans.js): the laptop has no lent numbers left,
+       or a replayed sale names a number this server never lent. */
+    if (e.code === 'no_offline_numbers' || e.code === 'bad_lent_id' || e.code === 'lent_taken') {
+      return sendError(ctx.res, 409, e.code, e.message);
     }
     sendError(ctx.res, 400, 'invalid', e.message);
   }
@@ -3412,8 +3600,16 @@ async function handle(req, res) {
         /* A STANDBY IS READ-ONLY. Refused here, before any handler, so no
            route — today's or one added next year — can write to a copy that
            the next swap throws away. */
+        /* …EXCEPT WHILE THE MAIN SERVER IS SILENT. Then the till's own writes
+           (lib/outbox.js KINDS, wave 1) are taken here and kept for the
+           replay; anything else says it needs the internet, in words. */
+        let offline = null;
         if (Standby.isStandby() && req.method !== 'GET' && req.method !== 'HEAD' && !STANDBY_OK.has(key)) {
-          return sendError(res, 503, 'standby_read_only', Standby.readOnlyMessage());
+          offline = Standby.takesWrites() ? Outbox.kindOf(req.method, path) : null;
+          if (!offline) {
+            return sendError(res, 503, Standby.takesWrites() ? 'needs_internet' : 'standby_read_only',
+              Standby.readOnlyMessage());
+          }
         }
 
         /* The website's door. A bearer key from server/.env instead of a
@@ -3438,6 +3634,7 @@ async function handle(req, res) {
           return sendError(res, 401, 'unauthenticated', 'Please sign in.');
         }
 
+        if (offline) return await offlineWrite(offline, { req, res, url, hit, user, token });
         return await hit.handler({ req, res, url, params: hit.params, user, token });
       }
 
@@ -3894,7 +4091,15 @@ if (runDirectly) {
        all (the mirror's lineage guard exists because it happened). It runs
        only its own loop: fetch, check, swap. */
     if (Standby.isStandby()) {
-      Standby.start();
+      /* Its own https Wi-Fi addresses, told to the main server with every
+         copy fetch, so the domain's page can offer them when the line drops. */
+      Standby.start(console.log, {
+        localUrls: () => {
+          const scheme = SECURE_SERVER ? 'https' : 'http';
+          const port = SECURE_SERVER ? HTTPS_PORT : PORT;
+          return lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`);
+        }
+      });
     } else {
       SyncWorker.start();
 

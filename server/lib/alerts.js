@@ -211,6 +211,38 @@ export function list(user, { limit = MAX_ROWS } = {}) {
     }
   }
 
+  /* SOLD WITH NONE LEFT (online first, phase 3). A sale made on the shop
+     laptop while the internet was down stands even when this server had
+     fewer pairs than the laptop thought (lib/stock.js sellLines); the
+     difference was booked as a count correction marked `oversold`. Until
+     somebody counts that size at that place — a later count movement, or a
+     posted count sheet that covers it — the bell asks for the shelf to be
+     counted. stock.read: the back room is who walks the shelf. */
+  if (can('stock.read')) {
+    const since = new Date(Date.now() - 30 * 86400000).toISOString();
+    const OVERSOLD = `FROM stock_movements m
+        JOIN variants v ON v.sku = m.sku
+        JOIN products p ON p.id = v.product_id
+       WHERE m.ref_type = 'oversold' AND m.at >= ?
+         AND NOT EXISTS (SELECT 1 FROM stock_movements c
+                          WHERE c.sku = m.sku AND c.wh_id = m.wh_id AND c.type = 'count'
+                            AND c.id > m.id AND COALESCE(c.ref_type, '') <> 'oversold')
+         AND NOT EXISTS (SELECT 1 FROM stock_count_lines l JOIN stock_counts k ON k.id = l.count_id
+                          WHERE l.sku = m.sku AND k.wh_id = m.wh_id AND k.status = 'posted'
+                            AND k.posted_at > m.at)`;
+    const rows = d.prepare(
+      `SELECT m.id, m.sku, m.delta, m.ref_id, p.name, v.size ${OVERSOLD} ORDER BY m.id DESC LIMIT 3`
+    ).all(since);
+    rows.forEach((r) => {
+      out.push({ key: 'oversold:' + r.id, kind: 'oversold',
+                 args: { name: r.name, size: r.size, n: r.delta, id: r.ref_id },
+                 icon: '!', tone: 'red', view: 'warehouse' });
+    });
+    if (rows.length === 3) {
+      more('oversold', d.prepare(`SELECT COUNT(*) AS n ${OVERSOLD}`).get(since).n, rows.length, '!', 'red', 'warehouse');
+    }
+  }
+
   /* THE MIRROR HAS STOPPED. Computed like everything else here — from the
      sync worker's memory of its last runs, never a stored row — and shown only
      to whoever can act on it. One failed run is a bad connection; three in a

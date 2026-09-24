@@ -25,6 +25,7 @@ const MIGRATIONS = process.env.OG_MIGRATIONS_DIR
   ? resolve(process.env.OG_MIGRATIONS_DIR)
   : resolve(HERE, '..', 'migrations');
 import { CHECKS } from './migration-checks.js';
+import * as Scope from './scope.js';
 
 let db = null;
 
@@ -153,6 +154,11 @@ function migrate(d) {
 /* One clock, one format, UTC. Devices in a shop drift, and comparing an ISO
    string to a locale-formatted one silently sorts wrong rather than throwing. */
 export function nowIso() {
+  /* A sale made while the internet was down and replayed afterwards keeps
+     the time it was made (lib/scope.js) — its movements, its money and its
+     shift all dated with it, never with the moment the line came back. */
+  const s = Scope.current();
+  if (s && s.at) return s.at;
   return new Date().toISOString();
 }
 
@@ -181,7 +187,9 @@ export function tx(fn) {
     /* After the finally has released inTx, so a listener that opens its own
        transaction is not refused as nested. A listener throwing must never
        fail the request whose write has already committed. */
-    if (committed) fire(committed);
+    /* Outside any request scope (lib/scope.js): a listener that schedules
+       work for later must not carry a replayed sale's old time with it. */
+    if (committed) Scope.exit(() => fire(committed));
   }
 }
 

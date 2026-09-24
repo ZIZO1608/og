@@ -126,7 +126,12 @@ var Update = (function () {
     /* Ask the server whether there is a new worker: on focus, and every five
        minutes for a tab nobody touches. `update()` is a conditional request;
        with no new bytes it costs one 304. */
-    var ask = function () { try { r.update(); } catch (e) {} };
+    /* The promise is caught too: with the server gone (an outage, a restart)
+       update() REJECTS, and a try/catch cannot see a rejection that arrives
+       later — every focus put an "Uncaught (in promise)" in the console. */
+    var ask = function () {
+      try { var p = r.update(); if (p && p.catch) p.catch(function () { /* asked again later */ }); } catch (e) {}
+    };
     window.addEventListener('focus', ask);
     setInterval(ask, 5 * 60 * 1000);
 
