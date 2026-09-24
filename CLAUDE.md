@@ -3114,6 +3114,123 @@ ever makes outgoing requests, so nothing is opened on the shop's router.
   at 390, and read back out of SQLite.
 - Plus `npm test` 6, `check.mjs` 23 and `panel.mjs` 21.
 
+## Online first, phase 3, wave 1 (24 Sep 2026) — the till keeps selling when the internet goes
+
+Same branch (f012039). Migration **065** (`id_loans`, `standby_seen`, both local-only),
+`lib/loans.js`, `lib/outbox.js`, `lib/scope.js`, the offline half of `lib/standby.js`,
+`js/standby.js`. **Changes nothing until the shop has a standby** (`OG_ROLE=standby` somewhere
+fetching copies): with no loans, `nextInvoiceId` is the old MAX+1; with no standby known, the
+domain's page draws nothing new.
+
+**THE RULE STILL HOLDS: ONE MAIN SERVER, NO MERGE.** While the main server is silent the laptop
+takes the till's writes and **writes each one down as the request it was** (an outbox). When the
+line is back the list is sent to the main server's own route handlers, and only then does the
+laptop take a fresh copy. That is a card terminal's offline mode, not a sync.
+
+- **The patience rule** (`lib/standby.js`): the laptop probes `/api/health` on the main server
+  every 5 s. **Offline** after 20 s with no answer at all (`OG_STANDBY_DOWN_MS`), **back** after
+  60 s of steady answers (`OG_STANDBY_UP_MS`). Modes: `following` → `offline` → `sending` →
+  `closing` (the final copy) → `following`. Writes are taken in `offline` and `sending` (a sale
+  rung up in the minute the line came back is not refused), refused in `closing` for the seconds
+  the swap takes.
+- **Wave 1 is the till, and nothing else** — `KINDS` in `lib/outbox.js`: a sale, a void, a
+  customer on a sale, a customer added or edited, the stamp card, a wanted size. Everything else
+  answers **503 `needs_internet`** in words. Receipts print straight from the laptop
+  (`printing.js`: `transport = agent` on a standby prints to the agent's `receiptShare`), and
+  `POST /api/print` is allowed on a standby in any mode. **A till sale that also books a
+  delivery** keeps the sale and says "this needs the internet" for the delivery half — the
+  delivery office is wave 3.
+- **The outbox is `outbox.db`, a file of its own**, because `og.db` is replaced whole at every
+  swap. An entry is written `open` BEFORE the route runs, `ready` after a 2xx, deleted after a
+  refusal (a refused sale happened nowhere). A laptop that stops mid-save recovers each `open`
+  entry at start: a sale's opId in the local `applied_ops` proves it landed, anything else is
+  `unsure` for a person. **A laptop with unsent work starts OFFLINE and never swaps a copy over
+  it** — `refresh()` asks `holdsCopy()` on the way in and again at the last synchronous moment
+  before the rename.
+- **Invoice numbers are LENT** (`lib/loans.js`, the owner's choice): at every copy fetch the main
+  server tops the laptop up to at least `OG_LEND_MIN` (50) unused numbers in blocks of
+  `OG_LEND_BLOCK` (150), **inside the snapshot it is about to hand over**, and its own
+  `nextInvoiceId` steps over every lent block (`skipLent`). Offline, the laptop sells on the
+  lowest free number of its own blocks, and on nothing else: no numbers left is refused as
+  `no_offline_numbers`, never made up. The strip shows the count when it is 10 or fewer. "Used"
+  is read off `sales` on both machines; nothing else is stored.
+- **The replay** is `POST /api/copy/replay` behind the copy key (and the copy door's 404 for a
+  forwarded visitor). Only `KINDS` are replayable (`not_replayable`). Each entry is run through
+  **the same route handler** (`router.match` → a request built from the stored body → a
+  capturing response) **as the person who made it** (`Auth.findById`; a switched-off account is
+  refused by the route's own `requirePerm`), inside a scope (`lib/scope.js`) carrying:
+  - **`at`**: the real time, clamped to [now − 14 days, now]. `nowIso()` reads it, so the sale,
+    its movements, its money move and its applied op are all dated then;
+  - **`lentInvoice`**: the number printed offline, checked by `Loans.checkLent` (lent to THIS
+    holder, not already a sale: `bad_lent_id` / `lent_taken`);
+  - **`shiftId`**: the shift the till saw, used when the main server has it and it was open at
+    `at` (`shiftFor` in `sales.js`);
+  - **`allowShort`**: see below.
+  **Every entry's uuid is an applied op (`rp:<uuid>`)**, so a batch whose answer was lost is
+  answered again, never applied twice. A 4xx is kept as `refused` and does not stop the rest; a
+  5xx or no answer stops the batch for another try.
+- **THE SCOPE IS CLOSED WHEN ITS REQUEST ENDS** (`done`), and `tx()` runs its commit listeners
+  under `Scope.exit`. AsyncLocalStorage follows timers too, and a debounced push scheduled from
+  inside a replay would otherwise go on dating things in the past. Only the pipeline ever sets a
+  scope — a browser can never name its own time, number or shift.
+- **Sold with none left** (the owner's choice): inside a replay, `Stock.sellLines` lets the sale
+  stand when the main server has fewer pairs than the laptop thought (sold online meanwhile, or a
+  wrong count). **Stock stops at 0, never below**, and the difference is a **`count` movement
+  with `ref_type = 'oversold'`** naming the sale — not a new movement type, because the type has
+  a CHECK in both SQLite and the mirror and changing it means rebuilding an append-only table on
+  both sides. The bell (`oversold`, `stock.read`) asks for that shelf to be counted until a later
+  count movement or a posted count sheet covers that size at that place. At the till itself,
+  "only 2 left" is still the answer — `allowShort` exists only in a replay.
+- **A customer added offline** has a local id the main server may already be using for somebody
+  else. The outbox translates every reference to it (`KINDS[].ref`: the body's `customerId`, or
+  the path) once the main server has answered with the real id (`idmap`); an entry that needs an
+  id not known yet **ends the batch** and goes in the next one; one whose customer was refused is
+  **`blocked`** — sending it would credit the points to whoever has that id there.
+- **What the main server refused is for a person.** `GET /api/standby/outbox` and
+  `POST /api/standby/outbox/dismiss` (`config.write` or `void`, standby only, 404 elsewhere); the
+  strip carries "N need a person" and the list names the sale, who made it, when, and the main
+  server's reason. **The account is checked as it stands at replay time**: a cashier switched off
+  during the outage has ALL her offline sales refused, including those made before — the safe
+  answer, and every one is on the list.
+- **The strip** (`js/standby.js`): following (amber, "read-only copy as of 14:05" and **Back to
+  shop.ogsports1.com**), offline (blue, "the till works on this laptop · N changes waiting"),
+  sending (amber, pulsing), back (green, "all sent", for ten minutes). 44 px on a phone. It asks
+  every 3 s while anything moves, every 30 s otherwise.
+- **The domain's side of the changeover**: health gives the shop's own staff (never the partner,
+  never a stranger) `standbys` — the laptop's https Wi-Fi addresses, which it sends with every
+  copy fetch (`X-OG-Standby-Urls`, kept in `standby_seen`). The page remembers them
+  (`og.standby.where`), asks every 10 s while it knows one, and after **20 s with no answer**
+  covers itself: "The main server is not answering — Continue on the shop laptop", with **Keep
+  waiting here** and the other addresses. An HTTP answer of any kind means the server is there.
+  The cover goes by itself when the main server answers. **The two origins are two apps**: people
+  sign in again on the laptop (its copy holds every account), and a half-built basket on the
+  domain stays there.
+- **Things that bit**:
+  - `js/update.js` asked the service worker for an update on every focus inside a try/catch —
+    which cannot see a promise that rejects later, so every focus with the server away left
+    "Uncaught (in promise)" in the console. The promise is caught now.
+  - A button whose caption is loose words and a number (`words()` into the button) drew
+    **"3need a person"**: a flex box makes each piece a flex item and drops the space. One span —
+    CLAUDE.md's `.btn` rule, met again.
+  - `receipts-ui.mjs` pressed the next chip between the Save's database write and the page
+    hydrating the answer, and the late answer drew the old choice back. A test-only race; it
+    waits for the redraw now.
+
+**How it was verified** (throwaway data folders, empty env, nothing live):
+`tools/always-on/offline.mjs` 55 — a real main server, a TCP line the script cuts while the main
+server keeps selling online, the real laptop: the loan in the copy, the main server stepping over
+it, the laptop refusing while it follows and selling on lent numbers once offline, the pair sold
+both offline and online landing at 0 with the `oversold` movement and the bell row, every sale
+with its cashier and its real time, the customer added offline arriving under a new id while the
+main server had given that id to somebody else, the replay door (twice = once, a number never
+lent, a number lent to another laptop, a non-till write, no key, a future time), a laptop killed
+mid-outage starting offline with its list, and a cashier switched off on the main server during
+the outage — her sale refused, listed, put away. **11 checks go red** with `skipLent`,
+`allowShort` and the id translation broken. `offline-ui.mjs` 37 — both pages through an outage in
+English at 1100 and Arabic at 390, the refusal in both languages, the list pressed open and put
+away, the domain's cover after the patience window, Keep waiting, and the cover leaving by itself.
+Plus every earlier suite.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
