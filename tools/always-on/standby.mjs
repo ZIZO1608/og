@@ -218,6 +218,27 @@ try {
   check('a DIFFERENT certificate (someone else on the road): no copy', !(await health(wrongCa)).standby.copyAt, out.wrongca.slice(-200));
   check('no certificate pinned: a self-signed one is not trusted, no copy', !(await health(noCa)).standby.copyAt);
   check('the right certificate under the wrong name: no copy', !(await health(wrongName)).standby.copyAt);
+
+  /* ---- a copy that is ONLY a copy (OG_STANDBY_OFFLINE=0) --------------------
+     The VPS following the laptop before the switch: it must never take the
+     till when the laptop goes quiet, borrow invoice numbers, or tell the
+     laptop's page that ITS addresses are "the shop laptop". */
+  const PC = await freePort();
+  startServer('purecopy', PC, { OG_ROLE: 'standby', OG_UPSTREAM: `http://127.0.0.1:${MAIN}`, OG_COPY_KEY: KEY,
+    OG_STANDBY_ID: 'pure-copy', OG_STANDBY_OFFLINE: '0', OG_STANDBY_EVERY_MS: '1500',
+    OG_STANDBY_PROBE_MS: '300', OG_STANDBY_DOWN_MS: '800', OG_DATA_DIR: join(TMP, 'purecopy') });
+  check('a pure copy takes its copy', await until(async () => {
+    const h = (await http(PC, 'GET', '/api/health')).json; return !!(h && h.standby && h.standby.copyAt); }, 20000), (out.purecopy || '').slice(-300));
+  const mainDb = new DatabaseSync(join(MAIN_DATA, 'og.db'), { readOnly: true });
+  const lent = mainDb.prepare('SELECT holder FROM id_loans').all().map((r) => r.holder);
+  const seenAt = mainDb.prepare('SELECT holder FROM standby_seen').all().map((r) => r.holder);
+  mainDb.close();
+  check('…borrows no invoice numbers (the standby that sells offline does)', !lent.includes('pure-copy') && lent.length > 0, JSON.stringify(lent));
+  check('…and announces no addresses to the main server', !seenAt.includes('pure-copy'), JSON.stringify(seenAt));
+  procs.main.kill();
+  await sleep(3000);
+  const ph = (await http(PC, 'GET', '/api/health')).json.standby;
+  check('with its main server gone, a pure copy stays a read-only copy', ph.mode === 'following' && ph.reachable === false, JSON.stringify(ph));
 } finally {
   for (const p of Object.values(procs)) { try { p.kill(); } catch { /* gone */ } }
   await sleep(800);

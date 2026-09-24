@@ -3127,6 +3127,11 @@ takes the till's writes and **writes each one down as the request it was** (an o
 line is back the list is sent to the main server's own route handlers, and only then does the
 laptop take a fresh copy. That is a card terminal's offline mode, not a sync.
 
+- **`OG_STANDBY_OFFLINE=0` is a copy that is ONLY a copy** — the VPS following the laptop before
+  the switch. It never goes offline (nobody sells on it), and it sends no `X-OG-Standby-Id` /
+  `X-OG-Standby-Urls`, so it borrows no numbers (the main server would step over 150 for
+  nothing) and the domain's page is never offered a container's address as "the shop laptop".
+  `standby.mjs` checks all three against an ordinary standby that does borrow.
 - **The patience rule** (`lib/standby.js`): the laptop probes `/api/health` on the main server
   every 5 s. **Offline** after 20 s with no answer at all (`OG_STANDBY_DOWN_MS`), **back** after
   60 s of steady answers (`OG_STANDBY_UP_MS`). Modes: `following` → `offline` → `sending` →

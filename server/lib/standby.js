@@ -108,6 +108,13 @@ export const home = () => process.env.OG_STANDBY_HOME || process.env.OG_UPSTREAM
    A line that flickers must not throw the shop from one address to the other
    ten times an hour: DOWN is twenty seconds with no answer at all, BACK is a
    minute of steady answers. Asked every five seconds. */
+/* OG_STANDBY_OFFLINE=0 is a copy that is ONLY a copy — the VPS following
+   the shop laptop before the switch. It never takes the till when the main
+   server goes quiet (nobody sells on it), borrows no invoice numbers (the
+   main server would step over them for nothing) and announces no addresses
+   (the domain's page must never offer a container's address as "the shop
+   laptop"). */
+export const offlineAllowed = () => process.env.OG_STANDBY_OFFLINE !== '0';
 const PROBE_MS = () => Number(process.env.OG_STANDBY_PROBE_MS) || 5000;
 const DOWN_MS = () => Number(process.env.OG_STANDBY_DOWN_MS) || 20000;
 const UP_MS = () => Number(process.env.OG_STANDBY_UP_MS) || 60000;
@@ -190,8 +197,7 @@ function upstreamOpts(url, method, headers, timeout) {
     method,
     headers: {
       Authorization: 'Bearer ' + (process.env.OG_COPY_KEY || ''),
-      'X-OG-Standby-Id': holder(),
-      'X-OG-Standby-Urls': localUrls().join(','),
+      ...(offlineAllowed() ? { 'X-OG-Standby-Id': holder(), 'X-OG-Standby-Urls': localUrls().join(',') } : {}),
       ...headers
     },
     timeout
@@ -450,7 +456,7 @@ async function probeTick(log) {
   if (ok) { state.downSince = null; if (state.upSince == null) state.upSince = now; }
   else { state.upSince = null; if (state.downSince == null) state.downSince = now; }
 
-  if (state.mode === 'following' && !ok && now - state.downSince >= DOWN_MS()) {
+  if (state.mode === 'following' && !ok && offlineAllowed() && now - state.downSince >= DOWN_MS()) {
     state.mode = 'offline';
     state.offlineSince = DB.nowIso();
     log('  [standby] the main server has not answered for ' + Math.round((now - state.downSince) / 1000) +
