@@ -207,7 +207,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 @media (pointer: fine) {
   html, body { cursor: var(--cur); }
   button, a, .clickable, [data-act], [data-pos], [data-yl], [data-yi], [data-bk], [data-nt],
-  .chip, .tab, .nav-item, .pcard, .yl-rd, .yl-hc, .upload-box, label.switch,
+  .chip, .tab, .nav-item, .pcard, .yl-rd, .yl-hc, label.switch,
   table.tbl th.sortable, table.tbl tbody tr.clickable {
     cursor: var(--cur-int);
   }

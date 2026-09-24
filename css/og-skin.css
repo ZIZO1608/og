@@ -712,11 +712,6 @@ body:not([data-portal="yalla"]) .dlb-sel.on { border-color: var(--border-strong)
 .dlb-vbtn:hover { color: var(--foreground); }
 .dlb-vbtn.on { color: var(--foreground); background: var(--muted); }
 body:not([data-portal="yalla"]) .dlb-refresh { width: 34px; padding: 0; display: inline-grid; place-items: center; }
-/* The card's WhatsApp button: an ordinary button with the chat glyph in
-   WhatsApp's green — the one place that colour means exactly what it says. */
-body:not([data-portal="yalla"]) .dlb-wa { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.dlb-wa svg { width: 15px; height: 15px; fill: none; stroke: #25D366; stroke-width: 1.8;
-  stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .dlb-refresh svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8;
                    stroke-linecap: round; stroke-linejoin: round; }
 
@@ -910,8 +905,6 @@ body:not([data-portal="yalla"]) .dkp-amt .inp { flex: 1 1 150px; height: 46px; f
    stays on the cards still to go. */
 .run-card.is-done .rc-collect b { color: var(--muted-foreground); }
 .rc-sheet { flex-wrap: wrap; }
-.rc-sheet-bar { flex-basis: 100%; height: 4px; overflow: hidden; border-radius: 999px; background: var(--muted); }
-.rc-sheet-bar span { display: block; height: 100%; border-radius: inherit; background: var(--success); transition: width .5s ease; }
 .rc-sheet-done { margin-top: 22px; }
 
 /* ---- the office: the rail across the top --------------------------------- */
@@ -2602,7 +2595,6 @@ body:not([data-portal="yalla"]) .pcard-img { aspect-ratio: 1 / 1; }
 
 /* The camera scanner's button is the one control somebody uses one-handed
    in a doorway with a box under the other arm. */
-body:not([data-portal="yalla"]) .sc-cam-btn,
 body:not([data-portal="yalla"]) [data-act="scan-camera"],
 body:not([data-portal="yalla"]) [data-sc="camera"] { min-height: 52px; min-width: 52px; }
 
@@ -2615,7 +2607,6 @@ body:not([data-portal="yalla"]) [data-sc="camera"] { min-height: 52px; min-width
   body:not([data-portal="yalla"]) .topbar .icon-btn,
   body:not([data-portal="yalla"]) .topbar .nt-bell,
   body:not([data-portal="yalla"]) .topbar .live-who,
-  body:not([data-portal="yalla"]) .topbar .avatar-btn,
   body:not([data-portal="yalla"]) .topbar button {
     min-width: 44px; min-height: 44px;
   }

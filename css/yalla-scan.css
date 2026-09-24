@@ -819,8 +819,6 @@ tr.mn-void td b { text-decoration: line-through; color: var(--dim); }
 .py-month { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .py-month-lbl { font-size: var(--fs-lg); min-width: 9ch; text-align: center; }
 .py-grow { flex: 1; }
-.py-kinds { flex-wrap: wrap; }
-.py-kinds button { flex: 1 1 22%; }
 
 /* The Expenses tab's two cards, and the Statement (Phase 4). A total row is
    a hairline and weight, never a colour; the net line is the one that is
@@ -843,7 +841,6 @@ tr.mn-void td b { text-decoration: line-through; color: var(--dim); }
   .pl-tbl td:first-child { min-width: 120px; }
   .py-acts { justify-content: flex-start; }
   .py-acts .btn { min-height: 38px; }
-  .py-kinds button { flex-basis: 45%; }
 }
 
 /* ========================================================= COMMAND PALETTE

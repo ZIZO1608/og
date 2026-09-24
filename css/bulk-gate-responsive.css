@@ -551,7 +551,7 @@ body[data-overlay] .bk-bar { display: none; }
      A phone has no hover and a fingertip is about 9mm. Controls sized for a
      mouse at 32px are genuinely hard to hit. */
   .btn-sm { height: 38px; padding: 0 14px; }
-  .stepper button, .cl-del, .up-x, .modal-head .x { min-width: 38px; min-height: 38px; }
+  .stepper button, .cl-del, .modal-head .x { min-width: 38px; min-height: 38px; }
   .chip { padding: 9px 14px; }
   /* The default blue tap flash fights the brand on every single tap. */
   * { -webkit-tap-highlight-color: rgb(198 255 0 / .14); }
