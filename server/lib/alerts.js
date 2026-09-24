@@ -280,6 +280,22 @@ export function list(user, { limit = MAX_ROWS } = {}) {
     }
   }
 
+  /* NIGHT REQUESTS (063, lib/requests.js). Somebody asked for these while
+     the shop was shut and is waiting for a call back — a sale that has not
+     closed. One row with the count, keyed on the NEWEST waiting request, so a
+     request that arrives after the row was read makes it bold again. Read
+     straight from the table, as the rest of this file reads its own. */
+  if (can('delivery.desk')) {
+    const w = d.prepare(
+      "SELECT count(*) AS n, (SELECT ref FROM shop_requests WHERE state = 'waiting' ORDER BY asked_at DESC, ref DESC LIMIT 1) AS newest " +
+      "FROM shop_requests WHERE state = 'waiting'"
+    ).get();
+    if (w && w.n) {
+      out.push({ key: 'requests:' + w.newest, kind: 'requests_waiting', args: { n: w.n, ref: w.newest },
+                 icon: '☾', tone: 'amber', view: 'requests' });
+    }
+  }
+
   /* Out of stock, not merely low — somebody is at the counter holding it. */
   if (can('stock.read') || can('product.read')) {
     const rows = stockOut({ limit: 3 });

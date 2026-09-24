@@ -340,6 +340,26 @@ and to run at boot, which is why it is the fallback rather than the plan.
 
 ---
 
+## Night mode: `/night`
+
+`/night` goes to **og-bridge**, like `/snapshot`, never to the laptop: it is the
+app staff use while the laptop cannot be reached. It shows stock, customers and
+orders read from the cloud copy, and takes one kind of write — a **request**
+that waits in Supabase (`server/supabase/035_night_requests.sql`) until somebody
+on the laptop accepts it. The laptop stays the only writer of shop data.
+
+- It has its own rate limit (`og_night`, 60 a minute per visitor) and its own
+  "not available right now" page (`@night_down`) for when og-bridge is down.
+- Its sign-in POST (`/night/login`) also sits in the till's sign-in zone
+  (`og_login`, 10 a minute, 5 at once per visitor), on top of og-bridge's own
+  five-failure throttle.
+- The "shop's internet is down" page (`@shop_closed`) links to it. Phones that
+  already have the app get the same button on the app's own down screen.
+- `tools/night-mode/proxy.mjs` checks the change is additions only, runs
+  `nginx -t`, and routes real requests through it.
+
+---
+
 ## What this deliberately does not do
 
 - **It does not hold data.** No database, no volume, no keys. If this

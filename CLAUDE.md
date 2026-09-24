@@ -829,9 +829,10 @@ Conventions that are non-negotiable and easy to break:
 
 ### The startup notices are one list with two readers
 
-The eight standing conditions the server prints after its address block — no accounts · a retired
+The standing conditions the server prints after its address block — no accounts · a retired
 test account is active · the demo catalogue is loaded · `OG_SECURE` unset · the certificate no
-longer names this address · it expires in N days · there is no certificate · `OG_ORIGINS` unset —
+longer names this address · it expires in N days · there is no certificate · `OG_ORIGINS` unset
+(and since night shift 04: `OG_TRUST_PROXY` set and ignored · a proxy with no public origin) —
 are collected once into `notices[]` as `{ code, level, args, lines }` and then read twice.
 
 `lines` is printed exactly as before, in the same order, so **the terminal output is byte-identical**;
@@ -1015,8 +1016,14 @@ Four facts it is built on, all verified in source and all easy to break:
   The pull calls `Lineage.forget()` and mints. Do not "fix" that by inheriting.
 - **The worker checks lineage before EVERY push** (`run()` in `sync-worker.js`), not only at boot —
   the laptop that lost the baton must stop the moment it next tries. It also beats
-  `sync_state.shop` every two minutes while live; `STALE_MS` (10 min) in `lineage.js` is five
-  missed beats, and it is what tells "closed last night" from "working right now".
+  `sync_state.shop` every two minutes while live (`BEAT_MS` in `sync-worker.js` → `Mirror.beat()`,
+  night shift 04), which is what tells "closed last night" from "working right now". **Two clocks
+  read that one row, and neither is called `STALE_MS`:** og-bridge on the VPS calls the shop
+  offline after `OG_STALE_MS` (10 min, `vps/og-bridge/src/mode.js` — five missed beats), while
+  `lineage.js`'s own `OWNER_ACTIVE_MS` (90 min) is the slack the disaster restore allows before it
+  will take the mirror off a shop that may still be working. Before the beat existed the row moved
+  only on a full run, so an idle shop on an hourly run read as offline from the VPS — which is
+  what the night of 22 Sep measured (`_handover/NIGHT-CHECKS-23SEP.md`).
 - **`Mirror.behind()` is meaningless against another laptop's bookmarks** — they sit in a different
   `change_log` seq space and can read 0 while rows are stranded. `Mirror.unpushed()` counts against
   `sync_local` (migration 038), the record of what THIS machine pushed, written by `advance()` and
@@ -1071,7 +1078,8 @@ over it (one full run, printed, exit 0/1/2 as before) and `server/lib/sync-worke
    rewritten whole, every cursor walked, every guard exercised. The reconcile relies on this.
 
 `pushChanged()` asks SQLite locally which tables moved past their bookmark and walks only those,
-in the same FK order as the full run, so an idle shop makes **no request at all**. Bookmarks are
+in the same FK order as the full run, so an idle shop makes **no request at all** (on
+`night/online-offline`, one every two minutes on purpose — the beat, under night shift 04). Bookmarks are
 read from `sync_state` once at boot (`loadCursors`) and held in memory — this process is the only
 writer, which is what the lineage guard guarantees. A foreign-key refusal naming a missing parent
 (`Key (sale_id)=(INV-2102) is not present in table "sales"`) **heals itself**: the parent is
@@ -2792,6 +2800,169 @@ No migration and no permission changed; one small route (the phone number, below
   `.btn` kept its web-link underline** — Call and Map on the driver's phone too. Both are in the
   `FIX 06` block at the end of `og-skin.css`.
 
+## Night shift 04 (21–22 Sep 2026) — online / offline
+
+Branch `night/online-offline`, off `audit-06`; one commit per phase plus a fix and the docs. **No
+migration, no local schema change, no `mirror-lag.js` entry.** Two new mirror files (`030`, `031`),
+a new deployment (`vps/og-bridge/`), and the nginx proxy extended. **Nothing was switched on**: every
+step that needs administrator, the live `.env`, the VPS, Coolify or Supabase is in `MORNING.md`, in
+order.
+
+The route, settled in commits 8c46670 and 1416ee2 and restated by the owner for this shift:
+**WireGuard** (laptop `10.8.0.2`, VPS `10.8.0.1`), **no Cloudflare** (the domain stays on Hostinger;
+`shop` is an A record to the VPS), **nginx** in `deploy/shop-proxy/`. The handed-over zip never
+reached this machine; everything was written from the prompt's specs.
+
+### The proxy is believed only from its own socket — `server/lib/proxy.js`
+
+`OG_TRUST_PROXY=1` plus the old `clientIp()` took the FIRST `X-Forwarded-For` entry from ANY
+connection. Measured on the sandbox with the live setting: a phone on the wifi sending
+`X-Forwarded-For: 9.9.9.9` was recorded in `login_attempts` as 9.9.9.9. **The throttle counted per
+username only**, so the forged header poisoned the record rather than resetting a count — and one
+machine could try eight passwords on every account in the building.
+
+- **`OG_PROXY_ADDR`** is the address the proxy's requests arrive FROM. Only that socket's
+  **`X-OG-Client-IP`** is believed; every other peer is its socket, whatever it sends. The proxy
+  **sets** that header (never appends), from nginx's `real_ip` over Coolify's Traefik: private ranges
+  trusted, `real_ip_recursive on`, so the rightmost address that is not ours — Traefik's entry for
+  the visitor — wins, and anything the visitor typed sits to its left.
+- **20 failed sign-ins per ADDRESS per 15 minutes** (`MAX_FAILS_IP` in `auth.js`), beside the 8 per
+  username. The hint door's own `hint:` rows are not counted, or asking for hints would spend the
+  till's attempts (the thing audit 06 split them apart to stop).
+- **`OG_TRUST_PROXY` is retired and ignored**; a startup notice (`trust_proxy_retired`) says so while
+  it is set. `proxy_no_origin` warns when a proxy is configured and `OG_ORIGINS` names no public
+  address. A peer that is not the proxy sending `X-OG-Client-IP` is logged once per address — that is
+  how a proxy nobody told the till about shows up before every outside visitor shares one limit.
+- **The certificate notice (`cert_address`) also checks the https IP origins in `OG_ORIGINS` and
+  `OG_TUNNEL_ADDR`** — the shop wifi's 10.10.99.9 was not in the live certificate and nothing said
+  so, because the check read `net.js` alone. `npm run cert` names `OG_TUNNEL_ADDR` even while the
+  tunnel is down, and the fixed DNS name **`og-till`**.
+
+### The VPS's door, and the error screen from outside
+
+- **`/api/vps/`**, like `/api/ext/`: `OG_VPS_API_KEY` in constant time, 401 / 503 — and **404 for
+  anything the public proxy carried** (from `OG_PROXY_ADDR` with a visitor header), before the key is
+  looked at; nginx refuses the prefix too. `GET /api/vps/health` → `{ lineage, build }`;
+  `POST /api/vps/collect` runs the SAME `collectInbox()` as the minute timer, so the one `inboxBusy`
+  flag makes them single-flight (`SyncWorker.collectInboxNow`).
+- **The mirror beats again, narrowly.** Audit 06 removed the heartbeat because nothing pulled at
+  boot; og-bridge needs "idle" told from "unreachable". Every two minutes a `beat` run does the
+  ordinary guarded fast push and stamps `sync_state.shop` **only when nothing moved and nothing is
+  waiting** (`Mirror.beat()`). A stuck table stops the beat on purpose — the snapshot then says the
+  mirror is old, which is true.
+  **THIS DELIBERATELY BREAKS "AN IDLE SHOP MAKES NO REQUEST AT ALL"** (the live-mirror section's
+  rule), and Ahmad accepted it in night shift 05. One small write every two minutes is the price
+  of a snapshot that can tell "open and quiet" from "cut off": without it, a shop that sold nothing
+  since 14:00 and a shop whose line died at 14:00 leave the same mirror behind, and the owner
+  reading `/snapshot` from outside cannot tell which he is looking at. It fires only when idle, so
+  a busy shop pays nothing extra. It stays on this branch until the outage drill.
+- **"The shop's internet is down"** (`Shop.fail`, amber `.is-road`): nginx answers `/api/` with its
+  own `503 shop_unreachable`, and `API.ping()` reads it as `'road'`. A device whose last session was
+  an owner, manager or developer (`og.lastRole` — the ROLE only, cleared at sign-out) also gets a link
+  to `/snapshot`. A dead server on the LAN keeps the old wording.
+- **nginx** talks https to `:8443` with **the till's own certificate as the only trust anchor**,
+  verified by the NAME `og-till`: `proxy_ssl_name` goes through `X509_check_host`, which compares DNS
+  names only (checked with `openssl x509 -checkhost` vs `-checkip`), so "the tunnel IP" would refuse
+  every request. A placeholder anchor whose key is thrown away at build keeps a missing certificate
+  from crash-looping. **Copy `og-cert.pem` to the VPS again after every `npm run cert`.** The shared
+  upstream block (`to-till.conf.template`) is rendered by `15-og-till.sh`, not the image's template
+  step, which would drop it in `conf.d` at http level. **`deploy/` must stay OUT of the root
+  `.dockerignore`**: the proxy image builds with the repository root as its context.
+
+### og-bridge and the owner's snapshot — `vps/og-bridge/`
+
+Its own deployment (Coolify, one dependency: `pg`, which stays in that folder). **Excluded from
+everything the shop ships**: `sw.js` precaches an explicit list, `serveStatic` serves only `css`,
+`js`, `assets` and five root files, `make-deploy.ps1` and CI copy allow-lists, and the root
+`.dockerignore` names `vps/`.
+
+- **`mode.js` is a pure decision between two witnesses**: the road (the till's `/api/vps/health`
+  over the tunnel, https, its own certificate trusted) and the mirror (`erp.till_status()`) —
+  `live` · `split` (tunnel down, beat fresh) · `mirror` (both silent past `OG_STALE_MS`, 10 min) ·
+  `unknown` (the machine on the tunnel is not the mirror's owner, or nothing readable).
+  `road-watch.js` asks the till to collect og-track's inbox once each time the road comes back.
+- **`og_vps` (`030_erp_access.sql`) can only read**: `LOGIN` with **no password** until a separate
+  line sets one, `default_transaction_read_only`, `SELECT` on every public table but `users` and
+  `sync_state`, and **a `SELECT` policy naming `og_vps` alone on each table** — RLS with no policy
+  (001's first lock) otherwise reads zero rows. `users (id, name)` only, so a sale can name its
+  cashier. **Run 030 again after any new mirror file that creates a table.**
+  `031_till_status.sql`: `erp.till_status()` — SECURITY DEFINER, `search_path ''`, execute to
+  `og_vps` only — the first word of `sync_state 'lineage'` and `sync_state 'shop'.last_push_at`.
+- **`/snapshot` has its own login**, because when it matters there is no till to ask: scrypt with
+  the till's parameters, **TOTP** (RFC 6238, six digits, 30 s, ±1 step, a code spent once),
+  5 failures / 15 min per username AND per address, unknown names hashed like known ones, 12 h
+  in-memory sessions, cookie `HttpOnly; Secure; SameSite=Strict; Path=/snapshot`. Accounts in
+  `OG_SNAPSHOT_USERS`, made by `node vps/og-bridge/src/snapshot-user.js` (the QR drawn by
+  `js/codes.js`).
+- **The figures are ONE set of SQL for two databases** (`snapshot-queries.js`: `NOT x` for flags,
+  ISO strings for times) and a **pure** rows-in figures-out module (`snapshot-figures.js`) whose
+  every rule is ported from the till — dashboard takings, statement returns, cashbook places,
+  deliveries summary, alerts.js stock, `sales.js recent()`. The parity test runs that same SQL on
+  SQLite and compares with the till's own answers.
+- The page is **server-rendered with no script**, CSP `default-src 'none'`, `Referrer-Policy:
+  same-origin` — **NOT `no-referrer`**: under that, Chrome sends `Origin: null` on the page's own
+  form and the same-origin check refused every sign-in (found by the browser suite).
+
+### The Wi-Fi-drop queue — `js/reach.js`, `js/writequeue.js`
+
+`Reach` keeps one fact (is the till answering this device); `api.js` reports every answer, and the
+proxy's `shop_unreachable` counts as not reached. An allowed write that cannot reach the till waits
+in `localStorage` **with who pressed it**, and goes by itself — in order, one at a time; a refusal is
+kept red with its code while the rest go on; a 401 pauses until that person signs in again; another
+account on the device never sends it; two tabs send once (`navigator.locks`, or a lease on plain
+http, with the opId behind both). The topbar shows the Sync button's dot and one list with Try again
+/ Remove. **Unlisted writes behave exactly as before.**
+
+**The allow-list** — a route is on it only if it records something that already happened, carries
+an opId through `applied_ops`, moves no money, and is not a sale, price, login, staff or permission
+write. Every warehouse and delivery write:
+
+| Route | On? | Why |
+|---|---|---|
+| `POST /api/handovers/:id/hand` | **on** | the carrier signed and left; opId in `Orders.handOver`; freezes `to_collect`, moves no money |
+| `POST /api/stock/receive` · `/transfer` · `/writeoff` · `/count` · `/assign-shelf` | off | no opId — a replay would book the stock twice |
+| `POST /api/purchase-orders/:id/receive` | off | no opId, and it moves the supplier balance |
+| `POST /api/stock-counts` · `PUT /api/stock-counts/:id` | off | no opId |
+| `PATCH /api/deliveries/:id` (out / delivered / failed) | off | no opId |
+| `POST /api/deliveries` (assign) | off | a decision made now, not a record |
+| `POST /api/handovers` · `/:id/lines` · `DELETE …/lines/:d` · `/:id/cancel` | off | no opId; building a sheet is the office deciding |
+| `POST /api/driver-cash/handin` | off | moves money `driver:<id>` → drawer |
+| `POST /api/orders` · `/:id/payments` · `/:id/returns` | off | a sale, and money |
+| `POST /api/errands` · `PATCH /api/errands/:id` | off | no opId |
+| `POST /api/labels/print` · `/record` | off | printing is now-or-never; `record` has no opId |
+| `POST /api/wants` | off | no opId |
+
+Widening the queue means giving a route an opId through `applied_ops` first, then a row here and an
+entry in `ALLOW` in `js/writequeue.js`.
+
+### Things that will bite you
+
+- **`/snapshot` must never be cached** by the app's service worker — on `shop.ogsports1.com` it is the
+  same origin, and cache-first would have kept the owner's figures on the device after sign-out.
+  `sw.js` returns early for it, beside `/api/` and `/i/`.
+- **A test proxy that re-dispatches a held request counts it twice.** The two-tab check read "hits 2"
+  with correct code until the counter learned `req.__held`. A check that is green or red because of
+  a harness artefact tells you about the harness.
+- **A race test must actually race.** The first two-tab check stayed green with the lease removed:
+  the first tab's `Reach` still said "down", so only one tab ever tried. The proxy's `slow` mode
+  holds the write 1.5 s so the second tab's drain lands mid-flight.
+- **`nginx -t` has never been run on this config** — there is no nginx, Docker or WSL on this
+  laptop. `_nightshift/ns04/nglint.cjs` is structural only.
+- **A stuck mirror reads as a shop out of reach** on the snapshot: the beat stops while anything is
+  waiting. That is the intended reading, and the owner should be told what it means.
+
+### How it was verified
+
+On a `VACUUM INTO` copy of the live database (`server/data-ns04/`, deleted afterwards), with the
+sandbox environment, bogus tokens and no Supabase keys. `p1-throttle` 12 · `p2-door` 17 · `p2-fail`
+15 (Chrome, a public hostname through a stand-in proxy) · `p2-beat` 4 (the real worker against a fake
+PostgREST) · `p3-sql` 14 (PGlite, 001 + 030 + 031 twice) · og-bridge `npm test` 25 · `p4-parity` 26
+(four shop days, a lira sale, a dollar sale, a voided sale, a return — every figure equal to the
+till's own dashboard, Money, deliveries, statement and sales answers, to the unit) · `p4-page` 15 ·
+`p5-queue` 31 · `nglint` 2 · `npm test` 6 · `fix05/p0-namespaces` 6 · `ns03/sweep` 1027/0 over every
+screen every role can open, six widths, both languages. Every new check was seen red — on the old code or by breaking the rule on
+purpose — and each commit lists which.
+
 ## Night shift 05 (22 Sep 2026) — the live fix shipped, one certificate, nginx run for real
 
 Main got **only** the proxy fix from night shift 04's Phase 1 (b6e0940, cherry-picked from
@@ -2841,6 +3012,127 @@ outage drill (the end of `MORNING.md` on that branch).
   `/api/live` repeated `proxy_buffering off`, which `to-till.conf` already sets, and nginx refuses a
   duplicate. The container would never have started. Fixed on the branch.
 
+## Day shift 06 (22 Sep 2026) — the VPS end of the tunnel, a handshake with no install, and tonight staged
+
+On `night/online-offline`, **not merged**. The live folder stayed on `main`; the live server and
+its `.env` were not touched, and nothing was deleted anywhere. `TONIGHT.md` is the ordered list
+for Ahmad (it replaces `MORNING.md`). `DAY06-COOLIFY.md` and `DAY06-VPS-STEPS.md` are the console
+halves nobody at this keyboard could do.
+
+- **Measure the brief's facts; do not take them.** Three were wrong on the day:
+  - the shell was **not** elevated (`net session` exit 2), although the brief said it was;
+  - the laptop was on a **phone hotspot** (172.20.10.2), not "home Wi-Fi", and later on the
+    **shop LAN** (10.10.99.9, SSID "A PLUS 3");
+  - PIA's exit address changed mid-session.
+
+  Each changed what could be done. Everything needing administrator was staged, not attempted; a
+  UAC prompt with nobody at the keyboard hangs. The instructions attached to the wrong facts still
+  held: PIA stayed on, and no no-PIA test ran.
+- **The VPS end of WireGuard is up**: `wg0` on `10.8.0.1`, UDP 51820, `wg-quick@wg0` enabled at
+  boot, the till's key its only peer, set up by `tools/wg-test/vps-side.sh` over SSH. ufw is
+  inactive and was left so. No Docker, Coolify, iptables or forwarding change.
+- **`tools/wg-test/handshake.mjs` speaks WireGuard's handshake itself** (Noise_IKpsk2, whitepaper
+  §5.4) over a plain UDP socket: no WireGuard install, no administrator.
+  - X25519 and ChaCha20-Poly1305 are `node:crypto`. BLAKE2s is written out, because Node's
+    `blake2s256` can be neither keyed nor shortened, and WireGuard's MAC needs both.
+  - It was checked against Node's hash at nine lengths, RFC 7693, the keyed reference vectors and
+    RFC 7748's X25519 vector.
+  - A VPS that answers has proved the UDP path both ways, its own key, and that it holds this key
+    as a peer. It proves **nothing** about the Windows tunnel service or 10.8.0.x routing; that is
+    `till-side.ps1`.
+  - `genkey` writes the private key to a file and prints only the public one (tested on a dummy
+    first). Through PIA: **NO ANSWER** before the peer existed, while tcpdump on the VPS saw the
+    148-byte initiations arrive (so hPanel does not drop UDP 51820); then **WORKS**, In 148 / Out
+    92 in tcpdump. The answer is decrypted and checked, not just received.
+- **`tools/wg-test/shop-verdict.ps1` is the shop's verdict with no install**: it refuses while PIA
+  is connected, then prints WORKS / UDP BLOCKED / VPS UNREACHABLE. `till-side.ps1` gained
+  **`-KeyFile`**, because without it the script makes a new key the VPS does not know, and
+  **`-AllowPia`**.
+- **THE VPS WENT DARK TO THIS LAPTOP AT ABOUT 09:14 UTC**: first every port, then only 80/443
+  came back. SSH and UDP 51820 stayed dead for the rest of the shift, while `github.com:22`
+  answered over the same path. It reads like a reboot (the WireGuard install's `needrestart` had
+  deferred unattended-upgrades) followed by a filter on 22 and 51820. It is diagnosed in
+  `DAY06-VPS-STEPS.md` rather than guessed at. As a result, the certificate copy, the `dig` and
+  the `curl` through the tunnel are blocked, with their commands written down.
+- **`supabase:check`'s "users missing pw_box, last_login_at" was the check's bug, not the
+  mirror's.** `syncUsers` names its columns by hand and sends neither:
+  - `pw_box` is the readable password, sealed for the developer panel, and crosses only inside
+    `pw_enc`. `lib/drift.js` has listed it as local-only since audit 06; the check's own list never
+    learned it.
+  - `last_login_at` is this machine's record.
+
+  The brief said to ADD both columns to the mirror. That was refused: a column nothing writes
+  stays NULL forever, and a `pw_box` column in Supabase is one `SELECT *` away from a password
+  list. The check learned the rule instead. Against the live data, three red lines became two, and
+  both are the 8 accounts.
+- **The 8 accounts** (ids 1–7 and 10) are the five old test accounts, `mirrortest`, the
+  2026-09-05 `owner` and `zaren`. `users:rebuild` removed them here and the mirror kept them;
+  three are **active** there, so a restore would hand back three manager logins. The repair is
+  `npm run users:mirror -- --apply`, whose dry run (read-only, run today) re-points all eight to
+  Former staff #21. `server/supabase/032_extra_accounts.sql` has a read-only look, a reversible
+  switch-off, and a raw `DELETE` **commented out**, with the reason not to use it. Nothing was
+  deleted. The check's hint said "no script deletes an account"; it names `users:mirror` now.
+- **`tools/tonight/apply.ps1` (over `apply.mjs`) puts `server/.env.next` live, or puts the old one
+  back.** It **requires the shop CLOSED in the window**. The panel holds the server, and a server a
+  script starts stops when the script does: that is how night shift 05's check ended its server.
+  - It refuses outside 00:30–07:00 Damascus without `-Now`; while anything answers on the port;
+    after a sale, payment, stock or money write in 30 minutes; when `.env` has changed since the
+    staging, or the staged file adds any key but `OG_PROXY_ADDR` / `OG_VPS_API_KEY` /
+    `OG_ORIGINS`; and when the repository's backup fails or does not match live.
+  - It then checks health, a real sign-in, a forged `X-Forwarded-For` / `X-OG-Client-IP` read back
+    from `login_attempts` as `127.0.0.1`, and the mirror, and stops the server with
+    `{type:'stop'}`.
+  - Requests go without keep-alive: night shift 05 crashed on a stale socket.
+  - On the sandbox every refusal fired once, a clean run passed, and a staged `OG_PROXY_ADDR=127.0.0.1`
+    **failed the forged-header check (8.8.8.8 believed) and rolled back by itself** (exit 2).
+- **`server/scripts/till-firewall.ps1` is a dry run unless `-Apply`**; `-Undo` acts immediately,
+  as the emergency path. The tunnel rule is **8443 only**, from `10.8.0.1`. The LAN rule names
+  `10.10.99.0/24` instead of `LocalSubnet`, because Windows computes `LocalSubnet` over EVERY
+  interface, so ZeroTier's, PIA's and the tunnel's subnets would all have counted as the shop
+  Wi-Fi. The dry run warns if the laptop's own address is outside the LAN rule. In PowerShell 5.1,
+  `0xFFFFFFFF` is the Int32 −1, so the subnet mask is computed arithmetically.
+- **Both Coolify resources build from `night/online-offline` until the merge.** `main` has only
+  the old plain-http proxy and no `vps/og-bridge/`, so building from `main` would deploy the
+  unpinned proxy.
+- **Secrets, by file**, all in `_secrets/` (ignored through `.git/info/exclude` as well, which
+  covers every checkout):
+  - `wg-till.key` (private), `wg-till.pub`, `wg-vps.pub`;
+  - `og_vps.txt` (the `og_vps` database password);
+  - `og_vps_api_key.txt`;
+  - two tcpdump captures.
+
+## Day shift 06b (22 Sep 2026) — the tunnel is up on the till
+
+Branch `night/online-offline`, not merged. `TONIGHT.md` items 4–6 are done. What is left is the
+Supabase pastes, Coolify, and the shop-line test with PIA off.
+
+- **The tunnel runs as a Windows service.** WireGuard for Windows 1.1.1 (winget, signature
+  checked). Service `WireGuardTunnel$og-shop` starts at boot. Settings: `10.8.0.2/24`,
+  `AllowedIPs 10.8.0.1/32` only, keepalive 25, the key the VPS already trusted
+  (`_secrets/wg-till.key`).
+- **Proved from both ends, through PIA.** The till pings `10.8.0.1` in about 50 ms. On the VPS,
+  `curl https://10.8.0.2:8443/api/health` returns the till's own answer. It also passes when curl
+  trusts only the certificate copied to `/data/og/till.pem`, which is how nginx will verify it.
+  The certificate's sha256 is the same on both sides. No firewall rule was added: the blanket
+  Node.js rules still let it in. `till-firewall.ps1` narrows that later (`TONIGHT.md` item 12).
+- **The ZeroTier network `76fc96e49897c3c8` was left.** ZeroTier stays installed, its service
+  running, with no networks. The certificate still names the old ZeroTier address. That does no
+  harm.
+- **`till-side.ps1` had never run to the end.** Two bugs, both fixed:
+  - `Say '…' + $pub + ')'` has no parentheses. PowerShell passes that as five arguments, and the
+    call throws.
+  - `wireguard.exe /uninstalltunnelservice` writes "service does not exist" to stderr. PS 5.1
+    makes that fatal under `-ErrorAction Stop`, even with `2>$null`. `Drop-Tunnel` runs it under
+    `Continue`.
+- **"The terminal is administrator" was true of the user's terminal, not of this session.**
+  Claude Code's shell ran at Medium integrity. Each admin step went through
+  `Start-Process -Verb RunAs`, and the user accepted a UAC prompt for it. Output came back through
+  a log file.
+- **The VPS also runs Tailscale** (1.102.4, installed 20 Sep 2026, account `minimamba1608@`).
+  It has 0 peers and no serve, funnel, SSH or routes. Nothing in Coolify refers to it. Its only
+  footprint is the `ts-input` chain in iptables and UDP 41641. It was left alone.
+- **The morning's VPS outage was PIA's exit address changing**, not the VPS. If SSH to the VPS
+  dies again, switch the PIA region before debugging the server.
 ## Day shift 07 (22 Sep 2026) — the domain is live, and the proxy address is staged
 
 `shop.ogsports1.com` works from outside. The path is a phone, then the VPS's nginx (the Coolify
@@ -3439,6 +3731,154 @@ website).
   across a rate change, a real sale read back from SQLite, and Arabic at 390. `fix05/p0-namespaces`
   and `fix06/idle` also pass.
 
+## Night mode (24 Sep 2026) — `/night`, and "Waiting for the shop"
+
+Branch `feature/night-mode`, off `merge/online-offline`. **Nothing deployed, nothing run against
+Supabase.** The plan is `_handover/NIGHT-MODE-PLAN.md` and the report `_handover/NIGHT-MODE.md`,
+both in the worktree `D:\DESKTOP\og-night` and gitignored. This section is what travels.
+
+**When the laptop is off or out of reach, `shop.ogsports1.com/night` still answers.**
+- **What it is.** A small app served by **og-bridge** (`vps/og-bridge/src/night*.js`) that reads
+  the mirror as `og_vps`: stock by product and size per place, a customer lookup, recent orders
+  with their status, and today's numbers for the owner and the manager only.
+- **The one write** is a **request**: a customer, sizes, delivery or pickup. It waits in the cloud
+  until **a person on the laptop accepts it** (a normal order through `Orders.create`) or turns it
+  down with a reason. **The laptop stays the only writer of shop data.**
+
+### The cloud — `server/supabase/035_night_requests.sql` (run by hand, after 030 and 031)
+
+- **`inbox.requests`**, beside og-track's `inbox.items`, which is untouched. `inbox.items` is taken
+  and applied in one pass. A request is decided by a person, later, and the answer travels back
+  (`waiting → received → accepted | rejected`), which is web-orders' shape. **Generic on
+  purpose**: `source` is `night` or `web`, so the website's orders can arrive here later.
+- **`og_vps` gains EXECUTE on `erp.request_submit` and `erp.requests_list`, and no table privilege
+  at all.**
+  - Its sessions stay read-only by default (030). An INSERT inside a SECURITY DEFINER function
+    still fails in a read-only transaction, so **`mirror.submit()` is the ONLY path in og-bridge
+    that opens `BEGIN READ WRITE`**, and `bridge.mjs` / `roundtrip.mjs` assert it from the SQL
+    log.
+  - **The file's last block fails the whole run** if `og_vps` can write to any relation, or can
+    reach `inbox.requests` directly.
+- **The payload is built by the function from the mirror.** Names, sizes and colours come from
+  `public.variants` / `products` / `product_colours`, never from the caller. The laptop
+  re-resolves every SKU and prices it from its own table anyway.
+- **The laptop's two doors** are `public.requests_take` and `public.requests_mark`, for the
+  service key and the mirror's lineage only.
+  - A decision is final.
+  - A request not yet decided follows the lineage, so it is taken again by the laptop that takes
+    the baton.
+- **Limits:** 20 lines, 20 of a size, 60 pieces · 5 undecided per phone · 30 per night user an
+  hour · 1,000 undecided in all · 8 KB, measured again AFTER the mirror's names are added (the
+  caller's request is small; a long product name is not).
+- **Refs are `N-0042` to `N-9999`, then `N-10000`.** `lpad` CUTS a longer number to its width, so
+  the first version would have made the 12,345th request `N-1234`.
+- **Only `requests_op_unique` is a replay.** Every other `unique_violation` is re-raised: the first
+  version answered them all "this form was already used", which would have hidden a ref clash.
+
+### og-bridge — `/night`
+
+- **Sign-in** is the snapshot's door (`snapshot-auth.js`: scrypt + TOTP + throttle) with night's
+  own accounts.
+  - Accounts: `OG_NIGHT_USERS`, roles `owner | manager | staff`, made by `node src/night-user.js`.
+  - Cookie `og_night` on `/night`.
+  - A per-session form token on **every** POST, beside the Origin check.
+- **Roles.** Staff never see money, and it is not even queried for them. Staff list only their
+  own requests.
+- **No script at all.** The stylesheet is one constant, and its SHA-256 is the CSP's `style-src`
+  (no `unsafe-inline`, no `style=` attribute; a test hashes each page's `<style>` against its
+  header). No remote font — a render-blocking stylesheet on a slow line is a blank page.
+- **Honesty.** Every page carries the banner: «وضع الليل · البيانات من الساعة HH:MM · التغييرات
+  بتستنى المحل». The time is `erp.till_status().beat_at`.
+- **The draft** lives in memory beside the session, with the idempotency `op` it is sent under,
+  so a form sent twice on a slow line is one request.
+  - **A send that landed but whose answer was lost, then EDITED, is not called "sent".** The SQL
+    replays the FIRST request under that op; og-bridge remembers what it first sent (`sentAs`),
+    says the earlier send arrived as N-xxxx without the changes, and keeps the edits under a new op.
+- **The request page is ONE form.** Lines are `q.<sku>` inside it, and every button but Send posts
+  the whole form to `/night/request/save` (`do=remove:<sku>`, `?next=stock|customers|forget`). With
+  a form per line, changing a quantity threw away a half-typed address. **A hidden save button is
+  the form's FIRST submit button**, so Enter saves and stays; it never sends or forgets the customer.
+- **Every answer carries `Vary: *`** besides `no-store`. A shop service worker installed before the
+  `/night` exclusion caches any same-origin 200; `Cache.put()` refuses a response that varies on
+  everything, so no worker, old or new, can keep a night page on a phone.
+- **The throttle counts an attempt BEFORE the scrypt await** and takes it back on success. Counted
+  after, twenty guesses sent at once all passed the check while the first was being hashed. This
+  is `snapshot-auth.js`, so `/snapshot` gets the fix too.
+- **Switches:** `OG_NIGHT_SUBMIT=off` makes night mode read-only (the kill switch).
+  `OG_NIGHT_MAX_PER_HOUR` (20) sets the per-account limit. **`OG_VAULT_KEY` never goes to the
+  VPS.**
+
+### The laptop
+
+- **Storage.** Migration `063` (main holds 061/062 for website orders): `shop_requests`, **local-only**. It is on `supabase-check.js`'s
+  `LOCAL_ONLY` list, and there is no `logChange`.
+- **Collecting.** `lib/requests.js` rides `Inbox.collect()`: every minute the mirror is live, and
+  on og-bridge's collect-now. `OG_NIGHT_REQUESTS=0` switches collecting off.
+- **The screen** is **"Waiting for the shop"** (`js/requests.js`, nav `requests`,
+  `delivery.desk`), with a bell row `requests_waiting`.
+- **Accept** is one press for a pickup or our own driver, on plan `receipt`.
+  - A transport office, courier or abroad is paid before sending, so it goes through **Open in
+    the order desk**: `Desk.fromRequest`, then the desk's own Save with `requestRef`.
+  - **Creating a new customer on the way needs `customer.write`**, as it does in the desk.
+- **APPLIED ONCE, THREE WAYS:**
+  - a decision needs the row to be `waiting`;
+  - the order carries opId `req:<ref>`;
+  - its delivery note starts with the **marker `[req N-0042]`** (`RequestShape.noteWith`).
+    `deliveries.note` is mirrored and sales have no note of their own, so a request re-taken after
+    the shop moved laptops arrives already an order. **The marker ends at its own bracket**: the
+    first version carried a trailing space, a note-less order was stored trimmed, and the guard
+    could not see it.
+- **The decision goes back** straight away (`flushSoon`), and again on every collect until the
+  cloud confirms it. **The confirmation is conditional** on the row still being what was reported,
+  so a decision made while a report was in flight is not marked reported by the older answer.
+- **Our driver needs an address.** A pickup request has none, so Accept refuses `driver` with
+  `needs_address`, and the dialog disables that button and says why.
+- **A row the laptop cannot read** is reported `rejected` / `unreadable` instead of sitting in the
+  cloud for ever. The list draws the oldest 100 waiting and says so when there are more.
+
+### Front-end edits outside the new screen
+
+- **`sw.js` returns early for `/night`**, as it does for `/snapshot`. Cache-first would keep night
+  pages on the device, and answer a navigation with this app's shell, which is the page that
+  cannot work at that moment. `CACHE` v292.
+- **The app's own "shop's internet is down" screen** (`js/shop.js`) has a Night mode button for
+  every role. A phone that already has the app sees this screen, never the proxy's page.
+
+### The proxy
+
+`/night` and `/night/*` go to og-bridge exactly as `/snapshot` does. They have their own limit
+(`og_night`) and their own down page. **`/night/login` also sits in `og_login`** (the till's
+sign-in zone, burst 5). The proxy's down page gains the button. Additions only:
+`tools/night-mode/proxy.mjs` proves it, runs a real `nginx -t`, and routes real requests.
+
+### Tests — `tools/night-mode/` (PGlite via `OG_PGLITE`, nginx via `OG_NGINX`; nothing installed)
+
+`sql.mjs` 101 · `bridge.mjs` 35 · `laptop.mjs` 68 · `roundtrip.mjs` 35 (night → cloud → laptop →
+decision → night, over HTTP, read back from SQLite and Postgres) · `proxy.mjs` 26. Also og-bridge
+`node --test` 64 (25 old) and server `npm test` 15 (6 old). `preview.mjs` takes the 390 px
+screenshots in both languages, and refuses to save a laptop shot drawn in the wrong one.
+Every check added for the two reviews was seen red on the old code first.
+
+### Things that will bite you
+
+- **PGlite is ONE connection, and `SET ROLE` is connection-wide.** Every caller goes through
+  `makeSerial()` in `lib.mjs`. Otherwise the PostgREST stand-in (as `service_role`) interleaves
+  with the `og_vps` pool, and each runs as the other.
+- **`flushSoon()` must not drop a decision** made while a report is in flight. It is *owed* and
+  sent when that report lands. The first version made the second and third decisions of a busy
+  minute wait for the next collect (found by `roundtrip.mjs`).
+- **A chip is `inline-block`, not `inline-flex`.** In a flex row the text before a figure is its
+  own item and loses its trailing space ("Back storage:2"). This is the `.btn` trap again.
+- **Typed text gets `dir="auto"`** (names, addresses, notes, reasons). An English note in an Arabic
+  layout otherwise prints its full stop at the front.
+- **Other sessions run their own sandboxes on this machine.** A fixed test port (8192) was held by
+  another session's server. The scripts pick a free one.
+- **Heredocs with Arabic in them break the Bash tool here**. Write scripts with Arabic to a file
+  first.
+- **Set `og.lang` only after the app has finished booting.** Boot's `applyLang()` writes the key
+  from the language it started in, so a key set mid-boot is written straight back. The first
+  preview saved the "English" laptop screens in Arabic, byte for byte the same files.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
@@ -3625,7 +4065,7 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
   parcel a customer has not collected for a fortnight. Those belong in `reminders.js` with the
   other standing conditions, not in `office-alerts.js`, which only ever speaks when something
   happened.
-- Bulk catalogue entry; an offline write queue. (The Yalla Wear portal now runs against real data —
+- Bulk catalogue entry. **The offline write queue exists since night shift 04 and carries ONE route** (the hand-over sheet); widening it means giving a route an opId first — see the table there. (The Yalla Wear portal now runs against real data —
   what remains is exposing the server to them: Tailscale or a tunnel, and `OG_ORIGINS` listing the
   address they use.)
 - **The lira question is settled by the data**: `fx_rates` holds 1 USD = 130 SYP (set 2026-08-24) and

@@ -620,6 +620,66 @@ var Desk = (function () {
     });
   }
 
+  /* A NIGHT REQUEST, OPENED HERE (js/requests.js "Open in the order desk").
+     The server has already found or made the customer; this fills the draft
+     from the request — the sizes, the customer, where it goes, the note —
+     and keeps the request's ref on the draft, so Save sends it and the
+     server marks the request accepted with the order it makes. It lands on
+     "Travels by", because the reason to come here instead of pressing Accept
+     is nearly always a transport office, a courier or abroad, which has to
+     be paid before sending. A half-typed order is not thrown away without
+     the same question New order asks. */
+  var pendingRequest = null;
+  function fromRequest(dr) {
+    if (!dr || !dr.ref) return;
+    if (!S) S = loadDraft() || fresh();
+    pendingRequest = dr;
+    if (!saved && (S.lines.length || S.customerId || String(S.address || '').trim())) {
+      openModal({
+        title: t('dk_from_request_title').replace('{ref}', esc(dr.ref)), size: 'narrow',
+        body: '<div class="partner-note">' + t('dk_new_sure').replace('{n}', nf(pieces())) + '</div>',
+        foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+              '<button class="btn btn-primary" data-act="dk-from-request-go">' + t('dk_from_request_yes') + '</button>'
+      });
+      return;
+    }
+    takeRequest();
+  }
+  function takeRequest() {
+    var dr = pendingRequest;
+    pendingRequest = null;
+    if (!dr) return;
+    function apply() {
+      var keep = S ? S.print : printPref();
+      S = fresh();
+      S.print = keep;
+      S.lines = (dr.lines || []).map(function (l) { return { sku: l.sku, qty: l.qty }; });
+      S.customerId = dr.customerId || null;
+      S.method = dr.method || 'driver';
+      var dest = dr.dest || {};
+      if (dest.country) S.country = dest.country;
+      S.city = dest.city || '';
+      S.address = dest.address || '';
+      S.phone = dest.phone || '';
+      S.note = dr.note || '';
+      S.channel = 'other';
+      S.requestRef = dr.ref;
+      S.step = 2;
+      S.maxStep = 4;
+      saved = null;
+      saveDraft();
+      toast(t('dk_title'), t('dk_from_request').replace('{ref}', dr.ref), 'ok', 5000);
+      if (OG.view === 'desk') repaint(); else go('desk');
+    }
+    /* A customer the server made a moment ago is not in this browser's list
+       yet, and the customer step would show nobody. */
+    if (dr.customerId && !DB.customer(dr.customerId) && typeof Shop !== 'undefined' && Shop.reload) {
+      Shop.reload().then(apply, apply);
+    } else {
+      apply();
+    }
+  }
+
   /* What the chosen plan means, as a payment row ready to be typed over — so
      the commonest order is two taps. Called from wherever the plan can move,
      which is both the plan chips and the travel method (a courier cannot be
@@ -2256,7 +2316,9 @@ var Desk = (function () {
       opId: S.opId,
       /* A website order being accepted: the server writes it under that
          order's own opId and tells the website (lib/weborders.js). */
-      webRef: S.webRef || null
+      webRef: S.webRef || null,
+      /* A draft made from a night request: the server marks it accepted. */
+      requestRef: S.requestRef || null
     }).then(function (r) {
       busy = false;
       saved = { order: r.order, money: r.money };
@@ -2435,6 +2497,7 @@ var Desk = (function () {
       pendingWeb = null;
       if (f) f();
     };
+    ACTIONS['dk-from-request-go'] = function () { closeModal(); takeRequest(); };
     ACTIONS['dk-reload'] = function () { bootErr = null; boot = null; repaint(); load(); };
     ACTIONS['dk-camera'] = function () {
       if (typeof Scan === 'undefined') return;
@@ -3522,6 +3585,7 @@ var Desk = (function () {
     foldDigits: foldDigits,
     openOrder: openOrder,
     sendTrack: sendTrack,
+    fromRequest: fromRequest,
     takePayment: takePayment,
     fromWeb: fromWeb,
     /* The pictures the board, the road and the order dialog share, so a

@@ -3335,3 +3335,127 @@ body.rtl .fxf-makes, body.rtl .fxf-held, body.rtl .fxf-head b { letter-spacing: 
    height even while empty, so typing the first digit does not push the
    form down by a line. */
 body:not([data-portal="yalla"]) .pr-lira { display: block; min-height: 18px; margin-top: 4px; font-size: var(--fs-xs); font-weight: 600; }
+
+/* ==========================================================================
+   NIGHT SHIFT 04 — the write queue's button and list (js/writequeue.js).
+   The Sync button's own dot, amber while a write waits, red when refused.
+   ========================================================================== */
+body:not([data-portal="yalla"]) .wq-btn { position: relative; color: var(--warning); border-color: var(--warning-border); }
+body:not([data-portal="yalla"]) .wq-btn[data-mode="bad"] { color: #ff5c5c; border-color: #7a2a2a; }
+body:not([data-portal="yalla"]) .wq-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+body:not([data-portal="yalla"]) .wq-btn::after {
+  content: ''; position: absolute; top: 5px; inset-inline-end: 5px; width: 7px; height: 7px; border-radius: 50%;
+  background: #f5b93e;
+}
+body:not([data-portal="yalla"]) .wq-btn[data-mode="bad"]::after { background: #ff5c5c; box-shadow: 0 0 0 3px rgba(255, 92, 92, .22); }
+body:not([data-portal="yalla"]) .wq-count {
+  position: absolute; bottom: -4px; inset-inline-end: -4px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--card); border: 1px solid currentColor; font-size: 10px; font-weight: 700;
+  line-height: 14px; text-align: center;
+}
+body:not([data-portal="yalla"]) .wq-note { margin: 0 0 16px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .wq-row {
+  display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  padding: 12px 0; border-top: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .wq-row:first-child { border-top: 0; }
+body:not([data-portal="yalla"]) .wq-what { display: grid; gap: 4px; min-width: 0; }
+body:not([data-portal="yalla"]) .wq-what small { color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .wq-state { font-size: 13px; font-weight: 600; }
+body:not([data-portal="yalla"]) .wq-warn { color: var(--warning); }
+body:not([data-portal="yalla"]) .wq-bad { color: #ff5c5c; }
+body:not([data-portal="yalla"]) .wq-acts { display: flex; gap: 8px; }
+body:not([data-portal="yalla"]) .wq-acts .btn { min-height: 44px; }
+
+/* ==========================================================================
+   NIGHT MODE — "Waiting for the shop" (js/requests.js). Requests staff left
+   at /night while the shop was shut; the office accepts or turns them down.
+   One lime button per card (Accept); "Turn it down" behind the "…".
+   ========================================================================== */
+body:not([data-portal="yalla"]) .rq-list { display: grid; gap: 16px; }
+body:not([data-portal="yalla"]) .rq-card { display: grid; gap: 12px; position: relative; }
+body:not([data-portal="yalla"]) .rq-card.is-open { z-index: 25; }
+body:not([data-portal="yalla"]) .rq-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 12px; flex-wrap: wrap; }
+body:not([data-portal="yalla"]) .rq-id { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+body:not([data-portal="yalla"]) .rq-ico { width: 18px; height: 18px; fill: none; stroke: var(--warning); stroke-width: 1.8; flex: none; }
+body:not([data-portal="yalla"]) .rq-when { color: var(--muted-foreground); font-size: 12.5px; }
+body:not([data-portal="yalla"]) .rq-chip {
+  /* inline-block, not flex: in a flex row the text before a figure is its own
+     item and loses its trailing space ("Back storage:2"), the .btn trap. */
+  display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; line-height: 1.6;
+  border: 1px solid var(--border-strong); color: var(--muted-foreground); white-space: nowrap;
+}
+body:not([data-portal="yalla"]) .rq-chip.ok { color: var(--success); border-color: var(--success-border); background: var(--success-soft); }
+body:not([data-portal="yalla"]) .rq-chip.warn { color: var(--warning); border-color: var(--warning-border); background: var(--warning-soft); }
+body:not([data-portal="yalla"]) .rq-chip.bad { color: var(--destructive); border-color: var(--destructive-border); background: var(--destructive-soft); }
+body:not([data-portal="yalla"]) .rq-who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+body:not([data-portal="yalla"]) .rq-who b { font-size: 15px; }
+body:not([data-portal="yalla"]) .rq-tel { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--foreground); text-decoration: none; }
+body:not([data-portal="yalla"]) .rq-tel svg,
+body:not([data-portal="yalla"]) .rq-where svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; flex: none; }
+body:not([data-portal="yalla"]) .rq-where { display: flex; gap: 8px; align-items: flex-start; color: var(--muted-foreground); line-height: 1.6; }
+body:not([data-portal="yalla"]) .rq-addr { color: var(--foreground); }
+body:not([data-portal="yalla"]) .rq-lines { list-style: none; margin: 0; padding: 0; display: grid; }
+body:not([data-portal="yalla"]) .rq-line { display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .rq-line:first-child { border-top: 0; padding-top: 0; }
+body:not([data-portal="yalla"]) .rq-line-top { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; }
+body:not([data-portal="yalla"]) .rq-line-name { min-width: 0; }
+body:not([data-portal="yalla"]) .rq-line-qty { flex: none; }
+body:not([data-portal="yalla"]) .rq-line-sub { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+body:not([data-portal="yalla"]) .rq-price { color: var(--muted-foreground); font-size: 13px; }
+body:not([data-portal="yalla"]) .rq-total { display: flex; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-weight: 700; }
+body:not([data-portal="yalla"]) .rq-note { margin: 0; padding: 12px; border-radius: var(--radius); background: var(--subtle); white-space: pre-wrap; line-height: 1.6; }
+body:not([data-portal="yalla"]) .rq-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+body:not([data-portal="yalla"]) .rq-actions .btn { min-height: 44px; }
+body:not([data-portal="yalla"]) .rq-more { position: relative; margin-inline-start: auto; }
+body:not([data-portal="yalla"]) .rq-dots { min-width: 44px; justify-content: center; }
+body:not([data-portal="yalla"]) .rq-dots svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+body:not([data-portal="yalla"]) .rq-menu {
+  position: absolute; bottom: calc(100% + 8px); inset-inline-end: 0; z-index: 30; min-width: 200px; padding: 8px;
+  border-radius: var(--radius); background: var(--popover); border: 1px solid var(--border-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+}
+body:not([data-portal="yalla"]) .rq-mitem {
+  display: flex; align-items: center; width: 100%; min-height: 44px; padding: 0 12px; border-radius: var(--radius-sm);
+  background: transparent; border: 0; font: 600 14px/1.2 inherit; font-family: inherit; text-align: start; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .rq-mitem.bk-danger { color: var(--destructive); }
+body:not([data-portal="yalla"]) .rq-mitem:hover { background: var(--accent); }
+body:not([data-portal="yalla"]) .rq-refresh { width: 34px; padding: 0; display: inline-grid; place-items: center; }
+body:not([data-portal="yalla"]) .rq-refresh svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+body:not([data-portal="yalla"]) .rq-fee { display: grid; gap: 8px; }
+body:not([data-portal="yalla"]) .rq-fee[hidden] { display: none; }
+body:not([data-portal="yalla"]) .rq-hint { margin: 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; }
+body:not([data-portal="yalla"]) .rq-skel { display: grid; gap: 16px; }
+body:not([data-portal="yalla"]) .rq-skel i { display: block; height: 180px; border-radius: var(--radius-lg); background: var(--card); border: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .rq-decided { margin-top: 24px; }
+body:not([data-portal="yalla"]) .rq-decided h3 { margin: 0 0 12px; font-size: 15px; }
+body:not([data-portal="yalla"]) .rq-decided ul { list-style: none; margin: 0; padding: 0; }
+body:not([data-portal="yalla"]) .rq-done { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .rq-done:first-child { border-top: 0; padding-top: 0; }
+body:not([data-portal="yalla"]) .rq-done-top { display: flex; justify-content: space-between; gap: 12px; }
+body:not([data-portal="yalla"]) .rq-done-st { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+body:not([data-portal="yalla"]) .rq-why { color: var(--muted-foreground); font-size: 13px; }
+body:not([data-portal="yalla"]) .rq-unsent { color: var(--warning); }
+body:not([data-portal="yalla"]) .rq-link {
+  background: none; border: 0; padding: 0; color: var(--brand); font: 600 14px/1.2 inherit; font-family: inherit;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 3px; min-height: 32px;
+}
+/* The dialogs. */
+body:not([data-portal="yalla"]) .rq-dlg { display: grid; gap: 16px; }
+body:not([data-portal="yalla"]) .rq-toggle,
+body:not([data-portal="yalla"]) .rq-reasons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+body:not([data-portal="yalla"]) .rq-opt {
+  min-height: 48px; padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border-strong);
+  background: transparent; color: var(--foreground); font: 600 14px/1.3 inherit; font-family: inherit; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .rq-opt.on { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+body:not([data-portal="yalla"]) .rq-opt:disabled { opacity: .45; cursor: not-allowed; }
+body:not([data-portal="yalla"]) .rq-capped { margin: 0 0 16px; color: var(--muted-foreground); font-size: 13px; }
+body:not([data-portal="yalla"]) .rq-sentence { margin: 0; color: var(--muted-foreground); line-height: 1.6; }
+body:not([data-portal="yalla"]) .rq-err { margin: 0; min-height: 1em; color: var(--destructive); font-weight: 600; }
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .page-head .head-actions .rq-refresh { flex: 0 0 44px; width: 44px; }
+  body:not([data-portal="yalla"]) .rq-actions .btn-primary { flex: 1 1 100%; }
+  body:not([data-portal="yalla"]) .rq-link { min-height: 44px; }
+}

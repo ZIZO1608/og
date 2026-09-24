@@ -485,6 +485,13 @@ var Pulse = (function () {
         if (typeof FxFeedUI !== 'undefined') FxFeedUI.live(d.fx);
         return;
       }
+      /* A night request arrived, or somebody decided one. The screen
+         reloads only while it is on show with no dialog open; elsewhere
+         only the count beside its menu entry moves. */
+      if (d.requests) {
+        if (typeof Requests !== 'undefined' && Requests.live) Requests.live();
+        return;
+      }
       if (d.deliveries) {
         var onBoard = OG.view === 'deliveries' ||
                       (OG.view === 'dashboard' && roleOf() === 'delivery');

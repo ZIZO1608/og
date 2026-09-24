@@ -308,6 +308,13 @@ html.gated #app { filter: blur(6px); pointer-events: none; }
   margin: 0 0 20px; padding-inline-start: 20px;
   font-size: 13px; line-height: 1.9; color: var(--muted-foreground);
 }
+/* The shop's internet, not its server (night shift 04): amber, not red —
+   nothing in the shop is broken, the road to it is. */
+.boot-fail-card.is-road { border-color: var(--warning-border); }
+.boot-fail-card.is-road h1 { color: var(--warning); }
+.boot-fail-card.is-road .boot-fail-why { background: var(--warning-soft); color: var(--warning); }
+.boot-fail-snap { margin: 0 0 16px; }
+.boot-fail-snap .btn { min-height: 44px; }
 
 /* ------------------------------------------------------------------ MISC */
 

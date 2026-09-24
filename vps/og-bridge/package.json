@@ -1,0 +1,17 @@
+{
+  "name": "og-bridge",
+  "private": true,
+  "version": "1.0.0",
+  "description": "The VPS half of OG System: watches the road to the till, and serves the owner's read-only snapshot of the cloud copy.",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node src/server.js",
+    "user": "node src/snapshot-user.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

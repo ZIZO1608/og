@@ -56,6 +56,7 @@ import * as Receipt from './lib/receipt.js';
 import * as Printing from './lib/printing.js';
 import * as Labels from './lib/labels.js';
 import * as SyncWorker from './lib/sync-worker.js';
+import * as Lineage from './lib/lineage.js';
 import * as Telegram from './lib/telegram.js';
 import * as Reminders from './lib/reminders.js';
 import * as BackupSchedule from './lib/backup-schedule.js';
@@ -66,6 +67,8 @@ import * as Push from './lib/webpush.js';
 import * as Reviews from './lib/reviews.js';
 import * as WebOrders from './lib/weborders.js';
 import * as WebCheckout from './lib/webcheckout.js';
+import * as Requests from './lib/requests.js';
+import * as RequestShape from './lib/request-shape.js';
 import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
 import * as Storage from './lib/storage.js';
@@ -1789,6 +1792,18 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
      replays the first. A rejected or test order is refused before anything
      is written. */
   const webRef = str(b.webRef);
+  /* An order the desk is saving for a night request ("Open in the order
+     desk", lib/requests.js): the request must still be waiting, and the
+     delivery note carries its marker, which is how the request is known to
+     be an order on any laptop. A retried Save (the same opId, already
+     applied) is let through so it gets its first order back. */
+  const reqRef = str(b.requestRef);
+  if (reqRef) {
+    try { Requests.forOrder(reqRef); }
+    catch (e) {
+      if (!(e.code === 'decided' && str(b.opId) && Requests.appliedOp(str(b.opId)))) return requestFail(ctx.res, e);
+    }
+  }
   try {
     if (webRef) WebOrders.forAccept(webRef);
     const out = Orders.create({
@@ -1798,7 +1813,7 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       currency: str(b.currency),
       discount: Number(b.discount) || 0,
       channel: webRef ? 'web' : str(b.channel),
-      note: str(b.note),
+      note: reqRef ? RequestShape.noteWith(reqRef, str(b.note)) : str(b.note),
       dest: b.dest && typeof b.dest === 'object' ? b.dest : {},
       method: b.method,
       companyId: str(b.companyId),
@@ -1813,6 +1828,7 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       unlimitedDiscount: Auth.can(ctx.user, 'discount.unlimited'),
       opId: webRef ? WebOrders.opIdFor(webRef) : str(b.opId)
     });
+    if (reqRef && !out.replayed) Requests.markAccepted(reqRef, out.sale.id, ctx.user.id);
     Live.notify('og', { deliveries: true });
     if (!out.replayed) Tracking.moved(out.sale.id, ctx.user.id);
     /* The order is written; now the website hears it was accepted. A failure
@@ -1903,6 +1919,55 @@ router.add('POST /api/orders/:id/payments', requirePerm(['delivery.desk', 'debt.
 
 router.add('GET /api/orders/last-destination/:id', requirePerm('delivery.desk', (ctx) => {
   sendOk(ctx.res, { dest: Orders.lastDestination(Number(ctx.params.id)) });
+}));
+
+/* ---- "Waiting for the shop": night requests (063, lib/requests.js) ------
+   What staff left at /night while the shop was shut. Nothing here happened
+   by itself: Accept makes the order through Orders.create — the function
+   POST /api/orders calls — and Reject records why. The office's job, so
+   delivery.desk, like the order desk; adding a NEW customer on the way also
+   needs customer.write, as it does there. */
+function requestFail(res, e) {
+  if (e && e.status) {
+    return sendErrorDetail(res, e.status, e.code, e.message,
+      { state: e.state ?? undefined, saleId: e.saleId ?? undefined, skus: e.skus ?? undefined });
+  }
+  return orderFail(res, e);
+}
+
+router.add('GET /api/requests', requirePerm('delivery.desk', (ctx) => {
+  sendOk(ctx.res, Requests.list());
+}));
+
+router.add('POST /api/requests/:ref/accept', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const r = Requests.accept(ctx.params.ref, b, ctx.user);
+    Live.notify('og', { deliveries: true });
+    if (r.out && !r.out.replayed) Tracking.moved(r.saleId, ctx.user.id);
+    const d = DB.get();
+    sendOk(ctx.res, {
+      sale: r.out ? scrubCost(r.out.sale, ctx.user) : { id: r.saleId },
+      order: Deliveries.bySale(r.saleId, ctx.user),
+      money: r.out ? r.out.money : Orders.money(d, r.saleId),
+      replayed: !r.out || !!r.out.replayed,
+      request: Requests.one(ctx.params.ref)
+    });
+  } catch (e) { requestFail(ctx.res, e); }
+}));
+
+router.add('POST /api/requests/:ref/reject', requirePerm('delivery.desk', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { request: Requests.reject(ctx.params.ref, b, ctx.user) });
+  } catch (e) { requestFail(ctx.res, e); }
+}));
+
+router.add('POST /api/requests/:ref/prepare', requirePerm('delivery.desk', async (ctx) => {
+  await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, { draft: Requests.prepare(ctx.params.ref, ctx.user) });
+  } catch (e) { requestFail(ctx.res, e); }
 }));
 
 /* ------------------------------------------------------------ the handover
@@ -2853,6 +2918,22 @@ router.add('GET /api/ext/print-jobs/:id', (ctx) => {
   sendOk(ctx.res, { job: webJob(j) });
 });
 
+/* --- the VPS's door (night shift 04) ---------------------------------------
+   og-bridge, on the VPS, asks two things of the till over the WireGuard
+   tunnel: "are you there, and which database are you" (so it never mistakes
+   a dev copy for the shop), and "collect og-track's inbox now". A bearer key
+   (OG_VPS_API_KEY), checked in the request pipeline beside /api/ext/, and a
+   404 for anything the PUBLIC proxy carried: the front door must never reach
+   this one, and nginx refuses the prefix before it gets here as well. */
+router.add('GET /api/vps/health', (ctx) => {
+  DB.get().prepare('SELECT 1').get();
+  sendOk(ctx.res, { lineage: Lineage.localId({ create: false }), build: buildInfo() });
+});
+
+router.add('POST /api/vps/collect', async (ctx) => {
+  sendOk(ctx.res, { collect: await SyncWorker.collectInboxNow() });
+});
+
 /* What the website may know: where the job is and the shop's verdict —
    never what the printer charges. */
 function webJob(j) {
@@ -3732,6 +3813,22 @@ async function handle(req, res) {
            session; compared in constant time. With no key configured the
            door does not exist, which is the state on a shop that has no
            website yet. */
+        /* The VPS's door (night shift 04). Same shape as the website's
+           below — and a request the public proxy carried (it arrives from
+           OG_PROXY_ADDR WITH a visitor's address) is told the door does not
+           exist, before the key is even looked at. */
+        if (path.startsWith('/api/vps/')) {
+          if (Fwd.forwardedVisitor(req)) return sendError(res, 404, 'not_found', 'No such endpoint.');
+          const want = process.env.OG_VPS_API_KEY || '';
+          if (!want) return sendError(res, 503, 'not_configured', 'OG_VPS_API_KEY is not set on this server.');
+          const got = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+          const a = Buffer.from(got), b = Buffer.from(want);
+          if (!got || a.length !== b.length || !timingSafeEqual(a, b)) {
+            return sendError(res, 401, 'bad_key', 'The API key is missing or wrong.');
+          }
+          return await hit.handler({ req, res, url, params: hit.params, user: null, token: null });
+        }
+
         if (path.startsWith('/api/ext/')) {
           const want = process.env.OG_WEB_API_KEY || '';
           if (!want) return sendError(res, 503, 'not_configured', 'OG_WEB_API_KEY is not set on this server.');
