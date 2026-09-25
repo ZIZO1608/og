@@ -10,8 +10,13 @@ functions or roles, and nothing records that a file was pasted.
 
 ## The order
 
-**1. The mirror itself — `CATCH-UP.sql`** (`001`–`029`, plus `036`, concatenated). One paste.
-`001` alone first on a brand-new project.
+**1. The mirror itself.** On a **brand-new project**, run `001` to `007` first, one file at a
+time and in order. Then **`CATCH-UP.sql`**, which is `008`–`029` plus `036` concatenated: one
+paste. This shop's project already has `001`–`007`.
+
+`CATCH-UP.sql` does **not** contain `001`–`007`. This README used to say it did, so following it on
+a new project skipped them. `008` then fails, because it alters `sections`, and only `006` creates
+that table. There is no file numbered `034`; the number was never used.
 
 **2. After that, two families.** Both are numbered from `030`, because they were written on
 different branches at the same time — the file NAME is what tells them apart. Within a family, run
