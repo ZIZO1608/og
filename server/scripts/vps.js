@@ -208,7 +208,7 @@ async function health(url, ms = 8000) {
 
 async function vpsFacts() {
   const r = await remote(`
-    echo "running=$(docker inspect og-shop --format '{{.State.Running}}' 2>/dev/null || echo none)"
+    echo "state=$(docker ps -a --filter 'name=^og-shop$' --format '{{.State}}' 2>/dev/null | head -1)"
     echo "health=$(docker inspect og-shop --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
     echo "started=$(docker inspect og-shop --format '{{.State.StartedAt}}' 2>/dev/null || true)"
     echo "image=$(docker inspect og-shop --format '{{.Config.Image}}' 2>/dev/null || true)"
@@ -227,6 +227,8 @@ async function vpsFacts() {
     const i = line.indexOf('=');
     if (i > 0) f[line.slice(0, i)] = line.slice(i + 1).trim();
   }
+  /* 'true' | 'false' | 'none' — no container at all is its own answer. */
+  f.running = !f.state ? 'none' : (f.state === 'running' ? 'true' : 'false');
   return f;
 }
 
