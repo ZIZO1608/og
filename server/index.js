@@ -2753,7 +2753,11 @@ router.add('GET /api/partner', requirePerm(['print.read', 'partner.jobs'], (ctx)
       ...scrubCost(j, ctx.user),
       lines: j.lines ? j.lines.map((l) => scrubCost(l, ctx.user)) : null
     })),
-    invoices: bundle.invoices,
+    /* The partner's invoices are what the shop owes Yalla Wear and every
+       payment made against them — the printer's price by another door. They
+       went to every print.read account, the cashier included, while the jobs
+       beside them had their cost stripped (night shift 2026-09-25). */
+    invoices: (Auth.can(ctx.user, 'cost.read') || Auth.can(ctx.user, 'money.read')) ? bundle.invoices : [],
     messages: bundle.messages,
     reviews: bundle.reviews,
     /* The same names the partner branch carries: who wrote, sent, accepted,

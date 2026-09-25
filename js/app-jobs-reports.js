@@ -47,13 +47,20 @@ function viewPrint() {
         : '') +
     '</div></div>';
 
-  /* Two halves of the same relationship: the work, and the bill for it. */
+  /* Two halves of the same relationship: the work, and the bill for it. The
+     bill is the printer's price and the money paid for it, so the server
+     sends it only to an account that may see cost or money — and the tab is
+     drawn only for one. */
+  var seesBill = seesCost() || allow('money.read');
+  if (!seesBill && OG.pr.tab === 'invoices') OG.pr.tab = 'board';
   h += '<div class="tabs mb">' +
     '<button class="tab' + (OG.pr.tab === 'board' ? ' on' : '') + '" data-act="pr-tab" data-tab="board">' +
       t('print_title') + '</button>' +
-    '<button class="tab' + (OG.pr.tab === 'invoices' ? ' on' : '') + '" data-act="pr-tab" data-tab="invoices">' +
-      t('og_partner_inv') +
-      (owed ? '<span class="tab-dot"></span>' : '') + '</button>' +
+    (seesBill
+      ? '<button class="tab' + (OG.pr.tab === 'invoices' ? ' on' : '') + '" data-act="pr-tab" data-tab="invoices">' +
+          t('og_partner_inv') +
+          (owed ? '<span class="tab-dot"></span>' : '') + '</button>'
+      : '') +
   '</div>';
 
   if (OG.pr.tab === 'invoices') return h + viewPartnerInvoices();
