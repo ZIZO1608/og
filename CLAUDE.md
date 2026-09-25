@@ -14,10 +14,22 @@ this in meetings. The owner keeps his records on paper today.
 ## One folder, one branch (25 Sep 2026)
 
 **The project is `D:\DESKTOP\OG System`, on `main`, and `main` holds everything.** Until 25 Sep it
-was spread over seven folders on the desktop: `OG System Demo` plus six worktrees (`og-always-on`,
-`og-merge-prep`, `og-night`, `og-panel`, `og-usd-prices`, `og-web-orders`). Every branch was merged
-into `main` (night mode and online/offline were the last two), the local-only files were gathered
-here, and the worktrees were removed. The feature branches are kept as history.
+was spread over eight folders on the desktop: `OG System Demo` plus seven worktrees (`og-always-on`,
+`og-merge-prep`, `og-night`, `og-panel`, `og-usd-prices`, `og-web-orders`, `og-vps`). Every branch
+was merged into `main` (night mode with online/offline, and `feature/vps-primary`, were the last),
+the local-only files were gathered here, and the worktrees were removed. The feature branches are
+kept as history; `archive/hand-uploads` (the August upload, unrelated history) deliberately is not
+merged.
+
+- **The live shop runs from here.** `server/.env`, `server/data/` (the database, the certificate),
+  `server/backups/`, `_secrets/` and `agent/agent-config.json` were MOVED here from `OG System Demo`
+  with the shop closed, checked byte for byte. That folder is retired: its launcher is renamed
+  `OG System.exe.retired`, a note inside says so, and it can be deleted once nothing has it open.
+  This folder's own `.git` has origin = GitHub and nothing else.
+- **One thing still points at the old folder:** the `OGLabelAgent` scheduled task. Changing it
+  needs administrator — double-click `agent\install-agent.bat` here (it re-registers the task with
+  `/f`; "Run as administrator" if it refuses). Receipts print over USB and labels over TCP today, so
+  the agent is not in the printing path until then.
 
 - **Where the local-only things are** (all git-ignored): `_handover/` — every shift's report and
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
