@@ -1272,7 +1272,7 @@ var POS = (function () {
           if (typeof Notify !== 'undefined') Notify.refresh();
           if (saved && saved.order_state === 'pending') {
             toast(OG.lang === 'ar' ? 'أُرسل طلب الطباعة إلى يلا وير' : 'Print job sent to Yalla Wear',
-                  saved.id + ' · ' + saved.qty + ' pcs · ' + t(saved.priority), 'ok', 4000);
+                  saved.id + ' · ' + saved.qty + ' ' + t('u_pcs') + ' · ' + t(saved.priority), 'ok', 4000);
           } else {
             toast(t('add_print'),
                   t('pr_draft_tbc').replace('{n}', saved ? saved.tbc : '?'), 'warn', 6000);

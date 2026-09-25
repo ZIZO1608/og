@@ -479,7 +479,7 @@ function bindKanban() {
       /* setStage stamps the history so the tracker stays truthful. `og` tells
          Yalla Wear it moved. */
       if (!DB.setStage(job, stage, 'og')) return;
-      toast(job.id + ' → ' + t('print_' + stage), job.customer + ' · ' + job.qty + ' pcs', 'ok');
+      toast(job.id + ' → ' + t('print_' + stage), job.customer + ' · ' + job.qty + ' ' + t('u_pcs'), 'ok');
       Notify.refresh();
       renderSidebar();
       render();

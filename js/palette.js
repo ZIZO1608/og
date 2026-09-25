@@ -92,6 +92,9 @@ var Palette = (function () {
       });
 
       DB.customers.forEach(function (c) {
+        /* Archived and merged-away people are not offered anywhere else
+           (custSearch); the palette offered them. */
+        if (c.archived || c.mergedInto) return;
         var sc = Math.max(score(c.name, q), score(c.phone.replace(/\s/g, ''), q));
         if (sc > 0) out.push({
           kind: 'customer', score: sc - 4, icon: '☺',
@@ -106,7 +109,8 @@ var Palette = (function () {
         var sc = score(s.id, q);
         if (sc > 0) out.push({
           kind: 'invoice', score: sc - 6, icon: '▤',
-          title: s.id, sub: s.customerName + ' · ' + money(s.total),
+          /* A dollar sale's total is cents; money() would print it as lira. */
+          title: s.id, sub: s.customerName + ' · ' + (s.currency === 'USD' ? moneyUsdRaw(s.total) : money(s.total)),
           run: function () { openInvoice(s); }
         });
       });

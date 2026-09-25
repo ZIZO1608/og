@@ -607,9 +607,11 @@ function runSearch(q) {
     return p.name.toLowerCase().indexOf(q) > -1 || p.brand.toLowerCase().indexOf(q) > -1;
   }).slice(0, 5);
 
-  var custs = !allow('customer.read') ? [] : DB.customers.filter(function (c) {
-    return c.name.toLowerCase().indexOf(q) > -1 || c.phone.replace(/\s/g, '').indexOf(q) > -1;
-  }).slice(0, 4);
+  /* custSearch is the one "which customer does this text mean" rule: it
+     leaves out archived and merged-away people, folds Arabic spellings and
+     reads a phone in any form. This box filtered DB.customers by hand and
+     offered all of those back. */
+  var custs = !allow('customer.read') ? [] : custSearch(q).slice(0, 4);
 
   /* `sell` and not `report.read`: a cashier has to be able to pull up the
      invoice she wrote ten minutes ago to take a refund against it. Gating
@@ -623,14 +625,14 @@ function runSearch(q) {
     h += '<div class="sr-group">' + t('nav_products') + '</div>';
     prods.forEach(function (p) {
       h += '<div class="sr-item" data-act="search-prod" data-id="' + p.id + '">' + thumb(p) +
-           '<span>' + esc(p.name) + '</span><small class="num">' + DB.totalQty(p.id) + ' pcs</small></div>';
+           '<span>' + esc(p.name) + '</span><small class="num">' + DB.totalQty(p.id) + ' ' + t('u_pcs') + '</small></div>';
     });
   }
   if (custs.length) {
     h += '<div class="sr-group">' + t('nav_customers') + '</div>';
     custs.forEach(function (c) {
       h += '<div class="sr-item" data-act="search-cust" data-id="' + c.id + '">' +
-           '<span class="cc-av" style="width:24px;height:24px;font-size:10px">' + c.name[0] + '</span>' +
+           '<span class="cc-av" style="width:24px;height:24px;font-size:10px">' + esc((c.name || '?').charAt(0)) + '</span>' +
            '<span>' + esc(c.name) + '</span><small class="num">' + tel(c.phone) + '</small></div>';
     });
   }
@@ -638,7 +640,9 @@ function runSearch(q) {
     h += '<div class="sr-group">' + t('invoices') + '</div>';
     invs.forEach(function (s) {
       h += '<div class="sr-item" data-act="search-inv" data-id="' + s.id + '">' +
-           '<span>' + s.id + '</span><small class="num">' + money(s.total) + '</small></div>';
+           /* In the sale's own currency: money() takes lira, and a dollar
+              sale's total is cents. */
+           '<span>' + s.id + '</span><small class="num">' + moneyIn(s.currency, s.total) + '</small></div>';
     });
   }
   if (!h) h = '<div class="sr-item muted">' + t('no_results') + '</div>';

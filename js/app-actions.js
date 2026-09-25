@@ -1788,7 +1788,7 @@ var ACTIONS = {
            (ns02). It says so now. */
         var act = id ? { label: t('wh_open_it'),
                          attrs: 'data-act="open-new-product" data-id="' + id + '"' } : null;
-        var line = name + ' · ' + pieces + ' pcs · ' + skus + ' SKU';
+        var line = name + ' · ' + pieces + ' ' + t('u_pcs') + ' · ' + skus + ' SKU';
 
         /* WHAT THE NEXT PRODUCT KEEPS. Name, picture, prices and quantities
            are this product's and go; the category, the brand and the country
