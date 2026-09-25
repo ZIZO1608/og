@@ -84,14 +84,19 @@ check('…one may take remote orders but NOT add customers', Auth.can(nocust, 'd
 check('…the back room may do neither (no delivery.desk)', !Auth.can(backroom, 'delivery.desk'));
 
 const type = d.prepare('SELECT id FROM categories WHERE active = 1 ORDER BY id LIMIT 1').get().id;
-Cat.createWithVariants({ name: 'Samba OG', type, brand: 'Adidas', currency: 'SYP', costPrice: 300000, sellingPrice: 450000,
+/* Dollars since 067 (a lira price is refused); the lira a sale comes to is
+   worked out below from this scratch database's own rate. */
+Cat.createWithVariants({ name: 'Samba OG', type, brand: 'Adidas', currency: 'USD', costPrice: 2937, sellingPrice: 4500,
   sizes: [{ size: '42', qty: 5 }, { size: '43', qty: 1 }], whId: 'store', userId: owner.id });
-Cat.createWithVariants({ name: 'Air Force 1', type, brand: 'Nike', currency: 'SYP', costPrice: 350000, sellingPrice: 520000,
+Cat.createWithVariants({ name: 'Air Force 1', type, brand: 'Nike', currency: 'USD', costPrice: 3350, sellingPrice: 5200,
   colours: [{ nameEn: 'White', nameAr: 'أبيض', sizes: [{ size: '42', qty: 2 }] }, { nameEn: 'Black', nameAr: 'أسود', sizes: [{ size: '42', qty: 1 }] }],
   whId: 'store', userId: owner.id });
 const sku = (name, size, colour) => d.prepare(
   `SELECT v.sku FROM variants v JOIN products p ON p.id = v.product_id LEFT JOIN product_colours c ON c.id = v.colour_id
     WHERE p.name = ? AND v.size = ? AND (? IS NULL OR c.name_en = ?)`).get(name, size, colour || null, colour || null).sku;
+/* What the till charges for one Samba: $45.00 at the rate of the moment, in
+   whole lira (convert() in lib/sales.js). */
+const SAMBA_LIRA = Math.round(45 * Cat.currentRate('USD', 'SYP'));
 const SAMBA42 = sku('Samba OG', '42'), SAMBA43 = sku('Samba OG', '43'), AF_BLACK = sku('Air Force 1', '42', 'Black');
 const nour = Customers.create({ name: 'Nour Haddad', phone: '+963 933 123 456', city: 'Aleppo' }, owner.id).customer;
 const other = Customers.create({ name: 'Someone Else', phone: '0944 000 111' }, owner.id).customer;
@@ -158,13 +163,13 @@ try {
   const L = Requests.list();
   const lr1 = L.waiting.find((x) => x.ref === r1);
   check('the list: three waiting, oldest first', L.count === 3 && L.waiting[0].ref === r1);
-  check('…a line carries this laptop\'s stock, price and name', lr1.lines[0].known && lr1.lines[0].name === 'Samba OG' && lr1.lines[0].price === 450000 && lr1.lines[0].stock.total === 5, JSON.stringify(lr1.lines[0]));
+  check('…a line carries this laptop\'s stock, price and name', lr1.lines[0].known && lr1.lines[0].name === 'Samba OG' && lr1.lines[0].price === 4500 && lr1.lines[0].currency === 'USD' && lr1.lines[0].stock.total === 5, JSON.stringify(lr1.lines[0]));
   check('…the hinted customer is matched by the hint while the phone matches', lr1.customer.match && lr1.customer.match.id === nour.id && lr1.customer.matchBy === 'hint');
   const lr2 = L.waiting.find((x) => x.ref === r2);
   check('…a hint whose phone does NOT match is ignored; the phone holder is found instead', lr2.customer.match && lr2.customer.match.id === nour.id && lr2.customer.matchBy === 'phone', JSON.stringify(lr2.customer));
   const lr3 = L.waiting.find((x) => x.ref === r3);
   check('…a size this laptop does not sell is marked unknown', lr3.lines[0].known === false);
-  check('…no cost anywhere in the list', !JSON.stringify(L).includes('300000') && !JSON.stringify(L).toLowerCase().includes('cost'));
+  check('…no cost anywhere in the list', !JSON.stringify(L).includes('2937') && !JSON.stringify(L).toLowerCase().includes('cost'));
 
   /* ---- Accept ------------------------------------------------------------ */
   const s0 = salesN(), m0 = movesN(), q0 = qtyOf(SAMBA42);
@@ -172,9 +177,9 @@ try {
   const sale1 = a1.saleId;
   check('Accept makes an order through Orders.create', a1.out && /^INV-/.test(sale1) && salesN() === s0 + 1, sale1);
   const srow = d.prepare('SELECT * FROM sales WHERE id = ?').get(sale1);
-  check('…a sale with payment order, priced from the product table', srow.payment === 'order' && srow.total === 450000 && srow.customer_id === nour.id, JSON.stringify(srow));
+  check('…a sale with payment order, priced from the product table', srow.payment === 'order' && srow.total === SAMBA_LIRA && srow.customer_id === nour.id, JSON.stringify(srow));
   const drow = d.prepare('SELECT * FROM deliveries WHERE sale_id = ?').get(sale1);
-  check('…its delivery: our driver, pay on receipt, the marker at the front of the note', drow.method === 'driver' && drow.plan === 'receipt' && drow.note.startsWith(`[req ${r1}] `) && drow.to_collect === 450000, JSON.stringify(drow));
+  check('…its delivery: our driver, pay on receipt, the marker at the front of the note', drow.method === 'driver' && drow.plan === 'receipt' && drow.note.startsWith(`[req ${r1}] `) && drow.to_collect === SAMBA_LIRA, JSON.stringify(drow));
   check('…the stock left the shelf through the movement log', movesN() === m0 + 1 && qtyOf(SAMBA42) === q0 - 1);
   check('…the request is accepted with that invoice, not yet reported', row(r1).state === 'accepted' && row(r1).sale_id === sale1 && !row(r1).reported_at);
   await collect();

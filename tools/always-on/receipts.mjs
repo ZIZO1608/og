@@ -48,7 +48,7 @@ const seed = spawn(process.execPath, ['--input-type=module', '-e', `
   const d = DB.open(dbFile());
   const u = await Auth.createUser({ username: 'owner1', name: 'Test Owner', role: 'owner', password: 'correct-horse-9' });
   const uid = d.prepare("SELECT id FROM users WHERE username = 'owner1'").get().id;
-  Cat.createWithVariants({ name: 'Test Shoe', type: 'sneakers', currency: 'SYP', costPrice: 100000, sellingPrice: 450000,
+  Cat.createWithVariants({ name: 'Test Shoe', type: 'sneakers', currency: 'USD', costPrice: 1000, sellingPrice: 3500, /* dollars since 067 */
     sizes: [{ size: '42', qty: 5 }], whId: 'store', userId: uid });
   const sku = d.prepare('SELECT sku FROM variants LIMIT 1').get().sku;
   Sales.record({ lines: [{ sku, qty: 1 }], whId: 'store', payment: 'cash', userId: uid, opId: 'seed-sale-1' });

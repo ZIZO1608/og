@@ -118,7 +118,10 @@ try {
   check('SQLite: two new sales, not three', ro.prepare('SELECT count(*) AS n FROM sales').get().n === salesBefore + 2);
   check('SQLite: A is an order for Nour, by our driver, marked', sale(accA.json.sale.id).customer_id === C.nour.id &&
     deliv(accA.json.sale.id).method === 'driver' && deliv(accA.json.sale.id).note.startsWith(`[req ${A}] `));
-  check('SQLite: A priced from the product table (450,000 + 520,000)', sale(accA.json.sale.id).total === 970000, sale(accA.json.sale.id).total);
+  /* $45.00 + $52.00, each at the rate of the moment, in whole lira. */
+  const rate = ro.prepare("SELECT rate FROM fx_rates WHERE base = 'USD' AND quote = 'SYP' ORDER BY set_at DESC, id DESC LIMIT 1").get().rate;
+  const aLira = Math.round(45 * rate) + Math.round(52 * rate);
+  check('SQLite: A priced from the product table ($45 + $52 at the rate)', sale(accA.json.sale.id).total === aLira, sale(accA.json.sale.id).total + ' vs ' + aLira);
   const omar = ro.prepare("SELECT * FROM customers WHERE name = 'Omar Aziz'").get();
   check('SQLite: B made the new customer Omar (source night), and is a pickup', omar && omar.source === 'night' && sale(accB.json.sale.id).customer_id === omar.id && deliv(accB.json.sale.id).method === 'pickup');
   check('SQLite: B is in dollars, as the Gazelle is priced', sale(accB.json.sale.id).currency === 'USD' || sale(accB.json.sale.id).total > 0);

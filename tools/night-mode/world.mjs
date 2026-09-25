@@ -120,10 +120,11 @@ export async function buildWorld({ laptopPort = null, log = () => {} } = {}) {
   await L.Auth.createUser({ username: 'wael', name: 'Wael', role: 'manager', password: PW });
   const owner = L.Auth.findByUsername('abode');
   const type = d.prepare("SELECT id FROM categories WHERE active = 1 ORDER BY sort, id LIMIT 1").get().id;
-  L.Cat.createWithVariants({ name: 'Samba OG', type, brand: 'Adidas', colorway: 'Cloud White / Core Black', currency: 'SYP',
-    costPrice: 300000, sellingPrice: 450000, sizes: [{ size: '41', qty: 2 }, { size: '42', qty: 5 }, { size: '43', qty: 1 }, { size: '44', qty: 0 }],
+  /* Dollars since 067 — a lira price is refused (prices_in_dollars). */
+  L.Cat.createWithVariants({ name: 'Samba OG', type, brand: 'Adidas', colorway: 'Cloud White / Core Black', currency: 'USD',
+    costPrice: 2937, sellingPrice: 4500, sizes: [{ size: '41', qty: 2 }, { size: '42', qty: 5 }, { size: '43', qty: 1 }, { size: '44', qty: 0 }],
     whId: 'store', userId: owner.id });
-  L.Cat.createWithVariants({ name: 'Air Force 1 \'07', type, brand: 'Nike', currency: 'SYP', costPrice: 350000, sellingPrice: 520000,
+  L.Cat.createWithVariants({ name: 'Air Force 1 \'07', type, brand: 'Nike', currency: 'USD', costPrice: 3350, sellingPrice: 5200,
     colours: [{ nameEn: 'White', nameAr: 'أبيض', hex: '#FFFFFF', sizes: [{ size: '41', qty: 3 }, { size: '42', qty: 2 }] },
               { nameEn: 'Black', nameAr: 'أسود', hex: '#000000', sizes: [{ size: '42', qty: 1 }, { size: '43', qty: 0 }] }],
     whId: 'store', userId: owner.id });
