@@ -28,8 +28,11 @@ merged.
   This folder's own `.git` has origin = GitHub and nothing else.
 - **One thing still points at the old folder:** the `OGLabelAgent` scheduled task. Changing it
   needs administrator — double-click `agent\install-agent.bat` here (it re-registers the task with
-  `/f`; "Run as administrator" if it refuses). Receipts print over USB and labels over TCP today, so
-  the agent is not in the printing path until then.
+  `/f`; "Run as administrator" if it refuses). **Since the shop moved to the VPS (25 Sep, 07:15 UTC)
+  the agent IS the printing path**: the VPS cannot reach a USB printer in Aleppo, so
+  `receipt.transport` must be `agent` and `agent/agent-config.json` must name the domain, a login
+  that exists, `receiptShare` and `receiptStation`. On 25 Sep it still named `localhost:8090` and
+  `hussam` (removed on 17 Sep) — see `NIGHT-SHIFT-REPORT.md` for the four steps.
 
 - **Where the local-only things are** (all git-ignored): `_handover/` — every shift's report and
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
@@ -45,6 +48,26 @@ merged.
 - New work still goes in a worktree or a branch while it is being built — but it is folded back
   and the worktree removed when it is done, so this stays one folder.
 
+## Night shift audit (25 Sep 2026)
+
+The whole system was checked end to end on branch `night-shift/2026-09-25`:
+`NIGHT-SHIFT-REPORT.md` (what to do, in order) and `NIGHT-SHIFT-APPENDIX.md` (the system map:
+every screen and who can open it, every route and its gate, every script, every outside
+connection). Facts it measured that older sections below contradict:
+
+- **The GitHub repository is PUBLIC** (`visibility: public`, Pages on). Everything committed is
+  readable by anyone; the secrets scan found no live key in any git object.
+- **The boot pull is gone** (audit 06): `Restore.pullAtBoot()` no longer exists and
+  `OG_PULL_AT_BOOT` is not read. A server starts on its own database, always. `lib/restore.js` is
+  now only the disaster restore behind `npm run supabase:restore -- --wipe` and the panel's Restore
+  job. Sections below that describe the boot pull, the baton or "Take the shop here" describe code
+  that has since been removed.
+- **og-track runs on the VPS under Coolify** at `https://track.ogsports1.com` (Railway was retired);
+  `receipt.public_url` points there. It reads the same Supabase project as the shop.
+- **The shop's main server is the VPS** (`og-shop` container, `/data/og-shop`, port
+  `10.8.0.1:8090`); this laptop is its standby (`OG_ROLE=standby`). The scripts that say they only
+  look now truly only look: `preflight` and `hardware` open the database read-only.
+
 ## Commands
 
 ```bash
@@ -55,7 +78,7 @@ cd server && npm start          # or double-click "OG System.exe" - the panel, s
 # without the server, and the page says so rather than inventing a shop.
 
 cd server
-npm test                         # the one test: browser config keys vs the server's allow-list
+npm test                         # node --test over server/test/ (six files; no server, no network)
 npm run warehouse:one-room       # the owner's one-room rebuild of the shelf map (see Stage B)
 npm run createuser               # interactive; also accepts piped stdin
 npm run backup                   # VACUUM INTO + integrity_check + FK check
@@ -111,8 +134,9 @@ tokens and no Supabase keys.
 the server has zero dependencies by design, and the frontend has no build step at all.
 
 Publishing: **the Publish button in the panel** (add → commit → pull --rebase → push, the message
-typed into the box; `push.bat` is gone). CI then builds `dist/`
-and skips publishing while the repository is private (see Deploy).
+typed into the box; `push.bat` is gone). CI then builds `dist/` and publishes it to Pages (see
+Deploy). **The repository is public** (checked 25 Sep 2026), so a push also puts the code where
+anyone can read it, and a push to `main` redeploys the public proxy on Coolify.
 
 ### HTTPS, and why the till needs it
 
@@ -163,7 +187,8 @@ the hostname has no connector. `server/scripts/cloudflare.js`, the panel's Check
 button, the `cloudflare` npm scripts, the `OG_CF_*` settings and every fallback that read them
 were removed. The server no longer reports a `public` address in `/api/health` or the panel's
 `ready` payload, so the launcher's address card shows the local and Wi-Fi addresses only.
-Customers reach their order page through og-track on Railway (`receipt.public_url`); Telegram job
+Customers reach their order page through og-track — on the VPS under Coolify at
+`https://track.ogsports1.com` since Railway was retired (`receipt.public_url`); Telegram job
 links appear only when `shop.public_url` is set. The shop is back on the internet through the
 VPS proxy since night shift 04 — see that section: `OG_ORIGINS` must list the hostname (blank
 allows only the address the request was sent to — `originAllowed()` in `lib/http.js`, audit 06),
@@ -361,8 +386,8 @@ time** — `hardRefresh()` in `panel/panel.js`, six steps pushed to the window a
    open tab covers itself with the mark, a ring and "Updating OG System…" (`.og-refresh`,
    `beginRefresh()` in `js/pulse.js`) instead of a failing page while the shop is down.
 3. **stop** — the graceful `{type:'stop'}`, after 800 ms so the warning lands first.
-4. **start** and 5. **answer** — the ordinary start (boot pull included), then the wait for `ready`,
-   up to five minutes.
+4. **start** and 5. **answer** — the ordinary start, then the wait for `ready`, up to five minutes
+   (a length set for the boot pull, which audit 06 removed).
 6. **tabs** — `{type:'reload'}` → `hardRefresh()` in `js/pulse.js`: every cache deleted, the worker
    registration updated, then reload. `location.reload()` alone never worked: `sw.js` is cache-first
    with `ignoreSearch`, so it answered out of the old store however hard anyone pressed F5.
@@ -581,6 +606,10 @@ through the gap sensor wrong and wastes the next one too. `--dry` says where it 
 nothing, so checking the settings costs no paper and no mystery slip at a busy counter.
 
 ### The handover — "Take the shop here"
+
+> **Removed — history only (night shift audit, 25 Sep 2026).** `takeShop` is no longer in
+> `panel/jobs.js` and the boot pull it answered is gone. The shop's main server is the VPS; moving
+> it is `npm run vps -- switch --go` / `take-back --go` (see "Online first, phase 4").
 
 The shop runs on **one laptop at a time** and moves to whichever boots with the other closed
 (the boot pull, under Supabase below). When the mirror belongs to the other laptop the worker
@@ -981,8 +1010,9 @@ the arc around the mark is the count. At the end everything pulls into the mark 
 
 ## Tests
 
-**One, deliberately small: `cd server && npm test`** (`node --test`, no dependency, no server, no
-database). `server/test/config-keys.test.js` reads the browser's own source for every config key it
+**`cd server && npm test`** (`node --test`, no dependency, no server). Six files as of 25 Sep 2026
+(`config-keys`, `fxfeed`, `public-url`, `request-shape`, `usd-prices`, `vps-env`; 39 checks, the
+ones that need a database make a throwaway one). The first and oldest: `server/test/config-keys.test.js` reads the browser's own source for every config key it
 sends through `PUT /api/config` and checks each against `CONFIG_WRITABLE` in
 `server/lib/config-writable.js` — the list the route itself uses. It reads an `updates` literal,
 `updates['x'] = …`, and both debounced writers, `saveConfig(…)` and `saveSetting(…)` — night
@@ -1035,6 +1065,13 @@ the baton, the way the shop moves between laptops. Nothing reads from it while t
 machine, and `npm run supabase:restore -- --wipe` runs the boot pull by hand.
 
 ### The boot pull, and the baton
+
+> **The boot pull is gone (audit 06; confirmed by the night shift audit, 25 Sep 2026).**
+> `Restore.pullAtBoot()` no longer exists and `OG_PULL_AT_BOOT` is not read: a server starts on its
+> own database, always (`index.js`, beside `DB.open`). `lib/restore.js` is used only by
+> `scripts/supabase-restore.js` — the disaster restore, run by a person with the shop closed. The
+> refusal codes below still describe that restore. What follows is otherwise history; the baton
+> between two laptops is replaced by one main server (the VPS) and its standby.
 
 The shop runs on **one laptop at a time**, but which laptop changes. `Restore.pullAtBoot()`
 (`server/lib/restore.js`) runs in `index.js` after `DB.open` and **before `listen()`** — nothing can
@@ -4106,6 +4143,36 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
 
 ## Known open work
 
+**Found by the night shift audit (25 Sep 2026)** — each is in `NIGHT-SHIFT-REPORT.md` with its one
+next step:
+
+- **Receipts cannot print from the till since the VPS switch** until the agent is set up (see "One
+  folder, one branch" at the top): `receipt.transport` is still `usb` on the VPS, and
+  `agent-config.json` names `localhost:8090` and the removed `hussam`.
+- **The shop bot's "Ahmad Sabagh" chat** (private, linked 8 Sep by a removed account, no owner) is
+  a grandfathered `legacy` chat: `rules: null` gives it every kind including the five money ones,
+  and `chatAuth()` lets it run `/today` and `/job`. Disconnecting it is the owner's call.
+- **The VPS**: root may log in over SSH with a password, `ufw` is off, no fail2ban, the Coolify
+  dashboard is plain http on :8000, a reboot is pending. OpenClaw and Evolution API (a WhatsApp
+  gateway) also run there with public ports.
+- **og-bridge is stale**: Coolify still builds it from `night/online-offline` (`6c2c6b4`, so no
+  `/night`), its `OG_TILL_URL` is the laptop (`https://10.8.0.2:8443`, now the standby), and the VPS
+  shop's env has no `OG_VPS_API_KEY`, so pointing it at `10.8.0.1:8090` needs that key too.
+- **Yalla Wear's outbox holds 15 unsent rows (2–16 Sep)**: `emitEvent` queues live events for a
+  side with no linked chat, and `drain()` leaves them waiting, so the day Yalla Wear links a chat
+  they would all arrive at once.
+- `www.shop.ogsports1.com` has no DNS record, though the proxy and `OG_ORIGINS` name it.
+- `Deliveries.driverDay()` sums `to_collect` / `collected` across currencies; the answer rides on
+  `GET /api/deliveries` for a driver and nothing draws it.
+- Two delegated namespaces are shared by two modules each (`data-st`: staff and stock count;
+  `data-cp`: palette and colour picker; `data-sc` is scan's and a bulk scope value). The value sets
+  do not overlap today; a click on a stock `[data-st]` stops staff.js closing its menus.
+- `viewShiftHome()` / `viewBackHome()` in `js/app-dashboard.js` are no longer called (Home.view
+  replaced them).
+- **Web Push survived the move to the VPS**: the VPS started from a byte copy of the laptop's
+  database, `push_keys` included. The per-laptop problem below still applies to any future move
+  that is not a byte copy.
+
 - **A press during another save's reload is SAID now, not dropped** (fixed 25 Sep 2026). `Shop.write()`
   still allows one write at a time and holds the lock through the whole-shop `load()` after a save
   (so a double tap never saves twice), but when it refuses it toasts "Still saving the last change —
@@ -4174,9 +4241,12 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
   never set, so no link line is added. It is not the tracking base (`receipt.public_url`, the
   Railway address): these links open the POS itself (`/#open/job/<id>`), which Railway does not
   serve. Setting `shop.public_url` to a POS address that works brings them back.
-- **The shop's bot on Railway is built but not switched on** — see "The shop's bot can be answered on
-  Railway". The cutover (secrets, `sql/004`, Railway variables, `OG_TELEGRAM_OG_RELAY=railway`, the
-  webhook) is a by-hand job, in the order written in og-track's `night_shift_2_log.md`.
+- **The shop's bot answered by og-track is built but not switched on** — see "The shop's bot can be
+  answered on Railway" (og-track has since moved to the VPS under Coolify; its container carries no
+  `TG_*` variables, checked 25 Sep 2026). The cutover (secrets, `sql/004`, og-track's variables,
+  `OG_TELEGRAM_OG_RELAY=railway`, the webhook) is a by-hand job, in the order written in og-track's
+  `night_shift_2_log.md`. With the shop's main server now on the VPS as well, the relay's reason
+  (answering while the laptop is shut) mostly no longer applies.
 - **Yalla Wear's bot has never been linked.** `telegram.yalla_chats` does not exist, so all five
   `yl_*` rules are skipped with `no_chat` and nothing is queued for them. They link it from their
   portal's Telegram card: Connect → a six-letter code → send it to the bot.
@@ -4866,8 +4936,9 @@ still stands, unchanged.)
   bootstrap because the board has neither). Unlike the money messages it opens with an empty number
   box when the order has none, and it refuses with words when the shop has no public address
   (`publicBase()` null), because a link only the shop's wifi can open is not worth sending.
-  **Since 16 Sep 2026 the base is og-track on Railway**: `receipt.public_url` =
-  `https://og-track-production-aa0b.up.railway.app` (it had been empty, so `publicBase()` fell through
+  **The base is og-track**: `receipt.public_url` = `https://track.ogsports1.com` (og-track on the
+  VPS under Coolify; checked 25 Sep 2026). From 16 Sep it was the Railway address
+  `https://og-track-production-aa0b.up.railway.app`, until Railway was retired (it had been empty, so `publicBase()` fell through
   to `OG_CF_HOSTNAME`, dead since 13 Sep and removed on 16 Sep). Set through the same `configRefusal()` + upsert
   `PUT /api/config` runs; the paper receipt itself prints a barcode, not a tracking QR.
   `WA.compose`'s message box is `dir="auto"` now — it was forced rtl and turned "Hi Nour," into
@@ -5040,7 +5111,8 @@ sent them sends these too.
 
 `server/lib/inbox.js`, migration `050_inbox_applied.sql`, `Push.publishKey()` in
 `server/lib/webpush.js`, the inbox timer in `server/lib/sync-worker.js`. **og-track** is a separate
-project (Railway, its own repository) that answers `/i/<token>` from the mirror while this laptop is
+project (its own repository; on the VPS under Coolify at `track.ogsports1.com` since Railway was
+retired) that answers `/i/<token>` from the mirror while this laptop is
 shut. It cannot reach SQLite, so a customer's review and Notify me land in Supabase's `inbox.items`
 (og-track's `sql/002_inbox.sql`: schema `inbox`, not exposed, written only through `track.review` /
 `track.push` with the publishable key) and this laptop collects them. `inbox.items` is not a mirrored
@@ -5088,6 +5160,11 @@ table: `mirror.js`, `restore.js`, reconcile and drift never see it.
   pass down with it. The copy was deleted afterwards.
 
 ### The shop's bot can be answered on Railway — built, NOT switched on (16 Sep 2026)
+
+> **og-track no longer runs on Railway** (night shift audit, 25 Sep 2026): it is on the VPS under
+> Coolify at `track.ogsports1.com`, reading the same Supabase project, and its container has no
+> `TG_*` variables — the relay is still off. Read "Railway" below as "og-track". The switch's
+> value is still the word `railway`, because that is what the code compares.
 
 `ogRelay()` / `relay()` / `linkWith()` in `server/lib/telegram.js`, `ON_RAILWAY` in
 `server/lib/reminders.js`, kind `tg` in `server/lib/inbox.js`. The other half is og-track's `src/tg/`

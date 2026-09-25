@@ -1,5 +1,11 @@
 # Deploying OG System — Coolify, from GitHub
 
+> **Not how the shop runs today (checked 25 Sep 2026).** The live shop is the `og-shop` container
+> on the VPS, deliberately *not* a Coolify app: every Coolify app redeploys on a push to `main`,
+> and the till must not restart because somebody published. Its code goes up with
+> `cd server && npm run vps -- deploy`. See "Online first, phase 4" in `CLAUDE.md`. What follows
+> still holds for the `Dockerfile` itself, and for what a VPS cannot do that the laptop can.
+
 Written for whoever puts this on the server: the one container, what has to be
 true before it starts, and the things a VPS cannot do that the shop's laptop
 can.

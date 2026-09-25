@@ -16,7 +16,7 @@ working manual and it is kept current; trust it over this file.
 |---|---|
 | `index.html`, `css/`, `js/` | the app — vanilla HTML/CSS/JS, no framework, no bundler, **no build step** |
 | `server/` | the API and the static server — Node, `node:sqlite`, **zero dependencies** |
-| `site/` | the public page at ogsports1.com — two static pages, nginx, its own container |
+| `site/` | an earlier public page — two static pages, nginx, its own container. **Not deployed**: `ogsports1.com` is Ahmad's website, built from its own repository |
 | `panel/` | the Windows control panel for the shop's own laptop |
 | `agent/` | the print agent for the label and receipt printers |
 | `vps/og-bridge/` | the VPS half: the owner's `/snapshot` and night mode's `/night`, read from the cloud copy |
@@ -49,8 +49,14 @@ no build step.
 
 ## Deploy it
 
-**[DEPLOY.md](DEPLOY.md)** — Coolify from GitHub. One container, built from
-`Dockerfile`: the shop's own system, on a private hostname, never indexed.
+**Since 25 Sep 2026 the shop's main server is the VPS** (`og-shop`, reached at
+`shop.ogsports1.com` through the proxy in `deploy/shop-proxy`), and this laptop is its standby.
+Code reaches it only through `cd server && npm run vps -- deploy`. It is deliberately **not** a
+Coolify app, because a push to `main` must not restart the till. See "Online first, phase 4" in
+CLAUDE.md.
+
+[DEPLOY.md](DEPLOY.md) describes the earlier Coolify route for the same `Dockerfile`, and what a VPS
+cannot do that the laptop can.
 
 ```bash
 docker compose up --build       # locally, on :8090
@@ -78,6 +84,6 @@ Every person signs in with their own username and password (scrypt hash,
 server decides what is *allowed* — if you add a screen that shows cost, profit
 or customer data, guard it in both, and treat the server one as the real guard.
 
-Before it is reachable from the internet, read **DEPLOY.md §5**. Three of the
-five original test accounts share a password that is still in this repository's
-git history.
+**This repository is public.** The five original test accounts and their shared password are in
+its git history; `npm run users:rebuild` removed them from the live database (13 accounts, none of
+them, checked 25 Sep 2026). A secrets scan of every git object that night found no live key.
