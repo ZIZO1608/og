@@ -241,6 +241,14 @@ test('standby: the domain answering from the VPS is the green, not "another comp
   assert.equal(L.publicLight({ url, res: { status: null, ok: false, error: 'timeout' }, standby: true }).code, 'pub_silent');
 });
 
+test('standby: closed HERE is amber, not "the shop is closed" — the shop is on the VPS', () => {
+  const closed = L.serverLight({ server: 'stopped', http: { ok: false }, standby: true });
+  assert.deepEqual([closed.state, closed.code], ['warn', 'srv_copy_closed']);
+  assert.equal(L.serverLight({ server: 'stopped', http: { ok: false } }).code, 'srv_closed', 'the main server closed is still the shop closed');
+  assert.equal(L.serverLight({ server: 'running', http: { ok: false }, standby: true }).code, 'srv_silent',
+    'a copy that is running and not answering is still a fault');
+});
+
 test('standby: the fifth light is the copy, and offline is amber — the till is working here', () => {
   const h = (standby) => ({ ok: true, role: 'standby', standby });
   assert.deepEqual(L.copyLight(h({ copyAt: iso(NOW - 4 * MIN), mode: 'following' }), { running: true, now: NOW }),

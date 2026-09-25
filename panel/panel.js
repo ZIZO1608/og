@@ -681,7 +681,7 @@ function lightsTick() {
       ]);
       const at = Date.now();
       const next = [
-        Lights.serverLight({ server: state.server, http, https, httpsExpected: links.secure, httpPort: SHOP_PORT, httpsPort: HTTPS_PORT }),
+        Lights.serverLight({ server: state.server, http, https, httpsExpected: links.secure, httpPort: SHOP_PORT, httpsPort: HTTPS_PORT, standby }),
         Lights.wifiLight({ lan: links.lan, secure: links.secure, certExists: TLS.have() }),
         Lights.tunnelLight({
           peer,

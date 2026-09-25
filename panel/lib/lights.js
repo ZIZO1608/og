@@ -182,9 +182,12 @@ export function hasAddress(ifaces, address) {
 /* The shop server. The probe is the truth, not the panel's own idea of the
    state: a shop started from a terminal answers, and a child process that
    has stopped answering does not, whatever the button says. */
-export function serverLight({ server, http, https, httpsExpected, httpPort = 8090, httpsPort = 8443 }) {
+export function serverLight({ server, http, https, httpsExpected, httpPort = 8090, httpsPort = 8443, standby = false }) {
   if (server === 'starting') return light('server', 'off', 'srv_opening');
   if (server === 'stopping') return light('server', 'off', 'srv_closing');
+  /* On the standby, closed here is not the shop closed — the shop is on the
+     VPS. What it costs is the fallback, and that is amber, not red. */
+  if (standby && server !== 'running' && !(http && http.ok)) return light('server', 'warn', 'srv_copy_closed');
   if (!http || !http.ok) return light('server', 'bad', server === 'running' ? 'srv_silent' : 'srv_closed');
   if (httpsExpected && !(https && https.ok)) return light('server', 'warn', 'srv_no_https', { port: httpsPort });
   return light('server', 'ok', 'srv_ok', { ports: httpsExpected ? [httpPort, httpsPort] : [httpPort] });

@@ -522,16 +522,18 @@ async function cmdLaptopStandby() {
   await needLocalShopClosed();
   const text = readEnvText();
   if (!envValues(text).OG_COPY_KEY) fail('No OG_COPY_KEY yet — run npm run vps -- env first (it makes one for both ends).');
-  const next = standbyText(text);
-  if (next === text) { ok('already the standby'); say(''); return; }
+  if (isStandbyHere(text)) { ok('already the standby'); say(''); return; }
   const saved = backupEnv(text, 'standby');
-  writeFileSync(ENV_FILE, next);
+  writeFileSync(ENV_FILE, standbyText(text));
   const parked = Object.keys(Env.parse(text)).filter((k) => PARK.includes(k));
-  ok(`server/.env — the old one kept as ${saved.slice(SERVER.length + 1)}`);
+  ok(`server/.env — the old one kept as ${shortPath(saved)}`);
   ok(`OG_ROLE=standby, following ${VPS_URL}`);
   ok('parked (not deleted): ' + (parked.join(', ') || 'nothing to park'));
-  say('\n  QUIT OG System from the tray and open it again: it read the old .env when it started.\n');
+  say('\n  OG System follows the new file the next time it opens the shop here. (A window open since');
+  say('  before this update: quit it from the tray and open it again.)\n');
 }
+
+const shortPath = (p) => (p.startsWith(SERVER) ? 'server' + p.slice(SERVER.length).replace(/\\/g, '/') : p);
 
 async function cmdSwitch({ go = false } = {}) {
   say('\n  THE SWITCH: the VPS becomes the shop\'s main server, this laptop its standby\n');
@@ -569,8 +571,9 @@ async function cmdSwitch({ go = false } = {}) {
       -> Environment Variables -> SHOP_UPSTREAM = ${VPS_URL}
       -> Save -> Redeploy
 
-  Until then ${DOMAIN} still goes to this laptop. Then, on this laptop:
-  quit OG System from the tray and open it again — it comes up as the standby.
+  Until then ${DOMAIN} still goes to this laptop. On this laptop, OG System
+  opens the BACKUP COPY from now on (from its Tools button it does so by itself;
+  from a terminal, press "Open the backup copy").
   Check any time with: npm run vps -- status
 `);
 }
@@ -627,10 +630,10 @@ async function cmdTakeBack({ go = false } = {}) {
   const text = readEnvText();
   const saved = backupEnv(text, 'take-back');
   writeFileSync(ENV_FILE, primaryText(text));
-  ok(`server/.env un-parked (the standby one kept as ${saved.slice(SERVER.length + 1)})`);
+  ok(`server/.env un-parked (the standby one kept as ${shortPath(saved)})`);
   say(`
-  Now: Coolify -> the shop-proxy app -> SHOP_UPSTREAM = https://10.8.0.2:8443 -> Redeploy,
-  and quit OG System from the tray and open it again. This laptop is the shop.
+  Now: Coolify -> the shop-proxy app -> SHOP_UPSTREAM = https://10.8.0.2:8443 -> Redeploy.
+  OG System opens this laptop as the shop the next time it opens the shop here.
 `);
 }
 

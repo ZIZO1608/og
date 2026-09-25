@@ -290,6 +290,10 @@
     var cls = l[0], key = l[1];
     if (s === 'stopped' && foreign()) { cls = 'on'; key = 'lampOpen'; }
     else if (s === 'stopped' && failedStep()) { cls = 'bad'; key = died() ? 'lampDied' : 'lampFailed'; }
+    /* On the standby this lamp is the COPY, not the shop: "Closed" beside a
+       headline saying the shop is open on the VPS would be two answers. */
+    else if (standby() && s === 'running') key = 'lampBackup';
+    else if (standby() && s === 'stopped') key = 'lampBackupOff';
     if (!live) { cls = 'busy'; key = 'lampWaiting'; }
 
     $('lamp').className = 'lamp ' + cls;
@@ -349,7 +353,10 @@
     if (state.server === 'starting') { title = t('shopOpening'); sub = currentStep(); }
     else if (state.server === 'stopping') { title = t('shopClosing'); sub = ''; }
     else if (foreign()) { title = t('shopElsewhere'); sub = esc(t('shopElsewhereSub')); }
-    else if (standby() && running && sbOffline()) { title = t('sbOffline'); sub = tHtml('sbWaiting', { n: ltr(sbWaiting()) }); }
+    else if (standby() && running && sbOffline()) {
+      title = t('sbOffline');
+      sub = sbWaiting() ? tHtml('sbWaiting', { n: ltr(sbWaiting()) }) : esc(t('sbWaiting0'));
+    }
     else if (standby() && running) { title = t('sbOnVps'); sub = sbCopyLine(); }
     else if (standby() && !reviving() && !fail) { title = t('sbOnVps'); sub = tHtml('sbShutSub', { host: ltr(publicHost()) }); }
     else if (running) { title = t('shopOpen'); sub = shopSub(); }
