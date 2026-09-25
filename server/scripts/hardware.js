@@ -186,7 +186,9 @@ function readConfig() {
   const file = dbFile();
   if (!existsSync(file)) return null;
   try {
-    const db = DB.open(file);
+    /* Read-only: DB.open() applies pending migrations, and this check runs
+       from the panel while the shop is open (night shift 2026-09-25). */
+    const db = DB.openReadOnly(file);
     const rows = db.prepare(
       `SELECT key, value FROM config WHERE key IN
          ('receipt.transport','receipt.printer_share','receipt.printer_host','receipt.printer_port',
