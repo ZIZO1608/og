@@ -49,7 +49,7 @@ const failWith = (err) => async () => { throw err; };
 
 test('the health probe believes the shop’s own word, not merely an answer', async () => {
   assert.deepEqual(await L.httpHealth('x', { fetchFn: reply(200, { ok: true }), now: () => NOW }),
-    { status: 200, ok: true, code: null, lan: null, ms: 0, error: null });
+    { status: 200, ok: true, code: null, lan: null, role: null, standby: null, ms: 0, error: null });
   const unreachable = await L.httpHealth('x', { fetchFn: reply(503, { ok: false, code: 'shop_unreachable' }) });
   assert.equal(unreachable.ok, false);
   assert.equal(unreachable.status, 503);
@@ -215,6 +215,45 @@ test('public address: an answer from ANOTHER till is not this till answering', a
   assert.deepEqual([dev.state, dev.code], ['warn', 'pub_other'], 'a developer’s laptop reaching the real shop');
   assert.equal(L.publicLight({ url, res: { ...res, lan: [] }, shopUp: true, ours: ['192.168.1.40'] }).code, 'pub_ok',
     'a till with no Wi-Fi address to compare cannot be told apart, and is not accused');
+});
+
+/* --------------------------------------------- the VPS's standby (phase 4) */
+
+test('standby: the health probe carries the role and the copy’s own state', async () => {
+  const res = await L.httpHealth('http://127.0.0.1:8090/api/health',
+    { fetchFn: reply(200, { ok: true, role: 'standby', standby: { copyAt: iso(NOW - 3 * MIN), mode: 'following', waiting: 0 } }) });
+  assert.equal(res.role, 'standby');
+  assert.equal(res.standby.mode, 'following');
+});
+
+test('standby: the domain answering from the VPS is the green, not "another computer"', () => {
+  const url = 'https://shop.ogsports1.com';
+  const vps = { status: 200, ok: true, role: 'primary', lan: ['http://10.0.1.14:8090'], ms: 210 };
+  assert.deepEqual(L.publicLight({ url, res: vps, shopUp: true, ours: ['192.168.1.11', '10.8.0.2'], standby: true }),
+    { id: 'public', state: 'ok', code: 'pub_vps', args: { host: 'shop.ogsports1.com', ms: 210 } });
+  assert.equal(L.publicLight({ url, res: vps, shopUp: true, ours: ['192.168.1.11'] }).code, 'pub_other',
+    'the same answer to a laptop that is still the main server is still somebody else');
+  const laptop = { status: 200, ok: true, role: 'standby', lan: ['https://10.8.0.2:8443'] };
+  assert.deepEqual([L.publicLight({ url, res: laptop, standby: true }).state, L.publicLight({ url, res: laptop, standby: true }).code],
+    ['warn', 'pub_to_laptop'], 'the proxy still pointing down the tunnel: the Coolify step is not done');
+  assert.equal(L.publicLight({ url, res: { status: 503, ok: false, code: 'shop_unreachable' }, shopUp: true, standby: true }).code,
+    'pub_vps_down', 'the proxy is up and the VPS shop is not — whatever this laptop is doing');
+  assert.equal(L.publicLight({ url, res: { status: null, ok: false, error: 'timeout' }, standby: true }).code, 'pub_silent');
+});
+
+test('standby: the fifth light is the copy, and offline is amber — the till is working here', () => {
+  const h = (standby) => ({ ok: true, role: 'standby', standby });
+  assert.deepEqual(L.copyLight(h({ copyAt: iso(NOW - 4 * MIN), mode: 'following' }), { running: true, now: NOW }),
+    { id: 'cloud', state: 'ok', code: 'copy_ok', args: { at: iso(NOW - 4 * MIN) } });
+  assert.equal(L.copyLight(h({ copyAt: iso(NOW - 20 * MIN), mode: 'following' }), { running: true, now: NOW }).state, 'warn');
+  assert.equal(L.copyLight(h({ copyAt: iso(NOW - 2 * 60 * MIN), mode: 'following' }), { running: true, now: NOW }).state, 'bad');
+  assert.deepEqual(L.copyLight(h({ copyAt: iso(NOW - 9 * MIN), mode: 'offline', waiting: 3 }), { running: true, now: NOW }),
+    { id: 'cloud', state: 'warn', code: 'copy_offline', args: { n: 3 } });
+  assert.equal(L.copyLight(h({ copyAt: iso(NOW - 9 * MIN), mode: 'sending', waiting: 2 }), { running: true, now: NOW }).code, 'copy_sending');
+  assert.equal(L.copyLight(h({ copyAt: null, reachable: false }), { running: true, now: NOW }).state, 'bad');
+  assert.equal(L.copyLight(h({ copyAt: null }), { running: true, now: NOW }).code, 'copy_none');
+  assert.equal(L.copyLight(null, { running: false }).code, 'copy_closed');
+  assert.equal(L.copyLight({ ok: true }, { running: true }).code, 'copy_silent');
 });
 
 /* ------------------------------------------------ the three pictures */

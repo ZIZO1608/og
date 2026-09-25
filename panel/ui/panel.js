@@ -349,6 +349,9 @@
     if (state.server === 'starting') { title = t('shopOpening'); sub = currentStep(); }
     else if (state.server === 'stopping') { title = t('shopClosing'); sub = ''; }
     else if (foreign()) { title = t('shopElsewhere'); sub = esc(t('shopElsewhereSub')); }
+    else if (standby() && running && sbOffline()) { title = t('sbOffline'); sub = tHtml('sbWaiting', { n: ltr(sbWaiting()) }); }
+    else if (standby() && running) { title = t('sbOnVps'); sub = sbCopyLine(); }
+    else if (standby() && !reviving() && !fail) { title = t('sbOnVps'); sub = tHtml('sbShutSub', { host: ltr(publicHost()) }); }
     else if (running) { title = t('shopOpen'); sub = shopSub(); }
     else if (reviving()) { title = t('reviving'); sub = reviveLine(); }
     else if (fail) {
@@ -391,6 +394,23 @@
       if (state.steps[i].state === 'run') return esc(t('st_' + state.steps[i].id)) + '…';
     }
     return '';
+  }
+
+  /* ONLINE FIRST, PHASE 4: this laptop is the VPS's standby. The shop
+     itself is at shop.ogsports1.com and never closes; what this window holds
+     is its copy, and the till when the internet goes. The panel process says
+     which (state.role), from server/.env as it stands. */
+  function standby() { return state.role === 'standby'; }
+  function sbOffline() { var s = state.standby; return !!(s && (s.mode === 'offline' || s.mode === 'sending')); }
+  function sbWaiting() { var s = state.standby; return (s && s.waiting) || 0; }
+  function publicUrl() {
+    var p = state.links && state.links.public && state.links.public.url;
+    return p || 'https://shop.ogsports1.com';
+  }
+  function sbCopyLine() {
+    var at = state.standby && state.standby.copyAt;
+    if (!at) return esc(t('sbCopyWaiting'));
+    return tHtml('sbCopyAt', { ago: '<span dir="ltr" class="nw" data-ago="' + esc(at) + '">' + esc(ago(at)) + '</span>' });
   }
 
   function shopSub() {
@@ -446,7 +466,23 @@
     var printBtn = '<button class="chip" data-do="printers"' + (busyJob ? ' disabled' : '') + '>' +
       svg('print') + '<span>' + esc(t('testPrinters')) + '</span></button>';
 
-    if (running) {
+    if (standby() && running) {
+      /* The till goes to the domain — the VPS — unless the internet is down,
+         and then to this laptop's own copy, which is taking the sales. */
+      h += sbOffline()
+        ? '<button class="btn btn-primary btn-lg" data-do="openshop">' + esc(t('sbOpenHere')) + svg('arrow') + '</button>'
+        : '<button class="btn btn-primary btn-lg" data-do="openvps">' + esc(t('sbOpenVps')) + svg('arrow') + '</button>';
+      row += '<button class="chip" data-do="refresh"' + (busyJob ? ' disabled' : '') + '>' +
+        svg('again') + '<span>' + esc(t('restartFull')) + '</span></button>';
+      row += printBtn;
+      row += '<button class="chip stop" data-do="askstop">' + svg('power') + '<span>' + esc(t('sbStop')) + '</span></button>';
+    } else if (standby() && !reviving() && !fail) {
+      /* Closed here is not closed: the shop is on the VPS. The lime button
+         is still "open the shop"; opening the copy is the quiet second. */
+      h += '<button class="btn btn-primary btn-lg" data-do="openvps">' + esc(t('sbOpenVps')) + svg('arrow') + '</button>';
+      row += '<button class="chip" data-do="start">' + svg('power') + '<span>' + esc(t('sbStart')) + '</span></button>';
+      row += printBtn;
+    } else if (running) {
       /* The lime button is what somebody actually came here to do at eight in
          the morning. The rest are quiet, and closing the till is last. */
       h += '<button class="btn btn-primary btn-lg" data-do="openshop">' + esc(t('openBrowser')) + svg('arrow') + '</button>';
@@ -663,7 +699,7 @@
       var st = l ? l.state : 'wait';
       h += '<div class="lt ' + st + '" data-light="' + id + '">' +
         '<span class="ldot" aria-hidden="true"></span>' +
-        '<span class="lname">' + esc(t('l_' + id)) + '</span>' +
+        '<span class="lname">' + esc(t(l && l.label ? l.label : 'l_' + id)) + '</span>' +
         '<span class="lwords">' + (l ? lightWords(l) : esc(t('lightsChecking'))) + '</span>' +
         '</div>';
     }
@@ -680,7 +716,17 @@
     wifi_none: 'wifi_none', wifi_uncovered: 'wifi_uncovered', wifi_no_cert: 'wifi_no_cert', wifi_plain: 'wifi_plain',
     tun_down_here: 'tun_down_here', tun_no_reply: 'tun_no_reply',
     pub_no_till: 'pub_no_till', pub_silent: 'pub_silent', pub_dns: 'pub_silent', pub_other: 'pub_other',
-    cloud_offline_long: 'cloud_offline_long', cloud_behind: 'cloud_offline_long'
+    cloud_offline_long: 'cloud_offline_long', cloud_behind: 'cloud_offline_long',
+    pub_to_laptop: 'pub_to_laptop', pub_vps_down: 'pub_vps_down',
+    copy_old: 'copy_old', copy_none: 'copy_old', copy_offline: 'copy_offline'
+  };
+  /* On the standby the same light can mean something smaller: the tunnel
+     down no longer takes the public address with it, only the copy. */
+  var HELP_SB = { tun_no_reply: 'tun_no_reply_sb' };
+  /* What a card hands over to be copied — the exact value, not a paraphrase. */
+  var HELP_CMD = {
+    pub_to_laptop: ['SHOP_UPSTREAM=http://10.8.0.1:8090'],
+    pub_vps_down: ['npm run vps -- status', 'npm run vps -- restart']
   };
 
   /* The pinned certificate lives on the VPS as well (deploy/shop-proxy/README.md);
@@ -708,8 +754,10 @@
     for (var i = 0; i < rows.length; i++) {
       var l = rows[i];
       if (l.state !== 'warn' && l.state !== 'bad') continue;
-      var key = HELP[l.code];
+      var key = (standby() && HELP_SB[l.code]) || HELP[l.code];
       if (!key) continue;
+      var cmds = HELP_CMD[key] || [], c, extra = '';
+      for (c = 0; c < cmds.length; c++) extra += cmdLine(cmds[c]);
       var parts = {
         address: ltr((l.args && l.args.address) || ''),
         host: ltr((l.args && l.args.host) || publicHost()),
@@ -719,7 +767,7 @@
         '<span class="ic">' + svg('warn') + '</span>' +
         '<div><b>' + tHtml('lh_' + key, parts) + '</b>' +
         '<p>' + tHtml('lh_' + key + '_b', parts) + '</p>' +
-        (key === 'wifi_uncovered' ? certSteps(parts) : '') +
+        (key === 'wifi_uncovered' ? certSteps(parts) : '') + extra +
         '</div></div>';
     }
     return h ? '<div class="lhelp">' + h + '</div>' : '';
@@ -1947,6 +1995,7 @@
         var r = state.ready || {};
         return void send('open', { url: r.https || r.http });
       }
+      if (act === 'openvps') return void send('open', { url: publicUrl() });
       return void send(act);
     }
 
