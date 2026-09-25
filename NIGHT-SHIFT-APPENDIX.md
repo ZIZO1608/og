@@ -213,4 +213,50 @@ account.
 All logs are in `D:\DESKTOP\og-night-shift\logs\` (not in git). Tools in `…\tools\` and
 `…\_nightshift\` (copies of the live harness, pointed at the scratch server).
 
-(filled in as the night goes — see the report's traffic lights for the verdicts)
+### D.1 How the scratch server was made safe
+
+- A verified `VACUUM INTO` backup of the live database (`…\backup\og-2026-09-25T08-11-03-524.db`),
+  copied to `…\scratch-data\og.db`. Scrubbed:
+  - `push_subscriptions` (10), `push_keys` (1), `push_seen`, `sessions` (10) and
+    `login_attempts` emptied;
+  - every `telegram.*_chat*` key deleted;
+  - the 15 unsent outbox rows stamped sent;
+  - `receipt.printer_share` pointed at `\\127.0.0.1\NOWHERE` (it was this laptop's real printer,
+    with auto-print on);
+  - `label.printer_host` blank.
+- Run from the worktree (which has no `server/.env`) with `OG_ENV_FILE` set to a file with **no
+  Supabase keys**, bogus bot tokens, `OG_PUSH=0`, `OG_SYNC_MINUTES=0`, no `OG_FX_KEY` and no
+  `OG_COPY_KEY`, on port 18090, http only.
+- Its own start-up log proved it: "Supabase: not configured", both bots "Unauthorized", "no bot
+  chat is linked", "exchange-rate feed: off".
+- Seven test accounts, one per role (`ns-owner` … `ns-partner`).
+
+### D.2 Results
+
+| Check | Result | Log |
+|---|---|---|
+| Secrets in every git object (2,824 blobs, 13 real values from the live `.env` and `_secrets/`, plus token/JWT/key shapes) | no live value anywhere; the old Cloudflare tunnel **ID** (not a credential) is in history | `logs\secrets-scan.txt` |
+| Repo visibility | **public**, Pages on | — |
+| `fix05/p0-namespaces` | 6/6 (start and end) | — |
+| I18N parity | 3,530/3,530 at the start, 3,532/3,532 at the end; 0 untranslated; panel 503/503 | — |
+| API contract (215 routes, 218 browser calls) | 0 calls without a route | `logs\api-contract.txt` |
+| Precache | 98 entries, 0 missing, 0 page scripts left out | — |
+| `npm test` | 39/39 | — |
+| Sweep, every screen × role, en 1100 / ar 390 + 5 phone widths, partner portal | before: 1,230 pass / 1 fail (network changed mid-run; owner re-run 315/315). After the fixes: **1,249 pass, 0 fail** (owner+developer 618, manager 264, cashier 213, warehouse 111, delivery 43; one more network blip on delivery, re-run clean) | `logs\sweep-before.log`, `logs\sweep-after.log` |
+| Core flows through the routes, read back from SQLite | 55/55, and 55/55 again on the fixed code; the invoice check 4/4 | `logs\flows-1.txt`, `logs\flows-2.txt` |
+| Popovers hit-tested (bell, account menu, search results, messages), owner at 1100 and 390 | all on top | — |
+| Dry print test on the scratch copy | receipt "would go to `\\127.0.0.1\NOWHERE`", nothing sent | — |
+| Reminder rules at every hour of a shop day | 28 rules, 0 errors | — |
+| `supabase:drift` (live project, read-only) | green, 56 tables | `logs\supabase-drift.txt` |
+| `supabase:check` (live project vs a copy from 08:11 UTC) | 50 tables equal row for row; 8 not compared (this laptop's line timed out); lineage is this shop's; 39 bookmarks healthy | `logs\supabase-check.txt` |
+| Mirror heartbeat | `shop` 0 min old, "alive: nothing waiting" | — |
+| Telegram `getMe` | `@ogsports1bot`, `@ogyallabot`, privacy mode on | — |
+| VPS | up 5 d, load 0.5, 4.5 GB free, 19% disk; 15 containers up, 0 restarts; no errors in the last 200 lines of og-shop, og-track, the proxy, og-bridge | — |
+| TLS | shop, track, root: Let's Encrypt, valid to 18–22 Dec 2026 | — |
+| DNS | all four names → 152.239.114.129; `www.shop` has no record | — |
+
+### D.3 The laptop
+
+- `OG_ROLE=standby`.
+- `OGLabelAgent` runs from the retired folder (last result `0xC000013A`).
+- `agent-config.json`: `localhost:8090`, `hussam`, no receipt keys.
