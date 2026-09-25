@@ -4,16 +4,19 @@
    Every button on the panel is one entry here, and an entry is a command
    plus the two sentences a person needs before pressing it.
 
-   `danger` is not decoration. Three of these can lose a day's work — the
-   restore that moves og.db aside, the reconcile that DELETES in the mirror,
-   the takeover that tells the other laptop it is no longer the shop — and
-   the panel makes you type the word before it will run one. The old .bat
-   files had that protection in prose, in a comment, above the line that did
-   it anyway.
+   `danger` is not decoration. Five of these can cost a day's work or the
+   shop's reachability — the restore that moves og.db aside, the reconcile
+   that DELETES in the mirror, a new certificate every phone must accept
+   again, and moving the shop to the VPS and back — and the panel makes you
+   type the word before it will run one. The old .bat files had that
+   protection in prose, in a comment, above the line that did it anyway.
+   (There was a takeover job too; it is gone.)
 
    `while` says whether a job may run with the shop open:
-     'any'   — read-only or safe on a live WAL database
-     'open'  — needs the server up (it asks it something)
+     'any'   — read-only or safe on a live WAL database. A script behind
+               one must open the database with DB.openReadOnly(): DB.open()
+               applies pending migrations (night shift 2026-09-25)
+     'open'  — needs the server up (it asks it something); no job uses it now
      'shut'  — the server must be stopped first, and the panel says so
 
    `group` is which heading it appears under on the Tools screen:
