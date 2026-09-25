@@ -11,11 +11,26 @@
 function viewPrint() {
   /* Partner mode is routed at the shell level in render(), not here. */
   var jobs = DB.printJobs;
-  var thisMonth = jobs.filter(function (j) { return new Date(j.created).getMonth() === TODAY.getMonth(); }).length;
+  /* A calendar month, year included — the month alone counted last
+     September's jobs as this September's. And "vs last month" is LAST MONTH:
+     it was compared against this month's own count minus two, a number
+     nobody ever counted. */
+  function inMonth(j, back) {
+    var m = new Date(TODAY.getFullYear(), TODAY.getMonth() - back, 1);
+    var c = new Date(j.created);
+    return c.getFullYear() === m.getFullYear() && c.getMonth() === m.getMonth();
+  }
+  var thisMonth = jobs.filter(function (j) { return inMonth(j, 0); }).length;
+  var lastMonth = jobs.filter(function (j) { return inMonth(j, 1); }).length;
   var overdue = jobs.filter(function (j) { return DB.isOverdue(j); }).length;
-  var onTime = Math.round((jobs.length - overdue) / jobs.length * 100);
-  var revenue = jobs.reduce(function (a, j) { return a + j.price; }, 0);
-  var paid = jobs.reduce(function (a, j) { return a + j.cost; }, 0);
+  /* No jobs is nothing to measure — not 0% and not NaN%. */
+  var onTime = jobs.length ? Math.round((jobs.length - overdue) / jobs.length * 100) : null;
+  /* The shop's own currency only: a job priced in dollars added to lira jobs
+     would count its cents as lira. */
+  var base = CONFIG.BASE_CURRENCY || 'SYP';
+  var inBase = jobs.filter(function (j) { return (j.currency || base) === base; });
+  var revenue = inBase.reduce(function (a, j) { return a + (Number(j.price) || 0); }, 0);
+  var paid = inBase.reduce(function (a, j) { return a + (Number(j.cost) || 0); }, 0);
 
   OG.pr = OG.pr || { tab: 'board' };
   var owed = DB.outstandingTotal();
@@ -64,16 +79,23 @@ function viewPrint() {
           waiting.map(function (j) { return j.id; }).join(', ') + '</small></span></div>';
   }
 
-  h += '<div class="grid mb" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
+  var cards = [
     '<div class="stat"><span class="eyebrow">' + t('jobs_month') + '</span><div class="val">' + thisMonth + '</div>' +
-      deltaTag(thisMonth, Math.max(1, thisMonth - 2), t('vs_last_month')) + '</div>' +
-    '<div class="stat"><span class="eyebrow">' + t('on_time') + '</span><div class="val' + (onTime >= 80 ? ' accent' : '') + '">' + onTime + '%</div>' +
-      '<div class="foot">' + overdue + ' ' + t('overdue').toLowerCase() + '</div></div>' +
+      deltaTag(thisMonth, lastMonth, t('vs_last_month')) + '</div>',
+    '<div class="stat"><span class="eyebrow">' + t('on_time') + '</span><div class="val' + (onTime !== null && onTime >= 80 ? ' accent' : '') + '">' +
+      (onTime === null ? '—' : onTime + '%') + '</div>' +
+      '<div class="foot">' + overdue + ' ' + t('overdue').toLowerCase() + '</div></div>',
     '<div class="stat"><span class="eyebrow">' + t('print_revenue') + '</span><div class="val">' + moneyShort(revenue) + '</div>' +
-      '<div class="foot">' + jobs.length + ' ' + t('orders').toLowerCase() + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('paid_partner') + '</span><div class="val">' + moneyShort(paid) + '</div>' +
-      '<div class="foot">' + t('profit') + ': ' + moneyShort(revenue - paid) + '</div></div>' +
-  '</div>';
+      '<div class="foot">' + jobs.length + ' ' + t('u_jobs') + '</div></div>'
+  ];
+  /* What the printer charges is cost, and the difference is profit. An
+     account the server sends no cost to is not shown a card reading
+     "paid 0 · profit 0" — absent, not zero. */
+  if (seesCost()) {
+    cards.push('<div class="stat"><span class="eyebrow">' + t('paid_partner') + '</span><div class="val">' + moneyShort(paid) + '</div>' +
+      '<div class="foot">' + (seesProfit() ? t('profit') + ': ' + moneyShort(revenue - paid) : '&nbsp;') + '</div></div>');
+  }
+  h += '<div class="grid mb" style="grid-template-columns:repeat(' + cards.length + ',minmax(0,1fr))">' + cards.join('') + '</div>';
 
   h += '<div class="kanban">';
   DB.printStages.forEach(function (stage) {
@@ -96,11 +118,12 @@ function viewPrint() {
           : '') +
         stepper(j.stage, { history: j.history, overdue: over, compact: true }) +
         '<div style="display:flex;gap:6px;align-items:center;font-size:10.5px;margin-top:8px" class="num">' +
-          '<span class="badge neutral">' + j.qty + ' pcs</span>' +
+          '<span class="badge neutral">' + j.qty + ' ' + t('u_pcs') + '</span>' +
           '<span class="' + (over ? 'badge critical' : 'muted') + '">' + (over ? t('overdue') + ' ' + DB.daysSince(j.deadline) + 'd' : relDate(j.deadline)) + '</span>' +
         '</div>' +
         '<div class="kcard-foot"><span class="muted">' + j.id + '</span>' +
-          '<span class="money">' + moneyShort(j.price) + ' <span class="cost">/ ' + moneyShort(j.cost) + '</span></span>' +
+          '<span class="money">' + moneyShort(j.price) +
+            (seesCost() ? ' <span class="cost">/ ' + moneyShort(j.cost) + '</span>' : '') + '</span>' +
         '</div>' +
       '</div>';
     });
@@ -118,7 +141,9 @@ function viewPartnerInvoices() {
   var overdue = DB.partnerInvoices.filter(function (i) { return DB.invoiceOverdue(i); });
   var paidTotal = DB.partnerInvoices.reduce(function (a, i) { return a + DB.invoicePaid(i); }, 0);
 
-  var h = '<div class="grid mb" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
+  /* The third card is the printer's price summed: cost, drawn only for an
+     account the server sends cost to (it read "0" for everybody else). */
+  var h = '<div class="grid mb" style="grid-template-columns:repeat(' + (seesCost() ? 3 : 2) + ',minmax(0,1fr))">' +
     '<div class="stat"><span class="eyebrow">' + t('og_owed_to') + '</span>' +
       '<div class="val' + (owed ? ' warn' : '') + '">' + moneyStat(owed) + '</div>' +
       '<div class="foot">' + (overdue.length
@@ -126,10 +151,12 @@ function viewPartnerInvoices() {
         : CONFIG.PRINT_PARTNER) + '</div></div>' +
     '<div class="stat"><span class="eyebrow">' + t('yi_paid') + '</span>' +
       '<div class="val">' + moneyStat(paidTotal) + '</div>' +
-      '<div class="foot">' + DB.partnerInvoices.length + ' ' + t('invoices').toLowerCase() + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('paid_partner') + '</span>' +
-      '<div class="val">' + moneyStat(DB.printJobs.reduce(function (a, j) { return a + j.cost; }, 0)) + '</div>' +
-      '<div class="foot">' + t('yl_lifetime').toLowerCase() + '</div></div>' +
+      '<div class="foot">' + DB.partnerInvoices.length + ' ' + t('rp_n_invoice') + '</div></div>' +
+    (seesCost()
+      ? '<div class="stat"><span class="eyebrow">' + t('paid_partner') + '</span>' +
+          '<div class="val">' + moneyStat(DB.printJobs.reduce(function (a, j) { return a + (Number(j.cost) || 0); }, 0)) + '</div>' +
+          '<div class="foot">' + t('yl_lifetime').toLowerCase() + '</div></div>'
+      : '') +
   '</div>';
 
   h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +

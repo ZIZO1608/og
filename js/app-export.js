@@ -611,25 +611,43 @@ function whMovementsExportSpec() {
 
 function printJobsExportSpec() {
   var jobs = DB.printJobs.slice().sort(function (a, b) { return a.deadline - b.deadline; });
-  var rev = jobs.reduce(function (a, j) { return a + j.price; }, 0);
-  var cost = jobs.reduce(function (a, j) { return a + j.cost; }, 0);
+  /* The printer's price is cost and the difference is profit: an account the
+     server sends no cost to gets neither column (they read 0 and "profit =
+     the whole price"). Money cells are the shop's own currency; a job in
+     another one is left blank rather than added in as if it were lira. */
+  var base = CONFIG.BASE_CURRENCY || 'SYP';
+  var showCost = seesCost(), showProfit = showCost && seesProfit();
+  var inBase = function (j) { return (j.currency || base) === base; };
+  var num = function (v) { return Number(v) || 0; };
+  var rev = jobs.filter(inBase).reduce(function (a, j) { return a + num(j.price); }, 0);
+  var cost = jobs.filter(inBase).reduce(function (a, j) { return a + num(j.cost); }, 0);
+  var columns = [{ label: t('yl_job') }, { label: t('customer'), width: 22 }, { label: t('design_note'), width: 36 },
+                 { label: t('qty'), num: true }, { label: t('priority') }, { label: t('deadline') },
+                 { label: t('status') }, { label: exCol(t('yl_charged')), num: true }];
+  if (showCost) columns.push({ label: exCol(t('paid_partner')), num: true });
+  if (showProfit) columns.push({ label: exCol(t('profit')), num: true });
+  var totals = [t('total'), null, null, jobs.reduce(function (a, j) { return a + num(j.qty); }, 0),
+                null, null, null, exMoney(rev)];
+  if (showCost) totals.push(exMoney(cost));
+  if (showProfit) totals.push(exMoney(rev - cost));
+  var kpis = [{ label: t('print_revenue'), value: money(rev) }];
+  if (showCost) kpis.push({ label: t('paid_partner'), value: money(cost) });
+  if (showProfit) kpis.push({ label: t('profit'), value: money(rev - cost) });
   return {
     name: 'print-jobs', sheet: 'Print jobs', title: t('print_title'),
     docUrl: deepLink('report', 'profit'),
     subtitle: jobs.length + ' · ' + jobs.filter(function (j) { return DB.isOverdue(j); }).length + ' ' + t('overdue').toLowerCase(),
-    columns: [{ label: t('yl_job') }, { label: t('customer'), width: 22 }, { label: t('design_note'), width: 36 },
-              { label: t('qty'), num: true }, { label: t('priority') }, { label: t('deadline') },
-              { label: t('status') }, { label: exCol(t('yl_charged')), num: true },
-              { label: exCol(t('paid_partner')), num: true }, { label: exCol(t('profit')), num: true }],
+    columns: columns,
     rows: jobs.map(function (j) {
-      return [j.id, j.customer, j.design, j.qty, t(j.priority), fmtDate(j.deadline),
-              t('print_' + j.stage), exMoney(j.price), exMoney(j.cost), exMoney(j.price - j.cost)];
+      var own = inBase(j);
+      var row = [j.id, j.customer, j.design, j.qty, t(j.priority), fmtDate(j.deadline),
+                 t('print_' + j.stage), own ? exMoney(j.price) : null];
+      if (showCost) row.push(own ? exMoney(j.cost) : null);
+      if (showProfit) row.push(own ? exMoney(num(j.price) - num(j.cost)) : null);
+      return row;
     }),
-    totals: [t('total'), null, null, jobs.reduce(function (a, j) { return a + j.qty; }, 0),
-             null, null, null, exMoney(rev), exMoney(cost), exMoney(rev - cost)],
-    kpis: [{ label: t('print_revenue'), value: money(rev) },
-           { label: t('paid_partner'), value: money(cost) },
-           { label: t('profit'), value: money(rev - cost) }]
+    totals: totals,
+    kpis: kpis
   };
 }
 

@@ -3297,6 +3297,9 @@ function hydratePartner(p) {
         customerId: j.customer_id == null ? null : Number(j.customer_id),
         kind: j.kind, qty: j.qty, priority: j.priority, stage: j.stage,
         price: j.price, cost: j.cost,
+        /* The currency both are in. Every job so far is lira, but a sum
+           that does not know it adds dollar cents as lira the day one is not. */
+        currency: j.currency || CONFIG.BASE_CURRENCY || 'SYP',
         deadline: date(j.deadline), created: date(j.created_at),
         saleId: j.sale_id || null,
         /* Where it was raised — the till, a person on the Print screen, or
