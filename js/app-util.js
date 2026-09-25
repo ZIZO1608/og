@@ -290,8 +290,11 @@ function focusKey(root) {
     if (!bits.length) return null;
     sel = el.tagName.toLowerCase() + bits.join('');
   }
-  var key = { sel: sel, s: null, e: null };
+  var key = { sel: sel, s: null, e: null, v: null };
   try { key.s = el.selectionStart; key.e = el.selectionEnd; } catch (e) { /* not a text box */ }
+  /* What is being TYPED survives too: a box that saves on Enter (the
+     exchange rate) is redrawn from the saved value, not the half-typed one. */
+  if ((el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit)$/.test(el.type)) || el.tagName === 'TEXTAREA') key.v = el.value;
   return key;
 }
 
@@ -300,6 +303,7 @@ function refocus(root, key) {
   var el = null;
   try { el = root.querySelector(key.sel); } catch (e) { return; }
   if (!el || el.disabled) return;
+  if (key.v !== null && key.v !== undefined && el.value !== key.v) el.value = key.v;
   try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
   if (key.s !== null && key.s !== undefined) {
     try { el.setSelectionRange(key.s, key.e); } catch (e) { /* not a text box */ }

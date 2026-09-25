@@ -62,7 +62,7 @@ const seed = spawn(process.execPath, ['--input-type=module', '-e', `
   await Auth.createUser({ username: 'owner1', name: 'Test Owner', role: 'owner', password: 'correct-horse-9' });
   await Auth.createUser({ username: 'cash1', name: 'Lubna Test', role: 'cashier', password: 'correct-horse-8' });
   const uid = d.prepare("SELECT id FROM users WHERE username = 'owner1'").get().id;
-  Cat.createWithVariants({ name: 'Test Shoe', type: 'sneakers', currency: 'SYP', costPrice: 100000, sellingPrice: 450000,
+  Cat.createWithVariants({ name: 'Test Shoe', type: 'sneakers', currency: 'USD', costPrice: 7700, sellingPrice: 34600,   /* 067: prices are dollars (cents) */
     sizes: [{ size: '42', qty: 20 }, { size: '43', qty: 1 }], whId: 'store', userId: uid });
   DB.close();
 `], { cwd: SERVER, env: { ...process.env, OG_ENV_FILE: ENV, OG_DATA_DIR: MAIN_DATA }, stdio: 'inherit' });

@@ -4322,3 +4322,26 @@ var USDPRICE_AR = {
 };
 Object.keys(USDPRICE_EN).forEach(function (k) { I18N.en[k] = USDPRICE_EN[k]; });
 Object.keys(USDPRICE_AR).forEach(function (k) { I18N.ar[k] = USDPRICE_AR[k]; });
+
+/* The exchange-rate box saves on Enter, and a big jump is asked first
+   (saveRate in js/app-changes.js, 409 rate_jump from POST /api/fx). */
+var RATEJUMP_EN = {
+  rate_enter: 'press Enter to save',
+  rate_jump_title: 'Is this rate right?',
+  rate_jump_body: '{new} is {pct} away from today’s rate of {old}.',
+  rate_jump_sub: 'Every lira price at the till and on the website follows this number, and the tills open now re-price at once.',
+  rate_jump_keep: 'Keep {old}',
+  rate_jump_yes: 'Yes, set {new}',
+  err_rate_jump: 'That rate is far from today’s. Check the number and confirm it.'
+};
+var RATEJUMP_AR = {
+  rate_enter: 'اكبس Enter لتحفظ',
+  rate_jump_title: 'هالسعر صح؟',
+  rate_jump_body: '{new} بعيد {pct} عن سعر اليوم {old}.',
+  rate_jump_sub: 'كل سعر بالليرة عالكاشير وعالموقع بيمشي مع هالرقم، والكاشيرات المفتوحة هلق بتتحدّث فوراً.',
+  rate_jump_keep: 'خلّي {old}',
+  rate_jump_yes: 'إي، حطّ {new}',
+  err_rate_jump: 'هالسعر بعيد كتير عن سعر اليوم. تأكد من الرقم وأكّدو.'
+};
+Object.keys(RATEJUMP_EN).forEach(function (k) { I18N.en[k] = RATEJUMP_EN[k]; });
+Object.keys(RATEJUMP_AR).forEach(function (k) { I18N.ar[k] = RATEJUMP_AR[k]; });

@@ -741,6 +741,20 @@ router.add('GET /api/config', (ctx) => {
 
 router.add('POST /api/fx', requirePerm('config.write', async (ctx) => {
   const b = await readJson(ctx.req);
+  /* A rate far from the current one must be CONFIRMED, by the feed's own
+     limit (fx.feed_max_jump_pct, 20 %). The box used to save as it was
+     typed, and on 24 Sep the live shop's rate went 1 → 138 → 15 → 150 → 138
+     in a minute; since 067 every lira price is derived from it and every
+     open till re-prices on it. `confirm: true` is the person saying yes. */
+  const asked = Number(b.rate);
+  let was = null;
+  try { was = Cat.currentRate(b.base ?? 'USD', b.quote ?? 'SYP'); } catch { /* a first rate: nothing to compare */ }
+  const limit = FxFeed.settings().jumpPct;
+  if (was > 0 && asked > 0 && b.confirm !== true && limit > 0 &&
+      Math.abs(asked - was) / was * 100 > limit) {
+    return sendErrorDetail(ctx.res, 409, 'rate_jump',
+      `${asked} is more than ${limit}% away from the current rate ${was} — confirm it`, { was, asked, limit });
+  }
   let set;
   try {
     set = Cat.setRate({

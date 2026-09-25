@@ -786,8 +786,8 @@ function rateCard() {
          refuses Arabic-Indic digits outright, and parseInt("13,000") is 13.
          Desk.toCount reads every digit somebody might type. */
       '<input class="inp num" id="setRate" type="text" inputmode="numeric" dir="ltr" autocomplete="off" ' +
-        'value="' + CONFIG.EXCHANGE_RATE + '" data-change="set-rate"></label>' +
-    '<div class="partner-note">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP · ' + t('set_rate_live') + '</div>' +
+        'value="' + CONFIG.EXCHANGE_RATE + '" data-change="set-rate" data-on-commit enterkeyhint="done"></label>' +
+    '<div class="partner-note">1 USD = ' + nf(CONFIG.EXCHANGE_RATE) + ' SYP · ' + t('set_rate_live') + ' · ' + t('rate_enter') + '</div>' +
     FxFeedUI.html() +
     '</div>' + setFoldEnd();
 }
