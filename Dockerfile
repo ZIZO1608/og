@@ -59,6 +59,19 @@ RUN set -eux; \
     rm -f  /out/server/.env /out/server/.env.sandbox; \
     find /out -type f -name '_*' -delete
 
+#  ONE CACHE NAME PER SET OF PAGES. sw.js is cache-first with ignoreSearch, so
+#  a browser that already has the app keeps its copy until the worker's CACHE
+#  name changes. On the laptop the panel's Full refresh bumps it by hand; the
+#  shop on the VPS (deploy/og-shop, `npm run vps -- deploy`) has no panel, so
+#  the image names its cache after the files it serves: the same pages, the
+#  same name, and one byte different, a new one — every open till takes the
+#  new files on its next check (js/update.js), and a deploy that changed only
+#  the server does not make every phone download the app again.
+RUN set -eu; \
+    H=$(cd /out && find index.html manifest.webmanifest css js assets -type f -exec sha256sum {} + | sort | sha256sum | cut -c1-10); \
+    sed -i -E "s/^var CACHE = '([^']*)';/var CACHE = '\1-$H';/" /out/sw.js; \
+    grep -q "^var CACHE = '.*-$H';" /out/sw.js
+
 
 # --------------------------------------------------------------- stage 2 ----
 FROM node:24-alpine AS runtime

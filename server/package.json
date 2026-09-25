@@ -15,6 +15,7 @@
     "cert:trust": "node scripts/trust-cert.js",
     "cert:untrust": "node scripts/trust-cert.js --remove",
     "always-on": "node scripts/always-on.js",
+    "vps": "node scripts/vps.js",
     "hardware": "node scripts/hardware.js",
     "hardware:install": "node scripts/hardware.js --install",
     "test-print": "node scripts/test-print.js",

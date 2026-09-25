@@ -1,0 +1,67 @@
+# =============================================================================
+#  OG SYSTEM — the shop's MAIN server, on the VPS          [deploy/og-shop]
+# -----------------------------------------------------------------------------
+#  This is what makes https://shop.ogsports1.com answer 24/7, whether or not
+#  the shop laptop is on. It is NOT a Coolify resource, on purpose: a push to
+#  `main` redeploys the Coolify apps, and the till must not restart because
+#  somebody published a typo. The code arrives only when a person runs
+#
+#      cd server && npm run vps -- deploy        (or Developer -> Tools)
+#
+#  which copies the committed code here, builds it, and swaps the container.
+#  On the VPS it all lives in /data/og-shop:
+#
+#      docker-compose.yml     this file (copied from the release on every deploy)
+#      .env                   OG_BUILD=<commit> — which release is running
+#      og-shop.env            the settings and secrets (`npm run vps -- env`)
+#      extra.env              optional, by hand: anything VPS-only, never overwritten
+#      releases/<commit>/     the code of each deploy (the last five are kept)
+#      data/                  THE SHOP: og.db, backups/. Lose this and you lose it.
+#
+#  HOW THE PUBLIC ADDRESS REACHES IT. Traefik (Coolify) -> the shop-proxy nginx
+#  (deploy/shop-proxy, SHOP_UPSTREAM=http://10.8.0.1:8090) -> this container.
+#  The port is published on the WireGuard address ONLY, never 0.0.0.0: the
+#  shop laptop (10.8.0.2) reaches it across the tunnel for its standby copy
+#  and its offline replay, and the internet does not reach it at all.
+#
+#  WHO THE SERVER SEES. Measured on this VPS (25 Sep 2026): a request from the
+#  proxy container to 10.8.0.1:8090 arrives from 10.0.1.1 — the coolify
+#  network's gateway, fixed, whatever address Coolify gives the proxy on its
+#  next redeploy — and one from the laptop over the tunnel arrives from
+#  10.8.0.2. So OG_PROXY_ADDR is the gateway (`npm run vps -- env` reads it off
+#  the network), and the proxy's X-OG-Client-IP is believed from it and from
+#  nothing else (server/lib/proxy.js).
+# =============================================================================
+
+name: og-shop
+
+services:
+  og-shop:
+    image: og-shop:${OG_BUILD:?run npm run vps -- deploy}
+    build:
+      context: ./releases/${OG_BUILD:?run npm run vps -- deploy}
+      dockerfile: Dockerfile
+    container_name: og-shop
+    restart: unless-stopped
+    #  index.js closes the database, stops the bots and finishes the mirror
+    #  push on SIGTERM (tini, in the image, forwards it). Ten seconds, Docker's
+    #  default, can cut a mirror push off half way.
+    stop_grace_period: 25s
+    env_file:
+      - path: ./og-shop.env
+        required: true
+      - path: ./extra.env
+        required: false
+    volumes:
+      - ./data:/app/server/data
+    ports:
+      #  The WireGuard address only. It exists once wg0 is up, which is why
+      #  `npm run vps -- setup` makes Docker start after wg-quick@wg0.
+      - "10.8.0.1:8090:8090"
+    networks:
+      coolify:
+        aliases: [og-shop]
+
+networks:
+  coolify:
+    external: true

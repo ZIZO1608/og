@@ -10,6 +10,11 @@
      cloud   — the cloud copy, in the words of the server's own sync state
      public  — does https://shop.ogsports1.com reach THIS till
 
+   ON THE VPS'S STANDBY (the laptop after `npm run vps -- switch --go`) two of
+   them ask the standby's questions instead: `cloud` becomes this laptop's
+   copy of the shop (copyLight), and `public` is green when the domain
+   answers from the VPS as the main server.
+
    EVERY CHECK HERE ONLY READS. A GET, a single ping, a look at state the
    panel already holds. Nothing in this file starts, stops, writes or makes
    anything — not a certificate, not a config row, not a Telegram message —
@@ -79,6 +84,10 @@ export async function httpHealth(url, { fetchFn = globalThis.fetch, timeoutMs = 
          Wi-Fi addresses, which is how the public light tells THIS laptop
          from another one answering the same domain. */
       lan: body && Array.isArray(body.lan) ? body.lan.map(ipOf).filter(Boolean) : null,
+      /* The main server or its standby copy, and the copy's own state
+         (server/lib/standby.js) — both public in the health line. */
+      role: body && typeof body.role === 'string' ? body.role : null,
+      standby: body && body.standby && typeof body.standby === 'object' ? body.standby : null,
       ms: now() - t0,
       error: null
     };
@@ -173,9 +182,12 @@ export function hasAddress(ifaces, address) {
 /* The shop server. The probe is the truth, not the panel's own idea of the
    state: a shop started from a terminal answers, and a child process that
    has stopped answering does not, whatever the button says. */
-export function serverLight({ server, http, https, httpsExpected, httpPort = 8090, httpsPort = 8443 }) {
+export function serverLight({ server, http, https, httpsExpected, httpPort = 8090, httpsPort = 8443, standby = false }) {
   if (server === 'starting') return light('server', 'off', 'srv_opening');
   if (server === 'stopping') return light('server', 'off', 'srv_closing');
+  /* On the standby, closed here is not the shop closed — the shop is on the
+     VPS. What it costs is the fallback, and that is amber, not red. */
+  if (standby && server !== 'running' && !(http && http.ok)) return light('server', 'warn', 'srv_copy_closed');
   if (!http || !http.ok) return light('server', 'bad', server === 'running' ? 'srv_silent' : 'srv_closed');
   if (httpsExpected && !(https && https.ok)) return light('server', 'warn', 'srv_no_https', { port: httpsPort });
   return light('server', 'ok', 'srv_ok', { ports: httpsExpected ? [httpPort, httpsPort] : [httpPort] });
@@ -230,6 +242,27 @@ export function cloudLight(m, { running, foreign = false, now = Date.now() } = {
   return m.lastPushAt ? light('cloud', 'ok', 'cloud_ok', { at: m.lastPushAt }) : light('cloud', 'ok', 'cloud_quiet');
 }
 
+/* ON A STANDBY THE FIFTH LIGHT IS THE COPY, not the cloud: the VPS keeps
+   the cloud copy now, and this laptop's own job is to hold a fresh copy of
+   the shop and to take the till when the internet goes. Read from the
+   standby's own health line (server/lib/standby.js: copyAt is when the MAIN
+   server took the copy, fetched every five minutes). Offline is amber, not
+   red: the till is working, here, which is exactly what the copy is for. */
+export function copyLight(health, { running, now = Date.now() } = {}) {
+  if (!running) return light('cloud', 'off', 'copy_closed');
+  const s = health && health.standby;
+  if (!s) return light('cloud', 'off', 'copy_silent');
+  const n = Number(s.waiting) || 0;
+  if (s.mode === 'offline') return light('cloud', 'warn', 'copy_offline', { n });
+  if (s.mode === 'sending' || s.mode === 'closing') return light('cloud', 'ok', 'copy_sending', { n });
+  const at = s.copyAt ? Date.parse(s.copyAt) : NaN;
+  if (isNaN(at)) return light('cloud', s.reachable === false ? 'bad' : 'warn', 'copy_none');
+  const age = now - at;
+  if (age > HOUR) return light('cloud', 'bad', 'copy_old', { at: s.copyAt });
+  if (age > 15 * MIN) return light('cloud', 'warn', 'copy_old', { at: s.copyAt });
+  return light('cloud', 'ok', 'copy_ok', { at: s.copyAt });
+}
+
 export function hostOf(url) {
   try { return new URL(url).host; } catch { return String(url || ''); }
 }
@@ -245,9 +278,21 @@ export function ipOf(url) {
    is this laptop's own addresses: an answer naming none of them came from
    a different till — a developer's laptop checking the real shop's domain —
    and green would be a claim about a machine this panel is not holding. */
-export function publicLight({ url, res, shopUp, ours = null }) {
+export function publicLight({ url, res, shopUp, ours = null, standby = false }) {
   const host = hostOf(url);
   if (!res) return light('public', 'off', 'pub_unchecked', { host });
+  /* THIS LAPTOP IS THE STANDBY: the domain is the VPS's, and the VPS
+     answering as the main server IS the green. A STANDBY answering the
+     domain means the proxy still points down the tunnel at this laptop —
+     the one Coolify step of the switch not done yet. */
+  if (standby) {
+    if (res.ok && res.role !== 'standby') return light('public', 'ok', 'pub_vps', { host, ms: res.ms });
+    if (res.ok) return light('public', 'warn', 'pub_to_laptop', { host });
+    if (res.status === 503 && res.code === 'shop_unreachable') return light('public', 'bad', 'pub_vps_down', { host });
+    if (res.status) return light('public', 'warn', 'pub_odd', { host, status: res.status });
+    if (res.error === 'dns') return light('public', 'bad', 'pub_dns', { host });
+    return light('public', 'bad', 'pub_silent', { host, why: res.error || 'net' });
+  }
   if (res.ok && Array.isArray(res.lan) && res.lan.length && Array.isArray(ours) && ours.length &&
       !res.lan.some((ip) => ours.indexOf(ip) > -1)) {
     return light('public', 'warn', 'pub_other', { host });

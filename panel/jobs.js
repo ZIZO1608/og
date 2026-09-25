@@ -278,6 +278,69 @@ export const JOBS = {
     steps: () => [['node', ['scripts/supabase-restore.js', '--wipe']]]
   },
 
+  /* ------------------------------------------------------------- the VPS
+     Online first, phase 4 (server/scripts/vps.js). The shop runs 24/7 on the
+     VPS and this laptop is its standby. Every one of these talks to the VPS
+     over SSH from this laptop; none of them is ever pressed in the shop. */
+  vpsStatus: {
+    label: 'Where the shop runs',
+    group: 'cloud',
+    blurb: 'The VPS shop (running, healthy, which code), what shop.ogsports1.com answers from, and whether this laptop is its standby. Changes nothing.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/vps.js', 'status']]]
+  },
+
+  /* THE SWITCH. The panel closes the shop here first and opens it again
+     after — as the standby, because the script rewrote server/.env and the
+     panel follows the file (reloadEnv). The order inside is the script's:
+     this laptop is made the standby BEFORE its database leaves, so there is
+     never a moment with two main servers. */
+  vpsSwitch: {
+    label: 'Move the shop to the VPS',
+    group: 'cloud',
+    blurb: 'Makes the VPS the shop’s main server, open day and night at shop.ogsports1.com, and this laptop its standby: a copy every five minutes, and the till if the internet drops. Sends this laptop’s database and settings, builds the code there and starts it. One step is then left in Coolify, which the log names.',
+    danger: 'VPS',
+    while: 'shut',
+    aroundShop: true,
+    cwd: 'server',
+    steps: () => [['node', ['scripts/vps.js', 'switch', '--go']]]
+  },
+
+  /* Code edited here reaches the till only when it is sent: the VPS is not
+     a Coolify app, so a push to GitHub restarts nothing that sells. */
+  vpsDeploy: {
+    label: 'Send the code to the VPS',
+    group: 'dev',
+    blurb: 'Builds the last COMMIT on the VPS (the tests run first) and swaps the shop over to it — a few seconds closed. Uncommitted edits do not go. Nothing is changed if the build fails.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/vps.js', 'deploy']]]
+  },
+
+  vpsLogs: {
+    label: 'VPS shop log',
+    group: 'dev',
+    blurb: 'The last two hundred lines the shop on the VPS printed. Changes nothing.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/vps.js', 'logs', '200']]]
+  },
+
+  /* THE WAY BACK. Stops the VPS shop, brings its database home (this
+     laptop's copy is kept aside), un-parks the keys. Refuses while this
+     laptop holds offline sales the VPS has not had yet. */
+  vpsTakeBack: {
+    label: 'Bring the shop back to this laptop',
+    group: 'cloud',
+    blurb: 'THE WAY BACK. Stops the shop on the VPS, brings its database here, and makes this laptop the main server again. Then Coolify’s SHOP_UPSTREAM goes back to https://10.8.0.2:8443, which the log names.',
+    danger: 'TAKE BACK',
+    while: 'shut',
+    aroundShop: true,
+    cwd: 'server',
+    steps: () => [['node', ['scripts/vps.js', 'take-back', '--go']]]
+  },
+
   /* ------------------------------------------------------------ accounts */
   createuser: {
     label: 'New account',

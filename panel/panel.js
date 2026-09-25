@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { createServer as createProbe } from 'node:net';
 import { JOBS } from './jobs.js';
-import { load as loadServerEnv, dataDir, backupDir, dbFile } from '../server/lib/env.js';
+import { load as loadServerEnv, parse as parseEnv, envFilePath, dataDir, backupDir, dbFile } from '../server/lib/env.js';
 import { DatabaseSync } from 'node:sqlite';
 import { verifyPassword } from '../server/lib/auth.js';
 import * as Vault from '../server/lib/credvault.js';
@@ -39,7 +39,31 @@ import * as Lights from './lib/lights.js';
 
 /* The shop's own server/.env, read the way the server reads it, so the
    panel's idea of which port to check is never a second guess at it. */
+const ENV_BEFORE = new Set(Object.keys(process.env).filter((k) => process.env[k] !== ''));
 loadServerEnv();
+
+/* AND FOLLOWED WHEN IT CHANGES. Every process this panel starts inherits
+   its environment, and a real environment variable beats the file — so the
+   copy read when the window opened went on being handed to the shop after
+   `npm run vps` had rewritten the file (the switch to the VPS parks the cloud
+   keys and the bots; the way back un-parks them). A standby started with the
+   old copy would hold the means to be a second writer. Keys that came FROM
+   the file follow it — a key parked there is taken away here — and keys the
+   real environment set are left alone. Called before the shop or a job is
+   started, and on every status tick. */
+const FROM_FILE = new Set(Object.keys(process.env).filter((k) => !ENV_BEFORE.has(k)));
+function reloadEnv() {
+  let now;
+  try { now = parseEnv(readFileSync(envFilePath(), 'utf8')); } catch { return; }
+  for (const k of FROM_FILE) if (!(k in now)) delete process.env[k];
+  for (const [k, v] of Object.entries(now)) {
+    if (FROM_FILE.has(k) || process.env[k] === undefined || process.env[k] === '') { process.env[k] = v; FROM_FILE.add(k); }
+  }
+}
+/* THIS LAPTOP IS THE VPS'S STANDBY (online first, phase 4): the shop runs at
+   shop.ogsports1.com on the VPS, and the server this panel holds is its copy
+   — the till if the internet drops. `npm run vps -- switch --go` makes it so. */
+const isStandby = () => String(process.env.OG_ROLE || '').toLowerCase() === 'standby';
 const SHOP_PORT = Number(process.env.OG_PORT || 8090);
 const HTTPS_PORT = Number(process.env.OG_HTTPS_PORT || 8443);
 
@@ -81,8 +105,11 @@ const state = {
   links: null,     // the two addresses a phone is given — see panel/lib/links.js
   lights: [],      // the five status lights — see panel/lib/lights.js
   lightsAt: 0,
-  lightsChecking: false
+  lightsChecking: false,
+  role: 'primary', // 'standby' once the shop runs on the VPS (npm run vps -- switch --go)
+  standby: null    // the standby's own health line: copyAt, mode, waiting
 };
+state.role = isStandby() ? 'standby' : 'primary';
 
 let child = null;  // the shop
 let job = null;    // the running one-shot, if any
@@ -383,8 +410,14 @@ function deniedSig(m) {
 
 const CONN_IDS = ['server', 'always', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'fxfeed', 'backup', 'vault'];
 
+/* On the standby these are the VPS's jobs: its bots, its mirror, its rate
+   feed, its customers' push and its nightly backups. The keys are parked on
+   this laptop on purpose, and "no bot token" would read as a fault. */
+const ON_VPS = new Set(['mirror', 'tg_og', 'tg_yalla', 'push', 'fxfeed', 'backup']);
+
 async function checkOne(id, ctx) {
   const row = (st, code, args) => ({ id, state: st, code, args: args || {}, at: Date.now() });
+  if (isStandby() && ON_VPS.has(id)) return row('skip', 'on_vps');
   switch (id) {
     case 'server': {
       if (!child && !(state.ready && state.ready.foreign)) return row('skip', 'server_closed');
@@ -633,6 +666,9 @@ function lightsTick() {
   state.lightsChecking = true;
   lightsRun = (async () => {
     try {
+      reloadEnv();
+      const standby = isStandby();
+      state.role = standby ? 'standby' : 'primary';
       const links = computeLinks();
       state.links = links;
       const peer = String(process.env.OG_PROXY_ADDR || '').trim() || Lights.DEFAULT_PEER;
@@ -645,7 +681,7 @@ function lightsTick() {
       ]);
       const at = Date.now();
       const next = [
-        Lights.serverLight({ server: state.server, http, https, httpsExpected: links.secure, httpPort: SHOP_PORT, httpsPort: HTTPS_PORT }),
+        Lights.serverLight({ server: state.server, http, https, httpsExpected: links.secure, httpPort: SHOP_PORT, httpsPort: HTTPS_PORT, standby }),
         Lights.wifiLight({ lan: links.lan, secure: links.secure, certExists: TLS.have() }),
         Lights.tunnelLight({
           peer,
@@ -654,9 +690,12 @@ function lightsTick() {
           localUp: tunnelAddr ? Lights.hasAddress(networkInterfaces(), tunnelAddr) : null,
           reply
         }),
-        cloudNow(at),
-        Lights.publicLight({ url: links.public.url, res: pub, shopUp: !!(http && http.ok), ours: lanAddresses().map((a) => a.address) })
-      ].map((l) => ({ ...l, at }));
+        standby ? Lights.copyLight(http, { running: !!(http && http.ok), now: at }) : cloudNow(at),
+        Lights.publicLight({ url: links.public.url, res: pub, shopUp: !!(http && http.ok), ours: lanAddresses().map((a) => a.address), standby })
+      ].map((l) => ({ ...l, at, ...(standby && STANDBY_LABEL[l.id] ? { label: STANDBY_LABEL[l.id] } : {}) }));
+      /* The standby's own state, for the Shop screen's headline: offline,
+         how much is waiting, and how old the copy is. */
+      state.standby = standby && http && http.standby ? http.standby : null;
       /* A colour that CHANGES is written to panel.log, so "the public light
          was red at three o'clock" can be answered after the window closed.
          Steady states are not: that would be a line every fifteen seconds. */
@@ -677,13 +716,19 @@ function lightsTick() {
   return lightsRun;
 }
 
+/* On a standby two tiles ask a different question, so they carry a
+   different name: the server here is the COPY, and the fifth light is it. */
+const STANDBY_LABEL = { server: 'l_server_sb', cloud: 'l_copy' };
+
 function cloudNow(at) {
   return Lights.cloudLight(state.mirror, { running: !!child, foreign: !child && !!(state.ready && state.ready.foreign), now: at });
 }
 
 /* The cloud light follows the mirror's own messages between ticks: it costs
-   nothing, and the server says something every few seconds while it is open. */
+   nothing, and the server says something every few seconds while it is open.
+   A standby has no mirror of its own; its fifth light is the copy. */
 function refreshCloudLight() {
+  if (isStandby()) return;
   const i = state.lights.findIndex((l) => l.id === 'cloud');
   if (i < 0) return;
   const at = Date.now();
@@ -1002,6 +1047,13 @@ async function startServer() {
   /* Any start — a person's, the Full refresh's, a job's — replaces a pending
      come-back; the timer must not fire a second start behind it. */
   cancelRevive();
+  /* The server this is about to start gets server/.env as it is NOW — see
+     reloadEnv(). */
+  reloadEnv();
+  state.role = isStandby() ? 'standby' : 'primary';
+  /* A standby has no mirror; a word from this laptop's old life as the
+     main server must not go on being drawn as its state. */
+  if (state.role === 'standby') state.mirror = null;
   state.server = 'starting';
   resetSteps();
   state.who = null;
@@ -1097,6 +1149,9 @@ async function startServer() {
         accounts: m.accounts == null ? null : m.accounts,
         secure: !!m.secure
       });
+      /* A standby runs no mirror (the VPS does), so the cloud step would
+         wait for a word that never comes. That is its answer. */
+      if (isStandby()) step('cloud', 'skip', { code: 'cloud_on_vps' });
       pushState();
       /* the Connections card, now that there is a shop to ask — never waited on */
       setTimeout(() => { checkConnections().catch(() => {}); }, 1500);
@@ -1448,6 +1503,7 @@ function runJob(name, args = {}) {
   }
   const spec = JOBS[name];
   if (!spec) { say('  No such job: ' + name, 'err'); return refuse(name, 'job_unknown'); }
+  reloadEnv();
 
   /* The typed word is checked here too: the window's disabled button is a
      suggestion, and a hand-sent request carries no button at all. */

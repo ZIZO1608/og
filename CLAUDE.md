@@ -55,6 +55,7 @@ npm run hardware:install         # installs what it can (asks for administrator)
 npm run test-print               # sends real bytes so paper comes out (--receipt / --label)
 npm run test-print:dry           # says where it would go, spends no paper
 npm run cert:trust               # Windows trusts the self-signed certificate (asks for administrator once)
+npm run vps                      # the shop on the VPS: status · deploy · switch --go · take-back --go (phase 4)
 ```
 
 ### The till's hardware
@@ -3568,6 +3569,90 @@ the outage — her sale refused, listed, put away. **11 checks go red** with `sk
 English at 1100 and Arabic at 390, the refusal in both languages, the list pressed open and put
 away, the domain's cover after the patience window, Keep waiting, and the cover leaving by itself.
 Plus every earlier suite.
+
+## Online first, phase 4 (25 Sep 2026) — the shop on the VPS, 24/7: `npm run vps`
+
+Branch `feature/vps-primary`. The owner's complaint: shop.ogsports1.com worked only while
+OG System was open, and even then badly. The panel log that night showed Supabase, both bots, the
+rate feed and the WireGuard tunnel timing out in turn over a phone hotspot. The switch the plan
+has promised since phase 3 is now **one command**, `cd server && npm run vps -- switch --go`, or
+Developer → Tools → **Move the shop to the VPS** (typed word `VPS`).
+
+- **The shop server on the VPS is NOT a Coolify app** (`deploy/og-shop/docker-compose.yml`, in
+  `/data/og-shop` on the VPS). Every Coolify app redeploys on a push to `main`, and the till must not
+  restart because somebody published. Code reaches it only through `npm run vps -- deploy` (Tools →
+  **Send the code to the VPS**). That sends the **committed** code by `git archive` over SSH,
+  builds it on the VPS (the tests run in the build) and swaps the container. A failed build
+  changes nothing. `releases/<commit>/` keeps the last five; `.env` there holds `OG_BUILD`.
+- **Its port is published on the WireGuard address only** (`10.8.0.1:8090`). The proxy reaches it
+  there, and so does the laptop (the standby's copies and the offline replay). The internet does
+  not reach it at all. `npm run vps -- setup` makes Docker start after `wg-quick@wg0`
+  (`docker.service.d/og-after-wireguard.conf`), or a reboot could start the container before the
+  address exists.
+- **`OG_PROXY_ADDR` on the VPS is the coolify network's GATEWAY (`10.0.1.1`), measured.** A request
+  from the shop-proxy container to `10.8.0.1:8090` arrives from the gateway, which is fixed. The
+  proxy's own address changes on every Coolify redeploy. A request from the laptop over the
+  tunnel arrives from `10.8.0.2`. `env` reads the gateway off the network rather than assuming it.
+- **The VPS starts from a byte copy of the laptop's database**: the accounts, the sessions, the
+  push keys, the mirror's lineage id and its bookmarks. It carries on as the same writer
+  (`lineage.js` compares ids only). No takeover, no restore. That is also why two main servers
+  must never run at once, and it is why `switch` goes in this order: setup → env → deploy
+  (build only) → **laptop-standby** → db → start. The laptop can no longer write before its
+  database leaves.
+- **`laptop-standby` PARKS, never deletes.** The laptop's `SUPABASE_*`, `OG_SYNC_*`,
+  `OG_PULL_AT_BOOT`, both bot tokens, `OG_WEB_API_KEY` and `OG_FX_*` become `#vps# KEY=…`, and an
+  `OG_ROLE=standby` block is appended between `# >>> og-standby` / `# <<< og-standby`. `env` still
+  reads parked values; **`take-back --go` is the way back**: it stops the VPS shop, brings its
+  database home (the laptop's copy is kept aside), and un-parks the keys. It refuses while the
+  laptop's outbox holds offline sales the VPS has not had. `server/test/vps-env.test.js` holds the
+  round trip.
+- **`env` writes `/data/og-shop/og-shop.env` (600) from the laptop's `.env`**, never printing a
+  value: 11 keys copied, plus `OG_ORIGINS=https://shop.ogsports1.com,https://www.shop…`, the
+  gateway, `OG_SECURE`, `TZ`. It MAKES `OG_COPY_KEY` and writes it to the laptop first, so both ends
+  always hold the same key. `extra.env` beside it is for anything VPS-only and is never
+  overwritten.
+- **`db` sends a verified `VACUUM INTO` snapshot and checks its sha256 on arrival.** It refuses
+  while the shop is open here, while this laptop is a standby (its database is a copy OF the VPS),
+  while the VPS shop is running, or onto an existing database without `--replace` (which sets that
+  database aside).
+- **Every refusal names its next command.** `status` changes nothing: the container, the code, the
+  database, what the domain answers from, and this laptop's role. `start | stop | restart | logs`
+  do what they say. A stopped container stays stopped through reboots until `start`.
+- **The image names its own service-worker cache** (the Dockerfile's build stage): `CACHE` gets a
+  hash of the pages it serves appended. The VPS has no panel to press Full refresh, so a deploy that
+  changed a page still reaches every open till (js/update.js), and a server-only deploy costs no
+  phone a re-download. Only the laptop's panel parses `og-system-vNNN`, and only its own file.
+- **One step stays Coolify's, by hand.** On the shop-proxy app, set
+  `SHOP_UPSTREAM=http://10.8.0.1:8090`, press Save, then Redeploy. The proxy's `proxy_ssl_*` lines
+  apply only to an https upstream, so nothing else changes. Until then the domain still goes down
+  the tunnel to the laptop, which the panel's public light says (`pub_to_laptop`, with the value
+  to copy). The way back is `https://10.8.0.2:8443`.
+- **The launcher on a standby** (`OG_ROLE=standby` in `server/.env`):
+  - The headline is "The shop runs on the VPS", with the age of the copy. The lime button opens
+    the DOMAIN; while the standby is offline it opens this laptop's till instead.
+  - The top lamp says "Backup on/off", and a closed copy is amber, not red (`srv_copy_closed`).
+  - The fifth light becomes **Copy of the shop** (`copyLight`, from the standby's public health
+    line: fresh under 15 min, old, offline, sending). The public light is green when the domain
+    answers from the VPS (`pub_vps`).
+  - The Connections rows the VPS now owns (mirror, bots, rate feed, push, backups) say "The VPS
+    does this now" instead of "no bot token".
+  - **`reloadEnv()` in `panel/panel.js`**: the keys the panel took FROM `server/.env` follow the
+    file before every server start, every job and every status tick. Before this, the panel handed
+    the copy it read at launch to everything it started, and a real environment variable beats
+    the file. So a standby started after the switch would have held the parked cloud keys.
+- **Printing after the switch goes through the agent** (phase 2): on the domain, Settings →
+  Receipt printer → The shop laptop's agent, station `shop`. On the laptop, `agent-config.json`
+  needs `serverUrl https://shop.ogsports1.com`, `receiptShare \\localhost\OGRECEIPT`,
+  `receiptStation shop`, **and a login that exists**. On 25 Sep it was still `hussam`, removed by
+  `users:rebuild`, so the label agent could not sign in. `cashier` holds `sale.reprint`.
+- **Verified** (25 Sep): `npm test` 30, the panel's 40. On the real VPS: `status`, `setup`,
+  `env` and `deploy --no-start` (built `og-shop:1eeba5fcae9e`, the tests passing in the build). The
+  cut-over itself was left to a person (auto mode refuses it as a production deploy). The
+  launcher was driven over CDP against a scratch primary and a scratch standby cut from a verified
+  copy of the live database, with no cloud keys and bogus bots: following, offline (the scratch
+  primary stopped), closed, and primary unchanged, in English at 1100 and Arabic at 390, with no
+  raw key, no sideways scroll and no console error. `laptop-standby` was run on the scratch env
+  while the test panel stayed open, and the next Open started a standby with no workers.
 
 ## Payment methods on the website (24 Sep 2026)
 
