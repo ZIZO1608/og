@@ -1680,7 +1680,8 @@ function openDaySummary() {
     kind: 'daily',
     text: WA.dayText(),
     note: d.count
-      ? (d.count + ' ' + t('invoices').toLowerCase() + ' · ' + money(d.total))
+      ? (d.count + ' ' + t('rp_n_invoice') + ' · ' + money(d.total) +
+         (d.totalUsd ? ' + ' + moneyUsdRaw(d.totalUsd) : ''))
       : t('wa_day_empty')
   });
 }
