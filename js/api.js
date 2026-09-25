@@ -204,11 +204,14 @@ var API = (function () {
     },
 
     /* Is this page on a public name (shop.ogsports1.com) rather than the
-       shop's own wifi address, localhost or a .local name? */
+       shop's own wifi address, localhost or a .local name?
+       The two patterns had lost their backslashes on the way in (a shell
+       heredoc eats them), so /^d+.d+.d+.d+$/ matched no address at all and
+       the shop's own 10.10.99.9 counted as a public name. */
     publicHost: function () {
       var h = String(location.hostname || '').toLowerCase();
-      if (!h || h === 'localhost' || /.local$/.test(h) || h.indexOf('.') < 0) return false;
-      if (/^d+.d+.d+.d+$/.test(h) || h.indexOf(':') >= 0) return false;
+      if (!h || h === 'localhost' || /\.local$/.test(h) || h.indexOf('.') < 0) return false;
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(h) || h.indexOf(':') >= 0) return false;
       return true;
     }
   };
