@@ -75,7 +75,7 @@ compare them.
 |---|---|---|
 | **Products** (read-only) | Supabase functions `web_products` / `web_product` (v1.3) | Always |
 | **Orders, checkout info, order status** | Supabase functions (`POST {SUPABASE_URL}/rest/v1/rpc/...`) | Always |
-| Products, the old door (same answer) | `GET https://shop.ogsports1.com/api/ext/...` | Only while the shop laptop is on and online |
+| Products, the old door (same answer) | `GET https://shop.ogsports1.com/api/ext/...` | Whenever the shop's server is up. Since 25 Sep 2026 that server is on the VPS, not the laptop, so this is nearly always; still prefer the Supabase functions |
 
 The shop gives you three values:
 
