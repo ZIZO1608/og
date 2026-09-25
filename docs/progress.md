@@ -130,13 +130,13 @@ node _nightshift/fix05/p6-load.mjs         # 500 products, 200 parcels, 300 mone
 ```
 
 **Starting the two Chromes on Windows: QUOTE THE PROFILE PATH.** The repo lives under
-`D:\DESKTOP\OG System Demo`, and an unquoted `--user-data-dir=...OG System Demo\_nightshift\chrome`
+`D:\DESKTOP\OG System`, and an unquoted `--user-data-dir=...OG System\_nightshift\chrome`
 reaches Chrome as three arguments — it reads the last two as URLs and exits with
 `Multiple targets are not supported in headless mode`, which names nothing that is true.
 
 ```powershell
 Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList `
-  '--remote-debugging-port=9224','"--user-data-dir=D:\DESKTOP\OG System Demo\_nightshift\chrome"',`
+  '--remote-debugging-port=9224','"--user-data-dir=D:\DESKTOP\OG System\_nightshift\chrome"',`
   '--headless=new','--no-first-run',`
   '--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2'
 # and the same on 9225 with _nightshift\chrome-fresh, for fix05/sw-update only

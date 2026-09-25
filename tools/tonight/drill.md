@@ -7,7 +7,7 @@ About 45 minutes, **after closing**, at the shop. You need:
 - **PIA OFF** on the laptop. The shop does not run PIA; the drill tests the shop's own line. With
   PIA on, pulling the cable kills PIA too and the result is about PIA.
 
-Before it: TONIGHT.md's steps up to the drill are done:
+Before it: docs/vps/TONIGHT.md's steps up to the drill are done:
 - the WireGuard verdict says WORKS;
 - the tunnel service is installed;
 - Supabase 029–031 are run;
@@ -24,14 +24,14 @@ has none of them.
 2. In the repository:
 
    ```powershell
-   cd "D:\DESKTOP\OG System Demo"
+   cd "D:\DESKTOP\OG System"
    git status --short          # must print nothing (Publish anything first)
    git fetch
    git switch night/online-offline
    git log --oneline -1        # the branch's newest commit
    ```
 
-3. If `tools\tonight\apply.ps1` has not run yet tonight, run it now (TONIGHT.md explains it):
+3. If `tools\tonight\apply.ps1` has not run yet tonight, run it now (docs/vps/TONIGHT.md explains it):
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File tools\tonight\apply.ps1 -Now
@@ -48,7 +48,7 @@ data), `https://shop.ogsports1.com` shows the sign-in with a padlock.
 1. **Before.** On the phone, sign in at `https://shop.ogsports1.com` and open
    `https://shop.ogsports1.com/snapshot`. Note today's takings. On the laptop, run
    `cd server; npm run supabase:check`.
-   **Pass:** the check exits 0. Only if the 8 accounts are already gone; see TONIGHT.md.
+   **Pass:** the check exits 0. Only if the 8 accounts are already gone; see docs/vps/TONIGHT.md.
 2. **Pull the cable.** Unplug the shop router's **internet** (WAN) cable, not its power: the Wi-Fi
    must stay up. Start a 15-minute timer.
 3. **The till keeps selling.** Ring up one real small sale in cash, or a test product you void
@@ -88,7 +88,7 @@ data), `https://shop.ogsports1.com` shows the sign-in with a padlock.
 2. Switch the code back:
 
    ```powershell
-   cd "D:\DESKTOP\OG System Demo"
+   cd "D:\DESKTOP\OG System"
    git switch main
    ```
 

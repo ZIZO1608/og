@@ -35,7 +35,7 @@
 #  │ every request is refused and the page says the shop is unreachable.      │
 #  │ With no file mounted the image falls back to a placeholder that matches  │
 #  │ nothing — the proxy starts, and says so in its log, rather than crash-   │
-#  │ looping. MORNING.md has the exact scp line.                               │
+#  │ looping. docs/vps/MORNING.md has the exact scp line.                     │
 #  └───────────────────────────────────────────────────────────────────────────┘
 #
 #  WHY A NAME AND NOT THE IP. nginx checks an upstream certificate against

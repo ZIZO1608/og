@@ -6,7 +6,7 @@
 #
 #  AFTER CLOSING: close the shop in the OG System window first, then
 #
-#    cd "D:\DESKTOP\OG System Demo"
+#    cd "D:\DESKTOP\OG System"
 #    powershell -ExecutionPolicy Bypass -File tools\tonight\apply.ps1 -Now
 #
 #  Without -Now it runs only between 00:30 and 07:00 Damascus time.

@@ -39,7 +39,7 @@ through PIA the answer is about PIA's line, not the shop's).
    touches no Docker or Coolify network. **Also check hPanel's own firewall lets UDP 51820 in.**
 3. On the laptop, in an **Administrator** PowerShell:
    ```powershell
-   cd "D:\DESKTOP\OG System Demo"
+   cd "D:\DESKTOP\OG System"
    powershell -ExecutionPolicy Bypass -File tools\wg-test\till-side.ps1
    ```
    It prints **this laptop's public key**. Back on the VPS: `bash tools/wg-test/vps-side.sh <that key>`.
@@ -76,7 +76,7 @@ The night shift was not elevated, and was told never to touch the firewall. Unch
 shift 04 (Administrator PowerShell):
 
 ```powershell
-cd "D:\DESKTOP\OG System Demo"
+cd "D:\DESKTOP\OG System"
 powershell -ExecutionPolicy Bypass -File server\scripts\till-firewall.ps1 -WhatIf
 powershell -ExecutionPolicy Bypass -File server\scripts\till-firewall.ps1
 ```
@@ -134,7 +134,7 @@ the write queue are branch code. The evening of the drill, after closing (the ni
 worktree for the branch was removed, so the live folder can switch):
 
 ```bash
-cd "D:/DESKTOP/OG System Demo" && git fetch && git switch night/online-offline
+cd "D:/DESKTOP/OG System" && git fetch && git switch night/online-offline
 ```
 
 Then the panel's **Restart** (the Full refresh).

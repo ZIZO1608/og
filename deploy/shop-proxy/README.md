@@ -225,7 +225,7 @@ curl -sk https://10.8.0.2:8443/api/health   # does the SHOP answer?
   ```
 
   That allows the shop's https port **only** from the VPS's end of the
-  tunnel. `MORNING.md` has the whole firewall script (night shift 04), which
+  tunnel. `docs/vps/MORNING.md` has the whole firewall script (night shift 04), which
   also narrows the LAN side.
 </details>
 
@@ -315,7 +315,7 @@ Telegram messages about a print job carry a link to the job only when that is
 set, and it has been empty since the first tunnel was retired in September.
 
 The laptop needs four lines in `server/.env` (night shift 04, exact in
-`MORNING.md`): `OG_PROXY_ADDR=10.8.0.1` (the only socket whose
+`docs/vps/MORNING.md`): `OG_PROXY_ADDR=10.8.0.1` (the only socket whose
 `X-OG-Client-IP` is believed), `OG_TUNNEL_ADDR=10.8.0.2`, `OG_VPS_API_KEY`,
 and `OG_ORIGINS` still listing `https://shop.ogsports1.com`. Delete
 `OG_TRUST_PROXY` — it is retired, and a startup notice says so while it is set.

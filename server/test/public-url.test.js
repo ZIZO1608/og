@@ -4,7 +4,7 @@
 // through PUT /api/config, and only as a bare https origin.
 //
 // It was refused outright until the panel polish (24 Sep 2026), although
-// docs/go-live.md, deploy/shop-proxy/README.md and TONIGHT.md all told the
+// docs/go-live.md, deploy/shop-proxy/README.md and docs/vps/TONIGHT.md all told the
 // owner to set it. It now goes into a QR code on the counter and into links in
 // people's pockets, so the rule is strict: https, a real domain, and nothing
 // after the name. The same function is what the launcher reads it with, so the

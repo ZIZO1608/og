@@ -65,7 +65,7 @@ everything it has no rule for. Either deactivate it, or add inbound rules for
 **Pass:** from the laptop, `ssh root@152.239.114.129 true` returns, and this prints WORKS:
 
 ```powershell
-cd "D:\DESKTOP\OG System Demo"
+cd "D:\DESKTOP\OG System"
 node tools\wg-test\handshake.mjs test _secrets\wg-till.key (Get-Content _secrets\wg-vps.pub)
 ```
 

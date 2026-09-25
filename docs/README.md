@@ -17,6 +17,8 @@ arriving at this repository needs first: `README.md`, `CLAUDE.md` and
 | [connections-map.md](connections-map.md) | **Every connection that leaves the process** — the cloud copy, the bots, the printers, the phones, the panel. Read it before touching any of them, and keep it current: a connection added and not written here is one nobody knows is there. |
 | [customers.md](customers.md) | The customer half in full: the owner's decisions, what each stage built, how it was proved, and what is still open. `CLAUDE.md`'s Customers section is the summary; this is the record. |
 | [progress.md](progress.md) | Where the last run got to, and — at the top — **the two commands that start the sandbox server and the headless Chrome** the test suites need. |
+| [vps/](vps/) | **The VPS runbooks** — `TONIGHT.md` (the current list), the outage drill, the Coolify and VPS steps. They were at the root until 25 Sep 2026. |
+| [website/](website/) | **The contract with the OG Sports website** (`PROMPT-FOR-AHMAD.md`) and one short brief per change to it. |
 
 ## What is in the pictures
 

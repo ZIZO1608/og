@@ -20,7 +20,7 @@ if [ -s "$MOUNTED" ] && openssl x509 -in "$MOUNTED" -noout 2>/dev/null; then
   openssl x509 -in "$OG/till.pem" -noout -subject -ext subjectAltName -enddate -fingerprint -sha256 || true
 else
   echo "og-till: *** NO USABLE CERTIFICATE AT $MOUNTED — every request will be refused." >&2
-  echo "og-till: *** Copy the laptop's server/data/certs/og-cert.pem there (see MORNING.md)." >&2
+  echo "og-till: *** Copy the laptop's server/data/certs/og-cert.pem there (see docs/vps/MORNING.md)." >&2
   cp "$OG/placeholder.pem" "$OG/till.pem"
 fi
 

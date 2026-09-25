@@ -2,7 +2,7 @@
 
 For Ahmad, in the Coolify UI on the VPS (`152.239.114.129`). Nothing here was clicked by the day
 shift: it had no hands in Coolify. Every secret is named by its **file** in `_secrets/` on the shop
-laptop (`D:\DESKTOP\OG System Demo\_secrets\`). Open the file, copy the value, paste it into
+laptop (`D:\DESKTOP\OG System\_secrets\`). Open the file, copy the value, paste it into
 Coolify. Never paste one into a chat.
 
 **Before either resource:**

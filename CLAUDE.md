@@ -11,6 +11,28 @@ the print partner (a different company, working remotely).
 Two audiences shape every decision: shop staff who are not computer people, and a client who is shown
 this in meetings. The owner keeps his records on paper today.
 
+## One folder, one branch (25 Sep 2026)
+
+**The project is `D:\DESKTOP\OG System`, on `main`, and `main` holds everything.** Until 25 Sep it
+was spread over seven folders on the desktop: `OG System Demo` plus six worktrees (`og-always-on`,
+`og-merge-prep`, `og-night`, `og-panel`, `og-usd-prices`, `og-web-orders`). Every branch was merged
+into `main` (night mode and online/offline were the last two), the local-only files were gathered
+here, and the worktrees were removed. The feature branches are kept as history.
+
+- **Where the local-only things are** (all git-ignored): `_handover/` — every shift's report and
+  plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
+  PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
+  keys, named by file and never pasted anywhere · `server/data/` — the live database.
+- **Numbers in use:** local migrations run to `067` (`063` is night mode's and applies after `067`
+  without trouble: the runner applies any file it has not recorded, in name order). **The next
+  local migration is `068`; the next cloud file is `038`.** The cloud files have two `030`s and two
+  `031`s — `server/supabase/README.md` says which is which and the order to run them, and
+  `server/supabase/status.sql` says which the live project already has.
+- **A section below that says "not merged", or names one of the old worktree folders, describes
+  the day it was written.** It is all on `main` now.
+- New work still goes in a worktree or a branch while it is being built — but it is folded back
+  and the worktree removed when it is done, so this stays one folder.
+
 ## Commands
 
 ```bash
@@ -2805,7 +2827,7 @@ No migration and no permission changed; one small route (the phone number, below
 Branch `night/online-offline`, off `audit-06`; one commit per phase plus a fix and the docs. **No
 migration, no local schema change, no `mirror-lag.js` entry.** Two new mirror files (`030`, `031`),
 a new deployment (`vps/og-bridge/`), and the nginx proxy extended. **Nothing was switched on**: every
-step that needs administrator, the live `.env`, the VPS, Coolify or Supabase is in `MORNING.md`, in
+step that needs administrator, the live `.env`, the VPS, Coolify or Supabase is in `docs/vps/MORNING.md`, in
 order.
 
 The route, settled in commits 8c46670 and 1416ee2 and restated by the owner for this shift:
@@ -2969,7 +2991,7 @@ Main got **only** the proxy fix from night shift 04's Phase 1 (b6e0940, cherry-p
 bbfde0d), plus `OG_CERT_EXTRA_SANS` (2432253) and `_tools/` in `.gitignore` (3cf675f). Everything
 else (the VPS's door, og-bridge, `/snapshot`, the write queue, the beat) stays on
 **`night/online-offline`**, rebased onto this main and **not merged**. It merges after the owner's
-outage drill (the end of `MORNING.md` on that branch).
+outage drill (the end of `docs/vps/MORNING.md` on that branch).
 
 - **`server/lib/proxy.js` decides who the visitor is.** A visitor header (`X-OG-Client-IP`) is
   believed **only from the socket `OG_PROXY_ADDR` names**. It is unset on the live `.env` tonight,
@@ -3015,8 +3037,8 @@ outage drill (the end of `MORNING.md` on that branch).
 ## Day shift 06 (22 Sep 2026) — the VPS end of the tunnel, a handshake with no install, and tonight staged
 
 On `night/online-offline`, **not merged**. The live folder stayed on `main`; the live server and
-its `.env` were not touched, and nothing was deleted anywhere. `TONIGHT.md` is the ordered list
-for Ahmad (it replaces `MORNING.md`). `DAY06-COOLIFY.md` and `DAY06-VPS-STEPS.md` are the console
+its `.env` were not touched, and nothing was deleted anywhere. `docs/vps/TONIGHT.md` is the ordered list
+for Ahmad (it replaces `docs/vps/MORNING.md`). `docs/vps/DAY06-COOLIFY.md` and `docs/vps/DAY06-VPS-STEPS.md` are the console
 halves nobody at this keyboard could do.
 
 - **Measure the brief's facts; do not take them.** Three were wrong on the day:
@@ -3052,7 +3074,7 @@ halves nobody at this keyboard could do.
   came back. SSH and UDP 51820 stayed dead for the rest of the shift, while `github.com:22`
   answered over the same path. It reads like a reboot (the WireGuard install's `needrestart` had
   deferred unattended-upgrades) followed by a filter on 22 and 51820. It is diagnosed in
-  `DAY06-VPS-STEPS.md` rather than guessed at. As a result, the certificate copy, the `dig` and
+  `docs/vps/DAY06-VPS-STEPS.md` rather than guessed at. As a result, the certificate copy, the `dig` and
   the `curl` through the tunnel are blocked, with their commands written down.
 - **`supabase:check`'s "users missing pw_box, last_login_at" was the check's bug, not the
   mirror's.** `syncUsers` names its columns by hand and sends neither:
@@ -3091,9 +3113,11 @@ halves nobody at this keyboard could do.
   interface, so ZeroTier's, PIA's and the tunnel's subnets would all have counted as the shop
   Wi-Fi. The dry run warns if the laptop's own address is outside the LAN rule. In PowerShell 5.1,
   `0xFFFFFFFF` is the Int32 −1, so the subnet mask is computed arithmetically.
-- **Both Coolify resources build from `night/online-offline` until the merge.** `main` has only
-  the old plain-http proxy and no `vps/og-bridge/`, so building from `main` would deploy the
-  unpinned proxy.
+- **Both Coolify resources built from `night/online-offline` until the merge.** `main` had only
+  the old plain-http proxy and no `vps/og-bridge/`, so building from `main` would have deployed the
+  unpinned proxy. **Since 25 Sep `main` has both** (`deploy/shop-proxy/` with `/night`, and
+  `vps/og-bridge/`), so both resources can build from `main` — remembering that a push to `main`
+  redeploys the public proxy.
 - **Secrets, by file**, all in `_secrets/` (ignored through `.git/info/exclude` as well, which
   covers every checkout):
   - `wg-till.key` (private), `wg-till.pub`, `wg-vps.pub`;
@@ -3103,7 +3127,7 @@ halves nobody at this keyboard could do.
 
 ## Day shift 06b (22 Sep 2026) — the tunnel is up on the till
 
-Branch `night/online-offline`, not merged. `TONIGHT.md` items 4–6 are done. What is left is the
+Branch `night/online-offline`, not merged. `docs/vps/TONIGHT.md` items 4–6 are done. What is left is the
 Supabase pastes, Coolify, and the shop-line test with PIA off.
 
 - **The tunnel runs as a Windows service.** WireGuard for Windows 1.1.1 (winget, signature
@@ -3114,7 +3138,7 @@ Supabase pastes, Coolify, and the shop-line test with PIA off.
   `curl https://10.8.0.2:8443/api/health` returns the till's own answer. It also passes when curl
   trusts only the certificate copied to `/data/og/till.pem`, which is how nginx will verify it.
   The certificate's sha256 is the same on both sides. No firewall rule was added: the blanket
-  Node.js rules still let it in. `till-firewall.ps1` narrows that later (`TONIGHT.md` item 12).
+  Node.js rules still let it in. `till-firewall.ps1` narrows that later (`docs/vps/TONIGHT.md` item 12).
 - **The ZeroTier network `76fc96e49897c3c8` was left.** ZeroTier stays installed, its service
   running, with no networks. The certificate still names the old ZeroTier address. That does no
   harm.
@@ -3174,13 +3198,13 @@ accounts on both sides. `night/online-offline` is still not merged.
   - `/api/vps/health` from outside answered 404;
   - the public certificate is Let's Encrypt `YR2`, for `shop.ogsports1.com`, valid to
     21 Dec 2026, and verifies.
-- **`DRILL-TONIGHT.md`** at the root is the outage drill for main as it is: 15 minutes with the
+- **`docs/vps/DRILL-TONIGHT.md`** at the root is the outage drill for main as it is: 15 minutes with the
   router's internet cable out. The branch-only parts are named and left out: `/snapshot`,
   og-bridge, the heartbeat, `apply.ps1`.
 
 ## Website orders (23–24 Sep 2026) — the website leaves an order in the cloud; a person says yes
 
-Branch `web-orders` (built in the worktree `D:\DESKTOP\og-web-orders`). Ahmad's OG Sports website
+Branch `web-orders` (built in a worktree, since folded into this one folder). Ahmad's OG Sports website
 is built from **`docs/website/PROMPT-FOR-AHMAD.md`, which is THE contract** — the only copy of the
 order JSON, the checkout answer and the reason codes; change it there and nowhere else. Migration
 `061_web_orders.sql` (local only), mirror-project file `server/supabase/030_web_orders.sql` (run by
@@ -3331,8 +3355,8 @@ Same branch (`feature/always-on`). The owner's plan: `shop.ogsports1.com` is the
 the VPS becomes the one main server, and the laptop becomes the standby the shop falls back on when
 the internet goes. These two phases are what that needs before the switch, and **both change nothing
 until somebody sets them**: `OG_ROLE` defaults to `primary`, and `receipt.transport` stays whatever
-it is. The plan (phases 0–4, the waves, the owner's four answers) is `_handover/ONLINE-FIRST-PLAN.md`
-in the night-mode worktree; the live steps are `_handover/ONLINE-FIRST.md` here.
+it is. The plan (phases 0–4, the waves, the owner's four answers) is `_handover/ONLINE-FIRST-PLAN.md`;
+the live steps are `_handover/ONLINE-FIRST.md` (both git-ignored, both in this folder).
 
 ### One writer and a read-only copy — `server/lib/standby.js`
 
@@ -3717,7 +3741,7 @@ website).
     0.5)` in double precision, because numeric rounding disagreed with JavaScript by a lira at
     the halves.
   - Sizes order by size then SKU on both sides (`webSizes` gained the SKU for this).
-  - `_nightshift/usd-prices/parity.mjs` (40 checks, in the `og-usd-prices` worktree) builds a
+  - `_nightshift/usd-prices/parity.mjs` (40 checks) builds a
     shop through the real lib, copies it into PGlite running 001…037, and compares the two
     field for field. It also checks the lira against the till's `convert()` at three rates, and
     that the version moves. It was seen going red (13 failures) against a deliberately broken
@@ -3735,7 +3759,8 @@ website).
 
 Branch `feature/night-mode`, off `merge/online-offline`. **Nothing deployed, nothing run against
 Supabase.** The plan is `_handover/NIGHT-MODE-PLAN.md` and the report `_handover/NIGHT-MODE.md`,
-both in the worktree `D:\DESKTOP\og-night` and gitignored. This section is what travels.
+both git-ignored, in `_handover/`. This section is what travels. **Merged into `main` on 25 Sep
+2026**, with night shift 04's online/offline work under it.
 
 **When the laptop is off or out of reach, `shop.ogsports1.com/night` still answers.**
 - **What it is.** A small app served by **og-bridge** (`vps/og-bridge/src/night*.js`) that reads

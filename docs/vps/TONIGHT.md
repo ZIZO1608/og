@@ -6,7 +6,7 @@ For Ahmad. It replaces `MORNING.md`. Every item is marked:
 - **BLOCKED**, with why.
 
 Branch `night/online-offline`, pushed, **not merged**. The live folder stays on `main` until
-item 14. Secrets live in `D:\DESKTOP\OG System Demo\_secrets\` (git-ignored); this page names
+item 14. Secrets live in `D:\DESKTOP\OG System\_secrets\` (git-ignored); this page names
 files, never values.
 
 ## Day shift 07 — what changed
@@ -64,7 +64,7 @@ now carries the same `deploy/shop-proxy`. Do not switch the proxy to the branch.
 needed:
 
 ```powershell
-cd "D:\DESKTOP\OG System Demo"
+cd "D:\DESKTOP\OG System"
 powershell -ExecutionPolicy Bypass -File tools\wg-test\shop-verdict.ps1
 ```
 
@@ -175,7 +175,7 @@ It refuses while PIA is connected, on purpose.
     2. In the repository:
 
        ```powershell
-       cd "D:\DESKTOP\OG System Demo"
+       cd "D:\DESKTOP\OG System"
        git status --short                 # must be empty
        git fetch; git switch night/online-offline
        powershell -ExecutionPolicy Bypass -File tools\tonight\apply.ps1 -Now

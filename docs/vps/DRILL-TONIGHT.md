@@ -21,7 +21,7 @@ data**. Pick a quiet moment: the sales you make are real.
 4. **The mirror is clean before you begin.** In PowerShell:
 
    ```powershell
-   cd "D:\DESKTOP\OG System Demo\server"
+   cd "D:\DESKTOP\OG System\server"
    npm.cmd run supabase:check
    ```
 
@@ -68,7 +68,7 @@ data**. Pick a quiet moment: the sales you make are real.
 17. **The mirror is a faithful copy again:**
 
     ```powershell
-    cd "D:\DESKTOP\OG System Demo\server"
+    cd "D:\DESKTOP\OG System\server"
     npm.cmd run supabase:check
     ```
 

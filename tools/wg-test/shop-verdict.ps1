@@ -7,7 +7,7 @@
 #  RUN IT AT THE SHOP, ON THE SHOP'S OWN LINE, WITH PIA OFF. It refuses
 #  while PIA is connected: through PIA the answer is about PIA's line.
 #
-#    cd "D:\DESKTOP\OG System Demo"
+#    cd "D:\DESKTOP\OG System"
 #    powershell -ExecutionPolicy Bypass -File tools\wg-test\shop-verdict.ps1
 #
 #  One verdict line:
@@ -58,7 +58,7 @@ $pub = (Get-Content $ServerPublicKeyFile -Raw).Trim()
 $out = & $node.Source (Join-Path $PSScriptRoot 'handshake.mjs') test $KeyFile $pub $Endpoint
 $code = $LASTEXITCODE
 Say ('  ' + $out)
-if ($code -eq 0) { Say 'WORKS - WireGuard gets through this line. Next: TONIGHT.md, the tunnel service.' Green; exit 0 }
+if ($code -eq 0) { Say 'WORKS - WireGuard gets through this line. Next: docs/vps/TONIGHT.md, the tunnel service.' Green; exit 0 }
 
 $tcp = $false
 foreach ($p in 443, 22) {

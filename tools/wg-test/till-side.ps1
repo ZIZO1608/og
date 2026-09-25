@@ -143,7 +143,7 @@ if ($hand) {
   if ($pings.Count -gt 0) {
     $avg = [math]::Round(($pings | Measure-Object -Property ResponseTime -Average).Average, 0)
     Say ('WORKS - the tunnel is up and ' + $Vps + ' answers in ' + $avg + ' ms (' + $pings.Count + '/4 pings).') Green
-    Say 'Leave the tunnel installed. Next: MORNING.md, the proxy step.'
+    Say 'Leave the tunnel installed. Next: docs/vps/MORNING.md, the proxy step.'
     exit 0
   }
   Say 'HANDSHAKE BUT NO PING - the tunnel formed, but 10.8.0.1 does not answer ICMP.' Yellow
