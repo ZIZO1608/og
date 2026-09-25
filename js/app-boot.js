@@ -47,7 +47,10 @@ function bindGlobal() {
     var el = e.target;
     if (el.id === 'globalSearch') { runSearch(el.value); return; }
     var k = el.getAttribute && el.getAttribute('data-change');
-    if (k && CHANGES[k] && el.tagName !== 'SELECT' && el.type !== 'checkbox') CHANGES[k](el);
+    /* data-on-commit: a box whose value must not be acted on half typed
+       (the exchange rate) waits for the change event below. */
+    if (k && CHANGES[k] && el.tagName !== 'SELECT' && el.type !== 'checkbox' &&
+        !el.hasAttribute('data-on-commit')) CHANGES[k](el);
   });
 
   document.addEventListener('change', function (e) {
@@ -56,7 +59,27 @@ function bindGlobal() {
     if (k && CHANGES[k] && (el.tagName === 'SELECT' || el.type === 'checkbox')) CHANGES[k](el);
   });
 
+  /* A data-on-commit box is acted on when the person LEAVES it (Enter blurs
+     it, below) — not on the change event, which Chrome also fires when a
+     redraw takes the focused box off the page mid-number. So a focus that
+     leaves is looked at a tick later: a box still on the page was left by
+     the person; one a redraw took away was not (render() and
+     setFoldRepaint put the typed text into its replacement, focused). */
+  document.addEventListener('focusout', function (e) {
+    var el = e.target;
+    if (!el || !el.hasAttribute || !el.hasAttribute('data-on-commit')) return;
+    var k = el.getAttribute('data-change');
+    if (!k || !CHANGES[k]) return;
+    setTimeout(function () {
+      if (el.isConnected && document.activeElement !== el) CHANGES[k](el);
+    }, 0);
+  });
+
   document.addEventListener('keydown', function (e) {
+    /* Enter commits a data-on-commit box: leaving it fires the change the
+       box waits for (a text box does not always fire one on Enter). */
+    if (e.key === 'Enter' && e.target && e.target.hasAttribute &&
+        e.target.hasAttribute('data-on-commit')) { e.preventDefault(); e.target.blur(); return; }
     if (e.key === 'Escape') {
       if (modalOpen()) { closeModal(); return; }
       if (document.getElementById('drawer-root').firstChild) { closeDrawer(); return; }

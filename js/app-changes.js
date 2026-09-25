@@ -473,19 +473,16 @@ var CHANGES = {
      to be type=number, which blanks itself on a comma and refuses an Arabic
      keypad's digits outright. The rate is the one number every dollar price
      in the shop converts through. */
+  /* SAVED WHEN THE PERSON IS DONE, NEVER AS IT IS TYPED (25 Sep 2026). The
+     box carries data-on-commit, so this runs on Enter or on leaving it. It
+     used to save 0.7 s after each key: on 24 Sep the live shop's rate went
+     1 → 138 → 15 → 150 → 138 in a minute while somebody typed, and since
+     067 every lira price follows this number and every open till re-prices
+     on it. CONFIG moves only once the server has the rate. */
   'set-rate': function (el) {
     var v = Desk.toCount(el.value);
-    if (!(v > 0)) return;
-    CONFIG.EXCHANGE_RATE = v;
-    /* No render(): the box holds a caret and half a number. The two places
-       that print the rate are repainted when the save lands. */
-    clearTimeout(RATE_SAVE_T);
-    RATE_SAVE_T = setTimeout(function () {
-      if (!API.live) return;
-      API.post('/api/fx', { base: 'USD', quote: 'SYP', rate: v })
-        .then(function () { markSaved('fx.rate'); return Shop.reload(); })
-        .catch(function (err) { toast(t('exchange_rate'), API.friendly(err), 'err', 5000); });
-    }, 700);
+    if (!(v > 0) || v === CONFIG.EXCHANGE_RATE) { el.value = CONFIG.EXCHANGE_RATE; return; }
+    saveRate(v, false);
   },
 
   /* The live feed's switches, on the same fold (FxFeedUI, js/app-settings.js).
@@ -560,7 +557,42 @@ function focusBack(sel, caret) {
   try { el.setSelectionRange(caret, caret); } catch (e) {}
 }
 
-var RATE_SAVE_T = null;
+/* The rate box's one write. A rate more than the feed's limit away from
+   the current one is refused 409 rate_jump by the server until the person
+   says yes, in a dialog naming both numbers. Anything else that fails puts
+   the box back to the rate the shop really has. */
+function saveRate(v, confirmed) {
+  if (!API.live) return;
+  API.post('/api/fx', { base: 'USD', quote: 'SYP', rate: v, confirm: !!confirmed })
+    .then(function () { CONFIG.EXCHANGE_RATE = v; markSaved('fx.rate'); closeModal(); return Shop.reload(); })
+    .catch(function (err) {
+      var box = document.getElementById('setRate');
+      if (err && err.code === 'rate_jump' && !confirmed) {
+        var was = (err.detail && err.detail.was) || CONFIG.EXCHANGE_RATE;
+        var pct = Math.round(Math.abs(v - was) / was * 100);
+        openModal({
+          title: t('rate_jump_title'),
+          size: 'narrow',
+          body: '<p>' + t('rate_jump_body')
+            .replace('{new}', '<bdi dir="ltr">1 USD = ' + nf(v) + ' SYP</bdi>')
+            .replace('{old}', '<bdi dir="ltr">' + nf(was) + '</bdi>')
+            .replace('{pct}', '<bdi dir="ltr">' + pct + '%</bdi>') + '</p>' +
+            '<p class="muted">' + t('rate_jump_sub') + '</p>',
+          foot: '<button class="btn btn-ghost" data-act="rate-keep">' + t('rate_jump_keep').replace('{old}', nf(was)) + '</button>' +
+                '<button class="btn btn-primary" data-act="rate-confirm" data-v="' + v + '">' + t('rate_jump_yes').replace('{new}', nf(v)) + '</button>'
+        });
+        return;
+      }
+      if (box) box.value = CONFIG.EXCHANGE_RATE;
+      toast(t('exchange_rate'), API.friendly(err), 'err', 5000);
+    });
+}
+ACTIONS['rate-confirm'] = function (el) { saveRate(Number(el.getAttribute('data-v')), true); };
+ACTIONS['rate-keep'] = function () {
+  closeModal();
+  var box = document.getElementById('setRate');
+  if (box) box.value = CONFIG.EXCHANGE_RATE;
+};
 
 /* ONE SETTING, SAVED WHERE IT STANDS                      (night shift 03)
    `saveConfig` toasts, which is right for a switch somebody flicked and

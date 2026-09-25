@@ -3687,6 +3687,17 @@ second path to the website; the contract (§4) tells Ahmad to use `rate` and nev
   in `shutdown()`.
 - **`saveSetting(key, value, wait, after)` grew a fourth argument** so a switch can ask the feed
   again once the save has landed — the side and the divisor change what the number means.
+- **THE RATE BOX SAVES WHEN THE PERSON IS DONE, and a big jump is asked** (25 Sep 2026). It
+  saved 0.7 s after every key, and on 24 Sep the live rate went 1 → 138 → 15 → 150 → 138 in a
+  minute while somebody typed — each a real `fx_rates` row, frozen into any sale rung up then,
+  and since 067 the source of every lira price and a re-price on every open till. The box now
+  carries **`data-on-commit`**: the input dispatcher skips it, Enter blurs it, and a `focusout`
+  is acted on a tick later only if the box is still on the page (a redraw that took it away is
+  not the person leaving it — Chrome fires `change` then too, which is why it is not used).
+  `focusKey` / `refocus` now also carry the focused box's TYPED text across `render()` and
+  `setFoldRepaint`. **`POST /api/fx` refuses `409 rate_jump`** (with `was`, `asked`, `limit`)
+  past `fx.feed_max_jump_pct` unless the body says `confirm: true`; the box's dialog names both
+  numbers (`saveRate`, `rate-confirm` / `rate-keep`). `_nightshift/fix06/rate-box.mjs` (26).
 
 ## Prices are dollars, the lira follows the rate (067, cloud 037 — 25 Sep 2026)
 
