@@ -706,7 +706,9 @@ function shelvesCard() {
   return setFoldStart('shelves', t('sm_shelves_title'), '') +
     '<div class="card-body">' +
       '<div class="fold-row"><div class="sub">' + t('sm_shelves_sub') + '</div>' +
-        '<button class="btn btn-ghost btn-sm" data-act="nav" data-view="warehouse" data-tab="map">' +
+        /* The map is its own screen (`shelfmap`). This pointed at a warehouse
+           tab called "map" that no longer exists, so it landed on Goods arrived. */
+        '<button class="btn btn-ghost btn-sm" data-act="nav" data-view="shelfmap">' +
           t('sm_open_map') + '</button></div>' +
       '<div id="setShelves"><span class="muted">…</span></div>' +
     '</div>' + setFoldEnd();
