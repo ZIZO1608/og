@@ -232,6 +232,18 @@ function readAgent() {
   }
 }
 
+/* The print-agent.js the OGLabelAgent task starts, from its XML (UTF-16 on
+   the way out of schtasks), or null when it cannot be read. */
+function agentTaskScript() {
+  const r = spawnSync('schtasks.exe', ['/query', '/tn', 'OGLabelAgent', '/xml'], { windowsHide: true });
+  if (r.status !== 0 || !r.stdout) return null;
+  const b = r.stdout;
+  const xml = (b[0] === 0xFF && b[1] === 0xFE) || b.includes(0) ? b.toString('utf16le') : b.toString('utf8');
+  const args = /<Arguments>([\s\S]*?)<\/Arguments>/.exec(xml);
+  const m = args && /"?([^"]*print-agent\.js)"?/i.exec(args[1].replace(/&quot;/g, '"'));
+  return m ? resolve(m[1]) : null;
+}
+
 /* \\localhost\OGRECEIPT  ->  { host: 'localhost', share: 'OGRECEIPT' } */
 function unc(path) {
   const m = /^\\\\([^\\]+)\\([^\\]+)\\?$/.exec(String(path || '').trim());
@@ -483,7 +495,18 @@ async function check() {
   if (agent && (agent.share || agent.receiptShare)) {
     const what = [agent.share && 'label', agent.receiptShare && 'receipt'].filter(Boolean).join(' and ');
     const task = spawnSync('schtasks.exe', ['/query', '/tn', 'OGLabelAgent'], { encoding: 'utf8', windowsHide: true });
-    if (task.status === 0) ok(`The print agent (${what}) is registered to start with this computer.`);
+    /* Registered is not the same as registered HERE. When the shop moved
+       folders (25 Sep 2026) the task went on starting the old folder's
+       print-agent.js, which had no config left beside it, and this line said
+       OK for two days while nothing printed. The XML, not the /v listing,
+       because the listing's labels are in the machine's language. */
+    const ran = task.status === 0 ? agentTaskScript() : null;
+    const mine = resolve(ROOT, 'agent', 'print-agent.js');
+    if (task.status === 0 && ran && ran.toLowerCase() !== mine.toLowerCase()) {
+      warn(`The print agent (${what}) is registered, but it starts ${ran} — not this folder's agent.`);
+      hint('Right-click agent\\install-agent.bat HERE and choose "Run as administrator" — it re-registers the task with /f.');
+      if (agent.receiptShare && cfg && cfg.receipt.transport === 'agent' && HW.receipt === 'ok') HW.receipt = 'person';
+    } else if (task.status === 0) ok(`The print agent (${what}) is registered to start with this computer.`);
     else {
       warn(`The print agent (${what}) is not registered to start with this computer.`);
       hint(`Double-click agent\\install-agent.bat once. Until then ${what} jobs just queue up.`);
