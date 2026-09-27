@@ -4205,9 +4205,12 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
   every real sale was frozen at it — the shop is on the redenominated lira. The seed that assumed
   13,000 is gone, so nothing in the repo asserts the old scale any more.
 - `flutter_app/` fails to build on an Android NDK/`sdkmanager` crash.
-- **Shelf map, Arabic fullscreen: the "putting away onto…" line overlaps the scan box** in the bottom
-  strip (`.sm-ov-bottom`, `.sm-scanbox` + `.sm-scanwhat`). Seen 14 Sep 2026 while building the room's
-  Stage A; older than that work and deliberately left out of it.
+- **Shelf map, Arabic fullscreen — the "putting away onto…" line overlapping the scan box** (seen
+  14 Sep 2026) **no longer reproduces** (27 Sep 2026). `_nightshift/shelf/fs-ar.mjs` picks a bay, opens
+  the 3D room fullscreen and measures the two rectangles in Arabic and English at 1366, 1100 and 820:
+  42/42, nothing overlapping and the line not cut off. It needs WebGL in headless Chrome:
+  `CHROME_EXTRA="--use-angle=swiftshader --enable-unsafe-swiftshader" bash _nightshift/with-chrome.sh shelf/fs-ar`
+  (`with-chrome.sh` now word-splits `CHROME_EXTRA`, so it takes more than one flag).
 - **The one-room script has not been run on the shop's database** (15 Sep 2026). `npm run
   warehouse:one-room` is written and verified on copies; the live `og.db` still holds the three test
   rooms. Migration 051 is already applied there (the server restarted at 18:58); **run

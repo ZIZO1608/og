@@ -224,3 +224,19 @@ SB=http://localhost:8191 OG_TEST_DB=<that folder>/og.db bash _nightshift/with-ch
 
 `cdp.mjs` reads `SB` for the address; a suite that reads SQLite itself needs `OG_TEST_DB` (only
 `fix06/polish` honours it so far — the older suites name the shared file).
+
+**Correction (27 Sep 2026): until today the starter did NOT stop the old server.** Its pattern was
+written `\s` inside a template string, which is just `s`, so it matched nothing: a restart left the
+old process on the port, the new one died on EADDRINUSE, and the health check passed against the
+OLD code. It is `\\s` now and prints `stopped old sandbox pid N` when it does.
+
+**Three suites never exited (fixed 27 Sep 2026).** `audit06/p4-scan-print`, `audit06/p5-xss` and
+`fxfeed/ui` ended on a bare `summary()`, so the open CDP socket kept Node alive and `with-chrome.sh`
+waited for ever (p4 sat 10 minutes after printing 23/0). They end with `await T.close();
+process.exit(summary() ? 1 : 0)` like every other suite now; p4 finishes in about 30 s.
+
+**`fxfeed/ui` needs a rate feed.** The sandbox has no `OG_FX_KEY`, so the card says "not
+configured" and the suite fails on its first figure. Do not give it the real key: run a stand-in
+that answers `{"status":"success","data":{"USD":{"buy":13675,"sell":13750}}}` to the header
+`x-api-key`, and start the sandbox with `sandboxEnv({ extra: { OG_FX_KEY, OG_FX_URL } })` (the
+guard's `extra`). 20/20 that way.

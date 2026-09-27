@@ -43,12 +43,21 @@ const git = (...a) => spawnSync('git', a, { cwd: REPO, encoding: 'utf8' });
 const lf = (s) => s.replace(/\r\n/g, '\n');
 
 /* ---- 1. minimal ----------------------------------------------------------- */
-const changed = git('diff', '--name-only', BASE, '--', 'deploy/shop-proxy').stdout.trim().split('\n').filter(Boolean).sort();
+/* "Night mode only ADDED to the proxy" is a fact about night mode's own
+   commits, so it is measured between the two ends of that branch — not
+   against today's tree. Once it merged, later work (the VPS phase, the docs
+   moving to docs/vps/) was free to touch deploy/shop-proxy, and measuring
+   against the working tree turned every such edit into a night-mode failure.
+   OG_NIGHT_HEAD overrides; with no such ref the working tree is used. */
+const HEAD_REF = process.env.OG_NIGHT_HEAD || 'feature/night-mode';
+const hasHead = git('rev-parse', '--verify', '--quiet', HEAD_REF).status === 0;
+const changed = (hasHead ? git('diff', '--name-only', BASE, HEAD_REF, '--', 'deploy/shop-proxy') : git('diff', '--name-only', BASE, '--', 'deploy/shop-proxy')).stdout.trim().split('\n').filter(Boolean).sort();
 check('only default.conf.template and README.md differ in deploy/shop-proxy',
   JSON.stringify(changed) === JSON.stringify(['deploy/shop-proxy/README.md', 'deploy/shop-proxy/default.conf.template'])
   || JSON.stringify(changed) === JSON.stringify(['deploy/shop-proxy/default.conf.template']), changed.join(', '));
 const oldConf = lf(git('show', BASE + ':deploy/shop-proxy/default.conf.template').stdout).split('\n');
-const newConf = lf(readFileSync(join(REPO, 'deploy', 'shop-proxy', 'default.conf.template'), 'utf8')).split('\n');
+const newConf = lf(hasHead ? git('show', HEAD_REF + ':deploy/shop-proxy/default.conf.template').stdout
+  : readFileSync(join(REPO, 'deploy', 'shop-proxy', 'default.conf.template'), 'utf8')).split('\n');
 const downLine = (l) => /^\s*return 503 '<!doctype html>/.test(l) && l.includes('The shop&#39;s internet is down');
 let j = 0, missing = [];
 for (const l of oldConf) {
@@ -58,7 +67,9 @@ for (const l of oldConf) {
   else j++;
 }
 check('every other line of the old config is still there, in order', missing.length === 0, missing.slice(0, 3).join(' | '));
-const newDown = newConf.find(downLine);
+/* The down page is checked in TODAY'S file: what the proxy serves now. */
+const curConf = lf(readFileSync(join(REPO, 'deploy', 'shop-proxy', 'default.conf.template'), 'utf8')).split('\n');
+const newDown = curConf.find(downLine);
 const oldDown = oldConf.find(downLine);
 check('the down page keeps everything it said, and gains the /night button',
   newDown && oldDown && newDown.includes('href="/night"') &&

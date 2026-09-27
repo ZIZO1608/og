@@ -351,8 +351,10 @@ export function render(sale, lang, opts = {}) {
   const stamped = rows.filter((r) => r.at);
   const lastAt = stamped.length ? stamped[stamped.length - 1].at : sale.at;
 
-  /* The dollar value AT THE RATE OF THAT DAY, never today's. */
-  const usd = sale.fx_rate
+  /* The dollar value AT THE RATE OF THAT DAY, never today's. Only for a sale
+     in another currency: a dollar sale carries fx_rate 1, and "≈ $154.30 at
+     1 / $" under a bill already in dollars says nothing. */
+  const usd = sale.fx_rate && cur !== 'USD'
     ? (sale.total / Math.pow(10, minorExp(cur)) / sale.fx_rate).toFixed(2)
     : null;
 
