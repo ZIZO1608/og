@@ -318,6 +318,26 @@ export const JOBS = {
     steps: () => [['node', ['scripts/vps.js', 'deploy']]]
   },
 
+  /* AUTO-PUBLISH (27 Sep 2026, the owner's decision): not a button. The
+     launcher starts this by itself once a minute when there is a new COMMIT
+     (panel/lib/autoship.js decides; panel.js runs it): push it to GitHub,
+     then build it on the VPS (the tests first; nothing changes if they fail)
+     and switch the shop over at once. The VPS gets the exact commit that
+     went to GitHub (--ref), never the working tree. OG_PANEL_AUTOSHIP=0
+     turns the whole thing off. */
+  autoShip: {
+    label: 'Auto-publish',
+    group: 'dev',
+    auto: true,
+    blurb: 'Each new commit goes to GitHub and then to the shop on the VPS by itself.',
+    while: 'any',
+    cwd: 'server',
+    steps: (a) => [
+      ...(a.push ? [['git', ['-C', '..', 'push', 'origin', 'HEAD:main']]] : []),
+      ...(a.deploy && /^[0-9a-f]{7,40}$/.test(String(a.sha || '')) ? [['node', ['scripts/vps.js', 'deploy', '--ref', a.sha]]] : [])
+    ]
+  },
+
   vpsLogs: {
     label: 'VPS shop log',
     group: 'dev',

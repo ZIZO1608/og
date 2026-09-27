@@ -36,6 +36,8 @@ import * as TLS from '../server/lib/tls.js';
 import { lanAddresses } from '../server/lib/net.js';
 import * as Links from './lib/links.js';
 import * as Lights from './lib/lights.js';
+import * as AutoShip from './lib/autoship.js';
+import { SHIP } from '../server/scripts/vps.js';
 
 /* The shop's own server/.env, read the way the server reads it, so the
    panel's idea of which port to check is never a second guess at it. */
@@ -1557,6 +1559,9 @@ function runJob(name, args = {}) {
       say('  This is for a NEW laptop after the old one is gone for good.', 'err');
     }
     push('done', { name, code, label: spec.label });
+    /* The launcher's own callers (auto-publish) hear how it ended and how
+       far it got; a request from the window carries no function. */
+    if (typeof args.onDone === 'function') { try { args.onDone(code, i); } catch (e) { say('  ' + e.message, 'err'); } }
     if (reopen || (spec.aroundShop && code === 0)) {
       say('  Opening the shop again...', 'note');
       startServer();
@@ -1631,10 +1636,119 @@ function body(req) {
 /* What the buttons are, minus the code that runs them — the window draws
    itself from this, so a job added to jobs.js appears without the UI being
    edited as well. */
+/* ================================================================ auto-publish
+   Every new COMMIT goes to GitHub and to the shop on the VPS by itself — the
+   owner's decision of 27 Sep 2026; panel/lib/autoship.js says what counts as
+   new and why, the autoShip job in jobs.js is what runs.
+
+   ONLY THE REAL LAUNCHER DOES THIS. A test panel started from a script
+   (tools/always-on/panel.mjs and friends) runs from this same repository,
+   and one that pushed to GitHub or restarted the live shop would be a test
+   that ships. So it is on when OG System.exe started this panel
+   (OG_PANEL_PARENT=1) and no test override is set, or when
+   OG_PANEL_AUTOSHIP=1 says so explicitly; OG_PANEL_AUTOSHIP=0 turns it off. */
+const SHIP_EVERY_MS = Number(process.env.OG_PANEL_AUTOSHIP_MS) || 60 * 1000;
+const autoship = {
+  on: process.env.OG_PANEL_AUTOSHIP === '1' ||
+      (process.env.OG_PANEL_AUTOSHIP !== '0' && process.env.OG_PANEL_PARENT === '1' &&
+       !process.env.OG_PANEL_SERVER_DIR && !process.env.OG_PANEL_LOG_DIR),
+  busy: false,
+  shipped: null,     // the commit the VPS runs (12 characters), once known
+  vpsKnown: false,   // asked the VPS and it answered
+  failed: null,      // { sha, at, n } — a deploy that did not land
+  pushFailedAt: 0,   // a push GitHub refused; not tried again for ten minutes
+  said: null         // the last "waiting/stuck" reason written to the log
+};
+
+function captureRun(bin, argv, { cwd = ROOT, timeoutMs = 60000 } = {}) {
+  return new Promise((done) => {
+    let out = '';
+    let p;
+    try { p = spawn(EXE[bin] || bin, argv, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch (e) { return done({ code: -1, out: e.message }); }
+    const t = setTimeout(() => { try { p.kill(); } catch { /* gone */ } }, timeoutMs);
+    p.stdout.on('data', (b) => { out += b; });
+    p.stderr.on('data', (b) => { out += b; });
+    p.on('error', (e) => { clearTimeout(t); done({ code: -1, out: out + e.message }); });
+    p.on('exit', (code) => { clearTimeout(t); done({ code: code == null ? -1 : code, out }); });
+  });
+}
+
+async function autoshipTick() {
+  if (!autoship.on || autoship.busy || job) return;
+  autoship.busy = true;
+  try {
+    /* What the VPS runs is asked once and then kept up to date by the
+       deploys made here — asking over SSH every minute would be sixty
+       logins an hour to learn nothing. Asked again after a failure. */
+    if (!autoship.vpsKnown) {
+      const r = await captureRun('node', ['scripts/vps.js', 'built'], { cwd: SERVER, timeoutMs: 60000 });
+      const sha = (r.out || '').trim().split(/\s+/).pop() || '';
+      if (r.code === 0 && /^[0-9a-f]{7,40}$/.test(sha)) { autoship.shipped = sha.slice(0, 12); autoship.vpsKnown = true; }
+    }
+    const f = await AutoShip.facts({
+      git: (a) => captureRun('git', ['-C', ROOT, ...a], { timeoutMs: 60000 }),
+      ship: SHIP, shipped: autoship.shipped
+    });
+    const d = AutoShip.decide(f, {
+      shipped: autoship.shipped, failed: autoship.failed, vpsKnown: autoship.vpsKnown, busy: !!job
+    });
+    const pushBlocked = d.push && Date.now() - autoship.pushFailedAt < 10 * 60 * 1000;
+
+    if (d.act === 'stuck' || d.act === 'wait' || d.why === 'failed_before' || pushBlocked) {
+      const why = pushBlocked ? 'push_refused' : d.why;
+      if (autoship.said !== why) {
+        autoship.said = why;
+        const words = {
+          diverged: `this laptop and GitHub both have commits the other has not (${d.ahead} here, ${d.behind} there) — press "Get the latest code", then it carries on`,
+          fetch_failed: 'GitHub could not be reached — trying again every minute',
+          vps_unreachable: 'the VPS could not be asked what it runs — GitHub gets the commit, the shop waits',
+          failed_before: 'the last build did not land — it is tried again in ten minutes, and a newer commit goes at once',
+          push_refused: 'GitHub refused the push — trying again in ten minutes'
+        };
+        say('  Auto-publish: ' + (words[why] || why), why === 'fetch_failed' || why === 'vps_unreachable' ? 'note' : 'err');
+      }
+      if (d.act !== 'ship' || pushBlocked) return;
+    }
+    if (d.act !== 'ship') { autoship.said = null; return; }
+    autoship.said = null;
+
+    say('  Auto-publish: ' + [d.push && 'pushing to GitHub', d.deploy && 'sending to the shop'].filter(Boolean).join(', then ') +
+        ' — ' + d.sha.slice(0, 12), 'note');
+    runJob('autoShip', {
+      push: d.push, deploy: d.deploy, sha: d.sha,
+      onDone: (code, stepsRun) => {
+        if (code === 0) {
+          if (d.deploy) { autoship.shipped = d.sha.slice(0, 12); autoship.failed = null; }
+          return;
+        }
+        /* Which step stopped it: the push is step 1 when there is one. */
+        if (d.push && stepsRun <= 1) { autoship.pushFailedAt = Date.now(); return; }
+        if (d.deploy) {
+          const again = autoship.failed && autoship.failed.sha === d.sha;
+          autoship.failed = { sha: d.sha, at: Date.now(), n: again ? autoship.failed.n + 1 : 1 };
+          autoship.vpsKnown = false;
+        }
+      }
+    });
+  } catch (e) {
+    say('  Auto-publish: ' + e.message, 'err');
+  } finally {
+    autoship.busy = false;
+  }
+}
+
+if (autoship.on) {
+  say('  Auto-publish is on: each new commit goes to GitHub and to the shop (OG_PANEL_AUTOSHIP=0 turns it off).', 'note');
+  setTimeout(autoshipTick, 30 * 1000).unref();
+  setInterval(autoshipTick, SHIP_EVERY_MS).unref();
+}
+
 function catalogue() {
   const out = {};
   for (const [k, v] of Object.entries(JOBS)) {
     out[k] = {
+      auto: !!v.auto,
       label: v.label, blurb: v.blurb, danger: v.danger || null,
       needs: v.needs || null, while: v.while,
       /* `group` is what lets the window draw the list from the table rather

@@ -151,6 +151,13 @@
       else askRealPrint();
       return;
     }
+    /* Auto-publish says what happened to the SHOP, not the name of a job
+       nobody pressed. */
+    if (d.name === 'autoShip') {
+      if (d.code) toast('err', t('autoShipFailed'), devOn() ? t('showDetails') : null, function () { openDev('log'); });
+      else toast('ok', t('autoShipDone'));
+      return;
+    }
     if (d.code) {
       toast('err', t('jobStopped', { label: label }),
         devOn() ? t('showDetails') : null, function () { openDev('log'); });
@@ -1347,6 +1354,7 @@
         var j = JOBS[name];
         if ((j.group || 'shop') !== g) continue;
         if (j.needs === 'message') continue;   /* it has its own row, with a box */
+        if (j.auto) continue;                  /* auto-publish runs by itself, not from a button */
 
         /* The rule runJob enforces: a job that closes the shop AROUND itself
            is not blocked by the shop being open. */

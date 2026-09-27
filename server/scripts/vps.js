@@ -641,7 +641,7 @@ async function cmdTakeBack({ go = false } = {}) {
 
 /* The two .env rewrites are pure, and server/test/vps-env.test.js holds them
    to a round trip; importing this file for them must not run a command. */
-export { standbyText, primaryText, envValues, PARK, PARKED };
+export { standbyText, primaryText, envValues, PARK, PARKED, SHIP };
 
 async function main() {
   const [cmd = 'status', ...rest] = process.argv.slice(2);
@@ -650,6 +650,9 @@ async function main() {
   Env.load();
   switch (cmd) {
     case 'status': await cmdStatus(); break;
+    /* One line, for the launcher's auto-publish: the commit the VPS shop is
+       running (OG_BUILD), or nothing when there is none yet. */
+    case 'built': { const f = await vpsFacts(); process.stdout.write((f.build || '') + '\n'); break; }
     case 'setup': await cmdSetup(); break;
     case 'deploy': await cmdDeploy({ start: !flag('--no-start'), ref: refAt > -1 ? rest[refAt + 1] : 'HEAD' }); say(''); break;
     case 'env': await cmdEnv(); break;

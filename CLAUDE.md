@@ -3604,6 +3604,23 @@ Developer → Tools → **Move the shop to the VPS** (typed word `VPS`).
   **Send the code to the VPS**). That sends the **committed** code by `git archive` over SSH,
   builds it on the VPS (the tests run in the build) and swaps the container. A failed build
   changes nothing. `releases/<commit>/` keeps the last five; `.env` there holds `OG_BUILD`.
+- **AUTO-PUBLISH (27 Sep 2026, the owner's decision): every COMMIT on `main` goes to GitHub and
+  to the shop by itself.** The real launcher checks once a minute (`autoshipTick()` in
+  `panel/panel.js`, the rules in `panel/lib/autoship.js`, the `autoShip` job in `panel/jobs.js`):
+  a local commit GitHub has not got is pushed (`git push origin HEAD:main`); then the commit
+  GitHub has is built on the VPS with `vps.js deploy --ref <sha>` and the shop switches over
+  **at once** (the owner chose immediately over waiting for a quiet till). A commit that changes
+  nothing in `SHIP` is pushed and not deployed. A commit pushed from another machine is deployed
+  the same way. **Uncommitted edits never go** — the owner chose the commit as the unit, after
+  24 Sep's half-applied migration. Laptop and GitHub diverged → nothing goes and the log says
+  "Get the latest code". A failed build is retried at most three times, ten minutes apart; a
+  newer commit goes at once. What the VPS runs is asked once (`vps.js built`) and then kept by
+  the deploys themselves. **Only the launcher `OG System.exe` started does this**
+  (`OG_PANEL_PARENT=1` and no test override), because a test panel runs from this repository and
+  would otherwise ship; `OG_PANEL_AUTOSHIP=0` turns it off, `=1` forces it on. The window toasts
+  `autoShipDone` / `autoShipFailed`, not a job name. `panel/test/autoship.test.js` (10) runs the
+  rules against a real repository with a local bare "GitHub". **So a commit here IS a release:
+  commit finished, tested work only.**
 - **Its port is published on the WireGuard address only** (`10.8.0.1:8090`). The proxy reaches it
   there, and so does the laptop (the standby's copies and the offline replay). The internet does
   not reach it at all. `npm run vps -- setup` makes Docker start after `wg-quick@wg0`
