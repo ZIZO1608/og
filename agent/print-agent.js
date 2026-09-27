@@ -163,11 +163,18 @@ async function ensureLoggedIn(s) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+/* `copy` says WHY it failed on stdout, not stderr ("Access is denied.", "The
+   network name cannot be found."), so the reason is added to the error's
+   message. Without it, five receipts in a row were logged as a bare "Command
+   failed" and the cause had to be guessed at (27 Sep 2026). */
 function execFileP(cmd, args) {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, (err, stdout, stderr) => {
-      if (err) reject(Object.assign(err, { stderr }));
-      else resolve(stdout);
+      if (err) {
+        const said = String(stdout || '').trim() + ' ' + String(stderr || '').trim();
+        if (said.trim()) err.message = err.message.trim() + ' — ' + said.trim();
+        reject(Object.assign(err, { stderr }));
+      } else resolve(stdout);
     });
   });
 }
