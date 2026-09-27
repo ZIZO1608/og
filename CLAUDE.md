@@ -288,15 +288,17 @@ panel/launcher/OGSystem.cs  the .exe's source. panel/build-exe.ps1 compiles it; 
   ever reaches the published site. **`OGSystem.cs` and `build-exe.ps1` stay pure ASCII** —
   `csc` and PowerShell 5.1 both read a file without a BOM as ANSI, and an em-dash in a
   MessageBox string arrives as two wrong characters.
-- **The icon is drawn, not exported** — `panel/make-icon.js` writes `panel/og.ico` (the `.exe`,
-  the tray) and `panel/ui/icon.png` (the window's favicon) from one description in fractions of
-  the icon's own side: a lime `#C6FF00` ring on the shop's near-black tile, circles and a rounded
-  square with exact distance functions so a pixel's coverage is arithmetic and needs no image
-  library. It used to repackage `assets/icon-512.png`, which is the brush-drawn OG mark on a black
-  square **with black padding around it** — right on a phone at 192px, a dark smudge at the 16px
-  the taskbar actually asks for. **A taskbar icon is a different job from an app icon**; the
-  shop's own mark in `assets/` is untouched and is still what a phone home screen and every screen
-  in the app show.
+- **The icon is the shop's OG mark, drawn per size from `panel/og-mark.png`** (the owner's
+  artwork, 25 Sep 2026 — it replaced a lime ring drawn in arithmetic). `panel/make-icon.js`
+  decodes that PNG itself (no image library), turns it into a white-ink mask, and averages it
+  down BY AREA into a rounded black tile: `panel/og.ico` (the `.exe`, the tray),
+  `panel/ui/icon.png` (the window's favicon) and **`panel/ui/qr-logo.png` (the middle of the
+  panel's QR codes, `QR_LOGO` in `panel/ui/panel.js`)**. **Each size crops to the mark itself**
+  (`fillFor`: 74% of the tile at 256, 94% at 16) — the artwork's own black margin left the mark
+  ten pixels wide in the taskbar, which is what `assets/icon-512.png` (the same mark, padded)
+  looked like there. The small sizes also have their white lifted, or sub-pixel strokes grey
+  out. To change the mark, replace `og-mark.png` and run `build-exe.ps1`. `assets/` is
+  untouched and is still what a phone home screen and every screen in the app show.
   - **Only the 256 is a PNG entry; 64 and below are BMP.** `System.Drawing.Icon` on the .NET
     Framework — which is how `LoadIcon` in `OGSystem.cs` gets the tray icon — **cannot decode a
     PNG entry at all**: it throws `Requested range extends past the end of the array`, and at 64
@@ -304,8 +306,6 @@ panel/launcher/OGSystem.cs  the .exe's source. panel/build-exe.ps1 compiles it; 
     until something asks in code. Measured, not assumed: the first draft had PNG down to 64.
     **A PNG entry at or below 48 puts a blank in the tray.** 128 is left out on purpose — 66 KB
     of BMP for a size Windows scales from the 256 indistinguishably.
-  - The small sizes get a **heavier ring** (`SMALL_HALF`): below about 32px the stroke is under
-    two pixels and the anti-aliasing spends most of it, so the lime greys out.
 - **The window is Edge in `--app` mode** (Chrome second, the default browser as a plain tab
   third): no address bar, its own taskbar button, our icon. The panel is HTML because the shop
   is HTML — one design system, and Arabic that already works. A WinForms UI would have been the

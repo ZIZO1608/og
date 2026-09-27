@@ -1,17 +1,27 @@
 /* ==========================================================================
-   OG SYSTEM — the launcher's mark  ·  panel\og.ico + panel\ui\icon.png
+   OG SYSTEM — the launcher's mark
+   panel\og.ico  ·  panel\ui\icon.png  ·  panel\ui\qr-logo.png
    --------------------------------------------------------------------------
-   The O, in the shop's lime on the shop's near-black, drawn here rather than
-   copied from a picture. It used to repackage assets\icon-512.png, which is
-   the brush-drawn OG mark on a black square with black padding around it —
-   right on a phone home screen at 192px, and a dark smudge at the 16px the
-   Windows taskbar actually asks for. A taskbar icon is a different job from
-   an app icon and needs its own drawing, not the same one made smaller.
+   The shop's OG mark, white on black, read from panel\og-mark.png — the
+   artwork the owner handed over on 25 Sep 2026 and asked to see on the .exe
+   and in the middle of the launcher's QR codes. Until then this file drew a
+   lime O in arithmetic: a good shape at 16px, and not the shop's mark.
 
-   Nothing is installed for this. The shapes are circles and a rounded square,
-   which have exact distance functions, so a pixel's coverage is arithmetic and
-   the edges come out smooth without a single sample being taken twice. PNG is
-   node:zlib plus four CRC32s. The BMP is the format's own 1990s layout.
+   The artwork is READ, not copied. It is decoded here (node:zlib and the PNG
+   format's own five row filters), turned into a mask of white ink — anything
+   near black is black and anything near white is white, which takes out the
+   speckle a photographed or re-saved logo carries — and averaged down to each
+   size BY AREA, so every output pixel is exactly the share of it the mark
+   covers. Nothing is installed for this.
+
+   HOW TIGHT. The artwork keeps about a fifth of its side as black margin all
+   round: right for a picture, wasteful at 16px, where it leaves the mark ten
+   pixels wide. So each size crops to the mark itself plus a margin of its own
+   (`fillFor` below — the share of the tile the mark's longer side takes):
+   generous where there is room, almost none in the tray and the taskbar.
+   The small sizes also get their white pushed a little brighter, because a
+   stroke thinner than a pixel otherwise averages to a grey that reads as
+   dirt on a dark taskbar.
 
    WHY BOTH FORMATS IN ONE .ICO. Since Vista an icon entry may be a PNG file
    byte for byte, which is how the 256 is written — a 256x256 BMP is 256 KB of
@@ -29,38 +39,36 @@
    that way — a PNG entry at or below 48 puts a blank in the tray.
 
    Run it from panel\build-exe.ps1 or by hand: node panel/make-icon.js
+   To change the mark, replace panel\og-mark.png (a white mark on a black
+   ground, at least as big as the largest size written here) and run it again.
    ========================================================================== */
 
-import { writeFileSync } from 'node:fs';
-import { deflateSync } from 'node:zlib';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const SOURCE = join(HERE, 'og-mark.png');
 
 /* --------------------------------------------------------------------------
-   The mark
+   The tile
    --------------------------------------------------------------------------
    Every measurement is a fraction of the icon's own side, so one description
-   draws all seven sizes. The tile is full-bleed: Windows adds its own padding
-   in every place it draws this, and padding baked into the picture on top of
-   that is what made the old mark small in its own frame.
+   draws every size. The tile is full-bleed: Windows adds its own padding in
+   every place it draws this, and padding baked into the picture on top of
+   that is what made the shop's older mark small in its own frame.
    -------------------------------------------------------------------------- */
 
-const TILE_R = 0.22;          // corner radius — Windows 11's own proportion
-const RING_MID = 0.2695;      // centre of the stroke, from the middle
-const RING_HALF = 0.0586;     // half the stroke's width
+const TILE_R = 0.22;                  // corner radius — Windows 11's own proportion
+const INK = [0xFF, 0xFF, 0xFF];       // the mark, as the artwork has it
+const GROUND = [0x00, 0x00, 0x00];    // the artwork's black
+const HAIRLINE = [0x2E, 0x2E, 0x33];  // one step above --border
 
-/* Under about 32px a stroke this fine is a grey suggestion rather than a lime
-   ring: less than two pixels, and the anti-aliasing spends most of it. The
-   small sizes get a heavier ring — the same trick a type designer calls a
-   hinted weight, and the reason the icon still reads in a crowded taskbar. */
-const SMALL_HALF = 0.0700;
-
-const LIME = [0xC6, 0xFF, 0x00];
-const TILE_TOP = [0x16, 0x16, 0x1A];    // --card, lifted
-const TILE_BOTTOM = [0x0A, 0x0A, 0x0B]; // --app
-const HAIRLINE = [0x2E, 0x2E, 0x33];    // one step above --border
+/* The mask. Luminance at or under LO is ground, at or over HI is ink, and the
+   anti-aliased edge between them is kept in proportion. */
+const LO = 0.10;
+const HI = 0.90;
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -78,7 +86,7 @@ function roundedRect(x, y, half, r) {
 }
 
 /* Source-over, straight alpha. The canvas starts empty, so this is the whole
-   compositor: four of these and the icon is drawn. */
+   compositor. */
 function over(dst, i, rgb, a) {
   if (a <= 0) return;
   const da = dst[i + 3] / 255;
@@ -90,23 +98,196 @@ function over(dst, i, rgb, a) {
   dst[i + 3] = Math.round(oa * 255);
 }
 
-function render(px) {
+/* --------------------------------------------------------------------------
+   Reading the artwork — a PNG decoder for what a logo is saved as
+   --------------------------------------------------------------------------
+   Eight bits per channel, not interlaced, any of the five colour types
+   (grey, RGB, palette, grey+alpha, RGBA), with a palette's transparency if it
+   has one. Anything else is refused by name rather than drawn wrong.
+   -------------------------------------------------------------------------- */
+
+function decodePng(buf) {
+  const SIG = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+  if (SIG.some((b, i) => buf[i] !== b)) throw new Error('og-mark.png is not a PNG file');
+
+  let w = 0, h = 0, depth = 0, type = 0, interlace = 0;
+  let palette = null, trns = null;
+  const idat = [];
+  for (let at = 8; at < buf.length;) {
+    const len = buf.readUInt32BE(at);
+    const kind = buf.toString('ascii', at + 4, at + 8);
+    const data = buf.subarray(at + 8, at + 8 + len);
+    if (kind === 'IHDR') {
+      w = data.readUInt32BE(0); h = data.readUInt32BE(4);
+      depth = data[8]; type = data[9]; interlace = data[12];
+    } else if (kind === 'PLTE') palette = data;
+    else if (kind === 'tRNS') trns = data;
+    else if (kind === 'IDAT') idat.push(data);
+    else if (kind === 'IEND') break;
+    at += 12 + len;
+  }
+  if (depth !== 8) throw new Error('og-mark.png: only 8 bits per channel is read here (this one is ' + depth + ')');
+  if (interlace) throw new Error('og-mark.png: save it without interlacing');
+  const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[type];
+  if (!channels) throw new Error('og-mark.png: unknown colour type ' + type);
+  if (type === 3 && !palette) throw new Error('og-mark.png: a palette image with no palette');
+
+  /* Undo the row filters. Each row starts with a byte saying which of five
+     predictors it was written against; at 8 bits "left" is one pixel back. */
+  const raw = inflateSync(Buffer.concat(idat));
+  const bpp = channels;
+  const stride = w * channels;
+  const px = Buffer.alloc(stride * h);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)];
+    const src = y * (stride + 1) + 1;
+    const row = y * stride;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? px[row + x - bpp] : 0;
+      const b = y > 0 ? px[row - stride + x] : 0;
+      const c = x >= bpp && y > 0 ? px[row - stride + x - bpp] : 0;
+      let p;
+      switch (f) {
+        case 0: p = 0; break;
+        case 1: p = a; break;
+        case 2: p = b; break;
+        case 3: p = (a + b) >> 1; break;
+        case 4: {
+          const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c);
+          p = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+          break;
+        }
+        default: throw new Error('og-mark.png: unknown row filter ' + f);
+      }
+      px[row + x] = (raw[src + x] + p) & 0xFF;
+    }
+  }
+
+  const rgba = Buffer.alloc(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    const s = i * channels, d = i * 4;
+    if (type === 3) {
+      const k = px[s];
+      rgba[d] = palette[k * 3]; rgba[d + 1] = palette[k * 3 + 1]; rgba[d + 2] = palette[k * 3 + 2];
+      rgba[d + 3] = trns && k < trns.length ? trns[k] : 255;
+    } else if (type === 0 || type === 4) {
+      rgba[d] = rgba[d + 1] = rgba[d + 2] = px[s];
+      rgba[d + 3] = type === 4 ? px[s + 1] : 255;
+    } else {
+      rgba[d] = px[s]; rgba[d + 1] = px[s + 1]; rgba[d + 2] = px[s + 2];
+      rgba[d + 3] = type === 6 ? px[s + 3] : 255;
+    }
+  }
+  return { w, h, rgba };
+}
+
+/* The ink mask and where the mark actually is. A transparent pixel is ground:
+   the artwork is a white mark, and whatever is behind it is the tile. */
+function readMark(file) {
+  const { w, h, rgba } = decodePng(readFileSync(file));
+  const ink = new Float32Array(w * h);
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const lum = (0.2126 * rgba[i * 4] + 0.7152 * rgba[i * 4 + 1] + 0.0722 * rgba[i * 4 + 2]) / 255;
+      const v = clamp01((lum - LO) / (HI - LO)) * (rgba[i * 4 + 3] / 255);
+      ink[i] = v;
+      if (v >= 0.5) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) throw new Error('og-mark.png has no white mark on it to draw');
+  return { w, h, ink, box: { x0, y0, x1: x1 + 1, y1: y1 + 1 } };
+}
+
+let MARK = null;
+const mark = () => (MARK || (MARK = readMark(SOURCE)));
+
+/* Average the mask over one output pixel's square of the artwork, by area.
+   A box filter is separable: across the rows first, then down the columns.
+   Off the edge of the artwork is ground. Every size written here is at or
+   below the artwork's own resolution, so this only ever shrinks. */
+function sampleSquare(m, sx, sy, side, px) {
+  const s = side / px;
+  /* For each output index, the source cells it overlaps and by how much. */
+  const spans = (from) => {
+    const out = [];
+    for (let o = 0; o < px; o++) {
+      const a = from + o * s, b = a + s;
+      const cells = [];
+      for (let k = Math.floor(a); k < Math.ceil(b); k++) {
+        const wgt = Math.min(b, k + 1) - Math.max(a, k);
+        if (wgt > 0) cells.push(k, wgt);
+      }
+      out.push(cells);
+    }
+    return out;
+  };
+  const cols = spans(sx), rows = spans(sy);
+
+  const across = new Float32Array(m.h * px);
+  for (let y = 0; y < m.h; y++) {
+    for (let o = 0; o < px; o++) {
+      const cells = cols[o];
+      let sum = 0;
+      for (let j = 0; j < cells.length; j += 2) {
+        const k = cells[j];
+        if (k >= 0 && k < m.w) sum += m.ink[y * m.w + k] * cells[j + 1];
+      }
+      across[y * px + o] = sum / s;
+    }
+  }
+  const out = new Float32Array(px * px);
+  for (let o = 0; o < px; o++) {
+    const cells = rows[o];
+    for (let x = 0; x < px; x++) {
+      let sum = 0;
+      for (let j = 0; j < cells.length; j += 2) {
+        const k = cells[j];
+        if (k >= 0 && k < m.h) sum += across[k * px + x] * cells[j + 1];
+      }
+      out[o * px + x] = clamp01(sum / s);
+    }
+  }
+  return out;
+}
+
+/* How much of the tile the mark's longer side takes, per size. */
+function fillFor(px) {
+  if (px <= 16) return 0.94;
+  if (px <= 32) return 0.90;
+  if (px <= 64) return 0.80;
+  return 0.74;
+}
+
+/* --------------------------------------------------------------------------
+   Drawing one size
+   -------------------------------------------------------------------------- */
+
+function render(px, opts = {}) {
+  const m = mark();
+  const fill = opts.fill || fillFor(px);
+  const bw = m.box.x1 - m.box.x0, bh = m.box.y1 - m.box.y0;
+  const side = Math.max(bw, bh) / fill;
+  const sx = (m.box.x0 + m.box.x1) / 2 - side / 2;
+  const sy = (m.box.y0 + m.box.y1) / 2 - side / 2;
+  const ink = sampleSquare(m, sx, sy, side, px);
+
+  /* Brighter white where strokes are thinner than a pixel — see the top. */
+  const lift = px <= 24 ? 0.75 : px <= 32 ? 0.85 : 1;
+
   const out = Buffer.alloc(px * px * 4);      // transparent
   const half = px / 2;
-  const ringMid = RING_MID * px;
-  const ringHalf = (px <= 32 ? SMALL_HALF : RING_HALF) * px;
-  const ringOuter = ringMid + ringHalf;
   const tileR = TILE_R * px;
-
   /* A hairline is one device pixel wherever there are enough of them, and a
-     little more on the big sizes so it is not lost to a scaler. */
-  const hair = Math.max(1, px / 170);
-
-  /* The lime lifts off the tile at the sizes somebody actually looks at — the
-     Start menu, the desktop, a file listing. Below 48 it would be a green haze
-     around a ring two pixels wide, so it is simply not drawn. */
-  const glow = px >= 48;
-  const glowFall = 0.055 * px;
+     little more on the big sizes so it is not lost to a scaler. The QR logo
+     sits on white and needs none. */
+  const hair = opts.hairline === false ? 0 : Math.max(1, px / 170);
 
   for (let y = 0; y < px; y++) {
     for (let x = 0; x < px; x++) {
@@ -114,32 +295,19 @@ function render(px) {
       const cx = x + 0.5 - half;      // pixel centres, from the middle
       const cy = y + 0.5 - half;
 
-      /* 1 — the tile, a vertical lift from --card to --app. */
+      /* 1 — the tile. */
       const dTile = roundedRect(cx, cy, half, tileR);
       const aTile = cover(dTile);
       if (aTile <= 0) continue;       // outside the tile there is nothing else
-      const t = y / (px - 1 || 1);
-      const tile = [
-        Math.round(TILE_TOP[0] + (TILE_BOTTOM[0] - TILE_TOP[0]) * t),
-        Math.round(TILE_TOP[1] + (TILE_BOTTOM[1] - TILE_TOP[1]) * t),
-        Math.round(TILE_TOP[2] + (TILE_BOTTOM[2] - TILE_TOP[2]) * t)
-      ];
-      over(out, i, tile, aTile);
+      over(out, i, GROUND, aTile);
 
       /* 2 — the hairline just inside the edge, so the tile has a shape of its
          own against a dark taskbar rather than dissolving into it. */
-      const aHair = cover(Math.abs(dTile + hair / 2) - hair / 2) * aTile;
-      over(out, i, HAIRLINE, aHair * 0.9);
+      if (hair) over(out, i, HAIRLINE, cover(Math.abs(dTile + hair / 2) - hair / 2) * aTile * 0.9);
 
-      /* 3 — the halo, outside the ring only. Inside would fill the counter,
-         and a filled counter is not an O any more. */
-      const r = Math.hypot(cx, cy);
-      if (glow && r > ringOuter) {
-        over(out, i, LIME, 0.14 * Math.exp(-(r - ringOuter) / glowFall) * aTile);
-      }
-
-      /* 4 — the O. */
-      over(out, i, LIME, cover(Math.abs(r - ringMid) - ringHalf) * aTile);
+      /* 3 — the mark. */
+      const a = ink[y * px + x];
+      if (a > 0) over(out, i, INK, (lift < 1 ? Math.pow(a, lift) : a) * aTile);
     }
   }
   return out;
@@ -234,7 +402,7 @@ function bmp(px, rgba) {
 }
 
 /* --------------------------------------------------------------------------
-   The file
+   The files
    -------------------------------------------------------------------------- */
 
 const SIZES = [
@@ -247,6 +415,14 @@ const SIZES = [
 ];
 /* 128 is deliberately absent: it would be 66 KB of BMP, and Windows scaling
    the 256 down to it is indistinguishable from drawing it. */
+
+/* The middle of the launcher's QR codes (QR_LOGO in panel\ui\panel.js). The
+   largest code is the full-screen one, 960 CSS px with the logo at 18% of it,
+   so 256 keeps the mark sharp there without going past the artwork's own
+   size. It sits on the code's white square, so it wants no hairline, and the
+   mark fills more of it, because it is small on the code. */
+const QR_LOGO_PX = 256;
+const QR_LOGO_FILL = 0.80;
 
 function build() {
   const images = SIZES.map((s) => {
@@ -285,14 +461,17 @@ function build() {
      page's icon for its taskbar button, and with no icon on the page that
      button was the browser's grey globe — the launcher's own window looking
      like a stray tab. It is written beside the window's other files rather
-     than into assets\, because assets\ is the SHOP's mark and this one is the
-     launcher's. */
+     than into assets\, which belongs to the shop and the phone home screen. */
   writeFileSync(join(HERE, 'ui', 'icon.png'), png(128, render(128)));
 
+  writeFileSync(join(HERE, 'ui', 'qr-logo.png'),
+    png(QR_LOGO_PX, render(QR_LOGO_PX, { fill: QR_LOGO_FILL, hairline: false })));
+
   const kb = (n) => (n / 1024).toFixed(1) + ' KB';
-  console.log('  panel\\og.ico     —  ' + SIZES.map((s) => s.px).join(', ') +
+  console.log('  panel\\og.ico         —  ' + SIZES.map((s) => s.px).join(', ') +
               '  (' + kb(at) + ')');
-  console.log('  panel\\ui\\icon.png —  128px, the window\'s favicon');
+  console.log('  panel\\ui\\icon.png    —  128px, the window\'s favicon');
+  console.log('  panel\\ui\\qr-logo.png —  ' + QR_LOGO_PX + 'px, the middle of the QR codes');
 }
 
 /* Exported so the mark can be drawn at a size nothing here writes — a contact
@@ -302,6 +481,6 @@ function build() {
    The writing is behind the is-this-the-main-module check for exactly that
    reason: a preview script that imports `render` must not silently rewrite the
    icon it was opened to look at. */
-export { render, png, bmp, build };
+export { render, png, bmp, build, decodePng };
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) build();

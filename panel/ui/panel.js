@@ -789,8 +789,9 @@
 
   /* The logo spends part of error correction H. panel/test/qr.test.js reads
      this number out of this file and proves what is left still repairs
-     everything the logo hides — change it and the test measures the new one. */
-  var QR_LOGO = { logo: '/ui/icon.png', logoRatio: 0.18 };
+     everything the logo hides — change it and the test measures the new one.
+     The picture is the shop's OG mark, drawn by panel/make-icon.js. */
+  var QR_LOGO = { logo: '/ui/qr-logo.png', logoRatio: 0.18 };
 
   function qrSvg(text, size) {
     if (!text || typeof Codes === 'undefined' || !Codes.qrSVG) return '';

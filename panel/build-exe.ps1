@@ -47,10 +47,11 @@ if (-not $csc) {
 Write-Host "  compiler : $csc" -ForegroundColor DarkGray
 
 # --- the icon, drawn by panel\make-icon.js -----------------------------------
-# The O, in the shop's lime. Generated rather than committed as artwork: it is
-# arithmetic, it has to exist at six sizes, and a picture somebody exports by
-# hand is a picture that drifts. It also writes panel\ui\icon.png, which is the
-# panel window's favicon and therefore its taskbar button.
+# The shop's OG mark, read from panel\og-mark.png and drawn at six sizes, each
+# cropped and weighted for the size it is (a picture exported by hand at six
+# sizes is six pictures that drift). It also writes panel\ui\icon.png, the
+# panel window's favicon and therefore its taskbar button, and
+# panel\ui\qr-logo.png, the middle of the panel's QR codes.
 $ico = Join-Path $here 'og.ico'
 $node = (Get-Command node -ErrorAction SilentlyContinue)
 if ($node) {
