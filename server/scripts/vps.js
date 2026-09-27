@@ -216,7 +216,7 @@ async function vpsFacts() {
     echo "env=$([ -s ${DIR}/og-shop.env ] && echo yes || echo no)"
     echo "build=$(sed -n 's/^OG_BUILD=//p' ${DIR}/.env 2>/dev/null || true)"
     echo "next=$(sed -n 's/^OG_BUILD=//p' ${DIR}/.env.next 2>/dev/null || true)"
-    echo "backup=$(ls -1t ${DIR}/data/backups 2>/dev/null | head -1)"
+    echo "backup=$(ls -1t ${DIR}/data/backups/*.db 2>/dev/null | head -1 | xargs -r basename)"
     echo "wg=$(ip -4 addr show wg0 2>/dev/null | grep -q 'inet ${TUNNEL_VPS}/' && echo up || echo down)"
     echo "afterwg=$([ -f /etc/systemd/system/docker.service.d/og-after-wireguard.conf ] && echo yes || echo no)"
     echo "gateway=$(docker network inspect coolify --format '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' 2>/dev/null | tr ' ' '\\n' | grep -m1 '\\.' || true)"
