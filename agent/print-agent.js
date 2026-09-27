@@ -107,13 +107,48 @@ function api(method, path, body) {
   });
 }
 
+/* A REFUSED SIGN-IN IS NOT A DROPPED LINE (27 Sep 2026). Both queues used to
+   sign in on their own and retry a refusal after 1 s, 2 s, 4 s … — so a wrong
+   password in agent-config.json spent the shop's 8 failures for that username
+   in about fifteen seconds, and the PERSON who uses the account (the cashier)
+   was locked out of the till for fifteen minutes by a background program.
+   Now one sign-in is shared by both loops, and after the shop refuses one
+   (wrong password, account switched off, too many attempts) nothing is tried
+   again for longer than the shop's lock lasts. The password is read from the
+   file again for every try, so correcting it needs no restart. */
+const LOGIN_REFUSED_WAIT_MS = 16 * 60 * 1000;
+let signingIn = null;
+let refusedUntil = 0;
+
+function freshPassword() {
+  try {
+    const c = JSON.parse(readFileSync(process.env.OG_AGENT_CONFIG || join(HERE, 'agent-config.json'), 'utf8'));
+    return c.password;
+  } catch { return CFG.password; }
+}
+
 async function login() {
-  const res = await api('POST', '/api/auth/login', { username: CFG.username, password: CFG.password });
+  const res = await api('POST', '/api/auth/login', { username: CFG.username, password: freshPassword() });
   console.log('[agent] signed in as', res.user.username, `(${res.user.role})`);
 }
 
 async function ensureLoggedIn() {
-  if (!cookie) await login();
+  if (cookie) return;
+  if (Date.now() < refusedUntil) await sleep(refusedUntil - Date.now());
+  if (cookie) return;
+  if (!signingIn) {
+    signingIn = login().catch((e) => {
+      if (e.status === 401 || e.status === 429) {
+        refusedUntil = Date.now() + LOGIN_REFUSED_WAIT_MS;
+        console.error(`[agent] the shop refused the sign-in as "${CFG.username}" (${e.code || e.status}): ${e.message}`);
+        console.error('[agent] not trying again for 16 minutes — every wrong try counts against that account, and 8 lock its person out.');
+        console.error('[agent] fix "password" in agent-config.json; it is read again on the next try.');
+        e.quiet = true;
+      }
+      throw e;
+    }).finally(() => { signingIn = null; });
+  }
+  await signingIn;
 }
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -189,7 +224,7 @@ async function pollLoop(name, path, print) {
       // ~25s, so looping straight back around here is not a busy-loop.
     } catch (e) {
       if (e.status === 401) cookie = null; // force a fresh login next time round
-      console.error(`[agent] ${name} poll failed:`, e.message);
+      if (!e.quiet) console.error(`[agent] ${name} poll failed:`, e.message);
       await sleep(wait);
       wait = Math.min(MAX_BACKOFF_MS, wait * 2);
     }
