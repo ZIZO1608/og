@@ -2500,6 +2500,8 @@ var DB = {
              club: f.club || '', clubAr: f.clubAr || '',
              print: f.print || null, number: f.number || null,
              size: f.size || 'L', qty: f.qty || 1,
+             /* 069 — the shirt it goes on (the till knows; nothing else sets it). */
+             item: f.item || null,
              price: f.price || CONFIG.KIT_PRINT_PRICE };
   },
 
@@ -2565,7 +2567,8 @@ var DB = {
         lines: (job.lines || []).map(function (l) {
           return {
             clubCode: clubCodeFor(l.club), printName: l.print,
-            number: l.number, size: l.size, qty: l.qty, unitCost: l.price
+            number: l.number, size: l.size, qty: l.qty, unitCost: l.price,
+            item: l.item || null
           };
         })
       }).then(function (r) {

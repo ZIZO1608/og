@@ -131,9 +131,10 @@ export function data(saleId) {
     }
   }
 
-  /* The Yalla Wear print jobs raised at the till on this sale (28 Sep 2026,
-     the owner: the job number and the names go on the receipt). Only what
-     is printed ON the shirts — never unit_cost, which is what Yalla Wear
+  /* The print jobs raised at the till on this sale (28 Sep 2026, the owner:
+     the job number, and for every shirt which shirt, the name and the number,
+     go on the receipt — without naming the printing company). Only what is
+     printed ON the shirts — never unit_cost, which is what Yalla Wear
      charges the shop, and not the job's price either: the till charges the
      print on the job, outside this sale's total, and a figure on the slip
      that is not in its total would read as a mistake. */
@@ -141,7 +142,7 @@ export function data(saleId) {
     `SELECT id, kind, qty FROM print_jobs WHERE sale_id = ? ORDER BY id`
   ).all(saleId);
   const lineQ = get().prepare(
-    `SELECT print_name, number, size, qty FROM print_job_lines WHERE job_id = ? ORDER BY id`
+    `SELECT print_name, number, size, qty, item FROM print_job_lines WHERE job_id = ? ORDER BY id`
   );
   sale.print_jobs = jobs.map((j) => ({ id: j.id, kind: j.kind, qty: j.qty, lines: lineQ.all(j.id) }));
 

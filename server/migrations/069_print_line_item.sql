@@ -1,0 +1,21 @@
+-- =============================================================================
+--  069 — which shirt a print goes on (28 Sep 2026)
+-- -----------------------------------------------------------------------------
+--  The owner asked for the print part of the till's receipt to say, for every
+--  printed shirt, WHICH shirt it is, the name and the number — and not to name
+--  the printing company at all. The till has always known which basket line a
+--  print was picked from (js/pos.js printPicks) and never wrote it down: a job
+--  line carried the name, the number and the size, and "OG Home Jersey" was
+--  lost the moment the job was saved. Two lines of one size on two different
+--  shirts could not be told apart afterwards.
+--
+--  `item` is the product's name as it was sold, FROZEN like sale_items.name —
+--  a receipt says what was true that day. NULL for every line written before
+--  this, and for a job raised anywhere but the till (the website, the Print
+--  screen), which the receipt draws exactly as before.
+--
+--  print_job_lines is mirrored as a child of print_jobs; the column is in
+--  lib/mirror-lag.js until cloud file 039 is run, so nothing is refused.
+-- =============================================================================
+
+ALTER TABLE print_job_lines ADD COLUMN item TEXT;

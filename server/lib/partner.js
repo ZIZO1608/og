@@ -391,12 +391,14 @@ export function create({
           saleId, customerId ?? null, source, at, at, userId);
 
     const ins = d.prepare(
-      `INSERT INTO print_job_lines (job_id, club_code, print_name, number, size, qty, unit_cost)
-       VALUES (?,?,?,?,?,?,?)`
+      `INSERT INTO print_job_lines (job_id, club_code, print_name, number, size, qty, unit_cost, item)
+       VALUES (?,?,?,?,?,?,?,?)`
     );
     for (const l of lines) {
       ins.run(id, l.clubCode ?? null, l.printName || null, l.number ?? null,
-              l.size ?? null, l.qty || 1, l.unitCost || 0);
+              l.size ?? null, l.qty || 1, l.unitCost || 0,
+              /* 069 — the shirt it goes on, as sold (the till only). */
+              l.item ? String(l.item).slice(0, 120) : null);
     }
 
     d.prepare(

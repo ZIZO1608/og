@@ -35,9 +35,9 @@ merged.
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
   PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
-- **Numbers in use:** local migrations run to `068` (`063` is night mode's and applies after `067`
+- **Numbers in use:** local migrations run to `069` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `069`; the next cloud file is `039`.** The cloud files have two `030`s and two
+  local migration is `070`; the next cloud file is `040`.** The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
   `server/supabase/status.sql` says which the live project already has.
 - **A section below that says "not merged", or names one of the old worktree folders, describes
@@ -4057,10 +4057,13 @@ half; the till and the desk do not need it, and the sync skips the two tables by
   was the "it doesn't print automatically". The config rows are left alone; nothing reads them.
 - **A gift prints two slips in one job**: the gift slip for the bag, and `draw(R, 'gift-shop')` —
   the same slip under a second band, SHOP COPY. It is the gift renderer, not a second one.
-- **The Yalla Wear job on the receipt.** `Printing.data` returns `print_jobs` (id, and each line's
-  name, number, size — never `unit_cost`, never the job's price, which is charged outside the
-  sale's total) and `drawPrintJobs` prints a black band, the job number big, then a row per shirt
-  through `rowLR`, which wraps or stacks rather than overlapping. The number is an LRI…PDI run, or
+- **The print job on the receipt.** `Printing.data` returns `print_jobs` (id, and each line's
+  shirt, name, number, size — never `unit_cost`, never the job's price, which is charged outside
+  the sale's total) and `drawPrintJobs` prints a black band that says PRINT (**the owner: never
+  the printing company's name on the receipt**), the job number big, then per shirt which shirt
+  and its size, and the number and name bold under it, all through `rowLR`, which wraps or
+  stacks rather than overlapping. **Which shirt is `print_job_lines.item` (069, cloud 039)**, the
+  product's name as sold, set by the till only; a line without one draws as a single row. The number is an LRI…PDI run, or
   Arabic carries the `#` to the far side ('7#'). **The till used to print before the job existed**
   (the job is created after the sale), and never sent the sale's id — so the job was not linked to
   the sale, AND a cashier without `print.write` was refused outright ("a print job can only be

@@ -791,21 +791,23 @@ var Receipt = (function () {
      `outline` is the same box drawn as a frame, black on white — for what a
      delivery order still owes, and what a driver collects at the door: the
      figure somebody acts on, second only to the total. */
-  /* THE YALLA WEAR BLOCK (28 Sep 2026, the owner: the job number and the
-     names on the receipt, "in a cool way, without errors and overlapping").
+  /* THE PRINT BLOCK (28 Sep 2026, the owner: the job number and, for every
+     shirt, which shirt, the name and the number — "in a cool way, without
+     errors and overlapping" — and NOT the printing company's name).
 
-     A black band says what it is, the job number sits under it big — it is
-     what the customer quotes when they come back for the shirts — and then
-     one row per shirt: the number and the name where an Arabic reader
-     starts, the size on the other side. Every row goes through rowLR, the
-     one helper that measures both sides and wraps or stacks rather than
-     letting a long name print into the size; the job number is fitted to
-     the paper with fitSize. A shirt whose name is not settled yet says so
-     rather than printing an empty line. No money here at all. */
+     A black band says PRINT, the job number sits under it big — it is what
+     the customer quotes when they come back for the shirts — and then per
+     shirt: which shirt and its size on one row, the number and the name,
+     bold, under it. A line written before 069 (or raised off the till) has no
+     item and draws as one row, the number and name beside the size. Every row
+     goes through rowLR, the one helper that measures both sides and wraps or
+     stacks rather than letting a long name print into the size; the job
+     number is fitted to the paper with fitSize. A shirt whose name is not
+     settled yet says so rather than printing an empty line. No money here. */
   function drawPrintJobs(ctx, y, R) {
     (R.printJobs || []).forEach(function (j) {
       y = dashRule(ctx, y);
-      y = drawBand(ctx, y, 'rc2_yalla_print');
+      y = drawBand(ctx, y, 'rc2_print_band');
       var idSize = fitSize(ctx, j.id, CW, 34, 24, '800', 2);
       y = centerText(ctx, j.id, y, { size: idSize, weight: '800', dir: 'ltr', track: 2 });
       if (j.pieces) {
@@ -814,7 +816,9 @@ var Receipt = (function () {
       }
       y += 6;
       j.lines.forEach(function (l, i) {
-        if (i) y += 4;
+        /* A shirt is two rows once it names the shirt; space between shirts
+           so each pair reads as one. */
+        if (i) y += l.item ? 10 : 4;
         /* The number is its own left-to-right run (LRI … PDI): inside an Arabic
            line the bidi algorithm otherwise carries the # to the far side of
            the digits and prints '7#'. */
@@ -822,8 +826,18 @@ var Receipt = (function () {
         var name = l.name || both('rc2_print_tbc');
         var who = num ? (ARABIC.test(name) ? name + '  ' + num : num + '  ' + name) : name;
         var size = l.size ? L('rc2_size').ar + ' ' + l.size + (l.qty > 1 ? '  × ' + l.qty : '') : (l.qty > 1 ? '× ' + l.qty : '');
-        y = rowLR(ctx, y, who, size, { size: 20, weight: '700', leftSize: 18,
-          dir: ARABIC.test(who) ? 'rtl' : 'ltr' });
+        if (l.item) {
+          /* Which shirt, with its size — then what goes on it, bold. */
+          y = rowLR(ctx, y, l.item, size, { size: 19, weight: '600', leftSize: 18,
+            dir: ARABIC.test(l.item) ? 'rtl' : 'ltr' });
+          /* 21, not 22: below 22 textAt strokes the glyphs, and without it an
+             Arabic name came out thinner than the Latin number beside it. */
+          y = rowLR(ctx, y, who, '', { size: 21, weight: '800',
+            dir: ARABIC.test(who) ? 'rtl' : 'ltr' });
+        } else {
+          y = rowLR(ctx, y, who, size, { size: 20, weight: '700', leftSize: 18,
+            dir: ARABIC.test(who) ? 'rtl' : 'ltr' });
+        }
       });
     });
     return y;
@@ -1203,7 +1217,7 @@ var Receipt = (function () {
       if (R.order && !gift) { sep(); y = drawShipTo(ctx, y, R); }
       sep();
       y = drawItems(ctx, y, R, gift);
-      /* The shirts going to Yalla Wear, on the customer's and the shop's
+      /* The shirts going to print, on the customer's and the shop's
          copies — not the gift slip, which is only what is in the bag. */
       if (!gift && R.printJobs && R.printJobs.length) y = drawPrintJobs(ctx, y, R);
       y = dashRule(ctx, y);
@@ -1335,14 +1349,15 @@ var Receipt = (function () {
       order: orderFromServer(payload.order, div),
       /* 068 — the coupon, and its share of `discount` (which is the sum). */
       coupon: payload.coupon ? { code: payload.coupon.code, cut: (payload.coupon.discount || 0) / div } : null,
-      /* Yalla Wear print jobs raised on this sale — job number and what goes
+      /* Print jobs raised on this sale — job number and, per shirt, which shirt and what goes
          on each shirt. No money: see server/lib/printing.js. */
       printJobs: (payload.print_jobs || []).map(function (j) {
         return {
           id: j.id,
           pieces: (j.lines || []).reduce(function (n, l) { return n + (Number(l.qty) || 1); }, 0) || Number(j.qty) || 0,
           lines: (j.lines || []).map(function (l) {
-            return { name: l.print_name || '', number: l.number, size: l.size || '', qty: Number(l.qty) || 1 };
+            return { name: l.print_name || '', number: l.number, size: l.size || '', qty: Number(l.qty) || 1,
+                     item: l.item || '' };
           })
         };
       })

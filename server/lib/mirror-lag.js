@@ -118,6 +118,11 @@ export const MIRROR_LAG = {
   order_return_lines: { cols: ['colour', 'colour_ar'],
                 file: 'server/supabase/026_colours.sql', retriedBy: ['sync', 'reconcile'] },
 
+  /* 069 — which shirt a print goes on (039). Rides on print_jobs'
+     afterUpsert; insertChildren applies this fallback by name. */
+  print_job_lines: { cols: ['item'],
+                file: 'server/supabase/039_print_line_item.sql', retriedBy: ['sync', 'reconcile'] },
+
   /* 027 — gift receipts. NOTE: the sync deliberately does NOT apply this one.
      print_log is append-only, bookmarked by the highest id already sent, so
      dropping the column would land the rows and advance the bookmark past

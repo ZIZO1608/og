@@ -1298,7 +1298,9 @@ var POS = (function () {
           number: (x.sel.num !== '' && isFinite(+x.sel.num)) ? +x.sel.num : null,
           size: String(x.line.size),
           qty: 1,
-          price: PRINT_UNIT_COST
+          price: PRINT_UNIT_COST,
+          /* 069 — which shirt, as sold: the receipt prints it over the name. */
+          item: x.line.name || null
         });
       });
 
