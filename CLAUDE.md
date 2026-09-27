@@ -5321,6 +5321,18 @@ the server one (numeric `label_code` in Code 128), a browser "Label Studio" in `
 `labels60.js`. Same shoe, three stickers. The studio and the 60x40 product label are gone;
 `labels60.js` keeps only the SHELF label, which is about a rack and has no variant to resolve.
 
+- **ONE LABEL, FIXED (the owner's decision, 27 Sep 2026): 60 × 40 mm, EAN-13, station `till-1`,
+  the roll.** `FIXED` at the top of `js/labels.js` overrules whatever a caller or the machine's
+  saved choice asks for, in `openPreviewModal`, `doPrint` and `currentPreset`. The preview and the
+  Settings label card draw ONE choice — **Print to** (the printer's queue / this computer); the
+  size, barcode-type, station and paper chips and their handlers are gone (`fix05/p0-namespaces`
+  would go red on a handler left without its button). Settings says what every label is
+  (`lbl_fixed_note`). To change the label, change `FIXED`. `_nightshift/labels/fixed.mjs` (31)
+  opens the preview asking for 30x30 / code128 / warehouse-laptop with a stale saved choice, in
+  English at 1280 and Arabic at 390, and reads the queued TSPL (`SIZE 60 mm,40 mm`, `"EAN13"`) and
+  the browser print's log row back out of SQLite. **The bullets below about the barcode default and
+  the template chips describe the preview before that**; a label code already stuck on a box still
+  scans, since `resolveScan` knows all three codes.
 - **The bars carry the shop's own `label_code`, on every template.** `barcodeType` defaults to
   `code128`, not `auto`: auto put an EAN-13 on a wide sticker and the label code on a narrow one,
   so the same shoe carried different bars on two rolls. Six digits in Code 128 C is also the most

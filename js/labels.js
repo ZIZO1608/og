@@ -52,21 +52,31 @@ var Labels = (function () {
      side. The label code is six digits in Code 128 C: the same bars on every
      template, and at 6 dots a bar on the 60x40 roll the most scannable
      thing the printer can put down. Auto and always-EAN stay as chips. */
-  var lastChoice = { station: null, preset: null, barcodeType: 'code128', output: null, paper: 'roll' };
+  /* ONE LABEL, FIXED (the owner's decision, 27 Sep 2026). Every label is the
+     60 x 40 mm template with an EAN-13, printed at station till-1 — on the
+     roll when it goes through this computer's dialog. The size, barcode,
+     station and paper rows are gone from the preview and from Settings: a
+     choice made again on every print is a choice made wrong now and then,
+     and the shop only has the one roll. The only thing left to pick is where
+     the label comes out (the printer's queue, or this computer). Callers
+     still pass a preset and a station; they are overruled here, so every
+     door prints the same sticker. To change the label, change it here. */
+  var FIXED = { preset: '60x40', barcodeType: 'ean13', station: 'till-1', paper: 'roll' };
+
+  var lastChoice = { station: FIXED.station, preset: FIXED.preset, barcodeType: FIXED.barcodeType, output: null, paper: FIXED.paper };
   try {
     var saved = JSON.parse(localStorage.getItem('og_label_choice') || 'null');
-    if (saved) lastChoice = saved;
+    if (saved && (saved.output === 'station' || saved.output === 'browser')) lastChoice.output = saved.output;
   } catch (e) { /* ignore a corrupt/blocked localStorage */ }
-  if (!lastChoice.barcodeType) lastChoice.barcodeType = 'code128';
-  if (lastChoice.paper !== 'sheet') lastChoice.paper = 'roll';
 
-  function remember(station, preset, barcodeType, output, paper) {
+  /* Only `output` is this machine's to choose; everything else is FIXED. */
+  function remember(station, preset, barcodeType, output) {
     lastChoice = {
-      station: station || lastChoice.station,
-      preset: preset || lastChoice.preset,
-      barcodeType: barcodeType || lastChoice.barcodeType || 'code128',
+      station: FIXED.station,
+      preset: FIXED.preset,
+      barcodeType: FIXED.barcodeType,
       output: output || lastChoice.output || null,
-      paper: paper || lastChoice.paper || 'roll'
+      paper: FIXED.paper
     };
     try { localStorage.setItem('og_label_choice', JSON.stringify(lastChoice)); } catch (e) { /* private mode etc. */ }
   }
@@ -313,8 +323,9 @@ var Labels = (function () {
   }
 
   function doPrint(lines, presetKey, station, barcodeType) {
-    presetKey = presetKey || lastChoice.preset;
-    barcodeType = barcodeType || lastChoice.barcodeType || 'code128';
+    presetKey = FIXED.preset;
+    barcodeType = FIXED.barcodeType;
+    station = FIXED.station;
 
     if (outputChoice() === 'browser') {
       remember(null, presetKey, barcodeType);
@@ -363,8 +374,8 @@ var Labels = (function () {
     return cfg.LABEL_PRESETS || demoPresets();
   }
   function currentPreset() {
-    var pk = lastChoice.preset || (typeof CONFIG !== 'undefined' && CONFIG.LABEL_DEFAULT_PRESET) || '30x30';
-    return presetOptions().filter(function (p) { return p.key === pk; })[0] || presetOptions()[0] || demoPreset(pk);
+    var pk = FIXED.preset;
+    return presetOptions().filter(function (p) { return p.key === pk; })[0] || demoPreset(pk);
   }
   /* A template's name in the language on screen, falling back to its key —
      the chips used to show '30x30' and 'retail-price-tag' verbatim. */
@@ -381,62 +392,26 @@ var Labels = (function () {
   var activeLines = null;
 
   function pickerHTML(lines) {
-    var st = lastChoice.station || stationOptions()[0];
-    var pk = lastChoice.preset || (typeof CONFIG !== 'undefined' && CONFIG.LABEL_DEFAULT_PRESET) || '30x30';
-    var bt = lastChoice.barcodeType || 'code128';
     var out = outputChoice();
     var total = lines.reduce(function (a, l) { return a + (Number(l.qty) || 0); }, 0);
-    var curPreset = presetOptions().filter(function (p) { return p.key === pk; })[0] || {};
 
     var h = '<div class="lbl-picker no-print">';
     h += '<div class="lbl-batch-total"><b>' + total + '</b> ' + t('lbl_batch_total') +
       ' <span class="muted">· ' + t('lbl_same_everywhere') + '</span></div>';
 
-    /* Where the labels come out. The station chips only appear for the
-       printer's queue; the paper chips only for the dialog. */
+    /* Where the labels come out — the one choice left (see FIXED). */
     h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_output') + '</span>' +
       '<button class="chip ' + (out === 'station' ? 'on' : '') + '" data-act="label-output" data-k="station">' + t('lbl_out_station') + '</button>' +
       '<button class="chip ' + (out === 'browser' ? 'on' : '') + '" data-act="label-output" data-k="browser">' + t('lbl_out_browser') + '</button>' +
       '</div>';
-    if (out === 'station') {
-      h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_station') + '</span>';
-      stationOptions().forEach(function (s) {
-        h += '<button class="chip ' + (s === st ? 'on' : '') + '" data-act="label-station" data-k="' + esc(s) + '">' + esc(s) + '</button>';
-      });
-      h += '</div>';
-    } else {
-      h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('hw_mode') + '</span>' +
-        '<button class="chip ' + (lastChoice.paper !== 'sheet' ? 'on' : '') + '" data-act="label-paper" data-k="roll">' + t('hw_roll') + '</button>' +
-        '<button class="chip ' + (lastChoice.paper === 'sheet' ? 'on' : '') + '" data-act="label-paper" data-k="sheet">' + t('hw_sheet') + '</button>' +
-        '</div>';
-    }
-    h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_preset') + '</span>';
-    presetOptions().forEach(function (p) {
-      h += '<button class="chip ' + (p.key === pk ? 'on' : '') + '" data-act="label-preset" data-k="' + esc(p.key) + '" title="' +
-        esc(p.widthMm + ' × ' + p.heightMm + ' mm') + '">' + esc(presetLabel(p)) + '</button>';
-    });
-    h += '</div>';
-    if (curPreset.hasBarcode !== false) {
-      h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_barcode_type') + '</span>';
-      [
-        { k: 'auto', label: t('lbl_bt_auto') },
-        { k: 'ean13', label: t('lbl_bt_ean13'), disabled: curPreset.allowEan === false },
-        { k: 'code128', label: t('lbl_bt_code128') }
-      ].forEach(function (b) {
-        h += b.disabled
-          ? '<button class="chip" disabled title="' + esc(t('lbl_bt_ean_disabled')) + '">' + b.label + '</button>'
-          : '<button class="chip ' + (b.k === bt ? 'on' : '') + '" data-act="label-barcode-type" data-k="' + b.k + '">' + b.label + '</button>';
-      });
-      h += '</div>';
-    }
     h += '</div>';
     return h;
   }
 
   function openPreviewModal(lines, presetKey, station, barcodeType) {
-    presetKey = presetKey || lastChoice.preset || (typeof CONFIG !== 'undefined' && CONFIG.LABEL_DEFAULT_PRESET) || '30x30';
-    station = station || lastChoice.station || stationOptions()[0];
-    barcodeType = barcodeType || lastChoice.barcodeType || 'code128';
+    presetKey = FIXED.preset;
+    station = FIXED.station;
+    barcodeType = FIXED.barcodeType;
     remember(station, presetKey, barcodeType);
     lines = lines.filter(function (l) { return (Number(l.qty) || 0) > 0; });
     if (!lines.length) { if (typeof closeModal === 'function') closeModal(); return; }
@@ -500,42 +475,20 @@ var Labels = (function () {
       }).catch(function () { /* doPrint has already said why */ });
     };
 
-    /* Inside the batch modal these re-open it with the new choice so the
-       preview reflects it immediately; the Settings card's station/preset
-       chips (no open batch) just remember the choice and re-render the page. */
-    ACTIONS['label-station'] = function (el) {
-      remember(el.getAttribute('data-k'), null, null);
-      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
-      else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
-    };
-    ACTIONS['label-preset'] = function (el) {
-      remember(null, el.getAttribute('data-k'), null);
-      /* Switching to a preset too narrow for EAN-13 while "Always EAN-13"
-         was selected would leave an invalid choice stranded behind a chip
-         that just vanished — downgrade back to Auto instead. */
-      var np = presetOptions().filter(function (p) { return p.key === lastChoice.preset; })[0];
-      if (np && np.allowEan === false && lastChoice.barcodeType === 'ean13') remember(null, null, 'code128');
-      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
-      else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
-    };
-    ACTIONS['label-barcode-type'] = function (el) {
-      remember(null, null, el.getAttribute('data-k'));
-      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
-      else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
-    };
+    /* Inside the batch modal this re-opens it so the button reads right for
+       the choice ("Print now" / "Print"); on the Settings card (no open
+       batch) it remembers the choice and redraws that one card. The size,
+       barcode, station and paper handlers went with their buttons (FIXED). */
     ACTIONS['label-output'] = function (el) {
       remember(null, null, null, el.getAttribute('data-k'));
-      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
-      else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
-    };
-    ACTIONS['label-paper'] = function (el) {
-      remember(null, null, null, null, el.getAttribute('data-k'));
-      if (activeLines && activeLines.length) openPreviewModal(activeLines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
+      if (activeLines && activeLines.length) openPreviewModal(activeLines);
+      else if (typeof OG !== 'undefined' && OG.view === 'settings' && typeof thermalLabelsCard === 'function' &&
+               typeof setFoldRepaint === 'function' && setFoldRepaint('labels', thermalLabelsCard())) { /* redrawn in place */ }
       else if (typeof render === 'function' && typeof OG !== 'undefined' && OG.view === 'settings') render();
     };
 
     ACTIONS['label-calibrate'] = function (el) {
-      var station = lastChoice.station || stationOptions()[0];
+      var station = FIXED.station;
       API.post('/api/labels/calibrate', { station: station, opId: opId() })
         .then(function () { toast(t('lbl_title'), t('lbl_calibrate_sent'), 'ok', 4000); })
         .catch(function (err) { toast(t('lbl_title'), API.friendly(err), 'err', 5000); });
@@ -595,6 +548,7 @@ var Labels = (function () {
     doPrint: doPrint,
     openPreviewModal: openPreviewModal,
     lastChoice: function () { return lastChoice; },
+    fixed: function () { return FIXED; },
     outputChoice: outputChoice,
     stationOptions: stationOptions,
     presetOptions: presetOptions,

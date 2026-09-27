@@ -622,28 +622,13 @@ function thermalLabelsCard() {
     '<button class="chip ' + (out === 'browser' ? 'on' : '') + '"' + dis + ' data-act="label-output" data-k="browser">' + t('lbl_out_browser') + '</button>' +
     '</div>';
 
-  if (out === 'station') {
-    h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_station') + '</span>';
-    Labels.stationOptions().forEach(function (s) {
-      h += '<button class="chip ' + (Labels.lastChoice().station === s ? 'on' : '') + '"' + dis +
-        ' data-act="label-station" data-k="' + esc(s) + '">' + esc(s) + '</button>';
-    });
-    h += '</div>';
-  } else {
-    h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('hw_mode') + '</span>' +
-      '<button class="chip ' + (Labels.lastChoice().paper !== 'sheet' ? 'on' : '') + '"' + dis + ' data-act="label-paper" data-k="roll">' + t('hw_roll') + '</button>' +
-      '<button class="chip ' + (Labels.lastChoice().paper === 'sheet' ? 'on' : '') + '"' + dis + ' data-act="label-paper" data-k="sheet">' + t('hw_sheet') + '</button>' +
-      '</div>';
-  }
-
-  h += '<div class="chip-row mt"><span class="lbl-lbl">' + t('lbl_preset') + '</span>';
-  Labels.presetOptions().forEach(function (p) {
-    h += '<button class="chip ' + (Labels.lastChoice().preset === p.key ? 'on' : '') + '"' + dis +
-      ' data-act="label-preset" data-k="' + esc(p.key) + '" title="' + esc(p.widthMm + ' × ' + p.heightMm + ' mm') + '">' +
-      esc(Labels.presetLabel(p)) + '</button>';
-  });
-  h += '</div>';
-  h += '<p class="small muted mt">' + t('lbl_templates_note') + '</p>';
+  /* The size, the barcode and the station are fixed (FIXED in js/labels.js),
+     so the card says what every label is instead of offering to change it. */
+  var fx = Labels.fixed(), fp = Labels.currentPreset();
+  h += '<p class="small muted mt">' + t('lbl_fixed_note')
+    .replace('{size}', '<bdi dir="ltr">' + esc(fp.widthMm + ' × ' + fp.heightMm + ' mm') + '</bdi>')
+    .replace('{code}', '<bdi dir="ltr">' + (fx.barcodeType === 'ean13' ? 'EAN-13' : esc(fx.barcodeType)) + '</bdi>')
+    .replace('{station}', '<bdi dir="ltr">' + esc(fx.station) + '</bdi>') + '</p>';
 
   h += '<div class="mt"><button class="btn btn-ghost"' + dis + ' data-act="label-calibrate">' +
     t('hw_calibrate') + '</button></div>';
