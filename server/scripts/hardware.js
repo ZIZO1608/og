@@ -239,9 +239,12 @@ function agentTaskScript() {
   if (r.status !== 0 || !r.stdout) return null;
   const b = r.stdout;
   const xml = (b[0] === 0xFF && b[1] === 0xFE) || b.includes(0) ? b.toString('utf16le') : b.toString('utf8');
+  /* Two shapes: node print-agent.js (the old task, a console window), or
+     conhost --headless cmd /c run-agent.cmd (no window, since 27 Sep 2026).
+     Either names a file in the agent's folder, and the folder is the answer. */
   const args = /<Arguments>([\s\S]*?)<\/Arguments>/.exec(xml);
-  const m = args && /"?([^"]*print-agent\.js)"?/i.exec(args[1].replace(/&quot;/g, '"'));
-  return m ? resolve(m[1]) : null;
+  const m = args && /"?([^"]*(?:print-agent\.js|run-agent\.cmd))"?/i.exec(args[1].replace(/&quot;/g, '"'));
+  return m ? resolve(dirname(m[1]), 'print-agent.js') : null;
 }
 
 /* \\localhost\OGRECEIPT  ->  { host: 'localhost', share: 'OGRECEIPT' } */

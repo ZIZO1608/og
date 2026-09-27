@@ -27,8 +27,11 @@ if errorlevel 1 (
   exit /b 1
 )
 
+rem No window: the task used to run node in a console of its own, and closing
+rem that console (it looks like a leftover) stopped every receipt and label.
+rem run-agent.cmd writes what the agent says to agent.log instead.
 echo Registering the agent to start automatically when you log in...
-schtasks /create /tn "%TASK_NAME%" /tr "\"node\" \"%SCRIPT_DIR%print-agent.js\"" /sc ONLOGON /rl LIMITED /f
+schtasks /create /tn "%TASK_NAME%" /tr "conhost.exe --headless cmd.exe /c \"%SCRIPT_DIR%run-agent.cmd\"" /sc ONLOGON /rl LIMITED /f
 
 if errorlevel 1 (
   echo.
@@ -43,9 +46,9 @@ echo Starting it now, so you don't have to log out and back in...
 schtasks /run /tn "%TASK_NAME%"
 
 echo.
-echo Done. The agent is running and will start every time this computer
-echo logs in, even after a restart. To check on it or stop it, open Task
-echo Scheduler (search for "Task Scheduler" in the Start menu) and look
-echo for "%TASK_NAME%".
+echo Done. The agent is running with no window and will start every time
+echo this computer logs in, even after a restart. What it is doing is in
+echo agent.log next to this file. To stop it, open Task Scheduler (search
+echo for "Task Scheduler" in the Start menu) and look for "%TASK_NAME%".
 echo.
 pause
