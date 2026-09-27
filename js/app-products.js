@@ -269,7 +269,7 @@ function viewProducts() {
     var cell = {
       name: '<td><div class="cell-prod">' + thumb(r.p) + '<span><b>' + esc(r.p.name) + '</b>' +
         (r.p.archived ? ' <span class="badge neutral">' + t('bk_archived') + '</span>' : '') +
-        '<small>' + dots(esc(r.p.brand), esc(r.p.colorway),
+        '<small>' + dots(esc(r.p.brand),
           (gaps.length ? '<span style="color:var(--destructive);font-weight:600">' + t('size') + ' ' + gaps.join('/') + ' = 0</span>' : '')) +
         '</small></span></div></td>',
       type: '<td><span class="badge neutral">' + esc(DB.typeLabels[r.type] || r.type || '') + '</span></td>',
@@ -304,27 +304,6 @@ function viewProducts() {
   return h;
 }
 
-/* How many customers on file wear this size — and a way through to them.
-
-   THIS IS THE PAYOFF for the size work in Stages A and C. A shipment landing
-   stops being "twelve pairs arrived" and becomes "six people to message", and
-   the six are already known: the server aggregates each customer's top sizes
-   from every non-voided sale they ever made.
-
-   Counted off the hydrated customer rows, which already carry `sizes` — no
-   request, and no second definition of what "wears a 43" means. */
-function wearers(v) {
-  if (typeof allow === 'function' && !allow('customer.read')) return '';
-  var n = DB.customers.filter(function (c) {
-    return !c.archived && (c.sizes || []).some(function (s) {
-      return String(s.size) === String(v.size);
-    });
-  }).length;
-  if (!n) return '';
-  return ' <span class="badge accent clickable" data-act="cu-size" data-size="' + esc(v.size) + '" ' +
-    'title="' + esc(t('pr_wearers_hint')) + '">' + nf(n) + ' ' + t('pr_wear') + '</span>';
-}
-
 function openProductDrawer(pid) {
   var p = DB.product(pid);
   if (!p) return;
@@ -344,7 +323,7 @@ function openProductDrawer(pid) {
         : thumb(p, 'lg')) +
       '<div><span class="eyebrow">' + esc(DB.typeLabels[p.type] || '') + ' · ' + esc(p.brand) + '</span>' +
       '<h3 style="font-size:18px;margin:3px 0 4px">' + esc(p.name) + '</h3>' +
-      healthBadge(total) + ' <span class="badge neutral">' + esc(p.colorway) + '</span>' +
+      healthBadge(total) +
       (canPic
         ? '<div class="pic-line">' + Photos.mark(p) +
             ' <button class="link" data-act="prod-image" data-id="' + p.id + '">' + esc(t('ph_manage')) + '</button></div>'
@@ -386,47 +365,11 @@ function openProductDrawer(pid) {
      the movement log, never by typing over a number here. */
   body += ColourForm.matrix(p);
 
-  var many = (p.colours || []).length > 1;
-  if (many) {
-    vs = vs.slice().sort(function (a, b) {
-      var ia = p.colours.findIndex(function (c) { return c.id === a.colourId; });
-      var ib = p.colours.findIndex(function (c) { return c.id === b.colourId; });
-      return ia - ib;
-    });
-  }
+  /* "Stock per size" — a table of every size with its SKU, EAN-13, label
+     code, shelf and a print button — was removed on the owner's request
+     (28 Sep 2026). The colour × size matrix above says what is on hand, and
+     Print labels below opens the size picker. */
 
-  var canLabel = allow('label.print');
-  body += '<div class="card mb"><div class="card-head"><h3>' + t('per_size') + '</h3>' +
-    '<div class="card-actions"><span class="badge neutral">' + vs.length + ' SKU</span></div></div>' +
-    /* Three codes per size, each named for what it is: the SKU a person
-       types, the EAN-13 a supplier's scanner reads, and the label code —
-       the number the shop's own Code 128 stickers carry, which is what a
-       scan of one of them sends. Showing only "barcode" left people
-       comparing a sticker's digits against a column they never matched. */
-    '<div class="table-wrap"><table class="tbl tbl-compact"><thead><tr>' +
-      '<th>' + t('size') + '</th><th>' + t('sku') + '</th><th>' + t('ean13') + '</th><th>' + t('label_code') + '</th>' +
-      '<th class="num">' + t('qty') + '</th><th>' + t('shelf') + '</th><th>' + t('status') + '</th>' +
-      (canLabel ? '<th class="num">' + t('lbl_qty') + '</th><th></th>' : '') +
-    '</tr></thead><tbody>';
-  vs.forEach(function (v) {
-    body += '<tr' + (v.qty === 0 ? ' class="row-danger"' : '') + '>' +
-      '<td><b style="font-family:var(--font-head);font-size:14px">' + esc(v.size) + '</b>' +
-        (many && DB.colour(v.colourId) ? '<small class="line-colour" style="display:flex">' + DB.swatch(DB.colour(v.colourId)) +
-          esc(DB.colourName(DB.colour(v.colourId))) + '</small>' : '') + '</td>' +
-      '<td class="muted num nowrap">' + v.sku + '</td>' +
-      '<td class="num muted nowrap">' + v.barcode + '</td>' +
-      '<td class="num nowrap"><b>' + esc(v.labelCode || '—') + '</b></td>' +
-      '<td class="num"><b>' + v.qty + '</b></td>' +
-      '<td><span class="badge neutral">' + v.shelf + '</span></td>' +
-      '<td>' + healthBadge(v.qty) + wearers(v) + '</td>' +
-      (canLabel
-        ? '<td class="num"><input class="inp num lbl-qty-inp" type="number" min="1" max="99" value="1" style="width:56px"></td>' +
-          '<td><button class="btn btn-sm" data-act="preview-labels" data-variant-sku="' + esc(v.sku) + '">' +
-            t('print_labels') + '</button></td>'
-        : '') +
-      '</tr>';
-  });
-  body += '</tbody></table></div></div>';
 
   /* This was a twelve-bar sparkline of 15-day buckets. Nobody standing at a
      shelf with a shoe in one hand reads a sparkline — and with no axis and
@@ -457,7 +400,6 @@ function openProductDrawer(pid) {
   body += '<div class="card"><div class="card-body"><dl class="kv">' +
     '<dt>' + t('brand') + '</dt><dd>' + esc(p.brand) + '</dd>' +
     '<dt>' + t('made_in') + '</dt><dd>' + esc(p.madeIn) + '</dd>' +
-    '<dt>' + t('colour') + '</dt><dd>' + esc(p.colorway) + '</dd>' +
     (seesCost() ? '<dt>' + t('cost_price') + '</dt><dd>' + priceBoth(p, true) + '</dd>' : '') +
     '<dt>' + t('selling_price') + '</dt><dd>' + priceBoth(p) + '</dd>' +
     '<dt>' + t('last_sold') + '</dt><dd>' + p.lastSoldDaysAgo + ' ' + t('days_ago') + '</dd>' +
@@ -483,8 +425,11 @@ function openProductDrawer(pid) {
   body += '<div class="pr-acts">' +
     (allow('product.write')
       ? '<button class="btn btn-primary" data-act="pq-open" data-id="' + p.id + '">' + t('pr_change_price') + '</button>' +
-        '<button class="btn" data-cf="add-more" data-pid="' + p.id + '" data-m="size">' + t('pr_add_size') + '</button>' +
-        '<button class="btn" data-cf="add-more" data-pid="' + p.id + '" data-m="colour">' + t('pr_add_colour') + '</button>'
+        /* ONE button (the owner, 28 Sep 2026): "Add a size" and "Add a colour"
+           were two, side by side, opening the same dialog on different halves.
+           The dialog has always offered both; it opens on a size, the
+           commoner of the two. */
+        '<button class="btn" data-cf="add-more" data-pid="' + p.id + '">' + t('cl_add_more') + '</button>'
       : '') +
     /* ONE print button. There were two here — this one drove the browser
        Label Studio (SKU text in the bars) and a second opened the 60x40
@@ -580,7 +525,6 @@ function openProductEditor(pid) {
           '<div class="pe-grid">' +
             '<label class="field"><span>' + t('brand') + '</span><input class="inp" id="peBrand" type="text" value="' + esc(p.brand || '') + '"></label>' +
             '<label class="field"><span>' + t('made_in') + '</span><input class="inp" id="peMade" type="text" value="' + esc(p.madeIn || '') + '"></label>' +
-            '<label class="field"><span>' + t('colour') + '</span><input class="inp" id="peColour" type="text" value="' + esc(p.colorway || '') + '"></label>' +
             '<label class="field"><span>' + t('shelf') + '</span><input class="inp" id="peShelf" type="text" value="' + esc(p.shelfZone || '') + '"></label>' +
           '</div>' +
         '</div>' +
@@ -616,7 +560,8 @@ function readProductEditor() {
     type: g('peType'),
     brand: String(g('peBrand') || '').trim(),
     made_in: String(g('peMade') || '').trim(),
-    colorway: String(g('peColour') || '').trim(),
+    /* No colourway (the owner took it off every screen, 28 Sep 2026). Not
+       sent at all, so saving leaves what a product already has alone. */
     shelf_zone: String(g('peShelf') || '').trim(),
     currency: cur,
     on_web: web && web.checked ? 1 : 0
@@ -642,7 +587,7 @@ function openQuickPrice(pid) {
   openModal({
     title: t('pr_change_price'), size: 'narrow',
     body: '<div class="pq-who">' + thumb(p) + '<span><b>' + esc(p.name) + '</b>' +
-        '<small>' + dots(esc(p.brand), esc(p.colorway)) + '</small></span></div>' +
+        '<small>' + dots(esc(p.brand)) + '</small></span></div>' +
       '<label class="field cb-big mt"><span>' + t('selling_price') + ' · <bdi dir="ltr">' + esc(cur) + '</bdi></span>' +
         '<input class="inp num cb-big-in" id="pqPrice" type="text" inputmode="decimal" dir="ltr" ' +
           'autocomplete="off" data-change="pq-price" value="' + esc(srcWhole(usdOf(p.srcSellingPrice, p.srcCurrency), cur)) + '"></label>' +

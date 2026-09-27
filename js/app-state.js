@@ -53,7 +53,7 @@ var OG = {
              They were markup with literal values in it — brand and made-in
              read by nothing, the two prices pre-filled with 1050 and 2250 —
              so a render lost what had been typed and a save sent inventions. */
-          brand: '', madeIn: '', colorway: '', price: '', cost: '' },
+          brand: '', madeIn: '', price: '', cost: '' },
   dir:  null,                                           // page-transition direction
   rep:  { tab: 'sales' },
   /* The Reports screen's own window, deliberately NOT shared with the

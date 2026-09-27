@@ -67,6 +67,9 @@ var Desk = (function () {
       feeMode: 'auto', feeTyped: '',
       currency: null,                  /* null = follow the destination */
       discount: '',
+      /* 068 — a coupon: the RULE the server answered with (POST
+         /api/coupon-check), and what is typed in the box before Apply. */
+      coupon: null, couponTyped: '',
       plan: 'receipt', planTouched: false,
       pays: [],                        /* [{ amount, currency, method, txnRef }] */
       note: '',
@@ -397,6 +400,25 @@ var Desk = (function () {
     return minor ? convert(minor, pc, code) : 0;
   }
 
+  /* 068 — what the coupon takes off THIS bag, with the server's arithmetic
+     (lib/coupons.js evaluate()): a percent of the goods, rounded; a dollar
+     amount in the order's currency; never more than the goods; nothing below
+     the coupon's minimum. A preview — the Save sends the code and the server
+     works the cut out itself, inside the sale. */
+  function couponCutFor(sub, code) {
+    var c = S.coupon;
+    if (!c || !(sub > 0)) return 0;
+    if (couponShortOf(sub, code)) return 0;
+    var cut = c.kind === 'percent' ? Math.round(sub * c.percent / 100) : convert(c.amount || 0, 'USD', code);
+    return Math.max(0, Math.min(sub, cut || 0));
+  }
+  function couponShortOf(sub, code) {
+    var c = S.coupon;
+    if (!c || !c.minBasket) return false;
+    var usd = convert(sub, code, 'USD');
+    return usd !== null && usd < c.minBasket;
+  }
+
   function totals() {
     var code = orderCur();
     var sub = 0, unpriced = false;
@@ -404,16 +426,22 @@ var Desk = (function () {
       var u = unitPrice(l);
       if (u === null) unpriced = true; else sub += u * l.qty;
     });
-    var disc = Math.min(sub, toMinor(S.discount, code));
+    /* The office's own discount (capped by the rule) and the coupon's cut
+       (not — it is the owner's rule), which together make the discount. */
+    var manual = Math.min(sub, toMinor(S.discount, code));
+    var ccut = Math.min(couponCutFor(sub, code), sub - manual);
+    var disc = manual + ccut;
     var fee = feeInfo();
     var due = sub - disc + (fee.mode === 'invoice' ? fee.amount : 0);
     var paid = 0;
     S.pays.forEach(function (p) { paid += payInOrder(p) || 0; });
     var maxPct = boot ? Number(boot.maxDiscountPct) : 100;
     return {
-      currency: code, subtotal: sub, discount: disc, fee: fee, due: due, paid: paid,
+      currency: code, subtotal: sub, discount: disc, manual: manual, couponCut: ccut,
+      couponShort: couponShortOf(sub, code),
+      fee: fee, due: due, paid: paid,
       remaining: Math.max(0, due - paid), over: paid > due, unpriced: unpriced,
-      discountTooBig: disc > 0 && !allow('discount.unlimited') && disc > Math.floor(sub * maxPct / 100),
+      discountTooBig: manual > 0 && !allow('discount.unlimited') && manual > Math.floor(sub * maxPct / 100),
       maxPct: maxPct
     };
   }
@@ -442,6 +470,11 @@ var Desk = (function () {
     if (S.plan === 'full' && tt.remaining > 0) r.push(t('dk_r_full'));
     if (S.plan === 'deposit' && !tt.paid) r.push(t('dk_r_deposit'));
     if (tt.discountTooBig) r.push(t('dk_r_discount').replace('{n}', nf(tt.maxPct)));
+    /* The server refuses a coupon under its minimum (coupon_min_basket). */
+    if (S.coupon && tt.couponShort) {
+      r.push(t('dk_r_coupon_min').replace('{code}', S.coupon.code)
+        .replace('{n}', '$' + ((S.coupon.minBasket || 0) / 100).toFixed((S.coupon.minBasket || 0) % 100 ? 2 : 0)));
+    }
     S.pays.forEach(function (p) {
       if (toMinor(p.amount, p.currency || tt.currency) > 0 && DB.payNeedsRef(p.method) &&
           !String(p.txnRef || '').trim()) {
@@ -597,7 +630,14 @@ var Desk = (function () {
           .filter(function (x) { return x && String(x).trim(); }).join(' · ').slice(0, 480);
         S.step = 0;
         S.maxStep = 0;
+        /* 068 — the coupon the customer gave on the website. Checked now, for
+           real, against this bag; a code used up or ended since is said, and
+           left in the box for the person to take off or keep trying. */
+        var webCoupon = typeof o.coupon === 'string' ? o.coupon
+          : (o.coupon && typeof o.coupon.code === 'string' ? o.coupon.code : '');
+        if (webCoupon) S.couponTyped = webCoupon;
         saveDraft();
+        if (webCoupon) checkCoupon(webCoupon, true);
         if (OG.view === 'desk') repaint();
         else go('desk');
         if (skipped) toast(t('wo_title'), t('wo_desk_skipped').replace('{n}', nf(skipped)), 'warn', 6000);
@@ -1778,6 +1818,48 @@ var Desk = (function () {
     return h + '</div>';
   }
 
+  /* 068 — the coupon line on the ticket: a box and Apply, or the code with
+     what it takes off and a ✕. */
+  function couponRowHtml(tt, code) {
+    if (S.coupon) {
+      return '<div class="dk-sr dk-coupon"><span>' + t('coupon') + ' <bdi dir="ltr">' + esc(S.coupon.code) + '</bdi></span>' +
+        '<span class="dk-coupon-on"><b>− ' + fmt(tt.couponCut, code) + '</b>' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-act="dk-coupon-clear" aria-label="' + esc(t('remove')) + '">✕</button></span></div>' +
+        (tt.couponShort ? '<div class="dk-hint">' + t('dk_r_coupon_min').replace('{code}', esc(S.coupon.code))
+          .replace('{n}', '$' + ((S.coupon.minBasket || 0) / 100).toFixed((S.coupon.minBasket || 0) % 100 ? 2 : 0)) + '</div>' : '');
+    }
+    return '<div class="dk-sr dk-coupon"><span>' + t('coupon') + '</span>' +
+      '<span class="dk-coupon-in"><input class="inp" type="text" dir="ltr" autocomplete="off" autocapitalize="characters" ' +
+        'data-change="dk-coupon" value="' + esc(S.couponTyped || '') + '" placeholder="' + esc(t('cp_pos_ph')) + '">' +
+      '<button type="button" class="btn btn-sm" data-act="dk-coupon">' + t('apply') + '</button></span></div>';
+  }
+
+  /* Asks the SERVER — the same check the Save will run. `quiet` is the
+     website order's code being checked as the desk fills in: a refusal is
+     said, and the code stays in the box for the person to decide. */
+  function checkCoupon(code, quiet) {
+    var tt = totals();
+    code = String(code || '').replace(/\s+/g, '').toUpperCase();
+    if (!code) { toast(t('coupon'), t('cp_pos_type'), 'warn'); return Promise.resolve(); }
+    return API.post('/api/coupon-check', {
+      code: code, subtotal: tt.subtotal, currency: tt.currency, customerId: S.customerId || null
+    }).then(function (r) {
+      if (!S) return;
+      S.coupon = r.coupon;
+      S.couponTyped = '';
+      saveDraft();
+      paint('sum');
+      toast(t('coupon'), r.coupon.code + ' · ' + (r.coupon.kind === 'percent' ? '−' + r.coupon.percent + '%'
+        : '−$' + ((r.coupon.amount || 0) / 100).toFixed((r.coupon.amount || 0) % 100 ? 2 : 0)), 'ok');
+    }).catch(function (err) {
+      if (!S) return;
+      S.couponTyped = code;
+      saveDraft();
+      paint('sum');
+      toast((quiet ? t('dk_web_coupon') : t('coupon')) + ' ' + code, API.friendly(err), quiet ? 'warn' : 'err', 8000);
+    });
+  }
+
   function payHtml() {
     var tt = totals();
     var code = tt.currency;
@@ -1791,7 +1873,8 @@ var Desk = (function () {
     h += '<div class="dk-tot">' + sumRow(t('dk_goods'), fmt(tt.subtotal, code)) +
       '<div class="dk-sr dk-disc"><span>' + t('discount') + '</span>' +
         '<input class="inp num" type="text" inputmode="decimal" dir="ltr" data-change="dk-discount" ' +
-          'value="' + esc(S.discount) + '" placeholder="0"></div>';
+          'value="' + esc(S.discount) + '" placeholder="0"></div>' +
+      couponRowHtml(tt, code);
     if (tt.fee.mode === 'invoice' && tt.fee.amount) h += sumRow(t('dk_shipping'), fmt(tt.fee.amount, code));
     else if (tt.fee.mode === 'courier') h += sumRow(t('dk_shipping'), '<span class="muted">' + t('dk_fee_courier') + '</span>');
     h += '<div class="dk-due"><span>' + t('dk_due') + '</span><b>' + fmt(tt.due, code) + '</b></div></div>';
@@ -2298,7 +2381,10 @@ var Desk = (function () {
       whId: S.whId,
       customerId: S.customerId,
       currency: tt.currency,
-      discount: tt.discount,
+      /* The office's own discount only (068): the coupon goes as its code
+         and the server works its cut out inside the sale. */
+      discount: tt.manual,
+      couponCode: S.coupon ? S.coupon.code : null,
       channel: S.channel,
       note: String(S.note || '').trim() || null,
       dest: S.method === 'pickup' ? {} : {
@@ -2730,6 +2816,16 @@ var Desk = (function () {
       paintFee();
       paint('sum');
       focusBack('[data-change="dk-fee"]', el.value.length);
+    };
+    /* 068 — typed, kept on the draft, nothing repainted (the caret stays). */
+    CHANGES['dk-coupon'] = function (el) { S.couponTyped = el.value; saveDraft(); };
+    ACTIONS['dk-coupon'] = function () { checkCoupon(S && S.couponTyped); };
+    ACTIONS['dk-coupon-clear'] = function () {
+      if (!S) return;
+      S.coupon = null;
+      S.couponTyped = '';
+      saveDraft();
+      paint('sum');
     };
     CHANGES['dk-discount'] = function (el) {
       S.discount = el.value;

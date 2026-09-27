@@ -495,26 +495,6 @@ function stepper(stage, opts) {
   return h + '</div>';
 }
 
-/* ------------------------------------------------------------ QR payloads
-   Text by default: it resolves on any phone with no internet, which a URL
-   would not. Set CONFIG.QR_MODE = 'url' in js/data.js once the app is
-   deployed and every printed code becomes a link that opens the record.
-
-   In url mode these go through deepLink(), not CONFIG.QR_BASE_URL — that
-   constant is a placeholder domain, so scanning it would land on nothing.
-   deepLink() emits a route the app actually handles. */
-function qrForSale(sale) {
-  if (CONFIG.QR_MODE === 'url') return deepLink('invoice', sale.id);
-  return CONFIG.SHOP_NAME.toUpperCase() + ' | ' + sale.id + '\n' +
-         money(sale.total) + '\n' + fmtDateTime(sale.date) + '\n' + CONFIG.SHOP_ADDRESS;
-}
-
-/* Never let an over-long payload silently render a blank square. */
-function qrSafe(text, fallback, opts) {
-  var svg = Codes.qrSVG(text, opts);
-  return svg || Codes.qrSVG(fallback, opts);
-}
-
 /* ------------------------------------------------------------ 4. FEEDBACK */
 
 /* `action` = { label, attrs } renders a button inside the toast — used by the

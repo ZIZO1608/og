@@ -1818,7 +1818,6 @@ var ShelfMap = (function () {
         h += '<div class="sm-peek-group"><div class="sm-peek-name" dir="auto">' +
           (S.colour && p ? '<i style="background:' + esc(DB.typeColour(p.type)) + '"></i>' : '') +
           esc(g.name || (p ? p.name : '')) + '</div>';
-        if (p && p.colorway) h += '<div class="sm-peek-cw" dir="auto">' + esc(p.colorway) + '</div>';
         var rows = '';
         g.rows.forEach(function (row) {
           if (shown >= PIN_ROWS) { hidden++; return; }
@@ -2126,7 +2125,6 @@ var ShelfMap = (function () {
            One source, four surfaces, no argument between them. */
         '<span class="sm-stripe" style="background:' + esc(DB.typeColour(p.type)) + '"></span>' +
         '<div class="sm-row-name"><b>' + esc(p.name) + '</b>' +
-          (p.colorway ? '<small class="muted">' + esc(p.colorway) + '</small>' : '') +
         '</div>' +
         '<div class="sm-chips" dir="ltr">' + chips + '</div>' +
       '</div>';

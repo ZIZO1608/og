@@ -441,11 +441,8 @@ var YLINV = (function () {
         '<img class="yw-mark sm" src="assets/logo.svg" alt="OG">' +
       '</div>';
 
-    /* A QR that opens this exact invoice, so a printed bill is not a dead end. */
-    var qr = Codes.qrSVG(deepLink('ywinvoice', inv.id), { size: 74, quiet: 2, style: 'square',
-      dark: paper ? '#2A2547' : '#B5DCC0', light: 'none' });
-    if (qr) h += '<div class="yw-qr">' + qr + '<span>' + t('ex_scan') + '</span></div>';
-
+    /* No QR on the printed bill (the owner, 28 Sep 2026: no QR codes in any
+       PDF). */
     return h + '</div>';
   }
 

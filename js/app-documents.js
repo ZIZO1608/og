@@ -70,11 +70,9 @@ function invoiceHtml(sale, order) {
   });
   h += '</tbody></table>';
 
+  /* No QR on the invoice (the owner, 28 Sep 2026: no QR codes in any PDF).
+     The invoice number is already at the top of the page. */
   h += '<div class="inv-sum">' +
-    '<div><div class="inv-qr">' +
-        qrSafe(qrForSale(sale), sale.id, { size: 104, quiet: 2, style: 'square', dark: '#09090B' }) +
-      '</div>' +
-      '<div style="font-size:9px;color:#71717A;margin-top:4px;letter-spacing:.08em">' + sale.id + '</div></div>' +
     '<div class="inv-totals">' +
       '<div class="tr"><span>' + t('subtotal') + '</span><span>' +
         om(order ? order.sale.subtotal : 0, sale.subtotal) + '</span></div>' +

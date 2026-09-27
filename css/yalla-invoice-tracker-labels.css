@@ -87,10 +87,6 @@ table.yw-tbl .num { text-align: end; }
   margin-top: 26px; padding-top: 14px; border-top: 1px solid #38326099;
 }
 .yw-end span { font-size: 11px; font-weight: 800; letter-spacing: .22em; color: #B5DCC0; }
-.yw-qr { position: absolute; inset-inline-end: 36px; bottom: 74px; text-align: center; }
-.yw-qr svg { display: block; }
-.yw-qr span { display: block; margin-top: 3px; font-size: 7.5px; letter-spacing: .1em;
-  text-transform: uppercase; color: #7C74A8; }
 
 /* Paper mode — identical layout, printer-safe colours. */
 .yw-sheet.paper { background: #FFFFFF; color: #211D3C; }
@@ -122,7 +118,6 @@ table.yw-tbl .num { text-align: end; }
 @media (max-width: 760px) {
   .yw-sheet { padding: 22px 18px; }
   .yw-foot-grid { grid-template-columns: 1fr; }
-  .yw-qr { position: static; margin-top: 16px; }
   .yw-title b { font-size: 24px; }
   /* The header row was laid out for A4: three labelled facts 34px apart and
      the mark on the right. On a phone the invoice number broke across three
@@ -295,21 +290,7 @@ table.pdf-tbl tfoot td {
   border-bottom: 0; padding-top: 3mm; font-size: 10.5pt;
 }
 .pdf-foot { margin-top: 8mm; padding-top: 3mm; border-top: .2mm solid #E4E4E7; text-align: center; color: #A1A1AA; font-size: 8pt; }
-/* With a QR the footer becomes two columns: code left, credits centred. */
-.pdf-foot.has-qr { display: flex; align-items: center; gap: 5mm; text-align: start; }
 .pdf-foot .pdf-foot-txt { flex: 1; }
-.pdf-foot.has-qr .pdf-foot-txt { text-align: end; }
-.pdf-qr { flex: none; display: flex; align-items: center; gap: 2mm; }
-/* 25mm, and MEASURED rather than eyeballed — see the note beside the qrSVG
-   call in js/export.js, which asks for exactly this and says why.
-
-   A deep link is 45 modules wide including its quiet zone. That is
-   25 / 45 = 0.56mm per module, which a phone camera resolves at arm's length.
-   This box had been set to 17mm, which is 0.38mm per module — small enough
-   that the code printed sharp and simply would not scan, with nothing on the
-   page to suggest why. If you shrink it, do the division first. */
-.pdf-qr svg { width: 25mm; height: 25mm; display: block; }
-.pdf-qr span { font-size: 7pt; color: #71717A; max-width: 18mm; line-height: 1.3; }
 
 /* Partner exports carry Yalla Wear's identity instead */
 .pdf-yalla .pdf-head { border-bottom-color: #302B54; }

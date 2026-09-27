@@ -23,6 +23,7 @@ top to bottom; the two families do not depend on each other.
 | `031_web_payments.sql` | the owner chooses how it is paid | `031_till_status.sql` | whose mirror, and when it last heard |
 | `036_product_photos.sql` | a colour's photos (also in CATCH-UP) | `033_og_vps_off_web.sql` | `og_vps` off the website's own tables |
 | `037_web_products.sql` | products, priced in both currencies | `035_night_requests.sql` | night mode's requests wait in the cloud |
+| `038_coupons.sql` | coupon codes and their uses (mirrored), and `web_coupon` for the checkout (after `030`) | | |
 
 - Each website file has a `verify_…sql` beside it; run it straight after.
 - **`030_erp_access.sql` grants `og_vps` read access to the mirror tables that exist when it

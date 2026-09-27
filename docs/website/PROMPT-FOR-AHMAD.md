@@ -1,10 +1,16 @@
-# OG Sports website ↔ OG System — connecting the orders (contract v1.3)
+# OG Sports website ↔ OG System — connecting the orders (contract v1.4)
 
 > **For Ahmad, and for the AI helping him build the OG Sports website.**
 > Paste this whole file in as the brief. It is the contract between the website and the
 > shop's system (OG System). The shop side is being built to exactly this. If something
 > here does not fit the website, ask before changing it. Do not work around it: both sides
 > have to agree.
+
+> **v1.4 (28 Sep 2026) — coupon codes.** The shop's owner makes coupon codes in OG System
+> (percent or a dollar amount, with an end date, a limit, once per customer, a minimum basket).
+> The website checks a code with the new Supabase function **`web_coupon`** (§5a) and sends it
+> with the order as the optional field **`coupon`**. Run `server/supabase/038_coupons.sql` first.
+> `web_order_submit` did not change. The short list is `docs/website/UPDATE-COUPONS.md`.
 
 > **v1.3 (25 Sep 2026) — prices are dollars, the lira follows the rate, and products come from
 > the cloud.** Every product is now priced in **US dollars**, and its lira price is the dollar
@@ -458,10 +464,27 @@ POST /rest/v1/rpc/web_order_submit
 | `items[]` | Up to 40 lines. **`sku` and `qty` (1–20) are what count.** The SKU alone decides the product, the colour and the size (each colour of a size has its own SKU). `name`, `size`, `price` and `currency` are what the customer saw: the shop shows its own price and notes the one the customer saw when they differ. `productId` and `colourId` are accepted and not used. |
 | `prints[]` | Up to 10 jobs. `design` is required. Then either `lines[]` (named shirts: `printName`, `number`, `size`, `qty` 1–50, up to 40 lines) or a plain `qty` (1–500) for unnamed pieces. `clubCode` (one of `web_checkout.print.clubs[].code`), `note`, `price`, `currency` are optional. The shop prices every print at `print.unitPrice`, never at the `price` sent. When `print.unitPrice` is `null` (the owner has not set it), show "price by phone": the job reaches the printer unpriced and the price is agreed on the call. |
 | | At least one item **or** one print is required. |
-| `shown` | Optional: totals **per currency**, exactly as the customer saw them. Never convert currencies into one total here. |
+| `coupon` | Optional (v1.4): a coupon code `web_coupon` answered `ok` for (§5a). The shop checks it again when it accepts the order. |
+| `shown` | Optional: totals **per currency**, exactly as the customer saw them. Never convert currencies into one total here. A coupon's cut may ride as `shown.discount`. |
 | `note` | Optional: the customer's comment. |
 
 The whole order must be under **16 KB** of JSON, which leaves plenty of room.
+
+### 5a. Coupon codes — `web_coupon` (v1.4)
+
+```json
+POST /rest/v1/rpc/web_coupon
+{ "p_key": "…", "p_code": "og-eid25", "p_subtotal": 4500, "p_phone": "0933 123 456" }
+```
+
+`p_subtotal` (optional) is the goods in **US cents**; `p_phone` (optional) checks a
+once-per-customer code. It answers `{ ok: true, code, kind: 'percent'|'amount', percent, amount
+(US cents), currency: 'USD', minBasket (US cents), oncePerCustomer, expiresAt, discount (US cents,
+only with p_subtotal) }` or `{ ok: false, code }` with one of `coupon_unknown`, `coupon_off`,
+`coupon_not_yet`, `coupon_expired`, `coupon_used_up`, `coupon_min_basket` (with
+`minBasket`), `coupon_used_by_customer`, `bad_key`. Show a coupon's lira figure as
+`discount / 100 × web_checkout.rate`. Send the code as `coupon` in the order only after an
+`ok`. Words and details: `docs/website/UPDATE-COUPONS.md`.
 
 ### Sending it safely (read this twice)
 

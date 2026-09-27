@@ -119,7 +119,9 @@ const TABLES = [
   { name: 'day_closes',               key: 'id' },
   { name: 'day_close_lines',          key: ['close_id', 'currency'] },
   { name: 'supplier_ledger',          key: 'id' },
-  { name: 'salary_payments',          key: 'id' }
+  { name: 'salary_payments',          key: 'id' },
+  { name: 'coupons',                  key: 'id' },
+  { name: 'coupon_uses',              key: 'id' }
 ];
 
 const PAGE = 1000;

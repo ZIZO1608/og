@@ -41,6 +41,8 @@ var VIEWS = {
   weborders: function () { return WebOrders.view(); },
   /* How customers pay, and what the website offers (js/desk.js, 031). */
   payments: function () { return Desk.payView(); },
+  /* 068 — the owner's coupon codes. */
+  coupons: function () { return Coupons.view(); },
   safeers: function () { return Safeers.view(); },
   /* The delivery office: a till for orders that do not walk in. */
   desk: function () { return Desk.view(); },
@@ -70,6 +72,7 @@ var AFTER = {
   reviews: function () { return Reviews.after(); },
   weborders: function () { return WebOrders.after(); },
   payments: function () { return Desk.payAfter(); },
+  coupons: function () { return Coupons.after(); },
   safeers: function () { return Safeers.after(); },
   desk: function () { return Desk.after(); },
   requests: function () { return Requests.after(); },

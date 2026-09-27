@@ -1200,7 +1200,7 @@ function openDuplicateGuard(name, dupes) {
   dupes.slice(0, 5).forEach(function (d) {
     var p = d.product;
     h += '<tr><td><div class="cell-prod">' + thumb(p) +
-        '<span><b>' + esc(p.name) + '</b><small>' + dots(esc(p.brand), esc(p.colorway)) + '</small></span></div></td>' +
+        '<span><b>' + esc(p.name) + '</b><small>' + dots(esc(p.brand)) + '</small></span></div></td>' +
       '<td class="num">' + healthBadge(DB.totalQty(p.id)) + ' ' + DB.totalQty(p.id) + '</td>' +
       '<td class="num">' + money(p.sellingPrice) + '</td>' +
       '<td class="num"><b>' + Math.round(d.score * 100) + '%</b></td>' +
@@ -1395,7 +1395,7 @@ function openScanResult(raw) {
   var h = '<div class="sc-hit">' +
     thumbBox(p, 'sc-photo') +
     '<div class="sc-hit-txt"><b>' + esc(p.name) + '</b>' +
-      '<span>' + dots(esc(p.brand), esc(DB.typeLabels[p.type] || ''), esc(p.colorway)) + '</span>' +
+      '<span>' + dots(esc(p.brand), esc(DB.typeLabels[p.type] || '')) + '</span>' +
       '<span class="num">' + esc(v.barcode) + '</span>' +
       '<span class="num sc-sku">' + esc(v.sku) + '</span></div>' +
     healthBadge(v.qty) +

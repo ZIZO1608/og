@@ -471,6 +471,10 @@ function shape(d, row, { seesCustomers, whId }) {
     prints: printsOf(d, o, jobIds),
     printError: row.print_error || null,
     shown: o.shown && typeof o.shown === 'object' ? o.shown : null,
+    /* 068 / contract v1.4 — the code the customer gave; the desk checks it
+       again, for real, when the order is accepted. */
+    coupon: typeof o.coupon === 'string' && o.coupon.trim()
+      ? o.coupon.replace(/\s+/g, '').toUpperCase().slice(0, 24) : null,
     note: txt(o.note, 500)
   };
 }

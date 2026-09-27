@@ -167,7 +167,6 @@ function viewDashboard() {
     '<div class="head-actions">' +
       exportButtons() +
       '<button class="btn btn-ghost" data-act="day-summary">' + t('wa_send_day') + '</button>' +
-      ifNav('pos', '<button class="btn btn-primary" data-act="nav" data-view="pos">' + t('nav_pos') + '</button>') +
     '</div></div>';
 
   /* -- scope selector -- */

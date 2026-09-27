@@ -818,18 +818,9 @@ var Export = (function () {
     /* What the figures do NOT include, on the page, in words. */
     if (spec.note) h += '<div class="pdf-note" dir="auto">' + esc(spec.note) + '</div>';
 
-    /* A real QR back into the system, so the printed page is not a dead end.
-       A CONFIG.PUBLIC_URL deep link is 45 modules wide including the quiet
-       zone; at 96px (~25mm on paper) that is 0.56mm per module, comfortably
-       inside what a phone camera resolves. Shrinking this box is the fastest
-       way to make every printed report unscannable — measure before you do. */
-    var qr = '';
-    if (spec.docUrl) {
-      var svg = Codes.qrSVG(spec.docUrl, { size: 96, quiet: 2, style: 'square', dark: '#09090B' });
-      if (svg) qr = '<div class="pdf-qr">' + svg + '<span>' + esc(t('ex_scan')) + '</span></div>';
-    }
-
-    h += '<div class="pdf-foot' + (qr ? ' has-qr' : '') + '">' + qr +
+    /* No QR in the footer any more — the owner asked (28 Sep 2026) for no QR
+       code of any kind in a PDF. The shop's name and address stay. */
+    h += '<div class="pdf-foot">' +
          '<div class="pdf-foot-txt">' + esc(th.word) + ' · ' + esc(CONFIG.SHOP_ADDRESS) + ' · ' +
          esc(t('ex_footer')) + '</div></div>';
 

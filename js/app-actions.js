@@ -972,17 +972,6 @@ var ACTIONS = {
   'cust-filter': function (el) { OG.cust.filter = el.getAttribute('data-f'); render(); },
   'cust-size-clear': function () { OG.cust.size = ''; render(); },
 
-  /* From a product's size straight to the people who wear it. Sets the same
-     filter the chip clears, so what you arrive at is a state of the list
-     rather than a one-off view you cannot get back to. */
-  'cu-size': function (el) {
-    closeDrawer();
-    closeModal();
-    OG.cust.size = el.getAttribute('data-size') || '';
-    OG.cust.q = '';
-    OG.cust.filter = 'all';
-    go('customers', null, null);
-  },
   reorder: function (el) { openReorder(+el.getAttribute('data-id')); },
 
   'po-create': function (el) {
@@ -1191,8 +1180,6 @@ var ACTIONS = {
       'receipt.instagram':    (document.getElementById('rcInstagram') || {}).value || '',
       'receipt.telegram':     (document.getElementById('rcTelegram') || {}).value || '',
       'receipt.maps_url':     (document.getElementById('rcMapsUrl') || {}).value || '',
-      'receipt.auto_print':   (document.getElementById('rcAutoPrint') || {}).checked ? '1' : '0',
-      'receipt.confirm_print': (document.getElementById('rcConfirmPrint') || {}).checked ? '1' : '0',
       'receipt.copies':       (document.getElementById('rcCopies') || {}).value || '2',
       'receipt.cut_mode':     ((document.getElementById('rcCutMode') || {}).getAttribute &&
                                 document.getElementById('rcCutMode').getAttribute('data-v')) || 'partial',
@@ -1481,7 +1468,7 @@ var ACTIONS = {
     Shop.write(
       function () { return Shop.updateProduct(id, body); },
       function () {
-        if (p) { p.name = body.name; p.type = body.type; p.brand = body.brand; p.madeIn = body.made_in; p.colorway = body.colorway; p.onWeb = !!body.on_web; }
+        if (p) { p.name = body.name; p.type = body.type; p.brand = body.brand; p.madeIn = body.made_in; p.onWeb = !!body.on_web; }
       },
       function () {
         closeModal();
@@ -1747,7 +1734,6 @@ var ACTIONS = {
              as '' so the row keeps whatever default the server gives it. */
           brand: OG.wh.brand || undefined,
           madeIn: OG.wh.madeIn || undefined,
-          colorway: OG.wh.colorway || undefined,
           /* 067 — entered in dollars, sent in cents. The lira is worked out
              from it at the rate of the moment, on the till and the website. */
           currency: 'USD',
@@ -1796,7 +1782,7 @@ var ACTIONS = {
            is nearly always the same three. That is "add another like this",
            without a second button to press. */
         OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null; OG.wh.imgSrc = null;
-        OG.wh.price = ''; OG.wh.cost = ''; OG.wh.colorway = '';
+        OG.wh.price = ''; OG.wh.cost = '';
         ColourForm.reset();
         /* The room STAYS — the next box off the same delivery goes to the
            same place. The shelf does not: it now belongs to the product just

@@ -348,7 +348,8 @@ export function create({
   lines, whId = null, customerId, currency = null, discount = 0, channel = null, note = null,
   dest = {}, method, companyId = null, driverId = null, trackingNo = null,
   feeMode = null, fee = null, plan, payments = [],
-  userId, unlimitedDiscount = false, opId = null
+  userId, unlimitedDiscount = false, opId = null,
+  couponCode = null
 }) {
   if (!METHODS.includes(method)) throw fail('how is this order travelling?', 'bad_travel');
   if (!PLANS.includes(plan)) {
@@ -403,7 +404,8 @@ export function create({
        as cash — the payments below are. */
     const sale = Sales.recordIn(d, {
       lines, whId: whId || s.wh, customerId, payment: 'order', discount, currency, note,
-      userId, unlimitedDiscount, opId: null
+      userId, unlimitedDiscount, opId: null,
+      couponCode, couponChannel: channel === 'web' ? 'web' : 'desk'
     });
 
     /* The shipping fee, in the sale's currency. Typed beats listed; a pickup

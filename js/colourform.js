@@ -337,10 +337,10 @@ var ColourForm = (function () {
   function openAdd(pid, mode) {
     var p = DB.product(pid);
     if (!p) return;
-    ADD = ADD && ADD.pid === pid ? ADD : { pid: pid, mode: 'colour', hex: '', qty: {}, nameEn: '', nameAr: '' };
-    /* "Add a size" and "Add a colour" are two buttons on the drawer now, so
-       the one that was pressed decides which half opens rather than leaving
-       somebody to find the segmented control inside. */
+    ADD = ADD && ADD.pid === pid ? ADD : { pid: pid, mode: 'size', hex: '', qty: {}, nameEn: '', nameAr: '' };
+    /* One button on the drawer since 28 Sep 2026 ("Add a colour or a size"),
+       so the dialog opens on a size — the commoner job — and the two big
+       choices at the top switch it. A caller may still name the half. */
     if (mode === 'size' || mode === 'colour') ADD.mode = mode;
     openModal({ title: t('cl_add_more') + ' · ' + esc(p.name), size: 'wide', body: '<div id="cfAdd">' + addBody() + '</div>',
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
@@ -358,8 +358,8 @@ var ColourForm = (function () {
   function addBody() {
     var p = DB.product(ADD.pid);
     var h = '<div class="seg-row cf-mode">' +
-      '<button class="seg' + (ADD.mode === 'colour' ? ' on' : '') + '" data-cf="add-mode" data-m="colour">' + t('cl_new_colour') + '</button>' +
-      '<button class="seg' + (ADD.mode === 'size' ? ' on' : '') + '" data-cf="add-mode" data-m="size">' + t('cl_new_size') + '</button></div>';
+      '<button class="seg' + (ADD.mode === 'size' ? ' on' : '') + '" data-cf="add-mode" data-m="size">' + t('cl_new_size') + '</button>' +
+      '<button class="seg' + (ADD.mode === 'colour' ? ' on' : '') + '" data-cf="add-mode" data-m="colour">' + t('cl_new_colour') + '</button></div>';
     if (ADD.mode === 'colour') {
       h += '<div class="cf-names mt">' +
         '<label class="field"><span>' + t('cl_name_en') + '</span><input class="inp" dir="ltr" id="cfaEn" maxlength="40" value="' + esc(ADD.nameEn) + '"></label>' +

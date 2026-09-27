@@ -791,6 +791,44 @@ var Receipt = (function () {
      `outline` is the same box drawn as a frame, black on white — for what a
      delivery order still owes, and what a driver collects at the door: the
      figure somebody acts on, second only to the total. */
+  /* THE YALLA WEAR BLOCK (28 Sep 2026, the owner: the job number and the
+     names on the receipt, "in a cool way, without errors and overlapping").
+
+     A black band says what it is, the job number sits under it big — it is
+     what the customer quotes when they come back for the shirts — and then
+     one row per shirt: the number and the name where an Arabic reader
+     starts, the size on the other side. Every row goes through rowLR, the
+     one helper that measures both sides and wraps or stacks rather than
+     letting a long name print into the size; the job number is fitted to
+     the paper with fitSize. A shirt whose name is not settled yet says so
+     rather than printing an empty line. No money here at all. */
+  function drawPrintJobs(ctx, y, R) {
+    (R.printJobs || []).forEach(function (j) {
+      y = dashRule(ctx, y);
+      y = drawBand(ctx, y, 'rc2_yalla_print');
+      var idSize = fitSize(ctx, j.id, CW, 34, 24, '800', 2);
+      y = centerText(ctx, j.id, y, { size: idSize, weight: '800', dir: 'ltr', track: 2 });
+      if (j.pieces) {
+        var pcs = L(j.pieces === 1 ? 'rc2_yalla_piece' : 'rc2_yalla_pieces');
+        y = centerPair(ctx, y, pcs.ar.replace('{n}', j.pieces), pcs.en.replace('{n}', j.pieces), { size: 18 });
+      }
+      y += 6;
+      j.lines.forEach(function (l, i) {
+        if (i) y += 4;
+        /* The number is its own left-to-right run (LRI … PDI): inside an Arabic
+           line the bidi algorithm otherwise carries the # to the far side of
+           the digits and prints '7#'. */
+        var num = (l.number !== null && l.number !== undefined && l.number !== '') ? '\u2066#' + l.number + '\u2069' : '';
+        var name = l.name || both('rc2_print_tbc');
+        var who = num ? (ARABIC.test(name) ? name + '  ' + num : num + '  ' + name) : name;
+        var size = l.size ? L('rc2_size').ar + ' ' + l.size + (l.qty > 1 ? '  × ' + l.qty : '') : (l.qty > 1 ? '× ' + l.qty : '');
+        y = rowLR(ctx, y, who, size, { size: 20, weight: '700', leftSize: 18,
+          dir: ARABIC.test(who) ? 'rtl' : 'ltr' });
+      });
+    });
+    return y;
+  }
+
   function drawTotalBand(ctx, y, label, amount, code, outline) {
     var padX = 16, padY = outline ? 10 : 12, inner = CW - padX * 2;
     var ink = outline ? '#000' : '#fff';
@@ -848,8 +886,16 @@ var Receipt = (function () {
     var pieces = R.items.reduce(function (s, it) { return s + (Number(it.qty) || 0); }, 0);
     y = rowLR(ctx, y, both('rc2_pieces'), western(pieces), { size: 18 });
     y = rowLR(ctx, y, both('rc2_subtotal'), fmtMoney(R.subtotal, cur, true), { size: 19 });
-    if (R.discount) {
-      y = rowLR(ctx, y, both('rc2_discount'), '− ' + fmtMoney(R.discount, cur, true), { size: 19 });
+    /* The row's discount is the cashier's AND the coupon's; each gets its
+       own line, the coupon named by its code (068). */
+    var cut = R.coupon ? Math.min(R.coupon.cut, R.discount || 0) : 0;
+    var manualDisc = Math.max(0, (R.discount || 0) - cut);
+    if (manualDisc) {
+      y = rowLR(ctx, y, both('rc2_discount'), '− ' + fmtMoney(manualDisc, cur, true), { size: 19 });
+    }
+    if (R.coupon) {
+      y = rowLR(ctx, y, both('rc2_coupon'), '− ' + fmtMoney(cut, cur, true), { size: 19 });
+      y = rowLR(ctx, y, R.coupon.code, '', { size: 18, weight: '700', dir: 'ltr' });
     }
     if (R.pointsValue) {
       y = rowLR(ctx, y, both('rc2_points_used'), '− ' + fmtMoney(R.pointsValue, cur, true), { size: 19 });
@@ -1102,7 +1148,12 @@ var Receipt = (function () {
      trusting R.items the way it always has. */
   function draw(R, copyLabel, opts) {
     opts = opts || {};
-    var gift = copyLabel === 'gift';
+    /* 'gift-shop' is the gift slip the SHOP keeps (28 Sep 2026, the owner:
+       a gift prints two slips like every other receipt). It is the gift slip
+       exactly — same lines, no prices — with the shop-copy band under the
+       gift band, so the drawer's copy of a present says what was handed over
+       and cannot be mistaken for the one that went in the bag. */
+    var gift = copyLabel === 'gift' || copyLabel === 'gift-shop';
 
     if (gift && opts.lines && opts.lines.length) {
       var keep = {};
@@ -1130,7 +1181,12 @@ var Receipt = (function () {
       var y = 16;
       y = drawLogo(ctx, y, markImg, logoImg);
       if (copyLabel === 'shop') y = drawBand(ctx, y, 'rc2_shop_copy');
-      else if (gift) y = drawBand(ctx, y, 'rc2_gift_copy');
+      else if (gift) {
+        y = drawBand(ctx, y, 'rc2_gift_copy');
+        /* Two bands, not one longer one: each already fits the 58 mm roll,
+           and "GIFT RECEIPT · SHOP COPY" in both languages would not. */
+        if (copyLabel === 'gift-shop') y = drawBand(ctx, y - 6, 'rc2_shop_copy');
+      }
       y = drawHeader(ctx, y, R);
       y = drawMeta(ctx, y, R, gift);
       /* The boxes end on a solid rule; with no cashier line under them the
@@ -1147,6 +1203,9 @@ var Receipt = (function () {
       if (R.order && !gift) { sep(); y = drawShipTo(ctx, y, R); }
       sep();
       y = drawItems(ctx, y, R, gift);
+      /* The shirts going to Yalla Wear, on the customer's and the shop's
+         copies — not the gift slip, which is only what is in the bag. */
+      if (!gift && R.printJobs && R.printJobs.length) y = drawPrintJobs(ctx, y, R);
       y = dashRule(ctx, y);
       /* The two money blocks, gone in one place rather than guarded line by
          line inside each of them — nothing in either has a gift meaning. */
@@ -1273,7 +1332,20 @@ var Receipt = (function () {
          office and the board find the order again by scanning the slip. */
       showBarcode: payload.receipt.show_barcode === '1' || !!payload.order,
       showLoyalty: payload.receipt.show_loyalty === '1',
-      order: orderFromServer(payload.order, div)
+      order: orderFromServer(payload.order, div),
+      /* 068 — the coupon, and its share of `discount` (which is the sum). */
+      coupon: payload.coupon ? { code: payload.coupon.code, cut: (payload.coupon.discount || 0) / div } : null,
+      /* Yalla Wear print jobs raised on this sale — job number and what goes
+         on each shirt. No money: see server/lib/printing.js. */
+      printJobs: (payload.print_jobs || []).map(function (j) {
+        return {
+          id: j.id,
+          pieces: (j.lines || []).reduce(function (n, l) { return n + (Number(l.qty) || 1); }, 0) || Number(j.qty) || 0,
+          lines: (j.lines || []).map(function (l) {
+            return { name: l.print_name || '', number: l.number, size: l.size || '', qty: Number(l.qty) || 1 };
+          })
+        };
+      })
     };
   }
 
@@ -1332,16 +1404,19 @@ var Receipt = (function () {
     });
   }
 
-  /* ONE copy, not two. The shop already has its copy of this sale from when
-     it was rung up — a second shop copy with the prices stripped off it would
-     be a worse record of the same transaction, filed next to the good one. */
+  /* TWO copies, like every receipt (the owner, 28 Sep 2026): the gift slip
+     for the customer's bag, then the same slip stamped SHOP COPY for the
+     drawer — so the shop can see which lines went out as a present and
+     answer the exchange when it comes back. One job, one socket write, the
+     way printJob sends the customer and shop copies. */
   function printGiftJob(saleId, lines) {
     return fetchData(saleId).then(function (R) {
-      return draw(R, 'gift', { lines: lines }).then(function (copy) {
-        var bytes = ESCPOS.build(copy.canvas,
-          { cutMode: CONFIG.RECEIPT_CUT_MODE, burnLuma: burnLuma() });
-        return sendToPrinter(ESCPOS.toBase64(bytes), saleId, 1, 'gift');
-      });
+      return Promise.all([draw(R, 'gift', { lines: lines }), draw(R, 'gift-shop', { lines: lines })])
+        .then(function (copies) {
+          var bytes = ESCPOS.buildJob([copies[0].canvas, copies[1].canvas],
+            { cutMode: CONFIG.RECEIPT_CUT_MODE, burnLuma: burnLuma() });
+          return sendToPrinter(ESCPOS.toBase64(bytes), saleId, 2, 'gift');
+        });
     });
   }
 
@@ -1362,24 +1437,21 @@ var Receipt = (function () {
     });
   }
 
-  /* Called right after a sale completes. Two shapes, and the sale is already
-     committed either way — nothing below this line can unwind money that is
-     already in the drawer.
+  /* Called right after a sale completes: STRAIGHT TO THE PRINTER, both
+     copies, every time. The sale is already committed — nothing below this
+     line can unwind money that is already in the drawer — and this is
+     fire-and-forget, never making the cashier wait on a printer that might
+     be off or out of paper.
 
-       confirm_print ON  — show the receipt and print when it is approved.
-       confirm_print OFF — straight to the printer, fire-and-forget, never
-                           making the cashier wait on a printer that might
-                           be off or out of paper.
-
-     The busy-counter case is why OFF still exists: on a Friday afternoon a
-     dialog between every sale and its paper is friction with no upside,
-     because the cashier is watching the same screen anyway. The approval
-     step is for the admin raising an invoice deliberately. */
+     There used to be a second shape, "Approve before printing"
+     (receipt.confirm_print, on by default since migration 021): Complete
+     sale opened the slip in a dialog and nothing came out until somebody
+     pressed Print. The owner asked (28 Sep 2026) for Complete sale to print
+     by itself — "this is so important" — so the till no longer reads that
+     setting and Settings no longer offers it. The receipt is still on the
+     screen after every sale, and a reprint is one press from it. */
   function autoPrint(sale) {
-    if (!CONFIG.RECEIPT_AUTO_PRINT) return;
     if (typeof allow === 'function' && !allow('sale.reprint')) return;
-
-    if (CONFIG.RECEIPT_CONFIRM_PRINT) { approve(sale.id); return; }
 
     printJob(sale.id).catch(function (err) {
       if (typeof toast === 'function') {

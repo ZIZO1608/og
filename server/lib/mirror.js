@@ -427,6 +427,11 @@ export const TABLES = {
      the order. Cursor shape (a photo is replaced in place, moved between
      slots, removed), pushed behind its own guard straight after the colours. */
   product_photos: { parseKey: numKey, fetchLocal: byId('product_photos'), mapRow: (r) => r },
+  /* 068 — the coupon codes. Cursor shape (switched off, limits changed),
+     pushed behind its own guard at the end of the walk; the website's checkout
+     reads it from the mirror (cloud file 038). */
+  coupons: { parseKey: numKey, fetchLocal: byId('coupons'),
+             mapRow: (r) => ({ ...r, active: !!r.active, once_per_customer: !!r.once_per_customer }) },
   stock: {
     parseKey: (rowId) => { const [sku, wh_id] = rowId.split(':'); return { sku, wh_id }; },
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM stock WHERE sku = ? AND wh_id = ?').get(key.sku, key.wh_id),
@@ -713,7 +718,10 @@ const APPEND  = ['fx_rates', 'stock_movements', 'print_log', 'label_print_log',
                  /* 053 — the cash book. Append-only by design: a correction is
                     a new row, so the highest-id bookmark sees every one. 055's
                     two ledgers are the same kind of table, for the same reason. */
-                 'money_moves', 'supplier_ledger', 'salary_payments'];
+                 'money_moves', 'supplier_ledger', 'salary_payments',
+                 /* 068 — one row per sale a coupon went on; a void is read
+                    through the join, so nothing ever updates one. */
+                 'coupon_uses'];
 const WHOLE   = Object.keys(WHOLE_KEYS);
 
 /* Every table this library pushes, for the check and the status. */
@@ -721,7 +729,7 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
    on its parent's afterUpsert, the way sale_items ride on their sale. */
 export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours', 'product_photos',
                               'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews', 'errands',
-                              ...PARTNER, ...DRAWER, 'day_closes'];
+                              ...PARTNER, ...DRAWER, 'day_closes', 'coupons'];
 
 const MISSING_TABLE = /Could not find the table|PGRST205|relation .* does not exist|Supabase 404 on /i;
 const MISSING_COLUMN = /PGRST204|column .* does not exist|Could not find the '[a-z_]+' column/i;
@@ -1056,6 +1064,33 @@ async function walk(log, only) {
       log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
       log.line('    Run server/supabase/023_payables.sql in the SQL editor.');
       flags.cashFailed = true;
+    }
+  }
+
+  /* 068 — coupons and their uses, ONE GUARD PER TABLE and last of all: a use
+     names a sale and a coupon, both already up by here. Until 038 is run the
+     two are skipped BY NAME (asked at most once a minute by the fast lane,
+     like product_photos) and everything else still goes up; their bookmarks
+     do not move, so nothing is lost. The till and the desk do not need the
+     mirror for coupons — only the website's checkout does. */
+  if (want('coupons') || want('coupon_uses')) log.head('Coupons');
+  for (const name of ['coupons', 'coupon_uses'].filter(want)) {
+    try {
+      if (name === 'coupons') {
+        await syncTable(log, 'coupons', { phase: 'upsert' });
+        await syncTable(log, 'coupons', { phase: 'delete' });
+      } else {
+        await syncAppendOnly(log, 'coupon_uses');
+      }
+      touched.push(name);
+      denied.delete(name);
+      missingAt.delete(name);
+    } catch (e) {
+      if (noteRefused(log, name, e)) continue;
+      if (!missing(e)) throw e;
+      missingAt.set(name, Date.now());
+      log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
+      log.line('    Run server/supabase/038_coupons.sql in the SQL editor.');
     }
   }
 

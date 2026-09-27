@@ -31,6 +31,7 @@ import * as Stock from './stock.js';
 import * as Cash from './cashbook.js';
 import * as Loans from './loans.js';
 import * as Scope from './scope.js';
+import * as Coupons from './coupons.js';
 
 /* The address the printed QR points at.
 
@@ -147,7 +148,12 @@ export function record({
      looked up here so this module stays free of the auth tables — but it
      defaults to false, so a new caller that forgets it gets the cap, not a
      hole. Failing closed is the whole point of a default. */
-  unlimitedDiscount = false
+  unlimitedDiscount = false,
+  /* 068 — a coupon code the customer gave. Checked HERE, against the
+     basket this function priced, and counted in this transaction; the
+     browser's number for it is never read. `couponChannel` says which
+     door it came through (till · desk · web) for the Coupons page. */
+  couponCode = null, couponChannel = 'till'
 }, outer = null) {
   if (!Array.isArray(lines) || !lines.length) throw new Error('a sale needs at least one line');
   if (!whId) throw new Error('a sale must say which place it came out of');
@@ -320,8 +326,25 @@ export function record({
       subtotal += unitPrice * qty;
     }
 
-    const disc = Math.max(0, Math.round(Number(discount) || 0));
-    if (disc > subtotal) throw new Error('the discount is larger than the sale');
+    /* The cashier's discount (capped below) and the coupon's cut (not — it
+       is the owner's rule, not a favour at the counter; lib/coupons.js). The
+       sale row carries their sum in `discount`, the one discount column
+       every report reads. */
+    const manual = Math.max(0, Math.round(Number(discount) || 0));
+    if (manual > subtotal) throw new Error('the discount is larger than the sale');
+    let coupon = null;
+    let couponCut = 0;
+    if (couponCode) {
+      const c = Coupons.evaluate(d, {
+        code: couponCode, subtotal, currency: settle, rate,
+        customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, at
+      });
+      if (c) {
+        coupon = c.coupon;
+        couponCut = Math.min(c.cut, subtotal - manual);
+      }
+    }
+    const disc = manual + couponCut;
 
     /* ---- points spent -----------------------------------------------------
        This used to happen entirely in the browser: pos.js multiplied the
@@ -360,7 +383,7 @@ export function record({
        a suggestion: the request can be sent by hand, and the whole reason
        prices are read from the product table above is that the client's
        numbers are not trusted. The discount is one of the client's numbers. */
-    if (!unlimitedDiscount && disc > 0) {
+    if (!unlimitedDiscount && manual > 0) {
       const maxPct = Number(d.prepare(
         "SELECT value FROM config WHERE key = 'sale.max_discount_pct'"
       ).get()?.value ?? 100);
@@ -368,10 +391,10 @@ export function record({
       /* Compared as amounts rather than a rounded percentage, so a discount
          one lira over the line is over the line. */
       const ceiling = Math.floor(subtotal * maxPct / 100);
-      if (disc > ceiling) {
+      if (manual > ceiling) {
         const e = new Error(
           `Discounts above ${maxPct}% need a manager. The most you can take off ` +
-          `this sale is ${ceiling} (you asked for ${disc}).`);
+          `this sale is ${ceiling} (you asked for ${manual}).`);
         e.code = 'discount_too_big';
         e.maxPct = maxPct;
         e.ceiling = ceiling;
@@ -531,6 +554,15 @@ export function record({
 
     logChange('sales', saleId, 'insert', userId, null);
 
+    /* 068 — the use, in this transaction: it exists exactly when the sale
+       does. Append-only; a void is read through the join, not written here. */
+    if (coupon) {
+      Coupons.recordUse(d, {
+        coupon, saleId, customerId: cust ? cust.id : null, currency: settle,
+        cut: couponCut, channel: couponChannel, userId, at
+      });
+    }
+
     const result = {
       id: saleId, at, currency: settle, subtotal, discount: disc, total,
       fxRate: rate, fxBase: base, whId,
@@ -544,6 +576,10 @@ export function record({
          the line without re-deriving it from a point value that may have been
          changed in Settings since. */
       pointsValue: pointsValue,
+      /* 068 — which code went on the sale and what it took off, in the
+         sale's own currency. Null for a sale with none. */
+      couponCode: coupon ? coupon.code : null,
+      couponCut: couponCut,
       items: priced,
       note: note ?? null,
       /* The till needs this to draw the QR on the receipt it is about to
@@ -588,7 +624,8 @@ export function recordIn(d, args) {
    only genuinely slow option here. */
 export function recent(limit = 50) {
   const sales = get().prepare(
-    `SELECT s.*, u.name AS cashier_name
+    `SELECT s.*, u.name AS cashier_name,
+            (SELECT cu.code FROM coupon_uses cu WHERE cu.sale_id = s.id) AS coupon_code
        FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
       WHERE s.voided = 0
       ORDER BY s.at DESC LIMIT ?`
@@ -613,7 +650,8 @@ export function inRange({ from, to, limit = 5, cashierId = null } = {}) {
   args.push(Math.max(1, Math.min(50, Math.floor(Number(limit)) || 5)));
 
   const sales = get().prepare(
-    `SELECT s.*, u.name AS cashier_name
+    `SELECT s.*, u.name AS cashier_name,
+            (SELECT cu.code FROM coupon_uses cu WHERE cu.sale_id = s.id) AS coupon_code
        FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
       WHERE ${where.join(' AND ')}
       ORDER BY s.at DESC LIMIT ?`

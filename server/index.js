@@ -41,6 +41,7 @@ import * as PermCheck from './lib/permcheck.js';
 import * as Cap from './lib/capped.js';
 import * as Deliveries from './lib/deliveries.js';
 import * as Orders from './lib/orders.js';
+import * as Coupons from './lib/coupons.js';
 import * as Partner from './lib/partner.js';
 import * as Purchasing from './lib/purchasing.js';
 import * as Alerts from './lib/alerts.js';
@@ -129,7 +130,11 @@ const STANDBY_OK = new Set([
      log goes with the next copy), and a person putting away an entry of the
      outbox that could not be sent (lib/outbox.js, a file of its own). */
   'POST /api/print',
-  'POST /api/standby/outbox/dismiss'
+  'POST /api/standby/outbox/dismiss',
+  /* 068 — the till's coupon preview writes nothing: it asks lib/coupons.js
+     the same question the sale will. Offline, the sale itself is checked on
+     this copy and again, for real, when the outbox replays it. */
+  'POST /api/coupon-check'
 ]);
 
 /* THE COPY DOOR (lib/standby.js). The whole database, for the standby to
@@ -1558,6 +1563,9 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
       userId: ctx.user.id,
       /* Read from the caller's role, never from the request. */
       unlimitedDiscount: Auth.can(ctx.user, 'discount.unlimited'),
+      /* 068 — the code only; what it takes off is worked out in the sale. */
+      couponCode: typeof b.couponCode === 'string' ? b.couponCode : null,
+      couponChannel: 'till',
       /* The till generates this. On a retry after a dropped connection the
          same id comes back and returns the original invoice rather than
          selling everything a second time. */
@@ -1565,6 +1573,11 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
     });
     sendOk(ctx.res, { sale: scrubCost(sale, ctx.user) });
   } catch (e) {
+    /* 068 — a coupon the sale refused, with the code the till translates. */
+    if (typeof e.code === 'string' && e.code.startsWith('coupon_')) {
+      return sendErrorDetail(ctx.res, e.status || 409, e.code, e.message,
+        { coupon: e.coupon, uses: e.uses, maxUses: e.maxUses, minBasket: e.minBasket, saleId: e.saleId });
+    }
     /* All four of these carry a NUMBER the till has to show — how many are
        left, the ceiling, the balance, the room. They used to hand it to
        sendError's fifth argument, which is HTTP headers, so none of it ever
@@ -1748,6 +1761,11 @@ router.add('GET /api/deliveries', requirePerm('delivery.read', (ctx) => {
    itself is wrong. The amounts ride in the body, where js/api.js reads them
    as err.detail. */
 function orderFail(res, e) {
+  /* 068 — a coupon the order refused. */
+  if (typeof e.code === 'string' && e.code.startsWith('coupon_')) {
+    return sendErrorDetail(res, e.status || 409, e.code, e.message,
+      { coupon: e.coupon, uses: e.uses, maxUses: e.maxUses, minBasket: e.minBasket, saleId: e.saleId });
+  }
   if (e.code === 'insufficient_stock') {
     return sendErrorDetail(res, 409, 'insufficient_stock',
       `Only ${e.available} of ${e.sku} left — the other till may have just sold it.`,
@@ -1840,6 +1858,9 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       userId: ctx.user.id,
       /* Read from the caller's role, never from the request. */
       unlimitedDiscount: Auth.can(ctx.user, 'discount.unlimited'),
+      /* 068 — a coupon: typed in the desk, or the one the website order
+         carried (Desk.fromWeb puts it in the draft). Checked in the sale. */
+      couponCode: str(b.couponCode),
       opId: webRef ? WebOrders.opIdFor(webRef) : str(b.opId)
     });
     if (reqRef && !out.replayed) Requests.markAccepted(reqRef, out.sale.id, ctx.user.id);
@@ -1861,6 +1882,50 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       replayed: !!out.replayed
     });
   } catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* ---- coupons (068, lib/coupons.js) ---------------------------------------
+   The page is the owner's and the developers' (coupon.write). The PREVIEW is
+   the till's and the desk's: the same evaluate() the sale runs, so what the
+   cashier is shown is what the sale will do — and nothing is written by it. */
+function couponFail(res, e) {
+  if (typeof e.code === 'string' && (e.code.startsWith('coupon_') || e.code === 'not_found' || e.code === 'no_rate')) {
+    return sendErrorDetail(res, e.status || 409, e.code, e.message,
+      { field: e.field, coupon: e.coupon, uses: e.uses, maxUses: e.maxUses, minBasket: e.minBasket, saleId: e.saleId });
+  }
+  sendError(res, 400, 'invalid', e.message);
+}
+
+router.add('GET /api/coupons', requirePerm('coupon.write', (ctx) => {
+  sendOk(ctx.res, { coupons: Coupons.list(), suggest: Coupons.suggest() });
+}));
+
+router.add('GET /api/coupons/:id', requirePerm('coupon.write', (ctx) => {
+  const r = Coupons.byId(ctx.params.id);
+  if (!r) return sendError(ctx.res, 404, 'not_found', 'No such coupon.');
+  sendOk(ctx.res, r);
+}));
+
+router.add('POST /api/coupons', requirePerm('coupon.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { coupon: Coupons.create(b, ctx.user.id) }); }
+  catch (e) { couponFail(ctx.res, e); }
+}));
+
+router.add('PATCH /api/coupons/:id', requirePerm('coupon.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { coupon: Coupons.update(ctx.params.id, b, ctx.user.id) }); }
+  catch (e) { couponFail(ctx.res, e); }
+}));
+
+router.add('POST /api/coupon-check', requirePerm(['sell', 'delivery.desk'], async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, Coupons.check({
+      code: b.code, subtotal: b.subtotal, currency: typeof b.currency === 'string' ? b.currency : null,
+      customerId: b.customerId ? Number(b.customerId) : null
+    }));
+  } catch (e) { couponFail(ctx.res, e); }
 }));
 
 /* ---- the website's orders (lib/weborders.js) -------------------------------

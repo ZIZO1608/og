@@ -102,8 +102,6 @@ var CONFIG = {
      is standing there. */
   MAX_DISCOUNT_PCT: 10,
 
-  COUPON: { code: 'OG20', percent: 20 },
-
   /* QR payloads. 'text' prints human-readable info that resolves with no
      internet; 'url' switches to a deep link. Edit live in Settings. */
   QR_MODE: 'text',
@@ -2558,6 +2556,12 @@ var DB = {
         price: job.price, cost: job.cost,
         currency: f.currency || 'SYP',
         source: job.source, autoSend: !!f.autoSend,
+        /* The sale it was raised on (the till). It links the job to the sale
+           so the receipt can print the job number — and it is what the
+           server checks before letting a cashier without print.write raise a
+           job at all ("a print job can only be raised on a sale you rang
+           up"), which it never sent, so hers were refused. */
+        saleId: f.saleId || null,
         lines: (job.lines || []).map(function (l) {
           return {
             clubCode: clubCodeFor(l.club), printName: l.print,
@@ -2569,6 +2573,13 @@ var DB = {
           try { f.onSaved(r && r.job); } catch (e) { if (typeof console !== 'undefined') console.warn(e); }
         }
         return r;
+      }, function (err) {
+        /* Said to the caller, then passed on so pushPartner still toasts it:
+           the till is waiting on this to print the receipt. */
+        if (typeof f.onFailed === 'function') {
+          try { f.onFailed(err); } catch (e) { if (typeof console !== 'undefined') console.warn(e); }
+        }
+        throw err;
       });
     }, typeof t === 'function' ? t('print_title') : 'Print jobs');
     return job;
@@ -2976,7 +2987,7 @@ var DB = {
            never recomputed from today's rate: three documents used to do
            that, and two of them were paper. */
         pointsEarned: Number(s.points_earned) || 0,
-        couponCode: null,
+        couponCode: s.coupon_code || null,
         total: s.total,
         payment: s.payment,
         txnRef: s.txn_ref || null,

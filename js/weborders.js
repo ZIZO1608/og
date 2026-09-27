@@ -173,6 +173,8 @@ var WebOrders = (function () {
       '<div><b>' + (pay.type === 'transfer' ? t('wo_pay_transfer') : t('wo_pay_cod')) + '</b>' +
         (pay.type === 'transfer' && pmName ? ' · ' + esc(pmName) : '') + '</div>' +
       (pay.reference ? '<div class="muted">' + t('wo_txn') + ' ' + ltr(pay.reference) + '</div>' : '') +
+      /* 068 — the coupon the customer gave; the desk checks it on Accept. */
+      (o.coupon ? '<div>' + t('coupon') + ' <span class="badge accent">' + ltr(o.coupon) + '</span></div>' : '') +
       (o.hasProof
         ? '<button type="button" class="wo-proof" data-act="wo-proof" data-ref="' + esc(o.ref) + '" aria-label="' +
             esc(t('wo_proof_open')) + '"><img alt="" loading="lazy" src="/api/web-orders/' + encodeURIComponent(o.ref) + '/proof"></button>'

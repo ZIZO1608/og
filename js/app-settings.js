@@ -503,15 +503,10 @@ function receiptSettingsCard() {
   h += '<div class="set-sep"></div><h4 class="set-h">' + t('rc3_g_how') + '</h4>' +
     '<p class="set-note">' + t('rc3_g_how_note') + '</p>';
 
-  h += '<div class="rule-row"><div class="rr-txt"><b>' + t('rc3_auto_print') + '</b>' +
-    '<small>' + t('rc3_auto_print_hint') + '</small></div>' +
-    '<label class="switch"><input type="checkbox" id="rcAutoPrint"' +
-      (CONFIG.RECEIPT_AUTO_PRINT ? ' checked' : '') + '><i></i></label></div>';
-
-  h += '<div class="rule-row"><div class="rr-txt"><b>' + t('rc3_confirm_print') + '</b>' +
-    '<small>' + t('rc3_confirm_print_hint') + '</small></div>' +
-    '<label class="switch"><input type="checkbox" id="rcConfirmPrint"' +
-      (CONFIG.RECEIPT_CONFIRM_PRINT ? ' checked' : '') + '><i></i></label></div>';
+  /* "Auto-print on sale" and "Approve before printing" are gone (28 Sep
+     2026): Complete sale always prints both copies by itself, the owner's
+     rule, so a switch that could stop it would only be a way to break it. */
+  h += '<p class="set-note">' + t('rc3_always_prints') + '</p>';
 
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_copies') + '</span>' +

@@ -35,9 +35,9 @@ merged.
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
   PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
-- **Numbers in use:** local migrations run to `067` (`063` is night mode's and applies after `067`
+- **Numbers in use:** local migrations run to `068` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `068`; the next cloud file is `038`.** The cloud files have two `030`s and two
+  local migration is `069`; the next cloud file is `039`.** The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
   `server/supabase/status.sql` says which the live project already has.
 - **A section below that says "not merged", or names one of the old worktree folders, describes
@@ -4036,6 +4036,94 @@ Every check added for the two reviews was seen red on the old code first.
 - **Set `og.lang` only after the app has finished booting.** Boot's `applyLang()` writes the key
   from the language it started in, so a key set mid-boot is written straight back. The first
   preview saved the "English" laptop screens in Arabic, byte for byte the same files.
+
+## The owner's eleven edits (28 Sep 2026) — and coupon codes (068, cloud 038)
+
+Built in a worktree (`feature/mini-edits`), tested on a `VACUUM INTO` copy of the sandbox served
+from the worktree on 8193 with no cloud and bogus bots. The suites are in `_nightshift/coupons/`:
+`api.mjs` 48 (every coupon rule over HTTP, read back from SQLite), `ui.mjs` 42 (each edit pressed
+in a browser), `receipt.mjs` 46 (every receipt case in all four copies, no two ink boxes
+touching). **`038_coupons.sql` must be run by hand in Supabase** (after `030`) for the website's
+half; the till and the desk do not need it, and the sync skips the two tables by name until it is.
+
+- **The owner's and developer's home** lost Staff and Take order and gained Coupons. Their `ORDER`
+  is their WHOLE list now (`NO_FILL` in `js/home.js`): every other role is topped up to six from
+  `FALLBACK`, which starts with Sell and Take order, so without it the two came straight back.
+  The dashboard's lime "Cashier" button in the page head is gone.
+- **Complete sale prints by itself, both copies, every time.** `Receipt.autoPrint` no longer reads
+  `receipt.auto_print` or `receipt.confirm_print`, and Settings no longer offers either switch
+  (`rc3_always_prints` says what happens instead). The live database had `confirm_print = 1`, so
+  every sale opened an approval dialog and nothing printed until somebody pressed Print — that
+  was the "it doesn't print automatically". The config rows are left alone; nothing reads them.
+- **A gift prints two slips in one job**: the gift slip for the bag, and `draw(R, 'gift-shop')` —
+  the same slip under a second band, SHOP COPY. It is the gift renderer, not a second one.
+- **The Yalla Wear job on the receipt.** `Printing.data` returns `print_jobs` (id, and each line's
+  name, number, size — never `unit_cost`, never the job's price, which is charged outside the
+  sale's total) and `drawPrintJobs` prints a black band, the job number big, then a row per shirt
+  through `rowLR`, which wraps or stacks rather than overlapping. The number is an LRI…PDI run, or
+  Arabic carries the `#` to the far side ('7#'). **The till used to print before the job existed**
+  (the job is created after the sale), and never sent the sale's id — so the job was not linked to
+  the sale, AND a cashier without `print.write` was refused outright ("a print job can only be
+  raised on a sale you rang up" needs the id). Now `DB.newPrintJob` sends `saleId`, and the till
+  prints when the job saved, failed, or after 8 s — once.
+- **No QR in any PDF**: the A4 invoice, every export PDF's footer and the Yalla Wear bill.
+  `qrForSale` / `qrSafe` went with them. The thermal receipt's barcode stays (it is not a QR).
+- **The product drawer**: one "Add a colour or a size" (the dialog opens on a size, the colour one
+  beside it), no "Stock per size" card (the colour × size matrix above it stays; `wearers()`, the
+  `cu-size` and `preview-labels` handlers went with it — p0-namespaces would have gone red), and
+  **no colourway anywhere on screen** — list, drawer, editor, Add product, quick price, scan result,
+  shelf map. The column stays; the editor no longer SENDS it, so saving cannot blank a value, and
+  search still matches it. The website feed is unchanged.
+
+### Coupon codes — `server/lib/coupons.js`, `js/coupons.js`, migration 068, cloud 038
+
+The browser's `CONFIG.COUPON` (OG20, 20%) was a fake the server knew nothing about — and a 20%
+cut is over the 10% ceiling, so every sale it went on was refused. Gone.
+
+- **Checked where the sale is written.** `Coupons.evaluate()` runs inside `Sales.record`'s
+  transaction against the basket the SERVER priced; the till and the desk send only
+  `couponCode` (and the manual discount alone as `discount`). The preview (`POST
+  /api/coupon-check`, `sell` or `delivery.desk`, and on a standby's allow-list because it writes
+  nothing) asks the same function. Refusals are 409 with a code the browser says through
+  `err_coupon_*`: unknown · off · not_yet · expired · used_up · needs_customer ·
+  used_by_customer · min_basket.
+- **The 10% ceiling is on the manual part only**; the coupon is the owner's rule. `sales.discount`
+  holds the sum, the one column every report reads.
+- **A use exists exactly when its sale does**: `coupon_uses` is written in the sale's transaction,
+  one per sale (unique index — a replayed opId cannot count twice), and APPEND-ONLY. A use counts
+  while its sale is not voided — a join, never a stored number — so a void gives it back by itself.
+- **Money**: percent or a fixed amount in **USD cents**, and the minimum basket in USD cents,
+  converted at the sale's own frozen rate (prices are dollars since 067). The cut is in the sale's
+  currency. Channel `till` · `desk` · `web` (a website order accepted through the desk).
+- **The page** (`#coupons`, `coupon.write` — owner and developer, "only for the admin"; FORBIDDEN
+  to the partner): a ticket per code (value on a stub, the code big with Copy, status, a meter of
+  uses, who and how many, what it gave away per currency), filters, New code (a suggested
+  `OG-XXXXX`, percent or dollars, and the limits behind a fold: minimum, most uses, start, end,
+  once per customer, a note), Edit, Switch off, and **Who used it** (the sales, newest first,
+  voided ones struck through and not counted). A used code cannot be renamed.
+- **The website** (contract v1.4, `docs/website/UPDATE-COUPONS.md`): `public.web_coupon` in 038
+  answers from the mirror; the order carries `coupon`; `lib/weborders.js` shapes it onto the
+  card, and `Desk.fromWeb` puts it on the desk and checks it for real. **The rule is in two
+  places — `evaluate()` and `web_coupon` — keep them in step.**
+- **The mirror**: `coupons` is cursor shape (every write `logChange`d), `coupon_uses` append-only,
+  both behind one guard at the end of the walk, missing → skipped by name with 038 named and asked
+  at most once a minute. In `restore.js` ORDER, `drift.js` PUSHED, the reconcile list and
+  `purge-demo.js` (a use names its sale). `supabase:drift` is red until 038 is run — the guard.
+
+### Things that bit
+
+- **`String.prototype.replace` reads `$'` in the replacement as "the rest of the string".** A
+  scripted edit whose new text contained `'−$' +` pasted the rest of `pos.js` into itself three
+  times (1,905 lines became 6,849) and still parsed. Scripted edits use a literal slice-and-join
+  (`indexOf` + `slice`), never `replace` with text you did not escape.
+- **The till's quiet add (`POS.add(v, true)`) plus a foot repaint leaves Complete disabled** — a
+  real scan repaints the basket. A suite that fills the basket calls `render()`, and picks a size
+  the till's OWN location holds (it sells from the floor, not the back).
+- **`p0-namespaces.mjs` has its folder hard-coded to this repo's `js/`**, so run from a worktree it
+  checks the old code. Point `DIR` at the worktree.
+- **A long single-tab suite can starve its own requests**: every page load leaves an event stream
+  the browser may hold, six per host on HTTP/1.1, and the page then shows "the server is not
+  answering" while the server answers in milliseconds. It is the harness, not the page.
 
 ## The style rules
 

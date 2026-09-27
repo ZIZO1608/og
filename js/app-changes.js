@@ -146,7 +146,6 @@ var CHANGES = {
      them either. */
   'wh-brand':    function (el) { OG.wh.brand = el.value; },
   'wh-made':     function (el) { OG.wh.madeIn = el.value; },
-  'wh-colorway': function (el) { OG.wh.colorway = el.value; },
 
   /* Changing the room cannot leave the shelf choice standing: a shelf reaches
      its warehouse through its section, and a shelf id from the other building

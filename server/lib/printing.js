@@ -24,6 +24,7 @@ import { get, nowIso } from './db.js';
 import * as Printer from './printer.js';
 import * as Orders from './orders.js';
 import * as ReceiptQueue from './receipt-queue.js';
+import * as Coupons from './coupons.js';
 import { isStandby } from './standby.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -129,6 +130,23 @@ export function data(saleId) {
       };
     }
   }
+
+  /* The Yalla Wear print jobs raised at the till on this sale (28 Sep 2026,
+     the owner: the job number and the names go on the receipt). Only what
+     is printed ON the shirts — never unit_cost, which is what Yalla Wear
+     charges the shop, and not the job's price either: the till charges the
+     print on the job, outside this sale's total, and a figure on the slip
+     that is not in its total would read as a mistake. */
+  const jobs = get().prepare(
+    `SELECT id, kind, qty FROM print_jobs WHERE sale_id = ? ORDER BY id`
+  ).all(saleId);
+  const lineQ = get().prepare(
+    `SELECT print_name, number, size, qty FROM print_job_lines WHERE job_id = ? ORDER BY id`
+  );
+  sale.print_jobs = jobs.map((j) => ({ id: j.id, kind: j.kind, qty: j.qty, lines: lineQ.all(j.id) }));
+
+  /* 068 — the coupon on this sale, and what it took off (sale currency). */
+  sale.coupon = Coupons.forSale(saleId);
 
   Object.assign(sale, configBlock());
   return sale;

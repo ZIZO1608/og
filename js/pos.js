@@ -57,7 +57,7 @@ var POS = (function () {
         ? Math.round(subtotal * Math.min(100, S.discount.value) / 100)
         : Math.min(subtotal, S.discount.value);
     }
-    var couponCut = S.coupon ? Math.round(subtotal * CONFIG.COUPON.percent / 100) : 0;
+    var couponCut = couponCutFor(subtotal);
     var pointsValue = S.pointsUsed * CONFIG.LOYALTY_POINT_VALUE;
     var discount = Math.min(subtotal, manual + couponCut);
     var total = Math.max(0, subtotal - discount - pointsValue);
@@ -65,6 +65,43 @@ var POS = (function () {
   }
 
   function cartCount() { return S.cart.reduce(function (a, l) { return a + l.qty; }, 0); }
+
+  /* ------------------------------------------------------------- the coupon
+
+     068. S.coupon is the RULE the server answered with (POST
+     /api/coupon-check) — kind, percent or dollars, the minimum basket — and
+     this works the cut out again as the basket changes, with the server's
+     arithmetic (lib/coupons.js evaluate()): a percent of the goods, rounded;
+     a dollar amount at today's rate, rounded to the lira; never more than
+     the basket. It is a PREVIEW. The sale sends only the code and the
+     server works the cut out itself, inside the sale. */
+  function couponCutFor(subtotal) {
+    var c = S.coupon;
+    if (!c || !(subtotal > 0)) return 0;
+    var rate = CONFIG.EXCHANGE_RATE || 1;
+    if (c.minBasket && Math.round(subtotal / rate * 100) < c.minBasket) return 0;
+    var cut = c.kind === 'percent'
+      ? Math.round(subtotal * c.percent / 100)
+      : Math.round((c.amount || 0) / 100 * rate);
+    return Math.max(0, Math.min(subtotal, cut));
+  }
+
+  /* "−20%" or "−$5" — what the badge says the code is worth. */
+  function usdText(cents) {
+    return '$' + ((cents || 0) / 100).toFixed((cents || 0) % 100 ? 2 : 0);
+  }
+  function couponWorth(c) {
+    if (!c) return '';
+    return c.kind === 'percent' ? '−' + c.percent + '%' : '−' + usdText(c.amount);
+  }
+
+  /* Below the coupon's minimum basket the cut is 0 — said, not hidden. */
+  function couponShort() {
+    var c = S.coupon;
+    if (!c || !c.minBasket) return false;
+    var sub = totals().subtotal;
+    return Math.round(sub / (CONFIG.EXCHANGE_RATE || 1) * 100) < c.minBasket;
+  }
 
   /* ---------------------------------------------------- the discount ceiling
 
@@ -505,7 +542,7 @@ var POS = (function () {
     var h = '<div class="totals">' +
       '<div class="tr"><span>' + t('subtotal') + ' · ' + cartCount() + ' ' + t('items').toLowerCase() + '</span><span>' + money(x.subtotal) + '</span></div>';
     if (x.manual) h += '<div class="tr disc"><span>' + t('discount') + '</span><span>− ' + money(x.manual) + '</span></div>';
-    if (x.couponCut) h += '<div class="tr disc"><span>' + t('coupon') + ' ' + CONFIG.COUPON.code + '</span><span>− ' + money(x.couponCut) + '</span></div>';
+    if (x.couponCut) h += '<div class="tr disc"><span>' + t('coupon') + ' <bdi dir="ltr">' + esc(S.coupon.code) + '</bdi></span><span>− ' + money(x.couponCut) + '</span></div>';
     if (x.pointsValue) h += '<div class="tr disc"><span>' + t('loyalty') + '</span><span>− ' + money(x.pointsValue) + '</span></div>';
     h += '<div class="tr grand"><span>' + t('total') + '</span><span>' + money(x.total) + '</span></div>';
     if (OG.currency === 'SYP') h += '<div class="sub-usd">≈ $' + nf(x.total / CONFIG.EXCHANGE_RATE) + '</div>';
@@ -759,11 +796,14 @@ var POS = (function () {
           '</div>' + discHintHtml() + '</div>' +
         '<div><span class="lbl">' + t('coupon') + '</span>' +
           (S.coupon
-            ? '<div style="display:flex;gap:4px;align-items:center;height:34px">' +
-                '<span class="badge accent">' + CONFIG.COUPON.code + ' −' + CONFIG.COUPON.percent + '%</span>' +
-                '<button class="btn btn-sm btn-ghost" data-pos="coupon-clear">' + t('remove') + '</button></div>'
+            ? '<div style="display:flex;gap:4px;align-items:center;min-height:34px;flex-wrap:wrap">' +
+                '<span class="badge accent"><bdi dir="ltr">' + esc(S.coupon.code) + ' ' + couponWorth(S.coupon) + '</bdi></span>' +
+                '<button class="btn btn-sm btn-ghost" data-pos="coupon-clear">' + t('remove') + '</button></div>' +
+                (couponShort()
+                  ? '<small class="warn">' + t('cp_pos_short').replace('{n}', '<bdi dir="ltr">' + usdText(S.coupon.minBasket) + '</bdi>') + '</small>'
+                  : '')
             : '<div style="display:flex;gap:4px">' +
-                '<input class="inp" id="posCoupon" type="text" placeholder="OG20">' +
+                '<input class="inp" id="posCoupon" type="text" autocomplete="off" autocapitalize="characters" dir="ltr" placeholder="' + esc(t('cp_pos_ph')) + '">' +
                 '<button class="btn btn-sm" style="flex:none" data-pos="coupon">' + t('apply') + '</button></div>') +
         '</div>' +
       '</div>' +
@@ -996,9 +1036,11 @@ var POS = (function () {
       customerId: S.customerId || null,
       payment: S.payment,
       txnRef: (wantsTxnRef() && S.txnRef.trim()) || null,
-      /* Manual discount and coupon only — totals() keeps the points out of
-         this figure deliberately. */
-      discount: totals().discount,
+      /* The MANUAL discount only (068). The coupon goes as its code and the
+         server works its cut out inside the sale; sending the cut as well
+         would take it off twice. Points are out of this figure too. */
+      discount: totals().manual,
+      couponCode: S.coupon ? S.coupon.code : null,
       /* A COUNT of points, not what they are worth. The server holds the
          balance, values them from its own config and deducts them inside the
          sale's transaction. Sending an amount would let the till decide what
@@ -1134,10 +1176,12 @@ var POS = (function () {
                  size: l.size, qty: l.qty, unitPrice: l.price, unitCost: l.cost };
       }),
       subtotal: x.subtotal,
-      discount: x.discount,
+      /* The server's figures where it gave them: it worked the coupon out
+         itself (068), and the receipt must say what was charged. */
+      discount: server.discount != null ? server.discount : x.discount,
       pointsUsed: S.pointsUsed,
-      couponCode: S.coupon ? CONFIG.COUPON.code : null,
-      total: x.total,
+      couponCode: server.couponCode || null,
+      total: server.total != null ? server.total : x.total,
       payment: S.payment,
       /* Read from state, not the DOM: the foot repaints on every payment
          change, so the input node the cashier typed into may be long gone. */
@@ -1223,8 +1267,20 @@ var POS = (function () {
     var e = DB.employees.filter(function (x2) { return x2.name === cashier; })[0];
     if (e) e.sales += sale.total;
 
-    /* --- optional print job, straight into the Design column --- */
+    /* --- optional print job, straight into the Design column ---
+
+       THE RECEIPT WAITS FOR IT (28 Sep 2026). The slip prints the Yalla Wear
+       job number and the names, and the job does not exist until the server
+       has answered — so with a print on the sale the paper goes when the job
+       is saved, or when it failed, or after eight seconds, whichever is first.
+       Never twice, and never not at all. */
     var job = null;
+    var printed = false;
+    var printReceipt = function () {
+      if (printed) return;
+      printed = true;
+      if (typeof Receipt !== 'undefined') Receipt.autoPrint(sale);
+    };
     if (S.print.on) {
       var dateEl = document.getElementById('prDate');
       var pdate = (dateEl && dateEl.value) || S.print.deadline || isoAhead(5);
@@ -1268,7 +1324,10 @@ var POS = (function () {
            the server keeps it a draft and the toast says what to finish. */
         source: 'till',
         autoSend: true,
+        saleId: sale.id,
+        onFailed: function () { printReceipt(); },
         onSaved: function (saved) {
+          printReceipt();
           if (typeof Notify !== 'undefined') Notify.refresh();
           if (saved && saved.order_state === 'pending') {
             toast(OG.lang === 'ar' ? 'أُرسل طلب الطباعة إلى يلا وير' : 'Print job sent to Yalla Wear',
@@ -1299,8 +1358,10 @@ var POS = (function () {
 
     /* The actual paper. Fire-and-forget — a printer that is off or out of
        paper must never hold up the till, the same principle as a delivery
-       assignment happening only after the sale has already committed. */
-    if (typeof Receipt !== 'undefined') Receipt.autoPrint(sale);
+       assignment happening only after the sale has already committed. With a
+       print job on the sale it waits for the job (above), at most 8 s. */
+    if (job) setTimeout(printReceipt, 8000);
+    else printReceipt();
 
     /* The gift slip, AFTER the customer's own receipt and never instead of
        it — a sale that contains a present is still a sale, and the person
@@ -1402,16 +1463,23 @@ var POS = (function () {
 
     'disc-mode': function (el) { S.discount.mode = el.getAttribute('data-m'); paintFoot(); },
 
-    coupon: function () {
-      var el = document.getElementById('posCoupon');
-      var code = (el && el.value || '').trim().toUpperCase();
-      if (code === CONFIG.COUPON.code) {
-        S.coupon = code;
-        toast(t('coupon'), CONFIG.COUPON.code + ' · −' + CONFIG.COUPON.percent + '%', 'ok');
+    /* Asks the SERVER (068): the same check the sale will run, against this
+       basket and this customer. Nothing is written by asking. */
+    coupon: function (el) {
+      var inp = document.getElementById('posCoupon');
+      var code = (inp && inp.value || '').replace(/\s+/g, '').toUpperCase();
+      if (!code) { toast(t('coupon'), t('cp_pos_type'), 'warn'); return; }
+      if (el) el.disabled = true;
+      API.post('/api/coupon-check', {
+        code: code, subtotal: totals().subtotal, customerId: S.customerId || null
+      }).then(function (r) {
+        S.coupon = r.coupon;
+        toast(t('coupon'), r.coupon.code + ' · ' + couponWorth(r.coupon), 'ok');
         paintFoot();
-      } else {
-        toast(t('coupon'), (OG.lang === 'ar' ? 'كود غير صالح: ' : 'Invalid code: ') + (code || '—'), 'err');
-      }
+      }).catch(function (err) {
+        if (el) el.disabled = false;
+        toast(t('coupon') + ' ' + code, API.friendly(err), 'err', 6000);
+      });
     },
     'coupon-clear': function () { S.coupon = null; paintFoot(); },
 

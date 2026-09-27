@@ -368,7 +368,7 @@ function whStockTab() {
       var vs = DB.variantsOf(r.p.id);
       h += '<tr' + (r.n === 0 ? ' class="row-dim"' : '') + '>' +
         '<td><div class="cell-prod">' + thumb(r.p) +
-          '<span><b>' + esc(r.p.name) + '</b><small>' + esc(r.p.colorway) + '</small></span></div></td>' +
+          '<span><b>' + esc(r.p.name) + '</b></span></div></td>' +
         '<td class="num"><b>' + r.n + '</b></td>' +
         '<td><div class="wh-sizes">';
 
@@ -780,9 +780,6 @@ function whAddTab() {
                   '" placeholder="Syria" data-change="wh-made"></label>' +
             '</div>' +
             '<div class="row2">' +
-              '<label class="field"><span>' + t('colour') + '</span>' +
-                '<input class="inp" id="whWay" type="text" value="' + esc(OG.wh.colorway || '') +
-                  '" data-change="wh-colorway"></label>' +
             /* WHERE IT LANDS AND WHERE IT GOES. Both left out entirely without
                stock.move, for the same reason the cost box is: putting a pair
                on a shelf is a stock movement, and the server refuses one from

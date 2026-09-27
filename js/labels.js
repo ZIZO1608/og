@@ -446,22 +446,6 @@ var Labels = (function () {
   function register() {
     if (typeof ACTIONS === 'undefined') return;
 
-    ACTIONS['preview-labels'] = function (el) {
-      var lines;
-      try { lines = JSON.parse(el.getAttribute('data-lines') || '[]'); } catch (e) { lines = []; }
-      if (!lines.length) {
-        var sku = el.getAttribute('data-variant-sku');
-        if (sku) {
-          var host = el.closest('tr') || el.parentNode;
-          var qtyInp = host ? host.querySelector('.lbl-qty-inp') : null;
-          var qty = qtyInp ? Math.max(1, parseInt(qtyInp.value, 10) || 1) : 1;
-          lines = [{ sku: sku, qty: qty }];
-        }
-      }
-      if (!lines.length) return;
-      openPreviewModal(lines, el.getAttribute('data-preset'), el.getAttribute('data-station'));
-    };
-
     ACTIONS['print-labels'] = function (el) {
       var lines = activeLines;
       if (!lines) { try { lines = JSON.parse(el.getAttribute('data-lines') || '[]'); } catch (e) { lines = []; } }

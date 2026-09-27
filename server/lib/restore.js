@@ -129,6 +129,8 @@ export const ORDER = [
   /* what suppliers and staff were paid (055): after the supplier and the
      employee they name, which come first in this list */
   'supplier_ledger', 'salary_payments',
+  /* 068 — a code before the uses that name it; a use names its sale */
+  'coupons', 'coupon_uses',
 
   /* what was printed, which the mirror has always had room for */
   'print_log', 'label_print_log'

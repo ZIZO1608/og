@@ -243,6 +243,8 @@ const removed = DB.tx(() => {
        fail on the foreign key — and a purge that fails on the one shop that
        printed its demo receipts is a purge nobody can run. */
     d.prepare(`DELETE FROM print_log WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
+    /* 068 — a coupon use names its sale (a foreign key here, none there). */
+    d.prepare(`DELETE FROM coupon_uses WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
     d.prepare(`DELETE FROM sales WHERE id IN (${inList(saleIds)})`).run(...saleIds);
     /* sale_items cascade on the Postgres side, so the parent is enough for
        those. debt_payments and print_log do NOT cascade there — the sync's
