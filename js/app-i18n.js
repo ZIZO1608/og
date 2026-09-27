@@ -79,6 +79,7 @@ var I18N = {
        t(), because the printed slip needs both languages on the page at
        once, never just whichever one the app happens to be showing. */
     rc2_invoice: 'Invoice', rc2_datetime: 'Date & time', rc2_cashier: 'Cashier',
+    rc2_g_invoice: 'Invoice', rc2_date: 'Date', rc2_time: 'Time', rc2_pieces: 'Pieces',
     rc2_customer: 'Customer', rc2_phone: 'Phone', rc2_points_balance: 'Points balance',
     rc2_size: 'Size', rc2_line_discount: 'Discount',
     rc2_subtotal: 'Subtotal', rc2_discount: 'Discount', rc2_points_used: 'Points used',
@@ -878,6 +879,7 @@ var I18N = {
     rc_paper_hint: 'قياس الرول في طابعتك. ٨٠ مم هو القياس المعتاد.',
 
     rc2_invoice: 'رقم الفاتورة', rc2_datetime: 'التاريخ والوقت', rc2_cashier: 'الكاشير',
+    rc2_g_invoice: 'الفاتورة', rc2_date: 'التاريخ', rc2_time: 'الوقت', rc2_pieces: 'عدد القطع',
     rc2_customer: 'الزبون', rc2_phone: 'الهاتف', rc2_points_balance: 'رصيد النقاط',
     rc2_size: 'مقاس', rc2_line_discount: 'خصم',
     rc2_subtotal: 'المجموع الفرعي', rc2_discount: 'الخصم', rc2_points_used: 'نقاط مستخدمة',

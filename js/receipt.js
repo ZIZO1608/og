@@ -21,7 +21,7 @@
 var Receipt = (function () {
 
   var W = 576;                    // 72mm at 203dpi — never scaled after draw
-  var PAD = 24;                   // ~3mm margin each side
+  var PAD = 16;                   // 2mm margin each side — the head's 72mm is already inside the roll's edge
   var CW = W - PAD * 2;           // content width
   var FONT = "'Montserrat', 'Cairo', 'Segoe UI', Tahoma, sans-serif";
   /* Montserrat first and it keeps every Latin glyph — its @font-face blocks
@@ -75,6 +75,54 @@ var Receipt = (function () {
       img.src = 'assets/logo.svg';
     });
     return logoPromise;
+  }
+
+  /* The mark in black ink on white paper, cropped to the letters.
+     assets/logo.svg is a white OG on a black square, and printed as it comes
+     the square was a 22 mm block of solid black — the loudest thing on the
+     slip and heat spent on nothing, where a brand's receipt carries its mark
+     small, in ink. The ink here is the artwork's brightness (the same reading
+     the shelf map's wall makes of it, markCanvas in js/shelfroom.js), and the
+     canvas is cropped to where that ink is, so a height asked of drawLogo()
+     is the height of the letters rather than of the margin round them.
+
+     Null on any failure — no logo, a canvas that will not read back — and
+     drawLogo() then prints the square instead, small. The old logo is a
+     better receipt than no logo, and neither is a reason not to print. */
+  var markPromise = null;
+  function loadMark() {
+    if (markPromise) return markPromise;
+    markPromise = loadLogo().then(function (img) {
+      if (!img) return null;
+      try {
+        var S = 480;
+        var c = document.createElement('canvas');
+        c.width = c.height = S;
+        var g = c.getContext('2d');
+        g.drawImage(img, 0, 0, S, S);
+        var d = g.getImageData(0, 0, S, S), px = d.data;
+        var x0 = S, y0 = S, x1 = -1, y1 = -1;
+        for (var y = 0; y < S; y++) {
+          for (var x = 0; x < S; x++) {
+            var i = (y * S + x) * 4;
+            var ink = Math.round((px[i] + px[i + 1] + px[i + 2]) / 3 * px[i + 3] / 255);
+            px[i] = px[i + 1] = px[i + 2] = 0;
+            px[i + 3] = ink;
+            if (ink > 64) {
+              if (x < x0) x0 = x; if (x > x1) x1 = x;
+              if (y < y0) y0 = y; if (y > y1) y1 = y;
+            }
+          }
+        }
+        if (x1 < 0) return null;
+        g.putImageData(d, 0, 0);
+        var out = document.createElement('canvas');
+        out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
+        out.getContext('2d').drawImage(c, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+        return out;
+      } catch (e) { return null; }
+    });
+    return markPromise;
   }
 
   /* Official Instagram/Telegram glyphs, sourced as real SVG (not redrawn
@@ -154,13 +202,30 @@ var Receipt = (function () {
     return ar ? 'ل.س' : 'SYP';
   }
 
-  /* USD is prefixed ("$12"), SYP is suffixed ("12,500 SYP" / "12,500 ل.س") —
-     the same convention app.js's money() already uses on every other screen
+  /* A figure in its currency's own decimals: whole lira, dollars AND cents.
+     Every money figure used to go through western(), which rounds to the
+     whole unit — right for the lira and wrong for the dollar, so a $148.49
+     sale printed "$148". Western digits and comma groups, for western()'s
+     reason. */
+  function num(amount, code) {
+    var d = MINOR_EXP[code] || 0;
+    return (Number(amount) || 0).toLocaleString('en-US',
+      { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+
+  /* USD is prefixed ("$12.00"), SYP is suffixed ("12,500 SYP" / "12,500 ل.س")
+     — the same convention app.js's money() already uses on every other screen
      in this system, so a cashier reading the till and the receipt side by
      side sees the same shape of number. */
-  function fmtMoney(wholeUnits, code, ar) {
-    if (code === 'USD') return '$' + western(wholeUnits);
-    return western(wholeUnits) + ' ' + currencySuffix(code, ar);
+  function fmtMoney(amount, code, ar) {
+    if (code === 'USD') return '$' + num(amount, code);
+    return num(amount, code) + ' ' + currencySuffix(code, ar);
+  }
+
+  /* The same figure in its two pieces, for the total, where the unit is set
+     smaller than the number the way a price tag does it. */
+  function moneyParts(amount, code) {
+    return { unit: currencySuffix(code, true), num: num(amount, code) };
   }
 
   function two(n) { return String(n).padStart(2, '0'); }
@@ -169,6 +234,7 @@ var Receipt = (function () {
     var d = new Date(iso);
     var h = d.getHours(), h12 = h % 12 || 12;
     return {
+      time: h12 + ':' + two(d.getMinutes()) + ' ' + (h >= 12 ? 'PM' : 'AM'),
       date: two(d.getDate()) + '/' + two(d.getMonth() + 1) + '/' + d.getFullYear(),
       en: two(d.getDate()) + '/' + two(d.getMonth() + 1) + '/' + d.getFullYear() +
           '  ' + h12 + ':' + two(d.getMinutes()) + ' ' + (h >= 12 ? 'PM' : 'AM'),
@@ -201,20 +267,62 @@ var Receipt = (function () {
 
   /* ---------------------------------------------------------- primitives */
 
-  function setFont(ctx, size, weight) {
-    ctx.font = (weight ? weight + ' ' : '') + size + 'px ' + FONT;
+  /* The least room between a label and the figure beside it. */
+  var GAP = 16;
+
+  /* Every box of ink the current draw() puts down — each line of text, the
+     mark, the icons, the barcode, the rules — kept for the harness, never for
+     the paper. _nightshift/receipt/render.mjs reads it through
+     Receipt._boxes() and fails any two that overlap and any that leave the
+     roll. The box is the INK (measureText's actual bounding box), not the
+     line box: two lines that merely sit close are fine, two whose letters
+     touch are not. A total printing into its own label is exactly the fault
+     this exists to catch, and looking at screenshots never did. */
+  var boxes = [];
+  function note(t, x0, y0, x1, y1) {
+    boxes.push({ t: String(t).slice(0, 48), x0: Math.round(x0), y0: Math.round(y0),
+                 x1: Math.round(x1), y1: Math.round(y1) });
   }
 
+  var ARABIC = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
+
+  function setFont(ctx, size, weight, track) {
+    ctx.font = (weight ? weight + ' ' : '') + size + 'px ' + FONT;
+    /* Tracking is for Latin capitals and nothing else. Arabic letters JOIN,
+       and letter-spacing pulls the joins apart — the app's own rule
+       (og-skin.css zeroes it under body.rtl) — so every caller that passes a
+       track has checked the string is not Arabic first. Always written, so a
+       track set for one line never leaks into the next through this shared
+       context. */
+    if ('letterSpacing' in ctx) ctx.letterSpacing = (track || 0) + 'px';
+  }
+
+  function measure(ctx, text, size, weight, track) {
+    ctx.save();
+    setFont(ctx, sz(size), weight, track);
+    var w = ctx.measureText(String(text == null ? '' : text)).width;
+    ctx.restore();
+    return w;
+  }
+
+  /* y is a BASELINE here and only here — see the vertical convention below.
+     Answers the width drawn, so a caller setting two pieces side by side
+     does not measure twice. */
   function textAt(ctx, text, x, y, opts) {
     opts = opts || {};
     var size = sz(opts.size);
     var str = String(text == null ? '' : text);
+    var align = opts.align || 'left';
     ctx.save();
-    setFont(ctx, size, opts.weight);
+    setFont(ctx, size, opts.weight, opts.track);
     ctx.direction = opts.dir || 'ltr';
-    ctx.textAlign = opts.align || 'left';
+    ctx.textAlign = align;
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = opts.color || '#000';
+    /* Letter-spacing also follows the LAST letter, so tracked text sits that
+       much off its anchor; put it back, half for a centred line. */
+    if (opts.track) x += align === 'center' ? opts.track / 2 : align === 'right' ? opts.track : 0;
+    var m = ctx.measureText(str);
 
     /* FAUX-BOLD FOR THE SMALL SIZES, and this is what actually gets them onto
        the paper. Even at the 18px floor a stem is only about one dot wide, so
@@ -224,13 +332,13 @@ var Receipt = (function () {
        which thresholds to two solid ones.
 
        strokeStyle tracks fillStyle rather than being hardcoded black, so this
-       also thickens the WHITE 'shop copy' text inside drawShopBand's black
-       band — the right direction there too, and it pays back the thinning that
-       a raised burn threshold would otherwise cost white-on-black.
+       also thickens WHITE text inside a black band (the copy band, the total)
+       — the right direction there too, and it pays back the thinning that a
+       raised burn threshold would otherwise cost white-on-black.
 
-       Stops at 22 on purpose: item names, the totals and the amount-to-collect
-       already have stems two dots wide, and bolding those further just closes
-       up the counters of letters like e and a into black blobs. */
+       Stops at 22 on purpose: bigger stems are already two dots wide, and
+       bolding those further closes up the counters of letters like e and a
+       into black blobs. */
     if (size < 22) {
       ctx.lineWidth = 0.8;
       ctx.lineJoin = 'round';
@@ -241,41 +349,80 @@ var Receipt = (function () {
 
     ctx.fillText(str, x, y);
     ctx.restore();
+    if (str.trim()) {
+      note(str, x - m.actualBoundingBoxLeft, y - m.actualBoundingBoxAscent,
+        x + m.actualBoundingBoxRight, y + m.actualBoundingBoxDescent);
+    }
+    return m.width;
+  }
+
+  /* The largest size from `size` down to `min` at which the text fits maxW —
+     `min` itself when nothing does, and the caller then decides what gives. */
+  function fitSize(ctx, text, maxW, size, min, weight, track) {
+    size = sz(size); min = sz(min);
+    for (var s = size; s > min; s--) {
+      if (measure(ctx, text, s, weight, track) <= maxW) return s;
+    }
+    return min;
   }
 
   /* ONE VERTICAL CONVENTION, and this is it: every y in this module is the
      TOP of the block about to be drawn, and every draw helper returns the top
-     of the next one. Nothing takes or returns a text baseline.
+     of the next one. Only textAt() takes a baseline, and nothing returns one.
 
      It used to be split. textAt/centerText took a BASELINE while rowLR,
      labelRow and drawItems took a TOP, so composing them was only safe if
      you remembered which kind each one was — and the failure is silent and
      ugly: the next line's cap-height reaches back up into the block above
-     it. Every "a bare Npx gap let X creep into Y" comment in this file is
-     one of those collisions found on paper and patched with a magic number.
-     Two of them were still live: the QR caption printed through the
-     Instagram line, and a COD receipt's English "Amount to collect" printed
-     through the Arabic line above it.
+     it. Two of those were live for a while: the QR caption printed through
+     the Instagram line, and a COD receipt's English "Amount to collect"
+     printed through the Arabic line above it.
 
-     Baseline sits one em below the top, matching what rowLR/labelRow already
-     do, so a line occupies [y, y + lineHeight) and its glyphs cannot escape
-     upward into whatever was drawn before it. */
-  function lineHeight(size) { return Math.round(size * 1.42); }
+     Baseline sits one em below the top, so a line occupies
+     [y, y + lineHeight) and its glyphs cannot escape upward into whatever was
+     drawn before it. 1.38 of the size, down from 1.42 when the slip was
+     tightened (27 Sep 2026) — Cairo's descenders still clear the next line,
+     which the harness measures rather than assumes. */
+  function lineHeight(size) { return Math.round(size * 1.38); }
 
   /* Every helper below clamps with sz() as its FIRST line, and every line
      height and baseline it goes on to compute uses the clamped value. The
      clamp deliberately does not live inside setFont(): hidden there, the
      glyphs would grow while the spacing stayed at the size that was asked for,
      and the next line's cap-height would reach back up into the block above
-     it — exactly the collision class the vertical convention above exists to
-     end. Clamp once, out in the open, and let the arithmetic follow. */
+     it. Clamp once, out in the open, and let the arithmetic follow. */
   function centerText(ctx, text, y, opts) {
     opts = opts || {};
     var size = sz(opts.size);
     textAt(ctx, text, W / 2, y + size, {
-      size: size, weight: opts.weight, dir: opts.dir, align: 'center', color: opts.color
+      size: size, weight: opts.weight, dir: opts.dir, align: 'center', color: opts.color, track: opts.track
     });
     return y + (opts.lineHeight || lineHeight(size));
+  }
+
+  /* Two pieces on one centred line, each drawn in its OWN direction:
+     `right` where an Arabic reader starts, `left` after a dot. They cannot
+     be one string — a phone number like 0956 442 118 inside a right-to-left
+     line is reordered by the bidi algorithm to 118 442 0956, because the
+     spaces split it into three numbers. Falls back to two lines when the
+     pair is wider than the paper. */
+  function centerPair(ctx, y, right, left, opts) {
+    opts = opts || {};
+    var size = sz(opts.size), dot = '  ·  ';
+    if (!right || !left) {
+      var one = right || left;
+      return one ? centerText(ctx, one, y, { size: size, dir: ARABIC.test(one) ? 'rtl' : 'ltr' }) : y;
+    }
+    var wr = measure(ctx, right, size), wl = measure(ctx, left, size), wd = measure(ctx, dot, size);
+    if (wr + wd + wl > CW) {
+      y = centerText(ctx, right, y, { size: size, dir: ARABIC.test(right) ? 'rtl' : 'ltr' });
+      return centerText(ctx, left, y, { size: size, dir: ARABIC.test(left) ? 'rtl' : 'ltr' });
+    }
+    var x0 = Math.round((W - (wr + wd + wl)) / 2), base = y + size;
+    textAt(ctx, left, x0, base, { size: size, dir: 'ltr', align: 'left' });
+    textAt(ctx, dot, x0 + wl, base, { size: size, dir: 'ltr', align: 'left' });
+    textAt(ctx, right, x0 + wl + wd + wr, base, { size: size, dir: 'rtl', align: 'right' });
+    return y + lineHeight(size);
   }
 
   function dashRule(ctx, y, gap) {
@@ -288,19 +435,18 @@ var Receipt = (function () {
     ctx.lineTo(W - PAD, y);
     ctx.stroke();
     ctx.restore();
-    return y + (gap === undefined ? 20 : gap);
+    note('— rule', PAD, y - 1, W - PAD, y + 1);
+    return y + (gap === undefined ? 14 : gap);
   }
 
-  function solidRule(ctx, y, weight) {
+  function solidRule(ctx, y, weight, gap) {
+    weight = weight || 3;
     ctx.save();
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = weight || 3;
-    ctx.beginPath();
-    ctx.moveTo(PAD, y);
-    ctx.lineTo(W - PAD, y);
-    ctx.stroke();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(PAD, y, CW, weight);
     ctx.restore();
-    return y + 14;
+    note('— rule', PAD, y, W - PAD, y + weight);
+    return y + weight + (gap === undefined ? 12 : gap);
   }
 
   /* Greedy word wrap using real canvas metrics, so a 70mm-too-long product
@@ -323,63 +469,57 @@ var Receipt = (function () {
     return lines.length ? lines : [''];
   }
 
-  /* A meta/customer row: Arabic label, a smaller English label directly
-     beneath it, both right-aligned — and the value opposite, on the left,
-     vertically centred against the two-line label block. Matches how
-     receiptHtml()'s CSS-flex rows already read in a dir="rtl" container:
-     label side first (right), value side second (left). */
-  function labelRow(ctx, y, ar, en, value, opts) {
-    opts = opts || {};
-    /* enSize is derived, not given, so it slipped under the floor on its own:
-       0.68 of a 20px label is 14, which is 4pt and unprintable. The English
-       sub-label ends up nearly the size of the Arabic it sits under, which
-       flattens the hierarchy — that is the price of the line existing at all
-       on paper rather than only on screen. */
-    var arSize = sz(opts.size || 22), enSize = sz(Math.round(arSize * 0.68));
-    var arH = Math.round(arSize * 1.3), enH = Math.round(enSize * 1.35);
-    textAt(ctx, ar, W - PAD, y + arSize, { size: arSize, weight: '600', dir: 'rtl', align: 'right' });
-    textAt(ctx, en, W - PAD, y + arH + enSize - 2, { size: enSize, dir: 'ltr', align: 'right', color: '#000' });
-    var blockH = arH + enH;
-    var valSize = sz(opts.valueSize || arSize);
-    textAt(ctx, value, PAD, y + Math.round(blockH / 2) + Math.round(valSize * 0.36),
-      { size: valSize, weight: opts.valueWeight || '700', dir: 'ltr', align: 'left' });
-    return y + blockH + (opts.gap === undefined ? 10 : opts.gap);
-  }
+  /* A two-column row: a label on the right, where an Arabic reader starts,
+     and its value on the left — every money line, the customer, the cashier.
 
-  /* A single two-column row: right side (near the RTL reading start) and
-     left side (the amount) — item detail lines and totals both use it. */
+     NEITHER SIDE MAY RUN INTO THE OTHER, and that is the bug this row used to
+     have: both were drawn blind, at full size, from opposite edges, so the
+     day a figure grew past what the label left it — a total of 1,254,000
+     beside "الإجمالي · TOTAL" — the two printed on top of each other and the
+     customer went home holding a smudge where the price should be.
+
+     The VALUE is measured first and keeps its size: it is the figure
+     somebody reads. The label gets what is left — it steps down toward the
+     18px floor, then wraps, and only if one word of it still cannot fit
+     does the value drop onto a line of its own underneath. */
   function rowLR(ctx, y, right, left, opts) {
     opts = opts || {};
     var size = sz(opts.size);
     var leftSize = sz(opts.leftSize || size);
-    textAt(ctx, right, W - PAD, y + size, { size: size, weight: opts.weight, dir: opts.dir || 'rtl', align: 'right' });
-    textAt(ctx, left, PAD, y + size, { size: leftSize, weight: opts.leftWeight || opts.weight, dir: 'ltr', align: 'left' });
-    /* Both columns share the one baseline at y + size, so the row has to be
-       tall enough for whichever of the two is bigger — leftSize can now be
-       clamped UP past size (a 15px value under a 19px label becomes 18). */
-    return y + Math.round(Math.max(size, leftSize) * 1.5);
-  }
+    var weight = opts.weight, leftWeight = opts.leftWeight || opts.weight;
+    var dir = opts.dir || 'rtl';
+    var hasLeft = left !== undefined && left !== null && String(left) !== '';
+    var lw = hasLeft ? measure(ctx, left, leftSize, leftWeight) : 0;
+    var room = CW - (hasLeft ? lw + GAP : 0);
 
-  /* A small square mark immediately left of a line of text, the pair centered
-     together as one block — used for the Instagram/Telegram rows. y is the
-     TOP of the row (see centerText); the icon is taller than the text, so the
-     row's height is the icon's and the text is centred against it rather than
-     the other way round. */
-  function iconTextRow(ctx, y, iconImg, text, size) {
-    size = sz(size);
-    setFont(ctx, size);
-    var textW = ctx.measureText(String(text || '')).width;
-    var iconSize = Math.round(size * 1.7), gap = 8;
-    var hasIcon = !!iconImg;
-    var rowH = hasIcon ? iconSize : lineHeight(size);
-    var totalW = (hasIcon ? iconSize + gap : 0) + textW;
-    var x0 = Math.round((W - totalW) / 2);
-    if (hasIcon) ctx.drawImage(iconImg, x0, y, iconSize, iconSize);
-    /* Baseline that centres the text's x-height against the icon box. */
-    var baseline = y + Math.round((rowH + size * 0.72) / 2);
-    textAt(ctx, text, x0 + (hasIcon ? iconSize + gap : 0), baseline,
-      { size: size, dir: 'ltr', align: 'left' });
-    return y + rowH + 6;
+    var rs = fitSize(ctx, right, room, size, MIN_SIZE, weight);
+    var lines = measure(ctx, right, rs, weight) <= room ? [String(right)] : wrapText(ctx, right, room, rs, weight);
+    var stacked = room < CW * 0.3 || lines.some(function (ln) {
+      return measure(ctx, ln, rs, weight) > room;
+    });
+
+    if (stacked) {
+      /* The label takes the width, the value the line under it. */
+      wrapText(ctx, right, CW, size, weight).forEach(function (ln) {
+        textAt(ctx, ln, W - PAD, y + size, { size: size, weight: weight, dir: dir, align: 'right' });
+        y += lineHeight(size);
+      });
+      var ls = fitSize(ctx, left, CW, leftSize, MIN_SIZE, leftWeight);
+      textAt(ctx, left, PAD, y + ls, { size: ls, weight: leftWeight, dir: 'ltr', align: 'left' });
+      return y + Math.round(ls * 1.4) + (opts.gap || 0);
+    }
+
+    /* Both columns share the first line's baseline, so the row is as tall as
+       the bigger of the two. */
+    var first = Math.max(rs, leftSize);
+    textAt(ctx, lines[0], W - PAD, y + first, { size: rs, weight: weight, dir: dir, align: 'right' });
+    if (hasLeft) textAt(ctx, left, PAD, y + first, { size: leftSize, weight: leftWeight, dir: 'ltr', align: 'left' });
+    var yy = y + Math.round(first * 1.4);
+    for (var i = 1; i < lines.length; i++) {
+      textAt(ctx, lines[i], W - PAD, yy + rs, { size: rs, weight: weight, dir: dir, align: 'right' });
+      yy += lineHeight(rs);
+    }
+    return yy + (opts.gap || 0);
   }
 
   /* ------------------------------------------------------ codes: barcode */
@@ -389,11 +529,15 @@ var Receipt = (function () {
     var mods = Codes.code128(text);
     if (!mods) return y;
 
+    /* Four dots a module at most: an invoice number is short, and bars
+       stretched across the whole roll scan no better than bars 45 mm wide —
+       they only look like a till from 1995. Never under two dots, which is
+       the least a thermal head puts down reliably. */
     var quiet = 10, total = quiet * 2 + mods.length;
-    var modPx = Math.max(2, Math.floor(CW / total));
+    var modPx = Math.max(2, Math.min(4, Math.floor(CW / total)));
     var drawW = modPx * total;
     var x0 = Math.round((W - drawW) / 2);
-    var barH = 72;
+    var barH = 56;
 
     ctx.save();
     ctx.fillStyle = '#000';
@@ -406,49 +550,45 @@ var Receipt = (function () {
       }
     }
     ctx.restore();
-
-    /* A plain gap now. It used to be 26 because centerText took a baseline and
-       most of it was swallowed reaching back up for the glyphs; with the top
-       convention the number simply starts 10px under the bars. */
-    y += barH + 10;
-    /* Scanners fail sometimes, eyes don't — the number stays underneath in
-       Western digits, always LTR regardless of the receipt's own direction. */
-    y = centerText(ctx, text, y, { size: 20, dir: 'ltr' });
-    return y + 8;
+    note('barcode', x0 + quiet * modPx, y, x0 + (quiet + mods.length) * modPx, y + barH);
+    return y + barH + 8;
   }
 
   /* ------------------------------------------------------------ sections */
 
-  function drawLogo(ctx, y, logoImg) {
-    if (!logoImg) return y + 8;
-    var maxW = 180;
-    var w = Math.min(maxW, logoImg.naturalWidth || maxW);
-    var h = w * (logoImg.naturalHeight || w) / (logoImg.naturalWidth || w);
-    ctx.drawImage(logoImg, Math.round((W - w) / 2), y, w, h);
-    /* Same story as drawShopBand: 28 was baseline compensation for the 30px
-       header line, not breathing room. 14 is the breathing room. */
-    return y + h + 14;
+  /* The mark, about 10 mm tall. It was a 180-dot black square — 22 mm of the
+     roll before a word was printed, and the heaviest block of heat on it. */
+  var MARK_H = 76;
+  function drawLogo(ctx, y, markImg, logoImg) {
+    var img = markImg || logoImg;
+    if (!img) return y + 8;
+    var iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    /* The square falls back smaller than the mark: all of it is ink. */
+    var h = markImg ? MARK_H : 84;
+    var w = Math.round(h * iw / ih);
+    var x = Math.round((W - w) / 2);
+    ctx.drawImage(img, x, y, w, h);
+    note('logo', x, y, x + w, y + h);
+    return y + h + 12;
   }
 
-  /* A solid black band right under the logo, naming which copy this is, so
-     the kinds can never be confused at a glance — on the customer's side of
-     the counter, in a drawer full of them, or in a gift bag.
+  /* A solid black band right under the logo, naming which copy this is, so the kinds can never be
+     confused at a glance — on the customer's side of the counter, in a
+     drawer full of them, or in a gift bag.
 
      It says the KIND, so it takes the key rather than being the shop copy's
      private helper: the gift slip is the one where getting this wrong costs
      something real. A cashier who hands over the customer copy thinking it is
      the gift slip has just shown somebody the price of their present. */
   function drawBand(ctx, y, key) {
-    var h = 40;
+    var h = 34;
     ctx.save();
     ctx.fillStyle = '#000';
     ctx.fillRect(PAD, y, CW, h);
     ctx.restore();
-    textAt(ctx, both(key), W / 2, y + 27,
-      { size: 20, weight: '700', dir: 'rtl', align: 'center', color: '#fff' });
-    /* Was 34 to clear the 30px header's cap-height back up from its baseline;
-       the header now starts at the y it is given, so this is just the gap. */
-    return y + h + 16;
+    textAt(ctx, both(key), W / 2, y + 24,
+      { size: 19, weight: '700', dir: 'rtl', align: 'center', color: '#fff' });
+    return y + h + 12;
   }
 
   function drawHeader(ctx, y, R) {
@@ -458,11 +598,17 @@ var Receipt = (function () {
        the shop again: the contact block (drawContact) with Instagram,
        Telegram and the maps link. shop.address itself is untouched and
        still used elsewhere (customer-facing delivery slips, etc.) — only
-       this one printed line goes away. */
-    y = centerText(ctx, (R.shop.name || 'OG SPORTS').toUpperCase(), y, { size: 30, weight: '800' });
-    if (R.shop.branch) y = centerText(ctx, R.shop.branch, y, { size: 18, dir: 'rtl' });
-    if (R.shop.phone) y = centerText(ctx, R.shop.phone, y, { size: 18, dir: 'ltr' });
-    return y + 4;
+       this one printed line goes away.
+
+       The name is set wide, in capitals — a wordmark rather than a heading —
+       unless it is written in Arabic, which is never tracked. Branch and
+       phone share one line under it. */
+    var name = (R.shop.name || 'OG SPORTS').toUpperCase();
+    var ar = ARABIC.test(name), track = ar ? 0 : 6;
+    var size = fitSize(ctx, name, CW, 26, 20, '800', track);
+    y = centerText(ctx, name, y, { size: size, weight: '800', dir: ar ? 'rtl' : 'ltr', track: track });
+    y = centerPair(ctx, y, R.shop.branch, R.shop.phone, { size: 18 });
+    return y + 8;
   }
 
   /* THE DEADLINE AS A DATE, NOT A DURATION. The gift slip's policy sentence
@@ -478,86 +624,245 @@ var Receipt = (function () {
     return fmtDateTime(new Date(at.getTime() + hours * 3600 * 1000)).date;
   }
 
+  /* The invoice, the date and the time SIDE BY SIDE, in boxes — the way a
+     brand's receipt sets them — where they used to be three stacked rows of
+     two-line labels, 190 dots of roll for three short facts.
+
+     cells are in reading order, the first one on the right. Each label is
+     Arabic and English on one line when every box has room for that, and on
+     two when any does not — the same for the whole row, so the values line
+     up. The boxes are equal while everything fits an equal share, and share
+     the width by what they hold when something does not: the gift slip's
+     "EXCHANGE BEFORE" is twice the width of "DATE". A value is shrunk to its
+     box, never cut and never let out of it. */
+  function metaGrid(ctx, y, cells) {
+    var n = cells.length, LS = 18, VS = 22, gap = 8, padC = 14;
+    var plans = cells.map(function (c) {
+      var en = c.en.toUpperCase(), value = String(c.value);
+      return {
+        ar: c.ar, en: en, value: value,
+        wa: measure(ctx, c.ar, LS, '700'), we: measure(ctx, en, LS, '600', 1),
+        wv: measure(ctx, value, VS, '700')
+      };
+    });
+    function need(p, two) {
+      return Math.max(two ? Math.max(p.wa, p.we) : p.wa + gap + p.we, p.wv) + padC;
+    }
+    var two = plans.some(function (p) { return need(p, false) > CW / n; });
+    var needs = plans.map(function (p) { return need(p, two); });
+    var sum = needs.reduce(function (s, v) { return s + v; }, 0);
+    var even = needs.every(function (v) { return v <= CW / n; });
+    var widths = needs.map(function (v) {
+      return even ? CW / n : sum <= CW ? v + (CW - sum) / n : CW * v / sum;
+    });
+
+    var labelH = two ? lineHeight(LS) * 2 : lineHeight(LS);
+    var top = y + 2;
+    var bottom = top + labelH + Math.round(VS * 1.3);
+    var right = W - PAD;
+
+    plans.forEach(function (p, i) {
+      var w = widths[i], inner = w - padC, cx = right - w / 2;
+      var track = p.we <= inner ? 1 : 0;
+      var ens = fitSize(ctx, p.en, inner, LS, MIN_SIZE, '600', track);
+      var ars = fitSize(ctx, p.ar, inner, LS, MIN_SIZE, '700');
+      if (!two) {
+        var xr = cx + (p.wa + gap + p.we) / 2;
+        textAt(ctx, p.ar, xr, top + LS, { size: LS, weight: '700', dir: 'rtl', align: 'right' });
+        textAt(ctx, p.en, xr - p.wa - gap, top + LS, { size: LS, weight: '600', dir: 'ltr', align: 'right', track: 1 });
+      } else {
+        textAt(ctx, p.ar, cx, top + LS, { size: ars, weight: '700', dir: 'rtl', align: 'center' });
+        textAt(ctx, p.en, cx, top + lineHeight(LS) + LS, { size: ens, weight: '600', dir: 'ltr', align: 'center', track: track });
+      }
+      var vs = fitSize(ctx, p.value, inner, VS, MIN_SIZE, '700');
+      textAt(ctx, p.value, cx, top + labelH + VS, { size: vs, weight: '700', dir: 'ltr', align: 'center' });
+      if (i) {
+        var x = Math.round(right) - 1;
+        ctx.save();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(x, top, 2, bottom - top);
+        ctx.restore();
+        note('— divider', x, top, x + 2, bottom);
+      }
+      right -= w;
+    });
+    return bottom + 6;
+  }
+
+  function cell(key, value) {
+    var l = L(key);
+    return { ar: l.ar, en: l.en, value: value };
+  }
+
   function drawMeta(ctx, y, R, gift) {
     var dt = fmtDateTime(R.at);
-    var inv = L('rc2_invoice'), dtl = L('rc2_datetime'), csh = L('rc2_cashier');
-    y = labelRow(ctx, y, inv.ar, inv.en, R.id, { size: 22 });
+    var cells = [cell('rc2_g_invoice', R.id), cell('rc2_date', dt.date)];
     /* Date only on a gift slip — the minute somebody bought a present is not
-       information the person unwrapping it needs. */
-    y = labelRow(ctx, y, dtl.ar, dtl.en, gift ? dt.date : dt.en, { size: 20 });
-
+       information the person unwrapping it needs. The box the time had says
+       when it can be exchanged by instead. */
     if (gift) {
       var by = exchangeBefore(R);
-      var xb = L('rc2_exchange_before');
-      if (by) y = labelRow(ctx, y, xb.ar, xb.en, by, { size: 20 });
-      return y;
+      if (by) cells.push(cell('rc2_exchange_before', by));
+    } else {
+      cells.push(cell('rc2_time', dt.time));
     }
-
-    if (R.cashierName) y = labelRow(ctx, y, csh.ar, csh.en, R.cashierName, { size: 20 });
+    y = solidRule(ctx, y, 2, 8);
+    y = metaGrid(ctx, y, cells);
+    y = solidRule(ctx, y, 2, 10);
+    if (!gift && R.cashierName) {
+      y = rowLR(ctx, y, both('rc2_cashier'), R.cashierName, { size: 18, leftSize: 19, leftWeight: '700' });
+    }
     return y;
   }
 
   function drawCustomer(ctx, y, R) {
     var c = R.customer;
     if (!c) return y;
-    var cust = L('rc2_customer'), ph = L('rc2_phone'), bal = L('rc2_points_balance');
-    y = labelRow(ctx, y, cust.ar, cust.en, c.name, { size: 22 });
-    if (c.phone) y = labelRow(ctx, y, ph.ar, ph.en, c.phone, { size: 20 });
+    y = rowLR(ctx, y, both('rc2_customer'), c.name, { size: 18, leftSize: 20, leftWeight: '700' });
+    if (c.phone) y = rowLR(ctx, y, both('rc2_phone'), c.phone, { size: 18, leftSize: 19 });
     if (R.showLoyalty) {
-      y = labelRow(ctx, y, bal.ar, bal.en, western(c.loyaltyPoints), { size: 20 });
+      y = rowLR(ctx, y, both('rc2_points_balance'), western(c.loyaltyPoints), { size: 18, leftSize: 19 });
     }
     return y;
   }
 
-  /* `gift` drops the two money rows — the qty x unit-price line and the line
-     discount — and keeps the name and the size, which are the only things the
-     recipient and the cashier both need to identify the item being brought
-     back. R.items is already the ticked subset by the time it gets here; the
-     filtering happens once in draw(), not per drawing function. */
+  /* Two lines an item, where it used to be three or four: the name with the
+     line's amount opposite it, then the size, and "2 × 11,990" only when
+     there is more than one — for a single piece that figure IS the amount,
+     printed twice.
+
+     The name wraps inside what the amount leaves it, so a long one can never
+     run under the figure.
+
+     `gift` drops the money — the amount, the unit price, the line discount —
+     and keeps the name and the size, the only things the recipient and the
+     cashier both need to identify the item being brought back. R.items is
+     already the ticked subset by the time it gets here; the filtering happens
+     once in draw(), not per drawing function. */
   function drawItems(ctx, y, R, gift) {
-    R.items.forEach(function (it) {
-      var lines = wrapText(ctx, it.name, CW, 22, '600');
-      lines.forEach(function (ln) {
-        textAt(ctx, ln, W - PAD, y + 22, { size: 22, weight: '600', dir: 'rtl', align: 'right' });
-        y += 30;
+    var cur = R.currency, NS = 20, DS = 18;
+    R.items.forEach(function (it, idx) {
+      if (idx) y += 6;
+      var amt = gift ? '' : num(it.qty * it.unitPrice, cur);
+      var aw = amt ? measure(ctx, amt, NS, '700') : 0;
+      var room = CW - (amt ? aw + GAP : 0);
+      wrapText(ctx, it.name, room, NS, '600').forEach(function (ln, i) {
+        textAt(ctx, ln, W - PAD, y + NS, { size: NS, weight: '600', dir: 'rtl', align: 'right' });
+        if (!i && amt) textAt(ctx, amt, PAD, y + NS, { size: NS, weight: '700', dir: 'ltr', align: 'left' });
+        y += lineHeight(NS);
       });
-      if (it.size) {
-        textAt(ctx, L('rc2_size').ar + ' ' + DB.lineSize(it, true), W - PAD - 20, y + 18, { size: 18, dir: 'rtl', align: 'right' });
-        y += 26;
-      }
-      if (!gift) {
-        y = rowLR(ctx, y,
-          it.qty + ' × ' + western(it.unitPrice),
-          western(it.qty * it.unitPrice),
-          { size: 19 });
-        if (it.lineDiscount) {
-          y = rowLR(ctx, y - 4, both('rc2_line_discount'), '− ' + western(it.lineDiscount), { size: 18 });
+
+      var size = it.size ? L('rc2_size').ar + ' ' + DB.lineSize(it, true) : '';
+      var each = !gift && it.qty > 1 ? it.qty + ' × ' + num(it.unitPrice, cur) : '';
+      if (size || each) {
+        var sw = size ? measure(ctx, size, DS) : 0, ew = each ? measure(ctx, each, DS) : 0;
+        if (sw && ew && sw + GAP + ew > CW) {
+          y = rowLR(ctx, y, size, '', { size: DS });
+          y = rowLR(ctx, y, each, '', { size: DS, dir: 'ltr' });
+        } else {
+          if (size) textAt(ctx, size, W - PAD, y + DS, { size: DS, dir: 'rtl', align: 'right' });
+          if (each) textAt(ctx, each, W - PAD - (sw ? sw + GAP : 0), y + DS, { size: DS, dir: 'ltr', align: 'right' });
+          y += lineHeight(DS);
         }
       }
-      y += 6;
+      if (!gift && it.lineDiscount) {
+        y = rowLR(ctx, y, both('rc2_line_discount'), '− ' + num(it.lineDiscount, cur), { size: DS });
+      }
     });
-    return y;
+    return y + 2;
+  }
+
+  /* THE TOTAL — the one line everybody reads twice, so it is the one line on
+     the slip printed white on black, the figure big and the unit small the
+     way a price tag sets it.
+
+     And it is MEASURED, which is what the old row was not. The figure is
+     sized to the room the label leaves it, from 40 down to 26; if even 26
+     does not fit, the label takes a line of its own and the figure gets the
+     whole band. 950 and 12,540,000 both print whole, and neither can touch
+     the word beside it.
+
+     The unit stands on the LEFT of the figure for the lira as for the
+     dollar, which is where every other row on the slip puts it: "40,280 ل.س"
+     drawn into a left-to-right line comes out with ل.س on the left (the bidi
+     algorithm treats the number as part of the Arabic run), and an Arabic
+     reader starting from the right reads the figure first either way.
+
+     `outline` is the same box drawn as a frame, black on white — for what a
+     delivery order still owes, and what a driver collects at the door: the
+     figure somebody acts on, second only to the total. */
+  function drawTotalBand(ctx, y, label, amount, code, outline) {
+    var padX = 16, padY = outline ? 10 : 12, inner = CW - padX * 2;
+    var ink = outline ? '#000' : '#fff';
+    var LS = fitSize(ctx, label, inner, 20, MIN_SIZE, '800');
+    var labelLines = measure(ctx, label, LS, '800') <= inner ? [label] : wrapText(ctx, label, inner, LS, '800');
+    var lw = measure(ctx, labelLines[0], LS, '800');
+    var p = moneyParts(amount, code);
+    var unitAt = function (s) { return Math.max(MIN_SIZE, Math.round(s * 0.5)); };
+    var unitGap = function (s) { return Math.round(s * 0.15); };
+    var unitW = function (s) { return measure(ctx, p.unit, unitAt(s), '700') + unitGap(s); };
+    var amountW = function (s) { return unitW(s) + measure(ctx, p.num, s, '800'); };
+
+    var MAX = outline ? 32 : 40, MIN = 24, s = MAX, side = inner - lw - GAP * 2;
+    while (s > MIN && amountW(s) > side) s--;
+    var oneRow = labelLines.length === 1 && amountW(s) <= side;
+    if (!oneRow) { s = MAX; while (s > MIN && amountW(s) > inner) s--; }
+
+    /* Heights from the ink: digits rise about 0.74 of the size and a comma
+       drops about 0.18; the Arabic label drops further than that. */
+    var drop = Math.max(Math.round(s * 0.2), Math.round(LS * 0.5));
+    var labelBase = y + padY + LS;
+    var base = oneRow ? y + padY + Math.round(s * 0.76)
+      : labelBase + lineHeight(LS) * (labelLines.length - 1) + Math.round(LS * 0.5) + 8 + Math.round(s * 0.76);
+    var h = base + drop + padY - y;
+
+    ctx.save();
+    ctx.fillStyle = '#000';
+    if (outline) {
+      ctx.fillRect(PAD, y, CW, 3);
+      ctx.fillRect(PAD, y + h - 3, CW, 3);
+      ctx.fillRect(PAD, y, 3, h);
+      ctx.fillRect(W - PAD - 3, y, 3, h);
+    } else {
+      ctx.fillRect(PAD, y, CW, h);
+    }
+    ctx.restore();
+
+    var x;
+    if (oneRow) {
+      textAt(ctx, label, W - PAD - padX, base, { size: LS, weight: '800', dir: 'rtl', align: 'right', color: ink });
+      x = PAD + padX;
+    } else {
+      labelLines.forEach(function (ln, i) {
+        textAt(ctx, ln, W / 2, labelBase + lineHeight(LS) * i, { size: LS, weight: '800', dir: 'rtl', align: 'center', color: ink });
+      });
+      x = Math.round((W - amountW(s)) / 2);
+    }
+    x += textAt(ctx, p.unit, x, base, { size: unitAt(s), weight: '700', dir: 'ltr', color: ink }) + unitGap(s);
+    textAt(ctx, p.num, x, base, { size: s, weight: '800', color: ink });
+    return y + h;
   }
 
   function drawTotals(ctx, y, R) {
-    y = rowLR(ctx, y, both('rc2_subtotal'), fmtMoney(R.subtotal, R.currency, true), { size: 19 });
+    var cur = R.currency;
+    var pieces = R.items.reduce(function (s, it) { return s + (Number(it.qty) || 0); }, 0);
+    y = rowLR(ctx, y, both('rc2_pieces'), western(pieces), { size: 18 });
+    y = rowLR(ctx, y, both('rc2_subtotal'), fmtMoney(R.subtotal, cur, true), { size: 19 });
     if (R.discount) {
-      y = rowLR(ctx, y, both('rc2_discount'), '− ' + fmtMoney(R.discount, R.currency, true), { size: 19 });
+      y = rowLR(ctx, y, both('rc2_discount'), '− ' + fmtMoney(R.discount, cur, true), { size: 19 });
     }
     if (R.pointsValue) {
-      y = rowLR(ctx, y, both('rc2_points_used'), '− ' + fmtMoney(R.pointsValue, R.currency, true), { size: 19 });
+      y = rowLR(ctx, y, both('rc2_points_used'), '− ' + fmtMoney(R.pointsValue, cur, true), { size: 19 });
     }
     /* A delivery order's shipping, when the shop is the one charging it. */
     if (R.order && R.order.feeMode === 'invoice' && R.order.fee) {
-      y = rowLR(ctx, y, both('rc2_shipping'), fmtMoney(R.order.fee, R.currency, true), { size: 19 });
+      y = rowLR(ctx, y, both('rc2_shipping'), fmtMoney(R.order.fee, cur, true), { size: 19 });
     } else if (R.order && R.order.feeMode === 'courier') {
       y = rowLR(ctx, y, both('rc2_shipping'), both('rc2_ship_courier'), { size: 18, leftSize: 18 });
     }
 
-    y = solidRule(ctx, y + 4);
-    y = rowLR(ctx, y, both(R.order ? 'rc2_total_due' : 'rc2_total'),
-      fmtMoney(R.order ? R.order.due : R.total, R.currency, true),
-      { size: 32, weight: '800', leftWeight: '800' });
+    y = drawTotalBand(ctx, y + 4, both(R.order ? 'rc2_total_due' : 'rc2_total'),
+      R.order ? R.order.due : R.total, cur);
 
     if (R.secondCurrency) {
       /* Latin currency code here, not the Arabic ل.س suffix fmtMoney would
@@ -567,9 +872,11 @@ var Receipt = (function () {
          Arabic suffix. */
       y = centerText(ctx, '≈ $' + western(R.secondCurrency.amount) +
         '  ·  1$ = ' + western(R.fxRate) + ' SYP',
-        y + 2, { size: 18, dir: 'ltr' });
+        y + 8, { size: 18, dir: 'ltr' });
+    } else {
+      y += 10;
     }
-    return y + 6;
+    return y;
   }
 
   /* A delivery order is not one payment method. It is a list of what has come
@@ -587,21 +894,25 @@ var Receipt = (function () {
         (p.kind === 'refund' ? '− ' : '') + fmtMoney(p.amount, p.currency, true),
         { size: 18, leftSize: 18 });
     });
-    if (o.payments.length) y = dashRule(ctx, y + 4, 14);
+    if (o.payments.length) y = dashRule(ctx, y + 4, 12);
 
     y = rowLR(ctx, y, both('rc2_paid'), fmtMoney(o.paid, R.currency, true), { size: 19 });
-    y = rowLR(ctx, y, L('rc2_remaining').ar, fmtMoney(o.remaining, R.currency, true),
-      { size: 26, weight: '800', leftWeight: '800' });
-    y = centerText(ctx, L('rc2_remaining').en, y, { size: 18, dir: 'ltr' });
+    y = drawTotalBand(ctx, y + 4, both('rc2_remaining'), o.remaining, R.currency, true) + 10;
 
     var note = !o.remaining ? 'rc2_paid_in_full'
       : (o.method === 'driver' || o.method === 'pickup') ? 'rc2_collect_door'
       : 'rc2_pay_before_ship';
-    y = dashRule(ctx, y + 2, 14);
-    wrapText(ctx, both(note), CW, 18).forEach(function (ln) {
+    /* Each language wrapped on its own lines. Wrapped as one "ar · en"
+       string, a line break fell mid-sentence and the bidi algorithm then
+       carried the English full stop to the front of its own line. */
+    var nl = L(note);
+    wrapText(ctx, nl.ar, CW, 18).forEach(function (ln) {
       y = centerText(ctx, ln, y, { size: 18, dir: 'rtl' });
     });
-    return y + 6;
+    wrapText(ctx, nl.en, CW, 18).forEach(function (ln) {
+      y = centerText(ctx, ln, y, { size: 18, dir: 'ltr' });
+    });
+    return y + 4;
   }
 
   function drawPayment(ctx, y, R) {
@@ -618,16 +929,13 @@ var Receipt = (function () {
     }
 
     if (R.toCollect) {
-      y = dashRule(ctx, y + 6, 14);
-      y = rowLR(ctx, y, L('rc2_to_collect').ar, fmtMoney(R.toCollect, R.currency, true),
-        { size: 24, weight: '800', leftWeight: '800' });
-      y = centerText(ctx, L('rc2_to_collect').en, y, { size: 18, dir: 'ltr' });
+      y = drawTotalBand(ctx, y + 6, both('rc2_to_collect'), R.toCollect, R.currency, true) + 10;
     }
 
     if (R.pointsEarned && R.showLoyalty) {
       y = rowLR(ctx, y, both('rc2_points_earned'), '+' + western(R.pointsEarned), { size: 18 });
     }
-    return y + 6;
+    return y + 4;
   }
 
   /* Where the parcel is going, on the copy that travels with it: the person
@@ -637,57 +945,80 @@ var Receipt = (function () {
   function drawShipTo(ctx, y, R) {
     var o = R.order;
     var ship = L('rc2_ship_to');
-    y = centerText(ctx, ship.ar, y, { size: 20, weight: '700', dir: 'rtl' });
-    y = centerText(ctx, ship.en, y, { size: 16, dir: 'ltr' });
+    y = centerPair(ctx, y, ship.ar, ship.en.toUpperCase(), { size: 19 });
 
-    if (o.recipient) y = centerText(ctx, o.recipient, y, { size: 22, weight: '600', dir: 'rtl' });
-    if (o.phone) y = centerText(ctx, o.phone, y, { size: 20, dir: 'ltr' });
+    /* Typed text takes the direction of what was typed. Forced right-to-left,
+       an address written in English printed its commas at the front of the
+       line (",Mezzeh"). */
+    var dirOf = function (s) { return ARABIC.test(s) ? 'rtl' : 'ltr'; };
+    if (o.recipient) y = centerText(ctx, o.recipient, y, { size: 21, weight: '600', dir: dirOf(o.recipient) });
+    if (o.phone) y = centerText(ctx, o.phone, y, { size: 19, dir: 'ltr' });
 
     var place = [o.city, OG.lang === 'ar' ? o.countryAr : o.countryEn].filter(Boolean).join(' · ');
-    if (place) y = centerText(ctx, place, y, { size: 20, weight: '600', dir: 'rtl' });
+    if (place) y = centerText(ctx, place, y, { size: 19, weight: '600', dir: 'rtl' });
 
     if (o.address) {
-      wrapText(ctx, o.address, CW, 19).forEach(function (ln) {
-        y = centerText(ctx, ln, y, { size: 19, dir: 'rtl' });
+      wrapText(ctx, o.address, CW, 18).forEach(function (ln) {
+        y = centerText(ctx, ln, y, { size: 18, dir: dirOf(o.address) });
       });
     }
 
     var via = L('rc2_m_' + (o.method || 'driver'));
     var viaTxt = (OG.lang === 'ar' ? via.ar : via.en) + (o.company ? ' · ' + o.company : '');
-    y = centerText(ctx, viaTxt, y, { size: 19, dir: 'rtl' });
+    y = centerText(ctx, viaTxt, y, { size: 18, dir: 'rtl' });
     if (o.trackingNo) y = centerText(ctx, o.trackingNo, y, { size: 18, dir: 'ltr' });
     return y + 4;
   }
 
+  /* The barcode, then ONE line under it: the number on the left — scanners
+     fail sometimes, eyes don't, so it stays in Western digits — and what the
+     code is for on the right. They were two centred lines. */
   function drawCodes(ctx, y, R) {
     y = dashRule(ctx, y);
-    if (R.showBarcode) {
-      y = drawBarcode(ctx, y, R.id);
-      /* Wrapped rather than centred as one line: this caption carries the
-         Arabic and the English together and just grew from 13px to 18px, so
-         it is 1.38x wider than the line that used to fit. A centred line that
-         overruns 576 dots does not warn anybody — it simply prints with both
-         ends cut off. */
-      wrapText(ctx, both('rc2_scan_exchange'), CW, 18).forEach(function (ln) {
-        y = centerText(ctx, ln, y, { size: 18, dir: 'rtl' });
-      });
-    }
-    return y;
+    if (!R.showBarcode) return y;
+    y = drawBarcode(ctx, y, R.id);
+    y = rowLR(ctx, y, both('rc2_scan_exchange'), R.id, { size: 18, leftWeight: '700' });
+    return y + 2;
   }
 
   /* Instagram, Telegram, the maps link — printed here, not in the header,
      because the customer is standing in the shop when this comes off the
      printer: the street address stopped being useful the moment it did,
      but "find us again" and "reach us online" stay useful long after they
-     leave. Icons are optional-safe (icon load failure just draws the text
-     alone, same graceful-degrade shape drawLogo already uses for the shop
-     logo) so a slow/broken asset load never blocks a receipt printing. */
+     leave.
+
+     Instagram and Telegram share one line when they fit it, each with its
+     mark. The marks are optional: a failed load draws the text alone, and a
+     slow asset never holds a receipt back. */
   function drawContact(ctx, y, R, igImg, tgImg) {
-    if (!R.instagram && !R.telegram && !R.mapsUrl) return y;
-    if (R.instagram) y = iconTextRow(ctx, y, igImg, shortUrl(R.instagram), 18);
-    if (R.telegram) y = iconTextRow(ctx, y, tgImg, shortUrl(R.telegram), 18);
+    var chips = [];
+    if (R.instagram) chips.push({ img: igImg, text: shortUrl(R.instagram) });
+    if (R.telegram) chips.push({ img: tgImg, text: shortUrl(R.telegram) });
+    if (!chips.length && !R.mapsUrl) return y;
+
+    var size = 18, icon = 26, iGap = 7, between = 30;
+    chips.forEach(function (c) { c.w = (c.img ? icon + iGap : 0) + measure(ctx, c.text, size); });
+    var rows = [];
+    var all = chips.reduce(function (s, c) { return s + c.w; }, 0) + between * Math.max(0, chips.length - 1);
+    if (chips.length && all <= CW) rows.push(chips);
+    else chips.forEach(function (c) { rows.push([c]); });
+
+    rows.forEach(function (row) {
+      var tw = row.reduce(function (s, c) { return s + c.w; }, 0) + between * (row.length - 1);
+      var x = Math.round((W - tw) / 2);
+      var base = y + Math.round((icon + size * 0.72) / 2);
+      row.forEach(function (c) {
+        if (c.img) {
+          ctx.drawImage(c.img, x, y, icon, icon);
+          note('icon', x, y, x + icon, y + icon);
+        }
+        textAt(ctx, c.text, x + (c.img ? icon + iGap : 0), base, { size: size, dir: 'ltr', align: 'left' });
+        x += c.w + between;
+      });
+      y += icon + 8;
+    });
     if (R.mapsUrl) y = centerText(ctx, shortUrl(R.mapsUrl), y, { size: 18, dir: 'ltr' });
-    return y + 6;
+    return y + 2;
   }
 
   /* The gift slip gets its OWN sentence, not the ordinary receipt's. Two
@@ -704,8 +1035,8 @@ var Receipt = (function () {
     if (!ar && !en) return y;
     y = dashRule(ctx, y);
     if (ar) {
-      wrapText(ctx, ar, CW, 20).forEach(function (ln) {
-        y = centerText(ctx, ln, y, { size: 20, dir: 'rtl' });
+      wrapText(ctx, ar, CW, 18).forEach(function (ln) {
+        y = centerText(ctx, ln, y, { size: 18, dir: 'rtl' });
       });
     }
     if (en) {
@@ -713,12 +1044,40 @@ var Receipt = (function () {
         y = centerText(ctx, ln, y, { size: 18, dir: 'ltr' });
       });
     }
-    return y + 4;
+    return y + 6;
   }
 
+  /* The sign-off, between two short rules, so the bottom of the slip reads
+     as an ending rather than wherever the text ran out. */
   function drawFooter(ctx, y, R) {
-    if (R.footerAr) y = centerText(ctx, R.footerAr, y, { size: 20, weight: '600', dir: 'rtl' });
-    if (R.footerEn) y = centerText(ctx, R.footerEn, y, { size: 18, dir: 'ltr' });
+    if (!R.footerAr && !R.footerEn) return y;
+    y += 4;
+    var top = y, len = 44, widest = 0;
+    /* Wrapped, like the policy: the footer is typed in Settings and a long
+       one used to run straight off both ends of the roll. */
+    if (R.footerAr) {
+      wrapText(ctx, R.footerAr, CW, 20, '700').forEach(function (ln) {
+        widest = Math.max(widest, measure(ctx, ln, 20, '700'));
+        y = centerText(ctx, ln, y, { size: 20, weight: '700', dir: 'rtl' });
+      });
+    }
+    if (R.footerEn) {
+      wrapText(ctx, R.footerEn, CW, 18).forEach(function (ln) {
+        widest = Math.max(widest, measure(ctx, ln, 18));
+        y = centerText(ctx, ln, y, { size: 18, dir: 'ltr' });
+      });
+    }
+    /* Two short rules either side of the words, close enough to belong to
+       them — and only where the words leave them room. */
+    var edge = Math.round((W - widest) / 2) - 14;
+    if (edge - len < PAD) return y;
+    var mid = Math.round((top + y) / 2);
+    [[edge - len, edge], [W - edge, W - edge + len]].forEach(function (seg) {
+      ctx.save();
+      ctx.fillStyle = '#000';
+      ctx.fillRect(seg[0], mid - 1, seg[1] - seg[0], 2);
+      ctx.restore();
+    });
     return y;
   }
 
@@ -752,8 +1111,8 @@ var Receipt = (function () {
       R.items = R.items.filter(function (_, i) { return keep[i]; });
     }
 
-    return Promise.all([loadLogo(), fontsReady(), loadInstagramMark(), loadTelegramMark()]).then(function (res) {
-      var logoImg = res[0], igImg = res[2], tgImg = res[3];
+    return Promise.all([loadMark(), fontsReady(), loadInstagramMark(), loadTelegramMark(), loadLogo()]).then(function (res) {
+      var markImg = res[0], igImg = res[2], tgImg = res[3], logoImg = res[4];
 
       /* Height cannot be known before drawing, and resizing a canvas clears
          it — so the layout runs once into a generously tall scratch canvas,
@@ -766,22 +1125,27 @@ var Receipt = (function () {
       var ctx = scratch.getContext('2d');
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, W, scratch.height);
+      boxes = [];
 
-      var y = 24;
-      y = drawLogo(ctx, y, logoImg);
+      var y = 16;
+      y = drawLogo(ctx, y, markImg, logoImg);
       if (copyLabel === 'shop') y = drawBand(ctx, y, 'rc2_shop_copy');
       else if (gift) y = drawBand(ctx, y, 'rc2_gift_copy');
       y = drawHeader(ctx, y, R);
-      y = dashRule(ctx, y);
       y = drawMeta(ctx, y, R, gift);
+      /* The boxes end on a solid rule; with no cashier line under them the
+         next section's dashed rule would print right beneath it, two rules
+         doing one job. */
+      var ruled = gift || !R.cashierName;
+      var sep = function () { if (ruled) ruled = false; else y = dashRule(ctx, y); };
       /* The buyer's name, phone and points balance are skipped on a gift
          slip. It is the buyer's record, not the recipient's, and the points
          balance is a number about somebody else's money. */
-      if (R.customer && !gift) { y = dashRule(ctx, y); y = drawCustomer(ctx, y, R); }
+      if (R.customer && !gift) { sep(); y = drawCustomer(ctx, y, R); }
       /* A delivery order's destination, on the copy that travels with it.
          Never on a gift slip: that one is for the person opening the box. */
-      if (R.order && !gift) { y = dashRule(ctx, y); y = drawShipTo(ctx, y, R); }
-      y = dashRule(ctx, y);
+      if (R.order && !gift) { sep(); y = drawShipTo(ctx, y, R); }
+      sep();
       y = drawItems(ctx, y, R, gift);
       y = dashRule(ctx, y);
       /* The two money blocks, gone in one place rather than guarded line by
@@ -1268,6 +1632,8 @@ var Receipt = (function () {
     register: register,
     /* Exposed for testing/preview screens that already have normalised data. */
     draw: draw,
-    fromServer: fromServer
+    fromServer: fromServer,
+    /* The ink boxes of the last draw — _nightshift/receipt/render.mjs only. */
+    _boxes: function () { return boxes.slice(); }
   };
 })();
