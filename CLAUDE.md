@@ -3435,6 +3435,14 @@ ever makes outgoing requests, so nothing is opened on the shop's router.
     would take some of the station's receipts and fail them into a queue that does not exist.
     That is why it is not in `agent-config.example.json`.
 - **The login needs `sale.reprint`** (cashier, manager). The warehouse role does not have it.
+  **The label queue needs `label.print`, which the owner switched OFF for cashiers on 24 Sep**, so
+  one cashier login cannot serve both queues. `labelUsername` / `labelPassword` in
+  `agent-config.json` give the label queue its own login (27 Sep 2026: `member3`, a warehouse slot
+  nobody had used — **do not hand member3 to a person**, or a password change there stops the
+  labels). Each login signs in once; a refused sign-in is not retried for 16 minutes, because the
+  old 1 s / 2 s / 4 s retry locked the cashier out of the till. The task runs the agent with **no
+  window** (`conhost --headless` → `agent/run-agent.cmd`, log in `agent/agent.log`): its console
+  window was closed by accident and nothing printed.
 - **`OG_AGENT_CONFIG`** points the agent, `hardware.js` and `test-print.js` at another config
   file. It is for tests only.
 - **`hardware.js` knows the agent now.** It checks the agent's receipt queue the way it checks a

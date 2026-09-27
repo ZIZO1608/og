@@ -57,7 +57,19 @@ try {
   process.exit(1);
 }
 
-let cookie = null;          // session cookie, in memory only — never written to disk
+/* ONE SIGN-IN PER LOGIN THE AGENT USES (27 Sep 2026). The label queue needs
+   label.print and the receipt queue sale.reprint, and on this shop no role
+   below the manager holds both: the owner switched label printing off for
+   cashiers on 24 Sep, and the warehouse does not reprint receipts. Rather
+   than widen a role for a background program, the label queue may sign in
+   as its own login — "labelUsername" / "labelPassword" in the config, a
+   warehouse account say. Without them both queues share the one login, as
+   they always did. Each login keeps its own cookie, in memory only. */
+function makeSession(userKey, passKey) {
+  return { userKey, passKey, username: CFG[userKey], cookie: null, signingIn: null, refusedUntil: 0 };
+}
+const MAIN = makeSession('username', 'password');
+const LABELS = CFG.labelUsername ? makeSession('labelUsername', 'labelPassword') : MAIN;
 const MAX_BACKOFF_MS = 30000;
 
 /* ------------------------------------------------------------- http client
@@ -65,7 +77,7 @@ const MAX_BACKOFF_MS = 30000;
    server's CSRF check (server/lib/http.js's originAllowed) explicitly
    passes any request that arrives with none — a browser-only protection,
    not something this agent needs to work around. */
-function api(method, path, body) {
+function api(method, path, body, s = MAIN) {
   return new Promise((resolve, reject) => {
     const url = new URL(path, CFG.serverUrl);
     const isHttps = url.protocol === 'https:';
@@ -74,13 +86,13 @@ function api(method, path, body) {
     const headers = { Accept: 'application/json' };
     if (payload) headers['Content-Type'] = 'application/json';
     if (payload) headers['Content-Length'] = payload.length;
-    if (cookie) headers.Cookie = cookie;
+    if (s.cookie) headers.Cookie = s.cookie;
 
     const req = (isHttps ? httpsRequest : httpRequest)(
       { hostname: url.hostname, port: url.port || (isHttps ? 443 : 80), path: url.pathname + url.search, method, headers },
       (res) => {
         const setCookie = res.headers['set-cookie'];
-        if (setCookie && setCookie[0]) cookie = setCookie[0].split(';')[0];
+        if (setCookie && setCookie[0]) s.cookie = setCookie[0].split(';')[0];
 
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
@@ -117,38 +129,36 @@ function api(method, path, body) {
    again for longer than the shop's lock lasts. The password is read from the
    file again for every try, so correcting it needs no restart. */
 const LOGIN_REFUSED_WAIT_MS = 16 * 60 * 1000;
-let signingIn = null;
-let refusedUntil = 0;
 
-function freshPassword() {
+function freshPassword(s) {
   try {
     const c = JSON.parse(readFileSync(process.env.OG_AGENT_CONFIG || join(HERE, 'agent-config.json'), 'utf8'));
-    return c.password;
-  } catch { return CFG.password; }
+    return c[s.passKey];
+  } catch { return CFG[s.passKey]; }
 }
 
-async function login() {
-  const res = await api('POST', '/api/auth/login', { username: CFG.username, password: freshPassword() });
+async function login(s) {
+  const res = await api('POST', '/api/auth/login', { username: s.username, password: freshPassword(s) }, s);
   console.log('[agent] signed in as', res.user.username, `(${res.user.role})`);
 }
 
-async function ensureLoggedIn() {
-  if (cookie) return;
-  if (Date.now() < refusedUntil) await sleep(refusedUntil - Date.now());
-  if (cookie) return;
-  if (!signingIn) {
-    signingIn = login().catch((e) => {
+async function ensureLoggedIn(s) {
+  if (s.cookie) return;
+  if (Date.now() < s.refusedUntil) await sleep(s.refusedUntil - Date.now());
+  if (s.cookie) return;
+  if (!s.signingIn) {
+    s.signingIn = login(s).catch((e) => {
       if (e.status === 401 || e.status === 429) {
-        refusedUntil = Date.now() + LOGIN_REFUSED_WAIT_MS;
-        console.error(`[agent] the shop refused the sign-in as "${CFG.username}" (${e.code || e.status}): ${e.message}`);
+        s.refusedUntil = Date.now() + LOGIN_REFUSED_WAIT_MS;
+        console.error(`[agent] the shop refused the sign-in as "${s.username}" (${e.code || e.status}): ${e.message}`);
         console.error('[agent] not trying again for 16 minutes — every wrong try counts against that account, and 8 lock its person out.');
-        console.error('[agent] fix "password" in agent-config.json; it is read again on the next try.');
+        console.error(`[agent] fix "${s.passKey}" in agent-config.json; it is read again on the next try.`);
         e.quiet = true;
       }
       throw e;
-    }).finally(() => { signingIn = null; });
+    }).finally(() => { s.signingIn = null; });
   }
-  await signingIn;
+  await s.signingIn;
 }
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -172,12 +182,12 @@ async function printJob(job) {
   try {
     writeFileSync(tmp, bytes);
     await execFileP('cmd.exe', ['/c', 'copy', '/b', tmp, CFG.printerShare]);
-    await api('POST', `/api/labels/${job.id}/done`, { claimToken: job.claimToken });
+    await api('POST', `/api/labels/${job.id}/done`, { claimToken: job.claimToken }, LABELS);
     console.log(`[agent] printed job ${job.id} (${job.labelCount} label${job.labelCount === 1 ? '' : 's'})`);
   } catch (e) {
     console.error(`[agent] job ${job.id} failed:`, e.message);
     try {
-      await api('POST', `/api/labels/${job.id}/failed`, { claimToken: job.claimToken, error: String(e.message || e) });
+      await api('POST', `/api/labels/${job.id}/failed`, { claimToken: job.claimToken, error: String(e.message || e) }, LABELS);
     } catch (e2) {
       /* Server unreachable too — the job just stays 'claimed' until its
          lease expires and becomes claimable again. Not this process's job
@@ -212,18 +222,18 @@ async function printReceipt(job) {
 
 /* One long-poll loop per queue, each with its own backoff: a label station
    the server refuses must not slow the receipts down, or the other way. */
-async function pollLoop(name, path, print) {
+async function pollLoop(name, path, print, s) {
   let wait = 1000;
   for (;;) {
     try {
-      await ensureLoggedIn();
-      const res = await api('GET', path);
+      await ensureLoggedIn(s);
+      const res = await api('GET', path, undefined, s);
       wait = 1000; // a clean round trip, however it answered, resets the backoff
       if (res && res.job) await print(res.job);
       // else: nothing pending. The server already held the connection for
       // ~25s, so looping straight back around here is not a busy-loop.
     } catch (e) {
-      if (e.status === 401) cookie = null; // force a fresh login next time round
+      if (e.status === 401) s.cookie = null; // force a fresh login next time round
       if (!e.quiet) console.error(`[agent] ${name} poll failed:`, e.message);
       await sleep(wait);
       wait = Math.min(MAX_BACKOFF_MS, wait * 2);
@@ -238,10 +248,10 @@ process.on('unhandledRejection', (e) => console.error('[agent] unhandled rejecti
 
 if (CFG.printerShare && CFG.station) {
   console.log(`[agent] labels — station "${CFG.station}", server ${CFG.serverUrl}`);
-  pollLoop('labels', `/api/labels/next?station=${encodeURIComponent(CFG.station)}`, printJob);
+  pollLoop('labels', `/api/labels/next?station=${encodeURIComponent(CFG.station)}`, printJob, LABELS);
 }
 if (CFG.receiptShare) {
   const st = CFG.receiptStation || 'shop';
   console.log(`[agent] receipts — station "${st}", server ${CFG.serverUrl}`);
-  pollLoop('receipts', `/api/receipts/next?station=${encodeURIComponent(st)}`, printReceipt);
+  pollLoop('receipts', `/api/receipts/next?station=${encodeURIComponent(st)}`, printReceipt, MAIN);
 }
