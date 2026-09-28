@@ -427,7 +427,7 @@ function webPrices(p, fx) {
 /* KEEP IN STEP with web.product_row() in supabase/037_web_products.sql —
    the website reads the same answer from the cloud copy while this laptop
    is shut, and the two must not disagree about a single field. */
-function webRow(p, allSizes, ready, fx) {
+function webRow(p, allSizes, ready, fx, known) {
   const ids = new Set(ready.map((r) => r.c.id));
   const sizes = allSizes.filter((v) => ids.has(v.colour_id));
   const first = ready[0].photos;
@@ -467,8 +467,21 @@ function webRow(p, allSizes, ready, fx) {
       sizes: sizes.filter((v) => v.colour_id === c.id).map((v) => ({ size: v.size, sku: v.sku, inStock: v.total > 0 }))
     })),
     inStock: sizes.some((v) => v.total > 0),
+    /* 070 (v1.5) — the owner's words about it, in each language, or null when
+       there are none in either. Plain text; \n is a line break. */
+    description: webDescription(p),
+    /* 070 (v1.5) — "goes well with": product ids in the owner's order. Ids of
+       products that exist — the website itself skips any that is not
+       published or not in stock. */
+    pairsWith: pairsOf(p.pairs_with, known),
     updatedAt: p.updated_at
   };
+}
+
+function webDescription(p) {
+  const en = p.description_en || null;
+  const ar = p.description_ar || null;
+  return en || ar ? { en, ar } : null;
 }
 
 function catNames(id) {
@@ -478,7 +491,13 @@ function catNames(id) {
 
 const WEB_COLS =
   `p.id, p.name, p.brand, p.type, p.colorway, p.made_in, p.image_bg,
-   p.image_initials, p.currency, p.selling_price, p.updated_at`;
+   p.image_initials, p.currency, p.selling_price, p.updated_at,
+   p.description_en, p.description_ar, p.pairs_with`;
+
+/* Every product id there is — what a "goes well with" list may name. */
+function productIds() {
+  return new Set(get().prepare('SELECT id FROM products').all().map((r) => r.id));
+}
 
 function webSizes(productIds) {
   if (!productIds.length) return {};
@@ -504,10 +523,11 @@ export function webList() {
   const sizes = webSizes(rows.map((p) => p.id));
   const photos = Photos.byProduct();
   const fx = webRate();
+  const known = productIds();
   const out = [];
   for (const p of rows) {
     const ready = webColours(p, photos[p.id] ?? []);
-    if (ready.length) out.push(webRow(p, sizes[p.id] ?? [], ready, fx));
+    if (ready.length) out.push(webRow(p, sizes[p.id] ?? [], ready, fx, known));
   }
   return out;
 }
@@ -525,7 +545,7 @@ export function webById(id) {
      the same 404 as one switched off. */
   const ready = webColours(p, Photos.ofProduct(p.id));
   if (!ready.length) return null;
-  return webRow(p, webSizes([p.id])[p.id] ?? [], ready, webRate());
+  return webRow(p, webSizes([p.id])[p.id] ?? [], ready, webRate(), productIds());
 }
 
 export function byId(id) {
@@ -616,8 +636,34 @@ export function remove(id, userId) {
     try { db.prepare('DELETE FROM product_colours WHERE product_id = ?').run(id); } catch { /* before 058 */ }
     db.prepare('DELETE FROM products WHERE id = ?').run(id);
     logChange('products', id, 'delete', userId, 'deleted by hand');
+    /* 070 — off every other product's "goes well with", logged, so the
+       mirror's copy of those lists loses it too. */
+    unpair(db, [id], userId);
     return { id, name: p.name, variants: skus.length, files };
   });
+}
+
+/* 070 — take deleted products off every "goes well with" list that names
+   them. Inside the caller's transaction; one logged update per list changed.
+   The website would skip a missing id anyway (pairsOf filters on what
+   exists); this keeps the stored lists true. */
+export function unpair(db, ids, userId) {
+  const gone = new Set(ids.map(Number));
+  let rows;
+  try { rows = db.prepare("SELECT id, pairs_with FROM products WHERE pairs_with IS NOT NULL AND pairs_with <> ''").all(); }
+  catch { return 0; }   /* before 070 */
+  const at = nowIso();
+  let n = 0;
+  for (const r of rows) {
+    const list = pairsOf(r.pairs_with);
+    const kept = list.filter((x) => !gone.has(x));
+    if (kept.length === list.length) continue;
+    db.prepare('UPDATE products SET pairs_with = ?, updated_at = ? WHERE id = ?')
+      .run(kept.length ? JSON.stringify(kept) : null, at, r.id);
+    logChange('products', r.id, 'update', userId, 'goes well with: a product was deleted');
+    n++;
+  }
+  return n;
 }
 
 /* products.image_url is not set here any more (066): it is derived from the
@@ -771,8 +817,80 @@ const EDITABLE = new Set([
   'currency', 'cost_price', 'selling_price', 'shelf_zone', 'hidden',
   /* Whether the marketing website shows it. Deliberately NOT the same key as
      `hidden`, which means archived — see migration 039. */
-  'on_web'
+  'on_web',
+  /* 070 — what the website says about it: a description in each language and
+     "goes well with" (contract v1.5). Cleaned by cleanDescription / cleanPairs
+     below before they are written, never taken as sent. */
+  'description_en', 'description_ar', 'pairs_with'
 ]);
+
+/* 070 — THE PRODUCT'S DESCRIPTION, ONE PER LANGUAGE. Plain text for a public
+   page: line breaks kept (\r\n folded to \n), other control characters taken
+   out, the ends trimmed. Empty is NULL, which the website reads as "no
+   description in this language" and shows the other one. The cap is the
+   website's "about 1,000 is plenty" with room to spare; past it the save is
+   refused rather than cut, because a cut sentence on a public page reads as a
+   mistake the shop made. */
+export const DESCRIPTION_MAX = 1500;
+export function cleanDescription(v) {
+  if (v === null || v === undefined) return null;
+  const t = String(v).replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').trim();
+  if (!t) return null;
+  if ([...t].length > DESCRIPTION_MAX) {
+    throw fail(`A description can be at most ${DESCRIPTION_MAX} characters.`, 'description_too_long');
+  }
+  return t;
+}
+
+/* 070 — "GOES WELL WITH": other PRODUCTS, in the owner's order, at most 12.
+   Stored as a JSON list of ids ('[57,61,12]') in one column rather than a
+   table of its own: products is pushed whole row by row, so the list reaches
+   the mirror with the product and needs no cursor, restore order or reconcile
+   of its own. An id is refused when it is not a product or is this product;
+   a repeat is dropped, keeping the first. A product that is archived or off
+   the website today may stay on the list — the website skips it, and it comes
+   back by itself the day the product is published again. Empty is NULL. */
+export const PAIRS_MAX = 12;
+export function cleanPairs(v, selfId) {
+  if (v === null || v === undefined || v === '') return null;
+  let list = v;
+  if (typeof list === 'string') {
+    try { list = JSON.parse(list); } catch { throw fail('pairs_with must be a list of product ids.', 'bad_pairs'); }
+  }
+  if (!Array.isArray(list)) throw fail('pairs_with must be a list of product ids.', 'bad_pairs');
+  const out = [];
+  for (const x of list) {
+    const n = Number(x);
+    if (!Number.isInteger(n) || n <= 0) throw fail('pairs_with must be a list of product ids.', 'bad_pairs');
+    if (n === Number(selfId)) throw fail('A product cannot go well with itself.', 'pair_self');
+    if (!out.includes(n)) out.push(n);
+  }
+  if (out.length > PAIRS_MAX) throw fail(`At most ${PAIRS_MAX} products can go well with one.`, 'too_many_pairs');
+  if (!out.length) return null;
+  const marks = out.map(() => '?').join(',');
+  const known = new Set(get().prepare(`SELECT id FROM products WHERE id IN (${marks})`).all(...out).map((r) => r.id));
+  const missing = out.find((n) => !known.has(n));
+  if (missing !== undefined) throw fail(`No product with id ${missing}.`, 'bad_pair');
+  return JSON.stringify(out);
+}
+
+/* The stored list read back: ids of products that still exist, in order.
+   Anything unreadable is an empty list — a bad value must never cost the
+   website the product itself. KEEP IN STEP with web.pairs_of() in
+   supabase/040_product_web_extras.sql. */
+export function pairsOf(raw, known) {
+  if (raw === null || raw === undefined || raw === '') return [];
+  let list;
+  try { list = JSON.parse(raw); } catch { return []; }
+  if (!Array.isArray(list)) return [];
+  /* Numbers only — "7" and true are not ids, and web.pairs_of() in the cloud
+     (jsonb_typeof = 'number') must give exactly this answer. */
+  const out = [];
+  for (const x of list) {
+    if (typeof x === 'number' && Number.isInteger(x) && x > 0 && !out.includes(x) && (!known || known.has(x))) out.push(x);
+  }
+  return out;
+}
 
 export function update(id, fields, userId) {
   const sets = [];
@@ -786,7 +904,9 @@ export function update(id, fields, userId) {
     }
     if (k === 'currency') { minorExp(v); assertDollars(v); }   // validate before writing
     sets.push(`${k} = ?`);
-    args.push(v);
+    if (k === 'description_en' || k === 'description_ar') args.push(cleanDescription(v));
+    else if (k === 'pairs_with') args.push(cleanPairs(v, id));
+    else args.push(v);
   }
 
   if (!sets.length) throw new Error('nothing to update');

@@ -35,9 +35,9 @@ merged.
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
   PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
-- **Numbers in use:** local migrations run to `069` (`063` is night mode's and applies after `067`
+- **Numbers in use:** local migrations run to `070` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `070`; the next cloud file is `040`.** The cloud files have two `030`s and two
+  local migration is `071`; the next cloud file is `041`.** The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
   `server/supabase/status.sql` says which the live project already has.
 - **A section below that says "not merged", or names one of the old worktree folders, describes
@@ -4122,11 +4122,81 @@ cut is over the 10% ceiling, so every sale it went on was refused. Gone.
 - **The till's quiet add (`POS.add(v, true)`) plus a foot repaint leaves Complete disabled** — a
   real scan repaints the basket. A suite that fills the basket calls `render()`, and picks a size
   the till's OWN location holds (it sells from the floor, not the back).
-- **`p0-namespaces.mjs` has its folder hard-coded to this repo's `js/`**, so run from a worktree it
-  checks the old code. Point `DIR` at the worktree.
+- **`p0-namespaces.mjs` reads this repo's `js/`**, so run from a worktree it checks the old code.
+  `JS_DIR=<worktree>/js/` points it elsewhere (29 Sep 2026).
 - **A long single-tab suite can starve its own requests**: every page load leaves an event stream
   the browser may hold, six per host on HTTP/1.1, and the page then shows "the server is not
   answering" while the server answers in milliseconds. It is the harness, not the page.
+
+## Descriptions, "goes well with", and telling the website (070, cloud 040 — 29 Sep 2026)
+
+Ahmad's website asked for three things, all built on this side (contract **v1.5**,
+`docs/website/PROMPT-FOR-AHMAD.md` §3 and §3a; the short answer to him is
+`docs/website/UPDATE-DESCRIPTIONS-AND-PAIRS.md`). Built in a worktree (`feature/product-web-extras`).
+
+- **`products.description_en`, `description_ar`, `pairs_with`** (migration 070). Written only
+  through `PATCH /api/products/:id` (`product.write`), and cleaned in `Cat.update` first:
+  `cleanDescription` folds `\r\n`, drops control characters but `\n`/tab, trims, stores empty as
+  NULL, refuses past 1,500 characters (`description_too_long` — refused, never cut);
+  `cleanPairs` takes a list of product ids, refuses itself (`pair_self`), an id that is not a
+  product (`bad_pair`), anything but whole positive numbers (`bad_pairs`) and more than 12
+  (`too_many_pairs`), drops a repeat, and stores `'[57,61,12]'` or NULL. **A JSON column, not a
+  table**: products is pushed row by row, so the list rides with its product and needs no
+  cursor, restore order or reconcile of its own. `Cat.remove` → `unpair()` takes a deleted
+  product off every list, one logged update per list.
+- **The website's row** (`webRow`) gains `description` (`{en, ar}`, either null, the whole field
+  null when both are) and `pairsWith` (`pairsOf(raw, known)`: ids of products that EXIST, in
+  order; an archived or photo-less product may stay — the website skips it). `pairsOf` accepts
+  **numbers only** (`typeof x === 'number'`), because the cloud's `web.pairs_of` asks
+  `jsonb_typeof = 'number'`: the first version took `"7"` and `true`, and the unit test caught
+  the disagreement.
+- **CLOUD 040, AND 037 WAS EDITED TOO.** 040 adds the three columns and replaces
+  `web.product_row` with the two fields. The parity suite re-runs 037 after the rest, and 037's
+  OLD function silently took the fields away again — so **037 and 040 now hold the same text** for
+  `web.pairs_of` and `web.product_row`, and the function reads the two columns through
+  `to_jsonb(row)`, so a cloud with 037 and not 040 answers `null` / `[]` rather than failing on a
+  column it has not got. `_nightshift/web-extras/parity.mjs` checks the texts are identical, both
+  orders, both files twice, and `status.sql` (which also gained the missing 038 and 039 rows).
+- **`mirror-lag.js` entries may have `groups`**: `lagColumn` drops only the group the refused
+  column is in. Lumped into one list, a mirror without 040 would have had every product pushed
+  without `on_web` too — a product switched off the website would have stayed on it there.
+- **The screen**: an "On the website" card in the product drawer (`webDetailsCard`, after the
+  photos) with the description and the chosen products as chips that open their own drawer, and
+  one dialog (`openWebDetails`) for both — deliberately not in the full editor, which is opened
+  to change a price. The chosen list lives in `WX` (module state); only `#wxPairs` / `#wxFound`
+  repaint, never the two text boxes. Search is `DB.productMatch`; never itself, never archived,
+  at most 8 hits; ↑ ↓ ✕ per row; a tag on any product the website would skip
+  (`Photos.webState`). **The prefix is `wx`** — `pw-` is the password forms'.
+- **`lib/sitenotify.js` tells the website** (`POST <web.site_url>/api/og/catalog-changed`,
+  `Bearer OG_WEB_API_KEY`, `{reason, productIds}`). Every commit to a catalogue table (`WATCH`)
+  re-arms a 5 s quiet timer; the published catalogue (`Cat.webList`) is fingerprinted and the call
+  goes **only when that moved** — a sale leaving a size in stock says nothing, the last pair does,
+  a new rate does (`rate_changed`). **It waits for the cloud copy** (`Mirror.changedTables()`, at
+  most a minute; a mirror that is not live does not wait), because the website reads
+  `web_products` from Supabase. Retries 30 s / 2 min / 5 min on a network error, a timeout (10 s),
+  a 429 or a 5xx, then stops; 401/403, 404, other 4xx and a redirect are not retried, and **a
+  redirect is never followed** (`redirect: 'manual'`) — it would carry the key. A baseline is
+  taken 10 s after start, so a restart announces nothing by itself. **One main server runs it**
+  (started beside `FxFeed`; a standby runs none), and the VPS already gets `OG_WEB_API_KEY` from
+  `vps.js env`.
+- **`web.site_url`** is on `CONFIG_WRITABLE`, checked by `siteUrlProblem()` (an https origin,
+  a name not an IP, nothing after it — the key goes there). `OG_WEB_SITE_TEST_HOST=127.0.0.1:9312`
+  allows plain http to exactly that host, for a test. **Settings → Advanced → Website**
+  (`SiteNotifyUI`, developer only, like the mirror): the address (a `data-on-commit` box, checked
+  in the browser too so the refusal is in the screen's language), what the last call came back
+  with, and **Tell the website now** (`POST /api/web-notify/test`: forced, no cloud wait, never
+  retried). `GET /api/web-notify` is the status. Both `config.write`.
+- **By hand**: run `040_product_web_extras.sql`, then `verify_040_product_web_extras.sql`, then
+  `npm run supabase:reconcile`; and put the website's address in Settings → Advanced → Website on
+  the domain once Ahmad gives it (it is config, so it reaches the VPS's database only there).
+- **Verified**: `npm test` 50 (11 new, `test/web-extras.test.js`); `usd-prices/parity` 40 (with
+  `REPO=` pointing at the tree under test); `web-extras/parity` 35; `web-extras/ui` 54 (the owner's
+  dialog pressed in English at 1280 and Arabic at 390, read back from SQLite and from the products
+  door, a stand-in website — `web-extras/fake-site.mjs` — receiving exactly one call with the right
+  key and product, a 401 drawn red on the card, a cashier seeing the card without Edit and refused
+  by the server); `fix05/p0-namespaces` 6; `fix06/idle` (Settings still 0 requests idle);
+  `ns03/sweep`. The rig: `web-extras/setup.mjs` (a VACUUM INTO copy with two products published),
+  `fake-site.mjs`, and a server from the tree on 8198 with the sandbox env.
 
 ## The style rules
 

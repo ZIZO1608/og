@@ -295,6 +295,17 @@ function firstColourImage(list) {
   return null;
 }
 
+/* 070 — products.pairs_with read back: whole positive ids, each once, in
+   order. The server's pairsOf() is the rule; this only reads what it wrote. */
+function pairsList(raw) {
+  var a;
+  try { a = JSON.parse(raw || '[]'); } catch (e) { return []; }
+  if (!Array.isArray(a)) return [];
+  var out = [];
+  a.forEach(function (x) { if (typeof x === 'number' && x > 0 && x % 1 === 0 && out.indexOf(x) < 0) out.push(x); });
+  return out;
+}
+
 function relabelTypes() {
   var ar = typeof OG !== 'undefined' && OG.lang === 'ar';
   if (!CATEGORIES.length) {
@@ -2881,6 +2892,13 @@ var DB = {
            table. Defaults to true so a server that predates 039 does not read
            as a catalogue switched off. */
         onWeb: p.on_web === undefined || p.on_web === null ? true : !!p.on_web,
+        /* 070 (contract v1.5) — what the website says about it: the owner's
+           description in each language, and "goes well with", other products'
+           ids in the owner's order. Edited in the drawer's "On the website"
+           card (openWebDetails in js/app-products.js). */
+        descEn: p.description_en || '',
+        descAr: p.description_ar || '',
+        pairsWith: pairsList(p.pairs_with),
         demo: !!p.demo,
         /* Never sold falls back to how long the shop has had it, which is the
            honest reading of "nothing has moved" and keeps the dead-stock

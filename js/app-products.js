@@ -336,6 +336,9 @@ function openProductDrawer(pid) {
   /* 066 — the photos, first: the website shows nothing of a colour until it
      has its two, and this is where somebody finds that out. */
   body += Photos.card(p);
+  /* 070 — and what the website says about it: the description and
+     "goes well with", beside the photos, because both are the website's. */
+  body += webDetailsCard(p);
 
   if (gaps.length) {
     body += '<div class="alert-row alert-danger" style="margin-bottom:14px">' +
@@ -572,6 +575,153 @@ function readProductEditor() {
   if (cost !== null) body.cost_price = cost;
   return body;
 }
+/* ---- on the website: the description and "goes well with"  (070) ---------
+   The website asked for both to be typed here rather than on the website
+   (contract v1.5): the owner edits products in OG System. One card in the
+   drawer says what the website shows; its Edit opens ONE dialog for both.
+   Not in the full product editor on purpose — that one is opened to change
+   a price, and a description is written once in a product's life.
+
+   The picker's list lives in module state (WX), never on the DOM, and only
+   #wxPairs / #wxFound are repainted while somebody works — the two
+   description boxes hold typed text and a caret, and are never rebuilt. */
+var WX = { pid: null, pairs: [], q: '' };
+var WX_MAX = 12;
+var WX_DESC_MAX = 1500;
+
+function wxProducts(ids) {
+  return ids.map(function (id) { return DB.product(id); }).filter(Boolean);
+}
+
+/* A tag for a product the website will skip, so a list does not look like
+   it shows something it cannot. */
+function wxOffTag(q) {
+  if (typeof Photos === 'undefined' || !Photos.webState) return '';
+  var st = Photos.webState(q);
+  if (st === 'live') return '';
+  return ' <span class="wx-tag">' + t(st === 'off' ? 'wx_off_web' : 'wx_waiting') + '</span>';
+}
+
+function webDetailsCard(p) {
+  var canEdit = allow('product.write') && typeof Shop !== 'undefined' && Shop.live();
+  var pairs = wxProducts(p.pairsWith || []);
+  if (!p.descEn && !p.descAr && !pairs.length && !canEdit) return '';
+  var h = '<div class="card mb wx-card"><div class="card-head"><h3>' + t('wx_title') + '</h3>' +
+    (canEdit ? '<button class="btn btn-sm" data-act="wx-open" data-id="' + p.id + '">' + t('wx_edit') + '</button>' : '') +
+    '</div><div class="card-body">';
+  h += '<div class="wx-sec"><span class="eyebrow">' + t('wx_desc') + '</span>';
+  if (!p.descEn && !p.descAr) {
+    h += '<div class="muted small">' + t('wx_no_desc') + '</div>';
+  } else {
+    if (p.descEn) h += '<div class="wx-desc"><small class="wx-lang">' + t('wx_lang_en') + '</small><p dir="ltr" lang="en">' + esc(p.descEn) + '</p></div>';
+    if (p.descAr) h += '<div class="wx-desc"><small class="wx-lang">' + t('wx_lang_ar') + '</small><p dir="rtl" lang="ar">' + esc(p.descAr) + '</p></div>';
+  }
+  h += '</div><div class="wx-sec"><span class="eyebrow">' + t('wx_pairs') + '</span>';
+  if (!pairs.length) {
+    h += '<div class="muted small">' + t('wx_no_pairs') + '</div>';
+  } else {
+    h += '<div class="wx-chips">' + pairs.map(function (q) {
+      return '<button class="wx-chip" data-act="wx-go" data-id="' + q.id + '">' + thumb(q) +
+        '<span><b>' + esc(q.name) + '</b>' + wxOffTag(q) + '</span></button>';
+    }).join('') + '</div>';
+  }
+  return h + '</div></div></div>';
+}
+
+function openWebDetails(pid) {
+  var p = DB.product(pid);
+  if (!p) return;
+  if (!allow('product.write')) { toast(t('wx_title'), t('no_access'), 'err'); return; }
+  WX = { pid: p.id, pairs: wxProducts(p.pairsWith || []).map(function (q) { return q.id; }), q: '' };
+  var box = function (id, lang, dir, value) {
+    return '<label class="field"><span>' + t('wx_desc_' + lang) +
+        ' <small class="wx-n muted" id="' + id + 'N" dir="ltr"></small></span>' +
+      '<textarea class="inp wx-ta" id="' + id + '" dir="' + dir + '" lang="' + lang + '" rows="4" maxlength="' + WX_DESC_MAX + '" ' +
+        'data-change="wx-count">' + esc(value || '') + '</textarea></label>';
+  };
+  openModal({
+    title: t('wx_title') + ' · ' + esc(p.name),
+    body:
+      box('wxEn', 'en', 'ltr', p.descEn) +
+      box('wxAr', 'ar', 'rtl', p.descAr) +
+      '<div class="partner-note">' + t('wx_desc_hint') + '</div>' +
+      '<div class="wx-pick">' +
+        '<div class="wx-pick-h"><b>' + t('wx_pairs') + '</b> <span class="muted small" id="wxPairsN" dir="ltr"></span></div>' +
+        '<div id="wxPairs"></div>' +
+        '<label class="field mt"><span>' + t('wx_find') + '</span>' +
+          '<input class="inp" id="wxQ" type="search" autocomplete="off" placeholder="' + esc(t('wx_find_ph')) + '" data-change="wx-q"></label>' +
+        '<div id="wxFound"></div>' +
+        '<div class="partner-note">' + t('wx_pairs_hint') + '</div>' +
+      '</div>',
+    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+          '<button class="btn btn-primary" data-act="wx-save" data-id="' + p.id + '">' + t('save') + '</button>',
+    onOpen: function () { wxCount(); wxPaint(); }
+  });
+}
+
+function wxCount() {
+  ['wxEn', 'wxAr'].forEach(function (id) {
+    var el = document.getElementById(id), n = document.getElementById(id + 'N');
+    if (el && n) n.textContent = el.value ? nf(el.value.length) + ' / ' + nf(WX_DESC_MAX) : '';
+  });
+}
+
+function wxPaint() {
+  var host = document.getElementById('wxPairs');
+  if (!host) return;
+  var list = wxProducts(WX.pairs);
+  var n = document.getElementById('wxPairsN');
+  if (n) n.textContent = nf(list.length) + ' / ' + nf(WX_MAX);
+  host.innerHTML = list.length
+    ? '<ol class="wx-list">' + list.map(function (q, i) {
+        return '<li class="wx-row">' + thumb(q) +
+          '<span class="wx-name"><b>' + esc(q.name) + '</b>' + wxOffTag(q) + '</span>' +
+          '<span class="wx-btns">' +
+            '<button class="btn btn-ghost btn-sm" data-act="wx-up" data-id="' + q.id + '"' + (i === 0 ? ' disabled' : '') +
+              ' aria-label="' + esc(t('wx_up')) + '" title="' + esc(t('wx_up')) + '">↑</button>' +
+            '<button class="btn btn-ghost btn-sm" data-act="wx-down" data-id="' + q.id + '"' + (i === list.length - 1 ? ' disabled' : '') +
+              ' aria-label="' + esc(t('wx_down')) + '" title="' + esc(t('wx_down')) + '">↓</button>' +
+            '<button class="btn btn-ghost btn-sm" data-act="wx-drop" data-id="' + q.id + '"' +
+              ' aria-label="' + esc(t('wx_remove')) + '" title="' + esc(t('wx_remove')) + '">✕</button>' +
+          '</span></li>';
+      }).join('') + '</ol>'
+    : '<div class="muted small">' + t('wx_no_pairs_yet') + '</div>';
+  wxFoundPaint();
+}
+
+/* What the search box finds: DB.productMatch, the one "which product does
+   this text mean" rule. Never itself, never one already chosen, never an
+   archived line; at most eight. */
+function wxFoundPaint() {
+  var host = document.getElementById('wxFound');
+  if (!host) return;
+  var q = String(WX.q || '').trim();
+  var full = WX.pairs.length >= WX_MAX;
+  var input = document.getElementById('wxQ');
+  if (input) input.disabled = full;
+  if (full) { host.innerHTML = '<div class="muted small">' + t('wx_full') + '</div>'; return; }
+  if (!q) { host.innerHTML = ''; return; }
+  var hits = DB.products.filter(function (x) {
+    return x.id !== WX.pid && !x.archived && WX.pairs.indexOf(x.id) < 0 && DB.productMatch(x, q);
+  }).slice(0, 8);
+  host.innerHTML = hits.length
+    ? '<div class="wx-found">' + hits.map(function (x) {
+        return '<button class="wx-hit" data-act="wx-add" data-id="' + x.id + '">' + thumb(x) +
+          '<span class="wx-name"><b>' + esc(x.name) + '</b><small class="muted">' + esc(DB.typeLabels[x.type] || '') +
+            (x.brand ? ' · ' + esc(x.brand) : '') + '</small>' + wxOffTag(x) + '</span>' +
+          '<span class="wx-plus" aria-hidden="true">+</span></button>';
+      }).join('') + '</div>'
+    : '<div class="muted small">' + t('wx_none_found') + '</div>';
+}
+
+function wxMove(id, by) {
+  var i = WX.pairs.indexOf(id), j = i + by;
+  if (i < 0 || j < 0 || j >= WX.pairs.length) return;
+  WX.pairs[i] = WX.pairs[j];
+  WX.pairs[j] = id;
+  wxPaint();
+}
+
 /* ---- change the price, and nothing else ---------------------------------
    Changing a price was the commonest reason the drawer was opened and it
    took the whole edit modal — nine fields, one of which was the one wanted.

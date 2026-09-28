@@ -1,10 +1,18 @@
-# OG Sports website ↔ OG System — connecting the orders (contract v1.4)
+# OG Sports website ↔ OG System — connecting the orders (contract v1.5)
 
 > **For Ahmad, and for the AI helping him build the OG Sports website.**
 > Paste this whole file in as the brief. It is the contract between the website and the
 > shop's system (OG System). The shop side is being built to exactly this. If something
 > here does not fit the website, ask before changing it. Do not work around it: both sides
 > have to agree.
+
+> **v1.5 (29 Sep 2026) — descriptions, "goes well with", and the shop tells you when products
+> change.** Every product now carries **`description`** (`{en, ar}`, plain text, or `null`) and
+> **`pairsWith`** (product ids in the owner's order, at most 12), both typed by the owner in OG
+> System (§3). And the shop now **calls you** within seconds of a change to anything the website
+> shows: `POST /api/og/catalog-changed` on your site, with the website key (§3a). Run
+> `server/supabase/040_product_web_extras.sql` first. Nothing was removed or renamed. The short
+> list is `docs/website/UPDATE-DESCRIPTIONS-AND-PAIRS.md`.
 
 > **v1.4 (28 Sep 2026) — coupon codes.** The shop's owner makes coupon codes in OG System
 > (percent or a dollar amount, with an end date, a limit, once per customer, a minimum basket).
@@ -82,6 +90,7 @@ compare them.
 | **Products** (read-only) | Supabase functions `web_products` / `web_product` (v1.3) | Always |
 | **Orders, checkout info, order status** | Supabase functions (`POST {SUPABASE_URL}/rest/v1/rpc/...`) | Always |
 | Products, the old door (same answer) | `GET https://shop.ogsports1.com/api/ext/...` | Only while the shop laptop is on and online |
+| **Catalogue changed** — the shop calls YOU (v1.5) | `POST <your site>/api/og/catalog-changed` (§3a) | While the shop's server is up |
 
 The shop gives you three values:
 
@@ -189,6 +198,8 @@ Returns **the whole published catalogue** in one answer:
           "sizes": [ { "size": "42", "sku": "OG-050-42", "inStock": true } ] }
       ],
       "inStock": true,
+      "description": { "en": "Soft cotton hoodie with a brushed inside.", "ar": "هودي قطن ناعم من جوّا." },
+      "pairsWith": [57, 61, 12],
       "updatedAt": "2026-09-20T11:02:00.000Z"
     }
   ],
@@ -265,11 +276,59 @@ Rules:
   - Cart and order totals: add up `prices.SYP.amount`, and send those lira figures as the
     item `price` with `currency: "SYP"` and in `shown` (§5). The shop re-prices every line
     when it accepts the order, so a rate that moved in between is settled on the call.
+- **Description (v1.5).** `description` is `{ "en": "…", "ar": "…" }`, typed by the owner in OG
+  System, one per **product** (not per colour). Plain text, never HTML: show it as text, and keep
+  its line breaks (`\n`), e.g. CSS `white-space: pre-line`. Either language may be `null`: then
+  show the other one. With no description at all the whole field is `null`. At most 1,500
+  characters per language.
+- **"Goes well with" (v1.5).** `pairsWith` is a list of other **products'** ids (not SKUs, not
+  colours), in the order the owner wants them shown, at most 12. It is `[]` when he chose none:
+  then show no "Frequently bought together". For each id, show that product's first colour that is
+  in stock. **Skip any id that is not in your current product list, or is not in stock** — the
+  list may name a product that is off the website today (waiting for photos, or switched off),
+  and it comes back by itself the day the product is published again.
 - `web_product` with `p_id` returns `{ "ok": true, "product": {...} }` for one product, or
   `{ "ok": false, "code": "not_found" }` if it is not published. `GET /api/ext/products/:id`
   returns `{ "product": {...} }` or 404.
 - `GET /api/ext/reviews?limit=50` returns delivery reviews the customer allowed **and** the
   shop approved, if you want a reviews section.
+
+### 3a. The shop tells you when the catalogue changed (v1.5)
+
+So a new product, a new photo or a size selling out shows within seconds instead of at your next
+5-minute refresh, the shop's server calls **your** site:
+
+```http
+POST https://<your site>/api/og/catalog-changed
+Authorization: Bearer <OG_WEBSITE_KEY>
+Content-Type: application/json
+
+{ "reason": "product_saved", "productIds": [57] }
+```
+
+- **The key is the same website key** the website sends the shop. Answer `401` to anything else.
+- **Answer `200 {"ok": true, "refreshedAt": "…"}`** and refresh your whole product copy (the next
+  page a customer opens fetches `web_products` again). The body is **for your logs only**:
+  `reason` is `product_saved` (`productIds` names the products that changed, at most 100),
+  `rate_changed` (the exchange rate moved, so every lira price did; `productIds` is empty),
+  `catalog_changed` (nothing more specific to say — a change in the first seconds after the shop's server started) or `test` (somebody pressed
+  "Tell the website now" in the shop's Settings). Refresh the same way for all four.
+- **When it is sent.** About 5 seconds after the last change to anything the website shows — a
+  product or colour added, removed or switched off; a photo, price, size, stock state, name,
+  description or "goes well with" — and only when what `web_products` answers actually changed.
+  A sale that leaves a size in stock sends nothing; the sale of the last pair does. Several saves
+  in a row are one call. **It is sent after the cloud copy has the change** (usually 2–5 seconds),
+  so the `web_products` you fetch already shows it.
+- **If your site does not answer** (down, no internet, a 5xx), the shop tries again after 30 s,
+  2 min and 5 min, then stops: your own 5-minute refresh catches up. A `401`/`403`, a `404` (the
+  door is not built yet) or a redirect is **not** retried, and a redirect is **never followed** —
+  it would carry the key somewhere nobody chose. So the address must be exact: `https`, with or
+  without `www` as your site actually answers.
+- **Give the shop your site's address** (`NEXT_PUBLIC_SITE_URL`, e.g. `https://ogsports1.com`).
+  It is kept in OG System's Settings (Advanced → Website), not in code: https only, a name (not
+  an IP), nothing after it. The same screen has **Tell the website now**, which sends a `test`
+  call and shows what your site answered.
+- Never block anything on this call, and never treat it as data: it only says "fetch again".
 
 ---
 
@@ -662,7 +721,10 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
 - ✅ Save the order and its `ref` **before** sending it, and retry with the identical object.
 - ✅ Show each product's `prices.SYP` large and `prices.USD` small (v1.3). Show totals per currency.
 - ❌ Don't work the lira price out yourself, and don't keep a rate of your own for products.
-- ✅ Refresh products every 5 minutes, and keep the last good copy.
+- ✅ Refresh products every 5 minutes, and keep the last good copy — and at once when the shop
+  calls `/api/og/catalog-changed` (v1.5).
+- ✅ Show `description` as plain text with its line breaks, and `pairsWith` only for products in
+  your list and in stock (v1.5).
 - ✅ Read `web_checkout` every time a checkout opens (60 seconds of caching at most), and
   redraw an open checkout when its `version` changes.
 - ✅ Show the shop's transfer details exactly as `web_checkout` gives them, in its order and
@@ -694,5 +756,10 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
 - [ ] Transfer photo compressed and sent with the order or later (`web_order_proof`).
 - [ ] Order page using `web_order_status`: the four states, rejection reasons, print progress,
       and the tracking button.
+- [ ] Each product page shows `description` in the page's language (the other one when that is
+      `null`), line breaks kept, and "Frequently bought together" from `pairsWith`, skipping any
+      product not in the list or out of stock (v1.5).
+- [ ] `POST /api/og/catalog-changed` checks the website key (401 otherwise), answers 200, and
+      makes the next page fetch the products again; the site's address is given to the shop (v1.5).
 - [ ] All customer-facing text in Arabic (RTL) and English.
 - [ ] Tested with `TEST-` orders, including a retry and the laptop being off.

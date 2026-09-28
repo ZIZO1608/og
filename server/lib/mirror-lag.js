@@ -38,9 +38,19 @@ export const MIRROR_LAG = {
   /* 039 — does this product appear on the marketing website. `products` leads
      the UNGUARDED core loop, so a rejection here takes variants, stock,
      customers, sales and deliveries down with it — the same shape as the
-     customers entry below, and the reason that one is written out at length. */
-  products:   { cols: ['on_web', 'image_url'],
-                file: 'server/supabase/014_product_on_web.sql and 015_product_image.sql', retriedBy: ['sync', 'reconcile'] },
+     customers entry below, and the reason that one is written out at length.
+     070 — the description in each language and "goes well with" (040).
+     TWO GROUPS, because the fallback drops every column of the group it
+     matched: lumped together, a mirror without 040 would have had products
+     pushed without on_web as well — and a product switched off the website
+     would have stayed on it there until somebody ran 040 and reconciled. */
+  products:   { cols: ['on_web', 'image_url', 'description_en', 'description_ar', 'pairs_with'],
+                groups: [
+                  { cols: ['on_web', 'image_url'], file: 'server/supabase/014_product_on_web.sql and 015_product_image.sql' },
+                  { cols: ['description_en', 'description_ar', 'pairs_with'], file: 'server/supabase/040_product_web_extras.sql' }
+                ],
+                file: 'server/supabase/014_product_on_web.sql and 015_product_image.sql, then 040_product_web_extras.sql',
+                retriedBy: ['sync', 'reconcile'] },
 
   /* 033 — the credit rules and where a merged customer went. Measured against
      the live mirror on 2026-09-02: rejected. `customers` is pushed in the
@@ -142,5 +152,8 @@ export function lagColumn(name, err) {
   const lag = MIRROR_LAG[name];
   if (!lag) return null;
   const hit = lag.cols.find((c) => String(err && err.message).includes(c));
-  return hit ? { col: hit, file: lag.file, cols: lag.cols } : null;
+  if (!hit) return null;
+  /* An entry with groups drops only the group the refused column is in. */
+  const g = (lag.groups || []).find((x) => x.cols.includes(hit));
+  return g ? { col: hit, file: g.file, cols: g.cols } : { col: hit, file: lag.file, cols: lag.cols };
 }

@@ -96,6 +96,7 @@ function afterSettings() {
   if (typeof YALLA !== 'undefined' && YALLA.telegramLoad) YALLA.telegramLoad('tgHost', 'tgMeta');
   if (typeof MirrorUI !== 'undefined') MirrorUI.load();
   if (typeof FxFeedUI !== 'undefined') FxFeedUI.load();
+  if (typeof SiteNotifyUI !== 'undefined') SiteNotifyUI.load();
   if (typeof RemindersUI !== 'undefined') RemindersUI.load();
   if (typeof paintBuildLine === 'function') paintBuildLine();
 

@@ -57,6 +57,8 @@ var ACTIONS = {
      press past the jump guard — FxFeedUI in js/app-settings.js. */
   'fx-check': function () { FxFeedUI.check(); },
   'fx-apply': function () { FxFeedUI.apply(); },
+  /* The website card (SiteNotifyUI): send the website a call now. */
+  'sn-test': function () { SiteNotifyUI.test(); },
   nav: function (el) { navTo(el.getAttribute('data-view'), el.getAttribute('data-tab')); },
 
   /* Collapse the sidebar to an icon rail, and remember it. Re-rendered rather
@@ -1475,6 +1477,44 @@ var ACTIONS = {
         /* Back to the drawer, where the person was, now showing what was saved. */
         openProductDrawer(id);
         toast(t('edit_product'), t('pe_saved'), 'ok', 2000);
+      }
+    );
+  },
+
+  /* ---- 070: on the website — the description and "goes well with" ----
+     The dialog is openWebDetails in js/app-products.js; the list it edits is
+     WX, in module state, and every one of these repaints #wxPairs alone. */
+  'wx-open': function (el) { openWebDetails(+el.getAttribute('data-id')); },
+  'wx-go': function (el) { closeDrawer(); openProductDrawer(+el.getAttribute('data-id')); },
+  'wx-add': function (el) {
+    var id = +el.getAttribute('data-id');
+    if (WX.pairs.length >= WX_MAX || WX.pairs.indexOf(id) >= 0 || id === WX.pid) return;
+    WX.pairs.push(id);
+    wxPaint();
+    var q = document.getElementById('wxQ');
+    if (q && !q.disabled) q.focus();
+  },
+  'wx-drop': function (el) {
+    var id = +el.getAttribute('data-id');
+    WX.pairs = WX.pairs.filter(function (x) { return x !== id; });
+    wxPaint();
+  },
+  'wx-up': function (el) { wxMove(+el.getAttribute('data-id'), -1); },
+  'wx-down': function (el) { wxMove(+el.getAttribute('data-id'), 1); },
+  'wx-save': function (el) {
+    var id = +el.getAttribute('data-id');
+    var val = function (k) { var b = document.getElementById(k); return b ? String(b.value) : ''; };
+    var body = { description_en: val('wxEn'), description_ar: val('wxAr'), pairs_with: WX.pairs.slice() };
+    var p = DB.product(id);
+    Shop.write(
+      function () { return Shop.updateProduct(id, body); },
+      function () {
+        if (p) { p.descEn = body.description_en.trim(); p.descAr = body.description_ar.trim(); p.pairsWith = body.pairs_with.slice(); }
+      },
+      function () {
+        closeModal();
+        openProductDrawer(id);
+        toast(t('wx_title'), t('wx_saved'), 'ok', 3000);
       }
     );
   },

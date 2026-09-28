@@ -1366,6 +1366,134 @@ var MirrorUI = (function () {
   return { paint: paint, load: load, stop: stop, fetchNow: fetchNow };
 })();
 
+/* THE WEBSITE — where the OG Sports website is, and whether it hears when a
+   product changes (lib/sitenotify.js, contract v1.5). The server tells the
+   website within seconds of a change to anything it shows; this card holds
+   the one setting that needs (the website's address, web.site_url), says
+   what the last call came back with, and has one quiet button to send a call
+   now. The website's key is the one in server/.env (OG_WEB_API_KEY); it is
+   never on this page. Loaded from afterSettings, at most once a minute. */
+var SiteNotifyUI = (function () {
+  var S = { st: null, at: 0, busy: false };
+
+  function fill(key, args) {
+    var s = t(key);
+    Object.keys(args || {}).forEach(function (k) { s = s.split('{' + k + '}').join(args[k]); });
+    return s;
+  }
+  function ltr(s) { return '<bdi dir="ltr">' + s + '</bdi>'; }
+  function ago(iso) {
+    if (!iso) return '';
+    var m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (!isFinite(m)) return '';
+    if (m < 1) return t('fxf_ago_now');
+    if (m < 60) return fill('fxf_ago_min', { n: ltr(m) });
+    if (m < 48 * 60) return fill('fxf_ago_h', { n: ltr(Math.round(m / 60)) });
+    return fill('fxf_ago_d', { n: ltr(Math.round(m / 1440)) });
+  }
+  function errLine(code, status) {
+    var k = 'sn_err_' + code;
+    var s = t(k) === k ? t('sn_err_failed') : t(k);
+    return s.split('{status}').join(ltr(esc(String(status || ''))));
+  }
+  function hostOf(url) {
+    try { return new URL(url).host; } catch (e) { return url; }
+  }
+
+  function card() {
+    if (typeof allow !== 'function' || !allow('config.write')) return '';
+    var st = S.st;
+    var site = st && st.site ? st.site : '';
+    var meta = site ? '<span dir="ltr">' + esc(hostOf(site)) + '</span>' : t('sn_meta_off');
+    var h = setFoldStart('website', t('sn_title'), meta, t('sn_sub')) + '<div class="card-body">';
+    h += '<label class="field"><span>' + t('sn_addr') + savedPill('web.site_url') + '</span>' +
+      '<input class="inp" id="setSiteUrl" type="url" dir="ltr" inputmode="url" autocomplete="off" spellcheck="false" ' +
+        'placeholder="https://…" value="' + esc(site) + '" data-change="set-siteurl" data-on-commit enterkeyhint="done"></label>' +
+      '<div class="partner-note">' + t('sn_addr_note') + '</div>';
+
+    var lines = [], tone = 'ok';
+    if (!st) { lines.push(t('sn_loading')); tone = ''; }
+    else if (!st.keySet) { lines.push(t('sn_err_no_key')); tone = 'bad'; }
+    else if (!site) { lines.push(t('sn_err_no_site')); tone = 'warn'; }
+    else {
+      if (!st.started) { lines.push(t('sn_not_here')); tone = 'warn'; }
+      if (st.lastOkAt) {
+        lines.push(fill('sn_last_ok', { ago: ago(st.lastOkAt) }) +
+          (st.sent ? ' · ' + fill('sn_sent_n', { n: ltr(nf(st.sent)) }) : ''));
+      }
+      var failedLast = st.lastError && st.lastTryAt && (!st.lastOkAt || st.lastTryAt > st.lastOkAt);
+      if (failedLast) {
+        lines.push(errLine(st.lastError, st.lastStatus));
+        tone = /bad_key|not_found|redirect|refused/.test(st.lastError) ? 'bad' : 'warn';
+      }
+      if (st.gaveUpAt) lines.push(t('sn_gave_up'));
+      if (st.pending || st.running) lines.push(t('sn_pending'));
+      if (!st.lastOkAt && !failedLast && !st.pending && !st.running) lines.push(t('sn_never'));
+    }
+    h += '<div class="sn-status ' + tone + '">' + lines.map(function (l) { return '<div>' + l + '</div>'; }).join('') + '</div>';
+    var can = st && st.keySet && site && !S.busy;
+    h += '<div class="sn-line"><button class="btn" data-act="sn-test"' + (can ? '' : ' disabled') + '><span>' +
+      t(S.busy ? 'sn_testing' : 'sn_test') + '</span></button></div>';
+    return h + '</div>' + setFoldEnd();
+  }
+
+  function repaint() { setFoldRepaint('website', card()); }
+
+  function load(force, then) {
+    if (typeof allow !== 'function' || !allow('config.write') || !API.live) return;
+    if (!force && S.st && Date.now() - S.at < 60000) return;
+    API.get('/api/web-notify').then(function (st) {
+      S.st = st; S.at = Date.now();
+      repaint();
+      if (then) then();
+    }).catch(function () { /* the card keeps what it had */ });
+  }
+
+  function test() {
+    if (S.busy) return;
+    S.busy = true; repaint();
+    API.post('/api/web-notify/test', {}).then(function (r) {
+      S.busy = false; S.st = r.status; S.at = Date.now();
+      repaint();
+      var res = r.result || {};
+      if (res.ok) toast(t('sn_title'), t('sn_test_ok'), 'ok', 4000);
+      else toast(t('sn_title'), errLine(res.code, res.status).replace(/<[^>]+>/g, ''), 'err', 6000);
+    }).catch(function (err) {
+      S.busy = false; repaint();
+      toast(t('sn_title'), API.friendly(err), 'err', 5000);
+    });
+  }
+
+  /* The browser's half of the server's siteUrlProblem(): the same rule, so
+     the refusal is in the screen's language rather than the server's
+     English. The server still decides. */
+  function addressOk(v) {
+    if (!v) return true;
+    if (/[\s\\?#@]/.test(v)) return false;
+    var u;
+    try { u = new URL(v); } catch (e) { return false; }
+    if (u.protocol !== 'https:' || u.pathname !== '/') return false;
+    if (v.toLowerCase().replace(/\/$/, '') !== u.origin.toLowerCase()) return false;
+    var host = u.hostname;
+    return !(/^\d+(\.\d+){3}$/.test(host) || host.charAt(0) === '[' || host === 'localhost' ||
+             /\.local$/.test(host) || host.indexOf('.') < 0);
+  }
+
+  function saveAddress(el) {
+    var v = String(el.value || '').trim();
+    var was = S.st && S.st.site ? S.st.site : '';
+    if (v === was) return;
+    if (!addressOk(v)) { toast(t('sn_title'), t('sn_addr_bad'), 'err', 6000); return; }
+    saveSetting('web.site_url', v, 0, function () {
+      load(true, function () { markSaved('web.site_url'); });
+    });
+  }
+
+  return { card: card, load: load, test: test, saveAddress: saveAddress };
+})();
+
+function websiteCard() { return SiteNotifyUI.card(); }
+
 function mirrorCard() {
   var h = setFoldStart('mirror', t('mir_title'),
     '<span id="mirMeta" class="muted">' + t('mir_loading') + '</span>');
@@ -1461,6 +1589,7 @@ function viewSettings() {
   if (roleOf() === 'developer') {
     h += setSection(t('setg_advanced'), t('setg_advanced_sub'));
     h += mirrorCard();
+    h += websiteCard();
     h += telegramCard();
     h += remindersCard();
     h += motionCard();

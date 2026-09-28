@@ -51,6 +51,13 @@ var CHANGES = {
     var hint = document.getElementById(el.id + 'Lira');
     if (hint) hint.innerHTML = liraHint(usdCents(el.value));
   },
+  /* 070 — the website details dialog: the count under a description box,
+     and the "goes well with" search. Neither rebuilds the box being typed in. */
+  'wx-count': function () { wxCount(); },
+  'wx-q': function (el) { WX.q = el.value; wxFoundPaint(); },
+  /* The website's address (Settings, Advanced) — a data-on-commit box, so
+     this runs on Enter or on leaving it, never half typed. */
+  'set-siteurl': function (el) { SiteNotifyUI.saveAddress(el); },
   /* Repaints the grid and the count only, so the box being typed into is
      never rebuilt and the caret stays put with no focusBack trick. */
   'cust-q': function (el) { OG.cust.q = el.value; repaintCustomers(); },

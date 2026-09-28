@@ -25,6 +25,7 @@ top to bottom; the two families do not depend on each other.
 | `037_web_products.sql` | products, priced in both currencies | `035_night_requests.sql` | night mode's requests wait in the cloud |
 | `038_coupons.sql` | coupon codes and their uses (mirrored), and `web_coupon` for the checkout (after `030`) | | |
 | `039_print_line_item.sql` | which shirt a print goes on — then `npm run supabase:reconcile` | | |
+| `040_product_web_extras.sql` | a product's description and "goes well with" (after `037`; it holds the same `web.product_row` text as `037`, so either may be run again) — then `npm run supabase:reconcile` | | |
 
 - Each website file has a `verify_…sql` beside it; run it straight after.
 - **`030_erp_access.sql` grants `og_vps` read access to the mirror tables that exist when it

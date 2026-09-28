@@ -28,8 +28,13 @@
    internet — https://shop.ogsports1.com since day shift 07. Telegram's job
    links are built on it, the launcher draws it as the "from anywhere" QR, and
    go-live.md has told the owner to set it in Settings since night shift 04,
-   when this list still refused it. Checked by publicUrlProblem() below. */
-export const CONFIG_WRITABLE = /^receipt\.|^print\.unit_price$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^fx\.feed_(on|side|minutes|scale|max_jump_pct)$|^alerts\.(quiet_from|quiet_to|urgent)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
+   when this list still refused it. Checked by publicUrlProblem() below.
+
+   web.site_url (29 Sep 2026) is the OG Sports website's own address: where
+   lib/sitenotify.js tells it the catalogue changed (contract v1.5). The
+   website's key goes with every call, so it is checked as strictly as
+   shop.public_url, by siteUrlProblem() below. */
+export const CONFIG_WRITABLE = /^receipt\.|^print\.unit_price$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^fx\.feed_(on|side|minutes|scale|max_jump_pct)$|^alerts\.(quiet_from|quiet_to|urgent)$|^web\.site_url$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
 
 /* What is wrong with a value for shop.public_url, or null when it will do.
    Strict, because the value goes into a QR code taped to a counter and into a
@@ -60,6 +65,33 @@ export function publicUrlProblem(value) {
   return null;
 }
 
+/* What is wrong with a value for web.site_url, or null when it will do. The
+   same shape as shop.public_url — an https origin and nothing after it, named
+   by a real domain — because every call to it carries the website's key, and
+   a key sent over plain http, or to a name only this network knows, is a key
+   given away. One exception, for a test and never a shop: with
+   OG_WEB_SITE_TEST_HOST=127.0.0.1:9312 set, plain http to exactly that host
+   is allowed (the OG_PUSH_TEST_HOST idea). */
+export function siteUrlProblem(value) {
+  const v = String(value ?? '').trim();
+  if (!v) return null;
+  const test = process.env.OG_WEB_SITE_TEST_HOST;
+  if (test && v.replace(/\/$/, '') === 'http://' + test) return null;
+  const bad = 'web.site_url must be an https address with nothing after the name, like https://ogsports1.com';
+  if (/[\s\\]/.test(v) || v.includes('?') || v.includes('#') || v.includes('@')) return bad;
+  let u;
+  try { u = new URL(v); } catch { return bad; }
+  if (u.protocol !== 'https:') return bad;
+  if (u.username || u.password || u.search || u.hash || u.pathname !== '/') return bad;
+  if (v.toLowerCase().replace(/\/$/, '') !== u.origin.toLowerCase()) return bad;
+  const host = u.hostname;
+  if (host.startsWith('[') || /^\d+(\.\d+){3}$/.test(host)) return 'web.site_url must be a name, not an IP address.';
+  if (host === 'localhost' || host.endsWith('.local') || !host.includes('.')) {
+    return 'web.site_url must be the website’s address on the internet.';
+  }
+  return null;
+}
+
 /* The first reason a batch of updates may not be saved, or null. One bad key
    refuses the whole batch: nothing is written unless all of it can be. */
 export function configRefusal(updates) {
@@ -70,6 +102,10 @@ export function configRefusal(updates) {
     if (k === 'shop.name' && !String(updates[k] ?? '').trim()) return 'The shop needs a name.';
     if (k === 'shop.public_url') {
       const p = publicUrlProblem(updates[k]);
+      if (p) return p;
+    }
+    if (k === 'web.site_url') {
+      const p = siteUrlProblem(updates[k]);
       if (p) return p;
     }
     /* The exchange-rate feed's five switches (lib/fxfeed.js). fx.feed_last is

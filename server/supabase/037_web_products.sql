@@ -47,6 +47,11 @@
 --                                        photos — which of those is the shop's
 --                                        business.
 --  Codes: bad_key, not_found.
+--
+--  v1.5 (29 Sep 2026): each product also carries `description` {en, ar} and
+--  `pairsWith` [ids] — the columns come with 040_product_web_extras.sql. The
+--  function text below is the same in 040, so running either file again is
+--  safe and leaves the same answer.
 -- =============================================================================
 
 -- The newest USD→SYP rate: {rate, at}, or null when there is none.
@@ -89,8 +94,47 @@ as $$
              'minorExp', 0));
 $$;
 
+-- "Goes well with" read back (v1.5): whole positive numbers, each once, first
+-- kept, only products that exist, in order. Anything unreadable is an empty
+-- list — a bad value must never cost the website the product itself.
+-- KEEP IN STEP with pairsOf() in server/lib/catalogue.js. Same text in 040.
+create or replace function web.pairs_of(p_raw text)
+returns jsonb
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  v_list jsonb;
+  v_out  jsonb := '[]'::jsonb;
+  v_e    jsonb;
+  v_n    numeric;
+begin
+  if p_raw is null or p_raw = '' then return v_out; end if;
+  begin
+    v_list := p_raw::jsonb;
+  exception when others then
+    return v_out;
+  end;
+  if jsonb_typeof(v_list) <> 'array' then return v_out; end if;
+  for v_e in select e.value from jsonb_array_elements(v_list) with ordinality as e(value, o) order by e.o loop
+    if jsonb_typeof(v_e) <> 'number' then continue; end if;
+    v_n := (v_e #>> '{}')::numeric;
+    if v_n <> trunc(v_n) or v_n <= 0 or v_n > 9007199254740991 then continue; end if;
+    if v_out @> jsonb_build_array(v_n::bigint) then continue; end if;
+    if not exists (select 1 from public.products p where p.id = v_n::bigint) then continue; end if;
+    v_out := v_out || jsonb_build_array(v_n::bigint);
+  end loop;
+  return v_out;
+end;
+$$;
+
 -- One published product as the website sees it, or null when no colour of it
 -- has both photos. KEEP IN STEP with webRow() in server/lib/catalogue.js.
+-- THE SAME TEXT IS IN 037 AND 040 (v1.5 added description and pairsWith), so
+-- running either file again leaves the same function. The two v1.5 columns
+-- are read through to_jsonb(row): before 040 has added them they are simply
+-- absent, and the fields read null / [] rather than the call failing.
 create or replace function web.product_row(p_id bigint, p_rate jsonb)
 returns jsonb
 language plpgsql
@@ -105,10 +149,12 @@ declare
   v_first   jsonb;
   v_cat     jsonb;
   v_exp     integer;
+  v_more    jsonb;
 begin
   select * into v_p from public.products p
    where p.id = p_id and not p.hidden and p.on_web and not p.demo;
   if not found then return null; end if;
+  v_more := to_jsonb(v_p);
 
   -- Each ready colour, its photos in the website's order, and its sizes.
   with ready as (
@@ -176,6 +222,13 @@ begin
     'sizes', v_sizes,
     'colours', v_colours,
     'inStock', exists (select 1 from jsonb_array_elements(v_sizes) z where (z ->> 'inStock')::boolean),
+    -- v1.5: null when there is no description in either language.
+    'description', case when coalesce(v_more ->> 'description_en', '') <> ''
+                          or coalesce(v_more ->> 'description_ar', '') <> ''
+                        then jsonb_build_object('en', nullif(v_more ->> 'description_en', ''),
+                                                'ar', nullif(v_more ->> 'description_ar', ''))
+                        end,
+    'pairsWith', web.pairs_of(v_more ->> 'pairs_with'),
     'updatedAt', to_char(v_p.updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
   );
 end;
@@ -246,7 +299,7 @@ declare
 begin
   foreach v_fn in array array[
     'web.rate_now()', 'web.product_prices(text, bigint, double precision)',
-    'web.product_row(bigint, jsonb)',
+    'web.pairs_of(text)', 'web.product_row(bigint, jsonb)',
     'public.web_products(text)', 'public.web_product(text, bigint)'
   ] loop
     execute format('revoke all on function %s from public', v_fn);

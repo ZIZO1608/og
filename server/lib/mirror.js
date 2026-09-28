@@ -1145,6 +1145,15 @@ export function behind() {
   return r ? r.behind : null;
 }
 
+/* Which tables still have rows the mirror has not got, or null before the
+   cursors have been read. lib/sitenotify.js asks it before telling the
+   website the catalogue changed: the website reads the CLOUD copy, so a call
+   that beats the push sends it to fetch what it already has. */
+export function changedTables() {
+  const r = detect();
+  return r ? [...r.changed] : null;
+}
+
 /* Rows written on THIS machine after the last push THIS machine made —
    counted against sync_local, never against the mirror's bookmarks (see
    noteLocal). The question lib/restore.js asks before it wipes anything.

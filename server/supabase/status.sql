@@ -37,6 +37,20 @@ SELECT f.file, f.installed, f.what
        EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                 WHERE n.nspname = 'public' AND p.proname = 'web_products'),
        'the website reads products, priced in both currencies'),
+    ('038_coupons.sql',
+       EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'public' AND p.proname = 'web_coupon'),
+       'coupon codes, and web_coupon for the website''s checkout'),
+    ('039_print_line_item.sql',
+       EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'print_job_lines' AND column_name = 'item'),
+       'which shirt a print goes on (local 069)'),
+    ('040_product_web_extras.sql',
+       EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'pairs_with')
+       AND EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                    WHERE n.nspname = 'web' AND p.proname = 'pairs_of'),
+       'a product''s description and "goes well with" (local 070)'),
     ('030_erp_access.sql',
        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'og_vps'),
        'og_vps, the VPS''s read-only login'),

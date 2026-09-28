@@ -83,6 +83,7 @@ import * as ReceiptQueue from './lib/receipt-queue.js';
 import * as Loans from './lib/loans.js';
 import * as Outbox from './lib/outbox.js';
 import * as FxFeed from './lib/fxfeed.js';
+import * as SiteNotify from './lib/sitenotify.js';
 import * as Scope from './lib/scope.js';
 import { Readable } from 'node:stream';
 import { isIP } from 'node:net';
@@ -791,6 +792,18 @@ router.add('POST /api/fx/feed/check', requirePerm('config.write', async (ctx) =>
 }));
 router.add('POST /api/fx/feed/apply', requirePerm('config.write', async (ctx) => {
   sendOk(ctx.res, await FxFeed.check({ force: true, userId: ctx.user.id }));
+}));
+
+/* Telling the website the catalogue changed (lib/sitenotify.js, contract
+   v1.5). The status for the Settings card, and "Tell the website now" — a
+   call sent whatever changed, whose answer the card shows. config.write,
+   like the address itself: it spends the website's key. */
+router.add('GET /api/web-notify', requirePerm('config.write', (ctx) => {
+  sendOk(ctx.res, SiteNotify.status());
+}));
+router.add('POST /api/web-notify/test', requirePerm('config.write', async (ctx) => {
+  const result = await SiteNotify.sendNow();
+  sendOk(ctx.res, { result, status: SiteNotify.status() });
 }));
 
 /* Everything under receipt.* (printer address, paper toggles, the printed
@@ -4411,6 +4424,10 @@ if (runDirectly) {
       /* The dollar rate from the live feed, on a timer — one main server, or
          two would write the same row twice. Off without OG_FX_KEY. */
       FxFeed.start(console.log);
+      /* The website hears within seconds when what it shows changed
+         (contract v1.5) — one main server, like the feed above. Silent
+         until web.site_url and OG_WEB_API_KEY are both set. */
+      SiteNotify.start(console.log);
       /* Who a push service writes to when something is wrong with our pushes:
          the shop's own https address when it has one. */
       try { Push.setContact(Orders.publicBase()); } catch { /* the default stands */ }
@@ -4475,6 +4492,7 @@ if (runDirectly) {
     try { BackupSchedule.stop(); } catch (e) { /* already down */ }
     try { Telegram.stop(); } catch (e) { /* already down */ }
     try { FxFeed.stop(); } catch (e) { /* already down */ }
+    try { SiteNotify.stop(); } catch (e) { /* already down */ }
     try { SyncWorker.stop(); } catch (e) { /* already down */ }
     try { Standby.stop(); } catch (e) { /* not a standby */ }
     if (SECURE_SERVER) { try { SECURE_SERVER.close(); } catch (e) { /* already down */ } }
