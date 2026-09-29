@@ -4186,9 +4186,13 @@ Ahmad's website asked for three things, all built on this side (contract **v1.5*
   in the browser too so the refusal is in the screen's language), what the last call came back
   with, and **Tell the website now** (`POST /api/web-notify/test`: forced, no cloud wait, never
   retried). `GET /api/web-notify` is the status. Both `config.write`.
-- **By hand**: run `040_product_web_extras.sql`, then `verify_040_product_web_extras.sql`, then
-  `npm run supabase:reconcile`; and put the website's address in Settings → Advanced → Website on
-  the domain once Ahmad gives it (it is config, so it reaches the VPS's database only there).
+- **Cloud 040 was run on 29 Sep 2026**: `supabase:drift` on the VPS reads all 58 tables matching,
+  `supabase:check` 61 tables row for row, and `web_products` answers `description: null` /
+  `pairsWith: []`. No reconcile was needed — no product had a description or a pairs list yet.
+  **Still by hand**: put the website's address in Settings → Advanced → Website on the domain once
+  Ahmad gives it (it is config, so it reaches the VPS's database only there). Checks run from the
+  laptop go through the container: `ssh root@10.8.0.1 'docker exec -w /app/server og-shop node
+  scripts/mirror-drift.js'` — the laptop's own Supabase keys are parked.
 - **Verified**: `npm test` 50 (11 new, `test/web-extras.test.js`); `usd-prices/parity` 40 (with
   `REPO=` pointing at the tree under test); `web-extras/parity` 35; `web-extras/ui` 54 (the owner's
   dialog pressed in English at 1280 and Arabic at 390, read back from SQLite and from the products
