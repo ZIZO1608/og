@@ -4399,10 +4399,15 @@ if (runDirectly) {
       /* Its own https Wi-Fi addresses, told to the main server with every
          copy fetch, so the domain's page can offer them when the line drops. */
       Standby.start(console.log, {
+        /* ...and localhost LAST (29 Sep 2026): the shop's own PC is both the
+           till and this standby, so on that PC the way to the till when the
+           line drops is this very machine. The page offers it as "on this
+           computer" (js/standby.js) — never as the Wi-Fi address. */
         localUrls: () => {
           const scheme = SECURE_SERVER ? 'https' : 'http';
           const port = SECURE_SERVER ? HTTPS_PORT : PORT;
-          return lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`);
+          return lanAddresses().filter((n) => !n.note).map((n) => `${scheme}://${n.address}:${port}`)
+            .concat([`${scheme}://localhost:${port}`]);
         }
       });
     } else {

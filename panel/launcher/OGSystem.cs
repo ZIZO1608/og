@@ -43,6 +43,7 @@ static class OGSystem
     static Process panel;
     static Process window;
     static NotifyIcon tray;
+    static string rootDir;
     static string url;
     static string logPath;
     /* The window's own browser profile. It is also how the window is FOUND:
@@ -81,6 +82,7 @@ static class OGSystem
 
         string exeDir = Path.GetDirectoryName(Application.ExecutablePath);
         string root = FindRoot(exeDir);
+        rootDir = root;
         Log("exe in " + exeDir + "; root " + (root ?? "(not found)"));
         if (root == null)
         {
@@ -117,7 +119,7 @@ static class OGSystem
         ContextMenuStrip menu = new ContextMenuStrip();
         menu.Items.Add("Open the panel", null, delegate { ShowWindow(); });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Quit - closes the shop", null, delegate { Quit(); });
+        menu.Items.Add("Quit - closes the shop", null, delegate { if (AskQuit()) Quit(); });
         tray.ContextMenuStrip = menu;
 
         ShowWindow();
@@ -375,6 +377,43 @@ static class OGSystem
         }
         catch { }
         return SystemIcons.Application;
+    }
+
+    /* THE TRAY'S QUIT ASKS FIRST (29 Sep 2026, the owner's choice). On the
+       night of 29 Sep it was pressed at 01:42 and the shop's standby stopped
+       with it, so when the internet went nothing on this computer could take
+       over. The window's own Quit has always asked; this one did not. No is
+       the default button. Both languages in one box: the launcher does not
+       know which one the window was set to. */
+    static bool AskQuit()
+    {
+        bool standby = IsStandby();
+        string en = standby ? "Quit OG System?\n\nThe shop's backup on this computer stops too. If the internet goes down, nobody can sell here until OG System is opened again.\n\nTo hide the window only, close the window instead - OG System keeps running next to the clock." : "Quit OG System?\n\nThis closes the shop as well. Nobody will be able to use the till until it is opened again.";
+        string ar = standby ? "\u062a\u0633\u0643\u0651\u0631 OG System\u061f\n\n\u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0644\u0644\u0645\u062d\u0644 \u0639\u0644\u0649 \u0647\u0627\u0644\u0643\u0645\u0628\u064a\u0648\u062a\u0631 \u0643\u0645\u0627\u0646 \u0628\u062a\u0648\u0642\u0641. \u0625\u0630\u0627 \u0627\u0646\u0642\u0637\u0639 \u0627\u0644\u0625\u0646\u062a\u0631\u0646\u062a\u060c \u0645\u0627 \u062d\u062f\u0627 \u0628\u064a\u0642\u062f\u0631 \u064a\u0628\u064a\u0639 \u0647\u0648\u0646 \u0644\u062d\u062a\u0649 \u064a\u0646\u0641\u062a\u062d OG System \u0645\u0631\u0629 \u062a\u0627\u0646\u064a\u0629.\n\n\u0625\u0630\u0627 \u0628\u062f\u0643 \u0628\u0633 \u062a\u062e\u0641\u064a \u0627\u0644\u0646\u0627\u0641\u0630\u0629\u060c \u0633\u0643\u0651\u0631 \u0627\u0644\u0646\u0627\u0641\u0630\u0629 \u2014 OG System \u0628\u064a\u0636\u0644 \u0634\u063a\u0651\u0627\u0644 \u062c\u0646\u0628 \u0627\u0644\u0633\u0627\u0639\u0629." : "\u062a\u0633\u0643\u0651\u0631 OG System\u061f\n\n\u0647\u0627\u062f \u0628\u064a\u0633\u0643\u0651\u0631 \u0627\u0644\u0645\u062d\u0644 \u0643\u0645\u0627\u0646. \u0645\u0627 \u062d\u062f\u0627 \u0628\u064a\u0642\u062f\u0631 \u064a\u0633\u062a\u0639\u0645\u0644 \u0627\u0644\u0643\u0627\u0634\u064a\u0631 \u0644\u062d\u062a\u0649 \u064a\u0646\u0641\u062a\u062d \u0645\u0631\u0629 \u062a\u0627\u0646\u064a\u0629.";
+        DialogResult r = MessageBox.Show(en + "\n\n" + ar, "OG System",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+        Log(r == DialogResult.Yes ? "quit confirmed" : "quit cancelled - keeps running");
+        return r == DialogResult.Yes;
+    }
+
+    /* server\.env says OG_ROLE=standby: this computer is the shop's backup. */
+    static bool IsStandby()
+    {
+        try
+        {
+            if (rootDir == null) return false;
+            string env = Path.Combine(Path.Combine(rootDir, "server"), ".env");
+            if (!File.Exists(env)) return false;
+            foreach (string raw in File.ReadAllLines(env))
+            {
+                string l = raw.Trim();
+                if (!l.StartsWith("OG_ROLE=")) continue;
+                string v = l.Substring(8).Trim().Trim('"', '\'').ToLowerInvariant();
+                return v == "standby";
+            }
+        }
+        catch { }
+        return false;
     }
 
     /* Quit means quit: the panel stops the server the polite way and only

@@ -27,6 +27,9 @@ var Standby = (function () {
   var timer = null, every = 0;
   var downSince = null;   // the main server's side: the first unanswered ask
   var cover = false, waited = false;
+  var failedBoot = false; // Shop.fail drew its card: the offer is in it, and an answer means reload
+  var inFlight = false;   // one /api/health at a time: 15 s requests on a 5 s interval stacked up three deep
+  var RELOADS = 'og.sb.reloads';
   var LS = 'og.standby.where';
   var PATIENCE_MS = 20000;
 
@@ -178,10 +181,73 @@ var Standby = (function () {
     } catch (e) { /* storage refused: the cover simply is not offered */ }
   }
 
+  function isLocal(u) {
+    try { var h = new URL(u).hostname; return h === 'localhost' || h === '127.0.0.1'; } catch (e) { return false; }
+  }
+  function phone() {
+    try { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) { return false; }
+  }
+  /* Where to go instead, in the order to offer it (29 Sep 2026). On a
+     computer, THIS computer first: the shop's own PC is both the till and the
+     standby, so for it "continue here" is the answer. On a phone, the Wi-Fi
+     address only; localhost on a phone is the phone. The page's own origin
+     is never offered: a link to the page that just failed is no way out. */
+  function offers() {
+    var urls = remembered() || [];
+    var local = [], wifi = [];
+    /* A page that is itself on localhost has just found OG System not
+       running HERE; another localhost address is no way out of that. */
+    var hereLocal = isLocal(location.href);
+    for (var i = 0; i < urls.length; i++) {
+      var o;
+      try { o = new URL(urls[i]).origin; } catch (e) { continue; }
+      if (o === location.origin) continue;
+      (isLocal(urls[i]) ? local : wifi).push(urls[i]);
+    }
+    return phone() || hereLocal ? wifi : local.concat(wifi);
+  }
+  function offerHtml(list) {
+    if (!list.length) return '';
+    return '<a class="btn btn-primary sb-cta" href="' + esc(list[0]) + '">' + esc(t(isLocal(list[0]) ? 'cv_go_here' : 'cv_go')) + '</a>' +
+      (list.length > 1 ? '<div class="sb-alt">' + list.slice(1).map(function (u) {
+        return '<a href="' + esc(u) + '">' + (isLocal(u) ? esc(t('cv_go_here')) : '<bdi dir="ltr">' + esc(hostOf(u)) + '</bdi>') + '</a>';
+      }).join(' · ') + '</div>' : '');
+  }
+
+  /* A page that never booted and then hears the main server answer: reload,
+     so it boots. At most three times in five minutes: a server that answers
+     its health line and then fails the boot again must not turn the page into
+     a machine that reloads itself for ever. */
+  function reloadOnce() {
+    var now = Date.now(), list = [];
+    try { list = JSON.parse(sessionStorage.getItem(RELOADS) || '[]').filter(function (x) { return now - x < 300000; }); } catch (e) { list = []; }
+    if (list.length >= 3) return false;
+    list.push(now);
+    try { sessionStorage.setItem(RELOADS, JSON.stringify(list)); } catch (e) { /* reload anyway */ }
+    location.reload();
+    return true;
+  }
+
+  /* The first time this page hears the server, ask the service worker to
+     fetch any file its offline copy is missing (sw.js, 'top-up'): the page
+     is served FROM that copy when the server cannot be reached, and one
+     missing script is a blank screen at exactly that moment. Once per page,
+     before anybody signs in, so a till left on the login gate heals too. */
+  var toppedUp = false;
+  function topUp() {
+    if (toppedUp) return;
+    toppedUp = true;
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'top-up' });
+      }
+    } catch (e) { /* no worker: nothing to top up */ }
+  }
+
   function paintCover() {
     var el = document.getElementById('sbCover');
-    var urls = remembered();
-    if (!cover || waited || !urls || !urls.length) { if (el) el.remove(); return; }
+    var list = offers();
+    if (!cover || waited || failedBoot || !list.length) { if (el) el.remove(); return; }
     var secs = downSince ? Math.round((Date.now() - downSince) / 1000) : 0;
     if (!el) {
       el = document.createElement('div');
@@ -196,11 +262,8 @@ var Standby = (function () {
         '<h2>' + esc(t('cv_title')) + '</h2>' +
         '<p>' + esc(t('cv_body')) + '</p>' +
         '<p class="sb-since"></p>' +
-        '<a class="btn btn-primary sb-cta" href="' + esc(urls[0]) + '">' + esc(t('cv_go')) + '</a>' +
-        (urls.length > 1 ? '<div class="sb-alt">' + urls.slice(1).map(function (u) {
-          return '<a href="' + esc(u) + '"><bdi dir="ltr">' + esc(hostOf(u)) + '</bdi></a>';
-        }).join(' · ') + '</div>' : '') +
-        '<button type="button" class="btn btn-ghost" data-act="sb-wait">' + esc(t('cv_wait')) + '</button>' +
+        offerHtml(list) +
+        '<button type="button" class="btn btn-ghost" data-sb="wait">' + esc(t('cv_wait')) + '</button>' +
       '</div>';
     words(el.querySelector('.sb-since'), 'cv_since', { n: secs });
   }
@@ -215,14 +278,27 @@ var Standby = (function () {
   }
 
   function check() {
-    if (typeof API === 'undefined' || !API.get) return;
+    if (inFlight || typeof API === 'undefined' || !API.get) return;
+    inFlight = true;
+    /* then(ok, fail), not then().catch(): a throw while drawing the good news
+       (a toast into a page Shop.fail had emptied) used to land in the catch,
+       which counted it as the server being down again, so the page never
+       came back by itself. */
     API.get('/api/health').then(function (h) {
+      inFlight = false;
+      topUp();
+      if (failedBoot) {
+        if (reloadOnce()) return;
+        var line = document.querySelector('.sb-recheck');
+        if (line) line.textContent = t('cv_back');
+        failedBoot = false;
+      }
       var wasDown = !!downSince;
       downSince = null; waited = false;
       if (cover) {
         cover = false;
         paintCover();
-        if (wasDown && typeof toast === 'function') toast(t('cv_back'), '', 'ok');
+        if (wasDown && typeof toast === 'function') { try { toast(t('cv_back'), '', 'ok'); } catch (e) { /* no toast box on this page */ } }
       }
       info = h && h.role === 'standby' ? (h.standby || {}) : null;
       if (!info && h && h.standbys) remember(h.standbys);
@@ -234,9 +310,13 @@ var Standby = (function () {
       schedule(m && (m !== 'following' || info.reachable === false) ? 3000
         : m ? 30000
         : (remembered() ? 10000 : 60000));
-    }).catch(function (err) {
-      /* An HTTP answer of any kind means the server is there. */
-      if (err && err.status) return;
+    }, function (err) {
+      inFlight = false;
+      /* An HTTP answer of any kind means the server is there, except the
+         proxy's own 503 shop_unreachable: nginx answered, the main server
+         behind it did not. */
+      if (err && err.status && err.code !== 'shop_unreachable') return;
+      if (failedBoot) { schedule(5000); return; }
       if (info) return;                       /* the laptop itself: Shop.fail says so */
       if (!downSince) downSince = Date.now();
       if (Date.now() - downSince >= PATIENCE_MS) cover = true;
@@ -251,9 +331,36 @@ var Standby = (function () {
        it is for — so its buttons are wired here, not in boot(). */
     watch: function () {
       register();
-      if (typeof ACTIONS !== 'undefined') ACTIONS['sb-wait'] = function () { waited = true; paintCover(); };
+      /* data-sb, not data-act: data-act is dispatched by bindGlobal(), which
+         only runs once boot() succeeds, and the cover is FOR the page that
+         did not boot. "Keep waiting here" was a dead button there. */
+      document.addEventListener('click', function (e) {
+        var el = e.target && e.target.closest ? e.target.closest('[data-sb]') : null;
+        if (!el) return;
+        if (el.getAttribute('data-sb') === 'wait') { waited = true; paintCover(); }
+      });
       check();
       if (!timer) schedule(60000);
+    },
+    /* Shop.fail's card, when the main server could not be reached at all:
+       the way to the shop's own computer goes IN the card (a failed boot is
+       already the verdict, no twenty seconds of patience on top), and the
+       page keeps asking by itself and opens the moment the server answers. */
+    onFail: function (card) {
+      failedBoot = true;
+      cover = false;
+      paintCover();
+      if (card && !card.querySelector('.sb-fail-offer')) {
+        var list = offers();
+        var box = document.createElement('div');
+        box.className = 'sb-fail-offer';
+        box.innerHTML = (list.length ? '<p>' + esc(t('cv_body')) + '</p>' + offerHtml(list) : '') +
+          '<p class="sb-recheck" role="status">' + esc(t('cv_rechecking')) + '</p>';
+        var again = card.querySelector('button');
+        if (again) card.insertBefore(box, again); else card.appendChild(box);
+        if (again && list.length) again.classList.remove('btn-primary');
+      }
+      schedule(5000);
     },
     /* Is this a standby, as far as the last answer said. */
     on: function () { return !!info; },

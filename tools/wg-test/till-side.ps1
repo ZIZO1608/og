@@ -113,6 +113,12 @@ $lines = @(
   '[Interface]',
   ('PrivateKey = ' + $priv),
   ('Address    = ' + $Address),
+  # 1380, not WireGuard's 1420 (29 Sep 2026): inside PIA the tunnel's UDP
+  # rides an adapter of 1441, and a full 1420 packet plus 60 bytes of
+  # WireGuard is 1480 - split in two on the way, and one 600 KB download
+  # over the tunnel stalled half-way. 1380 + 60 fits inside a VPN and costs
+  # about 3% on a plain line. It also lowers the TCP segment size both ways.
+  'MTU        = 1380',
   '',
   '[Peer]',
   ('PublicKey           = ' + $ServerPublicKey),

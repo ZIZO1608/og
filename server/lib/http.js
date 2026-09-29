@@ -12,6 +12,7 @@
 
 import { createReadStream, statSync, existsSync } from 'node:fs';
 import { extname, join, normalize, sep } from 'node:path';
+import { networkInterfaces } from 'node:os';
 
 /* -------------------------------------------------------------------- body */
 
@@ -166,7 +167,7 @@ export function parseCookies(req) {
 export function originAllowed(req, allowedOrigins) {
   const origin = req.headers.origin;
   if (!origin) return true;
-  if (allowedOrigins && allowedOrigins.length) return allowedOrigins.includes(origin);
+  if (allowedOrigins && allowedOrigins.length) return allowedOrigins.includes(origin) || ownOrigin(origin, req.headers.host);
   /* NO LIST IS NOT "EVERY ORIGIN" ANY MORE (audit 06). OG_ORIGINS ships blank
      and the shop runs with it blank, so this check did nothing at all on the
      one install that matters — a blank list allowed everything. With no list,
@@ -180,6 +181,40 @@ export function originAllowed(req, allowedOrigins) {
      host, such as a public hostname in front of a proxy. */
   try { return new URL(origin).host.toLowerCase() === String(req.headers.host || '').toLowerCase(); }
   catch { return false; }
+}
+
+/* THIS MACHINE'S OWN ADDRESSES ARE ALWAYS OURS (29 Sep 2026). With OG_ORIGINS
+   set, only the listed origins could change state — so the shop laptop, which
+   tells the domain's page "continue on me at https://172.20.10.2:8443", then
+   refused every sign-in there with bad_origin, because that Wi-Fi address was
+   not in a list somebody typed on a different day, on a different network.
+   The shop PC will have other addresses again. An origin whose host is an IP
+   address of one of THIS machine's own network cards (or localhost), AND is
+   the very address the request was sent to (the Host header), is a page this
+   server itself served: a page on another site cannot have that origin, and
+   DNS rebinding cannot forge an IP-literal origin. Names are never matched
+   here — a name is what rebinding controls; a public name still goes in
+   OG_ORIGINS. */
+let ownCache = { at: 0, set: null };
+function ownAddresses() {
+  if (ownCache.set && Date.now() - ownCache.at < 30000) return ownCache.set;
+  const set = new Set(['localhost', '127.0.0.1', '[::1]']);
+  try {
+    for (const addrs of Object.values(networkInterfaces())) {
+      for (const a of addrs || []) {
+        if (a.family === 'IPv4' || a.family === 4) set.add(a.address);
+      }
+    }
+  } catch { /* the loopback names above still hold */ }
+  ownCache = { at: Date.now(), set };
+  return set;
+}
+export function ownOrigin(origin, host) {
+  let u;
+  try { u = new URL(origin); } catch { return false; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+  if (u.host.toLowerCase() !== String(host || '').toLowerCase()) return false;
+  return ownAddresses().has(u.hostname.toLowerCase());
 }
 
 /* -------------------------------------------------------- security headers */

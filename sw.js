@@ -14,7 +14,7 @@
    refresh does it), or browsers that already have the app will keep serving
    the old cached copy — cache-first with ignoreSearch, so no query string
    gets past it. */
-var CACHE = 'og-system-v314';
+var CACHE = 'og-system-v315';
 
 var SHELL = [
   './',
@@ -127,12 +127,21 @@ var SHELL = [
    the tree but still named in SHELL is a real possibility, and it must not
    cost the cache for everything else. Anything that fails here is simply
    fetched from the network later. */
+/* BUT A DROPPED LINE IS NOT A MISSING FILE (29 Sep 2026). Swallowing every
+   failure also swallowed the network going away half-way through: a worker
+   that had cached 72 of its 100 files took charge anyway, and the next time
+   the server could not be reached the page it served was blank — app-state.js
+   and nine more answering "504 Offline". So only an answer the server GAVE
+   (a 404: a file dropped from the tree) is skipped; no answer at all fails
+   the install, the worker already in charge keeps its complete copy, and the
+   browser installs again on its next check. */
 self.addEventListener('install', function (e) {
   e.waitUntil(
     caches.open(CACHE).then(function (c) {
       return Promise.all(SHELL.map(function (url) {
-        return c.add(url)['catch'](function () {
-          console.warn('[sw] could not precache', url);
+        return fetch(url).then(function (res) {
+          if (res.ok) return c.put(url, res);
+          console.warn('[sw] could not precache', url, res.status);
         });
       }));
     })
@@ -156,6 +165,26 @@ self.addEventListener('install', function (e) {
 self.addEventListener('message', function (e) {
   var d = e.data || {};
   if (d.type === 'skip-waiting') { self.skipWaiting(); return; }
+  /* THE OFFLINE COPY TOPS ITSELF UP (29 Sep 2026). The install above caches
+     each file on its own and lets a failure go — right, or one bad file would
+     cost the cache for everything — but nothing ever came back for the ones
+     that failed. The page is served FROM this cache when the server cannot be
+     reached, so one script missing is a blank page at exactly that moment: a
+     test run found app-state.js, desk.js and eight more answering "504
+     Offline" and the app never started. The page sends this once it has
+     booted against a live server; anything in SHELL not in the cache is
+     fetched now, while the line is there. */
+  if (d.type === 'top-up') {
+    var job = caches.open(CACHE).then(function (c) {
+      return Promise.all(SHELL.map(function (url) {
+        return c.match(url, { ignoreSearch: true }).then(function (hit) {
+          return hit ? null : c.add(url)['catch'](function () { /* next boot tries again */ });
+        });
+      }));
+    });
+    if (e.waitUntil) e.waitUntil(job);
+    return;
+  }
   if (d.type === 'version' && e.ports && e.ports[0]) {
     e.ports[0].postMessage({ cache: CACHE });
   }

@@ -267,6 +267,14 @@ try {
     await waitFor(`(localStorage.getItem('og.standby.where') || '').includes(':${LAP}')`, 8000), await evaluate("localStorage.getItem('og.standby.where')"));
   check('no strip on the main server', await evaluate("!document.getElementById('standbyStrip')"));
 
+  /* A page that had FINISHED loading (body[data-view] is set by the first
+     render) when MAIN went silent: the cover, after the patience rule. Killed
+     mid-load, the page lands on the fail card instead — the next case. */
+  check('the domain\'s page has finished loading', await waitFor("document.body.hasAttribute('data-view')", 20000));
+  /* ...and its service worker has finished installing: the page served while
+     the server is gone comes out of that worker's copy, and a device that
+     never finished its first install has no copy at all (sw.js). */
+  check('…and its offline copy is complete', await waitFor("navigator.serviceWorker.getRegistration().then(function (r) { return !!(r && r.active && !r.installing && navigator.serviceWorker.controller); })", 30000));
   procs.main.kill();
   check('[silent] no cover before the patience window', await evaluate("!document.getElementById('sbCover')"));
   check('[silent] after twenty seconds of nothing, the cover',
@@ -275,10 +283,32 @@ try {
   check('[silent] it says the main server is not answering, and how long', /not answering/.test(cov.text) && /No answer for \d+ seconds/.test(cov.text), cov.text);
   check('[silent] its button goes to the shop laptop\'s own address', new RegExp(':' + LAP + '/?$').test(cov.href), cov.href);
   await shot('cover-en-1100.png');
-  await press('#sbCover [data-act="sb-wait"]');
+  await press('#sbCover [data-sb="wait"]');
   check('"Keep waiting" puts it away', await waitFor("!document.getElementById('sbCover')", 4000));
 
+  /* A page that CANNOT load (29 Sep 2026, the owner's screenshot: "Could not
+     load the shop" and only Try again). The fail card offers the shop's own
+     computer at once, says it keeps asking, carries one lime button, and
+     opens the shop by itself the moment MAIN answers again. MAINURL is on
+     127.0.0.1, so the card also says OG System is not running on this
+     computer, and offers the laptop's Wi-Fi address, never another localhost. */
+  await send('Page.navigate', { url: MAINURL + '/?r=6#dashboard' });
+  await waitFor("location.search.indexOf('r=6') > -1 && document.readyState === 'complete'", 30000);
+  check('[cannot load] the fail card offers the shop computer',
+    await waitFor("!!document.querySelector('.boot-fail-card .sb-fail-offer .sb-cta')", 60000),
+    await evaluate("(document.querySelector('.boot-fail-card') || document.body).innerHTML.slice(-700) + ' | where=' + localStorage.getItem('og.standby.where') + ' | coarse=' + matchMedia('(pointer: coarse)').matches + ' | url=' + location.href"));
+  const off = await evaluate(`(() => { const c = document.querySelector('.boot-fail-card'); return { text: c.innerText,
+    href: c.querySelector('.sb-cta').getAttribute('href'), limes: c.querySelectorAll('.btn-primary').length }; })()`);
+  check('[cannot load] …at the laptop\'s own port, and not on localhost',
+    new RegExp(':' + LAP + '/?$').test(off.href) && !/localhost|127\.0\.0\.1/.test(off.href), off.href);
+  check('[cannot load] …saying the page keeps asking by itself', /Checking again by itself/.test(off.text), off.text);
+  check('[cannot load] …with this computer named, not the wifi', /not open on this computer/.test(off.text) && !/Check the wifi/.test(off.text), off.text);
+  check('[cannot load] one lime button on the card', off.limes === 1, String(off.limes));
+  await shot('cannot-load-en-1100.png');
+
   startMain();
+  check('[cannot load] MAIN answering again opens the shop by itself',
+    await waitFor("document.body.hasAttribute('data-view') && !document.querySelector('.boot-fail')", 45000));
   await until(async () => (await http(MAIN, 'GET', '/api/health')).status === 200, 20000);
   check('MAIN is back', true);
 
@@ -286,8 +316,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await evaluate("localStorage.setItem('og.lang', 'ar'); true");
   await send('Page.navigate', { url: MAINURL + '/?r=5#dashboard' });
-  await waitFor("!document.getElementById('bootSplash')", 20000);
-  await sleep(1500);
+  await waitFor("document.body.hasAttribute('data-view')", 20000);
   procs.main.kill();
   check('[silent ar] the cover in Arabic', await waitFor("/السيرفر الرئيسي ما عم يرد/.test((document.getElementById('sbCover') || {}).innerText || '')", 45000));
   const btnH = await evaluate("document.querySelector('#sbCover .sb-cta').getBoundingClientRect().height");

@@ -16,7 +16,13 @@ import { maybe } from './env.js';
    that order rather than filtered, because "probably" is not "certainly" and
    the shop's wifi has been the second entry before now. */
 export function lanAddresses() {
-  const VIRTUAL = /vpn|virtual|vethernet|hyper-v|wsl|tap|tun|loopback|docker/i;
+  /* The WireGuard tunnel to the VPS is a card too ("og-shop", made by
+     tools/wg-test/till-side.ps1). Its address exists only between this
+     machine and the VPS: offered to a phone on the Wi-Fi as "the shop's
+     address" (the standby's fallback list, the login screen) it is a page
+     that never opens. Still a real address — the certificate names it. */
+  const VIRTUAL = /vpn|virtual|vethernet|hyper-v|wsl|tap|tun|loopback|docker|wireguard|^og-shop$|^wgd*$/i;
+  const tunnel = String(maybe('OG_TUNNEL_ADDR', '') || '').trim();
   const real = [];
   const other = [];
 
@@ -26,7 +32,7 @@ export function lanAddresses() {
       /* 169.254.x is what Windows invents when DHCP failed. Nothing can
          reach it, so offering it would only waste someone's time. */
       if (a.address.startsWith('169.254.')) continue;
-      if (VIRTUAL.test(name)) other.push({ address: a.address, note: `${name} — probably not this one` });
+      if (VIRTUAL.test(name) || a.address === tunnel) other.push({ address: a.address, note: `${name} — probably not this one` });
       else real.push({ address: a.address, note: '' });
     }
   }

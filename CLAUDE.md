@@ -2569,7 +2569,7 @@ on that screen was pressed one at a time and all of them work.
   `Update.busy()` to be false — an overlay, a modal, a drawer, the refresh cover, **an open
   basket**; deliberately NOT the order desk's draft, which is in localStorage with its own `opId`
   and comes back exactly as it was. Then it toasts and reloads the tab ONCE.
-- `skip-waiting` and `version` are the worker's two messages. **Adding a JS file still means
+- `skip-waiting`, `version` and `top-up` (29 Sep 2026, see **The shop cannot be cut off** below) are the worker's three messages. **Adding a JS file still means
   adding it to `SHELL` and bumping `CACHE`** — that has not changed.
 - **Which build is this**: `GET /api/health` carries `build: { branch, started }` to a SIGNED-IN
   caller only (a stranger on the wifi gets nothing), and Settings draws `og-system-v280 · fix-05`
@@ -3690,6 +3690,150 @@ Developer → Tools → **Move the shop to the VPS** (typed word `VPS`).
   primary stopped), closed, and primary unchanged, in English at 1100 and Arabic at 390, with no
   raw key, no sideways scroll and no console error. `laptop-standby` was run on the scratch env
   while the test panel stayed open, and the next Open started a standby with no workers.
+
+## The shop cannot be cut off from its server (29 Sep 2026)
+
+Reported with two screenshots: shop.ogsports1.com stuck at "0/16", then "Could not load the
+shop — No connection to the server. Check the wifi." with only Try again, and "the localhost on
+the wifi didn't work either". **The VPS was healthy the whole time** (container up, mirror runs
+clean, check-host.net 200 from six countries). Measured, three separate faults on the laptop's
+side, and the fixes for each. No migration, no schema change, no cloud file.
+
+**This laptop is for development now.** The owner said so the same day: the till and the
+standby will be **another PC in the shop**, set up later with the data. Everything below is a
+script or a launcher check that PC repeats by itself, never a hand tweak on this one.
+
+### 1. The public route broke; the tunnel did not — `npm run tunnel-route`
+
+Through PIA's Berlin exit, TCP to 152.239.114.129:443 was swallowed by a carrier — curl
+"connected" and then no TLS for 5 s, and tcpdump on the VPS saw **zero packets** (the third day
+running: 27 and 28 Sep were Arelion too, on other exits). The WireGuard tunnel to the same VPS
+worked throughout, and **the VPS's front door answers on the tunnel's address too**:
+`curl --resolve shop.ogsports1.com:443:10.8.0.1` gave 200 with the real Let's Encrypt
+certificate in 0.4 s. So on the shop's PC the domain goes through the tunnel:
+
+- **`server/scripts/tunnel-route.js`** (the pure half is `server/lib/hostsroute.js`) puts one
+  line in the Windows hosts file, `10.8.0.1 shop.ogsports1.com`, between
+  `# >>> og-shop tunnel` / `# <<< og-shop tunnel` markers, CRLF, every other byte of the file
+  kept (read and written as latin1). Derived from `.env`: only a **standby** whose
+  `OG_UPSTREAM` is an IP and whose `OG_STANDBY_HOME` is a name needs it; anything else answers
+  "not needed". `--check` (0 in place or not needed / **4 fixable** / 1 somebody else's line
+  already names the domain — never edited, Windows takes the first match), `--probe` (asks the
+  domain through the tunnel with certificate checking ON — `node:https` to the IP with the name as
+  SNI and Host), `--json`, `--undo`. **Adding refuses unless that probe answers**: a hosts line
+  to a shut door takes the domain away from the PC. One UAC prompt, trust-cert.js's pattern
+  (`Start-Process -Verb RunAs`, a log file the un-elevated half prints), then
+  `ipconfig /flushdns` and it reads its own work back. `OG_HOSTS_FILE` is for the tests only.
+- **Same origin, same cookies, same service worker** — nothing to re-sign. Edge, Chrome (Secure
+  DNS or not — Chromium's resolver always reads HOSTS first), Node's `getaddrinfo` (the print
+  agent, the panel) and curl all honour it; PIA's DNS protection acts on packets and a hosts
+  answer never becomes one. The domain has no AAAA record, so IPv4 is the whole answer.
+- **It removes the split that left nobody able to sell.** The standby judges the main server by
+  the tunnel (`OG_UPSTREAM=http://10.8.0.1:8090`); the PC's browser judged it by the public
+  route. Public route down, tunnel up: the standby stayed `following` (read-only, every sale 503
+  `standby_read_only`) while the browser could not reach the domain — two dead ends pointing at
+  each other. With the line, both lose the VPS at the same moment and the standby takes the till.
+  The opposite split (tunnel down, public up) now also takes the domain from the PC — which is
+  the designed two-till outage, bounded by lent numbers and the replay.
+- **`OG_UPSTREAM` must stay an IP literal.** Pointed at the domain, the copy door and the replay
+  would 404: nginx refuses `/api/copy/` and the server refuses anything the proxy forwarded.
+- **The launcher**: `morning()` runs `--check` (free, silent); a 4 goes on `laterFixes` and
+  `runLaterFixes()` applies it after the shop is open, one prompt, like the padlock. The
+  Connections card has a **Domain through the tunnel** row (`route`: `route_ok` with the ms,
+  `route_silent` the tunnel is not answering, `route_off` / `route_stale` with a **Send it through
+  the tunnel** fix, `route_other`, `route_na`), and Tools has three jobs (`tunnelRoute`,
+  `tunnelRouteCheck`, `tunnelRouteOff`). **With the line in, the panel's public light and
+  `npm run vps -- status` measure the tunnel, not the world** — check-host.net is the outside view.
+- **`tools/wg-test/till-side.ps1` writes `MTU = 1380`** for tunnels made from now on: inside PIA the
+  tunnel's UDP rides an adapter of 1441, a full 1420 packet plus 60 bytes is split in two, and
+  one 600 KB download over the tunnel stalled half-way. This laptop's tunnel was not changed.
+
+### 2. The fallback addresses refused sign-in, and the page never offered them
+
+- **`originAllowed()` always accepts THIS machine's own addresses** (`ownOrigin()` in
+  `lib/http.js`): an origin whose host is `localhost`, `127.0.0.1` or an IPv4 address of one of
+  this machine's own cards, AND is the very address the request was sent to. The laptop told the
+  domain "continue on me at https://172.20.10.2:8443", and with `OG_ORIGINS` set every sign-in
+  there was **403 `bad_origin`** — the Wi-Fi address was not in a list typed on another day on
+  another network. Names are never matched (that is what DNS rebinding controls); a public name
+  still goes in `OG_ORIGINS`. `server/test/own-origin.test.js`.
+- **The tunnel's own address is not offered** (`lib/net.js`: `og-shop`, `wireguard`, `wg0` or
+  `OG_TUNNEL_ADDR` are "probably not this one") — 10.8.0.2 was the FIRST address offered, and
+  no phone on the Wi-Fi can reach it. It stays in the certificate. **`localhost` is advertised
+  last** (`localUrls` in `index.js`): on the shop's PC the till and the standby are one machine.
+- **The fail card offers the shop's computer** (`Standby.onFail(card)`, called by `Shop.fail`
+  whenever the failure is no answer at all — not a refusal, not a stale server). A failed boot is
+  already the verdict, so there is no twenty-second patience on top. `offers()` orders the
+  remembered addresses: on a computer `localhost` first ("Continue on this computer", `cv_go_here`),
+  on a phone (`pointer: coarse`) the Wi-Fi address only, never the page's own origin, and a page
+  that is itself on localhost is never offered another localhost. One lime button per card:
+  Try again goes quiet when the offer is drawn.
+- **The page comes back by itself.** `Standby.check()` keeps asking every 5 s after a failed boot
+  and **reloads once the server answers** (`reloadOnce()`: at most three times in five minutes,
+  so a server that answers health and then fails the boot cannot make a page that reloads for
+  ever). Before this the good news was a `toast()` into a body `Shop.fail` had emptied; it threw,
+  the `.catch` counted the throw as the server being down again, and the page stayed on the fail
+  card for good. `check()` is `then(ok, fail)` now, one request at a time (`inFlight` — 15 s
+  requests on a 5 s interval stacked three deep), and treats the proxy's own 503
+  `shop_unreachable` as the main server being down.
+- **"Keep waiting here" works on a page that never booted**: `data-sb="wait"`, one document
+  listener added in `Standby.watch()`. It was `data-act`, which `bindGlobal()` only dispatches
+  after a successful boot — a dead button on exactly the page the cover is for.
+- **On the PC's own address the card says what is wrong**: "OG System is not open on this
+  computer — open it from the desktop icon; this page opens by itself once it answers"
+  (`fail_local_*`), not "check the wifi". The outage strings say "computer", not "laptop".
+- **Night mode is shown only where it exists.** `/night` answered "Not found." (og-bridge's night
+  half is not deployed) while the road variant of the card made it the biggest button.
+  `Shop.fail` asks `/night` once (same origin, the worker lets it through) and shows it only on
+  an answer; otherwise Try again is the lime button.
+
+### 3. The offline copy could be incomplete — and nothing noticed
+
+The page is served by the service worker when the server cannot be reached, so one file missing
+from its cache is a **blank page** at exactly that moment. A test run found `app-state.js`,
+`desk.js` and eight more answering "504 Offline": the worker had cached 72 of 100 files when the
+line went, and `install` swallowed every failure, so it took charge with holes.
+
+- **A network failure fails the install now** (`sw.js`): each file is `fetch`ed and put;
+  a server ANSWER that is not ok (a 404: a file dropped from the tree) is skipped as before, but
+  no answer at all rejects — the worker already in charge keeps its complete copy and the browser
+  installs again on its next check. After a deploy that is the difference between the old build
+  offline and a blank screen.
+- **The copy tops itself up**: the first time a page hears the server (`topUp()` in
+  `js/standby.js`, before anybody signs in — a till left on the login gate heals too) it posts
+  `{type:'top-up'}`, and the worker fetches every SHELL file its cache lacks.
+
+### 4. Quit asks first, and the print agent
+
+- **The tray's Quit asks** (`AskQuit()` in `panel/launcher/OGSystem.cs`, the owner's choice; the
+  window's own Quit always did). No is the default; both languages in one box, Arabic as
+  `\uXXXX` escapes so the file stays ASCII; on a standby it says the shop's backup stops too. On
+  29 Sep it was pressed at 01:42 and nothing on the laptop could take over. `.exe` rebuilt.
+- **`agent/print-agent.js`**: every line has the time (`agent.log` had 300 "poll failed" lines
+  with no clock); a request with no answer in 45 s is a failure (there was no limit — a route that
+  accepts and says nothing held a loop for up to the proxy's hour); **only the shop's own 429
+  `too_many_attempts` pauses sign-in for 16 minutes** — nginx's rate-limit 429 carries no code and
+  used to stop the printing for sixteen minutes; and it says once when the server is reached again.
+  With the hosts line the agent's `serverUrl` (the domain) goes through the tunnel by itself.
+  **Never point the agent at the standby itself**: its queue GETs pass the read-only gate and
+  would claim jobs in the copy that are still pending on the VPS — a slip printed twice.
+
+### How it was verified
+
+`npm test` 62 (12 new: `tunnel-route.test.js` 7 — the file kept byte for byte, somebody else's
+line refused, the script's `--check`/`--undo` on a scratch file; `own-origin.test.js` 5) ·
+panel `npm test` 50 · `tools/always-on/`: `standby` 38, `offline` 55, `receipts` 23 (the real
+agent), `standby-ui` 18, `panel` 21, **`offline-ui` 45** (the page that cannot load: the offer,
+one lime, "not open on this computer", and the shop opening by itself), **`offline-shell` 18**
+(new: a first visit caches all 100 files; two holes put back by one visit nobody signed in to —
+**seen red with the top-up switched off**; the server gone and the app still starting onto the
+card; back by itself; the card in Arabic at 390, right to left, the Wi-Fi address offered to a
+phone) · `fix05/p0-namespaces` 6. `tunnel-route --check --probe` on this laptop: `off`, the
+domain answering through the tunnel in 655 ms with the certificate verified.
+
+**By hand**: the next Start of OG System on a standby asks Windows once to put the domain through
+the tunnel — press Yes (or Developer → Tools → Send the domain through the tunnel). The print
+agent picks up its new code when its task restarts (`agent\install-agent.bat`, or the next boot).
 
 ## Payment methods on the website (24 Sep 2026)
 

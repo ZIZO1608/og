@@ -72,6 +72,22 @@ const MAIN = makeSession('username', 'password');
 const LABELS = CFG.labelUsername ? makeSession('labelUsername', 'labelPassword') : MAIN;
 const MAX_BACKOFF_MS = 30000;
 
+/* EVERY LINE SAYS WHEN (29 Sep 2026). agent.log is read after the fact, and
+   three hundred "poll failed" lines with no clock could not say whether the
+   printer was cut off at nine in the morning or at one at night. Local time,
+   because that is the clock on the wall of the shop. */
+for (const k of ['log', 'error']) {
+  const plain = console[k].bind(console);
+  console[k] = (...a) => plain(new Date().toTimeString().slice(0, 8), ...a);
+}
+
+/* A REQUEST THAT NEVER ANSWERS IS A FAILURE (29 Sep 2026). There was no limit
+   at all: a route that accepted the connection and then said nothing (a
+   carrier swallowing HTTPS did exactly that) could hold a queue's loop for as
+   long as the proxy's hour-long read timeout. The server holds a long-poll
+   for 25 s, so 45 s with no answer is not a slow server, it is no server. */
+const REQUEST_TIMEOUT_MS = 45000;
+
 /* ------------------------------------------------------------- http client
    No Origin header is ever sent from a plain node:http request, and the
    server's CSRF check (server/lib/http.js's originAllowed) explicitly
@@ -113,7 +129,10 @@ function api(method, path, body, s = MAIN) {
       }
     );
 
-    req.on('error', (e) => { e.status = 0; reject(e); });
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy(Object.assign(new Error(`no answer in ${REQUEST_TIMEOUT_MS / 1000} s`), { status: 0 }));
+    });
+    req.on('error', (e) => { if (e.status === undefined) e.status = 0; reject(e); });
     if (payload) req.write(payload);
     req.end();
   });
@@ -148,7 +167,11 @@ async function ensureLoggedIn(s) {
   if (s.cookie) return;
   if (!s.signingIn) {
     s.signingIn = login(s).catch((e) => {
-      if (e.status === 401 || e.status === 429) {
+      /* The SHOP's refusal only. A 429 with no code is nginx's own rate limit
+         in front of it (a busy minute), not a verdict on the password, and it
+         used to stop the printing for sixteen minutes. That one goes round
+         the ordinary backoff like any other dropped request. */
+      if (e.status === 401 || (e.status === 429 && e.code === 'too_many_attempts')) {
         s.refusedUntil = Date.now() + LOGIN_REFUSED_WAIT_MS;
         console.error(`[agent] the shop refused the sign-in as "${s.username}" (${e.code || e.status}): ${e.message}`);
         console.error('[agent] not trying again for 16 minutes — every wrong try counts against that account, and 8 lock its person out.');
@@ -231,16 +254,21 @@ async function printReceipt(job) {
    the server refuses must not slow the receipts down, or the other way. */
 async function pollLoop(name, path, print, s) {
   let wait = 1000;
+  let failing = 0;
   for (;;) {
     try {
       await ensureLoggedIn(s);
       const res = await api('GET', path, undefined, s);
       wait = 1000; // a clean round trip, however it answered, resets the backoff
+      /* Said once, so the log shows when the line came back, not only that
+         it went. */
+      if (failing) { console.log(`[agent] ${name}: reached the server again after ${failing} failed tries`); failing = 0; }
       if (res && res.job) await print(res.job);
       // else: nothing pending. The server already held the connection for
       // ~25s, so looping straight back around here is not a busy-loop.
     } catch (e) {
       if (e.status === 401) s.cookie = null; // force a fresh login next time round
+      failing++;
       if (!e.quiet) console.error(`[agent] ${name} poll failed:`, e.message);
       await sleep(wait);
       wait = Math.min(MAX_BACKOFF_MS, wait * 2);

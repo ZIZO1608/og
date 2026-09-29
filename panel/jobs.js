@@ -216,6 +216,34 @@ export const JOBS = {
     steps: () => [['node', ['scripts/trust-cert.js']]]
   },
 
+  /* ------------------------------------------- the domain through the tunnel */
+  tunnelRoute: {
+    label: 'Send the domain through the tunnel',
+    group: 'machine',
+    blurb: 'On the shop\u2019s computer (the standby): one line in the Windows hosts file so the browser and the print agent reach the main server through WireGuard, not the public route. Checks the tunnel answers first. Asks for permission once.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/tunnel-route.js']]]
+  },
+
+  tunnelRouteCheck: {
+    label: 'Check the domain route',
+    group: 'machine',
+    blurb: 'Whether the shop\u2019s domain goes through the tunnel on this computer, and whether it answers there. Changes nothing.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/tunnel-route.js', '--check', '--probe']]]
+  },
+
+  tunnelRouteOff: {
+    label: 'Take the domain off the tunnel',
+    group: 'machine',
+    blurb: 'Removes the hosts-file line again, so this computer reaches the domain over the public route. Asks for permission once.',
+    while: 'any',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/tunnel-route.js', '--undo']]]
+  },
+
   /* ---------------------------------------------------------- the mirror */
   mirrorCheck: {
     label: 'Check the mirror',

@@ -410,7 +410,7 @@ function deniedSig(m) {
   return m && m.denied ? m.denied.map((d) => d.table).sort().join(',') : '';
 }
 
-const CONN_IDS = ['server', 'always', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'fxfeed', 'backup', 'vault'];
+const CONN_IDS = ['server', 'always', 'https', 'route', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'fxfeed', 'backup', 'vault'];
 
 /* On the standby these are the VPS's jobs: its bots, its mirror, its rate
    feed, its customers' push and its nightly backups. The keys are parked on
@@ -454,6 +454,25 @@ async function checkOne(id, ctx) {
       if (gaps.length) return row('warn', 'https_address', { ips: gaps });
       if (days !== null && days < 30) return row('warn', 'https_expiring', { days });
       return r.code === 0 ? row('ok', 'https_ok', { days }) : row('warn', 'https_unknown');
+    }
+    /* The shop's domain through the tunnel (scripts/tunnel-route.js, 29 Sep
+       2026). On the shop's PC the browser and the print agent then reach the
+       main server the way the standby does, so a broken public route (a
+       carrier, a VPN exit) cannot cut the till off while the tunnel works. */
+    case 'route': {
+      const r = await runCapture(['scripts/tunnel-route.js', '--check', '--probe', '--json'], 20000);
+      const m = /OG_ROUTE_JSON (\{.*\})/.exec(r.out);
+      let f = null;
+      try { f = m ? JSON.parse(m[1]) : null; } catch { f = null; }
+      if (!f) return row('skip', 'timeout');
+      if (f.state === 'na') return row('skip', 'route_na');
+      const host = f.host || '';
+      if (f.state === 'on') {
+        return f.probe && !f.probe.ok ? row('warn', 'route_silent', { host })
+          : row('ok', 'route_ok', { host, ms: f.probe ? f.probe.ms : '?' });
+      }
+      if (f.state === 'other') return row('warn', 'route_other', { host });
+      return row('warn', f.state === 'stale' ? 'route_stale' : 'route_off', { host });
     }
     case 'receipt': case 'label': case 'scanner': {
       const hw = ctx.hw || (ctx.hw = runCapture(['scripts/hardware.js', '--json'], 60000).then((r) => {
@@ -896,6 +915,11 @@ async function morning() {
     step('padlock', 'warn', { code: 'padlock_none' });
   }
 
+  /* The shop's domain through the tunnel, on a standby only
+     (scripts/tunnel-route.js). --check is free and silent; a 4 is fixed once
+     the shop is open, with one permission prompt, like the padlock. */
+  if (await runQuiet(['scripts/tunnel-route.js', '--check']) === 4) laterFixes.push('route');
+
   /* The printers and the scanner. 4 means something is missing that can be
      installed from here: that is done once the shop is open. 1 means a person
      is needed - it is said, and the shop opens anyway. */
@@ -929,6 +953,13 @@ async function runLaterFixes() {
     const trusted = await runQuiet(['scripts/trust-cert.js']);
     step('padlock', trusted === 0 ? 'ok' : 'warn',
       { code: trusted === 0 ? 'padlock_now' : 'padlock_untrusted' });
+  }
+
+  if (todo.includes('route')) {
+    say('');
+    say('  Sending the shop\'s domain through the tunnel. This may ask for permission.', 'note');
+    await runQuiet(['scripts/tunnel-route.js']);
+    checkConnections('route').catch(() => {});
   }
 
   if (todo.includes('printers')) {

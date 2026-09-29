@@ -319,11 +319,11 @@ var Shop = (function () {
          accept when it is back. It has its own sign-in — this device's
          session is the till's and means nothing there. This, not the
          proxy's own page, is what a phone that already has the app sees. */
-      night = '<p class="boot-fail-snap"><a class="btn btn-primary" href="/night">' +
+      night = '<div id="bootNight" hidden><p class="boot-fail-snap"><a class="btn btn-primary" href="/night">' +
         (ar ? 'وضع الليل' : 'Night mode') + '</a></p>' +
         '<p>' + (ar
           ? 'البضاعة والزبائن والطلبات من النسخة السحابية — وفيك تترك طلب للمحل يرد عليه لمّا يرجع.'
-          : 'Stock, customers and orders from the cloud copy — and you can leave a request the shop answers when it is back.') + '</p>';
+          : 'Stock, customers and orders from the cloud copy — and you can leave a request the shop answers when it is back.') + '</p></div>';
       title = ar ? 'الإنترنت مقطوع عن المحل' : 'The shop’s internet is down';
       msg = ar
         ? 'الصندوق بالمحل غالباً شغّال وعم يبيع عادي — بس ما في طريق يوصلّه من هون هلأ.'
@@ -339,6 +339,19 @@ var Shop = (function () {
       }
     }
 
+    /* NO ANSWER AT ALL (29 Sep 2026): not a refusal, not an old server, just
+       nothing on the other end. That is the case the shop's own computer is
+       for (js/standby.js offers it, keeps asking, and opens the page the
+       moment the server answers). On THIS computer's own address it means
+       OG System itself is not running, which "check the wifi" never fixed. */
+    var silent = !stale && (road || !err || !err.status || err.code === 'offline' || err.code === 'timeout');
+    var host = String(location.hostname || '').toLowerCase();
+    if (silent && !road && (host === 'localhost' || host === '127.0.0.1') && typeof t === 'function') {
+      title = t('fail_local_title');
+      msg = t('fail_local_body');
+      steps = [];
+    }
+
     document.body.innerHTML =
       '<div class="boot-fail" dir="' + (ar ? 'rtl' : 'ltr') + '">' +
         '<div class="boot-fail-card' + (road ? ' is-road' : '') + '">' +
@@ -349,16 +362,42 @@ var Shop = (function () {
             ? 'التطبيق لن يعمل بدون الخادم. البيع الآن يعني بيعاً لا يُحفَظ في أي مكان.'
             : 'The app will not run without the server. Selling now would mean ' +
               'selling into nothing.') + '</p>') +
-          '<ol>' +
+          (steps.length ? '<ol>' +
             steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') +
-          '</ol>' +
+          '</ol>' : '') +
           night +
           snapshot +
           /* One lime button per place: on the road that is Night mode. */
-          '<button class="btn' + (road ? '' : ' btn-primary') + '" onclick="location.reload()">' +
+          '<button class="btn' + (road ? '' : ' btn-primary') + '" id="bootAgain" onclick="location.reload()">' +
             (ar ? 'إعادة المحاولة' : 'Try again') + '</button>' +
         '</div>' +
       '</div>';
+
+    function litAgain() {
+      var btn = document.getElementById('bootAgain');
+      if (btn && !document.querySelector('.sb-fail-offer .sb-cta')) btn.classList.add('btn-primary');
+    }
+    /* NIGHT MODE ONLY WHERE IT EXISTS. /night is og-bridge's, a separate
+       deployment; on 29 Sep 2026 it answered "Not found." while this screen
+       made it the biggest button on the page. Asked once, same origin (the
+       service worker lets /night through): shown when it answers, and when it
+       does not, Try again becomes the lime button instead. */
+    if (road && typeof fetch === 'function') {
+      fetch('/night', { cache: 'no-store', credentials: 'omit', redirect: 'manual' }).then(function (r) {
+        var there = r.ok || r.type === 'opaqueredirect' || (r.status >= 300 && r.status < 400);
+        var n = document.getElementById('bootNight');
+        if (there && n) {
+          n.hidden = false;
+          /* One lime button per card: the shop's own computer, when offered, is it. */
+          if (document.querySelector('.sb-fail-offer .sb-cta')) { var a = n.querySelector('.btn'); if (a) a.classList.remove('btn-primary'); }
+        } else litAgain();
+      }).catch(litAgain);
+
+    }
+
+    if (silent && typeof Standby !== 'undefined' && Standby.onFail) {
+      try { Standby.onFail(document.querySelector('.boot-fail-card')); } catch (e) { /* the card still says what to do */ }
+    }
 
     if (typeof console !== 'undefined') console.error('[shop] load failed', err);
   }

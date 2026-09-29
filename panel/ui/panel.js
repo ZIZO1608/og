@@ -1144,7 +1144,7 @@
      for everybody — "the label printer is not set up" is a thing a
      shopkeeper can act on by phoning somebody. The fixes are a developer's. */
 
-  var CONN_ORDER = ['server', 'always', 'https', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'fxfeed', 'backup', 'vault'];
+  var CONN_ORDER = ['server', 'always', 'https', 'route', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'fxfeed', 'backup', 'vault'];
   var CONN_ICON = { ok: 'tick', warn: 'warn', bad: 'cross', skip: 'dash' };
   var CONN_FIX = {
     always: {
@@ -1152,6 +1152,7 @@
       always_sleeps: 'alwaysOn', always_lid: 'alwaysOn', always_signin: 'alwaysCheck', always_plain: 'alwaysCheck'
     },
     https: { https_none: 'cert', https_address: 'cert', https_expiring: 'cert', https_untrusted: 'certTrust' },
+    route: { route_off: 'tunnelRoute', route_stale: 'tunnelRoute', route_silent: 'tunnelRouteCheck' },
     receipt: { hw_fix: 'hardwareInstall', hw_person: 'hardware', hw_none: 'hardware' },
     label: { hw_fix: 'hardwareInstall', hw_person: 'hardware', hw_none: 'hardware' },
     scanner: { hw_fix: 'hardwareInstall', hw_person: 'hardware' },
