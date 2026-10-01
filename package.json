@@ -4,6 +4,7 @@
   "description": "Forwards to server/package.json, so npm commands work from the repo root as well as from server/.",
   "scripts": {
     "start": "npm --prefix server run start --",
+    "shop-pc:kit": "node tools/shop-pc/make-kit.mjs",
     "dev": "npm --prefix server run dev --",
     "test": "npm --prefix server run test --",
     "preflight": "npm --prefix server run preflight --",

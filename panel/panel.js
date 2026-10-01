@@ -1677,12 +1677,15 @@ function body(req) {
    and one that pushed to GitHub or restarted the live shop would be a test
    that ships. So it is on when OG System.exe started this panel
    (OG_PANEL_PARENT=1) and no test override is set, or when
-   OG_PANEL_AUTOSHIP=1 says so explicitly; OG_PANEL_AUTOSHIP=0 turns it off. */
+   OG_PANEL_AUTOSHIP=1 says so explicitly; OG_PANEL_AUTOSHIP=0 turns it off.
+   A folder with no .git (the shop PC, installed from the kit in
+   tools/shop-pc/) is never a repository to publish from: off there whatever
+   the settings say, or it would try a push and a deploy every minute. */
 const SHIP_EVERY_MS = Number(process.env.OG_PANEL_AUTOSHIP_MS) || 60 * 1000;
 const autoship = {
-  on: process.env.OG_PANEL_AUTOSHIP === '1' ||
+  on: existsSync(join(ROOT, '.git')) && (process.env.OG_PANEL_AUTOSHIP === '1' ||
       (process.env.OG_PANEL_AUTOSHIP !== '0' && process.env.OG_PANEL_PARENT === '1' &&
-       !process.env.OG_PANEL_SERVER_DIR && !process.env.OG_PANEL_LOG_DIR),
+       !process.env.OG_PANEL_SERVER_DIR && !process.env.OG_PANEL_LOG_DIR)),
   busy: false,
   shipped: null,     // the commit the VPS runs (12 characters), once known
   vpsKnown: false,   // asked the VPS and it answered

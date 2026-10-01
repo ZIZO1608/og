@@ -1,0 +1,82 @@
+OG SYSTEM - SETTING UP THE SHOP PC
+==================================
+
+What this PC is: the shop runs on the VPS (https://shop.ogsports1.com).
+This PC is (1) where the receipt and label printers are plugged in, and
+(2) the standby: it keeps a copy of the shop every five minutes and takes
+over the till if the internet goes down. It holds no cloud keys.
+
+THE secrets FOLDER HOLDS PASSWORDS AND KEYS. Keep this kit on the USB stick.
+Never send it by WhatsApp, Telegram or email. Delete the copy from the PC's
+Downloads/Desktop after setup (setup.ps1 copies what it needs).
+
+
+A. AT HOME, BEFORE THE VISIT (on the development laptop)
+--------------------------------------------------------
+ 1. The code you want is committed and the VPS runs it
+    (npm run vps -- status). The kit builder warns if they differ.
+ 2. Build the kit straight onto the stick:
+        node tools/shop-pc/make-kit.mjs --out E:\OG-Shop-PC
+ 3. Add the shop PC to the tunnel (one line; the builder prints it):
+        ssh -o HostKeyAlias=152.239.114.129 root@10.8.0.1 "bash -s" < E:\OG-Shop-PC\for-the-vps\add-shop-pc-peer.sh
+    It only ADDS a peer - this laptop keeps its own.
+ 4. Pack: the stick, the printers' USB cables, a network cable (if the
+    shop's Wi-Fi is weak), the router's admin password.
+
+
+B. AT THE SHOP
+--------------
+ 1. Windows: one local account (e.g. "OG"), with a password. Windows
+    Update done and restarted. Same time zone as the shop (Damascus).
+ 2. BIOS (F2/Del at power-on): "Restore on AC power loss" = Power On.
+    No program can set this.
+ 3. Router: give this PC a FIXED address (DHCP reservation), so phones
+    and the certificate always find it at the same number.
+ 4. Plug in the receipt and label printers and switch them on.
+ 5. Copy this kit folder to the PC (e.g. C:\OG-Shop-PC) and double-click
+    1-Install.cmd. Press Yes when Windows asks. It does, in order:
+      Node.js > WireGuard > the app in C:\OG System > settings > the tunnel
+      > firewall > padlock > printers > print agent > always on
+      > Autologon (type the Windows password, press Enable) > desktop icon
+    Every step prints OK / WARN / FAIL, and a summary at the end.
+    It is safe to run again after fixing anything.
+ 6. If the tunnel step says VPS UNREACHABLE: the shop's line has the
+    Arelion route problem. Connect PIA (Netherlands) and run
+        powershell -ExecutionPolicy Bypass -File setup.ps1 -AllowPia
+    If it says UDP BLOCKED: tools\wg-test\FALLBACK.md.
+ 7. OG System opens by itself. On its first Start, Windows asks once more
+    (the domain through the tunnel) - press Yes.
+ 8. Wait 5 minutes, then double-click 3-Check.cmd: everything green, and
+    "Standby: copy as of <time>".
+ 9. Printers: in OG System, Test the printers (dry first, then real).
+    Ring a sale on https://shop.ogsports1.com and the receipt prints here.
+10. THE DRILL (do not skip): pull the router's internet cable.
+      - within ~20 s this PC's strip turns blue: "the till works on this PC"
+      - ring one sale on https://localhost:8443 - it prints
+      - plug the cable back in; within a minute the strip says "all sent"
+        and the sale is on https://shop.ogsports1.com.
+11. Restart the PC with nobody touching it: it must sign in by itself,
+    open OG System, and the till must work.
+
+
+C. AFTER IT WORKS - the development laptop stops being the shop
+----------------------------------------------------------------
+On the development laptop (only after B.10 passed):
+ - Stop its print agent, or two agents take the same receipts:
+       schtasks /end /tn OGLabelAgent
+       schtasks /delete /tn OGLabelAgent /f
+ - Stop it opening by itself:  cd server, npm run always-on -- --undo
+ - Its server/.env can then be turned into a development copy.
+
+
+D. UPDATING THE SHOP PC LATER (zip by hand)
+-------------------------------------------
+ 1. At home: the new code is deployed to the VPS first (auto-publish does
+    this on every commit). Then rebuild the kit (A.2) - same command.
+    The tunnel key is reused, so the VPS needs nothing.
+ 2. At the shop: copy the new kit over the old one, double-click
+    2-Update.cmd. It asks you to Quit OG System (tray icon > Quit > Yes),
+    replaces the code, keeps settings, database and logs, restarts the
+    print agent and opens OG System again.
+ Keep the shop PC on the SAME code as the VPS: the copy it receives is
+ made by the VPS's code, and an older standby may not understand it.

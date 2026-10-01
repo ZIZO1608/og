@@ -4346,6 +4346,41 @@ Ahmad's website asked for three things, all built on this side (contract **v1.5*
   `ns03/sweep`. The rig: `web-extras/setup.mjs` (a VACUUM INTO copy with two products published),
   `fake-site.mjs`, and a server from the tree on 8198 with the sandbox env.
 
+## The shop PC kit (1 Oct 2026) — `tools/shop-pc/`
+
+The till and the offline standby move to a **new PC in the shop**; this laptop becomes development
+only. The owner chose: the code goes over **by hand (a folder on a USB stick)**, the PC is new and
+only for OG, and the setup is one visit. `npm run shop-pc:kit` (`make-kit.mjs`, `--out E:\…`,
+`--no-download`) builds, outside the repo (default `..\OG-Shop-PC`):
+
+- **`app/` is `git archive` of HEAD**, an allow-list (`SHIP` in the file), `_`-files removed — never
+  the working tree. It asks the VPS which commit it runs (`vps.js built`) and warns when they
+  differ: **the standby must run the VPS's code**, because the copy it receives is made by it.
+- `installers/`: Node 24 LTS (sha256 checked against nodejs.org), WireGuard's MSI (Authenticode
+  checked by `setup.ps1`), Sysinternals Autologon.
+- `secrets/` (**the stick only**): `shop-pc.env` — `OG_ROLE=standby`, `OG_STANDBY_ID=shop-pc`,
+  `OG_COPY_KEY` from this laptop, `OG_TUNNEL_ADDR=10.8.0.3`, `OG_PANEL_AUTOSHIP=0`, and **no
+  Supabase, bot or vault keys**; the agent's logins; the shop PC's tunnel key, made ONCE into
+  `_secrets/wg-shop-pc.key` and reused by every rebuild so the VPS peer never goes stale.
+- `for-the-vps/add-shop-pc-peer.sh` (from `vps-add-peer.sh`): ADDS peer 10.8.0.3 and keeps every
+  peer already there — `tools/wg-test/vps-side.sh` writes ONE peer and would cut this laptop off.
+- `setup.ps1` + `1-Install.cmd` / `2-Update.cmd` / `3-Check.cmd`, `START-HERE.txt` (the visit, the
+  cable-out drill, retiring this laptop's agent, updating later). Install target `C:\OG System`;
+  it asks for administrator once, each step reports OK/WARN/FAIL and is safe to repeat, and it
+  opens OG System through `explorer.exe` so it does not run elevated.
+- **An update is `robocopy /MIR` that keeps `server\.env`, `server\data`, `server\backups`, the
+  agent's config and its logs** — excluded by full path AND bare name, with the target made
+  absolute: given `..\x`, robocopy ignored the full-path exclusions and deleted `.env` and the
+  database (measured on a scratch copy).
+- **The launcher never auto-publishes from a folder without `.git`** (`autoship.on` in
+  `panel/panel.js`) — the shop PC would otherwise try a push and a deploy every minute.
+- Verified: the kit built for real (VPS on the same commit); `setup.ps1` parses in 5.1, pure ASCII,
+  and `-Check` reports correctly; the update copy keeps every local file; and the kit's own
+  `server/index.js`, from an empty data folder with the kit's env (+ `OG_STANDBY_OFFLINE=0`, so it
+  borrowed no numbers), fetched the VPS's copy over the tunnel (13 accounts, 45 sales) and refused
+  a write `standby_read_only`. The copy was deleted. **Not yet run: `1-Install.cmd` on a real
+  clean PC** — that is the visit.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
