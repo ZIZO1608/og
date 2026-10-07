@@ -38,6 +38,16 @@ export const COMPANY_METHODS = ['office', 'courier', 'abroad'];
 /* Where money can still change hands when the parcel arrives. */
 export const ON_RECEIPT = ['driver', 'pickup'];
 
+/* 071 — A PARCEL WAITS FOR ITS PRINT. A sale with a print job that is not
+   `done` (the shirt is still at Yalla Wear) cannot leave the counter: not
+   out with a driver or a company, not handed over on a sheet, not collected
+   as a pickup. An owner may send it anyway, with a reason
+   (deliveries.print_override, Deliveries.overridePrint). One expression,
+   read by the board, the hand-over sheet and the status change, so the three
+   cannot disagree. `d` is the deliveries row's alias. */
+export const PRINT_OPEN =
+  `(SELECT COUNT(*) FROM print_jobs pj WHERE pj.sale_id = d.sale_id AND pj.stage <> 'done')`;
+
 const PLANS = ['full', 'deposit', 'receipt'];
 const CHANNELS = ['phone', 'instagram', 'whatsapp', 'web', 'other'];
 
@@ -587,7 +597,7 @@ function handoverLines(d, id) {
   return d.prepare(
     `SELECT l.id, l.delivery_id, l.sale_id, l.to_collect, l.currency, l.at,
             d.status, d.method, d.city, d.country, d.address, d.phone, d.company_name,
-            s.customer_name, s.voided,
+            s.customer_name, s.voided, ${PRINT_OPEN} AS print_open, d.print_override,
             (s.total + CASE WHEN d.fee_mode = 'invoice' THEN d.fee ELSE 0 END) AS due,
             COALESCE((SELECT SUM(CASE WHEN kind = 'in' THEN amount_order ELSE -amount_order END)
                         FROM order_payments WHERE sale_id = d.sale_id), 0) AS paid
@@ -625,6 +635,7 @@ function blockedReason(h, line) {
   if (line.voided) return 'voided';
   if (line.status !== 'waiting') return 'already_' + line.status;
   if (h.kind === 'company' && line.remaining > 0) return 'unpaid_before_send';
+  if (line.print_open > 0 && !line.print_override) return 'print_waiting';
   return null;
 }
 

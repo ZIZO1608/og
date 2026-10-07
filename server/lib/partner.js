@@ -330,12 +330,33 @@ export function webPrices(d = DB.get()) {
      which is what a print job with no price has always been, and the price
      is agreed on the call and entered on the job. */
   const p = raw('print.unit_price');
-  const price = /^[0-9]{1,13}$/.test(p) && Number(p) > 0 ? Number(p) : null;
+  const amount = /^[0-9]{1,13}$/.test(p) && Number(p) > 0 ? Number(p) : null;
+  /* 071 — THE PRICE HAS A CURRENCY NOW (print.unit_currency), because the
+     owner prices a print in dollars like every product (067): '500' + 'USD'
+     is $5.00. Missing is the base currency, so a shop that set a lira price
+     before 071 keeps meaning lira. `price` stays what every caller has
+     always read — the price in the BASE currency, the one a print job is
+     raised in — worked out at the rate of the moment the way the till prices
+     a dollar shoe in lira (dollars × rate, whole lira). `unit` is the price
+     as the owner wrote it. No rate to convert with: null, the same answer as
+     "not set", so nothing is invented. */
+  const base = raw('shop.base_currency') || 'SYP';
+  const cur = raw('print.unit_currency') || base;
+  let price = amount;
+  if (amount != null && cur !== base) {
+    const r = d.prepare(
+      `SELECT rate FROM fx_rates WHERE base = 'USD' AND quote = 'SYP' AND rate > 0
+        ORDER BY set_at DESC, id DESC LIMIT 1`).get();
+    if (!r) price = null;
+    else if (cur === 'USD' && base === 'SYP') price = Math.round(amount / 100 * r.rate);
+    else if (cur === 'SYP' && base === 'USD') price = Math.round(amount / r.rate * 100);
+    else price = null;
+  }
   /* The printer's cost is the shop's own side of the margin and is never
      shown to the website, so its default stays (the till's number). */
   const c = Number(raw('print.partner_unit_cost'));
   const cost = Number.isFinite(c) && c > 0 ? Math.round(c) : 460;
-  return { price, cost };
+  return { price, cost, currency: base, unit: amount == null ? null : { amount, currency: cur } };
 }
 
 /* A club named by somebody outside the shop (the website), as the code the
@@ -367,6 +388,9 @@ export function create({
      then fire a second request at an id it had guessed, racing its own
      create. One request, one answer: the returned job says whether it went. */
   source = 'manual', autoSend = false,
+  /* 071 — the website order this job prints (one job per order; the unique
+     index on print_jobs.web_ref is what refuses a second). */
+  webRef = null,
   lines = [], userId = null
 }) {
   if (!customer) throw Object.assign(new Error('customer is required'), { code: 'bad_request' });
@@ -384,21 +408,24 @@ export function create({
     d.prepare(
       `INSERT INTO print_jobs
          (id, customer, phone, design, kind, priority, stage, qty, currency,
-          price, cost, deadline, sale_id, customer_id, source, created_at, updated_at, created_by)
-       VALUES (?,?,?,?,?,?,'design',?,?,?,?,?,?,?,?,?,?,?)`
+          price, cost, deadline, sale_id, customer_id, source, web_ref, created_at, updated_at, created_by)
+       VALUES (?,?,?,?,?,?,'design',?,?,?,?,?,?,?,?,?,?,?,?)`
     ).run(id, customer, phone ?? null, design, kind, priority,
           kind === 'kit' ? 0 : qty, currency, price, cost, deadline ?? null,
-          saleId, customerId ?? null, source, at, at, userId);
+          saleId, customerId ?? null, source, webRef ?? null, at, at, userId);
 
     const ins = d.prepare(
-      `INSERT INTO print_job_lines (job_id, club_code, print_name, number, size, qty, unit_cost, item)
-       VALUES (?,?,?,?,?,?,?,?)`
+      `INSERT INTO print_job_lines (job_id, club_code, print_name, number, size, qty, unit_cost, item, print_kit_snapshot)
+       VALUES (?,?,?,?,?,?,?,?,?)`
     );
     for (const l of lines) {
       ins.run(id, l.clubCode ?? null, l.printName || null, l.number ?? null,
               l.size ?? null, l.qty || 1, l.unitCost || 0,
-              /* 069 — the shirt it goes on, as sold (the till only). */
-              l.item ? String(l.item).slice(0, 120) : null);
+              /* 069 — the shirt it goes on, as sold (the till, and since 071
+                 the website's printed lines). */
+              l.item ? String(l.item).slice(0, 120) : null,
+              /* 071 — the kit as the customer saw it (PrintKits.snapshot). */
+              l.kitSnapshot ?? null);
     }
 
     d.prepare(

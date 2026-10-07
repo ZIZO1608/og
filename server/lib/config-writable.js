@@ -22,7 +22,11 @@
    and opens, and which of them go out at any hour. Named key by key — the
    prefix alone would let anything under it be written.
    print.unit_price is what one printed piece costs a WEBSITE customer
-   (Partner.webPrices, lib/weborders.js) — the one print key, named alone.
+   (Partner.webPrices, lib/weborders.js). 071 named four more beside it:
+   print.unit_currency (the price's currency — USD, so '500' is $5.00),
+   print.max_letters (the longest name a shirt takes) and print.turnaround_min
+   / _max (the days a print is promised in). print.partner_unit_cost — what
+   Yalla Wear charges — is NOT on the list; it is not the website's.
 
    shop.public_url (panel polish, 24 Sep 2026) is the shop's address on the
    internet — https://shop.ogsports1.com since day shift 07. Telegram's job
@@ -34,7 +38,7 @@
    lib/sitenotify.js tells it the catalogue changed (contract v1.5). The
    website's key goes with every call, so it is checked as strictly as
    shop.public_url, by siteUrlProblem() below. */
-export const CONFIG_WRITABLE = /^receipt\.|^print\.unit_price$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^fx\.feed_(on|side|minutes|scale|max_jump_pct)$|^alerts\.(quiet_from|quiet_to|urgent)$|^web\.site_url$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
+export const CONFIG_WRITABLE = /^receipt\.|^print\.(unit_price|unit_currency|max_letters|turnaround_min|turnaround_max)$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^fx\.feed_(on|side|minutes|scale|max_jump_pct)$|^alerts\.(quiet_from|quiet_to|urgent)$|^web\.site_url$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
 
 /* What is wrong with a value for shop.public_url, or null when it will do.
    Strict, because the value goes into a QR code taped to a counter and into a
@@ -110,7 +114,19 @@ export function configRefusal(updates) {
     }
     /* The exchange-rate feed's five switches (lib/fxfeed.js). fx.feed_last is
        the feed's own record and is deliberately NOT on the list. */
-    if (k === 'fx.feed_side' && !['sell', 'buy', 'mid'].includes(String(updates[k]))) return 'fx.feed_side must be sell, buy or mid.';
+    /* 071 — the print keys, read as the cloud reads them (whole digits). */
+    if (k === 'print.unit_price' && String(updates[k] ?? '').trim() !== '' && !/^[0-9]{1,13}$/.test(String(updates[k]).trim())) {
+      return 'print.unit_price must be a whole number in minor units (500 is $5.00), or empty.';
+    }
+    if (k === 'print.unit_currency' && !['USD', 'SYP'].includes(String(updates[k]))) return 'print.unit_currency must be USD or SYP.';
+    if (k === 'print.max_letters' && !(/^\d{1,2}$/.test(String(updates[k])) && Number(updates[k]) >= 1 && Number(updates[k]) <= 30)) {
+      return 'print.max_letters must be a whole number from 1 to 30.';
+    }
+    if ((k === 'print.turnaround_min' || k === 'print.turnaround_max') &&
+        !(/^\d{1,2}$/.test(String(updates[k])) && Number(updates[k]) >= 1 && Number(updates[k]) <= 90)) {
+      return k + ' must be a whole number of days from 1 to 90.';
+    }
+    if (k === 'fx.feed_side' &&!['sell', 'buy', 'mid'].includes(String(updates[k]))) return 'fx.feed_side must be sell, buy or mid.';
     if (k === 'fx.feed_on' && !['0', '1'].includes(String(updates[k]))) return 'fx.feed_on must be 1 or 0.';
     if (k === 'fx.feed_minutes' && !(Number(updates[k]) >= 1 && Number(updates[k]) <= 1440)) return 'fx.feed_minutes must be between 1 and 1440.';
     if (k === 'fx.feed_scale' && !(Number(updates[k]) >= 1)) return 'fx.feed_scale must be a number of 1 or more.';

@@ -44,12 +44,15 @@ export const MIRROR_LAG = {
      matched: lumped together, a mirror without 040 would have had products
      pushed without on_web as well — and a product switched off the website
      would have stayed on it there until somebody ran 040 and reconciled. */
-  products:   { cols: ['on_web', 'image_url', 'description_en', 'description_ar', 'pairs_with'],
+  /* 071 — whether a product takes a printed name and number, and its kit
+     (041). A third group, so a mirror without 041 drops only these two. */
+  products:   { cols: ['on_web', 'image_url', 'description_en', 'description_ar', 'pairs_with', 'printable', 'print_kit_id'],
                 groups: [
                   { cols: ['on_web', 'image_url'], file: 'server/supabase/014_product_on_web.sql and 015_product_image.sql' },
-                  { cols: ['description_en', 'description_ar', 'pairs_with'], file: 'server/supabase/040_product_web_extras.sql' }
+                  { cols: ['description_en', 'description_ar', 'pairs_with'], file: 'server/supabase/040_product_web_extras.sql' },
+                  { cols: ['printable', 'print_kit_id'], file: 'server/supabase/041_print_kits.sql' }
                 ],
-                file: 'server/supabase/014_product_on_web.sql and 015_product_image.sql, then 040_product_web_extras.sql',
+                file: 'server/supabase/014_product_on_web.sql and 015_product_image.sql, then 040_product_web_extras.sql, then 041_print_kits.sql',
                 retriedBy: ['sync', 'reconcile'] },
 
   /* 033 — the credit rules and where a merged customer went. Measured against
@@ -61,8 +64,15 @@ export const MIRROR_LAG = {
   /* 032 — attaching an old print job to the person who ordered it (010), and
      035 — where the job was raised, till or by hand (012). Two files because
      they arrived months apart; the retry names whichever column was refused. */
-  print_jobs: { cols: ['customer_id', 'source', 'design_image_url'],
-                file: 'server/supabase/010_loyalty_and_wants.sql then 012_partner_link.sql then 016_job_design_image.sql',
+  /* 071 — the website order a job prints (041), in a group of its own so a
+     mirror without 041 keeps the three older columns. */
+  print_jobs: { cols: ['customer_id', 'source', 'design_image_url', 'web_ref'],
+                groups: [
+                  { cols: ['customer_id', 'source', 'design_image_url'],
+                    file: 'server/supabase/010_loyalty_and_wants.sql then 012_partner_link.sql then 016_job_design_image.sql' },
+                  { cols: ['web_ref'], file: 'server/supabase/041_print_kits.sql' }
+                ],
+                file: 'server/supabase/010_loyalty_and_wants.sql then 012_partner_link.sql then 016_job_design_image.sql, then 041_print_kits.sql',
                 retriedBy: ['sync', 'reconcile'] },
 
   /* 035 — the payment handshake. These rows ride on partner_invoices'
@@ -100,8 +110,16 @@ export const MIRROR_LAG = {
   deliveries: { cols: ['method', 'company_id', 'company_name', 'country', 'city', 'recipient',
                        'fee', 'fee_mode', 'fee_source', 'plan', 'channel', 'tracking_no',
                        /* 046 — which handover sheet the parcel left on. */
-                       'handover_id'],
-                file: 'server/supabase/017_delivery_office.sql then 018_the_road.sql',
+                       'handover_id',
+                       /* 071 — an owner's "send it before the print" (041). */
+                       'print_override'],
+                groups: [
+                  { cols: ['method', 'company_id', 'company_name', 'country', 'city', 'recipient',
+                           'fee', 'fee_mode', 'fee_source', 'plan', 'channel', 'tracking_no', 'handover_id'],
+                    file: 'server/supabase/017_delivery_office.sql then 018_the_road.sql' },
+                  { cols: ['print_override'], file: 'server/supabase/041_print_kits.sql' }
+                ],
+                file: 'server/supabase/017_delivery_office.sql then 018_the_road.sql, then 041_print_kits.sql',
                 retriedBy: ['sync', 'reconcile'] },
 
   /* 055 — the day of the month a salary is due (023). `employees` goes up
@@ -130,8 +148,13 @@ export const MIRROR_LAG = {
 
   /* 069 — which shirt a print goes on (039). Rides on print_jobs'
      afterUpsert; insertChildren applies this fallback by name. */
-  print_job_lines: { cols: ['item'],
-                file: 'server/supabase/039_print_line_item.sql', retriedBy: ['sync', 'reconcile'] },
+  print_job_lines: { cols: ['item', 'print_kit_snapshot'],
+                groups: [
+                  { cols: ['item'], file: 'server/supabase/039_print_line_item.sql' },
+                  /* 071 — the kit as the customer saw it (041). */
+                  { cols: ['print_kit_snapshot'], file: 'server/supabase/041_print_kits.sql' }
+                ],
+                file: 'server/supabase/039_print_line_item.sql, then 041_print_kits.sql', retriedBy: ['sync', 'reconcile'] },
 
   /* 027 — gift receipts. NOTE: the sync deliberately does NOT apply this one.
      print_log is append-only, bookmarked by the highest id already sent, so
@@ -156,4 +179,15 @@ export function lagColumn(name, err) {
   /* An entry with groups drops only the group the refused column is in. */
   const g = (lag.groups || []).find((x) => x.cols.includes(hit));
   return g ? { col: hit, file: g.file, cols: g.cols } : { col: hit, file: lag.file, cols: lag.cols };
+}
+
+/* 071 — the kit frozen on a print line is JSON text here and jsonb there.
+   Sent as the text it would land as a jsonb STRING, so it goes as the
+   object; restore's adapt() turns it back into text. Unreadable text is
+   sent as null rather than failing the job. */
+export function snapshotForPg(r) {
+  if (!r || r.print_kit_snapshot == null) return r;
+  let v = null;
+  try { v = JSON.parse(r.print_kit_snapshot); } catch { v = null; }
+  return { ...r, print_kit_snapshot: v };
 }

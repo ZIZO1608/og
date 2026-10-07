@@ -40,13 +40,17 @@ import * as Partner from './partner.js';
 import * as Customers from './customers.js';
 import * as Orders from './orders.js';
 import * as Live from './live.js';
+import * as PrintKits from './printkits.js';
 
 const TAKE = 10;
 const REF = /^[A-Za-z0-9][A-Za-z0-9_-]{2,39}$/;
 
 /* The reasons a person may give for saying no, and the only ones the website
    has words for (docs/website/PROMPT-FOR-AHMAD.md §7). */
-export const REJECT_CODES = ['no_answer', 'out_of_stock', 'customer_cancelled', 'unpaid', 'duplicate', 'test', 'other'];
+export const REJECT_CODES = ['no_answer', 'out_of_stock', 'customer_cancelled', 'unpaid', 'duplicate', 'test', 'other',
+  /* 071 — a printed shirt the shop cannot print as asked (a name that breaks
+     the rules, no number, a product that takes no print). */
+  'bad_print'];
 
 /* The key Orders.create replays on. Not `web:` — POST /api/ext/print-jobs
    already writes applied_ops rows under that prefix. */
@@ -147,6 +151,103 @@ function sendPrints(ref) {
     sent++;
   }
   return { sent };
+}
+
+/* ------------------------------------------------ printed shirts (071)
+   Contract v1.6: a line the customer wants printed carries
+       "print": { "name": "MESSI", "number": 10, "kitId": 12 }
+   beside its sku and qty. Unlike the old `prints[]` (above, kept working:
+   one job per print, sent the moment the order is collected), these become
+   ONE job for the whole order, raised when a person ACCEPTS it — a shirt is
+   only printed for an order somebody has called and confirmed. */
+
+function variantFor(d, sku) {
+  return sku ? d.prepare(
+    `SELECT v.sku, v.size, p.id AS product_id, p.name, p.printable, p.print_kit_id
+       FROM variants v JOIN products p ON p.id = v.product_id WHERE v.sku = ?`
+  ).get(String(sku)) : null;
+}
+
+/* Every line of the order that asks for a print, checked against the rules
+   as the SHOP has them now. `problem` is a code (PrintKits.checkLine). */
+export function printedLines(d, o) {
+  const out = [];
+  const items = Array.isArray(o && o.items) ? o.items : [];
+  items.forEach((it, i) => {
+    if (!it || it.print == null) return;
+    const v = variantFor(d, it.sku);
+    const qty = Math.max(1, Math.floor(Number(it.qty) || 1));
+    const c = PrintKits.checkLine(it.print, v, d);
+    out.push({ index: i, sku: String(it.sku || ''), qty, variant: v, ...c });
+  });
+  return out;
+}
+
+/* The one print job for an accepted order. Idempotent per ref: the job
+   carries web_ref (unique), so a second Save, a retry after a lost answer,
+   or two people pressing Accept find the first job and raise none. Its own
+   transaction (Partner.create), after the order's — DB.tx() does not nest,
+   and a job that failed to raise must not unwind a sale already written; it
+   is retried on the next Save and named on the card meanwhile (print_error). */
+export function raisePrintJob(ref, saleId, userId) {
+  const d = get();
+  const row = d.prepare('SELECT payload FROM web_orders WHERE ref = ?').get(String(ref));
+  if (!row || isTest(ref)) return null;
+  const had = d.prepare('SELECT id FROM print_jobs WHERE web_ref = ?').get(String(ref));
+  if (had) return { jobId: had.id, created: false };
+  const o = parse(row.payload, {});
+  const lines = printedLines(d, o);
+  if (!lines.length) return null;
+  const bad = lines.find((l) => l.problem);
+  if (bad) throw fail(`line ${bad.index + 1} cannot be printed (${bad.problem})`, 'bad_print');
+
+  const sale = saleId ? d.prepare('SELECT customer_id, customer_name FROM sales WHERE id = ?').get(saleId) : null;
+  const cust = sale && sale.customer_id
+    ? d.prepare('SELECT id, name, phone FROM customers WHERE id = ?').get(sale.customer_id) : null;
+  const who = o.customer || {};
+  const px = Partner.webPrices(d);
+  const rules = PrintKits.rules(d);
+  const qty = lines.reduce((a, l) => a + l.qty, 0);
+  try {
+    const job = Partner.create({
+      customer: String((cust && cust.name) || who.name || (sale && sale.customer_name) || ref).slice(0, 80),
+      phone: String((cust && cust.phone) || who.phone || '').slice(0, 40) || null,
+      design: `Website ${ref} · name & number`,
+      kind: 'kit', qty, priority: 'normal',
+      deadline: PrintKits.deadlineFrom(rules.turnaround.max, d),
+      /* What the customer pays, in the base currency at the rate of the
+         moment (Partner.webPrices). The printer's cost is the existing web
+         rule: per shirt, on the line, never on the job. */
+      price: px.price == null ? 0 : qty * px.price,
+      cost: null,
+      currency: px.currency,
+      saleId: saleId || null,
+      customerId: cust ? cust.id : null,
+      webRef: String(ref),
+      lines: lines.map((l) => ({
+        /* The kit's club when it has one — clubCodeFor drops a club the shop
+           no longer prints (the foreign key) rather than fail the job. */
+        clubCode: Partner.clubCodeFor(l.kit.clubCode, d),
+        printName: l.name,
+        number: l.number,
+        size: l.variant.size,
+        qty: l.qty,
+        unitCost: px.cost,
+        item: l.variant.name,
+        kitSnapshot: PrintKits.snapshot(l.kit)
+      })),
+      source: 'web', autoSend: true, userId: userId ?? null
+    });
+    d.prepare('UPDATE web_orders SET print_error = NULL WHERE ref = ?').run(String(ref));
+    return { jobId: job.id, created: true };
+  } catch (e) {
+    /* Two Saves at once: the other one raised it. */
+    const now = d.prepare('SELECT id FROM print_jobs WHERE web_ref = ?').get(String(ref));
+    if (now) return { jobId: now.id, created: false };
+    d.prepare('UPDATE web_orders SET print_error = ? WHERE ref = ?')
+      .run(String((e && (e.message || e.code)) || e).slice(0, 200), String(ref));
+    throw e;
+  }
 }
 
 /* ------------------------------------------------------------- collecting */
@@ -320,6 +421,19 @@ export function forAccept(ref) {
   const row = rowOf(ref);
   if (isTest(row.ref)) throw fail('a test order cannot become a real order — reject it', 'test_order');
   if (row.state === 'rejected') throw fail('this website order was rejected', 'web_rejected');
+  /* 071 — a printed shirt the shop cannot print is refused BEFORE the order
+     is written: the customer paid for a print, and an order accepted without
+     one is the wrong order. The card says which line and why; the person
+     calls, or rejects with bad_print. An order already accepted is let
+     through so its Save replays. */
+  if (row.state === 'new') {
+    const bad = printedLines(get(), parse(row.payload, {})).filter((l) => l.problem);
+    if (bad.length) {
+      throw Object.assign(fail(`${bad.length} printed shirt(s) cannot be printed as asked: ` +
+        bad.map((l) => `line ${l.index + 1} (${l.problem})`).join(', '), 'bad_print'),
+        { lines: bad.map((l) => ({ index: l.index, sku: l.sku, problem: l.problem, maxLetters: l.maxLetters })) });
+    }
+  }
   return row;
 }
 
@@ -395,10 +509,24 @@ function itemsOf(d, o, whId) {
        LEFT JOIN product_colours c ON c.id = v.colour_id
       WHERE v.sku = ?`
   );
-  return (Array.isArray(o.items) ? o.items : []).map((it) => {
+  /* 071 — each printed line as the shop reads it: the cleaned name and
+     number, the kit it will be printed in, or why it cannot be. */
+  const printed = new Map(printedLines(d, o).map((l) => [l.index, l]));
+  const printOf = (i, it) => {
+    const l = printed.get(i);
+    if (!l) return null;
+    const p = it.print && typeof it.print === 'object' ? it.print : {};
+    return l.problem
+      ? { problem: l.problem, maxLetters: l.maxLetters ?? null,
+          asked: { name: typeof p.name === 'string' ? p.name.slice(0, 40) : null,
+                   number: p.number == null ? null : String(p.number).slice(0, 8) } }
+      : { name: l.name, number: l.number, kitId: l.kit.id, kitLabel: l.kit.label, substituted: !!l.substituted };
+  };
+  return (Array.isArray(o.items) ? o.items : []).map((it, i) => {
     const sku = String((it && it.sku) || '');
     const qty = Math.max(1, Math.floor(Number(it && it.qty) || 1));
     const v = sku ? q.get(whId, sku) : null;
+    const print = it ? printOf(i, it) : null;
     const shown = { name: it && it.name ? String(it.name).slice(0, 120) : null,
                     size: it && it.size != null ? String(it.size).slice(0, 20) : null,
                     price: Number.isFinite(Number(it && it.price)) ? Number(it.price) : null,
@@ -409,9 +537,9 @@ function itemsOf(d, o, whId) {
     const cu = d.prepare('SELECT minor_exp FROM currencies WHERE code = ?').get(shown.currency);
     shown.minorExp = cu ? cu.minor_exp : null;
   }
-    if (!v) return { sku, qty, known: false, shown };
+    if (!v) return { sku, qty, known: false, shown, print };
     return {
-      sku, qty, known: true, shown,
+      sku, qty, known: true, shown, print,
       productId: v.product_id, name: v.name, brand: v.brand, size: v.size,
       colour: v.colours > 1 && (v.colour_en || v.colour_ar) ? { en: v.colour_en, ar: v.colour_ar } : null,
       price: v.selling_price, currency: v.currency, minorExp: v.minor_exp ?? 0,
@@ -470,6 +598,12 @@ function shape(d, row, { seesCustomers, whId }) {
     items: itemsOf(d, o, whId),
     prints: printsOf(d, o, jobIds),
     printError: row.print_error || null,
+    /* 071 — the one job the order's printed shirts became when it was
+       accepted, and where it is. */
+    printJob: (() => {
+      const j = d.prepare('SELECT id, stage, order_state, deadline FROM print_jobs WHERE web_ref = ?').get(row.ref);
+      return j ? { id: j.id, stage: j.stage, orderState: j.order_state, deadline: j.deadline } : null;
+    })(),
     shown: o.shown && typeof o.shown === 'object' ? o.shown : null,
     /* 068 / contract v1.4 — the code the customer gave; the desk checks it
        again, for real, when the order is accepted. */

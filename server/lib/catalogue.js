@@ -16,6 +16,8 @@ import * as Categories from './categories.js';
 import * as Stock from './stock.js';
 import { foldName } from './text.js';
 import * as Photos from './photos.js';
+import * as PrintKits from './printkits.js';
+import * as Partner from './partner.js';
 
 /* Currency codes come from the database, so adding one is a migration rather
    than an edit here. */
@@ -474,8 +476,22 @@ function webRow(p, allSizes, ready, fx, known) {
        products that exist — the website itself skips any that is not
        published or not in stock. */
     pairsWith: pairsOf(p.pairs_with, known),
+    /* 071 (v1.6) — how a name and number are printed on it, or null when it
+       takes no print. The price is the print's own (Partner.webPrices: $5 a
+       jersey), in the same two-currency shape as `prices`. Never a cost. */
+    print: webPrint(p, fx),
     updatedAt: p.updated_at
   };
+}
+
+/* KEEP IN STEP with web.print_of() in supabase/041_print_kits.sql. */
+function webPrint(p, fx) {
+  const k = PrintKits.kitForProduct(p);
+  if (!k) return null;
+  const unit = Partner.webPrices().unit;
+  return PrintKits.printObject(k, {
+    price: unit ? webPrices({ currency: unit.currency, selling_price: unit.amount }, fx) : null
+  });
 }
 
 function webDescription(p) {
@@ -492,7 +508,7 @@ function catNames(id) {
 const WEB_COLS =
   `p.id, p.name, p.brand, p.type, p.colorway, p.made_in, p.image_bg,
    p.image_initials, p.currency, p.selling_price, p.updated_at,
-   p.description_en, p.description_ar, p.pairs_with`;
+   p.description_en, p.description_ar, p.pairs_with, p.printable, p.print_kit_id`;
 
 /* Every product id there is — what a "goes well with" list may name. */
 function productIds() {
@@ -821,7 +837,10 @@ const EDITABLE = new Set([
   /* 070 — what the website says about it: a description in each language and
      "goes well with" (contract v1.5). Cleaned by cleanDescription / cleanPairs
      below before they are written, never taken as sent. */
-  'description_en', 'description_ar', 'pairs_with'
+  'description_en', 'description_ar', 'pairs_with',
+  /* 071 — whether the website may sell a name and number printed on it, and
+     the kit it is printed in (NULL = the default kit). Checked below. */
+  'printable', 'print_kit_id'
 ]);
 
 /* 070 — THE PRODUCT'S DESCRIPTION, ONE PER LANGUAGE. Plain text for a public
@@ -892,6 +911,17 @@ export function pairsOf(raw, known) {
   return out;
 }
 
+/* 071 — a product's print kit: a kit that exists and is not put away, or
+   NULL for "the default kit". */
+function cleanKitId(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  const r = Number.isInteger(n) ? get().prepare('SELECT id, archived FROM print_kits WHERE id = ?').get(n) : null;
+  if (!r) throw fail('No such print kit.', 'bad_kit');
+  if (r.archived) throw fail('That print kit is put away.', 'kit_archived');
+  return n;
+}
+
 export function update(id, fields, userId) {
   const sets = [];
   const args = [];
@@ -906,6 +936,8 @@ export function update(id, fields, userId) {
     sets.push(`${k} = ?`);
     if (k === 'description_en' || k === 'description_ar') args.push(cleanDescription(v));
     else if (k === 'pairs_with') args.push(cleanPairs(v, id));
+    else if (k === 'printable') args.push(v ? 1 : 0);
+    else if (k === 'print_kit_id') args.push(cleanKitId(v));
     else args.push(v);
   }
 

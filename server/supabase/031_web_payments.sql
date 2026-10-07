@@ -129,6 +129,10 @@ declare
   v_rate   jsonb;
   v_cod    boolean;
   v_answer jsonb;
+  v_unit   jsonb;
+  v_ubase  bigint;
+  v_rules  jsonb;
+  v_prices jsonb;
 begin
   if not web.key_ok(p_key) then return web.no('bad_key'); end if;
 
@@ -141,6 +145,36 @@ begin
    where r.base = 'USD' and r.quote = v_base
    order by r.set_at desc, r.id desc
    limit 1;
+
+  -- The print price (041): as the owner wrote it ({amount, currency}, e.g.
+  -- 500 USD = $5.00), and in the base currency for `unitPrice` — whole lira
+  -- at the newest rate, the arithmetic Partner.webPrices() uses. Before 041
+  -- there is no web.print_unit and it reads as before: whole base units.
+  if to_regprocedure('web.print_unit()') is not null then
+    execute 'select web.print_unit()' into v_unit;
+  else
+    select case when btrim(c.value) ~ '^[0-9]{1,13}$' then jsonb_build_object('amount', btrim(c.value)::bigint, 'currency', v_base) end
+      into v_unit from public.config c where c.key = 'print.unit_price';
+  end if;
+  v_ubase := case
+    when v_unit is null then null
+    when v_unit ->> 'currency' = v_base then (v_unit ->> 'amount')::bigint
+    when v_rate is null then null
+    when v_unit ->> 'currency' = 'USD' and v_base = 'SYP'
+      then floor((v_unit ->> 'amount')::double precision / 100 * (v_rate ->> 'rate')::double precision + 0.5)::bigint
+    when v_unit ->> 'currency' = 'SYP' and v_base = 'USD'
+      then floor((v_unit ->> 'amount')::double precision / (v_rate ->> 'rate')::double precision * 100 + 0.5)::bigint
+  end;
+
+  -- Both by name only when they exist (041, 037): plpgsql resolves a function
+  -- named in an expression even on a branch that never runs.
+  if to_regprocedure('web.print_rules()') is not null then
+    execute 'select web.print_rules()' into v_rules;
+  end if;
+  if v_unit is not null and to_regprocedure('web.product_prices(text, bigint, double precision)') is not null then
+    execute 'select web.product_prices($1, $2, $3)' into v_prices
+      using v_unit ->> 'currency', (v_unit ->> 'amount')::bigint, (v_rate ->> 'rate')::double precision;
+  end if;
 
   v_answer := jsonb_build_object(
     'ok', true,
@@ -173,9 +207,14 @@ begin
                     and (p ->> 'fee') ~ '^[0-9]{1,13}$'),
     'transfer', web.transfer_methods(),
     'print', jsonb_build_object(
-      'unitPrice', (select case when btrim(c.value) ~ '^[0-9]{1,13}$' then btrim(c.value)::bigint end
-                      from public.config c where c.key = 'print.unit_price'),
+      -- One printed jersey, in the base currency (`currency`), as before.
+      'unitPrice', v_ubase,
       'currency', v_base,
+      -- v1.6 (041): the price as written, and in both currencies like a product.
+      'unit', v_unit,
+      'prices', v_prices,
+      'maxLetters', v_rules -> 'maxLetters',
+      'turnaround', v_rules -> 'turnaround',
       'clubs', (select coalesce(jsonb_agg(jsonb_build_object('code', k.code, 'en', k.name, 'ar', coalesce(k.name_ar, k.name))
                                           order by k.name), '[]'::jsonb)
                   from public.clubs k where not k.archived))
@@ -188,7 +227,9 @@ begin
     'version', md5(v_answer::text),
     'updatedAt', (select max(c.updated_at) from public.config c
                    where c.key in ('pay.methods', 'pay.accounts', 'web.cod', 'shop.base_currency',
-                                   'delivery.countries', 'delivery.prices', 'print.unit_price'))
+                                   'delivery.countries', 'delivery.prices', 'print.unit_price',
+                                   'print.unit_currency', 'print.max_letters',
+                                   'print.turnaround_min', 'print.turnaround_max'))
   );
 end;
 $$;

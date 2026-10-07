@@ -942,15 +942,34 @@ var FxFeedUI = (function () {
    print job the website sends is priced at it (Partner.webPrices). Empty
    until the owner types it — the website then says "price by phone" rather
    than inventing one. The lira moves, so it is one box and saves itself. */
+/* 071 — in DOLLARS now, like every product: the box takes $5 and saves 500
+   with print.unit_currency USD, and the lira under it is what that is at
+   today's rate. A shop whose price was set in lira before 071 still sees it
+   in lira until it is typed again. Beside it, the two rules every printed
+   shirt is held to: the longest name, and the days it is promised in. */
 function webPrintCard() {
   var v = CONFIG.WEB_PRINT_PRICE;
-  return setFoldStart('webprint', t('set_webprint'),
-      v ? '<span dir="ltr">' + nf(v) + ' SYP</span>' : t('set_webprint_unset'), t('set_webprint_sub')) +
+  var usd = CONFIG.WEB_PRINT_CUR === 'USD';
+  var shown = v ? (usd ? (v / 100).toFixed(v % 100 ? 2 : 0) : String(v)) : '';
+  var meta = v ? '<span dir="ltr">' + (usd ? '$' + shown : nf(v) + ' ' + CONFIG.WEB_PRINT_CUR) + '</span>' : t('set_webprint_unset');
+  meta += ' · <span dir="ltr">' + CONFIG.PRINT_MAX_LETTERS + '</span> ' + t('set_print_letters_short') +
+          ' · <span dir="ltr">' + CONFIG.PRINT_TURN_MIN + '–' + CONFIG.PRINT_TURN_MAX + '</span> ' + t('set_print_days_short');
+  return setFoldStart('webprint', t('set_webprint'), meta, t('set_webprint_sub')) +
     '<div class="card-body">' +
-    '<label class="field"><span>' + t('set_webprint_label') + savedPill('print.unit_price') + '</span>' +
-      '<input class="inp num" id="setWebPrint" type="text" inputmode="numeric" dir="ltr" autocomplete="off" ' +
-        'value="' + (v || '') + '" data-change="set-webprint"></label>' +
+    '<label class="field"><span>' + t(usd || !v ? 'set_webprint_label_usd' : 'set_webprint_label') + savedPill('print.unit_price') + '</span>' +
+      '<input class="inp num" id="setWebPrint" type="text" inputmode="decimal" dir="ltr" autocomplete="off" ' +
+        'value="' + esc(shown) + '" data-change="set-webprint">' +
+      '<small class="pr-lira muted" id="setWebPrintLira">' + (usd && v && typeof liraHint === 'function' ? liraHint(v) : '') + '</small></label>' +
+    '<div class="pe-grid">' +
+      '<label class="field"><span>' + t('set_print_letters') + savedPill('print.max_letters') + '</span>' +
+        '<input class="inp num" id="setPrintLetters" type="text" inputmode="numeric" dir="ltr" maxlength="2" value="' + CONFIG.PRINT_MAX_LETTERS + '" data-change="set-print-rule" data-k="print.max_letters"></label>' +
+      '<label class="field"><span>' + t('set_print_min') + savedPill('print.turnaround_min') + '</span>' +
+        '<input class="inp num" type="text" inputmode="numeric" dir="ltr" maxlength="2" value="' + CONFIG.PRINT_TURN_MIN + '" data-change="set-print-rule" data-k="print.turnaround_min"></label>' +
+      '<label class="field"><span>' + t('set_print_max') + savedPill('print.turnaround_max') + '</span>' +
+        '<input class="inp num" type="text" inputmode="numeric" dir="ltr" maxlength="2" value="' + CONFIG.PRINT_TURN_MAX + '" data-change="set-print-rule" data-k="print.turnaround_max"></label>' +
+    '</div>' +
     '<div class="partner-note">' + t('set_webprint_note') + '</div>' +
+    (allow('print_kits.manage') ? '<button type="button" class="btn btn-sm mt" data-act="nav" data-view="printkits">' + t('set_print_kits_open') + '</button>' : '') +
     '</div>' + setFoldEnd();
 }
 

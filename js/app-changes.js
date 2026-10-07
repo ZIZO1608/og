@@ -272,11 +272,29 @@ var CHANGES = {
   },
   /* The website's print price, whole lira, through the one counted-figure
      parser (Arabic digits, a thousands comma). Nothing below 1 is sent. */
+  /* 071 — in dollars: $5 is saved as 500 with print.unit_currency USD. The
+     two keys go one after the other through the one writer, the currency
+     first, so the price is never read in the wrong unit. */
   'set-webprint': function (el) {
-    var v = Desk.toCount(el.value);
+    var v = Desk.toMinor(el.value, 'USD');
     if (!(v > 0)) return;
     CONFIG.WEB_PRINT_PRICE = v;
+    CONFIG.WEB_PRINT_CUR = 'USD';
+    var l = document.getElementById('setWebPrintLira');
+    if (l && typeof liraHint === 'function') l.innerHTML = liraHint(v);
+    saveSetting('print.unit_currency', 'USD', 0);
     saveSetting('print.unit_price', v);
+  },
+  /* The longest name and the turnaround days: whole numbers, each its own key. */
+  'set-print-rule': function (el) {
+    var k = el.getAttribute('data-k');
+    var v = Desk.toCount(el.value);
+    var lo = 1, hi = k === 'print.max_letters' ? 30 : 90;
+    if (!(v >= lo && v <= hi)) return;
+    if (k === 'print.max_letters') CONFIG.PRINT_MAX_LETTERS = v;
+    if (k === 'print.turnaround_min') CONFIG.PRINT_TURN_MIN = v;
+    if (k === 'print.turnaround_max') CONFIG.PRINT_TURN_MAX = v;
+    saveSetting(k, v);
   },
   'set-motion': function (el) {
     if (el.checked) document.body.removeAttribute('data-motion');

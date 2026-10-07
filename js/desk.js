@@ -2022,6 +2022,11 @@ var Desk = (function () {
           t(d.voided ? 'dk_cancelled' : 'dl_' + d.status) + '</span></div>' +
       /* The same rail the customer's tracking link draws, with its words. */
       railHtml(d, true) +
+      /* 071 — it waits for its print, or the owner sent it without. */
+      (d.printWaiting && !d.voided && d.status === 'waiting'
+        ? '<div class="dk-ord-print">' + esc(t('dl_print_waiting').replace('{job}', d.printJobId || '').replace('{stage}', d.printStage ? t('wo_st_' + d.printStage) : '')) + '</div>'
+        : d.printOverride && d.printOverride.reason
+          ? '<div class="dk-ord-print is-over">' + esc(t('dl_print_overridden').replace('{why}', d.printOverride.reason)) + '</div>' : '') +
       '<div class="dk-ord-where">' + methodLine(d) + (whereLine(d) ? '<small>' + whereLine(d) + '</small>' : '') +
         (d.trackingNo ? '<small><bdi dir="ltr">' + esc(d.trackingNo) + '</bdi></small>' : '') + '</div>' +
       '<div class="dk-tot dk-ord-tot">' + sumRow(t('dk_due'), fmt(due, code)) + sumRow(t('dk_paid_now'), fmt(paid, code)) +
@@ -3687,6 +3692,8 @@ var Desk = (function () {
     /* The pictures the board, the road and the order dialog share, so a
        parcel is drawn one way wherever it appears. */
     methodIcon: methodIconSvg,
+    /* 071 — the print kits page opens the website print price fold. */
+    gotoSettingsFold: gotoSettingsFold,
     rail: railHtml,
     face: faceHtml,
     companies: function () {

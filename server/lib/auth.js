@@ -123,6 +123,10 @@ export const ALL_PERMISSIONS = [
   { perm: 'print.write',     group: 'print',     label: 'Create and change print jobs' },
   { perm: 'partner.read',    group: 'print',     label: 'See the partner portal' },
   { perm: 'partner.write',   group: 'print',     label: 'Act on partner orders' },
+  /* 071 — the font library and the print kits: how a name and a number look
+     on the back of a jersey the website sells. Given to the roles that edit
+     products. */
+  { perm: 'print_kits.manage', group: 'print',   label: 'Manage print fonts and kits' },
 
   { perm: 'staff.read',      group: 'admin',     label: 'See staff accounts' },
   { perm: 'staff.write',     group: 'admin',     label: 'Add and edit staff' },

@@ -43,6 +43,8 @@ var VIEWS = {
   payments: function () { return Desk.payView(); },
   /* 068 — the owner's coupon codes. */
   coupons: function () { return Coupons.view(); },
+  /* 071 — print kits and their fonts (js/printkits.js). */
+  printkits: function () { return PrintKits.view(); },
   safeers: function () { return Safeers.view(); },
   /* The delivery office: a till for orders that do not walk in. */
   desk: function () { return Desk.view(); },
@@ -73,6 +75,7 @@ var AFTER = {
   weborders: function () { return WebOrders.after(); },
   payments: function () { return Desk.payAfter(); },
   coupons: function () { return Coupons.after(); },
+  printkits: function () { return PrintKits.after(); },
   safeers: function () { return Safeers.after(); },
   desk: function () { return Desk.after(); },
   requests: function () { return Requests.after(); },

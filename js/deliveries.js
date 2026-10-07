@@ -490,6 +490,24 @@ var Deliveries = (function () {
     return !d.voided && d.status !== 'delivered' && !!d.driverId && d.driverActive === false;
   }
 
+  /* 071 — A PARCEL WAITS FOR ITS PRINT. The server refuses it leaving the
+     counter while a print job on the sale is not done (Orders.PRINT_OPEN);
+     the board says so in the next step's place, and the owner (by role, as
+     the server checks) gets "Send without the print" behind the dots. */
+  function printHeld(d) { return !d.voided && d.status === 'waiting' && !!d.printWaiting; }
+  function printLine(d) {
+    if (printHeld(d)) {
+      return '<div class="dlb-c-print">' + svg(ICON.flag) + '<span>' +
+        esc(t('dl_print_waiting').replace('{job}', d.printJobId || '').replace('{stage}', d.printStage ? t('wo_st_' + d.printStage) : '')) +
+        '</span></div>';
+    }
+    if (d.printOverride && d.printOverride.reason) {
+      return '<div class="dlb-c-print is-over"><span>' + esc(t('dl_print_overridden').replace('{why}', d.printOverride.reason)) + '</span></div>';
+    }
+    return '';
+  }
+  function ownerish() { var r = roleOf(); return r === 'owner' || r === 'developer'; }
+
   function rowActions(d) {
     if (d.voided) return '<span class="muted">—</span>';
 
@@ -511,6 +529,14 @@ var Deliveries = (function () {
         next = '<button class="btn btn-sm btn-primary" data-act="dl-done" data-id="' + d.id + '">' +
                t('dl_done') + '</button>';
         rest += '<button class="dlb-mitem" data-act="dl-fail" data-id="' + d.id + '">' + t('dl_fail') + '</button>';
+      }
+    } else if (allow('delivery.write') && printHeld(d)) {
+      /* It may still be given to somebody; it may not leave. */
+      next = d.method !== 'pickup' && !d.driverId && !d.companyId
+        ? '<button class="btn btn-sm btn-primary" data-act="dl-assign" data-id="' + d.id + '">' + t('dl_assign_btn') + '</button>'
+        : '<button class="btn btn-sm" disabled title="' + esc(t('dl_print_hold_why')) + '">' + t('dl_print_hold_btn') + '</button>';
+      if (ownerish()) {
+        rest += '<button class="dlb-mitem" data-act="dl-print-override" data-id="' + d.id + '">' + t('dl_print_override') + '</button>';
       }
     } else if (allow('delivery.write')) {
       if (d.status === 'waiting') {
@@ -682,6 +708,7 @@ var Deliveries = (function () {
       (orphan(d) ? '<div class="dlb-c-orphan">' + svg(ICON.flag) +
         t(d.status === 'waiting' ? 'dl_driver_off' : 'dl_driver_off_out') + '</div>' : '') +
       (d.pending > 0 ? '<div class="dlb-c-pend">' + svg(ICON.cash) + pendingLine(d) + '</div>' : '') +
+      printLine(d) +
       (d.status === 'failed' && d.failReason ? '<div class="dlb-c-why">' + svg(ICON.flag) + esc(d.failReason) + '</div>' : '') +
       '<div class="dlb-c-acts">' + rowActions(d) + '</div>' +
     '</article>';
@@ -746,7 +773,7 @@ var Deliveries = (function () {
         '<td>' + whoCell(d) + (d.phone ? '<small style="display:block" class="muted">' + tel(d.phone) + '</small>' : '') + '</td>' +
         '<td class="muted">' + whereCell(d) + '</td>' +
         '<td class="num">' + moneyCell(d) + '</td>' +
-        '<td>' + statusBadge(d) + rail(d, false) +
+        '<td>' + statusBadge(d) + (printHeld(d) ? ' <span class="badge warn">' + t('dl_print_badge') + '</span>' : '') + rail(d, false) +
           (d.failReason ? '<small style="display:block" class="muted">' + esc(d.failReason) + '</small>' : '') + '</td>' +
         '<td class="dlb-actions">' + rowActions(d) + '</td></tr>';
     });
@@ -1011,6 +1038,35 @@ var Deliveries = (function () {
 
     ACTIONS['dl-go'] = function (el) {
       move(+el.getAttribute('data-id'), { status: 'out' }, t('dl_sent'));
+    };
+
+    /* 071 — the owner sends a parcel before its print is done, with a reason. */
+    ACTIONS['dl-print-override'] = function (el) {
+      var id = +el.getAttribute('data-id');
+      var d = byId(id);
+      openModal({
+        title: t('dl_print_override'),
+        body: '<p>' + esc(t('dl_print_override_q').replace('{id}', d ? d.saleId : '').replace('{job}', d && d.printJobId ? d.printJobId : '')) + '</p>' +
+          '<label class="field"><span>' + t('dl_print_override_why') + '</span>' +
+          '<input class="inp" id="dlPrintWhy" dir="auto" maxlength="300"></label><div id="dlPrintErr"></div>',
+        foot: '<button class="btn" data-act="modal-close">' + t('cancel') + '</button>' +
+              '<button class="btn btn-primary" data-act="dl-print-override-go" data-id="' + id + '">' + t('dl_print_override_go') + '</button>'
+      });
+    };
+    ACTIONS['dl-print-override-go'] = function (el) {
+      var id = +el.getAttribute('data-id');
+      var why = String((document.getElementById('dlPrintWhy') || {}).value || '').trim();
+      var box = document.getElementById('dlPrintErr');
+      if (!why) { if (box) box.innerHTML = '<div class="pk-err" role="alert">' + esc(t('dl_print_override_need')) + '</div>'; return; }
+      el.disabled = true;
+      API.post('/api/deliveries/' + id + '/print-override', { reason: why }).then(function () {
+        closeModal();
+        toast(t('dl_title'), t('dl_print_override_done'), 'ok', 3000);
+        load();
+      }).catch(function (err) {
+        el.disabled = false;
+        if (box) box.innerHTML = '<div class="pk-err" role="alert">' + esc(API.friendly(err)) + '</div>';
+      });
     };
 
     ACTIONS['dl-done'] = function (el) {

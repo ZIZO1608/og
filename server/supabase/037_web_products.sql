@@ -131,10 +131,11 @@ $$;
 
 -- One published product as the website sees it, or null when no colour of it
 -- has both photos. KEEP IN STEP with webRow() in server/lib/catalogue.js.
--- THE SAME TEXT IS IN 037 AND 040 (v1.5 added description and pairsWith), so
--- running either file again leaves the same function. The two v1.5 columns
--- are read through to_jsonb(row): before 040 has added them they are simply
--- absent, and the fields read null / [] rather than the call failing.
+-- THE SAME TEXT IS IN 037, 040 AND 041 (v1.5 added description and pairsWith,
+-- v1.6 added print), so running any of them again leaves the same function.
+-- The newer columns are read through to_jsonb(row) and the print through
+-- web.print_of only when it exists: before 040 / 041 the fields read null / []
+-- rather than the call failing.
 create or replace function web.product_row(p_id bigint, p_rate jsonb)
 returns jsonb
 language plpgsql
@@ -150,6 +151,7 @@ declare
   v_cat     jsonb;
   v_exp     integer;
   v_more    jsonb;
+  v_print   jsonb;
 begin
   select * into v_p from public.products p
    where p.id = p_id and not p.hidden and p.on_web and not p.demo;
@@ -203,6 +205,13 @@ begin
 
   select cu.minor_exp into v_exp from public.currencies cu where cu.code = v_p.currency;
 
+  -- v1.6 (041): how a name and number are printed on it, or null. Called by
+  -- name only when 041 has made web.print_of, so this text runs the same in
+  -- a project that stopped at 037 or 040.
+  if to_regprocedure('web.print_of(jsonb, jsonb)') is not null then
+    execute 'select web.print_of($1, $2)' into v_print using v_more, p_rate;
+  end if;
+
   return jsonb_build_object(
     'id', v_p.id,
     'name', v_p.name,
@@ -229,6 +238,8 @@ begin
                                                 'ar', nullif(v_more ->> 'description_ar', ''))
                         end,
     'pairsWith', web.pairs_of(v_more ->> 'pairs_with'),
+    -- v1.6: null when it takes no print (041).
+    'print', v_print,
     'updatedAt', to_char(v_p.updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
   );
 end;

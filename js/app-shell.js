@@ -58,6 +58,9 @@ var NAV = [
   { id: 'customers',  key: 'nav_customers', group: 'ops',  icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' },
   { id: 'labels',     key: 'nav_labels',    group: 'ops',  icon: 'M4 5v14M8 5v14M11 5v9M14 5v14M17 5v9M20 5v14' },
   { id: 'print',      key: 'nav_print',     group: 'ops',  icon: 'M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z' },
+  /* 071 — the print kits and their fonts: how a name and number look on a
+     jersey the website sells. */
+  { id: 'printkits',  key: 'nav_printkits', group: 'ops',  icon: 'M8 3l4 2 4-2 5 3-2 5-2-1v11H7V10l-2 1-2-5zM10 12h4M12 12v5' },
   { id: 'reports',    key: 'nav_reports',   group: 'ops',  icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
   { id: 'settings',   key: 'nav_settings',  group: 'ops',  icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L6 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z' }
 ];
@@ -108,6 +111,8 @@ var NAV_PERM = {
   customers:  'customer.read',
   labels:     'label.print',
   print:      'print.read',
+  /* 071 — the same gate as every write behind the page. */
+  printkits:  'print_kits.manage',
   reports:    'report.read',
   settings:   'config.write'
 };
@@ -310,7 +315,7 @@ var ROLE_TABS = {
    that hid the Money screen from every phone until 054 went looking for it. */
 var MORE_GROUPS = [
   { key: 'nav_g_sell',  ids: ['pos', 'desk', 'weborders', 'requests', 'customers', 'deliveries', 'safeers', 'reviews'] },
-  { key: 'nav_g_stock', ids: ['products', 'warehouse', 'shelfmap', 'labels', 'print'] },
+  { key: 'nav_g_stock', ids: ['products', 'warehouse', 'shelfmap', 'labels', 'print', 'printkits'] },
   { key: 'nav_g_money', ids: ['money', 'payments', 'coupons', 'reports'] },
   { key: 'nav_g_shop',  ids: ['settings'] }
 ];

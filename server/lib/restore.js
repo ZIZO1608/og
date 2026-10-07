@@ -75,7 +75,10 @@ import { fullMinutes } from './sync-worker.js';
 export const ORDER = [
   /* nothing points out of these */
   'currencies', 'warehouses', 'config', 'role_permissions', 'label_templates', 'categories', 'user_permissions',
-  'clubs', 'suppliers', 'employees',
+  'clubs',
+  /* 071 — a kit names a club and a font; a product names a kit. */
+  'print_fonts', 'print_kits',
+  'suppliers', 'employees',
 
   /* the catalogue and what was sold from it.
 
@@ -149,7 +152,9 @@ export const SEEDED = new Set([
   'categories',
   /* the migration plants the nine clubs the shop prints, so this is never
      empty either and would be skipped forever without saying so */
-  'clubs'
+  'clubs',
+  /* 071 seeds four fonts and six kits */
+  'print_fonts', 'print_kits'
 ]);
 
 const PAGE = 1000;   /* Supabase caps a REST read at 1000 rows per request. */

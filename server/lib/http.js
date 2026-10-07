@@ -237,13 +237,16 @@ export function ownOrigin(origin, host) {
    img-src takes https: because product photographs live in the public
    Supabase bucket, and data:/blob: because the till draws receipts and QR
    codes into canvases. media-src blob: is the camera scanner's preview.
+   font-src takes https: for the same reason as img-src (071): a print kit's
+   face lives in the public print-fonts bucket, and the kit screen and the
+   product form preview the shirt in it.
    The same value is exported for the customer's tracking page (index.js). */
 export const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
+  "font-src 'self' data: https:",
   "media-src 'self' blob:",
   "connect-src 'self'",
   "worker-src 'self'",

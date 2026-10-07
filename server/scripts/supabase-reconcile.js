@@ -38,7 +38,7 @@ import { fileURLToPath } from 'node:url';
 import { load } from '../lib/env.js';
 import * as DB from '../lib/db.js';
 import * as SB from '../lib/supabase.js';
-import { lagColumn } from '../lib/mirror-lag.js';
+import { lagColumn, snapshotForPg } from '../lib/mirror-lag.js';
 import * as Lineage from '../lib/lineage.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -149,13 +149,15 @@ const keyOf = (row, key) =>
    which is why the old three-entry list never actually failed; but a mirror
    read back by a report should hold the type it declares.) */
 const BOOLS = {
-  products: ['hidden', 'demo'], customers: ['archived', 'demo'], sales: ['voided'],
+  products: ['hidden', 'demo', 'on_web', 'printable'], customers: ['archived', 'demo'], sales: ['voided'],
   users: ['active'], suppliers: ['archived'], employees: ['archived'],
   job_messages: ['read_og', 'read_yl']
 };
 function forPg(table, row) {
   const out = { ...row };
   for (const c of BOOLS[table] || []) if (c in out) out[c] = !!out[c];
+  /* 071 — jsonb in the mirror, text here (Mirror.snapshotForPg). */
+  if (table === 'print_job_lines') return snapshotForPg(out);
   return out;
 }
 

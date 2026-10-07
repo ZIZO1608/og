@@ -2709,6 +2709,12 @@ var DB = {
     CONFIG.AT_RISK_DAYS            = num('customer.at_risk_days', CONFIG.AT_RISK_DAYS);
     /* 061: what one printed piece costs a website customer; null = not set. */
     CONFIG.WEB_PRINT_PRICE         = num('print.unit_price', null);
+    /* 071: the price's currency (USD: the number is cents — 500 is $5.00),
+       the longest name a shirt takes, and the days a print is promised in. */
+    CONFIG.WEB_PRINT_CUR           = cfg['print.unit_currency'] ? String(cfg['print.unit_currency']) : (CONFIG.BASE_CURRENCY || 'SYP');
+    CONFIG.PRINT_MAX_LETTERS       = num('print.max_letters', 12);
+    CONFIG.PRINT_TURN_MIN          = num('print.turnaround_min', 5);
+    CONFIG.PRINT_TURN_MAX          = num('print.turnaround_max', 7);
     /* 029_customer_rhythm: the multiplier and floor on a customer's own gap. */
     CONFIG.QUIET_MULTIPLIER_TENTHS = num('customer.quiet_multiplier_tenths', CONFIG.QUIET_MULTIPLIER_TENTHS);
     CONFIG.QUIET_FLOOR_DAYS        = num('customer.quiet_floor_days', CONFIG.QUIET_FLOOR_DAYS);
@@ -2899,6 +2905,10 @@ var DB = {
         descEn: p.description_en || '',
         descAr: p.description_ar || '',
         pairsWith: pairsList(p.pairs_with),
+        /* 071 — takes a printed name and number, and the kit it is printed in
+           (null = the default kit). */
+        printable: !!p.printable,
+        printKitId: p.print_kit_id || null,
         demo: !!p.demo,
         /* Never sold falls back to how long the shop has had it, which is the
            honest reading of "nothing has moved" and keeps the dead-stock

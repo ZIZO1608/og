@@ -51,6 +51,11 @@ SELECT f.file, f.installed, f.what
        AND EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                     WHERE n.nspname = 'web' AND p.proname = 'pairs_of'),
        'a product''s description and "goes well with" (local 070)'),
+    ('041_print_kits.sql',
+       to_regclass('public.print_kits') IS NOT NULL
+       AND EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                    WHERE n.nspname = 'public' AND p.proname = 'web_print_tracking'),
+       'jersey print kits and website print orders (local 071)'),
     ('030_erp_access.sql',
        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'og_vps'),
        'og_vps, the VPS''s read-only login'),

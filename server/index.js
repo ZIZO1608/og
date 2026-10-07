@@ -84,6 +84,7 @@ import * as Loans from './lib/loans.js';
 import * as Outbox from './lib/outbox.js';
 import * as FxFeed from './lib/fxfeed.js';
 import * as SiteNotify from './lib/sitenotify.js';
+import * as PrintKits from './lib/printkits.js';
 import * as Scope from './lib/scope.js';
 import { Readable } from 'node:stream';
 import { isIP } from 'node:net';
@@ -948,6 +949,90 @@ router.add('DELETE /api/products/:id', requirePerm('product.write', (ctx) => {
   }
 }));
 
+/* ---- print kits and their fonts (071, lib/printkits.js) -------------------
+   print_kits.manage makes and changes them. Reading is also the product
+   form's (product.write): it attaches a kit to a product and draws it. */
+function kitFail(res, e) {
+  if (e.code === 'not_found') return sendError(res, 404, 'not_found', e.message);
+  return sendErrorDetail(res, e.status || 400, e.code || 'invalid', e.message,
+    { kits: e.kits, kitId: e.kitId, field: e.field });
+}
+const kitsAnswer = () => ({
+  kits: PrintKits.kits(), fonts: PrintKits.fonts(),
+  clubs: DB.get().prepare('SELECT code, name, name_ar, archived FROM clubs ORDER BY archived, name').all()
+    .map((c) => ({ code: c.code, en: c.name, ar: c.name_ar || c.name, archived: !!c.archived })),
+  rules: PrintKits.rules(), kitTypes: PrintKits.KIT_TYPES, viewBox: PrintKits.VIEWBOX,
+  price: Partner.webPrices().unit
+});
+
+router.add('GET /api/print-kits', requirePerm(['print_kits.manage', 'product.write'], (ctx) => {
+  sendOk(ctx.res, kitsAnswer());
+}));
+
+router.add('POST /api/print-kits', requirePerm('print_kits.manage', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const kit = PrintKits.createKit(b);
+    SiteNotify.soon();
+    sendOk(ctx.res, { kit });
+  } catch (e) { kitFail(ctx.res, e); }
+}));
+
+router.add('PATCH /api/print-kits/:id', requirePerm('print_kits.manage', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const kit = PrintKits.updateKit(Number(ctx.params.id), b);
+    SiteNotify.soon();
+    sendOk(ctx.res, { kit });
+  } catch (e) { kitFail(ctx.res, e); }
+}));
+
+/* A font arrives as base64 of the original .ttf/.otf (4 MB at most, so the
+   body may be ~5.5 MB). The server makes the WOFF2; the browser never sees
+   the service key. */
+router.add('POST /api/print-fonts', requirePerm('print_kits.manage', async (ctx) => {
+  const b = await readJson(ctx.req, { max: 6 * 1024 * 1024 });
+  try {
+    const font = await PrintKits.addFont({ name: b.name, data: b.data, filename: b.filename,
+                                           weight: b.weight, licenseNote: b.licenseNote });
+    sendOk(ctx.res, { font });
+  } catch (e) {
+    if (e.code === 'not_configured') return sendError(ctx.res, 503, 'not_configured', e.message);
+    if (!e.code) return sendError(ctx.res, 502, 'storage_failed', e.message);
+    kitFail(ctx.res, e);
+  }
+}));
+
+router.add('POST /api/print-fonts/:id/file', requirePerm('print_kits.manage', async (ctx) => {
+  const b = await readJson(ctx.req, { max: 6 * 1024 * 1024 });
+  try {
+    const font = await PrintKits.replaceFontFile(Number(ctx.params.id), { data: b.data });
+    SiteNotify.soon();
+    sendOk(ctx.res, { font });
+  } catch (e) {
+    if (e.code === 'not_configured') return sendError(ctx.res, 503, 'not_configured', e.message);
+    if (!e.code) return sendError(ctx.res, 502, 'storage_failed', e.message);
+    kitFail(ctx.res, e);
+  }
+}));
+
+router.add('PATCH /api/print-fonts/:id', requirePerm('print_kits.manage', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const font = PrintKits.updateFont(Number(ctx.params.id), b);
+    SiteNotify.soon();
+    sendOk(ctx.res, { font });
+  } catch (e) { kitFail(ctx.res, e); }
+}));
+
+/* The seed fonts, uploaded now (the start-up does it by itself; this is the
+   button for when that could not reach GitHub or the bucket). */
+router.add('POST /api/print-fonts/seed', requirePerm('print_kits.manage', async (ctx) => {
+  const results = await PrintKits.seedFonts();
+  if (results.some((r) => r.ok)) SiteNotify.soon();
+  sendOk(ctx.res, { results, fonts: PrintKits.fonts() });
+}));
+
 /* 066 — A COLOUR'S PHOTOGRAPHS. The model wearing it, the product on its
    own, and extras (lib/photos.js says why each is what it is). The browser
    sends each photo TWICE, already shrunk: `full` for the website (at most
@@ -1795,6 +1880,10 @@ function orderFail(res, e) {
   if (e.code === 'bad_settings') {
     return sendErrorDetail(res, 400, 'bad_settings', e.message, { path: e.path ?? null });
   }
+  /* 071 — a printed shirt on a website order the shop cannot print. */
+  if (e.code === 'bad_print') {
+    return sendErrorDetail(res, 409, 'bad_print', e.message, { lines: e.lines || [] });
+  }
   /* lib/weborders.js carries its own status. */
   if (['test_order', 'web_rejected', 'web_accepted', 'bad_code'].includes(e.code) && e.status) {
     return sendError(res, e.status, e.code, e.message);
@@ -1803,6 +1892,10 @@ function orderFail(res, e) {
      the counter takes those off the pile rather than guessing. */
   if (e.code === 'handover_blocked') {
     return sendErrorDetail(res, 409, e.code, e.message, { blocked: e.blocked || [] });
+  }
+  /* 071 — the parcel waits for its print; the job and its stage come with it. */
+  if (e.code === 'print_waiting') {
+    return sendErrorDetail(res, 409, e.code, e.message, { jobId: e.jobId ?? null, stage: e.stage ?? null });
   }
   if (['refund_too_big', 'no_credit', 'too_many'].includes(e.code)) {
     return sendErrorDetail(res, 409, e.code, e.message,
@@ -1887,6 +1980,14 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
         Live.notify('og', { web: true });
         SyncWorker.webSoon();
       } catch (e) { console.error(`[${new Date().toISOString()}] web order ${webRef} accepted as ${out.sale.id} but not marked — ${e.message}`); }
+      /* 071 — its printed shirts become ONE job, sent to Yalla Wear now.
+         Asked on a replayed Save too: a job that failed to raise the first
+         time is raised by the retry, and one that exists is found, not
+         doubled (web_ref is unique). */
+      try {
+        const pj = WebOrders.raisePrintJob(webRef, out.sale.id, ctx.user.id);
+        if (pj && pj.created) bump();
+      } catch (e) { console.error(`[${new Date().toISOString()}] web order ${webRef}: the print job was not raised — ${e.message}`); }
     }
     sendOk(ctx.res, {
       sale: scrubCost(out.sale, ctx.user),
@@ -2993,6 +3094,12 @@ router.add('GET /api/ext/reviews', (ctx) => {
   sendOk(ctx.res, { ...Reviews.webList({ limit: sp.get('limit') }), generatedAt: new Date().toISOString() });
 });
 
+/* 071 — the styles a customer chooses between (featured kits), the same
+   answer as the cloud's web_print_styles. */
+router.add('GET /api/ext/print-styles', (ctx) => {
+  sendOk(ctx.res, { styles: PrintKits.styles(), generatedAt: new Date().toISOString() });
+});
+
 router.add('GET /api/ext/products', (ctx) => {
   const products = Cat.webList();
   sendOk(ctx.res, { products, count: products.length, rate: Cat.webRate(), generatedAt: new Date().toISOString() });
@@ -3528,6 +3635,18 @@ router.add('PATCH /api/deliveries/:id', requirePerm('delivery.write', async (ctx
        is still owed, not a bare 400. */
     orderFail(ctx.res, e);
   }
+}));
+
+/* 071 — "send it anyway": the owner lifts the print hold on one parcel, with
+   a reason (Deliveries.overridePrint checks the role). delivery.write gets
+   somebody to the door; the role decides. */
+router.add('POST /api/deliveries/:id/print-override', requirePerm('delivery.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    const delivery = Deliveries.overridePrint(Number(ctx.params.id), { reason: b.reason }, ctx.user);
+    Live.notify('og', { deliveries: true });
+    sendOk(ctx.res, { delivery });
+  } catch (e) { orderFail(ctx.res, e); }
 }));
 
 /* --- product labels (XP-235B / TSPL) ----------------------------------------
@@ -4433,6 +4552,17 @@ if (runDirectly) {
          (contract v1.5) — one main server, like the feed above. Silent
          until web.site_url and OG_WEB_API_KEY are both set. */
       SiteNotify.start(console.log);
+      /* 071 — the seed print fonts have an address on GitHub and no file of
+         ours yet: fetched, made into WOFF2 and put in the print-fonts bucket
+         once, in the background. A failure leaves them for the Fonts screen's
+         Upload now; it never holds anything up. */
+      setTimeout(() => {
+        PrintKits.seedFonts().then((r) => {
+          for (const f of r) console.log(f.ok ? `  [print] font "${f.name}" uploaded`
+                                              : `  [print] font "${f.name}" not uploaded — ${f.error}`);
+          if (r.some((f) => f.ok)) SiteNotify.soon();
+        }).catch(() => {});
+      }, 20000).unref();
       /* Who a push service writes to when something is wrong with our pushes:
          the shop's own https address when it has one. */
       try { Push.setContact(Orders.publicBase()); } catch { /* the default stands */ }

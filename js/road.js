@@ -373,6 +373,8 @@ var Road = (function () {
       return t('rd_why_unpaid').replace('{a}', fmtText(l ? l.remaining : 0, l ? l.currency : 'SYP'));
     }
     if (why === 'voided') return t('dk_cancelled');
+    /* 071 — the print on the sale is not done yet. */
+    if (why === 'print_waiting') return t('rd_why_print');
     return t('rd_why_moved').replace('{s}', t('dl_' + String(why).replace('already_', '')));
   }
 

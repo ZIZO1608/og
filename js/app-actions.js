@@ -1466,11 +1466,15 @@ var ACTIONS = {
     var body = readProductEditor();
     if (!body.name) { toast(t('edit_product'), t('name_required'), 'err'); return; }
     if (body.selling_price === undefined) { toast(t('edit_product'), t('price_required'), 'err'); return; }
+    if (body._printError) { toast(t('edit_product'), body._printError, 'err', 6000); return; }
     var p = DB.product(id);
     Shop.write(
       function () { return Shop.updateProduct(id, body); },
       function () {
-        if (p) { p.name = body.name; p.type = body.type; p.brand = body.brand; p.madeIn = body.made_in; p.onWeb = !!body.on_web; }
+        if (p) {
+          p.name = body.name; p.type = body.type; p.brand = body.brand; p.madeIn = body.made_in; p.onWeb = !!body.on_web;
+          if (body.printable !== undefined) { p.printable = !!body.printable; p.printKitId = body.print_kit_id || null; }
+        }
       },
       function () {
         closeModal();

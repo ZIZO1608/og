@@ -22,7 +22,7 @@ var WebOrders = (function () {
   'use strict';
 
   var TABS = ['new', 'accepted', 'rejected'];
-  var CODES = ['no_answer', 'out_of_stock', 'customer_cancelled', 'unpaid', 'duplicate', 'test', 'other'];
+  var CODES = ['no_answer', 'out_of_stock', 'customer_cancelled', 'unpaid', 'duplicate', 'test', 'bad_print', 'other'];
   var FRESH_MS = 20000;
 
   var S = {
@@ -193,12 +193,30 @@ var WebOrders = (function () {
   /* Every line as the shop sees it: its own name and price, and whether it is
      on the shelf where the office packs from. What the customer was shown is
      said only when it differs — that is the one thing worth a phone call. */
+  /* 071 — a line the customer wants printed: the name and number as the
+     shop will print them and the kit, or why it cannot be printed as asked
+     (PrintKits.checkLine on the server). */
+  function printOf(i) {
+    var p = i.print;
+    if (!p) return '';
+    if (p.problem) {
+      var asked = p.asked ? [p.asked.name, p.asked.number].filter(function (x) { return x != null && x !== ''; }).join(' ') : '';
+      return '<div class="wo-warn wo-pline">' + svg(ICON.shirt) + '<span>' + t('wo_pl_print') +
+        (asked ? ' “' + ltr(asked) + '”' : '') + ' — ' +
+        esc(t('wo_pl_' + p.problem).replace('{n}', p.maxLetters != null ? p.maxLetters : '')) + '</span></div>';
+    }
+    return '<div class="wo-ok wo-pline">' + svg(ICON.shirt) + '<span>' + t('wo_pl_print') + ' ' +
+      ltr(p.name + ' ' + p.number) + ' · ' + esc(p.kitLabel) +
+      (p.substituted ? ' <span class="muted">(' + t('wo_pl_default_kit') + ')</span>' : '') + '</span></div>';
+  }
+
   function itemsHtml(o) {
     if (!o.items || !o.items.length) return '';
+    var bad = o.items.filter(function (i) { return i.print && i.print.problem; }).length;
     var rows = o.items.map(function (i) {
       if (!i.known) {
         return '<div class="wo-item is-bad"><div><b>' + esc((i.shown && i.shown.name) || i.sku) + '</b>' +
-          '<div class="wo-warn">' + t('wo_unknown_sku').replace('{sku}', esc(i.sku)) + '</div></div>' +
+          '<div class="wo-warn">' + t('wo_unknown_sku').replace('{sku}', esc(i.sku)) + '</div>' + printOf(i) + '</div>' +
           '<div class="wo-qty">×' + ltr(i.qty) + '</div><div></div></div>';
       }
       var colour = i.colour ? ' · ' + esc(OG.lang === 'ar' ? (i.colour.ar || i.colour.en) : (i.colour.en || i.colour.ar)) : '';
@@ -210,13 +228,21 @@ var WebOrders = (function () {
       return '<div class="wo-item"><div><b>' + esc(i.name) + '</b>' +
           '<div class="muted">' + t('size') + ' ' + ltr(i.size) + colour + ' · ' + ltr(i.sku) + '</div>' +
           (i.archived ? '<div class="wo-warn">' + t('wo_archived') + '</div>' : '') +
-          stock + '</div>' +
+          stock + printOf(i) + '</div>' +
         '<div class="wo-qty">×' + ltr(i.qty) + '</div>' +
         '<div class="wo-price">' + money(i.price, i.currency, i.minorExp) +
           (differs ? '<div class="wo-warn">' + t('wo_shown') + ' ' + money(sh.price, sh.currency, sh.minorExp != null ? sh.minorExp : (sh.currency === 'USD' ? 2 : 0)) + '</div>' : '') +
         '</div></div>';
     }).join('');
-    return '<div class="wo-block"><div class="wo-k">' + svg(ICON.box) + t('wo_items') + '</div>' + rows + '</div>';
+    var job = o.printJob
+      ? '<div class="wo-pjob">' + svg(ICON.shirt) + '<span>' + t('wo_pjob').replace('{job}', esc(o.printJob.id))
+          .replace('{stage}', t('wo_st_' + (o.printJob.stage || 'design'))) +
+          (o.printJob.deadline ? ' · ' + t('wo_pjob_by').replace('{d}', esc(fmtDate(new Date(o.printJob.deadline)))) : '') + '</span>' +
+          ' <button type="button" class="btn btn-ghost btn-sm" data-act="wo-job" data-id="' + esc(o.printJob.id) + '">' + t('wo_open_job') + '</button></div>'
+      : '';
+    var warn = bad && o.state === 'new'
+      ? '<div class="wo-warn wo-pwarn">' + t('wo_pl_cannot').replace('{n}', nf(bad)) + '</div>' : '';
+    return '<div class="wo-block"><div class="wo-k">' + svg(ICON.box) + t('wo_items') + '</div>' + warn + rows + job + '</div>';
   }
 
   function printsHtml(o) {

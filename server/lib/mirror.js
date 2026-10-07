@@ -49,7 +49,7 @@ import { hostname } from 'node:os';
 import * as DB from './db.js';
 import * as SB from './supabase.js';
 import * as Vault from './credvault.js';
-import { lagColumn } from './mirror-lag.js';
+import { snapshotForPg, lagColumn } from './mirror-lag.js';
 
 /* ------------------------------------------------------------------ logging
    { tick, warn, head, line } — the CLI prints them in colour; the worker
@@ -143,6 +143,8 @@ const WHOLE_KEYS = {
   currencies: ['code'], warehouses: ['id'], config: ['key'],
   role_permissions: ['role', 'perm'], label_templates: ['id'], clubs: ['code'],
   categories: ['id'],
+  /* 071 — the print kits and their fonts. */
+  print_fonts: ['id'], print_kits: ['id'],
   user_permissions: ['user_id', 'perm'],
   notification_reads: ['user_id', 'key'], users: ['id']
 };
@@ -222,7 +224,8 @@ function parseSlots(log, raw, id) {
 }
 
 async function syncSettings(log, want) {
-  const doing = ['config', 'role_permissions', 'label_templates', 'categories', 'user_permissions'].filter(want);
+  const doing = ['config', 'role_permissions', 'label_templates', 'categories', 'user_permissions',
+                 'print_fonts', 'print_kits'].filter(want);
   if (!doing.length) return;
   log.head('Settings');
   if (want('config')) await guard(log, 'config', () => mirrorTable(log, 'config', ['key']));
@@ -261,6 +264,24 @@ async function syncSettingsTail(log, want) {
       if (!MISSING_TABLE.test(String(e.message))) throw e;
       log.warn('Supabase is missing categories — skipped, everything else still went up.');
       log.line('    Run server/supabase/025_categories.sql in the SQL editor.');
+    }
+  }
+  /* 071 — the print kits and their fonts, fonts first (a kit names one).
+     Their own guard: a mirror without 041 skips them BY NAME and every other
+     setting still lands; their hash does not move, so they go up on the
+     first run after 041. */
+  for (const t of ['print_fonts', 'print_kits'].filter(want)) {
+    try {
+      await mirrorTable(log, t, ['id'], t === 'print_fonts'
+        ? (r) => ({ ...r, archived: !!r.archived })
+        : (r) => ({ ...r, archived: !!r.archived, featured: !!r.featured, is_default: !!r.is_default }));
+      denied.delete(t);
+    } catch (e) {
+      if (noteRefused(log, t, e)) continue;
+      if (!MISSING_TABLE.test(String(e.message))) throw e;
+      log.warn('Supabase is missing ' + t + ' — skipped, everything else still went up.');
+      log.line('    Run server/supabase/041_print_kits.sql in the SQL editor.');
+      break;
     }
   }
 }
@@ -412,7 +433,7 @@ async function replaceChildren(log, table, col, parentId, rows) {
 
 export const TABLES = {
   products: { parseKey: numKey, fetchLocal: byId('products'),
-              mapRow: (r) => ({ ...r, hidden: !!r.hidden, on_web: !!r.on_web }) },
+              mapRow: (r) => ({ ...r, hidden: !!r.hidden, on_web: !!r.on_web, printable: !!r.printable }) },
   variants: {
     parseKey: (rowId) => ({ sku: rowId }),
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM variants WHERE sku = ?').get(key.sku),
@@ -506,7 +527,7 @@ export const TABLES = {
     afterUpsert: async (log, localRow) => {
       for (const t of ['print_job_lines', 'print_job_stages']) {
         const rows = DB.get().prepare(`SELECT * FROM ${t} WHERE job_id = ?`).all(localRow.id);
-        await replaceChildren(log, t, 'job_id', localRow.id, rows);
+        await replaceChildren(log, t, 'job_id', localRow.id, t === 'print_job_lines' ? rows.map(snapshotForPg) : rows);
       }
     }
   },

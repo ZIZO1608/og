@@ -92,7 +92,12 @@ const COLS =
           ${DUE} AS due, ${PAID} AS paid, COALESCE(op.pending, 0) AS pending,
           COALESCE(rt.back, 0) AS returned, rt.outcome AS return_outcome,
           COALESCE(rt.n, 0) AS return_count,
-          h.status AS handover_status, h.kind AS handover_kind`;
+          h.status AS handover_status, h.kind AS handover_kind,
+          ${Orders.PRINT_OPEN} AS print_open,
+          (SELECT pj.id FROM print_jobs pj WHERE pj.sale_id = d.sale_id
+            ORDER BY (pj.stage = 'done'), pj.created_at LIMIT 1) AS print_job_id,
+          (SELECT pj.stage FROM print_jobs pj WHERE pj.sale_id = d.sale_id
+            ORDER BY (pj.stage = 'done'), pj.created_at LIMIT 1) AS print_job_stage`;
 
 const FROM =
   `FROM deliveries d
@@ -180,8 +185,48 @@ function shape(r, driver = false) {
     handoverKind: r.handover_kind || null,
     handoverStatus: r.handover_status || null,
     /* The customer's link to their own receipt. Not the driver's to hand out. */
-    publicToken: driver ? null : (r.public_token || null)
+    publicToken: driver ? null : (r.public_token || null),
+
+    /* 071 — the print this parcel waits for. printWaiting is the hold the
+       server enforces (Orders.PRINT_OPEN): true while a print job on the sale
+       is not done and nobody has overridden it. */
+    printJobId: r.print_job_id || null,
+    printStage: r.print_job_stage || null,
+    printWaiting: (r.print_open || 0) > 0 && !r.print_override,
+    printOverride: parseOverride(r.print_override)
   };
+}
+
+function parseOverride(raw) {
+  if (!raw) return null;
+  try { const o = JSON.parse(raw); return o && typeof o === 'object' ? o : null; } catch { return null; }
+}
+
+/* 071 — "send it anyway": an owner lifts the print hold on ONE parcel, with
+   a reason, and it is written where the parcel is (deliveries.print_override,
+   mirrored) and in the change log. The owner's alone — the shop's owner and
+   the developers, by role — because sending a customer a jersey without the
+   name they paid for is a decision about that customer, not a step in the
+   day's work. Lifting it changes nothing else: the parcel still goes out
+   through the ordinary buttons. */
+export function overridePrint(id, { reason }, user) {
+  if (!user || !['owner', 'developer'].includes(user.role)) {
+    throw fail('only the owner can send a parcel before its print is done', 'forbidden');
+  }
+  const why = String(reason || '').replace(/\s+/g, ' ').trim();
+  if (!why) throw fail('say why it may go before the print is done', 'bad_request');
+  return tx((d) => {
+    const row = d.prepare(`SELECT d.id, d.sale_id, d.status, d.print_override, ${Orders.PRINT_OPEN} AS print_open
+                             FROM deliveries d WHERE d.id = ?`).get(id);
+    if (!row) throw fail('no such delivery', 'not_found');
+    if (row.status !== 'waiting') throw fail('it has already left', 'bad_status');
+    if (!row.print_open) throw fail('there is no print to wait for', 'bad_request');
+    const o = { reason: why.slice(0, 300), by: user.id, byName: user.name || null, at: nowIso() };
+    d.prepare('UPDATE deliveries SET print_override = ? WHERE id = ?').run(JSON.stringify(o), id);
+    logChange('deliveries', String(id), 'update', user.id, 'print override: ' + o.reason);
+    const after = d.prepare(`${COLS} ${FROM} WHERE d.id = ?`).get(id);
+    return shape(attachItems([after])[0], false);
+  });
 }
 
 /* What is in the bag. Enough to check at the door, without the cost columns —
@@ -578,6 +623,16 @@ export function update(id, {
       }
 
       sets.push('status = ?'); args.push(status);
+
+      /* 071 — leaving the counter, by any door, waits for the print. */
+      if (row.status === 'waiting' && (status === 'out' || status === 'delivered')) {
+        const p = d.prepare(`SELECT ${Orders.PRINT_OPEN} AS n FROM deliveries d WHERE d.id = ?`).get(id);
+        if (p.n > 0 && !row.print_override) {
+          const job = d.prepare("SELECT id, stage FROM print_jobs WHERE sale_id = ? AND stage <> 'done' ORDER BY created_at LIMIT 1").get(row.sale_id);
+          throw fail(`waiting for the print (${job ? job.id + ' · ' + job.stage : 'not done'}) — it can go once Yalla Wear has finished it`,
+                     'print_waiting', { jobId: job ? job.id : null, stage: job ? job.stage : null });
+        }
+      }
 
       if (status === 'out') {
         if (!will.driver_id && !will.company_id) {

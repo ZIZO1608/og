@@ -3650,3 +3650,98 @@ body:not([data-portal="yalla"]) .sn-line { display: flex; flex-wrap: wrap; gap: 
   body:not([data-portal="yalla"]) .wx-row { grid-template-columns: auto minmax(0, 1fr); }
   body:not([data-portal="yalla"]) .wx-btns { grid-column: 1 / -1; justify-content: flex-end; }
 }
+
+/* ==========================================================================
+   071 — PRINT KITS (js/printkits.js), and the print hold on the board
+   ========================================================================== */
+body:not([data-portal="yalla"]) .pk-rules { margin: -8px 0 16px; font-size: 13px; line-height: 1.6; }
+body:not([data-portal="yalla"]) .pk-tabs { margin: 0 0 16px; }
+body:not([data-portal="yalla"]) .pk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+body:not([data-portal="yalla"]) .pk-skel {
+  height: 300px; border-radius: 16px; background: linear-gradient(90deg, var(--card), var(--muted), var(--card));
+  background-size: 200% 100%; animation: cpn-shine 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { body:not([data-portal="yalla"]) .pk-skel { animation: none; } }
+body:not([data-portal="yalla"]) .pk-away-h { margin: 24px 0 12px; font-size: 15px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .pk-card { position: relative; display: grid; padding: 0; overflow: visible; }
+body:not([data-portal="yalla"]) .pk-card.has-menu { z-index: 5; }
+body:not([data-portal="yalla"]) .pk-card.is-away .pk-prev-btn { opacity: .5; }
+body:not([data-portal="yalla"]) .pk-prev-btn {
+  display: block; width: 100%; padding: 12px 12px 0; border: 0; background: transparent; cursor: pointer;
+  border-start-start-radius: 16px; border-start-end-radius: 16px;
+}
+body:not([data-portal="yalla"]) .pk-svg { display: block; width: 100%; height: auto; max-height: 260px; }
+body:not([data-portal="yalla"]) .pk-svg-sm { width: 96px; flex: none; }
+body:not([data-portal="yalla"]) .pk-card-body { display: grid; gap: 4px; padding: 12px; }
+body:not([data-portal="yalla"]) .pk-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+body:not([data-portal="yalla"]) .pk-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+body:not([data-portal="yalla"]) .pk-more { position: relative; }
+body:not([data-portal="yalla"]) .pk-more .btn { min-width: 44px; font-weight: 800; }
+body:not([data-portal="yalla"]) .pk-menu {
+  position: absolute; inset-inline-end: 0; top: calc(100% + 6px); z-index: 30; min-width: 220px;
+  display: grid; padding: 6px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--popover);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+}
+body:not([data-portal="yalla"]) .pk-mitem {
+  min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--foreground);
+  font: 600 14px/1.2 inherit; font-family: inherit; text-align: start; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .pk-mitem:hover { background: var(--accent); }
+body:not([data-portal="yalla"]) .pk-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; margin-bottom: 16px; }
+body:not([data-portal="yalla"]) .pk-fonts { padding: 0; }
+body:not([data-portal="yalla"]) .pk-font {
+  display: grid; grid-template-columns: minmax(160px, 260px) minmax(0, 1fr) auto; align-items: center; gap: 16px;
+  padding: 16px; border-bottom: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .pk-font:last-child { border-bottom: 0; }
+body:not([data-portal="yalla"]) .pk-font.is-away { opacity: .6; }
+body:not([data-portal="yalla"]) .pk-sample {
+  padding: 8px 12px; border-radius: 10px; background: #1b1b1f; color: #fff; font-size: 32px; line-height: 1.2;
+  letter-spacing: 0; direction: ltr; text-align: center; white-space: nowrap; overflow: hidden;
+}
+body:not([data-portal="yalla"]) .pk-sample.is-none { font-size: 13px; font-weight: 600; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .pk-font-meta { display: grid; gap: 4px; min-width: 0; }
+body:not([data-portal="yalla"]) .pk-font-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+body:not([data-portal="yalla"]) .pk-foot { margin-top: 12px; }
+body:not([data-portal="yalla"]) .pk-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 24px; align-items: start; }
+body:not([data-portal="yalla"]) .pk-form-fields { display: grid; gap: 12px; min-width: 0; }
+body:not([data-portal="yalla"]) .pk-form-prev { position: sticky; top: 0; display: grid; gap: 12px; }
+body:not([data-portal="yalla"]) .pk-row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+body:not([data-portal="yalla"]) .pk-row2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+body:not([data-portal="yalla"]) .pk-range input[type=range] { width: 100%; accent-color: var(--brand); min-height: 32px; }
+body:not([data-portal="yalla"]) .pk-colour-row { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+body:not([data-portal="yalla"]) .pk-colour-row input[type=color] {
+  width: 44px; height: 36px; padding: 0; border: 1px solid var(--border-strong); border-radius: 8px; background: transparent;
+}
+body:not([data-portal="yalla"]) .pk-tick { display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600; cursor: pointer; }
+body:not([data-portal="yalla"]) .pk-tick input { width: 18px; height: 18px; accent-color: var(--brand); }
+body:not([data-portal="yalla"]) .pk-err { margin-bottom: 8px; color: var(--destructive); font-weight: 600; font-size: 13px; }
+body:not([data-portal="yalla"]) .pk-pe { display: grid; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .pk-pe .pe-sec-h { font-weight: 700; }
+body:not([data-portal="yalla"]) .pk-pe-kit { display: flex; align-items: center; gap: 12px; padding: 8px; border: 1px solid var(--border); border-radius: 12px; }
+body:not([data-portal="yalla"]) .pk-pe-kit.is-none { border-style: dashed; padding: 12px; }
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .pk-form { grid-template-columns: minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .pk-form-prev { position: static; order: -1; }
+  body:not([data-portal="yalla"]) .pk-form-prev .pk-svg { max-height: 220px; }
+  body:not([data-portal="yalla"]) .pk-row3 { grid-template-columns: minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .pk-font { grid-template-columns: minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .pk-font-acts { justify-content: flex-start; }
+  body:not([data-portal="yalla"]) .pk-font-acts .btn { min-height: 44px; }
+  body:not([data-portal="yalla"]) .pk-banner { flex-direction: column; align-items: stretch; }
+}
+
+/* The print hold: on the board's card, in the order dialog, on a website order. */
+body:not([data-portal="yalla"]) .dlb-c-print,
+body:not([data-portal="yalla"]) .dk-ord-print {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 12px; border-radius: 10px;
+  background: rgba(245, 158, 11, .12); color: #f5a524; font-size: 13px; font-weight: 600;
+}
+body:not([data-portal="yalla"]) .dlb-c-print svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; }
+body:not([data-portal="yalla"]) .dlb-c-print.is-over,
+body:not([data-portal="yalla"]) .dk-ord-print.is-over { background: var(--subtle); color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .wo-pline { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+body:not([data-portal="yalla"]) .wo-pline svg,
+body:not([data-portal="yalla"]) .wo-pjob svg { width: 14px; height: 14px; flex: none; }
+body:not([data-portal="yalla"]) .wo-pjob { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; font-weight: 600; }
+body:not([data-portal="yalla"]) .wo-pwarn { margin: 0 0 8px; }

@@ -480,9 +480,34 @@ function openProductDrawer(pid) {
    stored in cents; SYP is whole lira both ways. Sizes and stock are not here
    on purpose — stock moves through the warehouse's own log, never by typing
    over a number. */
+/* 071 — the product form can be put aside while the kit form runs over it
+   (openModal shows one dialog at a time) and brought back with what was
+   typed. stash() answers a function that reopens it; PrintKits uses it for
+   "Create kit". */
+var PE_OPEN = null;
+var ProductForm = {
+  stash: function () {
+    if (!PE_OPEN) return null;
+    var pid = PE_OPEN;
+    var ids = ['peName', 'peType', 'pePrice', 'peCost', 'peBrand', 'peMade', 'peShelf'];
+    var vals = {};
+    ids.forEach(function (id) { var el = document.getElementById(id); if (el) vals[id] = el.value; });
+    var web = document.getElementById('peWeb');
+    var webOn = web ? web.checked : null;
+    return function (then) {
+      openProductEditor(pid);
+      ids.forEach(function (id) { var el = document.getElementById(id); if (el && vals[id] !== undefined) el.value = vals[id]; });
+      var w2 = document.getElementById('peWeb');
+      if (w2 && webOn !== null) w2.checked = webOn;
+      if (then) then();
+    };
+  }
+};
+
 function openProductEditor(pid) {
   var p = DB.product(pid);
   if (!p) return;
+  PE_OPEN = pid;
   if (!allow('product.write')) { toast(t('edit_product'), t('no_access'), 'err'); return; }
 
   /* 067 — every price is dollars; the lira follows the rate. A product
@@ -522,6 +547,9 @@ function openProductEditor(pid) {
          under — two opposite claims wearing one label. */
       '<label class="field pe-check"><input type="checkbox" id="peWeb"' + (p.onWeb !== false ? ' checked' : '') + '> ' +
         '<span>' + t('pr_on_web') + '</span></label>' +
+      /* 071 — the Print section: does the website sell a name and number on
+         it, and in which kit. */
+      (typeof PrintKits !== 'undefined' ? PrintKits.productSection(p) : '') +
       '<div class="wh-fold"><button class="wh-more-h" type="button" data-act="pe-more">' +
         t('wh_more_fields') + '<span class="wh-more-x">+</span></button>' +
         '<div class="wh-fold-b" id="peMore" hidden>' +
@@ -537,7 +565,8 @@ function openProductEditor(pid) {
           '<button class="btn btn-primary" data-act="prod-edit-save" data-id="' + p.id + '">' + t('save') + '</button>',
     onOpen: function () {
       setTimeout(function () { var n = document.getElementById('peName'); if (n) { n.focus(); n.select(); } }, 30);
-    }
+    },
+    onClose: function () { PE_OPEN = null; }
   });
 }
 
@@ -573,6 +602,10 @@ function readProductEditor() {
   if (price !== null) body.selling_price = price;
   var cost = minor(g('peCost'));
   if (cost !== null) body.cost_price = cost;
+  /* 071 — printable and the kit, from the Print section. */
+  var pf = typeof PrintKits !== 'undefined' ? PrintKits.productFields() : null;
+  if (pf && pf.error) body._printError = pf.error;
+  else if (pf) { body.printable = pf.printable; body.print_kit_id = pf.print_kit_id; }
   return body;
 }
 /* ---- on the website: the description and "goes well with"  (070) ---------
