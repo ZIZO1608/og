@@ -176,7 +176,8 @@ export function build(user, { from, to, tz }) {
     const units = d.prepare(
       `SELECT COALESCE(SUM(i.qty), 0) AS units
          FROM sale_items i JOIN sales s ON s.id = i.sale_id
-        WHERE s.voided = 0 AND s.at >= ? AND s.at < ?`
+        WHERE s.voided = 0 AND s.at >= ? AND s.at < ?
+          AND i.sku NOT LIKE 'SVC-%'`   /* stage 1b: pieces are goods; the print is not one */
     ).get(...args).units;
 
     /* The one comparison: the same length of time immediately before. */

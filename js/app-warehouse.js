@@ -765,6 +765,9 @@ function whAddTab() {
     (seesCost() ? '' :
       '<div class="partner-note">' + t('wh_cost_later') + '</div>') +
 
+    /* Stage 1b — the Print section, as on the product editor. */
+    (typeof PrintKits !== 'undefined' ? PrintKits.formSection() : '') +
+
     /* ---- everything rarer, behind one fold ---- */
     '<div class="wh-fold' + (whAddMoreOpen() ? ' open' : '') + '">' +
       '<button class="wh-more-h" data-act="wh-add-more">' + t('wh_more_fields') +

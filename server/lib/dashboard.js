@@ -355,6 +355,7 @@ export function build(user, { from, to, tz, monthsFrom }) {
          JOIN sales s ON s.id = i.sale_id
          LEFT JOIN products p ON p.id = i.product_id
         WHERE s.voided = 0 AND s.at >= ? AND s.at < ?
+          AND i.sku NOT LIKE 'SVC-%'   -- stage 1b: a print is not a best seller
         GROUP BY i.product_id, COALESCE(p.name, i.name)
         ORDER BY units DESC, COALESCE(p.name, i.name)
         LIMIT 6`

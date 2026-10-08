@@ -32,6 +32,23 @@ import * as Cash from './cashbook.js';
 import * as Loans from './loans.js';
 import * as Scope from './scope.js';
 import * as Coupons from './coupons.js';
+import * as Partner from './partner.js';
+
+/* ------------------------------------------------------------- services
+   Stage 1b (071) — A SALE LINE THAT IS NOT A SHOE. The name and number
+   printed on a jersey is charged on the sale it belongs to, as its own line,
+   so the total, what is still owed, what the driver collects, the receipt and
+   every report carry it — it used to ride on the print job alone, which the
+   order's total never read. It moves no stock and has no variant: its sku is
+   a fixed code that no product can have ('SVC-' is never minted for one), and
+   sale_items.sku has no foreign key. Priced HERE, like a shoe, from the
+   shop's own settings (print.unit_price in print.unit_currency, converted
+   the way a dollar shoe is), with what Yalla Wear charges as its cost; the
+   caller says only how many. */
+export const SERVICES = {
+  print: { sku: 'SVC-PRINT', name: 'Name & number print · طباعة اسم ورقم' }
+};
+export const isService = (sku) => typeof sku === 'string' && sku.startsWith('SVC-');
 
 /* The address the printed QR points at.
 
@@ -153,7 +170,9 @@ export function record({
      basket this function priced, and counted in this transaction; the
      browser's number for it is never read. `couponChannel` says which
      door it came through (till · desk · web) for the Coupons page. */
-  couponCode = null, couponChannel = 'till'
+  couponCode = null, couponChannel = 'till',
+  /* Stage 1b — [{ code: 'print', qty }]: lines that are not goods. */
+  services = []
 }, outer = null) {
   if (!Array.isArray(lines) || !lines.length) throw new Error('a sale needs at least one line');
   if (!whId) throw new Error('a sale must say which place it came out of');
@@ -326,6 +345,37 @@ export function record({
       subtotal += unitPrice * qty;
     }
 
+    /* ---- the services (stage 1b) ------------------------------------------
+       After the goods and kept out of `subtotal` until the very end: the
+       cashier's discount ceiling and a coupon are about the GOODS (the
+       website's coupon is checked against the basket the same way), and a
+       print is the shop passing on what Yalla Wear does. */
+    let svcTotal = 0;
+    if (!Array.isArray(services)) throw new Error('services must be a list');
+    for (const s of services) {
+      const def = s && SERVICES[s.code];
+      if (!def) throw Object.assign(new Error(`no such service: ${s && s.code}`), { code: 'bad_service' });
+      const qty = Number(s.qty);
+      if (!Number.isInteger(qty) || qty <= 0 || qty > 500) {
+        throw Object.assign(new Error('a service quantity must be a whole number from 1 to 500'), { code: 'bad_service' });
+      }
+      const px = Partner.webPrices(d);
+      if (!px.unit) {
+        throw Object.assign(new Error('the print price is not set — Settings → Website print price'), { code: 'print_price_unset' });
+      }
+      const unitPrice = convert(px.unit.amount, px.unit.currency, settle, lineRate(px.unit.currency));
+      /* What Yalla Wear charges is kept in the SHOP's base currency (the till's
+         460 lira) — px.currency, not `base` above, which is the rate's USD. */
+      const unitCost = convert(px.cost, px.currency, settle, lineRate(px.currency));
+      priced.push({
+        sku: def.sku, productId: null, name: def.name, size: null,
+        qty, unitPrice, unitCost,
+        srcCurrency: px.unit.currency, srcUnitPrice: px.unit.amount,
+        colour: null, colourAr: null, service: s.code
+      });
+      svcTotal += unitPrice * qty;
+    }
+
     /* The cashier's discount (capped below) and the coupon's cut (not — it
        is the owner's rule, not a favour at the counter; lib/coupons.js). The
        sale row carries their sum in `discount`, the one discount column
@@ -407,8 +457,8 @@ export function record({
        issued them, and paying a debt is not a favour that needs a manager. So
        the points ride on top of the ceiling, and only the one limit that is
        arithmetic rather than policy applies to the pair. */
-    if (disc + pointsValue > subtotal) {
-      const room = subtotal - disc;
+    if (disc + pointsValue > subtotal + svcTotal) {
+      const room = subtotal + svcTotal - disc;
       const e = new Error(
         `Those points are worth more than what is left to pay. ` +
         `The most that can come off this sale is ${room}.`);
@@ -417,7 +467,7 @@ export function record({
       throw e;
     }
 
-    const total = subtotal - disc - pointsValue;
+    const total = subtotal + svcTotal - disc - pointsValue;
 
     /* ---- take the stock -------------------------------------------------- */
     /* Before writing the invoice: if this throws InsufficientStock the whole
@@ -504,7 +554,7 @@ export function record({
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(saleId, at, cust ? cust.id : null, cust ? cust.name : null,
           userId ?? null, whId, payment || 'cash',
-          settle, subtotal, disc, total, rate, base, at, token, wantPoints,
+          settle, subtotal + svcTotal, disc, total, rate, base, at, token, wantPoints,
           earnedForRow, ref, openShift ? openShift.id : null);
 
     const insLine = d.prepare(
@@ -564,7 +614,7 @@ export function record({
     }
 
     const result = {
-      id: saleId, at, currency: settle, subtotal, discount: disc, total,
+      id: saleId, at, currency: settle, subtotal: subtotal + svcTotal, discount: disc, total,
       fxRate: rate, fxBase: base, whId,
       customerId: cust ? cust.id : null,
       customerName: cust ? cust.name : null,
@@ -830,6 +880,8 @@ export function voidSale(id, { reason, userId }) {
 
     const items = d.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(id);
     for (const it of items) {
+      /* A service line (stage 1b) took nothing off a shelf. */
+      if (isService(it.sku)) continue;
       Stock.apply(d, {
         sku: it.sku, whId: s.wh_id, delta: it.qty, type: 'returned',
         note: `voided ${id}${reason ? ': ' + reason : ''}`,

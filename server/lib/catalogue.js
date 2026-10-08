@@ -739,6 +739,9 @@ export function createWithVariants({
   name, type, brand, madeIn, colorway, imageBg, imageInitials,
   currency, costPrice, sellingPrice, shelfZone,
   sizes = [], colours = null, whId = 'store', userId,
+  /* Stage 1b — the Add-product form's Print section: printable, and the kit
+     (null = the default kit). Checked the way update() checks them. */
+  printable = false, printKitId = null,
   /* Nothing sets this any more — the script that planted demo rows is gone.
      The column stays because rows it marked are still in the database,
      hidden rather than deleted so the invoices naming them still read.
@@ -786,13 +789,13 @@ export function createWithVariants({
       `INSERT INTO products
          (name, type, brand, made_in, colorway, image_bg, image_initials,
           currency, cost_price, selling_price, shelf_zone, hidden, demo,
-          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
+          printable, print_kit_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`
     ).run(
       String(name).trim(), type, brand ?? null, madeIn ?? null, colorway ?? null,
       imageBg ?? null, imageInitials ?? initialsFor(name),
       currency, costPrice ?? 0, sellingPrice ?? 0, shelfZone ?? null,
-      demo ? 1 : 0, at, at
+      demo ? 1 : 0, printable ? 1 : 0, printable ? cleanKitId(printKitId) : null, at, at
     );
 
     const productId = Number(info.lastInsertRowid);

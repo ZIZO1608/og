@@ -1664,6 +1664,11 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
       /* 068 — the code only; what it takes off is worked out in the sale. */
       couponCode: typeof b.couponCode === 'string' ? b.couponCode : null,
       couponChannel: 'till',
+      /* Stage 1b — the till's print: how many shirts, never a price. Only the
+         one service there is. */
+      services: Array.isArray(b.services)
+        ? b.services.filter((s) => s && s.code === 'print').map((s) => ({ code: 'print', qty: Number(s.qty) }))
+        : [],
       /* The till generates this. On a retry after a dropped connection the
          same id comes back and returns the original invoice rather than
          selling everything a second time. */
@@ -1681,6 +1686,10 @@ router.add('POST /api/sales', requirePerm('sell', async (ctx) => {
        sendError's fifth argument, which is HTTP headers, so none of it ever
        reached the browser and the cashier got a bare sentence. sendErrorDetail
        puts it in the body, where js/api.js already reads it as err.detail. */
+    /* Stage 1b — the print the till asked to charge could not be priced. */
+    if (e.code === 'print_price_unset' || e.code === 'bad_service') {
+      return sendError(ctx.res, e.code === 'print_price_unset' ? 409 : 400, e.code, e.message);
+    }
     if (e.code === 'insufficient_stock') {
       return sendErrorDetail(ctx.res, 409, 'insufficient_stock',
         `Only ${e.available} of ${e.sku} left — the other till may have just sold it.`,
@@ -1880,6 +1889,10 @@ function orderFail(res, e) {
   if (e.code === 'bad_settings') {
     return sendErrorDetail(res, 400, 'bad_settings', e.message, { path: e.path ?? null });
   }
+  /* Stage 1b — a print the sale cannot charge. */
+  if (e.code === 'print_price_unset' || e.code === 'bad_service') {
+    return sendError(res, e.code === 'print_price_unset' ? 409 : 400, e.code, e.message);
+  }
   /* 071 — a printed shirt on a website order the shop cannot print. */
   if (e.code === 'bad_print') {
     return sendErrorDetail(res, 409, 'bad_print', e.message, { lines: e.lines || [] });
@@ -1967,6 +1980,9 @@ router.add('POST /api/orders', requirePerm('delivery.desk', async (ctx) => {
       /* 068 — a coupon: typed in the desk, or the one the website order
          carried (Desk.fromWeb puts it in the draft). Checked in the sale. */
       couponCode: str(b.couponCode),
+      /* Stage 1b — a website order's printed shirts are charged on its sale,
+         counted from the order itself, never from the request. */
+      services: webRef ? WebOrders.printServices(webRef) : [],
       opId: webRef ? WebOrders.opIdFor(webRef) : str(b.opId)
     });
     if (reqRef && !out.replayed) Requests.markAccepted(reqRef, out.sale.id, ctx.user.id);

@@ -39,8 +39,26 @@ var POS = (function () {
     print: { on: false, sel: {}, priority: 'normal', deadline: null }
   };
 
-  var PRINT_UNIT_PRICE = 950;     // charged to the customer, per piece (new pound)
   var PRINT_UNIT_COST  = 460;     // paid to Yalla Wear, per piece (new pound)
+
+  /* STAGE 1b — THE PRINT IS CHARGED ON THE SALE, at the shop's one print
+     price (Settings → Website print price: print.unit_price in
+     print.unit_currency, $5 a jersey). It used to be a fixed 950 here that
+     the till drew beside the basket and never added to it, so the customer
+     paid for the shoes and the print rode on the job alone. Now the server
+     prices a "Name & number print" line inside the sale (Sales.SERVICES);
+     this is the till's preview of it, at today's rate — the same arithmetic
+     as a dollar shoe. Null: no print price is set, and nothing is charged. */
+  function printUnit() {
+    var v = CONFIG.WEB_PRINT_PRICE;
+    if (!(v > 0)) return null;
+    if (CONFIG.WEB_PRINT_CUR === 'USD') return Math.round(v / 100 * (CONFIG.EXCHANGE_RATE || 1));
+    return v;
+  }
+  function printCharge() {
+    var u = printUnit();
+    return S.print.on && u ? printPicks().length * u : 0;
+  }
 
   function isoAhead(n) {
     var d = daysAhead(n);
@@ -60,8 +78,12 @@ var POS = (function () {
     var couponCut = couponCutFor(subtotal);
     var pointsValue = S.pointsUsed * CONFIG.LOYALTY_POINT_VALUE;
     var discount = Math.min(subtotal, manual + couponCut);
-    var total = Math.max(0, subtotal - discount - pointsValue);
-    return { subtotal: subtotal, manual: manual, couponCut: couponCut, discount: discount, pointsValue: pointsValue, total: total };
+    /* The print is on top of the goods; discounts and coupons are about the
+       goods (the server's rule, Sales.record). */
+    var print = printCharge();
+    var total = Math.max(0, subtotal + print - discount - pointsValue);
+    return { subtotal: subtotal, manual: manual, couponCut: couponCut, discount: discount, pointsValue: pointsValue,
+             print: print, total: total };
   }
 
   function cartCount() { return S.cart.reduce(function (a, l) { return a + l.qty; }, 0); }
@@ -541,6 +563,7 @@ var POS = (function () {
     var x = totals();
     var h = '<div class="totals">' +
       '<div class="tr"><span>' + t('subtotal') + ' · ' + cartCount() + ' ' + t('items').toLowerCase() + '</span><span>' + money(x.subtotal) + '</span></div>';
+    if (x.print) h += '<div class="tr"><span>' + t('svc_print') + ' · ' + printPicks().length + '</span><span>' + money(x.print) + '</span></div>';
     if (x.manual) h += '<div class="tr disc"><span>' + t('discount') + '</span><span>− ' + money(x.manual) + '</span></div>';
     if (x.couponCut) h += '<div class="tr disc"><span>' + t('coupon') + ' <bdi dir="ltr">' + esc(S.coupon.code) + '</bdi></span><span>− ' + money(x.couponCut) + '</span></div>';
     if (x.pointsValue) h += '<div class="tr disc"><span>' + t('loyalty') + '</span><span>− ' + money(x.pointsValue) + '</span></div>';
@@ -720,9 +743,11 @@ var POS = (function () {
       h += '</div>';
 
       var n = printPicks().length;
+      var unit = printUnit();
       if (n) {
-        h += '<div class="pr-count muted small num">' + n + ' × ' + money(PRINT_UNIT_PRICE) +
-          ' = ' + money(n * PRINT_UNIT_PRICE) + '</div>';
+        h += unit
+          ? '<div class="pr-count muted small num">' + n + ' × ' + money(unit) + ' = ' + money(n * unit) + ' · ' + t('svc_print_on_sale') + '</div>'
+          : '<div class="pr-count small warn">' + t('svc_print_unset') + '</div>';
       }
 
       /* Priority as the site's own segmented pill, not the OS dropdown — two
@@ -1048,6 +1073,8 @@ var POS = (function () {
          discount and nothing ever came off anyone's balance, so the same 500
          points bought something on every visit. */
       pointsUsed: S.pointsUsed,
+      /* Stage 1b — how many shirts are printed; the server prices them. */
+      services: S.print.on && printPicks().length && printUnit() ? [{ code: 'print', qty: printPicks().length }] : [],
       opId: opId
     })
       .then(function (data) {
@@ -1174,8 +1201,11 @@ var POS = (function () {
       items: S.cart.map(function (l) {
         return { sku: l.sku, productId: l.productId, name: l.name, type: l.type,
                  size: l.size, qty: l.qty, unitPrice: l.price, unitCost: l.cost };
-      }),
-      subtotal: x.subtotal,
+      }).concat((server.items || []).filter(function (i) { return /^SVC-/.test(i.sku || ''); }).map(function (i) {
+        /* Stage 1b — the print line, as the server priced it. */
+        return { sku: i.sku, productId: null, name: i.name, type: null, size: null, qty: i.qty, unitPrice: i.unitPrice, unitCost: 0 };
+      })),
+      subtotal: server.subtotal != null ? server.subtotal : x.subtotal + x.print,
       /* The server's figures where it gave them: it worked the coupon out
          itself (068), and the receipt must say what was charged. */
       discount: server.discount != null ? server.discount : x.discount,
@@ -1317,7 +1347,12 @@ var POS = (function () {
         qty: klines.length,
         priority: S.print.priority,
         deadline: new Date(pdate + 'T12:00:00'),
-        price: klines.length * PRINT_UNIT_PRICE,
+        /* What the sale charged for it (the server's line), so the job and
+           the receipt say the same number. */
+        price: (function () {
+          var svc = (server.items || []).filter(function (i) { return i.sku === 'SVC-PRINT'; })[0];
+          return svc ? svc.unitPrice * svc.qty : 0;
+        })(),
         cost: klines.length * PRINT_UNIT_COST,
         /* Straight onto Yalla Wear's desk, in the same request that creates
            the job. It used to be two — create, then send at an id the
@@ -1461,6 +1496,8 @@ var POS = (function () {
       if (S.print.sel[k]) delete S.print.sel[k];
       else S.print.sel[k] = { name: '', num: '' };
       paintPrintBox();
+      /* The print is on the total now (stage 1b). */
+      paintTotals();
     },
 
     'disc-mode': function (el) { S.discount.mode = el.getAttribute('data-m'); paintFoot(); },

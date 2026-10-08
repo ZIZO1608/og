@@ -359,7 +359,10 @@ export function create({
   dest = {}, method, companyId = null, driverId = null, trackingNo = null,
   feeMode = null, fee = null, plan, payments = [],
   userId, unlimitedDiscount = false, opId = null,
-  couponCode = null
+  couponCode = null,
+  /* Stage 1b — lines that are not goods (Sales.SERVICES): a website order's
+     printed shirts, decided by the route from the order itself. */
+  services = []
 }) {
   if (!METHODS.includes(method)) throw fail('how is this order travelling?', 'bad_travel');
   if (!PLANS.includes(plan)) {
@@ -415,7 +418,8 @@ export function create({
     const sale = Sales.recordIn(d, {
       lines, whId: whId || s.wh, customerId, payment: 'order', discount, currency, note,
       userId, unlimitedDiscount, opId: null,
-      couponCode, couponChannel: channel === 'web' ? 'web' : 'desk'
+      couponCode, couponChannel: channel === 'web' ? 'web' : 'desk',
+      services
     });
 
     /* The shipping fee, in the sale's currency. Typed beats listed; a pickup
@@ -992,8 +996,11 @@ function refundOut(d, sale, s, { amount, currency, method, txnRef, note, userId,
 
 /* What is left to come back, per line: sold minus already returned. */
 export function returnable(saleId, d = get()) {
+  /* A service line (stage 1b — the print) is not something that comes back
+     in a bag; a refund for it is the owner's call, by hand. */
   const items = d.prepare(
-    `SELECT sku, name, size, qty, unit_price, colour, colour_ar FROM sale_items WHERE sale_id = ? ORDER BY id`
+    `SELECT sku, name, size, qty, unit_price, colour, colour_ar FROM sale_items
+      WHERE sale_id = ? AND sku NOT LIKE 'SVC-%' ORDER BY id`
   ).all(saleId);
   const done = {};
   for (const r of d.prepare(

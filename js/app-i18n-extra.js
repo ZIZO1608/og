@@ -4957,7 +4957,10 @@ var PRINTKITS_EN = {
   wo_pjob: 'Print job {job} · {stage}', wo_pjob_by: 'promised by {d}',
   err_bad_print: 'A printed shirt on this order cannot be printed as asked — see the order card.',
   err_print_waiting: 'It is waiting for its print — it can go once Yalla Wear has finished it.',
-  err_bad_kit: 'No such print kit.', err_kit_archived: 'That print kit is put away.'
+  err_bad_kit: 'No such print kit.', err_kit_archived: 'That print kit is put away.',
+  svc_print: 'Name & number print', svc_print_on_sale: 'on this sale',
+  svc_print_unset: 'The print price is not set (Settings → Website print price) — nothing is charged for it.',
+  err_print_price_unset: 'The print price is not set — Settings → Website print price.', err_bad_service: 'That line cannot be added to a sale.'
 };
 var PRINTKITS_AR = {
   nav_printkits: 'قوالب الطباعة',
@@ -5055,7 +5058,10 @@ var PRINTKITS_AR = {
   wo_pjob: 'طلب الطباعة {job} · {stage}', wo_pjob_by: 'موعود بـ {d}',
   err_bad_print: 'في قميص مطبوع بهالطلب ما منقدر نطبعه متل ما طلب — شوف كرت الطلب.',
   err_print_waiting: 'ناطر الطباعة — بيطلع لما تخلّص يلا وير.',
-  err_bad_kit: 'ما في هيك قالب طباعة.', err_kit_archived: 'هالقالب مخبّا.'
+  err_bad_kit: 'ما في هيك قالب طباعة.', err_kit_archived: 'هالقالب مخبّا.',
+  svc_print: 'طباعة اسم ورقم', svc_print_on_sale: 'على هالفاتورة',
+  svc_print_unset: 'سعر الطباعة مو محدّد (الإعدادات ← سعر الطباعة على الموقع) — ما رح ينحسب شي.',
+  err_print_price_unset: 'سعر الطباعة مو محدّد — الإعدادات ← سعر الطباعة على الموقع.', err_bad_service: 'هالسطر ما بينضاف لفاتورة.'
 };
 Object.keys(PRINTKITS_EN).forEach(function (k) { I18N.en[k] = PRINTKITS_EN[k]; });
 Object.keys(PRINTKITS_AR).forEach(function (k) { I18N.ar[k] = PRINTKITS_AR[k]; });

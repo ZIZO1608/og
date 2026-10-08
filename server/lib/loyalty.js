@@ -88,7 +88,8 @@ function earnedFor(d, customerId, r) {
     `SELECT COALESCE(SUM(i.qty), 0) AS n
        FROM sale_items i
        JOIN sales s ON s.id = i.sale_id
-      WHERE s.customer_id = ? AND s.voided = 0 AND s.total >= ?`
+      WHERE s.customer_id = ? AND s.voided = 0 AND s.total >= ?
+        AND i.sku NOT LIKE 'SVC-%'`
   ).get(customerId, r.minMinor).n;
 }
 
@@ -179,6 +180,7 @@ export function fullCards(r = rules()) {
                         FROM loyalty_redemptions GROUP BY customer_id) lr
                   ON lr.customer_id = s.customer_id
           WHERE s.voided = 0 AND s.customer_id IS NOT NULL AND c.archived = 0
+            AND i.sku NOT LIKE 'SVC-%'
             AND s.total >= ?
           GROUP BY s.customer_id
          HAVING n >= ?`

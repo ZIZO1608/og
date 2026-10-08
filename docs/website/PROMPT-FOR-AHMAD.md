@@ -1,10 +1,18 @@
-# OG Sports website ↔ OG System — connecting the orders (contract v1.5)
+# OG Sports website ↔ OG System — connecting the orders (contract v1.6)
 
 > **For Ahmad, and for the AI helping him build the OG Sports website.**
 > Paste this whole file in as the brief. It is the contract between the website and the
 > shop's system (OG System). The shop side is being built to exactly this. If something
 > here does not fit the website, ask before changing it. Do not work around it: both sides
 > have to agree.
+
+> **v1.6 (8 Oct 2026) — printed names and numbers.** A product that can take a print now carries
+> a **`print`** object (the font, the colours, where the name and number go, the price per
+> jersey, the rules), every other product `"print": null`. A printed shirt is sent as an item line
+> with `"print": { "name", "number", "kitId" }`, and the print is **charged on the order**. New:
+> **`web_print_styles`** (the styles to choose from), **`web_print_tracking`** (where a
+> signed-in customer's print is), and the rejection code **`bad_print`**. Everything is in §3b.
+> Run `server/supabase/041_print_kits.sql` first. Nothing was removed or renamed.
 
 > **v1.5 (29 Sep 2026) — descriptions, "goes well with", and the shop tells you when products
 > change.** Every product now carries **`description`** (`{en, ar}`, plain text, or `null`) and
@@ -332,6 +340,129 @@ Content-Type: application/json
 
 ---
 
+### 3b. Printed names and numbers (v1.6)
+
+The shop prints a **name and a number on the back of an adult jersey** (Yalla Wear prints it).
+The rules are fixed:
+
+- **Adult jerseys only, on the back only.** A product that can take a print carries a `print`
+  object; every other product has `"print": null`. Offer printing only where `print` is not null.
+- **A name and a number, always together.** Never one without the other.
+- **The name:** letters A–Z, space, dot `.`, apostrophe `'`, hyphen `-`. Upper case (the shop
+  upper-cases it anyway). At most `print.maxLetters` characters, spaces included (12 today).
+- **The number:** a whole number from 0 to 99.
+- **Price:** `print.price`, per jersey, in the same shape as a product's `prices` (5 USD today).
+- **Ready in** `print.turnaround.min`–`print.turnaround.max` days (5–7 today). Say so at checkout.
+
+#### The `print` object (on every product from `web_products` / `web_product`)
+
+```json
+"print": {
+  "kitId": 1,
+  "label": "OG Block",
+  "font": { "name": "OG Block", "url": "https://…/print-fonts/fonts/…-og-block.woff2", "weight": 400 },
+  "textColor": "#ffffff",
+  "outlineColor": null,
+  "outlineWidth": 0,
+  "shadowColor": null,
+  "shadowDx": 0,
+  "shadowDy": 0,
+  "nameSize": 34,
+  "nameY": 165,
+  "nameArc": 30,
+  "numberSize": 160,
+  "numberY": 345,
+  "price": { "USD": { "amount": 500, "minorExp": 2 }, "SYP": { "amount": 690, "minorExp": 0 } },
+  "maxLetters": 12,
+  "turnaround": { "min": 5, "max": 7 }
+}
+```
+
+- **`font.url`** is a WOFF2 file in a public bucket. Load it with
+  `@font-face { font-family: …; src: url(…) format('woff2'); font-weight: 1 1000; }` and draw
+  the text at **`font.weight`**. Two of the fonts are *variable* fonts (one file for every
+  weight), so the weight matters: "OG Modern" and "Syria" are drawn at 700. `url` can be
+  `null` for a moment after the shop adds a font; then draw with a plain bold sans-serif.
+- **`price` can be `null`** (the owner has not set a print price): show "Price confirmed by
+  phone", as for any print.
+- **Never show a cost.** There is none in the answer.
+
+**How to draw the shirt** (the shop's own preview draws exactly this, so the customer sees what
+the printer will print). Use a 400 × 440 SVG `viewBox` of the jersey's back:
+
+- **The name** sits on a curve: `M70 {nameY} Q200 {nameY − 2 × nameArc} 330 {nameY}`. Put it on
+  the curve with `<textPath>`, centred (`startOffset="50%"`, `text-anchor="middle"`), at font
+  size `nameSize`. A positive `nameArc` bows the name upwards in the middle.
+- **The number** is centred at x 200 with its baseline at `numberY`, font size `numberSize`.
+- **The outline** (when `outlineWidth` > 0): a stroke of `outlineColor`, width `2 × outlineWidth`,
+  painted under the fill (`paint-order: stroke`, `stroke-linejoin: round`).
+- **The shadow** (when `shadowColor` is set and `shadowDx`/`shadowDy` are not both 0): the same
+  text in `shadowColor`, moved by (`shadowDx`, `shadowDy`), drawn first.
+- Text colour `textColor`. The shirt's own colour is yours to choose.
+
+#### `web_print_styles` — the styles a customer may choose
+
+```
+POST /rest/v1/rpc/web_print_styles     { "p_key": "<website key>" }
+→ { "ok": true, "styles": [ <print object without "price">, … ], "version": "…" }
+```
+
+The featured kits, the default first. Offer them as "style" choices (OG Block, OG Classic, OG
+Modern today). The price is the product's own `print.price`. (The shop's server answers the same
+list at `GET /api/ext/print-styles` with the website key.)
+
+#### Sending a printed shirt in the order
+
+A printed shirt is an ordinary item line with a `print` beside it:
+
+```json
+"items": [
+  { "sku": "OG-061-L", "qty": 1, "print": { "name": "MESSI", "number": 10, "kitId": 12 } },
+  { "sku": "OG-057-42", "qty": 1 }
+]
+```
+
+- `qty` > 1 means that many shirts with the **same** name and number. For different names, send
+  separate lines.
+- `kitId` is the style the customer chose (from the product's `print.kitId` or from
+  `web_print_styles`). If the shop does not have that kit (any more), it prints in the product's
+  own kit, or its default — the order is not refused for it.
+- `number` may be a JSON number or a string of one or two digits.
+- **The total.** The shop charges the print on the order: the order's total is
+  **the items + (`print.price` × the number of printed shirts) + shipping − a coupon** (a coupon
+  takes off the items only, not the print). Show that total; it is the total the shop's accepted
+  order will carry. (`web_checkout`'s `print.unitPrice` is the same price, in the base currency.)
+- The older `prints[]` field (§5) still works and is also charged; use the item-line `print` for
+  names and numbers on jerseys.
+
+**What the shop checks when it receives the order** (check the same things before the customer
+presses Order, so this never happens): the product can be printed; a name **and** a number; the
+name's letters; at most `maxLetters`; the number 0–99. If a line fails, the shop calls the
+customer, or rejects the order with the code **`bad_print`** (§7).
+
+#### Where the print is — `web_print_tracking` (signed-in customers)
+
+```
+POST /rest/v1/rpc/web_print_tracking   { "p_key": "<website key>", "p_ref": "W-1043" }
+→ { "ok": true, "order_state": "accepted", "stage": "printing", "deadline": "2026-10-15",
+    "stages": [ { "stage": "design", "at": "…" }, { "stage": "sent", "at": "…" }, { "stage": "printing", "at": "…" } ] }
+```
+
+- **Call it as the signed-in customer** (supabase-js with the customer's session, not the anon key
+  alone). It answers only for an order **that customer placed**: anything else — another person's
+  order, an order placed without signing in, a ref that does not exist — is the same
+  `{ "ok": false, "code": "not_found" }`. `no_print`: the order has no printed shirts (yet: the
+  print job is made when the shop accepts the order).
+- **For this to work, `web_order_submit` must ALSO be called with the signed-in customer's
+  session** when the order is placed. That is how the shop knows whose order it is. An order
+  placed signed-out can still be followed through `web_order_status` (§7), just not this door.
+- `order_state`: `draft` · `pending` (waiting for the print shop) · `accepted` · `declined`.
+  `stage`: `design` → `sent` → `printing` → `delivery` → `done` (the words in §7). Nothing
+  else is in the answer: no price, no cost, no names of staff.
+- A delivery leaves the shop only **after** the print is `done`.
+
+---
+
 ## 4. Checkout: what the shop ships, charges, and accepts
 
 ### `web_checkout` — call it EVERY time a checkout opens
@@ -450,6 +581,11 @@ Then:
      website right now: show "Please message us to order" (§8) instead of the Order button.
 
 ### Print jobs
+
+For a name and a number on a jersey, see **§3b** (v1.6): the price per jersey is the product's
+`print.price`. `web_checkout` also carries it here: `print.prices` (both currencies, the same
+shape), `print.unit` (as the owner wrote it, e.g. `{"amount": 500, "currency": "USD"}`),
+`print.maxLetters` and `print.turnaround`.
 
 `print.unitPrice` (in `print.currency`) is the price of **one printed piece**. If it is
 `null`, the shop has not set it yet, so show "Price confirmed by phone" and do not make one up.
@@ -658,6 +794,7 @@ When `state` is `rejected`, `code` says why:
 | `customer_cancelled` | Your order was cancelled, as you asked. / انلغى الطلب متل ما طلبت. |
 | `unpaid` | We didn't receive the transfer. Please contact us. / ما وصلنا التحويل — تواصل معنا لو سمحت. |
 | `duplicate` | This order was a duplicate of another one. / هالطلب مكرّر مع طلب تاني. |
+| `bad_print` (v1.6) | We can't print the name or number as asked. Please contact us. / ما منقدر نطبع الاسم أو الرقم متل ما طلبت — تواصل معنا لو سمحت. |
 | `test` | (a test order: section 9) |
 | anything else | We couldn't complete this order. Please contact us. / ما قدرنا نكمّل هالطلب — تواصل معنا لو سمحت. |
 

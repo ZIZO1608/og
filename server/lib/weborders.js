@@ -183,6 +183,28 @@ export function printedLines(d, o) {
   return out;
 }
 
+/* Stage 1b — WHAT THE SALE CHARGES FOR PRINTING: one service line, as many
+   shirts as the order has printed, whichever shape they came in (each
+   printed item's qty, and the older prints[]: a job's lines' qty, or its
+   plain qty). Nothing when the print price is not set — the website then
+   told the customer "price by phone", and the price is agreed on the call
+   and put on the job, as before. */
+export function printServices(ref) {
+  const d = get();
+  const row = d.prepare('SELECT payload FROM web_orders WHERE ref = ?').get(String(ref));
+  if (!row || isTest(ref)) return [];
+  if (!Partner.webPrices(d).unit) return [];
+  const o = parse(row.payload, {});
+  let n = printedLines(d, o).filter((l) => !l.problem).reduce((a, l) => a + l.qty, 0);
+  for (const p of Array.isArray(o.prints) ? o.prints : []) {
+    const lines = Array.isArray(p && p.lines) ? p.lines : [];
+    n += lines.length
+      ? lines.reduce((a, l) => a + Math.max(1, Math.floor(Number(l && l.qty) || 1)), 0)
+      : Math.max(1, Math.floor(Number(p && p.qty) || 1));
+  }
+  return n > 0 ? [{ code: 'print', qty: n }] : [];
+}
+
 /* The one print job for an accepted order. Idempotent per ref: the job
    carries web_ref (unique), so a second Save, a retry after a lost answer,
    or two people pressing Accept find the first job and raise none. Its own

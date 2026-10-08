@@ -35,9 +35,9 @@ merged.
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
   PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
-- **Numbers in use:** local migrations run to `070` (`063` is night mode's and applies after `067`
+- **Numbers in use:** local migrations run to `071` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `071`; the next cloud file is `041`.** The cloud files have two `030`s and two
+  local migration is `072`; the next cloud file is `042`.** The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
   `server/supabase/status.sql` says which the live project already has.
 - **A section below that says "not merged", or names one of the old worktree folders, describes
@@ -4346,6 +4346,104 @@ Ahmad's website asked for three things, all built on this side (contract **v1.5*
   `ns03/sweep`. The rig: `web-extras/setup.mjs` (a VACUUM INTO copy with two products published),
   `fake-site.mjs`, and a server from the tree on 8198 with the sandbox env.
 
+## Jersey print kits, and the print charged on the sale (071, cloud 041 — 7–8 Oct 2026)
+
+The website sells a **name and a number on the back of an adult jersey**, printed by Yalla Wear.
+Built on `feature/print-kits` in two stages; the full record is `STAGE_PRINT_KITS.md` and the
+website's half is contract **v1.6** (`docs/website/PROMPT-FOR-AHMAD.md` §3b). The rules the owner
+locked: a name and a number always together; the name A–Z, space, `.`, `'`, `-`, upper case, at
+most `print.max_letters` (12); the number 0–99; `print.unit_price` + **`print.unit_currency`**
+(`500` + `USD` = $5.00 a jersey — the currency key is new, so the number is minor units of it and
+a missing currency means the base currency); ready in `print.turnaround_min`–`_max` days (5–7).
+
+- **Two tables, mirror shape like `clubs`** (`server/lib/printkits.js`): `print_fonts` (name,
+  `file_url` = the WOFF2, `source_url` = the original, licence note, **`weight`** — Teko and Cairo
+  exist on google/fonts only as variable fonts, so "bold" is a weight to draw at) and `print_kits`
+  (label, club/season/kind, font, colours, outline, shadow, where the name and number sit in a
+  400 × 440 jersey-back drawing, `is_default` — exactly one, never un-ticked or put away —,
+  `featured`, `archived`). One live kit per club + season + kind (NULLs folded; put-away kits
+  step aside). Pushed whole by content hash in `syncSettingsTail`, own guard naming 041; in
+  restore `ORDER` + `SEEDED`, drift `PUSHED`, check `WHOLE`; not on the reconcile list (rewritten
+  every sync). The cloud has **no** foreign keys or unique index on them, on purpose.
+- **New columns** with their own `mirror-lag.js` group each (a mirror without 041 drops only
+  them): `products.printable`, `products.print_kit_id` (NULL = the default kit),
+  `print_jobs.web_ref` (unique where set — one job per website order),
+  `print_job_lines.print_kit_snapshot` (text here, **jsonb** in the cloud: `snapshotForPg` in
+  mirror-lag.js converts on the way up, restore's `adapt()` back), `deliveries.print_override`.
+- **Fonts**: a public bucket **`print-fonts`** (`lib/storage.js` now takes a bucket), service key
+  on the server only. `.ttf`/`.otf` by their first bytes; the original and a WOFF2 both stored.
+  **`server/lib/woff2.js` writes WOFF2 with Node's Brotli and the spec's null glyf/loca transform —
+  no npm.** A bit bigger than a transformed WOFF2; Chrome's OTS accepts it. The four seed fonts
+  (Anton = OG Block, Graduate = OG Classic, Teko 700 = OG Modern, Cairo 700 = Syria) are fetched
+  from GitHub ~20 s after the main server starts (`PrintKits.seedFonts`) or by Fonts → Upload now.
+  The CSP's `font-src` takes `https:` for them.
+- **The screens**: **Print kits** (`#printkits`, `js/printkits.js`, `print_kits.manage`): Kits and
+  Fonts tabs, a kit form with a live jersey preview (`PrintKits.svg` is the one drawing, and the
+  website is told to draw the same geometry). A **Print** section on the product editor and on the
+  Add-product form: printable, club + season + kind → the kit attaches, or "Create kit" opens the
+  kit form pre-filled and attaches what it saves (the editor is put aside and brought back with
+  what was typed: `ProductForm.stash`).
+- **The `print` object** on every product (`webRow` here, `web.print_of` in the cloud — KEEP IN
+  STEP): `{kitId, label, font:{name,url,weight}, textColor, outlineColor, outlineWidth,
+  shadowColor, shadowDx, shadowDy, nameSize, nameY, nameArc, numberSize, numberY, price (the
+  `prices` shape), maxLetters, turnaround:{min,max}}`, or `null`. Never a cost.
+  `web_print_styles` / `GET /api/ext/print-styles`: the featured kits, same shape, no price.
+  **`web.product_row` is the same text in 037, 040 and 041** and calls `web.print_of` by name only
+  when it exists; **`web_checkout` is the same text in 031 and 041** (its `print` block gained
+  `unit`, `prices`, `maxLetters`, `turnaround`; `unitPrice` stays base-currency lira). plpgsql
+  resolves a function named in an expression even on a branch that never runs, so a call to a
+  function a newer file makes goes through `EXECUTE`.
+- **The order line**: `{ sku, qty, print: { name, number, kitId } }`. `PrintKits.checkLine`
+  cleans and checks it; an unknown `kitId` → the product's kit, else the default. A bad line is
+  named on the website-order card and **Accept is refused (409 `bad_print`)**; the person calls,
+  or rejects with the new reason `bad_print`. The older `prints[]` still works as before.
+- **On accept** (`POST /api/orders` with `webRef`): ONE kit job, `Partner.create({autoSend})`,
+  `web_ref`, the sale, the customer, deadline = shop today + `turnaround_max`, one line per printed
+  item with the kit snapshot, the printer's cost by the web rule. Idempotent by `web_ref`; a failed
+  raise is retried by the next Save and shown on the card (`print_error`).
+- **THE PRINT IS CHARGED ON THE SALE (stage 1b)** — a **service line**, `Sales.SERVICES`:
+  `record({ services: [{ code: 'print', qty }] })` adds a `SVC-PRINT` line ("Name & number print ·
+  طباعة اسم ورقم"), priced by the server at `print.unit_price` in `print.unit_currency` through the
+  same `convert()` a dollar shoe goes through, cost `print.partner_unit_cost`. No stock, no variant
+  (`sale_items.sku` has no foreign key; `SVC-` is never minted for a product). Discounts and coupons
+  are about the GOODS (the print is outside the cap and the coupon); the total, `subtotal`, what is
+  still owed, `to_collect`, the cash book, receipts and reports carry it. A website order's count is
+  decided by the route from the order (`WebOrders.printServices`, never the request), and nothing is
+  charged when no print price is set (the website said "price by phone"). **The till charges it
+  too** — it showed "n × 950" and never added it; the hard-coded 950 is gone, the till previews
+  `print.unit_price` and sends `services`, and the job's price is the line's. The order desk previews
+  a website order's print in its total (`printLine` in `js/desk.js`), so a "paid in full" transfer
+  matches. Readers that mean GOODS skip `SVC-`: the void's stock return, the stamp card, a return
+  (`Orders.returnable`), the dashboard's best sellers, the pieces count.
+- **THE DELIVERY HOLD**: a sale with a print job not `done` cannot leave the counter — out, a
+  pickup collected, or a hand-over sheet (`Orders.PRINT_OPEN`, one expression for all three;
+  `print_waiting` 409; `blockedReason` → `print_waiting`). The board, the table and the order dialog
+  say "Waiting for print · P-xxxx · stage". **The override** is the owner's and the developers' (by
+  role): "Send without the print…" with a reason → `POST /api/deliveries/:id/print-override` →
+  `deliveries.print_override` (JSON reason/by/at) and the change log.
+- **Tracking**: `public.web_print_tracking(key, ref)` — SECURITY DEFINER, `search_path = public`,
+  the website key AND `auth.uid()` must own the cloud order (`web.orders.auth_uid`, stamped by a
+  BEFORE INSERT trigger, so `web_order_submit` was not rewritten). Answers only `order_state`,
+  `stage`, `deadline`, `stages[{stage, at}]`; everything else is the same `not_found`. **It only
+  works if the website places the order with the signed-in customer's session.**
+- **Permission `print_kits.manage`**: every role holding `product.write` on the database the
+  migration ran on, and anybody granted `product.write` by name.
+- **By hand, in order**: run `041_print_kits.sql` in Supabase **before the shop runs 071** (071 sets
+  the price to 500 USD and the old `web_checkout` would read that as 500 lira), then
+  `verify_041_print_kits.sql` (rows 1–8 ✅, 9 ⚠️ until the first sync), then **`030_erp_access.sql`
+  again** (og_vps and the two new tables); merge; `npm run supabase:reconcile` on the VPS; check the
+  Fonts tab says the four seed fonts are uploaded; give Ahmad contract v1.6.
+- **Verified**: `_nightshift/print-kits/` — `api.mjs` 83, `sql.mjs` 45 (PGlite running 001…041:
+  laptop = cloud field for field, **the website's total = the accepted sale's total in SYP and
+  USD**, tracking, re-running 031/037/040/041), `ui.mjs` 37, `ui-1b.mjs` 13 (the till's charge and
+  job price read back from SQLite, the desk's running total, the Add-product section),
+  `woff2-chrome.mjs`; plus `npm test`, the web-extras / usd-prices / web-pay / web-orders parity
+  suites, `fix05/p0-namespaces`, `fix06/idle`, `ns03/sweep`. The scratch rig: `setup.mjs`,
+  `fake-storage.mjs` (a Storage stand-in on 9331), the worktree's server on 8199 with
+  `OG_ENV_FILE=server/.env.pk OG_DATA_DIR=server/data-pk`. The stand-in serves plain http, which
+  the CSP refuses for fonts: the suites bypass the CSP, and a generic suite needs the scratch fonts
+  turned into `data:` URLs first.
+
 ## The shop PC kit (1 Oct 2026) — `tools/shop-pc/`
 
 The till and the offline standby move to a **new PC in the shop**; this laptop becomes development
@@ -4531,12 +4629,12 @@ comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
   a new website order yet: the bell and the screen say it, a phone does not buzz (a `dl_web` kind
   in `office-alerts.js` is the way). A website print job that is finished has no set road to the
   customer or way of being paid — it is priced on the job, as the till's are, and the owner has
-  not said whether it rides in the order's parcel. **Two print prices disagree**:
-  `CONFIG.KIT_PRINT_PRICE` is 180 in the app and the till charges 950 a piece (`js/pos.js`), while
-  `print.unit_price` (the website's, Settings → Money and prices) has NO fallback since 25 Sep
-  2026: unset, the website says "price by phone" and the job reaches Yalla Wear unpriced (0),
-  to be priced on the call. It used to fall back to 950 in `Partner.webPrices()` only, so one order
-  carried two prices. The shop reads it with the cloud's own rule (`^[0-9]{1,13}$`). A print job already sent to Yalla Wear is not
+  not said whether it rides in the order's parcel. **The till and the website now charge one print price** (stage 1b, 8 Oct 2026):
+  `print.unit_price` in `print.unit_currency`, charged on the sale as a service line — the till's
+  hard-coded 950 is gone. `CONFIG.KIT_PRINT_PRICE` (180) is still what the Print screen and the
+  partner invoice offer as a per-kit price; that is the job's side, not the customer's.
+  `print.unit_price` has NO fallback: unset, the website says "price by phone", nothing is
+  charged on the sale, and the job reaches Yalla Wear unpriced (0), to be priced on the call. The shop reads it with the cloud's own rule (`^[0-9]{1,13}$`). A print job already sent to Yalla Wear is not
   cancelled by rejecting its website order.
 - **Telegram job messages carry no link.** `publicBase()` in `server/lib/telegram.js` reads
   `shop.public_url` only (the `OG_CF_HOSTNAME` fallback went with the tunnel on 16 Sep), and it is

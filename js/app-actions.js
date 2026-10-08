@@ -1766,10 +1766,15 @@ var ACTIONS = {
     /* 066 — each colour's photos, waiting for the product to exist. */
     var colourPhotos = built.colours.map(function (c) { return c.photos || null; });
     var bg = OG.wh.img;
+    /* Stage 1b — the Print section: refused in words when a club has no kit. */
+    var pf = typeof PrintKits !== 'undefined' ? PrintKits.productFields() : null;
+    if (pf && pf.error) { toast(t('cp_add_product'), pf.error, 'err', 6000); return; }
 
     Shop.write(
       function () {
         return Shop.newProduct({
+          printable: !!(pf && pf.printable),
+          printKitId: pf && pf.printable ? pf.print_kit_id : null,
           name: name,
           type: OG.wh.type,
           /* Sent at last (ns02). The server's createWithVariants has always
@@ -1826,6 +1831,7 @@ var ACTIONS = {
            is nearly always the same three. That is "add another like this",
            without a second button to press. */
         OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null; OG.wh.imgSrc = null;
+        if (typeof PrintKits !== 'undefined') PrintKits.formReset();
         OG.wh.price = ''; OG.wh.cost = '';
         ColourForm.reset();
         /* The room STAYS — the next box off the same delivery goes to the

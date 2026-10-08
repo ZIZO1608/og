@@ -217,3 +217,127 @@ English and Syrian Arabic).
 - The kit uniqueness counts archived kits as gone; a duplicate in data put in by hand is not
   repaired by the migration.
 - Not tested on a phone's real Safari, and not against the live Supabase project.
+
+---
+
+# Stage 1b (8 Oct 2026) — the print charged on the sale, and the gaps
+
+Same branch, `feature/print-kits`; still not merged. No new migration and no new cloud file: the
+charge is a sale line, which the existing tables already hold. The by-hand order in §6 is
+unchanged.
+
+## 1. The print is charged on the sale
+
+**There was no pattern for a line that is not stock, so one was added — a "service line".**
+`Sales.SERVICES` in `server/lib/sales.js` lists the one there is:
+
+| code | sku on the line | name on the line |
+|---|---|---|
+| `print` | `SVC-PRINT` | `Name & number print · طباعة اسم ورقم` |
+
+- `Sales.record({ …, services: [{ code: 'print', qty }] })` (and `recordIn`, and
+  `Orders.create({ services })`) adds the line **inside the sale's own transaction**, priced by
+  the server: `print.unit_price` in `print.unit_currency`, through the same `convert()` a dollar
+  shoe goes through at the sale's frozen rate ($5 at 138 = 690 lira). Its `unit_cost` is
+  `print.partner_unit_cost` (460, in the shop's currency, converted to the sale's). No stock
+  movement and no variant lookup: `sale_items.sku` has no foreign key, and `SVC-` is never minted
+  for a product. The caller says only how many; quantity 1–500, else `bad_service`.
+- **Discounts and coupons are about the goods.** The cashier's 10% ceiling and a coupon's cut are
+  worked out on the goods, and the print is added after them. That is what the website is told to
+  do too (v1.6: "a coupon takes off the items only").
+- **Everything that reads the sale carries it**, because it is an ordinary `sale_items` row and
+  part of `sales.subtotal`/`total`: what is still owed and `to_collect` (`Orders.money` reads the
+  sale total), the cash book's sale move, the 80 mm receipt, the A4 invoice, the order dialog, the
+  tracking page, the dashboard and Reports takings, the statement (the print's cost is now in the
+  cost of goods, which is right — the shop pays Yalla Wear for it; paying Yalla Wear is still "below
+  the line", so nothing is counted twice).
+- **Readers that mean goods skip `SVC-`:** a void does not try to put a print back on a shelf; the
+  stamp card does not count it as an item; a return does not offer it (`Orders.returnable`) — a
+  refund for a print is the owner's call, by hand; the dashboard's best sellers and the pieces
+  count leave it out.
+- **Website order:** the route adds the line itself, counted from the order, never from the
+  request (`WebOrders.printServices`): every printable item line that can be printed, plus the
+  older `prints[]` (their lines' qty, or a plain qty). Nothing is added when no print price is
+  set — the website said "price by phone", and the price is agreed on the call and put on the
+  job, as before. The print job's price equals the line.
+- **The order desk** previews the same line in a website order's total (`printLine` in
+  `js/desk.js`, from the order's printed shirts and `print.unit_price`), so the running total, what
+  is still owed, and a "paid in full" transfer agree with what the server writes.
+
+**The till did NOT charge the print, and now does.** It drew "n × 950 = …" beside the basket and
+posted only the shoes; the 950 was a constant in `js/pos.js`, unrelated to the website's price.
+Now the till previews `print.unit_price` (at today's rate) as a "Name & number print" row in the
+totals, sends `services: [{ code: 'print', qty }]`, and the server prices it — **so the till's
+print price is now the shop's one print price ($5, 690 lira today), not 950.** The job's price is
+taken from the line the server wrote. With no print price set, the till says so in the print box
+and charges nothing; a hand-sent request for a print with no price is refused
+(`print_price_unset`).
+
+**Website total = sale total**, tested (`_nightshift/print-kits/sql.mjs`, "website total = sale
+total"): the cloud's own figures — each item at `web_product`'s price, each printed shirt at
+`web_checkout`'s print price — against the laptop's real `Orders.create` with the line the route
+adds, for one order (two printed shirts + one plain item, pickup). Equal to the unit **in lira and
+in dollars**.
+
+## 2. The Add-product form
+
+The same Print section as the product editor, between the prices and "More details": printable,
+club + season + kind → the kit attaches, or Create kit (the form is the page, so it stays under
+the kit form, and the new kit is attached when it saves). The section keeps its choice while the
+form repaints, and is cleared for the next product. `Cat.createWithVariants` takes `printable` and
+`printKitId` (checked like the editor's), so the product is made printable in the same request.
+
+## 3. CLAUDE.md
+
+A section "Jersey print kits, and the print charged on the sale" (tables, sync shape, the `print`
+object, the order line, the charge, the delivery hold, the override, the tracking function, the
+by-hand steps, the test rig), the migration numbers at the top (next local `072`, next cloud
+`042`), and the stale "two print prices disagree" note in Known open work corrected.
+
+## 4. The contract
+
+`docs/website/PROMPT-FOR-AHMAD.md` is **v1.6**: a header note, a new **§3b "Printed names and
+numbers"** (the rules, the `print` object, how to draw the shirt, `web_print_styles`, the order
+line, how the total is made, what the shop checks, `web_print_tracking` and the signed-in-session
+requirement for both it and `web_order_submit`), a pointer from §4's print paragraph, and
+**`bad_print`** with its English and Arabic sentence in §7's rejection table.
+
+## 5. Files
+
+Server: `lib/sales.js` (services, the void), `lib/orders.js` (forwarding, `returnable`),
+`lib/weborders.js` (`printServices`), `lib/catalogue.js` (`createWithVariants`), `lib/loyalty.js`,
+`lib/dashboard.js`, `lib/reports.js`, `index.js` (both sale routes, error codes).
+Browser: `js/pos.js`, `js/desk.js`, `js/printkits.js` (`formSection`), `js/app-warehouse.js`,
+`js/app-actions.js`, `js/app-i18n-extra.js` (5 strings, both languages).
+Docs: `CLAUDE.md`, `docs/website/PROMPT-FOR-AHMAD.md`, this file.
+
+## 6. Test results (all on the scratch shop, port 8199)
+
+| Suite | Result | What is new in it |
+|---|---|---|
+| `server` `npm test` | 62 / 62 | |
+| `print-kits/api.mjs` | **83 / 83** | the sale's print line (qty, price, bilingual name, cost 460), total = goods + print, no stock movement, job price = line, the order owes it, a return does not offer it; a till sale with 3 prints, the cash book took the whole total, the cost not sent to the cashier, qty 0 refused, the void returns only the shoe, no price set → `print_price_unset` |
+| `print-kits/sql.mjs` | **45 / 45** | website total = accepted sale total, SYP and USD |
+| `print-kits/ui.mjs` | 37 / 37 | |
+| `print-kits/ui-1b.mjs` (new) | **13 / 13** | the till: the print row, the grand total rising by n × 690, the sale and job in SQLite equal to the screen; the desk's running total = shirt + print; the Add-product section, its choice kept through a repaint, a product made printable in a kit |
+| `web-extras/parity` | 35 / 35 | |
+| `usd-prices/parity` | 40 / 40 | |
+| `audit06/web-pay-sql` | 53 / 53 | |
+| `audit06/web-orders-sql` | 72 / 72 | |
+| `fix05/p0-namespaces` | 6 / 6 | |
+| `fix06/idle` | 2 / 2 | the till, the desk and Print kits make 0 requests while idle |
+
+Two harness notes: the scratch shop has no receipt printer, so the till's automatic receipt
+answers 502 (filtered in `ui-1b`); and fonts the suites upload sit at the stand-in bucket's
+plain-http address, which the CSP rightly refuses — a generic suite needs them turned into
+`data:` URLs first, as before.
+
+## 7. Still open
+
+- **The owner should confirm the till's print price.** It is now $5 (690 lira today) instead of
+  the till's old 950. If the till should charge differently from the website, that needs a second
+  key.
+- A refund for a print on a returned order is by hand (a return offers goods only).
+- The Print screen's own "new job" form and the partner invoice still use `KIT_PRINT_PRICE` (180)
+  as a per-kit figure — that is the job's side, not a customer charge, and was not changed.
+- Not tested against the live Supabase project or on a real phone.

@@ -419,6 +419,19 @@ var Desk = (function () {
     return usd !== null && usd < c.minBasket;
   }
 
+  /* STAGE 1b — A WEBSITE ORDER'S PRINTED SHIRTS ARE ON ITS SALE. The server
+     adds the "Name & number print" line itself when the order is saved
+     (WebOrders.printServices — counted from the order, never from here);
+     this is the desk's preview of it, so the total, what is still owed and a
+     "paid in full" transfer agree with what the server will write. */
+  function printLine(code) {
+    var n = S.webPrintQty || 0;
+    var v = CONFIG.WEB_PRINT_PRICE;
+    if (!n || !(v > 0)) return null;
+    var unit = convert(v, CONFIG.WEB_PRINT_CUR || 'SYP', code);
+    return unit === null ? null : { qty: n, unit: unit, amount: unit * n };
+  }
+
   function totals() {
     var code = orderCur();
     var sub = 0, unpriced = false;
@@ -426,18 +439,19 @@ var Desk = (function () {
       var u = unitPrice(l);
       if (u === null) unpriced = true; else sub += u * l.qty;
     });
+    var pl = printLine(code);
     /* The office's own discount (capped by the rule) and the coupon's cut
        (not — it is the owner's rule), which together make the discount. */
     var manual = Math.min(sub, toMinor(S.discount, code));
     var ccut = Math.min(couponCutFor(sub, code), sub - manual);
     var disc = manual + ccut;
     var fee = feeInfo();
-    var due = sub - disc + (fee.mode === 'invoice' ? fee.amount : 0);
+    var due = sub - disc + (pl ? pl.amount : 0) + (fee.mode === 'invoice' ? fee.amount : 0);
     var paid = 0;
     S.pays.forEach(function (p) { paid += payInOrder(p) || 0; });
     var maxPct = boot ? Number(boot.maxDiscountPct) : 100;
     return {
-      currency: code, subtotal: sub, discount: disc, manual: manual, couponCut: ccut,
+      currency: code, subtotal: sub, discount: disc, manual: manual, couponCut: ccut, print: pl,
       couponShort: couponShortOf(sub, code),
       fee: fee, due: due, paid: paid,
       remaining: Math.max(0, due - paid), over: paid > due, unpriced: unpriced,
@@ -596,6 +610,11 @@ var Desk = (function () {
         }).map(function (i) { return { sku: i.sku, qty: Math.max(1, Math.floor(Number(i.qty) || 1)) }; });
         S.channel = 'web';
         S.webRef = o.ref;
+        /* Stage 1b — how many printed shirts the sale will charge for: every
+           printable line that can be printed, and the older prints[]. */
+        S.webPrintQty = (o.items || []).reduce(function (a, i) {
+          return a + (i && i.print && !i.print.problem ? Math.max(1, Math.floor(Number(i.qty) || 1)) : 0);
+        }, 0) + (o.prints || []).reduce(function (a, p) { return a + (Number(p && p.qty) || 0); }, 0);
         S.opId = 'weborder:' + o.ref;
         var dl = o.delivery || {};
         if (METHODS.indexOf(dl.method) > -1) S.method = dl.method;
@@ -1871,6 +1890,7 @@ var Desk = (function () {
       '<div class="dk-perf" aria-hidden="true"></div>';
 
     h += '<div class="dk-tot">' + sumRow(t('dk_goods'), fmt(tt.subtotal, code)) +
+      (tt.print ? sumRow(t('svc_print') + ' · ' + tt.print.qty, fmt(tt.print.amount, code)) : '') +
       '<div class="dk-sr dk-disc"><span>' + t('discount') + '</span>' +
         '<input class="inp num" type="text" inputmode="decimal" dir="ltr" data-change="dk-discount" ' +
           'value="' + esc(S.discount) + '" placeholder="0"></div>' +

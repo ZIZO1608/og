@@ -517,6 +517,15 @@ var PrintKits = (function () {
      and attaches what it saves. State is P (one product form at a time). */
   var P = null;
 
+  /* Stage 1b — the same section on the Add-product form. The form repaints
+     on every box, so the section's state is kept across repaints while it is
+     the NEW product's; formReset() after a save starts the next one clean. */
+  function formSection() {
+    if (P && P.productId === 'new') return '<div class="pe-sec pk-pe" id="pkPe">' + productInner() + '</div>';
+    return productSection({ id: 'new', printable: false, printKitId: null });
+  }
+  function formReset() { if (P && P.productId === 'new') P = null; }
+
   function productSection(p) {
     P = { productId: p.id, printable: !!p.printable, kitId: p.printKitId || null, clubCode: null, season: '', kitType: '',
           style: null, derived: false };
@@ -719,6 +728,17 @@ var PrintKits = (function () {
      so the product form's typed values go into a holder first, the kit form
      runs, and the product form is opened again with the kit attached. */
   function openKitFormOverProduct(prefill, keep) {
+    /* The Add-product form is the page itself, not a dialog: it stays under
+       the kit form, and only the section needs the new kit. */
+    if (keep && keep.productId === 'new') {
+      openKitForm(null, prefill, function (kit) {
+        P = keep;
+        P.kitId = kit.id; P.clubCode = kit.clubCode; P.season = kit.season || ''; P.kitType = kit.kitType || '';
+        P.printable = true; P.derived = true;
+        repaintProduct();
+      });
+      return;
+    }
     var reopen = typeof ProductForm !== 'undefined' && ProductForm.stash ? ProductForm.stash() : null;
     openKitForm(null, prefill, function (kit) {
       if (reopen) reopen(function () {
@@ -736,6 +756,7 @@ var PrintKits = (function () {
     view: view, after: after, register: register, load: load, ready: ready,
     svg: svg, ensureFont: ensureFont, openKitForm: openKitForm,
     productSection: productSection, productFields: productFields,
+    formSection: formSection, formReset: formReset,
     kits: function () { return S.kits; }
   };
 })();
