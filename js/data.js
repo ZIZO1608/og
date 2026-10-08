@@ -2507,6 +2507,19 @@ var DB = {
 
   /* A blank kit line, for the OG-side line editor. Shares the same counter as
      the seed data so no two lines can ever collide on id. */
+  /* Stage 1d — THE CUSTOMER'S PRICE FOR ONE PRINTED SHIRT, in whole lira at
+     today's rate: print.unit_price in print.unit_currency ($5), the dollar
+     price × the rate, rounded — the arithmetic every dollar price follows.
+     The till's preview and the Print screen's new-job form both ask here, so
+     there is one suggestion. Null when no print price is set: nothing is
+     invented. (The sale itself is priced by the server, Sales.SERVICES.) */
+  printUnitLira: function () {
+    var v = CONFIG.WEB_PRINT_PRICE;
+    if (!(v > 0)) return null;
+    if (CONFIG.WEB_PRINT_CUR === 'USD') return Math.round(v / 100 * (CONFIG.EXCHANGE_RATE || 1));
+    return v;
+  },
+
   newKitLine: function (f) {
     f = f || {};
     return { id: 'L' + pad(++_lineSeq, 3),

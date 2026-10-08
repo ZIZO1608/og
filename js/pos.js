@@ -48,12 +48,7 @@ var POS = (function () {
      prices a "Name & number print" line inside the sale (Sales.SERVICES);
      this is the till's preview of it, at today's rate — the same arithmetic
      as a dollar shoe. Null: no print price is set, and nothing is charged. */
-  function printUnit() {
-    var v = CONFIG.WEB_PRINT_PRICE;
-    if (!(v > 0)) return null;
-    if (CONFIG.WEB_PRINT_CUR === 'USD') return Math.round(v / 100 * (CONFIG.EXCHANGE_RATE || 1));
-    return v;
-  }
+  function printUnit() { return DB.printUnitLira(); }
   function printCharge() {
     var u = printUnit();
     return S.print.on && u ? printPicks().length * u : 0;

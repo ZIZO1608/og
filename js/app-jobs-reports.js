@@ -178,7 +178,11 @@ function viewPartnerInvoices() {
    squad list. Same shape, same server call, same rule — every shirt with a
    name goes straight to Yalla Wear; a blank one keeps the job a draft. */
 
-var PJ_PIECE_PRICE = 950;    /* what the customer pays per piece, matches the till */
+/* Stage 1d — the customer's price per piece is the shop's one print price
+   (print.unit_price, $5), suggested in lira at today's rate exactly as the
+   till does (DB.printUnitLira). It replaced a fixed 950. Staff may type
+   another price for a particular job and what they type is kept; with no
+   print price set the box is empty and says so. */
 
 function pjBlankLine() {
   var first = Object.keys(DB.clubs)[0] || '';
@@ -192,7 +196,8 @@ function pjCollect() {
   f.qty = Math.max(0, Math.round(Number(v('pjQty')) || 0));
   f.priority = v('pjPriority') || 'normal';
   f.deadline = v('pjDeadline');
-  f.unitPrice = Math.max(0, Math.round(Number(v('pjPrice')) || 0));
+  /* Empty stays empty (no print price set, nothing typed yet); a typed price is kept. */
+  f.unitPrice = String(v('pjPrice')).trim() === '' ? null : Math.max(0, Math.round(Number(v('pjPrice')) || 0));
   if (document.getElementById('pjCost')) f.unitCost = Math.max(0, Math.round(Number(v('pjCost')) || 0));
   f.currency = v('pjCurrency') || 'SYP';
   document.querySelectorAll('[data-pj-line]').forEach(function (el) {
@@ -269,7 +274,11 @@ function pjFormHtml() {
           '<option value="urgent"' + (f.priority === 'urgent' ? ' selected' : '') + '>' + t('urgent') + '</option>' +
         '</select></label>' +
       '<label class="field"><span>' + t('pj_unit_price') + '</span>' +
-        '<input class="inp num" id="pjPrice" type="number" min="0" value="' + esc(f.unitPrice) + '"></label>' +
+        '<input class="inp num" id="pjPrice" type="number" min="0" value="' + esc(f.unitPrice == null ? '' : f.unitPrice) + '"' +
+          (f.unitPrice == null ? ' placeholder="' + esc(t('pj_price_unset_ph')) + '"' : '') + '>' +
+        (f.unitPrice0 == null
+          ? '<small class="muted">' + t('pj_price_unset') + '</small>'
+          : '<small class="muted">' + t('pj_price_from_setting') + '</small>') + '</label>' +
       (seesCost()
         ? '<label class="field"><span>' + t('pj_unit_cost') + '</span>' +
             '<input class="inp num" id="pjCost" type="number" min="0" value="' + esc(f.unitCost) + '"></label>'
@@ -288,7 +297,7 @@ function pjFormHtml() {
 function openNewJob() {
   OG.pj = {
     kind: 'kit', lines: [pjBlankLine()], customer: '', phone: '', design: '', qty: 12,
-    priority: 'normal', deadline: '', unitPrice: PJ_PIECE_PRICE,
+    priority: 'normal', deadline: '', unitPrice: DB.printUnitLira(), unitPrice0: DB.printUnitLira(),
     /* What Yalla Wear charges per print (stage 1c), or null for somebody
        without cost.read — the server then fills it from the same setting. */
     unitCost: CONFIG.PRINT_PARTNER_COST, currency: 'SYP'
