@@ -393,8 +393,17 @@ async function cmdEnv() {
     ok('made OG_COPY_KEY and wrote it to this laptop\'s server/.env');
   }
   const missing = ['SUPABASE_URL', 'OG_VAULT_KEY'].filter((k) => !v[k]);
-  if (!v.SUPABASE_SECRET_KEY && !v.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SECRET_KEY');
   if (missing.length) fail('This laptop\'s .env has no ' + missing.join(', ') + ' — the VPS cannot be the main server without it.');
+
+  /* THE SECRET KEY LIVES ON THE VPS ONLY (sync safety, 8 Oct 2026): it is
+     the real permission to write the cloud copy, so it is kept in extra.env
+     there, which this command never writes, and not on this laptop. An old
+     key still here is copied as before; extra.env comes second in the
+     compose file's env_file list, so a key there wins over it. */
+  const keyHere = !!(v.SUPABASE_SECRET_KEY || v.SUPABASE_SERVICE_ROLE_KEY);
+  const kx = await remote(`grep -c '^SUPABASE_SECRET_KEY=.' ${DIR}/extra.env 2>/dev/null || true`);
+  const keyThere = Number(String(kx.out || '').trim().split(/\s+/)[0] || 0) > 0;
+  if (!keyHere && !keyThere) fail('No Supabase secret key: neither in this laptop\'s .env nor in ' + DIR + '/extra.env on the VPS. Put the VPS\'s own key in extra.env (STAGE_SYNC_SAFETY.md).');
 
   const f = await vpsFacts();
   const gateway = f.gateway;
@@ -425,6 +434,7 @@ async function cmdEnv() {
   ok(`${DIR}/og-shop.env (600) — ${sent.length} copied, values not shown:`);
   say('      ' + sent.join(', '));
   ok(`OG_ORIGINS https://${DOMAIN} · OG_PROXY_ADDR ${gateway}`);
+  if (keyThere) ok('the Supabase secret key comes from extra.env on the VPS' + (keyHere ? ' (it wins over the one copied from here)' : ' — this laptop has none, as it should'));
   if (!v.OG_TELEGRAM_TOKEN_OG) warn('no OG_TELEGRAM_TOKEN_OG here: the shop\'s bot will be silent on the VPS');
   if (f.running === 'true') say('\n  The shop is running on the VPS — apply with: npm run vps -- restart');
   say('');

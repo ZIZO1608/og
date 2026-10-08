@@ -42,15 +42,18 @@ function config() {
 
   base = need('SUPABASE_URL').replace(/\/+$/, '');
 
-  /* Supabase issued `service_role` JWTs historically and `sb_secret_…` keys
-     more recently. Both are sent the same way, so accept either and let the
-     user paste whichever their dashboard shows. */
-  key = maybe('SUPABASE_SERVICE_ROLE_KEY') || maybe('SUPABASE_SECRET_KEY');
+  /* TWO KINDS OF KEY (sync safety, 8 Oct 2026). Supabase issued `service_role`
+     JWTs historically; the new secret keys are `sb_secret_…`, one per use,
+     each revocable on its own — which is how the shop gives the VPS a key no
+     other copy has. SUPABASE_SECRET_KEY is read FIRST, so putting a new key
+     there takes over from an old SUPABASE_SERVICE_ROLE_KEY still in the file.
+     The two are SENT differently: see keyHeaders() below. */
+  key = maybe('SUPABASE_SECRET_KEY') || maybe('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!key) {
     throw new Error(
-      'Missing SUPABASE_SERVICE_ROLE_KEY. Supabase dashboard → Project Settings → ' +
-      'API Keys → the secret / service_role key. Put it in server/.env.'
+      'Missing SUPABASE_SECRET_KEY. Supabase dashboard → Project Settings → ' +
+      'API Keys → a secret key (sb_secret_…). Put it in server/.env.'
     );
   }
   return { base, key };
@@ -59,7 +62,24 @@ function config() {
 export function isConfigured() {
   load();
   return !!(maybe('SUPABASE_URL') &&
-           (maybe('SUPABASE_SERVICE_ROLE_KEY') || maybe('SUPABASE_SECRET_KEY')));
+           (maybe('SUPABASE_SECRET_KEY') || maybe('SUPABASE_SERVICE_ROLE_KEY')));
+}
+
+/* A new-format key (`sb_secret_…`, `sb_publishable_…`) is NOT a JWT, and
+   Supabase takes it on the `apikey` header ONLY: sent as "Authorization:
+   Bearer" as well, the request is refused, because that header must carry a
+   JWT. An old service_role key IS a JWT and keeps both headers, exactly as
+   it always has. One rule, used by every request this server makes —
+   PostgREST (call() below) and Storage (authHeaders()). */
+export function isNewKey(k) { return /^sb_(secret|publishable)_/.test(String(k || '')); }
+export function keyHeaders(k) {
+  return isNewKey(k) ? { apikey: k } : { apikey: k, Authorization: `Bearer ${k}` };
+}
+/* Which kind is in use, for the status and the check — never the key. */
+export function keyKind() {
+  load();
+  const k = maybe('SUPABASE_SECRET_KEY') || maybe('SUPABASE_SERVICE_ROLE_KEY');
+  return !k ? null : isNewKey(k) ? 'secret' : 'service_role';
 }
 
 export function projectUrl() { load(); return maybe('SUPABASE_URL'); }
@@ -67,8 +87,7 @@ export function projectUrl() { load(); return maybe('SUPABASE_URL'); }
 function headers(extra = {}) {
   const { key } = config();
   return {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
+    ...keyHeaders(key),
     'Content-Type': 'application/json',
     ...extra
   };
@@ -78,7 +97,7 @@ function headers(extra = {}) {
    type, because there the body is the picture itself. */
 export function authHeaders(extra = {}) {
   const { key } = config();
-  return { apikey: key, Authorization: `Bearer ${key}`, ...extra };
+  return { ...keyHeaders(key), ...extra };
 }
 
 /* One place where every Supabase response is turned into either data or a

@@ -61,8 +61,9 @@ async function main() {
 
   const g = await Lineage.guard({ readOnly: true });
   if (!g.ok || g.unclaimed) {
-    console.log("\n  Refused: this computer isn't the shop — it does not own the cloud copy.");
-    for (const l of Lineage.refusal(g.other)) console.log('  ' + l);
+    console.log(g.notWriter ? "\n  Refused: this computer isn't the machine that writes to the cloud copy."
+                            : "\n  Refused: this computer isn't the shop — it does not own the cloud copy.");
+    for (const l of Lineage.refusal(g.other, g)) console.log('  ' + l);
     console.log('');
     exit(2);
   }

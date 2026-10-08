@@ -261,15 +261,19 @@ function schedule(ms = DEBOUNCE_MS) {
 /* The refused branch, shared by the boot check and the per-push check. */
 function refuseLineage(lin) {
   state.mode = 'refused';
-  state.refusedBy = lin.other ? `${lin.other.host} (${String(lin.other.id).slice(0, 8)}…)` : null;
-  state.lastError = lin.other
-    ? `${Lineage.NOT_THE_SHOP} (it belongs to ${state.refusedBy})`
-    : 'This cloud copy has been written to before and no computer owns it yet — npm run supabase:sync -- --claim-unclaimed, once, on the shop\'s computer';
-  state.unclaimed = !lin.other;
+  const who = lin.other || (lin.notWriter ? lin.writer : null);
+  state.refusedBy = who ? `${who.host} (${String(who.id).slice(0, 8)}…)` : null;
+  state.lastError = lin.notWriter
+    ? `${Lineage.NOT_THE_WRITER} (the cloud copy is written by ${state.refusedBy})`
+    : lin.other
+      ? `${Lineage.NOT_THE_SHOP} (it belongs to ${state.refusedBy})`
+      : 'This cloud copy has been written to before and no computer owns it yet — npm run supabase:sync -- --claim-unclaimed, once, on the shop\'s computer';
+  state.unclaimed = !lin.other && !lin.notWriter;
   console.log(`  [mirror] refused: ${state.lastError}`);
   tell();
 }
 
+let writerWarned = false;
 async function checkLineage() {
   try {
     const lin = await Lineage.guard();
@@ -277,6 +281,10 @@ async function checkLineage() {
     state.refusedBy = null;
     state.unclaimed = false;
     if (lin.claimed) console.log('  [mirror] claimed the mirror for this database');
+    if (lin.writerUnset && !writerWarned) {
+      writerWarned = true;
+      console.log('  [mirror] no writer is recorded for the cloud copy — any copy of this database with the keys could push. On the shop\'s server: npm run supabase:writer -- --claim');
+    }
     return true;
   } catch (err) {
     /* Could not even ask. Offline, and the ordinary backoff handles it. */

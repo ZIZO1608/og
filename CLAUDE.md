@@ -1300,6 +1300,40 @@ it rejects the **whole batch**, not the column:
   because one table is missing would stop a day's sales being mirrored over a table nobody has
   created yet.
 
+### Sync safety — one key, one writer, no silent deletes (8 Oct 2026)
+
+On 8 Oct a reconcile on the VPS deleted 13 sales, 4 print jobs and more from the mirror. They had
+been written by a COPY of the shop's database run with the live key (`SYNC_WRITERS.md` in the main
+folder). The lineage guard could not stop that, because a copy carries the same lineage id.
+`STAGE_SYNC_SAFETY.md` has the full story and the by-hand steps.
+
+- **The key.** `SUPABASE_SECRET_KEY` is read first, then `SUPABASE_SERVICE_ROLE_KEY`.
+  `keyHeaders()` in `lib/supabase.js` is the one rule for PostgREST and Storage:
+  - a new `sb_secret_…` key goes on `apikey` **only**;
+  - an old JWT goes on `apikey` and `Authorization: Bearer`.
+
+  The key that writes the mirror lives **only on the VPS**, in `/data/og-shop/extra.env`.
+  `npm run vps -- env` never writes that file, and it wins over `og-shop.env`. `vps env` no
+  longer requires a key on the laptop.
+- **The writer.** `mirror-writer.id` in the data folder (never inside og.db) is recorded in the
+  mirror's `sync_state` row `writer`.
+  - `Lineage.guard()` reads the lineage and writer rows in one request, and refuses
+    `notWriter` when the lineage matches but this machine is not the writer: "This computer isn't
+    the machine that writes to the cloud copy."
+  - It is recorded by hand on the shop's server (`npm run supabase:writer -- --claim`) and by the
+    disaster restore. Nothing else records it.
+  - With no writer row the guard behaves as before (`writerUnset`). The worker logs that once,
+    and `supabase:check` warns.
+  - A copy of the whole data FOLDER would carry the file. A standby only ever receives og.db.
+- **The reconcile asks.** It lists every row it would delete (table, count, every id) and saves
+  the full rows to `backups/reconcile-delete-<time>.json`. It then asks for the word `DELETE`.
+  - With no terminal, it exits 3 having written nothing; `--yes` is for scripts.
+  - With nothing to delete, it runs as before.
+  - The panel's **Reconcile** stops at the list. **Reconcile and delete** (typed word `DELETE`)
+    runs it with `--yes`.
+- `server/test/sync-safety.test.js` (11, a stand-in Supabase in `test/fake-supabase.js`) covers all
+  three. All 11 were seen red on the old code.
+
 ## The partner half
 
 `server/lib/partner.js` and `server/migrations/015_partner.sql`. Print jobs, the two-way line to

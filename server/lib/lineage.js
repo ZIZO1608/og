@@ -48,16 +48,88 @@
    The id lives in `config` under sync.lineage. og-track's inbox RPCs compare
    it too (lib/inbox.js), so only the owner collects what customers left on
    the public page.
+
+   THE WRITER (sync safety, 8 Oct 2026). The lineage is the identity of a
+   DATABASE, so any COPY of the shop's og.db — a VACUUM INTO, a restored
+   backup, the byte copy a standby receives — carries the same id and passed
+   this guard. That is how sales the shop never issued reached the mirror
+   between 16 Sep and 8 Oct (SYNC_WRITERS.md). So the machine allowed to push
+   is named as well: a random WRITER ID in a file in the data folder
+   (`mirror-writer.id`, beside og.db, never inside it), recorded in the
+   mirror's sync_state row `writer` with the hostname. Every push compares
+   both. A copy of the database does not carry the file, so it is refused
+   even though its lineage matches:
+
+       This computer isn't the machine that writes to the cloud copy.
+
+   The writer is recorded BY HAND, once, on the shop's server
+   (`npm run supabase:writer -- --claim`), and by the disaster restore,
+   which is the one deliberate move of the shop. Until a writer is recorded
+   the guard behaves exactly as before (`writerUnset` rides on the answer
+   and the check says so) — so this code can be deployed before anybody has
+   claimed, and nothing stops.
    ========================================================================== */
 
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 
 import * as DB from './db.js';
 import * as SB from './supabase.js';
+import { dataDir } from './env.js';
 
 const KEY = 'sync.lineage';   /* local config row */
 const ROW = 'lineage';        /* sync_state row in the mirror */
+const WROW = 'writer';        /* sync_state row naming the machine that pushes */
+
+/* The writer file. OG_WRITER_FILE is for the tests only. */
+export function writerFile() {
+  return process.env.OG_WRITER_FILE || join(dataDir(), 'mirror-writer.id');
+}
+/* This machine's writer id, or null. Never created by a read. */
+export function localWriter() {
+  try {
+    const f = writerFile();
+    if (!existsSync(f)) return null;
+    const v = readFileSync(f, 'utf8').trim();
+    return /^[0-9a-f-]{36}$/i.test(v) ? v : null;
+  } catch { return null; }
+}
+function makeWriter() {
+  const id = randomUUID();
+  const f = writerFile();
+  mkdirSync(dirname(f), { recursive: true });
+  writeFileSync(f, id + '\n', { mode: 0o600 });
+  return id;
+}
+
+export async function remoteWriter() {
+  const [r] = await SB.select('sync_state', { eq: { id: WROW } });
+  return parse(r);
+}
+
+/* Record THIS machine as the one that writes. Refuses unless this database
+   owns the lineage, and refuses to take over from another recorded writer
+   unless replace is set — that is a person deciding the shop has moved. */
+export async function claimWriter({ replace = false } = {}) {
+  const lin = await guard({ readOnly: true, skipWriter: true });
+  if (!lin.ok || lin.unclaimed) return { ok: false, code: 'not_owner', lin };
+  const other = await remoteWriter();
+  let mine = localWriter();
+  if (other && other.id === mine) return { ok: true, already: true, writer: other };
+  if (other && !replace) return { ok: false, code: 'writer_elsewhere', writer: other };
+  if (!mine) mine = makeWriter();
+  const note = `${mine} ${hostname()}`;
+  const at = new Date().toISOString();
+  if (other) await SB.update('sync_state', { id: WROW }, { note, last_push_at: at });
+  else {
+    const [r] = await SB.select('sync_state', { eq: { id: WROW } });
+    if (r) await SB.update('sync_state', { id: WROW }, { note, last_push_at: at });
+    else await SB.insert('sync_state', { id: WROW, last_seq: 0, note, last_push_at: at });
+  }
+  return { ok: true, claimed: true, replaced: !!other, writer: { id: mine, host: hostname(), since: at } };
+}
 
 /* This database's id. Created on first use — a write, so a read-only caller
    (the check) passes create:false and may get null: "never synced under a
@@ -73,11 +145,21 @@ export function localId({ create = true } = {}) {
   return id;
 }
 
-export async function remote() {
-  const [r] = await SB.select('sync_state', { eq: { id: ROW } });
+function parse(r) {
   if (!r || !r.note) return null;
   const [id, ...rest] = String(r.note).split(' ');
   return { id, host: rest.join(' ') || '(unknown machine)', since: r.last_push_at };
+}
+
+export async function remote() {
+  const [r] = await SB.select('sync_state', { eq: { id: ROW } });
+  return parse(r);
+}
+
+/* Both rows in ONE request: the guard runs before every push. */
+async function remoteBoth() {
+  const rows = await SB.select('sync_state', { filters: { id: `in.(${ROW},${WROW})` } });
+  return { owner: parse(rows.find((r) => r.id === ROW)), writer: parse(rows.find((r) => r.id === WROW)) };
 }
 
 export async function claim(id) {
@@ -104,7 +186,7 @@ export async function ownerSeen() {
   const rows = await SB.select('sync_state', { limit: 1000 });
   let newest = null;
   for (const r of rows) {
-    if (r.id === ROW || !r.last_push_at) continue;
+    if (r.id === ROW || r.id === WROW || !r.last_push_at) continue;
     if (!newest || String(r.last_push_at) > newest) newest = String(r.last_push_at);
   }
   return newest;
@@ -121,23 +203,29 @@ export function forget() {
   DB.get().prepare('DELETE FROM config WHERE key = ?').run(KEY);
 }
 
-/* { ok: true, mine, claimed? }
+/* { ok: true, mine, claimed?, writerUnset? }
    { ok: false, mine, other }              — another database owns it
    { ok: false, mine, unclaimed: true }    — history, but no owner row at all
+   { ok: false, mine, notWriter: true, writer } — this database, but another
+                                             MACHINE is the recorded writer
    readOnly: never writes anywhere (the check, users:mirror's dry run).
 
    claimUnclaimed: claim a mirror that HAS history and NO owner row. It can
    never move an existing owner — that branch does not look at it. */
-export async function guard({ claimUnclaimed = false, readOnly = false } = {}) {
+export async function guard({ claimUnclaimed = false, readOnly = false, skipWriter = false } = {}) {
   const mine = localId({ create: !readOnly });
-  const other = await remote();
+  const { owner: other, writer } = await remoteBoth();
   if (!other) {
     if (readOnly) return { ok: true, mine, unclaimed: true };
     if (claimUnclaimed || !(await everSynced())) { await claim(mine); return { ok: true, mine, claimed: true }; }
     return { ok: false, mine, unclaimed: true };
   }
-  if (mine && other.id === mine) return { ok: true, mine };
-  return { ok: false, mine, other };
+  if (!(mine && other.id === mine)) return { ok: false, mine, other };
+  if (skipWriter) return { ok: true, mine };
+  /* The lineage matches. Is this the MACHINE that writes? */
+  if (!writer) return { ok: true, mine, writerUnset: true };
+  if (writer.id === localWriter()) return { ok: true, mine, writer };
+  return { ok: false, mine, notWriter: true, writer };
 }
 
 export function claimUnclaimedRequested() {
@@ -148,10 +236,23 @@ export function claimUnclaimedRequested() {
    the CLI, the panel, the Settings fold). Both languages live in the two i18n
    tables; this is the log's copy. */
 export const NOT_THE_SHOP = "This computer isn't the shop. It can't send to the cloud copy.";
+export const NOT_THE_WRITER = "This computer isn't the machine that writes to the cloud copy.";
 
 /* The refusal, as lines. The first begins with '!' so lib/sync-worker.js
    picks it as the reason for the log, the Sync button and the bell. */
-export function refusal(other) {
+export function refusal(other, lin = null) {
+  if (lin && lin.notWriter) {
+    const w = lin.writer || {};
+    return [
+      `! ${NOT_THE_WRITER} It holds a copy of the shop's database, but the cloud copy is written ` +
+      `only by ${w.host || '?'} (writer ${String(w.id || '?').slice(0, 8)}…), since ` +
+      `${w.since ? String(w.since).slice(0, 16).replace('T', ' ') : '?'} UTC. Nothing was pushed.`,
+      `    A copy of og.db (a backup, a VACUUM INTO, a standby's copy) must never push: its sales`,
+      `    would land in the mirror beside the shop's and a later reconcile deletes them.`,
+      `    A development or standby copy:  set OG_SYNC_MINUTES=0, and keep the Supabase keys out of .env.`,
+      `    The shop really has moved to THIS machine:  npm run supabase:writer -- --claim --replace`
+    ];
+  }
   const first = other
     ? `! ${NOT_THE_SHOP} The cloud copy belongs to ${other.host}, since ` +
       `${other.since ? String(other.since).slice(0, 16).replace('T', ' ') : '?'} UTC. Nothing was pushed.`

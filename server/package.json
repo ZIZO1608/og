@@ -34,6 +34,7 @@
     "supabase:sync": "node scripts/supabase-sync.js",
     "supabase:restore": "node scripts/supabase-restore.js",
     "supabase:reconcile": "node scripts/supabase-reconcile.js",
+    "supabase:writer": "node scripts/supabase-writer.js",
     "users:rebuild": "node scripts/users-rebuild.js",
     "users:mirror": "node scripts/users-mirror.js"
   },

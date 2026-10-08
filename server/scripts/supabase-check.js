@@ -58,7 +58,7 @@ console.log(head('2. Credentials'));
 
 const url = maybe('SUPABASE_URL');
 const anon = maybe('SUPABASE_ANON_KEY');
-const secret = maybe('SUPABASE_SERVICE_ROLE_KEY') || maybe('SUPABASE_SECRET_KEY');
+const secret = maybe('SUPABASE_SECRET_KEY') || maybe('SUPABASE_SERVICE_ROLE_KEY');
 
 if (!url) {
   fail('SUPABASE_URL is not set',
@@ -77,10 +77,10 @@ if (!anon) {
 }
 
 if (!secret) {
-  fail('SUPABASE_SERVICE_ROLE_KEY is not set',
-       'Fix: Dashboard → Project Settings → API Keys → the secret / service_role key');
+  fail('SUPABASE_SECRET_KEY is not set',
+       'Fix: Dashboard → Project Settings → API Keys → a secret key (sb_secret_…)');
 } else {
-  console.log(tick(`service key    ${mask(secret)}`));
+  console.log(tick(`secret key     ${mask(secret)}  (${/^sb_secret_/.test(secret) ? 'new sb_secret_ key, sent on apikey only' : 'legacy service_role key'})`));
 
   /* The two keys are easy to mix up — they sit next to each other on the same
      page and look alike. Pasting the public one here fails later with a
@@ -459,6 +459,16 @@ try {
   const lin = await Lineage.guard({ readOnly: true });
   if (lin.ok && lin.mine && !lin.unclaimed) {
     console.log(tick(`the mirror is this database's (lineage ${lin.mine.slice(0, 8)}…)`));
+    if (lin.writerUnset) {
+      console.log(warn('no WRITER is recorded — any copy of this database run with the keys could push as the shop'));
+      console.log(`      On the shop's server, once:  ${BOLD}npm run supabase:writer -- --claim${OFF}`);
+    } else {
+      console.log(tick(`this machine is the recorded writer (${lin.writer.host}, ${String(lin.writer.id).slice(0, 8)}…)`));
+    }
+  } else if (lin.notWriter) {
+    console.log(cross(`this is the shop's database, but the cloud copy is written by ${lin.writer.host} (${String(lin.writer.id).slice(0, 8)}…), not this machine`));
+    console.log('      Every sync and reconcile from here is refused (exit 2). A copy must never push.');
+    failed = true;
   } else if (lin.unclaimed) {
     /* Red, because the next sync from this machine is refused until a person
        decides — a mirror that quietly stopped moving is the thing the whole

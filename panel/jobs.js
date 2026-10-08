@@ -279,7 +279,20 @@ export const JOBS = {
     danger: 'RECONCILE',
     while: 'shut',
     cwd: 'server',
+    /* No --yes: with rows to delete it lists every one in the log, saves them
+       to backups/ and stops (exit 3) having written nothing. The panel has no
+       terminal to ask on, so deleting is the second job, below. */
     steps: () => [['node', ['scripts/supabase-reconcile.js']]]
+  },
+
+  mirrorReconcileDelete: {
+    label: 'Reconcile and delete',
+    group: 'cloud',
+    blurb: 'The same as Reconcile, and it DELETES the rows Reconcile listed in the log. Run Reconcile first and read the list.',
+    danger: 'DELETE',
+    while: 'shut',
+    cwd: 'server',
+    steps: () => [['node', ['scripts/supabase-reconcile.js', '--yes']]]
   },
 
   /* THE DISASTER RESTORE, and the ONLY thing that changes which computer owns

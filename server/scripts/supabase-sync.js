@@ -60,7 +60,7 @@ const log = Mirror.consoleLog();
   const lin = await Lineage.guard({ claimUnclaimed: Lineage.claimUnclaimedRequested() });
   if (!lin.ok) {
     log.head('Whose mirror is this?');
-    for (const line of Lineage.refusal(lin.other)) console.log(line);
+    for (const line of Lineage.refusal(lin.other, lin)) console.log(line);
     await SB.exit(2);
   }
   if (lin.claimed) log.tick(`mirror claimed for this database (${lin.mine.slice(0, 8)}…)`);

@@ -652,6 +652,11 @@ export async function pull({ dbFile, log = Mirror.consoleLog(), force = false, d
     const id = Lineage.localId();
     await Lineage.claim(id);
     log.tick(`mirror claimed for ${host} (${id.slice(0, 8)}…)` + (other ? `, taken over from ${other.host}` : ''));
+    /* The disaster restore is the one deliberate move of the shop, so it
+       names THIS machine as the writer too (lineage.js, THE WRITER). */
+    const w = await Lineage.claimWriter({ replace: true });
+    if (w.ok) log.tick(`this machine is now the cloud copy's writer (${String(w.writer.id).slice(0, 8)}…)`);
+    else { warnings.push('writer_not_claimed'); log.warn(`could not record this machine as the writer (${w.code}) — npm run supabase:writer -- --claim --replace`); }
   } catch (e) {
     warnings.push('claim_failed');
     log.warn(`could not claim the cloud copy — ${e.message}. This computer will be refused when it pushes; run the restore again once the line is back.`);

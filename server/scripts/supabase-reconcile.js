@@ -2,7 +2,18 @@
    OG SYSTEM — make Supabase match the shop, exactly
    --------------------------------------------------------------------------
    Run:  cd server && npm run supabase:reconcile -- --dry-run
-         cd server && npm run supabase:reconcile
+         cd server && npm run supabase:reconcile           (asks before deleting)
+         cd server && npm run supabase:reconcile -- --yes  (for a script)
+
+   NEVER DELETES SILENTLY (sync safety, 8 Oct 2026). On 8 Oct a reconcile on
+   the VPS deleted 13 sales, 4 print jobs and more that a second writer had
+   put in the mirror, straight away, and its truncated list was the only
+   record of which rows they were. Now, before anything is written at all:
+   every row it would delete is listed (table, count, every id), the full
+   rows are saved to backups/reconcile-delete-<time>.json, and it asks for
+   the word DELETE. Without a terminal to ask on it stops and says to run
+   again with --yes. A refusal writes nothing — not even the upserts.
+   With nothing to delete it runs as before, without asking.
 
    WHY THIS EXISTS
    ---------------
@@ -31,8 +42,10 @@
    job with different rules, and it has its own script (supabase-restore.js).
    ========================================================================== */
 
-import { resolve, dirname } from 'node:path';
-import { dbFile } from '../lib/env.js';
+import { resolve, dirname, join } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+import { dbFile, backupDir } from '../lib/env.js';
 import { fileURLToPath } from 'node:url';
 
 import { load } from '../lib/env.js';
@@ -46,6 +59,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 load();
 
 const DRY = process.argv.includes('--dry-run');
+const YES = process.argv.includes('--yes');
 
 const GREEN = '\x1b[32m', YELLOW = '\x1b[33m', RED = '\x1b[31m',
       DIM = '\x1b[2m', BOLD = '\x1b[1m', OFF = '\x1b[0m';
@@ -180,7 +194,7 @@ DB.open(dbFile());
   const lin = await Lineage.guard();
   if (!lin.ok) {
     head('Whose mirror is this?');
-    for (const line of Lineage.refusal(lin.other)) console.log(line);
+    for (const line of Lineage.refusal(lin.other, lin)) console.log(line);
     await SB.exit(2);
   }
   if (lin.claimed) tick(`mirror claimed for this database (${lin.mine.slice(0, 8)}…)`);
@@ -224,8 +238,11 @@ if (totalOrphans) {
   head('Rows in Supabase that no longer exist here');
   for (const p of plan) {
     if (!p.orphans.length) continue;
+    /* EVERY id, never a sample: this list is what somebody reads before
+       saying yes, and the record of what went if they do. */
     const ids = p.orphans.map((r) => keyOf(r, p.key).replace(/\u0000/g, ':'));
-    dim(`${p.name}: ${ids.slice(0, 25).join(', ')}${ids.length > 25 ? ` … +${ids.length - 25}` : ''}`);
+    console.log(`  ${BOLD}${p.name}${OFF} — ${ids.length} row(s)`);
+    for (let i = 0; i < ids.length; i += 10) dim(ids.slice(i, i + 10).join(', '));
   }
 }
 
@@ -243,6 +260,42 @@ if (DRY) {
       `(${totalMissing} of them not in Supabase at all).`);
   dim(`${totalOrphans} row(s) would be deleted from Supabase.`);
   await SB.exit(0);
+}
+
+/* ---- Deleting is asked for, and recorded, BEFORE anything is written ---- */
+if (totalOrphans) {
+  let saved = null;
+  try {
+    const dir = backupDir();
+    mkdirSync(dir, { recursive: true });
+    saved = join(dir, `reconcile-delete-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+    writeFileSync(saved, JSON.stringify({
+      at: new Date().toISOString(), project: SB.projectUrl(),
+      tables: Object.fromEntries(plan.filter((p) => p.orphans.length).map((p) => [p.name, p.orphans]))
+    }, null, 2));
+  } catch (e) {
+    bad(`Could not save the rows about to be deleted — ${e.message}`);
+    dim('Nothing was written or deleted. Free some space or fix the backups folder, then run again.');
+    await SB.exit(1);
+  }
+  head(`About to delete ${totalOrphans} row(s) from Supabase`);
+  dim(`Every one of them, as it is now, is saved in ${saved}`);
+  if (!YES) {
+    if (!process.stdin.isTTY) {
+      bad('Not deleting: nobody is here to confirm.');
+      dim('Read the list above. If every row should go, run again with --yes. Nothing was written.');
+      await SB.exit(3);
+    }
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise((r) => rl.question('  Type DELETE to go ahead, anything else to stop: ', r));
+    rl.close();
+    if (String(answer).trim() !== 'DELETE') {
+      warn('Stopped. Nothing was written or deleted.');
+      await SB.exit(3);
+    }
+  } else {
+    dim('--yes given: going ahead without asking.');
+  }
 }
 
 /* Upsert parents first. */
