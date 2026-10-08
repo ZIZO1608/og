@@ -114,11 +114,13 @@ var CONFIG = {
      current location, which is right when only the shop's own network opens it. */
   PUBLIC_URL: 'https://zizo1608.github.io/og/',
 
-  /* What OG pays Yalla Wear to print one football kit — name, number, badges.
-     Bulk jobs (school shirts, cafe staff) are priced per job instead, because
-     those include the garment. Change this one number and every kit line,
-     every job payout and every partner invoice re-prices instantly. */
-  KIT_PRINT_PRICE: 180,
+  /* What OG pays Yalla Wear to print one name + number (stage 1c): read from
+     config print.partner_unit_cost on hydrate — 300 lira — and null for an
+     account the server does not send it to (no cost.read). It replaced
+     KIT_PRINT_PRICE (180), the till's PRINT_UNIT_COST (460) and the server's
+     own 460: one fact, one setting. Bulk jobs (school shirts, cafe staff) are
+     still priced per job, because those include the garment. */
+  PRINT_PARTNER_COST: null,
 
   /* How long Yalla Wear gives OG to settle an invoice. Drives the ageing
      buckets on the partner finance page. */
@@ -2513,7 +2515,8 @@ var DB = {
              size: f.size || 'L', qty: f.qty || 1,
              /* 069 — the shirt it goes on (the till knows; nothing else sets it). */
              item: f.item || null,
-             price: f.price || CONFIG.KIT_PRINT_PRICE };
+             /* null: the server fills in what Yalla Wear charges (stage 1c). */
+             price: f.price || CONFIG.PRINT_PARTNER_COST || null };
   },
 
   /* The one way a print job is created, so every job — seeded or made live
@@ -2578,7 +2581,7 @@ var DB = {
         lines: (job.lines || []).map(function (l) {
           return {
             clubCode: clubCodeFor(l.club), printName: l.print,
-            number: l.number, size: l.size, qty: l.qty, unitCost: l.price,
+            number: l.number, size: l.size, qty: l.qty, unitCost: l.price == null ? null : l.price,
             item: l.item || null
           };
         })
@@ -2604,7 +2607,7 @@ var DB = {
   resyncKit: function (job) {
     if (job.kind !== 'kit' || !job.lines) return;
     job.qty = job.lines.reduce(function (a, l) { return a + l.qty; }, 0);
-    job.cost = job.lines.reduce(function (a, l) { return a + l.qty * l.price; }, 0);
+    job.cost = job.lines.reduce(function (a, l) { return a + l.qty * (l.price || 0); }, 0);
     job.sizes = {};
     TEE_SIZES.forEach(function (sz) {
       var n = job.lines.reduce(function (a, l) { return a + (l.size === sz ? l.qty : 0); }, 0);
@@ -2709,6 +2712,7 @@ var DB = {
     CONFIG.AT_RISK_DAYS            = num('customer.at_risk_days', CONFIG.AT_RISK_DAYS);
     /* 061: what one printed piece costs a website customer; null = not set. */
     CONFIG.WEB_PRINT_PRICE         = num('print.unit_price', null);
+    CONFIG.PRINT_PARTNER_COST      = num('print.partner_unit_cost', null);
     /* 071: the price's currency (USD: the number is cents — 500 is $5.00),
        the longest name a shirt takes, and the days a print is promised in. */
     CONFIG.WEB_PRINT_CUR           = cfg['print.unit_currency'] ? String(cfg['print.unit_currency']) : (CONFIG.BASE_CURRENCY || 'SYP');

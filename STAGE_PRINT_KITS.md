@@ -341,3 +341,73 @@ plain-http address, which the CSP rightly refuses — a generic suite needs them
 - The Print screen's own "new job" form and the partner invoice still use `KIT_PRINT_PRICE` (180)
   as a per-kit figure — that is the job's side, not a customer charge, and was not changed.
 - Not tested against the live Supabase project or on a real phone.
+
+---
+
+# Stage 1c (8 Oct 2026) — what Yalla Wear charges: 300 lira, one setting
+
+Same branch, `feature/print-kits`; still not merged. One new local migration, **072**, and no
+cloud file (`config` is mirrored whole). The customer's price — `print.unit_price` /
+`print.unit_currency`, $5 — was not touched.
+
+## What `KIT_PRINT_PRICE` turned out to be
+
+**Yalla Wear's charge to OG for printing a kit shirt — the same fact as
+`print.partner_unit_cost`.** Its own comment in `js/data.js` read "What OG pays Yalla Wear to
+print one football kit — name, number, badges … every kit line, every job payout and every
+partner invoice re-prices", and that is how it was used:
+
+- `DB.newKitLine` (the job drawer's line editor): a kit line's `price`, which `DB.newPrintJob`
+  sends as the line's `unitCost` → `print_job_lines.unit_cost`, "what the PRINTER charges";
+- the Print screen's "new job" form: its "Yalla Wear charges / piece" box (`unitCost`);
+- Yalla Wear's invoice builder (`js/ylinvoice.js`, their portal): the default price per kit, the
+  price dropdown's middle option, and "180 SYP per kit" printed on the invoice.
+
+So it was removed and replaced by the setting. It was one of **three** copies: the till had its
+own `PRINT_UNIT_COST = 460` for each line it sent, and `Partner.webPrices()` fell back to 460.
+Now there is one number in the whole system.
+
+## What changed
+
+1. **Migration 072** sets `print.partner_unit_cost = '300'` (the shop's lira). The server's
+   fallback is 300 (`Partner.webPrices`), so a database without the row also means 300.
+2. **One number.** `KIT_PRINT_PRICE` and the till's `PRINT_UNIT_COST` are gone. The browser
+   reads `CONFIG.PRINT_PARTNER_COST` from config. **A kit line sent without a cost of its own
+   now takes the setting on the server** (`Partner.create`), so the till sends none, and a
+   cost the caller does send (the Print screen's box, a website order) is kept.
+3. **Who is told it.** It is the shop's side of the margin, so `GET /api/config` now sends it
+   only to accounts with `cost.read` and to Yalla Wear (it is their own price, and their invoice
+   prints it). Before, the till had it as a constant in the page.
+4. **Nothing old is rewritten.** 072 changes the config row only. Print lines and partner
+   invoices already made keep the figures they were made with (on the scratch copy: 22 lines at
+   460 and 2 at 180, all unchanged). Only jobs made from now on use 300. The sale's print line
+   (stage 1b) takes its cost from the same setting, so its `unit_cost` is now 300 too.
+5. **Settings → Website print price** has a **"Yalla Wear print cost (lira, per name + number)"**
+   / **"كلفة الطباعة عند يلا وير (بالليرة، للاسم والرقم)"** box, saving the same key
+   (`print.partner_unit_cost` is now on `CONFIG_WRITABLE`, whole lira above 0). It is shown
+   only to accounts with `cost.read`.
+
+**Left alone, on purpose:** the Print screen's new-job form still offers 950 as the
+**customer's** price per piece (`PJ_PIECE_PRICE`), a default on a box staff type over. It is not
+Yalla Wear's charge, and the brief said not to touch the customer price; it no longer matches the
+till ($5), which the owner may want to align.
+
+**Files:** `server/migrations/072_print_partner_cost.sql` (new), `server/lib/partner.js`,
+`server/lib/sales.js` (comment), `server/lib/config-writable.js`, `server/index.js`,
+`js/data.js`, `js/pos.js`, `js/ylinvoice.js`, `js/app-jobs-reports.js`, `js/app-actions.js`,
+`js/app-settings.js`, `js/app-changes.js`, `js/app-i18n-extra.js`, `CLAUDE.md`.
+
+## Test results (scratch shop, port 8199; 072 applied on its restart)
+
+| Suite | Result | New in it |
+|---|---|---|
+| `print-kits/api.mjs` | **93 / 93** | 072 set 300; every print line made before is unchanged; every line made since costs 300; a till line sent with no cost gets 300 on the server; the sale's print line costs 300; the cashier is not sent the figure, the owner and Yalla Wear are; 2.5 refused, 320 saved, a cashier refused |
+| `print-kits/sql.mjs` | 45 / 45 | |
+| `print-kits/ui.mjs` | 37 / 37 | |
+| `print-kits/ui-1b.mjs` | **17 / 17** | the Settings box shows 300 with its label, saves 310 and 300 to the same key, Arabic label |
+| `server` `npm test` | 62 / 62 | |
+| `web-extras/parity` · `usd-prices/parity` | 35 / 35 · 40 / 40 | |
+| `audit06/web-pay-sql` · `audit06/web-orders-sql` | 53 / 53 · 72 / 72 | |
+| `fix05/p0-namespaces` | 6 / 6 | |
+
+The next local migration is now **073**; the next cloud file is still **042**.

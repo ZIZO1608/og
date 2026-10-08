@@ -39,7 +39,6 @@ var POS = (function () {
     print: { on: false, sel: {}, priority: 'normal', deadline: null }
   };
 
-  var PRINT_UNIT_COST  = 460;     // paid to Yalla Wear, per piece (new pound)
 
   /* STAGE 1b — THE PRINT IS CHARGED ON THE SALE, at the shop's one print
      price (Settings → Website print price: print.unit_price in
@@ -1328,7 +1327,9 @@ var POS = (function () {
           number: (x.sel.num !== '' && isFinite(+x.sel.num)) ? +x.sel.num : null,
           size: String(x.line.size),
           qty: 1,
-          price: PRINT_UNIT_COST,
+          /* No cost from the till: the server fills what Yalla Wear charges
+             per print from print.partner_unit_cost (stage 1c). */
+          price: null,
           /* 069 — which shirt, as sold: the receipt prints it over the name. */
           item: x.line.name || null
         });
@@ -1353,7 +1354,7 @@ var POS = (function () {
           var svc = (server.items || []).filter(function (i) { return i.sku === 'SVC-PRINT'; })[0];
           return svc ? svc.unitPrice * svc.qty : 0;
         })(),
-        cost: klines.length * PRINT_UNIT_COST,
+        cost: null,
         /* Straight onto Yalla Wear's desk, in the same request that creates
            the job. It used to be two — create, then send at an id the
            browser had guessed — and the second could race the first. The

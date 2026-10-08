@@ -316,7 +316,9 @@ export function nextJobId(d = DB.get()) {
    Wear charges, per piece. One copy, read by the old print door
    (POST /api/ext/print-jobs) and by lib/weborders.js. print.unit_price is set
    in Settings → Money and prices; the fallbacks are the numbers that door has
-   always used. The till's own figure (CONFIG.KIT_PRINT_PRICE) is separate. */
+   always used. Stage 1c: print.partner_unit_cost is the ONE figure for what
+   Yalla Wear charges per name + number (300 lira); the till's 460 and the
+   browser's KIT_PRINT_PRICE (180) are gone. */
 export function webPrices(d = DB.get()) {
   const raw = (k) => {
     const r = d.prepare('SELECT value FROM config WHERE key = ?').get(k);
@@ -353,9 +355,9 @@ export function webPrices(d = DB.get()) {
     else price = null;
   }
   /* The printer's cost is the shop's own side of the margin and is never
-     shown to the website, so its default stays (the till's number). */
+     shown to the website. 300 lira a print (the owner, 8 Oct 2026; 072). */
   const c = Number(raw('print.partner_unit_cost'));
-  const cost = Number.isFinite(c) && c > 0 ? Math.round(c) : 460;
+  const cost = Number.isFinite(c) && c > 0 ? Math.round(c) : 300;
   return { price, cost, currency: base, unit: amount == null ? null : { amount, currency: cur } };
 }
 
@@ -418,9 +420,15 @@ export function create({
       `INSERT INTO print_job_lines (job_id, club_code, print_name, number, size, qty, unit_cost, item, print_kit_snapshot)
        VALUES (?,?,?,?,?,?,?,?,?)`
     );
+    /* Stage 1c — a kit line sent without a cost of its own (the till, and a
+       form opened by somebody without cost.read, who is never sent the key)
+       takes what Yalla Wear charges, from the one setting. A cost the caller
+       did send — the Print screen's box, a website order — is kept. */
+    const lineCost = (l) => (l.unitCost === undefined || l.unitCost === null || l.unitCost === ''
+      ? webPrices(d).cost : Math.max(0, Math.round(Number(l.unitCost) || 0)));
     for (const l of lines) {
       ins.run(id, l.clubCode ?? null, l.printName || null, l.number ?? null,
-              l.size ?? null, l.qty || 1, l.unitCost || 0,
+              l.size ?? null, l.qty || 1, lineCost(l),
               /* 069 — the shirt it goes on, as sold (the till, and since 071
                  the website's printed lines). */
               l.item ? String(l.item).slice(0, 120) : null,

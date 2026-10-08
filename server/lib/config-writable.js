@@ -25,8 +25,9 @@
    (Partner.webPrices, lib/weborders.js). 071 named four more beside it:
    print.unit_currency (the price's currency — USD, so '500' is $5.00),
    print.max_letters (the longest name a shirt takes) and print.turnaround_min
-   / _max (the days a print is promised in). print.partner_unit_cost — what
-   Yalla Wear charges — is NOT on the list; it is not the website's.
+   / _max (the days a print is promised in). Stage 1c added
+   print.partner_unit_cost — what Yalla Wear charges per name + number, whole
+   lira — for Settings' "Yalla Wear print cost" box (the route is config.write).
 
    shop.public_url (panel polish, 24 Sep 2026) is the shop's address on the
    internet — https://shop.ogsports1.com since day shift 07. Telegram's job
@@ -38,7 +39,7 @@
    lib/sitenotify.js tells it the catalogue changed (contract v1.5). The
    website's key goes with every call, so it is checked as strictly as
    shop.public_url, by siteUrlProblem() below. */
-export const CONFIG_WRITABLE = /^receipt\.|^print\.(unit_price|unit_currency|max_letters|turnaround_min|turnaround_max)$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^fx\.feed_(on|side|minutes|scale|max_jump_pct)$|^alerts\.(quiet_from|quiet_to|urgent)$|^web\.site_url$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
+export const CONFIG_WRITABLE = /^receipt\.|^print\.(unit_price|unit_currency|partner_unit_cost|max_letters|turnaround_min|turnaround_max)$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^fx\.feed_(on|side|minutes|scale|max_jump_pct)$|^alerts\.(quiet_from|quiet_to|urgent)$|^web\.site_url$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
 
 /* What is wrong with a value for shop.public_url, or null when it will do.
    Strict, because the value goes into a QR code taped to a counter and into a
@@ -117,6 +118,9 @@ export function configRefusal(updates) {
     /* 071 — the print keys, read as the cloud reads them (whole digits). */
     if (k === 'print.unit_price' && String(updates[k] ?? '').trim() !== '' && !/^[0-9]{1,13}$/.test(String(updates[k]).trim())) {
       return 'print.unit_price must be a whole number in minor units (500 is $5.00), or empty.';
+    }
+    if (k === 'print.partner_unit_cost' && !(/^[0-9]{1,9}$/.test(String(updates[k] ?? '').trim()) && Number(updates[k]) > 0)) {
+      return 'print.partner_unit_cost must be a whole number of lira above 0.';
     }
     if (k === 'print.unit_currency' && !['USD', 'SYP'].includes(String(updates[k]))) return 'print.unit_currency must be USD or SYP.';
     if (k === 'print.max_letters' && !(/^\d{1,2}$/.test(String(updates[k])) && Number(updates[k]) >= 1 && Number(updates[k]) <= 30)) {

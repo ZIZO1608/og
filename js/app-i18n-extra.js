@@ -4959,6 +4959,8 @@ var PRINTKITS_EN = {
   err_print_waiting: 'It is waiting for its print — it can go once Yalla Wear has finished it.',
   err_bad_kit: 'No such print kit.', err_kit_archived: 'That print kit is put away.',
   svc_print: 'Name & number print', svc_print_on_sale: 'on this sale',
+  set_print_partner: 'Yalla Wear print cost (lira, per name + number)',
+  set_print_partner_note: 'What Yalla Wear charges the shop for one name and number. Every new print job uses it; jobs and invoices already made keep the price they were made with.',
   svc_print_unset: 'The print price is not set (Settings → Website print price) — nothing is charged for it.',
   err_print_price_unset: 'The print price is not set — Settings → Website print price.', err_bad_service: 'That line cannot be added to a sale.'
 };
@@ -5060,6 +5062,8 @@ var PRINTKITS_AR = {
   err_print_waiting: 'ناطر الطباعة — بيطلع لما تخلّص يلا وير.',
   err_bad_kit: 'ما في هيك قالب طباعة.', err_kit_archived: 'هالقالب مخبّا.',
   svc_print: 'طباعة اسم ورقم', svc_print_on_sale: 'على هالفاتورة',
+  set_print_partner: 'كلفة الطباعة عند يلا وير (بالليرة، للاسم والرقم)',
+  set_print_partner_note: 'قديش بتاخد يلا وير من المحل على الاسم والرقم الواحد. كل طلب طباعة جديد بينحسب فيه؛ الطلبات والفواتير يلي انعملت قبل بتضل على سعرها.',
   svc_print_unset: 'سعر الطباعة مو محدّد (الإعدادات ← سعر الطباعة على الموقع) — ما رح ينحسب شي.',
   err_print_price_unset: 'سعر الطباعة مو محدّد — الإعدادات ← سعر الطباعة على الموقع.', err_bad_service: 'هالسطر ما بينضاف لفاتورة.'
 };

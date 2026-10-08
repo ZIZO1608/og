@@ -289,7 +289,9 @@ function openNewJob() {
   OG.pj = {
     kind: 'kit', lines: [pjBlankLine()], customer: '', phone: '', design: '', qty: 12,
     priority: 'normal', deadline: '', unitPrice: PJ_PIECE_PRICE,
-    unitCost: CONFIG.KIT_PRINT_PRICE, currency: 'SYP'
+    /* What Yalla Wear charges per print (stage 1c), or null for somebody
+       without cost.read — the server then fills it from the same setting. */
+    unitCost: CONFIG.PRINT_PARTNER_COST, currency: 'SYP'
   };
   openModal({
     title: t('pj_new'), size: 'wide', sheet: window.innerWidth <= 720,

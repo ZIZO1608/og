@@ -2100,7 +2100,7 @@ var ACTIONS = {
     DB.newPrintJob({
       customer: f.customer.trim(), phone: f.phone.trim() || '—', design: f.design.trim(),
       lines: lines, qty: qty, priority: f.priority, deadline: when,
-      price: qty * f.unitPrice, cost: qty * (f.unitCost || 0), currency: f.currency,
+      price: qty * f.unitPrice, cost: f.unitCost != null ? qty * f.unitCost : null, currency: f.currency,
       source: 'manual', autoSend: true,
       onSaved: function (saved) {
         if (typeof Notify !== 'undefined') Notify.refresh();

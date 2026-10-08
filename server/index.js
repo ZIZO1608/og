@@ -734,6 +734,13 @@ router.add('GET /api/config', (ctx) => {
        which asks for delivery.desk rather than handing them to every login. */
     delete config['pay.accounts'];
   }
+  /* Stage 1c — what Yalla Wear charges per print is the shop's cost: only
+     for cost.read, and for Yalla Wear's own portal, whose invoice prints it
+     (it is their price). The till no longer needs it — the server fills a
+     kit line's cost itself (Partner.create). */
+  if (!Auth.can(ctx.user, 'cost.read') && !(ctx.user && ctx.user.role === 'partner')) {
+    delete config['print.partner_unit_cost'];
+  }
   /* Couriers, the shipping price list and where orders are packed are the
      shop's business, not Yalla Wear's — the same reason delivery.* is
      FORBIDDEN to that role. */

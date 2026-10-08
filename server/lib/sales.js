@@ -364,8 +364,9 @@ export function record({
         throw Object.assign(new Error('the print price is not set — Settings → Website print price'), { code: 'print_price_unset' });
       }
       const unitPrice = convert(px.unit.amount, px.unit.currency, settle, lineRate(px.unit.currency));
-      /* What Yalla Wear charges is kept in the SHOP's base currency (the till's
-         460 lira) — px.currency, not `base` above, which is the rate's USD. */
+      /* What Yalla Wear charges is kept in the SHOP's base currency (300 lira,
+         print.partner_unit_cost) — px.currency, not `base` above, which is
+         the rate's USD. */
       const unitCost = convert(px.cost, px.currency, settle, lineRate(px.currency));
       priced.push({
         sku: def.sku, productId: null, name: def.name, size: null,

@@ -25,10 +25,12 @@ var YLINV = (function () {
 
   var SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
 
-  /* Offered in the price dropdown. The middle one is CONFIG.KIT_PRINT_PRICE,
-     so changing that constant moves the default without touching this list. */
+  /* Offered in the price dropdown. The middle one is what Yalla Wear charges
+     per print (config print.partner_unit_cost, stage 1c), so changing that one
+     setting moves the default without touching this list. */
+  function kitPrice() { return CONFIG.PRINT_PARTNER_COST || 300; }
   function priceOptions() {
-    var base = CONFIG.KIT_PRINT_PRICE;
+    var base = kitPrice();
     var out = [Math.round(base * 0.5), Math.round(base * 0.75), base,
                Math.round(base * 1.25), Math.round(base * 1.5), Math.round(base * 2)];
     /* De-duplicate in case the base makes two steps collide. */
@@ -140,7 +142,7 @@ var YLINV = (function () {
              club: seed.club || '', clubAr: seed.clubAr || '',
              print: seed.print || '', number: seed.number || '',
              size: seed.size || 'L', qty: seed.qty || 1,
-             price: seed.price || CONFIG.KIT_PRINT_PRICE };
+             price: seed.price || kitPrice() };
   }
 
   function openBuilder(mode) {
@@ -392,7 +394,7 @@ var YLINV = (function () {
     h += '<div class="yw-foot-grid">' +
       '<div class="yw-notes"><span class="yw-lbl">' + t('yi_note') + ' · ملاحظات</span>' +
         '<p>' + esc(inv.note || '') + '</p>' +
-        '<p>' + nf(CONFIG.KIT_PRINT_PRICE) + ' SYP ' + t('yi_per_kit') + ' · ' + t('yi_terms') + '</p></div>' +
+        '<p>' + nf(kitPrice()) + ' SYP ' + t('yi_per_kit') + ' · ' + t('yi_terms') + '</p></div>' +
       '<div class="yw-total">' +
         '<span class="yw-lbl">' + t('yi_total_due') + ' · ' + pcs + ' ' + t('pieces').toUpperCase() + '</span>' +
         '<span class="yw-total-ar">المبلغ الإجمالي</span>' +

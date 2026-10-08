@@ -968,6 +968,15 @@ function webPrintCard() {
       '<label class="field"><span>' + t('set_print_max') + savedPill('print.turnaround_max') + '</span>' +
         '<input class="inp num" type="text" inputmode="numeric" dir="ltr" maxlength="2" value="' + CONFIG.PRINT_TURN_MAX + '" data-change="set-print-rule" data-k="print.turnaround_max"></label>' +
     '</div>' +
+    /* Stage 1c — what Yalla Wear charges per name + number, the one setting
+       every new print job's cost comes from. Only for cost.read: it is the
+       shop's side of the margin (the server does not send it to anybody else). */
+    (seesCost()
+      ? '<label class="field"><span>' + t('set_print_partner') + savedPill('print.partner_unit_cost') + '</span>' +
+          '<input class="inp num" id="setPrintPartner" type="text" inputmode="numeric" dir="ltr" autocomplete="off" ' +
+            'value="' + esc(CONFIG.PRINT_PARTNER_COST != null ? String(CONFIG.PRINT_PARTNER_COST) : '') + '" data-change="set-print-partner">' +
+          '<small class="muted">' + t('set_print_partner_note') + '</small></label>'
+      : '') +
     '<div class="partner-note">' + t('set_webprint_note') + '</div>' +
     (allow('print_kits.manage') ? '<button type="button" class="btn btn-sm mt" data-act="nav" data-view="printkits">' + t('set_print_kits_open') + '</button>' : '') +
     '</div>' + setFoldEnd();

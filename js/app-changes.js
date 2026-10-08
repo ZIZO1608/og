@@ -285,6 +285,13 @@ var CHANGES = {
     saveSetting('print.unit_currency', 'USD', 0);
     saveSetting('print.unit_price', v);
   },
+  /* Stage 1c — what Yalla Wear charges per name + number, whole lira. */
+  'set-print-partner': function (el) {
+    var v = Desk.toCount(el.value);
+    if (!(v > 0)) return;
+    CONFIG.PRINT_PARTNER_COST = v;
+    saveSetting('print.partner_unit_cost', v);
+  },
   /* The longest name and the turnaround days: whole numbers, each its own key. */
   'set-print-rule': function (el) {
     var k = el.getAttribute('data-k');

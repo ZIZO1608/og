@@ -35,9 +35,9 @@ merged.
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
   PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
-- **Numbers in use:** local migrations run to `071` (`063` is night mode's and applies after `067`
+- **Numbers in use:** local migrations run to `072` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `072`; the next cloud file is `042`.** The cloud files have two `030`s and two
+  local migration is `073`; the next cloud file is `042`.** The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
   `server/supabase/status.sql` says which the live project already has.
 - **A section below that says "not merged", or names one of the old worktree folders, describes
@@ -4346,7 +4346,7 @@ Ahmad's website asked for three things, all built on this side (contract **v1.5*
   `ns03/sweep`. The rig: `web-extras/setup.mjs` (a VACUUM INTO copy with two products published),
   `fake-site.mjs`, and a server from the tree on 8198 with the sandbox env.
 
-## Jersey print kits, and the print charged on the sale (071, cloud 041 — 7–8 Oct 2026)
+## Jersey print kits, and the print charged on the sale (071–072, cloud 041 — 7–8 Oct 2026)
 
 The website sells a **name and a number on the back of an adult jersey**, printed by Yalla Wear.
 Built on `feature/print-kits` in two stages; the full record is `STAGE_PRINT_KITS.md` and the
@@ -4426,6 +4426,18 @@ a missing currency means the base currency); ready in `print.turnaround_min`–`
   BEFORE INSERT trigger, so `web_order_submit` was not rewritten). Answers only `order_state`,
   `stage`, `deadline`, `stages[{stage, at}]`; everything else is the same `not_found`. **It only
   works if the website places the order with the signed-in customer's session.**
+- **WHAT YALLA WEAR CHARGES IS ONE SETTING (stage 1c, migration 072): `print.partner_unit_cost`
+  = 300 lira per name + number.** It replaced three copies of the same fact — the server's 460
+  fallback, the till's `PRINT_UNIT_COST` (460) and the browser's `KIT_PRINT_PRICE` (180, whose
+  own comment called it "what OG pays Yalla Wear to print one football kit — name, number,
+  badges", used for each kit line's cost and on Yalla Wear's invoice). The browser reads it as
+  `CONFIG.PRINT_PARTNER_COST`; `GET /api/config` sends it only to `cost.read` and to Yalla Wear
+  (their own price), so a kit line sent with no cost (the till, a form opened without cost.read)
+  takes it on the server in `Partner.create`. Settings → Website print price has the "Yalla Wear
+  print cost" box (`CONFIG_WRITABLE`, whole lira, cost.read to see it). Jobs and invoices made
+  before keep their own figures; 072 rewrites nothing but the config row. The Print screen's
+  new-job form still defaults the CUSTOMER's price to its own 950 (`PJ_PIECE_PRICE`) — a staff
+  default on a typed box, not touched.
 - **Permission `print_kits.manage`**: every role holding `product.write` on the database the
   migration ran on, and anybody granted `product.write` by name.
 - **By hand, in order**: run `041_print_kits.sql` in Supabase **before the shop runs 071** (071 sets
