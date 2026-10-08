@@ -411,3 +411,36 @@ till ($5), which the owner may want to align.
 | `fix05/p0-namespaces` | 6 / 6 | |
 
 The next local migration is now **073**; the next cloud file is still **042**.
+
+---
+
+# Stage 1d (8 Oct 2026) — the manual print job form uses the shop's one print price
+
+Same branch; not merged. No migration, no server change.
+
+- **The 950 is gone.** The Print screen's new-job form (`js/app-jobs-reports.js`) suggested a
+  fixed `PJ_PIECE_PRICE = 950` as the customer's price per piece. It now suggests
+  `print.unit_price` in `print.unit_currency` ($5) in lira at today's rate, from
+  **`DB.printUnitLira()`** (`js/data.js`) — the same helper the till's print preview now calls,
+  so the two cannot drift. The box says where the figure came from.
+- **What staff type is kept:** the box is a suggestion; a different price typed for a particular
+  job is the price the job is saved at (qty × the box, as before).
+- **No print price set:** the box is empty, with a placeholder ("Price agreed") and a line saying
+  no print price is set and to type the price agreed with the customer. An empty box stays empty
+  through the form's repaints and saves as 0, which is what an unpriced job has always been.
+  Nothing is invented.
+- **Existing jobs are not rewritten** — nothing touches them; checked by comparing every job's
+  price before and after.
+- Strings in English and Arabic: `pj_price_from_setting`, `pj_price_unset`, `pj_price_unset_ph`.
+
+**Files:** `js/data.js`, `js/pos.js`, `js/app-jobs-reports.js`, `js/app-actions.js`,
+`js/app-i18n-extra.js`.
+
+**Tests:**
+
+| Suite | Result | New in it |
+|---|---|---|
+| `print-kits/ui-1b.mjs` | **22 / 22** | the box suggests 690 at 138 and says why; a typed 800 is what the job is saved at (read from SQLite); with no print price the box is empty with its hint; no existing job's price changed |
+| `print-kits/api.mjs` | 93 / 93 | |
+| `print-kits/ui.mjs` | 37 / 37 | one run lost to the laptop's network changing mid-run (`ERR_NETWORK_CHANGED` on the fixture's dummy photo addresses), green on the next |
+| `server` `npm test` | 62 / 62 | |
