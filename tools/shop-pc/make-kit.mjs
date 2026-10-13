@@ -23,7 +23,7 @@
    _secrets/wg-shop-pc.key, so a rebuilt kit never invalidates the VPS peer.
    ============================================================================= */
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync, copyFileSync, unlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -167,8 +167,8 @@ const SEC = join(OUT, 'secrets');
 mkdirSync(SEC, { recursive: true });
 
 const keyFile = join(ROOT, '_secrets', 'wg-shop-pc.key');
-if (!existsSync(WG)) die('WireGuard is not installed on this laptop (' + WG + ') - its wg.exe makes the key.');
 if (!existsSync(keyFile)) {
+  if (!existsSync(WG)) die('WireGuard is not installed on this laptop (' + WG + ') - its wg.exe makes the key.');
   const k = spawnSync(WG, ['genkey'], { encoding: 'utf8', windowsHide: true });
   if (k.status !== 0) die('wg genkey failed');
   mkdirSync(dirname(keyFile), { recursive: true });
@@ -176,7 +176,11 @@ if (!existsSync(keyFile)) {
   ok('made the shop PC\'s tunnel key (kept in _secrets/wg-shop-pc.key, reused on every rebuild)');
 } else ok('tunnel key: the one already in _secrets/wg-shop-pc.key');
 const priv = readFileSync(keyFile, 'utf8').trim();
-const pub = spawnSync(WG, ['pubkey'], { input: priv, encoding: 'utf8', windowsHide: true }).stdout.trim();
+/* The public half is X25519 arithmetic, which node:crypto does - so a machine that
+   already holds the key does not need WireGuard installed just to rebuild the kit. */
+const pub = createPublicKey(createPrivateKey({ key: { kty: 'OKP', crv: 'X25519',
+  d: Buffer.from(priv, 'base64').toString('base64url'), x: '' }, format: 'jwk' }))
+  .export({ format: 'jwk' }).x.replace(/-/g, '+').replace(/_/g, '/') + '=';
 if (!/^[A-Za-z0-9+/]{43}=$/.test(pub)) die('could not derive the public key');
 writeFileSync(join(ROOT, '_secrets', 'wg-shop-pc.pub'), pub + '\n');
 copyFileSync(keyFile, join(SEC, 'wg-shop-pc.key'));
