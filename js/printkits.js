@@ -32,8 +32,16 @@ var PrintKits = (function () {
     tab: 'kits', menu: null, draft: null, saving: false, upload: null, busy: false,
     /* The "from the internet" box: what is typed (a repaint must not take
        it), the name being fetched, and the refusal under it. */
-    net: { text: '', busy: null, err: null }
+    net: { text: '', busy: null, err: null },
+    /* "Make a font from a picture": which place it is open in, the picture
+       as one bit a pixel, what the server read in it, the preview face. */
+    pic: null
   };
+  var PIC_ORDER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  function picFresh(where) {
+    return { open: where, w: 0, h: 0, bits: null, canvas: null, shot: null, order: PIC_ORDER, name: '',
+             read: null, fam: null, busy: null, err: null };
+  }
 
   /* ------------------------------------------------------------- helpers */
 
@@ -249,7 +257,7 @@ var PrintKits = (function () {
         (canManage() ? '<button class="btn btn-primary btn-sm" data-act="pk-seed"' + (S.busy ? ' disabled' : '') + '>' +
           '<span>' + t(S.busy ? 'pk_seeding' : 'pk_seed') + '</span></button>' : '') + '</div>';
     }
-    if (canManage()) h += '<div class="card pk-netcard">' + netBox('tab') + '</div>';
+    if (canManage()) h += '<div class="card pk-netcard">' + netBox('tab') + picBox('tab') + '</div>';
     if (S.upload) h += '<div class="card pk-banner"><b>' + t('pk_uploading').replace('{name}', esc(S.upload)) + '</b></div>';
     if (!S.fonts.length) {
       return h + '<div class="card"><div class="cart-empty"><b>' + t('pk_fonts_empty') + '</b><span>' + t('pk_font_rule') + '</span></div></div>';
@@ -322,6 +330,7 @@ var PrintKits = (function () {
         onClose: function () {
           var cancelled = !!S.draft;
           S.draft = null;
+          if (S.pic && S.pic.open === 'form') S.pic = null;
           if (cancelled && onCancel) setTimeout(onCancel, 0);
         }
       });
@@ -358,7 +367,7 @@ var PrintKits = (function () {
           '<label class="field"><span>' + t('pk_f_kitType') + '</span><select class="inp" data-k="kitType" data-change="pk-live"' + (D.clubCode ? '' : ' disabled') + '>' + types + '</select></label>' +
         '</div>' +
         '<label class="field"><span>' + t('pk_f_font') + '</span><select class="inp" data-k="fontId" data-change="pk-live">' + fonts + '</select></label>' +
-        netBox('form') +
+        netBox('form') + picBox('form') +
         '<div class="pk-row3">' + colourField('textColor', D.textColor, false) + colourField('outlineColor', D.outlineColor, true) +
           colourField('shadowColor', D.shadowColor, true) + '</div>' +
         '<div class="pk-row3">' + range('outlineWidth', 0, 20, D.outlineWidth) + range('shadowDx', -20, 20, D.shadowDx) + range('shadowDy', -20, 20, D.shadowDy) + '</div>' +
@@ -553,6 +562,200 @@ var PrintKits = (function () {
     });
   }
 
+  /* ------------------------------------------- a font from a picture
+     Yalla Wear's road to a club's lettering: a picture of it, often a sheet
+     a picture tool drew from a photo of the shirt. The picture is read HERE
+     into one bit a pixel (the threshold chosen by Otsu's method, light
+     letters on dark turned round), the server finds the letters and makes the
+     font (lib/letterfont.js), and the person checks every box has the right
+     character before it is saved. An inline panel, not a dialog: in the kit
+     form a second dialog would close the first. Only the panel repaints. */
+  var PIC_PROMPT = 'Draw the full alphabet A to Z and the digits 0 to 9 in exactly the lettering style of the shirt ' +
+    'in the attached picture. Capital letters only. Solid black letters on a plain white background: flat, no outline, ' +
+    'no shadow, no texture, no perspective. Three rows: A to M, N to Z, 0 to 9. Leave clear space between every ' +
+    'character. Nothing else in the picture.';
+  var picFaces = 0;
+
+  function picBox(where) {
+    var P = S.pic;
+    if (!P || P.open !== where) {
+      return '<div class="pk-pic-line" id="pkPic_' + where + '"><button type="button" class="btn btn-sm" data-act="pk-pic-open" data-w="' + where + '">' +
+        '<span>' + t('pk_pic_open') + '</span></button></div>';
+    }
+    var R = P.read;
+    var busy = !!P.busy;
+    var h = '<div class="pk-pic" id="pkPic_' + where + '">' +
+      '<div class="pk-net-head"><b>' + t('pk_pic_open') + '</b>' +
+        '<button type="button" class="btn btn-sm btn-ghost" data-act="pk-pic-close">' + t('pk_pic_close') + '</button></div>';
+    if (!P.bits) {
+      h += '<div class="muted small">' + t('pk_pic_step1') + '</div>' +
+        '<pre class="pk-pic-prompt" dir="ltr">' + esc(PIC_PROMPT) + '</pre>' +
+        '<div><button type="button" class="btn btn-sm" data-act="pk-pic-copy">' + t('pk_pic_copy') + '</button></div>' +
+        '<div class="muted small">' + t('pk_pic_step2') + '</div>';
+    }
+    h += '<div><button type="button" class="btn' + (P.bits ? ' btn-sm' : ' btn-primary') + '" data-act="pk-pic-file" data-w="' + where + '"' + (busy ? ' disabled' : '') + '>' +
+      '<span>' + t(P.bits ? 'pk_pic_other' : 'pk_pic_choose') + '</span></button></div>';
+    if (P.err) h += '<div class="pk-err" role="alert">' + esc(P.err) + '</div>';
+    if (busy) h += '<div class="muted small" role="status">' + esc(P.busy) + '</div>';
+    if (P.shot) h += '<img class="pk-pic-shot" alt="" src="' + P.shot + '">';
+    if (R) {
+      var notes = '<b>' + t('pk_pic_found').replace('{n}', ltr(String(R.glyphs.length))).replace('{l}', ltr(String(R.lines))) + '</b>';
+      if (R.missing.length) notes += '<div class="warn">' + t('pk_pic_missing').replace('{list}', ltr(R.missing.join(' '))) + '</div>';
+      if (R.extra) notes += '<div class="warn">' + t('pk_pic_extra').replace('{n}', ltr(String(R.extra))) + '</div>';
+      if (R.doubled.length) notes += '<div class="warn">' + t('pk_pic_doubled').replace('{list}', ltr(R.doubled.join(' '))) + '</div>';
+      h += '<div class="pk-pic-notes small">' + notes + '<div class="muted">' + t('pk_pic_check') + '</div></div>' +
+        '<div class="pk-net-row">' +
+          '<label class="field"><span>' + t('pk_pic_order') + '</span><input class="inp" id="pkPicOrder_' + where + '" dir="ltr" maxlength="80" autocomplete="off" spellcheck="false" value="' + esc(P.order) + '"' + (busy ? ' disabled' : '') + '></label>' +
+          '<button type="button" class="btn pk-pic-reread" data-act="pk-pic-read" data-w="' + where + '"' + (busy ? ' disabled' : '') + '><span>' + t('pk_pic_reread') + '</span></button>' +
+        '</div>';
+      if (P.fam) {
+        h += '<div class="muted small">' + t('pk_pic_sample') + '</div>' +
+          '<div class="pk-pic-sample" dir="ltr" style="font-family:' + esc("'" + P.fam + "', sans-serif") + '">NAME 10</div>' +
+          '<div class="pk-pic-sample is-small" dir="ltr" style="font-family:' + esc("'" + P.fam + "', sans-serif") + '">ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789</div>';
+      }
+      h += '<div class="pk-net-row">' +
+          '<label class="field"><span>' + t('pk_pic_name') + '</span><input class="inp" id="pkPicName_' + where + '" dir="auto" maxlength="40" autocomplete="off" placeholder="' + esc(t('pk_pic_name_ph')) + '" value="' + esc(P.name) + '"' + (busy ? ' disabled' : '') + '></label>' +
+          '<button type="button" class="btn btn-primary pk-pic-reread" data-act="pk-pic-save" data-w="' + where + '"' + (busy || !R.glyphs.some(function (g) { return g.char; }) ? ' disabled' : '') + '><span>' + t('pk_pic_save') + '</span></button>' +
+        '</div>';
+    }
+    return h + '</div>';
+  }
+  function repaintPic() {
+    ['form', 'tab'].forEach(function (w) {
+      var el = document.getElementById('pkPic_' + w);
+      if (el) el.outerHTML = picBox(w);
+    });
+  }
+  function picFail(e) {
+    return e && e.code && I18N.en['pk_err_' + e.code] ? t('pk_err_' + e.code) : API.friendly(e);
+  }
+
+  function picInput() {
+    var f = document.getElementById('pkPicFile');
+    if (f) return f;
+    f = document.createElement('input');
+    f.type = 'file'; f.id = 'pkPicFile'; f.hidden = true; f.accept = 'image/*';
+    document.body.appendChild(f);
+    f.addEventListener('change', function () {
+      var file = f.files && f.files[0];
+      f.value = '';
+      if (file && S.pic) takePicture(file);
+    });
+    return f;
+  }
+
+  /* The picture into ink and paper, at 1000–2000 px on its longer side. */
+  function takePicture(file) {
+    var P = S.pic;
+    P.err = null; P.busy = t('pk_pic_reading'); P.read = null; P.shot = null; P.fam = null; repaintPic();
+    var fr = new FileReader();
+    fr.onerror = function () { P.busy = null; P.err = t('pk_err_bad_picture'); repaintPic(); };
+    fr.onload = function () {
+      var img = new Image();
+      img.onerror = fr.onerror;
+      img.onload = function () {
+        var long = Math.max(img.naturalWidth, img.naturalHeight);
+        if (!long) return fr.onerror();
+        var k = Math.min(2000 / long, Math.max(1, 1000 / long));
+        var w = Math.max(16, Math.round(img.naturalWidth * k)), h = Math.max(16, Math.round(img.naturalHeight * k));
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        var x = c.getContext('2d');
+        x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
+        x.drawImage(img, 0, 0, w, h);
+        var d = x.getImageData(0, 0, w, h).data;
+        var n = w * h, lum = new Uint8Array(n), hist = new Array(256).fill(0);
+        for (var i = 0; i < n; i++) { var v = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000 | 0; lum[i] = v; hist[v]++; }
+        /* Otsu: the threshold that best splits the two tones */
+        var sum = 0, sumB = 0, wB = 0, best = 0, thr = 128;
+        for (i = 0; i < 256; i++) sum += i * hist[i];
+        for (i = 0; i < 256; i++) {
+          wB += hist[i]; if (!wB) continue;
+          var wF = n - wB; if (!wF) break;
+          sumB += i * hist[i];
+          var mB = sumB / wB, mF = (sum - sumB) / wF, between = wB * wF * (mB - mF) * (mB - mF);
+          if (between > best) { best = between; thr = i; }
+        }
+        var ink = new Uint8Array(n), edge = 0, edgeInk = 0;
+        for (i = 0; i < n; i++) ink[i] = lum[i] <= thr ? 1 : 0;
+        for (var px = 0; px < w; px++) { edge += 2; edgeInk += ink[px] + ink[(h - 1) * w + px]; }
+        for (var py = 0; py < h; py++) { edge += 2; edgeInk += ink[py * w] + ink[py * w + w - 1]; }
+        if (edgeInk > edge / 2) for (i = 0; i < n; i++) ink[i] = 1 - ink[i];   // light letters on dark
+        var bytes = new Uint8Array(Math.ceil(n / 8));
+        for (i = 0; i < n; i++) if (ink[i]) bytes[i >> 3] |= 1 << (7 - (i & 7));
+        var s = '';
+        for (i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+        /* what the person sees: the ink as it will be read */
+        var out = x.createImageData(w, h);
+        for (i = 0; i < n; i++) {
+          var g = ink[i] ? 20 : 255;
+          out.data[i * 4] = out.data[i * 4 + 1] = out.data[i * 4 + 2] = g; out.data[i * 4 + 3] = 255;
+        }
+        x.putImageData(out, 0, 0);
+        P.w = w; P.h = h; P.bits = btoa(s); P.canvas = c;
+        readPicture();
+      };
+      img.src = String(fr.result);
+    };
+    fr.readAsDataURL(file);
+  }
+
+  function readPicture() {
+    var P = S.pic;
+    if (!P || !P.bits) return;
+    P.err = null; P.busy = t('pk_pic_reading'); repaintPic();
+    API.post('/api/print-fonts/picture/read', { w: P.w, h: P.h, bits: P.bits, order: P.order }).then(function (r) {
+      if (S.pic !== P) return;
+      P.read = r; P.busy = null;
+      /* the boxes and their characters, drawn over the ink */
+      var c = document.createElement('canvas');
+      c.width = P.w; c.height = P.h;
+      var x = c.getContext('2d');
+      x.drawImage(P.canvas, 0, 0);
+      var fs = Math.max(14, Math.round(r.capPx * 0.3));
+      x.lineWidth = Math.max(2, Math.round(r.capPx / 40));
+      x.font = '700 ' + fs + 'px Montserrat, Arial, sans-serif';
+      r.glyphs.forEach(function (g) {
+        x.strokeStyle = g.char ? '#7AB800' : '#E5484D';
+        x.strokeRect(g.x - 3, g.y - 3, g.w + 6, g.h + 6);
+        var label = g.char || '?', lw = x.measureText(label).width + 8;
+        x.fillStyle = g.char ? '#7AB800' : '#E5484D';
+        x.fillRect(g.x - 3, Math.max(0, g.y - fs - 8), lw, fs + 6);
+        x.fillStyle = '#fff';
+        x.fillText(label, g.x + 1, Math.max(fs, g.y - 7));
+      });
+      P.shot = c.toDataURL('image/png');
+      if (!r.preview || typeof FontFace === 'undefined') { repaintPic(); return; }
+      var fam = 'pkpic-' + (++picFaces);
+      var face = new FontFace(fam, 'url(data:font/woff2;base64,' + r.preview + ')', { weight: '1 1000' });
+      face.load().then(function (f) { document.fonts.add(f); if (S.pic === P) { P.fam = fam; repaintPic(); } },
+                       function () { repaintPic(); });
+      repaintPic();
+    }).catch(function (e) {
+      if (S.pic !== P) return;
+      P.busy = null; P.read = null; P.err = picFail(e); repaintPic();
+    });
+  }
+
+  function savePicture(where) {
+    var P = S.pic;
+    if (!P || !P.bits || P.busy) return;
+    var name = String(P.name || '').replace(/\s+/g, ' ').trim();
+    if (!name) { P.err = t('pk_pic_need_name'); repaintPic(); return; }
+    P.err = null; P.busy = t('pk_pic_saving'); repaintPic();
+    API.post('/api/print-fonts/picture', { name: name, w: P.w, h: P.h, bits: P.bits, order: P.order }).then(function (r) {
+      S.pic = null;
+      toast(t('pk_tab_fonts'), t('pk_net_done').replace('{name}', r.font.name), 'ok', 4000);
+      S.at = 0;
+      return load().then(function () {
+        if (where === 'form' && S.draft) { S.draft.fontId = r.font.id; repaintForm(); }
+      });
+    }).catch(function (e) {
+      if (S.pic !== P) return;
+      P.busy = null; P.err = picFail(e); repaintPic();
+    });
+  }
+
   function renameFont(f) {
     openModal({
       title: t('pk_rename_title'),
@@ -717,8 +920,21 @@ var PrintKits = (function () {
     });
     document.addEventListener('input', function (e) {
       var tg = e.target;
-      if (tg && tg.id && tg.id.indexOf('pkNetIn_') === 0) S.net.text = tg.value;
+      if (!tg || !tg.id) return;
+      if (tg.id.indexOf('pkNetIn_') === 0) S.net.text = tg.value;
+      else if (S.pic && tg.id.indexOf('pkPicOrder_') === 0) S.pic.order = tg.value;
+      else if (S.pic && tg.id.indexOf('pkPicName_') === 0) S.pic.name = tg.value;
     });
+    ACTIONS['pk-pic-open'] = function (el) { S.pic = picFresh(el.getAttribute('data-w') === 'form' ? 'form' : 'tab'); repaintPic(); };
+    ACTIONS['pk-pic-close'] = function () { S.pic = null; repaintPic(); };
+    ACTIONS['pk-pic-file'] = function () { picInput().click(); };
+    ACTIONS['pk-pic-read'] = function () { readPicture(); };
+    ACTIONS['pk-pic-save'] = function (el) { savePicture(el.getAttribute('data-w') === 'form' ? 'form' : 'tab'); };
+    ACTIONS['pk-pic-copy'] = function () {
+      try {
+        navigator.clipboard.writeText(PIC_PROMPT).then(function () { toast(t('pk_pic_open'), t('pk_pic_copied'), 'ok', 2500); });
+      } catch (e) { /* the text is on screen to select by hand */ }
+    };
     ACTIONS['pk-font-add'] = function () { var f = fileInput(); f.setAttribute('data-mode', 'add'); f.click(); };
     ACTIONS['pk-font-file'] = function (el) { var f = fileInput(); f.setAttribute('data-mode', 'replace:' + el.getAttribute('data-id')); f.click(); };
     ACTIONS['pk-font-rename'] = function (el) { var f = fontById(+el.getAttribute('data-id')); if (f) renameFont(f); };

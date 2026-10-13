@@ -1032,6 +1032,24 @@ router.add('PATCH /api/print-fonts/:id', requirePerm('print_kits.manage', async 
   } catch (e) { kitFail(ctx.res, e); }
 }));
 
+/* A font from a picture of its letters (lib/letterfont.js). The picture comes
+   as one bit a pixel: at most 2400 × 2400, ~1 MB of base64. `read` stores
+   nothing — it answers what was found and a WOFF2 to preview it in. */
+router.add('POST /api/print-fonts/picture/read', requirePerm('print_kits.manage', async (ctx) => {
+  const b = await readJson(ctx.req, { max: 2 * 1024 * 1024 });
+  try { sendOk(ctx.res, PrintKits.readPicture(b)); } catch (e) { kitFail(ctx.res, e); }
+}));
+router.add('POST /api/print-fonts/picture', requirePerm('print_kits.manage', async (ctx) => {
+  const b = await readJson(ctx.req, { max: 2 * 1024 * 1024 });
+  try {
+    sendOk(ctx.res, { font: await PrintKits.fontFromPicture(b) });
+  } catch (e) {
+    if (e.code === 'not_configured') return sendError(ctx.res, 503, 'not_configured', e.message);
+    if (!e.code) return sendError(ctx.res, 502, 'storage_failed', e.message);
+    kitFail(ctx.res, e);
+  }
+}));
+
 /* A font from the internet by its name (Google Fonts) — PrintKits says how.
    An answer for one the shop already has is `existing: true`, not an error. */
 router.add('POST /api/print-fonts/internet', requirePerm('print_kits.manage', async (ctx) => {
