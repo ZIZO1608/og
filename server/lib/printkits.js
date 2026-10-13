@@ -29,6 +29,7 @@
 import { get, tx, nowIso } from './db.js';
 import * as Storage from './storage.js';
 import * as W2 from './woff2.js';
+import * as LF from './letterfont.js';
 
 const fail = (message, code, status = 400, extra = {}) =>
   Object.assign(new Error(message), { code, status, ...extra });
@@ -285,6 +286,27 @@ async function gfGet(url, what) {
     throw fail('Google Fonts is refusing for now — try again in an hour', 'internet_busy', 503);
   }
   return r;
+}
+
+/* ------------------------------------------------ a font from a picture
+   A picture of the letters (one bit a pixel, from the browser) made into a
+   TrueType font by lib/letterfont.js. read: what was found, and a WOFF2 to
+   preview it with — nothing stored. make: the same, stored like an upload. */
+export function readPicture(b) {
+  const sheet = LF.readSheet(b);
+  const out = LF.summary(sheet);
+  out.preview = out.glyphs.some((g) => g.char)
+    ? W2.encode(LF.makeFont(sheet, 'Preview')).toString('base64') : null;
+  return out;
+}
+
+export async function fontFromPicture(b) {
+  const name = cleanName(b.name);
+  assertFreeName(get(), name);
+  const sheet = LF.readSheet(b);
+  const font = LF.makeFont(sheet, name);
+  return addFont({ name, data: font.toString('base64'), weight: 400,
+                   licenseNote: 'Made from a picture in OG System' });
 }
 
 export async function fontFromInternet(family) {

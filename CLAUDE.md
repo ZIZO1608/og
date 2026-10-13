@@ -4460,6 +4460,26 @@ a missing currency means the base currency); ready in `print.turnaround_min`–`
   address), `internet_failed` 502. Official club fonts are not on Google — those are still an
   upload. `test/internet-fonts.test.js` (6), `_nightshift/print-kits/net-ui.mjs` (19, the real
   GitHub, English 1280 and Arabic 390, read back from SQLite).
+- **A font from a PICTURE of its letters** (13 Oct 2026, Yalla Wear's road to a club's lettering:
+  a photo of the shirt, a letter sheet from ChatGPT). "Make a font from a picture" — an INLINE
+  panel (`picBox`, state `S.pic`) in the kit form and on the Fonts tab, because a second dialog
+  would close the kit form. It shows the prompt to give ChatGPT with Copy. The BROWSER reads the
+  picture into one bit a pixel (1000–2000 px on its long side, Otsu's threshold, light-on-dark
+  turned round by the border's ink) and posts it; `lib/letterfont.js` (pure, no package) finds the
+  letters (8-connected pieces, specks dropped against the 90th-percentile size, pieces stacked in
+  one column joined, lines top to bottom, read left to right, named by the order the person types —
+  A–Z 0–9 by default), traces each one's pixel edges (holes come out turned the other way by
+  themselves), straightens the staircase (Ramer–Douglas–Peucker), scales the common height to 700
+  of 1000 units on each line's baseline, and writes a TrueType file by hand (10 tables; a space, and
+  `-` `.` `'` drawn when the picture has none; lower case maps to the capitals).
+  `POST /api/print-fonts/picture/read` stores nothing and answers the boxes, what is missing or
+  extra, and a WOFF2 the panel previews in; `POST /api/print-fonts/picture` makes it again and
+  stores it through `addFont` (licence note "Made from a picture in OG System"). Codes
+  `bad_picture`, `no_letters`, `too_busy`, `too_small`, `bad_order`. The outlines are straight
+  lines, which at shirt sizes cannot be told from the curves. `test/picture-font.test.js` (5),
+  `_nightshift/print-kits/pic-ui.mjs` (22: a blurred grey JPEG and white-on-navy, through the real
+  file chooser, both saved and read back from SQLite, a wrong order, Arabic at 390). A sheet drawn
+  in Oswald came back as a font that draws the same as Oswald.
 - **The screens**: **Print kits** (`#printkits`, `js/printkits.js`, `print_kits.manage`): Kits and
   Fonts tabs, a kit form with a live jersey preview (`PrintKits.svg` is the one drawing, and the
   website is told to draw the same geometry). A **Print** section on the product editor and on the
