@@ -562,7 +562,10 @@ var Safeers = (function () {
   /* ------------------------------------------ the safeer's own phone view */
 
   function loadMine() {
-    if (S.mineLoading) return;
+    /* A push that lands mid-request asks again once this one is back, or the
+       list could miss the very change the push was about. */
+    if (S.mineLoading) { S.mineAgain = true; return; }
+    S.mineAgain = false;
     S.mineLoading = true;
     S.mineTried = true;
     API.get('/api/errands?status=open').then(function (r) {
@@ -570,12 +573,25 @@ var Safeers = (function () {
       S.mine = r.errands || [];
       if (r.areas) S.areas = r.areas;
       S.mineError = null;
-      if (OG.view === 'dashboard' && roleOf() === 'delivery' && !document.querySelector('#modal-root .modal')) render();
+      showMine();
+      if (S.mineAgain) loadMine();
     }, function (err) {
       S.mineLoading = false;
       S.mineError = err;
-      if (OG.view === 'dashboard' && roleOf() === 'delivery') render();
+      showMine();
     });
+  }
+
+  /* THE BLOCK REDRAWS ITSELF, NOT THE PAGE (13 Oct 2026). This used to call
+     render() - and skip it while a dialog was open, so an answer that landed
+     under the Couldn't-deliver dialog was stored and never drawn: the block
+     stayed empty after the dialog closed, until the next live push. Writing
+     the one block works under a dialog and keeps his scroll. */
+  function showMine() {
+    if (OG.view !== 'dashboard' || roleOf() !== 'delivery') return;
+    var el = document.querySelector('.sf-mine');
+    if (el) el.outerHTML = myErrandsHtml();
+    else if (!document.querySelector('#modal-root .modal')) render();
   }
 
   function myErrandsHtml() {
@@ -810,12 +826,12 @@ var Safeers = (function () {
       if (!why) { toast(t('sf_mark_failed'), t('err_reason_required'), 'warn'); return; }
       send(b, API.patch('/api/errands/' + id, { status: 'failed', reason: why }), t('sf_saved'), function () {
         closeModal();
-        if (a === 'my-fail-go') { S.mine = null; loadMine(); } else load();
+        if (a === 'my-fail-go') loadMine(); else load();
       });
       return;
     }
     if (a === 'my-status') {
-      send(b, API.patch('/api/errands/' + id, { status: b.getAttribute('data-to') }), t('sf_saved'), function () { S.mine = null; loadMine(); });
+      send(b, API.patch('/api/errands/' + id, { status: b.getAttribute('data-to') }), t('sf_saved'), function () { loadMine(); });
       return;
     }
     if (a === 'my-fail') { failDialog(id, true); return; }
@@ -925,7 +941,10 @@ var Safeers = (function () {
     closeMenu: function () { if (S.menu != null) { S.menu = null; if (OG.view === 'safeers') repaint(); } },
     live: function () {
       if (OG.view === 'safeers') load();
-      if (OG.view === 'dashboard' && roleOf() === 'delivery') { S.mine = null; loadMine(); }
+      /* The list he has stays on screen while the fresh one loads. Emptying it
+         first drew a blank block on every push, because the board under it
+         repaints on the same push. */
+      if (OG.view === 'dashboard' && roleOf() === 'delivery') loadMine();
     }
   };
 })();
