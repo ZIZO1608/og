@@ -157,13 +157,24 @@ var WA = (function () {
   function dayStats() {
     var start = daysAgo(0), end = daysAgo(-1);
     var sales = DB.sales.filter(function (s) { return s.date >= start && s.date < end; });
-    var total = sales.reduce(function (a, s) { return a + s.total; }, 0);
+    /* Lira and dollars are two sums, never one. A dollar order's total is in
+       CENTS, and adding it to the lira made a $100 order read as 10,000 SYP
+       in the message the owner reads at closing time. */
+    var base = CONFIG.BASE_CURRENCY || 'SYP';
+    var isUsd = function (s) { return base !== 'USD' && s.currency === 'USD'; };
+    var total = 0, totalUsd = 0, byPay = {}, byPayUsd = {};
+    sales.forEach(function (s) {
+      if (isUsd(s)) {
+        totalUsd += s.total;
+        byPayUsd[s.payment] = (byPayUsd[s.payment] || 0) + s.total;
+      } else {
+        total += s.total;
+        byPay[s.payment] = (byPay[s.payment] || 0) + s.total;
+      }
+    });
     var pieces = sales.reduce(function (a, s) {
       return a + s.items.reduce(function (b, i) { return b + i.qty; }, 0);
     }, 0);
-
-    var byPay = {};
-    sales.forEach(function (s) { byPay[s.payment] = (byPay[s.payment] || 0) + s.total; });
 
     /* Best seller by pieces moved today. */
     var count = {};
@@ -173,8 +184,8 @@ var WA = (function () {
     var best = Object.keys(count).sort(function (a, b) { return count[b] - count[a]; })[0];
 
     return {
-      sales: sales, count: sales.length, total: total, pieces: pieces,
-      byPay: byPay, best: best, bestQty: best ? count[best] : 0,
+      sales: sales, count: sales.length, total: total, totalUsd: totalUsd, pieces: pieces,
+      byPay: byPay, byPayUsd: byPayUsd, best: best, bestQty: best ? count[best] : 0,
       critical: DB.criticalVariants().length,
       overdueJobs: DB.printJobs.filter(function (j) { return DB.isOverdue(j); }).length
     };
@@ -188,18 +199,20 @@ var WA = (function () {
       L.push('📊 *' + CONFIG.SHOP_NAME + '* — ' + (ar ? 'ملخّص اليوم' : 'Today’s summary'));
       L.push('🗓️ ' + day(TODAY, ar));
       L.push('');
-      L.push((ar ? '💰 المبيعات: *' : '💰 Sales: *') + cash(d.total, ar) + '*');
+      L.push((ar ? '💰 المبيعات: *' : '💰 Sales: *') + cash(d.total, ar) +
+             (d.totalUsd ? ' + ' + moneyUsdRaw(d.totalUsd) : '') + '*');
       L.push('🧾 ' + (ar ? d.count + ' فاتورة · ' + d.pieces + ' قطعة'
                           : plural(d.count, 'invoice', 'invoices') + ' · ' + plural(d.pieces, 'piece', 'pieces')));
-      var pays = Object.keys(d.byPay);
-      if (pays.length) {
+      var pays = Object.keys(d.byPay), paysUsd = Object.keys(d.byPayUsd || {});
+      if (pays.length || paysUsd.length) {
+        var label = function (k) {
+          return ar ? ((DB.paymentLabelsAr || {})[k] || (DB.paymentLabels || {})[k] || k)
+                    : ((DB.paymentLabels || {})[k] || k);
+        };
         L.push('');
         L.push(ar ? '💳 *طرق الدفع*' : '💳 *How it was paid*');
-        pays.forEach(function (k) {
-          var label = ar ? ((DB.paymentLabelsAr || {})[k] || (DB.paymentLabels || {})[k] || k)
-                         : ((DB.paymentLabels || {})[k] || k);
-          L.push('▫️ ' + label + ': ' + cash(d.byPay[k], ar));
-        });
+        pays.forEach(function (k) { L.push('▫️ ' + label(k) + ': ' + cash(d.byPay[k], ar)); });
+        paysUsd.forEach(function (k) { L.push('▫️ ' + label(k) + ': ' + moneyUsdRaw(d.byPayUsd[k])); });
       }
       if (d.best) {
         L.push('');

@@ -5075,3 +5075,15 @@ var PRINTKITS_AR = {
 };
 Object.keys(PRINTKITS_EN).forEach(function (k) { I18N.en[k] = PRINTKITS_EN[k]; });
 Object.keys(PRINTKITS_AR).forEach(function (k) { I18N.ar[k] = PRINTKITS_AR[k]; });
+
+/* Night shift 2026-09-25: words that were hard-coded English in the markup. */
+var NS25_EN = {
+  u_pcs: 'pcs',
+  u_jobs: 'jobs'
+};
+var NS25_AR = {
+  u_pcs: 'قطعة',
+  u_jobs: 'طلب'
+};
+Object.keys(NS25_EN).forEach(function (k) { I18N.en[k] = NS25_EN[k]; });
+Object.keys(NS25_AR).forEach(function (k) { I18N.ar[k] = NS25_AR[k]; });

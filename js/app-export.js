@@ -611,25 +611,43 @@ function whMovementsExportSpec() {
 
 function printJobsExportSpec() {
   var jobs = DB.printJobs.slice().sort(function (a, b) { return a.deadline - b.deadline; });
-  var rev = jobs.reduce(function (a, j) { return a + j.price; }, 0);
-  var cost = jobs.reduce(function (a, j) { return a + j.cost; }, 0);
+  /* The printer's price is cost and the difference is profit: an account the
+     server sends no cost to gets neither column (they read 0 and "profit =
+     the whole price"). Money cells are the shop's own currency; a job in
+     another one is left blank rather than added in as if it were lira. */
+  var base = CONFIG.BASE_CURRENCY || 'SYP';
+  var showCost = seesCost(), showProfit = showCost && seesProfit();
+  var inBase = function (j) { return (j.currency || base) === base; };
+  var num = function (v) { return Number(v) || 0; };
+  var rev = jobs.filter(inBase).reduce(function (a, j) { return a + num(j.price); }, 0);
+  var cost = jobs.filter(inBase).reduce(function (a, j) { return a + num(j.cost); }, 0);
+  var columns = [{ label: t('yl_job') }, { label: t('customer'), width: 22 }, { label: t('design_note'), width: 36 },
+                 { label: t('qty'), num: true }, { label: t('priority') }, { label: t('deadline') },
+                 { label: t('status') }, { label: exCol(t('yl_charged')), num: true }];
+  if (showCost) columns.push({ label: exCol(t('paid_partner')), num: true });
+  if (showProfit) columns.push({ label: exCol(t('profit')), num: true });
+  var totals = [t('total'), null, null, jobs.reduce(function (a, j) { return a + num(j.qty); }, 0),
+                null, null, null, exMoney(rev)];
+  if (showCost) totals.push(exMoney(cost));
+  if (showProfit) totals.push(exMoney(rev - cost));
+  var kpis = [{ label: t('print_revenue'), value: money(rev) }];
+  if (showCost) kpis.push({ label: t('paid_partner'), value: money(cost) });
+  if (showProfit) kpis.push({ label: t('profit'), value: money(rev - cost) });
   return {
     name: 'print-jobs', sheet: 'Print jobs', title: t('print_title'),
     docUrl: deepLink('report', 'profit'),
     subtitle: jobs.length + ' · ' + jobs.filter(function (j) { return DB.isOverdue(j); }).length + ' ' + t('overdue').toLowerCase(),
-    columns: [{ label: t('yl_job') }, { label: t('customer'), width: 22 }, { label: t('design_note'), width: 36 },
-              { label: t('qty'), num: true }, { label: t('priority') }, { label: t('deadline') },
-              { label: t('status') }, { label: exCol(t('yl_charged')), num: true },
-              { label: exCol(t('paid_partner')), num: true }, { label: exCol(t('profit')), num: true }],
+    columns: columns,
     rows: jobs.map(function (j) {
-      return [j.id, j.customer, j.design, j.qty, t(j.priority), fmtDate(j.deadline),
-              t('print_' + j.stage), exMoney(j.price), exMoney(j.cost), exMoney(j.price - j.cost)];
+      var own = inBase(j);
+      var row = [j.id, j.customer, j.design, j.qty, t(j.priority), fmtDate(j.deadline),
+                 t('print_' + j.stage), own ? exMoney(j.price) : null];
+      if (showCost) row.push(own ? exMoney(j.cost) : null);
+      if (showProfit) row.push(own ? exMoney(num(j.price) - num(j.cost)) : null);
+      return row;
     }),
-    totals: [t('total'), null, null, jobs.reduce(function (a, j) { return a + j.qty; }, 0),
-             null, null, null, exMoney(rev), exMoney(cost), exMoney(rev - cost)],
-    kpis: [{ label: t('print_revenue'), value: money(rev) },
-           { label: t('paid_partner'), value: money(cost) },
-           { label: t('profit'), value: money(rev - cost) }]
+    totals: totals,
+    kpis: kpis
   };
 }
 
@@ -640,22 +658,45 @@ function salesExportSpec() {
      window and not of the shop. The subtitle says which, because a sheet
      somebody hands a bank must not imply it is the whole year. */
   var cap = DB.cap('sales');
+  var cash = exSaleMoney(sales, t('total'));
   return {
     /* No chartId: #dashLine went with the dashboard's charts (ns02), and this
        is the fallback spec for screens that never had one anyway. */
     name: 'sales', sheet: 'Sales', title: t('recent_sales'),
-    subtitle: sales.length + ' ' + t('invoices').toLowerCase() +
+    subtitle: sales.length + ' ' + t('rp_n_invoice') +
       (cap.capped ? ' · ' + t('cap_of').replace('{b}', nf(cap.total)) : ''),
     columns: [{ label: t('invoice') }, { label: t('date') }, { label: t('customer'), width: 22 },
-              { label: t('items'), num: true }, { label: t('payment') },
-              { label: exCol(t('total')), num: true }],
+              { label: t('items'), num: true }, { label: t('payment') }].concat(cash.columns),
     rows: sales.map(function (s) {
       return [s.id, fmtDate(s.date), s.customerName,
               s.items.reduce(function (a, i) { return a + i.qty; }, 0),
-              DB.payLabel(s.payment), exMoney(s.total)];
+              DB.payLabel(s.payment)].concat(cash.cells(s));
     }),
-    totals: [t('total'), null, null, null, null,
-             exMoney(sales.reduce(function (a, s) { return a + s.total; }, 0))]
+    totals: [t('total'), null, null, null, null].concat(cash.totals)
+  };
+}
+
+/* A sale's money in ITS OWN currency's column. A dollar sale's total is in
+   cents: written into the lira column through exMoney() it read as a hundred
+   times its value and was added into the lira total (night shift 2026-09-25).
+   The dollar column appears only when a dollar sale is in the sheet, and the
+   other currency's cell is blank — not zero. */
+function exSaleMoney(sales, label) {
+  var base = CONFIG.BASE_CURRENCY || 'SYP';
+  var usd = function (s) { return base !== 'USD' && s.currency === 'USD'; };
+  var anyUsd = sales.some(usd);
+  var baseCell = base === 'USD' ? exUsd : exSyp;
+  var columns = [{ label: label + ' (' + base + ')', money: base }];
+  if (anyUsd) columns.push({ label: label + ' (USD)', money: 'USD' });
+  var sumBase = 0, sumUsd = 0;
+  sales.forEach(function (s) { if (usd(s)) sumUsd += Number(s.total) || 0; else sumBase += Number(s.total) || 0; });
+  return {
+    columns: columns,
+    cells: function (s) {
+      var own = usd(s) ? null : baseCell(s.total);
+      return anyUsd ? [own, usd(s) ? exUsd(s.total) : null] : [own];
+    },
+    totals: anyUsd ? [baseCell(sumBase), exUsd(sumUsd)] : [baseCell(sumBase)]
   };
 }
 
@@ -818,31 +859,44 @@ function dashboardExportSpec() {
 function posExportSpec() {
   var from = daysAgo(0), to = daysAgo(-1);
   var today = DB.sales.filter(function (s) { return s.date >= from && s.date < to; });
-  var byPay = {};
-  today.forEach(function (s) { byPay[s.payment] = (byPay[s.payment] || 0) + s.total; });
+  /* Each sale in its own currency's column, and one subtotal row per payment
+     method PER CURRENCY — see exSaleMoney. */
+  var cash = exSaleMoney(today, t('total'));
+  var base = CONFIG.BASE_CURRENCY || 'SYP';
+  var cur = function (s) { return base !== 'USD' && s.currency === 'USD' ? 'USD' : base; };
+  var byPay = {}, order = [];
+  today.forEach(function (s) {
+    var k = s.payment + '|' + cur(s);
+    if (!(k in byPay)) { byPay[k] = 0; order.push(k); }
+    byPay[k] += Number(s.total) || 0;
+  });
 
   var rows = today.map(function (s) {
     return [s.id, fmtDateTime(s.date), s.customerName, DB.payLabel(s.payment),
-            s.items.reduce(function (a, i) { return a + i.qty; }, 0), exMoney(s.total)];
+            s.items.reduce(function (a, i) { return a + i.qty; }, 0)].concat(cash.cells(s));
   });
-  Object.keys(byPay).forEach(function (k) {
-    rows.push(['— ' + t('payment'), DB.payLabel(k), '', '', null, exMoney(byPay[k])]);
+  order.forEach(function (k) {
+    var p = k.split('|');
+    rows.push(['— ' + t('payment'), DB.payLabel(p[0]), '', '', null].concat(cash.cells({ total: byPay[k], currency: p[1] })));
   });
 
-  var total = today.reduce(function (a, s) { return a + s.total; }, 0);
+  var inBase = today.filter(function (s) { return cur(s) === base; });
+  var total = inBase.reduce(function (a, s) { return a + (Number(s.total) || 0); }, 0);
+  var totalUsd = today.reduce(function (a, s) { return a + (cur(s) === 'USD' && base !== 'USD' ? Number(s.total) || 0 : 0); }, 0);
   return {
     name: 'till-today', sheet: 'Till', title: t('pos_title'),
     subtitle: t('st_today') + ' · ' + fmtDate(TODAY),
     columns: [{ label: t('invoice') }, { label: t('date'), width: 22 }, { label: t('customer'), width: 22 },
-              { label: t('payment') }, { label: t('items'), num: true },
-              { label: exCol(t('total')), num: true }],
+              { label: t('payment') }, { label: t('items'), num: true }].concat(cash.columns),
     rows: rows,
     totals: [t('total'), null, null, null,
-             today.reduce(function (a, s) { return a + s.items.reduce(function (b, i) { return b + i.qty; }, 0); }, 0),
-             exMoney(total)],
-    kpis: [{ label: t('st_today'), value: money(total) },
+             today.reduce(function (a, s) { return a + s.items.reduce(function (b, i) { return b + i.qty; }, 0); }, 0)]
+             .concat(cash.totals),
+    kpis: [{ label: t('st_today'), value: money(total) + (totalUsd ? ' + ' + moneyUsdRaw(totalUsd) : '') },
            { label: t('invoices'), value: nf(today.length) },
-           { label: t('avg_basket'), value: money(today.length ? total / today.length : 0) }]
+           /* An average of lira and dollars together means nothing; this is
+              the lira sales' own. */
+           { label: t('avg_basket'), value: money(inBase.length ? total / inBase.length : 0) }]
   };
 }
 

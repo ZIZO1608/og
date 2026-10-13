@@ -76,13 +76,22 @@ try {
 /* Opens an EXISTING database and never migrates one. index.js owns creating
    and migrating, moments later — a check that quietly changed what it was
    checking would be worse than no check. Hence the existsSync guard rather
-   than letting DB.open() bring a file into being. */
+   than letting DB.open() bring a file into being — and openReadOnly, not
+   open(): open() APPLIES every pending migration on the way in, so the
+   Readiness check (a panel job that runs while the shop is open) could
+   migrate the live file underneath a server still running the old code
+   (night shift 2026-09-25). */
 const DB_FILE = dbFile();
 
 let db = null;
 try {
   if (!existsSync(DB_FILE)) throw new Error('no database file yet at ' + DB_FILE);
-  db = DB.open(DB_FILE);
+  db = DB.openReadOnly(DB_FILE);
+  const pending = DB.pendingMigrations(db);
+  if (pending.length) {
+    warn(`${pending.length} database change${pending.length === 1 ? ' is' : 's are'} waiting: ${pending.join(', ')}`);
+    hint('The server applies them itself the next time it starts. Nothing to do.');
+  }
 } catch (e) {
   warn(`The database could not be opened — ${e.message}`);
   hint('The server will try again itself and report the real error.');

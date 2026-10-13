@@ -8,11 +8,12 @@
 --  one place that answers "has 035 gone up yet?" without guessing.
 --
 --  The order to run anything still false is in README.md in this folder.
---  001–029 go up together as CATCH-UP.sql; the table stands in for them all.
+--  001–007 are run one by one; 008–029 and 036 go up together as CATCH-UP.sql.
+--  The two tables below stand in for all of 001–029.
 -- =============================================================================
 SELECT f.file, f.installed, f.what
   FROM (VALUES
-    ('001–029 (CATCH-UP.sql)',
+    ('001–007, then CATCH-UP.sql (008–029)',
        to_regclass('public.errands') IS NOT NULL AND to_regclass('public.user_permissions') IS NOT NULL,
        'the mirror''s tables, up to the safeers (028)'),
     -- CASE, not AND: Postgres does not promise to test the left side first,
