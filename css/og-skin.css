@@ -3716,6 +3716,14 @@ body:not([data-portal="yalla"]) .pk-colour-row input[type=color] {
 body:not([data-portal="yalla"]) .pk-tick { display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600; cursor: pointer; }
 body:not([data-portal="yalla"]) .pk-tick input { width: 18px; height: 18px; accent-color: var(--brand); }
 body:not([data-portal="yalla"]) .pk-err { margin-bottom: 8px; color: var(--destructive); font-weight: 600; font-size: 13px; }
+body:not([data-portal="yalla"]) .pk-net { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--border-strong); border-radius: 12px; }
+body:not([data-portal="yalla"]) .pk-net-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+body:not([data-portal="yalla"]) .pk-net-row { display: flex; gap: 8px; }
+body:not([data-portal="yalla"]) .pk-net-row .inp { flex: 1 1 auto; min-width: 0; }
+body:not([data-portal="yalla"]) .pk-net-row .btn { flex: none; }
+body:not([data-portal="yalla"]) .pk-net .pk-err { margin-bottom: 0; }
+body:not([data-portal="yalla"]) .pk-netcard { padding: 16px; margin-bottom: 16px; }
+body:not([data-portal="yalla"]) .pk-netcard .pk-net { border: 0; padding: 0; }
 body:not([data-portal="yalla"]) .pk-pe { display: grid; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 body:not([data-portal="yalla"]) .pk-pe .pe-sec-h { font-weight: 700; }
 body:not([data-portal="yalla"]) .pk-pe-kit { display: flex; align-items: center; gap: 12px; padding: 8px; border: 1px solid var(--border); border-radius: 12px; }
@@ -3729,6 +3737,8 @@ body:not([data-portal="yalla"]) .pk-pe-kit.is-none { border-style: dashed; paddi
   body:not([data-portal="yalla"]) .pk-font-acts { justify-content: flex-start; }
   body:not([data-portal="yalla"]) .pk-font-acts .btn { min-height: 44px; }
   body:not([data-portal="yalla"]) .pk-banner { flex-direction: column; align-items: stretch; }
+  body:not([data-portal="yalla"]) .pk-net-row { flex-direction: column; }
+  body:not([data-portal="yalla"]) .pk-net-row .btn { min-height: 44px; }
 }
 
 /* The print hold: on the board's card, in the order dialog, on a website order. */

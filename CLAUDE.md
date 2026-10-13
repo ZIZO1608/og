@@ -4448,6 +4448,18 @@ a missing currency means the base currency); ready in `print.turnaround_min`–`
   (Anton = OG Block, Graduate = OG Classic, Teko 700 = OG Modern, Cairo 700 = Syria) are fetched
   from GitHub ~20 s after the main server starts (`PrintKits.seedFonts`) or by Fonts → Upload now.
   The CSP's `font-src` takes `https:` for them.
+- **A font from the internet, by its name** (13 Oct 2026): "Get a font from the internet" in the
+  kit form (the font arrives already chosen for the kit) and on the Fonts tab →
+  `POST /api/print-fonts/internet {family}` (`print_kits.manage`) → `PrintKits.fontFromInternet`.
+  It lists Google's folder through GitHub's API (`ofl/`, `apache/`, `ufl/` + `gfDir(name)`),
+  takes a `-Bold` file (weight 700), else the variable `[wght]` one (700), else `-Regular` (400),
+  never an italic (`gfPick`); the name is Google's own (METADATA.pb), the licence goes in
+  `license_note`, then the ordinary road (WOFF2, both files in the bucket, a row). A font the
+  shop already has by that name comes back `existing: true` and nothing is fetched. Refusals:
+  `bad_font_name`, `font_not_found` 404, `internet_busy` 503 (GitHub's 60-an-hour limit per
+  address), `internet_failed` 502. Official club fonts are not on Google — those are still an
+  upload. `test/internet-fonts.test.js` (6), `_nightshift/print-kits/net-ui.mjs` (19, the real
+  GitHub, English 1280 and Arabic 390, read back from SQLite).
 - **The screens**: **Print kits** (`#printkits`, `js/printkits.js`, `print_kits.manage`): Kits and
   Fonts tabs, a kit form with a live jersey preview (`PrintKits.svg` is the one drawing, and the
   website is told to draw the same geometry). A **Print** section on the product editor and on the

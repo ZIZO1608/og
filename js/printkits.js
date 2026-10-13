@@ -29,7 +29,10 @@ var PrintKits = (function () {
     loaded: false, failed: null, at: 0, shopAt: 0, loading: null,
     kits: [], fonts: [], clubs: [], rules: { maxLetters: 12, turnaround: { min: 5, max: 7 } },
     kitTypes: ['home', 'away', 'third', 'retro', 'gk', 'special'], price: null,
-    tab: 'kits', menu: null, draft: null, saving: false, upload: null, busy: false
+    tab: 'kits', menu: null, draft: null, saving: false, upload: null, busy: false,
+    /* The "from the internet" box: what is typed (a repaint must not take
+       it), the name being fetched, and the refusal under it. */
+    net: { text: '', busy: null, err: null }
   };
 
   /* ------------------------------------------------------------- helpers */
@@ -246,6 +249,7 @@ var PrintKits = (function () {
         (canManage() ? '<button class="btn btn-primary btn-sm" data-act="pk-seed"' + (S.busy ? ' disabled' : '') + '>' +
           '<span>' + t(S.busy ? 'pk_seeding' : 'pk_seed') + '</span></button>' : '') + '</div>';
     }
+    if (canManage()) h += '<div class="card pk-netcard">' + netBox('tab') + '</div>';
     if (S.upload) h += '<div class="card pk-banner"><b>' + t('pk_uploading').replace('{name}', esc(S.upload)) + '</b></div>';
     if (!S.fonts.length) {
       return h + '<div class="card"><div class="cart-empty"><b>' + t('pk_fonts_empty') + '</b><span>' + t('pk_font_rule') + '</span></div></div>';
@@ -354,6 +358,7 @@ var PrintKits = (function () {
           '<label class="field"><span>' + t('pk_f_kitType') + '</span><select class="inp" data-k="kitType" data-change="pk-live"' + (D.clubCode ? '' : ' disabled') + '>' + types + '</select></label>' +
         '</div>' +
         '<label class="field"><span>' + t('pk_f_font') + '</span><select class="inp" data-k="fontId" data-change="pk-live">' + fonts + '</select></label>' +
+        netBox('form') +
         '<div class="pk-row3">' + colourField('textColor', D.textColor, false) + colourField('outlineColor', D.outlineColor, true) +
           colourField('shadowColor', D.shadowColor, true) + '</div>' +
         '<div class="pk-row3">' + range('outlineWidth', 0, 20, D.outlineWidth) + range('shadowDx', -20, 20, D.shadowDx) + range('shadowDy', -20, 20, D.shadowDy) + '</div>' +
@@ -495,6 +500,57 @@ var PrintKits = (function () {
     };
     fr.onerror = function () { toast(t('pk_tab_fonts'), t('pk_err_bad_font'), 'err', 5000); };
     fr.readAsDataURL(file);
+  }
+
+  /* A font from the internet, by its name: the server fetches it from Google
+     Fonts and makes it ready (lib/printkits.js fontFromInternet). Drawn in the
+     kit form, where the font it brings is chosen for the kit, and on the
+     Fonts tab. Only the box repaints while it works — the kit form around it
+     holds typed values. */
+  function netBox(where) {
+    var N = S.net;
+    var busy = !!N.busy;
+    return '<div class="pk-net" id="pkNet_' + where + '">' +
+      '<div class="pk-net-head"><b>' + t('pk_net_title') + '</b>' +
+        ' <a class="link" href="https://fonts.google.com" target="_blank" rel="noopener">' + t('pk_net_link') + '</a></div>' +
+      '<div class="pk-net-row">' +
+        '<input class="inp" id="pkNetIn_' + where + '" dir="ltr" maxlength="60" autocomplete="off" spellcheck="false"' +
+          ' enterkeyhint="go" placeholder="' + esc(t('pk_net_ph')) + '" value="' + esc(N.text) + '"' + (busy ? ' disabled' : '') + '>' +
+        '<button type="button" class="btn' + (where === 'tab' ? ' btn-primary' : '') + '" data-act="pk-net-get" data-w="' + where + '"' +
+          (busy ? ' disabled' : '') + '><span>' + (busy ? t('pk_net_busy').replace('{name}', esc(N.busy)) : t('pk_net_go')) + '</span></button>' +
+      '</div>' +
+      (N.err ? '<div class="pk-err" role="alert">' + esc(N.err) + '</div>' : '') +
+      '<div class="muted small">' + t(where === 'tab' ? 'pk_net_hint_tab' : 'pk_net_hint') + '</div>' +
+    '</div>';
+  }
+  function repaintNet() {
+    ['form', 'tab'].forEach(function (w) {
+      var el = document.getElementById('pkNet_' + w);
+      if (el) el.outerHTML = netBox(w);
+    });
+  }
+  function getFromNet(where) {
+    var box = document.getElementById('pkNetIn_' + where);
+    var name = String(box ? box.value : S.net.text).replace(/\s+/g, ' ').trim();
+    S.net.text = name;
+    if (S.net.busy) return;
+    if (!name) { S.net.err = t('pk_err_bad_font_name'); repaintNet(); return; }
+    S.net.busy = name; S.net.err = null; repaintNet();
+    API.post('/api/print-fonts/internet', { family: name }).then(function (r) {
+      S.net = { text: '', busy: null, err: null };
+      toast(t('pk_tab_fonts'), t(r.existing ? 'pk_net_have' : 'pk_net_done').replace('{name}', r.font.name), 'ok', 4000);
+      S.at = 0;
+      return load().then(function () {
+        if (where === 'form' && S.draft) {
+          S.draft.fontId = r.font.id;
+          repaintForm();
+        } else repaintNet();
+      });
+    }).catch(function (e) {
+      S.net.busy = null;
+      S.net.err = e && e.code && I18N.en['pk_err_' + e.code] ? t('pk_err_' + e.code) : API.friendly(e);
+      repaintNet();
+    });
   }
 
   function renameFont(f) {
@@ -650,6 +706,19 @@ var PrintKits = (function () {
       });
     };
     ACTIONS['pk-save'] = function (el) { save(el); };
+    ACTIONS['pk-net-get'] = function (el) { getFromNet(el.getAttribute('data-w') === 'form' ? 'form' : 'tab'); };
+    /* Enter in the box is the button. Bound once, at the document: the box is
+       redrawn with its form and its tab. */
+    document.addEventListener('keydown', function (e) {
+      var tg = e.target;
+      if (e.key !== 'Enter' || !tg || !tg.id || tg.id.indexOf('pkNetIn_') !== 0) return;
+      e.preventDefault();
+      getFromNet(tg.id.slice(8));
+    });
+    document.addEventListener('input', function (e) {
+      var tg = e.target;
+      if (tg && tg.id && tg.id.indexOf('pkNetIn_') === 0) S.net.text = tg.value;
+    });
     ACTIONS['pk-font-add'] = function () { var f = fileInput(); f.setAttribute('data-mode', 'add'); f.click(); };
     ACTIONS['pk-font-file'] = function (el) { var f = fileInput(); f.setAttribute('data-mode', 'replace:' + el.getAttribute('data-id')); f.click(); };
     ACTIONS['pk-font-rename'] = function (el) { var f = fontById(+el.getAttribute('data-id')); if (f) renameFont(f); };
