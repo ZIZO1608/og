@@ -3489,6 +3489,7 @@ router.add('GET /api/telegram/status', (ctx) => {
 });
 
 router.add('POST /api/telegram/link', (ctx) => {
+  if (Telegram.OFF) { sendJson(ctx.res, 410, { ok: false, code: 'telegram_off', error: 'Telegram is switched off on this shop.' }); return; }
   /* Who pressed Connect rides with the code, so the chat it links carries the
      name of the person who added it — and, for a private chat, belongs to
      them. The code is minted per account, so two people linking at once do
@@ -3557,6 +3558,7 @@ router.add('POST /api/telegram/unlink', async (ctx) => {
    while only a manager could press it and wrong the moment anybody can: a
    cashier checking her own phone would buzz the owner and every staff group. */
 router.add('POST /api/telegram/test', async (ctx) => {
+  if (Telegram.OFF) { sendJson(ctx.res, 410, { ok: false, code: 'telegram_off', error: 'Telegram is switched off on this shop.' }); return; }
   const b = await readJson(ctx.req).catch(() => null);
   const side = tgSide(ctx);
   const all = Telegram.status()[side].chats || [];
@@ -4599,7 +4601,7 @@ if (runDirectly) {
          Telegram.start() because it queues into what that drains, and inside
          this callback for the reason SyncWorker is — nothing may begin before
          the till is answering. */
-      Reminders.start();
+      if (!Telegram.OFF) Reminders.start();   // they only ever speak through Telegram
       /* A verified copy every day the shop is open, without anybody pressing
          anything (audit 06) — lib/backup-schedule.js says why. */
       BackupSchedule.start();

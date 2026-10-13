@@ -1620,8 +1620,9 @@ function viewSettings() {
     h += setSection(t('setg_advanced'), t('setg_advanced_sub'));
     h += mirrorCard();
     h += websiteCard();
-    h += telegramCard();
-    h += remindersCard();
+    /* Telegram is switched off (13 Oct 2026); the reminders only ever spoke
+       through it, so both folds go with it. */
+    if (typeof YALLA !== 'undefined' && YALLA.telegramOn) { h += telegramCard(); h += remindersCard(); }
     h += motionCard();
   } else {
     /* Motion is a preference, not a danger, so it stays where anybody can

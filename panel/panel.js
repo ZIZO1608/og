@@ -410,7 +410,7 @@ function deniedSig(m) {
   return m && m.denied ? m.denied.map((d) => d.table).sort().join(',') : '';
 }
 
-const CONN_IDS = ['server', 'always', 'https', 'route', 'receipt', 'label', 'scanner', 'mirror', 'tg_og', 'tg_yalla', 'push', 'internet', 'fxfeed', 'backup', 'vault'];
+const CONN_IDS = ['server', 'always', 'https', 'route', 'receipt', 'label', 'scanner', 'mirror', 'push', 'internet', 'fxfeed', 'backup', 'vault'];
 
 /* On the standby these are the VPS's jobs: its bots, its mirror, its rate
    feed, its customers' push and its nightly backups. The keys are parked on

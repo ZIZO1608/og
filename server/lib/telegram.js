@@ -58,7 +58,15 @@ const last = { error: null, okAt: null, sent: 0 };
 
 /* ------------------------------------------------------------------ config */
 
+/* TELEGRAM IS OFF unless OG_TELEGRAM=on (the owner's decision, 13 Oct 2026:
+   "remove the Telegram at all"). With no token every door below closes by
+   itself: start() polls nothing, drain() sends nothing, canQueue/canReach say
+   no so the reminders and the office alerts queue nothing, and a link code is
+   refused. The code stays so the bots can come back with one setting. */
+export const OFF = String(process.env.OG_TELEGRAM || '').trim().toLowerCase() !== 'on';
+
 function token(side) {
+  if (OFF) return null;
   const v = maybe(TOKEN_KEY[side]);
   return v && String(v).trim() ? String(v).trim() : null;
 }
@@ -1825,7 +1833,8 @@ export function start() {
   markRelay();
   const on = SIDES.filter((s) => token(s));
   if (!on.length) {
-    console.log('  Telegram: no bot token set — notifications stay in the app only.');
+    console.log(OFF ? '  Telegram: switched off (set OG_TELEGRAM=on to bring the bots back).'
+                    : '  Telegram: no bot token set — notifications stay in the app only.');
     return;
   }
 

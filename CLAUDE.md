@@ -68,6 +68,20 @@ connection). Facts it measured that older sections below contradict:
   `10.8.0.1:8090`); this laptop is its standby (`OG_ROLE=standby`). The scripts that say they only
   look now truly only look: `preflight` and `hardware` open the database read-only.
 
+## Telegram is switched off (13 Oct 2026)
+
+The owner asked for Telegram to go completely. **The code stays; two switches keep it off.**
+`OG_TELEGRAM` (server env) must be `on` or `token()` in `server/lib/telegram.js` answers null —
+so no bot starts, `drain()` sends nothing, `canQueue`/`canReach` say no (the reminders and the
+office alerts queue nothing), `Reminders.start()` is skipped, and `POST /api/telegram/link` and
+`/test` answer `410 telegram_off`. In the browser `TELEGRAM_UI` at the top of `js/yalla.js` is
+`false`: `YALLA.telegramLoad` is not exported, so My Telegram, Settings → Telegram and
+Reminders, and the partner portal's Telegram and reminders cards are not drawn. The launcher's
+two bot rows are out of `CONN_IDS`. **To bring it back: both switches, plus a cache bump.** The
+receipt's `receipt.telegram` line is the shop's public channel link, not the bot, and was kept.
+Everything below that describes the bots, the reminders and the order alerts is how they work
+WHEN switched on. `_nightshift/final/tg-off.mjs` checks every screen (seen red with it on).
+
 ## Commands
 
 ```bash

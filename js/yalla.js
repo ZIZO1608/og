@@ -12,6 +12,9 @@
    ========================================================================== */
 
 var YALLA = (function () {
+  /* Telegram off (owner, 13 Oct 2026). true brings every Telegram control back;
+     the server needs OG_TELEGRAM=on as well. */
+  var TELEGRAM_UI = false;
 
   var S = { view: 'today', filter: 'open', mode: 'board', day: null, tab: 'money', rvFilter: 'all' };
 
@@ -617,11 +620,11 @@ var YALLA = (function () {
     '</div>';
 
     /* Their phone. Linking the bot is a one-time job, so it sits last. */
-    h += '<div class="card mt tg-card"><div class="card-head"><h3>' + t('tg_title') + '</h3>' +
+    if (TELEGRAM_UI) h += '<div class="card mt tg-card"><div class="card-head"><h3>' + t('tg_title') + '</h3>' +
       '<div class="card-actions muted small">' + t('tg_sub') + '</div></div>' +
       '<div class="card-body"><div id="tgHost" class="tg-host">' + t('tg_loading') + '</div></div></div>';
 
-    h += remindersCard();
+    if (TELEGRAM_UI) h += remindersCard();
     return h;
   }
 
@@ -2409,7 +2412,11 @@ var YALLA = (function () {
     state: S,
     thread: thread,
     /* The Telegram card, for OG's Settings fold — same card, their bot. */
-    telegramLoad: telegramLoad,
+    /* Telegram is switched off on this shop (13 Oct 2026, server OG_TELEGRAM).
+       Without telegramLoad no screen draws a Telegram control: the account
+       menu, Settings and both portals all ask for it before drawing. */
+    telegramLoad: TELEGRAM_UI ? telegramLoad : undefined,
+    telegramOn: TELEGRAM_UI,
     /* The status as last loaded. The order-alerts grid's change handlers
        (js/app-changes.js) read and patch THIS object rather than keeping a
        second copy of the presets that could drift from the card's. */
