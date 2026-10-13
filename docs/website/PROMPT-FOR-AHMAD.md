@@ -400,6 +400,15 @@ the printer will print). Use a 400 × 440 SVG `viewBox` of the jersey's back:
   text in `shadowColor`, moved by (`shadowDx`, `shadowDy`), drawn first.
 - Text colour `textColor`. The shirt's own colour is yours to choose.
 
+**Or use the ready-made file (13 Oct 2026, recommended): `docs/website/og-jersey.js`.** One file
+with no dependencies that draws all of the above, **live as the customer types**, in the kit's
+own font. It applies the shop's name and number rules in the browser, with the shop's own codes
+and messages in English and Arabic. `OGJersey.mount(el, { print, nameInput, numberInput,
+messageEl, lang, onChange })`, then `jersey.check()` at Add to cart. Open
+`docs/website/og-jersey-demo.html` to see it working. A test in the shop
+(`server/test/og-jersey.test.js`) keeps it drawing exactly what the shop draws. The short
+brief is `docs/website/UPDATE-LIVE-JERSEY.md`.
+
 #### `web_print_styles` — the styles a customer may choose
 
 ```

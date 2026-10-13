@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OG Jersey demo</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b0b0d; --card: #151518; --line: #2a2a2f; --text: #f4f4f5; --muted: #a1a1aa; --lime: #c6ff00; --red: #ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: grid; gap: 16px; }
+  label { display: grid; gap: 6px; font-weight: 600; font-size: 13px; }
+  input { width: 100%; min-width: 0; font: 600 20px/1.2 system-ui, sans-serif; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: #0f0f12; color: var(--text); min-height: 48px; letter-spacing: .04em; }
+  input:focus { outline: 2px solid var(--lime); outline-offset: 1px; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 12px; }
+  .row label { min-width: 0; }
+  .styles { display: flex; flex-wrap: wrap; gap: 8px; }
+  .styles button, .lang button { background: #0f0f12; color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; font-weight: 600; cursor: pointer; min-height: 44px; }
+  .styles button.on, .lang button.on { border-color: var(--lime); color: var(--lime); }
+  .cart { background: var(--lime); color: #111; border: 0; border-radius: 12px; padding: 14px; font-weight: 800; font-size: 16px; cursor: pointer; min-height: 48px; }
+  .cart:disabled { opacity: .45; cursor: not-allowed; }
+  #msg { min-height: 1.5em; color: var(--red); font-weight: 600; margin: 0; }
+  #out { white-space: pre-wrap; font: 12px/1.4 ui-monospace, Consolas, monospace; background: #0f0f12; border-radius: 10px; padding: 12px; margin: 0; min-height: 3em; }
+  .lang { display: flex; gap: 8px; }
+  [dir="rtl"] body { font-family: Tahoma, system-ui, sans-serif; }
+  @media (max-width: 760px) { main { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <div id="jersey"></div>
+  </section>
+  <section class="panel">
+    <div>
+      <h1 data-t="title">Your name on the shirt</h1>
+      <div class="muted" data-t="sub">Type — it is printed exactly like this.</div>
+    </div>
+    <div class="lang"><button data-lang="en" class="on">English</button><button data-lang="ar">العربية</button></div>
+    <div class="styles" id="styles"></div>
+    <div class="row">
+      <label><span data-t="name">Name</span><input id="pName" placeholder="MESSI"></label>
+      <label><span data-t="number">Number</span><input id="pNumber" placeholder="10"></label>
+    </div>
+    <p id="msg" role="status" aria-live="polite"></p>
+    <button class="cart" id="cart" disabled data-t="cart">Add to cart · $5 print</button>
+    <pre id="out" aria-live="polite"></pre>
+  </section>
+</main>
+<script src="og-jersey.js"></script>
+<script>
+  /* Three print objects shaped exactly as web_products answers them (contract v1.6 §3b).
+     The fonts here come straight from Google's library so the demo works anywhere;
+     on the real site, use product.print as it arrives. */
+  var GF = 'https://raw.githubusercontent.com/google/fonts/main/';
+  var KITS = [
+    { kitId: 1, label: 'OG Block', font: { name: 'OG Block', url: GF + 'ofl/anton/Anton-Regular.ttf', weight: 400 },
+      textColor: '#ffffff', outlineColor: null, outlineWidth: 0, shadowColor: null, shadowDx: 0, shadowDy: 0,
+      nameSize: 46, nameY: 128, nameArc: 14, numberSize: 190, numberY: 340, maxLetters: 12,
+      price: { USD: { amount: 500, minorExp: 2 } }, turnaround: { min: 5, max: 7 } },
+    { kitId: 2, label: 'OG Modern', font: { name: 'OG Modern', url: GF + 'ofl/teko/Teko%5Bwght%5D.ttf', weight: 700 },
+      textColor: '#c6ff00', outlineColor: '#111111', outlineWidth: 3, shadowColor: null, shadowDx: 0, shadowDy: 0,
+      nameSize: 54, nameY: 126, nameArc: 0, numberSize: 210, numberY: 345, maxLetters: 12,
+      price: { USD: { amount: 500, minorExp: 2 } }, turnaround: { min: 5, max: 7 } },
+    { kitId: 3, label: 'OG Classic', font: { name: 'OG Classic', url: GF + 'ofl/graduate/Graduate-Regular.ttf', weight: 400 },
+      textColor: '#111111', outlineColor: '#ffffff', outlineWidth: 2, shadowColor: '#c8102e', shadowDx: 4, shadowDy: 4,
+      nameSize: 40, nameY: 130, nameArc: 20, numberSize: 170, numberY: 335, maxLetters: 12,
+      price: { USD: { amount: 500, minorExp: 2 } }, turnaround: { min: 5, max: 7 } }
+  ];
+  var T = {
+    en: { title: 'Your name on the shirt', sub: 'Type — it is printed exactly like this.', name: 'Name', number: 'Number', cart: 'Add to cart · $5 print' },
+    ar: { title: 'اسمك على القميص', sub: 'اكتب — بينطبع متل ما بتشوفه بالزبط.', name: 'الاسم', number: 'الرقم', cart: 'ضيف عالسلة · طباعة $5' }
+  };
+  var lang = 'en';
+  var cart = document.getElementById('cart');
+  var jersey = OGJersey.mount(document.getElementById('jersey'), {
+    print: KITS[0], lang: lang,
+    nameInput: document.getElementById('pName'),
+    numberInput: document.getElementById('pNumber'),
+    messageEl: document.getElementById('msg'),
+    onChange: function (s) { cart.disabled = !s.ok; }
+  });
+  var styles = document.getElementById('styles');
+  styles.innerHTML = KITS.map(function (k, i) {
+    return '<button data-kit="' + i + '"' + (i ? '' : ' class="on"') + '>' + k.label + '</button>';
+  }).join('');
+  styles.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-kit]'); if (!b) return;
+    [].forEach.call(styles.children, function (x) { x.classList.toggle('on', x === b); });
+    jersey.setPrint(KITS[+b.getAttribute('data-kit')]);
+    cart.disabled = !jersey.state().ok;
+  });
+  document.querySelector('.lang').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-lang]'); if (!b) return;
+    lang = b.getAttribute('data-lang');
+    [].forEach.call(this.children, function (x) { x.classList.toggle('on', x === b); });
+    document.documentElement.lang = lang; document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    [].forEach.call(document.querySelectorAll('[data-t]'), function (x) { x.textContent = T[lang][x.getAttribute('data-t')]; });
+    jersey.setLang(lang);
+  });
+  cart.addEventListener('click', function () {
+    var r = jersey.check();
+    var kit = KITS[[].indexOf.call(styles.children, styles.querySelector('.on'))];
+    document.getElementById('out').textContent = r.ok
+      ? JSON.stringify({ sku: 'OG-050-42', qty: 1, print: { name: r.name, number: r.number, kitId: kit.kitId } }, null, 2)
+      : r.problems.map(function (p) { return p.code + ': ' + p.message; }).join('\n');
+  });
+</script>
+</body>
+</html>
