@@ -246,6 +246,104 @@ export function seedFonts({ force = false } = {}) {
   return seeding;
 }
 
+/* ---------------------------------------------- a font from the internet
+   The owner types a font's name ("Oswald") and the server fetches it from
+   Google Fonts — github.com/google/fonts, the same library the seed fonts
+   come from, every font in it free to use (the licence is its folder). The
+   family's folder is listed through GitHub's API; the file chosen is a Bold
+   one, else the variable one (drawn at 700, as Teko and Cairo are), else the
+   Regular, never an italic. Then it is the ordinary road: the WOFF2 made
+   here, both files in the bucket, a row. A font the shop already has by that
+   name is handed back as it is (a seed not uploaded yet gets its files). */
+const GF_API = 'https://api.github.com/repos/google/fonts/contents';
+const GF_LICENCES = { ofl: 'SIL Open Font License', apache: 'Apache License 2.0', ufl: 'Ubuntu Font Licence' };
+const GF_HEADERS = { 'User-Agent': 'og-system', Accept: 'application/vnd.github+json' };
+
+/* Google's folder for a family: lower case, letters and digits only
+   ("Bebas Neue" → bebasneue). */
+export function gfDir(family) { return String(family || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+export function gfPick(names) {
+  const ttf = names.filter((n) => /\.ttf$/i.test(n) && !/italic/i.test(n));
+  const bold = ttf.find((n) => /-Bold\.ttf$/i.test(n));
+  if (bold) return { file: bold, weight: 700 };
+  const vf = ttf.find((n) => /\[[^\]]*wght[^\]]*\]\.ttf$/i.test(n));
+  if (vf) return { file: vf, weight: 700 };
+  const reg = ttf.find((n) => /-Regular\.ttf$/i.test(n));
+  if (reg) return { file: reg, weight: 400 };
+  return ttf.length ? { file: ttf[0], weight: 400 } : null;
+}
+
+async function gfGet(url, what) {
+  let r;
+  try {
+    r = await fetch(url, { headers: GF_HEADERS, signal: AbortSignal.timeout(20000) });
+  } catch {
+    throw fail(`could not reach Google Fonts for ${what}`, 'internet_failed', 502);
+  }
+  if (r.status === 403 || r.status === 429) {
+    throw fail('Google Fonts is refusing for now — try again in an hour', 'internet_busy', 503);
+  }
+  return r;
+}
+
+export async function fontFromInternet(family) {
+  const asked = String(family ?? '').replace(/\s+/g, ' ').trim();
+  const dir = gfDir(asked);
+  if (!dir || [...asked].length > 60) throw fail('type a font name, like Oswald', 'bad_font_name');
+
+  let found = null;
+  for (const lic of Object.keys(GF_LICENCES)) {
+    const r = await gfGet(`${GF_API}/${lic}/${dir}`, asked);
+    if (r.status === 404) continue;
+    if (!r.ok) throw fail(`Google Fonts answered ${r.status}`, 'internet_failed', 502);
+    const list = await r.json().catch(() => null);
+    if (Array.isArray(list)) { found = { lic, files: list.filter((x) => x && x.type === 'file') }; break; }
+  }
+  if (!found) throw fail(`there is no font called "${asked}" on Google Fonts`, 'font_not_found', 404);
+  const pick = gfPick(found.files.map((x) => x.name));
+  if (!pick) throw fail(`"${asked}" has no file this can use`, 'font_not_found', 404);
+
+  /* Its own name, as Google writes it ("bebas neue" → Bebas Neue). */
+  let name = asked;
+  const meta = found.files.find((x) => x.name === 'METADATA.pb');
+  if (meta && meta.download_url) {
+    const m = await gfGet(meta.download_url, asked).then((r) => (r.ok ? r.text() : '')).catch(() => '');
+    const n = /^name:\s*"([^"]+)"/m.exec(m);
+    if (n) name = n[1];
+  }
+  name = cleanName(name);
+
+  const have = get().prepare('SELECT * FROM print_fonts WHERE lower(name) = lower(?)').get(name);
+  if (have && have.file_url) return { font: fontOut(have), existing: true };
+
+  const entry = found.files.find((x) => x.name === pick.file);
+  const res = await gfGet(entry.download_url, asked);
+  if (!res.ok) throw fail(`Google Fonts answered ${res.status} for the file`, 'internet_failed', 502);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (bytes.length > 4 * 1024 * 1024) throw fail('That font file is too large (4 MB at most).', 'too_large', 413);
+  const kind = W2.sniff(bytes);
+  if (kind !== 'ttf' && kind !== 'otf') throw fail('the file there is not a .ttf or .otf', 'bad_font');
+  const up = await upload(bytes, kind, W2.encode(bytes), name);
+
+  if (have) return { font: setFiles(have, up), existing: true };
+  const note = `Google Fonts · ${GF_LICENCES[found.lic]}`;
+  try {
+    return tx((d) => {
+      assertFreeName(d, name);
+      const at = nowIso();
+      const id = d.prepare(
+        `INSERT INTO print_fonts (name, file_url, source_url, license_note, weight, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?)`
+      ).run(name, up.fileUrl, up.sourceUrl, note, pick.weight, at, at).lastInsertRowid;
+      return { font: fontOut(fontRow(d, id)), existing: false };
+    });
+  } catch (e) {
+    dropFiles([up.fileUrl, up.sourceUrl]);
+    throw e;
+  }
+}
+
 /* ------------------------------------------------------------------- kits */
 
 const KIT_COLS = `k.*, f.name AS font_name, f.file_url AS font_url, f.weight AS font_weight,

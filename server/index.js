@@ -1032,6 +1032,19 @@ router.add('PATCH /api/print-fonts/:id', requirePerm('print_kits.manage', async 
   } catch (e) { kitFail(ctx.res, e); }
 }));
 
+/* A font from the internet by its name (Google Fonts) — PrintKits says how.
+   An answer for one the shop already has is `existing: true`, not an error. */
+router.add('POST /api/print-fonts/internet', requirePerm('print_kits.manage', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try {
+    sendOk(ctx.res, await PrintKits.fontFromInternet(b.family));
+  } catch (e) {
+    if (e.code === 'not_configured') return sendError(ctx.res, 503, 'not_configured', e.message);
+    if (!e.code) return sendError(ctx.res, 502, 'storage_failed', e.message);
+    kitFail(ctx.res, e);
+  }
+}));
+
 /* The seed fonts, uploaded now (the start-up does it by itself; this is the
    button for when that could not reach GitHub or the bucket). */
 router.add('POST /api/print-fonts/seed', requirePerm('print_kits.manage', async (ctx) => {
