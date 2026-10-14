@@ -4719,6 +4719,13 @@ screen goes in `NAV` and in one section — nowhere else.
 - The section holding the screen on show will not fold (it nods), and **going to a screen in a
   folded section opens it for good**. On the icon rail and under 900px there are no headings:
   every section is open with a hairline between them.
+- **Each section has a colour and a mark** (`icon` in `SECTIONS`; the `SIDEBAR COLOURS` block in
+  `og-skin.css`, an rgb triplet in `--sec` keyed on `data-sec`): lime for Home and Shop & till, sky for
+  the warehouse, green for money, orange for delivery, violet for the website, Yalla Wear's own mint.
+  The heading is a lit tile, the screens hang from a faint spine, and the screen on show takes its
+  section's colour on the tick, the icon and the travelling bar (`data-here` on `.nav`, `navHere()`).
+  The phone's More sheet uses the same marks. This is the one place the sidebar spends colour beyond
+  lime, by the owner's request (15 Oct 2026). `_nightshift/sidebar/colours.mjs` (25).
 - Nothing in the section markup is positioned — the travelling indicator measures `offsetTop`
   against `.nav`. Styles are the `SIDEBAR SECTIONS` block at the end of `css/og-skin.css`.
 - `_nightshift/sidebar/sections.mjs` (27): every press is real, both languages, the rail, the phone

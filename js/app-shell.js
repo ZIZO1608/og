@@ -76,14 +76,35 @@ var NAV = [
    holding the screen on show, which always opens. */
 var NAV_TOP = ['dashboard'];
 var NAV_BOTTOM = ['settings'];
+/* Each section has its own colour (the SIDEBAR COLOURS block in og-skin.css,
+   keyed on data-sec) and its own mark. Lime stays the shop's; Yalla Wear's
+   is their own mint, the colour of their portal. */
 var SECTIONS = [
-  { id: 'shop',     key: 'nav_s_shop',     ids: ['pos', 'customers', 'coupons'] },
-  { id: 'stock',    key: 'nav_s_stock',    ids: ['products', 'warehouse', 'shelfmap', 'labels'] },
-  { id: 'money',    key: 'nav_s_money',    ids: ['money', 'payments', 'reports'] },
-  { id: 'delivery', key: 'nav_s_delivery', ids: ['desk', 'deliveries', 'safeers', 'reviews'] },
-  { id: 'web',      key: 'nav_s_web',      ids: ['weborders', 'requests'] },
-  { id: 'yalla',    key: 'nav_s_yalla',    ids: ['print', 'printkits'] }
+  { id: 'shop',     key: 'nav_s_shop',     ids: ['pos', 'customers', 'coupons'],
+    icon: 'M3 9l1.5-5h15L21 9M3 9h18M4 9v11h16V9M9 20v-6h6v6' },
+  { id: 'stock',    key: 'nav_s_stock',    ids: ['products', 'warehouse', 'shelfmap', 'labels'],
+    icon: 'M3 13h8v8H3zM13 13h8v8h-8zM8 3h8v8H8z' },
+  { id: 'money',    key: 'nav_s_money',    ids: ['money', 'payments', 'reports'],
+    icon: 'M5 7c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3zM5 7v5c0 1.7 3.1 3 7 3s7-1.3 7-3V7M5 12v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5' },
+  { id: 'delivery', key: 'nav_s_delivery', ids: ['desk', 'deliveries', 'safeers', 'reviews'],
+    icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
+  { id: 'web',      key: 'nav_s_web',      ids: ['weborders', 'requests'],
+    icon: 'M3 5h18v14H3zM3 9h18M6 7h.01M9 7h.01M9 14l2 2 4-4' },
+  { id: 'yalla',    key: 'nav_s_yalla',    ids: ['print', 'printkits'],
+    icon: 'M8 3l4 2 4-2 5 3-2 5-2-1v11H7V10l-2 1-2-5z' }
 ];
+
+/* Which section the screen on show belongs to — the travelling indicator
+   takes that section's colour. Home and Settings are the brand's own. */
+function navHere() {
+  for (var i = 0; i < SECTIONS.length; i++) {
+    if (SECTIONS[i].ids.indexOf(OG.view) >= 0) return SECTIONS[i].id;
+  }
+  return 'home';
+}
+function secIcon(path) {
+  return '<span class="nav-sec-ico"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="' + path + '"/></svg></span>';
+}
 
 /* Which permission each screen needs.
 
@@ -315,7 +336,12 @@ function renderSidebar() {
         'title="' + esc(t('sb_collapse')) + '" aria-label="' + esc(t('sb_collapse')) + '">' +
         '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
           '<path d="M4 5h16v14H4zM10 5v14"/></svg></button>' +
-    '</div><nav class="nav">';
+    '</div>' +
+    /* The shop's colours in one line under the name: lime for the shop, then
+       one band per section, in the order they are listed below. */
+    '<div class="sb-spectrum" aria-hidden="true">' +
+      SECTIONS.map(function (x) { return '<i data-sec="' + x.id + '"></i>'; }).join('') +
+    '</div><nav class="nav" data-here="' + navHere() + '">';
 
   NAV_TOP.forEach(function (id) { html += navItemHtml(id); });
   var shut = navShut();
@@ -337,6 +363,7 @@ function renderSidebar() {
     }, 0);
     html += '<div class="nav-sec' + (closed ? ' shut' : '') + (here ? ' here' : '') + '" data-sec="' + sec.id + '">' +
       '<button class="nav-sec-head" data-act="nav-sec" data-sec="' + sec.id + '" aria-expanded="' + (!closed) + '">' +
+        secIcon(sec.icon) +
         '<span class="nav-sec-txt">' + t(sec.key) + '</span>' +
         /* Folded, the heading still shows what it holds: each screen's icon in
            small, so a shut Warehouse reads as boxes and a shelf, not a word. */
@@ -406,8 +433,9 @@ var ROLE_TABS = {
    It is built from NAV itself minus whatever is already a tab, so a screen
    added to NAV next year appears in More without a second edit — the bug
    that hid the Money screen from every phone until 054 went looking for it. */
-var MORE_GROUPS = SECTIONS.map(function (sec) { return { key: sec.key, ids: sec.ids }; })
-  .concat([{ key: 'nav_s_system', ids: NAV_TOP.concat(NAV_BOTTOM) }]);
+var MORE_GROUPS = SECTIONS.map(function (sec) { return { key: sec.key, ids: sec.ids, sec: sec.id, icon: sec.icon }; })
+  .concat([{ key: 'nav_s_system', ids: NAV_TOP.concat(NAV_BOTTOM), sec: 'home',
+             icon: 'M3 11l9-7 9 7v9H3zM9 20v-6h6v6' }]);
 
 function tabsFor() {
   var want = ROLE_TABS[roleOf()] || TABS;
@@ -461,7 +489,8 @@ function openMoreSheet() {
              NAV.some(function (x) { return x.id === id; });
     });
     if (!items.length) return;
-    h += '<div class="more-group">' + t(g.key) + '</div><div class="more-grid">';
+    h += '<div class="more-group" data-sec="' + g.sec + '">' + secIcon(g.icon) + '<span>' + t(g.key) + '</span></div>' +
+      '<div class="more-grid" data-sec="' + g.sec + '">';
     items.forEach(function (id) {
       var n = NAV.filter(function (x) { return x.id === id; })[0];
       var b = navBadge(id);
