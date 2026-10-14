@@ -48,8 +48,30 @@ function vps(args) {
   });
 }
 
+/* What a person can do when this computer cannot reach the VPS — which is
+   often (15 Oct 2026: SSH dead from the shop line, the site itself fine). */
+const HOSTINGER = [
+  '  To see it on the VPS itself: Hostinger -> VPS -> Browser terminal, then',
+  '      tail -n 20 /data/og-shop/autodeploy.log',
+  '  "LIVE <commit>" there means the shop runs it.',
+];
+
+async function status() {
+  git('fetch', '--quiet', 'origin', 'main');
+  const gh = git('log', '-1', '--format=%h  %s  (%cr)', 'origin/main').out;
+  const changed = git('status', '--porcelain').out;
+  const ahead = Number(git('rev-list', '--count', 'origin/main..HEAD').out) || 0;
+  say('\n  GitHub main   ' + (gh || '(could not ask GitHub)'));
+  say('  This folder   ' + (ahead ? `${ahead} commit(s) not on GitHub yet` : 'nothing waiting to push') +
+      (changed ? ` · ${changed.split(/\r?\n/).length} uncommitted change(s)` : ''));
+  say('  The VPS takes GitHub main by itself every minute.\n');
+  const code = await vps(['status']);
+  if (code !== 0) { say(''); for (const l of HOSTINGER) say(l); say(''); }
+  return code;
+}
+
 const words = argv.slice(2);
-if (words[0] === 'status') exit(await vps(['status']));
+if (words[0] === 'status') exit(await status());
 const yes = words.includes('-y');
 let message = words.filter((w) => w !== '-y').join(' ').trim();
 
@@ -107,7 +129,9 @@ say('\n  The VPS takes it from GitHub by itself within a minute or two. Waiting 
 const code = await vps(['deploy', '--ref', 'HEAD']);
 if (code !== 0) {
   say('\n  GitHub has it either way. If this computer simply could not reach the VPS to watch,');
-  say('  the VPS still deploys it by itself; look again later with:  ship status\n');
+  say('  the VPS still deploys it by itself, usually within five minutes.\n');
+  for (const l of HOSTINGER) say(l);
+  say('');
   exit(1);
 }
 say('\n  ✓ live on https://shop.ogsports1.com\n');
