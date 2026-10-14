@@ -453,41 +453,11 @@ async function cmdAutodeploy(sub = 'on') {
   /* A plain public address only: a URL carrying a token would leave that
      token in a file on the VPS. */
   const repo = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+?(\.git)?$/.test(origin) ? origin : 'https://github.com/ZIZO1608/og.git';
-  const script = readFileSync(join(ROOT, 'deploy', 'og-shop', 'autodeploy.sh'), 'utf8').replace(/\r/g, '');
-  const r = await remote(`
-    command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }
-    command -v flock >/dev/null
-    [ -s ${DIR}/og-shop.env ]
-    cat > ${DIR}/autodeploy.sh.new
-    chmod 755 ${DIR}/autodeploy.sh.new && mv ${DIR}/autodeploy.sh.new ${DIR}/autodeploy.sh
-    [ -f ${DIR}/autodeploy.conf ] || printf '%s\\n' '# the repository and branch the VPS deploys from (written by npm run vps -- autodeploy)' \\
-      'OG_REPO=${repo}' 'OG_BRANCH=main' > ${DIR}/autodeploy.conf
-    cat > /etc/systemd/system/og-autodeploy.service <<'UNIT'
-[Unit]
-Description=OG System: put GitHub main live on the shop (deploy/og-shop/autodeploy.sh)
-After=docker.service network-online.target wg-quick@wg0.service
-Wants=network-online.target
-[Service]
-Type=oneshot
-ExecStart=${DIR}/autodeploy.sh
-TimeoutStartSec=40min
-Nice=5
-UNIT
-    cat > /etc/systemd/system/og-autodeploy.timer <<'UNIT'
-[Unit]
-Description=OG System: look at GitHub main every minute
-[Timer]
-OnBootSec=3min
-OnUnitInactiveSec=60s
-AccuracySec=10s
-[Install]
-WantedBy=timers.target
-UNIT
-    systemctl daemon-reload
-    systemctl enable --now og-autodeploy.timer >/dev/null 2>&1
-    systemctl is-active og-autodeploy.timer
-  `, { input: script });
-  if (r.code !== 0 || !/active/.test(r.out)) fail('Could not install it on the VPS:\n' + (r.err || r.out).trim().slice(0, 800));
+  /* The same install script the Hostinger browser terminal runs (one copy):
+     it fetches autodeploy.sh from GitHub, writes the conf and the units. */
+  const raw = repo.replace(/^https:\/\/github\.com\//, 'https://raw.githubusercontent.com/').replace(/\.git$/, '') + '/main';
+  const r = await remote(`curl -fsSL ${raw}/deploy/og-shop/install-autodeploy.sh | OG_NO_WAIT=1 OG_REPO=${repo} OG_RAW=${raw} bash`);
+  if (r.code !== 0 || !/installed/.test(r.out)) fail('Could not install it on the VPS:\n' + (r.err || r.out).trim().slice(0, 800));
   ok(`${DIR}/autodeploy.sh, from ${repo} (main)`);
   ok('og-autodeploy.timer: every minute, and three minutes after a reboot');
   say('\n  It takes main now. A push to GitHub is all a deploy needs from here on.');
