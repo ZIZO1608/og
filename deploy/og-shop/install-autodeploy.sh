@@ -73,7 +73,10 @@ for _ in $(seq 1 180); do
   new=$(tail -n +$((from + 1)) "$DIR/autodeploy.log" 2>/dev/null || true)
   if [ -n "$new" ]; then echo "$new" | sed 's/^/    /'; from=$((from + $(echo "$new" | wc -l))); fi
   echo "$new" | grep -q 'LIVE \|FAILED \|changes nothing the shop runs' && break
-  if ! systemctl is-active --quiet og-autodeploy.service && [ -z "$new" ]; then
+  # A oneshot that is still running is "activating", not "active" — reading
+  # is-active alone took a running build for a finished one (15 Oct 2026).
+  st=$(systemctl show -p ActiveState --value og-autodeploy.service 2>/dev/null)
+  if [ "$st" != "activating" ] && [ "$st" != "active" ] && [ -z "$new" ]; then
     b=$(sed -n 's/^OG_BUILD=//p' "$DIR/.env" 2>/dev/null)
     say "nothing new to deploy — the shop runs $b"; break
   fi
