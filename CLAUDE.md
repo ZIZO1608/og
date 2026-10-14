@@ -3691,6 +3691,19 @@ Developer → Tools → **Move the shop to the VPS** (typed word `VPS`).
   **Send the code to the VPS**). That sends the **committed** code by `git archive` over SSH,
   builds it on the VPS (the tests run in the build) and swaps the container. A failed build
   changes nothing. `releases/<commit>/` keeps the last five; `.env` there holds `OG_BUILD`.
+- **THE VPS DEPLOYS ITSELF FROM GITHUB (15 Oct 2026).** A deploy used to need this computer to
+  reach the VPS over SSH, and on 15 Oct the route broke (a pushed commit sat on GitHub while the
+  shop ran the old one). Now `og-autodeploy.timer` on the VPS runs `deploy/og-shop/autodeploy.sh`
+  every minute: fetch `main` into `/data/og-shop/repo.git`, skip a commit that changes nothing in
+  `deploy/og-shop/ship-paths.txt` (THE one list — `vps.js`'s `SHIP` and the launcher read it too),
+  else build `releases/<commit>` (tests inside), swap, and put the old commit back if it is not
+  healthy in 2.5 min; a failed commit is retried at most three times, ten minutes apart; `flock`
+  keeps it to one run. Installed by `npm run vps -- autodeploy` (`off` · `log` · `now`). Once it
+  is on, `vps -- deploy` and the launcher's auto-publish only ask the VPS to take main now and
+  wait for its log. **For the owner: `ship "what changed"`** (`ship.cmd` → `tools/ship.mjs`, a
+  `.cmd` because PowerShell here refuses `.ps1`, `npm.ps1` included): shows the changes,
+  `git add -A`, commit, pull --rebase, push, then waits to see it live; `ship status`. Tested by
+  `bash deploy/og-shop/test-autodeploy.sh` (10, a local "GitHub" and a fake docker).
 - **AUTO-PUBLISH (27 Sep 2026, the owner's decision): every COMMIT on `main` goes to GitHub and
   to the shop by itself.** The real launcher checks once a minute (`autoshipTick()` in
   `panel/panel.js`, the rules in `panel/lib/autoship.js`, the `autoShip` job in `panel/jobs.js`):

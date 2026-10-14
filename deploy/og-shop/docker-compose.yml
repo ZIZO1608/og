@@ -2,13 +2,16 @@
 #  OG SYSTEM — the shop's MAIN server, on the VPS          [deploy/og-shop]
 # -----------------------------------------------------------------------------
 #  This is what makes https://shop.ogsports1.com answer 24/7, whether or not
-#  the shop laptop is on. It is NOT a Coolify resource, on purpose: a push to
-#  `main` redeploys the Coolify apps, and the till must not restart because
-#  somebody published a typo. The code arrives only when a person runs
+#  the shop laptop is on. It is NOT a Coolify resource (moving the live till's
+#  container and its data/ under Coolify is a risk for nothing). Since 15 Oct
+#  2026 it DEPLOYS ITSELF: og-autodeploy.timer runs autodeploy.sh every
+#  minute, which takes GitHub's main, builds it (the tests run in the build),
+#  swaps the container, and puts the old one back if the new one is not
+#  healthy. A push to main is a deploy. Installed by
 #
-#      cd server && npm run vps -- deploy        (or Developer -> Tools)
+#      cd server && npm run vps -- autodeploy    (off · log · now)
 #
-#  which copies the committed code here, builds it, and swaps the container.
+#  and `npm run vps -- deploy` then only asks it to take main now.
 #  On the VPS it all lives in /data/og-shop:
 #
 #      docker-compose.yml     this file (copied from the release on every deploy)
@@ -16,6 +19,7 @@
 #      og-shop.env            the settings and secrets (`npm run vps -- env`)
 #      extra.env              optional, by hand: anything VPS-only, never overwritten
 #      releases/<commit>/     the code of each deploy (the last five are kept)
+#      repo.git · autodeploy.sh · autodeploy.conf · autodeploy.log   the self-deploy
 #      data/                  THE SHOP: og.db, backups/. Lose this and you lose it.
 #
 #  HOW THE PUBLIC ADDRESS REACHES IT. Traefik (Coolify) -> the shop-proxy nginx

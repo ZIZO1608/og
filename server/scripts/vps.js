@@ -18,6 +18,14 @@
                        WireGuard (the port is published on the tunnel address)
      deploy            the COMMITTED code to the VPS: build, then swap the
                        container. --no-start builds only. --ref <commit>.
+                       Once autodeploy is on, it only asks the VPS to take
+                       GitHub's main now, and waits for the answer.
+     autodeploy [off|log|now]
+                       THE VPS DEPLOYS ITSELF: every minute it takes main from
+                       GitHub, builds it (the tests run in the build), swaps
+                       the container, and puts the old one back if the new
+                       one is not healthy (deploy/og-shop/autodeploy.sh).
+                       A push to GitHub is then all it takes.
      env               the VPS's settings, secrets copied from this laptop's
                        server/.env (never printed). Adds OG_COPY_KEY here too.
      db                this laptop's database to the VPS, as a verified
@@ -72,9 +80,11 @@ const VPS_URL = `http://${TUNNEL_VPS}:8090`;
 if (!/^\/[A-Za-z0-9._/-]+$/.test(DIR)) fail(`OG_VPS_DIR must be a plain absolute path, not ${JSON.stringify(DIR)}.`);
 
 /* What the image needs. The Dockerfile's own allow-list copies from these
-   and nothing else, so nothing more crosses a slow line. */
-const SHIP = ['Dockerfile', 'package.json', 'index.html', 'manifest.webmanifest', 'sw.js',
-  'robots.txt', 'css', 'js', 'assets', 'server', 'deploy/og-shop'];
+   and nothing else, so nothing more crosses a slow line.
+   ONE LIST, in deploy/og-shop/ship-paths.txt: the VPS's own autodeploy.sh
+   reads it out of each commit, and the launcher imports it from here. */
+const SHIP = readFileSync(join(ROOT, 'deploy', 'og-shop', 'ship-paths.txt'), 'utf8')
+  .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
 /* Copied from this laptop's .env to the VPS, exactly. */
 const COPY = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_ROLE_KEY',
@@ -219,6 +229,8 @@ async function vpsFacts() {
     echo "backup=$(ls -1t ${DIR}/data/backups/*.db 2>/dev/null | head -1 | xargs -r basename)"
     echo "wg=$(ip -4 addr show wg0 2>/dev/null | grep -q 'inet ${TUNNEL_VPS}/' && echo up || echo down)"
     echo "afterwg=$([ -f /etc/systemd/system/docker.service.d/og-after-wireguard.conf ] && echo yes || echo no)"
+    echo "auto=$(systemctl is-active og-autodeploy.timer 2>/dev/null || true)"
+    echo "autolast=$(tail -n 1 ${DIR}/autodeploy.log 2>/dev/null || true)"
     echo "gateway=$(docker network inspect coolify --format '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' 2>/dev/null | tr ' ' '\\n' | grep -m1 '\\.' || true)"
   `);
   if (r.code !== 0) fail('Could not read the VPS: ' + (r.err || r.out).trim().slice(0, 400));
@@ -263,6 +275,8 @@ async function cmdStatus() {
   say(`    code      : ${f.build || '(never deployed)'}${f.image ? '  [' + f.image + ']' : ''}`);
   say(`    database  : ${f.db === 'none' ? 'none yet' : Math.round(Number(f.db) / 1024) + ' KB'}${f.backup ? ' · newest backup ' + f.backup : ''}`);
   say(`    settings  : ${f.env === 'yes' ? 'og-shop.env present' : 'none yet (npm run vps -- env)'}`);
+  say(`    deploys   : ${f.auto === 'active' ? 'by itself, from GitHub main (autodeploy)' : 'only when somebody runs deploy (npm run vps -- autodeploy changes that)'}`);
+  if (f.autolast) say(`    last      : ${f.autolast.slice(0, 160)}`);
   say(`    WireGuard : ${f.wg}${f.afterwg === 'yes' ? '' : ' · Docker does not wait for it yet (npm run vps -- setup)'}`);
   const direct = await health(`${VPS_URL}/api/health`);
   say(`    answers   : ${direct.status ? direct.status + (direct.body ? ' · role ' + (direct.body.role || '?') : '') : 'no (' + direct.error + ')'} on ${VPS_URL}`);
@@ -308,6 +322,10 @@ async function cmdDeploy({ start = true, ref = 'HEAD' } = {}) {
   const rev = await sh('git', ['-C', ROOT, 'rev-parse', '--short=12', ref]);
   const sha = rev.out.trim();
   if (rev.code !== 0 || !/^[0-9a-f]{7,40}$/.test(sha)) fail(`Not a commit here: ${ref}`);
+  if (start) {
+    const a = await remote('systemctl is-active og-autodeploy.timer 2>/dev/null || true');
+    if (a.out.trim() === 'active') return deployViaVps(sha);
+  }
   const subject = (await sh('git', ['-C', ROOT, 'log', '-1', '--format=%s', sha])).out.trim();
   say(`\n  Sending ${sha} — ${subject}\n`);
   if (ref === 'HEAD') {
@@ -358,6 +376,123 @@ async function cmdDeploy({ start = true, ref = 'HEAD' } = {}) {
   if (f.db === 'none') fail('The VPS has no database yet — run: npm run vps -- db (or the whole switch).');
   await startOn(sha);
   return sha;
+}
+
+/* ------------------------------------------------- the VPS deploys itself
+
+   With og-autodeploy.timer on, the VPS takes GitHub's main by itself every
+   minute (deploy/og-shop/autodeploy.sh). A deploy sent from here as well
+   would be a second deployer beside it — so `deploy` and the launcher's
+   auto-publish only ask it to take main NOW, and wait for its answer. The
+   route from the shop's line to the VPS breaks for hours; GitHub does not. */
+
+const pause = (ms) => new Promise((z) => setTimeout(z, ms));
+
+async function deployViaVps(ref) {
+  await sh('git', ['-C', ROOT, 'fetch', '--quiet', 'origin', 'main']);
+  if (ref !== 'origin/main') {
+    const onMain = await sh('git', ['-C', ROOT, 'merge-base', '--is-ancestor', ref, 'origin/main']);
+    if (onMain.code !== 0) {
+      fail(`${ref} is not on GitHub's main yet, and the VPS takes its code from GitHub.\n` +
+           '    Push it first:  git push origin main   (then this again, or just wait a minute)');
+    }
+  }
+  const target = (await sh('git', ['-C', ROOT, 'rev-parse', '--short=12', 'origin/main'])).out.trim();
+  if (!/^[0-9a-f]{12}$/.test(target)) fail('Cannot read origin/main here.');
+  const subject = (await sh('git', ['-C', ROOT, 'log', '-1', '--format=%s', target])).out.trim();
+  say(`\n  The VPS deploys by itself from GitHub. Asking it to take main now:\n    ${target} — ${subject}\n`);
+  const pre = await remote(`
+    echo "lines=$(wc -l < ${DIR}/autodeploy.log 2>/dev/null || echo 0)"
+    echo "failed=$(sed -n 's/^failed=//p' ${DIR}/.autodeploy.state 2>/dev/null)"
+    systemctl start --no-block og-autodeploy.service
+  `);
+  const from = Number((/lines=(\d+)/.exec(pre.out) || [])[1]) || 0;
+  const [fSha, fN] = ((/failed=(.*)/.exec(pre.out) || [])[1] || '').trim().split(/\s+/);
+  if (fSha === target && Number(fN) >= 3) {
+    fail(`${target} has already failed three times on the VPS; it will not try it again.\n` +
+         '    Fix it and push a new commit. What went wrong:  npm run vps -- autodeploy log');
+  }
+  const t0 = Date.now();
+  let shown = 0;
+  while (Date.now() - t0 < 25 * 60000) {
+    await pause(6000);
+    const r = await remote(`sed -n 's/^OG_BUILD=//p' ${DIR}/.env; tail -n +${from + 1} ${DIR}/autodeploy.log 2>/dev/null || true`, { retry: true });
+    if (r.code !== 0) continue;                 // the line dropped for a moment: the VPS carries on regardless
+    const lines = r.out.split(/\r?\n/);
+    const build = (lines.shift() || '').trim();
+    const news = lines.filter(Boolean);
+    for (const l of news.slice(shown)) say('    ' + l.slice(0, 200));
+    shown = news.length;
+    if (build === target) { ok(`the shop runs ${target}`); return target; }
+    if (news.some((l) => l.includes(`${target} changes nothing the shop runs`))) {
+      ok(`nothing the shop runs changed — ${build} keeps running`); return build;
+    }
+    if (news.some((l) => l.includes(`FAILED ${target}`))) {
+      fail(`It did not go live; the shop stays on ${build || 'what it had'}.  More:  npm run vps -- autodeploy log`);
+    }
+  }
+  fail('Still not live after 25 minutes. The VPS carries on by itself; look with:  npm run vps -- autodeploy log');
+}
+
+async function cmdAutodeploy(sub = 'on') {
+  if (sub === 'log') {
+    const r = await remote(`tail -n 60 ${DIR}/autodeploy.log 2>/dev/null || echo "(no log yet)"`);
+    process.stdout.write(r.out); return;
+  }
+  if (sub === 'off') {
+    const r = await remote('systemctl disable --now og-autodeploy.timer 2>&1 || true');
+    say(r.out.trim());
+    ok('the VPS no longer deploys by itself; npm run vps -- deploy sends the code from here again');
+    return;
+  }
+  if (sub === 'now') { await deployViaVps('origin/main'); return; }
+  if (sub !== 'on') fail(`Unknown: autodeploy ${sub}. One of: on (the default) · off · log · now`);
+
+  say('\n  The VPS deploys itself from GitHub\n');
+  const origin = (await sh('git', ['-C', ROOT, 'remote', 'get-url', 'origin'])).out.trim();
+  /* A plain public address only: a URL carrying a token would leave that
+     token in a file on the VPS. */
+  const repo = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+?(\.git)?$/.test(origin) ? origin : 'https://github.com/ZIZO1608/og.git';
+  const script = readFileSync(join(ROOT, 'deploy', 'og-shop', 'autodeploy.sh'), 'utf8').replace(/\r/g, '');
+  const r = await remote(`
+    command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }
+    command -v flock >/dev/null
+    [ -s ${DIR}/og-shop.env ]
+    cat > ${DIR}/autodeploy.sh.new
+    chmod 755 ${DIR}/autodeploy.sh.new && mv ${DIR}/autodeploy.sh.new ${DIR}/autodeploy.sh
+    [ -f ${DIR}/autodeploy.conf ] || printf '%s\\n' '# the repository and branch the VPS deploys from (written by npm run vps -- autodeploy)' \\
+      'OG_REPO=${repo}' 'OG_BRANCH=main' > ${DIR}/autodeploy.conf
+    cat > /etc/systemd/system/og-autodeploy.service <<'UNIT'
+[Unit]
+Description=OG System: put GitHub main live on the shop (deploy/og-shop/autodeploy.sh)
+After=docker.service network-online.target wg-quick@wg0.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=${DIR}/autodeploy.sh
+TimeoutStartSec=40min
+Nice=5
+UNIT
+    cat > /etc/systemd/system/og-autodeploy.timer <<'UNIT'
+[Unit]
+Description=OG System: look at GitHub main every minute
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=60s
+AccuracySec=10s
+[Install]
+WantedBy=timers.target
+UNIT
+    systemctl daemon-reload
+    systemctl enable --now og-autodeploy.timer >/dev/null 2>&1
+    systemctl is-active og-autodeploy.timer
+  `, { input: script });
+  if (r.code !== 0 || !/active/.test(r.out)) fail('Could not install it on the VPS:\n' + (r.err || r.out).trim().slice(0, 800));
+  ok(`${DIR}/autodeploy.sh, from ${repo} (main)`);
+  ok('og-autodeploy.timer: every minute, and three minutes after a reboot');
+  say('\n  It takes main now. A push to GitHub is all a deploy needs from here on.');
+  await deployViaVps('origin/main');
+  say('');
 }
 
 async function startOn(sha) {
@@ -665,6 +800,7 @@ async function main() {
     case 'built': { const f = await vpsFacts(); process.stdout.write((f.build || '') + '\n'); break; }
     case 'setup': await cmdSetup(); break;
     case 'deploy': await cmdDeploy({ start: !flag('--no-start'), ref: refAt > -1 ? rest[refAt + 1] : 'HEAD' }); say(''); break;
+    case 'autodeploy': await cmdAutodeploy(rest[0] || 'on'); break;
     case 'env': await cmdEnv(); break;
     case 'db': await cmdDb({ replace: flag('--replace'), force: flag('--force') }); break;
     case 'laptop-standby': await cmdLaptopStandby(); break;
@@ -689,7 +825,7 @@ async function main() {
       process.stdout.write(r.out); break;
     }
     default:
-      fail(`Unknown: ${cmd}. One of: status setup deploy env db laptop-standby switch take-back start stop restart logs`);
+      fail(`Unknown: ${cmd}. One of: status setup deploy autodeploy env db laptop-standby switch take-back start stop restart logs`);
   }
 }
 
