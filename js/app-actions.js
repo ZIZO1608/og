@@ -61,6 +61,9 @@ var ACTIONS = {
   'sn-test': function () { SiteNotifyUI.test(); },
   nav: function (el) { navTo(el.getAttribute('data-view'), el.getAttribute('data-tab')); },
 
+  /* Fold one sidebar section shut or open. Never a re-render. */
+  'nav-sec': function (el) { toggleNavSection(el.getAttribute('data-sec')); },
+
   /* Collapse the sidebar to an icon rail, and remember it. Re-rendered rather
      than just re-styled because the sliding active-indicator is positioned
      from the nav's real geometry, which the narrower rail changes. */

@@ -3408,6 +3408,13 @@ var NS03_EN = {
   nav_g_stock: 'Stock',
   nav_g_money: 'Money',
   nav_g_shop: 'The shop',
+  nav_s_shop: 'Shop & till',
+  nav_s_stock: 'Warehouse',
+  nav_s_money: 'Money',
+  nav_s_delivery: 'Delivery',
+  nav_s_web: 'Website orders',
+  nav_s_yalla: 'Yalla Wear',
+  nav_s_system: 'Home & settings',
 
   /* -- money, in plain words -- */
   mn_they_owe: 'They owe us',
@@ -3556,6 +3563,13 @@ var NS03_AR = {
   nav_g_stock: 'المخزون',
   nav_g_money: 'المصاري',
   nav_g_shop: 'المحل',
+  nav_s_shop: 'المحل والكاشير',
+  nav_s_stock: 'المستودع',
+  nav_s_money: 'المصاري',
+  nav_s_delivery: 'التوصيل',
+  nav_s_web: 'طلبات الموقع',
+  nav_s_yalla: 'يلا وير',
+  nav_s_system: 'الرئيسية والإعدادات',
 
   mn_they_owe: 'عليهن إلنا',
   mn_we_owe_none: 'ما في شي علينا لأصحاب البضاعة.',

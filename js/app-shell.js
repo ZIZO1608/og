@@ -41,28 +41,48 @@ function seesProfit() { return allow('profit.read'); }
 function isPartnerAccount() { return roleOf() === 'partner'; }
 
 var NAV = [
-  { id: 'dashboard',  key: 'nav_dashboard', group: 'main', icon: 'M3 12h4l2 6 4-13 2 7h6' },
-  { id: 'pos',        key: 'nav_pos',       group: 'main', icon: 'M3 4h3l2 10h9l2-7H7M9 19a1 1 0 1 0 2 0 1 1 0 1 0-2 0m7 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0' },
-  { id: 'products',   key: 'nav_products',  group: 'main', icon: 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10' },
-  { id: 'warehouse',  key: 'nav_warehouse', group: 'main', icon: 'M3 20V9l9-5 9 5v11M7 20v-7h10v7' },
-  { id: 'shelfmap',   key: 'nav_shelfmap', group: 'main', icon: 'M3 5h18v6H3zM3 13h18v6H3zM9 5v6M15 5v6M9 13v6M15 13v6' },
-  { id: 'money',      key: 'nav_money',     group: 'main', icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4' },
-  { id: 'payments',   key: 'nav_payments',  group: 'main', icon: 'M3 6h18v12H3zM3 10h18M7 15h4M15 15h2' },
-  { id: 'coupons',    key: 'nav_coupons',   group: 'main', icon: 'M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4zM9 15l6-6' },
-  { id: 'desk',       key: 'nav_desk',      group: 'ops',  icon: 'M3 7h18v4H3zM5 11v9h14v-9M9 7V4h6v3M10 15h4' },
-  { id: 'requests',   key: 'nav_requests',  group: 'ops',  icon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z' },
-  { id: 'deliveries', key: 'nav_deliveries',group: 'ops',  icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
-  { id: 'safeers',    key: 'nav_safeers',   group: 'ops',  icon: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M12 20v-1a5 5 0 0 1 10 0v1' },
-  { id: 'weborders',  key: 'nav_weborders', group: 'ops',  icon: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9s1.3-6.4 3.8-9' },
-  { id: 'reviews',    key: 'nav_reviews',   group: 'ops',  icon: 'M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.85 1.03-6L3.3 9.6l6-.9z' },
-  { id: 'customers',  key: 'nav_customers', group: 'ops',  icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' },
-  { id: 'labels',     key: 'nav_labels',    group: 'ops',  icon: 'M4 5v14M8 5v14M11 5v9M14 5v14M17 5v9M20 5v14' },
-  { id: 'print',      key: 'nav_print',     group: 'ops',  icon: 'M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z' },
+  { id: 'dashboard',  key: 'nav_dashboard', icon: 'M3 12h4l2 6 4-13 2 7h6' },
+  { id: 'pos',        key: 'nav_pos',       icon: 'M3 4h3l2 10h9l2-7H7M9 19a1 1 0 1 0 2 0 1 1 0 1 0-2 0m7 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0' },
+  { id: 'customers',  key: 'nav_customers', icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' },
+  { id: 'coupons',    key: 'nav_coupons',   icon: 'M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4zM9 15l6-6' },
+  { id: 'products',   key: 'nav_products',  icon: 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10' },
+  { id: 'warehouse',  key: 'nav_warehouse', icon: 'M3 20V9l9-5 9 5v11M7 20v-7h10v7' },
+  { id: 'shelfmap',   key: 'nav_shelfmap', icon: 'M3 5h18v6H3zM3 13h18v6H3zM9 5v6M15 5v6M9 13v6M15 13v6' },
+  { id: 'labels',     key: 'nav_labels',    icon: 'M4 5v14M8 5v14M11 5v9M14 5v14M17 5v9M20 5v14' },
+  { id: 'money',      key: 'nav_money',     icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4' },
+  { id: 'payments',   key: 'nav_payments',  icon: 'M3 6h18v12H3zM3 10h18M7 15h4M15 15h2' },
+  { id: 'reports',    key: 'nav_reports',   icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
+  { id: 'desk',       key: 'nav_desk',      icon: 'M3 7h18v4H3zM5 11v9h14v-9M9 7V4h6v3M10 15h4' },
+  { id: 'deliveries', key: 'nav_deliveries',icon: 'M3 16V6h11v10M14 9h4l3 3v4h-7M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3' },
+  { id: 'safeers',    key: 'nav_safeers',   icon: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M12 20v-1a5 5 0 0 1 10 0v1' },
+  { id: 'reviews',    key: 'nav_reviews',   icon: 'M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.85 1.03-6L3.3 9.6l6-.9z' },
+  { id: 'weborders',  key: 'nav_weborders', icon: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9s1.3-6.4 3.8-9' },
+  { id: 'requests',   key: 'nav_requests',  icon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z' },
+  { id: 'print',      key: 'nav_print',     icon: 'M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z' },
   /* 071 — the print kits and their fonts: how a name and number look on a
      jersey the website sells. */
-  { id: 'printkits',  key: 'nav_printkits', group: 'ops',  icon: 'M8 3l4 2 4-2 5 3-2 5-2-1v11H7V10l-2 1-2-5zM10 12h4M12 12v5' },
-  { id: 'reports',    key: 'nav_reports',   group: 'ops',  icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
-  { id: 'settings',   key: 'nav_settings',  group: 'ops',  icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L6 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z' }
+  { id: 'printkits',  key: 'nav_printkits', icon: 'M8 3l4 2 4-2 5 3-2 5-2-1v11H7V10l-2 1-2-5zM10 12h4M12 12v5' },
+  { id: 'settings',   key: 'nav_settings',  icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L6 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z' }
+];
+
+/* THE SIDEBAR'S SECTIONS — one list, read by the sidebar AND the phone's More
+   sheet, so the two can never disagree about where a screen lives. Home sits
+   above every heading and Settings below them all; everything else belongs
+   to exactly one section. NAV above is in the same order, because that order
+   is the depth axis the page transition animates against.
+
+   A section the account can open nothing in is not drawn at all, and a
+   section can be folded shut (per machine, og.nav.shut) — except the one
+   holding the screen on show, which always opens. */
+var NAV_TOP = ['dashboard'];
+var NAV_BOTTOM = ['settings'];
+var SECTIONS = [
+  { id: 'shop',     key: 'nav_s_shop',     ids: ['pos', 'customers', 'coupons'] },
+  { id: 'stock',    key: 'nav_s_stock',    ids: ['products', 'warehouse', 'shelfmap', 'labels'] },
+  { id: 'money',    key: 'nav_s_money',    ids: ['money', 'payments', 'reports'] },
+  { id: 'delivery', key: 'nav_s_delivery', ids: ['desk', 'deliveries', 'safeers', 'reviews'] },
+  { id: 'web',      key: 'nav_s_web',      ids: ['weborders', 'requests'] },
+  { id: 'yalla',    key: 'nav_s_yalla',    ids: ['print', 'printkits'] }
 ];
 
 /* Which permission each screen needs.
@@ -210,6 +230,63 @@ function applySidebarMode() {
   if (v === 'mini') document.body.setAttribute('data-sidebar', 'mini');
 }
 
+function navItemHtml(id) {
+  if (!navAllowed(id)) return '';
+  var n = NAV.filter(function (x) { return x.id === id; })[0];
+  if (!n) return '';
+  var b = navBadge(n.id);
+  /* The title carries the label for the collapsed rail, where the text
+     beside the icon is gone and hovering is the only way to be sure. */
+  return '<button class="nav-item' + (OG.view === n.id ? ' active' : '') + '" data-act="nav" data-view="' + n.id + '"' +
+      ' title="' + esc(t(n.key)) + '">' +
+      '<span class="nav-icon"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter"><path d="' + n.icon + '"/></svg></span>' +
+      '<span class="nav-txt">' + t(n.key) + '</span>' +
+      (b ? '<span class="nav-badge">' + b + '</span>' : '') +
+    '</button>';
+}
+
+/* Which sections this machine has folded shut. Per machine like the rail:
+   the till wants the shop open, the office wants delivery. Only shut ones
+   are stored, so a section added later starts open. */
+var NAV_SHUT_KEY = 'og.nav.shut';
+function navShut() {
+  try { var v = JSON.parse(localStorage.getItem(NAV_SHUT_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+  catch (e) { return []; }
+}
+function navSaveShut(shut) {
+  try {
+    if (shut.length) localStorage.setItem(NAV_SHUT_KEY, JSON.stringify(shut));
+    else localStorage.removeItem(NAV_SHUT_KEY);
+  } catch (e) { /* private mode — the fold just does not outlive the tab */ }
+}
+function navForget(id) {
+  navSaveShut(navShut().filter(function (x) { return x !== id; }));
+}
+
+/* Folding never re-renders the sidebar: one class moves, the height eases,
+   and the travelling indicator is measured again once it has settled. */
+function toggleNavSection(id) {
+  var el = document.querySelector('.sidebar .nav-sec[data-sec="' + id + '"]');
+  if (!el) return;
+  var shut = navShut();
+  var close = !el.classList.contains('shut');
+  if (close && el.classList.contains('here')) {
+    /* The section holding the screen on show stays open — folding it would
+       hide the one item that says where you are. It nods instead. */
+    el.classList.remove('nudge'); void el.offsetWidth; el.classList.add('nudge');
+    return;
+  }
+  el.classList.toggle('shut', close);
+  var head = el.querySelector('.nav-sec-head');
+  if (head) head.setAttribute('aria-expanded', String(!close));
+  shut = shut.filter(function (x) { return x !== id; });
+  if (close) shut.push(id);
+  navSaveShut(shut);
+  if (typeof Motion !== 'undefined') {
+    setTimeout(function () { try { Motion.navIndicator(); } catch (e) {} }, 280);
+  }
+}
+
 function renderSidebar() {
   /* Partner mode takes over the whole shell — its own nav, its own brand. */
   if (OG.print.partner) {
@@ -240,25 +317,41 @@ function renderSidebar() {
           '<path d="M4 5h16v14H4zM10 5v14"/></svg></button>' +
     '</div><nav class="nav">';
 
-  ['main', 'ops'].forEach(function (g) {
-    var items = NAV.filter(function (n) { return n.group === g && navAllowed(n.id); });
-    /* A role with nothing in a group must not get a bare heading floating
-       above no buttons — delivery has an empty "Operations" otherwise. */
+  NAV_TOP.forEach(function (id) { html += navItemHtml(id); });
+  var shut = navShut();
+  SECTIONS.forEach(function (sec) {
+    var items = sec.ids.filter(navAllowed);
+    /* A role with nothing in a section must not get a bare heading floating
+       above no buttons. */
     if (!items.length) return;
-    html += '<div class="nav-label">' + t(g === 'main' ? 'nav_main' : 'nav_ops') + '</div>';
-    items.forEach(function (n) {
-      var b = navBadge(n.id);
-      html +=
-        /* The title carries the label for the collapsed rail, where the text
-           beside the icon is gone and hovering is the only way to be sure. */
-        '<button class="nav-item' + (OG.view === n.id ? ' active' : '') + '" data-act="nav" data-view="' + n.id + '"' +
-          ' title="' + esc(t(n.key)) + '">' +
-          '<span class="nav-icon"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter"><path d="' + n.icon + '"/></svg></span>' +
-          '<span class="nav-txt">' + t(n.key) + '</span>' +
-          (b ? '<span class="nav-badge">' + b + '</span>' : '') +
-        '</button>';
-    });
+    var here = items.indexOf(OG.view) >= 0;
+    /* Going to a screen in a folded section opens that section for good —
+       leaving it again must not fold it back behind the person's back. */
+    if (here && shut.indexOf(sec.id) >= 0) navForget(sec.id);
+    var closed = !here && shut.indexOf(sec.id) >= 0;
+    /* What a shut section is hiding that needs somebody: overdue print jobs,
+       night requests. The products count is a size, not an alert, so it is
+       never summed into a heading. */
+    var waiting = items.reduce(function (n, id) {
+      return id === 'products' ? n : n + (navBadge(id) || 0);
+    }, 0);
+    html += '<div class="nav-sec' + (closed ? ' shut' : '') + (here ? ' here' : '') + '" data-sec="' + sec.id + '">' +
+      '<button class="nav-sec-head" data-act="nav-sec" data-sec="' + sec.id + '" aria-expanded="' + (!closed) + '">' +
+        '<span class="nav-sec-txt">' + t(sec.key) + '</span>' +
+        /* Folded, the heading still shows what it holds: each screen's icon in
+           small, so a shut Warehouse reads as boxes and a shelf, not a word. */
+        '<span class="nav-sec-peek" aria-hidden="true">' + items.map(function (id) {
+          var n = NAV.filter(function (x) { return x.id === id; })[0];
+          return '<svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg>';
+        }).join('') + '</span>' +
+        '<span class="nav-sec-n">' + (waiting ? '<i>' + waiting + '</i>' : '<bdi>' + items.length + '</bdi>') + '</span>' +
+        '<svg class="nav-sec-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>' +
+      '</button>' +
+      '<div class="nav-sec-body"><div class="nav-sec-in">' +
+        items.map(navItemHtml).join('') +
+      '</div></div></div>';
   });
+  html += '<div class="nav-bottom">' + NAV_BOTTOM.map(navItemHtml).join('') + '</div>';
 
   /* There is deliberately no door into the Yalla Wear portal from here.
      They are a different company: which side of the line an account is on
@@ -313,12 +406,8 @@ var ROLE_TABS = {
    It is built from NAV itself minus whatever is already a tab, so a screen
    added to NAV next year appears in More without a second edit — the bug
    that hid the Money screen from every phone until 054 went looking for it. */
-var MORE_GROUPS = [
-  { key: 'nav_g_sell',  ids: ['pos', 'desk', 'weborders', 'requests', 'customers', 'deliveries', 'safeers', 'reviews'] },
-  { key: 'nav_g_stock', ids: ['products', 'warehouse', 'shelfmap', 'labels', 'print', 'printkits'] },
-  { key: 'nav_g_money', ids: ['money', 'payments', 'coupons', 'reports'] },
-  { key: 'nav_g_shop',  ids: ['settings'] }
-];
+var MORE_GROUPS = SECTIONS.map(function (sec) { return { key: sec.key, ids: sec.ids }; })
+  .concat([{ key: 'nav_s_system', ids: NAV_TOP.concat(NAV_BOTTOM) }]);
 
 function tabsFor() {
   var want = ROLE_TABS[roleOf()] || TABS;
