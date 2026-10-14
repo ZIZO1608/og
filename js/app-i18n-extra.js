@@ -4220,6 +4220,50 @@ var PHOTOS_AR = {
 Object.keys(PHOTOS_EN).forEach(function (k) { I18N.en[k] = PHOTOS_EN[k]; });
 Object.keys(PHOTOS_AR).forEach(function (k) { I18N.ar[k] = PHOTOS_AR[k]; });
 
+/* ---- 073: a colour's 3D angles — front, back, left, right ---------------
+   js/photos.js, under the gallery in the photos dialog. Front and back are
+   needed before a 3D model can be made. Every key is in both blocks. */
+var ANGLES3D_EN = {
+  a3_title: '3D angles',
+  a3_hint: 'Photos for the 3D model, not for the gallery. The product on its own on a plain background, the whole of it in the frame, the same distance and light for every side.',
+  a3_front: 'Front',
+  a3_back: 'Back',
+  a3_left: 'Left',
+  a3_right: 'Right',
+  a3_pick_front: 'Add the front',
+  a3_pick_back: 'Add the back',
+  a3_pick_left: 'Add the left side',
+  a3_pick_right: 'Add the right side',
+  a3_needed: 'needed for 3D',
+  a3_optional: 'optional — a better model',
+  a3_missing: '3D still needs',
+  a3_ready: 'Ready for 3D',
+  a3_form_hint: 'front and back needed for the 3D model; left and right make it better',
+  a3_f_missing: 'Needs front or back',
+  a3_colours_ready: '{n} of {m} colours have the front and the back for 3D'
+};
+var ANGLES3D_AR = {
+  a3_title: 'زوايا الـ 3D',
+  a3_hint: 'صور لموديل الـ 3D، مو للمعرض. المنتج لحاله على خلفية سادة، كله بالكادر، ونفس البعد والإضاءة لكل جهة.',
+  a3_front: 'قدّام',
+  a3_back: 'ورا',
+  a3_left: 'يسار',
+  a3_right: 'يمين',
+  a3_pick_front: 'ضيف صورة القدّام',
+  a3_pick_back: 'ضيف صورة الورا',
+  a3_pick_left: 'ضيف الجهة اليسار',
+  a3_pick_right: 'ضيف الجهة اليمين',
+  a3_needed: 'لازمة للـ 3D',
+  a3_optional: 'مو ضرورية — بتحسّن الموديل',
+  a3_missing: 'ناقص للـ 3D',
+  a3_ready: 'جاهز للـ 3D',
+  a3_form_hint: 'القدّام والورا لازمين لموديل الـ 3D، واليمين واليسار بيحسّنوه',
+  a3_f_missing: 'ناقصه قدّام أو ورا',
+  a3_colours_ready: '{n} من {m} ألوان عندها القدّام والورا للـ 3D'
+};
+Object.keys(ANGLES3D_EN).forEach(function (k) { I18N.en[k] = ANGLES3D_EN[k]; });
+Object.keys(ANGLES3D_AR).forEach(function (k) { I18N.ar[k] = ANGLES3D_AR[k]; });
+
 /* ---- the exchange-rate feed (Settings → Exchange rate; FxFeedUI) -------- */
 var FXFEED_EN = {
   fxf_title: 'Live feed',

@@ -3205,6 +3205,25 @@ body:not([data-portal="yalla"]) .ph-state.warn { border-color: var(--warning-bor
 body:not([data-portal="yalla"]) .ph-state.warn b { color: var(--warning); }
 body:not([data-portal="yalla"]) .ph-state.ok b { color: var(--brand); }
 body:not([data-portal="yalla"]) .ph-foot { margin: 12px 0 0; }
+/* 073 — the 3D angles, under the gallery and apart from it: four slots,
+   front and back amber until filled, left and right plain dashed. The
+   pictures are drawn whole (contain): what matters here is the outline the
+   3D service will see, not a crop that looks good in a tile. */
+body:not([data-portal="yalla"]) .ph-3d { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .ph-3d-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 4px; }
+body:not([data-portal="yalla"]) .ph-3d-head h4 { margin: 0; font-size: 15px; font-weight: 700; }
+body:not([data-portal="yalla"]) .ph-3d-hint { margin: 0 0 12px; font-size: 12.5px; color: var(--muted-foreground); line-height: 1.45; }
+body:not([data-portal="yalla"]) .ph-3d .ph-tile { aspect-ratio: 1 / 1; }
+body:not([data-portal="yalla"]) .ph-3d .ph-img img { object-fit: contain; }
+/* 073 — the same four slots on the Add-product form, under the colour's
+   photos; the 3D mark beside the camera on the list and in the drawer; and
+   the colour's 3D line under the drawer's gallery. */
+body:not([data-portal="yalla"]) .ph-form-3d { margin-top: 12px; }
+body:not([data-portal="yalla"]) .ph-3d-grid .ph-img img { object-fit: contain; }
+body:not([data-portal="yalla"]) .pr-web-ph { display: inline-flex; align-items: center; gap: 8px; }
+body:not([data-portal="yalla"]) .ph-mark-3d i { font-style: normal; font-size: 10.5px; font-weight: 800; padding: 1px 4px; border: 1px solid currentColor; border-radius: 4px; line-height: 1.2; }
+body:not([data-portal="yalla"]) .ph-mark-3d.ok i { color: var(--brand); }
+body:not([data-portal="yalla"]) .ph-gal-3d { margin: 8px 0 0; font-size: 12.5px; }
 
 /* The drawer's gallery: the chosen photo big and whole (contain — this is
    where somebody checks what the website will show), every photo of the

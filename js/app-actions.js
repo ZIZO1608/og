@@ -951,7 +951,7 @@ var ACTIONS = {
   /* A chip IS its own undo — pressing it takes that one filter off. */
   'prod-chip-off': function (el) {
     var f = el.getAttribute('data-f');
-    if (f === 'all') { OG.prod.type = ''; OG.prod.health = ''; OG.prod.arch = 'active'; OG.prod.photos = ''; }
+    if (f === 'all') { OG.prod.type = ''; OG.prod.health = ''; OG.prod.arch = 'active'; OG.prod.photos = ''; OG.prod.angles = ''; }
     else if (f === 'arch') OG.prod.arch = 'active';
     else OG.prod[f] = '';
     render();

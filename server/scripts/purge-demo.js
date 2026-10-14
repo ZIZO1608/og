@@ -38,6 +38,7 @@ import { argv } from 'node:process';
 import { load } from '../lib/env.js';
 import * as DB from '../lib/db.js';
 import * as Photos from '../lib/photos.js';
+import * as Angles from '../lib/angles.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DB_FILE = dbFile();
@@ -280,6 +281,8 @@ const removed = DB.tx(() => {
        bucket: this script runs offline, and a file nobody points at is only
        a file. */
     Photos.removeForProducts(d, ids, null);
+    /* 073 — and the 3D angles, the same way. */
+    Angles.removeForProducts(d, ids, null);
     /* 058 — the colours go first, logged, or the mirror keeps them. */
     try {
       const cols = many(`SELECT id FROM product_colours WHERE product_id IN (${inList(ids)})`, ...ids);

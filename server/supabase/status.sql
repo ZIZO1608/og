@@ -57,6 +57,9 @@ SELECT f.file, f.installed, f.what
        AND EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                     WHERE n.nspname = 'public' AND p.proname = 'web_print_tracking'),
        'jersey print kits and website print orders (local 071)'),
+    ('042_product_angles.sql',
+       to_regclass('public.product_angles') IS NOT NULL,
+       'a colour''s 3D angles: front, back, left, right (local 073)'),
     ('030_erp_access.sql',
        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'og_vps'),
        'og_vps, the VPS''s read-only login'),

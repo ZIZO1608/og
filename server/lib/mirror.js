@@ -448,6 +448,9 @@ export const TABLES = {
      the order. Cursor shape (a photo is replaced in place, moved between
      slots, removed), pushed behind its own guard straight after the colours. */
   product_photos: { parseKey: numKey, fetchLocal: byId('product_photos'), mapRow: (r) => r },
+  /* 073 — a colour's 3D angles (front, back, left, right): the same shape as
+     the photos, pushed behind its own guard straight after them. */
+  product_angles: { parseKey: numKey, fetchLocal: byId('product_angles'), mapRow: (r) => r },
   /* 068 — the coupon codes. Cursor shape (switched off, limits changed),
      pushed behind its own guard at the end of the walk; the website's checkout
      reads it from the mirror (cloud file 038). */
@@ -748,7 +751,7 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
 /* Every table this library pushes, for the check and the status. */
 /* handover_lines and order_return_lines are not here on purpose: each rides
    on its parent's afterUpsert, the way sale_items ride on their sale. */
-export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours', 'product_photos',
+export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours', 'product_photos', 'product_angles',
                               'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews', 'errands',
                               ...PARTNER, ...DRAWER, 'day_closes', 'coupons'];
 
@@ -946,6 +949,29 @@ async function walk(log, only) {
       missingAt.set('product_photos', Date.now());
       log.warn('Supabase is missing product_photos — skipped, everything else still went up.');
       log.line('    Run server/supabase/036_product_photos.sql in the SQL editor.');
+      }
+    }
+    await breathe();
+  }
+
+  /* 073 — the colours' 3D angles, behind a guard of their own, the way the
+     photos are: until 042 is run the table is skipped by name and the angles
+     wait here; the files are in the bucket either way. */
+  if (want('product_angles')) {
+    log.head('3D angles');
+    try {
+      await syncTable(log, 'product_angles', { phase: 'upsert' });
+      await syncTable(log, 'product_angles', { phase: 'delete' });
+      touched.push('product_angles');
+      denied.delete('product_angles');
+      missingAt.delete('product_angles');
+    } catch (e) {
+      if (noteRefused(log, 'product_angles', e)) { /* skipped, named */ }
+      else {
+      if (!MISSING_TABLE.test(String(e.message))) throw e;
+      missingAt.set('product_angles', Date.now());
+      log.warn('Supabase is missing product_angles — skipped, everything else still went up.');
+      log.line('    Run server/supabase/042_product_angles.sql in the SQL editor.');
       }
     }
     await breathe();

@@ -38,9 +38,11 @@ merged.
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
   PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
-- **Numbers in use:** local migrations run to `072` (`063` is night mode's and applies after `067`
+- **Numbers in use:** local migrations run to `073` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `073`; the next cloud file is `042`.** The cloud files have two `030`s and two
+  local migration is `074`; the next cloud file is `043`.** (`073`/`042` = a colour's 3D angles,
+  `lib/angles.js`, branch `feature/3d-angles` — step 1 of the 3D-model plan; the generation
+  through an image-to-3D API and the website's viewer are not built yet.) The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
   `server/supabase/status.sql` says which the live project already has.
 - **A section below that says "not merged", or names one of the old worktree folders, describes

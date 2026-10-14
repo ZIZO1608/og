@@ -563,6 +563,9 @@ var Shop = (function () {
     addPhoto: function (pid, body) { return API.post('/api/products/' + pid + '/photos', body); },
     patchPhoto: function (id, body) { return API.patch('/api/photos/' + id, body); },
     removePhoto: function (id) { return API.del('/api/photos/' + id); },
+    /* 073 — a colour's 3D angles: front, back, left, right. Same two sizes. */
+    addAngle: function (pid, body) { return API.post('/api/products/' + pid + '/angles', body); },
+    removeAngle: function (id) { return API.del('/api/angles/' + id); },
     updateProduct: function (id, fields) { return API.patch('/api/products/' + id, fields); },
     /* Refused with `has_history` when it would cost the shop a record. */
     deleteProduct: function (id) { return API.del('/api/products/' + id); },

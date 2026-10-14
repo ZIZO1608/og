@@ -16,6 +16,10 @@
    - the Add-product form — Photos.formStrip(colour) inside each colour card,
      sent by Photos.sendDrafts() once the product exists.
 
+   073 — under the gallery in the dialog, each colour's four 3D ANGLES
+   (front and back needed, left and right optional): the photos a 3D model
+   is made from. Kept apart from the gallery; the website never shows them.
+
    EVERY PHOTO GOES UP TWICE, from one file: a large JPEG for the website
    (at most 1600 px on the long side) and a small one for the till (at most
    480 px). The till draws dozens of thumbnails over the shop's wifi; the
@@ -108,7 +112,9 @@ var Photos = (function () {
         var pick = S.pick;
         S.pick = null;
         if (!pick || !files.length) return;
-        if (pick.form) takeForForm(pick.key, pick.kind, files);
+        if (pick.form && pick.angle) takeAngleForForm(pick.key, pick.angle, files[0]);
+        else if (pick.form) takeForForm(pick.key, pick.kind, files);
+        else if (pick.angle) uploadAngle(pick.pid, pick.cid, pick.angle, files[0]);
         else upload(pick.pid, pick.cid, pick.kind, files);
       });
       document.body.appendChild(el);
@@ -135,6 +141,26 @@ var Photos = (function () {
     };
   }
   function ready(p, cid) { var s = slots(p, cid); return !!(s.model && s.product); }
+
+  /* 073 — the 3D angles: the photos a 3D model is made from, kept apart from
+     the gallery (server/lib/angles.js). Front and back are needed before a
+     model can be asked for; left and right make a better one. */
+  var ANGLES = ['front', 'back', 'left', 'right'];
+  var ANGLES_REQ = ['front', 'back'];
+  function angleSlots(p, cid) {
+    var out = {};
+    ((p && p.angles) || []).forEach(function (a) { if (a.colourId === cid) out[a.angle] = a; });
+    return out;
+  }
+  function anglesMissing(p, cid) {
+    var s = angleSlots(p, cid);
+    return ANGLES_REQ.filter(function (k) { return !s[k]; });
+  }
+  function anglesReady(p, cid) { return !anglesMissing(p, cid).length; }
+  function anglesReadyCount(p) {
+    return ((p && p.colours) || []).filter(function (c) { return anglesReady(p, c.id); }).length;
+  }
+  function angleWords(list) { return list.map(function (k) { return t('a3_' + k); }).join(' · '); }
   function missing(p, cid) {
     var s = slots(p, cid);
     return KINDS.filter(function (k) { return !s[k]; });
@@ -179,6 +205,25 @@ var Photos = (function () {
     var ok = done === of;
     return '<span class="ph-mark' + (ok ? ' ok' : '') + '" title="' + esc(tip) + '">' + CAM +
       '<bdi dir="ltr">' + done + '/' + of + '</bdi></span>';
+  }
+
+  /* 073 — the same mark for the 3D angles, beside the camera: one colour
+     counts its front and back (1/2), several count the colours that have
+     both (1/3). Left and right are optional and never make it amber. */
+  function angleMark(p) {
+    var cs = colours(p);
+    if (!cs.length) return '';
+    var done, of, tip;
+    if (cs.length === 1) {
+      var miss = anglesMissing(p, cs[0].id);
+      of = 2; done = of - miss.length;
+      tip = miss.length ? t('a3_missing') + ': ' + angleWords(miss) : t('a3_ready');
+    } else {
+      of = cs.length; done = anglesReadyCount(p);
+      tip = t('a3_colours_ready').replace('{n}', done).replace('{m}', of);
+    }
+    return '<span class="ph-mark ph-mark-3d' + (done === of ? ' ok' : '') + '" title="' + esc(tip) + '">' +
+      '<i dir="ltr">3D</i><bdi dir="ltr">' + done + '/' + of + '</bdi></span>';
   }
 
   /* The drawer's line under "On website". */
@@ -276,6 +321,12 @@ var Photos = (function () {
       (edit ? '<button class="btn btn-sm' + (miss.length ? ' btn-primary' : '') + '" data-ph="open" data-pid="' + p.id +
         '" data-cid="' + cid + '">' + t(miss.length ? 'ph_add_btn' : 'ph_edit_btn') + '</button>' : '') +
     '</div>';
+    /* 073 — this colour's 3D angles, in words: a tooltip on the list's mark
+       is no answer on a phone. */
+    var miss3 = anglesMissing(p, cid);
+    h += '<p class="ph-gal-3d">' + (miss3.length
+      ? '<span class="warn">' + esc(t('a3_missing') + ': ' + angleWords(miss3)) + '</span>'
+      : '<span class="ok-text">✓ ' + esc(t('a3_ready')) + '</span>') + '</p>';
     return h + '</div>';
   }
 
@@ -371,7 +422,44 @@ var Photos = (function () {
         '<span class="ph-plus">+</span><b>' + t('ph_add_more') + '</b><small>' + t('ph_add_more_sub') + '</small></button>';
     }
     h += '</div><p class="muted small ph-foot">' + t('ph_sizes_note') + '</p>';
-    return h;
+    return h + angleSection(p, c.id);
+  }
+
+  /* 073 — the colour's four 3D angles, under its gallery. */
+  function angleSection(p, cid) {
+    var s = angleSlots(p, cid), miss = anglesMissing(p, cid);
+    var badge = miss.length
+      ? '<span class="badge low">' + esc(t('a3_missing') + ': ' + angleWords(miss)) + '</span>'
+      : '<span class="badge healthy">✓ ' + esc(t('a3_ready')) + '</span>';
+    return '<div class="ph-3d"><div class="ph-3d-head"><h4>' + t('a3_title') + '</h4>' + badge + '</div>' +
+      '<p class="ph-3d-hint">' + t('a3_hint') + '</p><div class="ph-grid">' +
+      ANGLES.map(function (k) { return angleTile(cid, k, s[k] || null); }).join('') + '</div></div>';
+  }
+
+  function angleTile(cid, angle, a) {
+    var req = ANGLES_REQ.indexOf(angle) >= 0;
+    var tag = '<span class="ph-tag">' + esc(t('a3_' + angle)) + (req ? ' *' : '') + '</span>';
+    var busy = sendingFor(cid, 'a:' + angle);
+    if (busy) {
+      return '<div class="ph-tile busy">' + tag + '<span class="ph-img"><img src="' + busy.preview + '" alt=""></span>' +
+        '<span class="ph-spin"><i></i>' + t('ph_sending') + '</span></div>';
+    }
+    if (!a) {
+      return '<button class="ph-tile empty' + (req ? ' req' : '') + '" data-ph="a-pick" data-angle="' + angle + '" data-cid="' + cid + '">' + tag +
+        '<span class="ph-cam">' + CAM + '</span><b>' + t('a3_pick_' + angle) + '</b>' +
+        '<small>' + t(req ? 'a3_needed' : 'a3_optional') + '</small></button>';
+    }
+    var key = 'a' + a.id;
+    var h = '<div class="ph-tile filled' + (req ? ' req' : '') + '">' + tag +
+      '<a class="ph-img" href="' + esc(a.url) + '" target="_blank" rel="noopener"><img src="' + esc(a.thumbUrl) + '" alt="" loading="lazy"></a>' +
+      '<button class="ph-dots" data-ph="menu" data-id="' + key + '" aria-label="' + esc(t('nav_more')) + '">⋯</button>';
+    if (S.menu === key) {
+      h += '<div class="ph-menu" role="menu">' +
+        '<button role="menuitem" data-ph="a-replace" data-angle="' + angle + '" data-cid="' + cid + '">' + t('ph_replace') + '</button>' +
+        '<button role="menuitem" class="ph-danger' + (S.arm === key ? ' armed' : '') + '" data-ph="a-remove" data-id="' + a.id + '">' +
+          t(S.arm === key ? 'ph_remove_sure' : 'ph_remove') + '</button></div>';
+    }
+    return h + '</div>';
   }
 
   function sendingFor(cid, kind) {
@@ -462,6 +550,30 @@ var Photos = (function () {
     next();
   }
 
+  /* 073 — one photo into one 3D angle; a taken angle is replaced. */
+  function uploadAngle(pid, cid, angle, file) {
+    read(file, function (out, err) {
+      if (err) { toast(t('a3_title'), readErr(err), 'err', 5000); return; }
+      var job = { pid: pid, cid: cid, kind: 'a:' + angle, preview: out.thumb };
+      S.sending.push(job);
+      repaint();
+      Shop.addAngle(pid, { colourId: cid, angle: angle, full: out.full, thumb: out.thumb, width: out.width, height: out.height })
+        .then(function () {
+          return Shop.reload().then(function () {
+            S.sending = S.sending.filter(function (x) { return x !== job; });
+            repaint();
+            var q = DB.product(pid);
+            toast(t('a3_title'), t('ph_saved_1') + (q && !anglesMissing(q, cid).length ? ' · ' + t('a3_ready') : ''), 'ok', 3000);
+          });
+        })
+        .catch(function (e) {
+          S.sending = S.sending.filter(function (x) { return x !== job; });
+          toast(t('a3_title'), t('ph_not_saved') + ' ' + whyFailed(e), 'err', 9000);
+          repaint();
+        });
+    });
+  }
+
   function modalOpenFor() { return !!document.getElementById('phRoot'); }
 
   /* A change to a photo that is already there: its slot, its place, or gone. */
@@ -478,11 +590,44 @@ var Photos = (function () {
 
   /* ------------------------------------------------------------ the Add-product form */
 
-  function blankDrafts() { return { model: null, product: null, extra: [] }; }
+  /* `angles` holds the 073 3D angles by name (front, back, left, right). */
+  function blankDrafts() { return { model: null, product: null, extra: [], angles: {} }; }
 
   function drafts(c) {
     if (!c.photos) c.photos = blankDrafts();
+    if (!c.photos.angles) c.photos.angles = {};
     return c.photos;
+  }
+
+  /* 073 — the colour's four 3D angles on the form, under its photos. */
+  function formAngleTile(c, angle, d) {
+    var req = ANGLES_REQ.indexOf(angle) >= 0;
+    var tag = '<span class="ph-tag">' + esc(t('a3_' + angle)) + (req ? ' *' : '') + '</span>';
+    if (!d) {
+      return '<button type="button" class="ph-tile empty' + (req ? ' req' : '') + '" data-ph="f-a-pick" data-k="' + c.key +
+        '" data-angle="' + angle + '">' + tag + '<span class="ph-cam">' + CAM + '</span><b>' + t('a3_pick_' + angle) + '</b></button>';
+    }
+    return '<div class="ph-tile filled' + (req ? ' req' : '') + '">' + tag +
+      '<span class="ph-img"><img src="' + d.thumb + '" alt=""></span>' +
+      '<button type="button" class="ph-x" data-ph="f-a-clear" data-k="' + c.key + '" data-angle="' + angle + '" ' +
+        'aria-label="' + esc(t('remove')) + '">✕</button></div>';
+  }
+
+  function formAngles(c) {
+    var a = drafts(c).angles;
+    return '<div class="ph-form-top ph-form-3d"><span class="lbl">' + t('a3_title') + '</span>' +
+      '<small class="muted">' + t('a3_form_hint') + '</small></div><div class="ph-grid ph-grid-sm ph-3d-grid">' +
+      ANGLES.map(function (k) { return formAngleTile(c, k, a[k] || null); }).join('') + '</div>';
+  }
+
+  function takeAngleForForm(key, angle, file) {
+    var c = ColourForm.colour(key);
+    if (!c || !file || ANGLES.indexOf(angle) < 0) return;
+    read(file, function (out, err) {
+      if (err) { toast(t('a3_title'), readErr(err), 'err', 5000); return; }
+      drafts(c).angles[angle] = out;
+      repaintForm(key);
+    });
   }
 
   function formTile(c, kind, d, n, i) {
@@ -507,7 +652,7 @@ var Photos = (function () {
       h += '<button type="button" class="ph-tile ph-add" data-ph="f-pick" data-k="' + c.key + '" data-kind="extra">' +
         '<span class="ph-plus">+</span><b>' + t('ph_add_more') + '</b></button>';
     }
-    return h + '</div></div>';
+    return h + '</div>' + formAngles(c) + '</div>';
   }
 
   function repaintForm(key) {
@@ -558,6 +703,8 @@ var Photos = (function () {
       if (d.model) queue.push({ cid: c.id, kind: 'model', d: d.model });
       if (d.product) queue.push({ cid: c.id, kind: 'product', d: d.product });
       (d.extra || []).forEach(function (x) { queue.push({ cid: c.id, kind: 'extra', d: x }); });
+      /* 073 — then its 3D angles, front first. */
+      ANGLES.forEach(function (k) { if (d.angles && d.angles[k]) queue.push({ cid: c.id, angle: k, d: d.angles[k] }); });
     });
     if (!queue.length || !Shop.live()) { if (done) done(0, 0); return false; }
     var ok = 0, bad = 0, why = '';
@@ -572,7 +719,9 @@ var Photos = (function () {
         return;
       }
       var q = queue[i];
-      Shop.addPhoto(pid, { colourId: q.cid, kind: q.kind, full: q.d.full, thumb: q.d.thumb, width: q.d.width, height: q.d.height })
+      var files = { colourId: q.cid, full: q.d.full, thumb: q.d.thumb, width: q.d.width, height: q.d.height };
+      if (q.angle) files.angle = q.angle; else files.kind = q.kind;
+      (q.angle ? Shop.addAngle(pid, files) : Shop.addPhoto(pid, files))
         .then(function () { ok++; })
         .catch(function (e) { bad++; why = whyFailed(e); })
         .then(function () { next(i + 1); });
@@ -597,7 +746,24 @@ var Photos = (function () {
     if (a === 'g-step') { stepGal(Number(b.getAttribute('data-pid')), Number(b.getAttribute('data-d')) || 1); return; }
     if (a === 'colour') { S.cid = cid; S.menu = null; S.arm = null; repaint(); return; }
     if (a === 'pick') { S.menu = null; choose({ pid: S.pid, cid: cid, kind: kind }); return; }
-    if (a === 'menu') { e.preventDefault(); S.menu = S.menu === id ? null : id; S.arm = null; repaint(); return; }
+    if (a === 'menu') {
+      /* A 3D angle's menu is keyed 'a<id>': its ids are not the photos'. */
+      var mk = String(b.getAttribute('data-id')).charAt(0) === 'a' ? b.getAttribute('data-id') : id;
+      e.preventDefault(); S.menu = S.menu === mk ? null : mk; S.arm = null; repaint(); return;
+    }
+    /* 073 — the 3D angles */
+    var angle = b.getAttribute('data-angle');
+    if (a === 'a-pick') { S.menu = null; choose({ pid: S.pid, cid: cid, angle: angle }); return; }
+    if (a === 'a-replace') { S.menu = null; repaint(); choose({ pid: S.pid, cid: cid, angle: angle }); return; }
+    if (a === 'a-remove') {
+      if (S.arm !== 'a' + id) {
+        S.arm = 'a' + id; repaint();
+        setTimeout(function () { if (S.arm === 'a' + id) { S.arm = null; repaint(); } }, 4000);
+        return;
+      }
+      change(Shop.removeAngle(id));
+      return;
+    }
     if (a === 'replace') { S.menu = null; repaint(); choose({ pid: S.pid, cid: cid, kind: kind }); return; }
     if (a === 'as-model' || a === 'as-product') {
       change(Shop.patchPhoto(id, { kind: a === 'as-model' ? 'model' : 'product' }));
@@ -619,6 +785,12 @@ var Photos = (function () {
     /* the Add-product form */
     var key = b.getAttribute('data-k');
     if (a === 'f-pick') { choose({ form: true, key: key, kind: kind }); return; }
+    if (a === 'f-a-pick') { choose({ form: true, key: key, angle: angle }); return; }
+    if (a === 'f-a-clear') {
+      var ca = ColourForm.colour(key);
+      if (ca) { delete drafts(ca).angles[angle]; repaintForm(key); }
+      return;
+    }
     if (a === 'f-clear') {
       var c = ColourForm.colour(key);
       if (!c) return;
@@ -661,11 +833,20 @@ var Photos = (function () {
     if (e.target.closest && e.target.closest('#phRoot .ph-tile, .ph-form .ph-tile')) e.preventDefault();
   });
   document.addEventListener('drop', function (e) {
-    var tileEl = e.target.closest && e.target.closest('#phRoot [data-ph="pick"], .ph-form [data-ph="f-pick"]');
+    var tileEl = e.target.closest && e.target.closest('#phRoot [data-ph="pick"], #phRoot [data-ph="a-pick"], ' +
+      '.ph-form [data-ph="f-pick"], .ph-form [data-ph="f-a-pick"]');
     if (!tileEl) return;
     e.preventDefault();
     var files = [].slice.call((e.dataTransfer && e.dataTransfer.files) || []);
     if (!files.length) return;
+    if (tileEl.getAttribute('data-ph') === 'f-a-pick') {
+      takeAngleForForm(tileEl.getAttribute('data-k'), tileEl.getAttribute('data-angle'), files[0]);
+      return;
+    }
+    if (tileEl.getAttribute('data-ph') === 'a-pick') {
+      uploadAngle(S.pid, Number(tileEl.getAttribute('data-cid')), tileEl.getAttribute('data-angle'), files[0]);
+      return;
+    }
     var kind = tileEl.getAttribute('data-kind');
     if (tileEl.getAttribute('data-ph') === 'f-pick') takeForForm(tileEl.getAttribute('data-k'), kind, kind === 'extra' ? files : files.slice(0, 1));
     else upload(S.pid, Number(tileEl.getAttribute('data-cid')), kind, kind === 'extra' ? files : files.slice(0, 1));
@@ -692,6 +873,9 @@ var Photos = (function () {
     ready: ready,
     readyCount: readyCount,
     missing: missing,
+    anglesMissing: anglesMissing,
+    anglesReadyCount: anglesReadyCount,
+    angleMark: angleMark,
     formStrip: formStrip,
     blankDrafts: blankDrafts,
     takeFirstEmpty: takeFirstEmpty,

@@ -16,6 +16,7 @@ import * as Categories from './categories.js';
 import * as Stock from './stock.js';
 import { foldName } from './text.js';
 import * as Photos from './photos.js';
+import * as Angles from './angles.js';
 import * as PrintKits from './printkits.js';
 import * as Partner from './partner.js';
 
@@ -195,8 +196,10 @@ export function list({ includeHidden = false } = {}) {
   /* 066 — every photo of every colour, model first. Not sensitive: the same
      files are on a public bucket and on the website. */
   const photos = Photos.byProduct();
+  /* 073 — the 3D angles, front first. Not sent to the website. */
+  const angles = Angles.byProduct();
   return rows.map(p => ({ ...p, colours: colours[p.id] ?? [], variants: bySize[p.id] ?? [],
-                          photos: photos[p.id] ?? [] }));
+                          photos: photos[p.id] ?? [], angles: angles[p.id] ?? [] }));
 }
 
 /* ---- colours (058) -------------------------------------------------------
@@ -647,7 +650,7 @@ export function remove(id, userId) {
     db.prepare('DELETE FROM variants WHERE product_id = ?').run(id);
     /* 066 — the photos before the colours they hang on, logged; their files
        are handed back for the route to take out of the bucket. */
-    const files = Photos.removeForProducts(db, [id], userId);
+    const files = [...Photos.removeForProducts(db, [id], userId), ...Angles.removeForProducts(db, [id], userId)];
     for (const c of coloursOf(id)) logChange('product_colours', c.id, 'delete', userId, 'product deleted');
     try { db.prepare('DELETE FROM product_colours WHERE product_id = ?').run(id); } catch { /* before 058 */ }
     db.prepare('DELETE FROM products WHERE id = ?').run(id);

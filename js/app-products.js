@@ -54,6 +54,10 @@ function productRows() {
      "ready" is a product with every colour done. */
   if (f.photos === 'missing') rows = rows.filter(function (r) { return Photos.readyCount(r.p) < (r.p.colours || []).length; });
   else if (f.photos === 'ready') rows = rows.filter(function (r) { return (r.p.colours || []).length && Photos.readyCount(r.p) === r.p.colours.length; });
+  /* 073 — the same two answers for the 3D angles: a colour is ready with its
+     front and its back; left and right are optional. */
+  if (f.angles === 'missing') rows = rows.filter(function (r) { return Photos.anglesReadyCount(r.p) < (r.p.colours || []).length; });
+  else if (f.angles === 'ready') rows = rows.filter(function (r) { return (r.p.colours || []).length && Photos.anglesReadyCount(r.p) === r.p.colours.length; });
   if (f.health === 'gap') rows = rows.filter(function (r) { return DB.sizeGaps(r.p.id).length > 0; });
   else if (f.health) rows = rows.filter(function (r) { return r.health === f.health; });
   /* Name and brand only, before — so a size, a SKU, a barcode and the
@@ -123,6 +127,7 @@ function prodChips() {
   /* "active" is the default and therefore not a filter somebody switched on. */
   if (f.arch && f.arch !== 'active') out.push({ f: 'arch', label: t(f.arch === 'archived' ? 'bk_archived_only' : 'prod_arch_all') });
   if (f.photos) out.push({ f: 'photos', label: t(f.photos === 'missing' ? 'ph_f_missing' : 'ph_f_ready') });
+  if (f.angles) out.push({ f: 'angles', label: t(f.angles === 'missing' ? 'a3_f_missing' : 'a3_ready') });
   return out;
 }
 function prodFilterCount() { return prodChips().length; }
@@ -232,6 +237,14 @@ function viewProducts() {
           return '<option value="' + o[0] + '"' + (OG.prod.photos === o[0] ? ' selected' : '') + '>' +
             t(o[1]) + '</option>';
         }).join('') + '</select></label>';
+    /* 073 — and which are still missing a front or a back for 3D. */
+    h += '<label class="field"><span>' + t('a3_title') + '</span>' +
+      '<select class="inp" data-change="prod-angles">' +
+      [['', 'ph_f_all'], ['missing', 'a3_f_missing'], ['ready', 'a3_ready']]
+        .map(function (o) {
+          return '<option value="' + o[0] + '"' + (OG.prod.angles === o[0] ? ' selected' : '') + '>' +
+            t(o[1]) + '</option>';
+        }).join('') + '</select></label>';
   }
   h += '</div>';
 
@@ -286,7 +299,7 @@ function viewProducts() {
          dispatcher, which finds its own data-act before the row's. */
       onWeb: '<td><span class="pr-web"><label class="switch" onclick="event.stopPropagation()"><input type="checkbox"' +
         (r.p.onWeb ? ' checked' : '') + ' data-change="toggle-visible" data-id="' + r.p.id + '"><i></i></label>' +
-        '<button class="pr-web-ph" data-act="prod-image" data-id="' + r.p.id + '">' + Photos.mark(r.p) + '</button></span></td>'
+        '<button class="pr-web-ph" data-act="prod-image" data-id="' + r.p.id + '">' + Photos.mark(r.p) + Photos.angleMark(r.p) + '</button></span></td>'
     };
 
     /* Dimmed, not dropped: the row stays where the finger left it so the
@@ -325,7 +338,7 @@ function openProductDrawer(pid) {
       '<h3 style="font-size:18px;margin:3px 0 4px">' + esc(p.name) + '</h3>' +
       healthBadge(total) +
       (canPic
-        ? '<div class="pic-line">' + Photos.mark(p) +
+        ? '<div class="pic-line">' + Photos.mark(p) + ' ' + Photos.angleMark(p) +
             ' <button class="link" data-act="prod-image" data-id="' + p.id + '">' + esc(t('ph_manage')) + '</button></div>'
         : '') +
       '</div>' +

@@ -77,6 +77,8 @@ const TABLES = [
   { name: 'product_colours', key: 'id' },
   /* 066 — a colour's photos, after the colour they hang on. */
   { name: 'product_photos', key: 'id' },
+  /* 073 — the 3D angles, after the colour they hang on as well. */
+  { name: 'product_angles', key: 'id' },
   { name: 'variants',   key: 'sku' },
   { name: 'stock',      key: ['sku', 'wh_id'] },
   /* The only repair path for a shelf whose log entry was consumed by a run

@@ -134,6 +134,13 @@ export function pathForPhoto(productId, colourId, stamp, size, ext) {
   return `products/${productId}/colours/${colourId}/photos/${stamp}-${size}.${ext}`;
 }
 
+/* 073 — one 3D angle of a colour (front, back, left, right), the same two
+   sizes and the same stamp rule, under its own folder so the gallery's
+   photos and the model's are never mistaken for each other in the bucket. */
+export function pathForAngle(productId, colourId, angle, stamp, size, ext) {
+  return `products/${productId}/colours/${colourId}/angles/${angle}-${stamp}-${size}.${ext}`;
+}
+
 /* A data URL from the browser into bytes and a type. Only the three image
    types the bucket accepts; anything else is refused by name rather than
    stored as "octet-stream" that no <img> will draw. */

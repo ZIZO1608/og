@@ -2893,6 +2893,10 @@ var DB = {
           return { id: x.id, colourId: x.colourId, kind: x.kind, url: x.url, thumbUrl: x.thumbUrl || x.url,
                    width: x.width || null, height: x.height || null };
         }),
+        /* 073 — the photos a 3D model is made from, front first (js/photos.js). */
+        angles: (p.angles || []).map(function (x) {
+          return { id: x.id, colourId: x.colourId, angle: x.angle, url: x.url, thumbUrl: x.thumbUrl || x.url };
+        }),
         costPrice: toBase(p.cost_price, p.currency),
         sellingPrice: toBase(p.selling_price, p.currency),
         /* Kept beside the converted figures rather than instead of them: a

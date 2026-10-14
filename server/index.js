@@ -74,6 +74,7 @@ import * as TLS from './lib/tls.js';
 import * as PanelLink from './lib/panel-link.js';
 import * as Storage from './lib/storage.js';
 import * as Photos from './lib/photos.js';
+import * as Angles from './lib/angles.js';
 import * as SB from './lib/supabase.js';
 import { CONFIG_WRITABLE, configRefusal } from './lib/config-writable.js';
 import { lanAddresses, extraSans } from './lib/net.js';
@@ -1154,6 +1155,46 @@ router.add('PATCH /api/photos/:id', requirePerm('product.write', async (ctx) => 
 router.add('DELETE /api/photos/:id', requirePerm('product.write', (ctx) => {
   try {
     const r = Photos.remove(Number(ctx.params.id), ctx.user.id);
+    dropFiles(r.previous);
+    sendOk(ctx.res, { id: r.id, productId: r.productId });
+  } catch (e) { photoError(ctx, e); }
+}));
+
+/* 073 — A COLOUR'S 3D ANGLES: front, back, left, right (lib/angles.js).
+   The same two shrunk files and the same order as a photo above — checks,
+   upload, row, then the replaced files down. Not the website's gallery. */
+router.add('POST /api/products/:id/angles', requirePerm('product.write', async (ctx) => {
+  try {
+    const b = await readJson(ctx.req, { max: PHOTO_BODY });
+    const productId = Number(ctx.params.id);
+    const colourId = Number(b.colourId) || Cat.firstColourId(productId);
+    const angle = String(b.angle || '');
+    Angles.assertCanAdd({ productId, colourId, angle });
+    if (!SB.isConfigured()) {
+      return sendError(ctx.res, 503, 'not_configured', 'Photos need Supabase, which is not set up on this server.');
+    }
+    const big = Storage.decodeDataUrl(b.full);
+    const small = b.thumb ? Storage.decodeDataUrl(b.thumb) : null;
+    const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const url = await Storage.putObject(Storage.pathForAngle(productId, colourId, angle, stamp, 'l', big.ext), big.bytes, big.type);
+    let thumbUrl = url;
+    if (small) {
+      try { thumbUrl = await Storage.putObject(Storage.pathForAngle(productId, colourId, angle, stamp, 's', small.ext), small.bytes, small.type); }
+      catch (e) { dropFiles([url]); throw e; }
+    }
+    let r;
+    try {
+      r = Angles.add({ productId, colourId, angle, url, thumbUrl,
+                       width: Number(b.width), height: Number(b.height), userId: ctx.user.id });
+    } catch (e) { dropFiles([url, thumbUrl === url ? null : thumbUrl]); throw e; }
+    dropFiles(r.previous.filter((f) => f !== url && f !== thumbUrl));
+    sendOk(ctx.res, { angle: r.angle });
+  } catch (e) { photoError(ctx, e); }
+}));
+
+router.add('DELETE /api/angles/:id', requirePerm('product.write', (ctx) => {
+  try {
+    const r = Angles.remove(Number(ctx.params.id), ctx.user.id);
     dropFiles(r.previous);
     sendOk(ctx.res, { id: r.id, productId: r.productId });
   } catch (e) { photoError(ctx, e); }
