@@ -4702,6 +4702,28 @@ no way back but a pinch) with the right `inputmode` and `enterkeyhint`; every di
 sheet with a grab handle, its own scroll and the confirm button above the keyboard; and nothing
 comes to rest under the tab bar. See **Fix 05** for what enforces each of those.
 
+## The sidebar is sections (14 Oct 2026)
+
+`SECTIONS` in `js/app-shell.js` is the one list, read by the sidebar AND the phone's More sheet
+(`MORE_GROUPS` is built from it): Home on top (`NAV_TOP`), then **Shop & till** (pos, customers,
+coupons) · **Warehouse** (products, warehouse, shelf map, labels) · **Money** (money, payment
+methods, reports) · **Delivery** (desk, deliveries, safeers, reviews) · **Website orders** (website
+orders, night requests) · **Yalla Wear** (print jobs, print kits), and Settings at the foot
+(`NAV_BOTTOM`). `NAV` is in the same order, because it is the page transition's depth axis. A new
+screen goes in `NAV` and in one section — nowhere else.
+
+- A heading folds its section (`data-act="nav-sec"`, `toggleNavSection`): one class, the height
+  eased through grid rows, **never a re-render**. Folded ones are kept per machine in
+  `og.nav.shut`. A folded heading shows each screen's icon in small, and a red count of what is
+  waiting inside it (overdue print jobs, night requests — never the products count).
+- The section holding the screen on show will not fold (it nods), and **going to a screen in a
+  folded section opens it for good**. On the icon rail and under 900px there are no headings:
+  every section is open with a hairline between them.
+- Nothing in the section markup is positioned — the travelling indicator measures `offsetTop`
+  against `.nav`. Styles are the `SIDEBAR SECTIONS` block at the end of `css/og-skin.css`.
+- `_nightshift/sidebar/sections.mjs` (27): every press is real, both languages, the rail, the phone
+  sheet, the cashier and the developer.
+
 ## Known open work
 
 **Found by the night shift audit (25 Sep 2026)** — each is in `NIGHT-SHIFT-REPORT.md` with its one
