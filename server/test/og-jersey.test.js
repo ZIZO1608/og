@@ -4,14 +4,21 @@
    is the test that says when. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
-const J = createRequire(import.meta.url)(join(root, 'docs', 'website', 'og-jersey.js'));
+/* docs/ is left out of the shop's image (.dockerignore), and the image runs
+   these tests as part of its build — so without the file there is nothing to
+   compare, and the check skips rather than failing the deploy. It still runs
+   on every machine that has the repository. */
+const JFILE = join(root, 'docs', 'website', 'og-jersey.js');
+const HAS = existsSync(JFILE);
+const J = HAS ? createRequire(import.meta.url)(JFILE) : null;
+const it = (name, fn) => test(name, { skip: HAS ? false : 'docs/ is not in this build' }, fn);
 const shop = readFileSync(join(root, 'js', 'printkits.js'), 'utf8');
 const lib = readFileSync(join(root, 'server', 'lib', 'printkits.js'), 'utf8');
 
@@ -21,20 +28,20 @@ const literal = (src, name) => {
   return m[1].split(/'\s*\+\s*'/).join('').replace(/^'|'\s*$/g, '');
 };
 
-test('the same shirt, collar and curve as the shop draws', () => {
+it('the same shirt, collar and curve as the shop draws', () => {
   assert.equal(J.SHIRT, literal(shop, 'SHIRT'));
   assert.equal(J.COLLAR, literal(shop, 'COLLAR'));
   assert.match(shop, /'M70 ' \+ y \+ ' Q200 ' \+ \(y - 2 \* arc\) \+ ' 330 ' \+ y/);
   assert.equal(J.namePath(130, 20), 'M70 130 Q200 90 330 130');
 });
 
-test("the same name rule as the shop's checkLine", () => {
+it("the same name rule as the shop's checkLine", () => {
   const m = /export const NAME_RE = (\/.*\/);/.exec(lib);
   assert.ok(m);
   assert.equal(J.NAME_RE.toString(), m[1]);
 });
 
-test('the final check answers with the shop\'s codes', () => {
+it('the final check answers with the shop\'s codes', () => {
   const p = { maxLetters: 12 };
   const code = (n, x) => (J.check(p, n, x).problems[0] || {}).code || 'ok';
   assert.equal(code('messi', 10), 'ok');
@@ -51,7 +58,7 @@ test('the final check answers with the shop\'s codes', () => {
   assert.equal(J.check(p, '', '', 'ar').problems[0].message, 'اكتب اسم ورقم — الطباعة دايماً فيها الاتنين.');
 });
 
-test('as the customer types: upper case, leftovers dropped and said, the length held', () => {
+it('as the customer types: upper case, leftovers dropped and said, the length held', () => {
   assert.deepEqual(J.cleanName('messi', 12), { value: 'MESSI', dropped: false, cut: false });
   assert.deepEqual(J.cleanName('ميسي 10', 12), { value: '', dropped: true, cut: false });
   assert.deepEqual(J.cleanName(' de  bruyne', 12), { value: 'DE BRUYNE', dropped: false, cut: false });
