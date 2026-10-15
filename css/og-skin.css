@@ -3965,3 +3965,104 @@ body:not([data-portal="yalla"]) .more-grid[data-sec] .more-item.on {
 /* A folded heading keeps its whole name; the small marks give way, never the words. */
 body:not([data-portal="yalla"]) .nav-sec.shut .nav-sec-txt { flex: 1 0 auto; }
 body:not([data-portal="yalla"]) .nav-sec.shut .nav-sec-peek { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+
+/* ==========================================================================
+   MOBILE UI PASS (15 Oct 2026)
+   --------------------------------------------------------------------------
+   Every screen four roles can open, measured at 360 in Arabic and 390 in
+   English with touch on (the mobile-ui-fix skill's checks, run through
+   _nightshift/mobile-ui/scan.mjs). Only what was measured wrong is here.
+   ========================================================================== */
+
+/* THE SEARCH IS A MAGNIFIER ON A PHONE, AND OPENS ACROSS THE BAR.
+   Below 560 the bar keeps four buttons beside it and the box was squeezed to
+   56px: one letter of the placeholder, 13px text (an iPhone zooms the whole
+   page in on a field under 16px), and a results list as narrow as the box.
+   Now it is a 44px button; a tap opens the field over the whole bar, and it
+   stays open while it holds text, so a tap on a result is never lost to the
+   blur. It closes again when the text goes (every result clears it). The
+   field is positioned against the TOPBAR, which is why .search is static. */
+@media (max-width: 560px) {
+  body:not([data-portal="yalla"]) .topbar .search {
+    position: static; flex: none; width: 44px; height: 44px; max-width: none;
+  }
+  body:not([data-portal="yalla"]) .topbar .search input {
+    position: absolute; z-index: 3; top: calc((var(--topbar-h) - 44px) / 2); inset-inline-start: 12px;
+    width: 44px; height: 44px; padding: 0; font-size: 16px; border-radius: 12px;
+    color: transparent; caret-color: transparent; cursor: pointer;
+    transition: width .24s cubic-bezier(.2, .8, .2, 1), background .2s, border-color .2s;
+  }
+  body:not([data-portal="yalla"]) .topbar .search input::placeholder { color: transparent; }
+  body:not([data-portal="yalla"]) .topbar .search svg {
+    z-index: 4; pointer-events: none;
+    inset-inline-start: 26px; top: calc((var(--topbar-h) - 16px) / 2);
+  }
+  body:not([data-portal="yalla"]) .topbar .search input:focus,
+  body:not([data-portal="yalla"]) .topbar .search input:not(:placeholder-shown) {
+    width: calc(100% - 24px); padding-inline: 40px 14px; cursor: text;
+    color: var(--foreground); caret-color: var(--brand);
+    background: #141419; border-color: var(--border-strong);
+  }
+  body:not([data-portal="yalla"]) .topbar .search input:focus::placeholder,
+  body:not([data-portal="yalla"]) .topbar .search input:not(:placeholder-shown)::placeholder { color: var(--dim); }
+  body:not([data-portal="yalla"]) .topbar .search-results {
+    top: calc((var(--topbar-h) + 44px) / 2 + 6px); inset-inline-start: 12px;
+    width: calc(100% - 24px); max-height: 60vh;
+  }
+}
+@media (max-width: 560px) and (prefers-reduced-motion: reduce) {
+  body:not([data-portal="yalla"]) .topbar .search input { transition: none; }
+}
+
+/* A LIST IS NOT A SCROLL BOX INSIDE THE PAGE ON A PHONE. On a desk the table
+   card holds its own scroll so its head stays put; below 720 the rows become
+   cards, and the same max-height turned Products, Reports and the warehouse
+   into a box that scrolled inside a page that also scrolls — a thumb that
+   started on the list moved the list, and the end of the page could not be
+   reached at all. The page scrolls; sideways scroll stays for a narrow table. */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .card.table-wrap { max-height: none; overflow-y: visible; }
+}
+
+/* A TICK BOX IS 22px; WHAT A THUMB PRESSES IS ITS LABEL, 44px OF IT. Fix 05
+   did this for the switches and the bulk box's height; the till's Gift and
+   Delivery boxes (label.check) and the bulk box's WIDTH were left at 20 and
+   28px. */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) label.check { min-height: 44px; align-items: center; }
+  body:not([data-portal="yalla"]) label.check input { margin: 0; }
+  body:not([data-portal="yalla"]) .bk-box { min-width: 44px; justify-content: center; }
+}
+
+/* THE ONE LINE UNDER A SETTINGS FOLD'S TITLE GOES UNDER IT. It was a flex
+   sibling of the title, so on a desk it floated beside the title out of line
+   with it, and on a phone it sat ON the title and took the press meant for
+   the fold (Branding, Staff, Exchange rate). At every width, on purpose. */
+body:not([data-portal="yalla"]) .fold > .fold-head { flex-wrap: wrap; row-gap: 0; }
+body:not([data-portal="yalla"]) .fold > .fold-head > .fold-h { flex: 1 1 100%; min-width: 0; }
+body:not([data-portal="yalla"]) .fold > .fold-head > .fold-sub { flex: 1 1 100%; }
+
+/* SECTION HEADINGS WERE 2.25:1 AGAINST THE PAGE (#4A4A52 on #0A0A0B) — quiet
+   on a monitor, gone on a phone in daylight. The dim token is still quiet and
+   reads. At every width: low contrast is a fault everywhere. */
+body:not([data-portal="yalla"]) .set-sec { color: #8A8A93; }
+
+/* An empty state is a line, a line, and its one action UNDER them — the
+   button was flowing inside the sentence and cut it in two (Coupons). */
+body:not([data-portal="yalla"]) .cart-empty > span { display: block; }
+
+/* A sum of money never breaks between the figure and its currency. */
+body:not([data-portal="yalla"]) .sf-p-detail bdi { white-space: nowrap; }
+
+/* A long product name with no spaces runs out of its till card. */
+body:not([data-portal="yalla"]) .pcard { overflow-wrap: anywhere; }
+
+/* Text under 10px on a phone screen. */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .hm-fig .eyebrow { font-size: 10.5px; }
+  body:not([data-portal="yalla"]) .track.compact .track-node { font-size: 10.5px; }
+}
+
+/* The shelf map's numbers on a coloured bay read at 2.7:1. */
+body:not([data-portal="yalla"]) .sm-pname,
+body:not([data-portal="yalla"]) .sm-load { color: rgba(255, 255, 255, .86); }

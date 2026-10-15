@@ -200,7 +200,7 @@ var Deliveries = (function () {
     var name = nm(d.customerName || t('walk_in'));
     var cust = d.customerId ? DB.customer(d.customerId) : null;
     var link = (cust && typeof allow === 'function' && allow('customer.read') && !isDriver())
-      ? '<span class="clickable" data-act="cu-open" data-id="' + cust.id + '">' + name + ' ›</span>'
+      ? '<span class="clickable" data-act="cu-open" data-id="' + cust.id + '">' + name + (OG.lang === 'ar' ? ' ‹' : ' ›') + '</span>'
       : name;
 
     var back = 0;

@@ -136,9 +136,11 @@ function rolesCard() {
      read-only — knowing the rules is not a privilege, changing them is. */
   var editable = Auth.can('config.write');
 
+  /* One sentence per language. It was the word for "role" with an English
+     "s" glued on, which read "7 الوظيفة40 · s الصلاحيةs" in Arabic. */
   var h = setFoldStart('roles', t('roles_perms'),
-    m.roles.length + ' ' + t('role').toLowerCase() + 's · ' +
-    m.permissions.length + ' ' + t('permission').toLowerCase() + 's');
+    t('roles_meta').replace('{r}', '<bdi dir="ltr">' + m.roles.length + '</bdi>')
+                   .replace('{p}', '<bdi dir="ltr">' + m.permissions.length + '</bdi>'));
 
   if (editable) h += '<div class="perm-hint">' + t('roles_editable') + '</div>';
 

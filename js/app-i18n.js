@@ -773,7 +773,7 @@ var I18N = {
     confirmed: 'Confirmed', 
 
     settings_title: 'Settings', settings_sub: 'Rules, roles and money',
-    roles_perms: 'Roles & permissions', exchange_rate: 'Exchange rate',
+    roles_perms: 'Roles & permissions', roles_meta: '{r} roles · {p} permissions', exchange_rate: 'Exchange rate',
     loyalty_rules: 'Loyalty rules', reminders: 'Automatic reminders', branding: 'Branding',
     role_admin: 'Admin', role_manager: 'Manager',
     role_cashier: 'Cashier', role_warehouse: 'Warehouse', permission: 'Permission',
@@ -1544,7 +1544,7 @@ var I18N = {
     confirmed: 'مؤكد', 
 
     settings_title: 'الإعدادات', settings_sub: 'القواعد والصلاحيات والمال',
-    roles_perms: 'الصلاحيات والأدوار', exchange_rate: 'سعر الصرف',
+    roles_perms: 'الصلاحيات والأدوار', roles_meta: '{r} أدوار · {p} صلاحية', exchange_rate: 'سعر الصرف',
     loyalty_rules: 'قواعد الولاء', reminders: 'التذكيرات التلقائية', branding: 'الهوية',
     role_admin: 'مدير عام', role_manager: 'مدير',
     role_cashier: 'كاشير', role_warehouse: 'مستودع', permission: 'الصلاحية',
