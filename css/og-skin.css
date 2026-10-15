@@ -4066,3 +4066,13 @@ body:not([data-portal="yalla"]) .pcard { overflow-wrap: anywhere; }
 /* The shelf map's numbers on a coloured bay read at 2.7:1. */
 body:not([data-portal="yalla"]) .sm-pname,
 body:not([data-portal="yalla"]) .sm-load { color: rgba(255, 255, 255, .86); }
+
+/* A product name with no spaces ran out of its card on the phone list and
+   dragged a sideways scrollbar with it. Names break inside the card. */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .tbl-cards td,
+  body:not([data-portal="yalla"]) .tbl-cards .cell-prod { overflow-wrap: anywhere; min-width: 0; }
+}
+
+/* The empty state's explanation, now on its own line, read at 3.9:1. */
+body:not([data-portal="yalla"]) .cart-empty > span { color: var(--muted-foreground); }
