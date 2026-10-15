@@ -171,13 +171,75 @@ var Scan = (function () {
 
   /* ============================================================ the modal */
 
+  /* A PHONE GETS THE WHOLE SCREEN. A camera in a bottom sheet is a letterbox
+     under somebody's thumb; on a phone the camera is the screen, with a window
+     to aim through, a laser, and three big buttons at the bottom. Same open()
+     contract, so every caller (the tab bar, the desk, move-by-scan, the stock
+     count) gets it. Its own layer on <body>, the colour picker's rule, so it
+     never closes a dialog it was opened from. */
+  function phone() { return !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches); }
+
+  var ICO = {
+    x: 'M6 6l12 12M18 6L6 18',
+    torch: 'M9 2h6l-1 6h-4zM10 8h4v12a2 2 0 0 1-4 0z',
+    type: 'M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M7 14h10',
+    photo: 'M3 7h4l2-2h6l2 2h4v12H3zM12 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7'
+  };
+  function svg(d) { return '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>'; }
+
+  function openFull(o, live) {
+    var old = document.getElementById('scRoot');
+    if (old) old.remove();
+    var root = document.createElement('div');
+    root.id = 'scRoot';
+    root.className = 'scx' + (live ? '' : ' no-cam');
+    root.setAttribute('role', 'dialog');
+    root.setAttribute('aria-modal', 'true');
+    root.setAttribute('aria-label', o.title || t('sc_title'));
+    root.innerHTML =
+      (live ? '<video id="scVideo" playsinline muted autoplay></video>' : '') +
+      '<div class="scx-shade"><div class="scx-win" id="scWin"><i></i><i></i><i></i><i></i>' +
+        (live ? '<span class="scx-laser"></span>' : '') + '</div>' +
+        '<div class="sc-status" id="scStatus">' + t(live ? 'sc_aim' : 'sc_use_photo') + '</div></div>' +
+      '<div class="scx-top">' +
+        '<button type="button" class="scx-x" data-sc="close" aria-label="' + esc(t('close')) + '">' + svg(ICO.x) + '</button>' +
+        '<b>' + esc(o.title || t('sc_title')) + '</b>' +
+        '<span class="scx-count" id="scCount" hidden></span>' +
+      '</div>' +
+      (live ? '' :
+        '<div class="scx-nocam"><b>' + t('sc_no_camera') + '</b><span>' + t('sc_no_camera_sub') + '</span></div>') +
+      '<div class="scx-type" id="scType" hidden>' +
+        '<input class="inp num" id="scManual" type="text" inputmode="numeric" enterkeyhint="go" autocomplete="off" ' +
+          'placeholder="' + esc(t('sc_type_code')) + '">' +
+        '<button type="button" class="btn btn-primary" data-sc="manual">' + t('sc_go') + '</button>' +
+      '</div>' +
+      '<div class="scx-bar">' +
+        (live ? '<button type="button" class="scx-b scx-torch" data-sc="torch">' + svg(ICO.torch) + '<span>' + t('sc_torch') + '</span></button>' : '') +
+        '<button type="button" class="scx-b" data-sc="type">' + svg(ICO.type) + '<span>' + t('sc_type_btn') + '</span></button>' +
+        '<button type="button" class="scx-b" data-sc="photo">' + svg(ICO.photo) + '<span>' + t('sc_photo_btn') + '</span></button>' +
+      '</div>' +
+      '<input type="file" id="scFile" accept="image/*" capture="environment" hidden>';
+    document.body.appendChild(root);
+    S.full = true;
+    S.count = 0;
+    if (typeof Layers !== 'undefined') Layers.mark();
+  }
+
   function open(o) {
     o = o || {};
     S.onHit = o.onHit || null;
     S.continuous = !!o.continuous;
-    S.lastCode = ''; S.lastAt = 0;
+    S.lastCode = ''; S.lastAt = 0; S.torchOn = false;
 
     var live = canLiveScan();
+
+    if (phone()) {
+      openFull(o, live);
+      S.open = true;
+      bindFile();
+      if (live) start();
+      return;
+    }
 
     var body =
       '<div class="sc-stage' + (live ? '' : ' no-cam') + '">' +
@@ -216,6 +278,39 @@ var Scan = (function () {
   function close() {
     S.open = false;
     stop();
+    if (S.full) {
+      S.full = false;
+      var r = document.getElementById('scRoot');
+      if (r) r.remove();
+      if (typeof Layers !== 'undefined') Layers.afterClose();
+    }
+  }
+
+  /* A short two-note beep on a good read: a till is loud, and a buzz alone
+     is missed in a hand holding a box. WebAudio, so no file to fetch. */
+  var actx = null;
+  function beep() {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      var t0 = actx.currentTime;
+      [[1320, 0], [1760, 0.07]].forEach(function (n) {
+        var o = actx.createOscillator(), g = actx.createGain();
+        o.type = 'sine'; o.frequency.value = n[0];
+        g.gain.setValueAtTime(0.0001, t0 + n[1]);
+        g.gain.exponentialRampToValueAtTime(0.18, t0 + n[1] + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + n[1] + 0.09);
+        o.connect(g); g.connect(actx.destination);
+        o.start(t0 + n[1]); o.stop(t0 + n[1] + 0.1);
+      });
+    } catch (e) { /* no audio is not a failed scan */ }
+  }
+
+  function flash() {
+    var w = document.getElementById('scWin');
+    if (!w) return;
+    w.classList.remove('is-hit');
+    void w.offsetWidth;
+    w.classList.add('is-hit');
   }
 
   function stop() {
@@ -255,6 +350,15 @@ var Scan = (function () {
           });
         } catch (e) { S.detector = null; }
       }
+      /* The light button is drawn only where the camera has one. */
+      if (S.full && S.stream) {
+        try {
+          var tr = S.stream.getVideoTracks()[0];
+          var caps = tr.getCapabilities ? tr.getCapabilities() : {};
+          var rt = document.getElementById('scRoot');
+          if (rt && caps.torch) rt.classList.add('has-torch');
+        } catch (e) { /* no capabilities API: no light button */ }
+      }
       loop();
     })['catch'](function (err) {
       /* Distinguish "you said no" from "there is no camera" — they need
@@ -263,7 +367,7 @@ var Scan = (function () {
               : (err && err.name === 'NotFoundError') ? t('sc_nodevice')
               : t('sc_failed');
       status(msg, 'bad');
-      var stage = document.querySelector('.sc-stage');
+      var stage = document.querySelector('.sc-stage') || document.getElementById('scRoot');
       if (stage) stage.classList.add('no-cam');
     });
   }
@@ -272,10 +376,15 @@ var Scan = (function () {
 
   function loop() {
     if (!S.open) return;
-    S.raf = requestAnimationFrame(loop);
 
     var video = document.getElementById('scVideo');
-    if (!video || video.readyState < 2) return;
+    /* THE CAMERA STOPS WHEN ITS VIDEO IS GONE, however it went. A sheet can
+       be shut by the back gesture or a pull-down (fix 05), neither of which
+       is the Close button this used to listen for, and the lens and its light
+       stayed on behind the shop until the page was closed. */
+    if (!video) { close(); return; }
+    S.raf = requestAnimationFrame(loop);
+    if (video.readyState < 2) return;
 
     if (S.detector) {
       /* Native path. detect() is async; guard against overlapping calls or
@@ -311,9 +420,28 @@ var Scan = (function () {
     S.lastCode = raw; S.lastAt = now;
 
     status(t('sc_found') + ' ' + raw, 'good');
-    if (navigator.vibrate) { try { navigator.vibrate(35); } catch (e) {} }
+    /* Chrome refuses (and logs) a buzz before the first real tap. */
+    if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) { try { navigator.vibrate(35); } catch (e) {} }
 
     var keep = S.continuous;
+    if (S.full) {
+      flash();
+      beep();
+      if (keep) {
+        S.count = (S.count || 0) + 1;
+        var c = document.getElementById('scCount');
+        if (c) { c.hidden = false; c.textContent = t('sc_scanned').replace('{n}', S.count); }
+        if (S.onHit) S.onHit(raw);
+        setTimeout(function () { if (S.open) status(t('sc_aim')); }, 900);
+        return;
+      }
+      /* the green frame shows for a moment before the camera goes */
+      var cb = S.onHit;
+      S.onHit = null;
+      stop();
+      setTimeout(function () { close(); if (cb) cb(raw); }, 260);
+      return;
+    }
     if (!keep) { close(); closeModal(); }
     if (S.onHit) S.onHit(raw);
     if (keep) setTimeout(function () { if (S.open) status(t('sc_looking')); }, 900);
@@ -373,6 +501,13 @@ var Scan = (function () {
   /* ---------------------------------------------------------------- acts */
 
   var ACT = {
+    close: function () { close(); },
+    type: function () {
+      var box = document.getElementById('scType');
+      if (!box) return;
+      box.hidden = !box.hidden;
+      if (!box.hidden) { var i = document.getElementById('scManual'); if (i) i.focus(); }
+    },
     photo: function () {
       var i = document.getElementById('scFile');
       if (i) i.click();
@@ -390,6 +525,8 @@ var Scan = (function () {
       var caps = track.getCapabilities ? track.getCapabilities() : {};
       if (!caps.torch) { toast(t('sc_title'), t('sc_no_torch'), 'warn'); return; }
       S.torchOn = !S.torchOn;
+      var tb = document.querySelector('.scx-torch');
+      if (tb) tb.classList.toggle('on', S.torchOn);
       track.applyConstraints({ advanced: [{ torch: S.torchOn }] })['catch'](function () {});
     }
   };
@@ -420,6 +557,11 @@ var Scan = (function () {
     });
   }
   bind();
+
+  /* The top layer: Back closes the camera before anything under it. */
+  if (typeof Layers !== 'undefined') {
+    Layers.register('scanner', function () { return !!(S.open && S.full); }, function () { close(); }, 5);
+  }
 
   return {
     open: open, close: close,

@@ -452,26 +452,38 @@ function renderTabbar() {
     return;
   }
 
-  var h = '';
+  var items = [];
   tabsFor().forEach(function (id) {
     var n = NAV.filter(function (x) { return x.id === id; })[0];
     if (!n || !navAllowed(id)) return;
     var b = navBadge(id);
-    h += '<button class="tabbtn' + (OG.view === id ? ' on' : '') + '" data-act="nav" data-view="' + id + '">' +
+    items.push('<button class="tabbtn' + (OG.view === id ? ' on' : '') + '" data-act="nav" data-view="' + id + '">' +
       '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square"><path d="' + n.icon + '"/></svg>' +
         (b ? '<i class="tb-dot"></i>' : '') + '</span>' +
-      '<span class="tb-txt">' + t(n.key) + '</span></button>';
+      '<span class="tb-txt">' + t(n.key) + '</span></button>');
   });
 
   /* More always shows: even a role with no extra screens reaches sign out
      through it, and on a phone there is nowhere else to put that. */
   var inMore = tabsFor().indexOf(OG.view) < 0;
-  h += '<button class="tabbtn' + (inMore ? ' on' : '') + '" data-act="more-sheet">' +
+  items.push('<button class="tabbtn' + (inMore ? ' on' : '') + '" data-act="more-sheet">' +
     '<span class="tb-ico"><svg viewBox="0 0 24 24" stroke-linecap="square">' +
       '<path d="M4 7h16M4 12h16M4 17h16"/></svg></span>' +
-    '<span class="tb-txt">' + t('nav_more') + '</span></button>';
+    '<span class="tb-txt">' + t('nav_more') + '</span></button>');
 
-  host.innerHTML = h;
+  /* THE CAMERA, IN THE MIDDLE, RAISED (15 Oct 2026). The phone is the one
+     device with a camera on its back, and the camera scanner (js/scan.js)
+     had no button anywhere: its comment said "the topbar, the tab bar" and
+     neither carried one. At the till a hit lands in the basket; anywhere
+     else it opens what was scanned (handleScan). */
+  items.splice(Math.floor(items.length / 2), 0,
+    '<button class="tabbtn tb-scan" data-act="scan-open" aria-label="' + esc(t('tb_scan')) + '">' +
+      '<span class="tb-scan-ring"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 8v8M11 8v8M14 8v8M17 8v8"/>' +
+      '</svg></span>' +
+      '<span class="tb-txt">' + t('tb_scan') + '</span></button>');
+
+  host.innerHTML = items.join('');
 }
 
 /* Everything that did not fit in five tabs, plus the two shell switches that

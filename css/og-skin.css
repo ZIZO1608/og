@@ -4076,3 +4076,156 @@ body:not([data-portal="yalla"]) .sm-load { color: rgba(255, 255, 255, .86); }
 
 /* The empty state's explanation, now on its own line, read at 3.9:1. */
 body:not([data-portal="yalla"]) .cart-empty > span { color: var(--muted-foreground); }
+
+/* ==========================================================================
+   THE CAMERA SCANNER ON A PHONE (15 Oct 2026)
+   --------------------------------------------------------------------------
+   A raised lime button in the middle of the tab bar, and a full-screen camera
+   (js/scan.js, openFull): the video fills the screen, a window cut out of a
+   dark veil to aim through, the laser, and three big buttons at the bottom.
+   The tab bar exists only below 720, so the button is phone-only by itself.
+   ========================================================================== */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .tabbtn.tb-scan { color: var(--foreground); overflow: visible; }
+  body:not([data-portal="yalla"]) .tabbtn.tb-scan::before { display: none; }
+  body:not([data-portal="yalla"]) .tb-scan-ring {
+    display: grid; place-items: center; width: 54px; height: 54px; margin-top: -26px;
+    border-radius: 50%; background: var(--brand); color: #0A0A0B;
+    box-shadow: 0 0 0 5px var(--sidebar), 0 10px 26px -6px rgb(198 255 0 / .55);
+    transition: transform .15s var(--e-std);
+  }
+  body:not([data-portal="yalla"]) .tb-scan-ring svg { width: 26px; height: 26px; stroke: currentColor; stroke-width: 2.1; }
+  body:not([data-portal="yalla"]) .tabbtn.tb-scan:active .tb-scan-ring { transform: scale(.92); }
+  body:not([data-portal="yalla"]) .tabbtn.tb-scan .tb-txt { color: var(--brand); font-weight: 700; }
+}
+
+.scx {
+  position: fixed; inset: 0; z-index: 990; background: #000; color: #fff;
+  display: flex; flex-direction: column; overflow: hidden;
+  font-family: var(--font-body);
+}
+.scx video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* The veil with a window cut in it: one huge shadow round the window. */
+.scx-shade { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; pointer-events: none; }
+.scx-win {
+  position: relative; width: min(78vw, 340px); aspect-ratio: 1.45; margin-top: -8vh;
+  border-radius: 22px; box-shadow: 0 0 0 200vmax rgb(0 0 0 / .58);
+  transition: box-shadow .2s;
+}
+.scx-win i {
+  position: absolute; width: 34px; height: 34px; border: 4px solid var(--brand);
+  transition: border-color .15s;
+}
+.scx-win i:nth-child(1) { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-top-left-radius: 22px; }
+.scx-win i:nth-child(2) { top: -2px; right: -2px; border-left: 0; border-bottom: 0; border-top-right-radius: 22px; }
+.scx-win i:nth-child(3) { bottom: -2px; left: -2px; border-right: 0; border-top: 0; border-bottom-left-radius: 22px; }
+.scx-win i:nth-child(4) { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-bottom-right-radius: 22px; }
+.scx-laser {
+  position: absolute; inset-inline: 10px; top: 10px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--brand), transparent);
+  box-shadow: 0 0 14px 2px rgb(198 255 0 / .7);
+  animation: scxSweep 2.2s cubic-bezier(.45, 0, .55, 1) infinite alternate;
+}
+@keyframes scxSweep { from { top: 10px; } to { top: calc(100% - 12px); } }
+.scx-win.is-hit i { border-color: #3DDC84; }
+.scx-win.is-hit { animation: scxHit .45s ease-out; }
+.scx-win.is-hit .scx-laser { opacity: 0; }
+@keyframes scxHit {
+  0% { box-shadow: 0 0 0 200vmax rgb(0 0 0 / .58), inset 0 0 0 0 rgb(61 220 132 / .0); }
+  35% { box-shadow: 0 0 0 200vmax rgb(0 0 0 / .58), inset 0 0 0 999px rgb(61 220 132 / .22); }
+  100% { box-shadow: 0 0 0 200vmax rgb(0 0 0 / .58), inset 0 0 0 0 rgb(61 220 132 / 0); }
+}
+
+.scx-top {
+  position: relative; z-index: 2; display: flex; align-items: center; gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px;
+  background: linear-gradient(rgb(0 0 0 / .55), transparent);
+}
+.scx-top b { font-size: 17px; font-weight: 700; flex: 1; min-width: 0; }
+.scx-x {
+  width: 44px; height: 44px; border-radius: 50%; border: 0; flex: none;
+  display: grid; place-items: center; background: rgb(255 255 255 / .14); color: #fff;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.scx-x svg, .scx-b svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+.scx-count {
+  padding: 6px 12px; border-radius: 999px; background: var(--brand); color: #0A0A0B;
+  font-size: 13px; font-weight: 800; white-space: nowrap;
+}
+
+.scx .sc-status {
+  position: relative; z-index: 2; margin: 0; padding: 0 16px; text-align: center;
+  font-size: 15px; font-weight: 600; color: #fff; text-shadow: 0 1px 8px rgb(0 0 0 / .8); min-height: 22px;
+}
+.scx .sc-status.good { color: #3DDC84; font-weight: 700; }
+.scx .sc-status.bad { color: #FF8A8D; }
+
+.scx-nocam {
+  position: absolute; z-index: 2; inset-inline: 24px; top: 30%; text-align: center;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.scx-nocam b { font-size: 17px; }
+.scx-nocam span { color: rgb(255 255 255 / .72); font-size: 14px; line-height: 1.55; }
+.scx.no-cam .scx-win { display: none; }
+.scx.no-cam .scx-shade { justify-content: flex-end; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 150px); }
+
+.scx-type {
+  position: relative; z-index: 3; margin: auto 16px 0; display: flex; gap: 8px;
+  padding: 10px; border-radius: 18px; background: rgb(20 20 25 / .92);
+}
+.scx-type[hidden] { display: none; }
+.scx-type .inp { flex: 1; min-width: 0; font-size: 16px; min-height: 48px; }
+.scx-type .btn { min-height: 48px; }
+
+.scx-bar {
+  position: relative; z-index: 2; margin-top: auto; display: flex; justify-content: center; gap: 14px;
+  padding: 18px 16px calc(env(safe-area-inset-bottom, 0px) + 22px);
+  background: linear-gradient(transparent, rgb(0 0 0 / .65));
+}
+.scx-type:not([hidden]) + .scx-bar { margin-top: 0; }
+.scx-b {
+  flex: 1; max-width: 120px; min-height: 64px; border: 0; border-radius: 18px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  background: rgb(255 255 255 / .13); color: #fff; font: inherit; font-size: 12.5px; font-weight: 700;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.scx-b:active { background: rgb(255 255 255 / .22); }
+.scx-torch { display: none; }
+.scx.has-torch .scx-torch { display: flex; }
+.scx-torch.on { background: var(--brand); color: #0A0A0B; }
+body.rtl .scx { letter-spacing: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .scx-laser { animation: none; top: 50%; }
+  .scx-win.is-hit { animation: none; }
+}
+
+/* THE RAISED CAMERA BUTTON STANDS ~30px ABOVE THE BAR, so the end of every
+   page needs that much more room or its last row sits behind the button. */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .view {
+    padding-bottom: calc(var(--tabbar-h) + 46px);
+    scroll-padding-bottom: calc(var(--tabbar-h) + 46px);
+  }
+}
+
+/* HOME ON A PHONE: an odd last tile takes the whole row instead of standing
+   alone in half of it (five jobs drew 2 · 2 · 1-and-a-hole). */
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .hm-grid > .hm-job:last-child:nth-child(odd):not(:first-child) { grid-column: 1 / -1; }
+}
+
+/* WHO IS ONLINE, ON A PHONE, WITH NOBODY THERE drew an empty dark disc with a
+   dot in it, which reads as a picture that failed to load. It is a people
+   icon with the dot as its status badge; faces still replace the icon the
+   moment somebody is on. */
+@media (max-width: 560px) {
+  body:not([data-portal="yalla"]) .topbar .live-who { position: relative; justify-content: center; color: var(--muted-foreground); }
+  body:not([data-portal="yalla"]) .topbar .live-faces:empty {
+    display: inline-block; width: 21px; height: 21px; background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M22 20v-1.5a4 4 0 0 0-3-3.85M16 4.15a3.5 3.5 0 0 1 0 6.7'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M22 20v-1.5a4 4 0 0 0-3-3.85M16 4.15a3.5 3.5 0 0 1 0 6.7'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  body:not([data-portal="yalla"]) .topbar .live-who .live-dot {
+    position: absolute; bottom: 9px; inset-inline-end: 8px; box-shadow: 0 0 0 2px #111115;
+  }
+}
