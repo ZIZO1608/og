@@ -4229,3 +4229,14 @@ body.rtl .scx { letter-spacing: 0; }
     position: absolute; bottom: 9px; inset-inline-end: 8px; box-shadow: 0 0 0 2px #111115;
   }
 }
+
+/* THE RACK SCROLLS SIDEWAYS IN ARABIC TOO. The grid is pinned left-to-right
+   (a room must not turn round with the language), so a rack wider than the
+   card spilled off the RIGHT of a right-to-left scroll box — the side an RTL
+   box cannot scroll to. A4 and beyond were cut off with no way to reach them
+   on a phone. The rack is its own left-to-right scroller now. */
+body:not([data-portal="yalla"]) .sm-rack { direction: ltr; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 4px; }
+
+/* A Settings card's description line is part of its head: a tap on it opens
+   the card, it no longer catches the press meant for the button above it. */
+body:not([data-portal="yalla"]) .fold > .fold-head > .fold-sub { pointer-events: none; }
