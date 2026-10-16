@@ -1,10 +1,16 @@
-# OG Sports website ↔ OG System — connecting the orders (contract v1.7)
+# OG Sports website ↔ OG System — connecting the orders (contract v1.8)
 
 > **For Ahmad, and for the AI helping him build the OG Sports website.**
 > Paste this whole file in as the brief. It is the contract between the website and the
 > shop's system (OG System). The shop side is being built to exactly this. If something
 > here does not fit the website, ask before changing it. Do not work around it: both sides
 > have to agree.
+
+> **v1.8 (16 Oct 2026) — the shop tells you when an order is accepted.** When the shop presses
+> Accept (or Reject), it now calls the website: **`POST /api/og/order-changed`**, with the website
+> key, the order's `ref`, its new `state` and a ready-made notification in both languages. The
+> website reloads that order from `web_order_status`, shows "Confirmed", and **notifies the
+> customer** (§7a). No new Supabase file. Nothing was removed or renamed.
 
 > **v1.7 (16 Oct 2026) — a coupon in the link.** Coupon codes now have QR stickers. The shop's
 > coupon page sends people to **`https://ogsports1.com/?coupon=CODE`**. The website reads
@@ -854,6 +860,55 @@ has:
 
 Codes: `not_found`, `bad_key`.
 
+### 7a. The shop tells you an order was accepted or rejected (v1.8)
+
+The moment a person in the shop accepts or rejects a website order, and once the cloud has the
+decision (so `web_order_status` already answers with it), the shop calls the website:
+
+```
+POST https://<the website>/api/og/order-changed
+Authorization: Bearer <OG_WEB_API_KEY>          (the same key as §3a)
+Content-Type: application/json
+
+{
+  "event": "order_changed",
+  "ref": "W-1A2B3C",
+  "state": "accepted",                           // or "rejected"
+  "code": null,                                  // a §7 code when rejected
+  "saleId": "INV-2184",                          // null when rejected
+  "trackUrl": "https://track.ogsports1.com/i/…", // null when there is none
+  "total": { "amount": 4500, "currency": "USD", "minorExp": 2 },   // the shop's final total, or null
+  "decidedAt": "2026-10-16T20:19:11.000Z",
+  "message": {
+    "title": { "ar": "تأكّد طلبك ✔", "en": "Your order is confirmed ✔" },
+    "body":  { "ar": "…", "en": "…" }
+  }
+}
+```
+
+What the website does with it:
+
+1. **Check the key** exactly as in §3a. A wrong or missing key → `401`. Answer `200 {"ok": true}`
+   as soon as the call is accepted; do the work after answering.
+2. **Reload the order from `web_order_status`.** That answer is the truth; this call is a nudge.
+   Never mark an order confirmed from the body alone.
+3. **Update the customer's order page** (Confirmed + the Track button, or the rejection words
+   from §7). If the customer has the page open, update it without a reload if you can.
+4. **Notify the customer**, in the language they ordered in: a web push if they allowed it, an
+   email if you have one, and the order shows as updated next time they open the site. Use
+   `message.title` / `message.body`. They are written for exactly this, but you may use your own
+   words for the same thing.
+5. **Do it once per `ref` and `state`.** The shop may send the same news again (a retry, or
+   somebody in the shop pressing "Tell the website again"). A second call for a state you
+   already handled answers `200` and notifies nobody twice.
+
+There is no customer name or phone in the call. You already have the order under its `ref`.
+
+The shop retries a `5xx`, a `429`, a timeout or no answer (30 s, 2 min, 5 min, 15 min, 1 h). It
+does not retry a `401`, `403` or `404`, and it never follows a redirect. On the shop's screen,
+each accepted order shows whether the customer's page has it and whether you took the news.
+Decisions older than two days are never sent unless somebody in the shop asks.
+
 ---
 
 ## 8. Words to use (Syrian Arabic first, English beside it)
@@ -944,5 +999,8 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
       product not in the list or out of stock (v1.5).
 - [ ] `POST /api/og/catalog-changed` checks the website key (401 otherwise), answers 200, and
       makes the next page fetch the products again; the site's address is given to the shop (v1.5).
+- [ ] `POST /api/og/order-changed` checks the key, answers 200, reloads that order from
+      `web_order_status`, updates the order page and notifies the customer once per `ref` and
+      `state` (v1.8, §7a).
 - [ ] All customer-facing text in Arabic (RTL) and English.
 - [ ] Tested with `TEST-` orders, including a retry and the laptop being off.

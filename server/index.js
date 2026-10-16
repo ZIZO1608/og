@@ -68,6 +68,7 @@ import * as Office from './lib/office-alerts.js';
 import * as Push from './lib/webpush.js';
 import * as Reviews from './lib/reviews.js';
 import * as WebOrders from './lib/weborders.js';
+import * as WebSite from './lib/weborder-site.js';
 import * as WebCheckout from './lib/webcheckout.js';
 import * as Requests from './lib/requests.js';
 import * as RequestShape from './lib/request-shape.js';
@@ -2209,6 +2210,17 @@ router.add('POST /api/web-orders/:ref/reject', requirePerm('delivery.web', async
   const b = await readJson(ctx.req);
   try {
     const out = WebOrders.reject(ctx.params.ref, { code: b.code, note: b.note, userId: ctx.user.id });
+    Live.notify('og', { web: true });
+    SyncWorker.webSoon();
+    sendOk(ctx.res, out);
+  } catch (e) { orderFail(ctx.res, e); }
+}));
+
+/* 075 — "Tell the website again": a fresh round of calls for one decided
+   order (lib/weborder-site.js); the pass that follows makes the call. */
+router.add('POST /api/web-orders/:ref/tell-site', requirePerm('delivery.web', (ctx) => {
+  try {
+    const out = WebSite.again(ctx.params.ref);
     Live.notify('og', { web: true });
     SyncWorker.webSoon();
     sendOk(ctx.res, out);

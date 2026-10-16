@@ -41,6 +41,7 @@ import * as Customers from './customers.js';
 import * as Orders from './orders.js';
 import * as Live from './live.js';
 import * as PrintKits from './printkits.js';
+import * as WebSite from './weborder-site.js';
 
 const TAKE = 10;
 const REF = /^[A-Za-z0-9][A-Za-z0-9_-]{2,39}$/;
@@ -410,8 +411,23 @@ async function pass(lineage) {
     }
   }
 
-  if (count.fresh || count.updated || count.prints) {
-    try { Live.notify('all', { web: true }); } catch { /* the screen catches up on load */ }
+  /* 075 — once the cloud has a decision, the website is told, so the
+     customer's order turns confirmed and they hear it (lib/weborder-site.js).
+     After the report on purpose: the website reloads the order from the
+     cloud, and a call that beat it would show the old state. */
+  try {
+    const told = await WebSite.tell();
+    count.site = told.sent;
+    count.siteFailed = told.failed;
+  } catch (e) {
+    count.siteFailed = 1;
+    console.error(`[${nowIso()}] web orders: could not tell the website — ${e.message}`);
+  }
+
+  /* The cards draw the journey (accepted → in the cloud → website told), so a
+     report or a call moves them too. */
+  if (count.fresh || count.updated || count.prints || count.reported || count.site || count.siteFailed) {
+    try { Live.notify('og', { web: true }); } catch { /* the screen catches up on load */ }
   }
   return count;
 }
@@ -606,6 +622,16 @@ function shape(d, row, { seesCustomers, whId }) {
     placedAt: row.placed_at, receivedAt: row.received_at, decidedAt: row.decided_at,
     decidedBy: by ? by.name : null, saleId: row.sale_id,
     rejectCode: row.reject_code, rejectNote: row.reject_note,
+    /* 075 — the journey of a decision: the cloud has it (the customer's order
+       page on the website reads it there), then the website was told (and the
+       customer notified). */
+    cloudHas: row.state !== 'new' && row.cloud_state === row.state,
+    cloudAt: row.state !== 'new' && row.cloud_state === row.state ? row.cloud_at : null,
+    siteState: row.site_state || null, siteAt: row.site_at || null,
+    siteError: row.site_error || null, siteTries: row.site_tries || 0,
+    siteGaveUp: !row.site_state && (row.site_tries || 0) >= WebSite.MAX_TRIES,
+    siteNextAt: row.site_next_at || null,
+    notice: row.state === 'new' ? null : WebSite.payloadFor(row, d).message,
     lang: o.lang === 'en' ? 'en' : 'ar',
     customer: { name: txt(who.name, 80), phone: txt(who.phone, 40), email: txt(who.email, 120) },
     match: holder ? { id: holder.id, name: holder.name } : null,
@@ -649,7 +675,8 @@ export function list({ state = 'new', limit = 60, seesCustomers = false } = {}) 
   return {
     orders: rows.map((r) => shape(d, r, { seesCustomers, whId })),
     counts, shown: rows.length, total: counts[st], capped: counts[st] > rows.length,
-    whId
+    whId,
+    site: WebSite.readiness()
   };
 }
 

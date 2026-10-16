@@ -38,9 +38,9 @@ merged.
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
   PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
-- **Numbers in use:** local migrations run to `074` (`063` is night mode's and applies after `067`
+- **Numbers in use:** local migrations run to `075` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `075`; the next cloud file is `043`.** (`074` = coupon QR scans and street batches, local-only.) (`073`/`042` = a colour's 3D angles,
+  local migration is `076`; the next cloud file is `043`.** (`075` = the website told a website order was decided, local-only.) (`074` = coupon QR scans and street batches, local-only.) (`073`/`042` = a colour's 3D angles,
   `lib/angles.js`, branch `feature/3d-angles` — step 1 of the 3D-model plan; the generation
   through an image-to-3D API and the website's viewer are not built yet.) The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
@@ -4456,6 +4456,44 @@ migration `074_coupon_qr.sql` (**local-only, no cloud file**), contract **v1.7**
   `coupons/bulk-ui.mjs` 21 (the bar pressed, the live toast naming the customer, the profile, a
   scan on the dashboard landing on the till, Arabic at 390); the earlier `qr`, `qr-ui`, `api` (068),
   `npm test`, `p0-namespaces` and `fix06/idle` re-run green.
+
+## The website hears an order was accepted, and the customer is notified (075 — 16 Oct 2026)
+
+The owner: pressing Accept on a website order must turn the customer's order **Confirmed** on the
+website and **notify the customer** at once. The cloud already had the decision
+(`web_orders_mark` → `web_order_status`); nothing told the website. `server/lib/weborder-site.js`,
+migration `075_web_order_site.sql` (**local-only**, five `site_*` columns on `web_orders`),
+contract **v1.8** §7a (`docs/website/UPDATE-ORDER-ACCEPTED.md` for Ahmad).
+
+- **`POST <web.site_url>/api/og/order-changed`**, `Bearer OG_WEB_API_KEY`, through
+  `sitenotify.js`'s own `post()` (now taking a path): `{event, ref, state, code, saleId, trackUrl,
+  total, decidedAt, message:{title,body}{ar,en}}`. **No customer name or phone.** The Arabic money
+  is isolated (U+2066/2069).
+- **Only after the cloud has the decision** (`cloud_state = state`), because the website reloads
+  the order from `web_order_status`. It runs at the end of the web-orders pass (`WebOrders.collect`
+  → `WebSite.tell()`), which is the minute tick plus `webSoon()` 0.4 s after a decision — so one at
+  a time, only while the mirror is live, never on a standby.
+- **Backoff** 30 s → 2 min → 5 min → 15 min → 1 h (`site_tries`, `site_next_at`), then given up;
+  401/403/404/redirect are not retried; an unreachable site stops the batch. **A decision older
+  than two days is never sent by itself.** `POST /api/web-orders/:ref/tell-site` (`delivery.web`,
+  `WebSite.again`) starts a fresh round, old or not.
+- **The card** (`js/weborders.js`): every decided order has a **journey strip** — Accepted →
+  "Their order on the website says Confirmed" (the cloud has it) → "The customer was notified" (the
+  website took it), with a rail that fills, the reason in words when the website refused, **Tell the
+  website again**, and "No notification sent — the website's address is not set" (with a
+  developer-only door to Settings → Advanced → Website). A stop reached while somebody is looking
+  pops once (`S.just`, cleared by class, never a repaint), and "the customer saw it" is a toast and
+  a chime. **Show me** draws the customer's phone in both languages: the notification dropping in
+  over their order page, from the same `message` the server sends. The rail stands up at ≤720px.
+  The pass now pushes `Live.notify('og', {web:true})` when it reports to the cloud or calls the
+  website, so the strip moves by itself.
+- **Verified**: `server/test/weborder-site.test.js` (11, a faked fetch: nothing before the cloud,
+  one call with the key and both languages and no name, once, backoff, 401 given up, the two-day
+  rule, a dead site stopping the batch, the card's fields — seen red with the cloud rule removed);
+  `_nightshift/weborders/journey.mjs` (23: four seeded orders at every stop, Show me, Tell again
+  read back from SQLite, a stop reached live lighting up and toasting, Arabic at 390).
+- **By hand**: give Ahmad `UPDATE-ORDER-ACCEPTED.md`; the site's address goes in Settings →
+  Advanced → Website (the same one catalog-changed uses).
 
 ## Descriptions, "goes well with", and telling the website (070, cloud 040 — 29 Sep 2026)
 

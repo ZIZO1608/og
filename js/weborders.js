@@ -30,7 +30,10 @@ var WebOrders = (function () {
     rows: [], counts: { new: 0, accepted: 0, rejected: 0 }, capped: false, whId: null,
     loaded: false, failed: null, at: 0, shopAt: 0,
     busy: null,                /* the ref whose Accept is on its way */
-    reject: null               /* { ref, code } while the reject sheet is open */
+    reject: null,              /* { ref, code } while the reject sheet is open */
+    site: { configured: true, why: null },   /* can the website be told at all (075) */
+    seen: {},                  /* ref → the journey stop it was at, last load */
+    just: {}                   /* ref → the stop it reached while somebody looked */
   };
 
   var ICON = {
@@ -66,6 +69,8 @@ var WebOrders = (function () {
     var tab = S.tab;
     return API.get('/api/web-orders?state=' + encodeURIComponent(tab) + '&limit=80').then(function (r) {
       if (tab !== S.tab) return;
+      if (r.site) S.site = r.site;
+      noticeMoves(r.orders || []);
       S.rows = r.orders || [];
       S.counts = r.counts || S.counts;
       S.capped = !!r.capped;
@@ -79,6 +84,32 @@ var WebOrders = (function () {
       S.failed = API.friendly(e);
       S.loaded = true;
       paint();
+    });
+  }
+
+  /* A journey stop reached since the last load, on an order already on
+     screen, lights up once — and the one the owner is waiting for (the
+     customer told) gets a toast. The first load of a tab only remembers:
+     a stop reached an hour ago is not news. */
+  function noticeMoves(rows) {
+    rows.forEach(function (o) {
+      var now = stageOf(o);
+      var was = S.seen[o.ref];
+      S.seen[o.ref] = now;
+      if (was == null || now <= was) return;
+      S.just[o.ref] = now;
+      if (now === 3) {
+        toast(t('wo_jr_toast_title'), t(o.state === 'accepted' ? 'wo_jr_toast_ok' : 'wo_jr_toast_no')
+          .replace('{ref}', o.ref), 'ok', 6000);
+        if (typeof Pulse !== 'undefined' && Pulse.chime) { try { Pulse.chime(); } catch (e) { /* sound is optional */ } }
+      }
+      setTimeout(function () {
+        if (S.just[o.ref] !== now) return;
+        delete S.just[o.ref];
+        /* The class only; a repaint here would take a typed reject note. */
+        var el = document.querySelector('.wo-card[data-ref="' + (window.CSS && CSS.escape ? CSS.escape(o.ref) : o.ref) + '"] .wo-jr');
+        if (el) el.className = el.className.replace(/\s*is-just-\d/g, '');
+      }, 2600);
     });
   }
 
@@ -277,20 +308,129 @@ var WebOrders = (function () {
       '</div>';
   }
 
+  /* ----------------------------------------------------- the journey (075)
+     What a decision has reached, as three stops on one line: the shop said
+     yes (or no) → the customer's order page on the website shows it (the
+     cloud has it) → the website was told, and told its customer. Every stop
+     is a fact the server read, never a timer; the strip moves by itself on
+     the live line (Pulse → load), and a stop reached while somebody is
+     looking lights up (S.just). */
+  function stageOf(o) {
+    if (o.state === 'new') return 0;
+    return o.siteState ? 3 : o.cloudHas ? 2 : 1;
+  }
+
+  function siteWhy(err) {
+    var code = String(err || '').split(':')[0];
+    var known = ['bad_key', 'not_found', 'redirect', 'refused', 'site_error', 'timeout', 'unreachable'];
+    return t('wo_jr_err_' + (known.indexOf(code) >= 0 ? code : 'failed'));
+  }
+
+  function stop(state, title, sub, extra) {
+    var mark = state === 'done' ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+      : state === 'bad' ? '<b aria-hidden="true">!</b>'
+      : state === 'off' ? '<b aria-hidden="true">–</b>' : '<i aria-hidden="true"></i>';
+    return '<li class="wo-jr-stop is-' + state + '"><span class="wo-jr-dot">' + mark + '</span>' +
+      '<span class="wo-jr-txt"><b>' + title + '</b>' + (sub ? '<span class="muted">' + sub + '</span>' : '') +
+      (extra || '') + '</span></li>';
+  }
+
+  function journeyHtml(o) {
+    var acc = o.state === 'accepted';
+    var when = function (iso) { return iso ? esc(fmtDateTime(iso)) : ''; };
+    var s1 = stop('done', t(acc ? 'wo_jr_accepted' : 'wo_jr_rejected'),
+      t('wo_jr_by').replace('{who}', esc(o.decidedBy || '—')).replace('{when}', when(o.decidedAt)));
+    var s2 = o.cloudHas
+      ? stop('done', t(acc ? 'wo_jr_page_ok' : 'wo_jr_page_no'), when(o.cloudAt))
+      : stop('wait', t('wo_jr_page_wait'), t('wo_jr_page_wait_sub'));
+    var s3;
+    var again = '<button type="button" class="btn btn-ghost btn-sm wo-jr-again" data-act="wo-tell" data-ref="' +
+      esc(o.ref) + '">' + t('wo_jr_again') + '</button>';
+    if (o.siteState) {
+      s3 = stop('done', t('wo_jr_told'), when(o.siteAt));
+    } else if (!S.site.configured) {
+      var fix = roleOf() === 'developer'
+        ? '<button type="button" class="btn btn-ghost btn-sm wo-jr-again" data-act="wo-site-set">' + t('wo_jr_set') + '</button>'
+        : '';
+      s3 = stop('off', t('wo_jr_no_site'), t('wo_jr_no_site_' + (S.site.why || 'no_site')), fix);
+    } else if (o.siteGaveUp) {
+      s3 = stop('bad', t('wo_jr_not_told'), esc(siteWhy(o.siteError)), again);
+    } else if (o.siteError) {
+      s3 = stop('wait', t('wo_jr_retry'), esc(siteWhy(o.siteError)) +
+        (o.siteNextAt ? ' · ' + t('wo_jr_next').replace('{when}', esc(fmtDateTime(o.siteNextAt))) : ''), again);
+    } else {
+      s3 = stop('wait', t('wo_jr_telling'), o.cloudHas ? t('wo_jr_telling_sub') : '');
+    }
+    var st = stageOf(o);
+    var lit = S.just[o.ref] ? ' is-just-' + S.just[o.ref] : '';
+    return '<div class="wo-jr' + (acc ? '' : ' is-no') + lit + '" style="--wo-jr:' + (st - 1) / 2 + '">' +
+      '<div class="wo-jr-head"><span class="wo-k">' + t('wo_jr_title') + '</span>' +
+        (o.notice ? '<button type="button" class="btn btn-ghost btn-sm" data-act="wo-preview" data-ref="' + esc(o.ref) + '">' +
+          t('wo_jr_preview') + '</button>' : '') + '</div>' +
+      '<ol class="wo-jr-line">' + s1 + s2 + s3 + '</ol></div>';
+  }
+
+  /* What the customer's phone shows: the notification the website is handed
+     (message, in both languages) dropping in over their order page, as the
+     website draws it from web_order_status. A picture of the promise, built
+     from the same words the server sends — never a second copy of them. */
+  function previewHtml(o, lang) {
+    var n = o.notice || {};
+    var pick = function (x) { return (x && (x[lang] || x.en)) || ''; };
+    var acc = o.state === 'accepted';
+    var dir = lang === 'ar' ? 'rtl' : 'ltr';
+    var L = function (k) { return t('wo_pv_' + k + (lang === 'ar' ? '_ar' : '_en')); };
+    return '<div class="wo-phone" dir="' + dir + '" lang="' + lang + '">' +
+      '<div class="wo-phone-notch"></div>' +
+      '<div class="wo-phone-note"><span class="wo-phone-app"><img src="assets/icon-192.png" alt=""></span>' +
+        '<span><b>' + esc(pick(n.title)) + '</b><span>' + esc(pick(n.body)) + '</span></span>' +
+        '<span class="wo-phone-now">' + L('now') + '</span></div>' +
+      '<div class="wo-phone-page">' +
+        '<div class="wo-phone-brand"><img src="assets/logo.svg" alt=""><span>ogsports1.com</span></div>' +
+        '<div class="wo-phone-ref"><bdi dir="ltr">' + esc(o.ref) + '</bdi></div>' +
+        '<div class="wo-phone-badge' + (acc ? '' : ' is-no') + '">' + L(acc ? 'ok' : 'no') + '</div>' +
+        '<ol class="wo-phone-steps">' +
+          '<li class="on">' + L('placed') + '</li>' +
+          '<li class="on">' + L(acc ? 'confirmed' : 'declined') + '</li>' +
+          (acc ? '<li>' + L('onway') + '</li><li>' + L('arrived') + '</li>' : '') +
+        '</ol>' +
+        (acc ? '<div class="wo-phone-btn">' + L('track') + '</div>' : '') +
+      '</div></div>';
+  }
+
+  function openPreview(ref) {
+    var o = find(ref);
+    if (!o || !o.notice) return;
+    openModal({
+      title: t('wo_pv_title').replace('{ref}', ref),
+      body: '<div class="partner-note">' + t('wo_pv_note') + '</div>' +
+        '<div class="wo-phones">' + previewHtml(o, 'ar') + previewHtml(o, 'en') + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>'
+    });
+  }
+
   function footHtml(o) {
+    if (o.state !== 'new') return journeyHtml(o) + footDecided(o);
+    return footNew(o);
+  }
+
+  function footDecided(o) {
     if (o.state === 'accepted') {
+      /* Who and when are the journey's first stop; the foot is the order. */
       return '<div class="wo-foot"><div class="muted">' +
-          t('wo_accepted_by').replace('{who}', esc(o.decidedBy || '—')).replace('{when}', esc(fmtDateTime(o.decidedAt))) +
-          (o.saleId ? ' · ' + ltr(o.saleId) : '') + '</div>' +
+          (o.saleId ? t('wo_jr_sale') + ' ' + ltr(o.saleId) : '') + '</div>' +
         (o.saleId ? '<button type="button" class="btn btn-sm" data-act="wo-order" data-id="' + esc(o.saleId) + '">' +
           t('wo_open_order') + '</button>' : '') + '</div>';
     }
     if (o.state === 'rejected') {
-      return '<div class="wo-foot"><div class="muted">' +
-        t('wo_rejected_by').replace('{who}', esc(o.decidedBy || '—')).replace('{when}', esc(fmtDateTime(o.decidedAt))) +
-        ' · <b>' + t('wo_code_' + (o.rejectCode || 'other')) + '</b>' +
+      return '<div class="wo-foot"><div class="muted">' + t('wo_jr_why') + ' ' +
+        '<b>' + t('wo_code_' + (o.rejectCode || 'other')) + '</b>' +
         (o.rejectNote ? ' · “' + esc(o.rejectNote) + '”' : '') + '</div></div>';
     }
+    return '';
+  }
+
+  function footNew(o) {
     var goes = S.busy === o.ref;
     /* Accepting IS the desk's Save, so it needs the desk (delivery.desk).
        Somebody who may see and answer website orders (delivery.web) but not
@@ -426,6 +566,25 @@ var WebOrders = (function () {
           [WA.hi(name, false), 'This is ' + shop + ' about your website order ' + o.ref + ' 🛍️', '']
         )
       });
+    };
+
+    /* 075 — the customer's phone, and a fresh round of calls to the website. */
+    ACTIONS['wo-preview'] = function (el) { openPreview(el.getAttribute('data-ref')); };
+    ACTIONS['wo-tell'] = function (el) {
+      var ref = el.getAttribute('data-ref');
+      if (el.disabled) return;
+      el.disabled = true;
+      API.post('/api/web-orders/' + encodeURIComponent(ref) + '/tell-site', {}).then(function () {
+        toast(t('wo_title'), t('wo_jr_again_toast').replace('{ref}', ref), 'ok');
+        load();
+      }).catch(function (e) {
+        el.disabled = false;
+        toast(t('wo_title'), API.friendly(e), 'err', 6000);
+      });
+    };
+    ACTIONS['wo-site-set'] = function () {
+      if (typeof Desk !== 'undefined' && Desk.gotoSettingsFold) Desk.gotoSettingsFold('website');
+      else go('settings');
     };
 
     ACTIONS['wo-order'] = function (el) {

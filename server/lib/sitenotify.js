@@ -168,11 +168,11 @@ async function cloudCaughtUp(limitMs = CLOUD_WAIT_MS) {
 
 /* ------------------------------------------------------------ the call */
 
-export async function post(base, secret, body) {
+export async function post(base, secret, body, path = PATH) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(base + PATH, {
+    const res = await fetch(base + path, {
       method: 'POST',
       headers: { authorization: 'Bearer ' + secret, 'content-type': 'application/json', 'user-agent': 'OG-System' },
       body: JSON.stringify(body),
