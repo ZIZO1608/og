@@ -1,10 +1,15 @@
-# OG Sports website ↔ OG System — connecting the orders (contract v1.6)
+# OG Sports website ↔ OG System — connecting the orders (contract v1.7)
 
 > **For Ahmad, and for the AI helping him build the OG Sports website.**
 > Paste this whole file in as the brief. It is the contract between the website and the
 > shop's system (OG System). The shop side is being built to exactly this. If something
 > here does not fit the website, ask before changing it. Do not work around it: both sides
 > have to agree.
+
+> **v1.7 (16 Oct 2026) — a coupon in the link.** Coupon codes now have QR stickers. The shop's
+> coupon page sends people to **`https://ogsports1.com/?coupon=CODE`**. The website reads
+> `coupon` on any page, checks it with `web_coupon`, keeps it in the cart and opens the cart
+> (§5b). No new Supabase file. Nothing was removed or renamed.
 
 > **v1.6 (8 Oct 2026) — printed names and numbers.** A product that can take a print now carries
 > a **`print`** object (the font, the colours, where the name and number go, the price per
@@ -690,6 +695,36 @@ only with p_subtotal) }` or `{ ok: false, code }` with one of `coupon_unknown`, 
 `discount / 100 × web_checkout.rate`. Send the code as `coupon` in the order only after an
 `ok`. Words and details: `docs/website/UPDATE-COUPONS.md`.
 
+### 5b. A coupon arrives in the address — `?coupon=CODE` (v1.7)
+
+Every coupon code now has a QR code. The owner prints them and leaves stickers around the city.
+Scanning one opens the shop's own page, `https://shop.ogsports1.com/c/<CODE>`, and that page's
+**Shop now** button sends the person to:
+
+```
+https://ogsports1.com/?coupon=OG-7K2QX
+```
+
+The website must handle that link on **any page**, not only the home page:
+
+1. Read `coupon` from the address. Clean it the way the shop does: trim, remove spaces, make it
+   upper case. Ignore it if it is not 3–24 letters, digits or dashes.
+2. Check it straight away with `web_coupon` (§5a) without a subtotal.
+   - `ok`: **keep it in the cart** (the same place a typed code lives, so it survives a page
+     change and a refresh), and **open the cart** with the code filled in and a short line:
+     "Coupon OG-7K2QX added — 20% off" / "انضاف الكوبون OG-7K2QX — خصم 20%".
+   - Not `ok`: open the cart and say why in the customer's language, with the same words as a
+     typed code (`docs/website/UPDATE-COUPONS.md`). `coupon_used_up` on a street code means
+     somebody got there first: "Someone already used this code" / "حدا سبقك واستعمل هالكود".
+3. Remove `coupon` from the address afterwards (`history.replaceState`), so a refresh or a
+   shared link does not add it again.
+4. An empty cart still opens, with the code kept and a "Choose something" button. The minimum
+   basket is checked again when products are added, exactly as for a typed code.
+
+Nothing about sending the order changes: the code goes as `coupon`, and the shop checks it again
+when it accepts the order. Many street codes work **once** (`maxUses: 1`); two people holding the
+same sticker's photo is the reason the shop checks again.
+
 ### Sending it safely (read this twice)
 
 1. **Build the order object once, save it (with its `ref`) in your database, then send it.**
@@ -866,6 +901,8 @@ does not reorder them: `<bdi dir="ltr">450,000 SYP</bdi>`.
 - ✅ Keep the three secrets on the server only.
 - ✅ Save the order and its `ref` **before** sending it, and retry with the identical object.
 - ✅ Show each product's `prices.SYP` large and `prices.USD` small (v1.3). Show totals per currency.
+- ✅ Handle `?coupon=CODE` on every page: check it, keep it in the cart, open the cart, then
+  take it out of the address (v1.7, §5b).
 - ❌ Don't work the lira price out yourself, and don't keep a rate of your own for products.
 - ✅ Refresh products every 5 minutes, and keep the last good copy — and at once when the shop
   calls `/api/og/catalog-changed` (v1.5).

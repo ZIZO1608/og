@@ -197,7 +197,9 @@ const LOCAL_ONLY = new Set(['sessions', 'login_attempts', 'applied_ops',
                             'push_keys', 'push_subscriptions', 'push_seen',
                             'inbox_applied', 'web_orders',
                             'receipt_jobs', 'id_loans', 'standby_seen',
-                            'shop_requests']);
+                            'shop_requests',
+                            /* 074 — a coupon's page views and its street batch */
+                            'coupon_scans', 'coupon_batches', 'coupon_batch_codes']);
 
 /* Columns that exist here and MUST NOT exist there. The column check below
    would otherwise report the most important security property of this mirror

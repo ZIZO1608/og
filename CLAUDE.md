@@ -38,9 +38,9 @@ merged.
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
   PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
-- **Numbers in use:** local migrations run to `073` (`063` is night mode's and applies after `067`
+- **Numbers in use:** local migrations run to `074` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `074`; the next cloud file is `043`.** (`073`/`042` = a colour's 3D angles,
+  local migration is `075`; the next cloud file is `043`.** (`074` = coupon QR scans and street batches, local-only.) (`073`/`042` = a colour's 3D angles,
   `lib/angles.js`, branch `feature/3d-angles` — step 1 of the 3D-model plan; the generation
   through an image-to-3D API and the website's viewer are not built yet.) The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
@@ -4371,6 +4371,61 @@ cut is over the 10% ceiling, so every sale it went on was refused. Gone.
 - **A long single-tab suite can starve its own requests**: every page load leaves an event stream
   the browser may hold, six per host on HTTP/1.1, and the page then shows "the server is not
   answering" while the server answers in milliseconds. It is the harness, not the page.
+
+## A coupon's QR, its picture, and codes for the street (074 — 16 Oct 2026)
+
+The owner prints coupon QR stickers and leaves them around the city: whoever finds one gets the
+discount. `server/lib/coupon-page.js`, `js/couponcard.js`, the end of `server/lib/coupons.js`,
+migration `074_coupon_qr.sql` (**local-only, no cloud file**), contract **v1.7**
+(`docs/website/UPDATE-COUPON-LINKS.md`).
+
+- **`GET /c/<code>` is the public page the QR opens**, claimed whole like `/i/` (a bad code is the
+  page's own 404, never the app). Arabic first, `?lang=en`. It shows the code and its rules,
+  never its note, uses or who used it. Its buttons: **Shop now** → `<web.site_url or
+  https://ogsports1.com>/?coupon=CODE`, which the website must read (§5b), **Copy**, **Save
+  image**, **WhatsApp to OG** (`shop.phone`, Arabic ━━━ English), **Send to a friend**, and **a
+  barcode for the till**. A used-up, expired or switched-off code says so and offers the site
+  without the code. `sw.js` returns early for `/c/`, and the plain-http listener lets it through
+  like `/i/`.
+- **The QR carries `<shop.public_url or https://shop.ogsports1.com>/c/CODE`**, never a Wi-Fi
+  address: a sticker outlives every network (`Coupons.links()`).
+- **The barcode carries digits, not the code**: `97` plus the coupon id in eight digits
+  (`Coupons.scanToken`). A hand scanner types through the keyboard, and on the Arabic layout every
+  letter of `OG-7K2QX` arrives as something else, but digits survive any layout. That length is
+  used by nothing else. `Coupons.codeFromScan()` reads it, or the QR link, inside
+  `POST /api/coupon-check`, so the till asks the server as for a typed code. `handleScan` on the
+  till: a link or the digits go straight to `POS.tryCoupon`. A code-shaped scan that matches no
+  product is tried as a coupon, and on `coupon_unknown` goes to the unknown-code sheet as before.
+- **FOUND is counted**: `coupon_scans` (one row per code: count, first, last), written on each GET
+  of the page, but not on a HEAD, not on `?preview=1` (the staff's own Open), and not on a
+  standby. It is not a transaction, and a failed count never costs the page.
+- **Street batches**: `POST /api/coupons/batch` (`coupon.write`) makes 1–200 codes in ONE
+  transaction, `PREFIX-XXXXX`, each `max_uses = 1`, each `logChange`d. They are ordinary coupons,
+  so they reach the mirror and the website's `web_coupon`. `coupon_batches` +
+  `coupon_batch_codes` (sticker number 1..n) only GROUP them on the page and are local-only, like
+  the scans (`supabase-check.js` `LOCAL_ONLY`). A restore keeps the codes and loses the grouping.
+- **The picture** (`CouponCard`, 1080 × 1350 PNG, a ticket with notches): the mark, the value in
+  both languages, the QR with the mark in its middle at ECC H, and the code. A single-use code
+  reads "first to use it wins". It is drawn by hand on a canvas from `Codes.qrMatrix`.
+  **Corners stay square enough that no module goes white**: `coupons/qr-ui` reads every module
+  back against the encoder, and the first, rounder eyes failed 12 modules (the 4 corners × 3
+  eyes). On a phone, Save goes through the share sheet (Save to Photos); elsewhere it downloads.
+  A batch downloads as one zip (`Export.zip`), drawn one picture at a time.
+- **The Arabic figure is isolated** (`'خصم ⁦' + '20%' + '⁩'`) on the picture, the page
+  and the WhatsApp text, or it reads "%20 خصم".
+- **The coupons screen**: each ticket has QR (share dialog: picture, link, Download, Copy link,
+  Open the page) and a "Scanned N× · first …" line. **Street batch** is in the head. A batch is a
+  card (stickers · found · used, two bars) with See the codes (numbered tickets) and Download all
+  pictures. Codes in a batch are left off the main grid.
+- **Verified** on a scratch copy of the sandbox (port 8201): `_nightshift/coupons/qr.mjs` 39 (the
+  page, counting, 404, the digits and the link at the till, every batch refusal, a street code used
+  once then "someone beat you"), and `coupons/qr-ui.mjs` 38 (the page at 390 in both languages,
+  the share sheet handed a PNG, the QR read back module by module, the dialog, a batch made and
+  zipped, Arabic at 390, and the till taking the digits, the link and the bare code). Also
+  `npm test`, `fix05/p0-namespaces` and `fix06/idle`.
+- **Still to do by hand**: give Ahmad `docs/website/UPDATE-COUPON-LINKS.md`. Until his site reads
+  `?coupon=`, Shop now opens the site and the code is typed. The order desk does not take a
+  scanned coupon (it owns the scanner); it is typed there.
 
 ## Descriptions, "goes well with", and telling the website (070, cloud 040 — 29 Sep 2026)
 

@@ -14,7 +14,7 @@
    refresh does it), or browsers that already have the app will keep serving
    the old cached copy — cache-first with ignoreSearch, so no query string
    gets past it. */
-var CACHE = 'og-system-v329';
+var CACHE = 'og-system-v330';
 
 var SHELL = [
   './',
@@ -97,6 +97,7 @@ var SHELL = [
   'js/deliveries.js',
   'js/reviews.js',
   'js/weborders.js',
+  'js/couponcard.js',
   'js/coupons.js',
   'js/printkits.js',
   'js/desk.js',
@@ -239,6 +240,11 @@ self.addEventListener('fetch', function (e) {
      cannot fetch would be answered with THIS app's shell, which is exactly
      the page that cannot work at that moment. The network, or nothing. */
   if (url.pathname === '/night' || url.pathname.indexOf('/night/') === 0) return;
+
+  /* NOR A COUPON'S PAGE (074). /c/<code> is what a street sticker opens; a
+     staff phone with this app installed would otherwise answer it with the
+     app's shell, and "used up" has to be true the moment it is. */
+  if (url.pathname.indexOf('/c/') === 0) return;
 
   e.respondWith(
     caches.match(req, { ignoreSearch: true }).then(function (hit) {

@@ -42,6 +42,7 @@ import * as Cap from './lib/capped.js';
 import * as Deliveries from './lib/deliveries.js';
 import * as Orders from './lib/orders.js';
 import * as Coupons from './lib/coupons.js';
+import * as CouponPage from './lib/coupon-page.js';
 import * as Partner from './lib/partner.js';
 import * as Purchasing from './lib/purchasing.js';
 import * as Alerts from './lib/alerts.js';
@@ -2106,7 +2107,18 @@ function couponFail(res, e) {
 }
 
 router.add('GET /api/coupons', requirePerm('coupon.write', (ctx) => {
-  sendOk(ctx.res, { coupons: Coupons.list(), suggest: Coupons.suggest() });
+  /* 074 — the batches the street codes are grouped in, and where a printed
+     QR points (the public domain, never this machine's Wi-Fi address). */
+  const l = Coupons.links();
+  sendOk(ctx.res, { coupons: Coupons.list(), suggest: Coupons.suggest(), batches: Coupons.batches(),
+    pageBase: l.pageBase, siteUrl: l.siteUrl, batchMax: Coupons.BATCH_MAX });
+}));
+
+/* 074 — many single-use codes in one go, one per street sticker. */
+router.add('POST /api/coupons/batch', requirePerm('coupon.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, Coupons.createBatch(b, ctx.user.id)); }
+  catch (e) { couponFail(ctx.res, e); }
 }));
 
 router.add('GET /api/coupons/:id', requirePerm('coupon.write', (ctx) => {
@@ -4285,6 +4297,39 @@ async function handle(req, res) {
         return res.end(req.method === 'HEAD' ? undefined : body);
       }
 
+      /* --- a coupon's page (074, lib/coupon-page.js) ------------------------
+         What a QR sticker on the street opens. Claimed whole, like /i/: a
+         mistyped code answers "not found" in the page's own words, never the
+         shop's login screen from the static fallback below. Every opening is
+         counted (FOUND, on the coupons page) — not a HEAD, not the staff's
+         own preview (?preview=1), and not on a standby, whose copy the next
+         swap throws away. */
+      if (path.startsWith('/c/') && (req.method === 'GET' || req.method === 'HEAD')) {
+        const m = /^\/c\/([A-Za-z0-9-]{3,24})\/?$/.exec(path);
+        const c = m ? Coupons.forPage(m[1]) : null;
+        const links = Coupons.links();
+        const lang = url.searchParams.get('lang');
+        if (c && req.method === 'GET' && !url.searchParams.has('preview') && !Standby.isStandby()) {
+          Coupons.noteScan(c.id);
+        }
+        const body = c
+          ? CouponPage.render(c, lang, links, `${links.pageBase}/c/${encodeURIComponent(c.code)}`)
+          : CouponPage.notFound(lang, links);
+        res.writeHead(c ? 200 : 404, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Length': Buffer.byteLength(body),
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
+          'Referrer-Policy': 'no-referrer',
+          'Content-Security-Policy': CSP,
+          'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+          /* "used up" must be true the moment it is, not a cache later. */
+          'Cache-Control': 'no-store',
+          'X-Robots-Tag': 'noindex, nofollow'
+        });
+        return res.end(req.method === 'HEAD' ? undefined : body);
+      }
+
       /* --- the app itself -------------------------------------------------- */
       if (req.method === 'GET' || req.method === 'HEAD') {
         if (serveStatic(req, res, STATIC, path)) return;
@@ -4329,7 +4374,7 @@ function httpHandler(req, res) {
   const wantsPage = (req.method === 'GET' || req.method === 'HEAD') &&
     String(req.headers.accept || '').includes('text/html');
   const p = String(req.url || '/');
-  if (!wantsPage || p.startsWith('/api/') || p.startsWith('/i/')) return handle(req, res);
+  if (!wantsPage || p.startsWith('/api/') || p.startsWith('/i/') || p.startsWith('/c/')) return handle(req, res);
 
   /* ALREADY SECURE, ARRIVING THROUGH A PROXY. A reverse proxy that terminates
      TLS itself and forwards to plain http on this port has carried the

@@ -1989,10 +1989,43 @@ var POS = (function () {
     if (document.getElementById('cartLines')) paintCart();
   }
 
+  /* 074 — A SCANNED COUPON. The camera reads the sticker's QR (the page's
+     link, …/c/OG-7K2QX); the gun reads the barcode on that page (ten digits,
+     97…, because on the Arabic layout the gun's letters arrive wrong). Both
+     are handed to the server as they are — it knows what each means — and
+     the answer goes on the sale exactly as a typed code does.
+
+     `loose` is a code-shaped scan that matched no product: it is TRIED as a
+     coupon, and anything but a coupon answer gives it back to the caller
+     (the unknown-code sheet), so a scan is never swallowed. */
+  var COUPON_LINK = /\/c\/[A-Za-z0-9-]{3,24}(?:[/?#]|$)/;
+  var COUPON_DIGITS = /^97\d{8}$/;
+  function isCouponScan(raw) {
+    var s = String(raw || '').trim();
+    return COUPON_LINK.test(s) || COUPON_DIGITS.test(s);
+  }
+  function tryCoupon(raw, loose, orElse) {
+    var s = String(raw || '').trim();
+    API.post('/api/coupon-check', {
+      code: s, subtotal: totals().subtotal, customerId: S.customerId || null
+    }).then(function (r) {
+      S.coupon = r.coupon;
+      pulseScan(true);
+      toast(t('coupon'), r.coupon.code + ' · ' + couponWorth(r.coupon), 'ok');
+      paintFoot();
+    }).catch(function (err) {
+      if (loose && err && err.code === 'coupon_unknown' && orElse) { orElse(); return; }
+      pulseScan(false);
+      toast(t('coupon'), API.friendly(err), 'err', 6000);
+    });
+  }
+
   return {
     render: render,
     after: after,
     complete: complete,
+    isCouponScan: isCouponScan,
+    tryCoupon: tryCoupon,
     reset: reset,
     scanBarcode: scanBarcode,
     add: addVariant,

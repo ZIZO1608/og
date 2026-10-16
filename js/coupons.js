@@ -32,7 +32,14 @@ var Coupons = (function () {
     filter: 'all',          /* all · live · stopped */
     menu: null,             /* the id whose "…" is open */
     draft: null,            /* the new/edit dialog's values, while it is open */
-    saving: false
+    saving: false,
+    /* 074 — the QR, the picture, and the street batches. */
+    batches: [],
+    batch: null,            /* the batch whose codes are on show, or null */
+    bdraft: null,           /* the street-batch dialog's values */
+    pageBase: 'https://shop.ogsports1.com',
+    batchMax: 200,
+    zipping: false
   };
 
   /* ------------------------------------------------------------- helpers */
@@ -77,6 +84,10 @@ var Coupons = (function () {
     return API.get('/api/coupons').then(function (r) {
       S.rows = r.coupons || [];
       S.suggest = r.suggest || '';
+      S.batches = r.batches || [];
+      if (r.pageBase) S.pageBase = r.pageBase;
+      if (r.batchMax) S.batchMax = r.batchMax;
+      if (S.batch !== null && !S.batches.some(function (b) { return b.id === S.batch; })) S.batch = null;
       S.loaded = true;
       S.failed = null;
       S.at = Date.now();
@@ -108,7 +119,9 @@ var Coupons = (function () {
   function view() {
     var head = '<div class="page-head"><div><h1>' + t('cpn_title') + '</h1>' +
       '<div class="sub">' + t('cpn_sub') + '</div></div>' +
-      '<div class="head-actions"><button class="btn btn-primary" data-act="cpn-new">+ ' + t('cpn_new') + '</button></div></div>';
+      '<div class="head-actions">' +
+        '<button class="btn" data-act="cpq-batch-new">+ ' + t('cpq_batch_new') + '</button>' +
+        '<button class="btn btn-primary" data-act="cpn-new">+ ' + t('cpn_new') + '</button></div></div>';
 
     if (S.failed) {
       return head + '<div class="card"><div class="cart-empty"><b>' + esc(S.failed) + '</b>' +
@@ -124,8 +137,88 @@ var Coupons = (function () {
         '<button class="btn btn-primary mt" data-act="cpn-new">+ ' + t('cpn_new') + '</button></div></div>';
     }
 
+    if (S.batch !== null) return head + batchHead() + filters() + list();
     return head + summary() + filters() + list();
   }
+
+  /* ------------------------------------------------- 074 — the batches */
+
+  /* The codes on show: one batch's, or every code that is in no batch —
+     a batch of thirty single-use stickers would bury the shop's own codes. */
+  function visibleRows() {
+    return S.rows.filter(function (c) {
+      return S.batch !== null ? c.batchId === S.batch : !c.batchId;
+    }).sort(function (a, b) {
+      return S.batch !== null ? (a.batchNo || 0) - (b.batchNo || 0) : 0;
+    });
+  }
+
+  function batchFacts(b) {
+    var codes = S.rows.filter(function (c) { return c.batchId === b.id; });
+    var found = 0, used = 0, live = 0;
+    codes.forEach(function (c) {
+      if (c.scans > 0) found++;
+      if (c.uses > 0) used++;
+      var st = status(c);
+      if (st === 'live' || st === 'soon') live++;
+    });
+    return { codes: codes, found: found, used: used, live: live, first: codes[0] || null };
+  }
+
+  function batchMatch(b, k) {
+    var f = batchFacts(b);
+    if (k === 'live') return f.live > 0;
+    if (k === 'stopped') return f.live === 0;
+    return true;
+  }
+
+  function batchCard(b) {
+    var f = batchFacts(b);
+    var n = f.codes.length || 1;
+    return '<article class="cpq-batch' + (f.live ? '' : ' is-stopped') + '">' +
+      '<div class="cpq-batch-top"><span class="badge accent">' + t('cpq_b_tag') + '</span>' +
+        (f.first ? '<b class="cpq-batch-val">' + ltr(worth(f.first)) + '</b>' : '') + '</div>' +
+      '<h3 dir="auto">' + esc(b.name) + '</h3>' +
+      '<div class="cpq-batch-figs">' +
+        '<span>' + t('cpq_b_stickers').replace('{n}', ltr(nf(f.codes.length))) + '</span>' +
+        '<span>' + t('cpq_b_found').replace('{n}', ltr(nf(f.found))) + '</span>' +
+        '<span>' + t('cpq_b_used').replace('{n}', ltr(nf(f.used))) + '</span>' +
+      '</div>' +
+      '<div class="cpq-bars" role="img" aria-label="' + esc(t('cpq_b_found').replace('{n}', f.found) + ' · ' + t('cpq_b_used').replace('{n}', f.used)) + '">' +
+        '<i class="f" style="width:' + Math.round(f.found / n * 100) + '%"></i>' +
+        '<i class="u" style="width:' + Math.round(f.used / n * 100) + '%"></i></div>' +
+      (f.live ? '' : '<div class="cpn-used">' + t('cpq_b_none_live') + '</div>') +
+      '<div class="cpn-acts">' +
+        '<button type="button" class="btn btn-sm" data-act="cpq-batch-open" data-id="' + b.id + '">' + t('cpq_b_open') + '</button>' +
+        '<button type="button" class="btn btn-sm btn-ghost" data-act="cpq-batch-zip" data-id="' + b.id + '">' + t('cpq_b_zip') + '</button>' +
+      '</div>' +
+    '</article>';
+  }
+
+  /* One batch on show: its name, its three figures, and the zip. */
+  function batchHead() {
+    var b = S.batches.filter(function (x) { return x.id === S.batch; })[0];
+    if (!b) return '';
+    var f = batchFacts(b);
+    return '<div class="cpq-bhead">' +
+      '<button type="button" class="btn btn-sm btn-ghost" data-act="cpq-batch-back">' +
+        '<span>' + (OG.lang === 'ar' ? '→ ' : '← ') + t('cpq_back') + '</span></button>' +
+      '<h2 dir="auto">' + esc(b.name) + '</h2>' +
+      '<button type="button" class="btn btn-sm btn-primary" data-act="cpq-batch-zip" data-id="' + b.id + '">' + t('cpq_b_zip') + '</button>' +
+    '</div>' +
+    '<div class="cpn-sum">' +
+      '<div class="cpn-fig"><span class="eyebrow">' + t('cpq_b_stickers').replace('{n}', '').trim() + '</span><b>' + ltr(nf(f.codes.length)) + '</b></div>' +
+      '<div class="cpn-fig"><span class="eyebrow">' + t('cpq_b_found').replace('{n}', '').trim() + '</span><b>' + ltr(nf(f.found)) + '</b></div>' +
+      '<div class="cpn-fig"><span class="eyebrow">' + t('cpq_b_used').replace('{n}', '').trim() + '</span><b>' + ltr(nf(f.used)) + '</b></div>' +
+    '</div>';
+  }
+
+  /* What the picture and the page need from a coupon row. */
+  function cardInfo(c) {
+    return { code: c.code, kind: c.kind, percent: c.percent, amount: c.amount,
+             expiresAt: c.expiresAt, single: c.maxUses === 1, url: pageUrl(c) };
+  }
+  function pageUrl(c) { return S.pageBase + '/c/' + encodeURIComponent(c.code); }
 
   /* Three figures across the top: codes working now, times used, and what
      the codes have given away — per currency, never added together. */
@@ -146,7 +239,8 @@ var Coupons = (function () {
 
   function filters() {
     return '<div class="chip-row cpn-filter" role="tablist">' + ['all', 'live', 'stopped'].map(function (k) {
-      var n = S.rows.filter(function (c) { return match(c, k); }).length;
+      var n = visibleRows().filter(function (c) { return match(c, k); }).length +
+        (S.batch === null ? S.batches.filter(function (b) { return batchMatch(b, k); }).length : 0);
       return '<button type="button" class="chip' + (S.filter === k ? ' on' : '') + '" role="tab" aria-selected="' +
         (S.filter === k) + '" data-act="cpn-filter" data-k="' + k + '">' +
         /* ONE span: a chip is a flex row, and loose text and a number beside
@@ -163,11 +257,12 @@ var Coupons = (function () {
   }
 
   function list() {
-    var rows = S.rows.filter(function (c) { return match(c, S.filter); });
-    if (!rows.length) {
+    var rows = visibleRows().filter(function (c) { return match(c, S.filter); });
+    var bs = S.batch === null ? S.batches.filter(function (b) { return batchMatch(b, S.filter); }) : [];
+    if (!rows.length && !bs.length) {
       return '<div class="card"><div class="cart-empty"><b>' + t('cpn_none_here') + '</b></div></div>';
     }
-    return '<div class="cpn-grid">' + rows.map(ticket).join('') + '</div>';
+    return '<div class="cpn-grid">' + bs.map(batchCard).join('') + rows.map(ticket).join('') + '</div>';
   }
 
   function ticket(c) {
@@ -203,12 +298,22 @@ var Coupons = (function () {
             ltr(c.code) + '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h11v11H9zM5 15H4V4h11v1"/></svg></button>' +
           '<span class="badge ' + STATUS_TONE[st] + '">' + t('cpn_st_' + st) + '</span>' +
         '</div>' +
-        (c.note ? '<div class="cpn-note" dir="auto">' + esc(c.note) + '</div>' : '') +
+        (c.note && !c.batchId ? '<div class="cpn-note" dir="auto">' + esc(c.note) + '</div>' : '') +
+        (c.batchId ? '<div class="cpn-note"><span class="badge neutral">' + ltr('#' + (c.batchNo || '')) + '</span></div>' : '') +
         '<div class="cpn-rules">' + rules.join(' · ') + '</div>' +
         meter + people +
         (given ? '<div class="cpn-given">' + t('cpn_given') + ' ' + given + '</div>' : '') +
+        /* 074 — FOUND: how often its page was opened from the QR. */
+        '<div class="cpn-used cpq-scans">' + (c.scans
+          ? t('cpq_scanned').replace('{n}', ltr(nf(c.scans))).replace('{d}', esc(day(c.firstScanAt)))
+          : t('cpq_not_scanned')) + '</div>' +
         '<div class="cpn-acts">' +
+          '<span class="cpq-acts-l">' +
           '<button type="button" class="btn btn-sm" data-act="cpn-uses" data-id="' + c.id + '">' + t('cpn_who') + '</button>' +
+          '<button type="button" class="btn btn-sm" data-act="cpq-qr" data-id="' + c.id + '" title="' + esc(t('cpq_qr')) + '">' +
+            '<svg class="cpq-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z"/></svg>' +
+            '<span>' + t('cpq_qr_short') + '</span></button>' +
+          '</span>' +
           '<div class="cpn-more">' +
             '<button type="button" class="btn btn-sm btn-ghost cpn-dots" data-act="cpn-menu" data-id="' + c.id + '" aria-label="' + esc(t('cb_more')) + '">…</button>' +
             (open
@@ -217,6 +322,7 @@ var Coupons = (function () {
                   '<button type="button" class="cpn-mitem" data-act="cpn-toggle" data-id="' + c.id + '">' +
                     t(c.active ? 'cpn_turn_off' : 'cpn_turn_on') + '</button>' +
                   '<button type="button" class="cpn-mitem" data-act="cpn-copy" data-id="' + c.id + '">' + t('cpn_copy') + '</button>' +
+                  '<button type="button" class="cpn-mitem" data-act="cpq-qr" data-id="' + c.id + '">' + t('cpq_qr') + '</button>' +
                 '</div>'
               : '') +
           '</div>' +
@@ -473,6 +579,239 @@ var Coupons = (function () {
     return h;
   }
 
+  /* ------------------------------------------- 074 — the QR and the picture */
+
+  function openQr(id) {
+    var c = find(id);
+    if (!c) return;
+    var url = pageUrl(c);
+    openModal({
+      title: t('cpq_share_title').replace('{code}', ltr(c.code)),
+      size: 'wide',
+      body: '<div class="cpq-share">' +
+        '<div class="cpq-pic" id="cpqPic"><div class="cpn-skel"></div>' +
+          '<span class="sr-only" role="status">' + t('cpq_drawing') + '</span></div>' +
+        '<div class="cpq-side">' +
+          '<div class="field"><span>' + t('cpq_link') + '</span>' +
+            '<div class="cpq-link"><bdi dir="ltr">' + esc(url) + '</bdi></div></div>' +
+          '<div class="cpq-btns">' +
+            '<button type="button" class="btn btn-primary" data-act="cpq-download" data-id="' + c.id + '">' + t('cpq_download') + '</button>' +
+            '<button type="button" class="btn" data-act="cpq-copy-link" data-id="' + c.id + '">' + t('cpq_copy_link') + '</button>' +
+            /* ?preview: the shop looking at its own page is not a sticker found. */
+            '<a class="btn" href="' + esc(url) + '?preview=1" target="_blank" rel="noopener">' + t('cpq_open') + '</a>' +
+          '</div>' +
+          '<p class="muted small">' + t('cpq_till') + '</p>' +
+          '<div class="cpq-digits"><span class="eyebrow">' + t('cpq_digits') + '</span> ' + ltr(c.scanToken || '') + '</div>' +
+        '</div></div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>'
+    });
+    if (typeof CouponCard === 'undefined') return drawFailed();
+    CouponCard.draw(cardInfo(c)).then(function (cv) {
+      var host = document.getElementById('cpqPic');
+      if (host) host.innerHTML = '<img src="' + cv.toDataURL('image/png') + '" alt="' + esc(c.code) + '">';
+    }).catch(drawFailed);
+  }
+
+  function drawFailed() {
+    var host = document.getElementById('cpqPic');
+    if (host) host.innerHTML = '<div class="cart-empty"><b>' + t('cpq_draw_fail') + '</b></div>';
+  }
+
+  function downloadPicture(c, btn) {
+    if (btn) btn.disabled = true;
+    CouponCard.blob(cardInfo(c)).then(function (b) {
+      CouponCard.download(CouponCard.fileName(c), b);
+    }).catch(function () {
+      toast(t('cpn_title'), t('cpq_draw_fail'), 'err', 5000);
+    }).then(function () { if (btn) btn.disabled = false; });
+  }
+
+  function copyText(text, said) {
+    try {
+      navigator.clipboard.writeText(text).then(function () {
+        toast(t('cpn_title'), said, 'ok', 1800);
+      }, function () { toast(t('cpn_title'), text, 'ok', 6000); });
+    } catch (e) { toast(t('cpn_title'), text, 'ok', 6000); }
+  }
+
+  /* Every sticker of a batch in one zip, drawn one at a time — thirty
+     canvases at once is how a phone runs out of memory. */
+  function zipBatch(id) {
+    if (S.zipping || typeof CouponCard === 'undefined' || typeof Export === 'undefined') return;
+    var b = S.batches.filter(function (x) { return x.id === id; })[0];
+    if (!b) return;
+    var codes = batchFacts(b).codes.slice().sort(function (x, y) { return (x.batchNo || 0) - (y.batchNo || 0); });
+    if (!codes.length) return;
+    S.zipping = true;
+    var entries = [], i = 0;
+    function say(text) {
+      document.querySelectorAll('[data-act="cpq-batch-zip"][data-id="' + id + '"]').forEach(function (el) {
+        el.disabled = !!text;
+        el.innerHTML = '<span>' + (text || t('cpq_b_zip')) + '</span>';
+      });
+    }
+    function done(ok) {
+      S.zipping = false;
+      say(null);
+      if (!ok) { toast(t('cpn_title'), t('cpq_draw_fail'), 'err', 6000); return; }
+      var slug = String(b.name || 'batch').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'batch-' + b.id;
+      var z = Export.zip(entries);
+      Export.download('og-street-' + slug + '.zip', new Blob([z], { type: 'application/zip' }));
+      toast(t('cpn_title'), t('cpq_b_zipped').replace('{n}', entries.length), 'ok', 3500);
+    }
+    function step() {
+      if (i >= codes.length) return done(true);
+      var c = codes[i];
+      say(t('cpq_b_zipping').replace('{i}', i + 1).replace('{n}', codes.length));
+      CouponCard.blob(cardInfo(c)).then(function (bl) { return bl.arrayBuffer(); }).then(function (ab) {
+        entries.push({ name: String(c.batchNo || i + 1).padStart(3, '0') + '-' + c.code + '.png', data: new Uint8Array(ab) });
+        i++;
+        step();
+      }).catch(function () { done(false); });
+    }
+    step();
+  }
+
+  /* ------------------------------------------- 074 — the street batch dialog */
+
+  function blankBatch() {
+    return { name: '', count: '20', prefix: 'OG', kind: 'percent', percent: '', amount: '',
+             minBasket: '', ends: '', err: null, field: null };
+  }
+
+  function readBatch() {
+    var D = S.bdraft;
+    if (!D) return;
+    var g = function (id) { var el = document.getElementById(id); return el ? el.value : null; };
+    var v;
+    if ((v = g('cpqName')) !== null) D.name = v;
+    if ((v = g('cpqCount')) !== null) D.count = v;
+    if ((v = g('cpqPrefix')) !== null) D.prefix = v;
+    if ((v = g('cpqPercent')) !== null) D.percent = v;
+    if ((v = g('cpqAmount')) !== null) D.amount = v;
+    if ((v = g('cpqMin')) !== null) D.minBasket = v;
+    if ((v = g('cpqEnds')) !== null) D.ends = v;
+  }
+
+  function bErr(name) {
+    var D = S.bdraft;
+    return D && D.err && D.field === name ? '<div class="cpn-err">' + esc(D.err) + '</div>' : '';
+  }
+
+  function batchBody() {
+    var D = S.bdraft;
+    return '<div class="cpn-dlg">' +
+      '<p class="muted" style="margin:0">' + t('cpq_b_sub') + '</p>' +
+      '<label class="field"><span>' + t('cpq_b_name') + '</span>' +
+        '<input class="inp" id="cpqName" dir="auto" maxlength="60" placeholder="' + esc(t('cpq_b_name_ph')) + '" value="' + esc(D.name) + '" data-change="cpq-b-live">' + bErr('name') + '</label>' +
+      '<div class="row2">' +
+        '<label class="field"><span>' + t('cpq_b_count') + '</span>' +
+          '<input class="inp num" id="cpqCount" type="text" inputmode="numeric" dir="ltr" value="' + esc(D.count) + '" data-change="cpq-b-live">' + bErr('count') + '</label>' +
+        '<label class="field"><span>' + t('cpq_b_prefix') + '</span>' +
+          '<input class="inp cpn-code-in" id="cpqPrefix" dir="ltr" maxlength="10" autocapitalize="characters" value="' + esc(D.prefix) + '" data-change="cpq-b-live">' + bErr('prefix') + '</label>' +
+      '</div>' +
+      '<div class="cpn-kinds">' +
+        '<button type="button" class="cpn-kind' + (D.kind === 'percent' ? ' on' : '') + '" data-act="cpq-b-kind" data-k="percent">' +
+          '<b>%</b><span>' + t('cpn_k_percent') + '</span></button>' +
+        '<button type="button" class="cpn-kind' + (D.kind === 'amount' ? ' on' : '') + '" data-act="cpq-b-kind" data-k="amount">' +
+          '<b>$</b><span>' + t('cpn_k_amount') + '</span></button>' +
+      '</div>' +
+      (D.kind === 'percent'
+        ? '<label class="field cb-big"><span>' + t('cpn_percent') + '</span>' +
+            '<input class="inp num cb-big-in" id="cpqPercent" type="text" inputmode="numeric" dir="ltr" placeholder="10" value="' + esc(D.percent) + '" data-change="cpq-b-live">' + bErr('percent') + '</label>'
+        : '<label class="field cb-big"><span>' + t('cpn_amount') + '</span>' +
+            '<input class="inp num cb-big-in" id="cpqAmount" type="text" inputmode="decimal" dir="ltr" placeholder="5" value="' + esc(D.amount) + '" data-change="cpq-b-live">' + bErr('amount') + '</label>') +
+      '<div class="row2">' +
+        '<label class="field"><span>' + t('cpn_min') + '</span><input class="inp num" id="cpqMin" type="text" inputmode="decimal" dir="ltr" placeholder="—" value="' + esc(D.minBasket) + '" data-change="cpq-b-live">' + bErr('minBasket') + '</label>' +
+        '<label class="field"><span>' + t('cpn_ends') + '</span><input class="inp" id="cpqEnds" type="date" value="' + esc(D.ends) + '" data-change="cpq-b-live">' + bErr('expiresAt') + '</label>' +
+      '</div>' +
+      '<div class="cb-result cpn-sentence" id="cpqSentence">' + batchSentence() + '</div>' +
+      (D.err && !D.field ? '<div class="cpn-err">' + esc(D.err) + '</div>' : '') +
+    '</div>';
+  }
+
+  function batchPrefix(D) {
+    return String(D.prefix || '').replace(/[\s-]+/g, '').toUpperCase() || 'OG';
+  }
+
+  function batchSentence() {
+    var D = S.bdraft;
+    var val = D.kind === 'percent'
+      ? (Desk.toCount(D.percent) > 0 ? Desk.toCount(D.percent) + '%' : '')
+      : (Desk.toMinor(D.amount, 'USD') > 0 ? usd(Desk.toMinor(D.amount, 'USD')) : '');
+    if (!val) return '<span class="muted">' + t('cpq_b_say_empty') + '</span>';
+    var n = Desk.toCount(D.count) || 0;
+    return t('cpq_b_say').replace('{n}', ltr(nf(n))).replace('{code}', ltr(batchPrefix(D) + '-7K2QX')).replace('{v}', ltr(val));
+  }
+
+  function openBatch() {
+    S.bdraft = blankBatch();
+    openModal({
+      title: t('cpq_b_title'),
+      body: '<div id="cpqDlg">' + batchBody() + '</div>',
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+            '<button class="btn btn-primary" data-act="cpq-b-save">' + t('cpq_b_make') + '</button>',
+      onOpen: function () {
+        if (!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) {
+          var el = document.getElementById('cpqName');
+          if (el) { try { el.focus(); } catch (e) {} }
+        }
+      },
+      onClose: function () { S.bdraft = null; }
+    });
+  }
+
+  function repaintBatch() {
+    readBatch();
+    var host = document.getElementById('cpqDlg');
+    if (!host) return;
+    var key = typeof focusKey === 'function' ? focusKey(host) : null;
+    host.innerHTML = batchBody();
+    if (typeof hintInputs === 'function') hintInputs(host);
+    if (key && typeof refocus === 'function') refocus(host, key);
+  }
+
+  function saveBatch(btn) {
+    if (!S.bdraft || S.saving) return;
+    readBatch();
+    var D = S.bdraft;
+    D.err = null; D.field = null;
+    var count = Desk.toCount(D.count);
+    var body = {
+      name: String(D.name || '').trim(), count: count, prefix: batchPrefix(D), kind: D.kind,
+      minBasket: Desk.toMinor(D.minBasket, 'USD') > 0 ? Desk.toMinor(D.minBasket, 'USD') : null,
+      expiresAt: D.ends ? new Date(D.ends + 'T23:59:59.999').toISOString() : null
+    };
+    if (D.kind === 'percent') body.percent = Desk.toCount(D.percent);
+    else body.amount = Desk.toMinor(D.amount, 'USD');
+    if (!body.name) { D.err = t('err_coupon_batch_name'); D.field = 'name'; }
+    else if (!(count >= 1 && count <= S.batchMax)) { D.err = t('err_coupon_batch_count'); D.field = 'count'; }
+    else if (!/^[A-Z0-9]{2,10}$/.test(body.prefix)) { D.err = t('err_coupon_batch_prefix'); D.field = 'prefix'; }
+    else if (D.kind === 'percent' && !(body.percent >= 1 && body.percent <= 100)) { D.err = t('err_coupon_bad_percent'); D.field = 'percent'; }
+    else if (D.kind === 'amount' && !(body.amount > 0)) { D.err = t('err_coupon_bad_amount'); D.field = 'amount'; }
+    if (D.err) { repaintBatch(); return; }
+
+    S.saving = true;
+    if (btn) btn.disabled = true;
+    API.post('/api/coupons/batch', body).then(function (r) {
+      S.saving = false;
+      S.bdraft = null;
+      closeModal();
+      toast(t('cpn_title'), t('cpq_b_made').replace('{n}', r.codes.length).replace('{name}', r.batch.name), 'ok', 3500);
+      S.batch = r.batch.id;
+      S.filter = 'all';
+      S.at = 0;
+      load();
+    }).catch(function (err) {
+      S.saving = false;
+      if (btn) btn.disabled = false;
+      if (!S.bdraft) return;
+      S.bdraft.err = (err && err.status === 0) ? t('cpn_not_saved') : API.friendly(err);
+      S.bdraft.field = err && err.detail && err.detail.field || null;
+      repaintBatch();
+    });
+  }
+
   /* ------------------------------------------------------------- actions */
 
   function closeMenu() {
@@ -551,6 +890,35 @@ var Coupons = (function () {
     };
     ACTIONS['cpn-save'] = function (el) { save(el); };
 
+    /* 074 — the QR, the picture and the street batches. */
+    ACTIONS['cpq-qr'] = function (el) {
+      if (S.menu !== null) { S.menu = null; paint(); }
+      openQr(+el.getAttribute('data-id'));
+    };
+    ACTIONS['cpq-download'] = function (el) {
+      var c = find(+el.getAttribute('data-id'));
+      if (c) downloadPicture(c, el);
+    };
+    ACTIONS['cpq-copy-link'] = function (el) {
+      var c = find(+el.getAttribute('data-id'));
+      if (c) copyText(pageUrl(c), t('cpq_link_copied'));
+    };
+    ACTIONS['cpq-batch-new'] = function () { S.menu = null; paint(); openBatch(); };
+    ACTIONS['cpq-batch-open'] = function (el) {
+      S.batch = +el.getAttribute('data-id'); S.menu = null; S.filter = 'all'; paint();
+      var v = document.getElementById('view'); if (v) v.scrollTop = 0;
+    };
+    ACTIONS['cpq-batch-back'] = function () { S.batch = null; S.menu = null; paint(); };
+    ACTIONS['cpq-batch-zip'] = function (el) { zipBatch(+el.getAttribute('data-id')); };
+    ACTIONS['cpq-b-kind'] = function (el) {
+      if (!S.bdraft) return;
+      readBatch();
+      S.bdraft.kind = el.getAttribute('data-k') === 'amount' ? 'amount' : 'percent';
+      S.bdraft.err = null; S.bdraft.field = null;
+      repaintBatch();
+    };
+    ACTIONS['cpq-b-save'] = function (el) { saveBatch(el); };
+
     if (typeof CHANGES !== 'undefined') {
       /* The sentence and the lira line only — never the box being typed in. */
       CHANGES['cpn-live'] = function (el) {
@@ -562,6 +930,12 @@ var Coupons = (function () {
           var l = document.getElementById('cpnAmountLira');
           if (l && typeof liraHint === 'function') l.innerHTML = liraHint(Desk.toMinor(el.value, 'USD'));
         }
+      };
+      CHANGES['cpq-b-live'] = function () {
+        if (!S.bdraft) return;
+        readBatch();
+        var s = document.getElementById('cpqSentence');
+        if (s) s.innerHTML = batchSentence();
       };
     }
 

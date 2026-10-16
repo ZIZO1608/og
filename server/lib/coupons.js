@@ -138,6 +138,9 @@ export function recordUse(d, { coupon, saleId, customerId = null, currency, cut,
    transaction, at the rate of the moment. Nothing is written. */
 export function check({ code, subtotal, currency, customerId = null }) {
   const d = get();
+  /* 074 — a scan: the page's link (.../c/OG-7K2QX) from the camera, or the
+     digits under the page's barcode from the gun. */
+  code = codeFromScan(code) || code;
   const cur = currency || d.prepare("SELECT value FROM config WHERE key = 'shop.base_currency'").get().value;
   const rate = currentRate('USD', cur);
   let name = null;
@@ -185,11 +188,18 @@ export function list() {
        FROM coupon_uses u JOIN sales s ON s.id = u.sale_id
       WHERE s.voided = 0 GROUP BY u.coupon_id, u.channel`
   ).all();
+  const scans = new Map(sideRows(d, 'SELECT coupon_id AS id, scans, first_at FROM coupon_scans').map((r) => [r.id, r]));
+  const inBatch = new Map(sideRows(d, 'SELECT coupon_id AS id, batch_id, n FROM coupon_batch_codes').map((r) => [r.id, r]));
   return rows.map((c) => {
     const s = stats.get(c.id) || { uses: 0, people: 0, walkins: 0, last_at: null };
+    const sc = scans.get(c.id);
+    const b = inBatch.get(c.id);
     return {
       ...publicRow(c),
       uses: s.uses, people: s.people, walkins: s.walkins, lastUsedAt: s.last_at,
+      scans: sc ? sc.scans : 0, firstScanAt: sc ? sc.first_at : null,
+      batchId: b ? b.batch_id : null, batchNo: b ? b.n : null,
+      scanToken: scanToken(c.id),
       given: given.filter((g) => g.id === c.id).map((g) => ({ currency: g.currency, amount: g.amount })),
       channels: Object.fromEntries(channels.filter((x) => x.id === c.id).map((x) => [x.channel, x.n]))
     };
@@ -233,16 +243,15 @@ export function forSale(saleId) {
 
 /* A code nobody has to invent: OG- and five characters with no 0/O or 1/I,
    so it can be read out over the phone. */
-export function suggest() {
-  const d = get();
+export function suggest(prefix = 'OG', d = get()) {
   const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 40; i++) {
     const b = randomBytes(5);
-    let s = 'OG-';
+    let s = prefix + '-';
     for (let j = 0; j < 5; j++) s += A[b[j] % A.length];
     if (!d.prepare('SELECT 1 FROM coupons WHERE code = ?').get(s)) return s;
   }
-  return 'OG-' + Date.now().toString(36).toUpperCase().slice(-6);
+  return prefix + '-' + Date.now().toString(36).toUpperCase().slice(-6);
 }
 
 function int(v) {
@@ -336,4 +345,156 @@ export function update(id, b, userId) {
       v.active !== was.active ? `coupon ${v.code} ${v.active ? 'on' : 'off'}` : `coupon ${v.code} edited`);
     return publicRow(d.prepare('SELECT * FROM coupons WHERE id = ?').get(was.id));
   });
+}
+
+/* ==========================================================================
+   074 — THE QR, THE STREET, AND THE PAGE A STRANGER OPENS
+   --------------------------------------------------------------------------
+   Every code has a QR that opens GET /c/<code> (lib/coupon-page.js): the
+   code, what it takes off, and the ways to use it. Stickers carrying these
+   QRs are left around the city on purpose, so a code can also be one of a
+   BATCH — many single-use codes made in one go, one per sticker — and the
+   page counts how often each was opened (FOUND), beside the sales that used
+   it (USED). Both side tables are local-only (migration 074 says why).
+   ========================================================================== */
+
+/* A table 074 made, read so that a database before 074 still answers. */
+function sideRows(d, sql) {
+  try { return d.prepare(sql).all(); } catch { return []; }
+}
+
+/* THE DIGITS UNDER THE PAGE'S BARCODE. A hand scanner types what it reads
+   through the keyboard (js/wedge.js reads e.key), so on the Arabic layout
+   every LETTER of OG-7K2QX arrives as something else — but digits survive
+   any layout. 97 + the coupon's id in eight digits: ten digits, a length no
+   label code (6–8), EAN (13) or invoice uses. It is not a secret — it only
+   works at a till, in a cashier's hands, under the coupon's own rules. */
+const SCAN_RE = /^97(\d{8})$/;
+export function scanToken(id) { return '97' + String(Number(id)).padStart(8, '0'); }
+
+/* Whatever a scanner handed over, as the code it means — or null. */
+export function codeFromScan(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return null;
+  const link = /\/c\/([A-Za-z0-9-]{3,24})(?:[/?#]|$)/.exec(s);
+  if (link) return normCode(link[1]);
+  const tok = SCAN_RE.exec(s.replace(/\s+/g, ''));
+  if (tok) {
+    const row = get().prepare('SELECT code FROM coupons WHERE id = ?').get(Number(tok[1]));
+    return row ? row.code : null;
+  }
+  return null;
+}
+
+/* What a code is doing right now, in the order evaluate() checks. */
+function statusOf(d, row, at = nowIso()) {
+  if (!row.active) return 'off';
+  if (row.expires_at && at > row.expires_at) return 'expired';
+  if (row.max_uses && usesOf(d, row.id) >= row.max_uses) return 'used_up';
+  if (row.starts_at && at < row.starts_at) return 'soon';
+  return 'live';
+}
+
+/* What the public page may say about a code. Never who used it, never the
+   note (it is the shop's own words about where the sticker went), never
+   what it has given away. */
+export function forPage(raw) {
+  const d = get();
+  const c = normCode(raw);
+  if (!CODE_RE.test(c)) return null;
+  const row = d.prepare('SELECT * FROM coupons WHERE code = ?').get(c);
+  if (!row) return null;
+  const uses = usesOf(d, row.id);
+  return {
+    id: row.id, code: row.code, kind: row.kind, percent: row.percent, amount: row.amount,
+    minBasket: row.min_basket, maxUses: row.max_uses, uses,
+    left: row.max_uses ? Math.max(0, row.max_uses - uses) : null,
+    oncePerCustomer: !!row.once_per_customer,
+    startsAt: row.starts_at, expiresAt: row.expires_at,
+    status: statusOf(d, row), scanToken: scanToken(row.id)
+  };
+}
+
+/* One more opening of the page. Not a transaction (tx fires the mirror's
+   commit hook, and this table is not mirrored) and never a failure: a
+   count that could not be written must not cost somebody the page. */
+export function noteScan(id) {
+  try {
+    const at = nowIso();
+    get().prepare(
+      `INSERT INTO coupon_scans (coupon_id, scans, first_at, last_at) VALUES (?, 1, ?, ?)
+       ON CONFLICT(coupon_id) DO UPDATE SET scans = scans + 1, last_at = excluded.last_at`
+    ).run(Number(id), at, at);
+  } catch { /* a database before 074 */ }
+}
+
+export function batches() {
+  const d = get();
+  return sideRows(d,
+    `SELECT b.id, b.name, b.created_at, COUNT(bc.coupon_id) AS count
+       FROM coupon_batches b LEFT JOIN coupon_batch_codes bc ON bc.batch_id = b.id
+      GROUP BY b.id ORDER BY b.created_at DESC, b.id DESC`
+  ).map((b) => ({ id: b.id, name: b.name, createdAt: b.created_at, count: b.count }));
+}
+
+export const BATCH_MAX = 200;
+
+/* Many single-use codes in one go, one per sticker. Every code is an
+   ordinary coupon (max_uses 1) and goes to the mirror like any other, so
+   the website knows each one; the batch is only how the page groups them.
+   One transaction: all of them or none. */
+export function createBatch(b, userId) {
+  b = b || {};
+  const name = String(b.name || '').trim().slice(0, 60);
+  if (!name) throw fail('Give the batch a name, like "Street hunt · Citadel".', 'coupon_batch_name', 400, { field: 'name' });
+  const count = int(b.count);
+  if (!(count >= 1 && count <= BATCH_MAX)) {
+    throw fail(`How many stickers — 1 to ${BATCH_MAX}.`, 'coupon_batch_count', 400, { field: 'count', max: BATCH_MAX });
+  }
+  const prefix = normCode(b.prefix || 'OG').replace(/-+$/, '') || 'OG';
+  if (!/^[A-Z0-9]{2,10}$/.test(prefix)) {
+    throw fail('The start of the code is 2 to 10 letters or digits.', 'coupon_batch_prefix', 400, { field: 'prefix' });
+  }
+  /* Every rule an ordinary code meets, with the use fixed at one. */
+  const v = clean({ ...b, code: prefix + '-XXXXX', maxUses: 1, oncePerCustomer: false, note: null });
+
+  return tx((d) => {
+    const at = nowIso();
+    const br = d.prepare('INSERT INTO coupon_batches (name, created_at, created_by) VALUES (?, ?, ?)')
+      .run(name, at, userId ?? null);
+    const batchId = Number(br.lastInsertRowid);
+    const ins = d.prepare(
+      `INSERT INTO coupons (code, note, kind, percent, amount, currency, min_basket, max_uses,
+                            once_per_customer, starts_at, expires_at, active, created_at, created_by, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    const link = d.prepare('INSERT INTO coupon_batch_codes (coupon_id, batch_id, n) VALUES (?, ?, ?)');
+    const made = [];
+    for (let n = 1; n <= count; n++) {
+      const code = suggest(prefix, d);
+      const note = `${name} #${n}`.slice(0, 80);
+      const r = ins.run(code, note, v.kind, v.percent, v.amount, v.currency, v.min_basket, 1,
+                        0, v.starts_at, v.expires_at, 1, at, userId ?? null, at);
+      const id = Number(r.lastInsertRowid);
+      logChange('coupons', id, 'insert', userId, `coupon ${code} (batch ${name})`);
+      link.run(id, batchId, n);
+      made.push(code);
+    }
+    return { batch: { id: batchId, name, createdAt: at, count }, codes: made };
+  });
+}
+
+/* Where a printed QR sends somebody, and where "Shop now" goes. A printed
+   code must never carry a Wi-Fi address — it outlives every network. */
+function cfg(d, key) {
+  try { const r = d.prepare('SELECT value FROM config WHERE key = ?').get(key); return r ? String(r.value || '').trim() : ''; }
+  catch { return ''; }
+}
+export function links() {
+  const d = get();
+  return {
+    pageBase: (cfg(d, 'shop.public_url') || 'https://shop.ogsports1.com').replace(/\/+$/, ''),
+    siteUrl: (cfg(d, 'web.site_url') || 'https://ogsports1.com').replace(/\/+$/, ''),
+    shopName: cfg(d, 'shop.name') || 'OG Sports',
+    phone: cfg(d, 'shop.phone')
+  };
 }

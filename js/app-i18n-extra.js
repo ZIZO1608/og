@@ -4799,6 +4799,95 @@ var COUPONS_AR = {
 Object.keys(COUPONS_EN).forEach(function (k) { I18N.en[k] = COUPONS_EN[k]; });
 Object.keys(COUPONS_AR).forEach(function (k) { I18N.ar[k] = COUPONS_AR[k]; });
 
+
+/* 074 — a coupon's QR, its picture, its public page (GET /c/<code>), and
+   the street batches: many single-use codes, one per sticker
+   (js/coupons.js, js/couponcard.js, server/lib/coupons.js). */
+var COUPONQR_EN = {
+  cpq_qr: 'QR & picture',
+  cpq_qr_short: 'QR',
+  cpq_scanned: 'Scanned {n}× · first {d}',
+  cpq_not_scanned: 'Not scanned yet',
+  cpq_share_title: 'Share {code}',
+  cpq_link: 'The QR opens',
+  cpq_download: 'Download picture',
+  cpq_copy_link: 'Copy link',
+  cpq_open: 'Open the page',
+  cpq_till: 'At the till: scan the barcode on that page, or type the code.',
+  cpq_drawing: 'Drawing the picture…',
+  cpq_draw_fail: 'The picture could not be drawn on this device.',
+  cpq_link_copied: 'Link copied',
+  cpq_digits: 'Barcode digits',
+  cpq_batch_new: 'Street batch',
+  cpq_b_title: 'Codes for the street',
+  cpq_b_sub: 'Many codes that each work ONCE — one per sticker. Whoever finds one first gets the discount.',
+  cpq_b_name: 'Name of the batch',
+  cpq_b_name_ph: 'Street hunt · Citadel',
+  cpq_b_count: 'How many stickers',
+  cpq_b_prefix: 'Codes start with',
+  cpq_b_say: '{n} codes like {code}, each {v} off, each works once.',
+  cpq_b_say_empty: 'Say how much each one takes off.',
+  cpq_b_make: 'Make the codes',
+  cpq_b_made: '{n} codes made for {name}',
+  cpq_b_stickers: '{n} stickers',
+  cpq_b_found: '{n} found',
+  cpq_b_used: '{n} used',
+  cpq_b_open: 'See the codes',
+  cpq_b_zip: 'Download all pictures',
+  cpq_b_zipping: 'Drawing {i} of {n}…',
+  cpq_b_zipped: '{n} pictures in one zip',
+  cpq_b_tag: 'Street',
+  cpq_back: 'All codes',
+  cpq_b_none_live: 'every sticker found and used',
+  cpq_scan_go_pos: 'A coupon was scanned — open the till to put it on a sale.',
+  err_coupon_batch_name: 'Give the batch a name.',
+  err_coupon_batch_count: 'How many stickers — 1 to 200.',
+  err_coupon_batch_prefix: 'The start of the code is 2 to 10 letters or digits.'
+};
+var COUPONQR_AR = {
+  cpq_qr: 'QR والصورة',
+  cpq_qr_short: 'QR',
+  cpq_scanned: 'انمسح {n} مرة · أول مرة {d}',
+  cpq_not_scanned: 'لسا ما حدا مسحو',
+  cpq_share_title: 'شارك {code}',
+  cpq_link: 'الـQR بيفتح',
+  cpq_download: 'نزّل الصورة',
+  cpq_copy_link: 'انسخ الرابط',
+  cpq_open: 'افتح الصفحة',
+  cpq_till: 'عالكاشير: امسح الباركود يلي بهالصفحة، أو اكتب الكود.',
+  cpq_drawing: 'عم نرسم الصورة…',
+  cpq_draw_fail: 'ما قدرنا نرسم الصورة عهالجهاز.',
+  cpq_link_copied: 'انتسخ الرابط',
+  cpq_digits: 'أرقام الباركود',
+  cpq_batch_new: 'دفعة للشارع',
+  cpq_b_title: 'أكواد للشارع',
+  cpq_b_sub: 'كذا كود، كل واحد بينفع مرة وحدة بس — واحد لكل ستيكر. يلي بيلاقيه أول بياخد الخصم.',
+  cpq_b_name: 'اسم الدفعة',
+  cpq_b_name_ph: 'صيد الشارع · القلعة',
+  cpq_b_count: 'كم ستيكر',
+  cpq_b_prefix: 'الكود بيبلش بـ',
+  cpq_b_say: '{n} كود متل {code}، كل واحد خصم {v}، وكل واحد بينفع مرة وحدة.',
+  cpq_b_say_empty: 'حط قديش بينزّل كل كود.',
+  cpq_b_make: 'اعمل الأكواد',
+  cpq_b_made: 'انعمل {n} كود لـ {name}',
+  cpq_b_stickers: '{n} ستيكر',
+  cpq_b_found: '{n} انلقى',
+  cpq_b_used: '{n} انستعمل',
+  cpq_b_open: 'شوف الأكواد',
+  cpq_b_zip: 'نزّل كل الصور',
+  cpq_b_zipping: 'عم نرسم {i} من {n}…',
+  cpq_b_zipped: '{n} صورة بملف zip واحد',
+  cpq_b_tag: 'شارع',
+  cpq_back: 'كل الأكواد',
+  cpq_b_none_live: 'كل الستيكرات انلقت وانستعملت',
+  cpq_scan_go_pos: 'انمسح كوبون — افتح الكاشير لتحطو عالبيعة.',
+  err_coupon_batch_name: 'حط اسم للدفعة.',
+  err_coupon_batch_count: 'كم ستيكر — من 1 لـ 200.',
+  err_coupon_batch_prefix: 'بداية الكود من 2 لـ 10 حروف أو أرقام.'
+};
+Object.keys(COUPONQR_EN).forEach(function (k) { I18N.en[k] = COUPONQR_EN[k]; });
+Object.keys(COUPONQR_AR).forEach(function (k) { I18N.ar[k] = COUPONQR_AR[k]; });
+
 /* ---- 070 (contract v1.5): a product's description and "goes well with",
    and telling the website when the catalogue changed (29 Sep 2026) ------- */
 var WEBEXTRAS_EN = {

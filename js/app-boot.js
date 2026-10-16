@@ -219,6 +219,20 @@ function handleScan(code) {
                         function (v) { if (v) POS.add(v); });
       return;
     }
+    /* 074 — a coupon: the sticker's QR, or the barcode on the coupon's
+       page. A code-shaped scan nothing else knows (OG-7K2QX typed by the
+       gun) is TRIED as one, and goes on to the sheet if it is not. */
+    if (POS.isCouponScan && POS.isCouponScan(c)) { POS.tryCoupon(c); return; }
+    if (POS.tryCoupon && /^[A-Za-z0-9][A-Za-z0-9-]{2,23}$/.test(c) && /[A-Za-z]/.test(c) &&
+        !/^CU-\d+$/i.test(c) && !DB.sale(c) && !DB.job(c)) {
+      POS.tryCoupon(c, true, function () { closeModal(); openScanResult(code); });
+      return;
+    }
+  }
+  /* A coupon scanned anywhere else is not a product: say where it goes. */
+  if (typeof POS !== 'undefined' && POS.isCouponScan && POS.isCouponScan(code)) {
+    toast(t('coupon'), t('cpq_scan_go_pos'), 'warn', 4000);
+    return;
   }
   closeModal();
   openScanResult(code);
