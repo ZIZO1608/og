@@ -196,19 +196,7 @@ var Cashbook = (function () {
         t('cb_unavailable_sub') + '</div></div>';
     }
     var can = allow('money.move');
-    var h = '';
-
-    /* The whole shop, one figure per currency. */
-    var curs = currencies();
-    h += '<div class="grid stat-row mb cb-totals" style="grid-template-columns:repeat(' + curs.length + ',minmax(0,1fr))">';
-    curs.forEach(function (cur) {
-      var v = (c.totals || {})[cur] || 0;
-      var where = c.places.filter(function (p) { return (p.balances || {})[cur]; }).length;
-      h += '<div class="stat"><span class="eyebrow">' + t('cb_all_money') + ' · ' + esc(cur) + '</span>' +
-        '<div class="val' + (v < 0 ? ' warn' : '') + '">' + signedPlain(v, cur) + '</div>' +
-        '<div class="foot">' + t('cb_in_places').replace('{n}', nf(where)) + '</div></div>';
-    });
-    h += '</div>';
+    var h = heroCard(c);
 
     if (!c.started) {
       h += '<div class="card mb cb-start"><div class="card-body">' +
@@ -236,41 +224,58 @@ var Cashbook = (function () {
        the job home first, every morning; this screen answers the same
        question and should be the same shape. One grid, one size, one lime
        primary, each with the icon its job carries there. */
-    var tiles = [];
+    /* THE OWNER'S POLISH (16 Oct 2026): THREE BIG JOBS, THE REST SMALL.
+       Seven tiles of one size was seven equal answers to "what now?". The
+       three the screen is opened for most — move money, write an expense,
+       close the day — stay tiles; the rest are one row of quiet buttons
+       under them. Same actions, same gates, same handlers: nothing went. */
+    var all = [];
     if (can) {
-      tiles.push({ act: 'move', key: 'cb_move', primary: true,
+      all.push({ act: 'move', key: 'cb_move', big: 1,
         icon: 'M4 8h12M12 4l4 4-4 4M20 16H8M12 12l-4 4 4 4' });
-      tiles.push({ act: 'exchange', key: 'cb_exchange',
-        icon: 'M7 8h11l-3-3M17 16H6l3 3' });
-      tiles.push({ act: 'owner', key: 'cb_owner_btn',
-        icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21v-1a7 7 0 0 1 14 0v1' });
     }
     if (allow('money.write')) {
-      tiles.push({ act: 'go-expense', key: 'cb_go_expense', icon: 'M12 5v14M5 12h14' });
-    }
-    if (allow('money.read')) {
-      tiles.push({ act: 'go-suppliers', key: 'cb_go_suppliers',
-        icon: 'M3 7h18v4H3zM5 11v9h14v-9M9 15h6' });
-    }
-    if (allow('staff.read')) {
-      tiles.push({ act: 'go-salaries', key: 'cb_go_salaries',
-        icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' });
+      all.push({ act: 'go-expense', key: 'cb_go_expense', big: 2, icon: 'M12 5v14M5 12h14' });
     }
     if (allow('money.count') || allow('money.move')) {
-      tiles.push({ act: 'go-close', key: 'dc_tab', icon: 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3' });
+      all.push({ act: 'go-close', key: 'dc_tab', big: 3, icon: 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3' });
+    }
+    if (can) {
+      all.push({ act: 'exchange', key: 'cb_exchange', icon: 'M7 8h11l-3-3M17 16H6l3 3' });
+      all.push({ act: 'owner', key: 'cb_owner_btn',
+        icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21v-1a7 7 0 0 1 14 0v1' });
+    }
+    if (allow('money.read')) {
+      all.push({ act: 'go-suppliers', key: 'cb_go_suppliers', icon: 'M3 7h18v4H3zM5 11v9h14v-9M9 15h6' });
+    }
+    if (allow('staff.read')) {
+      all.push({ act: 'go-salaries', key: 'cb_go_salaries',
+        icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' });
     }
     if (c.started && can) {
-      tiles.push({ act: 'start', key: 'cb_start_more', icon: 'M12 5v14M5 12h14' });
+      all.push({ act: 'start', key: 'cb_start_more', icon: 'M12 5v14M5 12h14' });
     }
-    if (tiles.length) {
-      h += '<div class="hm-grid cb-jobs" data-n="' + Math.min(tiles.length, 6) + '">' +
-        tiles.map(function (j) {
-          return '<button class="hm-job' + (j.primary ? ' is-primary' : '') +
-            '" type="button" data-cb="' + j.act + '">' +
-            '<span class="hm-ico"><svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter">' +
-              '<path d="' + j.icon + '"/></svg></span>' +
+    var svgOf = function (d) {
+      return '<svg viewBox="0 0 24 24" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d="' + d + '"/></svg>';
+    };
+    var big = all.filter(function (j) { return j.big; });
+    var small = all.filter(function (j) { return !j.big; });
+    /* An account with only small jobs gets them as tiles — one row of quiet
+       buttons with nothing above it reads as a footnote. */
+    if (!big.length) { big = small.slice(0, 3); small = small.slice(3); }
+    if (big.length) {
+      h += '<div class="hm-grid cb-jobs" data-n="' + big.length + '">' +
+        big.map(function (j, i) {
+          return '<button class="hm-job' + (i === 0 ? ' is-primary' : '') + '" type="button" data-cb="' + j.act + '">' +
+            '<span class="hm-ico">' + svgOf(j.icon) + '</span>' +
             '<span class="hm-t">' + t(j.key) + '</span></button>';
         }).join('') + '</div>';
+    }
+    if (small.length) {
+      h += '<div class="cb-minor">' + small.map(function (j) {
+        return '<button class="cb-minor-b" type="button" data-cb="' + j.act + '">' + svgOf(j.icon) +
+          '<span>' + t(j.key) + '</span></button>';
+      }).join('') + '</div>';
     }
 
     h += todayCard();
@@ -281,21 +286,131 @@ var Cashbook = (function () {
       { key: 'cb_g_drivers', kinds: ['driver'] },
       { key: 'cb_g_other', kinds: ['unknown'] }
     ];
+    /* AN EMPTY WALLET IS ONE CHIP, NOT A CARD (16 Oct 2026). Nine wallets
+       at 0 SYP, each a full card with Check and Move, made the phone's page
+       4,300px of nothing. A place holding money, the drawer and the owner
+       stay cards; the rest wait on one line and open with one press
+       (U.empty, module state — the screen repaints on every save). The
+       place just written to always shows as a card, so the one that moved
+       is never hidden. */
+    var empties = [];
+    var holds = function (p) {
+      return Object.keys(p.balances || {}).some(function (k) { return p.balances[k] !== 0; });
+    };
     groups.forEach(function (g) {
       var list = c.places.filter(function (p) {
         if (g.kinds.indexOf(p.kind) < 0) return false;
         if (p.active !== false) return true;
         /* Switched off and holding nothing is nothing to look at. */
-        return Object.keys(p.balances || {}).some(function (k) { return p.balances[k] !== 0; });
+        return holds(p);
       });
+      if (!U.empty) {
+        list = list.filter(function (p) {
+          var keep = holds(p) || p.kind === 'drawer' || p.kind === 'owner' || p.id === flashed;
+          if (!keep) empties.push(p);
+          return keep;
+        });
+      }
       if (!list.length) return;
       h += '<div class="cb-group"><div class="set-sec">' + t(g.key) + '</div><div class="cb-grid">' +
         list.map(function (p) { return placeCard(p, can, c.started); }).join('') + '</div></div>';
     });
+    if (empties.length) {
+      h += '<div class="cb-empties"><div class="cb-empties-h"><span>' +
+          t('cb_empty_n').replace('{n}', '<bdi>' + nf(empties.length) + '</bdi>') + '</span>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-cb="empties">' + t('cb_empty_show') + '</button></div>' +
+        '<div class="cb-empties-l">' + empties.map(function (p) {
+          return can && p.kind !== 'driver' && p.kind !== 'unknown'
+            ? '<button type="button" class="cb-echip" data-cb="check" data-place="' + esc(p.id) + '" title="' +
+                esc(t('cb_check')) + '">' + icon(p.kind) + '<span>' + esc(placeName(p.id)) + '</span></button>'
+            : '<span class="cb-echip">' + icon(p.kind) + '<span>' + esc(placeName(p.id)) + '</span></span>';
+        }).join('') + '</div></div>';
+    } else if (U.empty) {
+      h += '<div class="cb-empties-off"><button type="button" class="btn btn-ghost btn-sm" data-cb="empties">' +
+        t('cb_empty_hide') + '</button></div>';
+    }
 
     h += '<p class="muted small mt">' + t('cb_never_added') + '</p>';
     return h;
   }
+
+  /* ------------------------------------------------------------ THE HERO
+     One card for "how much, and where". The shop's money in each currency,
+     big and never added together; under the shop's own currency a bar cut
+     by where it sits (drawer, owner, each wallet) with the share as words;
+     and what came in and went out today. All of it from the snapshot the
+     tab already holds — nothing new is asked of the server. */
+  var BAR_COLOURS = ['#C6FF00', '#FAFAFA', '#38BDF8', '#A78BFA', '#FB923C', '#4ADE80', '#F472B6', '#FACC15'];
+
+  function heroCard(c) {
+    var curs = currencies();
+    var b = curs[0];
+    var tot = c.totals || {};
+    var figs = curs.map(function (cur) {
+      var v = tot[cur] || 0;
+      var where = c.places.filter(function (p) { return (p.balances || {})[cur]; }).length;
+      return '<div class="cb-hero-fig' + (cur === b ? ' is-base' : '') + '">' +
+        '<span class="cb-hero-k">' + t('cb_all_money') + ' · ' + esc(cur) + '</span>' +
+        '<b class="' + (v < 0 ? 'warn' : '') + '">' + signedPlain(v, cur) + '</b>' +
+        '<small class="muted">' + t('cb_in_places').replace('{n}', nf(where)) + '</small></div>';
+    }).join('');
+
+    /* The bar shows only what is there: a place below zero cannot be a share
+       of anything, and is said on its own card instead. */
+    var parts = c.places
+      .map(function (p) { return { p: p, v: (p.balances || {})[b] || 0 }; })
+      .filter(function (x) { return x.v > 0; })
+      .sort(function (x, y) { return y.v - x.v; });
+    var sum = parts.reduce(function (s, x) { return s + x.v; }, 0);
+    var bar = '';
+    if (sum > 0) {
+      var top = parts.slice(0, 6);
+      var rest = parts.slice(6).reduce(function (s, x) { return s + x.v; }, 0);
+      var segs = top.map(function (x, i) {
+        return { name: placeName(x.p.id), v: x.v, col: BAR_COLOURS[i % BAR_COLOURS.length] };
+      });
+      if (rest > 0) segs.push({ name: t('cb_hero_rest'), v: rest, col: '#52525B' });
+      bar = '<div class="cb-hero-bar" role="img" aria-label="' + esc(t('cb_hero_where').replace('{c}', b)) + '">' +
+          segs.map(function (s) {
+            return '<i style="flex-grow:' + s.v + ';background:' + s.col + '"></i>';
+          }).join('') + '</div>' +
+        '<ul class="cb-hero-legend">' + segs.map(function (s) {
+          var pct = Math.round(s.v * 100 / sum);
+          return '<li><span class="cb-hero-dot" style="background:' + s.col + '"></span>' +
+            '<span class="cb-hero-n">' + esc(s.name) + '</span>' +
+            '<b>' + signedPlain(s.v, b) + '</b>' +
+            '<small class="muted"><bdi dir="ltr">' + (pct < 1 ? '<1' : pct) + '%</bdi></small></li>';
+        }).join('') + '</ul>';
+    }
+
+    /* Today, in and out, per currency — the money that MOVED, not counts. */
+    var rows = todayRows() || [];
+    var flow = {};
+    rows.forEach(function (m) {
+      /* A move between two of the shop's own places is not money in or out. */
+      if (m.kind === 'transfer' || m.kind === 'exchange') return;
+      var f = flow[m.currency] || (flow[m.currency] = { in: 0, out: 0 });
+      if (m.amount > 0) f.in += m.amount; else f.out -= m.amount;
+    });
+    var flowCurs = curs.filter(function (cur) { return flow[cur] && (flow[cur].in || flow[cur].out); });
+    var today = flowCurs.length
+      ? '<div class="cb-hero-today"><span class="cb-hero-k">' + t('cb_today') + '</span>' +
+          flowCurs.map(function (cur) {
+            var f = flow[cur];
+            return '<span class="cb-hero-io">' +
+              (f.in ? '<span class="up">' + signed(f.in, cur) + '</span>' : '') +
+              (f.out ? '<span class="down">' + signed(-f.out, cur) + '</span>' : '') + '</span>';
+          }).join('') + '</div>'
+      : '';
+
+    return '<div class="card cb-hero mb">' +
+      '<div class="cb-hero-figs" data-n="' + curs.length + '">' + figs + '</div>' +
+      (bar ? '<div class="cb-hero-where"><span class="cb-hero-k">' + t('cb_hero_where').replace('{c}', '<bdi dir="ltr">' + esc(b) + '</bdi>') + '</span>' + bar + '</div>' : '') +
+      today + '</div>';
+  }
+
+  /* What the Now tab keeps across its own repaints. */
+  var U = { empty: false };
 
   function signedPlain(v, cur) {
     return '<bdi dir="ltr">' + (v < 0 ? '−' : '') + esc(text(Math.abs(v), cur)) + '</bdi>';
@@ -1350,6 +1465,17 @@ var Cashbook = (function () {
         items.push({ place: inp.getAttribute('data-place'), currency: c, counted: toMinor(raw, c) });
       });
       runChecks(items, el.getAttribute('data-op'), t('cb_start_title'));
+    },
+
+    /* The empty places: one line, or every card (16 Oct 2026). The page
+       stays where the person was looking — opening a list under the hand
+       must not throw them back to the top. */
+    empties: function () {
+      U.empty = !U.empty;
+      var v = document.getElementById('view');
+      var y = v ? v.scrollTop : 0;
+      render();
+      if (v) v.scrollTop = y;
     },
 
     /* From anywhere — the cashier's home — straight to the count. */

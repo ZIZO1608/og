@@ -4457,6 +4457,38 @@ migration `074_coupon_qr.sql` (**local-only, no cloud file**), contract **v1.7**
   scan on the dashboard landing on the till, Arabic at 390); the earlier `qr`, `qr-ui`, `api` (068),
   `npm test`, `p0-namespaces` and `fix06/idle` re-run green.
 
+## The Money screen, polished and simplified (17 Oct 2026)
+
+The owner asked for Money to be simpler to work with, and to look good. **No logic, route,
+permission, dialog or handler changed** — only what the page shows first. `js/money.js`,
+`js/cashbook.js` (`heroCard`, `U.empty`, ACT `empties`), the `MONEY, POLISHED` block at the end of
+`css/og-skin.css`.
+
+- **One tab bar** (`.mn-seg` / `.mn-pill`): the six jobs, a hairline, then the three records
+  (`book`, `debt`, `shift`) as quieter pills (`.is-rec`). The "Records" fold and `S.more` are gone.
+  One row at 1280; on a phone it slides sideways and every pill is 44px.
+- **The hero** (`.cb-hero`): the shop's money per currency (base currency big and lime, never
+  added together), a bar of where the base currency sits (positive balances only, top six then
+  "the rest", colours in `BAR_COLOURS`, shares as words), and today's in/out per currency from
+  the Today rows (a transfer or an exchange between the shop's own places is neither).
+- **Three big jobs** — Move money (lime), Add an expense, Close the day; everything else
+  (change currency, owner takes/puts in, pay a supplier, pay wages, more starting balances) is
+  a row of small `.cb-minor-b` buttons under them. Same `data-cb` actions, same gates. An account
+  with none of the three gets its first three as tiles. On a phone the three sit in one row (the
+  odd-last-tile stretch rule is undone for `.cb-jobs[data-n="3"]`).
+- **A place holding nothing is a chip, not a card** (`.cb-empties`): the drawer, the owner, any
+  place with money and the place just written to stay cards; the rest wait on one line, a chip
+  opens that place's Check, and "Show them" draws every card without moving the scroll. The phone
+  page went from about 4,300px to 2,250px.
+- Found on the way: two coupon rules tracked Arabic (`.cpn-stub span`, `.cpq-digits`) — zeroed /
+  moved onto the digits.
+- **Verified**: `_nightshift/money-polish/press.mjs` (34: every pill, the three jobs, the small
+  ones, the empty places, Arabic at 390, the cashier); `fix05/p4-money` 49, `ns03/p2-money` 39,
+  `ns02/p4-money` 22 (updated to the one bar), `ns03/p2-money-phone` 34, `ns03/p2-cashier` 22,
+  `fix05/p5-phone` 122, `fix05/p7-style` 767, `fix06/idle` (money 0), `p0-namespaces` 6.
+  `ns03/p2-money` and `fix05/p4-money` now read `DBFILE` when it is set (they were pinned to the
+  sandbox's file, so against a scratch copy they read nothing).
+
 ## The website hears an order was accepted, and the customer is notified (075 — 16 Oct 2026)
 
 The owner: pressing Accept on a website order must turn the customer's order **Confirmed** on the

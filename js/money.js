@@ -22,7 +22,7 @@
 
 var Money = (function () {
 
-  var S = { tab: 'now', more: false };
+  var S = { tab: 'now' };
 
   /* ------------------------------------------------------------- shell */
 
@@ -99,27 +99,23 @@ var Money = (function () {
 
     var h = '<div class="page-head"><div><h1>' + t('mn_title') + '</h1>' +
       '<div class="sub">' + t(reads ? 'mn_sub' : counts ? 'dc_sub' : staff ? 'py_sub' : 'pl_sub') + '</div></div>' +
-      (reads || staff || profit ? '<div class="head-actions">' + exportButtons() + '</div>' : '') + '</div>';
+      (reads || staff || profit ? '<div class="head-actions mn-exp">' + exportButtons() + '</div>' : '') + '</div>';
 
+    /* ONE BAR (the owner's polish, 16 Oct 2026). Six tabs and a "Records"
+       fold under them were two rows of navigation, and on a phone the six
+       wrapped onto two lines each. Now one pill row that slides sideways on
+       a phone: the jobs, a hairline, then the records in a quieter weight —
+       the same nine places, one press each, nothing folded away. */
     if (all.length > 1) {
-      h += '<div class="tabs">' + main.map(function (x) {
-        return '<button class="tab ' + (S.tab === x[0] ? 'on' : '') + '" data-mn="tab" data-t="' + x[0] + '">' +
-          x[1] + '</button>';
-      }).join('') + '</div>';
-
-      if (more.length) {
-        var openMore = S.more || more.some(function (x) { return x[0] === S.tab; });
-        h += '<div class="wh-more mb' + (openMore ? ' open' : '') + '">' +
-          '<button class="wh-more-h" data-mn="more">' + t('mn_records') +
-            '<span class="wh-more-x">' + (openMore ? '−' : '+') + '</span></button>' +
-          (openMore
-            ? '<div class="wh-more-b">' + more.map(function (x) {
-                return '<button class="chip ' + (S.tab === x[0] ? 'on' : '') +
-                  '" data-mn="tab" data-t="' + x[0] + '">' + x[1] + '</button>';
-              }).join('') + '</div>'
-            : '') +
-        '</div>';
-      }
+      var pill = function (x, rec) {
+        return '<button type="button" class="mn-pill' + (rec ? ' is-rec' : '') + (S.tab === x[0] ? ' on' : '') +
+          '" data-mn="tab" data-t="' + x[0] + '" aria-pressed="' + (S.tab === x[0]) + '">' + x[1] + '</button>';
+      };
+      h += '<nav class="mn-seg" aria-label="' + esc(t('mn_title')) + '"><div class="mn-seg-in">' +
+        main.map(function (x) { return pill(x, false); }).join('') +
+        (more.length ? '<span class="mn-seg-sep" aria-hidden="true"></span>' +
+          more.map(function (x) { return pill(x, true); }).join('') : '') +
+        '</div></nav>';
     }
 
     return h + (S.tab === 'now' ? Cashbook.nowTab()
@@ -423,12 +419,6 @@ var Money = (function () {
 
   var ACT = {
     tab: function (el) { S.tab = el.getAttribute('data-t'); render(); },
-
-    /* The "Records" fold (ns02). Module state rather than localStorage: the
-       Money screen's tab is not remembered between sessions either, and a
-       fold that opens itself because its own tab is showing has to be able
-       to shut again without fighting a stored value. */
-    more: function () { S.more = !S.more; render(); },
 
     'open-shift': function () {
       openModal({
