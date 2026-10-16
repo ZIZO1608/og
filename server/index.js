@@ -1521,6 +1521,8 @@ router.add('GET /api/customers/:id/history', requirePerm('customer.read', (ctx) 
     redemptions: Loyalty.stampsOn(Loyalty.rules().mode) ? Loyalty.redemptionsFor(c.id) : [],
     /* What they asked for and we did not have. */
     wants: Wants.forCustomer(c.id),
+    /* 074 — every coupon code they used, in the shop or on the website. */
+    coupons: Customers.couponsFor(c.id),
     /* Their open debts, each with what it was worth THEN and what it is worth
        NOW. customer.read, not money.read: a cashier who may take the payment
        has to be able to see what is owed, and Stage A already decided the
@@ -2112,6 +2114,22 @@ router.add('GET /api/coupons', requirePerm('coupon.write', (ctx) => {
   const l = Coupons.links();
   sendOk(ctx.res, { coupons: Coupons.list(), suggest: Coupons.suggest(), batches: Coupons.batches(),
     pageBase: l.pageBase, siteUrl: l.siteUrl, batchMax: Coupons.BATCH_MAX });
+}));
+
+/* 074 — switch off, switch on or delete many codes at once. A used code is
+   never deleted; it comes back in `kept` with the reason. */
+router.add('POST /api/coupons/bulk', requirePerm('coupon.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, Coupons.bulk(b, ctx.user.id)); }
+  catch (e) { couponFail(ctx.res, e); }
+}));
+
+/* 074 — the latest uses, for the owner's live toast: which code, who, where.
+   `ids` (from the live event) or `after` (a use id). */
+router.add('GET /api/coupon-uses/recent', requirePerm('coupon.write', (ctx) => {
+  const q = ctx.url.searchParams;
+  const ids = String(q.get('ids') || '').split(',').map(Number).filter((n) => n > 0).slice(0, 50);
+  sendOk(ctx.res, { uses: Coupons.recentUses({ ids, after: q.get('after'), limit: q.get('limit') }) });
 }));
 
 /* 074 — many single-use codes in one go, one per street sticker. */
@@ -3115,6 +3133,24 @@ function bump() {
   });
 }
 
+/* 074 — A COUPON WAS JUST USED, in the shop, on a phone order, or on the
+   website (an accepted website order goes through the desk's Save). The use
+   is written inside the sale's transaction; once it commits, the ids go out
+   on the live line and the owner's screens ask who and where through a
+   gated route (GET /api/coupon-uses/recent, coupon.write). Only ids travel
+   here, never a customer's name. A sale that rolled back left an id that
+   is not in the table, and it is dropped. */
+DB.onCommit(() => {
+  const ids = Coupons.takeJustUsed();
+  if (!ids.length) return;
+  let real = [];
+  try {
+    real = DB.get().prepare(`SELECT id FROM coupon_uses WHERE id IN (${ids.map(() => '?').join(',')})`)
+      .all(...ids).map((r) => r.id);
+  } catch { real = []; }
+  if (real.length) Live.notify('og', { couponUsed: real });
+});
+
 /* The live channel. One long GET per open tab; lib/live.js writes a one-line
    "change" event whenever bump() runs, and the browser refetches through the
    ordinary gated routes. Which side a tab is on comes from the account.
@@ -3131,7 +3167,7 @@ function bump() {
    stock away in the back room holds neither a print nor a delivery
    permission. The event carries a flag and nothing else — the map refetches
    through GET /api/sections, which is stock.read already. */
-router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write', 'delivery.read', 'delivery.desk', 'delivery.web', 'stock.read'], (ctx) => {
+router.add('GET /api/live', requirePerm(['print.read', 'partner.jobs', 'config.write', 'delivery.read', 'delivery.desk', 'delivery.web', 'stock.read', 'coupon.write'], (ctx) => {
   /* The name rides along so the other company's screen can say who is
      here. Yalla Wear is two people and the shop wants the one who is
      actually reading, not the company. */

@@ -505,6 +505,14 @@ var Pulse = (function () {
       }
       /* A website order arrived, or somebody accepted or rejected one
          (server/lib/weborders.js): the screen asks again, and the bell. */
+      /* 074 — a coupon was just used, in the shop or on the website. Only
+         ids travel on the line; the coupons module asks who and where
+         through its gated route and says so, and the bell asks again. */
+      if (d.couponUsed) {
+        if (typeof Coupons !== 'undefined' && Coupons.used) Coupons.used(d.couponUsed);
+        if (canAsk()) tick();
+        return;
+      }
       if (d.web) {
         if (typeof WebOrders !== 'undefined' && OG.view === 'weborders' && !modalOpen()) WebOrders.load();
         if (canAsk()) tick();
@@ -538,7 +546,7 @@ var Pulse = (function () {
   }
 
   return {
-    start: start, tick: tick,
+    start: start, tick: tick, chime: chime,
     isLive: function () { return live; },
     presenceText: presenceText,
     facesHtml: facesHtml,

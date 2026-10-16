@@ -173,8 +173,10 @@ function customerCardHTML(c, ci) {
         '<b style="font-size:12.5px">' + moneyPair(c.spentSyp, c.spentUsd, true) + '</b></div>' +
     '</div>' +
 
-    (state === 'new' || state === 'quiet' || c.openDebts
+    (state === 'new' || state === 'quiet' || c.openDebts || c.couponsUsed
       ? '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+          (c.couponsUsed ? '<span class="badge accent" title="' + esc(t('cu_coupons_used')) + '">' +
+            t('cu_coupons_n').replace('{n}', '<bdi dir="ltr">' + nf(c.couponsUsed) + '</bdi>') + '</span>' : '') +
           (state === 'new' ? '<span class="badge neutral">' + t('cu_never_bought') + '</span>' : '') +
           (state === 'quiet' ? '<span class="badge low">' + t('cu_quiet') + '</span>' : '') +
           (c.openDebts
@@ -418,6 +420,21 @@ function timelineRows(payload, c) {
     });
   });
 
+  /* 074 — a coupon code they used, in the shop, on a phone order or on the
+     website. Its own row: "which codes has this person had" is a question
+     the owner asks of the street campaign. A voided sale's use is struck. */
+  (payload.coupons || []).forEach(function (u) {
+    var where = u.channel === 'web' ? t('cpq_used_web') : u.channel === 'desk' ? t('cpq_used_desk') : t('cpq_used_till');
+    out.push({
+      at: new Date(u.at), kind: 'coupon',
+      title: t('coupon') + ' <bdi dir="ltr">' + esc(u.code) + '</bdi> · −' + saleMoney(u.discount, u.currency) +
+        (u.voided ? ' <span class="badge critical">' + t('cu_voided') + '</span>' : ''),
+      sub: where + ' · ' + esc(u.sale_id),
+      tone: u.voided ? 'muted' : 'plus',
+      act: DB.sale(u.sale_id) ? 'open-invoice' : '', id: u.sale_id, lead: '%'
+    });
+  });
+
   /* null means the account may not see deliveries at all — which is not the
      same as there being none, so nothing is drawn either way. */
   (payload.deliveries || []).forEach(function (d) {
@@ -571,6 +588,7 @@ function viewCustomerProfile(cid) {
           '<div class="val accent">' + nf(c.loyaltyPoints) + '</div>' +
           '<div class="foot">= ' + money(c.loyaltyPoints * CONFIG.LOYALTY_POINT_VALUE) + '</div></div>'
       : '') +
+    '<div class="stat"><span class="eyebrow">' + t('cu_coupons_used') + '</span><div class="val">' + nfOrDash(c.couponsUsed) + '</div></div>' +
     (c.openDebts
       ? '<div class="stat"><span class="eyebrow">' + t('cu_debt') + '</span>' +
           '<div class="val warn" style="font-size:16px">' + moneyPair(c.debtSyp, c.debtUsd) + '</div>' +
@@ -1016,7 +1034,8 @@ function openCustomerDrawer(cid) {
   '</div>';
 
   body += '<div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">' +
-    '<div class="stat"><span class="eyebrow">' + t('cu_visits') + '</span><div class="val">' + nfOrDash(c.visits) + '</div></div>' +
+    '<div class="stat"><span class="eyebrow">' + t('cu_visits') + '</span><div class="val">' + nfOrDash(c.visits) + '</div>' +
+      (c.couponsUsed ? '<div class="foot">' + t('cu_coupons_n').replace('{n}', '<bdi dir="ltr">' + nf(c.couponsUsed) + '</bdi>') + '</div>' : '') + '</div>' +
     '<div class="stat"><span class="eyebrow">' + t('cu_debt') + '</span><div class="val' + (c.openDebts ? ' warn' : '') + '" style="font-size:15px">' +
       (c.openDebts ? moneyPair(c.debtSyp, c.debtUsd, true) : '—') + '</div>' +
       (c.openDebts ? '<div class="foot">' + nfOrDash(c.openDebts) + ' ' + t('invoices').toLowerCase() + '</div>' : '') + '</div>' +

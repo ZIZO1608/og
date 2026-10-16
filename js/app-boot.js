@@ -229,10 +229,32 @@ function handleScan(code) {
       return;
     }
   }
-  /* A coupon scanned anywhere else is not a product: say where it goes. */
-  if (typeof POS !== 'undefined' && POS.isCouponScan && POS.isCouponScan(code)) {
-    toast(t('coupon'), t('cpq_scan_go_pos'), 'warn', 4000);
-    return;
+  /* 074 — A COUPON SCANNED ON ANY OTHER SCREEN is recognised for what it is:
+     the till opens and the coupon goes on the sale. The sticker's link and
+     the page's digits are certainly coupons; a bare code nothing else knows
+     is asked about first, and only a coupon the server knows takes anybody
+     to the till. An account that cannot sell is told where it goes. */
+  if (typeof POS !== 'undefined' && POS.isCouponScan) {
+    var raw = String(code || '').trim();
+    var sure = POS.isCouponScan(raw);
+    var maybe = !sure && /^[A-Za-z0-9][A-Za-z0-9-]{2,23}$/.test(raw) && /[A-Za-z]/.test(raw) &&
+      !/^CU-\d+$/i.test(raw) && !resolveScan(raw);
+    if (sure || maybe) {
+      if (!allow('sell') || !navAllowed('pos')) {
+        if (sure) { toast(t('coupon'), t('cpq_scan_go_pos'), 'warn', 4000); return; }
+      } else {
+        var toTill = function () {
+          closeModal();
+          go('pos', function () { POS.tryCoupon(raw); });
+        };
+        if (sure) { toTill(); return; }
+        API.post('/api/coupon-check', { code: raw, subtotal: 0 }).then(toTill, function (err) {
+          if (err && err.code && err.code !== 'coupon_unknown' && /^coupon_/.test(err.code)) { toTill(); return; }
+          closeModal(); openScanResult(code);
+        });
+        return;
+      }
+    }
   }
   closeModal();
   openScanResult(code);

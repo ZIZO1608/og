@@ -4885,6 +4885,72 @@ var COUPONQR_AR = {
   err_coupon_batch_count: 'كم ستيكر — من 1 لـ 200.',
   err_coupon_batch_prefix: 'بداية الكود من 2 لـ 10 حروف أو أرقام.'
 };
+/* 074, second pass — many codes at once, the live "a coupon was used", the
+   bell, and the customer's count. */
+Object.assign(COUPONQR_EN, {
+  cpq_select: 'Select',
+  cpq_sel_done: 'Done',
+  cpq_sel_n: 'chosen',
+  cpq_sel_all: 'Choose all shown',
+  cpq_sel_none: 'Clear',
+  cpq_pick_batch: 'Choose all {n} codes',
+  cpq_bulk_on: 'Switch on',
+  cpq_bulk_off: 'Switch off',
+  cpq_bulk_delete: 'Delete',
+  cpq_bulk_deleted: '{n} deleted',
+  cpq_bulk_turned_on: '{n} switched on',
+  cpq_bulk_turned_off: '{n} switched off',
+  cpq_bulk_kept_used: '{n} already used were kept — switch them off instead',
+  cpq_bulk_delete_q: 'Delete {n} codes?',
+  cpq_bulk_delete_body: 'They stop working everywhere — the till, the order desk and the website — and their QR pages say they are not found. This cannot be undone.',
+  cpq_bulk_delete_used: '{n} of them have been used, so they will be kept: a used code stays with its sales. Switch those off instead.',
+  cpq_used_title: 'Coupon {code} used',
+  cpq_used_till: 'in the shop',
+  cpq_used_desk: 'on a phone order',
+  cpq_used_web: 'on the website',
+  al_coupon_used_till: 'Coupon {id} used in the shop — {name}',
+  al_coupon_used_desk: 'Coupon {id} used on a phone order — {name}',
+  al_coupon_used_web: 'Coupon {id} used on the website — {name}',
+  al_more_coupon_used: '{n} more coupons used in the last 3 days',
+  al_more_coupon_used_1: '1 more coupon used in the last 3 days',
+  cu_coupons_used: 'Coupons used',
+  cu_coupons_n: '{n} coupons',
+  err_coupon_bulk_action: 'Switch on, switch off or delete?',
+  err_coupon_bulk_none: 'Choose at least one code.',
+  err_coupon_bulk_many: 'At most 500 codes at once.'
+});
+Object.assign(COUPONQR_AR, {
+  cpq_select: 'اختيار',
+  cpq_sel_done: 'خلصت',
+  cpq_sel_n: 'مختار',
+  cpq_sel_all: 'اختار كل يلي ظاهر',
+  cpq_sel_none: 'امسح الاختيار',
+  cpq_pick_batch: 'اختار كل الـ{n} كود',
+  cpq_bulk_on: 'شغّل',
+  cpq_bulk_off: 'وقّف',
+  cpq_bulk_delete: 'احذف',
+  cpq_bulk_deleted: 'انحذف {n}',
+  cpq_bulk_turned_on: 'اشتغل {n}',
+  cpq_bulk_turned_off: 'توقّف {n}',
+  cpq_bulk_kept_used: '{n} مستعملين ما انحذفوا — وقّفهن بدل الحذف',
+  cpq_bulk_delete_q: 'نحذف {n} كود؟',
+  cpq_bulk_delete_body: 'بيوقفوا عن الشغل بكل مكان — الكاشير وقسم الطلبات والموقع — وصفحة الـQR تبعهن بتقول ما لقيناه. ما في رجعة.',
+  cpq_bulk_delete_used: '{n} منهن انستعملوا، فرح يضلّوا: الكود المستعمل بيبقى مع فواتيرو. وقّفهن بدل الحذف.',
+  cpq_used_title: 'انستعمل الكوبون {code}',
+  cpq_used_till: 'بالمحل',
+  cpq_used_desk: 'بطلب عالتلفون',
+  cpq_used_web: 'عالموقع',
+  al_coupon_used_till: 'انستعمل الكوبون {id} بالمحل — {name}',
+  al_coupon_used_desk: 'انستعمل الكوبون {id} بطلب عالتلفون — {name}',
+  al_coupon_used_web: 'انستعمل الكوبون {id} عالموقع — {name}',
+  al_more_coupon_used: 'كمان {n} كوبونات انستعملوا بآخر 3 أيام',
+  al_more_coupon_used_1: 'كمان كوبون انستعمل بآخر 3 أيام',
+  cu_coupons_used: 'كوبونات مستعملة',
+  cu_coupons_n: '{n} كوبون',
+  err_coupon_bulk_action: 'تشغيل، توقيف ولا حذف؟',
+  err_coupon_bulk_none: 'اختار كود واحد عالأقل.',
+  err_coupon_bulk_many: 'أكتر شي 500 كود بمرة وحدة.'
+});
 Object.keys(COUPONQR_EN).forEach(function (k) { I18N.en[k] = COUPONQR_EN[k]; });
 Object.keys(COUPONQR_AR).forEach(function (k) { I18N.ar[k] = COUPONQR_AR[k]; });
 

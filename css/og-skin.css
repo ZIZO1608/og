@@ -4277,3 +4277,33 @@ body:not([data-portal="yalla"]) .cpq-digits { font-weight: 700; letter-spacing: 
   body:not([data-portal="yalla"]) .cpq-share { grid-template-columns: 1fr; }
   body:not([data-portal="yalla"]) .cpq-pic { max-width: 300px; margin: 0 auto; width: 100%; }
 }
+
+/* 074, second pass — choosing many codes, and the bell's "coupon used". */
+.notif-dot.green { background: var(--success-solid); }
+body:not([data-portal="yalla"]) .cpq-tick {
+  position: absolute; top: 8px; inset-inline-start: 8px; z-index: 2;
+  width: 32px; height: 32px; padding: 0; display: grid; place-items: center;
+  border-radius: 10px; border: 2px solid var(--border-strong); background: var(--card); cursor: pointer;
+}
+body:not([data-portal="yalla"]) .cpq-tick svg { width: 18px; height: 18px; fill: none; stroke: transparent; stroke-width: 3; }
+body:not([data-portal="yalla"]) .cpq-tick.on { background: var(--brand); border-color: var(--brand); }
+body:not([data-portal="yalla"]) .cpq-tick.on svg { stroke: #0A0A0B; }
+body:not([data-portal="yalla"]) .cpn-tk.is-picked,
+body:not([data-portal="yalla"]) .cpq-batch.is-picked { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand) inset; }
+body:not([data-portal="yalla"]) .cpq-tick + .cpq-batch-top { padding-inline-start: 40px; min-height: 32px; }
+body:not([data-portal="yalla"]) .head-actions .btn.on { border-color: var(--brand); color: var(--brand); }
+body:not([data-portal="yalla"]) .cpq-bulkbar {
+  position: sticky; bottom: 16px; z-index: 30; margin: 16px auto 0; max-width: 760px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; border-radius: 16px; border: 1px solid var(--border-strong);
+  background: var(--popover); box-shadow: 0 16px 40px rgba(0,0,0,.5);
+}
+body:not([data-portal="yalla"]) .cpq-bulk-n { font-weight: 600; }
+body:not([data-portal="yalla"]) .cpq-bulk-n b { font-size: 18px; color: var(--brand); }
+body:not([data-portal="yalla"]) .cpq-bulk-acts { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; flex-wrap: wrap; }
+body:not([data-portal="yalla"]) .cpq-bulkbar .bk-rule { width: 1px; align-self: stretch; background: var(--border-strong); }
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .cpq-bulkbar { bottom: 12px; }
+  body:not([data-portal="yalla"]) .cpq-bulk-acts { margin-inline-start: 0; width: 100%; }
+  body:not([data-portal="yalla"]) .cpq-bulk-acts .btn { flex: 1; min-height: 44px; }
+}

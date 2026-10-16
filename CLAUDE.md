@@ -4424,8 +4424,38 @@ migration `074_coupon_qr.sql` (**local-only, no cloud file**), contract **v1.7**
   zipped, Arabic at 390, and the till taking the digits, the link and the bare code). Also
   `npm test`, `fix05/p0-namespaces` and `fix06/idle`.
 - **Still to do by hand**: give Ahmad `docs/website/UPDATE-COUPON-LINKS.md`. Until his site reads
-  `?coupon=`, Shop now opens the site and the code is typed. The order desk does not take a
-  scanned coupon (it owns the scanner); it is typed there.
+  `?coupon=`, Shop now opens the site and the code is typed.
+- **Second pass (same day): a scan is known for a coupon everywhere.** The till as above. The
+  order desk (`Desk.scanned`): a link or the digits go straight to its `checkCoupon`, and a
+  code-shaped scan no product or slip knows is asked about and is "unknown" only on
+  `coupon_unknown`. Any other screen (`handleScan`): the till opens and the coupon is put on
+  (`go('pos', …tryCoupon)`), for an account that may sell. `codeFromScan` reads the link
+  case-blind, because the desk upper-cases what it checks.
+- **Bulk actions** (`POST /api/coupons/bulk {action: on|off|delete, ids}`, `coupon.write`, one
+  transaction, at most 500): **Select** in the head draws a tick on every ticket (a button with
+  `aria-pressed`, state in `S.sel`, never a checkbox) and a whole-batch tick on batch cards; the
+  sticky bar has Choose all shown, Switch on, Switch off, and Delete (asks first). **A used code is
+  never deleted**: it comes back in `kept` with `reason: 'used'` and the toast says to switch it
+  off instead. A delete takes the code's scan row and batch link with it (and the batch, when it
+  was the last code), and is `logChange`d `delete`, so the mirror deletes it too.
+- **"A coupon was just used" reaches the owner at once.** `recordUse` notes the use id;
+  `DB.onCommit` in `index.js` checks the id survived the commit and sends
+  `Live.notify('og', { couponUsed: [ids] })` — **ids only, never a name**. `js/pulse.js` hands them
+  to `Coupons.used()`, which (for `coupon.write` only) asks `GET /api/coupon-uses/recent?ids=` and
+  toasts "Coupon X used · in the shop / on a phone order / on the website · who · INV · −amount",
+  chimes, and raises a system notification when the tab is not in front. `/api/live` admits
+  `coupon.write`. The **bell** carries each use of the last three days (`coupon_used_<channel>`,
+  keyed `coupon_used:<use id>`, five named then a summary, green), so a use seen nowhere else is
+  still there. A website order is counted when the desk saves it (channel `web`).
+- **The customer**: `customers` rows carry `coupons_used` (non-voided uses, a join), the card shows
+  "N coupons", the profile a **Coupons used** figure, the drawer a line under Visits, and the
+  history route carries `coupons` (`Customers.couponsFor`) drawn in the timeline as its own row.
+- **Verified**: `coupons/bulk.mjs` 24 (refusals, the live line carrying only the id, the gated
+  route, the bell for the owner and not the cashier, the customer's count and history, off/on/
+  delete read back from SQLite and `change_log`, a used code kept, a whole batch deleted) and
+  `coupons/bulk-ui.mjs` 21 (the bar pressed, the live toast naming the customer, the profile, a
+  scan on the dashboard landing on the till, Arabic at 390); the earlier `qr`, `qr-ui`, `api` (068),
+  `npm test`, `p0-namespaces` and `fix06/idle` re-run green.
 
 ## Descriptions, "goes well with", and telling the website (070, cloud 040 — 29 Sep 2026)
 

@@ -618,6 +618,8 @@ function mapCustomer(c) {
     debtUsd: amountOrNull(c.debt_usd),
     openDebts: amountOrNull(c.open_debts),
     visits: amountOrNull(c.visits),
+    /* 074 — coupon codes used on sales that still stand. */
+    couponsUsed: amountOrNull(c.coupons_used),
     /* [{ fam: 'Footwear', size: '42', qty: 4 }, …] — top two per family,
        mapped on the server from products.type. Read, never re-derived. */
     sizes: Array.isArray(c.sizes) ? c.sizes : [],

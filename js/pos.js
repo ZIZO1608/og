@@ -1998,7 +1998,7 @@ var POS = (function () {
      `loose` is a code-shaped scan that matched no product: it is TRIED as a
      coupon, and anything but a coupon answer gives it back to the caller
      (the unknown-code sheet), so a scan is never swallowed. */
-  var COUPON_LINK = /\/c\/[A-Za-z0-9-]{3,24}(?:[/?#]|$)/;
+  var COUPON_LINK = /\/c\/[A-Za-z0-9-]{3,24}(?:[/?#]|$)/i;
   var COUPON_DIGITS = /^97\d{8}$/;
   function isCouponScan(raw) {
     var s = String(raw || '').trim();

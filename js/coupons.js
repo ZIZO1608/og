@@ -39,7 +39,11 @@ var Coupons = (function () {
     bdraft: null,           /* the street-batch dialog's values */
     pageBase: 'https://shop.ogsports1.com',
     batchMax: 200,
-    zipping: false
+    zipping: false,
+    /* 074 — choosing many codes at once (the bulk bar). */
+    selecting: false,
+    sel: {},
+    bulkBusy: false
   };
 
   /* ------------------------------------------------------------- helpers */
@@ -120,6 +124,8 @@ var Coupons = (function () {
     var head = '<div class="page-head"><div><h1>' + t('cpn_title') + '</h1>' +
       '<div class="sub">' + t('cpn_sub') + '</div></div>' +
       '<div class="head-actions">' +
+        (S.rows.length ? '<button class="btn btn-ghost' + (S.selecting ? ' on' : '') + '" data-act="cpq-select" aria-pressed="' + S.selecting + '">' +
+          '<span>' + t(S.selecting ? 'cpq_sel_done' : 'cpq_select') + '</span></button>' : '') +
         '<button class="btn" data-act="cpq-batch-new">+ ' + t('cpq_batch_new') + '</button>' +
         '<button class="btn btn-primary" data-act="cpn-new">+ ' + t('cpn_new') + '</button></div></div>';
 
@@ -137,8 +143,8 @@ var Coupons = (function () {
         '<button class="btn btn-primary mt" data-act="cpn-new">+ ' + t('cpn_new') + '</button></div></div>';
     }
 
-    if (S.batch !== null) return head + batchHead() + filters() + list();
-    return head + summary() + filters() + list();
+    if (S.batch !== null) return head + batchHead() + filters() + list() + bulkBar();
+    return head + summary() + filters() + list() + bulkBar();
   }
 
   /* ------------------------------------------------- 074 — the batches */
@@ -175,7 +181,9 @@ var Coupons = (function () {
   function batchCard(b) {
     var f = batchFacts(b);
     var n = f.codes.length || 1;
-    return '<article class="cpq-batch' + (f.live ? '' : ' is-stopped') + '">' +
+    var bOn = S.selecting && f.codes.length && f.codes.every(function (c) { return S.sel[c.id]; });
+    return '<article class="cpq-batch' + (f.live ? '' : ' is-stopped') + (bOn ? ' is-picked' : '') + '">' +
+      (S.selecting ? tickBtn('cpq-pick-batch', b.id, bOn, t('cpq_pick_batch').replace('{n}', f.codes.length)) : '') +
       '<div class="cpq-batch-top"><span class="badge accent">' + t('cpq_b_tag') + '</span>' +
         (f.first ? '<b class="cpq-batch-val">' + ltr(worth(f.first)) + '</b>' : '') + '</div>' +
       '<h3 dir="auto">' + esc(b.name) + '</h3>' +
@@ -290,7 +298,9 @@ var Coupons = (function () {
       .map(function (g) { return cash(g.amount, g.currency, '−'); }).join(' · ');
 
     var open = S.menu === c.id;
-    return '<article class="cpn-tk' + (st === 'live' || st === 'soon' ? '' : ' is-stopped') + (open ? ' has-menu' : '') + '">' +
+    var on = !!(S.selecting && S.sel[c.id]);
+    return '<article class="cpn-tk' + (st === 'live' || st === 'soon' ? '' : ' is-stopped') + (open ? ' has-menu' : '') + (on ? ' is-picked' : '') + '">' +
+      (S.selecting ? tickBtn('cpq-pick', c.id, on, c.code) : '') +
       '<div class="cpn-stub"><b>' + ltr(worth(c)) + '</b><span>' + t('cpn_off') + '</span></div>' +
       '<div class="cpn-main">' +
         '<div class="cpn-top">' +
@@ -577,6 +587,125 @@ var Coupons = (function () {
     h += '</div>';
     if (r.capped) h += '<div class="muted small mt">' + t('cpn_capped').replace('{n}', nf(r.shown)).replace('{m}', nf(r.total)) + '</div>';
     return h;
+  }
+
+  /* ------------------------------------------- 074 — many codes at once */
+
+  /* A tick is a BUTTON with aria-pressed, never an input: the page repaints
+     itself, and a checkbox's own state would argue with S.sel. */
+  function tickBtn(act, id, on, label) {
+    return '<button type="button" class="cpq-tick' + (on ? ' on' : '') + '" data-act="' + act + '" data-id="' + id + '" ' +
+      'aria-pressed="' + on + '" aria-label="' + esc(label) + '" title="' + esc(label) + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>';
+  }
+
+  function picked() {
+    return Object.keys(S.sel).filter(function (k) { return S.sel[k]; }).map(Number);
+  }
+
+  /* Every code the current view shows, batch cards' codes included. */
+  function shownIds() {
+    var ids = visibleRows().filter(function (c) { return match(c, S.filter); }).map(function (c) { return c.id; });
+    if (S.batch === null) {
+      S.batches.filter(function (b) { return batchMatch(b, S.filter); }).forEach(function (b) {
+        batchFacts(b).codes.forEach(function (c) { ids.push(c.id); });
+      });
+    }
+    return ids;
+  }
+
+  function bulkBar() {
+    if (!S.selecting) return '';
+    var n = picked().length;
+    var all = shownIds();
+    var allOn = all.length && all.every(function (id) { return S.sel[id]; });
+    return '<div class="cpq-bulkbar" role="toolbar" aria-label="' + esc(t('cpq_select')) + '">' +
+      '<span class="cpq-bulk-n"><b>' + ltr(nf(n)) + '</b> ' + t('cpq_sel_n') + '</span>' +
+      '<button type="button" class="btn btn-sm btn-ghost" data-act="cpq-sel-all"><span>' + t(allOn ? 'cpq_sel_none' : 'cpq_sel_all') + '</span></button>' +
+      '<span class="cpq-bulk-acts">' +
+        '<button type="button" class="btn btn-sm" data-act="cpq-bulk" data-a="on"' + (n && !S.bulkBusy ? '' : ' disabled') + '><span>' + t('cpq_bulk_on') + '</span></button>' +
+        '<button type="button" class="btn btn-sm" data-act="cpq-bulk" data-a="off"' + (n && !S.bulkBusy ? '' : ' disabled') + '><span>' + t('cpq_bulk_off') + '</span></button>' +
+        '<span class="bk-rule" aria-hidden="true"></span>' +
+        '<button type="button" class="btn btn-sm bk-danger" data-act="cpq-bulk" data-a="delete"' + (n && !S.bulkBusy ? '' : ' disabled') + '><span>' + t('cpq_bulk_delete') + '</span></button>' +
+      '</span>' +
+    '</div>';
+  }
+
+  function runBulk(action) {
+    var ids = picked();
+    if (!ids.length || S.bulkBusy) return;
+    S.bulkBusy = true;
+    paint();
+    API.post('/api/coupons/bulk', { action: action, ids: ids }).then(function (r) {
+      S.bulkBusy = false;
+      S.sel = {};
+      S.selecting = false;
+      var kept = (r.kept || []).filter(function (k) { return k.reason === 'used'; });
+      var word = action === 'delete' ? 'cpq_bulk_deleted' : action === 'on' ? 'cpq_bulk_turned_on' : 'cpq_bulk_turned_off';
+      toast(t('cpn_title'), t(word).replace('{n}', (r.done || []).length) +
+        (kept.length ? ' · ' + t('cpq_bulk_kept_used').replace('{n}', kept.length) : ''), kept.length ? 'warn' : 'ok', kept.length ? 8000 : 3500);
+      S.at = 0;
+      load();
+    }).catch(function (err) {
+      S.bulkBusy = false;
+      paint();
+      toast(t('cpn_title'), err && err.status === 0 ? t('cpn_not_saved') : API.friendly(err), 'err', 6000);
+    });
+  }
+
+  function confirmDelete() {
+    var ids = picked();
+    var used = S.rows.filter(function (c) { return S.sel[c.id] && c.uses > 0; }).length;
+    openModal({
+      title: t('cpq_bulk_delete_q').replace('{n}', ids.length),
+      size: 'narrow',
+      body: '<p style="margin:0">' + t('cpq_bulk_delete_body') + '</p>' +
+        (used ? '<p class="warn" style="margin:12px 0 0">' + t('cpq_bulk_delete_used').replace('{n}', used) + '</p>' : ''),
+      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
+            '<button class="btn bk-danger" data-act="cpq-bulk-go"><span>' + t('cpq_bulk_delete') + '</span></button>'
+    });
+  }
+
+  /* ------------------------------------------- 074 — "a coupon was just used" */
+
+  var USED_SEEN = {};
+  var CH_WORD = { till: 'cpq_used_till', desk: 'cpq_used_desk', web: 'cpq_used_web' };
+
+  /* The live line says a use happened (ids only). Ask who and where, through
+     the gated route, and say it: a toast, a chime, and a system notification
+     when the tab is not in front. The page itself catches up if it is open. */
+  function used(ids) {
+    if (!ids || !ids.length || typeof allow !== 'function' || !allow('coupon.write')) return;
+    var fresh = ids.filter(function (id) { return !USED_SEEN[id]; });
+    if (!fresh.length) return;
+    fresh.forEach(function (id) { USED_SEEN[id] = 1; });
+    API.get('/api/coupon-uses/recent?ids=' + fresh.join(',')).then(function (r) {
+      var list = (r.uses || []).filter(function (u) { return !u.voided; });
+      list.slice(0, 3).forEach(function (u, i) {
+        setTimeout(function () {
+          toast(t('cpq_used_title').replace('{code}', u.code),
+            t(CH_WORD[u.channel] || 'cpq_used_till') + ' · ' + (u.customerName || t('walk_in')) + ' · ' + u.saleId +
+            ' · −' + (u.currency === 'USD' ? usd(u.discount) : nf(u.discount) + ' ' + u.currency), 'ok', 8000);
+        }, i * 350);
+      });
+      if (list.length) {
+        if (typeof Pulse !== 'undefined' && Pulse.chime) Pulse.chime();
+        systemNotify(list[0]);
+      }
+      if (OG.view === 'coupons') { S.at = 0; load(); }
+    }).catch(function () { /* the bell still has it */ });
+  }
+
+  function systemNotify(u) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (document.visibilityState === 'visible' && document.hasFocus()) return;
+    try {
+      var n = new Notification(t('cpq_used_title').replace('{code}', u.code), {
+        body: t(CH_WORD[u.channel] || 'cpq_used_till') + ' · ' + (u.customerName || t('walk_in')),
+        tag: 'og-coupon-' + u.id, icon: 'assets/icon-192.png', lang: OG.lang
+      });
+      n.onclick = function () { window.focus(); n.close(); go('coupons'); };
+    } catch (e) { /* a browser that refuses is fine */ }
   }
 
   /* ------------------------------------------- 074 — the QR and the picture */
@@ -919,6 +1048,39 @@ var Coupons = (function () {
     };
     ACTIONS['cpq-b-save'] = function (el) { saveBatch(el); };
 
+    /* 074 — choosing many codes, and what to do with them. */
+    ACTIONS['cpq-select'] = function () {
+      S.selecting = !S.selecting;
+      if (!S.selecting) S.sel = {};
+      S.menu = null;
+      paint();
+    };
+    ACTIONS['cpq-pick'] = function (el) {
+      var id = +el.getAttribute('data-id');
+      S.sel[id] = !S.sel[id];
+      paint();
+    };
+    ACTIONS['cpq-pick-batch'] = function (el) {
+      var b = S.batches.filter(function (x) { return x.id === +el.getAttribute('data-id'); })[0];
+      if (!b) return;
+      var codes = batchFacts(b).codes;
+      var on = !codes.every(function (c) { return S.sel[c.id]; });
+      codes.forEach(function (c) { S.sel[c.id] = on; });
+      paint();
+    };
+    ACTIONS['cpq-sel-all'] = function () {
+      var ids = shownIds();
+      var on = !(ids.length && ids.every(function (id) { return S.sel[id]; }));
+      ids.forEach(function (id) { S.sel[id] = on; });
+      paint();
+    };
+    ACTIONS['cpq-bulk'] = function (el) {
+      var a = el.getAttribute('data-a');
+      if (a === 'delete') { confirmDelete(); return; }
+      runBulk(a === 'on' ? 'on' : 'off');
+    };
+    ACTIONS['cpq-bulk-go'] = function () { closeModal(); runBulk('delete'); };
+
     if (typeof CHANGES !== 'undefined') {
       /* The sentence and the lira line only — never the box being typed in. */
       CHANGES['cpn-live'] = function (el) {
@@ -948,5 +1110,5 @@ var Coupons = (function () {
     }, true);
   }
 
-  return { view: view, after: after, register: register, load: load };
+  return { view: view, after: after, register: register, load: load, used: used };
 })();

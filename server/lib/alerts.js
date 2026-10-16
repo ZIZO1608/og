@@ -211,6 +211,31 @@ export function list(user, { limit = MAX_ROWS } = {}) {
     }
   }
 
+  /* A COUPON WAS USED (074) — in the shop, on a phone order or on the website.
+     The owner leaves codes on stickers around the city and wants to know
+     the moment one is spent. Each use of the last three days is its own row,
+     keyed on the use, so reading it puts it away; a voided sale's use is
+     not counted, as everywhere else. The coupons page's own permission. */
+  if (can('coupon.write')) {
+    try {
+      const since = new Date(Date.now() - 3 * 86400000).toISOString();
+      const WHERE = `FROM coupon_uses u JOIN sales s ON s.id = u.sale_id
+                      LEFT JOIN customers cu ON cu.id = u.customer_id
+                     WHERE s.voided = 0 AND u.at >= ?`;
+      const total = d.prepare(`SELECT COUNT(*) AS n ${WHERE}`).get(since).n;
+      const rows = d.prepare(
+        `SELECT u.id, u.code, u.sale_id, u.channel, COALESCE(cu.name, s.customer_name) AS who
+           ${WHERE} ORDER BY u.id DESC LIMIT 5`).all(since);
+      for (const r of rows) {
+        const ch = ['till', 'desk', 'web'].includes(r.channel) ? r.channel : 'till';
+        out.push({ key: 'coupon_used:' + r.id, kind: 'coupon_used_' + ch,
+                   args: { id: r.code, name: r.who || r.sale_id },
+                   icon: '%', tone: 'green', view: 'coupons' });
+      }
+      more('coupon_used', total, rows.length, '%', 'green', 'coupons');
+    } catch { /* a database before 068 */ }
+  }
+
   /* SOLD WITH NONE LEFT (online first, phase 3). A sale made on the shop
      laptop while the internet was down stands even when this server had
      fewer pairs than the laptop thought (lib/stock.js sellLines); the

@@ -61,7 +61,8 @@ const SELECT = `
          COALESCE(agg.spent_usd, 0)       AS spent_usd,
          COALESCE(agg.spent_usd_equiv, 0) AS spent_usd_equiv,
          COALESCE(agg.visits, 0)          AS visits,
-         agg.last_at                      AS last_purchase_at
+         agg.last_at                      AS last_purchase_at,
+         COALESCE(cp.n, 0)                AS coupons_used
     FROM customers c
     LEFT JOIN (
       SELECT s.customer_id,
@@ -81,7 +82,15 @@ const SELECT = `
         JOIN currencies cu ON cu.code = s.currency
        WHERE s.voided = 0 AND s.customer_id IS NOT NULL
        GROUP BY s.customer_id
-    ) agg ON agg.customer_id = c.id`;
+    ) agg ON agg.customer_id = c.id
+    /* 074 — how many coupon codes this person has used, on sales that still
+       stand (a void gives the use back, as it does on the coupons page). */
+    LEFT JOIN (
+      SELECT u.customer_id, COUNT(*) AS n
+        FROM coupon_uses u JOIN sales s ON s.id = u.sale_id
+       WHERE s.voided = 0 AND u.customer_id IS NOT NULL
+       GROUP BY u.customer_id
+    ) cp ON cp.customer_id = c.id`;
 
 /* ---- what each customer still owes ---------------------------------------
    The arithmetic is Money.openDebts()'s — total minus the summed payments,
@@ -804,4 +813,16 @@ export function adjustPoints(id, delta, { reason, userId }) {
 
     return { id, before: row.loyalty_points, after, delta: n };
   });
+}
+
+/* 074 — every coupon this person used, newest first, for the profile. */
+export function couponsFor(id, limit = 100) {
+  const n = Math.max(1, Math.min(500, Math.floor(Number(limit)) || 100));
+  return get().prepare(
+    `SELECT u.id, u.code, u.sale_id, u.currency, u.discount, u.channel, u.at, s.voided
+       FROM coupon_uses u JOIN sales s ON s.id = u.sale_id
+      WHERE u.customer_id = ?
+      ORDER BY u.at DESC, u.id DESC
+      LIMIT ?`
+  ).all(id, n).map((r) => ({ ...r, voided: !!r.voided }));
 }

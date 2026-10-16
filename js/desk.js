@@ -522,8 +522,22 @@ var Desk = (function () {
       ColourPick.choose(list, { whId: S.whId, needStock: true }, function (v) { if (v) addVariant(v); });
       return;
     }
+    /* 074 — a coupon: the sticker's QR link, or the digits under the
+       barcode on the coupon's page. Straight onto the order. */
+    if (/\/c\/[A-Za-z0-9-]{3,24}(?:[/?#]|$)/i.test(code) || /^97\d{8}$/.test(code)) { checkCoupon(code); return; }
     var inv = invoiceFrom(code);
     if (inv) { openOrder(inv); return; }
+    /* A code-shaped scan nothing here knows is TRIED as a coupon, and is
+       "unknown" only if the server does not know it either. */
+    if (/^[A-Za-z0-9][A-Za-z0-9-]{2,23}$/.test(code) && /[A-Za-z]/.test(code)) {
+      var tt = totals();
+      API.post('/api/coupon-check', { code: code, subtotal: tt.subtotal, currency: tt.currency, customerId: S.customerId || null })
+        .then(function () { checkCoupon(code); }, function (err) {
+          if (err && err.code !== 'coupon_unknown') { checkCoupon(code); return; }
+          toast(t('dk_title'), t('dk_unknown_code') + ' · ' + code.slice(0, 40), 'warn');
+        });
+      return;
+    }
     toast(t('dk_title'), t('dk_unknown_code') + ' · ' + code.slice(0, 40), 'warn');
   }
 

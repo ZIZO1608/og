@@ -131,7 +131,97 @@ export function recordUse(d, { coupon, saleId, customerId = null, currency, cut,
     `INSERT INTO coupon_uses (coupon_id, code, sale_id, customer_id, currency, discount, channel, at, user_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(coupon.id, coupon.code, saleId, customerId ?? null, currency, cut, ch, at, userId ?? null);
-  return Number(r.lastInsertRowid);
+  const id = Number(r.lastInsertRowid);
+  /* 074 — told to the owner's screens once the sale's transaction commits
+     (index.js reads this from the commit hook; a rolled-back sale's use is
+     simply not found there). */
+  justUsed.push(id);
+  return id;
+}
+
+const justUsed = [];
+/* The uses written since the last call — the ids only; whoever asks checks
+   they exist, because the transaction that wrote one may have rolled back. */
+export function takeJustUsed() {
+  return justUsed.splice(0, justUsed.length);
+}
+
+/* 074 — the latest uses, newest first, for the owner's live toast and the
+   bell: which code, by whom, where, on which sale. `after` is a use id. */
+export function recentUses({ after = 0, limit = 20, ids = null } = {}) {
+  const d = get();
+  const where = ids && ids.length
+    ? `u.id IN (${ids.map(() => '?').join(',')})`
+    : 'u.id > ?';
+  const args = ids && ids.length ? ids.map(Number) : [Number(after) || 0];
+  return d.prepare(
+    `SELECT u.id, u.code, u.sale_id, u.customer_id, u.currency, u.discount, u.channel, u.at,
+            COALESCE(cu.name, s.customer_name) AS customer_name, s.voided
+       FROM coupon_uses u
+       JOIN sales s ON s.id = u.sale_id
+       LEFT JOIN customers cu ON cu.id = u.customer_id
+      WHERE ${where}
+      ORDER BY u.id DESC LIMIT ?`
+  ).all(...args, Math.max(1, Math.min(100, Number(limit) || 20))).map((r) => ({
+    id: r.id, code: r.code, saleId: r.sale_id, customerId: r.customer_id,
+    customerName: r.customer_name || null, currency: r.currency, discount: r.discount,
+    channel: r.channel, at: r.at, voided: !!r.voided
+  }));
+}
+
+/* ---- 074: many codes at once ---------------------------------------------
+   Switch off, switch on, or delete a selection. DELETE IS ONLY FOR A CODE
+   NOBODY HAS USED: a used code is named by its sales and its receipts, so it
+   is switched off instead — the same answer the page gives one at a time.
+   One transaction; what could not be done comes back by name. */
+export const BULK_MAX = 500;
+
+function removeOne(d, row, userId) {
+  d.prepare('DELETE FROM coupon_scans WHERE coupon_id = ?').run(row.id);
+  const b = d.prepare('SELECT batch_id FROM coupon_batch_codes WHERE coupon_id = ?').get(row.id);
+  d.prepare('DELETE FROM coupon_batch_codes WHERE coupon_id = ?').run(row.id);
+  if (b && !d.prepare('SELECT 1 FROM coupon_batch_codes WHERE batch_id = ? LIMIT 1').get(b.batch_id)) {
+    d.prepare('DELETE FROM coupon_batches WHERE id = ?').run(b.batch_id);
+  }
+  d.prepare('DELETE FROM coupons WHERE id = ?').run(row.id);
+  logChange('coupons', row.id, 'delete', userId, `coupon ${row.code} deleted`);
+}
+
+export function bulk(b, userId) {
+  b = b || {};
+  const action = b.action;
+  if (!['on', 'off', 'delete'].includes(action)) throw fail('On, off or delete?', 'coupon_bulk_action', 400);
+  const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!ids.length) throw fail('Choose at least one code.', 'coupon_bulk_none', 400);
+  if (ids.length > BULK_MAX) throw fail(`At most ${BULK_MAX} codes at once.`, 'coupon_bulk_many', 400, { max: BULK_MAX });
+
+  return tx((d) => {
+    const done = [], kept = [];
+    const at = nowIso();
+    for (const id of ids) {
+      const row = d.prepare('SELECT * FROM coupons WHERE id = ?').get(id);
+      if (!row) { kept.push({ id, code: null, reason: 'not_found' }); continue; }
+      if (action === 'delete') {
+        if (sideOne(d, 'SELECT 1 AS x FROM coupon_uses WHERE coupon_id = ? LIMIT 1', row.id)) {
+          kept.push({ id, code: row.code, reason: 'used' });
+          continue;
+        }
+        removeOne(d, row, userId);
+        done.push(row.code);
+        continue;
+      }
+      const want = action === 'on' ? 1 : 0;
+      if (row.active === want) { done.push(row.code); continue; }
+      d.prepare('UPDATE coupons SET active = ?, updated_at = ? WHERE id = ?').run(want, at, row.id);
+      logChange('coupons', row.id, 'update', userId, `coupon ${row.code} ${want ? 'on' : 'off'} (bulk)`);
+      done.push(row.code);
+    }
+    return { action, done, kept };
+  });
+}
+
+function sideOne(d, sql, ...a) {
+  try { return d.prepare(sql).get(...a); } catch { return null; }
 }
 
 /* The till's and the desk's preview: the same evaluate(), outside a
@@ -376,7 +466,7 @@ export function scanToken(id) { return '97' + String(Number(id)).padStart(8, '0'
 export function codeFromScan(raw) {
   const s = String(raw == null ? '' : raw).trim();
   if (!s) return null;
-  const link = /\/c\/([A-Za-z0-9-]{3,24})(?:[/?#]|$)/.exec(s);
+  const link = /\/c\/([A-Za-z0-9-]{3,24})(?:[/?#]|$)/i.exec(s);
   if (link) return normCode(link[1]);
   const tok = SCAN_RE.exec(s.replace(/\s+/g, ''));
   if (tok) {
@@ -433,7 +523,7 @@ export function batches() {
   return sideRows(d,
     `SELECT b.id, b.name, b.created_at, COUNT(bc.coupon_id) AS count
        FROM coupon_batches b LEFT JOIN coupon_batch_codes bc ON bc.batch_id = b.id
-      GROUP BY b.id ORDER BY b.created_at DESC, b.id DESC`
+      GROUP BY b.id HAVING COUNT(bc.coupon_id) > 0 ORDER BY b.created_at DESC, b.id DESC`
   ).map((b) => ({ id: b.id, name: b.name, createdAt: b.created_at, count: b.count }));
 }
 
