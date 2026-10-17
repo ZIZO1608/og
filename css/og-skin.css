@@ -4625,3 +4625,152 @@ body:not([data-portal="yalla"]) .mn-subtab .tab-dot { margin: 0; }
   body:not([data-portal="yalla"]) .mn-sub { margin: 0 -16px 16px; padding: 0 16px; }
   body:not([data-portal="yalla"]) .mn-subtab { height: 44px; }
 }
+
+/* ==========================================================================
+   PRINT LABELS IN TWO HALVES (17 Oct 2026) — product labels and shelf labels
+   (js/labels60.js). Two tiles choose the half; the shelf half draws every
+   rack as its own grid of bays, a true-size label beside it, one Print.
+   ========================================================================== */
+body:not([data-portal="yalla"]) .lbm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0 0 24px; }
+body:not([data-portal="yalla"]) .lbm-tile {
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 16px;
+  min-height: 88px; padding: 16px; text-align: start; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); color: var(--foreground);
+  transition: border-color .18s ease, background .18s ease, transform .12s ease;
+}
+body:not([data-portal="yalla"]) .lbm-tile:hover { border-color: var(--border-strong); }
+body:not([data-portal="yalla"]) .lbm-tile:active { transform: scale(.98); }
+body:not([data-portal="yalla"]) .lbm-tile:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+body:not([data-portal="yalla"]) .lbm-tile.on {
+  border-color: var(--brand-border);
+  background: radial-gradient(120% 160% at 0% 0%, rgb(198 255 0 / .10), transparent 60%), var(--card);
+}
+body.rtl:not([data-portal="yalla"]) .lbm-tile.on {
+  background: radial-gradient(120% 160% at 100% 0%, rgb(198 255 0 / .10), transparent 60%), var(--card);
+}
+body:not([data-portal="yalla"]) .lbm-ico {
+  width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--muted); color: var(--muted-foreground);
+}
+body:not([data-portal="yalla"]) .lbm-tile.on .lbm-ico { background: var(--brand-soft); color: var(--brand); }
+body:not([data-portal="yalla"]) .lbm-ico svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; }
+body:not([data-portal="yalla"]) .lbm-txt { display: grid; gap: 4px; min-width: 0; }
+body:not([data-portal="yalla"]) .lbm-txt b { font-size: 16px; font-weight: 700; }
+body:not([data-portal="yalla"]) .lbm-txt small { font-size: 12.5px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .lbm-fig { font: 700 24px/1 var(--font-head); color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .lbm-tile.on .lbm-fig { color: var(--brand); }
+body:not([data-portal="yalla"]) .lbm-dots { display: inline-block; width: 24px; height: 8px; border-radius: 4px; background: var(--muted); }
+
+/* ------------------------------------------------------------- the tools */
+body:not([data-portal="yalla"]) .sl-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 16px; }
+body:not([data-portal="yalla"]) .sl-tools .chip-row { margin: 0; }
+body:not([data-portal="yalla"]) .sl-tools-sp { flex: 1 1 auto; }
+body:not([data-portal="yalla"]) .sl-wh { width: auto; min-width: 160px; }
+
+body:not([data-portal="yalla"]) .sl-main { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
+body:not([data-portal="yalla"]) .sl-racks { display: grid; gap: 16px; min-width: 0; }
+
+/* ------------------------------------------------------------- one rack */
+body:not([data-portal="yalla"]) .sl-rack { padding: 16px; display: grid; gap: 16px; min-width: 0; transition: border-color .18s ease; }
+body:not([data-portal="yalla"]) .sl-rack.all { border-color: var(--brand-border); }
+body:not([data-portal="yalla"]) .sl-rack-h { display: flex; align-items: center; gap: 12px; }
+body:not([data-portal="yalla"]) .sl-key {
+  flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+  font: 800 20px/1 var(--font-head); color: var(--brand); border: 1px solid var(--brand-border); background: var(--brand-soft);
+}
+body:not([data-portal="yalla"]) .sl-rack-t { display: grid; gap: 4px; min-width: 0; flex: 1 1 auto; }
+body:not([data-portal="yalla"]) .sl-rack-t b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body:not([data-portal="yalla"]) .sl-rack-t small { font-size: 12.5px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .sl-tick {
+  flex: none; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-full); background: transparent; color: var(--foreground);
+  font: 600 13px/1 var(--font-body); cursor: pointer;
+}
+body:not([data-portal="yalla"]) .sl-tick:hover { border-color: var(--border-strong); }
+body:not([data-portal="yalla"]) .sl-tick-box {
+  position: relative; width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--border-strong);
+}
+body:not([data-portal="yalla"]) .sl-tick.on .sl-tick-box { background: var(--brand); border-color: var(--brand); }
+body:not([data-portal="yalla"]) .sl-tick.on .sl-tick-box::after {
+  content: ''; position: absolute; left: 4px; top: 0; width: 5px; height: 10px;
+  border: solid var(--brand-foreground); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+body:not([data-portal="yalla"]) .sl-tick.some .sl-tick-box { border-color: var(--brand); }
+body:not([data-portal="yalla"]) .sl-tick.some .sl-tick-box::after {
+  content: ''; position: absolute; left: 3px; right: 3px; top: 6px; height: 2px; background: var(--brand);
+}
+
+/* The rack as it stands: levels down, bays across. */
+body:not([data-portal="yalla"]) .sl-grid { display: grid; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+body:not([data-portal="yalla"]) .sl-rowlab { display: grid; place-items: center; font: 700 12px/1 var(--font-head); color: var(--dim); }
+body:not([data-portal="yalla"]) .sl-gap { min-height: 40px; }
+body:not([data-portal="yalla"]) .sl-cell {
+  position: relative; min-height: 40px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--subtle); color: var(--muted-foreground);
+  font: 600 12.5px/1 var(--font-head);
+  transition: background .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
+}
+body:not([data-portal="yalla"]) .sl-cell:hover { border-color: var(--border-strong); color: var(--foreground); }
+body:not([data-portal="yalla"]) .sl-cell:active { transform: scale(.94); }
+body:not([data-portal="yalla"]) .sl-cell:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+body:not([data-portal="yalla"]) .sl-cell i {
+  position: absolute; top: 5px; inset-inline-end: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--brand-dim);
+}
+body:not([data-portal="yalla"]) .sl-cell.on { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); }
+body:not([data-portal="yalla"]) .sl-cell.on i { background: var(--brand-foreground); }
+body:not([data-portal="yalla"]) .sl-cell.focus { box-shadow: 0 0 0 2px var(--app), 0 0 0 4px var(--foreground); }
+body:not([data-portal="yalla"]) .sl-cell.dim { opacity: .25; cursor: default; }
+
+/* ------------------------------------------------------- the true label */
+body:not([data-portal="yalla"]) .sl-prev { position: sticky; top: 16px; padding: 16px; display: grid; gap: 12px; }
+body:not([data-portal="yalla"]) .sl-prev-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+body:not([data-portal="yalla"]) .sl-prev-code { font: 800 16px/1 var(--font-head); color: var(--brand); }
+body:not([data-portal="yalla"]) .sl-prev-sticker { display: grid; place-items: center; min-height: 160px; }
+body:not([data-portal="yalla"]) .sl-prev-sticker .l60 { box-shadow: 0 8px 24px rgb(0 0 0 / .5); animation: slStick .35s cubic-bezier(.2, 1.2, .4, 1); }
+@keyframes slStick { from { transform: translateY(-8px) rotate(-2deg); opacity: 0; } }
+body:not([data-portal="yalla"]) .sl-prev-how { line-height: 1.45; }
+body:not([data-portal="yalla"]) .sl-bar { display: none; }
+body:not([data-portal="yalla"]) .sl-batch { display: grid; gap: 4px; }
+
+/* The loading shape: three racks. */
+body:not([data-portal="yalla"]) .sl-skel { display: grid; gap: 16px; }
+body:not([data-portal="yalla"]) .sl-skel i {
+  display: block; height: 160px; border-radius: var(--radius-lg); background: var(--card);
+  background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / .04), transparent);
+  background-size: 200% 100%; animation: slShimmer 1.4s linear infinite;
+}
+@keyframes slShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+@media (max-width: 1080px) {
+  body:not([data-portal="yalla"]) .sl-main { grid-template-columns: minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .sl-prev { position: static; order: -1; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  body:not([data-portal="yalla"]) .sl-prev-h { grid-column: 1 / -1; }
+  body:not([data-portal="yalla"]) .sl-prev-sticker { min-height: 0; }
+  body:not([data-portal="yalla"]) .sl-prev .sl-print { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .lbm { gap: 8px; margin-bottom: 16px; }
+  body:not([data-portal="yalla"]) .lbm-tile { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px; min-height: 76px; }
+  body:not([data-portal="yalla"]) .lbm-ico { display: none; }
+  body:not([data-portal="yalla"]) .lbm-txt b { font-size: 14px; }
+  body:not([data-portal="yalla"]) .lbm-txt small { font-size: 11.5px; }
+  body:not([data-portal="yalla"]) .lbm-fig { font-size: 18px; }
+  body:not([data-portal="yalla"]) .sl-prev { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  body:not([data-portal="yalla"]) .sl-prev .sl-print { display: none; }
+  body:not([data-portal="yalla"]) .sl-tools .btn { min-height: 44px; }
+  body:not([data-portal="yalla"]) .sl-cell, body:not([data-portal="yalla"]) .sl-gap { min-height: 44px; }
+  body:not([data-portal="yalla"]) .sl-tick { height: 44px; }
+  body:not([data-portal="yalla"]) .sl-rack-t small { white-space: normal; }
+  /* The print button rides just above the tab bar, the order desk's sticky
+     offset: .view's bottom padding is where a sticky foot comes to rest. */
+  body:not([data-portal="yalla"]) .sl-bar.on {
+    position: sticky; bottom: -20px; z-index: 5; margin-top: 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px; border-radius: var(--radius-lg);
+    background: var(--popover); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
+  }
+  body:not([data-portal="yalla"]) .sl-bar .btn { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body:not([data-portal="yalla"]) .sl-prev-sticker .l60, body:not([data-portal="yalla"]) .sl-skel i { animation: none; }
+}

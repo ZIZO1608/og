@@ -76,6 +76,8 @@ var AFTER = {
   payments: function () { return Desk.payAfter(); },
   coupons: function () { return Coupons.after(); },
   printkits: function () { return PrintKits.after(); },
+  /* The shelf half of Print labels loads its racks (only when stale). */
+  labels: function () { if (typeof Labels60 !== 'undefined') Labels60.shelfAfter(); },
   safeers: function () { return Safeers.after(); },
   desk: function () { return Desk.after(); },
   requests: function () { return Requests.after(); },

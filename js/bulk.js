@@ -28,6 +28,8 @@ var Bulk = (function () {
   function scope() {
     if (OG.print.partner) return null;
     if (OG.view === 'warehouse' && OG.wh.tab !== 'moves') return null;
+    /* The shelf half of Print labels chooses bays, not sizes (17 Oct 2026). */
+    if (OG.view === 'labels' && typeof Labels60 !== 'undefined' && Labels60.mode() === 'shelves') return null;
     return VIEW_SCOPE[OG.view] || null;
   }
 

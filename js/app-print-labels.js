@@ -51,12 +51,17 @@ function viewPrintLabels() {
   var rows = labelVariantRows();
   var types = DB.activeTypes(DB.products.map(function (p) { return p.type; }));
 
+  /* TWO HALVES (17 Oct 2026): product labels, and shelf labels — one tile
+     each at the top, the choice kept per machine (js/labels60.js). The shelf
+     half has no product to pick, so it is its own screen below the tiles
+     rather than rows in the variant table. */
+  var sizes = 0;
+  DB.products.forEach(function (p) { if (!p.archived) sizes += DB.variantsOf(p.id).length; });
+  var shelves = typeof Labels60 !== 'undefined' && Labels60.mode() === 'shelves';
   var h = '<div class="page-head"><div><h1>' + t('labels_title') + '</h1>' +
-    '<div class="sub">' + t('labels_sub') + '</div></div>' +
-    /* The shelf labels have no product to pick, so they do not belong in the
-       variant table below — they are the other thing this screen prints. */
-    '<div><button class="btn" data-act="l60-shelf-labels">' +
-      t('l60_shelf_title') + '</button></div></div>';
+    '<div class="sub">' + t(shelves ? 'sl_sub' : 'labels_sub') + '</div></div></div>' +
+    (typeof Labels60 !== 'undefined' ? Labels60.modeTiles(sizes) : '');
+  if (shelves) return h + Labels60.shelfView();
 
   h += '<div class="filters">' +
     '<input class="inp grow" type="text" placeholder="' + t('search_products') + '" value="' + esc(f.q) + '" data-change="lbf-q">' +

@@ -6208,6 +6208,22 @@ the server one (numeric `label_code` in Code 128), a browser "Label Studio" in `
   the tick does not (`lb-open` checks for `.bk-box`). Select-all in the header still means every
   filtered size, folded or not, and the row says "5 sizes · 3 ticked" so nothing is hidden by the
   fold. The Products table's per-row barcode button is gone at the shop's request.
+- **Print labels is two halves (17 Oct 2026)**: two tiles at the top — **Product labels** (the
+  variant table, unchanged) and **Shelf labels** — the choice kept per machine (`og.lb.mode`,
+  `Labels60.mode()`; an account without `stock.read`, which `GET /api/sections` needs, gets the
+  product half and no tiles). The shelf half lives in `js/labels60.js` (`modeTiles`, `shelfView`,
+  `shelfAfter`, state `SL`): every rack in every warehouse drawn as its own grid (levels down, top
+  level on top; bays across; a missing bay is a gap), a bay pressed to choose it, **Whole rack**,
+  **Select all shown**, Clear, a filter (All · With a product · Empty) and a warehouse picker when
+  there are several, the **true 60 × 40 label** of the bay last pressed beside it, and **Print N
+  shelf labels** — one sheet across every chosen rack in walking order (rack by rack, then A1 A2 …),
+  through the same `previewModal` / `doPrint` / `label_print_log` row as the one-rack dialog the
+  shelf map still opens. It paints `#slRoot` itself, never `render()`; loads from `after()` only
+  when empty or a minute old; the selection survives a reload of the racks. The product half's bulk
+  bar has no scope while the shelf half shows (`scope()` in `js/bulk.js`). On a phone Print rides a
+  sticky bar above the tab bar (the order desk's `bottom: -20px`). The old head button
+  `l60-shelf-labels` and its handler are gone. `_nightshift/shelf-labels/press.mjs` (34, a real
+  print read back from `label_print_log`, Arabic at 390); `labels/fixed` reads `OG_TEST_DB`.
 - The size tables on the Print-labels screen and the product drawer show all three codes by name —
   SKU, EAN-13, **Label code** — because the sticker's digits are the label code and people were
   holding stickers up against a column they never matched.
