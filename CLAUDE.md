@@ -4464,9 +4464,19 @@ permission, dialog or handler changed** — only what the page shows first. `js/
 `js/cashbook.js` (`heroCard`, `U.empty`, ACT `empties`), the `MONEY, POLISHED` block at the end of
 `css/og-skin.css`.
 
-- **One tab bar** (`.mn-seg` / `.mn-pill`): the six jobs, a hairline, then the three records
-  (`book`, `debt`, `shift`) as quieter pills (`.is-rec`). The "Records" fold and `S.more` are gone.
-  One row at 1280; on a phone it slides sideways and every pill is 44px.
+- **Four places, not nine (17 Oct 2026, "less pages, more organised")**: `GROUPS` in
+  `js/money.js` — **Where it is** (`now`) · **Close the day** (`close`) · **Payments** (`out`:
+  expenses, suppliers, salaries) · **Books** (`books`: statement, money history, who owes whom,
+  shift). The bar (`.mn-seg` / `.mn-pill`, `data-mn="group"`) draws the groups; a group with more
+  than one page the account may open draws a quiet underline switch under it (`.mn-sub` /
+  `.mn-subtab`, `data-mn="tab"` — the same action every deep link and button already used, so
+  `Money.state.tab = 'suppliers'` still lands right). A group remembers the page last open in it
+  (`S.last`); a group pressed whose page this account may not open falls to its first one it may
+  (`S.pend`). A dot inside a group shows on the group. A cashier, with only the count, gets no bar.
+  Every pill and switch is 44px on a phone. The old "Records" fold, `S.more`, and the one-row
+  nine-pill bar of 16 Oct are gone. Suites that pressed a page's tab directly now open its group
+  first (`ns03/p2-money`, `p2-money-phone`, `fix05/p5-phone`, `p6-devil`, `fix06/dropped-press`,
+  `ns02/p4-money`, `fix05/p4-money`; `p6-devil` also reads `DBFILE`).
 - **The hero** (`.cb-hero`): the shop's money per currency (base currency big and lime, never
   added together), a bar of where the base currency sits (positive balances only, top six then
   "the rest", colours in `BAR_COLOURS`, shares as words), and today's in/out per currency from
@@ -4482,9 +4492,9 @@ permission, dialog or handler changed** — only what the page shows first. `js/
   page went from about 4,300px to 2,250px.
 - Found on the way: two coupon rules tracked Arabic (`.cpn-stub span`, `.cpq-digits`) — zeroed /
   moved onto the digits.
-- **Verified**: `_nightshift/money-polish/press.mjs` (34: every pill, the three jobs, the small
+- **Verified**: `_nightshift/money-polish/press.mjs` (36: every group and page, the three jobs, the small
   ones, the empty places, Arabic at 390, the cashier); `fix05/p4-money` 49, `ns03/p2-money` 39,
-  `ns02/p4-money` 22 (updated to the one bar), `ns03/p2-money-phone` 34, `ns03/p2-cashier` 22,
+  `ns02/p4-money` 22 (updated to the four places), `ns03/p2-money-phone` 34, `ns03/p2-cashier` 22,
   `fix05/p5-phone` 122, `fix05/p7-style` 767, `fix06/idle` (money 0), `p0-namespaces` 6.
   `ns03/p2-money` and `fix05/p4-money` now read `DBFILE` when it is set (they were pinned to the
   sandbox's file, so against a scratch copy they read nothing).

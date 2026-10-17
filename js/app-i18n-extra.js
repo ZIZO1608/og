@@ -3217,6 +3217,8 @@ var NS02_EN = {
   sf_off_open: 'They are still carrying {n} open task(s). Give those to somebody else first.',
   /* -- the money screen's fold, and its job buttons -- */
   mn_records: "Records",
+  mn_g_out: "Payments",
+  mn_g_books: "Books",
   cb_go_expense: "Add an expense",
   cb_go_suppliers: "Pay a supplier",
   cb_go_salaries: "Pay wages",
@@ -3312,6 +3314,8 @@ var NS02_AR = {
   sf_off_q: 'بدك تطفي {name}؟ رح ينقطع فوراً والمحل رح يطلع من تلفونه.',
   sf_off_open: 'لسا معه {n} مهمة مفتوحة. عطيهن لحدا تاني أول شي.',
   mn_records: "المزيد",
+  mn_g_out: "المدفوعات",
+  mn_g_books: "الدفاتر",
   cb_go_expense: "سجّل مصروف",
   cb_go_suppliers: "ادفع لمورّد",
   cb_go_salaries: "ادفع رواتب",

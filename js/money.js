@@ -22,7 +22,17 @@
 
 var Money = (function () {
 
-  var S = { tab: 'now' };
+  var S = { tab: 'now', last: {} };
+
+  /* The four places on the Money bar, in order, and the pages each holds
+     (17 Oct 2026). A page an account may not open is left out of its group;
+     a group left with nothing is not drawn. */
+  var GROUPS = [
+    { id: 'now', key: 'cb_now', tabs: ['now'] },
+    { id: 'close', key: 'dc_tab', tabs: ['close'] },
+    { id: 'out', key: 'mn_g_out', tabs: ['expenses', 'suppliers', 'salaries'] },
+    { id: 'books', key: 'mn_g_books', tabs: ['statement', 'book', 'debt', 'shift'] }
+  ];
 
   /* ------------------------------------------------------------- shell */
 
@@ -95,27 +105,58 @@ var Money = (function () {
     }
 
     var all = main.concat(more);
-    if (!all.some(function (x) { return x[0] === S.tab; })) S.tab = all.length ? all[0][0] : 'close';
+    var has = function (k) { return all.some(function (x) { return x[0] === k; }); };
+    if (!has(S.tab)) {
+      /* A group was pressed whose remembered or first page this account may
+         not open: its first page it may, before falling back to the first
+         place on the bar. */
+      var pend = GROUPS.filter(function (g) { return g.id === S.pend; })[0];
+      var inGroup = pend ? pend.tabs.filter(has)[0] : null;
+      S.tab = inGroup || (all.length ? all[0][0] : 'close');
+    }
+    S.pend = null;
 
     var h = '<div class="page-head"><div><h1>' + t('mn_title') + '</h1>' +
       '<div class="sub">' + t(reads ? 'mn_sub' : counts ? 'dc_sub' : staff ? 'py_sub' : 'pl_sub') + '</div></div>' +
       (reads || staff || profit ? '<div class="head-actions mn-exp">' + exportButtons() + '</div>' : '') + '</div>';
 
-    /* ONE BAR (the owner's polish, 16 Oct 2026). Six tabs and a "Records"
-       fold under them were two rows of navigation, and on a phone the six
-       wrapped onto two lines each. Now one pill row that slides sideways on
-       a phone: the jobs, a hairline, then the records in a quieter weight —
-       the same nine places, one press each, nothing folded away. */
-    if (all.length > 1) {
-      var pill = function (x, rec) {
-        return '<button type="button" class="mn-pill' + (rec ? ' is-rec' : '') + (S.tab === x[0] ? ' on' : '') +
-          '" data-mn="tab" data-t="' + x[0] + '" aria-pressed="' + (S.tab === x[0]) + '">' + x[1] + '</button>';
+    /* FOUR PLACES, NOT NINE (the owner, 17 Oct 2026: "less pages, more
+       organised"). Every page is still here and every deep link still lands
+       on its own tab — they are GROUPED: what the money is now, closing the
+       day, everything that goes OUT (expenses, suppliers, salaries), and the
+       books (the month's statement, the history, who owes whom, the shift).
+       A group holding more than one page draws a small switch under the bar;
+       pressing a group goes back to the page last open in it (S.last). An
+       account allowed one page of a group gets that page and no switch. */
+    var label = {};
+    all.forEach(function (x) { label[x[0]] = x[1]; });
+    var groups = GROUPS.map(function (g) {
+      return { id: g.id, key: g.key, tabs: g.tabs.filter(function (k) { return label[k] != null; }) };
+    }).filter(function (g) { return g.tabs.length; });
+    var here = groups.filter(function (g) { return g.tabs.indexOf(S.tab) > -1; })[0] || groups[0];
+    if (here) S.last[here.id] = S.tab;
+
+    if (groups.length > 1 || (here && here.tabs.length > 1)) {
+      var dotOf = function (g) {
+        /* A dot inside a group's pages shows on the group too, or a supplier
+           owed money would hide behind a closed group. */
+        return g.tabs.some(function (k) { return /tab-dot/.test(label[k]); })
+          ? '<span class="tab-dot' + (g.tabs.some(function (k) { return /tab-dot on/.test(label[k]); }) ? ' on' : '') + '"></span>' : '';
       };
+      var gName = function (g) { return g.tabs.length === 1 ? label[g.tabs[0]] : t(g.key) + dotOf(g); };
       h += '<nav class="mn-seg" aria-label="' + esc(t('mn_title')) + '"><div class="mn-seg-in">' +
-        main.map(function (x) { return pill(x, false); }).join('') +
-        (more.length ? '<span class="mn-seg-sep" aria-hidden="true"></span>' +
-          more.map(function (x) { return pill(x, true); }).join('') : '') +
-        '</div></nav>';
+        groups.map(function (g) {
+          var on = g === here;
+          return '<button type="button" class="mn-pill' + (on ? ' on' : '') + '" data-mn="group" data-g="' + g.id +
+            '" aria-pressed="' + on + '">' + gName(g) + '</button>';
+        }).join('') + '</div></nav>';
+      if (here && here.tabs.length > 1) {
+        h += '<div class="mn-sub" role="tablist">' + here.tabs.map(function (k) {
+          var on = S.tab === k;
+          return '<button type="button" class="mn-subtab' + (on ? ' on' : '') + '" role="tab" aria-selected="' + on +
+            '" data-mn="tab" data-t="' + k + '">' + label[k] + '</button>';
+        }).join('') + '</div>';
+      }
     }
 
     return h + (S.tab === 'now' ? Cashbook.nowTab()
@@ -419,6 +460,16 @@ var Money = (function () {
 
   var ACT = {
     tab: function (el) { S.tab = el.getAttribute('data-t'); render(); },
+
+    /* A group on the bar: back to the page last open in it, else its first
+       page this account may open (view() puts a page it may not right). */
+    group: function (el) {
+      var g = GROUPS.filter(function (x) { return x.id === el.getAttribute('data-g'); })[0];
+      if (!g) return;
+      S.tab = S.last[g.id] || g.tabs[0];
+      S.pend = g.id;
+      render();
+    },
 
     'open-shift': function () {
       openModal({
