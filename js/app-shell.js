@@ -391,7 +391,8 @@ function renderSidebar() {
      system's is at the bottom. */
   html += '</nav><div class="sidebar-foot">' +
     '<span class="sf-mark"><img src="assets/logo.svg" alt=""></span>' +
-    '<span class="sf-txt"><b>' + t('live') + '</b><small>v1.0</small></span></div>';
+    '<span class="sf-txt"><b>' + t('live') + '</b><small>v1.0</small></span></div>' +
+    madeByHtml('sb-made');
   document.getElementById('sidebar').innerHTML = html;
   /* The sliding indicator is positioned from the active item's own offset, so
      it has to be placed after the nav exists in the DOM. */
@@ -488,6 +489,17 @@ function renderTabbar() {
 
 /* Everything that did not fit in five tabs, plus the two shell switches that
    were dropped from the collapsed topbar. */
+/* Who built the system: a quiet link to Trinode at the foot of the sidebar
+   and of the phone's More sheet (the sign-in screen draws its own in
+   js/auth.js, which is up before I18N is). A new tab, so a press never takes
+   the till away. */
+var TRINODE_URL = 'https://trinode.ahmad-zaven.io';
+function madeByHtml(cls) {
+  return '<a class="made-by ' + cls + '" href="' + TRINODE_URL + '" target="_blank" rel="noopener">' +
+    '<span>' + t('made_by') + '</span>' +
+    '<img src="assets/trinode-logo.png" alt="TRINODE" width="88" height="26"></a>';
+}
+
 function openMoreSheet() {
   /* Grouped under plain headings, and built from MORE_GROUPS — which covers
      every screen in NAV — so nothing this account may open is missing from
@@ -548,6 +560,8 @@ function openMoreSheet() {
       '</div>' +
     '</div>';
   }
+
+  h += madeByHtml('more-made');
 
   openModal({ title: t('nav_more'), size: 'narrow', body: h, sheet: true });
 }

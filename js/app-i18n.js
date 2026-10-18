@@ -445,7 +445,7 @@ var I18N = {
     wh_split_hint: 'Shop floor / Back storage',
     image: 'Image', product_name: 'Product name',
     /* Product photo intake. Three ways in, so the hint names all three. */
-    nav_more: 'More', language: 'Language',
+    nav_more: 'More', language: 'Language', made_by: 'Made by',
     /* WhatsApp. The wording is careful: the app OPENS WhatsApp, it cannot
        send on the user's behalf, and the UI must not imply otherwise. */
     wa_open: 'Open in WhatsApp', wa_opened: 'WhatsApp opened with the message ready',
@@ -1233,7 +1233,7 @@ var I18N = {
     wh_nothing_to_move: 'ما في شي لازم يطلع — المحل معبّى',
     wh_split_hint: 'المحل / المستودع',
     image: 'الصورة', product_name: 'اسم المنتج',
-    nav_more: 'المزيد', language: 'اللغة',
+    nav_more: 'المزيد', language: 'اللغة', made_by: 'من صنع',
     wa_open: 'افتح في واتساب', wa_opened: 'فُتح واتساب والرسالة جاهزة',
     wa_handoff: 'يفتح واتساب والرسالة مكتوبة. الإرسال يتم من هناك.',
     wa_bad_number: 'رقم الهاتف غير صالح',

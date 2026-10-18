@@ -4774,3 +4774,21 @@ body:not([data-portal="yalla"]) .sl-skel i {
 @media (prefers-reduced-motion: reduce) {
   body:not([data-portal="yalla"]) .sl-prev-sticker .l60, body:not([data-portal="yalla"]) .sl-skel i { animation: none; }
 }
+
+/* ===================== MADE BY TRINODE (18 Oct 2026) =======================
+   A quiet maker's stamp linking to Trinode: the sign-in card, the foot of the
+   sidebar, the foot of the phone's More sheet. Dim until pointed at, so it
+   never competes with the shop's own mark. */
+.made-by {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  color: #71717A; font-size: 11px; font-weight: 600; text-decoration: none;
+  opacity: .9; transition: opacity var(--t);
+}
+.made-by img { display: block; width: 88px; height: auto; }
+.made-by:hover, .made-by:focus-visible { opacity: 1; }
+.made-by:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 6px; }
+.gate-made { margin-top: 18px; }
+.sb-made { padding: 0 20px 14px; justify-content: flex-start; }
+.more-made { margin: 18px 0 4px; min-height: 44px; }
+body[data-sidebar="mini"] .sb-made { display: none; }
+@media (max-width: 900px) { .sb-made { display: none; } }

@@ -111,6 +111,9 @@ var Auth = (function () {
         '<small id="lgErr"></small>' +
         '<button type="button" id="lgHint" class="gate-link">' + L('Forgotten your password?', 'نسيت كلمة المرور؟') + '</button>' +
         '<span class="gate-note" id="lgNote"></span>' +
+        '<a class="made-by gate-made" href="https://trinode.ahmad-zaven.io" target="_blank" rel="noopener">' +
+          '<span>' + L('Made by', 'من صنع') + '</span>' +
+          '<img src="assets/trinode-logo.png" alt="TRINODE" width="88" height="26"></a>' +
       '</div>';
     return el;
   }

@@ -14,7 +14,7 @@
    refresh does it), or browsers that already have the app will keep serving
    the old cached copy — cache-first with ignoreSearch, so no query string
    gets past it. */
-var CACHE = 'og-system-v336';
+var CACHE = 'og-system-v337';
 
 var SHELL = [
   './',
@@ -38,6 +38,7 @@ var SHELL = [
      Arabic glyphs at all. Precached because the shop is regularly offline. */
   'assets/fonts/Cairo-700.ttf',
   'assets/logo.svg',
+  'assets/trinode-logo.png',
   'assets/instagram-mark.svg',
   'assets/telegram-mark.svg',
   'assets/cursor.svg',
