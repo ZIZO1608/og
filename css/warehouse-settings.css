@@ -788,6 +788,19 @@ body.sm-dragging .sm-dz-row { cursor: grabbing; }
 }
 .sm-fit b { font-variant-numeric: tabular-nums; }
 
+/* Make the room bigger (Room settings): the factor chips, two switches, the
+   server's own plan, one button. */
+.sm-grow { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); display: grid; gap: 12px; }
+.sm-grow-h { font-size: 15px; font-weight: 700; }
+.sm-grow > small { margin-top: -8px; }
+.sm-grow-f { justify-self: start; }
+.sm-grow-plan { font-size: 13px; line-height: 1.5; min-height: 40px; }
+.sm-grow-line b { font-weight: 700; margin-inline-end: 8px; }
+.sm-grow-racks { margin: 8px 0 0; padding-inline-start: 16px; }
+.sm-grow-racks li { margin: 2px 0; }
+.sm-grow-racks .sm-fit { display: inline; margin: 0; }
+.sm-grow .btn { justify-self: start; }
+
 /* A rack row in the designer is also a handle into the room. */
 .sm-dz-pick[data-drag] { cursor: grab; }
 

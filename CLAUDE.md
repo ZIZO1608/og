@@ -6698,6 +6698,22 @@ letterboxed, the atlas filled, both end faces read back as pixels, the low tier,
 11 checks on the 2× room. Screenshots: `docs/img/warehouse-c-pictures.png`,
 `warehouse-c-pictures-island.png`, `warehouse-c-double.png`.
 
+### Make the room bigger (22 Oct 2026)
+
+Room settings (layout editor → Room settings) has **Make the room bigger**: ×1.5 / ×2 / ×3, **More
+bays** and **More levels** switches, the server's own plan (room before → after, shelves before →
+after, each rack's bays and levels), one button. `Shelves.growRoom(id, {factor, bays, levels,
+dry})`, `POST /api/rooms/:id/grow` (`config.write`), one transaction: width and depth × f (up to the
+next 5 cm), the height × f too when levels are on; every rack keeps its place relative to the room
+(`wall_cm` × f, a free rack's centre × f); bays added after the last one, levels after the highest
+letter — **nothing is renumbered, so stock and printed labels stay true**. Growing keeps depths
+fixed while along-wall ends scale, so nothing that fitted can stop fitting, but every rack still goes
+through `checkFit` / `checkHeight` and a refusal rolls it all back. Held back and said, not refused:
+level Z (`letters`), 99 bays, the wall, the ceiling. Refused: `bad_factor` (≤1 or >4),
+`room_unmeasured`, `room_too_big` (past `MAX_ROOM_CM`). `dry` runs the same writes and unwinds.
+Only grows — shrinking stays the wall pull, which never removes a bay. `_nightshift/shelf/grow.mjs`
+(17, on a fresh copy).
+
 ## The warehouse: moving stock, and the log of it
 
 ### The four jobs (was: the tabs, in the order the room works)

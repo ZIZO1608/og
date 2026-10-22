@@ -1402,6 +1402,15 @@ router.add('PATCH /api/rooms/:id', requirePerm('config.write', async (ctx) => {
   }, ctx.user.id) }));
 }));
 
+/* The whole room bigger in one press — floor, racks, bays and levels — or,
+   with `dry`, what that would be, writing nothing. */
+router.add('POST /api/rooms/:id/grow', requirePerm('config.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  shelfOp(ctx, () => ({ grow: Shelves.growRoom(Number(ctx.params.id), {
+    factor: b.factor, bays: b.bays, levels: b.levels, dry: b.dry === true
+  }, ctx.user.id) }));
+}));
+
 router.add('DELETE /api/rooms/:id', requirePerm('config.write', (ctx) => {
   shelfOp(ctx, () => Shelves.deleteRoom(Number(ctx.params.id), ctx.user.id));
 }));
@@ -4020,6 +4029,9 @@ const SHELF_STATUS = {
   wall_overlap:      409,
   wall_short:        409,
   room_too_small:    409,
+  room_too_big:      409,
+  room_unmeasured:   409,
+  bad_factor:        400,
   /* 051's refusals were never added here, so on a real server every one of
      them came back as a bare 400 'invalid' with only the English sentence —
      the aisle and the neighbour's name never reached the Arabic screen. The

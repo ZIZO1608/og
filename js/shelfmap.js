@@ -1270,6 +1270,9 @@ var ShelfMap = (function () {
       return t('sm_err_too_tall').replace('{k}', d.rack || '?').replace('{h}', ltrN(nf(d.height_cm || 0)))
         .replace('{r}', ltrN(nf(d.room_height_cm || 0))).replace('{m}', ltrN(nf(d.max_levels || 0)));
     }
+    if (code === 'room_too_big') return t('sm_err_room_too_big').replace('{n}', ltrN(nf((d.max_cm || 10000) / 100)));
+    if (code === 'room_unmeasured') return t('sm_err_room_unmeasured');
+    if (code === 'bad_factor') return t('sm_err_bad_factor');
     if (code === 'room_too_low') {
       var tall = (d.racks || []).map(function (r) { return r.key; }).join(', ');
       return t('sm_err_room_too_low').replace('{k}', tall || '?').replace('{h}', ltrN(nf(d.min_height_cm || 0)));
@@ -2781,6 +2784,10 @@ var ShelfMap = (function () {
       ShelfRoom.fullscreen(!S.fs);
     };
 
+    CHG['grow-opt'] = function (el) {
+      GROW[el.getAttribute('data-k')] = !!el.checked;
+      growAsk();
+    };
     CHG['quality'] = function (el) {
       var q = el.value === 'high' || el.value === 'low' ? el.value : 'auto';
       S.quality = q;
@@ -3039,6 +3046,30 @@ var ShelfMap = (function () {
 
     /* -- rooms -------------------------------------------------------- */
     ACT['room-new'] = function () { roomModal(null); };
+    ACT['grow-f'] = function (el) {
+      GROW.f = +el.getAttribute('data-f');
+      document.querySelectorAll('[data-sm="grow-f"]').forEach(function (b) {
+        var on = +b.getAttribute('data-f') === GROW.f;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      growAsk();
+    };
+    ACT['grow-go'] = function (el) {
+      if (el.disabled || GROW.id == null) return;
+      el.disabled = true;
+      API.post('/api/rooms/' + GROW.id + '/grow', growBody(false)).then(function (res) {
+        var p = res.grow;
+        closeModal();
+        toast(t('sm_grow_done').replace('{f}', '×' + p.factor),
+              t('sm_grow_done_sub').replace('{a}', nf(p.shelves[0])).replace('{b}', nf(p.shelves[1])), '', 6000);
+        reload();
+      }, function (err) {
+        el.disabled = false;
+        var h = document.getElementById('smGrowPlan');
+        if (h) h.innerHTML = '<span class="sm-fit">' + esc(layoutError(err)) + '</span>';
+      });
+    };
     /* No data-id means "the room on screen". Without the fallback this fell
        through to roomById(NaN) → null, which roomModal reads as "make a new
        one" — a Room settings button that opened the New room dialog. */
@@ -3522,6 +3553,7 @@ var ShelfMap = (function () {
       esc(t('sm_room_max').replace('{n}', nf(max / 100))) + '</small>' +
     /* filled in by room-save when the server says the racks would not fit */
     '<div class="sm-fit" id="smRmFit" hidden></div>';
+    if (room && room.width_cm != null && room.depth_cm != null) b += growBox(room);
 
     openModal({
       title: room ? room.name : t('sm_new_room'),
@@ -3535,6 +3567,81 @@ var ShelfMap = (function () {
         '<button class="btn btn-primary" data-sm="room-save"' +
           (room ? ' data-id="' + room.id + '"' : '') + '>' + t('save') + '</button>'
     });
+  }
+
+  /* MAKE IT BIGGER — the whole room at once: floor, every rack's place, and
+     more bays and levels on every rack (POST /api/rooms/:id/grow). Nothing
+     already there is renumbered, so stock and printed labels stay true. The
+     plan is the server's own dry run, asked again on every change, and only
+     #smGrowPlan repaints — the name and sizes above may be half typed. */
+  var GROW = { id: null, f: 2, bays: true, levels: true, seq: 0, plan: null };
+  var GROW_FACTORS = [1.5, 2, 3];
+
+  function growBox(room) {
+    GROW.id = room.id; GROW.plan = null;
+    var h = '<div class="sm-grow" id="smGrow"><b class="sm-grow-h">' + t('sm_grow') + '</b>' +
+      '<small class="muted">' + t('sm_grow_hint') + '</small>' +
+      '<div class="sm-viewsw sm-grow-f" role="group" aria-label="' + esc(t('sm_grow')) + '">';
+    GROW_FACTORS.forEach(function (f) {
+      var on = f === GROW.f;
+      h += '<button class="sm-vw' + (on ? ' on' : '') + '" data-sm="grow-f" data-f="' + f + '" aria-pressed="' +
+           (on ? 'true' : 'false') + '"><bdi dir="ltr">×' + f + '</bdi></button>';
+    });
+    h += '</div>';
+    [['bays', 'sm_grow_bays', 'sm_grow_bays_hint'], ['levels', 'sm_grow_levels', 'sm_grow_levels_hint']]
+      .forEach(function (x) {
+        h += '<div class="rule-row"><div class="rr-txt"><b>' + t(x[1]) + '</b><small>' + t(x[2]) + '</small></div>' +
+          '<label class="switch"><input type="checkbox" data-smv="grow-opt" data-k="' + x[0] + '"' +
+          (GROW[x[0]] ? ' checked' : '') + '><i></i></label></div>';
+      });
+    h += '<div class="sm-grow-plan" id="smGrowPlan" aria-live="polite">' + t('sm_grow_asking') + '</div>' +
+      '<button class="btn" id="smGrowGo" data-sm="grow-go" disabled>' + t('sm_grow_go') + '</button></div>';
+    setTimeout(growAsk, 0);
+    return h;
+  }
+
+  function growBody(dry) {
+    return { factor: GROW.f, bays: GROW.bays, levels: GROW.levels, dry: dry };
+  }
+
+  function growAsk() {
+    var host = document.getElementById('smGrowPlan');
+    if (!host || GROW.id == null) return;
+    var mine = ++GROW.seq;
+    var go = document.getElementById('smGrowGo');
+    if (go) go.disabled = true;
+    API.post('/api/rooms/' + GROW.id + '/grow', growBody(true)).then(function (res) {
+      if (mine !== GROW.seq) return;
+      GROW.plan = res.grow;
+      growPaint();
+    }, function (err) {
+      if (mine !== GROW.seq) return;
+      GROW.plan = null;
+      var h = document.getElementById('smGrowPlan');
+      if (h) h.innerHTML = '<span class="sm-fit">' + esc(layoutError(err)) + '</span>';
+    });
+  }
+
+  function growPaint() {
+    var host = document.getElementById('smGrowPlan'), p = GROW.plan;
+    if (!host || !p) return;
+    /* metres to the centimetre: 4.5, never nf()'s whole 5 */
+    var m = function (cm) { return String(Math.round(cm) / 100); };
+    var dims = function (r) { return m(r.width_cm) + ' × ' + m(r.depth_cm) + (r.height_cm ? ' × ' + m(r.height_cm) : ''); };
+    var h = '<div class="sm-grow-line"><b>' + t('sm_grow_room') + '</b> ' +
+      '<bdi dir="ltr">' + dims(p.room.from) + '</bdi> → <bdi dir="ltr">' + dims(p.room.to) + '</bdi> ' + t('sm_grow_m') + '</div>' +
+      '<div class="sm-grow-line"><b>' + t('sm_grow_shelves') + '</b> ' +
+      ltrN(nf(p.shelves[0])) + ' → ' + ltrN(nf(p.shelves[1])) + '</div><ul class="sm-grow-racks">';
+    p.racks.forEach(function (r) {
+      var why = (r.held || []).map(function (k) { return t('sm_grow_held_' + k); }).join(' · ');
+      h += '<li><b>' + esc(r.key) + '</b> ' +
+        t('sm_grow_rack').replace('{b0}', ltrN(nf(r.cols[0]))).replace('{b1}', ltrN(nf(r.cols[1])))
+          .replace('{l0}', ltrN(nf(r.levels[0]))).replace('{l1}', ltrN(nf(r.levels[1]))) +
+        (why ? ' <small class="sm-fit">' + esc(why) + '</small>' : '') + '</li>';
+    });
+    host.innerHTML = h + '</ul>';
+    var go = document.getElementById('smGrowGo');
+    if (go) go.disabled = false;
   }
 
   /* ---------------------------------------------------- the Settings list */

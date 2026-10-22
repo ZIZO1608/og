@@ -1272,6 +1272,168 @@ export function deleteRoom(id, userId = null) {
   });
 }
 
+/* MAKE THE WHOLE ROOM BIGGER IN ONE PRESS (22 Oct 2026, the owner's ask: "the
+   warehouse ×2, the columns and rows more, and bigger again when I want").
+
+   Width and depth are multiplied by `factor` — and the height too when more
+   levels are wanted — every rack keeps its place RELATIVE to the room (a wall
+   rack's distance along its wall, a free rack's centre), and each rack gains
+   bays (`bays`) and levels (`levels`) in the same proportion.
+
+   ONLY GROWS, NEVER RENUMBERS. Every shelf already there keeps its code, its
+   stock and its printed label; new bays go after the last one and new levels
+   after the highest letter, exactly where the room's grips add them. Growing
+   by f moves each rack's along-wall ends by f while its depth stays put, so
+   no corner, aisle or wall that fitted before can stop fitting — but every
+   rack is still put through checkFit and checkHeight afterwards, and one
+   refusal rolls the whole thing back.
+
+   What cannot grow as far as asked is held back and said, not refused: a rack
+   at level Z (26 letters), at 99 bays, or under a ceiling that has not been
+   raised (levels off, but a level more would still fit — none is added then).
+
+   `dry` answers the same plan and writes nothing (the transaction is unwound),
+   so the dialog shows "84 shelves → 336" before anybody presses. */
+export const GROW_MAX = 4;
+class GrowDry extends Error {}
+
+export function growRoom(id, { factor, bays = true, levels = true, dry = false } = {}, userId = null) {
+  const f = Number(factor);
+  if (!Number.isFinite(f) || f <= 1 || f > GROW_MAX) {
+    throw fail(`a room grows by more than 1× and at most ${GROW_MAX}×`, 'bad_factor', { max: GROW_MAX });
+  }
+  /* Both off is still a real request: more floor and aisle, the same racks. */
+  const moreBays = bays !== false, moreLevels = levels !== false;
+  let plan = null;
+  try {
+    DB.tx((d) => {
+      const room = d.prepare('SELECT * FROM rooms WHERE id = ?').get(id);
+      if (!room) throw fail('no such room', 'not_found');
+      if (room.width_cm == null || room.depth_cm == null) {
+        throw fail(`${room.name} has no width and depth yet — measure it first, then it can grow`,
+                   'room_unmeasured');
+      }
+      /* Up to the next 5 cm, so a rounded wall is never shorter than f× the old. */
+      const up5 = (v) => Math.ceil((v * f) / 5) * 5;
+      const next = {
+        width_cm: up5(room.width_cm),
+        depth_cm: up5(room.depth_cm),
+        height_cm: room.height_cm != null && moreLevels ? up5(room.height_cm) : room.height_cm
+      };
+      const biggest = Math.max(next.width_cm, next.depth_cm, next.height_cm || 0);
+      if (biggest > MAX_ROOM_CM) {
+        throw fail(`${room.name} would be ${biggest} cm — ${MAX_ROOM_CM} cm is the most`,
+                   'room_too_big', { max_cm: MAX_ROOM_CM, would_cm: biggest });
+      }
+      const at = DB.nowIso();
+      d.prepare('UPDATE rooms SET width_cm = ?, depth_cm = ?, height_cm = ?, updated_at = ? WHERE id = ?')
+        .run(next.width_cm, next.depth_cm, next.height_cm, at, id);
+      DB.logChange('rooms', id, 'update', userId, null);
+
+      const ins = d.prepare(
+        `INSERT INTO shelves (section_id, code, row_label, col_index, created_at, updated_at)
+         VALUES (?,?,?,?,?,?)`
+      );
+      const racks = d.prepare('SELECT * FROM sections WHERE room_id = ? ORDER BY key').all(id);
+      const out = [];
+      let before = 0, after = 0;
+
+      for (const sec of racks) {
+        const rows = d.prepare('SELECT DISTINCT row_label FROM shelves WHERE section_id = ? ORDER BY row_label')
+                      .all(sec.id).map((x) => x.row_label);
+        const colList = d.prepare('SELECT DISTINCT col_index FROM shelves WHERE section_id = ? ORDER BY col_index')
+                         .all(sec.id).map((x) => x.col_index);
+        const have = d.prepare('SELECT COUNT(*) AS n FROM shelves WHERE section_id = ?').get(sec.id).n;
+        before += have;
+        const cols = colsOf(d, sec.id);
+        const size = rackSize(sec, cols);
+        const held = [];
+
+        /* The rack's place, scaled with the room. */
+        let wallCm = sec.wall_cm, wallPos = sec.wall_pos, x = sec.x_cm, y = sec.y_cm;
+        if (sec.placement === 'free' && x != null && y != null) {
+          x = Math.round(x * f); y = Math.round(y * f);
+        } else if (sec.wall != null) {
+          const was = wallCmOf(sec, size);
+          if (was != null) { wallCm = Math.round(was * f); wallPos = Math.round(wallCm / size.bay); }
+        }
+        d.prepare('UPDATE sections SET wall_cm = ?, wall_pos = ?, x_cm = ?, y_cm = ?, updated_at = ? WHERE id = ?')
+          .run(wallCm, wallPos, x, y, at, sec.id);
+
+        /* Bays. A wall rack must still end before its wall does. */
+        let newCols = cols;
+        if (moreBays && rows.length) {
+          newCols = Math.min(MAX_COLS, Math.floor(cols * f + 1e-9));
+          if (newCols < Math.floor(cols * f + 1e-9)) held.push('max_cols');
+          if (sec.placement !== 'free' && sec.wall != null && wallCm != null) {
+            const len = wallLen(sec.wall, next);
+            const fits = Math.max(cols, Math.floor((len - wallCm) / size.bay));
+            if (newCols > fits) { newCols = fits; held.push('wall'); }
+          }
+        }
+        const addCols = [];
+        for (let c = cols + 1; c <= newCols; c++) addCols.push(c);
+        for (const letter of rows) {
+          for (const c of addCols) {
+            const info = ins.run(sec.id, letter + c, letter, c, at, at);
+            DB.logChange('shelves', Number(info.lastInsertRowid), 'insert', userId, null);
+          }
+        }
+
+        /* Levels: new letters after the highest, at most Z, under the ceiling. */
+        let addRows = [];
+        if (moreLevels && rows.length) {
+          const want = Math.floor(rows.length * f + 1e-9) - rows.length;
+          const topIdx = ROW_LETTERS.indexOf(rows[rows.length - 1]);
+          let n = Math.min(want, ROW_LETTERS.length - 1 - topIdx);
+          if (n < want) held.push('letters');
+          if (next.height_cm != null) {
+            const most = Math.floor((next.height_cm - GEOMETRY.base_cm - GEOMETRY.top_cm) / size.level);
+            const spare = Math.max(0, most - rows.length);
+            if (spare < n) { n = spare; held.push('ceiling'); }
+          }
+          addRows = ROW_LETTERS.slice(topIdx + 1, topIdx + 1 + Math.max(0, n));
+        }
+        const allCols = [...new Set([...colList, ...addCols])].sort((a, b) => a - b);
+        for (const letter of addRows) {
+          for (const c of allCols) {
+            const info = ins.run(sec.id, letter + c, letter, c, at, at);
+            DB.logChange('shelves', Number(info.lastInsertRowid), 'insert', userId, null);
+          }
+        }
+        DB.logChange('sections', sec.id, 'update', userId, null);
+
+        const now = d.prepare('SELECT COUNT(*) AS n FROM shelves WHERE section_id = ?').get(sec.id).n;
+        after += now;
+        out.push({ key: sec.key, name: sec.name,
+                   cols: [cols, newCols], levels: [rows.length, rows.length + addRows.length],
+                   shelves: [have, now], held });
+      }
+
+      /* Every rack where it now stands, against the room it now is. */
+      const grown = d.prepare('SELECT * FROM rooms WHERE id = ?').get(id);
+      for (const sec of d.prepare('SELECT * FROM sections WHERE room_id = ?').all(id)) {
+        const s = rackSize(sec, colsOf(d, sec.id));
+        const where = placeOf(sec, s);
+        if (where) checkFit(d, grown, sec, where, s, sec.id);
+        checkHeight(grown, sec, levelsOf(d, sec.id), s.level);
+      }
+
+      plan = {
+        factor: f, dry: !!dry,
+        room: { name: room.name,
+                from: { width_cm: room.width_cm, depth_cm: room.depth_cm, height_cm: room.height_cm },
+                to: next },
+        racks: out, shelves: [before, after]
+      };
+      if (dry) throw new GrowDry();
+    });
+  } catch (e) {
+    if (!(e instanceof GrowDry)) throw e;
+  }
+  return plan;
+}
+
 /* ------------------------------------------------------------------- grid */
 
 /* Seed a room with rows A..n and columns 1..m.
