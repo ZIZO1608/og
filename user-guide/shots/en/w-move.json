@@ -1,0 +1,36 @@
+{
+  "image": "w-move.png",
+  "width": 960,
+  "height": 414.25,
+  "url": "http://localhost:8191/#warehouse",
+  "display_url": "shop.ogsports1.com/#warehouse",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "from": [
+      35,
+      98.5,
+      412.0,
+      38
+    ],
+    "to": [
+      513.0,
+      98.5,
+      412.0,
+      38
+    ],
+    "code": [
+      35,
+      168.5,
+      796.6,
+      38
+    ],
+    "go": [
+      795.3,
+      349.2,
+      129.7,
+      38
+    ]
+  },
+  "captured": "2026-10-13 23:16"
+}

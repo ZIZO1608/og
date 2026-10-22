@@ -1,0 +1,24 @@
+{
+  "image": "o-reports.png",
+  "width": 1280,
+  "height": 760,
+  "url": "http://localhost:8191/#reports",
+  "display_url": "shop.ogsports1.com/#reports",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "tabs": [
+      292,
+      227.0,
+      62.6,
+      40
+    ],
+    "scope": [
+      352.7,
+      179.0,
+      68.1,
+      34
+    ]
+  },
+  "captured": "2026-10-13 23:10"
+}

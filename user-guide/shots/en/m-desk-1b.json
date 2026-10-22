@@ -1,0 +1,18 @@
+{
+  "image": "m-desk-1b.png",
+  "width": 1280,
+  "height": 760,
+  "url": "http://localhost:8191/#desk",
+  "display_url": "shop.ogsports1.com/#desk",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "next": [
+      1039,
+      664.3,
+      128,
+      44
+    ]
+  },
+  "captured": "2026-10-13 23:11"
+}

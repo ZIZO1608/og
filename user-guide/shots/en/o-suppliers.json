@@ -1,0 +1,24 @@
+{
+  "image": "o-suppliers.png",
+  "width": 1280,
+  "height": 760,
+  "url": "http://localhost:8191/#money",
+  "display_url": "shop.ogsports1.com/#money",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "pay": [
+      1048,
+      550.5,
+      48.9,
+      32
+    ],
+    "edit": [
+      292,
+      440.7,
+      134.4,
+      38
+    ]
+  },
+  "captured": "2026-10-13 23:10"
+}

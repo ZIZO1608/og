@@ -1,0 +1,24 @@
+{
+  "image": "s-runs.png",
+  "width": 390,
+  "height": 844,
+  "url": "http://localhost:8191/#dashboard",
+  "display_url": "shop.ogsports1.com/#dashboard",
+  "clipped": false,
+  "device": "phone",
+  "boxes": {
+    "go": [
+      32,
+      1161.2,
+      326,
+      44
+    ],
+    "done": [
+      34,
+      770.6,
+      324,
+      44
+    ]
+  },
+  "captured": "2026-10-13 23:16"
+}

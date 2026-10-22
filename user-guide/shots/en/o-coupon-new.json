@@ -1,0 +1,30 @@
+{
+  "image": "o-coupon-new.png",
+  "width": 560,
+  "height": 532.296875,
+  "url": "http://localhost:8191/#coupons",
+  "display_url": "shop.ogsports1.com/#coupons",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "code": [
+      35,
+      98.5,
+      438,
+      38
+    ],
+    "kind": [
+      35,
+      170.5,
+      241,
+      56
+    ],
+    "save": [
+      459.3,
+      467.3,
+      65.7,
+      38
+    ]
+  },
+  "captured": "2026-10-13 23:10"
+}

@@ -1,0 +1,24 @@
+{
+  "image": "o-acct.png",
+  "width": 280,
+  "height": 177.25,
+  "url": "http://localhost:8191/#dashboard",
+  "display_url": "shop.ogsports1.com/#dashboard",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "pw": [
+      21,
+      90.2,
+      238,
+      33
+    ],
+    "out": [
+      21,
+      123.2,
+      238,
+      33
+    ]
+  },
+  "captured": "2026-10-13 23:09"
+}

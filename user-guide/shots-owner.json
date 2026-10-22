@@ -1,0 +1,581 @@
+{
+  "base_url": "http://localhost:8191",
+  "display_base_url": "https://shop.ogsports1.com",
+  "viewport": {
+    "width": 1280,
+    "height": 860
+  },
+  "device_scale_factor": 2,
+  "delay_ms": 700,
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "login": {
+    "url": "/",
+    "actions": [
+      {
+        "wait_for": "#lgUser"
+      },
+      {
+        "fill": {
+          "selector": "#lgUser",
+          "value": "$ENV:GUIDE_USER"
+        }
+      },
+      {
+        "fill": {
+          "selector": "#lgPass",
+          "value": "$ENV:GUIDE_PASS"
+        }
+      },
+      {
+        "click": "#lgGo"
+      }
+    ],
+    "wait_for": ".user-chip"
+  },
+  "languages": {
+    "en": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "en"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body:not(.rtl)"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    },
+    "ar": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "ar"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body.rtl"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    }
+  },
+  "screens": [
+    {
+      "id": "o-home",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#dashboard'"
+        },
+        {
+          "wait": 1600
+        }
+      ],
+      "callouts": [
+        {
+          "key": "menu",
+          "selector": ".nav-item[data-view=\"dashboard\"]"
+        },
+        {
+          "key": "jobs",
+          "selector": ".hm-job"
+        },
+        {
+          "key": "search",
+          "selector": "#globalSearch"
+        },
+        {
+          "key": "lang",
+          "selector": "[data-act=\"lang\"]"
+        },
+        {
+          "key": "curr",
+          "selector": "[data-act=\"curr\"]"
+        },
+        {
+          "key": "bell",
+          "selector": "[data-act=\"bell\"]"
+        },
+        {
+          "key": "acct",
+          "selector": ".user-chip"
+        }
+      ]
+    },
+    {
+      "id": "o-acct",
+      "url": null,
+      "actions": [
+        {
+          "click": ".user-chip"
+        },
+        {
+          "wait_for": "#acctPop"
+        },
+        {
+          "wait": 400
+        }
+      ],
+      "clip": "#acctPop",
+      "clip_padding": 14,
+      "callouts": [
+        {
+          "key": "pw",
+          "selector": "[data-act=\"acct-pw\"]"
+        },
+        {
+          "key": "out",
+          "selector": "[data-act=\"acct-out\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-pw",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"acct-pw\"]"
+        },
+        {
+          "wait_for": "#pwCur"
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "cur",
+          "selector": "#pwCur"
+        },
+        {
+          "key": "new",
+          "selector": "#pwNew"
+        },
+        {
+          "key": "again",
+          "selector": "#pwNew2"
+        },
+        {
+          "key": "save",
+          "selector": "[data-act=\"acct-pw-save\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-dash",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "eval": "location.hash='#dashboard'"
+        },
+        {
+          "wait": 1600
+        },
+        {
+          "eval": "document.querySelector(\".dash-tear\")?.scrollIntoView({block:'start'})"
+        },
+        {
+          "wait": 600
+        }
+      ],
+      "callouts": [
+        {
+          "key": "scope",
+          "selector": "[data-act=\"dash-scope\"], .scope-chips"
+        }
+      ]
+    },
+    {
+      "id": "o-money-now",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#money'"
+        },
+        {
+          "wait": 1600
+        },
+        {
+          "click": "[data-mn=\"tab\"][data-t=\"now\"]"
+        },
+        {
+          "wait": 1200
+        }
+      ],
+      "callouts": [
+        {
+          "key": "tabs",
+          "selector": "[data-mn=\"tab\"][data-t=\"now\"]"
+        },
+        {
+          "key": "move",
+          "selector": "[data-cb=\"move\"]"
+        },
+        {
+          "key": "exchange",
+          "selector": "[data-cb=\"exchange\"]"
+        },
+        {
+          "key": "owner",
+          "selector": "[data-cb=\"owner\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-money-close",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-mn=\"tab\"][data-t=\"close\"]"
+        },
+        {
+          "wait": 1200
+        }
+      ],
+      "callouts": [
+        {
+          "key": "syp",
+          "selector": "#dcCnt_SYP"
+        },
+        {
+          "key": "usd",
+          "selector": "#dcCnt_USD"
+        },
+        {
+          "key": "save",
+          "selector": "[data-cb=\"dc-count\"]"
+        },
+        {
+          "key": "confirm",
+          "selector": "[data-cb=\"dc-confirm\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-expenses",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-mn=\"tab\"][data-t=\"expenses\"]"
+        },
+        {
+          "wait": 1200
+        }
+      ],
+      "callouts": [
+        {
+          "key": "add",
+          "selector": "[data-mn=\"add-expense\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-expense-add",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-mn=\"add-expense\"]"
+        },
+        {
+          "wait_for": ".modal"
+        },
+        {
+          "wait": 600
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "save",
+          "selector": "[data-mn=\"add-expense-go\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-suppliers",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": "[data-mn=\"tab\"][data-t=\"suppliers\"]"
+        },
+        {
+          "wait": 1400
+        }
+      ],
+      "callouts": [
+        {
+          "key": "pay",
+          "selector": "[data-py=\"sup-pay\"]"
+        },
+        {
+          "key": "edit",
+          "selector": "[data-py=\"sup-edit\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-sup-pay",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-py=\"sup-pay\"]"
+        },
+        {
+          "wait_for": ".modal"
+        },
+        {
+          "wait": 600
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10
+    },
+    {
+      "id": "o-salaries",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": "[data-mn=\"tab\"][data-t=\"salaries\"]"
+        },
+        {
+          "wait": 1600
+        }
+      ],
+      "callouts": [
+        {
+          "key": "pay",
+          "selector": "[data-py=\"pr-pay\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-statement",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-mn=\"tab\"][data-t=\"statement\"]"
+        },
+        {
+          "wait": 2000
+        }
+      ],
+      "callouts": [
+        {
+          "key": "month",
+          "selector": "[data-pl=\"month\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-reports",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#reports'"
+        },
+        {
+          "wait": 2200
+        }
+      ],
+      "callouts": [
+        {
+          "key": "tabs",
+          "selector": "[data-act=\"rep-tab\"]"
+        },
+        {
+          "key": "scope",
+          "selector": "[data-act=\"rep-scope\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-coupons",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#coupons'"
+        },
+        {
+          "wait": 1600
+        }
+      ],
+      "callouts": [
+        {
+          "key": "new",
+          "selector": "[data-act=\"cpn-new\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-coupon-new",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"cpn-new\"]"
+        },
+        {
+          "wait_for": "#cpnCode"
+        },
+        {
+          "wait": 600
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "code",
+          "selector": "#cpnCode"
+        },
+        {
+          "key": "kind",
+          "selector": "[data-act=\"cpn-kind\"]"
+        },
+        {
+          "key": "save",
+          "selector": "[data-act=\"cpn-save\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-payments",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "eval": "location.hash='#payments'"
+        },
+        {
+          "wait": 2000
+        }
+      ]
+    },
+    {
+      "id": "o-settings",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#settings'"
+        },
+        {
+          "wait": 2000
+        }
+      ]
+    },
+    {
+      "id": "o-staff",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-fold=\"staff\"] .fold-btn"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "scroll_to": "[data-fold=\"staff\"]"
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "clip": "[data-fold=\"staff\"]",
+      "clip_padding": 8,
+      "callouts": [
+        {
+          "key": "add",
+          "selector": "[data-st=\"add\"]"
+        }
+      ]
+    },
+    {
+      "id": "o-staff-add",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-st=\"add\"]"
+        },
+        {
+          "wait_for": ".modal"
+        },
+        {
+          "wait": 700
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10
+    },
+    {
+      "id": "o-rate",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": "[data-fold=\"rate\"] .fold-btn"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "scroll_to": "[data-fold=\"rate\"]"
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "clip": "[data-fold=\"rate\"]",
+      "clip_padding": 8
+    }
+  ]
+}

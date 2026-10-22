@@ -1,0 +1,30 @@
+{
+  "image": "o-money-close.png",
+  "width": 1280,
+  "height": 760,
+  "url": "http://localhost:8191/#money",
+  "display_url": "shop.ogsports1.com/#money",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "syp": [
+      317,
+      474.7,
+      445,
+      52
+    ],
+    "usd": [
+      774,
+      474.7,
+      445,
+      52
+    ],
+    "save": [
+      1064.2,
+      638.2,
+      154.8,
+      46
+    ]
+  },
+  "captured": "2026-10-13 23:10"
+}

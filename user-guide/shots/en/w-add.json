@@ -1,0 +1,42 @@
+{
+  "image": "w-add.png",
+  "width": 1280,
+  "height": 860,
+  "url": "http://localhost:8191/#warehouse",
+  "display_url": "shop.ogsports1.com/#warehouse",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "name": [
+      317,
+      508.0,
+      556,
+      38
+    ],
+    "type": [
+      317,
+      587.5,
+      176,
+      38
+    ],
+    "price": [
+      507,
+      587.5,
+      176,
+      38
+    ],
+    "saveprint": [
+      317,
+      1359.5,
+      179.8,
+      46
+    ],
+    "save": [
+      504.8,
+      1359.5,
+      185.2,
+      46
+    ]
+  },
+  "captured": "2026-10-13 23:16"
+}

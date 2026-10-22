@@ -1,0 +1,107 @@
+{
+  "base_url": "http://localhost:8191",
+  "display_base_url": "https://shop.ogsports1.com",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "device_scale_factor": 3,
+  "delay_ms": 700,
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "login": {
+    "url": "/",
+    "actions": [
+      {
+        "wait_for": "#lgUser"
+      },
+      {
+        "fill": {
+          "selector": "#lgUser",
+          "value": "$ENV:GUIDE_USER"
+        }
+      },
+      {
+        "fill": {
+          "selector": "#lgPass",
+          "value": "$ENV:GUIDE_PASS"
+        }
+      },
+      {
+        "click": "#lgGo"
+      }
+    ],
+    "wait_for": ".tabbtn"
+  },
+  "languages": {
+    "en": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "en"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body:not(.rtl)"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    },
+    "ar": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "ar"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body.rtl"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    }
+  },
+  "screens": [
+    {
+      "id": "s-runs",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#dashboard'"
+        },
+        {
+          "wait": 2200
+        }
+      ],
+      "callouts": [
+        {
+          "key": "go",
+          "selector": "[data-act=\"dl-go\"]"
+        },
+        {
+          "key": "done",
+          "selector": "[data-act=\"dl-done\"]"
+        }
+      ]
+    }
+  ],
+  "is_mobile": true,
+  "mobile": true
+}

@@ -1,0 +1,599 @@
+{
+  "base_url": "http://localhost:8191",
+  "display_base_url": "https://shop.ogsports1.com",
+  "viewport": {
+    "width": 1280,
+    "height": 860
+  },
+  "device_scale_factor": 2,
+  "delay_ms": 700,
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "login": {
+    "url": "/",
+    "actions": [
+      {
+        "wait_for": "#lgUser"
+      },
+      {
+        "fill": {
+          "selector": "#lgUser",
+          "value": "$ENV:GUIDE_USER"
+        }
+      },
+      {
+        "fill": {
+          "selector": "#lgPass",
+          "value": "$ENV:GUIDE_PASS"
+        }
+      },
+      {
+        "click": "#lgGo"
+      }
+    ],
+    "wait_for": ".user-chip"
+  },
+  "languages": {
+    "en": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "en"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body:not(.rtl)"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    },
+    "ar": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "ar"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body.rtl"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    }
+  },
+  "screens": [
+    {
+      "id": "m-home",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#dashboard'"
+        },
+        {
+          "wait": 1600
+        }
+      ]
+    },
+    {
+      "id": "m-desk-1",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#desk'"
+        },
+        {
+          "wait": 2000
+        },
+        {
+          "click": "#dkScan"
+        },
+        {
+          "wait_for": "#dkDrop [role=\"option\"]"
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "callouts": [
+        {
+          "key": "rail",
+          "selector": "#dkRail"
+        },
+        {
+          "key": "scan",
+          "selector": "#dkScan"
+        },
+        {
+          "key": "list",
+          "selector": "#dkDrop [role=\"option\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-desk-1b",
+      "url": null,
+      "actions": [
+        {
+          "click": "#dkDrop [role=\"option\"]"
+        },
+        {
+          "wait": 900
+        },
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 300
+        }
+      ],
+      "callouts": [
+        {
+          "key": "next",
+          "selector": "[data-act=\"dk-next\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-desk-2",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"dk-next\"]"
+        },
+        {
+          "wait": 700
+        },
+        {
+          "click": "#dkCust"
+        },
+        {
+          "wait_for": "#dkCustDrop [role=\"option\"]"
+        },
+        {
+          "wait": 400
+        }
+      ],
+      "callouts": [
+        {
+          "key": "cust",
+          "selector": "#dkCust"
+        },
+        {
+          "key": "list",
+          "selector": "#dkCustDrop [role=\"option\"]"
+        },
+        {
+          "key": "new",
+          "selector": "[data-act=\"dk-cust-new\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-desk-3",
+      "url": null,
+      "actions": [
+        {
+          "click": "#dkCustDrop [role=\"option\"]"
+        },
+        {
+          "wait": 700
+        },
+        {
+          "click": "[data-act=\"dk-next\"]"
+        },
+        {
+          "wait": 700
+        }
+      ],
+      "callouts": [
+        {
+          "key": "driver",
+          "selector": "[data-act=\"dk-method\"][data-id=\"driver\"]"
+        },
+        {
+          "key": "pickup",
+          "selector": "[data-act=\"dk-method\"][data-id=\"pickup\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-desk-4",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"dk-method\"][data-id=\"driver\"]"
+        },
+        {
+          "wait": 500
+        },
+        {
+          "click": "[data-act=\"dk-next\"]"
+        },
+        {
+          "wait": 800
+        }
+      ],
+      "callouts": [
+        {
+          "key": "city",
+          "selector": "[data-k=\"city\"]"
+        },
+        {
+          "key": "phone",
+          "selector": "[data-k=\"phone\"]"
+        },
+        {
+          "key": "addr",
+          "selector": "[data-k=\"address\"]"
+        },
+        {
+          "key": "fee",
+          "selector": "[data-change=\"dk-fee\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-desk-5",
+      "url": null,
+      "actions": [
+        {
+          "fill": {
+            "selector": "[data-change=\"dk-fee\"]",
+            "value": "15000"
+          }
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": "[data-act=\"dk-next\"]"
+        },
+        {
+          "wait": 900
+        }
+      ],
+      "callouts": [
+        {
+          "key": "plan",
+          "selector": "[data-act=\"dk-plan\"]"
+        },
+        {
+          "key": "save",
+          "selector": "[data-act=\"dk-save\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-board",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#deliveries'"
+        },
+        {
+          "wait": 2200
+        },
+        {
+          "click": "[data-act=\"rd-tab\"][data-id=\"parcels\"]",
+          "optional": true
+        },
+        {
+          "wait": 1000
+        }
+      ],
+      "callouts": [
+        {
+          "key": "tabs",
+          "selector": "[data-act=\"rd-tab\"][data-id=\"parcels\"]"
+        },
+        {
+          "key": "assign",
+          "selector": "[data-act=\"dl-assign\"]"
+        },
+        {
+          "key": "go",
+          "selector": "[data-act=\"dl-go\"]"
+        },
+        {
+          "key": "done",
+          "selector": "[data-act=\"dl-done\"]"
+        },
+        {
+          "key": "menu",
+          "selector": "[data-act=\"dl-menu\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-assign",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"dl-assign\"]"
+        },
+        {
+          "wait_for": ".modal"
+        },
+        {
+          "wait": 800
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "pick",
+          "selector": "[data-act=\"dl-assign-pick\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-menu",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": "[data-act=\"dl-menu\"]"
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "callouts": [
+        {
+          "key": "pay",
+          "selector": "[data-act=\"dl-pay\"]"
+        },
+        {
+          "key": "back",
+          "selector": "[data-act=\"rd-return\"]"
+        },
+        {
+          "key": "fail",
+          "selector": "[data-act=\"dl-fail\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-delivered",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": "[data-act=\"dl-done\"]"
+        },
+        {
+          "wait_for": ".modal"
+        },
+        {
+          "wait": 700
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "got",
+          "selector": "#dlGot"
+        },
+        {
+          "key": "go",
+          "selector": "[data-act=\"dl-done-go\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-handover",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": "[data-act=\"rd-tab\"][data-id=\"handover\"]"
+        },
+        {
+          "wait": 1300
+        }
+      ],
+      "callouts": [
+        {
+          "key": "driver",
+          "selector": "[data-act=\"rd-open\"][data-kind=\"driver\"]"
+        },
+        {
+          "key": "company",
+          "selector": "[data-act=\"rd-open\"][data-kind=\"company\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-cashback",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"rd-tab\"][data-id=\"cash\"]"
+        },
+        {
+          "wait": 1300
+        }
+      ],
+      "callouts": [
+        {
+          "key": "handin",
+          "selector": "[data-act=\"rd-handin\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-safeers",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#safeers'"
+        },
+        {
+          "wait": 2200
+        }
+      ],
+      "callouts": [
+        {
+          "key": "give",
+          "selector": "[data-sf=\"give\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-products",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#products'"
+        },
+        {
+          "wait": 2000
+        }
+      ],
+      "callouts": [
+        {
+          "key": "find",
+          "selector": "#prodFind"
+        },
+        {
+          "key": "add",
+          "selector": "[data-view=\"warehouse\"][data-tab=\"add\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-product",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"open-product\"]"
+        },
+        {
+          "wait_for": ".drawer"
+        },
+        {
+          "wait": 900
+        }
+      ],
+      "callouts": [
+        {
+          "key": "price",
+          "selector": "[data-act=\"pq-open\"]"
+        },
+        {
+          "key": "labels",
+          "selector": "[data-act=\"labels-for\"]"
+        },
+        {
+          "key": "more",
+          "selector": "[data-act=\"pr-menu\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-price",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"pq-open\"]"
+        },
+        {
+          "wait_for": ".modal"
+        },
+        {
+          "wait": 600
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10
+    },
+    {
+      "id": "m-weborders",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "eval": "location.hash='#weborders'"
+        },
+        {
+          "wait": 2000
+        }
+      ]
+    },
+    {
+      "id": "m-print",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#print'"
+        },
+        {
+          "wait": 2000
+        }
+      ],
+      "callouts": [
+        {
+          "key": "new",
+          "selector": "[data-act=\"pj-new\"]"
+        }
+      ]
+    },
+    {
+      "id": "m-reviews",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#reviews'"
+        },
+        {
+          "wait": 2000
+        }
+      ]
+    }
+  ]
+}

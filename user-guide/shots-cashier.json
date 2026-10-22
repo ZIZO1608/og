@@ -1,0 +1,435 @@
+{
+  "base_url": "http://localhost:8191",
+  "display_base_url": "https://shop.ogsports1.com",
+  "viewport": {
+    "width": 1280,
+    "height": 860
+  },
+  "device_scale_factor": 2,
+  "delay_ms": 700,
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "login": {
+    "url": "/",
+    "actions": [
+      {
+        "wait_for": "#lgUser"
+      },
+      {
+        "fill": {
+          "selector": "#lgUser",
+          "value": "$ENV:GUIDE_USER"
+        }
+      },
+      {
+        "fill": {
+          "selector": "#lgPass",
+          "value": "$ENV:GUIDE_PASS"
+        }
+      },
+      {
+        "click": "#lgGo"
+      }
+    ],
+    "wait_for": ".user-chip"
+  },
+  "languages": {
+    "en": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "en"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body:not(.rtl)"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    },
+    "ar": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "ar"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body.rtl"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    }
+  },
+  "screens": [
+    {
+      "id": "c-home",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#dashboard'"
+        },
+        {
+          "wait": 1600
+        }
+      ],
+      "callouts": [
+        {
+          "key": "sell",
+          "selector": ".hm-job[data-id=\"sell\"]"
+        },
+        {
+          "key": "close",
+          "selector": ".hm-job[data-id=\"closeday\"]"
+        }
+      ]
+    },
+    {
+      "id": "c-pos",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#pos'"
+        },
+        {
+          "wait": 2000
+        }
+      ],
+      "callouts": [
+        {
+          "key": "scan",
+          "selector": "#posScan"
+        },
+        {
+          "key": "cats",
+          "selector": "[data-pos=\"cat\"]"
+        },
+        {
+          "key": "tile",
+          "selector": ".pcard:not(.dead)"
+        },
+        {
+          "key": "cart",
+          "selector": "#cartLines"
+        }
+      ]
+    },
+    {
+      "id": "c-pick",
+      "url": null,
+      "actions": [
+        {
+          "click": ".pcard:not(.dead)"
+        },
+        {
+          "wait_for": "[data-pos=\"size\"]"
+        },
+        {
+          "wait": 600
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "size",
+          "selector": "[data-pos=\"size\"]:not([disabled])"
+        }
+      ]
+    },
+    {
+      "id": "c-cust",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-pos=\"size\"]:not([disabled])"
+        },
+        {
+          "wait": 700
+        },
+        {
+          "click": ".pcard:not(.dead) >> nth=2"
+        },
+        {
+          "wait_for": "[data-pos=\"size\"]"
+        },
+        {
+          "click": "[data-pos=\"size\"]:not([disabled])"
+        },
+        {
+          "wait": 700
+        },
+        {
+          "click": "#posCust"
+        },
+        {
+          "wait_for": "[data-pos=\"cust-pick\"]"
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "callouts": [
+        {
+          "key": "lines",
+          "selector": "#cartLines"
+        },
+        {
+          "key": "cust",
+          "selector": "#posCust"
+        },
+        {
+          "key": "list",
+          "selector": "[data-pos=\"cust-pick\"]"
+        }
+      ]
+    },
+    {
+      "id": "c-cart",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-pos=\"cust-pick\"]"
+        },
+        {
+          "wait": 800
+        },
+        {
+          "scroll_to": "[data-pos=\"complete\"]"
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "callouts": [
+        {
+          "key": "qty",
+          "selector": "[data-pos=\"inc\"]"
+        },
+        {
+          "key": "disc",
+          "selector": "#posDisc"
+        },
+        {
+          "key": "coupon",
+          "selector": "#posCoupon"
+        },
+        {
+          "key": "pay",
+          "selector": "#payGrid"
+        },
+        {
+          "key": "complete",
+          "selector": "[data-pos=\"complete\"]"
+        }
+      ]
+    },
+    {
+      "id": "c-transfer",
+      "url": null,
+      "actions": [
+        {
+          "click": "#payGrid [data-pos=\"pay\"] >> nth=1"
+        },
+        {
+          "wait_for": "#posTxn"
+        },
+        {
+          "wait": 500
+        },
+        {
+          "scroll_to": "#posTxn"
+        }
+      ],
+      "callouts": [
+        {
+          "key": "method",
+          "selector": "#payGrid [data-pos=\"pay\"] >> nth=1"
+        },
+        {
+          "key": "txn",
+          "selector": "#posTxn"
+        }
+      ]
+    },
+    {
+      "id": "c-done",
+      "url": null,
+      "actions": [
+        {
+          "click": "#payGrid [data-pos=\"pay\"] >> nth=0"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": "[data-pos=\"complete\"]"
+        },
+        {
+          "wait_for": "[data-act=\"new-sale\"]"
+        },
+        {
+          "wait": 1200
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "print",
+          "selector": "[data-act=\"print-receipt-now\"]"
+        },
+        {
+          "key": "new",
+          "selector": "[data-act=\"new-sale\"]"
+        }
+      ]
+    },
+    {
+      "id": "c-customers",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "eval": "location.hash='#customers'"
+        },
+        {
+          "wait": 2000
+        }
+      ],
+      "callouts": [
+        {
+          "key": "new",
+          "selector": "[data-act=\"cu-new\"]"
+        },
+        {
+          "key": "search",
+          "selector": "[data-change=\"cust-q\"]"
+        },
+        {
+          "key": "card",
+          "selector": "[data-act=\"cu-open\"]"
+        }
+      ]
+    },
+    {
+      "id": "c-cust-new",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"cu-new\"]"
+        },
+        {
+          "wait_for": "#cuName"
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "name",
+          "selector": "#cuName"
+        },
+        {
+          "key": "phone",
+          "selector": "#cuPhone"
+        },
+        {
+          "key": "save",
+          "selector": "[data-act=\"cu-save\"]"
+        }
+      ]
+    },
+    {
+      "id": "c-count",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "eval": "location.hash='#money'"
+        },
+        {
+          "wait": 2000
+        },
+        {
+          "click": "[data-cb=\"dc-recount\"]",
+          "optional": true
+        },
+        {
+          "wait": 600
+        },
+        {
+          "fill": {
+            "selector": "#dcCnt_SYP",
+            "value": "2650000"
+          }
+        },
+        {
+          "fill": {
+            "selector": "#dcCnt_USD",
+            "value": "40"
+          }
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "callouts": [
+        {
+          "key": "syp",
+          "selector": "#dcCnt_SYP"
+        },
+        {
+          "key": "usd",
+          "selector": "#dcCnt_USD"
+        },
+        {
+          "key": "save",
+          "selector": "[data-cb=\"dc-count\"]"
+        }
+      ]
+    },
+    {
+      "id": "c-count-saved",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-cb=\"dc-count\"]"
+        },
+        {
+          "wait": 1800
+        }
+      ]
+    }
+  ]
+}

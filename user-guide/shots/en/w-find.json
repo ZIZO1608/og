@@ -1,0 +1,18 @@
+{
+  "image": "w-find.png",
+  "width": 1280,
+  "height": 860,
+  "url": "http://localhost:8191/#warehouse",
+  "display_url": "shop.ogsports1.com/#warehouse",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "find": [
+      292,
+      496.5,
+      952,
+      38
+    ]
+  },
+  "captured": "2026-10-13 23:16"
+}

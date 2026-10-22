@@ -1,0 +1,36 @@
+{
+  "image": "c-cart.png",
+  "width": 1280,
+  "height": 860,
+  "url": "http://localhost:8191/#pos",
+  "display_url": "shop.ogsports1.com/#pos",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "disc": [
+      902,
+      200.1,
+      67.2,
+      38
+    ],
+    "coupon": [
+      1089,
+      200.1,
+      107.4,
+      38
+    ],
+    "pay": [
+      902,
+      496.1,
+      360,
+      78
+    ],
+    "complete": [
+      902,
+      795.1,
+      360,
+      46
+    ]
+  },
+  "captured": "2026-10-13 23:16"
+}

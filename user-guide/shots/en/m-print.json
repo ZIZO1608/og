@@ -1,0 +1,18 @@
+{
+  "image": "m-print.png",
+  "width": 1280,
+  "height": 760,
+  "url": "http://localhost:8191/#print",
+  "display_url": "shop.ogsports1.com/#print",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "new": [
+      1106.8,
+      165.0,
+      137.2,
+      38
+    ]
+  },
+  "captured": "2026-10-13 23:12"
+}

@@ -1,0 +1,18 @@
+{
+  "image": "w-labels.png",
+  "width": 1280,
+  "height": 860,
+  "url": "http://localhost:8191/#labels",
+  "display_url": "shop.ogsports1.com/#labels",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "all": [
+      1119.2,
+      305.3,
+      105.8,
+      32
+    ]
+  },
+  "captured": "2026-10-13 23:16"
+}

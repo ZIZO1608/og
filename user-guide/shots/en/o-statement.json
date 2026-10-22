@@ -1,0 +1,18 @@
+{
+  "image": "o-statement.png",
+  "width": 1280,
+  "height": 760,
+  "url": "http://localhost:8191/#money",
+  "display_url": "shop.ogsports1.com/#money",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "month": [
+      292,
+      292.5,
+      29.9,
+      32
+    ]
+  },
+  "captured": "2026-10-13 23:10"
+}

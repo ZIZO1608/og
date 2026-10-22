@@ -1,0 +1,30 @@
+{
+  "image": "c-customers.png",
+  "width": 1280,
+  "height": 860,
+  "url": "http://localhost:8191/#customers",
+  "display_url": "shop.ogsports1.com/#customers",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "new": [
+      874.3,
+      114.0,
+      127.5,
+      32
+    ],
+    "search": [
+      292,
+      179.0,
+      236.2,
+      38
+    ],
+    "card": [
+      292,
+      267.5,
+      309.3,
+      224
+    ]
+  },
+  "captured": "2026-10-13 23:16"
+}

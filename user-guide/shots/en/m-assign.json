@@ -1,0 +1,18 @@
+{
+  "image": "m-assign.png",
+  "width": 450,
+  "height": 446.5,
+  "url": "http://localhost:8191/#deliveries",
+  "display_url": "shop.ogsports1.com/#deliveries",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "pick": [
+      35,
+      98.5,
+      186,
+      58
+    ]
+  },
+  "captured": "2026-10-13 23:11"
+}

@@ -1,0 +1,36 @@
+{
+  "image": "o-money-now.png",
+  "width": 1280,
+  "height": 760,
+  "url": "http://localhost:8191/#money",
+  "display_url": "shop.ogsports1.com/#money",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "tabs": [
+      292,
+      179.0,
+      100.1,
+      40
+    ],
+    "move": [
+      292,
+      607.9,
+      309.3,
+      106.4
+    ],
+    "exchange": [
+      613.3,
+      607.9,
+      309.3,
+      106.4
+    ],
+    "owner": [
+      934.7,
+      607.9,
+      309.3,
+      106.4
+    ]
+  },
+  "captured": "2026-10-13 23:10"
+}

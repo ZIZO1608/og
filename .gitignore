@@ -84,3 +84,9 @@ ACCOUNTS.private.md
 # Never committed; Publish runs git add.
 _tools/
 _secrets/
+
+# client user guide
+server/data-guide/
+server/.env.guide
+user-guide/out/
+user-guide/.build-*

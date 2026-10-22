@@ -1,0 +1,260 @@
+{
+  "base_url": "http://localhost:8191",
+  "display_base_url": "https://shop.ogsports1.com",
+  "viewport": {
+    "width": 1280,
+    "height": 860
+  },
+  "device_scale_factor": 2,
+  "delay_ms": 700,
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "login": {
+    "url": "/",
+    "actions": [
+      {
+        "wait_for": "#lgUser"
+      },
+      {
+        "fill": {
+          "selector": "#lgUser",
+          "value": "$ENV:GUIDE_USER"
+        }
+      },
+      {
+        "fill": {
+          "selector": "#lgPass",
+          "value": "$ENV:GUIDE_PASS"
+        }
+      },
+      {
+        "click": "#lgGo"
+      }
+    ],
+    "wait_for": ".user-chip"
+  },
+  "languages": {
+    "en": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "en"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body:not(.rtl)"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    },
+    "ar": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "ar"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "body.rtl"
+        },
+        {
+          "wait_for": "#bootSplash",
+          "optional": true
+        },
+        {
+          "wait": 2500
+        }
+      ]
+    }
+  },
+  "screens": [
+    {
+      "id": "w-home",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#dashboard'"
+        },
+        {
+          "wait": 1600
+        }
+      ]
+    },
+    {
+      "id": "w-arrived",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#warehouse'"
+        },
+        {
+          "wait": 2000
+        },
+        {
+          "click": "[data-act=\"wh-tab\"][data-tab=\"arrived\"]"
+        },
+        {
+          "wait": 1200
+        }
+      ],
+      "callouts": [
+        {
+          "key": "jobs",
+          "selector": "[data-act=\"wh-tab\"][data-tab=\"arrived\"]"
+        },
+        {
+          "key": "po",
+          "selector": "[data-act=\"rc-po\"]"
+        },
+        {
+          "key": "free",
+          "selector": "[data-act=\"rc-free\"]"
+        },
+        {
+          "key": "new",
+          "selector": "[data-act=\"rc-new-product\"]"
+        }
+      ]
+    },
+    {
+      "id": "w-move",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"wh-tab\"][data-tab=\"move\"]"
+        },
+        {
+          "wait_for": "#msCode"
+        },
+        {
+          "wait": 800
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "from",
+          "selector": "[data-change=\"ms-from\"]"
+        },
+        {
+          "key": "to",
+          "selector": "[data-change=\"ms-to\"]"
+        },
+        {
+          "key": "code",
+          "selector": "#msCode"
+        },
+        {
+          "key": "go",
+          "selector": "[data-act=\"ms-go\"]"
+        }
+      ]
+    },
+    {
+      "id": "w-find",
+      "url": null,
+      "actions": [
+        {
+          "press": "Escape"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": "[data-act=\"wh-tab\"][data-tab=\"stock\"]"
+        },
+        {
+          "wait": 1200
+        }
+      ],
+      "callouts": [
+        {
+          "key": "find",
+          "selector": "#whFind"
+        }
+      ]
+    },
+    {
+      "id": "w-count",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"wh-tab\"][data-tab=\"count\"]"
+        },
+        {
+          "wait": 1200
+        }
+      ],
+      "callouts": [
+        {
+          "key": "start",
+          "selector": "[data-st=\"start\"]"
+        }
+      ]
+    },
+    {
+      "id": "w-add",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-act=\"wh-tab\"][data-tab=\"add\"]"
+        },
+        {
+          "wait": 1300
+        }
+      ],
+      "callouts": [
+        {
+          "key": "name",
+          "selector": "#whName"
+        },
+        {
+          "key": "type",
+          "selector": "[data-change=\"wh-type\"]"
+        },
+        {
+          "key": "price",
+          "selector": "#whPrice"
+        },
+        {
+          "key": "saveprint",
+          "selector": "[data-act=\"wh-save-print\"]"
+        },
+        {
+          "key": "save",
+          "selector": "[data-act=\"wh-save\"]"
+        }
+      ]
+    },
+    {
+      "id": "w-labels",
+      "url": null,
+      "actions": [
+        {
+          "eval": "location.hash='#labels'"
+        },
+        {
+          "wait": 2000
+        }
+      ],
+      "callouts": [
+        {
+          "key": "all",
+          "selector": "[data-act=\"lb-print-all\"]"
+        }
+      ]
+    }
+  ]
+}

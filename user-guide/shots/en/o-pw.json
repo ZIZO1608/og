@@ -1,0 +1,36 @@
+{
+  "image": "o-pw.png",
+  "width": 450,
+  "height": 443.5,
+  "url": "http://localhost:8191/#dashboard",
+  "display_url": "shop.ogsports1.com/#dashboard",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "cur": [
+      35,
+      98.5,
+      380,
+      38
+    ],
+    "new": [
+      35,
+      190.0,
+      380,
+      38
+    ],
+    "again": [
+      35,
+      281.5,
+      380,
+      38
+    ],
+    "save": [
+      260,
+      378.5,
+      155,
+      38
+    ]
+  },
+  "captured": "2026-10-13 23:10"
+}

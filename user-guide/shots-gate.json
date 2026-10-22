@@ -1,0 +1,96 @@
+{
+  "base_url": "http://localhost:8191",
+  "display_base_url": "https://shop.ogsports1.com",
+  "viewport": {
+    "width": 1280,
+    "height": 860
+  },
+  "device_scale_factor": 2,
+  "delay_ms": 700,
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "languages": {
+    "en": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "en"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "#lgUser"
+        },
+        {
+          "wait": 800
+        }
+      ]
+    },
+    "ar": {
+      "setup": [
+        {
+          "set_local_storage": {
+            "og.lang": "ar"
+          }
+        },
+        {
+          "eval": "location.reload()"
+        },
+        {
+          "wait_for": "#lgUser"
+        },
+        {
+          "wait": 800
+        }
+      ]
+    }
+  },
+  "screens": [
+    {
+      "id": "login",
+      "url": null,
+      "clip": ".gate-card",
+      "clip_padding": 16,
+      "hide": [
+        "#lgNote"
+      ],
+      "actions": [
+        {
+          "fill": {
+            "selector": "#lgUser",
+            "value": "cashier"
+          }
+        },
+        {
+          "fill": {
+            "selector": "#lgPass",
+            "value": "xxxxxxxxxx"
+          }
+        }
+      ],
+      "callouts": [
+        {
+          "key": "user",
+          "selector": "#lgUser"
+        },
+        {
+          "key": "pass",
+          "selector": "#lgPass"
+        },
+        {
+          "key": "eye",
+          "selector": "#lgEye"
+        },
+        {
+          "key": "go",
+          "selector": "#lgGo"
+        },
+        {
+          "key": "hint",
+          "selector": "#lgHint"
+        }
+      ]
+    }
+  ]
+}

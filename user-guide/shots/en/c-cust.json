@@ -1,0 +1,30 @@
+{
+  "image": "c-cust.png",
+  "width": 1280,
+  "height": 860,
+  "url": "http://localhost:8191/#pos",
+  "display_url": "shop.ogsports1.com/#pos",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "lines": [
+      884,
+      127,
+      396,
+      181.6
+    ],
+    "cust": [
+      902,
+      351.6,
+      360,
+      38
+    ],
+    "list": [
+      909,
+      400.6,
+      346,
+      50
+    ]
+  },
+  "captured": "2026-10-13 23:15"
+}

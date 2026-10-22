@@ -1,0 +1,24 @@
+{
+  "image": "c-transfer.png",
+  "width": 1280,
+  "height": 860,
+  "url": "http://localhost:8191/#pos",
+  "display_url": "shop.ogsports1.com/#pos",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "method": [
+      1024,
+      450.1,
+      116,
+      36
+    ],
+    "txn": [
+      902,
+      565.6,
+      360,
+      38
+    ]
+  },
+  "captured": "2026-10-13 23:16"
+}
