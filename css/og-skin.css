@@ -2079,7 +2079,8 @@ body[data-view="safeers"] .mo-glow,
 body[data-view="warehouse"] .mo-glow,
 body[data-view="money"] .mo-glow,
 body[data-view="desk"] .mo-glow,
-body[data-view="pos"] .mo-glow { display: none; }
+body[data-view="pos"] .mo-glow,
+body[data-view="labels"] .mo-glow { display: none; }
 
 /* ---- a parcel whose driver was switched off ----------------------------- */
 body:not([data-portal="yalla"]) .dlb-c-orphan {
@@ -4701,7 +4702,7 @@ body:not([data-portal="yalla"]) .sl-tick.some .sl-tick-box::after {
 }
 
 /* The rack as it stands: levels down, bays across. */
-body:not([data-portal="yalla"]) .sl-grid { display: grid; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+body:not([data-portal="yalla"]) .sl-grid { display: grid; gap: 8px; overflow-x: auto; padding: 2px; }
 body:not([data-portal="yalla"]) .sl-rowlab { display: grid; place-items: center; font: 700 12px/1 var(--font-head); color: var(--dim); }
 body:not([data-portal="yalla"]) .sl-gap { min-height: 40px; }
 body:not([data-portal="yalla"]) .sl-cell {
@@ -4712,13 +4713,14 @@ body:not([data-portal="yalla"]) .sl-cell {
 }
 body:not([data-portal="yalla"]) .sl-cell:hover { border-color: var(--border-strong); color: var(--foreground); }
 body:not([data-portal="yalla"]) .sl-cell:active { transform: scale(.94); }
-body:not([data-portal="yalla"]) .sl-cell:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+body:not([data-portal="yalla"]) .sl-cell:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 body:not([data-portal="yalla"]) .sl-cell i {
   position: absolute; top: 5px; inset-inline-end: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--brand-dim);
 }
 body:not([data-portal="yalla"]) .sl-cell.on { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); }
 body:not([data-portal="yalla"]) .sl-cell.on i { background: var(--brand-foreground); }
-body:not([data-portal="yalla"]) .sl-cell.focus { box-shadow: 0 0 0 2px var(--app), 0 0 0 4px var(--foreground); }
+body:not([data-portal="yalla"]) .sl-cell.focus { box-shadow: inset 0 0 0 2px var(--foreground); }
+body:not([data-portal="yalla"]) .sl-cell.on.focus { box-shadow: inset 0 0 0 2px var(--brand-foreground); }
 body:not([data-portal="yalla"]) .sl-cell.dim { opacity: .25; cursor: default; }
 
 /* ------------------------------------------------------- the true label */
