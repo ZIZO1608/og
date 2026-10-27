@@ -154,6 +154,24 @@ var ShelfMap = (function () {
 
   /* ---------------------------------------------------------------- data */
 
+  /* A shelf somebody asked to see from elsewhere (the shelf scan sheet's
+     "Show on the map"): selected once the map has its data, the same way a
+     scan of that shelf's label selects it here. */
+  var pendingShelf = null;
+  function takePendingShelf() {
+    if (!pendingShelf || !S.data || S.loading) return;
+    var p = pendingShelf; pendingShelf = null;
+    shelfScan(p.wh, p.key, p.code);
+  }
+  function showShelf(code) {
+    var m = SHELF_SCAN_RE.exec(String(code || '').trim().toUpperCase());
+    if (!m) return;
+    pendingShelf = { wh: +m[1], key: m[2], code: m[3] };
+    /* Called before go('shelfmap'): the map's after-hook takes it once the
+       screen is drawn and its data is in hand. */
+    if (OG.view === 'shelfmap') takePendingShelf();
+  }
+
   function load(keepSel) {
     S.loading = true; S.err = null;
     return Shop.sections().then(function (res) {
@@ -171,6 +189,7 @@ var ShelfMap = (function () {
       liveLine(false);
       repaint();
       if (liveAgain) { liveAgain = false; liveFetch(); }
+      takePendingShelf();
     }).catch(function (err) {
       S.loading = false; S.err = API.friendly(err);
       repaint();
@@ -2299,14 +2318,19 @@ var ShelfMap = (function () {
        a repaint. Idempotent, so calling it here AND there costs nothing. */
     mount3d();
     keepFocus();
+    takePendingShelf();
   }
 
   /* ------------------------------------------------------------ scanning */
 
   var lastScan = null, lastScanAt = 0;
 
-  function onScan(code) {
+  function onScan(code, last) {
     if (!owns()) return;
+    /* On the Arabic keyboard layout the letters of SH02AA1 arrive replaced;
+       the keys the scanner pressed (Wedge's `latin`) are the label. */
+    if (last && last.latin && !SHELF_SCAN_RE.test(String(code || '').trim().toUpperCase()) &&
+        SHELF_SCAN_RE.test(String(last.latin).trim().toUpperCase())) code = last.latin;
     var c = String(code || '').trim();
     if (!c) return;
 
@@ -3743,6 +3767,7 @@ var ShelfMap = (function () {
     register: register,
     reload: reload,
     assignFlow: assignFlow,
+    showShelf: showShelf,
     settingsList: settingsList,
     /* The rooms themselves, for screens that name a shelf without drawing
        one. `S.data` stays private — this is a separate, short-lived cache. */

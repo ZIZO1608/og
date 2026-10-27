@@ -208,6 +208,12 @@ function handleScan(code) {
      The partner check matters because OG.view stays 'pos' while a manager
      previews the Yalla portal: a scan taken there must not feed a cart
      nobody can see. */
+  /* A shelf label read by the camera opens the shelf sheet, as the gun does. */
+  if (typeof ShelfSheet !== 'undefined' && ShelfSheet.parse(code)) {
+    closeModal();
+    ShelfSheet.open(ShelfSheet.parse(code));
+    return;
+  }
   if (OG.view === 'pos' && !(OG.print && OG.print.partner) && typeof POS !== 'undefined') {
     var c = String(code || '').trim();
     /* 058: one code can be several colours of the same size. The colours with
@@ -274,7 +280,7 @@ function bindWedge() {
   var DUPE_MS = 700;
   var lastCode = null, lastAt = 0;
 
-  Wedge.onScan(function (code) {
+  Wedge.onScan(function (code, info) {
     /* The hardware settings page owns the scanner while it is open, or its
        own test box would fire the product sheet on every test scan. */
     if (OG.view === 'settings' && OG.set && OG.set.captureScans) return;
@@ -293,6 +299,21 @@ function bindWedge() {
       var known = DB.variantsByCode(code).length > 0;
       if (!known) toast(t('lbl_unknown_code'), String(code).slice(0, 40), 'warn');
       return;
+    }
+
+    /* A SHELF LABEL (27 Oct 2026). The shelf sheet owns the scanner while it
+       is open — another shelf opens that shelf, a box picks the size to put
+       there. A shelf label scanned anywhere else opens the sheet, except on
+       the shelf map, whose own handler selects the shelf. `info.latin` is the
+       keys the scanner pressed, which is the label on the Arabic layout. */
+    if (typeof ShelfSheet !== 'undefined') {
+      if (ShelfSheet.isOpen()) { ShelfSheet.scanned(code, info); return; }
+      var shelfCode = ShelfSheet.parse(code, info && info.latin);
+      if (shelfCode && !(typeof ShelfMap !== 'undefined' && ShelfMap.owns())) {
+        closeModal();
+        ShelfSheet.open(shelfCode);
+        return;
+      }
     }
 
     /* Move-by-scan owns the scanner while its panel is open: every code is a

@@ -80,6 +80,23 @@ var Wedge = (function () {
 
   function reset() { S.buf = []; S.armed = false; }
 
+  /* THE KEY THE SCANNER PRESSED, WHATEVER THE LAYOUT SAYS IT TYPED.
+     A gun types through the keyboard, so on the Arabic layout SH02AA1 arrives
+     as Arabic letters with the digits intact. e.code names the physical key
+     (KeyS, Digit0), which is what the scanner meant. Kept beside the text as
+     S.last.latin; a reader that needs the letters (a shelf label) asks for it,
+     and nothing that already works on `text` changes. */
+  function physical(e) {
+    var c = e.code || '';
+    if (/^Key[A-Z]$/.test(c)) {
+      var l = c.charAt(3);
+      return e.shiftKey ? l : l.toLowerCase();
+    }
+    if (/^(Digit|Numpad)[0-9]$/.test(c)) return c.charAt(c.length - 1);
+    if (c === 'Minus' || c === 'NumpadSubtract') return '-';
+    return e.key;
+  }
+
   /* Decide, report, and hand the code on. */
   function finish(target) {
     var text = S.buf.map(function (b) { return b.ch; }).join('');
@@ -91,6 +108,7 @@ var Wedge = (function () {
 
     S.last = {
       text: text,
+      latin: S.buf.map(function (b) { return b.k || b.ch; }).join(''),
       length: text.length,
       medianGap: gap === Infinity ? null : Math.round(gap),
       viaPrefix: S.armed,
@@ -148,7 +166,7 @@ var Wedge = (function () {
       /* A long pause means the previous keys were a person typing something
          else. Start fresh rather than gluing two inputs together. */
       if (S.buf.length && (now - S.buf[S.buf.length - 1].t) > 500) S.buf = [];
-      S.buf.push({ ch: e.key, t: now });
+      S.buf.push({ ch: e.key, t: now, k: physical(e) });
       if (S.buf.length > 128) S.buf.shift();
       return;
     }

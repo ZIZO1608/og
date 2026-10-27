@@ -4894,3 +4894,111 @@ body:not([data-portal="yalla"]) .sc2-move {
   body:not([data-portal="yalla"]) .sc2-size { flex-direction: row; gap: 10px; width: 100%; justify-content: center; }
   body:not([data-portal="yalla"]) .sc2-facts { grid-template-columns: 1fr 1fr; }
 }
+
+/* ===================== THE SHELF SHEET (27 Oct 2026) ======================
+   A shelf label scanned anywhere (js/shelfsheet.js): the shelf code big,
+   what is on it, and two jobs — take from it, put on it. Shares the scan
+   sheet's chips and place buttons (.sc2-*). */
+body:not([data-portal="yalla"]) .modal.ss-modal { max-width: 560px; }
+body:not([data-portal="yalla"]) .modal.ss-modal .modal-body { padding-bottom: 20px; }
+body:not([data-portal="yalla"]) .ss-head { display: flex; align-items: center; gap: 16px; }
+body:not([data-portal="yalla"]) .ss-code {
+  flex: none; min-width: 92px; height: 88px; padding: 0 14px; border-radius: var(--radius-lg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #FAFAFA; color: #0A0A0A; font-size: 34px; font-weight: 800; line-height: 1;
+}
+body:not([data-portal="yalla"]) .ss-code small { font-size: 12px; font-weight: 700; letter-spacing: .08em; opacity: .55; margin-bottom: 4px; }
+body:not([data-portal="yalla"]) .ss-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+body:not([data-portal="yalla"]) .ss-id b { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+body:not([data-portal="yalla"]) .ss-id span { font-size: 13px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ss-id .ss-for { color: var(--foreground); font-weight: 600; }
+body:not([data-portal="yalla"]) .ss-id .ss-for.is-empty { color: var(--muted-foreground); font-weight: 500; }
+body:not([data-portal="yalla"]) .ss-total { flex: none; display: flex; flex-direction: column; align-items: center; }
+body:not([data-portal="yalla"]) .ss-total b { font-size: 28px; font-weight: 800; color: var(--brand); line-height: 1; }
+body:not([data-portal="yalla"]) .ss-total span { font-size: 12px; color: var(--muted-foreground); }
+
+body:not([data-portal="yalla"]) .ss-list { margin-top: 16px; border-top: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .ss-row {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+  padding: 10px 2px; border-bottom: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .ss-size { font-size: 16px; font-weight: 700; min-width: 40px; }
+body:not([data-portal="yalla"]) .ss-row-name { font-size: 13px; color: var(--muted-foreground); min-width: 0; overflow-wrap: anywhere; }
+body:not([data-portal="yalla"]) .ss-row-qty { font-size: 16px; font-weight: 700; }
+body:not([data-portal="yalla"]) .ss-none { padding: 16px 2px; color: var(--muted-foreground); font-size: 14px; }
+
+body:not([data-portal="yalla"]) .ss-jobs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+body:not([data-portal="yalla"]) .ss-job {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 104px;
+  padding: 14px 16px; border-radius: var(--radius-lg); text-align: start; cursor: pointer;
+  background: var(--card); border: 1px solid var(--border-strong); color: var(--foreground); font: inherit;
+  transition: border-color var(--t), transform var(--t);
+}
+body:not([data-portal="yalla"]) .ss-job:hover:not([disabled]) { border-color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ss-job:active:not([disabled]) { transform: scale(.98); }
+body:not([data-portal="yalla"]) .ss-job[disabled] { opacity: .45; cursor: default; }
+body:not([data-portal="yalla"]) .ss-job b { font-size: 16px; font-weight: 700; }
+body:not([data-portal="yalla"]) .ss-job small { font-size: 12px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ss-job-ico {
+  width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center;
+  font-size: 16px; font-weight: 800; background: var(--secondary); margin-bottom: 4px;
+}
+body:not([data-portal="yalla"]) .ss-job.is-primary { background: var(--brand); border-color: var(--brand); color: #0A0A0A; }
+body:not([data-portal="yalla"]) .ss-job.is-primary small { color: #2A3300; }
+body:not([data-portal="yalla"]) .ss-job.is-primary .ss-job-ico { background: rgb(0 0 0 / .14); }
+body:not([data-portal="yalla"]) .ss-link {
+  display: block; width: 100%; min-height: 44px; margin-top: 8px; background: transparent; border: 0;
+  color: var(--muted-foreground); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .ss-link:hover { color: var(--foreground); }
+
+body:not([data-portal="yalla"]) .ss-back {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 12px; padding: 0;
+  background: transparent; border: 0; color: var(--muted-foreground); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .ss-back:hover { color: var(--foreground); }
+body:not([data-portal="yalla"]) .ss-q { font-size: 15px; font-weight: 700; margin: 8px 0 10px; }
+body:not([data-portal="yalla"]) .ss-hint { font-size: 13px; color: var(--muted-foreground); margin-top: 8px; }
+body:not([data-portal="yalla"]) .ss-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+body:not([data-portal="yalla"]) .ss-search { width: 100%; min-height: 44px; font-size: 16px; }
+body:not([data-portal="yalla"]) .ss-found { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+body:not([data-portal="yalla"]) .ss-prod {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; min-height: 52px;
+  padding-block: 6px; padding-inline: 6px 12px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: transparent; color: var(--foreground); font: inherit; text-align: start; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .ss-prod:hover { border-color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .ss-prod .thumb-box.ss-thumb { width: 40px; height: 40px; border-radius: 8px; font-size: 13px; }
+body:not([data-portal="yalla"]) .ss-prod .thumb-box.ss-thumb:not(.has-img) { display: grid; place-items: center; }
+body:not([data-portal="yalla"]) .ss-prod span { color: var(--muted-foreground); font-size: 13px; }
+body:not([data-portal="yalla"]) .ss-chosen {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px;
+  padding: 10px 12px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--border);
+}
+
+body:not([data-portal="yalla"]) .ss-do {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; padding: 16px;
+  border-radius: var(--radius-lg); background: var(--card); border: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .ss-field { display: flex; flex-direction: column; gap: 6px; }
+body:not([data-portal="yalla"]) .ss-grow { flex: 1; min-width: 200px; }
+body:not([data-portal="yalla"]) .ss-step { display: flex; gap: 6px; }
+body:not([data-portal="yalla"]) .ss-step .btn { width: 44px; min-height: 44px; padding: 0; font-size: 18px; font-weight: 700; }
+body:not([data-portal="yalla"]) .ss-step #ssQty { width: 64px; min-height: 44px; text-align: center; font-weight: 700; font-size: 16px; }
+body:not([data-portal="yalla"]) .sc2-place[disabled] { opacity: .4; cursor: default; }
+body:not([data-portal="yalla"]) .ss-msg {
+  margin-top: 12px; padding: 10px 12px; border-radius: var(--radius); font-size: 13px; font-weight: 600;
+  background: var(--warning-soft); border: 1px solid var(--warning-border); color: var(--warning);
+}
+body:not([data-portal="yalla"]) .ss-go { width: 100%; min-height: 54px; margin-top: 12px; font-size: 16px; }
+
+body:not([data-portal="yalla"]) .ss-skel { display: flex; flex-direction: column; gap: 12px; }
+body:not([data-portal="yalla"]) .ss-skel i { display: block; height: 52px; border-radius: var(--radius); background: var(--card); animation: ssPulse 1.2s ease-in-out infinite; }
+body:not([data-portal="yalla"]) .ss-skel i:first-child { height: 88px; }
+@keyframes ssPulse { 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { body:not([data-portal="yalla"]) .ss-skel i { animation: none; } }
+@media (max-width: 480px) {
+  body:not([data-portal="yalla"]) .ss-code { min-width: 76px; height: 76px; font-size: 28px; }
+  body:not([data-portal="yalla"]) .ss-jobs { grid-template-columns: 1fr; }
+  body:not([data-portal="yalla"]) .ss-job { min-height: 76px; }
+}
