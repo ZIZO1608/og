@@ -7,7 +7,7 @@
   },
   "device_scale_factor": 3,
   "delay_ms": 700,
-  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important} .made-by{display:none!important}",
   "login": {
     "url": "/",
     "actions": [
@@ -88,6 +88,15 @@
         },
         {
           "wait": 2200
+        },
+        {
+          "scroll_to": "[data-act=\"dl-done\"]"
+        },
+        {
+          "eval": "document.activeElement && document.activeElement.blur()"
+        },
+        {
+          "wait": 600
         }
       ],
       "callouts": [

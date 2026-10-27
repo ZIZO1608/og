@@ -1,0 +1,18 @@
+{
+  "image": "c-pick.png",
+  "width": 450,
+  "height": 283,
+  "url": "http://localhost:8191/#pos",
+  "display_url": "shop.ogsports1.com/#pos",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "size": [
+      213,
+      188.0,
+      62,
+      60
+    ]
+  },
+  "captured": "2026-10-27 16:45"
+}

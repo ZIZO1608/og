@@ -1,0 +1,36 @@
+{
+  "image": "c-pay.png",
+  "width": 396,
+  "height": 798,
+  "url": "http://localhost:8191/#pos",
+  "display_url": "shop.ogsports1.com/#pos",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "total": [
+      18,
+      216.1,
+      360,
+      107
+    ],
+    "place": [
+      18,
+      360.6,
+      116,
+      36
+    ],
+    "pay": [
+      18,
+      434.1,
+      360,
+      78
+    ],
+    "complete": [
+      18,
+      733.1,
+      360,
+      46
+    ]
+  },
+  "captured": "2026-10-27 16:44"
+}

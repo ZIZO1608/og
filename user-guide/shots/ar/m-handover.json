@@ -1,0 +1,24 @@
+{
+  "image": "m-handover.png",
+  "width": 1024,
+  "height": 798,
+  "url": "http://localhost:8191/#deliveries",
+  "display_url": "shop.ogsports1.com/#deliveries",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "driver": [
+      789,
+      399.9,
+      174,
+      58
+    ],
+    "company": [
+      789,
+      495.4,
+      174,
+      58
+    ]
+  },
+  "captured": "2026-10-27 16:43"
+}

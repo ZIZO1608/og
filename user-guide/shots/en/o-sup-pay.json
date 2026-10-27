@@ -1,11 +1,18 @@
 {
   "image": "o-sup-pay.png",
   "width": 450,
-  "height": 719.1875,
+  "height": 765.296875,
   "url": "http://localhost:8191/#money",
   "display_url": "shop.ogsports1.com/#money",
   "clipped": true,
   "device": "desktop",
-  "boxes": {},
-  "captured": "2026-10-13 23:10"
+  "boxes": {
+    "go": [
+      356.2,
+      700.3,
+      58.8,
+      38
+    ]
+  },
+  "captured": "2026-10-27 16:39"
 }

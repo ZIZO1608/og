@@ -1,11 +1,18 @@
 {
   "image": "c-count-saved.png",
-  "width": 1280,
-  "height": 860,
+  "width": 964,
+  "height": 200.890625,
   "url": "http://localhost:8191/#money",
   "display_url": "shop.ogsports1.com/#money",
-  "clipped": false,
+  "clipped": true,
   "device": "desktop",
-  "boxes": {},
-  "captured": "2026-10-13 23:16"
+  "boxes": {
+    "again": [
+      31,
+      131.9,
+      115.1,
+      38
+    ]
+  },
+  "captured": "2026-10-27 16:45"
 }

@@ -1,0 +1,18 @@
+{
+  "image": "o-staff.png",
+  "width": 968,
+  "height": 874.25,
+  "url": "http://localhost:8191/#settings",
+  "display_url": "shop.ogsports1.com/#settings",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "add": [
+      833.1,
+      803.2,
+      103.9,
+      38
+    ]
+  },
+  "captured": "2026-10-27 16:41"
+}

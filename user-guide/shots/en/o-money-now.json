@@ -1,36 +1,48 @@
 {
   "image": "o-money-now.png",
-  "width": 1280,
-  "height": 760,
+  "width": 1024,
+  "height": 798,
   "url": "http://localhost:8191/#money",
   "display_url": "shop.ogsports1.com/#money",
-  "clipped": false,
+  "clipped": true,
   "device": "desktop",
   "boxes": {
-    "tabs": [
-      292,
-      179.0,
-      100.1,
-      40
+    "groups": [
+      36,
+      117.0,
+      952,
+      46
+    ],
+    "hero": [
+      36,
+      187.0,
+      952,
+      297.2
     ],
     "move": [
-      292,
-      607.9,
+      36,
+      681.5,
       309.3,
       106.4
     ],
-    "exchange": [
-      613.3,
-      607.9,
+    "expense": [
+      357.3,
+      681.5,
       309.3,
       106.4
     ],
-    "owner": [
-      934.7,
-      607.9,
+    "close": [
+      678.7,
+      681.5,
       309.3,
       106.4
+    ],
+    "minor": [
+      36,
+      799.9,
+      952,
+      40
     ]
   },
-  "captured": "2026-10-13 23:10"
+  "captured": "2026-10-27 16:39"
 }

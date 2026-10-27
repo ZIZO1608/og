@@ -7,7 +7,7 @@
   },
   "device_scale_factor": 2,
   "delay_ms": 700,
-  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important} .made-by{display:none!important}",
   "login": {
     "url": "/",
     "actions": [
@@ -125,7 +125,9 @@
           "key": "new",
           "selector": "[data-act=\"rc-new-product\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "w-move",
@@ -184,7 +186,9 @@
           "key": "find",
           "selector": "#whFind"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "w-count",
@@ -202,7 +206,9 @@
           "key": "start",
           "selector": "[data-st=\"start\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "w-add",
@@ -236,7 +242,9 @@
           "key": "save",
           "selector": "[data-act=\"wh-save\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "w-labels",
@@ -254,7 +262,9 @@
           "key": "all",
           "selector": "[data-act=\"lb-print-all\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     }
   ]
 }

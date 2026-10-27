@@ -7,7 +7,7 @@
   },
   "device_scale_factor": 2,
   "delay_ms": 700,
-  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important} .made-by{display:none!important}",
   "login": {
     "url": "/",
     "actions": [
@@ -136,7 +136,7 @@
       "url": null,
       "actions": [
         {
-          "click": ".pcard:not(.dead)"
+          "click": ".pcard[data-id=\"50\"]"
         },
         {
           "wait_for": "[data-pos=\"size\"]"
@@ -150,7 +150,7 @@
       "callouts": [
         {
           "key": "size",
-          "selector": "[data-pos=\"size\"]:not([disabled])"
+          "selector": "[data-pos=\"size\"][data-sku=\"OG-050-43\"]"
         }
       ]
     },
@@ -159,19 +159,19 @@
       "url": null,
       "actions": [
         {
-          "click": "[data-pos=\"size\"]:not([disabled])"
+          "click": "[data-pos=\"size\"][data-sku=\"OG-050-43\"]"
         },
         {
           "wait": 700
         },
         {
-          "click": ".pcard:not(.dead) >> nth=2"
+          "click": ".pcard[data-id=\"54\"]"
         },
         {
           "wait_for": "[data-pos=\"size\"]"
         },
         {
-          "click": "[data-pos=\"size\"]:not([disabled])"
+          "click": "[data-pos=\"size\"][data-sku=\"OG-054-40\"]"
         },
         {
           "wait": 700
@@ -212,16 +212,26 @@
           "wait": 800
         },
         {
-          "scroll_to": "[data-pos=\"complete\"]"
+          "eval": "document.getElementById('cartFoot').scrollTop=0"
         },
         {
-          "wait": 500
+          "wait": 400
         }
       ],
+      "clip": ".pos-right",
+      "clip_padding": 0,
       "callouts": [
         {
           "key": "qty",
           "selector": "[data-pos=\"inc\"]"
+        },
+        {
+          "key": "remove",
+          "selector": "[data-pos=\"del\"]"
+        },
+        {
+          "key": "cust",
+          "selector": "#custWrap"
         },
         {
           "key": "disc",
@@ -230,6 +240,30 @@
         {
           "key": "coupon",
           "selector": "#posCoupon"
+        }
+      ]
+    },
+    {
+      "id": "c-pay",
+      "url": null,
+      "actions": [
+        {
+          "scroll_to": "[data-pos=\"complete\"]"
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "clip": ".pos-right",
+      "clip_padding": 0,
+      "callouts": [
+        {
+          "key": "total",
+          "selector": "#cartTotals"
+        },
+        {
+          "key": "place",
+          "selector": "[data-pos=\"wh\"]"
         },
         {
           "key": "pay",
@@ -258,6 +292,8 @@
           "scroll_to": "#posTxn"
         }
       ],
+      "clip": ".pos-right",
+      "clip_padding": 0,
       "callouts": [
         {
           "key": "method",
@@ -332,7 +368,9 @@
           "key": "card",
           "selector": "[data-act=\"cu-open\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "c-cust-new",
@@ -391,19 +429,21 @@
         {
           "fill": {
             "selector": "#dcCnt_SYP",
-            "value": "2650000"
+            "value": "765000"
           }
         },
         {
           "fill": {
             "selector": "#dcCnt_USD",
-            "value": "40"
+            "value": "65"
           }
         },
         {
           "wait": 500
         }
       ],
+      "clip": "#view .card",
+      "clip_padding": 6,
       "callouts": [
         {
           "key": "syp",
@@ -428,6 +468,14 @@
         },
         {
           "wait": 1800
+        }
+      ],
+      "clip": "#view .card",
+      "clip_padding": 6,
+      "callouts": [
+        {
+          "key": "again",
+          "selector": "[data-cb=\"dc-recount\"]"
         }
       ]
     }

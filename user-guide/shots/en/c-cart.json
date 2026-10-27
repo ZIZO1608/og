@@ -1,36 +1,42 @@
 {
   "image": "c-cart.png",
-  "width": 1280,
-  "height": 860,
+  "width": 396,
+  "height": 798,
   "url": "http://localhost:8191/#pos",
   "display_url": "shop.ogsports1.com/#pos",
-  "clipped": false,
+  "clipped": true,
   "device": "desktop",
   "boxes": {
+    "qty": [
+      201.2,
+      91.0,
+      26,
+      28
+    ],
+    "remove": [
+      362.2,
+      96.5,
+      15.8,
+      17
+    ],
+    "cust": [
+      18,
+      263.6,
+      360,
+      147
+    ],
     "disc": [
-      902,
-      200.1,
+      18,
+      448.1,
       67.2,
       38
     ],
     "coupon": [
-      1089,
-      200.1,
+      205,
+      448.1,
       107.4,
       38
-    ],
-    "pay": [
-      902,
-      496.1,
-      360,
-      78
-    ],
-    "complete": [
-      902,
-      795.1,
-      360,
-      46
     ]
   },
-  "captured": "2026-10-13 23:16"
+  "captured": "2026-10-27 16:44"
 }

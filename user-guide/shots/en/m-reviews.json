@@ -1,11 +1,11 @@
 {
   "image": "m-reviews.png",
-  "width": 1280,
-  "height": 760,
+  "width": 1024,
+  "height": 798,
   "url": "http://localhost:8191/#reviews",
   "display_url": "shop.ogsports1.com/#reviews",
-  "clipped": false,
+  "clipped": true,
   "device": "desktop",
   "boxes": {},
-  "captured": "2026-10-13 23:12"
+  "captured": "2026-10-27 16:42"
 }

@@ -1,18 +1,24 @@
 {
   "image": "o-expenses.png",
-  "width": 1280,
-  "height": 760,
+  "width": 1024,
+  "height": 798,
   "url": "http://localhost:8191/#money",
   "display_url": "shop.ogsports1.com/#money",
-  "clipped": false,
+  "clipped": true,
   "device": "desktop",
   "boxes": {
+    "sub": [
+      36,
+      175.0,
+      952,
+      41
+    ],
     "add": [
-      1157.0,
-      450.2,
+      901.0,
+      397.7,
       62.0,
       32
     ]
   },
-  "captured": "2026-10-13 23:10"
+  "captured": "2026-10-27 16:39"
 }

@@ -7,7 +7,7 @@
   },
   "device_scale_factor": 2,
   "delay_ms": 700,
-  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important} .made-by{display:none!important}",
   "login": {
     "url": "/",
     "actions": [
@@ -211,7 +211,9 @@
           "key": "scope",
           "selector": "[data-act=\"dash-scope\"], .scope-chips"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-money-now",
@@ -224,28 +226,61 @@
           "wait": 1600
         },
         {
-          "click": "[data-mn=\"tab\"][data-t=\"now\"]"
+          "click": "[data-mn=\"group\"][data-g=\"now\"]"
         },
         {
-          "wait": 1200
+          "wait": 1400
         }
       ],
       "callouts": [
         {
-          "key": "tabs",
-          "selector": "[data-mn=\"tab\"][data-t=\"now\"]"
+          "key": "groups",
+          "selector": ".mn-seg"
+        },
+        {
+          "key": "hero",
+          "selector": ".cb-hero"
         },
         {
           "key": "move",
           "selector": "[data-cb=\"move\"]"
         },
         {
-          "key": "exchange",
-          "selector": "[data-cb=\"exchange\"]"
+          "key": "expense",
+          "selector": "[data-cb=\"go-expense\"]"
         },
         {
-          "key": "owner",
-          "selector": "[data-cb=\"owner\"]"
+          "key": "close",
+          "selector": "[data-cb=\"go-close\"]"
+        },
+        {
+          "key": "minor",
+          "selector": ".cb-minor"
+        }
+      ],
+      "clip": "#view",
+      "clip_padding": 0
+    },
+    {
+      "id": "o-move",
+      "url": null,
+      "actions": [
+        {
+          "click": "[data-cb=\"move\"] >> nth=0"
+        },
+        {
+          "wait_for": ".modal"
+        },
+        {
+          "wait": 700
+        }
+      ],
+      "clip": ".modal",
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "go",
+          "selector": "[data-cb=\"move-go\"]"
         }
       ]
     },
@@ -254,35 +289,37 @@
       "url": null,
       "actions": [
         {
-          "click": "[data-mn=\"tab\"][data-t=\"close\"]"
+          "press": "Escape"
         },
         {
-          "wait": 1200
+          "wait": 400
+        },
+        {
+          "click": "[data-mn=\"group\"][data-g=\"close\"]"
+        },
+        {
+          "wait": 1400
         }
       ],
       "callouts": [
         {
-          "key": "syp",
-          "selector": "#dcCnt_SYP"
-        },
-        {
-          "key": "usd",
-          "selector": "#dcCnt_USD"
-        },
-        {
-          "key": "save",
-          "selector": "[data-cb=\"dc-count\"]"
-        },
-        {
           "key": "confirm",
           "selector": "[data-cb=\"dc-confirm\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-expenses",
       "url": null,
       "actions": [
+        {
+          "click": "[data-mn=\"group\"][data-g=\"out\"]"
+        },
+        {
+          "wait": 600
+        },
         {
           "click": "[data-mn=\"tab\"][data-t=\"expenses\"]"
         },
@@ -292,10 +329,16 @@
       ],
       "callouts": [
         {
+          "key": "sub",
+          "selector": ".mn-sub"
+        },
+        {
           "key": "add",
           "selector": "[data-mn=\"add-expense\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-expense-add",
@@ -343,10 +386,12 @@
           "selector": "[data-py=\"sup-pay\"]"
         },
         {
-          "key": "edit",
-          "selector": "[data-py=\"sup-edit\"]"
+          "key": "ledger",
+          "selector": "[data-py=\"sup-ledger\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-sup-pay",
@@ -363,7 +408,13 @@
         }
       ],
       "clip": ".modal",
-      "clip_padding": 10
+      "clip_padding": 10,
+      "callouts": [
+        {
+          "key": "go",
+          "selector": "[data-py=\"sup-pay-go\"]"
+        }
+      ]
     },
     {
       "id": "o-salaries",
@@ -384,15 +435,27 @@
       ],
       "callouts": [
         {
+          "key": "month",
+          "selector": "[data-py=\"pr-month\"]"
+        },
+        {
           "key": "pay",
           "selector": "[data-py=\"pr-pay\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-statement",
       "url": null,
       "actions": [
+        {
+          "click": "[data-mn=\"group\"][data-g=\"books\"]"
+        },
+        {
+          "wait": 600
+        },
         {
           "click": "[data-mn=\"tab\"][data-t=\"statement\"]"
         },
@@ -405,7 +468,9 @@
           "key": "month",
           "selector": "[data-pl=\"month\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-reports",
@@ -427,7 +492,9 @@
           "key": "scope",
           "selector": "[data-act=\"rep-scope\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-coupons",
@@ -445,7 +512,9 @@
           "key": "new",
           "selector": "[data-act=\"cpn-new\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-coupon-new",
@@ -494,7 +563,9 @@
         {
           "wait": 2000
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-settings",
@@ -506,7 +577,9 @@
         {
           "wait": 2000
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "o-staff",

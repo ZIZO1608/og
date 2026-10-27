@@ -1,0 +1,36 @@
+{
+  "image": "m-desk-4.png",
+  "width": 1024,
+  "height": 798,
+  "url": "http://localhost:8191/#desk",
+  "display_url": "shop.ogsports1.com/#desk",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "city": [
+      518,
+      411.3,
+      393,
+      38
+    ],
+    "phone": [
+      113,
+      411.3,
+      393,
+      38
+    ],
+    "addr": [
+      113,
+      490.8,
+      798,
+      65.2
+    ],
+    "fee": [
+      477.5,
+      677.3,
+      140,
+      38
+    ]
+  },
+  "captured": "2026-10-27 16:42"
+}

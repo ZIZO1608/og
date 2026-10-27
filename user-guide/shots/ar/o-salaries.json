@@ -1,0 +1,24 @@
+{
+  "image": "o-salaries.png",
+  "width": 1024,
+  "height": 798,
+  "url": "http://localhost:8191/#money",
+  "display_url": "shop.ogsports1.com/#money",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "month": [
+      958.1,
+      240.0,
+      29.9,
+      32
+    ],
+    "pay": [
+      209.3,
+      453.5,
+      81.5,
+      32
+    ]
+  },
+  "captured": "2026-10-27 16:40"
+}

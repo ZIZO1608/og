@@ -1,0 +1,30 @@
+{
+  "image": "m-menu.png",
+  "width": 1024,
+  "height": 798,
+  "url": "http://localhost:8191/#deliveries",
+  "display_url": "shop.ogsports1.com/#deliveries",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "pay": [
+      389,
+      646.4,
+      178,
+      38
+    ],
+    "back": [
+      389,
+      684.4,
+      178,
+      38
+    ],
+    "fail": [
+      389,
+      608.4,
+      178,
+      38
+    ]
+  },
+  "captured": "2026-10-27 16:43"
+}

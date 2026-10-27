@@ -1,0 +1,36 @@
+{
+  "image": "w-arrived.png",
+  "width": 1024,
+  "height": 798,
+  "url": "http://localhost:8191/#warehouse",
+  "display_url": "shop.ogsports1.com/#warehouse",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "jobs": [
+      757.5,
+      117.0,
+      230.5,
+      66
+    ],
+    "po": [
+      671,
+      404.5,
+      298,
+      97.2
+    ],
+    "free": [
+      517,
+      1584.3,
+      452,
+      73
+    ],
+    "new": [
+      55,
+      1584.3,
+      452,
+      73
+    ]
+  },
+  "captured": "2026-10-27 16:44"
+}

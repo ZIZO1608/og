@@ -1,0 +1,18 @@
+{
+  "image": "m-cashback.png",
+  "width": 1024,
+  "height": 798,
+  "url": "http://localhost:8191/#deliveries",
+  "display_url": "shop.ogsports1.com/#deliveries",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "handin": [
+      61,
+      1850.9,
+      92.0,
+      38
+    ]
+  },
+  "captured": "2026-10-27 16:43"
+}

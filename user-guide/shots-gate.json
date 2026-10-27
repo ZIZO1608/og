@@ -7,7 +7,7 @@
   },
   "device_scale_factor": 2,
   "delay_ms": 700,
-  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important} .made-by{display:none!important}",
   "languages": {
     "en": {
       "setup": [

@@ -1,30 +1,30 @@
 {
   "image": "m-product.png",
-  "width": 1280,
-  "height": 760,
+  "width": 1024,
+  "height": 798,
   "url": "http://localhost:8191/#products",
   "display_url": "shop.ogsports1.com/#products",
-  "clipped": false,
+  "clipped": true,
   "device": "desktop",
   "boxes": {
     "price": [
-      681,
-      1471.9,
+      425,
+      1449.3,
       150.2,
       38
     ],
     "labels": [
-      1022.5,
-      1471.9,
+      766.5,
+      1449.3,
       166.7,
       38
     ],
     "more": [
-      1216,
-      1471.9,
+      960,
+      1449.3,
       44,
       38
     ]
   },
-  "captured": "2026-10-13 23:12"
+  "captured": "2026-10-27 16:42"
 }

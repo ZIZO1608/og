@@ -1,0 +1,54 @@
+{
+  "image": "o-home.png",
+  "width": 1280,
+  "height": 860,
+  "url": "http://localhost:8191/#dashboard",
+  "display_url": "shop.ogsports1.com/#dashboard",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "menu": [
+      1039,
+      104.5,
+      227,
+      38
+    ],
+    "jobs": [
+      678.7,
+      179.0,
+      309.3,
+      139.1
+    ],
+    "search": [
+      814.6,
+      11.5,
+      185.4,
+      38
+    ],
+    "lang": [
+      526.5,
+      14.5,
+      37.8,
+      32
+    ],
+    "curr": [
+      444.2,
+      14.5,
+      44.2,
+      32
+    ],
+    "bell": [
+      147.4,
+      11.5,
+      38,
+      38
+    ],
+    "acct": [
+      24,
+      11.5,
+      117.4,
+      38
+    ]
+  },
+  "captured": "2026-10-27 16:40"
+}

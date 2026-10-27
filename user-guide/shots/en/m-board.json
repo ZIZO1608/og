@@ -1,36 +1,36 @@
 {
   "image": "m-board.png",
-  "width": 1280,
-  "height": 760,
+  "width": 1024,
+  "height": 798,
   "url": "http://localhost:8191/#deliveries",
   "display_url": "shop.ogsports1.com/#deliveries",
-  "clipped": false,
+  "clipped": true,
   "device": "desktop",
   "boxes": {
     "tabs": [
-      292,
-      330.6,
+      36,
+      268.6,
       100.5,
       40
     ],
     "assign": [
-      317,
-      645.6,
+      61,
+      583.6,
       210.2,
       32
     ],
     "done": [
-      640,
-      732.6,
+      384,
+      583.6,
       209.2,
       32
     ],
     "menu": [
-      533.2,
-      645.6,
+      277.2,
+      583.6,
       41.8,
       32
     ]
   },
-  "captured": "2026-10-13 23:11"
+  "captured": "2026-10-27 16:41"
 }

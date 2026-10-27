@@ -1,0 +1,36 @@
+{
+  "image": "c-pos.png",
+  "width": 1280,
+  "height": 860,
+  "url": "http://localhost:8191/#pos",
+  "display_url": "shop.ogsports1.com/#pos",
+  "clipped": false,
+  "device": "desktop",
+  "boxes": {
+    "scan": [
+      417,
+      78,
+      587,
+      54
+    ],
+    "cats": [
+      952.1,
+      205,
+      51.9,
+      34
+    ],
+    "tile": [
+      816.3,
+      270,
+      187.7,
+      270.5
+    ],
+    "cart": [
+      0,
+      127,
+      396,
+      181.6
+    ]
+  },
+  "captured": "2026-10-27 16:45"
+}

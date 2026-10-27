@@ -1,0 +1,24 @@
+{
+  "image": "m-products.png",
+  "width": 1024,
+  "height": 798,
+  "url": "http://localhost:8191/#products",
+  "display_url": "shop.ogsports1.com/#products",
+  "clipped": true,
+  "device": "desktop",
+  "boxes": {
+    "find": [
+      245.3,
+      117.0,
+      742.7,
+      48
+    ],
+    "add": [
+      36,
+      49.0,
+      105.6,
+      38
+    ]
+  },
+  "captured": "2026-10-27 16:43"
+}

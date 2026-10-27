@@ -1,18 +1,18 @@
 {
   "image": "w-count.png",
-  "width": 1280,
-  "height": 860,
+  "width": 1024,
+  "height": 798,
   "url": "http://localhost:8191/#warehouse",
   "display_url": "shop.ogsports1.com/#warehouse",
-  "clipped": false,
+  "clipped": true,
   "device": "desktop",
   "boxes": {
     "start": [
-      633.0,
-      753.0,
+      377.0,
+      691.0,
       120.8,
       46
     ]
   },
-  "captured": "2026-10-13 23:16"
+  "captured": "2026-10-27 16:43"
 }

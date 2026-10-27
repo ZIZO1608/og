@@ -1,0 +1,1926 @@
+{
+  "meta": {
+    "language": "en",
+    "title": "OG System — User Guide",
+    "subtitle": "The till, the warehouse, deliveries and the shop's money — step by step.",
+    "client_name": "OG Sports",
+    "product_name": "OG System",
+    "version": "1.0",
+    "date": "October 2026",
+    "confidential": "For OG Sports staff only"
+  },
+  "brand": {
+    "primary": "#C6FF00",
+    "ink": "#0A0A0B",
+    "logo": "../assets/logo.svg",
+    "extra_css": "html { --brand-deep: #3F5200 !important; --brand-mid: #D9F27A !important; } .cover .band, .divider, .back { background: #0A0A0B !important; color: #ffffff !important; } .cover h1, .divider h2, .back h2, .back h1 { color: #ffffff !important; } .cover .kicker, .divider .label, .divider .big { color: #C6FF00 !important; opacity: 1 !important; } .cover .logo-card { background: #0A0A0B; box-shadow: none; padding: 0; } .divider .audience .chip, .cover .band .chip { color: #ffffff !important; } .section-head .kicker, .chapter > header .kicker, .faq .q h4 .qmark, .toc .toc-part > .part-row .num { color: #5E7A00 !important; }"
+  },
+  "intro": {
+    "text": "OG System runs the whole shop: selling at the till, the stock in the shop and the back storage, phone and WhatsApp orders, deliveries, and where every lira and dollar is. You do not need to read this guide from start to finish. Find your job in the contents, open that chapter, and follow the steps with the system open in front of you.",
+    "cards": [
+      {
+        "title": "Find your part",
+        "text": "Part 1 is for everyone. Part 2 is the daily work at the till, in the warehouse and on the road. Part 3 is for the manager. Part 4 is for the owner."
+      },
+      {
+        "title": "Follow the steps",
+        "text": "Each task says when to use it, what you need first, then one action per step. Words in **bold** are written exactly as they appear on the screen."
+      },
+      {
+        "title": "Use the letters",
+        "text": "Letters on a screenshot (A, B, C…) point at the button or box the step talks about. The list under the picture says what each one is."
+      },
+      {
+        "title": "You only see your part",
+        "text": "Each person sees only the screens their job needs. If a button in this guide is missing for you, your account is not allowed to do that job — ask the manager."
+      }
+    ]
+  },
+  "layout": "full",
+  "parts": [
+    {
+      "title": "Getting started",
+      "audience": [
+        "all"
+      ],
+      "intro": "Signing in, finding your way around the screen, and looking after your password. Read this first, whatever your job is.",
+      "chapters": [
+        {
+          "id": "start",
+          "title": "Signing in and the main screen",
+          "intro": "OG System opens in the browser on the shop's computer or on your phone. Everybody has their own username and password.",
+          "tasks": [
+            {
+              "id": "sign-in",
+              "title": "Sign in",
+              "goal": "Use this at the start of your shift, or whenever the system asks for your username and password.",
+              "time": "1 min",
+              "before": [
+                "Your username and password from the manager"
+              ],
+              "steps": [
+                "Open OG System on the shop computer (double-click the **OG System** icon on the desktop) or open the shop's address on your phone.",
+                {
+                  "text": "Type your username in [[user]] **Username** and your password in [[pass]] **Password**. To check what you typed, press the eye [[eye]]. Then press [[go]] **Sign in**.",
+                  "sub": [],
+                  "shot": {
+                    "id": "login",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "user",
+                        "label": "**Username** — the name the manager gave you, in small letters"
+                      },
+                      {
+                        "key": "pass",
+                        "label": "**Password** — capital and small letters are different"
+                      },
+                      {
+                        "key": "eye",
+                        "label": "Shows or hides the password"
+                      },
+                      {
+                        "key": "go",
+                        "label": "**Sign in**"
+                      },
+                      {
+                        "key": "hint",
+                        "label": "**Forgotten your password?** — shows the hint you saved, if any"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "You see **Good morning** (or afternoon / evening) with your name, and big buttons for your jobs.",
+              "warning": "After many wrong tries the system makes you wait a few minutes. If you have forgotten your password, ask the manager to give you a new one — do not keep guessing."
+            },
+            {
+              "id": "tour",
+              "title": "Find your way around the screen",
+              "goal": "Read this once, so you know where everything is.",
+              "steps": [
+                {
+                  "text": "Look at the screen after you sign in. It has three parts: the menu on the left, the bar across the top, and your work in the middle.",
+                  "shot": {
+                    "id": "o-home",
+                    "callouts": [
+                      {
+                        "key": "menu",
+                        "label": "The menu — every screen you may open, in sections. Press a section's name to fold or open it"
+                      },
+                      {
+                        "key": "jobs",
+                        "label": "Your jobs — big buttons for what you do most. Press one to start"
+                      },
+                      {
+                        "key": "search",
+                        "label": "**Search the shop…** — type a product, a customer or an invoice number"
+                      },
+                      {
+                        "key": "lang",
+                        "label": "Language — **EN** for English, **ع** for Arabic"
+                      },
+                      {
+                        "key": "curr",
+                        "label": "Show prices in **SYP** or **USD**"
+                      },
+                      {
+                        "key": "bell",
+                        "label": "The bell — things waiting for you (low stock, late jobs, new orders)"
+                      },
+                      {
+                        "key": "acct",
+                        "label": "Your name — change your password or sign out"
+                      }
+                    ]
+                  }
+                },
+                "Press **Home** at the top of the menu at any time to come back to your jobs.",
+                "On a phone the menu is at the bottom of the screen. Press **More** to see the rest of the screens."
+              ],
+              "tip": "You can scan a barcode on almost any screen. The system recognises it and opens the right thing — a product, a customer card, an invoice or a coupon."
+            },
+            {
+              "id": "password",
+              "title": "Change your password",
+              "goal": "Use this the first time you sign in, and whenever you think somebody else knows your password.",
+              "time": "2 min",
+              "steps": [
+                {
+                  "text": "Press your name at the top right, then press [[pw]] **Change password**.",
+                  "shot": {
+                    "id": "o-acct",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "pw",
+                        "label": "**Change password**"
+                      },
+                      {
+                        "key": "out",
+                        "label": "**Sign out**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Type your password now in [[cur]], then your new password twice: in [[new]] and again in [[again]]. Press [[save]] **Change password**.",
+                  "shot": {
+                    "id": "o-pw",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "cur",
+                        "label": "**Current password**"
+                      },
+                      {
+                        "key": "new",
+                        "label": "**New password** — at least 8 characters, not only numbers"
+                      },
+                      {
+                        "key": "again",
+                        "label": "**Type it again** — must be the same"
+                      },
+                      {
+                        "key": "save",
+                        "label": "**Change password**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The system signs you out everywhere. Sign in again with the new password.",
+              "note": "Never write your password on the till or tell it to a colleague. Everything you do is saved under your name."
+            },
+            {
+              "id": "sign-out",
+              "title": "Sign out at the end of your shift",
+              "goal": "Use this before you leave, so nobody can work under your name.",
+              "steps": [
+                "Press your name at the top right.",
+                "Press **Sign out** (in red). The sign-in screen opens."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Daily work",
+      "audience": [
+        "staff"
+      ],
+      "intro": "Selling at the till, customers, counting the drawer at night, the warehouse jobs, and the driver's phone.",
+      "chapters": [
+        {
+          "id": "till",
+          "title": "Selling at the till",
+          "intro": "The till is the **Cashier** screen. Prices always come from the system — you never type a price at the till.",
+          "tasks": [
+            {
+              "id": "sell",
+              "title": "Sell to a customer in the shop",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this for every sale at the counter.",
+              "time": "1 min",
+              "new_page": true,
+              "steps": [
+                {
+                  "text": "Press **Sell** on your home screen (or **Cashier** in the menu). Scan the barcode on the box — the scanner works as soon as the screen is open. No scanner, or the label is damaged? Type part of the name or the code in [[scan]] and press the product [[tile]]. The buttons [[cats]] show one kind of product at a time; the number on each product is how many pieces are in the shop.",
+                  "sub": [],
+                  "shot": {
+                    "id": "c-pos",
+                    "callouts": [
+                      {
+                        "key": "scan",
+                        "label": "**Scan barcode or search product…**"
+                      },
+                      {
+                        "key": "cats",
+                        "label": "Kinds of product — **All**, **Sneakers**, **T-Shirts**…"
+                      },
+                      {
+                        "key": "tile",
+                        "label": "A product: its price, and the pieces in stock"
+                      },
+                      {
+                        "key": "cart",
+                        "label": "The **Cart** — what the customer is buying"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "If the product has several sizes, the system asks **Pick a size**. Press the size [[size]] the customer chose. Each size shows its colour and how many are in stock.",
+                  "shot": {
+                    "id": "c-pick",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "size",
+                        "label": "A size and colour, with the pieces in stock"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Check the cart. Use [[qty]] **+** and **–** to change how many, or [[remove]] **×** to take a line out. To give a discount, type it in [[disc]] **Discount** (**#** for an amount, **%** for a percentage). The customer has a coupon? Type it in [[coupon]] and press **Apply** — or scan the coupon's barcode or QR.",
+                  "sub": [
+                    "The till allows a discount of up to 10% of the sale; more needs the manager."
+                  ],
+                  "shot": {
+                    "id": "c-cart",
+                    "size": "tall",
+                    "callouts": [
+                      {
+                        "key": "qty",
+                        "label": "**–** / **+** — how many"
+                      },
+                      {
+                        "key": "remove",
+                        "label": "**×** — take the line out"
+                      },
+                      {
+                        "key": "cust",
+                        "label": "**Customer** — see the next task"
+                      },
+                      {
+                        "key": "disc",
+                        "label": "**Discount**"
+                      },
+                      {
+                        "key": "coupon",
+                        "label": "**Coupon** — type the code, then **Apply**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Choose how the customer pays in [[pay]] **Payment method**: **Cash**, a transfer (**Sham Cash**, **Fuad**…), **Card** or **On credit**. [[place]] **Take the stock from** is normally **Shop floor** — choose **Back storage** only if you brought the box from the back. Take the money, then press [[complete]] **Complete sale**.",
+                  "sub": [],
+                  "shot": {
+                    "id": "c-pay",
+                    "size": "tall",
+                    "callouts": [
+                      {
+                        "key": "total",
+                        "label": "**Total** — what the customer pays"
+                      },
+                      {
+                        "key": "place",
+                        "label": "**Take the stock from**"
+                      },
+                      {
+                        "key": "pay",
+                        "label": "**Payment method**"
+                      },
+                      {
+                        "key": "complete",
+                        "label": "**Complete sale** (or the **F4** key)"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "The receipt prints by itself — two copies, one for the customer and one for the shop. Need another copy? Press [[print]] **Print receipt**. When you are done, press [[new]] **New sale** for the next customer.",
+                  "sub": [
+                    "The customer is buying a present? Press **Gift receipt**: it prints without prices."
+                  ],
+                  "shot": {
+                    "id": "c-done",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "print",
+                        "label": "**Print receipt** — another copy"
+                      },
+                      {
+                        "key": "new",
+                        "label": "**New sale**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The sale is saved with its invoice number (for example **INV-2192**), the stock goes down by itself, and the money is counted in the drawer.",
+              "warning": "Never sell something the system says is not in stock without telling the manager. The count in the system is what the shop believes it has."
+            },
+            {
+              "id": "sell-customer",
+              "title": "Add the customer to the sale",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this when the customer is one of the shop's regulars, so the sale goes in their history and they collect points.",
+              "steps": [
+                {
+                  "text": "With the products in the cart, press the [[cust]] **Customer** box (or press **F2**). A list of customers opens [[list]].",
+                  "shot": {
+                    "id": "c-cust",
+                    "callouts": [
+                      {
+                        "key": "lines",
+                        "label": "The products in the cart"
+                      },
+                      {
+                        "key": "cust",
+                        "label": "**Customer** — type a name or a phone number"
+                      },
+                      {
+                        "key": "list",
+                        "label": "Matching customers, with their points"
+                      }
+                    ]
+                  }
+                },
+                "Type part of the name or the phone number, then press the customer.",
+                "Not on the list? Press **+ New customer** at the bottom of the list, type the name and the phone, and save."
+              ],
+              "result": "The customer's name shows on the cart and is printed on the receipt. Their points go up when you press **Complete sale**.",
+              "note": "A sale **On credit** (the customer pays later) needs a customer — the system will not let you save it without one."
+            },
+            {
+              "id": "transfer",
+              "title": "Take a transfer payment (Sham Cash and others)",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this when the customer pays by a transfer app or an exchange office instead of cash.",
+              "steps": [
+                {
+                  "text": "In **Payment method**, press the method the customer used [[method]], and type the transfer number from the customer's phone in [[txn]].",
+                  "shot": {
+                    "id": "c-transfer",
+                    "size": "tall",
+                    "callouts": [
+                      {
+                        "key": "method",
+                        "label": "The transfer method"
+                      },
+                      {
+                        "key": "txn",
+                        "label": "The transfer number — copy it from the customer's message"
+                      }
+                    ]
+                  }
+                },
+                "Check on the shop's phone that the money really arrived, then press **Complete sale**."
+              ],
+              "warning": "Do not press **Complete sale** until you have seen the money arrive. A screenshot from the customer is not proof."
+            }
+          ]
+        },
+        {
+          "id": "customers",
+          "title": "Customers",
+          "intro": "Every customer has a card with their phone, their purchases, their points and anything they still owe.",
+          "tasks": [
+            {
+              "id": "customer-add",
+              "title": "Find or add a customer",
+              "goal": "Use this to look up a customer's history, or to save a new customer before they buy.",
+              "steps": [
+                {
+                  "text": "Open **Customers** in the menu. Type a name or a phone number in [[search]]. Press a card [[card]] to open the customer.",
+                  "shot": {
+                    "id": "c-customers",
+                    "callouts": [
+                      {
+                        "key": "search",
+                        "label": "Search by name or phone"
+                      },
+                      {
+                        "key": "card",
+                        "label": "A customer — press to open their history"
+                      },
+                      {
+                        "key": "new",
+                        "label": "**New customer**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "To add a customer, press **New customer**. Type the name [[name]] and the phone [[phone]], then press [[save]].",
+                  "shot": {
+                    "id": "c-cust-new",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "name",
+                        "label": "Name"
+                      },
+                      {
+                        "key": "phone",
+                        "label": "Phone — any way of writing it works (0933…, +963 933…)"
+                      },
+                      {
+                        "key": "save",
+                        "label": "Save"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The customer can now be picked at the till and in the delivery office.",
+              "tip": "If the phone number already belongs to another customer, the system saves it anyway and tells you — check that you have not made the same person twice."
+            }
+          ]
+        },
+        {
+          "id": "night",
+          "title": "Closing time: count the drawer",
+          "intro": "At closing time the cashier counts the money in the drawer. The owner then checks the count and takes the cash (Part 4).",
+          "tasks": [
+            {
+              "id": "count",
+              "title": "Count the drawer",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this every evening, after the last sale.",
+              "time": "10 min",
+              "steps": [
+                "Press **Count the drawer** on your home screen.",
+                {
+                  "text": "Count every note in the drawer. Type the lira in [[syp]] and the dollars in [[usd]]. Type just the number, without commas. Then press [[save]] **Save the count**.",
+                  "shot": {
+                    "id": "c-count",
+                    "callouts": [
+                      {
+                        "key": "syp",
+                        "label": "**Counted · SYP** — all the lira in the drawer"
+                      },
+                      {
+                        "key": "usd",
+                        "label": "**Counted · USD** — all the dollars"
+                      },
+                      {
+                        "key": "save",
+                        "label": "**Save the count**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "The screen now says **Counted — waiting for the owner**. Made a mistake? Press [[again]] **Count again** and type the right numbers — you can do this until the owner confirms.",
+                  "sub": [],
+                  "shot": {
+                    "id": "c-count-saved",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "again",
+                        "label": "**Count again**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The owner sees your count and confirms it.",
+              "note": "The screen does not tell you how much should be in the drawer. That is on purpose: count what is really there. If there are no dollars, type 0."
+            }
+          ]
+        },
+        {
+          "id": "warehouse",
+          "title": "The warehouse",
+          "intro": "**Warehouse** in the menu opens on the four jobs of the back room: **Goods arrived**, **Move stock**, **Where is it?** and **Stock count**, with **Add product** beside them. Every movement is saved with who did it and when.",
+          "tasks": [
+            {
+              "id": "arrived",
+              "title": "Book in goods that arrived",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this when boxes arrive from a supplier.",
+              "time": "5 min",
+              "steps": [
+                {
+                  "text": "Open **Warehouse** and press [[jobs]] **Goods arrived**. The system shows the orders still waiting for goods. Press the order [[po]] the goods came against. If nothing was ordered, press [[free]]; if it is a product the shop has never had, press [[new]].",
+                  "shot": {
+                    "id": "w-arrived",
+                    "callouts": [
+                      {
+                        "key": "jobs",
+                        "label": "**Goods arrived**"
+                      },
+                      {
+                        "key": "po",
+                        "label": "An order from a supplier — press it if the boxes came against it"
+                      },
+                      {
+                        "key": "free",
+                        "label": "Goods that were not ordered"
+                      },
+                      {
+                        "key": "new",
+                        "label": "A product the shop has never had"
+                      }
+                    ]
+                  }
+                },
+                "Count what is really in the boxes. The system fills in what was ordered — change any line where fewer (or more) pieces arrived. **All arrived as ordered** fills every line at once.",
+                "Check where the goods are going (shop floor or back storage), then confirm.",
+                "Press **Print labels** to print a barcode sticker for each piece, and stick them on the boxes."
+              ],
+              "result": "The stock goes up, and the supplier's balance goes up only by what really arrived.",
+              "tip": "New stock usually comes with no barcode the shop can use — that is why the labels are printed at the end."
+            },
+            {
+              "id": "move",
+              "title": "Bring stock from the back to the shop floor",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this when you carry boxes between the back storage and the shop.",
+              "steps": [
+                {
+                  "text": "Open **Warehouse** and press **Move stock**. Check [[from]] **From** and [[to]] **To**. The arrow between them swaps the direction. Then scan every box you are carrying into [[code]] — scan the same box twice for two pieces — and press [[go]] **Move N pieces**.",
+                  "shot": {
+                    "id": "w-move",
+                    "callouts": [
+                      {
+                        "key": "from",
+                        "label": "**From** — where the boxes are now"
+                      },
+                      {
+                        "key": "to",
+                        "label": "**To** — where they are going"
+                      },
+                      {
+                        "key": "code",
+                        "label": "Scan each piece here"
+                      },
+                      {
+                        "key": "go",
+                        "label": "**Move N pieces** — nothing moves until you press it"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The pieces move from one place to the other in one go, and the movement is saved."
+            },
+            {
+              "id": "find",
+              "title": "Find where a size is",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this when a customer asks \"do you have it in 42?\".",
+              "steps": [
+                {
+                  "text": "Open **Warehouse** and press **Where is it?**. Type a name, a brand, a size or a code in [[find]], or scan the box.",
+                  "shot": {
+                    "id": "w-find",
+                    "callouts": [
+                      {
+                        "key": "find",
+                        "label": "**Find a product** — name, brand, size, SKU or barcode"
+                      }
+                    ]
+                  }
+                },
+                "Read the line: how many of each size are on the shop floor and in the back storage."
+              ],
+              "tip": "The chips **Everywhere**, **Shop floor** and **Back storage** show one place at a time."
+            },
+            {
+              "id": "stock-count",
+              "title": "Count the stock on the shelves",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this when the manager asks for a stock count, or when the bell says a shelf needs counting.",
+              "time": "20–60 min",
+              "steps": [
+                {
+                  "text": "Open **Warehouse** and press **Stock count**. Choose the place you are counting [[start]].",
+                  "shot": {
+                    "id": "w-count",
+                    "callouts": [
+                      {
+                        "key": "start",
+                        "label": "**Which place are you counting?**"
+                      }
+                    ]
+                  }
+                },
+                "Scan every piece on the shelves, or type how many you see.",
+                "When you finish, the system shows every difference between what you counted and what it expected. Check them, then post the count."
+              ],
+              "warning": "Nothing changes until you post the count. Posting changes the stock to what you counted — be sure the count is complete."
+            },
+            {
+              "id": "add-product",
+              "title": "Add a new product",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this for a product the shop has never sold before.",
+              "time": "5 min",
+              "steps": [
+                {
+                  "text": "Open **Warehouse** and press **Add product**. Type the [[name]] **Product name**, choose the [[type]] **Type**, and type the [[price]] **Selling price ($)**. Lower down, type how many pieces of each size you are putting in. Then press [[saveprint]] **Save & print labels** — the system makes the codes and opens the labels to print.",
+                  "shot": {
+                    "id": "w-add",
+                    "callouts": [
+                      {
+                        "key": "name",
+                        "label": "**Product name**"
+                      },
+                      {
+                        "key": "type",
+                        "label": "**Type** — Sneakers, T-Shirts…"
+                      },
+                      {
+                        "key": "price",
+                        "label": "**Selling price ($)** — always in dollars"
+                      },
+                      {
+                        "key": "saveprint",
+                        "label": "**Save & print labels**"
+                      },
+                      {
+                        "key": "save",
+                        "label": "**Save without labels**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The product is ready to sell, with a barcode for every size.",
+              "note": "Prices are always in dollars. The lira price is worked out from the exchange rate, and changes by itself when the rate changes."
+            },
+            {
+              "id": "labels",
+              "title": "Print barcode labels",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this when a box has lost its label, or for stock that came without one.",
+              "steps": [
+                {
+                  "text": "Open **Print labels** in the menu, with **Product labels** chosen at the top. Find the product with the search box and press [[all]] **Print all sizes** — or press the arrow to open its sizes and tick only the ones you need.",
+                  "shot": {
+                    "id": "w-labels",
+                    "callouts": [
+                      {
+                        "key": "all",
+                        "label": "**Print all sizes** — one label per piece in stock"
+                      }
+                    ]
+                  }
+                },
+                "Check the preview and press print."
+              ],
+              "tip": "**Shelf labels** (beside **Product labels**) prints the stickers for the racks in the back storage."
+            }
+          ]
+        },
+        {
+          "id": "driver",
+          "title": "The driver's phone (Safeer)",
+          "intro": "The shop's drivers — the Safeers — use OG System on their phone. They see only their own parcels.",
+          "tasks": [
+            {
+              "id": "runs",
+              "title": "Deliver your parcels",
+              "roles": [
+                "staff"
+              ],
+              "goal": "Use this on the road, for each parcel you deliver.",
+              "steps": [
+                {
+                  "text": "Sign in on your phone. **My runs today** shows how many parcels are left, the money to collect, and the cash you are carrying. The first card is **Next up**: the customer, the address, the pieces and how much to **Collect** (**Call** and **Map** help you find them). Hand over the parcel, take the money, and press [[done]] **Delivered**, then type how much you collected.",
+                  "shot": {
+                    "id": "s-runs",
+                    "frame": "phone",
+                    "callouts": [
+                      {
+                        "key": "done",
+                        "label": "**Delivered** — press at the door, after you take the money"
+                      }
+                    ]
+                  }
+                },
+                "Customer not there, or refused? Press **…** on the card, choose **Could not deliver**, and write the reason."
+              ],
+              "result": "The parcel moves to **Done today**, and the money is added to **Cash on me** until you hand it in at the shop.",
+              "warning": "Hand all the cash in at the shop the same day. The office records it on the **Cash back** tab."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Managing the shop",
+      "audience": [
+        "manager"
+      ],
+      "intro": "Phone and WhatsApp orders, the deliveries board, the drivers, products and prices, and the print jobs with Yalla Wear.",
+      "chapters": [
+        {
+          "id": "desk",
+          "title": "Taking a phone or WhatsApp order",
+          "intro": "The **Delivery office** turns an order by phone, Instagram or WhatsApp into a sale with its delivery, in five steps: **Bag**, **Customer**, **Travels by**, **Address**, **Payment**.",
+          "tasks": [
+            {
+              "id": "order",
+              "title": "Take an order for delivery",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this when a customer orders by phone, Instagram or WhatsApp.",
+              "time": "3 min",
+              "new_page": true,
+              "steps": [
+                {
+                  "text": "Open **Delivery office** (or press **Take an order** on your home screen). Step 1 is the bag: scan each pair, or press [[scan]] and pick from the list [[list]].",
+                  "sub": [
+                    "The list shows what is in the back storage, size by size. Type a name or a size to narrow it (\"samba 43\")."
+                  ],
+                  "shot": {
+                    "id": "m-desk-1",
+                    "callouts": [
+                      {
+                        "key": "rail",
+                        "label": "The five steps — a tick appears when a step is done"
+                      },
+                      {
+                        "key": "scan",
+                        "label": "Scan, or search the products"
+                      },
+                      {
+                        "key": "list",
+                        "label": "A product — press a size to put it in the bag"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "When everything is in the bag, press [[next]] **Next**.",
+                  "shot": {
+                    "id": "m-desk-1b",
+                    "callouts": [
+                      {
+                        "key": "next",
+                        "label": "**Next**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Step 2: pick the customer from the list [[list]], or search by name or phone in [[cust]]. A new customer? Press [[new]] **+ New customer**.",
+                  "shot": {
+                    "id": "m-desk-2",
+                    "callouts": [
+                      {
+                        "key": "cust",
+                        "label": "**Name or phone number**"
+                      },
+                      {
+                        "key": "list",
+                        "label": "Most recent buyers first"
+                      },
+                      {
+                        "key": "new",
+                        "label": "**+ New customer**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Step 3: choose how the parcel travels — [[driver]] **Our driver**, a **Transport office**, a **Courier company**, **Abroad**, or [[pickup]] **Pickup** (the customer collects it).",
+                  "shot": {
+                    "id": "m-desk-3",
+                    "callouts": [
+                      {
+                        "key": "driver",
+                        "label": "**Our driver** — cash at the door is fine"
+                      },
+                      {
+                        "key": "pickup",
+                        "label": "**Pickup** — the customer collects it"
+                      }
+                    ]
+                  },
+                  "note": "Our driver and pickup can be paid when the customer receives the parcel. A transport office, a courier and abroad must be paid **before** sending."
+                },
+                {
+                  "text": "Step 4: check the [[city]] city and [[phone]] phone, and type the [[addr]] address — street, building and a landmark. The shipping price comes from the price list.",
+                  "sub": [
+                    "**Last address** fills in the address the customer used last time."
+                  ],
+                  "shot": {
+                    "id": "m-desk-4",
+                    "callouts": [
+                      {
+                        "key": "city",
+                        "label": "City"
+                      },
+                      {
+                        "key": "phone",
+                        "label": "**Phone for the delivery**"
+                      },
+                      {
+                        "key": "addr",
+                        "label": "**Address** — what the driver reads at the door"
+                      },
+                      {
+                        "key": "fee",
+                        "label": "Type a different shipping fee, if needed"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Step 5: read the order back to the customer. Choose how they pay [[plan]] and record any money already received, then press [[save]] **Save & print**.",
+                  "shot": {
+                    "id": "m-desk-5",
+                    "callouts": [
+                      {
+                        "key": "plan",
+                        "label": "**All of it now**, **A deposit now** or **On receipt**"
+                      },
+                      {
+                        "key": "save",
+                        "label": "**Save & print**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The order is saved and its slip prints. It appears on the **Deliveries** board, waiting for a driver.",
+              "tip": "If you are interrupted, nothing is lost — the order stays on the screen until you save it or press **New order**."
+            }
+          ]
+        },
+        {
+          "id": "board",
+          "title": "The deliveries board",
+          "intro": "**Deliveries** shows every parcel in three lanes: **To take out**, **On the road** and **Done today**. Each card has one big button for its next step.",
+          "tasks": [
+            {
+              "id": "assign",
+              "title": "Give a parcel to a driver or a company",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this when a parcel is packed and someone is taking it.",
+              "steps": [
+                {
+                  "text": "Open **Deliveries**. On the parcel's card in **To take out**, press [[assign]] **Assign**.",
+                  "shot": {
+                    "id": "m-board",
+                    "callouts": [
+                      {
+                        "key": "tabs",
+                        "label": "**Parcels**, **Handover**, **Cash back**"
+                      },
+                      {
+                        "key": "assign",
+                        "label": "**Assign** — the next step for a waiting parcel"
+                      },
+                      {
+                        "key": "done",
+                        "label": "**Delivered** — the next step for a parcel on the road"
+                      },
+                      {
+                        "key": "menu",
+                        "label": "**…** — every other action"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Press the driver [[pick]], or a transport office or courier company. For a company, type its tracking number. Press **Save**.",
+                  "shot": {
+                    "id": "m-assign",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "pick",
+                        "label": "A driver — or give it to a company below"
+                      }
+                    ]
+                  }
+                },
+                "When the parcel leaves the shop, press **Take it out** on its card."
+              ],
+              "result": "The card moves to **On the road**, and the driver sees it on their phone."
+            },
+            {
+              "id": "delivered",
+              "title": "Mark a parcel delivered, or not delivered",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this when the driver or the company tells you how the delivery went (the driver can also do it on their phone).",
+              "steps": [
+                {
+                  "text": "On the card in **On the road**, press **Delivered**. Type what was [[got]] **Collected**. Tick **The cash is here, in the drawer** if the money is already in the shop. Press [[go]] **Delivered**.",
+                  "shot": {
+                    "id": "m-delivered",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "got",
+                        "label": "**Collected** — what the driver took at the door"
+                      },
+                      {
+                        "key": "go",
+                        "label": "**Delivered**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "If it went wrong, press **…** on the card instead. There you find [[pay]] **Take a payment**, [[back]] **Came back** and [[fail]] **Could not deliver**.",
+                  "shot": {
+                    "id": "m-menu",
+                    "callouts": [
+                      {
+                        "key": "pay",
+                        "label": "**Take a payment**"
+                      },
+                      {
+                        "key": "back",
+                        "label": "**Came back** — a return: pieces back on the shelf, a refund or store credit"
+                      },
+                      {
+                        "key": "fail",
+                        "label": "**Could not deliver** — write the reason"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "warning": "**Delivered** and **Could not deliver** are final. Check with the driver before you press."
+            },
+            {
+              "id": "handover",
+              "title": "Hand several parcels over on one sheet",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this when a driver or a courier takes many parcels at once and signs for them.",
+              "steps": [
+                {
+                  "text": "Open **Deliveries** and press the **Handover** tab. Press the driver [[driver]] or the company [[company]] standing at the counter. Then scan the slip of each parcel onto the sheet.",
+                  "shot": {
+                    "id": "m-handover",
+                    "callouts": [
+                      {
+                        "key": "driver",
+                        "label": "**Our drivers**"
+                      },
+                      {
+                        "key": "company",
+                        "label": "**Transport offices and couriers**"
+                      }
+                    ]
+                  }
+                },
+                "Print the sheet, have it signed, and press the button to hand it over. All the parcels leave together."
+              ],
+              "note": "If one parcel cannot leave (for example it is not paid yet), the system refuses the whole sheet and names the parcel."
+            },
+            {
+              "id": "cash-back",
+              "title": "Take in the cash a driver brings back",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this when a driver comes back with the money from their deliveries.",
+              "steps": [
+                {
+                  "text": "Open **Deliveries** and press the **Cash back** tab. Each driver shows what they are carrying, in lira and in dollars, with the parcels it came from. Count the money with the driver, then press [[handin]] **Hand it all in**.",
+                  "shot": {
+                    "id": "m-cashback",
+                    "callouts": [
+                      {
+                        "key": "handin",
+                        "label": "**Hand it all in**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The money moves from the driver to the drawer."
+            }
+          ]
+        },
+        {
+          "id": "team",
+          "title": "Drivers, reviews and website orders",
+          "tasks": [
+            {
+              "id": "safeers",
+              "title": "See the drivers and give them errands",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this to see who is on the road, and to send a driver on an errand (a stock run, a supplier, the bank).",
+              "steps": [
+                {
+                  "text": "Open **Safeers**. Each driver's card shows **Open tasks**, **Done today** and **Cash on him**. To send someone on an errand, press [[give]] **Give a task**, choose the driver, the area and what to do, and save.",
+                  "shot": {
+                    "id": "m-safeers",
+                    "callouts": [
+                      {
+                        "key": "give",
+                        "label": "**Give a task**"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "reviews",
+              "title": "Read what customers said",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this to see how customers rated their delivery.",
+              "steps": [
+                {
+                  "text": "Open **Reviews**. At the top you see the average, the stars and what customers liked most.",
+                  "shot": {
+                    "id": "m-reviews"
+                  }
+                },
+                "A review appears on the shop's website only when the customer allowed it **and** you switch it on with the switch on its card."
+              ]
+            },
+            {
+              "id": "web-orders",
+              "title": "Answer a website order",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this when an order comes in from the shop's website.",
+              "steps": [
+                {
+                  "text": "Open **Website orders**. New orders appear under **New** by themselves, about once a minute.",
+                  "shot": {
+                    "id": "m-weborders"
+                  }
+                },
+                "Call the customer to confirm the order.",
+                "Press **Accept**: the order opens in the delivery office with everything filled in. Check it and press **Save & print**.",
+                "If the order cannot go ahead, press **Reject** and choose the reason (no answer, out of stock, the customer cancelled…). The website tells the customer."
+              ],
+              "note": "Nothing leaves the stock until a person accepts the order."
+            }
+          ]
+        },
+        {
+          "id": "products",
+          "title": "Products and prices",
+          "tasks": [
+            {
+              "id": "price",
+              "title": "Change a product's price",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this when a price goes up or down.",
+              "steps": [
+                {
+                  "text": "Open **Products**. Type the name or scan the box in [[find]].",
+                  "shot": {
+                    "id": "m-products",
+                    "callouts": [
+                      {
+                        "key": "find",
+                        "label": "Search — name, barcode, or scan it"
+                      },
+                      {
+                        "key": "add",
+                        "label": "**+ Add product**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Press the product. In its panel, press [[price]] **Change the price**.",
+                  "shot": {
+                    "id": "m-product",
+                    "callouts": [
+                      {
+                        "key": "price",
+                        "label": "**Change the price**"
+                      },
+                      {
+                        "key": "labels",
+                        "label": "Print labels for this product"
+                      },
+                      {
+                        "key": "more",
+                        "label": "**…** — edit everything, stop selling it, export"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Type the new price in dollars. The line under the box shows what it comes to in lira today. Press **Save**.",
+                  "shot": {
+                    "id": "m-price",
+                    "size": "small"
+                  }
+                }
+              ],
+              "result": "The new price is used at the till at once, on every screen.",
+              "tip": "To stop selling a product without losing its history, press **…** → **Stop selling it**. You can sell it again later."
+            }
+          ]
+        },
+        {
+          "id": "print",
+          "title": "Print jobs with Yalla Wear",
+          "tasks": [
+            {
+              "id": "print-job",
+              "title": "Follow a printing job",
+              "roles": [
+                "manager"
+              ],
+              "goal": "Use this for names and numbers printed on shirts by Yalla Wear.",
+              "steps": [
+                {
+                  "text": "Open **Print Jobs**. Each job moves through the columns **Design**, **Sent to print**, **Printing**, **Delivery** and **Done**. A print job sold at the till is made by itself; to make one by hand, press [[new]] **+ New print job**.",
+                  "shot": {
+                    "id": "m-print",
+                    "callouts": [
+                      {
+                        "key": "new",
+                        "label": "**+ New print job**"
+                      }
+                    ]
+                  }
+                },
+                "Messages from Yalla Wear appear in the speech bubble in the top bar."
+              ],
+              "note": "A job cannot go to print while a shirt still has no name, and an order with a print job cannot leave the shop until the print is done."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "For the owner",
+      "audience": [
+        "owner"
+      ],
+      "intro": "The day's numbers, where the money is, closing the day, expenses, suppliers and salaries, reports, coupons, and the people who use the system.",
+      "chapters": [
+        {
+          "id": "numbers",
+          "title": "The shop's numbers",
+          "tasks": [
+            {
+              "id": "dashboard",
+              "title": "Read the dashboard",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this to see at a glance how the shop is doing.",
+              "steps": [
+                {
+                  "text": "On your home screen, scroll down to **Dashboard**. Choose the period with [[scope]]: **Today**, **7 days** or **30 days**.",
+                  "shot": {
+                    "id": "o-dash",
+                    "callouts": [
+                      {
+                        "key": "scope",
+                        "label": "**Today** · **7 days** · **30 days**"
+                      }
+                    ]
+                  }
+                },
+                "**Takings** is the money from sales in lira, with the dollars taken in dollars written under it. **Invoices**, **Average basket** and **Margin** follow.",
+                "Lower down: **In the drawer**, what customers owe the shop, what the shop owes suppliers, and **How they paid**."
+              ],
+              "note": "Lira and dollars are never added together. Where a total in one currency is shown, it says \"approximate at today's rate\"."
+            },
+            {
+              "id": "reports",
+              "title": "See sales, profit and stock reports",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this for a month, a year or any dates you choose.",
+              "steps": [
+                {
+                  "text": "Open **Reports**. Choose the period [[scope]] (**Today**, **7 days**, **30 days**, **This month**, **This year** or **Custom**). Then press a tab [[tabs]] to change the report.",
+                  "shot": {
+                    "id": "o-reports",
+                    "callouts": [
+                      {
+                        "key": "scope",
+                        "label": "The period"
+                      },
+                      {
+                        "key": "tabs",
+                        "label": "**Sales**, **Profit**, **Inventory value**, **Payments & debt**, **Employees**, **Suppliers**"
+                      }
+                    ]
+                  }
+                },
+                "Press **Export Excel** or **Export PDF** at the top right to save or print it."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "money",
+          "title": "The shop's money",
+          "intro": "**Money** has four parts at the top: **Where it is**, **Close the day**, **Payments** and **Books**. Every lira and dollar is in one place — the drawer, with you, in a wallet like Sham Cash, or with a driver.",
+          "tasks": [
+            {
+              "id": "money-now",
+              "title": "See where the money is",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this to know how much money the shop has, and where.",
+              "steps": [
+                {
+                  "text": "Open **Money**. **Where it is** [[groups]] opens first. The big card [[hero]] shows all the shop's money in lira and in dollars, and the bar shows where it is.",
+                  "shot": {
+                    "id": "o-money-now",
+                    "callouts": [
+                      {
+                        "key": "groups",
+                        "label": "**Where it is** · **Close the day** · **Payments** · **Books**"
+                      },
+                      {
+                        "key": "hero",
+                        "label": "All the shop's money, and where it sits"
+                      },
+                      {
+                        "key": "move",
+                        "label": "**Move money**"
+                      },
+                      {
+                        "key": "expense",
+                        "label": "**Add an expense**"
+                      },
+                      {
+                        "key": "close",
+                        "label": "**Close the day**"
+                      },
+                      {
+                        "key": "minor",
+                        "label": "The smaller jobs"
+                      }
+                    ]
+                  }
+                },
+                "The first time, press **Enter starting balances** and type what each place holds today: count the drawer, count the cash you keep for the shop, and read each wallet's balance from its app.",
+                {
+                  "text": "To move money from one place to another (for example from the drawer to yourself), press **Move money**. Type the amount, choose the currency, **From where?** and **To**, then press [[go]] **Move money**.",
+                  "shot": {
+                    "id": "o-move",
+                    "callouts": [
+                      {
+                        "key": "go",
+                        "label": "**Move money**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "note": "If a place shows less than zero, it means money came in that was never recorded. Look for the missing sale or transfer."
+            },
+            {
+              "id": "close-day",
+              "title": "Confirm the drawer count and take the cash",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this every night, after the cashier has counted the drawer.",
+              "time": "3 min",
+              "steps": [
+                {
+                  "text": "Open **Money** and press **Close the day**. You see the cashier's count beside what the system expected, and the difference. In **Take home**, type how much you are taking (what stays is tomorrow's float), then press [[confirm]] **Confirm and take the cash**.",
+                  "shot": {
+                    "id": "o-money-close",
+                    "callouts": [
+                      {
+                        "key": "confirm",
+                        "label": "**Confirm and take the cash**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The difference is written into the books, and the money you took moves to **With the owner**.",
+              "tip": "Something wrong with the count? Press **Throw this count away** and ask the cashier to count again."
+            },
+            {
+              "id": "expense",
+              "title": "Record an expense",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this for rent, the generator, transport, packaging and other costs.",
+              "steps": [
+                {
+                  "text": "Open **Money**, press **Payments**, then [[sub]] **Expenses**. Press [[add]] **+ Add**.",
+                  "shot": {
+                    "id": "o-expenses",
+                    "callouts": [
+                      {
+                        "key": "sub",
+                        "label": "**Expenses** · **Suppliers** · **Salaries**"
+                      },
+                      {
+                        "key": "add",
+                        "label": "**+ Add**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Type the amount, choose **SYP** or **$**, choose **What for?** and **Paid from**. Press [[save]] **Save**.",
+                  "shot": {
+                    "id": "o-expense-add",
+                    "callouts": [
+                      {
+                        "key": "save",
+                        "label": "**Save**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "tip": "Typed a wrong expense? Press **Cancel** on its line in the list. It is never deleted — a cancelling line is added."
+            },
+            {
+              "id": "suppliers",
+              "title": "Pay a supplier",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this when you pay money the shop owes a supplier.",
+              "steps": [
+                {
+                  "text": "Open **Money** → **Payments** → **Suppliers**. Each supplier shows what is owed. Press [[pay]] **Pay**.",
+                  "shot": {
+                    "id": "o-suppliers",
+                    "callouts": [
+                      {
+                        "key": "pay",
+                        "label": "**Pay**"
+                      },
+                      {
+                        "key": "ledger",
+                        "label": "**History** — every purchase and payment"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Type the amount, choose the currency and **From where?**. Press [[go]] **Pay**.",
+                  "shot": {
+                    "id": "o-sup-pay",
+                    "callouts": [
+                      {
+                        "key": "go",
+                        "label": "**Pay**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "note": "A supplier payment is not an expense — the goods are already in the cost of what you sell."
+            },
+            {
+              "id": "salaries",
+              "title": "Pay salaries and advances",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this at the end of the month, or when someone takes an advance.",
+              "steps": [
+                {
+                  "text": "Open **Money** → **Payments** → **Salaries**. Choose the month with [[month]]. Press [[pay]] **Pay the rest** to pay what is left for the month, **Advance** for an advance, or **Bonus / deduction** to change what the month owes.",
+                  "shot": {
+                    "id": "o-salaries",
+                    "callouts": [
+                      {
+                        "key": "month",
+                        "label": "The month"
+                      },
+                      {
+                        "key": "pay",
+                        "label": "**Pay the rest**"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "statement",
+              "title": "See the month's profit",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this at the end of each month.",
+              "steps": [
+                {
+                  "text": "Open **Money** → **Books** → **Statement**. Choose the month [[month]].",
+                  "shot": {
+                    "id": "o-statement",
+                    "callouts": [
+                      {
+                        "key": "month",
+                        "label": "The month"
+                      }
+                    ]
+                  }
+                },
+                "Read **Takings**, **Gross profit** (after the cost of the goods sold) and **Net profit** (after expenses, salaries and fees), in lira and in dollars."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "coupons",
+          "title": "Coupon codes",
+          "tasks": [
+            {
+              "id": "coupon",
+              "title": "Make a coupon code",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this for an offer: a code a customer gives at the till or types on the website.",
+              "steps": [
+                {
+                  "text": "Open **Coupons** and press [[new]] **+ New code**.",
+                  "shot": {
+                    "id": "o-coupons",
+                    "callouts": [
+                      {
+                        "key": "new",
+                        "label": "**+ New code**"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Keep the code the system suggests or type your own [[code]]. Choose [[kind]] **Percent off** or **Amount off**, and type how much. Press [[save]] **Save**.",
+                  "sub": [
+                    "**Limits (optional)** sets a minimum basket, how many times it can be used, start and end dates, or once per customer."
+                  ],
+                  "shot": {
+                    "id": "o-coupon-new",
+                    "size": "small",
+                    "callouts": [
+                      {
+                        "key": "code",
+                        "label": "**The code**"
+                      },
+                      {
+                        "key": "kind",
+                        "label": "**Percent off** or **Amount off**"
+                      },
+                      {
+                        "key": "save",
+                        "label": "**Save**"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "result": "The code works at the till, in the delivery office and on the website. The **QR** button on its card makes a picture to share or print.",
+              "tip": "**Who used it** shows every sale the code was used on."
+            }
+          ]
+        },
+        {
+          "id": "settings",
+          "title": "People and settings",
+          "tasks": [
+            {
+              "id": "staff",
+              "title": "Add a person who uses the system",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this when someone new starts work.",
+              "steps": [
+                {
+                  "text": "Open **Settings** and open **Staff**. Press [[add]] to add a person.",
+                  "shot": {
+                    "id": "o-staff",
+                    "callouts": [
+                      {
+                        "key": "add",
+                        "label": "Add a person"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "text": "Type the **Name** and **Phone**, and choose **What is their job?** — each job says what that person will be able to do.",
+                  "shot": {
+                    "id": "o-staff-add"
+                  }
+                },
+                "Check the username, and press **Add a person**. The password is shown **once** — press Copy and give it to the person."
+              ],
+              "warning": "The password cannot be shown again. If it is lost, press **…** on the person's card → **New password**.",
+              "tip": "When someone leaves, press **…** on their card → **Switch off**. Their past sales keep their name."
+            },
+            {
+              "id": "rate",
+              "title": "Change the exchange rate",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this when the dollar rate changes and it is not updated by itself.",
+              "steps": [
+                {
+                  "text": "Open **Settings** → **Exchange rate**. Type how many lira one dollar is in **1 USD equals**.",
+                  "shot": {
+                    "id": "o-rate"
+                  }
+                },
+                "Press Enter. If the change is big, the system asks you to confirm."
+              ],
+              "warning": "Every lira price in the shop changes at once with the rate. Check the number before you press Enter."
+            },
+            {
+              "id": "methods",
+              "title": "Choose the ways customers can pay",
+              "roles": [
+                "owner"
+              ],
+              "goal": "Use this to switch payment methods on or off, at the till, in the office and on the website.",
+              "steps": [
+                "Open **Payment methods** in the menu.",
+                "Each method has switches: **On**, **Till**, **Office**, and whether it goes **In the drawer**. A transfer method needs **Reference** on, so the cashier types the transfer number.",
+                "For the website, write in **Where customers send the money** the account the customer sends money to, then switch it on for the website.",
+                "Press **Save**."
+              ],
+              "note": "A method that was already used cannot be deleted, only switched off — so old receipts still read the same."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "quick_reference": [
+    {
+      "group": "At the till"
+    },
+    {
+      "action": "Sell",
+      "how": "**Sell** → scan the box → pick the size → **Payment method** → **Complete sale** (**F4**)"
+    },
+    {
+      "action": "Add the customer to a sale",
+      "how": "**Customer** box (**F2**) → type name or phone → press the customer"
+    },
+    {
+      "action": "Give a discount",
+      "how": "Cart → **Discount** → **#** amount or **%** percent (up to 10%)"
+    },
+    {
+      "action": "Use a coupon",
+      "how": "Scan the coupon, or type it in **Coupon** → **Apply**"
+    },
+    {
+      "action": "Transfer payment",
+      "how": "**Payment method** → the method → type the transfer number → **Complete sale**"
+    },
+    {
+      "action": "Another receipt copy",
+      "how": "After the sale → **Print receipt** (**Gift receipt** = no prices)"
+    },
+    {
+      "action": "Count the drawer at night",
+      "how": "Home → **Count the drawer** → type lira and dollars → **Save the count**"
+    },
+    {
+      "group": "Warehouse"
+    },
+    {
+      "action": "Goods arrived",
+      "how": "**Warehouse** → **Goods arrived** → the order → count → confirm → **Print labels**"
+    },
+    {
+      "action": "Bring stock to the floor",
+      "how": "**Warehouse** → **Move stock** → scan each piece → **Move N pieces**"
+    },
+    {
+      "action": "Find a size",
+      "how": "**Warehouse** → **Where is it?** → type or scan"
+    },
+    {
+      "action": "New product",
+      "how": "**Warehouse** → **Add product** → name, type, price ($), sizes → **Save & print labels**"
+    },
+    {
+      "action": "Print labels",
+      "how": "**Print labels** → find the product → **Print all sizes**"
+    },
+    {
+      "group": "Deliveries"
+    },
+    {
+      "action": "Phone / WhatsApp order",
+      "how": "**Delivery office** → Bag → Customer → Travels by → Address → Payment → **Save & print**"
+    },
+    {
+      "action": "Give a parcel to a driver",
+      "how": "**Deliveries** → card → **Assign** → driver → **Save** → **Take it out**"
+    },
+    {
+      "action": "Parcel delivered",
+      "how": "**Deliveries** → card → **Delivered** → type **Collected** → **Delivered**"
+    },
+    {
+      "action": "Driver brings the cash",
+      "how": "**Deliveries** → **Cash back** → count → **Hand it all in**"
+    },
+    {
+      "group": "Owner"
+    },
+    {
+      "action": "Confirm the night's count",
+      "how": "**Money** → **Close the day** → **Take home** → **Confirm and take the cash**"
+    },
+    {
+      "action": "Expense",
+      "how": "**Money** → **Payments** → **Expenses** → **+ Add**"
+    },
+    {
+      "action": "Pay a supplier",
+      "how": "**Money** → **Payments** → **Suppliers** → **Pay**"
+    },
+    {
+      "action": "Month's profit",
+      "how": "**Money** → **Books** → **Statement**"
+    },
+    {
+      "action": "New coupon",
+      "how": "**Coupons** → **+ New code** → **Save**"
+    }
+  ],
+  "faq": [
+    {
+      "q": "Can I undo a sale?",
+      "a": "Not from the till. Tell the manager: a sale can be cancelled (voided) by the manager, and the stock comes back by itself. If the customer is bringing things back, use a return instead."
+    },
+    {
+      "q": "Why can't I see some screens in the menu?",
+      "a": "Each person sees only what their job needs. If you need another screen, ask the owner to change what you can do (**Settings** → **Staff** → **Change what they can do**)."
+    },
+    {
+      "q": "Can I type a different price at the till?",
+      "a": "No. Prices always come from the product. You can give a discount of up to 10%; more needs the manager."
+    },
+    {
+      "q": "Why is the lira price different from yesterday?",
+      "a": "Prices are in dollars. The lira price follows the exchange rate, so when the rate changes every lira price changes with it."
+    },
+    {
+      "q": "What if the internet goes down?",
+      "a": "The till keeps working on the shop's computer. Keep selling. When the line comes back, everything is sent by itself. A strip across the top of the screen tells you what is happening."
+    },
+    {
+      "q": "The receipt did not print. Did the sale go through?",
+      "a": "Yes — if the screen showed the receipt with an invoice number, the sale is saved. Press **Print receipt** to try again once the printer is ready."
+    },
+    {
+      "q": "A customer has the same phone as another customer. Is that a problem?",
+      "a": "The system allows it (families share phones) and warns you. Check you have not made the same person twice."
+    },
+    {
+      "q": "How do I change my password?",
+      "a": "Press your name at the top right → **Change password**. See *Change your password* in Part 1."
+    },
+    {
+      "q": "Why does the drawer count not show how much should be there?",
+      "a": "So that the count is a real count. The owner sees the difference when confirming."
+    },
+    {
+      "q": "Who sees the cost price and the profit?",
+      "a": "Only the owner and the people the owner allows. A cashier never sees them."
+    }
+  ],
+  "troubleshooting": [
+    {
+      "problem": "\"That username and password do not match.\"",
+      "cause": "A typing mistake, or the keyboard is in Arabic or capital letters.",
+      "fix": "Check the keyboard language, press the eye to see the password, and try again. Still wrong? Ask the manager for a new password."
+    },
+    {
+      "problem": "\"Too many tries. Wait a few minutes and try again.\"",
+      "cause": "Too many wrong passwords in a short time.",
+      "fix": "Wait a few minutes. Do not keep guessing — ask the manager."
+    },
+    {
+      "problem": "\"No connection to the server. Check the wifi.\" / the page does not open",
+      "cause": "The computer or phone is not on the shop's Wi-Fi, or the internet is down.",
+      "fix": "Check the Wi-Fi. On the shop computer, make sure **OG System** is open (the icon on the desktop). The page opens by itself once it answers."
+    },
+    {
+      "problem": "\"OG System is not open on this computer\"",
+      "cause": "The OG System program on the shop computer is closed.",
+      "fix": "Double-click the **OG System** icon on the desktop. Do not close it during the day."
+    },
+    {
+      "problem": "\"Still saving the last change\"",
+      "cause": "You pressed again while the system was still saving.",
+      "fix": "Wait a moment, then press again. What you typed is kept."
+    },
+    {
+      "problem": "\"Not saved — check the connection and try again.\"",
+      "cause": "The connection dropped while saving.",
+      "fix": "Check the Wi-Fi and press again. What you typed is kept."
+    },
+    {
+      "problem": "A button in this guide is missing or grey",
+      "cause": "Your account is not allowed to do that job.",
+      "fix": "Ask the owner."
+    },
+    {
+      "problem": "The discount is refused",
+      "cause": "It is more than 10% of the sale.",
+      "fix": "Ask the manager to make the sale."
+    },
+    {
+      "problem": "\"There is no coupon with that code.\" / \"That code has ended.\"",
+      "cause": "The code is mistyped, switched off, or past its end date.",
+      "fix": "Check the code with the customer. Only the owner can change a coupon."
+    },
+    {
+      "problem": "\"That code is once per customer — add the customer to the sale first.\"",
+      "cause": "This coupon needs to know who the customer is.",
+      "fix": "Add the customer (**F2**), then apply the coupon again."
+    },
+    {
+      "problem": "\"The shop's print agent is not connected — this receipt prints when it is, if that is within 10 minutes.\"",
+      "cause": "The printing program on the shop computer is not running.",
+      "fix": "Restart the shop computer, or tell the manager. The sale itself is saved."
+    },
+    {
+      "problem": "The receipt prints strange symbols",
+      "cause": "The printer's settings on the computer were changed.",
+      "fix": "Tell the manager — the printer must be set up as **Generic / Text Only**."
+    },
+    {
+      "problem": "A scan does nothing",
+      "cause": "The cursor is in another box, or the scanner is unplugged.",
+      "fix": "Press on an empty part of the screen and scan again. Check the scanner's cable."
+    },
+    {
+      "problem": "I typed a wrong number (a count, an expense, a price)",
+      "cause": "—",
+      "fix": "Most things can be corrected: **Count again** before the owner confirms, **Cancel** on an expense, edit the price again. A finished sale is corrected by the manager."
+    }
+  ],
+  "glossary": [
+    {
+      "term": "Till / Cashier",
+      "definition": "The selling screen at the counter."
+    },
+    {
+      "term": "Invoice (INV-…)",
+      "definition": "The number of a sale. It is printed on the receipt and can be scanned."
+    },
+    {
+      "term": "Shop floor",
+      "definition": "The stock inside the shop, where customers can see it."
+    },
+    {
+      "term": "Back storage",
+      "definition": "The stock room behind the shop."
+    },
+    {
+      "term": "SKU",
+      "definition": "The shop's own code for one size of one product (for example OG-065-42)."
+    },
+    {
+      "term": "Label",
+      "definition": "The barcode sticker printed for each piece."
+    },
+    {
+      "term": "Drawer",
+      "definition": "The cash drawer at the till. Its money is counted every night."
+    },
+    {
+      "term": "Float",
+      "definition": "The money left in the drawer for the next morning."
+    },
+    {
+      "term": "Safeer",
+      "definition": "One of the shop's own delivery drivers."
+    },
+    {
+      "term": "Handover sheet (HO-…)",
+      "definition": "A paper listing the parcels a driver or company took, signed at the counter."
+    },
+    {
+      "term": "Delivery office",
+      "definition": "The screen for orders taken by phone, Instagram or WhatsApp."
+    },
+    {
+      "term": "Transport office / Courier company",
+      "definition": "Companies that carry parcels to other cities. They are paid before sending."
+    },
+    {
+      "term": "On credit",
+      "definition": "The customer takes the goods now and pays later. It is recorded under the customer's name."
+    },
+    {
+      "term": "Points",
+      "definition": "What a regular customer collects with every purchase, to spend later."
+    },
+    {
+      "term": "Coupon",
+      "definition": "A code that takes a percentage or an amount off a sale."
+    },
+    {
+      "term": "Exchange rate",
+      "definition": "How many lira one dollar is. All lira prices are worked out from it."
+    },
+    {
+      "term": "Yalla Wear",
+      "definition": "The print partner who prints names and numbers on shirts."
+    },
+    {
+      "term": "Void",
+      "definition": "Cancelling a finished sale. Only the manager can do it."
+    }
+  ],
+  "support": {
+    "title": "Need help?",
+    "text": "Ask in this order. Say which screen you were on and what message you saw — a photo of the screen with your phone helps.",
+    "contacts": [
+      {
+        "label": "Shop manager",
+        "value": "‹name and phone to fill in›"
+      },
+      {
+        "label": "Owner",
+        "value": "‹name and phone to fill in›"
+      },
+      {
+        "label": "System support",
+        "value": "‹name and phone to fill in›"
+      }
+    ]
+  }
+}

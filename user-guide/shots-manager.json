@@ -7,7 +7,7 @@
   },
   "device_scale_factor": 2,
   "delay_ms": 700,
-  "css": "#toasts{display:none!important} .mo-glow{display:none!important}",
+  "css": "#toasts{display:none!important} .mo-glow{display:none!important} .made-by{display:none!important}",
   "login": {
     "url": "/",
     "actions": [
@@ -124,7 +124,9 @@
           "key": "list",
           "selector": "#dkDrop [role=\"option\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-desk-1b",
@@ -148,7 +150,9 @@
           "key": "next",
           "selector": "[data-act=\"dk-next\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-desk-2",
@@ -183,7 +187,9 @@
           "key": "new",
           "selector": "[data-act=\"dk-cust-new\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-desk-3",
@@ -211,7 +217,9 @@
           "key": "pickup",
           "selector": "[data-act=\"dk-method\"][data-id=\"pickup\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-desk-4",
@@ -247,7 +255,9 @@
           "key": "fee",
           "selector": "[data-change=\"dk-fee\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-desk-5",
@@ -255,12 +265,12 @@
       "actions": [
         {
           "fill": {
-            "selector": "[data-change=\"dk-fee\"]",
-            "value": "15000"
+            "selector": "[data-k=\"address\"]",
+            "value": "Seryan, Building 12, 3rd floor, near the bakery"
           }
         },
         {
-          "wait": 400
+          "wait": 500
         },
         {
           "click": "[data-act=\"dk-next\"]"
@@ -278,7 +288,9 @@
           "key": "save",
           "selector": "[data-act=\"dk-save\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-board",
@@ -308,10 +320,6 @@
           "selector": "[data-act=\"dl-assign\"]"
         },
         {
-          "key": "go",
-          "selector": "[data-act=\"dl-go\"]"
-        },
-        {
           "key": "done",
           "selector": "[data-act=\"dl-done\"]"
         },
@@ -319,7 +327,9 @@
           "key": "menu",
           "selector": "[data-act=\"dl-menu\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-assign",
@@ -355,7 +365,7 @@
           "wait": 400
         },
         {
-          "click": "[data-act=\"dl-menu\"]"
+          "click": ".dlb-card.is-out [data-act=\"dl-menu\"]"
         },
         {
           "wait": 500
@@ -364,17 +374,19 @@
       "callouts": [
         {
           "key": "pay",
-          "selector": "[data-act=\"dl-pay\"]"
+          "selector": ".dlb-card.is-out .dlb-mitem[data-act=\"dl-pay\"]"
         },
         {
           "key": "back",
-          "selector": "[data-act=\"rd-return\"]"
+          "selector": ".dlb-card.is-out [data-act=\"rd-return\"]"
         },
         {
           "key": "fail",
-          "selector": "[data-act=\"dl-fail\"]"
+          "selector": ".dlb-card.is-out [data-act=\"dl-fail\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-delivered",
@@ -435,7 +447,9 @@
           "key": "company",
           "selector": "[data-act=\"rd-open\"][data-kind=\"company\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-cashback",
@@ -453,7 +467,9 @@
           "key": "handin",
           "selector": "[data-act=\"rd-handin\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-safeers",
@@ -471,7 +487,9 @@
           "key": "give",
           "selector": "[data-sf=\"give\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-products",
@@ -493,7 +511,9 @@
           "key": "add",
           "selector": "[data-view=\"warehouse\"][data-tab=\"add\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-product",
@@ -522,7 +542,9 @@
           "key": "more",
           "selector": "[data-act=\"pr-menu\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-price",
@@ -563,7 +585,9 @@
         {
           "wait": 2000
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-print",
@@ -581,7 +605,9 @@
           "key": "new",
           "selector": "[data-act=\"pj-new\"]"
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     },
     {
       "id": "m-reviews",
@@ -593,7 +619,9 @@
         {
           "wait": 2000
         }
-      ]
+      ],
+      "clip": "#view",
+      "clip_padding": 0
     }
   ]
 }
