@@ -141,7 +141,9 @@ const TABLES = [
   { name: 'offers',                   key: 'id' },
   /* 077 — the size guide (044) */
   { name: 'size_charts',              key: 'id' },
-  { name: 'product_size_guides',      key: 'product_id' }
+  { name: 'product_size_guides',      key: 'product_id' },
+  /* 078 — the reservations (045) */
+  { name: 'reservations',             key: 'sale_id' }
 ];
 
 const PAGE = 1000;

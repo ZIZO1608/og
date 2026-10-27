@@ -464,6 +464,12 @@ export const TABLES = {
   /* 077 — the size guide: reusable charts, and one guide per product (keyed
      by the product). Cursor shape, behind their own guard at the end of the
      walk; the website reads a guide from the mirror (cloud file 044). */
+  /* 078 — a till reservation: a pickup order paid by deposit, plus until
+     when it is held. Keyed by its sale. Cursor shape (an extension moves the
+     date), behind its own guard at the end of the walk (cloud file 045). */
+  reservations: { parseKey: (rowId) => ({ sale_id: String(rowId) }),
+                  fetchLocal: (key) => DB.get().prepare('SELECT * FROM reservations WHERE sale_id = ?').get(key.sale_id),
+                  mapRow: (r) => r },
   size_charts: { parseKey: numKey, fetchLocal: byId('size_charts'),
                  mapRow: (r) => ({ ...r, active: !!r.active }) },
   product_size_guides: { parseKey: (rowId) => ({ product_id: Number(rowId) }),
@@ -767,7 +773,7 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
 export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours', 'product_photos', 'product_angles',
                               'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews', 'errands',
                               ...PARTNER, ...DRAWER, 'day_closes', 'coupons', 'offers',
-                              'size_charts', 'product_size_guides'];
+                              'size_charts', 'product_size_guides', 'reservations'];
 
 const MISSING_TABLE = /Could not find the table|PGRST205|relation .* does not exist|Supabase 404 on /i;
 const MISSING_COLUMN = /PGRST204|column .* does not exist|Could not find the '[a-z_]+' column/i;
@@ -1196,6 +1202,27 @@ async function walk(log, only) {
         missingAt.set(name, Date.now());
         log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
         log.line('    Run server/supabase/044_size_guides.sql in the SQL editor.');
+      }
+    }
+  }
+
+  /* 078 — the reservations, behind a guard of their own: until 045 is run
+     the table is skipped by name and everything else still goes up. The
+     order, its payments and its stock already went up with the core loop. */
+  if (want('reservations')) {
+    log.head('Reservations');
+    try {
+      await syncTable(log, 'reservations', { phase: 'upsert' });
+      await syncTable(log, 'reservations', { phase: 'delete' });
+      touched.push('reservations');
+      denied.delete('reservations');
+      missingAt.delete('reservations');
+    } catch (e) {
+      if (!noteRefused(log, 'reservations', e)) {
+        if (!missing(e)) throw e;
+        missingAt.set('reservations', Date.now());
+        log.warn('Supabase is missing reservations — skipped, everything else still went up.');
+        log.line('    Run server/supabase/045_reservations.sql in the SQL editor.');
       }
     }
   }

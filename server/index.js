@@ -30,6 +30,7 @@ import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
 import * as Categories from './lib/categories.js';
 import * as SizeGuide from './lib/sizeguide.js';
+import * as Reserve from './lib/reserve.js';
 import * as People from './lib/people.js';
 import * as Safeers from './lib/safeers.js';
 import * as Stock from './lib/stock.js';
@@ -901,7 +902,73 @@ router.add('PUT /api/config', requirePerm('config.write', async (ctx) => {
    858 frontend tests intact. A shop's catalogue is a few hundred KB. */
 router.add('GET /api/catalogue', requirePerm('product.read', (ctx) => {
   const products = Cat.list({ includeHidden: Auth.can(ctx.user, 'product.write') });
-  sendOk(ctx.res, { products: products.map(p => scrubCost(p, ctx.user)), categories: Categories.list() });
+  /* 078 — what is held for a reservation, per SKU, so Products and the
+     warehouse can say so. The customer's name only to customer.read. */
+  const names = Auth.can(ctx.user, 'customer.read');
+  const held = Reserve.heldBySku();
+  if (!names) for (const k of Object.keys(held)) held[k] = held[k].map(({ customer, ...h }) => h);
+  sendOk(ctx.res, { products: products.map(p => scrubCost(p, ctx.user)), categories: Categories.list(), held });
+}));
+
+/* ---- 078 — the deposit (lib/reserve.js), night shift 28 Oct 2026 ------------
+   A till reservation is a pickup order paid by deposit. sell takes, collects
+   and extends one; discount.unlimited agrees a smaller deposit; void
+   releases one, and void + money.move releases it as a refund. */
+function reserveFail(res, e) {
+  if (e.status === 403) return sendError(res, 403, e.code || 'forbidden', e.message);
+  const detail = {};
+  for (const k of ['min', 'currency', 'pct', 'remaining', 'status', 'have']) if (e[k] !== undefined) detail[k] = e[k];
+  sendErrorDetail(res, e.status || (e.code === 'not_found' ? 404 : 400), e.code || 'invalid', e.message, detail);
+}
+router.add('GET /api/reservations', requirePerm(['sell', 'void', 'delivery.desk'], (ctx) => {
+  const u = new URL(ctx.req.url, 'http://x');
+  sendOk(ctx.res, { reservations: Reserve.list({ status: u.searchParams.get('status') || 'held' }), settings: Reserve.settings() });
+}));
+router.add('GET /api/reservations/:id', requirePerm(['sell', 'void', 'delivery.desk'], (ctx) => {
+  const r = Reserve.byId(ctx.params.id);
+  if (!r) return sendError(ctx.res, 404, 'not_found', 'No such reservation.');
+  sendOk(ctx.res, { reservation: r });
+}));
+router.add('POST /api/reservations', requirePerm('sell', async (ctx) => {
+  const b = await readJson(ctx.req) || {};
+  try {
+    const r = Reserve.create({
+      lines: b.lines, whId: b.whId, customerId: b.customerId, currency: b.currency || null,
+      discount: b.discount || 0, couponCode: b.couponCode || null, deposit: b.deposit,
+      agreed: b.agreed, canAgree: Auth.can(ctx.user, 'discount.unlimited'), opId: b.opId || null
+    }, ctx.user);
+    Live.notify('og', { deliveries: true, reservations: true });
+    sendOk(ctx.res, r);
+  } catch (e) { reserveFail(ctx.res, e); }
+}));
+router.add('POST /api/reservations/:id/collect', requirePerm('sell', async (ctx) => {
+  const b = await readJson(ctx.req) || {};
+  try {
+    const r = Reserve.collect(ctx.params.id, { payment: b.payment || null, opId: b.opId || null }, ctx.user);
+    Live.notify('og', { deliveries: true, reservations: true });
+    sendOk(ctx.res, { reservation: r });
+  } catch (e) { reserveFail(ctx.res, e); }
+}));
+router.add('POST /api/reservations/:id/extend', requirePerm('sell', (ctx) => {
+  try { const r = Reserve.extend(ctx.params.id, ctx.user); Live.notify('og', { reservations: true }); sendOk(ctx.res, { reservation: r }); }
+  catch (e) { reserveFail(ctx.res, e); }
+}));
+router.add('POST /api/reservations/:id/release', requirePerm('void', async (ctx) => {
+  const b = await readJson(ctx.req) || {};
+  if (b.how === 'refund' && !Auth.can(ctx.user, 'money.move')) {
+    return sendError(ctx.res, 403, 'forbidden', 'A refund needs the owner or the manager; release it as store credit.');
+  }
+  try {
+    const r = Reserve.release(ctx.params.id, { how: b.how === 'refund' ? 'refund' : 'credit', method: b.method || 'cash', opId: b.opId || null }, ctx.user);
+    Live.notify('og', { deliveries: true, reservations: true });
+    sendOk(ctx.res, { reservation: r });
+  } catch (e) { reserveFail(ctx.res, e); }
+}));
+/* The deposit one website order needs — set on the order's card before it is
+   accepted, after the call. */
+router.add('POST /api/web-orders/:ref/deposit', requirePerm('delivery.web', async (ctx) => {
+  const b = await readJson(ctx.req) || {};
+  try { sendOk(ctx.res, { deposit: Reserve.setWebDeposit(ctx.params.ref, b, ctx.user) }); } catch (e) { reserveFail(ctx.res, e); }
 }));
 
 /* --- categories (057) ------------------------------------------------------
@@ -3403,6 +3470,19 @@ router.add('GET /api/ext/products/:id/size-guide', (ctx) => {
   const id = Number(ctx.params.id);
   if (!Cat.webById(id)) return sendError(ctx.res, 404, 'not_found', 'No such product.');
   sendOk(ctx.res, { sizeGuide: SizeGuide.webShape(SizeGuide.guideOf(id)) });
+});
+
+/* 078 (contract v1.10) — how much deposit one website order needs: the
+   admin's figure for it, or deposit.online_pct; and, once it is accepted,
+   what has been paid and what is left. No name, no phone, no cost. */
+router.add('GET /api/ext/web-orders/:ref/deposit', (ctx) => {
+  const row = DB.get().prepare('SELECT * FROM web_orders WHERE ref = ?').get(String(ctx.params.ref));
+  if (!row) return sendError(ctx.res, 404, 'not_found', 'No such order.');
+  sendOk(ctx.res, { ref: row.ref, state: row.state, deposit: Reserve.webDeposit(row) });
+});
+router.add('GET /api/ext/deposit', (ctx) => {
+  const s = Reserve.settings();
+  sendOk(ctx.res, { onlinePct: s.onlinePct, chaseDays: s.chaseDays });
 });
 
 router.add('GET /api/ext/print-jobs/:id', (ctx) => {

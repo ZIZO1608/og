@@ -7,7 +7,21 @@ database (`server/data-night/og.db`, made with `VACUUM INTO`, gitignored) on por
 bot tokens. The server's own startup line was read before the first write:
 `database : D:\DESKTOP\OG System\server\data-night\og.db`.
 
-<!-- SUMMARY -->
+## For the owner, in plain words
+
+**Done:**
+- **Stage 1 (labels):** sizes are listed in order everywhere (S, M, L, XL, XXL). Print labels fits the laptop screen and looks tidy on a phone. Buttons that wait for the internet now show a spinner straight away, and Print now is twice as fast.
+- **Stage 2 (size guide):** the full size guide in cm. It has reusable charts, works per product, is required for clothes, and shows in the drawer, at the till and as a WhatsApp picture. The website can read it through its own address.
+- **Stage 3 (deposit):** the **server half only**. Reservations with a deposit can be taken, collected, extended and released as store credit, and the bell warns about them. The deposit for a website order can be set and the website can read it. **The screens for it (the till button, its dialogs, the Settings card, the box on the website-order card) were not built.** The usage limit ran out.
+- **Stage 4 (money and suppliers):** **not started.**
+
+**Needs you — run these in Supabase, in this order:**
+1. `044_size_guides.sql`, then `verify_044_size_guides.sql`
+2. `045_reservations.sql`, then `verify_045_reservations.sql`
+3. `030_erp_access.sql` again
+4. Then run `npm run supabase:reconcile` on the VPS.
+
+**Questions:** see the end of each stage (1 to 3).
 
 ---
 
@@ -334,3 +348,80 @@ Until 044 is run the sync skips the two tables by name and says so; nothing else
    trousers) would need two lengths. Is that a real case?
 3. **Shoes are optional, but the Settings chips list every category** — the owner could mark a
    shoe type as required. Allow that, or keep shoes always optional?
+
+---
+
+## Stage 3 — Deposit (عربون): server half done, screens NOT built
+
+**Decision: a till reservation is a pickup order paid by deposit** (`Orders.create`, method
+`pickup`, plan `deposit`), plus one row in a new `reservations` table (`078_deposits.sql`): until
+when it is held, the least the deposit could be, and who agreed a smaller one. Everything else is
+the order's:
+
+- the pieces leave stock with the sale, so they are held and can't be sold or counted as in stock;
+- a cash deposit goes into the drawer as an order payment, with an opId;
+- what is owed is derived;
+- release goes through `Orders.takeBack` with outcome credit, so it becomes store credit and no
+  cash moves (refund is the manager's choice).
+
+The status (held / collected / released / expired) is derived, never stored. A reservation also
+appears on the Deliveries board as a waiting pickup. `Orders.create` gained a `within(d, result)`
+hook, so a deposit below the minimum rolls the whole order back.
+
+**Permissions:**
+- `sell` takes, collects and extends a reservation.
+- `discount.unlimited` agrees a smaller deposit for one customer (owner and manager).
+- `void` releases one; `void` + `money.move` releases it as a refund.
+
+**Website:** `web_orders` gained deposit columns (local only). `POST /api/web-orders/:ref/deposit`
+(`delivery.web`) sets a percentage or an amount. The website reads
+`GET /api/ext/web-orders/:ref/deposit` and `GET /api/ext/deposit` through the VPS, behind the
+website key. **Question 4:** the cloud copy doesn't carry it — should it?
+
+**Bell** (`alerts.js`): `res_ends`, `res_expired`, `web_chase`. **The words (`al_*`) are not yet in
+I18N** — the bell will show raw keys for these three until they are added.
+
+**Settings:** `deposit.till_pct`, `deposit.online_pct`, `deposit.hold_days` and
+`deposit.chase_days` are seeded and on `CONFIG_WRITABLE` (value-checked). `CONFIG.DEP_*` is
+hydrated.
+
+**Mirror:** `reservations` is synced behind its own guard, and added to restore ORDER, drift,
+reconcile, `people.js` LOGGED and purge-demo. Cloud files: `045_reservations.sql` and its
+verify (PGlite: all ✅, and 044 still ✅).
+
+**Verified:** `_nightshift/n1028/s3-api.mjs` — 32 green over HTTP, read back from SQLite. It
+covers:
+- refusals with no customer, under 50%, and a cashier agreeing a smaller deposit;
+- exactly 50% accepted, the stock held, one drawer payment;
+- an opId replay;
+- the catalogue's `held`;
+- a short collect refused, then a full collect;
+- extend;
+- the expired row in the bell;
+- release as credit (stock back, credit granted, no cash moved) and a refund;
+- the website deposit, default and set.
+
+**Not done (next steps):**
+1. `js/reserve.js` — the till's "Reserve with a deposit" button and dialog, collect/extend/release
+   dialogs, scanning the slip, and a Reservations list.
+2. The deposit slip line ("held until") in `printing.js` / `receipt.js`.
+3. Products/warehouse "held for X until Y" (the data is in `/api/catalogue` as `held`, but not
+   yet passed through `Shop.load` → `DB.hydrate`).
+4. The Settings → Deposit fold.
+5. The deposit box on the website-order card.
+6. The bell routing (open the reservation).
+7. The `al_*` strings.
+8. CLAUDE.md sections.
+
+---
+
+## Stage 4 — Suppliers and Money: NOT STARTED
+
+Nothing was changed. The bugs listed in the brief (the Expenses header ignoring dollars, Pay
+prefilled with the whole balance from an empty place, duplicate "VACHE" suppliers, the
+"paid as" wording, Sales = Takings) are all still open. No recent uncommitted money work by
+Ahmad was found (`git status` was clean at the start).
+
+## CLAUDE.md
+
+Not updated tonight — no time left. This report is the record for stages 1–3.

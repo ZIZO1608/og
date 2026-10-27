@@ -138,6 +138,8 @@ export const ORDER = [
   'offers',
   /* 077 — a chart before the guides that follow it; a guide names its product */
   'size_charts', 'product_size_guides',
+  /* 078 — after the sale (and its delivery) it holds */
+  'reservations',
 
   /* what was printed, which the mirror has always had room for */
   'print_log', 'label_print_log'

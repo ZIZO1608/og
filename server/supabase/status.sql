@@ -68,6 +68,9 @@ SELECT f.file, f.installed, f.what
        to_regclass('public.product_size_guides') IS NOT NULL
        AND to_regprocedure('public.web_size_guide(text, bigint)') IS NOT NULL,
        'the size guide, in centimetres (local 077)'),
+    ('045_reservations.sql',
+       to_regclass('public.reservations') IS NOT NULL,
+       'till reservations paid by deposit (local 078)'),
     ('030_erp_access.sql',
        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'og_vps'),
        'og_vps, the VPS''s read-only login'),

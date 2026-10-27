@@ -246,6 +246,13 @@ const removed = DB.tx(() => {
     d.prepare(`DELETE FROM print_log WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
     /* 068 — a coupon use names its sale (a foreign key here, none there). */
     d.prepare(`DELETE FROM coupon_uses WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
+    /* 078 — a reservation names its sale; logged, so the mirror loses it too. */
+    try {
+      for (const r of d.prepare(`SELECT sale_id FROM reservations WHERE sale_id IN (${inList(saleIds)})`).all(...saleIds)) {
+        DB.logChange('reservations', r.sale_id, 'delete', null, null);
+      }
+      d.prepare(`DELETE FROM reservations WHERE sale_id IN (${inList(saleIds)})`).run(...saleIds);
+    } catch { /* before 078 */ }
     d.prepare(`DELETE FROM sales WHERE id IN (${inList(saleIds)})`).run(...saleIds);
     /* sale_items cascade on the Postgres side, so the parent is enough for
        those. debt_payments and print_log do NOT cascade there — the sync's

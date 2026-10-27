@@ -56,6 +56,8 @@ export const PUSHED = [
   'offers',
   /* 077 — the size guide (044) */
   'size_charts', 'product_size_guides',
+  /* 078 — the reservations (045) */
+  'reservations',
   'config', 'role_permissions', 'label_templates', 'clubs', 'notification_reads', 'categories', 'user_permissions',
   /* 071 — the print kits and their fonts, pushed whole (041). */
   'print_fonts', 'print_kits'

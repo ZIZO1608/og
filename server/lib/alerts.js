@@ -49,6 +49,7 @@ import * as Loyalty from './loyalty.js';
 import * as Wants from './wants.js';
 import { capArray } from './capped.js';
 import * as Payables from './payables.js';
+import * as Reserve from './reserve.js';
 
 /* How many rows the bell shows at most. Named, because the stamp block
    below has to reserve a slot inside this budget for its summary row — and
@@ -209,6 +210,37 @@ export function list(user, { limit = MAX_ROWS } = {}) {
       out.push({ key: 'web_new:' + w.n, kind: 'web_new', args: { n: w.n },
                  icon: '⇣', tone: 'amber', view: 'weborders' });
     }
+  }
+
+  /* THE DEPOSIT (078, lib/reserve.js) — the bell only, never Telegram.
+     A reservation ending within a day (keyed on its date, so an extension
+     brings it back), one past its date (open it: extend, or release it as
+     store credit — the manager's), and a website order whose deposit came in
+     and the rest has not, past deposit.chase_days. */
+  if (can('sell') || can('void') || can('delivery.desk') || can('delivery.web')) {
+    try {
+      const r = Reserve.alertsData({ wantWeb: can('delivery.desk') || can('delivery.web') });
+      if (can('sell') || can('void')) {
+        for (const x of r.expired.slice(0, 5)) {
+          out.push({ key: 'res_expired:' + x.sale_id + ':' + x.hold_until, kind: 'res_expired',
+                     args: { id: x.sale_id, name: x.customer_name || '', sale: x.sale_id },
+                     icon: '!', tone: 'red', view: 'pos' });
+        }
+        more('res_expired', r.expired.length, Math.min(5, r.expired.length), '!', 'red', 'pos');
+        for (const x of r.ending.slice(0, 5)) {
+          out.push({ key: 'res_ends:' + x.sale_id + ':' + x.hold_until, kind: 'res_ends',
+                     args: { id: x.sale_id, name: x.customer_name || '', sale: x.sale_id },
+                     icon: '◷', tone: 'amber', view: 'pos' });
+        }
+        more('res_ends', r.ending.length, Math.min(5, r.ending.length), '◷', 'amber', 'pos');
+      }
+      for (const x of r.chase.slice(0, 5)) {
+        out.push({ key: 'web_chase:' + x.saleId, kind: 'web_chase',
+                   args: { id: x.saleId, name: x.customer || '', n: x.days, sale: x.saleId },
+                   icon: '$', tone: 'amber', view: 'deliveries' });
+      }
+      more('web_chase', r.chase.length, Math.min(5, r.chase.length), '$', 'amber', 'deliveries');
+    } catch { /* a database before 078 */ }
   }
 
   /* A COUPON WAS USED (074) — in the shop, on a phone order or on the website.

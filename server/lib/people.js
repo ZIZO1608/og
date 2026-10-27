@@ -30,7 +30,9 @@ const LOGGED = new Set([
   'products', 'variants', 'stock', 'customers', 'sales', 'deliveries', 'rooms', 'sections', 'shelves',
   'wants', 'product_colours', 'product_photos', 'product_angles', 'order_payments', 'handovers', 'order_returns', 'customer_credit',
   'order_reviews', 'print_jobs', 'partner_invoices', 'job_messages', 'suppliers', 'employees',
-  'purchase_orders', 'shifts', 'stock_counts', 'job_reviews', 'day_closes', 'errands'
+  'purchase_orders', 'shifts', 'stock_counts', 'job_reviews', 'day_closes', 'errands',
+  /* night shift 28 Oct 2026 — 077 and 078 name the person who set them */
+  'size_charts', 'product_size_guides', 'reservations'
 ]);
 
 /* Rows that are about the person, not a record of what they did: they go

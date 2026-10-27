@@ -362,7 +362,11 @@ export function create({
   couponCode = null,
   /* Stage 1b — lines that are not goods (Sales.SERVICES): a website order's
      printed shirts, decided by the route from the order itself. */
-  services = []
+  services = [],
+  /* 078 — a till reservation (lib/reserve.js) checks its deposit and writes
+     its own row INSIDE this transaction: a refusal there rolls the order
+     back, so a reservation with too small a deposit never existed. */
+  within = null
 }) {
   if (!METHODS.includes(method)) throw fail('how is this order travelling?', 'bad_travel');
   if (!PLANS.includes(plan)) {
@@ -508,6 +512,7 @@ export function create({
     logChange('deliveries', String(deliveryId), 'insert', userId, `order ${sale.id}`);
 
     const result = { sale, deliveryId, money: m, payments: taken };
+    if (within) result.reservation = within(d, result);
     if (opId) {
       d.prepare(
         `INSERT INTO applied_ops (op_id, at, user_id, kind, result) VALUES (?, ?, ?, 'order', ?)`
