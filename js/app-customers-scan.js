@@ -1402,192 +1402,127 @@ function openScanResult(raw) {
   var v = found.variant;
   var p = DB.product(v.productId);
   var vs = DB.variantsOf(p.id);
-  var total = DB.totalQty(p.id);
-  var gaps = DB.sizeGaps(p.id);
   var rate = DB.weeklyRate(p.id, v.size);
   var cover = DB.daysOfCover(v);
+  var isAr = OG.lang === 'ar';
+  var colour = DB.shownColour(v);
 
-  /* thumbBox, not thumb: a two-letter chip cannot tell two similar shoes
-     apart, and the first question with a box in hand is "is this the right
-     one?". thumbBox already shows the uploaded photo when there is one and
-     falls back to the colour block when there is not. */
-  var h = '<div class="sc-hit">' +
-    thumbBox(p, 'sc-photo') +
-    '<div class="sc-hit-txt"><b>' + esc(p.name) + '</b>' +
-      '<span>' + dots(esc(p.brand), esc(DB.typeLabels[p.type] || '')) + '</span>' +
-      '<span class="num">' + esc(v.barcode) + '</span>' +
-      '<span class="num sc-sku">' + esc(v.sku) + '</span></div>' +
-    healthBadge(v.qty) +
+  /* ONE QUESTION, ONE ANSWER (27 Oct 2026). The sheet used to open on six
+     figures, a size table, the supplier, the cost and the movement log, with
+     the Sell button sticky at the bottom of all of it. Somebody holding a box
+     asks three things — is this the one, how many are there, what do I do with
+     it — so those are the sheet, and everything else is one tap away under
+     "More about this size". */
+  var h = '<div class="sc2-hero">' +
+    thumbBox(p, 'sc2-photo') +
+    '<div class="sc2-id">' +
+      '<b class="sc2-name">' + esc(p.name) + '</b>' +
+      '<span class="sc2-sub">' + dots(esc(DB.typeLabels[p.type] || ''), '<bdi class="num">' + esc(v.sku) + '</bdi>') + '</span>' +
+      '<span class="sc2-price">' + priceBoth(p) + '</span>' +
+    '</div>' +
+    '<div class="sc2-size">' +
+      '<span class="sc2-size-big">' + esc(v.size) + '</span>' +
+      (colour ? '<span class="sc2-colour">' + DB.swatch(colour) + esc(DB.colourName(colour)) + '</span>' : '') +
+      '<span class="sc2-left' + (v.qty <= 0 ? ' is-out' : '') + '">' +
+        t('sc2_left').replace('{n}', '<bdi>' + nf(v.qty) + '</bdi>') + '</span>' +
+    '</div>' +
   '</div>';
 
-  /* The scanned size first and loudest — that is the one in his hand. */
-  h += '<div class="grid mt" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
-    '<div class="stat"><span class="eyebrow">' + t('sc_this_size') + '</span>' +
-      '<div class="val accent">' + esc(v.size) + (DB.shownColour(v) ? ' <small class="line-colour">' + DB.swatch(DB.shownColour(v)) + esc(DB.colourName(DB.shownColour(v))) + '</small>' : '') + '</div>' +
-      '<div class="foot">' + v.qty + ' ' + t('in_stock') + ' · ' + esc(v.shelf) + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('total_stock') + '</span>' +
-      '<div class="val">' + nf(total) + '</div>' +
-      '<div class="foot">' + vs.length + ' ' + t('sizes').toLowerCase() + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('price') + '</span>' +
-      '<div class="val">' + moneyStat(p.sellingPrice) + '</div>' +
-      '<div class="foot">' + t('margin') + ' ' +
-        pct((p.sellingPrice - p.costPrice) / p.sellingPrice * 100, 0) + '</div></div>' +
-  '</div>';
-
-  /* How this size is actually moving. cover and rate were already computed
-     above and then thrown away unless cover < 21 — which meant the sheet went
-     quiet exactly when the news was good. Both are now always shown. */
-  var lastSold = DB.lastSoldFor(p.id, v.size);
-  h += '<div class="grid mt" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
-    '<div class="stat"><span class="eyebrow">' + t('sc_sells') + '</span>' +
-      '<div class="val" style="font-size:20px">' +
-        (rate > 0 ? (Math.round(rate * 10) / 10) + '<span class="cur">/' + t('po_week') + '</span>' : '—') +
-      '</div><div class="foot">' + t('sc_last_8w') + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('sc_cover') + '</span>' +
-      '<div class="val' + (cover !== Infinity && cover < 21 ? ' warn' : '') + '" style="font-size:20px">' +
-        coverText(cover) +
-      '</div><div class="foot">' + (cover === Infinity ? t('sc_not_moving') : t('sc_at_this_rate')) + '</div></div>' +
-    '<div class="stat"><span class="eyebrow">' + t('last_sold') + '</span>' +
-      '<div class="val" style="font-size:20px">' +
-        /* A dash, never "today" — a size that has never sold must not be
-           mistaken for one that sold this morning. */
-        (lastSold ? relDate(lastSold) : '—') +
-      '</div><div class="foot">' + (lastSold ? fmtDate(lastSold) : t('sc_never_sold')) + '</div></div>' +
+  /* Every size as a chip, so "have you got it in a 43?" is answered without
+     a table. Pressing one opens the sheet on that size. */
+  h += '<div class="sc2-sizes" role="group" aria-label="' + esc(t('sc2_tap_size')) + '">' +
+    vs.map(function (x) {
+      var on = x.sku === v.sku;
+      return '<button type="button" class="sc2-chip' + (on ? ' on' : '') + (x.qty <= 0 ? ' is-out' : '') + '"' +
+        ' data-act="sc-size" data-sku="' + esc(x.sku) + '"' + (on ? ' aria-pressed="true"' : '') + '>' +
+        '<b>' + esc(DB.variantLabel(x)) + '</b><span class="num">' + nf(x.qty) + '</span></button>';
+    }).join('') +
   '</div>';
 
   if (cover !== Infinity && cover < 21) {
-    h += '<div class="yl-block mt"><span class="yb-txt"><b>' +
-      t('sc_running_out').replace('{d}', cover) + '</b><small>' +
-      (Math.round(rate * 10) / 10) + ' ' + t('sc_per_week') + '</small></span>' +
-      '<button class="btn btn-sm btn-primary" data-act="reorder" data-id="' + p.id + '">' +
-        t('reorder') + '</button></div>';
+    h += '<div class="sc2-warn"><span>' + t('sc_running_out').replace('{d}', cover) + '</span>' +
+      '<button class="btn btn-sm" data-act="reorder" data-id="' + p.id + '">' + t('reorder') + '</button></div>';
   }
 
-  /* Every size, so he can answer "do you have it in 43?" without walking. */
-  h += '<div class="card mt"><div class="card-head"><h3>' + t('sc_all_sizes') + '</h3>' +
-    (gaps.length ? '<div class="card-actions"><span class="badge critical">' +
-       t('size_gap') + ': ' + gaps.join(', ') + '</span></div>' : '') + '</div>' +
-    '<div class="table-wrap"><table class="tbl"><thead><tr>' +
-      '<th>' + t('size') + '</th><th class="num">' + t('qty') + '</th>' +
-      '<th class="num">' + t('wh_split_hint') + '</th>' +
-      '<th>' + t('shelf') + '</th><th>' + t('health') + '</th><th class="num">' + t('po_rate') + '</th>' +
-    '</tr></thead><tbody>';
-  vs.forEach(function (x) {
-    var xr = DB.weeklyRate(p.id, x.size);
-    h += '<tr' + (x.sku === v.sku ? ' class="sc-row-on"' : '') + '>' +
-      '<td><b>' + esc(DB.variantLabel(x)) + '</b>' + (x.sku === v.sku ? ' <span class="badge accent">' + t('sc_scanned') + '</span>' : '') + '</td>' +
-      '<td class="num"><b>' + x.qty + '</b></td>' +
-      /* Split by place, because "we have 8" is useless if all 8 are in the
-         back and the customer is standing at the shelf. */
-      '<td class="num">' + DB.stockAt(x, 'floor') + ' / ' + DB.stockAt(x, 'store') + '</td>' +
-      '<td class="muted">' + esc(x.shelf) + '</td>' +
-      '<td>' + healthBadge(x.qty) + '</td>' +
-      '<td class="num muted">' + (xr > 0 ? (Math.round(xr * 10) / 10) + '/' + t('po_week') : '—') + '</td>' +
-    '</tr>';
-  });
-  h += '</tbody></table></div></div>';
+  /* What to do. Quantity, where, and three buttons — Sell the big one, since
+     that is the answer most of the time. scQty / scPlace keep their ids: the
+     sc-in, sc-out and scan-to-pos handlers read them. */
+  h += '<div class="sc2-do">' +
+    '<div class="sc2-row">' +
+      '<div class="sc2-field"><span class="sc2-lbl">' + t('sc2_how_many') + '</span>' +
+        '<div class="sc2-step">' +
+          '<button type="button" class="btn btn-ghost" data-act="sc-qty" data-d="-1" aria-label="−1">−</button>' +
+          '<input class="inp num" id="scQty" type="text" inputmode="numeric" enterkeyhint="done" value="1" aria-label="' + esc(t('sc2_how_many')) + '">' +
+          '<button type="button" class="btn btn-ghost" data-act="sc-qty" data-d="1" aria-label="+1">+</button>' +
+        '</div></div>' +
+      '<div class="sc2-field sc2-grow"><span class="sc2-lbl">' + t('sc2_where') + '</span>' +
+        '<input type="hidden" id="scPlace" value="' + esc(DB.defaultWh) + '">' +
+        '<div class="sc2-places">' +
+          DB.warehouses.map(function (w) {
+            var on = w.id === DB.defaultWh;
+            return '<button type="button" class="sc2-place' + (on ? ' on' : '') + '" data-act="sc-place" data-wh="' + esc(w.id) + '"' +
+              (on ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>' +
+              '<span>' + esc(DB.whName(w.id, isAr)) + '</span><b class="num">' + nf(DB.stockAt(v, w.id)) + '</b></button>';
+          }).join('') +
+        '</div></div>' +
+    '</div>' +
+    '<button class="btn btn-primary btn-lg sc2-sell" id="scPrimary" data-act="scan-to-pos" data-code="' + esc(v.barcode) + '">' +
+      '<span>' + t('sc_sell') + '</span> <span class="keycap">↵</span></button>' +
+    '<div class="sc2-two">' +
+      '<button class="btn btn-ghost" data-act="sc-in" data-sku="' + esc(v.sku) + '">' + t('sc_check_in') + '</button>' +
+      '<button class="btn btn-ghost" data-act="sc-out" data-sku="' + esc(v.sku) + '">' + t('sc_check_out') + '</button>' +
+    '</div>' +
+  '</div>';
 
-  /* ---- where it comes from ----------------------------------------------
-     Deliberately below the size table rather than beside the selling price:
-     this card carries the COST, and a glance at the top of the sheet across
-     the counter should not tell a customer what the shoe cost. */
-  var sup = DB.supplierFor(p);
-  var deliv = DB.lastDelivery(p.id);
-  h += '<div class="card mt"><div class="card-head"><h3>' + t('sc_sourcing') + '</h3>' +
-    '<div class="card-actions muted small">' + esc(p.madeIn) + '</div></div>' +
-    '<div class="card-body"><div class="sc-src">' +
-      '<div><span class="eyebrow">' + t('supplier') + '</span>' +
-        '<b>' + esc(sup ? sup.name : '—') + '</b>' +
-        '<small class="muted num">' + esc(sup ? sup.contact : '') + '</small></div>' +
-      '<div><span class="eyebrow">' + t('cost') + '</span>' +
-        '<b>' + money(p.costPrice) + '</b>' +
-        '<small class="muted">' + t('margin') + ' ' + money(p.sellingPrice - p.costPrice) + '</small></div>' +
-      '<div><span class="eyebrow">' + t('sc_last_delivery') + '</span>' +
-        '<b>' + (deliv ? fmtDate(deliv.date) : '—') + '</b>' +
-        '<small class="muted">' + (deliv
-          ? '+' + deliv.delta + ' · ' + esc(DB.whName(deliv.wh, OG.lang === 'ar'))
-          : t('sc_no_delivery')) + '</small></div>' +
-    '</div></div></div>';
+  /* ---- everything else, folded ------------------------------------------ */
+  var lastSold = DB.lastSoldFor(p.id, v.size);
+  var more = '<div class="sc2-facts">' +
+    '<div><span>' + t('sc_sells') + '</span><b>' +
+      (rate > 0 ? '<bdi>' + (Math.round(rate * 10) / 10) + '</bdi> /' + t('po_week') : '—') + '</b></div>' +
+    '<div><span>' + t('sc_cover') + '</span><b>' + coverText(cover) + '</b></div>' +
+    '<div><span>' + t('last_sold') + '</span><b>' + (lastSold ? relDate(lastSold) : '—') + '</b></div>' +
+  '</div>';
 
-  /* ---- where the pieces went --------------------------------------------
-     The same audited log every sale, delivery and transfer writes to, so it
-     cannot disagree with the stock figure above it. This is the card that
-     answers "where did the other three go?" while the box is still in hand. */
+  /* The cost only for those who may see it — the old sheet printed it to
+     every cashier, a glance away from the customer. */
+  if (seesCost()) {
+    var sup = DB.supplierFor(p);
+    more += '<div class="sc2-facts">' +
+      '<div><span>' + t('supplier') + '</span><b>' + esc(sup ? sup.name : '—') + '</b></div>' +
+      '<div><span>' + t('cost') + '</span><b>' + priceBoth(p, true) + '</b></div>' +
+      '<div><span>' + t('margin') + '</span><b>' +
+        (p.sellingPrice > 0 ? pct((p.sellingPrice - p.costPrice) / p.sellingPrice * 100, 0) : '—') + '</b></div>' +
+    '</div>';
+  }
+
   var moves = DB.movementsFor(v.sku, 4);
-  h += '<div class="card mt"><div class="card-head"><h3>' + t('sc_recent_moves') + '</h3>' +
-    '<div class="card-actions muted small">' + esc(v.sku) + '</div></div>';
+  more += '<div class="sc2-moves"><span class="sc2-lbl">' + t('sc_recent_moves') + '</span>';
   if (!moves.length) {
-    h += '<div class="card-body"><span class="muted small">' + t('sc_no_moves') + '</span></div>';
+    more += '<span class="muted small">' + t('sc_no_moves') + '</span>';
   } else {
-    h += '<div class="table-wrap"><table class="tbl"><thead><tr>' +
-      '<th>' + t('date') + '</th><th>' + t('movement') + '</th>' +
-      '<th>' + t('wh_location') + '</th><th class="num">' + t('qty') + '</th>' +
-      '<th class="num">' + t('balance') + '</th><th>' + t('by') + '</th>' +
-    '</tr></thead><tbody>';
     moves.forEach(function (mv) {
-      h += '<tr>' +
-        '<td class="nowrap muted num">' + fmtDate(mv.date) + '</td>' +
-        '<td><span class="badge ' + (mv.delta > 0 ? 'healthy' : (mv.type === 'damaged' ? 'critical' : 'neutral')) +
-          '">' + t(mv.type) + '</span></td>' +
-        '<td>' + (mv.wh ? esc(DB.whName(mv.wh, OG.lang === 'ar')) : '<span class="muted">—</span>') + '</td>' +
-        '<td class="num"><span class="mv-delta ' + (mv.delta > 0 ? 'mv-up' : 'mv-down') + '" dir="ltr">' +
-          (mv.delta > 0 ? '+' : '') + mv.delta + '</span></td>' +
-        '<td class="num"><b>' + mv.balance + '</b></td>' +
-        '<td class="muted small">' + esc(mv.user) + '</td>' +
-      '</tr>';
+      more += '<div class="sc2-move">' +
+        '<span class="muted num">' + fmtDate(mv.date) + '</span>' +
+        '<span>' + t(mv.type) + (mv.wh ? ' · ' + esc(DB.whName(mv.wh, isAr)) : '') + '</span>' +
+        '<b class="mv-delta ' + (mv.delta > 0 ? 'mv-up' : 'mv-down') + '" dir="ltr">' + (mv.delta > 0 ? '+' : '') + mv.delta + '</b>' +
+      '</div>';
     });
-    h += '</tbody></table></div>';
   }
-  h += '</div>';
+  more += '</div>';
 
-  /* ---- what to do with the thing now that it is in your hand -------------
-     Every scan away from the till lands here (at the till an exact product
-     code goes straight into the cart — handleScan), so this row is what the
-     scanner is for on every other screen: put it away, take it out, or sell
-     it. Check in and check out go through DB.moveStock — the same audited
-     path the warehouse uses — so a hardware scan can never become a second
-     way to change stock. */
-  h += '<div class="card mt sc-do"><div class="card-head"><h3>' + t('sc_what_now') + '</h3>' +
-    '<div class="card-actions muted small">' + esc(v.sku) + '</div></div><div class="card-body">' +
-    '<div class="sc-qty">' +
-      '<span class="lbl">' + t('qty') + '</span>' +
-      '<button class="btn btn-ghost sc-step" data-act="sc-qty" data-d="-1">−</button>' +
-      '<input class="inp num" id="scQty" type="number" min="1" value="1">' +
-      '<button class="btn btn-ghost sc-step" data-act="sc-qty" data-d="1">+</button>' +
-      '<select class="inp" id="scPlace">' +
-        DB.warehouses.map(function (w) {
-          return '<option value="' + w.id + '"' + (w.id === DB.defaultWh ? ' selected' : '') + '>' +
-            esc(DB.whName(w.id, OG.lang === 'ar')) + ' · ' + DB.stockAt(v, w.id) + '</option>';
-        }).join('') +
-      '</select>' +
-    '</div>' +
-    /* Hint above the buttons, not below: the action row is the last thing in
-       a scrolling modal, so anything after it lands on the fold and reads as
-       clipped. */
-    '<div class="partner-note mb">' + t('sc_enter_hint') + '</div>' +
-    '<div class="sc-acts">' +
-      '<button class="btn btn-ghost btn-lg" data-act="sc-out" data-sku="' + esc(v.sku) + '">' +
-        t('sc_check_out') + '</button>' +
-      '<button class="btn btn-ghost btn-lg" data-act="sc-in" data-sku="' + esc(v.sku) + '">' +
-        t('sc_check_in') + '</button>' +
-      '<button class="btn btn-primary btn-lg" id="scPrimary" data-act="scan-to-pos" data-code="' +
-        esc(v.barcode) + '">' + t('sc_sell') + ' <span class="keycap">↵</span></button>' +
-    '</div>' +
-  '</div></div>';
+  h += '<button type="button" class="sc2-more-btn" data-act="sc-more" aria-expanded="false">' +
+      '<span class="sc2-more-on">' + t('sc2_more') + '</span><span class="sc2-more-off">' + t('sc2_less') + '</span>' +
+      '<span class="sc2-caret" aria-hidden="true">▾</span></button>' +
+    '<div class="sc2-more" hidden>' + more + '</div>';
 
   openModal({
     title: t('sc_found_title'),
-    size: 'wide sc-modal',
+    size: 'sc-modal sc2-modal',
     body: h,
-    foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
-          '<button class="btn btn-ghost" data-act="labels-for" data-id="' + p.id + '">' + t('print_labels') + '</button>' +
+    foot: '<button class="btn btn-ghost" data-act="labels-for" data-id="' + p.id + '">' + t('print_labels') + '</button>' +
           '<button class="btn btn-ghost" data-act="scan-open">' + t('sc_again') + '</button>',
     onOpen: function () {
-      /* Focused on open so Enter sells without a mouse — scan, Enter, done,
-         with the detail still there if it is wanted. (Exact scans AT the
-         till skip this sheet entirely and land in the cart; this focus
-         serves every other screen, and the partial-code case where the
-         sheet is the confirmation step.) */
+      /* Focused on open so Enter sells without a mouse — scan, Enter, done. */
       var b = document.getElementById('scPrimary');
       if (b) b.focus();
     }
@@ -1612,8 +1547,8 @@ function coverText(days) {
 /* How many the scan sheet is acting on. */
 function scanQty() {
   var el = document.getElementById('scQty');
-  var n = Math.max(1, parseInt(el && el.value, 10) || 1);
-  return n;
+  /* Desk.toCount, never parseInt: an Arabic keypad's ٣ reads as 3. */
+  return Desk.toCount(el && el.value, { min: 1, empty: 1 });
 }
 function scanPlace() {
   var el = document.getElementById('scPlace');

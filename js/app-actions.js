@@ -1962,8 +1962,35 @@ var ACTIONS = {
   'sc-qty': function (el) {
     var box = document.getElementById('scQty');
     if (!box) return;
-    var d = parseInt(el.getAttribute('data-d'), 10) || 0;
-    box.value = Math.max(1, (parseInt(box.value, 10) || 1) + d);
+    var d = Number(el.getAttribute('data-d')) || 0;
+    box.value = Math.max(1, scanQty() + d);
+  },
+
+  /* The scan sheet's size chips, place chips and details fold (27 Oct 2026).
+     A size opens the sheet again on that size; the other two move one
+     attribute and never repaint, so a typed quantity survives. */
+  'sc-size': function (el) {
+    var sku = el.getAttribute('data-sku');
+    if (sku) openScanResult(sku);
+  },
+  'sc-place': function (el) {
+    var box = document.getElementById('scPlace');
+    if (!box) return;
+    box.value = el.getAttribute('data-wh');
+    var all = document.querySelectorAll('.sc2-place');
+    for (var i = 0; i < all.length; i++) {
+      var on = all[i] === el;
+      all[i].classList.toggle('on', on);
+      all[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  },
+  'sc-more': function (el) {
+    var body = document.querySelector('.sc2-more');
+    if (!body) return;
+    var open = body.hasAttribute('hidden');
+    if (open) body.removeAttribute('hidden'); else body.setAttribute('hidden', '');
+    el.setAttribute('aria-expanded', open ? 'true' : 'false');
+    el.classList.toggle('open', open);
   },
 
   'sc-in': function (el) {
