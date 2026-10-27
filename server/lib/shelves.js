@@ -25,6 +25,7 @@
    ========================================================================== */
 
 import * as DB from './db.js';
+import '../../js/sizeorder.js';
 import { PRODUCT_LABEL_PRESET } from './labels.js';
 
 const fail = (msg, code, extra) => Object.assign(new Error(msg), { code }, extra || {});
@@ -218,7 +219,7 @@ export function list({ whId = null } = {}) {
   const onShelf = new Map();
   for (const r of d.prepare(
     `SELECT s.shelf_id, s.sku, s.qty, v.size, v.product_id,
-            p.name AS product_name
+            p.name AS product_name, p.type AS product_type
        FROM stock s
        JOIN variants v ON v.sku = s.sku
        JOIN products p ON p.id = v.product_id
@@ -228,10 +229,20 @@ export function list({ whId = null } = {}) {
     if (!onShelf.has(r.shelf_id)) onShelf.set(r.shelf_id, []);
     onShelf.get(r.shelf_id).push({
       sku: r.sku, size: r.size, qty: r.qty,
-      product_id: r.product_id, product_name: r.product_name
+      product_id: r.product_id, product_name: r.product_name, product_type: r.product_type
     });
   }
 
+  /* Night shift 28 Oct 2026 — inside one product, sizes in the order a person
+     reads them (js/sizeorder.js), not as text. */
+  {
+    const sets = {};
+    try { for (const c of d.prepare('SELECT id, sizes FROM categories').all()) sets[c.id] = JSON.parse(c.sizes || '[]'); } catch { /* before 057 */ }
+    for (const list of onShelf.values()) {
+      list.sort((x, y) => String(x.product_name).localeCompare(String(y.product_name)) ||
+        globalThis.SizeOrder.compare(x.size, y.size, sets[x.product_type] || []));
+    }
+  }
   const whCodes = warehouseCodes(d);
 
   return sections.map((sec) => {

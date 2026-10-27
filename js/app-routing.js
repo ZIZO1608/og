@@ -217,6 +217,10 @@ function labelWideTables(root) {
     /* Narrow tables read fine as tables; restacking them wastes vertical
        space and makes them harder to scan, not easier. */
     if (ths.length < 5) return;
+    /* A table that draws its own phone layout (Print labels, night shift
+       28 Oct 2026) says so; the generic cards put every empty cell on a line
+       of its own. */
+    if (tbl.classList.contains('lb-tbl')) return;
     var heads = [].map.call(ths, function (th) { return th.textContent.trim(); });
     tbl.classList.add('tbl-cards');
     tbl.querySelectorAll('tbody tr').forEach(function (tr) {
@@ -287,8 +291,11 @@ function render() {
      entrance fade; arriving from another screen still starts at the top.
      Read before data-view is rewritten — that is how "the same screen" is
      known. */
-  var same = !entering && !partner && OG.view === 'settings' &&
-             document.body.getAttribute('data-view') === 'settings';
+  /* Print labels too (night shift 28 Oct 2026): opening a product's sizes
+     is a repaint of the same list, and it threw a product far down the page
+     back to the top, out from under the hand that opened it. */
+  var same = !entering && !partner && (OG.view === 'settings' || OG.view === 'labels') &&
+             document.body.getAttribute('data-view') === OG.view;
   var keepY = same ? host.scrollTop : 0;
   var keepFocus = same ? focusKey(host) : null;
 

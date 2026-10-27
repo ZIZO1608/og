@@ -726,3 +726,46 @@ body.rtl .lb-chev { transform: rotate(135deg); }
 /* A product with some sizes ticked, not all: the tick shows it is half-way
    rather than pretending nothing is picked. */
 .bk-box input[data-some="1"] { opacity: .55; }
+
+/* ---------------------------- PRINT LABELS: night shift 28 Oct 2026
+   Seven columns, the three codes stacked in one cell, so an opened product
+   fits the card at 1366 (it pushed Print all sizes and the print quantity
+   off the right edge). Below 720px the table is a compact list of its own:
+   a product is one card — tick, photo, name, "5 sizes · 3 ticked", Print —
+   and an opened product's sizes are short rows under it: tick, size, how
+   many, how many to print. Empty cells are not drawn. */
+.lb-tbl .lb-codes b, .lb-tbl .lb-codes small { display: block; white-space: nowrap; }
+.lb-tbl .lb-codes small { color: var(--dim); font-size: 11.5px; margin-top: 2px; }
+.lb-tbl .lb-sz b { font-family: var(--font-head); font-size: 15px; margin-inline-start: 34px; }
+.lb-tbl .lb-pq { width: 56px; }
+.lb-tbl .lb-act { white-space: nowrap; }
+.lb-tbl .lb-name small bdi { color: var(--dim); }
+
+@media (max-width: 720px) {
+  .lb-tbl, .lb-tbl tbody { display: block; width: 100%; }
+  .lb-tbl thead { display: none; }
+  .lb-tbl tr { display: grid; align-items: center; column-gap: 8px; padding: 8px 10px;
+               border-bottom: 1px solid var(--border); }
+  .lb-tbl td { display: block; padding: 0 !important; border: 0 !important; background: none !important;
+               min-width: 0; }
+  .lb-tbl td.lb-x, .lb-tbl .lb-health, .lb-tbl .lb-codes small { display: none; }
+  .lb-tbl .bk-col { width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; }
+
+  .lb-tbl tr.lb-prod { grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-areas: "tick name act" "tick cnt act"; padding-block: 10px; }
+  .lb-tbl tr.lb-prod > .bk-col { grid-area: tick; }
+  .lb-tbl tr.lb-prod > .lb-name { grid-area: name; }
+  .lb-tbl tr.lb-prod > .lb-cnt { grid-area: cnt; white-space: normal; font-size: 12.5px; padding-inline-start: 50px !important; }
+  .lb-tbl tr.lb-prod > .lb-tot { display: none; }
+  .lb-tbl tr.lb-prod > .lb-act { grid-area: act; }
+  .lb-tbl tr.lb-prod .btn { min-height: 44px; }
+  .lb-tbl .lb-name .cell-prod b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .lb-tbl tr.lb-size { grid-template-columns: 44px minmax(0, 1fr) auto auto auto;
+    background: var(--subtle); padding-block: 4px; }
+  .lb-tbl tr.lb-size .lb-sz b { margin-inline-start: 6px; }
+  .lb-tbl tr.lb-size td:nth-child(2)::before { display: none; }
+  .lb-tbl tr.lb-size .lb-tot { color: var(--dim); font-size: 13px; }
+  .lb-tbl tr.lb-size .lb-codes b { font-size: 12px; color: var(--dim); font-weight: 600; }
+  .lb-tbl tr.lb-size .lb-pq { width: 60px; min-height: 44px; }
+}

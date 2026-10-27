@@ -20,6 +20,25 @@ import * as Angles from './angles.js';
 import * as PrintKits from './printkits.js';
 import * as Partner from './partner.js';
 import * as Offers from './offers.js';
+/* Night shift 28 Oct 2026 — the order sizes are listed in. One file shared
+   with the browser (js/sizeorder.js sets globalThis.SizeOrder); every list
+   of a product's sizes this module hands out goes through sortVariants(). */
+import '../../js/sizeorder.js';
+
+/* type id → that category's sizes, in the owner's order. */
+function sizeSetsByType() {
+  const by = {};
+  try { for (const c of Categories.list()) by[c.id] = c.sizes || []; } catch { /* before 057 */ }
+  return by;
+}
+
+/* A product's variants by colour (in the colour's own order), then size
+   (js/sizeorder.js). Rows carry colour_id, as SQL returns them. */
+export function sortVariants(list, type, colourIds = [], sets = sizeSetsByType()) {
+  return globalThis.SizeOrder.variants(list, sets[type] || [], {
+    colour: (v) => v.colour_id ?? null, colours: colourIds
+  });
+}
 
 /* Currency codes come from the database, so adding one is a migration rather
    than an edit here. */
@@ -199,7 +218,9 @@ export function list({ includeHidden = false } = {}) {
   const photos = Photos.byProduct();
   /* 073 — the 3D angles, front first. Not sent to the website. */
   const angles = Angles.byProduct();
-  return rows.map(p => ({ ...p, colours: colours[p.id] ?? [], variants: bySize[p.id] ?? [],
+  const sets = sizeSetsByType();
+  return rows.map(p => ({ ...p, colours: colours[p.id] ?? [],
+                          variants: sortVariants(bySize[p.id] ?? [], p.type, (colours[p.id] ?? []).map(c => c.id), sets),
                           photos: photos[p.id] ?? [], angles: angles[p.id] ?? [] }));
 }
 
@@ -435,6 +456,11 @@ function webPrices(p, fx) {
    is shut, and the two must not disagree about a single field. */
 function webRow(p, allSizes, ready, fx, known, os) {
   const ids = new Set(ready.map((r) => r.c.id));
+  /* NOT sorted by js/sizeorder.js, on purpose (night shift 28 Oct 2026): the
+     website reads the cloud's web.product_row (037…043), which orders sizes
+     as text, and this answer must stay the same as that one field for field
+     (_nightshift/usd-prices/parity). Changing both is a cloud file of its
+     own — see NIGHT-REPORT-2026-10-28.md, Stage 1, question 1. */
   const sizes = allSizes.filter((v) => ids.has(v.colour_id));
   const first = ready[0].photos;
   return {
@@ -579,7 +605,8 @@ export function byId(id) {
   const variants = get().prepare(
     'SELECT * FROM variants WHERE product_id = ? ORDER BY colour_id, size'
   ).all(id);
-  return { ...p, colours: coloursOf(id), variants };
+  const colours = coloursOf(id);
+  return { ...p, colours, variants: sortVariants(variants, p.type, colours.map((c) => c.id)) };
 }
 
 export function bySku(sku) {

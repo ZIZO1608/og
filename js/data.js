@@ -2939,7 +2939,13 @@ var DB = {
         lastSoldDaysAgo: DB.daysSince(p.last_sold_at || p.created_at) || 0
       });
 
-      (p.variants || []).forEach(function (v) {
+      /* Night shift 28 Oct 2026 — by colour, then size (js/sizeorder.js), so
+         every DB.variantsOf() a screen reads is already in the order a
+         person reads a run: S, M, L, XL — never L, M, S. */
+      SizeOrder.variants(p.variants || [], SIZE_SETS[p.type] || [], {
+        colour: function (v) { return v.colour_id || null; },
+        colours: (p.colours || []).map(function (c) { return c.id; })
+      }).forEach(function (v) {
         var wh = {};
         WAREHOUSES.forEach(function (w) {
           /* Every location gets a key even when it holds nothing. moveStock

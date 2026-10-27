@@ -90,3 +90,7 @@ server/data-guide/
 server/.env.guide
 user-guide/out/
 user-guide/.build-*
+
+# Night shift 28 Oct 2026 scratch copy and its screenshots
+server/data-night/
+night-shots/

@@ -2159,20 +2159,8 @@ var ShelfMap = (function () {
      SIZE_SETS order when the type has one, numeric-aware otherwise, so 9
      never sorts after 42. */
   function sizesOf(p) {
-    var vs = DB.variantsOf(p.id).slice();
-    var order = DB.sizeSets[p.type];
-    vs.sort(function (a, b) {
-      if (order) {
-        var ia = order.indexOf(a.size), ib = order.indexOf(b.size);
-        if (ia > -1 && ib > -1) return ia - ib;
-        if (ia > -1) return -1;
-        if (ib > -1) return 1;
-      }
-      var na = parseFloat(a.size), nb = parseFloat(b.size);
-      if (isFinite(na) && isFinite(nb)) return na - nb;
-      return String(a.size).localeCompare(String(b.size));
-    });
-    return vs;
+    return SizeOrder.variants(DB.variantsOf(p.id), DB.sizeSets[p.type] || [],
+      { colours: (p.colours || []).map(function (c) { return c.id; }) });
   }
 
   function editForm(sec, sh) {

@@ -752,3 +752,34 @@ function exMoney(v) {
   return Math.round(OG.currency === 'USD' ? (Number(v) || 0) / CONFIG.EXCHANGE_RATE : (Number(v) || 0));
 }
 function exCol(label) { return label + ' (' + exCur() + ')'; }
+
+/* NIGHT SHIFT 28 OCT 2026 — A BUTTON THAT WAITS ON THE SERVER SAYS SO AT ONCE.
+   Over shop.ogsports1.com a request takes one to five seconds, and a button
+   that looks exactly as it did before it was pressed for that long reads as
+   "it froze" — and gets pressed again. busyButton(el) puts the money
+   dialogs' spinner (`.cb-spin`, Cashbook.submit) in the button at its own
+   width, disables it, and hands back the function that puts it back. A
+   button already busy answers a no-op, so a second press does nothing twice.
+   pressedButton() is the button that has focus — what a click just landed
+   on — for a caller that was not handed the element. */
+function busyButton(el) {
+  if (!el || !el.tagName || el.getAttribute('data-busy')) return function () {};
+  var caption = el.innerHTML;
+  el.style.minWidth = el.offsetWidth + 'px';
+  el.setAttribute('data-busy', '1');
+  el.setAttribute('aria-busy', 'true');
+  el.disabled = true;
+  el.innerHTML = '<span class="cb-spin" aria-hidden="true"></span>';
+  return function () {
+    if (!el.getAttribute('data-busy')) return;
+    el.removeAttribute('data-busy');
+    el.removeAttribute('aria-busy');
+    el.disabled = false;
+    el.innerHTML = caption;
+    el.style.minWidth = '';
+  };
+}
+function pressedButton() {
+  var a = document.activeElement;
+  return a && a.tagName === 'BUTTON' ? a : null;
+}

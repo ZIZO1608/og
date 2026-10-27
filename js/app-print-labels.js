@@ -87,19 +87,22 @@ function viewPrintLabels() {
 
   h += '<span class="badge neutral">' + rows.length + '</span></div>';
 
-  /* The same three columns as the product drawer's size table, in the same
-     order — the label code is what the sticker's Code 128 carries, so it is
-     the one to hold a sticker up against. */
-  h += '<div class="card table-wrap"><table class="tbl"><thead><tr>' +
+  /* Night shift 28 Oct 2026 — SEVEN COLUMNS, THE THREE CODES IN ONE CELL.
+     The table had nine, three of them a code each (SKU, EAN-13, label code,
+     all nowrap) plus a 56px box, and opening a product pushed Print all sizes
+     and the print quantity off the right of the card at 1366. The label code
+     — what the sticker carries — stays bold on top; the SKU and EAN-13 sit
+     under it, small. `lb-tbl` opts out of the phone card layout
+     (labelWideTables): a phone gets its own compact list in the stylesheet. */
+  h += '<div class="card table-wrap"><table class="tbl lb-tbl"><thead><tr>' +
     '<th class="bk-col">' + Bulk.headBox('variants') + '</th>' +
-    '<th>' + t('product') + '</th><th>' + t('size') + '</th>' +
-    '<th class="num">' + t('qty') + '</th><th>' + t('sku') + '</th>' +
-    '<th>' + t('ean13') + '</th><th>' + t('label_code') + '</th><th>' + t('status') + '</th>' +
+    '<th>' + t('product') + ' · ' + t('size') + '</th><th>' + t('lb_sizes_h') + '</th>' +
+    '<th class="num">' + t('qty') + '</th><th>' + t('label_code') + '</th><th>' + t('status') + '</th>' +
     '<th class="num">' + t('lbl_print_qty') + '</th>' +
     '</tr></thead><tbody>';
 
   if (!rows.length) {
-    h += '<tr><td colspan="9" class="muted" style="text-align:center;padding:28px">' + t('none') + '</td></tr>';
+    h += '<tr><td colspan="7" class="muted" style="text-align:center;padding:28px">' + t('none') + '</td></tr>';
   }
 
   /* ONE ROW PER PRODUCT, sizes folded underneath. The flat list drew every
@@ -134,30 +137,31 @@ function viewPrintLabels() {
       '<td class="bk-col"><label class="bk-box" title="' + esc(t('bk_select')) + '">' +
         '<input type="checkbox" data-bk="group" data-sc="variants" data-pid="' + g.p.id + '"' +
         (all ? ' checked' : '') + (sel && !all ? ' data-some="1"' : '') + '></label></td>' +
-      '<td><div class="cell-prod"><span class="lb-chev"></span>' + thumb(g.p) + '<span><b>' + esc(g.p.name) + '</b>' +
-        '<small>' + esc(g.p.brand) + '</small></span></div></td>' +
+      '<td class="lb-name"><div class="cell-prod"><span class="lb-chev"></span>' + thumb(g.p) + '<span><b>' + esc(g.p.name) + '</b>' +
+        '<small>' + dots(esc(g.p.brand), '<bdi dir="ltr">' + esc(fam) + '</bdi>') + '</small></span></div></td>' +
       '<td class="muted nowrap lb-cnt" data-pid="' + g.p.id + '">' + labelCountCell(g.rows.length, sel) + '</td>' +
-      '<td class="num"><b>' + total + '</b></td>' +
-      '<td class="muted num nowrap">' + esc(fam) + '</td>' +
-      '<td></td><td></td><td></td>' +
-      '<td class="num"><button class="btn btn-sm" data-act="lb-print-all" data-pid="' + g.p.id + '">' +
+      '<td class="num lb-tot"><b>' + total + '</b></td>' +
+      '<td class="lb-x"></td><td class="lb-x"></td>' +
+      '<td class="num lb-act"><button class="btn btn-sm" data-act="lb-print-all" data-pid="' + g.p.id + '">' +
         t('lb_print_all') + '</button></td>' +
     '</tr>';
 
     if (!open) { ri += g.rows.length; return; }
 
     g.rows.forEach(function (r) {
+      var codes = '<b dir="ltr">' + esc(r.v.labelCode || '—') + '</b>' +
+        '<small dir="ltr">' + esc(r.v.sku) + (r.v.barcode ? ' · ' + esc(r.v.barcode) : '') + '</small>';
+      var colour = DB.shownColour ? DB.shownColour(r.v) : null;
       h += '<tr class="lb-size' + (Bulk.has('variants', r.v.sku) ? ' bk-on' : '') + '">' +
         '<td class="bk-col">' + Bulk.box('variants', r.v.sku, ri++) + '</td>' +
-        '<td class="muted"></td>' +
-        '<td><b style="font-family:var(--font-head)">' + r.v.size + '</b></td>' +
-        '<td class="num">' + r.qty + '</td>' +
-        '<td class="muted num nowrap">' + r.v.sku + '</td>' +
-        '<td class="muted num nowrap">' + r.v.barcode + '</td>' +
-        '<td class="num nowrap"><b>' + esc(r.v.labelCode || '—') + '</b></td>' +
-        '<td>' + healthBadge(r.v.qty) + '</td>' +
-        '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' +
-          (OG.lbQty[r.v.sku] || 1) + '" style="width:56px" data-change="lb-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
+        '<td class="lb-sz"><b dir="ltr">' + esc(r.v.size) + '</b>' +
+          (colour ? ' <span class="muted small">' + esc(DB.colourName(colour)) + '</span>' : '') + '</td>' +
+        '<td class="lb-x"></td>' +
+        '<td class="num lb-tot">' + r.qty + '</td>' +
+        '<td class="lb-codes">' + codes + '</td>' +
+        '<td class="lb-health">' + healthBadge(r.v.qty) + '</td>' +
+        '<td class="num lb-act"><input class="inp num lb-pq" type="number" min="1" max="99" value="' +
+          (OG.lbQty[r.v.sku] || 1) + '" aria-label="' + esc(t('lbl_print_qty')) + '" data-change="lb-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
       '</tr>';
     });
   });

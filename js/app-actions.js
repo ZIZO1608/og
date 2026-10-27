@@ -465,7 +465,7 @@ var ACTIONS = {
   'lb-print-all': function (el) {
     var lines = labelLinesForProduct(+el.getAttribute('data-pid'));
     if (!lines.length) { toast(t('labels_title'), t('none'), 'warn'); return; }
-    Labels.openPreviewModal(lines, Labels.lastChoice().preset, Labels.lastChoice().station);
+    Labels.openPreviewModal(lines, Labels.lastChoice().preset, Labels.lastChoice().station, null, { from: el });
   },
   /* The shelf map's "reprint" after a move: every in-stock size, one per pair. */
   'quick-label-per-pair': function (el) { openQuickLabelPicker(+el.getAttribute('data-id'), { perPair: true }); },

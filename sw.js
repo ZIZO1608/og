@@ -14,7 +14,7 @@
    refresh does it), or browsers that already have the app will keep serving
    the old cached copy — cache-first with ignoreSearch, so no query string
    gets past it. */
-var CACHE = 'og-system-v344';
+var CACHE = 'og-system-v345';
 
 var SHELL = [
   './',
@@ -58,6 +58,7 @@ var SHELL = [
   'js/auth.js',
   'js/codes.js',
   'js/export.js',
+  'js/sizeorder.js',
   'js/data.js',
   'js/receipt.js',
   'js/escpos.js',

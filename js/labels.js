@@ -343,7 +343,13 @@ var Labels = (function () {
       return Promise.resolve(null);
     }
     remember(station, presetKey, barcodeType);
-    return renderPreview(lines, presetKey, barcodeType).then(function (preview) {
+    /* Night shift 28 Oct 2026 — the preview that is on screen is the one
+       that was approved, for exactly these lines (activeLines), so it is
+       not asked for again: that was a second round trip, one to five seconds
+       over the public address, before the print was even sent. */
+    var shown = (lastPreview && lines === activeLines && lastPreview.preset && lastPreview.preset.key === presetKey)
+      ? Promise.resolve(lastPreview) : renderPreview(lines, presetKey, barcodeType);
+    return shown.then(function (preview) {
       var arabicBitmaps = buildArabicBitmaps(preview);
       return API.post('/api/labels/print', {
         lines: lines, preset: presetKey, station: station, barcodeType: barcodeType,
@@ -408,13 +414,20 @@ var Labels = (function () {
     return h;
   }
 
-  function openPreviewModal(lines, presetKey, station, barcodeType) {
+  /* One preview being fetched at a time. A second press while the first is
+     still on the line used to do nothing visible; now it is said. */
+  var opening = false;
+
+  function openPreviewModal(lines, presetKey, station, barcodeType, opts) {
     presetKey = FIXED.preset;
     station = FIXED.station;
     barcodeType = FIXED.barcodeType;
     remember(station, presetKey, barcodeType);
     lines = lines.filter(function (l) { return (Number(l.qty) || 0) > 0; });
     if (!lines.length) { if (typeof closeModal === 'function') closeModal(); return; }
+    if (opening) { toast(t('lbl_title'), t('lbl_still_preparing'), 'warn', 2500); return; }
+    opening = true;
+    var unbusy = busyButton((opts && opts.from) || pressedButton());
 
     renderPreview(lines, presetKey, barcodeType).then(function (preview) {
       var body = pickerHTML(lines) +
@@ -439,7 +452,7 @@ var Labels = (function () {
       lastPreview = preview;
     }).catch(function (err) {
       toast(t('lbl_title'), API.friendly(err), 'err', 6000);
-    });
+    }).then(function () { opening = false; unbusy(); });
   }
 
   /* ------------------------------------------------------------- register */
@@ -454,9 +467,12 @@ var Labels = (function () {
         toast(t('lbl_title'), t('no_access'), 'err');
         return;
       }
+      if (el.getAttribute('data-busy')) return;
+      var unbusy = busyButton(el);
       doPrint(lines, lastChoice.preset, lastChoice.station, lastChoice.barcodeType).then(function (res) {
+        unbusy();
         if (res) { activeLines = null; if (typeof closeModal === 'function') closeModal(); }
-      }).catch(function () { /* doPrint has already said why */ });
+      }).catch(function () { unbusy(); /* doPrint has already said why */ });
     };
 
     /* Inside the batch modal this re-opens it so the button reads right for

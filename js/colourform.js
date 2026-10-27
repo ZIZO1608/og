@@ -303,14 +303,7 @@ var ColourForm = (function () {
     if (!cs.length || !vs.length) return '';
     var sz = [];
     vs.forEach(function (v) { if (sz.indexOf(v.size) < 0) sz.push(v.size); });
-    var order = DB.sizeSets[p.type] || [];
-    sz.sort(function (a, b) {
-      var ia = order.indexOf(a), ib = order.indexOf(b);
-      if (ia < 0 && ib < 0) return String(a).localeCompare(String(b), undefined, { numeric: true });
-      if (ia < 0) return 1;
-      if (ib < 0) return -1;
-      return ia - ib;
-    });
+    sz = SizeOrder.sizes(sz, DB.sizeSets[p.type] || []);
     var h = '<div class="card mb"><div class="card-head"><h3>' + t('cl_matrix') + '</h3></div>' +
       '<div class="table-wrap"><table class="tbl tbl-compact cf-matrix"><thead><tr><th>' + t('cl_colour') + '</th>';
     sz.forEach(function (s) { h += '<th class="num"><bdi dir="ltr">' + esc(s) + '</bdi></th>'; });
