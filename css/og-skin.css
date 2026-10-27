@@ -5261,3 +5261,32 @@ body:not([data-portal="yalla"]) .of-cover-row { display: flex; align-items: cent
   body:not([data-portal="yalla"]) .of-dots { min-height: 44px; }
   body:not([data-portal="yalla"]) .of-chip button { width: 36px; height: 36px; }
 }
+
+
+/* OFFERS, SIMPLER (28 Oct 2026) — the editor is three numbered steps. */
+body:not([data-portal="yalla"]) .of-step { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); }
+body:not([data-portal="yalla"]) .of-step-h { display: flex; align-items: center; gap: 10px; }
+body:not([data-portal="yalla"]) .of-step-h i {
+  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; flex: none;
+  background: var(--muted); color: var(--foreground); font: 800 14px/1 var(--font-head); font-style: normal;
+}
+body:not([data-portal="yalla"]) .of-step.is-done .of-step-h i { background: var(--brand); color: var(--brand-foreground); }
+body:not([data-portal="yalla"]) .of-step-h b { font-size: 16px; font-weight: 700; }
+body:not([data-portal="yalla"]) .of-bxgy2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 18px; font-weight: 700; }
+body:not([data-portal="yalla"]) .of-bxgy2 .inp { width: 72px; min-height: 52px; text-align: center; font-size: 22px; font-weight: 800; }
+body:not([data-portal="yalla"]) .of-when-say { font-size: 13.5px; }
+body:not([data-portal="yalla"]) .of-quick .of-pill.on { border-color: var(--brand); background: var(--brand-soft); color: var(--foreground); }
+body:not([data-portal="yalla"]) .of-found-h { font-size: 12.5px; }
+body:not([data-portal="yalla"]) button.of-frow {
+  width: 100%; grid-template-columns: 36px minmax(0, 1fr) 36px; min-height: 52px; border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; color: var(--foreground); font: inherit; text-align: start; cursor: pointer;
+}
+body:not([data-portal="yalla"]) button.of-frow:hover { background: var(--accent); }
+body:not([data-portal="yalla"]) .of-fplus {
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--brand-soft); border: 1px solid var(--brand-border); color: var(--brand); font: 800 18px/1 var(--font-head);
+}
+body:not([data-portal="yalla"]) .of-fplus.is-ex { background: var(--destructive-soft); border-color: var(--destructive-border); color: var(--destructive); }
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) button.of-frow { grid-template-columns: 36px minmax(0, 1fr) 36px; }
+}

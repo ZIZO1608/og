@@ -286,7 +286,7 @@ var Offers = (function () {
     if (o.coverUrl) return '<div class="of-cover"><img src="' + esc(o.coverUrl) + '" alt="" loading="lazy"></div>';
     var pics = list.filter(function (p) { return p.image && p.image.src; }).slice(0, 4);
     if (!pics.length) {
-      return '<div class="of-cover of-cover-none"><span>' + esc(dealBig(o)) + '</span></div>';
+      return '<div class="of-cover of-cover-none"></div>';
     }
     return '<div class="of-cover of-mosaic n' + pics.length + '">' + pics.map(function (p) {
       return '<img src="' + esc(p.image.src) + '" alt="" loading="lazy">';
@@ -434,6 +434,7 @@ var Offers = (function () {
       id: null, nameEn: '', nameAr: '', kind: 'pct', pct: '20', amount: '', buyQty: '2', getQty: '1', freePct: '100',
       scope: fromSug ? 'pick' : 'pick', targets: fromSug || [],
       sDate: localDate(now), sTime: localTime(now), eDate: localDate(end), eTime: '23:59', noEnd: false,
+      len: 'w1', dates: false, named: false,
       maxUnits: '', stack: false, note: '', active: true, more: false, sold: 0, err: null, field: null
     };
   }
@@ -448,6 +449,7 @@ var Offers = (function () {
       scope: o.scope, targets: o.targets.map(function (x) { return { kind: x.kind, ref: x.ref, exclude: !!x.exclude }; }),
       sDate: localDate(s), sTime: localTime(s), eDate: e ? localDate(e) : '', eTime: e ? localTime(e) : '23:59', noEnd: !e,
       maxUnits: o.maxUnits ? String(o.maxUnits) : '', stack: !!o.stackCoupons, note: o.note || '', active: o.active,
+      len: null, dates: true, named: true,
       more: !!(o.maxUnits || o.stackCoupons || o.note), sold: o.sold || 0, err: null, field: null
     };
   }
@@ -456,7 +458,9 @@ var Offers = (function () {
     var D = S.draft; if (!D) return;
     var g = function (id) { var el = document.getElementById(id); return el ? el.value : null; };
     var v;
-    [['ofNameEn', 'nameEn'], ['ofNameAr', 'nameAr'], ['ofPct', 'pct'], ['ofAmount', 'amount'], ['ofBuy', 'buyQty'],
+    var nm = document.getElementById('ofName');
+    if (nm) { D[OG.lang === 'ar' ? 'nameAr' : 'nameEn'] = nm.value; if (nm.value.trim()) D.named = true; }
+    [['ofNameOther', OG.lang === 'ar' ? 'nameEn' : 'nameAr'], ['ofPct', 'pct'], ['ofAmount', 'amount'], ['ofBuy', 'buyQty'],
      ['ofGet', 'getQty'], ['ofFreePct', 'freePct'], ['ofSDate', 'sDate'], ['ofSTime', 'sTime'], ['ofEDate', 'eDate'],
      ['ofETime', 'eTime'], ['ofMax', 'maxUnits'], ['ofNote', 'note']].forEach(function (x) {
       if ((v = g(x[0])) !== null) D[x[1]] = v;
@@ -484,63 +488,88 @@ var Offers = (function () {
 
   var KIND_ICON = { pct: '%', off: '−$', price: '$', bxgy: '2+1' };
 
+  /* A name nobody had to type: "25% off" / "خصم 25%". The owner may write
+     their own; this only fills an empty box. */
+  function autoName(o, lang) {
+    var ar = lang === 'ar';
+    if (o.kind === 'pct') return ar ? 'خصم ' + (o.pct || '') + '%' : (o.pct || '') + '% off';
+    if (o.kind === 'off') return ar ? 'خصم ' + usd(o.amount || 0) : usd(o.amount || 0) + ' off';
+    if (o.kind === 'price') return ar ? 'بـ ' + usd(o.amount || 0) : 'Now ' + usd(o.amount || 0);
+    return ar ? 'اشتري ' + o.buyQty + ' وخود ' + o.getQty : 'Buy ' + o.buyQty + ' get ' + o.getQty;
+  }
+
+  function step(n, title, body, done) {
+    return '<section class="of-step' + (done ? ' is-done' : '') + '"><div class="of-step-h"><i>' + (done ? '✓' : n) + '</i><b>' + title + '</b></div>' + body + '</section>';
+  }
+
+  /* THREE STEPS AND NOTHING ELSE ON SHOW: what the deal is, what it is on,
+     how long. A name is filled in for you; the other language, the exact
+     dates, the flash limit and the coupon switch wait under one fold. */
   function dialogBody() {
     var D = S.draft;
     var locked = D.sold > 0;
+    var o = draftOffer();
     var h = '<div class="of-dlg">';
 
-    h += '<div class="row2">' +
-      '<label class="field"><span>' + t('of_name_ar') + '</span><input class="inp" id="ofNameAr" dir="rtl" maxlength="80" value="' + esc(D.nameAr) + '" placeholder="' + esc(t('of_name_ar_ph')) + '" data-change="of-live">' + fieldErr('name') + '</label>' +
-      '<label class="field"><span>' + t('of_name_en') + '</span><input class="inp" id="ofNameEn" dir="ltr" maxlength="80" value="' + esc(D.nameEn) + '" placeholder="Black Friday" data-change="of-live"></label>' +
-    '</div>';
-
-    h += '<span class="lbl">' + t('of_deal') + (locked ? ' · <span class="muted">' + t('of_deal_locked') + '</span>' : '') + '</span>';
-    h += '<div class="of-kinds">' + ['pct', 'off', 'price', 'bxgy'].map(function (k) {
+    /* 1 — the deal */
+    var deal = '<div class="of-kinds">' + ['pct', 'off', 'price', 'bxgy'].map(function (k) {
       return '<button type="button" class="of-kind' + (D.kind === k ? ' on' : '') + '" data-act="of-kind" data-k="' + k + '"' + (locked ? ' disabled' : '') + '>' +
         '<b dir="ltr">' + KIND_ICON[k] + '</b><span>' + t('of_k_' + k) + '</span></button>';
     }).join('') + '</div>';
-
     if (D.kind === 'pct') {
-      h += '<label class="field cb-big"><span>' + t('of_pct') + '</span><input class="inp num cb-big-in" id="ofPct" type="text" inputmode="numeric" dir="ltr" placeholder="20" value="' + esc(D.pct) + '" data-change="of-live"' + (locked ? ' disabled' : '') + '>' + fieldErr('pct') + '</label>';
+      deal += '<label class="field cb-big"><span>' + t('of_pct') + '</span><input class="inp num cb-big-in" id="ofPct" type="text" inputmode="numeric" dir="ltr" placeholder="20" value="' + esc(D.pct) + '" data-change="of-live"' + (locked ? ' disabled' : '') + '>' + fieldErr('pct') + '</label>';
     } else if (D.kind === 'off' || D.kind === 'price') {
-      h += '<label class="field cb-big"><span>' + t(D.kind === 'off' ? 'of_amount_off' : 'of_amount_price') + '</span>' +
+      deal += '<label class="field cb-big"><span>' + t(D.kind === 'off' ? 'of_amount_off' : 'of_amount_price') + '</span>' +
         '<input class="inp num cb-big-in" id="ofAmount" type="text" inputmode="decimal" dir="ltr" placeholder="10" value="' + esc(D.amount) + '" data-change="of-live"' + (locked ? ' disabled' : '') + '>' +
         '<small class="pr-lira muted" id="ofAmountLira">' + (typeof liraHint === 'function' ? liraHint(Desk.toMinor(D.amount, 'USD')) : '') + '</small>' +
         fieldErr('amount') + '</label>';
     } else {
-      h += '<div class="of-bxgy">' +
-        '<label class="field"><span>' + t('of_buy') + '</span><input class="inp num" id="ofBuy" type="text" inputmode="numeric" dir="ltr" value="' + esc(D.buyQty) + '" data-change="of-live"' + (locked ? ' disabled' : '') + '></label>' +
-        '<label class="field"><span>' + t('of_get') + '</span><input class="inp num" id="ofGet" type="text" inputmode="numeric" dir="ltr" value="' + esc(D.getQty) + '" data-change="of-live"' + (locked ? ' disabled' : '') + '></label>' +
-        '<label class="field"><span>' + t('of_get_pct') + '</span><input class="inp num" id="ofFreePct" type="text" inputmode="numeric" dir="ltr" value="' + esc(D.freePct) + '" data-change="of-live"' + (locked ? ' disabled' : '') + '></label>' +
-      '</div>' + fieldErr('bxgy') + '<small class="muted">' + t('of_bxgy_hint') + '</small>';
+      deal += '<div class="of-bxgy2"><span>' + t('of_buy') + '</span>' +
+        '<input class="inp num" id="ofBuy" type="text" inputmode="numeric" dir="ltr" value="' + esc(D.buyQty) + '" data-change="of-live"' + (locked ? ' disabled' : '') + '>' +
+        '<span>' + t('of_get_free') + '</span>' +
+        '<input class="inp num" id="ofGet" type="text" inputmode="numeric" dir="ltr" value="' + esc(D.getQty) + '" data-change="of-live"' + (locked ? ' disabled' : '') + '>' +
+        '<span>' + t('of_free_word') + '</span></div>' + fieldErr('bxgy');
     }
+    if (locked) deal += '<small class="muted">' + t('of_deal_locked') + '</small>';
+    h += step(1, t('of_s1'), deal, true);
 
-    /* On what */
-    h += '<span class="lbl">' + t('of_on_what') + '</span>';
-    h += '<div class="of-scope-t">' +
+    /* 2 — on what */
+    var on = '<div class="of-scope-t">' +
       '<button type="button" class="of-pill' + (D.scope === 'pick' ? ' on' : '') + '" data-act="of-scope" data-k="pick">' + t('of_choose') + '</button>' +
       '<button type="button" class="of-pill' + (D.scope === 'all' ? ' on' : '') + '" data-act="of-scope" data-k="all">' + t('of_whole_shop') + '</button>' +
-    '</div>';
-    h += '<div id="ofPick">' + pickHtml() + '</div>';
+    '</div><div id="ofPick">' + pickHtml() + '</div>';
+    h += step(2, t('of_s2'), on, D.scope === 'all' || D.targets.some(function (x) { return !x.exclude; }));
 
-    /* When */
-    h += '<span class="lbl">' + t('of_when') + '</span>';
-    h += '<div class="of-quick">' + ['d1', 'd3', 'w1', 'weekend', 'm1', 'none'].map(function (k) {
-      return '<button type="button" class="of-pill" data-act="of-quick" data-k="' + k + '">' + t('of_q_' + k) + '</button>';
+    /* 3 — how long */
+    var when = '<div class="of-quick">' + ['d1', 'd3', 'w1', 'weekend', 'm1', 'none'].map(function (k) {
+      return '<button type="button" class="of-pill' + (D.len === k ? ' on' : '') + '" data-act="of-quick" data-k="' + k + '">' + t('of_q_' + k) + '</button>';
     }).join('') + '</div>';
-    h += '<div class="row2">' +
-      '<label class="field"><span>' + t('of_starts') + '</span><div class="of-dt"><input class="inp" id="ofSDate" type="date" value="' + esc(D.sDate) + '" data-change="of-live">' +
-        '<input class="inp" id="ofSTime" type="time" dir="ltr" value="' + esc(D.sTime) + '" data-change="of-live"></div>' + fieldErr('start') + '</label>' +
-      '<label class="field"><span>' + t('of_ends') + '</span>' + (D.noEnd
-        ? '<div class="of-noend muted">' + t('of_no_end') + ' <button type="button" class="link" data-act="of-quick" data-k="w1">' + t('of_set_end') + '</button></div>'
-        : '<div class="of-dt"><input class="inp" id="ofEDate" type="date" value="' + esc(D.eDate) + '" data-change="of-live">' +
-          '<input class="inp" id="ofETime" type="time" dir="ltr" value="' + esc(D.eTime) + '" data-change="of-live"></div>') + fieldErr('end') + '</label>' +
-    '</div>';
+    when += '<div class="of-when-say muted">' + whenSay(o) +
+      ' <button type="button" class="link" data-act="of-dates">' + t(D.dates ? 'of_dates_hide' : 'of_dates') + '</button></div>';
+    if (D.dates) {
+      when += '<div class="row2">' +
+        '<label class="field"><span>' + t('of_starts') + '</span><div class="of-dt"><input class="inp" id="ofSDate" type="date" value="' + esc(D.sDate) + '" data-change="of-live">' +
+          '<input class="inp" id="ofSTime" type="time" dir="ltr" value="' + esc(D.sTime) + '" data-change="of-live"></div>' + fieldErr('start') + '</label>' +
+        '<label class="field"><span>' + t('of_ends') + '</span>' + (D.noEnd
+          ? '<div class="of-noend muted">' + t('of_no_end') + '</div>'
+          : '<div class="of-dt"><input class="inp" id="ofEDate" type="date" value="' + esc(D.eDate) + '" data-change="of-live">' +
+            '<input class="inp" id="ofETime" type="time" dir="ltr" value="' + esc(D.eTime) + '" data-change="of-live"></div>') + fieldErr('end') + '</label>' +
+      '</div>';
+    } else {
+      when += fieldErr('start') + fieldErr('end');
+    }
+    h += step(3, t('of_s3'), when, true);
 
-    /* More */
+    h += '<div id="ofPreview">' + previewHtml() + '</div>';
+
+    /* Everything else, folded. */
+    var mine = OG.lang === 'ar' ? 'nameAr' : 'nameEn', other = OG.lang === 'ar' ? 'nameEn' : 'nameAr';
     h += '<div class="wh-fold"><button class="wh-more-h" type="button" data-act="of-more">' +
       t('of_more_opts') + '<span class="wh-more-x">' + (D.more ? '−' : '+') + '</span></button>' +
       '<div class="wh-fold-b"' + (D.more ? '' : ' hidden') + '>' +
+        '<label class="field"><span>' + t('of_name') + '</span><input class="inp" id="ofName" dir="auto" maxlength="80" value="' + esc(D[mine]) + '" placeholder="' + esc(autoName(o, OG.lang)) + '" data-change="of-live">' + fieldErr('name') + '</label>' +
+        '<label class="field"><span>' + t(OG.lang === 'ar' ? 'of_name_en' : 'of_name_ar') + '</span><input class="inp" id="ofNameOther" dir="' + (OG.lang === 'ar' ? 'ltr' : 'rtl') + '" maxlength="80" value="' + esc(D[other]) + '" placeholder="' + esc(autoName(o, OG.lang === 'ar' ? 'en' : 'ar')) + '" data-change="of-live"></label>' +
+        (D.kind === 'bxgy' ? '<label class="field"><span>' + t('of_get_pct') + '</span><input class="inp num" id="ofFreePct" type="text" inputmode="numeric" dir="ltr" value="' + esc(D.freePct) + '" data-change="of-live"' + (locked ? ' disabled' : '') + '><small class="muted">' + t('of_bxgy_hint') + '</small></label>' : '') +
         '<label class="field"><span>⚡ ' + t('of_flash') + '</span><input class="inp num" id="ofMax" type="text" inputmode="numeric" dir="ltr" placeholder="∞" value="' + esc(D.maxUnits) + '" data-change="of-live">' +
           '<small class="muted">' + t('of_flash_sub') + '</small>' + fieldErr('max') + '</label>' +
         '<div class="rule-row"><div class="rr-txt"><b>' + t('of_stack') + '</b><small>' + t('of_stack_sub') + '</small></div>' +
@@ -548,9 +577,16 @@ var Offers = (function () {
         '<label class="field"><span>' + t('of_note') + '</span><input class="inp" id="ofNote" dir="auto" maxlength="300" value="' + esc(D.note) + '" data-change="of-live"></label>' +
       '</div></div>';
 
-    h += '<div id="ofPreview">' + previewHtml() + '</div>';
     h += (D.err && !D.field ? '<div class="of-err">' + esc(D.err) + '</div>' : '');
     return h + '</div>';
+  }
+
+  /* "From now until Mon 3 Nov, 11:59 PM" — what the length chosen means. */
+  function whenSay(o) {
+    var now = Date.now();
+    var s = Date.parse(o.startsAt);
+    var from = !isFinite(s) || s <= now + 60000 ? t('of_from_now') : t('of_from_d').replace('{d}', esc(fmtDateTime(new Date(s))));
+    return from + ' · ' + (o.endsAt ? t('of_until_d').replace('{d}', esc(fmtDateTime(new Date(o.endsAt)))) : t('of_no_end'));
   }
 
   /* What it is on: the chips chosen, and the search that adds more. */
@@ -583,7 +619,7 @@ var Offers = (function () {
     }
     h += '<div class="of-find"><input class="inp" id="ofFind" type="search" autocomplete="off" placeholder="' + esc(t('of_find_ph')) + '" value="' + esc(S.find) + '" data-change="of-find">' +
       '<div id="ofFound">' + foundHtml() + '</div></div>';
-    if (exc.length || D.scope === 'all') {
+    if (exc.length) {
       h += '<div class="of-except"><span class="lbl">' + t('of_except') + '</span><div class="of-chips">' +
         (exc.length ? exc.map(function (x) { return chip(x); }).join('') : '<span class="muted">' + t('of_except_none') + '</span>') + '</div></div>';
     }
@@ -624,14 +660,16 @@ var Offers = (function () {
     }
     rows = rows.slice(0, 12);
     if (!rows.length) return q ? '<div class="muted of-found-none">' + t('no_results') + '</div>' : '';
+    /* Choosing: a tap puts it ON the offer. The whole shop: a tap leaves it
+       OUT. One meaning per mode, said above the list, so there is one button. */
     var exMode = D.scope === 'all';
-    return '<div class="of-found">' + rows.map(function (r) {
+    return '<div class="of-found-h muted">' + t(exMode ? 'of_tap_out' : 'of_tap_in') + '</div><div class="of-found">' + rows.map(function (r) {
       var icon = r.kind === 'category' ? '▦' : r.kind === 'brand' ? '★' : '';
-      return '<div class="of-frow">' + (r.p ? thumb(r.p, 'of-fthumb') : '<i class="of-ficon">' + icon + '</i>') +
+      return '<button type="button" class="of-frow" data-act="of-pick" data-kind="' + r.kind + '" data-ref="' + esc(r.ref) + '"' + (exMode ? ' data-ex="1"' : '') + '>' +
+        (r.p ? thumb(r.p, 'of-fthumb') : '<i class="of-ficon">' + icon + '</i>') +
         '<span class="of-flabel" dir="auto">' + esc(r.label) + '<small class="muted">' + t('of_k_t_' + r.kind) + '</small></span>' +
-        (exMode ? '' : '<button type="button" class="btn btn-sm" data-act="of-pick" data-kind="' + r.kind + '" data-ref="' + esc(r.ref) + '">+ ' + t('of_add') + '</button>') +
-        '<button type="button" class="btn btn-sm btn-ghost" data-act="of-pick" data-ex="1" data-kind="' + r.kind + '" data-ref="' + esc(r.ref) + '">' + t('of_leave_out') + '</button>' +
-      '</div>';
+        '<span class="of-fplus' + (exMode ? ' is-ex' : '') + '" aria-hidden="true">' + (exMode ? '−' : '+') + '</span>' +
+      '</button>';
     }).join('') + '</div>';
   }
 
@@ -682,7 +720,7 @@ var Offers = (function () {
             '<button class="btn btn-primary" data-act="of-save">' + t(D.id ? 'save' : 'of_start_it') + '</button>',
       onOpen: function () {
         if (!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) {
-          var el = document.getElementById(D.id ? 'ofPct' : 'ofNameAr');
+          var el = document.getElementById(D.kind === 'pct' ? 'ofPct' : D.kind === 'bxgy' ? 'ofBuy' : 'ofAmount');
           if (el) { try { el.focus(); } catch (e) {} }
         }
       },
@@ -716,9 +754,9 @@ var Offers = (function () {
     if (o.kind === 'pct') body.pct = o.pct;
     if (o.kind === 'off' || o.kind === 'price') body.amount = o.amount;
     if (o.kind === 'bxgy') { body.buyQty = o.buyQty; body.getQty = o.getQty; body.pct = o.pct; }
-    /* Said before the request, in the screen's language. */
-    if (!body.nameEn && body.nameAr) body.nameEn = body.nameAr;
-    if (!body.nameAr && body.nameEn) body.nameAr = body.nameEn;
+    /* An empty name is the deal in words, in each language. */
+    if (!body.nameEn) body.nameEn = autoName(o, 'en');
+    if (!body.nameAr) body.nameAr = autoName(o, 'ar');
     if (!body.nameEn) { D.err = t('err_offer_name'); D.field = 'name'; repaintDialog(); return; }
     if (!o.startsAt) { D.err = t('err_offer_bad_start'); D.field = 'start'; repaintDialog(); return; }
     if (o.endsAt && o.endsAt <= o.startsAt) { D.err = t('err_offer_end_before_start'); D.field = 'end'; repaintDialog(); return; }
@@ -746,6 +784,9 @@ var Offers = (function () {
   function quick(k) {
     var D = S.draft;
     readDraft();
+    D.len = k;
+    /* A length counts from now unless somebody set the start by hand. */
+    if (!D.dates && !D.id) { var nw = new Date(); D.sDate = localDate(nw); D.sTime = localTime(nw); }
     var s = new Date(joinIso(D.sDate, D.sTime) || Date.now());
     if (k === 'none') { D.noEnd = true; return; }
     D.noEnd = false;
@@ -1128,7 +1169,7 @@ var Offers = (function () {
       var rows = (S.sug && S.sug.rows || []).filter(function (r) { return !r.inOffer; });
       if (!rows.length) return;
       S.draft = blankDraft(rows.map(function (r) { return { kind: 'product', ref: String(r.id), exclude: false }; }));
-      S.draft.nameEn = 'Clearance'; S.draft.nameAr = 'تصفية';
+      S.draft.nameEn = 'Clearance'; S.draft.nameAr = 'تصفية'; S.draft.named = true;
       S.draft.pct = '30';
       openDialog();
     };
@@ -1141,6 +1182,7 @@ var Offers = (function () {
       if (!S.draft) return;
       readDraft(); S.draft.scope = el.getAttribute('data-k') === 'all' ? 'all' : 'pick'; repaintDialog();
     };
+    ACTIONS['of-dates'] = function () { if (!S.draft) return; readDraft(); S.draft.dates = !S.draft.dates; repaintDialog(); };
     ACTIONS['of-more'] = function () { if (!S.draft) return; readDraft(); S.draft.more = !S.draft.more; repaintDialog(); };
     ACTIONS['of-quick'] = function (el) { if (!S.draft) return; quick(el.getAttribute('data-k')); repaintDialog(); };
     ACTIONS['of-pick'] = function (el) {
@@ -1169,6 +1211,7 @@ var Offers = (function () {
       CHANGES['of-live'] = function (el) {
         if (!S.draft) return;
         readDraft();
+        if (el && /^of[SE](Date|Time)$/.test(el.id)) S.draft.len = null;
         repaintLive();
         if (el && el.id === 'ofAmount') {
           var l = document.getElementById('ofAmountLira');
