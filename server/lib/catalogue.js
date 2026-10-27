@@ -19,6 +19,7 @@ import * as Photos from './photos.js';
 import * as Angles from './angles.js';
 import * as PrintKits from './printkits.js';
 import * as Partner from './partner.js';
+import * as Offers from './offers.js';
 
 /* Currency codes come from the database, so adding one is a migration rather
    than an edit here. */
@@ -432,7 +433,7 @@ function webPrices(p, fx) {
 /* KEEP IN STEP with web.product_row() in supabase/037_web_products.sql —
    the website reads the same answer from the cloud copy while this laptop
    is shut, and the two must not disagree about a single field. */
-function webRow(p, allSizes, ready, fx, known) {
+function webRow(p, allSizes, ready, fx, known, os) {
   const ids = new Set(ready.map((r) => r.c.id));
   const sizes = allSizes.filter((v) => ids.has(v.colour_id));
   const first = ready[0].photos;
@@ -483,6 +484,10 @@ function webRow(p, allSizes, ready, fx, known) {
        takes no print. The price is the print's own (Partner.webPrices: $5 a
        jersey), in the same two-currency shape as `prices`. Never a cost. */
     print: webPrint(p, fx),
+    /* 076 (v1.9) — the sale it is on right now, or null: the badge, the
+       price to show beside the struck one, when it ends, how many are left
+       at that price. KEEP IN STEP with web.offer_of() in 043_offers.sql. */
+    offer: os ? Offers.webOffer(p, fx, webPrices, os) : null,
     updatedAt: p.updated_at
   };
 }
@@ -543,10 +548,11 @@ export function webList() {
   const photos = Photos.byProduct();
   const fx = webRate();
   const known = productIds();
+  const os = Offers.webState();
   const out = [];
   for (const p of rows) {
     const ready = webColours(p, photos[p.id] ?? []);
-    if (ready.length) out.push(webRow(p, sizes[p.id] ?? [], ready, fx, known));
+    if (ready.length) out.push(webRow(p, sizes[p.id] ?? [], ready, fx, known, os));
   }
   return out;
 }
@@ -564,7 +570,7 @@ export function webById(id) {
      the same 404 as one switched off. */
   const ready = webColours(p, Photos.ofProduct(p.id));
   if (!ready.length) return null;
-  return webRow(p, webSizes([p.id])[p.id] ?? [], ready, webRate(), productIds());
+  return webRow(p, webSizes([p.id])[p.id] ?? [], ready, webRate(), productIds(), Offers.webState());
 }
 
 export function byId(id) {

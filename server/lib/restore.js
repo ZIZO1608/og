@@ -134,6 +134,8 @@ export const ORDER = [
   'supplier_ledger', 'salary_payments',
   /* 068 — a code before the uses that name it; a use names its sale */
   'coupons', 'coupon_uses',
+  /* 076 */
+  'offers',
 
   /* what was printed, which the mirror has always had room for */
   'print_log', 'label_print_log'

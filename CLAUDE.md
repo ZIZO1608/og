@@ -38,9 +38,9 @@ merged.
   plan, from every old folder · `_nightshift/` — the test harness (`with-chrome.sh`, the suites,
   PGlite under `audit06/node_modules`) · `_tools/` — the Windows nginx build · `_secrets/` —
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
-- **Numbers in use:** local migrations run to `075` (`063` is night mode's and applies after `067`
+- **Numbers in use:** local migrations run to `076` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `076`; the next cloud file is `043`.** (`075` = the website told a website order was decided, local-only.) (`074` = coupon QR scans and street batches, local-only.) (`073`/`042` = a colour's 3D angles,
+  local migration is `077`; the next cloud file is `044`.** (`076`/`043` = offers, sales on products.) (`075` = the website told a website order was decided, local-only.) (`074` = coupon QR scans and street batches, local-only.) (`073`/`042` = a colour's 3D angles,
   `lib/angles.js`, branch `feature/3d-angles` — step 1 of the 3D-model plan; the generation
   through an image-to-3D API and the website's viewer are not built yet.) The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
@@ -4456,6 +4456,86 @@ migration `074_coupon_qr.sql` (**local-only, no cloud file**), contract **v1.7**
   `coupons/bulk-ui.mjs` 21 (the bar pressed, the live toast naming the customer, the profile, a
   scan on the dashboard landing on the till, Arabic at 390); the earlier `qr`, `qr-ui`, `api` (068),
   `npm test`, `p0-namespaces` and `fix06/idle` re-run green.
+
+## Offers — sales on products (076, cloud 043 — 27 Oct 2026)
+
+The owner asked for a page of its own where a sale is put on one product, a few, a brand, a
+category or the whole shop, shown on the website for marketing and charged by the till and the
+order desk by themselves. `server/lib/offers.js`, `js/offermath.js`, `js/offers.js` (`Offers`,
+`data-act="of-…"`), migration `076_offers.sql`, cloud `043_offers.sql` (+ `verify_043_offers.sql`),
+contract **v1.9** §3c (`docs/website/UPDATE-OFFERS.md` for Ahmad). Permission **`offer.write`**
+(owner, developer; FORBIDDEN to the partner by prefix).
+
+- **Four deals**: `pct` (1–90 % off each piece), `off` (USD cents off each piece), `price` (each
+  piece at USD cents, never above its own price), `bxgy` (buy `buy_qty`, get `get_qty` at `pct` off,
+  100 = free — **the cheapest pieces in the group are the ones that come off**). `scope` `all` or
+  `pick`, and `targets` — JSON on the row, `[{kind: product|category|brand, ref, exclude}]`;
+  excluded beats included. `starts_at` / `ends_at` (ISO; no end allowed), `max_units` (a **flash
+  sale**: only that many pieces at the offer price, counted from `sale_items`, a void gives them
+  back), `stack_coupons`, `active`, `cover_url`.
+- **THE RULE IS ONE FILE, `js/offermath.js`**: a plain script that sets `globalThis.OfferMath`, loaded
+  by the browser and imported by the server for its side effect (`import '../../js/offermath.js'` —
+  the repo root has no `"type"`, so Node reads it as CommonJS). The till, the desk and
+  `Sales.record` price from the same code. **The third copy is `web.offer_of()` in 043** (the
+  website's badge only, never the basket), and `_nightshift/offers/parity.mjs` (22) holds the two
+  equal field for field — seen red with the cloud's rounding broken. Percent is integer
+  arithmetic, `floor((list × (100 − pct) + 50) / 100)`, on both sides. A product shows the cheapest
+  live per-piece offer (the older on a tie), else a live buy-X-get-Y; per-piece offers are applied
+  first, then buy-X-get-Y over the pieces left.
+- **THE PRICE IS ON THE LINE, NOT IN THE DISCOUNT.** `Sales.record` asks `Offers.priceLines()`
+  inside its transaction and writes `sale_items.unit_price` at the offer, with **`list_price`** and
+  **`offer_id`** beside it (076). A line splits into two rows when only part of it is at the offer
+  (the free piece, a flash sale running out). In `sales.discount` instead, every offer sale would read
+  as a cashier over the 10% ceiling (the dashboard's over-cap count) and a return would refund the
+  full price. The result carries `offerSaved` and each item's `offerId` / `listPrice` /
+  `offerName`; the receipt prints the offer's name and what it took off under each line and
+  **"You saved"** under the total (`printing.js` joins `offers`).
+- **Returns**: `Orders.returnable()` now answers ONE row per size with `tiers` (price per piece),
+  and `takeBack` refunds **cheapest piece first** (`refundFor`) — return one shoe of a 2+1 and it is
+  the free one that came back.
+- **Coupons**: a coupon works on the pieces at their own price and those under an offer with
+  `stack_coupons`; everything under no-coupon offers is **409 `coupon_offer_items`**. The till and the
+  desk send that subtotal (`couponBase`) to `/api/coupon-check`.
+- **A deal sold at cannot change** (`offer_used`): kind, percent, amount, buy/get are locked once a
+  piece went out at it; dates, the limit, names and the switch still move. Deleted only when never
+  sold under.
+- **Starts and ends by the clock**: `Offers.start()` (main server only) checks every 20 s which offers
+  are live and, when it moved, sends `Live.notify('og', { offers: true })` and `SiteNotify.soon()`;
+  `afterSale()` catches a flash sale selling out. `offers` is in sitenotify's `WATCH`, and the
+  product fingerprint includes the offer (its lira price is the rate's news, not the offer's).
+  **A cashier holds no live line** (kept off `/api/live` on purpose), so the till and the desk also
+  ask `GET /api/offers/live` once a minute while on screen, and re-check what is live every 30 s.
+- **The page** (`#offers`, Shop & till section, a home tile for owner and developer): cards with the
+  products' photos or the owner's cover, the deal on a lime tag, a live countdown (one 1 s timer
+  writing `[data-of-cd]` text only, never a repaint), a flash meter, sales · pieces at the offer ·
+  what customers saved; filters Live · Coming · Ended · Off. **"Things that aren't selling"**
+  (`GET /api/offers/suggest`: no sale in 30/60/90 days, money at cost) makes a 30% offer of them
+  in one tap. The editor: both names, four big deal tiles, choose / whole shop with a search adding
+  products, categories and brands (or leaving them out), quick lengths (1 day … the weekend — Thursday
+  18:00 to Saturday night — … no end), the flash limit and the coupon switch under one fold, and a
+  **live preview** of one covered product with its badge and struck price. **Scoreboard**
+  (`/api/offers/:id/score`): pieces, sales and money while it ran against the same number of days
+  before, on the same products, day by day, the top five. **Poster**: a 1080 × 1920 story drawn on a
+  canvas (the mark, the deal enormous, both names, up to four products with their sale price, the
+  end date), saved through the share sheet on a phone; the cover picture is
+  `POST /api/offers/:id/cover` into `product-images/offers/<id>/`.
+- **The till** (`js/pos.js`): the badge and struck price on the card, the offer under the cart line
+  ("1 free"), struck line totals, "Offers saved" in the totals, and the receipt built from the
+  SERVER's items. **The desk** (`js/desk.js`): the same on the bag and the ticket (`Desk.offersMoved`).
+- **The mirror**: `offers` is cursor shape behind its own guard at the end of the walk (skipped by
+  name until 043, asked once a minute); `sale_items.list_price` / `offer_id` are their own group in
+  `mirror-lag.js`. In `restore.js` ORDER, `drift.js` PUSHED and the reconcile list. **043 also
+  carries `web.product_row`, THE SAME TEXT AS IN 037, 040 AND 041** (all four call `web.offer_of`
+  by name only once it exists). Nothing breaks before 043 is run: the till prices from the shop's
+  own database; only the website's badge waits.
+- **Verified**: `npm test` (10 new in `test/offers.test.js`, every one on a throwaway database);
+  `_nightshift/offers/parity.mjs` 22; `_nightshift/offers/ui.mjs` 35 (the editor pressed and read
+  back from SQLite and `change_log`, the countdown ticking, the menu hit-tested, the scoreboard, the
+  poster, the till's card, line and total equal to what the server charged, a 2+1 split by the
+  server, Arabic at 390 as a bottom sheet with Save on the glass, no console error);
+  `fix05/p0-namespaces`; `fix06/idle` (offers, pos and desk 0 requests idle).
+- **By hand**: run `043_offers.sql`, then `verify_043_offers.sql` (9 ✅), then `030_erp_access.sql`
+  again, then `npm run supabase:reconcile` on the VPS; give Ahmad `UPDATE-OFFERS.md`.
 
 ## The Money screen, polished and simplified (17 Oct 2026)
 

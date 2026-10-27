@@ -432,18 +432,41 @@ var Desk = (function () {
     return unit === null ? null : { qty: n, unit: unit, amount: unit * n };
   }
 
+  /* 076 — the bag through the offers, with the server's rule
+     (js/offermath.js), in the order's currency. Null for a line whose product
+     is gone. A preview — the Save is priced again on the server. */
+  function offerLines() {
+    if (typeof Offers === 'undefined' || !Offers.basket) return null;
+    var code = orderCur();
+    var known = S.lines.map(function (l) { var hit = product(l); return hit && hit.p ? hit.p : null; });
+    var priced = Offers.basket(S.lines.filter(function (l, i) { return known[i]; }).map(function (l, i) {
+      return { productId: known.filter(Boolean)[i].id, qty: l.qty };
+    }), function (minor, from) { return convert(minor, from, code); });
+    var out = [], j = 0;
+    known.forEach(function (p) { out.push(p ? priced[j++] : null); });
+    return out;
+  }
+
   function totals() {
     var code = orderCur();
-    var sub = 0, unpriced = false;
-    S.lines.forEach(function (l) {
+    var sub = 0, unpriced = false, couponBase = 0, listSum = 0;
+    var priced = offerLines();
+    S.lines.forEach(function (l, i) {
       var u = unitPrice(l);
-      if (u === null) unpriced = true; else sub += u * l.qty;
+      if (u === null) { unpriced = true; return; }
+      var pl = priced && priced[i];
+      if (!pl) { sub += u * l.qty; couponBase += u * l.qty; listSum += u * l.qty; return; }
+      pl.segs.forEach(function (sg) {
+        sub += sg.qty * sg.price;
+        listSum += sg.qty * sg.list;
+        if (!sg.offer || sg.offer.stackCoupons) couponBase += sg.qty * sg.price;
+      });
     });
     var pl = printLine(code);
     /* The office's own discount (capped by the rule) and the coupon's cut
        (not — it is the owner's rule), which together make the discount. */
     var manual = Math.min(sub, toMinor(S.discount, code));
-    var ccut = Math.min(couponCutFor(sub, code), sub - manual);
+    var ccut = Math.min(couponCutFor(couponBase, code), sub - manual);
     var disc = manual + ccut;
     var fee = feeInfo();
     var due = sub - disc + (pl ? pl.amount : 0) + (fee.mode === 'invoice' ? fee.amount : 0);
@@ -452,7 +475,8 @@ var Desk = (function () {
     var maxPct = boot ? Number(boot.maxDiscountPct) : 100;
     return {
       currency: code, subtotal: sub, discount: disc, manual: manual, couponCut: ccut, print: pl,
-      couponShort: couponShortOf(sub, code),
+      couponShort: couponShortOf(couponBase, code),
+      couponBase: couponBase, saved: Math.max(0, listSum - sub), priced: priced,
       fee: fee, due: due, paid: paid,
       remaining: Math.max(0, due - paid), over: paid > due, unpriced: unpriced,
       discountTooBig: manual > 0 && !allow('discount.unlimited') && manual > Math.floor(sub * maxPct / 100),
@@ -531,7 +555,7 @@ var Desk = (function () {
        "unknown" only if the server does not know it either. */
     if (/^[A-Za-z0-9][A-Za-z0-9-]{2,23}$/.test(code) && /[A-Za-z]/.test(code)) {
       var tt = totals();
-      API.post('/api/coupon-check', { code: code, subtotal: tt.subtotal, currency: tt.currency, customerId: S.customerId || null })
+      API.post('/api/coupon-check', { code: code, subtotal: tt.couponBase, currency: tt.currency, customerId: S.customerId || null })
         .then(function () { checkCoupon(code); }, function (err) {
           if (err && err.code !== 'coupon_unknown') { checkCoupon(code); return; }
           toast(t('dk_title'), t('dk_unknown_code') + ' · ' + code.slice(0, 40), 'warn');
@@ -1215,7 +1239,8 @@ var Desk = (function () {
     }
 
     h += '<div class="dk-lines">';
-    S.lines.forEach(function (l) {
+    var priced = offerLines();
+    S.lines.forEach(function (l, li) {
       var hit = product(l);
       if (!hit || !hit.p) {
         h += '<div class="dk-line is-short"><div class="dk-l-txt"><b><bdi dir="ltr">' + esc(l.sku) + '</bdi></b>' +
@@ -1227,6 +1252,16 @@ var Desk = (function () {
       var u = unitPrice(l);
       var have = DB.stockAt(hit.v, S.whId);
       var short = have < l.qty;
+      /* 076 — what the offers do to this line. */
+      var pl = priced && priced[li];
+      var offerNote = '';
+      if (pl) pl.segs.forEach(function (sg) {
+        if (!sg.offer) return;
+        offerNote += '<span class="cl-offer"><i dir="ltr">' + esc(Offers.dealShort(sg.offer, { list: sg.list, price: sg.price })) + '</i>' +
+          esc(Offers.name(sg.offer)) + (sg.qty < l.qty ? ' · ' + t(sg.price === 0 ? 'of_free_n' : 'of_at_offer_n').replace('{n}', nf(sg.qty)) : '') + '</span>';
+      });
+      var lineSum = pl ? pl.total : (u === null ? null : u * l.qty);
+      var lineList = pl ? pl.listTotal : lineSum;
       h += '<div class="dk-line' + (S.flash === l.sku ? ' is-new' : '') + (short ? ' is-short' : '') + '">' +
         thumb(hit.p, 'dk-thumb') +
         '<div class="dk-l-txt"><b>' + esc(hit.p.name) + '</b>' +
@@ -1236,14 +1271,15 @@ var Desk = (function () {
               var e = bestElsewhere(hit.v);
               return e ? ' · ' + t('dkp_there').replace('{wh}', esc(whLabel(e.id))).replace('{n}', nf(e.n)) : '';
             })() + '</span>' : '') +
-          '</small></div>' +
+          '</small>' + offerNote + '</div>' +
         '<div class="dk-qty">' +
           '<button type="button" data-act="dk-qty" data-sku="' + esc(l.sku) + '" data-d="-1" aria-label="−">−</button>' +
           '<b class="num">' + nf(l.qty) + '</b>' +
           '<button type="button" data-act="dk-qty" data-sku="' + esc(l.sku) + '" data-d="1" aria-label="+">+</button>' +
         '</div>' +
         '<div class="dk-l-money">' + (u === null ? '<span class="muted">—</span>'
-          : '<b>' + fmt(u * l.qty, tt.currency) + '</b>' + (l.qty > 1 ? '<small>' + fmt(u, tt.currency) + '</small>' : '')) +
+          : (lineList > lineSum ? '<s>' + fmt(lineList, tt.currency) + '</s>' : '') + '<b>' + fmt(lineSum, tt.currency) + '</b>' +
+            (l.qty > 1 && !(lineList > lineSum) ? '<small>' + fmt(u, tt.currency) + '</small>' : '')) +
         '</div>' +
         '<button type="button" class="dk-x" data-act="dk-drop" data-sku="' + esc(l.sku) + '" aria-label="' +
           esc(t('dk_remove')) + '">&times;</button>' +
@@ -1875,7 +1911,7 @@ var Desk = (function () {
     code = String(code || '').replace(/\s+/g, '').toUpperCase();
     if (!code) { toast(t('coupon'), t('cp_pos_type'), 'warn'); return Promise.resolve(); }
     return API.post('/api/coupon-check', {
-      code: code, subtotal: tt.subtotal, currency: tt.currency, customerId: S.customerId || null
+      code: code, subtotal: tt.couponBase, currency: tt.currency, customerId: S.customerId || null
     }).then(function (r) {
       if (!S) return;
       S.coupon = r.coupon;
@@ -1904,6 +1940,7 @@ var Desk = (function () {
       '<div class="dk-perf" aria-hidden="true"></div>';
 
     h += '<div class="dk-tot">' + sumRow(t('dk_goods'), fmt(tt.subtotal, code)) +
+      (tt.saved ? '<div class="dk-sr of-saved"><span>' + t('of_saved_line') + '</span><span>' + fmt(tt.saved, code) + '</span></div>' : '') +
       (tt.print ? sumRow(t('svc_print') + ' · ' + tt.print.qty, fmt(tt.print.amount, code)) : '') +
       '<div class="dk-sr dk-disc"><span>' + t('discount') + '</span>' +
         '<input class="inp num" type="text" inputmode="decimal" dir="ltr" data-change="dk-discount" ' +
@@ -3691,7 +3728,12 @@ var Desk = (function () {
       : (k === 'fee' ? toMinor(el.value, row.currency || boot.base || 'SYP') : el.value);
   }
 
+  /* 076 — an offer started, ended or changed: the bag and the money panel
+     repaint (paint() never rewrites a box being typed in). */
+  function offersMoved() { paint('items'); paint('sum'); }
+
   return {
+    offersMoved: offersMoved,
     view: view,
     after: after,
     register: register,

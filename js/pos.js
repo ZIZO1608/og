@@ -61,15 +61,34 @@ var POS = (function () {
 
   /* ------------------------------------------------------------- totals */
 
+  /* 076 — the basket through the offers, with the server's rule
+     (js/offermath.js): each line's pieces at their own price or the offer's.
+     A preview — the sale is priced again on the server. */
+  function offerLines() {
+    if (typeof Offers === 'undefined' || !Offers.basket) return null;
+    return Offers.basket(S.cart.map(function (l) { return { productId: l.productId, qty: l.qty }; }));
+  }
+
   function totals() {
-    var subtotal = S.cart.reduce(function (a, l) { return a + l.qty * l.price; }, 0);
+    var priced = offerLines();
+    var subtotal = 0, couponBase = 0, listTotal = 0;
+    S.cart.forEach(function (l, i) {
+      if (!priced) { subtotal += l.qty * l.price; couponBase += l.qty * l.price; listTotal += l.qty * l.price; return; }
+      priced[i].segs.forEach(function (sg) {
+        subtotal += sg.qty * sg.price;
+        listTotal += sg.qty * sg.list;
+        /* What a coupon may work on: pieces at their own price, and those
+           under an offer that lets a coupon go on top (the server's rule). */
+        if (!sg.offer || sg.offer.stackCoupons) couponBase += sg.qty * sg.price;
+      });
+    });
     var manual = 0;
     if (S.discount.value > 0) {
       manual = S.discount.mode === 'percent'
         ? Math.round(subtotal * Math.min(100, S.discount.value) / 100)
         : Math.min(subtotal, S.discount.value);
     }
-    var couponCut = couponCutFor(subtotal);
+    var couponCut = Math.min(couponCutFor(couponBase), Math.max(0, subtotal - manual));
     var pointsValue = S.pointsUsed * CONFIG.LOYALTY_POINT_VALUE;
     var discount = Math.min(subtotal, manual + couponCut);
     /* The print is on top of the goods; discounts and coupons are about the
@@ -77,7 +96,7 @@ var POS = (function () {
     var print = printCharge();
     var total = Math.max(0, subtotal + print - discount - pointsValue);
     return { subtotal: subtotal, manual: manual, couponCut: couponCut, discount: discount, pointsValue: pointsValue,
-             print: print, total: total };
+             print: print, total: total, couponBase: couponBase, saved: Math.max(0, listTotal - subtotal), priced: priced };
   }
 
   function cartCount() { return S.cart.reduce(function (a, l) { return a + l.qty; }, 0); }
@@ -115,7 +134,7 @@ var POS = (function () {
   function couponShort() {
     var c = S.coupon;
     if (!c || !c.minBasket) return false;
-    var sub = totals().subtotal;
+    var sub = totals().couponBase;
     return Math.round(sub / (CONFIG.EXCHANGE_RATE || 1) * 100) < c.minBasket;
   }
 
@@ -486,11 +505,17 @@ var POS = (function () {
       var pic = (p.image && p.image.src)
         ? '<span class="pcard-img has-img"><img src="' + p.image.src + '" alt="" loading="lazy">'
         : '<span class="pcard-img" style="background:' + p.image.bg + '"><span class="pcard-ini">' + p.image.initials + '</span>';
-      h += '<button class="pcard' + (q === 0 ? ' dead' : '') + '" data-pos="pick" data-id="' + p.id + '">' +
+      /* 076 — on an offer: the badge on the picture, the price struck. */
+      var ob = typeof Offers !== 'undefined' && Offers.badge ? Offers.badge(p) : null;
+      var priceHtml = ob && ob.price !== null
+        ? '<span class="price of-p"><s>' + money(p.sellingPrice) + '</s> ' + money(ob.price) + '</span>'
+        : '<span class="price">' + money(p.sellingPrice) + '</span>';
+      h += '<button class="pcard' + (q === 0 ? ' dead' : '') + (ob ? ' on-offer' : '') + '" data-pos="pick" data-id="' + p.id + '">' +
         pic +
-          '<span class="qty-tag' + (q <= CONFIG.STOCK_LOW ? ' low' : '') + '">' + q + '</span></span>' +
+          '<span class="qty-tag' + (q <= CONFIG.STOCK_LOW ? ' low' : '') + '">' + q + '</span>' +
+          (ob ? '<span class="of-badge" dir="ltr">' + esc(ob.text) + '</span>' : '') + '</span>' +
         '<span class="pcard-body"><b>' + esc(p.name) + '</b>' +
-          '<span class="price">' + money(p.sellingPrice) + '</span>' +
+          priceHtml +
           '<small>' + esc(DB.typeLabels[p.type] || '') + '</small></span>' +
       '</button>';
     });
@@ -502,17 +527,31 @@ var POS = (function () {
       return '<div class="cart-empty"><b>' + t('empty_cart') + '</b>' + t('empty_cart_sub') + '</div>';
     }
     var h = '';
+    var priced = offerLines();
     S.cart.forEach(function (l, i) {
       var max = stockFor(l.sku);
+      /* 076 — what the offers did to this line, in words under it. */
+      var pl = priced ? priced[i] : null;
+      var offerNote = '';
+      if (pl) {
+        pl.segs.forEach(function (sg) {
+          if (!sg.offer) return;
+          var free = sg.price === 0;
+          offerNote += '<span class="cl-offer"><i dir="ltr">' + esc(Offers.dealShort(sg.offer, { list: sg.list, price: sg.price })) + '</i>' +
+            esc(Offers.name(sg.offer)) + (sg.qty < l.qty ? ' · ' + (free ? t('of_free_n') : t('of_at_offer_n')).replace('{n}', nf(sg.qty)) : '') + '</span>';
+        });
+      }
+      var lineTotal = pl ? pl.total : l.qty * l.price;
+      var lineList = pl ? pl.listTotal : lineTotal;
       h += '<div class="cart-line' + (S.flashSku === l.sku ? ' flash' : '') + '" data-sku="' + l.sku + '">' +
         '<div class="cl-main"><b>' + esc(l.name) + '</b>' +
-          '<small>' + t('size') + ' ' + esc(DB.variantLabel(DB.variantBySku(l.sku), l.size)) + ' · ' + max + ' ' + t('in_stock') + '</small></div>' +
+          '<small>' + t('size') + ' ' + esc(DB.variantLabel(DB.variantBySku(l.sku), l.size)) + ' · ' + max + ' ' + t('in_stock') + '</small>' + offerNote + '</div>' +
         '<span class="stepper">' +
           '<button data-pos="dec" data-i="' + i + '">−</button>' +
           '<span>' + l.qty + '</span>' +
           '<button data-pos="inc" data-i="' + i + '">+</button>' +
         '</span>' +
-        '<span class="cl-total">' + money(l.qty * l.price) + '</span>' +
+        '<span class="cl-total">' + (lineList > lineTotal ? '<s>' + money(lineList) + '</s>' : '') + money(lineTotal) + '</span>' +
         '<button class="cl-del" data-pos="del" data-i="' + i + '" title="' + t('remove') + '">×</button>' +
       '</div>';
     });
@@ -558,6 +597,7 @@ var POS = (function () {
     var h = '<div class="totals">' +
       '<div class="tr"><span>' + t('subtotal') + ' · ' + cartCount() + ' ' + t('items').toLowerCase() + '</span><span>' + money(x.subtotal) + '</span></div>';
     if (x.print) h += '<div class="tr"><span>' + t('svc_print') + ' · ' + printPicks().length + '</span><span>' + money(x.print) + '</span></div>';
+    if (x.saved) h += '<div class="tr of-saved"><span>' + t('of_saved_line') + '</span><span>' + money(x.saved) + '</span></div>';
     if (x.manual) h += '<div class="tr disc"><span>' + t('discount') + '</span><span>− ' + money(x.manual) + '</span></div>';
     if (x.couponCut) h += '<div class="tr disc"><span>' + t('coupon') + ' <bdi dir="ltr">' + esc(S.coupon.code) + '</bdi></span><span>− ' + money(x.couponCut) + '</span></div>';
     if (x.pointsValue) h += '<div class="tr disc"><span>' + t('loyalty') + '</span><span>− ' + money(x.pointsValue) + '</span></div>';
@@ -1192,10 +1232,18 @@ var POS = (function () {
       date: new Date(server.at),
       customerId: cust ? cust.id : null,
       customerName: cust ? cust.name : t('walk_in'),
-      items: S.cart.map(function (l) {
-        return { sku: l.sku, productId: l.productId, name: l.name, type: l.type,
-                 size: l.size, qty: l.qty, unitPrice: l.price, unitCost: l.cost };
-      }).concat((server.items || []).filter(function (i) { return /^SVC-/.test(i.sku || ''); }).map(function (i) {
+      /* 076 — the goods as the SERVER priced them: a line under an offer may
+         have been split (a free piece, a flash sale running out). */
+      items: ((server.items || []).some(function (i) { return !/^SVC-/.test(i.sku || ''); })
+        ? server.items.filter(function (i) { return !/^SVC-/.test(i.sku || ''); }).map(function (i) {
+            var l = S.cart.filter(function (c) { return c.sku === i.sku; })[0] || {};
+            return { sku: i.sku, productId: i.productId, name: i.name, type: l.type || null, size: i.size, qty: i.qty,
+                     unitPrice: i.unitPrice, unitCost: l.cost, listPrice: i.listPrice || null, offerName: i.offerName || null };
+          })
+        : S.cart.map(function (l) {
+            return { sku: l.sku, productId: l.productId, name: l.name, type: l.type,
+                     size: l.size, qty: l.qty, unitPrice: l.price, unitCost: l.cost };
+          })).concat((server.items || []).filter(function (i) { return /^SVC-/.test(i.sku || ''); }).map(function (i) {
         /* Stage 1b — the print line, as the server priced it. */
         return { sku: i.sku, productId: null, name: i.name, type: null, size: null, qty: i.qty, unitPrice: i.unitPrice, unitCost: 0 };
       })),
@@ -1205,6 +1253,8 @@ var POS = (function () {
       discount: server.discount != null ? server.discount : x.discount,
       pointsUsed: S.pointsUsed,
       couponCode: server.couponCode || null,
+      /* 076 — what the offers took off, for the receipt's "you saved". */
+      offerSaved: server.offerSaved || 0,
       total: server.total != null ? server.total : x.total,
       payment: S.payment,
       /* Read from state, not the DOM: the foot repaints on every payment
@@ -1506,7 +1556,7 @@ var POS = (function () {
       if (!code) { toast(t('coupon'), t('cp_pos_type'), 'warn'); return; }
       if (el) el.disabled = true;
       API.post('/api/coupon-check', {
-        code: code, subtotal: totals().subtotal, customerId: S.customerId || null
+        code: code, subtotal: totals().couponBase, customerId: S.customerId || null
       }).then(function (r) {
         S.coupon = r.coupon;
         toast(t('coupon'), r.coupon.code + ' · ' + couponWorth(r.coupon), 'ok');
@@ -1987,6 +2037,9 @@ var POS = (function () {
       if (p) { l.price = p.sellingPrice; l.cost = p.costPrice; }
     });
     if (document.getElementById('cartLines')) paintCart();
+    /* 076 — an offer that started or ended changes the cards too. */
+    var g = document.getElementById('posGrid');
+    if (g) g.innerHTML = gridHtml();
   }
 
   /* 074 — A SCANNED COUPON. The camera reads the sticker's QR (the page's
@@ -2007,7 +2060,7 @@ var POS = (function () {
   function tryCoupon(raw, loose, orElse) {
     var s = String(raw || '').trim();
     API.post('/api/coupon-check', {
-      code: s, subtotal: totals().subtotal, customerId: S.customerId || null
+      code: s, subtotal: totals().couponBase, customerId: S.customerId || null
     }).then(function (r) {
       S.coupon = r.coupon;
       pulseScan(true);

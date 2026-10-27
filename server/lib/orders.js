@@ -1010,9 +1010,37 @@ export function returnable(saleId, d = get()) {
       done[l.sku] = (done[l.sku] || 0) + l.qty;
     }
   }
-  return items.map((it) => ({
-    ...it, returned: done[it.sku] || 0, left: Math.max(0, it.qty - (done[it.sku] || 0))
-  }));
+  /* 076 — one size can be on a sale twice: two at the offer's price and the
+     free one of a buy-2-get-1, or a flash sale that ran out mid-basket. The
+     pieces of a size are one row here, priced per piece in `tiers`, and what
+     comes back is refunded CHEAPEST FIRST — return one shoe of a 2+1 and it
+     is the free one that came back. `unit_price` is the next piece's. */
+  const by = new Map();
+  for (const it of items) {
+    const g = by.get(it.sku);
+    if (!g) by.set(it.sku, { ...it, tiers: [{ price: it.unit_price, qty: it.qty }] });
+    else { g.qty += it.qty; g.tiers.push({ price: it.unit_price, qty: it.qty }); }
+  }
+  return [...by.values()].map((it) => {
+    it.tiers.sort((a, b) => a.price - b.price);
+    const returned = done[it.sku] || 0;
+    return { ...it, unit_price: returned < it.qty ? refundFor(it.tiers, returned, 1) : it.tiers[it.tiers.length - 1].price,
+      returned, left: Math.max(0, it.qty - returned) };
+  });
+}
+
+/* What `n` pieces refund after `skip` have already come back, cheapest
+   pieces first. */
+export function refundFor(tiers, skip, n) {
+  let total = 0;
+  for (const t of tiers) {
+    let q = t.qty;
+    const s = Math.min(q, skip); q -= s; skip -= s;
+    const take = Math.min(q, n);
+    total += take * t.price; n -= take;
+    if (!n) break;
+  }
+  return total;
 }
 
 export function returnsFor(saleId, d = get()) {
@@ -1076,9 +1104,11 @@ export function takeBack(saleId, {
           ? `only ${row.left} of ${sku} can still come back`
           : `every ${sku} on ${saleId} has already come back`, 'too_many', { left: row.left });
       }
-      back.push({ sku, qty, name: row.name, size: row.size, unitPrice: row.unit_price,
+      /* Cheapest pieces first, after whatever already came back (076). */
+      const worth = refundFor(row.tiers, row.qty - row.left, qty);
+      back.push({ sku, qty, name: row.name, size: row.size, unitPrice: Math.round(worth / qty),
                  colour: row.colour, colourAr: row.colour_ar });
-      goods += qty * row.unit_price;
+      goods += worth;
       row.left -= qty;                       /* two lines of the same sku in one return */
     }
 

@@ -54,7 +54,7 @@ export const PATH = '/api/og/catalog-changed';
 
 /* The tables the published catalogue is made of. categories and the photos'
    derived columns ride on these; config does not affect the answer. */
-const WATCH = new Set(['products', 'variants', 'stock', 'product_colours', 'product_photos', 'categories', 'fx_rates']);
+const WATCH = new Set(['products', 'variants', 'stock', 'product_colours', 'product_photos', 'categories', 'fx_rates', 'offers']);
 
 const QUIET_MS = 5 * 1000;            // "one call about 5 seconds after the last change"
 const RETRY_MS = [30 * 1000, 2 * 60 * 1000, 5 * 60 * 1000];
@@ -122,7 +122,10 @@ const hash = (s) => createHash('sha1').update(s).digest('hex');
 export function snapshot() {
   const rows = new Map();
   for (const p of Cat.webList()) {
-    const { rate: _rate, prices: _prices, ...rest } = p;
+    const { rate: _rate, prices: _prices, offer, ...rest } = p;
+    /* 076 — an offer starting or ending is news; its lira price moving with
+       the rate is the rate's. */
+    if (offer) rest.offer = { ...offer, prices: offer.prices ? offer.prices.USD : null };
     rows.set(p.id, hash(JSON.stringify(rest)));
   }
   const rateSig = JSON.stringify(Cat.webRate());

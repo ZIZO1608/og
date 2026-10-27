@@ -39,6 +39,7 @@ var Splash = (function () {
     { id: 'alerts',         icon: 'bell',      read: function (v) { return v && v.notifications ? count(v.notifications.length, 'alert') : null; } },
     { id: 'dashboard',      icon: 'chart',     read: function (v) { return v ? word('sp_computed') : null; } },
     { id: 'reports',        icon: 'bars',      read: function (v) { return v ? word('sp_computed') : null; } },
+    { id: 'offers',         icon: 'tag',       read: function (v) { return v && v.offers ? count(v.offers.length, 'offer') : null; } },
     { id: 'labelTemplates', icon: 'tag',       read: function (v) { return v && v.templates ? count(v.templates.length, 'template') : null; } },
     { id: 'mirror',         icon: 'cloud',     read: readMirror }
   ];

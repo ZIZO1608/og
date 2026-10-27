@@ -60,6 +60,10 @@ SELECT f.file, f.installed, f.what
     ('042_product_angles.sql',
        to_regclass('public.product_angles') IS NOT NULL,
        'a colour''s 3D angles: front, back, left, right (local 073)'),
+    ('043_offers.sql',
+       to_regclass('public.offers') IS NOT NULL
+       AND to_regprocedure('public.web_offers(text)') IS NOT NULL,
+       'offers: sales on products, shown on the website (local 076)'),
     ('030_erp_access.sql',
        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'og_vps'),
        'og_vps, the VPS''s read-only login'),

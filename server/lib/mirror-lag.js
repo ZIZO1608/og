@@ -141,8 +141,13 @@ export const MIRROR_LAG = {
                 file: 'server/supabase/026_colours.sql', retriedBy: ['sync', 'reconcile'] },
   /* 058 — the colour frozen on a sold line. Rides on the sale's afterUpsert;
      insertChildren applies this fallback by name. */
-  sale_items: { cols: ['colour', 'colour_ar'],
-                file: 'server/supabase/026_colours.sql', retriedBy: ['sync', 'reconcile'] },
+  sale_items: { cols: ['colour', 'colour_ar', 'list_price', 'offer_id'],
+                groups: [
+                  { cols: ['colour', 'colour_ar'], file: 'server/supabase/026_colours.sql' },
+                  /* 076 — the price before the offer, and which offer. */
+                  { cols: ['list_price', 'offer_id'], file: 'server/supabase/043_offers.sql' }
+                ],
+                file: 'server/supabase/026_colours.sql, then 043_offers.sql', retriedBy: ['sync', 'reconcile'] },
   order_return_lines: { cols: ['colour', 'colour_ar'],
                 file: 'server/supabase/026_colours.sql', retriedBy: ['sync', 'reconcile'] },
 

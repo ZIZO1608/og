@@ -42,6 +42,7 @@ import * as Cap from './lib/capped.js';
 import * as Deliveries from './lib/deliveries.js';
 import * as Orders from './lib/orders.js';
 import * as Coupons from './lib/coupons.js';
+import * as Offers from './lib/offers.js';
 import * as CouponPage from './lib/coupon-page.js';
 import * as Partner from './lib/partner.js';
 import * as Purchasing from './lib/purchasing.js';
@@ -2177,6 +2178,80 @@ router.add('POST /api/coupon-check', requirePerm(['sell', 'delivery.desk'], asyn
   } catch (e) { couponFail(ctx.res, e); }
 }));
 
+/* ---- offers (076, lib/offers.js) -----------------------------------------
+   The page is the owner's and the developers' (offer.write). The LIVE list
+   is every till's and every desk's: the same offers and flash counts the sale
+   will be priced against, so the price on the screen is the price charged. */
+function offerFail(res, e) {
+  if (typeof e.code === 'string' && e.code !== 'invalid') {
+    return sendErrorDetail(res, e.status || 400, e.code, e.message, { ref: e.ref, sold: e.sold });
+  }
+  sendError(res, 400, 'invalid', e.message);
+}
+
+router.add('GET /api/offers/live', requirePerm(['sell', 'delivery.desk', 'product.read', 'offer.write'], (ctx) => {
+  sendOk(ctx.res, Offers.live());
+}));
+
+router.add('GET /api/offers', requirePerm('offer.write', (ctx) => {
+  sendOk(ctx.res, { offers: Offers.list(), live: Offers.live() });
+}));
+
+router.add('GET /api/offers/suggest', requirePerm('offer.write', (ctx) => {
+  const q = ctx.url.searchParams;
+  sendOk(ctx.res, Offers.suggest({ days: Math.min(365, Math.max(14, Number(q.get('days')) || 60)) }));
+}));
+
+router.add('GET /api/offers/:id/score', requirePerm('offer.write', (ctx) => {
+  try { sendOk(ctx.res, Offers.score(ctx.params.id)); }
+  catch (e) { offerFail(ctx.res, e); }
+}));
+
+router.add('POST /api/offers', requirePerm('offer.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { offer: Offers.create(b, ctx.user.id) }); }
+  catch (e) { offerFail(ctx.res, e); }
+}));
+
+router.add('PATCH /api/offers/:id', requirePerm('offer.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { offer: Offers.update(ctx.params.id, b, ctx.user.id) }); }
+  catch (e) { offerFail(ctx.res, e); }
+}));
+
+router.add('DELETE /api/offers/:id', requirePerm('offer.write', (ctx) => {
+  try {
+    const r = Offers.remove(ctx.params.id, ctx.user.id);
+    if (r.coverUrl) dropFiles([r.coverUrl]);
+    sendOk(ctx.res, { id: r.id });
+  } catch (e) { offerFail(ctx.res, e); }
+}));
+
+/* The offer's own picture for the website's offers page and the poster.
+   One JPEG made in the browser; a new path every time (a year of CDN cache). */
+router.add('POST /api/offers/:id/cover', requirePerm('offer.write', async (ctx) => {
+  try {
+    const b = await readJson(ctx.req, { max: PHOTO_BODY });
+    if (!Offers.byId(ctx.params.id)) return sendError(ctx.res, 404, 'not_found', 'No such offer.');
+    if (b.clear) {
+      const r = Offers.setCover(ctx.params.id, null, ctx.user.id);
+      if (r.previous) dropFiles([r.previous]);
+      return sendOk(ctx.res, { offer: r.offer });
+    }
+    if (!SB.isConfigured()) return sendError(ctx.res, 503, 'not_configured', 'Pictures need Supabase, which is not set up on this server.');
+    const img = Storage.decodeDataUrl(b.dataUrl);
+    const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const url = await Storage.putObject(`offers/${Number(ctx.params.id)}/${stamp}.${img.ext}`, img.bytes, img.type);
+    const r = Offers.setCover(ctx.params.id, url, ctx.user.id);
+    if (r.previous && r.previous !== url) dropFiles([r.previous]);
+    sendOk(ctx.res, { offer: r.offer });
+  } catch (e) {
+    if (e.code === 'bad_image' || e.code === 'too_large') return sendError(ctx.res, 400, e.code, e.message);
+    if (e.code === 'not_found') return sendError(ctx.res, 404, e.code, e.message);
+    sendError(ctx.res, 503, 'storage_failed', e.message);
+  }
+}));
+
 /* ---- the website's orders (lib/weborders.js) -------------------------------
    A queue the office works through: collected from the cloud every minute,
    confirmed by a phone call, then Accepted through the order desk above (its
@@ -3271,6 +3346,13 @@ router.add('GET /api/ext/print-styles', (ctx) => {
 router.add('GET /api/ext/products', (ctx) => {
   const products = Cat.webList();
   sendOk(ctx.res, { products, count: products.length, rate: Cat.webRate(), generatedAt: new Date().toISOString() });
+});
+
+/* 076 (v1.9) — the offers the website's offers page shows: live, coming and
+   sold out, each with the published products it covers. */
+router.add('GET /api/ext/offers', (ctx) => {
+  const ids = new Set(Cat.webList().map((p) => p.id));
+  sendOk(ctx.res, { offers: Offers.webList(ids), generatedAt: new Date().toISOString() });
 });
 
 router.add('GET /api/ext/products/:id', (ctx) => {
@@ -4758,6 +4840,8 @@ if (runDirectly) {
          (contract v1.5) — one main server, like the feed above. Silent
          until web.site_url and OG_WEB_API_KEY are both set. */
       SiteNotify.start(console.log);
+      /* 076 — offers start and end by the clock: the tills and the website hear it. */
+      Offers.start({ moved: () => { try { SiteNotify.soon(); } catch { /* not started */ } } });
       /* 071 — the seed print fonts have an address on GitHub and no file of
          ours yet: fetched, made into WOFF2 and put in the print-fonts bucket
          once, in the background. A failure leaves them for the Fonts screen's
@@ -4834,6 +4918,7 @@ if (runDirectly) {
     try { Telegram.stop(); } catch (e) { /* already down */ }
     try { FxFeed.stop(); } catch (e) { /* already down */ }
     try { SiteNotify.stop(); } catch (e) { /* already down */ }
+    try { Offers.stop(); } catch (e) { /* already down */ }
     try { SyncWorker.stop(); } catch (e) { /* already down */ }
     try { Standby.stop(); } catch (e) { /* not a standby */ }
     if (SECURE_SERVER) { try { SECURE_SERVER.close(); } catch (e) { /* already down */ } }

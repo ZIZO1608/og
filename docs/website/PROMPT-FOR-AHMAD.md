@@ -1,10 +1,18 @@
-# OG Sports website ↔ OG System — connecting the orders (contract v1.8)
+# OG Sports website ↔ OG System — connecting the orders (contract v1.9)
 
 > **For Ahmad, and for the AI helping him build the OG Sports website.**
 > Paste this whole file in as the brief. It is the contract between the website and the
 > shop's system (OG System). The shop side is being built to exactly this. If something
 > here does not fit the website, ask before changing it. Do not work around it: both sides
 > have to agree.
+
+> **v1.9 (27 Oct 2026) — offers (sales).** The owner now puts sales on products from OG System:
+> a percent off, dollars off, a fixed sale price, or buy-X-get-Y, on one product, a few, a brand,
+> a category or the whole shop, with a start, an end, and sometimes a limited number of pieces.
+> Every product from `web_products` / `web_product` now carries **`offer`** (null when it is on
+> none): show the badge, the struck price and the countdown (§3c). A new door, **`web_offers`**,
+> lists the offers for an offers page. Supabase file `043_offers.sql`. Nothing was removed or
+> renamed; `price` and `prices` are still the normal price.
 
 > **v1.8 (16 Oct 2026) — the shop tells you when an order is accepted.** When the shop presses
 > Accept (or Reject), it now calls the website: **`POST /api/og/order-changed`**, with the website
@@ -480,6 +488,86 @@ POST /rest/v1/rpc/web_print_tracking   { "p_key": "<website key>", "p_ref": "W-1
   `stage`: `design` → `sent` → `printing` → `delivery` → `done` (the words in §7). Nothing
   else is in the answer: no price, no cost, no names of staff.
 - A delivery leaves the shop only **after** the print is `done`.
+
+### 3c. Offers — sales on products (v1.9)
+
+The owner makes offers in OG System, on their own page. The **shop decides** what each offer
+does; the website shows it and builds its cart the same way. When the order is accepted, the
+shop prices it again with its own rule, so the two must agree — follow this section exactly.
+
+#### The `offer` object (on every product from `web_products` / `web_product`)
+
+`null` when the product is on no offer right now. Otherwise:
+
+```json
+"offer": {
+  "id": 7,
+  "kind": "pct",                       // pct · off · price · bxgy
+  "name": { "en": "Black Friday", "ar": "الجمعة السودا" },
+  "pct": 25,                           // pct: the percent; bxgy: % off the "get" pieces (100 = free)
+  "buy": null, "get": null,            // bxgy only: buy 2, get 1
+  "prices": {                          // the price of ONE piece under the offer, both currencies
+    "USD": { "amount": 5999, "minorExp": 2 },
+    "SYP": { "amount": 8279, "minorExp": 0 }
+  },
+  "off": 25,                           // whole percent off, for the badge ("−25%")
+  "endsAt": "2026-11-29T21:00:00.000Z",// null = no end date
+  "left": 12,                          // a flash sale: pieces left at this price; null = no limit
+  "stackCoupons": false                // may a coupon code go on top of this price?
+}
+```
+
+- **`kind` `pct` / `off` / `price`**: one piece costs `offer.prices`. Show `prices` (the normal
+  price) struck, and `offer.prices` beside it, big. The badge says `−{off}%`.
+- **`kind` `bxgy`**: `offer.prices` is `null` — there is no single price. The badge says
+  `{buy}+{get}` (and `−{pct}%` after it when `pct` is under 100). The product's normal price
+  stays as it is; the deal happens in the cart (below).
+- **`endsAt`**: show a countdown ("ends in 2d 04:13:09"). When it reaches zero, fetch the
+  products again: the offer is gone and `offer` is `null`.
+- **`left`**: a flash sale. Show "only 12 left at this price". When it is 0 the offer is gone
+  (the next fetch says `offer: null`).
+- One product shows **at most one** offer: the shop picks the cheapest per-piece offer, else a
+  buy-X-get-Y it is in. You never choose between two.
+
+#### Building the cart (this must match the shop)
+
+1. **Per-piece offers** (`pct`, `off`, `price`): each piece costs `offer.prices` — except in a
+   flash sale, where only `left` pieces are at that price and the rest are at `prices`.
+2. **Buy X get Y** (`bxgy`): take every piece in the cart whose product shows the **same offer
+   `id`**. Every group of `buy + get` pieces makes `get` pieces cheaper by `pct` percent (100 =
+   free) — and they are **the cheapest pieces** among those, wherever they are in the cart.
+   `floor(pieces / (buy + get)) × get` pieces come off; in a flash sale, at most `left`.
+   The money: `floor((price × (100 − pct) + 50) / 100)` per piece, in minor units, in USD; then
+   the lira as for every price (`prices.SYP` at `rate`).
+3. Show the cart's saving on its own line: **"Offers saved / وفّرت العروض"**.
+4. **Coupons** (§5a): when `stackCoupons` is `false`, the pieces under that offer are **left out**
+   of what the coupon works on — send `web_coupon` the subtotal of the other pieces only. If
+   every piece is under such an offer, say "This code does not work on items already on offer /
+   هالكود ما بيمشي عالقطع اللي عليها عرض" and do not apply it.
+5. Send the order exactly as before — **SKUs and quantities**, never a price. The shop prices it
+   again when somebody accepts it; an offer that ended while the order waited is the shop's
+   phone call, not the website's problem.
+
+#### `web_offers` — the offers page
+
+```
+og('web_offers', {})
+→ { "ok": true, "version": "…", "generatedAt": "…", "offers": [
+    { "id": 7, "kind": "pct", "name": { "en": "…", "ar": "…" }, "pct": 25, "amount": null,
+      "buy": null, "get": null, "status": "live",          // live · scheduled · soldout
+      "startsAt": "…", "endsAt": "…", "maxUnits": 20, "left": 12, "stackCoupons": false,
+      "coverUrl": "https://…/offers/7/….jpg",               // the owner's picture, or null
+      "productIds": [57, 61, 12] } ] }
+```
+
+- `productIds` are published products (the ones `web_products` returns). Show the cover (or the
+  products' photos), the deal, the countdown, and the products under it.
+- `status` `scheduled` is an offer that has not started: "starts in …" — its products do not show
+  the offer yet. `soldout` is a flash sale with nothing left: show it ended.
+- `amount` is USD cents (`off`: dollars off each piece; `price`: the sale price).
+- Fetch it when the page opens and when a countdown reaches zero. The shop also calls
+  `/api/og/catalog-changed` (§3a) the moment an offer starts, ends, is changed or sells out —
+  reload both doors then.
 
 ---
 

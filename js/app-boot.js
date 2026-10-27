@@ -385,6 +385,7 @@ function boot() {
   if (typeof Reviews !== 'undefined') Reviews.register();
   if (typeof WebOrders !== 'undefined') WebOrders.register();
   if (typeof Coupons !== 'undefined') Coupons.register();
+  if (typeof Offers !== 'undefined') Offers.register();
   if (typeof PrintKits !== 'undefined') PrintKits.register();
   if (typeof Requests !== 'undefined') Requests.register();
   if (typeof Receipt !== 'undefined') Receipt.register();

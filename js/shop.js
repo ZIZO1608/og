@@ -160,6 +160,8 @@ var Shop = (function () {
        from, so the chips in the preview name exactly what can print. Only
        for an account that can print; the list is empty for everyone else
        and js/labels.js falls back to the config copy. */
+    /* 076 — the offers the till and the desk price with. */
+    offers: function () { return wantAny(['sell', 'delivery.desk', 'product.read', 'offer.write'], '/api/offers/live', { offers: [], sold: {} }); },
     labelTemplates: function () { return want('label.print', '/api/labels/templates', { templates: [] }); }
   };
 
@@ -207,6 +209,7 @@ var Shop = (function () {
       });
       /* Not part of the hydrated shop — a template is printer configuration,
          not stock — so it lands on CONFIG beside the other label.* values. */
+      if (typeof Offers !== 'undefined' && r.offers) Offers.setLive(r.offers);
       if (typeof CONFIG !== 'undefined') {
         CONFIG.LABEL_TEMPLATES = (r.labelTemplates && r.labelTemplates.templates) || [];
       }

@@ -118,6 +118,7 @@ export const ALL_PERMISSIONS = [
   /* 068 — the Coupons page: make codes, switch them off, see who used them.
      The owner's and the developers' by default ("only for the admin"). */
   { perm: 'coupon.write',    group: 'money',     label: 'Make coupon codes and see how they are used' },
+  { perm: 'offer.write',     group: 'money',     label: 'Make offers (sales on products) and see how they do' },
 
   { perm: 'print.read',      group: 'print',     label: 'See print jobs' },
   { perm: 'print.write',     group: 'print',     label: 'Create and change print jobs' },
@@ -174,6 +175,8 @@ const FORBIDDEN = {
     p.startsWith('delivery.') || p.startsWith('safeer.') || p === 'discount.unlimited' ||
     /* A coupon's uses name the customers who used it (068). */
     p.startsWith('coupon.') ||
+    /* An offer's scoreboard is the shop's takings (076). */
+    p.startsWith('offer.') ||
     /* A receipt payload carries the customer's name and phone number, so
        this follows customer.* rather than sitting on its own. */
     p === 'sale.reprint' ||

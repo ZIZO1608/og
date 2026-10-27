@@ -33,6 +33,7 @@ import * as Loans from './loans.js';
 import * as Scope from './scope.js';
 import * as Coupons from './coupons.js';
 import * as Partner from './partner.js';
+import * as Offers from './offers.js';
 
 /* ------------------------------------------------------------- services
    Stage 1b (071) — A SALE LINE THAT IS NOT A SHOE. The name and number
@@ -308,9 +309,10 @@ export function record({
       return rate / toFrom;
     };
 
+    const read = [];
     for (const l of lines) {
       const v = d.prepare(
-        `SELECT v.sku, v.size, v.product_id, p.name, p.currency,
+        `SELECT v.sku, v.size, v.product_id, p.name, p.currency, p.type, p.brand,
                 p.selling_price, p.cost_price,
                 c.name_en AS colour_en, c.name_ar AS colour_ar,
                 (SELECT COUNT(*) FROM product_colours x WHERE x.product_id = p.id) AS colour_count
@@ -325,25 +327,51 @@ export function record({
       if (!Number.isInteger(qty) || qty <= 0) {
         throw new Error(`${l.sku}: quantity must be a positive whole number`);
       }
+      read.push({ v, qty });
+    }
 
+    /* ---- offers (076) -----------------------------------------------------
+       Each line split into what was charged at its own price and what went
+       at an offer's — js/offermath.js decides, against what this
+       transaction can see sold under a flash offer. The price is the line's
+       own: an offer is not a discount (lib/offers.js says why). */
+    const off = Offers.priceLines(d, read.map(({ v, qty }) => ({
+      productId: v.product_id, type: v.type, brand: v.brand,
+      list: v.selling_price, currency: v.currency, qty
+    })), at);
+    let couponBase = 0;
+
+    read.forEach(({ v, qty }, li) => {
       /* Converted into the settle currency at the frozen rate, so a basket
          mixing dollar and lira goods still adds up to one number. */
       const unitRate = lineRate(v.currency);
-      const unitPrice = convert(v.selling_price, v.currency, settle, unitRate);
+      const listPrice = convert(v.selling_price, v.currency, settle, unitRate);
       const unitCost = convert(v.cost_price, v.currency, settle, unitRate);
+      const segs = off.lines ? off.lines[li].segs
+        : [{ qty, price: v.selling_price, offerId: null }];
 
-      priced.push({
-        sku: v.sku, productId: v.product_id, name: v.name, size: v.size,
-        qty, unitPrice, unitCost,
-        srcCurrency: v.currency, srcUnitPrice: v.selling_price,
-        /* 058 — the colour is frozen on the line only when there was a
-           choice; a product with one colour reads as it always did. */
-        colour: v.colour_count > 1 ? v.colour_en : null,
-        colourAr: v.colour_count > 1 ? v.colour_ar : null
-      });
-
-      subtotal += unitPrice * qty;
-    }
+      for (const seg of segs) {
+        const unitPrice = seg.offerId === null ? listPrice
+          : convert(seg.price, v.currency, settle, unitRate);
+        const o = seg.offerId === null ? null : off.byId[seg.offerId];
+        priced.push({
+          sku: v.sku, productId: v.product_id, name: v.name, size: v.size,
+          qty: seg.qty, unitPrice, unitCost,
+          srcCurrency: v.currency, srcUnitPrice: v.selling_price,
+          /* 058 — the colour is frozen on the line only when there was a
+             choice; a product with one colour reads as it always did. */
+          colour: v.colour_count > 1 ? v.colour_en : null,
+          colourAr: v.colour_count > 1 ? v.colour_ar : null,
+          offerId: o ? o.id : null,
+          listPrice: o ? listPrice : null,
+          offerName: o ? { en: o.nameEn, ar: o.nameAr } : null
+        });
+        subtotal += unitPrice * seg.qty;
+        /* What a coupon may work on: the pieces at their own price, and the
+           ones under an offer that lets a coupon go on top. */
+        if (!o || o.stackCoupons) couponBase += unitPrice * seg.qty;
+      }
+    });
 
     /* ---- the services (stage 1b) ------------------------------------------
        After the goods and kept out of `subtotal` until the very end: the
@@ -386,13 +414,18 @@ export function record({
     let coupon = null;
     let couponCut = 0;
     if (couponCode) {
+      /* 076 — every piece is under an offer that says "no coupon on top". */
+      if (couponBase <= 0) {
+        throw Object.assign(new Error('Everything in this basket is already on an offer that does not take a coupon.'),
+          { code: 'coupon_offer_items', status: 409 });
+      }
       const c = Coupons.evaluate(d, {
-        code: couponCode, subtotal, currency: settle, rate,
+        code: couponCode, subtotal: couponBase, currency: settle, rate,
         customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, at
       });
       if (c) {
         coupon = c.coupon;
-        couponCut = Math.min(c.cut, subtotal - manual);
+        couponCut = Math.min(c.cut, couponBase, subtotal - manual);
       }
     }
     const disc = manual + couponCut;
@@ -561,13 +594,15 @@ export function record({
     const insLine = d.prepare(
       `INSERT INTO sale_items
          (sale_id, sku, product_id, name, size, qty,
-          unit_price, unit_cost, src_currency, src_unit_price, colour, colour_ar)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          unit_price, unit_cost, src_currency, src_unit_price, colour, colour_ar,
+          list_price, offer_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const p of priced) {
       insLine.run(saleId, p.sku, p.productId, p.name, p.size, p.qty,
                   p.unitPrice, p.unitCost, p.srcCurrency, p.srcUnitPrice,
-                  p.colour ?? null, p.colourAr ?? null);
+                  p.colour ?? null, p.colourAr ?? null,
+                  p.listPrice ?? null, p.offerId ?? null);
     }
 
     /* ---- the cash book (053) ---------------------------------------------
@@ -631,6 +666,9 @@ export function record({
          sale's own currency. Null for a sale with none. */
       couponCode: coupon ? coupon.code : null,
       couponCut: couponCut,
+      /* 076 — what the offers took off, in the sale's currency: the
+         receipt's "you saved" line. */
+      offerSaved: priced.reduce((a, p) => a + (p.listPrice ? (p.listPrice - p.unitPrice) * p.qty : 0), 0),
       items: priced,
       note: note ?? null,
       /* The till needs this to draw the QR on the receipt it is about to
@@ -652,7 +690,11 @@ export function record({
     return result;
   };
 
-  return outer ? run(outer) : tx(run);
+  const res = outer ? run(outer) : tx(run);
+  /* A flash offer may have just sold its last piece: the tills and the
+     website hear it now rather than at the next tick. */
+  if (!res.replayed && res.items && res.items.some((i) => i.offerId)) Offers.afterSale();
+  return res;
 }
 
 /* The sale itself, for a caller that already holds a transaction. The

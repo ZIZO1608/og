@@ -765,6 +765,12 @@ var Receipt = (function () {
           y += lineHeight(DS);
         }
       }
+      /* 076 — on an offer: the offer's name and what it took off this line. */
+      if (!gift && it.listPrice && it.listPrice > it.unitPrice) {
+        var off = (it.listPrice - it.unitPrice) * it.qty;
+        var label = it.unitPrice === 0 ? both('rc2_free') : (it.offerAr || it.offerEn || both('rc2_offer'));
+        y = rowLR(ctx, y, label, '− ' + num(off, cur), { size: DS });
+      }
       if (!gift && it.lineDiscount) {
         y = rowLR(ctx, y, both('rc2_line_discount'), '− ' + num(it.lineDiscount, cur), { size: DS });
       }
@@ -923,6 +929,11 @@ var Receipt = (function () {
 
     y = drawTotalBand(ctx, y + 4, both(R.order ? 'rc2_total_due' : 'rc2_total'),
       R.order ? R.order.due : R.total, cur);
+
+    /* 076 — what the offers saved, said once under the total. */
+    if (R.offerSaved) {
+      y = rowLR(ctx, y + 6, both('rc2_saved'), fmtMoney(R.offerSaved, cur, true), { size: 19, weight: '700' });
+    }
 
     if (R.secondCurrency) {
       /* Latin currency code here, not the Arabic ل.س suffix fmtMoney would
@@ -1314,10 +1325,14 @@ var Receipt = (function () {
       } : null,
       items: payload.items.map(function (it) {
         return { name: it.name, size: it.size, qty: it.qty, unitPrice: it.unit_price / div,
-                 colour: it.colour || null, colourAr: it.colour_ar || null };
+                 colour: it.colour || null, colourAr: it.colour_ar || null,
+                 /* 076 — the price before the offer, and the offer's name. */
+                 listPrice: it.list_price ? it.list_price / div : null,
+                 offerAr: it.offer_ar || null, offerEn: it.offer_en || null };
       }),
       currency: payload.currency,
       subtotal: payload.subtotal / div, discount: payload.discount / div,
+      offerSaved: (payload.offer_saved || 0) / div,
       pointsValue: 0, total: payload.total / div,
       fxRate: payload.fx_rate, secondCurrency: second,
       payment: payload.payment,

@@ -53,6 +53,7 @@ export const PUSHED = [
   'stock_counts', 'stock_count_lines',
   'loyalty_redemptions', 'wants', 'money_moves', 'day_closes', 'day_close_lines', 'supplier_ledger', 'salary_payments',
   'coupons', 'coupon_uses',
+  'offers',
   'config', 'role_permissions', 'label_templates', 'clubs', 'notification_reads', 'categories', 'user_permissions',
   /* 071 — the print kits and their fonts, pushed whole (041). */
   'print_fonts', 'print_kits'

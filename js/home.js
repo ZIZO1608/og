@@ -82,6 +82,8 @@ var Home = (function () {
       icon: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20v-1a5 5 0 0 1 10 0v1M12 20v-1a5 5 0 0 1 10 0v1' },
     { id: 'coupons', view: 'coupons', perm: 'coupon.write', key: 'nav_coupons',
       icon: 'M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4zM9 15l6-6M9.5 9.5h0M14.5 14.5h0' },
+    { id: 'offers', view: 'offers', perm: 'offer.write', key: 'nav_offers',
+      icon: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01' },
     /* Staff lives inside Settings, so it needs BOTH: the permission to manage
        people and the permission to open the screen it is on. */
     { id: 'staff', view: 'settings', perm: 'staff.write', key: 'hm_staff',
@@ -98,8 +100,8 @@ var Home = (function () {
     /* The owner asked (28 Sep 2026) for Staff and Take order to come off his
        home — he reaches both through the menu — and the list below is his
        WHOLE set: see NO_FILL. */
-    owner:     ['money', 'deliveries', 'products', 'reports', 'coupons'],
-    developer: ['money', 'deliveries', 'products', 'reports', 'coupons']
+    owner:     ['money', 'deliveries', 'products', 'reports', 'coupons', 'offers'],
+    developer: ['money', 'deliveries', 'products', 'reports', 'coupons', 'offers']
   };
 
   /* Roles whose list is exactly what ORDER says. Everybody else is topped up

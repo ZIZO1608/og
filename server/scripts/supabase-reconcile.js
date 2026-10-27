@@ -137,7 +137,8 @@ const TABLES = [
   { name: 'supplier_ledger',          key: 'id' },
   { name: 'salary_payments',          key: 'id' },
   { name: 'coupons',                  key: 'id' },
-  { name: 'coupon_uses',              key: 'id' }
+  { name: 'coupon_uses',              key: 'id' },
+  { name: 'offers',                   key: 'id' }
 ];
 
 const PAGE = 1000;

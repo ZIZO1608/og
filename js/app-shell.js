@@ -45,6 +45,7 @@ var NAV = [
   { id: 'pos',        key: 'nav_pos',       icon: 'M3 4h3l2 10h9l2-7H7M9 19a1 1 0 1 0 2 0 1 1 0 1 0-2 0m7 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0' },
   { id: 'customers',  key: 'nav_customers', icon: 'M16 20v-2a4 4 0 0 0-8 0v2M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 20v-2a3 3 0 0 0-2-2.8' },
   { id: 'coupons',    key: 'nav_coupons',   icon: 'M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4zM9 15l6-6' },
+  { id: 'offers',     key: 'nav_offers',    icon: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01' },
   { id: 'products',   key: 'nav_products',  icon: 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10' },
   { id: 'warehouse',  key: 'nav_warehouse', icon: 'M3 20V9l9-5 9 5v11M7 20v-7h10v7' },
   { id: 'shelfmap',   key: 'nav_shelfmap', icon: 'M3 5h18v6H3zM3 13h18v6H3zM9 5v6M15 5v6M9 13v6M15 13v6' },
@@ -80,7 +81,7 @@ var NAV_BOTTOM = ['settings'];
    keyed on data-sec) and its own mark. Lime stays the shop's; Yalla Wear's
    is their own mint, the colour of their portal. */
 var SECTIONS = [
-  { id: 'shop',     key: 'nav_s_shop',     ids: ['pos', 'customers', 'coupons'],
+  { id: 'shop',     key: 'nav_s_shop',     ids: ['pos', 'customers', 'coupons', 'offers'],
     icon: 'M3 9l1.5-5h15L21 9M3 9h18M4 9v11h16V9M9 20v-6h6v6' },
   { id: 'stock',    key: 'nav_s_stock',    ids: ['products', 'warehouse', 'shelfmap', 'labels'],
     icon: 'M3 13h8v8H3zM13 13h8v8h-8zM8 3h8v8H8z' },
@@ -146,6 +147,8 @@ var NAV_PERM = {
   /* 068 — coupon codes: the owner and the developers ("only for the admin"),
      the same gate as every route behind the page. */
   coupons: 'coupon.write',
+  /* 076 — offers: the owner and the developers, like the coupons. */
+  offers: 'offer.write',
   /* 060 — the delivery team: owner, developer, manager. A safeer's own
      tasks reach him on his home screen instead. */
   safeers: 'safeer.read',

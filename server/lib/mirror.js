@@ -456,6 +456,11 @@ export const TABLES = {
      reads it from the mirror (cloud file 038). */
   coupons: { parseKey: numKey, fetchLocal: byId('coupons'),
              mapRow: (r) => ({ ...r, active: !!r.active, once_per_customer: !!r.once_per_customer }) },
+  /* 076 — the offers. Cursor shape (dates moved, switched off), behind its
+     own guard at the end of the walk; the website's badge reads it from the
+     mirror (cloud file 043). */
+  offers: { parseKey: numKey, fetchLocal: byId('offers'),
+            mapRow: (r) => ({ ...r, active: !!r.active, stack_coupons: !!r.stack_coupons }) },
   stock: {
     parseKey: (rowId) => { const [sku, wh_id] = rowId.split(':'); return { sku, wh_id }; },
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM stock WHERE sku = ? AND wh_id = ?').get(key.sku, key.wh_id),
@@ -753,7 +758,7 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
    on its parent's afterUpsert, the way sale_items ride on their sale. */
 export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours', 'product_photos', 'product_angles',
                               'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews', 'errands',
-                              ...PARTNER, ...DRAWER, 'day_closes', 'coupons'];
+                              ...PARTNER, ...DRAWER, 'day_closes', 'coupons', 'offers'];
 
 const MISSING_TABLE = /Could not find the table|PGRST205|relation .* does not exist|Supabase 404 on /i;
 const MISSING_COLUMN = /PGRST204|column .* does not exist|Could not find the '[a-z_]+' column/i;
@@ -1138,6 +1143,27 @@ async function walk(log, only) {
       missingAt.set(name, Date.now());
       log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
       log.line('    Run server/supabase/038_coupons.sql in the SQL editor.');
+    }
+  }
+
+  /* 076 — the offers, behind a guard of their own, last: until 043 is run
+     the table is skipped by name and everything else still goes up; the
+     till prices offers from this machine, only the website needs the copy. */
+  if (want('offers')) {
+    log.head('Offers');
+    try {
+      await syncTable(log, 'offers', { phase: 'upsert' });
+      await syncTable(log, 'offers', { phase: 'delete' });
+      touched.push('offers');
+      denied.delete('offers');
+      missingAt.delete('offers');
+    } catch (e) {
+      if (!noteRefused(log, 'offers', e)) {
+        if (!missing(e)) throw e;
+        missingAt.set('offers', Date.now());
+        log.warn('Supabase is missing offers — skipped, everything else still went up.');
+        log.line('    Run server/supabase/043_offers.sql in the SQL editor.');
+      }
     }
   }
 

@@ -5002,3 +5002,262 @@ body:not([data-portal="yalla"]) .ss-skel i:first-child { height: 88px; }
   body:not([data-portal="yalla"]) .ss-jobs { grid-template-columns: 1fr; }
   body:not([data-portal="yalla"]) .ss-job { min-height: 76px; }
 }
+
+
+/* ==========================================================================
+   OFFERS (076) — the page (js/offers.js), the badge on the till's cards and
+   the offer line under a cart line (js/pos.js, js/desk.js).
+   Lime is spent on the deal itself — the one number a customer reads first —
+   and on Save. The live dot is the success green, so lime keeps meaning
+   "the thing to do here".
+   ========================================================================== */
+body:not([data-portal="yalla"]) .of-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+body:not([data-portal="yalla"]) .of-pill {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px;
+  border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--card);
+  color: var(--muted-foreground); font: 600 13.5px/1 var(--font-body); cursor: pointer;
+}
+body:not([data-portal="yalla"]) .of-pill bdi { color: var(--dim); font-weight: 700; }
+body:not([data-portal="yalla"]) .of-pill:hover { color: var(--foreground); border-color: var(--border-strong); }
+body:not([data-portal="yalla"]) .of-pill.on { color: var(--foreground); border-color: var(--foreground); background: var(--accent); }
+body:not([data-portal="yalla"]) .of-pill.on bdi { color: var(--foreground); }
+
+body:not([data-portal="yalla"]) .of-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
+}
+body:not([data-portal="yalla"]) .of-skel {
+  height: 320px; border-radius: 16px; background: linear-gradient(90deg, var(--card), var(--muted), var(--card));
+  background-size: 200% 100%; animation: cpn-shine 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { body:not([data-portal="yalla"]) .of-skel { animation: none; } }
+
+/* THE CARD — a picture strip, the deal on a lime tag over its edge, then
+   the words, the clock and the numbers. */
+body:not([data-portal="yalla"]) .of-card {
+  position: relative; display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 16px; background: var(--card); overflow: visible;
+}
+body:not([data-portal="yalla"]) .of-card.has-menu { z-index: 5; }
+body:not([data-portal="yalla"]) .of-cover {
+  height: 132px; border-start-start-radius: 15px; border-start-end-radius: 15px; overflow: hidden;
+  background: var(--subtle); position: relative;
+}
+body:not([data-portal="yalla"]) .of-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+body:not([data-portal="yalla"]) .of-mosaic { display: grid; gap: 2px; }
+body:not([data-portal="yalla"]) .of-mosaic.n2 { grid-template-columns: 1fr 1fr; }
+body:not([data-portal="yalla"]) .of-mosaic.n3 { grid-template-columns: 2fr 1fr 1fr; }
+body:not([data-portal="yalla"]) .of-mosaic.n4 { grid-template-columns: repeat(4, 1fr); }
+body:not([data-portal="yalla"]) .of-mosaic img { min-width: 0; }
+body:not([data-portal="yalla"]) .of-cover-none {
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 85% 20%, rgba(198,255,0,.22), transparent 60%), var(--subtle);
+}
+body:not([data-portal="yalla"]) .of-cover-none span {
+  font-family: var(--font-head); font-size: 88px; font-weight: 800; color: var(--foreground); opacity: .06;
+  letter-spacing: -.04em;
+}
+body:not([data-portal="yalla"]) .of-cover::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 45%, rgba(10,10,11,.55));
+}
+body:not([data-portal="yalla"]) .of-deal {
+  position: absolute; top: 104px; inset-inline-start: 16px; z-index: 2;
+}
+body:not([data-portal="yalla"]) .of-deal b {
+  display: inline-block; padding: 8px 14px; border-radius: 12px;
+  background: var(--brand); color: var(--brand-foreground);
+  font-family: var(--font-head); font-size: 24px; font-weight: 800; line-height: 1;
+  box-shadow: 0 8px 20px -6px rgba(198,255,0,.45);
+}
+body:not([data-portal="yalla"]) .of-body { display: grid; gap: 8px; padding: 32px 16px 16px; }
+body:not([data-portal="yalla"]) .of-top {
+  position: absolute; top: 12px; inset-inline: 12px; z-index: 3;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+body:not([data-portal="yalla"]) .of-st { display: inline-flex; align-items: center; gap: 6px; backdrop-filter: none; }
+body:not([data-portal="yalla"]) .of-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--success);
+  box-shadow: 0 0 0 0 rgba(74,222,128,.6); animation: of-pulse 1.8s ease-out infinite;
+}
+@keyframes of-pulse { 70% { box-shadow: 0 0 0 8px rgba(74,222,128,0); } 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); } }
+@media (prefers-reduced-motion: reduce) { body:not([data-portal="yalla"]) .of-dot { animation: none; } }
+body:not([data-portal="yalla"]) .of-more { position: relative; }
+body:not([data-portal="yalla"]) .of-dots {
+  min-width: 44px; min-height: 36px; font-weight: 800;
+  background: rgba(10,10,11,.6); border: 1px solid rgba(255,255,255,.12);
+}
+body:not([data-portal="yalla"]) .of-menu {
+  position: absolute; inset-inline-end: 0; top: calc(100% + 6px); z-index: 30; min-width: 220px;
+  display: grid; padding: 6px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--popover);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+}
+body:not([data-portal="yalla"]) .of-menu button {
+  min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--foreground);
+  font: 600 14px/1.2 var(--font-body); text-align: start; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .of-menu button:hover { background: var(--accent); }
+body:not([data-portal="yalla"]) .of-menu button.bk-danger { color: var(--destructive); }
+body:not([data-portal="yalla"]) .of-name { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.3; }
+body:not([data-portal="yalla"]) .of-what { font-weight: 600; }
+body:not([data-portal="yalla"]) .of-scope { font-size: 13px; line-height: 1.5; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .of-when {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 8px 12px; border-radius: 10px; background: var(--subtle); font-size: 13px;
+}
+body:not([data-portal="yalla"]) .of-cd {
+  font-family: var(--font-head); font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums;
+  unicode-bidi: isolate;
+}
+body:not([data-portal="yalla"]) .of-card.is-scheduled .of-when { background: transparent; border: 1px dashed var(--border-strong); }
+body:not([data-portal="yalla"]) .of-flash { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+body:not([data-portal="yalla"]) .of-meter { height: 6px; border-radius: 3px; background: var(--muted); overflow: hidden; }
+body:not([data-portal="yalla"]) .of-meter i { display: block; height: 100%; border-radius: 3px; background: var(--warning); }
+body:not([data-portal="yalla"]) .of-nums {
+  display: grid; grid-template-columns: 1fr 1.4fr 1.4fr; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .of-nums > div { display: grid; gap: 2px; min-width: 0; }
+body:not([data-portal="yalla"]) .of-nums b { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+body:not([data-portal="yalla"]) .of-nums small { color: var(--muted-foreground); font-size: 11.5px; }
+body:not([data-portal="yalla"]) .of-acts { display: flex; gap: 8px; }
+body:not([data-portal="yalla"]) .of-acts .btn { flex: 1; }
+body:not([data-portal="yalla"]) .of-card.is-ended,
+body:not([data-portal="yalla"]) .of-card.is-off { opacity: .72; }
+body:not([data-portal="yalla"]) .of-card.is-ended .of-deal b,
+body:not([data-portal="yalla"]) .of-card.is-off .of-deal b { background: var(--muted); color: var(--muted-foreground); box-shadow: none; }
+
+/* THINGS THAT AREN'T SELLING */
+body:not([data-portal="yalla"]) .of-sug {
+  display: flex; align-items: center; gap: 16px; margin: 0 0 16px; padding: 16px;
+  border-color: var(--warning-border); background: linear-gradient(90deg, var(--warning-soft), var(--card) 60%);
+}
+body:not([data-portal="yalla"]) .of-sug-pics { display: flex; }
+body:not([data-portal="yalla"]) .of-sug-pics > * {
+  width: 48px; height: 48px; border-radius: 12px; border: 2px solid var(--card); flex: none;
+}
+body:not([data-portal="yalla"]) .of-sug-pics > * + * { margin-inline-start: -14px; }
+body:not([data-portal="yalla"]) .of-sug-r { display: grid; gap: 6px; flex: 1; min-width: 0; }
+body:not([data-portal="yalla"]) .of-sug-r > span { font-size: 13px; line-height: 1.5; }
+body:not([data-portal="yalla"]) .of-sug-acts { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+body:not([data-portal="yalla"]) .of-days { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .of-days .of-pill { min-height: 32px; padding: 0 10px; }
+
+/* THE EDITOR */
+body:not([data-portal="yalla"]) .of-dlg { display: grid; gap: 16px; }
+body:not([data-portal="yalla"]) .of-kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+body:not([data-portal="yalla"]) .of-kind {
+  display: grid; justify-items: center; gap: 4px; min-height: 72px; padding: 10px 6px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--muted-foreground);
+  font: 600 13px/1.2 var(--font-body); cursor: pointer;
+}
+body:not([data-portal="yalla"]) .of-kind b { font-family: var(--font-head); font-size: 22px; font-weight: 800; color: var(--foreground); }
+body:not([data-portal="yalla"]) .of-kind.on { border-color: var(--brand); background: var(--brand-soft); color: var(--foreground); }
+body:not([data-portal="yalla"]) .of-kind.on b { color: var(--brand); }
+body:not([data-portal="yalla"]) .of-kind[disabled] { opacity: .45; cursor: default; }
+body:not([data-portal="yalla"]) .of-bxgy { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+body:not([data-portal="yalla"]) .of-scope-t,
+body:not([data-portal="yalla"]) .of-quick { display: flex; flex-wrap: wrap; gap: 8px; }
+body:not([data-portal="yalla"]) .of-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+body:not([data-portal="yalla"]) .of-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding-inline: 10px 4px;
+  border: 1px solid var(--brand-border); border-radius: var(--radius-full); background: var(--brand-soft);
+  font-size: 13px; font-weight: 600;
+}
+body:not([data-portal="yalla"]) .of-chip i { font-style: normal; color: var(--brand); }
+body:not([data-portal="yalla"]) .of-chip.is-ex { border-color: var(--destructive-border); background: var(--destructive-soft); }
+body:not([data-portal="yalla"]) .of-chip.is-ex i { color: var(--destructive); }
+body:not([data-portal="yalla"]) .of-chip.is-ex span { text-decoration: line-through; }
+body:not([data-portal="yalla"]) .of-chip button {
+  width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; color: var(--muted-foreground);
+  font-size: 18px; cursor: pointer;
+}
+body:not([data-portal="yalla"]) .of-chip button:hover { background: rgba(255,255,255,.08); color: var(--foreground); }
+body:not([data-portal="yalla"]) .of-find { display: grid; gap: 8px; }
+body:not([data-portal="yalla"]) .of-found {
+  display: grid; max-height: 264px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--border); border-radius: 12px;
+}
+body:not([data-portal="yalla"]) .of-frow {
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; gap: 8px;
+  padding: 6px 8px; border-bottom: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .of-frow:last-child { border-bottom: 0; }
+body:not([data-portal="yalla"]) .of-fthumb { width: 36px; height: 36px; border-radius: 8px; }
+body:not([data-portal="yalla"]) .of-ficon {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: var(--muted);
+  font-style: normal; color: var(--muted-foreground);
+}
+body:not([data-portal="yalla"]) .of-flabel { display: grid; min-width: 0; font-weight: 600; font-size: 14px; }
+body:not([data-portal="yalla"]) .of-flabel small { font-size: 11.5px; font-weight: 500; }
+body:not([data-portal="yalla"]) .of-found-none { padding: 8px 2px; font-size: 13px; }
+body:not([data-portal="yalla"]) .of-except { display: grid; gap: 8px; }
+body:not([data-portal="yalla"]) .of-dt { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 8px; }
+body:not([data-portal="yalla"]) .of-noend { min-height: 44px; display: flex; align-items: center; gap: 8px; }
+body:not([data-portal="yalla"]) .of-err { margin-top: 6px; color: var(--destructive); font-size: 13px; font-weight: 600; }
+
+/* The preview: one of its products as the website and the till will show it. */
+body:not([data-portal="yalla"]) .of-prev { display: grid; gap: 12px; }
+body:not([data-portal="yalla"]) .of-prev-card {
+  display: flex; align-items: center; gap: 12px; padding: 12px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--subtle);
+}
+body:not([data-portal="yalla"]) .of-prev-img { position: relative; flex: none; }
+body:not([data-portal="yalla"]) .of-prev-th { width: 72px; height: 72px; border-radius: 12px; }
+body:not([data-portal="yalla"]) .of-prev-txt { display: grid; gap: 2px; min-width: 0; }
+body:not([data-portal="yalla"]) .of-was { color: var(--muted-foreground); text-decoration: line-through; font-size: 13px; }
+body:not([data-portal="yalla"]) .of-now { font-family: var(--font-head); font-size: 20px; font-weight: 800; color: var(--brand); }
+
+/* THE BADGE — on the preview, and on the till's product cards. */
+body:not([data-portal="yalla"]) .of-badge {
+  position: absolute; top: 6px; inset-inline-start: 6px; z-index: 2;
+  padding: 4px 8px; border-radius: 8px; background: var(--brand); color: var(--brand-foreground);
+  font-family: var(--font-head); font-size: 12.5px; font-weight: 800; line-height: 1.1; letter-spacing: 0;
+  box-shadow: 0 4px 12px -4px rgba(0,0,0,.6);
+}
+body:not([data-portal="yalla"]) .pcard.on-offer { border-color: var(--brand-border); }
+body:not([data-portal="yalla"]) .pcard .price.of-p { color: var(--brand); }
+body:not([data-portal="yalla"]) .pcard .price.of-p s { color: var(--muted-foreground); font-weight: 500; font-size: .85em; margin-inline-end: 4px; }
+body:not([data-portal="yalla"]) .cl-offer {
+  display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--brand);
+}
+body:not([data-portal="yalla"]) .cl-offer i {
+  font-style: normal; padding: 1px 6px; border-radius: 6px; background: var(--brand-soft); border: 1px solid var(--brand-border);
+}
+body:not([data-portal="yalla"]) .cl-total s,
+body:not([data-portal="yalla"]) .dk-l-money s { display: block; color: var(--muted-foreground); font-size: 12px; font-weight: 500; }
+body:not([data-portal="yalla"]) .tr.of-saved,
+body:not([data-portal="yalla"]) .dk-sr.of-saved { color: var(--brand); font-weight: 700; }
+
+/* THE SCOREBOARD */
+body:not([data-portal="yalla"]) .of-score { display: grid; gap: 16px; }
+body:not([data-portal="yalla"]) .of-score-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+body:not([data-portal="yalla"]) .of-sc {
+  display: grid; gap: 4px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card);
+}
+body:not([data-portal="yalla"]) .of-sc.wide { grid-column: 1 / -1; }
+body:not([data-portal="yalla"]) .of-sc small { color: var(--muted-foreground); font-size: 12px; }
+body:not([data-portal="yalla"]) .of-sc b { font-family: var(--font-head); font-size: 28px; font-weight: 800; line-height: 1.15; }
+body:not([data-portal="yalla"]) .of-sc.wide b { font-size: 20px; }
+body:not([data-portal="yalla"]) .of-sc em { font-style: normal; color: var(--muted-foreground); font-size: 12.5px; }
+body:not([data-portal="yalla"]) .of-up { color: var(--success); font-weight: 700; font-size: 13px; }
+body:not([data-portal="yalla"]) .of-down { color: var(--destructive); font-weight: 700; font-size: 13px; }
+body:not([data-portal="yalla"]) .of-top-list { margin: 0; padding-inline-start: 20px; display: grid; gap: 6px; }
+body:not([data-portal="yalla"]) .of-top-list li { display: flex; justify-content: space-between; gap: 12px; }
+
+/* THE POSTER */
+body:not([data-portal="yalla"]) .of-poster-wrap { display: grid; place-items: center; }
+body:not([data-portal="yalla"]) .of-poster-cv,
+body:not([data-portal="yalla"]) .of-poster-skel {
+  width: min(100%, 300px); aspect-ratio: 9 / 16; height: auto; border-radius: 16px; border: 1px solid var(--border);
+}
+body:not([data-portal="yalla"]) .of-cover-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .of-grid { grid-template-columns: 1fr; }
+  body:not([data-portal="yalla"]) .of-kinds { grid-template-columns: 1fr 1fr; }
+  body:not([data-portal="yalla"]) .of-sug { flex-direction: column; align-items: stretch; }
+  body:not([data-portal="yalla"]) .of-frow { grid-template-columns: 36px minmax(0, 1fr); }
+  body:not([data-portal="yalla"]) .of-frow .btn { grid-column: span 1; min-height: 44px; }
+  body:not([data-portal="yalla"]) .of-pill { min-height: 44px; }
+  body:not([data-portal="yalla"]) .of-dots { min-height: 44px; }
+  body:not([data-portal="yalla"]) .of-chip button { width: 36px; height: 36px; }
+}

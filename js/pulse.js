@@ -508,6 +508,9 @@ var Pulse = (function () {
       /* 074 — a coupon was just used, in the shop or on the website. Only
          ids travel on the line; the coupons module asks who and where
          through its gated route and says so, and the bell asks again. */
+      /* 076 — an offer was made, changed, started or ended: the prices on
+         the till and the desk follow, with no reload. */
+      if (d.offers && typeof Offers !== 'undefined' && Offers.reload) Offers.reload();
       if (d.couponUsed) {
         if (typeof Coupons !== 'undefined' && Coupons.used) Coupons.used(d.couponUsed);
         if (canAsk()) tick();

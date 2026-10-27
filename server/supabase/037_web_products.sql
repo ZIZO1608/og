@@ -152,6 +152,7 @@ declare
   v_exp     integer;
   v_more    jsonb;
   v_print   jsonb;
+  v_offer   jsonb;
 begin
   select * into v_p from public.products p
    where p.id = p_id and not p.hidden and p.on_web and not p.demo;
@@ -212,6 +213,12 @@ begin
     execute 'select web.print_of($1, $2)' into v_print using v_more, p_rate;
   end if;
 
+  -- v1.9 (043): the sale it is on right now, or null — by name only when 043
+  -- has made web.offer_of, like the print above.
+  if to_regprocedure('web.offer_of(jsonb, jsonb)') is not null then
+    execute 'select web.offer_of($1, $2)' into v_offer using v_more, p_rate;
+  end if;
+
   return jsonb_build_object(
     'id', v_p.id,
     'name', v_p.name,
@@ -240,6 +247,8 @@ begin
     'pairsWith', web.pairs_of(v_more ->> 'pairs_with'),
     -- v1.6: null when it takes no print (041).
     'print', v_print,
+    -- v1.9: null when it is on no offer (043).
+    'offer', v_offer,
     'updatedAt', to_char(v_p.updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
   );
 end;

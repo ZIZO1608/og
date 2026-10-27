@@ -74,10 +74,16 @@ export function data(saleId) {
   ).get(saleId);
   if (!sale) return null;
 
+  /* 076 — a line under an offer carries the price it would have been and
+     the offer's name, so the slip can say what came off and why. */
   sale.items = get().prepare(
-    `SELECT sku, name, size, qty, unit_price, colour, colour_ar FROM sale_items
-      WHERE sale_id = ? ORDER BY id`
+    `SELECT i.sku, i.name, i.size, i.qty, i.unit_price, i.colour, i.colour_ar,
+            i.list_price, o.name_en AS offer_en, o.name_ar AS offer_ar
+       FROM sale_items i LEFT JOIN offers o ON o.id = i.offer_id
+      WHERE i.sale_id = ? ORDER BY i.id`
   ).all(saleId);
+  sale.offer_saved = sale.items.reduce((a, it) =>
+    a + (it.list_price && it.list_price > it.unit_price ? (it.list_price - it.unit_price) * it.qty : 0), 0);
 
   /* Walk-in: the whole customer block is omitted client-side, not sent as a
      row of nulls — a receipt with an empty "Customer:" line reads as a bug,

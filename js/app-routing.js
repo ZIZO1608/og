@@ -43,6 +43,8 @@ var VIEWS = {
   payments: function () { return Desk.payView(); },
   /* 068 — the owner's coupon codes. */
   coupons: function () { return Coupons.view(); },
+  /* 076 — sales on products (js/offers.js). */
+  offers: function () { return Offers.view(); },
   /* 071 — print kits and their fonts (js/printkits.js). */
   printkits: function () { return PrintKits.view(); },
   safeers: function () { return Safeers.view(); },
@@ -75,6 +77,7 @@ var AFTER = {
   weborders: function () { return WebOrders.after(); },
   payments: function () { return Desk.payAfter(); },
   coupons: function () { return Coupons.after(); },
+  offers: function () { return Offers.after(); },
   printkits: function () { return PrintKits.after(); },
   /* The shelf half of Print labels loads its racks (only when stale). */
   labels: function () { if (typeof Labels60 !== 'undefined') Labels60.shelfAfter(); },
