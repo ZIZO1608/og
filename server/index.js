@@ -29,6 +29,7 @@ import * as DB from './lib/db.js';
 import * as Auth from './lib/auth.js';
 import * as Cat from './lib/catalogue.js';
 import * as Categories from './lib/categories.js';
+import * as SizeGuide from './lib/sizeguide.js';
 import * as People from './lib/people.js';
 import * as Safeers from './lib/safeers.js';
 import * as Stock from './lib/stock.js';
@@ -929,8 +930,39 @@ router.add('POST /api/products', requirePerm('product.write', async (ctx) => {
   try {
     sendOk(ctx.res, Cat.createWithVariants({ ...b, userId: ctx.user.id }));
   } catch (e) {
+    /* 077 — a size-guide refusal names the cell (size, measure) that caused it. */
+    if (String(e.code || '').startsWith('sg_')) return sizeGuideFail(ctx.res, e);
     sendError(ctx.res, e.status || 400, e.code || 'invalid', e.message);
   }
+}));
+
+/* ---- 077 — the size guide (lib/sizeguide.js), night shift 28 Oct 2026 ----
+   Charts and a product's guide are product data: product.write writes them,
+   and the catalogue bundle (product.read) already carries each guide. */
+function sizeGuideFail(res, e) {
+  const detail = {};
+  for (const k of ['size', 'measure', 'max', 'missing']) if (e[k] !== undefined) detail[k] = e[k];
+  sendErrorDetail(res, e.status || 400, e.code || 'invalid', e.message, detail);
+}
+router.add('GET /api/size-charts', requirePerm(['product.read', 'product.write'], (ctx) => {
+  sendOk(ctx.res, { charts: SizeGuide.listCharts(), measures: SizeGuide.MEASURES,
+                    clothesTypes: SizeGuide.clothesTypes() });
+}));
+router.add('POST /api/size-charts', requirePerm('product.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { chart: SizeGuide.createChart(b || {}, ctx.user.id) }); } catch (e) { sizeGuideFail(ctx.res, e); }
+}));
+router.add('PATCH /api/size-charts/:id', requirePerm('product.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { chart: SizeGuide.updateChart(Number(ctx.params.id), b || {}, ctx.user.id) }); } catch (e) { sizeGuideFail(ctx.res, e); }
+}));
+router.add('POST /api/size-charts/:id/duplicate', requirePerm('product.write', (ctx) => {
+  try { sendOk(ctx.res, { chart: SizeGuide.duplicateChart(Number(ctx.params.id), ctx.user.id) }); } catch (e) { sizeGuideFail(ctx.res, e); }
+}));
+router.add('PUT /api/products/:id/size-guide', requirePerm('product.write', async (ctx) => {
+  const b = await readJson(ctx.req);
+  try { sendOk(ctx.res, { sizeGuide: SizeGuide.saveFor(Number(ctx.params.id), b && b.guide !== undefined ? b.guide : b, ctx.user.id) }); }
+  catch (e) { sizeGuideFail(ctx.res, e); }
 }));
 
 router.add('PATCH /api/products/:id', requirePerm('product.write', async (ctx) => {
@@ -3359,6 +3391,18 @@ router.add('GET /api/ext/products/:id', (ctx) => {
   const p = Cat.webById(Number(ctx.params.id));
   if (!p) return sendError(ctx.res, 404, 'not_found', 'No such product.');
   sendOk(ctx.res, { product: p });
+});
+
+/* 077 (contract v1.10) — a published product's size guide, or `sizeGuide:
+   null` when it has none. Its own door rather than a field on the product,
+   so the product answer stays the same as the cloud's web.product_row field
+   for field; the cloud answers this one with public.web_size_guide (044). */
+router.add('GET /api/ext/products/:id/size-guide', (ctx) => {
+  /* The same "is it published" as the product's own door (photos included),
+     so the two can never disagree about whether a product exists. */
+  const id = Number(ctx.params.id);
+  if (!Cat.webById(id)) return sendError(ctx.res, 404, 'not_found', 'No such product.');
+  sendOk(ctx.res, { sizeGuide: SizeGuide.webShape(SizeGuide.guideOf(id)) });
 });
 
 router.add('GET /api/ext/print-jobs/:id', (ctx) => {

@@ -821,6 +821,10 @@ function whAddTab() {
     '<span class="lbl">' + t('size_matrix') + ' — ' + esc(DB.typeLabels[OG.wh.type] || '') + '</span>' +
     ColourForm.html() + '</div>';
 
+  /* 077 — the size guide, in cm (js/sizeguide.js): required for a clothes
+     type, optional for shoes. Its rows are the sizes given a quantity above. */
+  if (typeof SizeGuide !== 'undefined') h += SizeGuide.formHtml();
+
   /* "Save & print labels" rather than a print button beside Save: the codes
      on the sticker are issued by the server when the product is saved, so
      there is nothing true to print before that. One press saves, and the

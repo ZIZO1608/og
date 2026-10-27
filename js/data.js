@@ -121,6 +121,9 @@ var CONFIG = {
      own 460: one fact, one setting. Bulk jobs (school shirts, cafe staff) are
      still priced per job, because those include the garment. */
   PRINT_PARTNER_COST: null,
+  /* 077 — the product types a size guide is required for (config
+     sizeguide.clothes_types). */
+  SG_CLOTHES: ['tshirts', 'jerseys', 'shirts', 'jackets', 'jeans', 'tracks'],
 
   /* How long Yalla Wear gives OG to settle an invoice. Drives the ageing
      buckets on the partner finance page. */
@@ -2734,6 +2737,15 @@ var DB = {
     CONFIG.PRINT_MAX_LETTERS       = num('print.max_letters', 12);
     CONFIG.PRINT_TURN_MIN          = num('print.turnaround_min', 5);
     CONFIG.PRINT_TURN_MAX          = num('print.turnaround_max', 7);
+    /* 077: which product types need a size guide (js/sizeguide.js). */
+    try { CONFIG.SG_CLOTHES = JSON.parse(cfg['sizeguide.clothes_types'] || 'null') || CONFIG.SG_CLOTHES; } catch (e) { /* keep */ }
+    /* 078: the deposit (js/reserve.js) — the till's and the website's
+       percentage, how long a reservation holds, when a website deposit is
+       chased. */
+    CONFIG.DEP_TILL_PCT            = num('deposit.till_pct', 50);
+    CONFIG.DEP_ONLINE_PCT          = num('deposit.online_pct', 50);
+    CONFIG.DEP_HOLD_DAYS           = num('deposit.hold_days', 7);
+    CONFIG.DEP_CHASE_DAYS          = num('deposit.chase_days', 3);
     /* 029_customer_rhythm: the multiplier and floor on a customer's own gap. */
     CONFIG.QUIET_MULTIPLIER_TENTHS = num('customer.quiet_multiplier_tenths', CONFIG.QUIET_MULTIPLIER_TENTHS);
     CONFIG.QUIET_FLOOR_DAYS        = num('customer.quiet_floor_days', CONFIG.QUIET_FLOOR_DAYS);
@@ -2932,6 +2944,8 @@ var DB = {
            (null = the default kit). */
         printable: !!p.printable,
         printKitId: p.print_kit_id || null,
+        /* 077 — the size guide, rows already in size order (js/sizeguide.js). */
+        sizeGuide: p.size_guide || null,
         demo: !!p.demo,
         /* Never sold falls back to how long the shop has had it, which is the
            honest reading of "nothing has moved" and keeps the dead-stock

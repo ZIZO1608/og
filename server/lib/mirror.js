@@ -461,6 +461,14 @@ export const TABLES = {
      mirror (cloud file 043). */
   offers: { parseKey: numKey, fetchLocal: byId('offers'),
             mapRow: (r) => ({ ...r, active: !!r.active, stack_coupons: !!r.stack_coupons }) },
+  /* 077 — the size guide: reusable charts, and one guide per product (keyed
+     by the product). Cursor shape, behind their own guard at the end of the
+     walk; the website reads a guide from the mirror (cloud file 044). */
+  size_charts: { parseKey: numKey, fetchLocal: byId('size_charts'),
+                 mapRow: (r) => ({ ...r, active: !!r.active }) },
+  product_size_guides: { parseKey: (rowId) => ({ product_id: Number(rowId) }),
+                         fetchLocal: (key) => DB.get().prepare('SELECT * FROM product_size_guides WHERE product_id = ?').get(key.product_id),
+                         mapRow: (r) => ({ ...r, follows: !!r.follows }) },
   stock: {
     parseKey: (rowId) => { const [sku, wh_id] = rowId.split(':'); return { sku, wh_id }; },
     fetchLocal: (key) => DB.get().prepare('SELECT * FROM stock WHERE sku = ? AND wh_id = ?').get(key.sku, key.wh_id),
@@ -758,7 +766,8 @@ const WHOLE   = Object.keys(WHOLE_KEYS);
    on its parent's afterUpsert, the way sale_items ride on their sale. */
 export const CURSOR_TABLES = [...CORE, ...LAYOUT, 'wants', 'product_colours', 'product_photos', 'product_angles',
                               'order_payments', 'handovers', 'order_returns', 'customer_credit', 'order_reviews', 'errands',
-                              ...PARTNER, ...DRAWER, 'day_closes', 'coupons', 'offers'];
+                              ...PARTNER, ...DRAWER, 'day_closes', 'coupons', 'offers',
+                              'size_charts', 'product_size_guides'];
 
 const MISSING_TABLE = /Could not find the table|PGRST205|relation .* does not exist|Supabase 404 on /i;
 const MISSING_COLUMN = /PGRST204|column .* does not exist|Could not find the '[a-z_]+' column/i;
@@ -1163,6 +1172,30 @@ async function walk(log, only) {
         missingAt.set('offers', Date.now());
         log.warn('Supabase is missing offers — skipped, everything else still went up.');
         log.line('    Run server/supabase/043_offers.sql in the SQL editor.');
+      }
+    }
+  }
+
+  /* 077 — the size guide, behind a guard of its own, last: until 044 is run
+     both tables are skipped by name and everything else still goes up; the
+     shop reads guides from this machine, only the website needs the copy.
+     Charts before the guides that name them; deletes the other way round. */
+  if (want('size_charts') || want('product_size_guides')) {
+    log.head('Size guides');
+    for (const name of ['size_charts', 'product_size_guides']) {
+      if (!want(name)) continue;
+      try {
+        await syncTable(log, name, { phase: 'upsert' });
+        await syncTable(log, name, { phase: 'delete' });
+        touched.push(name);
+        denied.delete(name);
+        missingAt.delete(name);
+      } catch (e) {
+        if (noteRefused(log, name, e)) continue;
+        if (!missing(e)) throw e;
+        missingAt.set(name, Date.now());
+        log.warn(`Supabase is missing ${name} — skipped, everything else still went up.`);
+        log.line('    Run server/supabase/044_size_guides.sql in the SQL editor.');
       }
     }
   }

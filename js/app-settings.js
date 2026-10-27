@@ -1587,6 +1587,8 @@ function viewSettings() {
   h += setSection(t('setg_shop'));
   h += brandingCard();
   if (typeof CatSet !== 'undefined') h += CatSet.card();
+  /* 077 — the reusable size charts, and which types need a guide. */
+  if (typeof SizeGuide !== 'undefined') h += SizeGuide.settingsCard();
   h += shelvesCard();
   h += receiptSettingsCard();
   h += thermalLabelsCard();

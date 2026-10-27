@@ -44,6 +44,8 @@ var CHANGES = {
   'prod-photos': function (el) { OG.prod.photos = el.value; render(); },
   /* 073 — products still missing a front or a back for their 3D model. */
   'prod-angles': function (el) { OG.prod.angles = el.value; render(); },
+  /* 077 — which products still need a size guide. */
+  'prod-sg': function (el) { OG.prod.sg = el.value; render(); },
 
   /* The live line under the price box — never a render: the box holds a
      caret and half a number. */

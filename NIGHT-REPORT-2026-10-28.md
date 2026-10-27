@@ -183,3 +183,154 @@ knows all three codes.
    in `web.product_row` in all four copies plus `webRow()` here. Shall I write it next, or should
    Ahmad sort the sizes on the website (the category's size list rides on every product as
    `category`)?
+
+---
+
+## Stage 2 — The size guide, in centimetres
+
+Built to the owner's decisions as written: reusable charts **and** per product; the admin ticks
+the measurements; required for clothes, optional for shoes; a fit note and a short note; shown in
+the drawer, at the till, on the website and as a WhatsApp picture.
+
+### The shape of the data, and why
+
+Migration **`077_size_guides.sql`**, two tables, both cursor shape (every write goes through
+`change_log` in the same transaction):
+
+- **`size_charts`** — a reusable chart: both names, the category its sizes come from, the ticked
+  measurements, the rows, the fit, the two notes, `active`. Never deleted, only hidden.
+- **`product_size_guides`** — one row per product (`product_id` is the key): `chart_id`,
+  `follows` (1 = the chart's numbers, kept in step), the measurements, the rows, fit, notes.
+
+**The rows are JSON on the row**, not a child table — the reason `pairs_with` (070) and an
+offer's `targets` (076) are columns: a guide travels to the mirror as one row.
+
+**A product's guide always stores its rows already resolved** — its own sizes, in the Stage 1
+size order, with the numbers — even when it follows a chart. Saving a chart rewrites every guide
+that follows it (same transaction, each logged); adding a size or a colour adds its row. That is
+what lets the cloud answer the website with no knowledge of charts and no size sorting in SQL.
+"Start from a chart, then my own numbers" copies the chart into the product and stops following.
+
+The clothes types are config **`sizeguide.clothes_types`** (default tshirts, jerseys, shirts,
+jackets, jeans, tracks), mirrored with config, edited in the Size charts fold.
+
+### The rules, on the server (`server/lib/sizeguide.js`)
+
+- Measurements: tops chest/length/shoulder/sleeve; bottoms waist/hip/length/inseam; shoes foot
+  (cm)/EU/US/UK. "Length" is one measurement shared by tops and bottoms (question 2).
+- A cm figure: > 0, ≤ 300, one decimal at most. EU/US/UK: > 0, ≤ 60. **"52,5" is 52.5**;
+  Arabic-Indic digits are read. The browser uses the same rule (`SizeGuide.parse`).
+- **A new product of a clothes type is refused** without a complete guide (`sg_required`,
+  `sg_incomplete` naming up to 12 empty cells), checked before the transaction — nothing is
+  written. **Existing products are not blocked.** A guide saved on an existing product must be
+  complete, or the "No size guide" filter would be lying.
+- Refusals name the size and the measurement; the browser marks that box red and focuses it.
+
+### Where it is
+
+- **Warehouse → Add product**: a "Size guide" card under the colours, badged *Required for
+  clothes* / *Optional*. Its rows are the sizes given a quantity, in size order, and follow the
+  quantities as they change. Pick a chart (follow it, or start from it), tick, fill. Save refuses
+  on the cell, before the request.
+- **Edit product**: the same editor in a fold ("Size guide · Done / Missing / Optional"). The
+  drawer's card opens the editor with that fold open.
+- **Settings → The shop → Size charts** (fold, meta "N charts"): each chart with Edit,
+  Duplicate, Hide/Show; New chart; which types need a guide (chips that save themselves).
+- **The grid**: Enter moves to the next box, Tab is the browser's, **a column pasted from Excel
+  fills down** from the box it lands in (tabs fill across), "↑" copies the row above. 16 px
+  text, 44 px tall boxes on a phone.
+- **Product drawer**: the table, the fit and the note, **Send size guide**, Edit.
+- **The till**: a "📏 Size guide" button in the size picker, only when there is a guide. It opens
+  a sheet on its own layer (`#sgRoot` — never `openModal`), so the size picker stays open under
+  it and the basket and any half-typed discount are untouched. Sizes in stock at the till's own
+  place are marked. Escape and the back gesture shut the sheet only.
+- **Products**: a "Size guide" filter — *No size guide* / *Has a size guide*.
+- **WhatsApp**: a 1080-wide PNG drawn on a canvas (OG mark, product, the table with both
+  languages in the header, fit and note in both languages, the shop's name and phone). On a phone
+  it goes through the share sheet as a file; elsewhere it downloads and WhatsApp opens with the
+  caption — Arabic, the rule, English (`WA.both`).
+
+### The website — a door of its own (contract change)
+
+The brief asked for `sizeGuide` on `GET /api/ext/products` and `/:id`. **It is on its own door
+instead**: `GET /api/ext/products/:id/size-guide` on the laptop and
+`public.web_size_guide(p_key, p_id)` in the cloud. Same reason as Stage 1's question 1: the
+product answer must stay identical to the cloud's `web.product_row`, which is the same text in
+four cloud files; a new function touches none of them. The shape, the same from both:
+
+```json
+{ "ok": true, "sizeGuide": {
+    "unit": "cm",
+    "measures": [{ "id": "chest", "unit": "cm", "en": "Chest width", "ar": "عرض الصدر" }],
+    "rows": [{ "size": "S", "values": { "chest": 50.5, "length": 70 } }],
+    "fit": "small | true | large | null",
+    "note": { "en": "…", "ar": "…" } } }
+```
+
+`sizeGuide` is `null` when the product has none or it is incomplete; a product the website cannot
+show (archived, off the site, waiting for photos) is `not_found` from both. Never any cost.
+
+### Files
+
+New: `server/migrations/077_size_guides.sql`, `server/lib/sizeguide.js`, `js/sizeguide.js` (in
+`index.html` and `sw.js`), `server/supabase/044_size_guides.sql`, `verify_044_size_guides.sql`,
+`server/test/sizeguide.test.js`. Changed: `server/lib/catalogue.js`, `server/index.js`,
+`server/lib/config-writable.js`, `server/lib/mirror.js`, `server/lib/restore.js`,
+`server/lib/drift.js`, `server/scripts/supabase-reconcile.js`, `server/supabase/README.md`,
+`server/supabase/status.sql`, `js/data.js`, `js/colourform.js`, `js/app-warehouse.js`,
+`js/app-products.js`, `js/app-actions.js`, `js/app-changes.js`, `js/pos.js`,
+`js/app-settings.js`, `js/app-i18n-extra.js` (77 keys each language), `css/og-skin.css`,
+`sw.js` (v346).
+
+Routes: `GET /api/size-charts` (`product.read` or `product.write`); `POST /api/size-charts`,
+`PATCH /api/size-charts/:id`, `POST /api/size-charts/:id/duplicate`,
+`PUT /api/products/:id/size-guide` (`product.write`); `POST /api/products` takes `sizeGuide`;
+`GET /api/ext/products/:id/size-guide` (the website key).
+
+### Supabase — by hand, in this order
+
+1. `server/supabase/044_size_guides.sql` (after 043), then `verify_044_size_guides.sql` — 8 ✅.
+2. `server/supabase/030_erp_access.sql` again.
+3. `npm run supabase:reconcile` on the VPS.
+
+Until 044 is run the sync skips the two tables by name and says so; nothing else stops.
+044 is standalone like 043 (tables plus website functions), so it is not in `CATCH-UP.sql`.
+
+### How it was verified
+
+- `cd server && npm test` — **121 green** (5 new in `test/sizeguide.test.js`).
+- `_nightshift/n1028/s2-api.mjs` — **21 green** over HTTP, read back from SQLite: "50,5" stored
+  as 50.5; the cashier refused; > 300, two decimals and an unknown measure refused naming the
+  cell; a T-shirt with no guide refused **and nothing written**; an incomplete one refused naming
+  the empty cells; an own guide stored in size order; a follower taking a chart's new numbers; a
+  new size adding an empty row; every write in `change_log`; the website door; deleting a product
+  deleting its guide.
+- `_nightshift/n1028/s2-parity.mjs` — **15 green**: PGlite running cloud files 001…044; laptop =
+  cloud for seven products (own, follower, jeans, shoes, none, no photos, incomplete); 044 twice;
+  `verify_044` all ✅.
+- `_nightshift/n1028/s2-ui.mjs` — **41 green**, three runs in a row, 1366 English and 390
+  Arabic: a chart made in the UI with a pasted column and Enter walking the grid, read back from
+  SQLite; a T-shirt refused before the request with the reason under the grid; saved following
+  the chart; the drawer card; Send size guide (a PNG and the two-language caption); the editor
+  switched to own numbers and saved; the till's sheet on top, Close hit-tested, Escape leaving
+  the size picker open, the basket unchanged; the filter; no sideways scroll; no console error.
+- Found on the way and fixed: `writeRow` could not bind an undefined user id; "New chart" was
+  drawn while the list loaded and the card redrew under the press.
+- Screenshots `night-shots/stage2/`: `chart-editor-*`, `settings-charts-*`, `add-refused-*`,
+  `add-guide-*`, `drawer-*`, `edit-*`, `till-sheet-*` (1366-en and 390-ar each), and
+  `whatsapp-en.png`, `whatsapp-ar.png` (the picture itself).
+
+### Not done
+
+- **The brief for Ahmad** (contract v1.10, `docs/website/UPDATE-SIZE-GUIDE.md`) — the shape is
+  above; the file was not written.
+- In the WhatsApp picture a long product name is cut at 34 characters.
+- On a phone, four ticked measurements make the grid scroll sideways inside its own box (the page
+  does not).
+
+### Questions
+
+2. **"Length" is one measurement for tops and bottoms.** A tracksuit sold as one product (top and
+   trousers) would need two lengths. Is that a real case?
+3. **Shoes are optional, but the Settings chips list every category** — the owner could mark a
+   shoe type as required. Allow that, or keep shoes always optional?

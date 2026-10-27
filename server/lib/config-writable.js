@@ -39,7 +39,7 @@
    lib/sitenotify.js tells it the catalogue changed (contract v1.5). The
    website's key goes with every call, so it is checked as strictly as
    shop.public_url, by siteUrlProblem() below. */
-export const CONFIG_WRITABLE = /^receipt\.|^print\.(unit_price|unit_currency|partner_unit_cost|max_letters|turnaround_min|turnaround_max)$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^fx\.feed_(on|side|minutes|scale|max_jump_pct)$|^alerts\.(quiet_from|quiet_to|urgent)$|^web\.site_url$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
+export const CONFIG_WRITABLE = /^receipt\.|^print\.(unit_price|unit_currency|partner_unit_cost|max_letters|turnaround_min|turnaround_max)$|^customer\.|^loyalty\.|^reminders\.|^shop\.(name|address|city|branch_name|phone|tz_minutes|public_url)$|^fx\.feed_(on|side|minutes|scale|max_jump_pct)$|^alerts\.(quiet_from|quiet_to|urgent)$|^web\.site_url$|^sizeguide\.clothes_types$|^deposit\.(till_pct|online_pct|hold_days|chase_days)$|^label\.(default_preset|transport|printer_host|printer_port|stations|density|speed|gap_mm|max_batch|lease_minutes|calibrate_cmd)$/;
 
 /* What is wrong with a value for shop.public_url, or null when it will do.
    Strict, because the value goes into a QR code taped to a counter and into a
@@ -129,6 +129,22 @@ export function configRefusal(updates) {
     if ((k === 'print.turnaround_min' || k === 'print.turnaround_max') &&
         !(/^\d{1,2}$/.test(String(updates[k])) && Number(updates[k]) >= 1 && Number(updates[k]) <= 90)) {
       return k + ' must be a whole number of days from 1 to 90.';
+    }
+    /* 077 — which product types need a size guide: a JSON list of category ids. */
+    if (k === 'sizeguide.clothes_types') {
+      let v; try { v = JSON.parse(String(updates[k])); } catch { v = null; }
+      if (!Array.isArray(v) || v.length > 40 || !v.every((x) => typeof x === 'string' && /^[a-z0-9_-]{1,40}$/.test(x))) {
+        return 'sizeguide.clothes_types must be a list of category ids.';
+      }
+    }
+    /* 078 — the deposit (عربون): two percentages and two numbers of days. */
+    if ((k === 'deposit.till_pct' || k === 'deposit.online_pct') &&
+        !(/^\d{1,3}$/.test(String(updates[k])) && Number(updates[k]) >= 1 && Number(updates[k]) <= 100)) {
+      return k + ' must be a whole percentage from 1 to 100.';
+    }
+    if ((k === 'deposit.hold_days' || k === 'deposit.chase_days') &&
+        !(/^\d{1,2}$/.test(String(updates[k])) && Number(updates[k]) >= 1 && Number(updates[k]) <= 60)) {
+      return k + ' must be a whole number of days from 1 to 60.';
     }
     if (k === 'fx.feed_side' &&!['sell', 'buy', 'mid'].includes(String(updates[k]))) return 'fx.feed_side must be sell, buy or mid.';
     if (k === 'fx.feed_on' && !['0', '1'].includes(String(updates[k]))) return 'fx.feed_on must be 1 or 0.';

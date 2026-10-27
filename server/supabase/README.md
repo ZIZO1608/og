@@ -32,6 +32,8 @@ top to bottom; the two families do not depend on each other.
 | `039_print_line_item.sql` | which shirt a print goes on — then `npm run supabase:reconcile` | | |
 | `040_product_web_extras.sql` | a product's description and "goes well with" (after `037`; it holds the same `web.product_row` text as `037`, so either may be run again) — then `npm run supabase:reconcile` | | |
 | `042_product_angles.sql` | a colour's 3D angles — front, back, left, right (mirrored; the website does not read it). Then `030_erp_access.sql` and `033` again | | |
+| `043_offers.sql` | offers: sales on products, and `web_offers` (holds the same `web.product_row` text as `037`/`040`/`041`) | | |
+| `044_size_guides.sql` | the size guide: `size_charts` and `product_size_guides` (mirrored), and `web_size_guide` for the website (after `043`). Then `030_erp_access.sql` again and `npm run supabase:reconcile` | | |
 
 - Each website file has a `verify_…sql` beside it; run it straight after.
 - **`030_erp_access.sql` grants `og_vps` read access to the mirror tables that exist when it

@@ -54,6 +54,9 @@ function productRows() {
      "ready" is a product with every colour done. */
   if (f.photos === 'missing') rows = rows.filter(function (r) { return Photos.readyCount(r.p) < (r.p.colours || []).length; });
   else if (f.photos === 'ready') rows = rows.filter(function (r) { return (r.p.colours || []).length && Photos.readyCount(r.p) === r.p.colours.length; });
+  /* 077 — "No size guide": the products to come back to and fill in. */
+  if (f.sg === 'missing') rows = rows.filter(function (r) { return !r.p.sizeGuide; });
+  else if (f.sg === 'has') rows = rows.filter(function (r) { return !!r.p.sizeGuide; });
   /* 073 — the same two answers for the 3D angles: a colour is ready with its
      front and its back; left and right are optional. */
   if (f.angles === 'missing') rows = rows.filter(function (r) { return Photos.anglesReadyCount(r.p) < (r.p.colours || []).length; });
@@ -128,6 +131,7 @@ function prodChips() {
   if (f.arch && f.arch !== 'active') out.push({ f: 'arch', label: t(f.arch === 'archived' ? 'bk_archived_only' : 'prod_arch_all') });
   if (f.photos) out.push({ f: 'photos', label: t(f.photos === 'missing' ? 'ph_f_missing' : 'ph_f_ready') });
   if (f.angles) out.push({ f: 'angles', label: t(f.angles === 'missing' ? 'a3_f_missing' : 'a3_ready') });
+  if (f.sg) out.push({ f: 'sg', label: t(f.sg === 'missing' ? 'sg_f_missing' : 'sg_f_has') });
   return out;
 }
 function prodFilterCount() { return prodChips().length; }
@@ -236,6 +240,13 @@ function viewProducts() {
         .map(function (o) {
           return '<option value="' + o[0] + '"' + (OG.prod.photos === o[0] ? ' selected' : '') + '>' +
             t(o[1]) + '</option>';
+        }).join('') + '</select></label>';
+    /* 077 — which have a size guide, and which still need one. */
+    h += '<label class="field"><span>' + t('sg_title') + '</span>' +
+      '<select class="inp" data-change="prod-sg">' +
+      [['', 'ph_f_all'], ['missing', 'sg_f_missing'], ['has', 'sg_f_has']]
+        .map(function (o) {
+          return '<option value="' + o[0] + '"' + (OG.prod.sg === o[0] ? ' selected' : '') + '>' + t(o[1]) + '</option>';
         }).join('') + '</select></label>';
     /* 073 — and which are still missing a front or a back for 3D. */
     h += '<label class="field"><span>' + t('a3_title') + '</span>' +
@@ -349,6 +360,8 @@ function openProductDrawer(pid) {
   /* 066 — the photos, first: the website shows nothing of a colour until it
      has its two, and this is where somebody finds that out. */
   body += Photos.card(p);
+  /* 077 — the size guide, with "Send size guide" for WhatsApp. */
+  if (typeof SizeGuide !== 'undefined') body += SizeGuide.card(p);
   /* 070 — and what the website says about it: the description and
      "goes well with", beside the photos, because both are the website's. */
   body += webDetailsCard(p);
@@ -517,7 +530,8 @@ var ProductForm = {
   }
 };
 
-function openProductEditor(pid) {
+function openProductEditor(pid, opts) {
+  opts = opts || {};
   var p = DB.product(pid);
   if (!p) return;
   PE_OPEN = pid;
@@ -563,6 +577,8 @@ function openProductEditor(pid) {
       /* 071 — the Print section: does the website sell a name and number on
          it, and in which kit. */
       (typeof PrintKits !== 'undefined' ? PrintKits.productSection(p) : '') +
+      /* 077 — the size guide: open when the drawer's card asked for it. */
+      (typeof SizeGuide !== 'undefined' ? SizeGuide.editSection(p, !!opts.sizeGuide) : '') +
       '<div class="wh-fold"><button class="wh-more-h" type="button" data-act="pe-more">' +
         t('wh_more_fields') + '<span class="wh-more-x">+</span></button>' +
         '<div class="wh-fold-b" id="peMore" hidden>' +
@@ -577,7 +593,10 @@ function openProductEditor(pid) {
     foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
           '<button class="btn btn-primary" data-act="prod-edit-save" data-id="' + p.id + '">' + t('save') + '</button>',
     onOpen: function () {
-      setTimeout(function () { var n = document.getElementById('peName'); if (n) { n.focus(); n.select(); } }, 30);
+      setTimeout(function () {
+        if (opts.sizeGuide) { var sg = document.getElementById('peSg'); if (sg) sg.scrollIntoView({ block: 'start' }); return; }
+        var n = document.getElementById('peName'); if (n) { n.focus(); n.select(); }
+      }, 30);
     },
     onClose: function () { PE_OPEN = null; }
   });

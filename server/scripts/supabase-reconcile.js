@@ -138,7 +138,10 @@ const TABLES = [
   { name: 'salary_payments',          key: 'id' },
   { name: 'coupons',                  key: 'id' },
   { name: 'coupon_uses',              key: 'id' },
-  { name: 'offers',                   key: 'id' }
+  { name: 'offers',                   key: 'id' },
+  /* 077 — the size guide (044) */
+  { name: 'size_charts',              key: 'id' },
+  { name: 'product_size_guides',      key: 'product_id' }
 ];
 
 const PAGE = 1000;

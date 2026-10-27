@@ -54,6 +54,8 @@ export const PUSHED = [
   'loyalty_redemptions', 'wants', 'money_moves', 'day_closes', 'day_close_lines', 'supplier_ledger', 'salary_payments',
   'coupons', 'coupon_uses',
   'offers',
+  /* 077 — the size guide (044) */
+  'size_charts', 'product_size_guides',
   'config', 'role_permissions', 'label_templates', 'clubs', 'notification_reads', 'categories', 'user_permissions',
   /* 071 — the print kits and their fonts, pushed whole (041). */
   'print_fonts', 'print_kits'

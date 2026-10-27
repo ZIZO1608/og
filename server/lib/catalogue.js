@@ -20,6 +20,7 @@ import * as Angles from './angles.js';
 import * as PrintKits from './printkits.js';
 import * as Partner from './partner.js';
 import * as Offers from './offers.js';
+import * as SizeGuide from './sizeguide.js';
 /* Night shift 28 Oct 2026 — the order sizes are listed in. One file shared
    with the browser (js/sizeorder.js sets globalThis.SizeOrder); every list
    of a product's sizes this module hands out goes through sortVariants(). */
@@ -218,10 +219,13 @@ export function list({ includeHidden = false } = {}) {
   const photos = Photos.byProduct();
   /* 073 — the 3D angles, front first. Not sent to the website. */
   const angles = Angles.byProduct();
+  /* 077 — each product's size guide (lib/sizeguide.js), or nothing. */
+  const guides = SizeGuide.byProduct();
   const sets = sizeSetsByType();
   return rows.map(p => ({ ...p, colours: colours[p.id] ?? [],
                           variants: sortVariants(bySize[p.id] ?? [], p.type, (colours[p.id] ?? []).map(c => c.id), sets),
-                          photos: photos[p.id] ?? [], angles: angles[p.id] ?? [] }));
+                          photos: photos[p.id] ?? [], angles: angles[p.id] ?? [],
+                          size_guide: guides[p.id] ?? null }));
 }
 
 /* ---- colours (058) -------------------------------------------------------
@@ -354,6 +358,7 @@ export function addColour({ productId, nameEn, nameAr, hex, sizes = [], whId = '
     }
     d.prepare('UPDATE products SET updated_at = ? WHERE id = ?').run(at, productId);
     logChange('products', productId, 'update', userId, null);
+    SizeGuide.refreshProduct(d, productId, userId);   // 077 — a row for each new size
     return { colour, variants: made };
   });
 }
@@ -686,6 +691,7 @@ export function remove(id, userId) {
     const files = [...Photos.removeForProducts(db, [id], userId), ...Angles.removeForProducts(db, [id], userId)];
     for (const c of coloursOf(id)) logChange('product_colours', c.id, 'delete', userId, 'product deleted');
     try { db.prepare('DELETE FROM product_colours WHERE product_id = ?').run(id); } catch { /* before 058 */ }
+    SizeGuide.removeForProduct(db, id, userId);      // 077, logged
     db.prepare('DELETE FROM products WHERE id = ?').run(id);
     logChange('products', id, 'delete', userId, 'deleted by hand');
     /* 070 — off every other product's "goes well with", logged, so the
@@ -778,6 +784,9 @@ export function createWithVariants({
   /* Stage 1b — the Add-product form's Print section: printable, and the kit
      (null = the default kit). Checked the way update() checks them. */
   printable = false, printKitId = null,
+  /* 077 — the size guide (lib/sizeguide.js): required, complete, for a
+     clothes type; optional otherwise. Checked before the transaction. */
+  sizeGuide = null,
   /* Nothing sets this any more — the script that planted demo rows is gone.
      The column stays because rows it marked are still in the database,
      hidden rather than deleted so the invoices naming them still read.
@@ -817,6 +826,9 @@ export function createWithVariants({
     }
   }
   if (!total) throw new Error('a product needs at least one size');
+  const guide = SizeGuide.checkNew(get(), sizeGuide, {
+    sizes: clean.flatMap((c) => c.sizes.map((s) => String(s.size).trim())), type
+  });
 
   return tx((d) => {
     const at = nowIso();
@@ -853,7 +865,8 @@ export function createWithVariants({
       }
     });
 
-    return { productId, colours: out, variants: made };
+    const sg = SizeGuide.writeNew(d, productId, guide, userId);
+    return { productId, colours: out, variants: made, sizeGuide: sg };
   });
 }
 
@@ -1020,6 +1033,7 @@ export function addVariant({ productId, size, colourId = null, qty = 0, whId = '
     const made = insertVariant(d, { productId, colour, colourNo, size: label, qty, whId, userId, at, shelf: shelf ?? null });
     d.prepare('UPDATE products SET updated_at = ? WHERE id = ?').run(at, productId);
     logChange('products', productId, 'update', userId, null);
+    SizeGuide.refreshProduct(d, productId, userId);   // 077 — a row for the new size
     return made;
   });
 }

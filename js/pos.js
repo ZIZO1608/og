@@ -1030,6 +1030,9 @@ var POS = (function () {
         '<small>' + note + '</small></button>';
     });
     body += '</div>';
+    /* 077 — the size guide, on its own layer over this picker (js/sizeguide.js):
+       the basket and the picker stay exactly as they are. */
+    if (typeof SizeGuide !== 'undefined') body += SizeGuide.tillButton(p, S.warehouse);
     var gaps = DB.sizeGaps(pid);
     if (gaps.length) {
       body += '<div class="partner-note note-danger">' +

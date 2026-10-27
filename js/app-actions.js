@@ -1357,6 +1357,15 @@ var ACTIONS = {
      this dialog is full of typed-but-unsaved values and a repaint would take
      them — the same rule Settings' folds follow. Not remembered per machine
      either, because a dialog is opened for one job and closed again. */
+  /* 077 — the size guide's fold in the product editor; one attribute. */
+  'pe-sg': function (el) {
+    var body = document.getElementById('peSg');
+    if (!body) return;
+    var open = body.hasAttribute('hidden');
+    if (open) body.removeAttribute('hidden'); else body.setAttribute('hidden', '');
+    var x = el.querySelector('.wh-more-x');
+    if (x) x.textContent = open ? '−' : '+';
+  },
   'pe-more': function (el) {
     var body = document.getElementById('peMore');
     if (!body) return;
@@ -1470,9 +1479,17 @@ var ACTIONS = {
     if (!body.name) { toast(t('edit_product'), t('name_required'), 'err'); return; }
     if (body.selling_price === undefined) { toast(t('edit_product'), t('price_required'), 'err'); return; }
     if (body._printError) { toast(t('edit_product'), body._printError, 'err', 6000); return; }
+    /* 077 — the size guide goes after the product, only when it was touched;
+       a refusal is said on the cell and the dialog stays open. */
+    var sg = typeof SizeGuide !== 'undefined' ? SizeGuide.editPayload() : null;
+    if (sg && sg.error) { toast(t('sg_title'), sg.error, 'err', 6000); return; }
     var p = DB.product(id);
     Shop.write(
-      function () { return Shop.updateProduct(id, body); },
+      function () {
+        return Shop.updateProduct(id, body).then(function (r) {
+          return sg && sg.guide !== undefined ? SizeGuide.saveFor(id, sg.guide).then(function () { return r; }) : r;
+        });
+      },
       function () {
         if (p) {
           p.name = body.name; p.type = body.type; p.brand = body.brand; p.madeIn = body.made_in; p.onWeb = !!body.on_web;
@@ -1772,10 +1789,15 @@ var ACTIONS = {
     /* Stage 1b — the Print section: refused in words when a club has no kit. */
     var pf = typeof PrintKits !== 'undefined' ? PrintKits.productFields() : null;
     if (pf && pf.error) { toast(t('cp_add_product'), pf.error, 'err', 6000); return; }
+    /* 077 — the size guide: refused here, on the cell, before the request
+       when it is required and not complete; the server says the same. */
+    var sg = typeof SizeGuide !== 'undefined' ? SizeGuide.newPayload() : { guide: null };
+    if (sg.error) { toast(t('sg_title'), sg.error, 'err', 6000); return; }
 
     Shop.write(
       function () {
         return Shop.newProduct({
+          sizeGuide: sg.guide && !sg.guide.none ? sg.guide : undefined,
           printable: !!(pf && pf.printable),
           printKitId: pf && pf.printable ? pf.print_kit_id : null,
           name: name,
@@ -1835,6 +1857,7 @@ var ACTIONS = {
            without a second button to press. */
         OG.wh.sizes = {}; OG.wh.name = ''; OG.wh.img = null; OG.wh.imgSrc = null;
         if (typeof PrintKits !== 'undefined') PrintKits.formReset();
+        if (typeof SizeGuide !== 'undefined') SizeGuide.formReset();
         OG.wh.price = ''; OG.wh.cost = '';
         ColourForm.reset();
         /* The room STAYS — the next box off the same delivery goes to the

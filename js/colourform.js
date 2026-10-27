@@ -136,6 +136,10 @@ var ColourForm = (function () {
 
   /* Totals only — the input being typed into is left alone. */
   function patch(c) {
+    /* Night shift 28 Oct 2026 — a size coming into or out of the product
+       moves the size guide's rows (js/sizeguide.js), which repaints its own
+       card only when the set really changed. */
+    if (typeof SizeGuide !== 'undefined') setTimeout(SizeGuide.sizesMoved, 0);
     var tot = document.querySelector('[data-cf-total="' + c.key + '"]');
     if (tot) tot.innerHTML = '<bdi dir="ltr">' + nf(colourTotal(c)) + '</bdi> ' + t('pieces');
     var chip = document.querySelector('[data-cf-chip="' + c.key + '"]');
@@ -519,6 +523,13 @@ var ColourForm = (function () {
     matrix: matrix, openAdd: openAdd,
     html: html, list: list, grand: grand, colourTotal: colourTotal,
     payload: payload, flag: flag, reset: reset, label: label, sizes: sizes,
+    /* The sizes with a quantity in any colour — the rows the size guide asks
+       for (night shift 28 Oct 2026). */
+    sizesInUse: function () {
+      var on = {};
+      list().forEach(function (c) { sizes().forEach(function (s) { if (Number(c.qty[s]) > 0) on[s] = 1; }); });
+      return sizes().filter(function (s) { return on[s]; });
+    },
     /* 066 — js/photos.js reaches a colour's draft photos through this.
        No key: the first colour, where a pasted photo goes. */
     colour: function (key) { return key == null ? list()[0] : find(key); }
