@@ -2380,6 +2380,25 @@ var ShelfMap = (function () {
     addChip({ kind: 'shelf', label: found.sec.key + '-' + found.sh.code, sub: t('sm_target_set') });
     repaint();
     flash(found.sh.id, 'sm-flash-ok');
+    flyToShelf(found.sh.id);
+  }
+
+  /* A scanned shelf label flies the 3D room to that bay and pins its card,
+     exactly as pressing the bay does (the `pick` hook). After the repaint,
+     because a repaint detaches the canvas and stops a running flight. A room
+     that has just been switched may not have built its scene by this line,
+     so a refused flight is tried once more on the next frame. No flight
+     while the layout is being edited — ShelfRoom.focus refuses then too. */
+  function flyToShelf(id) {
+    if (!use3d() || typeof ShelfRoom === 'undefined' || !ShelfRoom.focus) return;
+    peekPin = null;
+    var fly = function () {
+      if (S.sel !== id || !ShelfRoom.focus(id)) return false;
+      peekPin = id;
+      showPinned(id);
+      return true;
+    };
+    if (!fly()) requestAnimationFrame(fly);
   }
 
   function productScan(v) {
