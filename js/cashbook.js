@@ -947,6 +947,54 @@ var Cashbook = (function () {
     return p ? ((p.balances || {})[cur] || 0) : 0;
   }
 
+  /* BELOW ZERO IS SAID, AND ASKED ONCE MORE (night shift 28 Oct 2026).
+     "With the owner −$20" and "Drawer −$95.33" were dialogs pressed as they
+     opened: a payment out of a place holding less than it. The book allows a
+     negative balance on purpose (053 — money that came in and was never
+     recorded), so this warns and never refuses: the first press names the
+     place and what it would hold afterwards, in amber, and offers the honest
+     alternative — the owner puts the money in first. The second press, with
+     the same place, currency and amount, goes. Answers whether to go on. */
+  function belowZero(el, place, cur, amt) {
+    if (!el || !place || !(amt > 0) || !findPlace(place)) return true;
+    var have = holds(place, cur), after = have - amt;
+    if (after >= 0) return true;
+    var key = place + '|' + cur + '|' + amt;
+    if (el.getAttribute('data-bz') === key) return true;
+    el.setAttribute('data-bz', key);
+    var body = document.querySelector('.modal-body');
+    if (!body) return true;
+    var box = document.getElementById('cbBelowZero');
+    if (!box) { box = document.createElement('div'); box.id = 'cbBelowZero'; box.className = 'cb-bz'; body.appendChild(box); }
+    box.innerHTML = '<b>' + t('cb_bz_title') + '</b><span>' +
+      t('cb_bz_q').replace('{place}', esc(placeName(place))).replace('{have}', have < 0 ? signed(have, cur) : text(have, cur)).replace('{after}', signed(after, cur)) +
+      '</span><button type="button" class="btn btn-sm" data-cb="bz-owner" data-place="' + esc(place) + '" data-cur="' + esc(cur) +
+      '" data-amt="' + (-after) + '">' + t('cb_bz_owner') + '</button>';
+    el.innerHTML = '<span>' + t('cb_bz_anyway') + '</span>';
+    box.scrollIntoView({ block: 'nearest' });
+    return false;
+  }
+  /* A live line under the "from" choice: what the place holds, and amber
+     when this would take it below zero — before anybody presses anything. */
+  function holdLine(place, cur, amt) {
+    if (!place || !findPlace(place)) return '';
+    var have = holds(place, cur);
+    var low = amt > 0 && have - amt < 0;
+    return '<span class="cb-hold' + (low ? ' cb-hold-low' : '') + '">' +
+      t(low ? 'cb_hold_low' : 'cb_hold').replace('{place}', esc(placeName(place))).replace('{have}', have < 0 ? signed(have, cur) : text(have, cur))
+        .replace('{after}', signed(have - amt, cur)) + '</span>';
+  }
+  /* The place that can pay this best: the first switched-on place holding at
+     least that amount of that currency, else the one holding the most of it, else the
+     drawer. Never "with the owner" by default just because it is first. */
+  function bestPlace(cur, amt) {
+    var list = pickable().filter(function (p) { return p.active !== false; });
+    var enough = list.filter(function (p) { return ((p.balances || {})[cur] || 0) >= (amt || 1); });
+    if (enough.length) return enough[0].id;
+    var most = list.slice().sort(function (a, b) { return ((b.balances || {})[cur] || 0) - ((a.balances || {})[cur] || 0); })[0];
+    return most && ((most.balances || {})[cur] || 0) > 0 ? most.id : 'drawer';
+  }
+
   /* ---- move ---- */
   function openMove(from) {
     var src = from || 'drawer';
@@ -1071,31 +1119,59 @@ var Cashbook = (function () {
   /* ---- starting balances ----
      Every place the book has not been told about yet, both currencies. The
      first check of a place IS its starting balance. */
+  /* ONE PLACE AT A TIME (night shift 28 Oct 2026). The banner "Enter starting
+     balances" was still up on the live shop: the whole table of every place ×
+     every currency at once was a form nobody finished, and the places it left
+     unstarted are where "below zero" came from. Now it walks the places: what
+     is in this one now, in lira and in dollars; Next, Back, or Skip. Nothing is
+     saved until the last step, and then all of it at once (runChecks), so
+     leaving half-way changes nothing. Still optional. */
+  var SS = null;   /* { list, i, vals: { place|cur: raw } } */
   function openStart() {
     var list = pickable().filter(function (p) { return !p.opened; });
-    var curs = currencies();
     if (!list.length) {
       toast(t('cb_start_title'), t('cb_start_done'), 'ok', 4000);
       return;
     }
-    openModal({
-      title: t('cb_start_title'), size: 'wide',
-      body: '<p class="muted">' + t('cb_start_sub') + '</p>' +
-        '<div class="table-wrap"><table class="tbl cb-start-tbl"><thead><tr><th>' + t('cb_col_place') + '</th>' +
-          curs.map(function (c) { return '<th class="num">' + c + '</th>'; }).join('') + '</tr></thead><tbody>' +
-          list.map(function (p) {
-            return '<tr><td><b>' + esc(placeName(p.id)) + '</b><small class="muted" style="display:block">' +
-              t('cb_kind_' + p.kind) + '</small></td>' +
-              curs.map(function (c) {
-                return '<td class="num"><input class="inp num cb-start-in" type="text" inputmode="decimal" dir="ltr"' +
-                  ' data-place="' + esc(p.id) + '" data-cur="' + c + '" placeholder="—"></td>';
-              }).join('') + '</tr>';
-          }).join('') +
-        '</tbody></table></div>' +
-        '<div class="muted small mt">' + t('cb_blank_skips') + '</div>',
-      foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
-        '<button class="btn btn-primary" data-cb="start-go" data-op="' + newOp('st') + '">' + t('cb_start_save') + '</button>'
+    SS = { list: list, i: 0, vals: {}, op: newOp('st') };
+    openModal({ title: t('cb_start_title'), size: 'narrow', body: startStep(), foot: startFoot(),
+                onClose: function () { SS = null; } });
+    focusStart();
+  }
+  function startStep() {
+    var p = SS.list[SS.i], curs = currencies();
+    return '<div class="cb-steps"><span class="muted small">' + t('cb_start_n').replace('{i}', '<bdi dir="ltr">' + (SS.i + 1) + '</bdi>')
+        .replace('{n}', '<bdi dir="ltr">' + SS.list.length + '</bdi>') + '</span>' +
+        '<div class="cb-step-bar"><i style="width:' + Math.round((SS.i + 1) / SS.list.length * 100) + '%"></i></div></div>' +
+      '<h3 class="cb-step-h">' + esc(placeName(p.id)) + '</h3>' +
+      '<p class="muted">' + t('cb_start_q') + '</p>' +
+      curs.map(function (c) {
+        return field(t('cb_cur_' + c) !== 'cb_cur_' + c ? t('cb_cur_' + c) : c,
+          '<input class="inp num cb-big-in cb-start-in" type="text" inputmode="decimal" dir="ltr" autocomplete="off" ' +
+          'data-place="' + esc(p.id) + '" data-cur="' + c + '" placeholder="0" value="' + esc(SS.vals[p.id + '|' + c] || '') + '">', 'mt');
+      }).join('') +
+      '<p class="muted small mt">' + t('cb_start_blank') + '</p>';
+  }
+  function startFoot() {
+    var last = SS.i === SS.list.length - 1;
+    return (SS.i ? '<button class="btn btn-ghost" data-cb="start-back">' + t('cb_back') + '</button>' : '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>') +
+      '<button class="btn" data-cb="start-skip">' + t('cb_skip') + '</button>' +
+      (last ? '<button class="btn btn-primary" data-cb="start-go" data-op="' + SS.op + '">' + t('cb_start_save') + '</button>'
+            : '<button class="btn btn-primary" data-cb="start-next">' + t('cb_next') + '</button>');
+  }
+  function keepStart() {
+    Array.prototype.forEach.call(document.querySelectorAll('.cb-start-in'), function (inp) {
+      SS.vals[inp.getAttribute('data-place') + '|' + inp.getAttribute('data-cur')] = String(inp.value || '').trim();
     });
+  }
+  function paintStart() {
+    var b = document.querySelector('.modal-body'), f = document.querySelector('.modal-foot');
+    if (b) b.innerHTML = startStep();
+    if (f) f.innerHTML = startFoot();
+    focusStart();
+  }
+  function focusStart() {
+    setTimeout(function () { var i = document.querySelector('.cb-start-in'); if (i && !(window.matchMedia && matchMedia('(pointer: coarse)').matches)) i.focus(); }, 30);
   }
 
   /* Several checks, one after another inside ONE Shop.write — its one-write
@@ -1383,6 +1459,20 @@ var Cashbook = (function () {
       if (x) x.textContent = open ? '−' : '+';
     },
 
+    /* The honest way out of a payment that would take a place below zero
+       (belowZero): the owner puts the missing money in first. The owner
+       dialog opens on "puts in", that place, that currency and that amount. */
+    'bz-owner': function (el) {
+      var place = el.getAttribute('data-place'), cur = el.getAttribute('data-cur'), amt = Number(el.getAttribute('data-amt')) || 0;
+      closeModal();
+      openOwner();
+      var inBtn = document.querySelector('[data-cb="owner-dir"][data-v="in"]');
+      if (inBtn) inBtn.click();
+      var p = document.getElementById('cbOPlace'); if (p) p.value = place;
+      var c = document.getElementById('cbCur'); if (c) c.value = cur;
+      var a = document.getElementById('cbAmt');
+      if (a) a.value = cur === 'USD' ? (amt / 100).toFixed(2) : String(amt);
+    },
     'owner-dir': function (el) {
       var v = el.getAttribute('data-v');
       var box = document.getElementById('cbODir');
@@ -1400,6 +1490,7 @@ var Cashbook = (function () {
       var fee = toMinor(val('cbFee'), cur);
       if (from === to) { toast(t('cb_move'), t('cb_same_place'), 'warn'); return; }
       if (!amount) { toast(t('cb_move'), t('mn_amount_needed'), 'warn'); return; }
+      if (!belowZero(el, from, cur, amount + (fee || 0))) return;
       var body = { from: from, to: to, currency: cur, amount: amount, fee: fee || 0,
                    note: val('cbNote') || null, opId: el.getAttribute('data-op') };
       submit(el, function () { return Shop.cashTransfer(body); }, function () {
@@ -1456,15 +1547,34 @@ var Cashbook = (function () {
       runChecks(items, el.getAttribute('data-op'), t('cb_check') + ' · ' + placeName(placeId));
     },
 
-    'start-go': function (el) {
+    'start-next': function () { if (!SS) return; keepStart(); SS.i = Math.min(SS.list.length - 1, SS.i + 1); paintStart(); },
+    'start-back': function () { if (!SS) return; keepStart(); SS.i = Math.max(0, SS.i - 1); paintStart(); },
+    'start-skip': function (el) {
+      if (!SS) return;
+      var p = SS.list[SS.i];
+      currencies().forEach(function (c) { delete SS.vals[p.id + '|' + c]; });
+      if (SS.i < SS.list.length - 1) { SS.i++; paintStart(); return; }
+      ACT['start-go'](el, true);
+    },
+    'start-go': function (el, skipping) {
       var items = [];
-      Array.prototype.forEach.call(document.querySelectorAll('.cb-start-in'), function (inp) {
-        var raw = String(inp.value || '').trim();
-        if (raw === '') return;
-        var c = inp.getAttribute('data-cur');
-        items.push({ place: inp.getAttribute('data-place'), currency: c, counted: toMinor(raw, c) });
-      });
-      runChecks(items, el.getAttribute('data-op'), t('cb_start_title'));
+      if (SS) {
+        if (!skipping) keepStart();
+        Object.keys(SS.vals).forEach(function (k) {
+          var raw = SS.vals[k];
+          if (raw === '' || raw == null) return;
+          var parts = k.split('|');
+          items.push({ place: parts[0], currency: parts[1], counted: toMinor(raw, parts[1]) });
+        });
+      } else {
+        Array.prototype.forEach.call(document.querySelectorAll('.cb-start-in'), function (inp) {
+          var raw = String(inp.value || '').trim();
+          if (raw === '') return;
+          var c = inp.getAttribute('data-cur');
+          items.push({ place: inp.getAttribute('data-place'), currency: c, counted: toMinor(raw, c) });
+        });
+      }
+      runChecks(items, (SS && SS.op) || el.getAttribute('data-op'), t('cb_start_title'));
     },
 
     /* The empty places: one line, or every card (16 Oct 2026). The page
@@ -1718,6 +1828,7 @@ var Cashbook = (function () {
     settingsCard: settingsCard,
     placeName: placeName,
     pickable: pickable,
+    belowZero: belowZero, holdLine: holdLine, bestPlace: bestPlace, holds: holds,
     /* The one money DIALOG PATTERN, shared with js/payables.js and
        js/money.js (ns03) — the whole point is that there is one shape, so
        there is one place it is built. */

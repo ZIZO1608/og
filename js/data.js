@@ -2136,17 +2136,21 @@ var DB = {
 
   /* Voided ones are not a cost, and a dollar expense is not lira: the
      month's figure is the shop's own currency, and says so where it is drawn. */
-  expensesBetween: function (from, to) {
+  /* One currency at a time — the base unless asked (night shift 28 Oct 2026:
+     the Expenses tab asked only for lira, so a month of dollar expenses read
+     "Spent this month: 0" above a table listing them). Never added together. */
+  expensesBetween: function (from, to, currency) {
     var base = CONFIG.BASE_CURRENCY || 'SYP';
+    var want = currency || base;
     return expenses.filter(function (e) {
-      return e.at >= from && e.at < to && !e.voided && (e.currency || base) === base;
+      return e.at >= from && e.at < to && !e.voided && (e.currency || base) === want;
     });
   },
 
-  expensesInMonth: function (monthsBack) {
+  expensesInMonth: function (monthsBack, currency) {
     var d = new Date(TODAY.getFullYear(), TODAY.getMonth() - (monthsBack || 0), 1);
     var e = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-    return DB.expensesBetween(d, e).reduce(function (a, x) { return a + x.amount; }, 0);
+    return DB.expensesBetween(d, e, currency).reduce(function (a, x) { return a + x.amount; }, 0);
   },
 
   /* netProfit lived here: the last 200 sales, lira and dollars added, cost
@@ -3134,6 +3138,8 @@ var DB = {
       payload.suppliers.forEach(function (x) {
         suppliers.push({
           id: x.id, name: x.name, contact: x.contact, category: x.category,
+          /* 079 — the phone and notes on the supplier form */
+          phone: x.phone || '', notes: x.notes || '',
           /* 055: in the supplier's own currency, kept by its ledger. */
           currency: x.currency || CONFIG.BASE_CURRENCY || 'SYP',
           outstanding: x.outstanding, totalPurchased: x.total_purchased,

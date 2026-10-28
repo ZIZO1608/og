@@ -30,7 +30,12 @@ var Money = (function () {
   var GROUPS = [
     { id: 'now', key: 'cb_now', tabs: ['now'] },
     { id: 'close', key: 'dc_tab', tabs: ['close'] },
-    { id: 'out', key: 'mn_g_out', tabs: ['expenses', 'suppliers', 'salaries'] },
+    /* Night shift 28 Oct 2026 — SUPPLIERS IN ONE TAP. They sat under
+       Payments, a word that also meant expenses and wages, and were reached a
+       second way from Who owes whom: two doors and neither said Suppliers.
+       Five places now, each one word a person would look for. */
+    { id: 'sup', key: 'py_suppliers', tabs: ['suppliers'] },
+    { id: 'out', key: 'mn_g_spend', tabs: ['expenses', 'salaries'] },
     { id: 'books', key: 'mn_g_books', tabs: ['statement', 'book', 'debt', 'shift'] }
   ];
 
@@ -280,6 +285,11 @@ var Money = (function () {
 
   function expensesTab() {
     var month = DB.expensesInMonth(0), lastMonth = DB.expensesInMonth(1);
+    /* THE MONTH IS A PAIR (night shift 28 Oct 2026). It counted lira only, so
+       a $100 transport expense was in the table and "Spent this month: 0"
+       stood above it. Never added: lira, then dollars, each in its own. */
+    var other = base() === 'USD' ? 'SYP' : 'USD';
+    var monthOther = DB.expensesInMonth(0, other);
     var canWrite = allow('money.write');
 
     /* The month's profit is the Statement's (server-side, every sale, both
@@ -288,6 +298,7 @@ var Money = (function () {
     var h = '<div class="grid stat-row py-stats mn-exp-stats mb">' +
       '<div class="stat"><span class="eyebrow">' + t('mn_exp_month') + '</span>' +
         '<div class="val warn">' + moneyStat(month) + '</div>' +
+        (monthOther ? '<div class="mn-pair">+ ' + inCur(monthOther, other) + '</div>' : '') +
         deltaTag(month, lastMonth, t('vs_last_month')) + '</div>' +
       (allow('profit.read')
         ? '<div class="stat clickable" data-mn="tab" data-t="statement"><span class="eyebrow">' + t('mn_net') + '</span>' +
@@ -298,13 +309,17 @@ var Money = (function () {
 
     /* Where it goes, biggest first — the shop's own currency, voids left out,
        the same set the month's figure above is made of. */
-    var byCat = {};
+    /* Each currency on its own; a category spent in both shows both. The
+       empty line is said only when there is truly nothing (night shift 28 Oct
+       2026 — it said "No expenses recorded yet" over a dollar expense). */
+    var byCat = {}, byOther = {};
     DB.expenses.forEach(function (e) {
-      if (e.voided || e.currency !== base()) return;
-      byCat[e.category] = (byCat[e.category] || 0) + e.amount;
+      if (e.voided) return;
+      if ((e.currency || base()) === base()) byCat[e.category] = (byCat[e.category] || 0) + e.amount;
+      else byOther[e.category] = (byOther[e.category] || 0) + e.amount;
     });
-    var cats = Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; });
-    var maxCat = cats.length ? byCat[cats[0]] : 1;
+    var cats = Object.keys(byCat).concat(Object.keys(byOther).filter(function (c) { return !(c in byCat); }))
+      .sort(function (a, b) { return (byCat[b] || 0) - (byCat[a] || 0) || (byOther[b] || 0) - (byOther[a] || 0); });
 
     h += '<div class="mn-exp-grid">';
 
@@ -316,13 +331,14 @@ var Money = (function () {
        asks this card is "what did we spend it on, and how much" — both of
        which are words and a figure. The share is spelled out for the same
        reason the Reports tables now print theirs. */
-    var totCat = cats.reduce(function (a, c) { return a + byCat[c]; }, 0);
+    var totCat = cats.reduce(function (a, c) { return a + (byCat[c] || 0); }, 0);
     cats.forEach(function (c) {
-      var share = totCat > 0 ? Math.round(byCat[c] / totCat * 100) : 0;
+      var share = totCat > 0 && byCat[c] ? Math.round(byCat[c] / totCat * 100) : 0;
       h += '<div class="mn-cat">' +
         '<span class="mc-name">' + esc(Cashbook.catLabel(c)) + '</span>' +
-        '<span class="mc-amt">' + moneyShort(byCat[c]) +
-          (totCat > 0 ? ' <span class="muted"><bdi dir="ltr">' + share + '%</bdi></span>' : '') +
+        '<span class="mc-amt">' + (byCat[c] ? moneyShort(byCat[c]) : '') +
+          (byCat[c] && byOther[c] ? ' · ' : '') + (byOther[c] ? inCur(byOther[c], other) : '') +
+          (share ? ' <span class="muted"><bdi dir="ltr">' + share + '%</bdi></span>' : '') +
         '</span></div>';
     });
     h += '</div></div>';
@@ -601,13 +617,14 @@ var Money = (function () {
       });
     },
 
-    'add-expense-go': function () {
+    'add-expense-go': function (el) {
       var cur = (document.getElementById('mnCur') || {}).value || base();
       Cashbook.rememberCur('expense', cur);
       rememberCat((document.getElementById('mnCat') || {}).value || '');
       var amt = toMinor((document.getElementById('mnAmt') || {}).value, cur);
       if (!amt || amt <= 0) { toast(t('mn_add_expense'), t('mn_amount_needed'), 'warn'); return; }
       var place = (document.getElementById('mnPlace') || {}).value || null;
+      if (place && !Cashbook.belowZero(el, place, cur, amt)) return;
       var ymd = (document.getElementById('mnDate') || {}).value || '';
       var body = {
         category: (document.getElementById('mnCat') || {}).value,

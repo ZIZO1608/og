@@ -1300,3 +1300,9 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
+
+-- ---- 046_supplier_phone.sql (night shift 28 Oct 2026) ---------------------
+
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS phone TEXT;
+
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes TEXT;

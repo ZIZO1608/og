@@ -268,10 +268,13 @@ export function saveSupplier(fields = {}, userId = null) {
                    'currency_locked');
       }
       d.prepare(
-        `UPDATE suppliers SET name = ?, contact = ?, category = ?, currency = ?, due_date = ?,
+        `UPDATE suppliers SET name = ?, contact = ?, phone = ?, notes = ?, category = ?, currency = ?, due_date = ?,
                 archived = ?, updated_at = ? WHERE id = ?`
       ).run(name ?? s.name,
             fields.contact !== undefined ? clean(fields.contact, 120) : s.contact,
+            /* 079 — the phone (the WhatsApp button reads it) and notes */
+            fields.phone !== undefined ? clean(fields.phone, 40) : s.phone,
+            fields.notes !== undefined ? clean(fields.notes, 500) : s.notes,
             fields.category !== undefined ? clean(fields.category, 40) : s.category,
             cur ?? s.currency,
             fields.due_date !== undefined ? due : s.due_date,
@@ -283,9 +286,9 @@ export function saveSupplier(fields = {}, userId = null) {
 
     if (!name) throw fail('a supplier needs a name', 'bad_request');
     const info = d.prepare(
-      `INSERT INTO suppliers (name, contact, category, currency, due_date, archived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`
-    ).run(name, clean(fields.contact, 120), clean(fields.category, 40),
+      `INSERT INTO suppliers (name, contact, phone, notes, category, currency, due_date, archived, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+    ).run(name, clean(fields.contact, 120), clean(fields.phone, 40), clean(fields.notes, 500), clean(fields.category, 40),
           cur || (d.prepare("SELECT value FROM config WHERE key = 'shop.base_currency'").get() || {}).value || 'SYP',
           due, at, at);
     const id = Number(info.lastInsertRowid);

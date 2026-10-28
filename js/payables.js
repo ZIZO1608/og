@@ -92,26 +92,29 @@ var Payables = (function () {
       return h + '<div class="card"><div class="cart-empty"><b>' + t('py_no_suppliers') + '</b>' + t('py_no_suppliers_sub') + '</div></div>';
     }
 
-    h += '<div class="card table-wrap"><table class="tbl py-tbl"><thead><tr>' +
-      '<th>' + t('py_supplier') + '</th><th class="num">' + t('py_owed') + '</th><th>' + t('py_due') + '</th>' +
-      '<th class="num">' + t('py_bought') + '</th><th>' + t('py_last_paid') + '</th><th></th></tr></thead><tbody>';
+    /* ONE ROW A SUPPLIER, ONE THING TO DO ON IT (night shift 28 Oct 2026).
+       Six columns and three buttons a row read as a spreadsheet to a shop
+       that keeps its records on paper. Now: who (and their phone), what we
+       owe — big — when it is due, when we last paid, and Pay only when
+       something is owed. The row opens the supplier's page, where the history,
+       the orders, Edit and WhatsApp are. */
+    h += '<div class="py-sups">';
     list.slice().sort(function (a, b) { return (b.outstanding || 0) - (a.outstanding || 0); }).forEach(function (s) {
-      h += '<tr>' +
-        '<td><b>' + esc(s.name) + '</b>' +
-          '<small class="muted py-sub">' + esc([s.category, s.contact].filter(Boolean).join(' · ')) + '</small></td>' +
-        '<td class="num"><b class="' + (s.outstanding > 0 ? 'py-owe' : s.outstanding < 0 ? 'py-ahead' : '') + '">' +
-          m(s.outstanding, s.currency) + '</b>' +
-          (s.outstanding < 0 ? '<small class="muted py-sub">' + t('py_paid_ahead') + '</small>' : '') + '</td>' +
-        '<td>' + (s.outstanding > 0 ? dueBadge(s.dueRaw) : '<span class="muted">—</span>') + '</td>' +
-        '<td class="num muted">' + (s.totalPurchased ? m(s.totalPurchased, s.currency) : '—') + '</td>' +
-        '<td class="muted">' + (s.lastPayment ? esc(fmtDate(s.lastPayment)) : '—') + '</td>' +
-        '<td class="py-acts">' +
-          (can ? '<button class="btn btn-sm btn-primary" data-py="sup-pay" data-id="' + s.id + '">' + t('py_pay') + '</button>' : '') +
-          '<button class="btn btn-sm btn-ghost" data-py="sup-ledger" data-id="' + s.id + '">' + t('py_ledger') + '</button>' +
-          (can ? '<button class="btn btn-sm btn-ghost" data-py="sup-edit" data-id="' + s.id + '">' + t('edit') + '</button>' : '') +
-        '</td></tr>';
+      h += '<div class="py-sup' + (s.archived ? ' off' : '') + '" data-py="sup-open" data-id="' + s.id + '" role="button" tabindex="0">' +
+        '<div class="py-sup-who"><b dir="auto">' + esc(s.name) + '</b>' +
+          '<small class="muted">' + (s.phone ? '<bdi dir="ltr">' + esc(s.phone) + '</bdi>' : esc(s.contact || s.category || '')) + '</small></div>' +
+        '<div class="py-sup-owe"><span class="eyebrow">' + t('py_owed') + '</span>' +
+          '<b class="' + (s.outstanding > 0 ? 'py-owe' : s.outstanding < 0 ? 'py-ahead' : 'muted') + '">' +
+            (s.outstanding ? m(s.outstanding, s.currency) : '—') + '</b>' +
+          (s.outstanding < 0 ? '<small class="muted">' + t('py_paid_ahead') + '</small>' : '') + '</div>' +
+        '<div class="py-sup-due">' + (s.outstanding > 0 ? dueBadge(s.dueRaw) : '') +
+          '<small class="muted">' + t('py_last_paid') + ' ' + (s.lastPayment ? esc(fmtDate(s.lastPayment)) : '—') + '</small></div>' +
+        '<div class="py-sup-act">' + (can && s.outstanding > 0
+          ? '<button class="btn btn-primary" data-py="sup-pay" data-id="' + s.id + '">' + t('py_pay') + '</button>'
+          : '<span class="py-sup-go" aria-hidden="true">›</span>') + '</div>' +
+      '</div>';
     });
-    return h + '</tbody></table></div>';
+    return h + '</div>';
   }
 
   function supplier(id) {
@@ -124,7 +127,12 @@ var Payables = (function () {
     openModal({
       title: s ? t('py_edit_supplier') + ' · ' + esc(s.name) : t('py_new_supplier'), size: 'narrow',
       body: field(t('name'), '<input class="inp" id="pySName" maxlength="80" value="' + esc(s ? s.name : '') + '">') +
-        field(t('py_contact'), '<input class="inp" id="pySContact" maxlength="120" value="' + esc(s ? s.contact || '' : '') + '">', 'mt') +
+        /* 079 — a proper phone (WhatsApp and Call read it) and notes; the old
+           free-text Contact stays for the name of the person to ask for. */
+        '<div class="cb-pair">' +
+          field(t('py_phone'), '<input class="inp" id="pySPhone" type="tel" inputmode="tel" dir="ltr" maxlength="40" value="' + esc(s ? s.phone || '' : '') + '" placeholder="09…">') +
+          field(t('py_contact_person'), '<input class="inp" id="pySContact" maxlength="120" value="' + esc(s ? s.contact || '' : '') + '">') +
+        '</div>' +
         field(t('py_category'), '<input class="inp" id="pySCat" maxlength="40" value="' + esc(s ? s.category || '' : '') + '">', 'mt') +
         '<div class="cb-pair">' +
           field(t('cb_currency'), curSelect('pySCur', s ? s.currency : base(), locked)) +
@@ -132,6 +140,7 @@ var Payables = (function () {
         '</div>' +
         (locked ? '<div class="muted small">' + t('py_cur_locked') + '</div>' : '') +
         (!s ? field(t('py_opening'), amountBox('pySOpen'), 'mt') + '<div class="muted small">' + t('py_opening_hint') + '</div>' : '') +
+        field(t('py_notes'), '<textarea class="inp" id="pySNotes" rows="2" maxlength="500" dir="auto">' + esc(s ? s.notes || '' : '') + '</textarea>', 'mt') +
         (s ? '<label class="cb-check mt"><input type="checkbox" id="pySArch"' + (s.archived ? ' checked' : '') + '> ' + t('py_archived') + '</label>' : ''),
       foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('cancel') + '</button>' +
         '<button class="btn btn-primary" data-py="sup-save" data-id="' + (s ? s.id : '') + '" data-op="' + Cashbook.newOp('so') + '">' + t('save') + '</button>'
@@ -150,8 +159,17 @@ var Payables = (function () {
       title: t('py_pay') + ' · ' + esc(sup.name), size: 'narrow',
       body: stat(t('py_owed'), Cashbook.money(sup.outstanding, sup.currency)) +
         Cashbook.bigAmount('pyPAmt', t('cb_amount'), 'py:pay-hint', 'pyPCur') +
+        /* NIGHT SHIFT 28 OCT 2026 — THE AMOUNT STARTS EMPTY. It opened holding
+           the whole balance ($12,328.99) and "from: With the owner", a place
+           with nothing in it: one press recorded everything and took the
+           place below zero. "All" and "Half" are one tap each instead. */
+        (sup.outstanding > 0
+          ? '<div class="chip-row py-quick"><button type="button" class="chip" data-py="pay-fill" data-v="all">' + t('py_fill_all') + ' · ' + m(sup.outstanding, sup.currency) + '</button>' +
+            '<button type="button" class="chip" data-py="pay-fill" data-v="half">' + t('py_fill_half') + '</button></div>'
+          : '') +
         Cashbook.field(t('cb_which_money'), Cashbook.curPick('pyPCur', sup.currency, 'py:pay-hint'), 'mt') +
-        Cashbook.field(t('cb_from_where'), Cashbook.placePick('pyPPlace', 'owner'), 'mt') +
+        Cashbook.field(t('cb_from_where'), Cashbook.placePick('pyPPlace', Cashbook.bestPlace(sup.currency, Math.max(1, sup.outstanding)), { change: 'py:pay-hint' }), 'mt') +
+        '<div class="py-hold" id="pyPHold"></div>' +
         '<div class="partner-note mt" id="pyPHint" data-sup="' + esc(sup.id) + '"></div>' +
         Cashbook.moreFold(Cashbook.field(t('note'), '<input class="inp" id="pyPNote" type="text" maxlength="300">')) +
         '<div class="muted small mt">' + t('py_not_expense') + '</div>',
@@ -159,8 +177,6 @@ var Payables = (function () {
         '<button class="btn btn-primary" data-py="sup-pay-go" data-id="' + sup.id + '" data-op="' + op + '">' +
           t('py_pay') + '</button>',
       onOpen: function () {
-        var box = document.getElementById('pyPAmt');
-        if (box && sup.outstanding > 0) box.value = whole(sup.outstanding, sup.currency);
         payHint();
         Cashbook.focusAmount('pyPAmt');
       }
@@ -168,6 +184,8 @@ var Payables = (function () {
   }
 
   function payHint() {
+    var hold = document.getElementById('pyPHold');
+    if (hold) hold.innerHTML = Cashbook.holdLine(val('pyPPlace'), val('pyPCur'), Cashbook.toMinor(val('pyPAmt'), val('pyPCur')) || 0);
     var host = document.getElementById('pyPHint');
     if (!host) return;
     var s = supplier(host.getAttribute('data-sup'));
@@ -188,16 +206,51 @@ var Payables = (function () {
       (left < 0 ? t('py_leaves_ahead').replace('{x}', m(-left, s.currency)) : t('py_leaves').replace('{x}', m(left, s.currency)));
   }
 
+  /* THE SUPPLIER'S PAGE (night shift 28 Oct 2026): what we owe, big, and why
+     it is more than what we bought when an opening balance explains it; Pay;
+     their phone with WhatsApp and Call; Edit; the purchase orders; the
+     history — on one screen. The history is the ledger it always was. */
   function openLedger(id) {
     var s = supplier(id);
     if (!s) return;
-    openDrawer({
-      head: '<div><h3>' + esc(s.name) + '</h3><div class="muted small">' + t('py_owed') + ' ' + m(s.outstanding, s.currency) + '</div></div>',
-      body: '<div id="pyLedger"><div class="cart-empty"><b>' + t('cb_loading') + '</b></div></div>'
-    });
+    var can = allow('money.write');
+    var wa = s.phone && typeof WA !== 'undefined'
+      ? WA.link(s.phone, WA.both([WA.hi(s.name, true), ''], [WA.hi(s.name, false), ''])) : null;
+    var pos = (DB.purchaseOrders || []).filter(function (o) { return String(o.supplierId) === String(s.id); }).slice(0, 8);
+    var head = '<div class="py-page-h"><h3 dir="auto">' + esc(s.name) + '</h3>' +
+      (s.phone ? '<div class="py-page-tel"><bdi dir="ltr">' + esc(s.phone) + '</bdi>' +
+        (wa ? ' <a class="btn btn-sm" href="' + esc(wa) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+        ' <a class="btn btn-sm btn-ghost" href="tel:' + esc(String(s.phone).replace(/[^+\d]/g, '')) + '">' + t('py_call') + '</a></div>' : '') +
+      '</div>';
+    var body = '<div class="py-page-top">' +
+        '<div><span class="eyebrow">' + t('py_owed') + '</span><div class="py-page-owe' + (s.outstanding > 0 ? ' py-owe' : '') + '">' +
+          (s.outstanding ? m(s.outstanding, s.currency) : '—') + '</div>' +
+          (s.outstanding > 0 ? dueBadge(s.dueRaw) : '') +
+          '<div class="muted small mt" id="pyWhy"></div></div>' +
+        '<div class="py-page-acts">' +
+          (can && s.outstanding > 0 ? '<button class="btn btn-primary" data-py="sup-pay" data-id="' + s.id + '">' + t('py_pay') + '</button>' : '') +
+          (can ? '<button class="btn" data-py="sup-edit" data-id="' + s.id + '">' + t('edit') + '</button>' : '') +
+        '</div></div>' +
+      (s.notes ? '<p class="py-notes" dir="auto">' + esc(s.notes) + '</p>' : '') +
+      (pos.length ? '<h4 class="py-h4">' + t('py_orders') + '</h4><div class="py-pos">' + pos.map(function (o) {
+          return '<div class="py-po"><b dir="ltr">' + esc(o.id) + '</b><span class="badge neutral">' + esc(t('po_' + o.status) !== 'po_' + o.status ? t('po_' + o.status) : o.status) + '</span>' +
+            '<small class="muted">' + (o.created ? esc(fmtDate(o.created)) : '') + '</small></div>';
+        }).join('') + '</div>' : '') +
+      '<h4 class="py-h4">' + t('py_history') + '</h4>' +
+      '<div id="pyLedger"><div class="cart-empty"><b>' + t('cb_loading') + '</b></div></div>';
+    openDrawer({ head: head, body: body });
     Shop.supplierLedger(id).then(function (r) {
       var host = document.getElementById('pyLedger');
       if (host) host.innerHTML = ledgerBody(r);
+      /* Why "owed" is more than "bought": the opening balance, said once. */
+      var open = ((r.ledger && r.ledger.rows) || []).filter(function (x) { return x.kind === 'opening'; })[0];
+      var why = document.getElementById('pyWhy');
+      if (why && open && open.amount) {
+        why.innerHTML = (s.totalPurchased ? t('py_owed_why').replace('{bought}', m(s.totalPurchased, s.currency)) : t('py_owed_open'))
+          .replace('{open}', m(open.amount, s.currency));
+      } else if (why && s.totalPurchased) {
+        why.innerHTML = t('py_bought') + ' ' + m(s.totalPurchased, s.currency);
+      }
     }).catch(function (err) { toast(s.name, API.friendly(err), 'err', 5000); });
   }
 
@@ -220,7 +273,16 @@ var Payables = (function () {
     rows.forEach(function (x) {
       h += '<tr' + (x.reversed_by ? ' class="mn-void"' : '') + '><td class="num muted">' + esc(fmtDate(x.at)) + '</td>' +
         '<td><b>' + esc(t('py_k_' + x.kind)) + '</b>' +
-          (x.paid_amount ? '<small class="muted py-sub">' + t('py_paid_as') + ' ' + m(x.paid_amount, x.paid_currency) + '</small>' : '') +
+          /* WHAT HAPPENED, IN WORDS (night shift 28 Oct 2026). Goods priced in
+             lira added to a dollar balance read "paid as 10,500 SYP" — nothing
+             was paid. A purchase names its order and the conversion; a payment
+             in the other currency says what was handed over, what it came to
+             and at what rate. */
+          (x.kind === 'purchase' && x.ref_id ? '<small class="py-sub">' + t('py_goods_on').replace('{po}', '<bdi dir="ltr">' + esc(x.ref_id) + '</bdi>') + '</small>' : '') +
+          (x.paid_amount && x.paid_currency && x.paid_currency !== x.currency
+            ? '<small class="muted py-sub">' + m(x.paid_amount, x.paid_currency) + ' = ' + m(Math.abs(x.amount), x.currency) +
+                (x.fx_rate ? ' ' + t('py_at_rate').replace('{r}', '<bdi dir="ltr">' + nf(x.fx_rate) + '</bdi>') : '') + '</small>'
+            : '') +
           (x.place ? '<small class="muted py-sub">' + esc(Cashbook.placeName(x.place)) + '</small>' : '') +
           (x.note ? '<small class="muted py-sub">' + esc(x.note) + '</small>' : '') +
           (x.user_name ? '<small class="muted py-sub">' + esc(x.user_name) + '</small>' : '') + '</td>' +
@@ -517,15 +579,57 @@ var Payables = (function () {
   var ACT = {
     'sup-edit': function (el) { openSupplierEditor(el.getAttribute('data-id')); },
     'sup-pay': function (el) { openSupplierPay(el.getAttribute('data-id')); },
+    /* All, or half, of what is owed — in the supplier's currency. */
+    'pay-fill': function (el) {
+      var host = document.getElementById('pyPHint');
+      var s = host ? supplier(host.getAttribute('data-sup')) : null;
+      var box = document.getElementById('pyPAmt');
+      if (!s || !box) return;
+      var amt = el.getAttribute('data-v') === 'half' ? Math.round(s.outstanding / 2) : s.outstanding;
+      var curBox = document.getElementById('pyPCur');
+      if (curBox && curBox.value !== s.currency) {
+        var b = document.querySelector('[data-pick="pyPCur"][data-v="' + s.currency + '"], [data-for="pyPCur"][data-v="' + s.currency + '"]');
+        if (b) b.click(); else curBox.value = s.currency;
+      }
+      box.value = whole(amt, s.currency);
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      payHint();
+    },
     'sup-ledger': function (el) { openLedger(el.getAttribute('data-id')); },
+    'sup-open': function (el) { openLedger(el.getAttribute('data-id')); },
     'sup-adj': function (el) { closeDrawer(); openAdjust(el.getAttribute('data-id'), el.getAttribute('data-k')); },
 
     'sup-save': function (el) {
       var id = el.getAttribute('data-id');
       var name = val('pySName').trim();
       if (!name) { toast(t('py_suppliers'), t('py_need_name'), 'warn'); return; }
+      /* A NAME LIKE ONE ALREADY THERE (night shift 28 Oct 2026): "VACHE" and
+         "VACHE V" are two suppliers today, one owing $12,328.99 and one
+         nothing, and nobody can tell which a payment should go to. Folded the
+         way customers are (DB.foldName); one starting with the other counts.
+         Said once in the dialog; a second press saves anyway. Nothing is
+         merged. */
+      var fold = function (x) { return (DB.foldName ? DB.foldName(x) : String(x).toLowerCase()).replace(/\s+/g, ' ').trim(); };
+      var me = fold(name);
+      var like = (DB.suppliers || []).filter(function (x) {
+        if (String(x.id) === String(id)) return false;
+        var o = fold(x.name);
+        return o === me || (me.length >= 3 && o.indexOf(me) === 0) || (o.length >= 3 && me.indexOf(o) === 0);
+      });
+      if (like.length && el.getAttribute('data-dup') !== me) {
+        el.setAttribute('data-dup', me);
+        var box = document.getElementById('pySDup');
+        if (!box) { box = document.createElement('div'); box.id = 'pySDup'; box.className = 'cb-bz'; (document.querySelector('.modal-body') || document.body).appendChild(box); }
+        box.innerHTML = '<b>' + t('py_dup_title') + '</b><span>' + like.map(function (x) {
+          return esc(x.name) + (x.outstanding ? ' · ' + t('py_owed').toLowerCase() + ' ' + m(x.outstanding, x.currency) : '');
+        }).join('<br>') + '</span><span class="muted small">' + t('py_dup_sub') + '</span>';
+        el.innerHTML = '<span>' + t('py_dup_anyway') + '</span>';
+        box.scrollIntoView({ block: 'nearest' });
+        return;
+      }
       var cur = val('pySCur');
-      var body = { name: name, contact: val('pySContact'), category: val('pySCat'), currency: cur, due_date: val('pySDue') || null };
+      var body = { name: name, contact: val('pySContact'), phone: val('pySPhone'), notes: val('pySNotes'),
+                   category: val('pySCat'), currency: cur, due_date: val('pySDue') || null };
       if (id) {
         body.id = Number(id);
         var arch = document.getElementById('pySArch');
@@ -546,8 +650,12 @@ var Payables = (function () {
       var cur = val('pyPCur');
       var amt = Cashbook.toMinor(val('pyPAmt'), cur);
       if (!amt) { toast(t('py_pay'), t('mn_amount_needed'), 'warn'); return; }
+      if (!Cashbook.belowZero(el, val('pyPPlace'), cur, amt)) return;
       var body = { amount: amt, currency: cur, place: val('pyPPlace'), note: val('pyPNote') || null, opId: el.getAttribute('data-op') };
+      var onPage = !!document.querySelector('.py-page-owe');
       Shop.write(function () { return Shop.paySupplier(id, body); }, null, function (r) {
+        /* Paid from the supplier's page: the page comes back with the new figure. */
+        if (onPage) setTimeout(function () { openLedger(id); }, 0);
         var s = r && r.supplier;
         done(mt(amt, cur) + (s ? ' · ' + t('py_owed').toLowerCase() + ' ' + mt(s.outstanding, s.currency) : '') +
              (r && r.warning === 'paid_ahead' ? ' · ' + t('py_paid_ahead') : ''), s ? s.name : t('py_pay'));
@@ -604,6 +712,7 @@ var Payables = (function () {
         toast(t('py_salaries'), t('py_more_than_left').replace('{x}', mt(left, cur)), 'warn', 6000);
         return;
       }
+      if ((kind === 'salary' || kind === 'advance') && !Cashbook.belowZero(el, val('pyKPlace'), cur, amt)) return;
       var body = {
         employeeId: Number(id), month: PR.month, kind: kind, amount: amt,
         place: (kind === 'salary' || kind === 'advance') ? val('pyKPlace') : null,

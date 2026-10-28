@@ -12,16 +12,20 @@ bot tokens. The server's own startup line was read before the first write:
 **Done:**
 - **Stage 1 (labels):** sizes are listed in order everywhere (S, M, L, XL, XXL). Print labels fits the laptop screen and looks tidy on a phone. Buttons that wait for the internet now show a spinner straight away, and Print now is twice as fast.
 - **Stage 2 (size guide):** the full size guide in cm. It has reusable charts, works per product, is required for clothes, and shows in the drawer, at the till and as a WhatsApp picture. The website can read it through its own address.
-- **Stage 3 (deposit):** the **server half only**. Reservations with a deposit can be taken, collected, extended and released as store credit, and the bell warns about them. The deposit for a website order can be set and the website can read it. **The screens for it (the till button, its dialogs, the Settings card, the box on the website-order card) were not built.** The usage limit ran out.
-- **Stage 4 (money and suppliers):** **not started.**
+- **Stage 3 (deposit):** at the till, "Reserve with a deposit" (at least 50%, a customer needed). The pieces are put aside and the slip prints with "held until". Scan the slip later: take the rest and hand over, hold longer, or (manager) release the deposit as store credit or refund it. The bell warns before and after the date. A website order's card has "Deposit needed", which the website can read.
+- **Stage 4 (money and suppliers):**
+  - Suppliers is one tap in Money. Each row says what we owe, big, with Pay only when something is owed, and opens the supplier's page (phone, WhatsApp, history, orders).
+  - Pay starts empty, from a place that has the money. Anything that would take a place below zero says so and asks once more, offering "owner puts it in first".
+  - Expenses count dollars too. Similar supplier names are warned about. "Paid as" now says what really happened. Sales and Takings are no longer shown twice.
+  - Starting balances are one place at a time.
 
-**Needs you — run these in Supabase, in this order:**
-1. `044_size_guides.sql`, then `verify_044_size_guides.sql`
-2. `045_reservations.sql`, then `verify_045_reservations.sql`
-3. `030_erp_access.sql` again
-4. Then run `npm run supabase:reconcile` on the VPS.
+**Needs you:**
+1. You ran `044` and `045`. Also run `030_erp_access.sql` again, if not done.
+2. Run `046_supplier_phone.sql` in Supabase (supplier phone and notes).
+3. Run `npm run supabase:reconcile` on the VPS.
+4. Give Ahmad the two new website addresses: the size guide, and the deposit (both written in the report).
 
-**Questions:** see the end of each stage (1 to 3).
+**Questions:** at the end of stages 1, 2, 3 and 4 (five in all).
 
 ---
 
@@ -452,13 +456,133 @@ remaining, currency } } }`) and `GET /api/ext/deposit` (`{ onlinePct, chaseDays 
 
 ---
 
-## Stage 4 — Suppliers and Money: NOT STARTED
+## Stage 4 — Suppliers and the Money pages
 
-Nothing was changed. The bugs listed in the brief (the Expenses header ignoring dollars, Pay
-prefilled with the whole balance from an empty place, duplicate "VACHE" suppliers, the
-"paid as" wording, Sales = Takings) are all still open. No recent uncommitted money work by
-Ahmad was found (`git status` was clean at the start).
+No recent or uncommitted money work by Ahmad was found (`git status` was clean at the start;
+the last money commits are 17 Oct, `7f64afe` and `25e4d2c`). Nothing was removed — every screen
+is still reachable.
 
-## CLAUDE.md
+### The new structure (proposed, then built)
 
-Not updated tonight — no time left. This report is the record for stages 1–3.
+Money was four places, two of them with switches underneath; Suppliers was inside "Payments",
+a word that also meant expenses and wages, and was reached a second way from "Who owes whom".
+
+| Before | After |
+|---|---|
+| Where it is | Where it is |
+| Close the day | Close the day |
+| Payments → Expenses / Suppliers / Salaries | **Suppliers** (one tap, no switch) |
+| | **Expenses & wages** → Expenses / Salaries |
+| Books → Statement / Money history / Who owes whom / Shift | Books (unchanged) |
+
+On a phone the bar wraps onto two lines instead of sliding sideways.
+
+### The five bugs
+
+1. **Expenses contradicting itself — fixed.** The month figure and "Where it goes" counted lira
+   only (`DB.expensesBetween` filtered to the base currency), so a $100 expense was in the table
+   under "Spent this month: 0" and "No expenses recorded yet". The month is a pair now (lira,
+   then "+ $100"), each category shows each currency it was spent in, and the empty line appears
+   only when there is truly nothing. `expensesBetween` / `expensesInMonth` take a currency;
+   their other callers are unchanged (they still get the base).
+2. **Pay one tap from a mistake — fixed, and the same check is on every dialog that pays out.**
+   - The amount starts **empty**, with **All · $12,328.99** and **Half** as one-tap chips.
+   - "From" defaults to the first place that **holds enough** of that currency, else the place
+     holding the most, else the drawer — never an empty "with the owner" by position.
+   - A live line under "from" says what the place holds, **in amber** when this payment would
+     leave it below zero.
+   - The **first press** of a payment that takes a place below zero writes nothing: an amber box
+     names the place, what it holds and what it would hold, offers **Owner puts it in first**
+     (which opens the owner dialog on "puts in", that place, currency and amount), and the
+     button reads **Pay anyway**. The second press with the same place, currency and amount
+     goes. **Warns, never refuses** — the book allows a negative on purpose.
+   - The same check (`Cashbook.belowZero`) is on: pay a supplier, add an expense (when a place is
+     chosen), wages (salary and advance), and move money (the amount plus the fee).
+3. **Two suppliers with the same name — warned, nothing merged.** Creating or renaming a
+   supplier to a name like one that exists (folded like customers' names; one starting with the
+   other counts) shows them, with what each is owed, and asks once more ("Save anyway").
+   **Duplicates found:** on this laptop's copy (11 Oct) and the sandbox: **"VACHE" (id 2, USD,
+   owes the big balance) and "VACHE V" (id 1, SYP, owes nothing, contact "VACHE")**. Check the
+   live list; merging is the owner's call (question 5).
+4. **"Paid as" — reworded.** A goods-received row now says **"Goods received · on PO-0002 ·
+   10,500 SYP = $73.43 (at 143)"**: the order, what it was priced in, what that came to in the
+   supplier's currency, and the rate frozen on the row. A payment in the other currency says the
+   same conversion. Nothing says "paid" unless something was paid.
+5. **Sales = Takings — fixed.** Takings = sales + shipping charged − returns. In a month with
+   neither, the Statement draws **Takings alone**; when they differ both rows are drawn and
+   Takings says "sales + shipping charged − returns" under its name.
+
+### Simpler
+
+- **Supplier list**: one row per supplier — the name and phone, **what we owe, big**, the due
+  badge, last paid, and **Pay only when something is owed** (a supplier owed nothing shows ›).
+  The row opens the supplier's page; History and Edit are there.
+- **The supplier's page** (drawer): what we owe, big, with the due badge; **why it is more than
+  what was bought** ("Bought $11,428.99, plus an opening balance of $900 from before the
+  system"); Pay and Edit; the phone with **WhatsApp** (a two-language greeting through `WA.both`)
+  and **Call**; the notes; the purchase orders; the history. After paying from the page, it comes
+  back with the new figure.
+- **Supplier form**: a proper **phone** field (`type=tel`) and **notes**; the old free-text
+  "Contact" stays as "Who to ask for". Migration **079** adds `suppliers.phone` and
+  `suppliers.notes`, with a `mirror-lag.js` entry and cloud file **046** (appended to
+  `CATCH-UP.sql`).
+- **Starting balances, one place at a time**: "Place 2 of 5 — how much is here now", lira and
+  dollars, **Next / Back / Skip**. Nothing is saved until the last step, and then all at once,
+  so leaving half-way changes nothing. Still optional.
+- Look: quiet cards, the owed figure the only loud one, amber (not lime) for warnings, 44px on a
+  phone, no sideways scroll.
+
+### Files
+
+`js/money.js`, `js/payables.js`, `js/cashbook.js`, `js/statement.js`, `js/data.js`,
+`js/app-i18n-extra.js`, `css/og-skin.css`, `server/lib/payables.js`, `server/lib/mirror-lag.js`,
+`server/migrations/079_supplier_phone.sql`, `server/supabase/046_supplier_phone.sql`,
+`server/supabase/CATCH-UP.sql`, `server/supabase/status.sql`, `server/supabase/README.md`,
+`sw.js` (v348).
+
+### Supabase — by hand
+
+1. `server/supabase/046_supplier_phone.sql` (or `CATCH-UP.sql` again).
+2. `npm run supabase:reconcile` on the VPS.
+
+Until 046 is run, suppliers go up without the two columns and the sync names the file. Nothing
+stops.
+
+### How it was verified
+
+- `_nightshift/n1028/s4-ui.mjs` — **40 green**, at 1366 English and 390 Arabic, read back from
+  SQLite:
+  - Money has five places;
+  - starting balances step by step;
+  - a supplier saved with phone, notes and a $900 opening;
+  - a similar name warned and saved on the second press;
+  - no Pay on a supplier owed nothing;
+  - the page explaining the opening balance, with WhatsApp and Call;
+  - Pay opening empty from a place that holds money;
+  - All filling the balance;
+  - paying from "with the owner": amber before any press, the warning with nothing written,
+    then paid on the second press;
+  - the page coming back;
+  - a dollar expense in the month;
+  - Statement without the doubled row;
+  - no sideways scroll, no console error.
+- The older Money suites, updated where this changed on purpose (five places; the amount starts
+  empty; the below-zero second press), all green on the scratch copy: `fix05/p4-money` 49,
+  `ns03/p2-money` 39, `ns02/p4-money` 22, `money-polish/press` 35.
+- Screenshots `night-shots/stage4/`: `money-now-*`, `start-*`, `suppliers-*`, `supplier-dup-*`,
+  `supplier-page-*`, `pay-below-zero-*`, `expenses-*`, `statement-*` (1366-en and 390-ar).
+
+### Questions
+
+5. **Merge "VACHE" and "VACHE V"?** Nothing was merged or deleted. The SYP one owes nothing; it
+   could be switched off (archived) from its Edit, or merged by hand if any purchase orders name
+   it.
+
+---
+
+## At the very end
+
+- The server starts cleanly on the scratch copy (migrations 077, 078, 079 applied); `npm run
+  preflight` passes; `cd server && npm test` 121 green; `fix05/p0-namespaces` 6.
+- The every-screen sweep (`ns03/sweep`): see the line below.
+- CLAUDE.md has a section for each new feature (end of the file).

@@ -101,7 +101,8 @@ var Statement = (function () {
   }
 
   function row(l, cls) {
-    var h = '<tr class="' + (cls || '') + '"><td>' + (l.total ? '<b>' + esc(label(l)) + '</b>' : esc(label(l))) + '</td>';
+    var h = '<tr class="' + (cls || '') + '"><td>' + (l.total ? '<b>' + esc(label(l)) + '</b>' : esc(label(l))) +
+      (l.labelExtra ? '<small class="muted pl-extra">' + esc(l.labelExtra) + '</small>' : '') + '</td>';
     curs().forEach(function (c) {
       var v = l.amounts[c];
       h += '<td class="num">' + (v ? (l.total ? '<b>' + signed(v, c) + '</b>' : signed(v, c)) : '<span class="muted">—</span>') + '</td>';
@@ -131,7 +132,16 @@ var Statement = (function () {
     h += '<div class="card mb"><div class="card-head"><h3>' + t('pl_title') + '</h3>' +
       '<div class="card-actions muted small">' + t('pl_sales_n').replace('{n}', '<bdi dir="ltr">' + nf(f.sales || 0) + '</bdi>') + '</div></div>' +
       '<div class="table-wrap"><table class="tbl pl-tbl">' + head(t('pl_line')) + '<tbody>';
+    /* SALES AND TAKINGS ARE ONE ROW WHEN THEY ARE ONE NUMBER (night shift
+       28 Oct 2026). Takings = sales + shipping charged − returns; in a month
+       with neither, the two rows said the same figures twice and read like a
+       mistake. Then Takings alone is drawn; when they differ both are, and
+       Takings says what it is made of. */
+    var pick = function (k) { return d.lines.filter(function (l) { return l.key === k; })[0]; };
+    var moved = ['shipping', 'returns'].some(function (k) { var l = pick(k); return l && Object.keys(l.amounts).some(function (c) { return l.amounts[c]; }); });
     d.lines.forEach(function (l) {
+      if (l.key === 'sales' && !moved) return;
+      if (l.key === 'revenue' && moved) l = Object.assign({}, l, { labelExtra: t('pl_takings_is') });
       if (!l.total && !Object.keys(l.amounts).length && l.key !== 'sales' && l.key !== 'cogs') return;
       h += row(l, l.total ? 'pl-total' + (l.key === 'net' ? ' pl-net' : '') : (l.key === 'expense' ? 'pl-sub' : ''));
     });

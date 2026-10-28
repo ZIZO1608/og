@@ -40,7 +40,7 @@ merged.
   keys, named by file and never pasted anywhere · `server/data/` — the live database.
 - **Numbers in use:** local migrations run to `076` (`063` is night mode's and applies after `067`
   without trouble: the runner applies any file it has not recorded, in name order). **The next
-  local migration is `077`; the next cloud file is `044`.** (`076`/`043` = offers, sales on products.) (`075` = the website told a website order was decided, local-only.) (`074` = coupon QR scans and street batches, local-only.) (`073`/`042` = a colour's 3D angles,
+  local migration is `080`; the next cloud file is `047`.** (`077`–`079` and `044`–`046` = night shift 28 Oct 2026: size guides, deposits, supplier phone.) (`076`/`043` = offers, sales on products.) (`075` = the website told a website order was decided, local-only.) (`074` = coupon QR scans and street batches, local-only.) (`073`/`042` = a colour's 3D angles,
   `lib/angles.js`, branch `feature/3d-angles` — step 1 of the 3D-model plan; the generation
   through an image-to-3D API and the website's viewer are not built yet.) The cloud files have two `030`s and two
   `031`s — `server/supabase/README.md` says which is which and the order to run them, and
@@ -7453,3 +7453,129 @@ at the statement.
   partner, a bad month and a bad zone. 25 in a browser: the figures against the API, the month
   picker, a new expense appearing without a reload, the Expenses shortcut, the dashboard band,
   Arabic at 390 with the cash flow as cards, the export, the cashier without the tab.
+
+## Night shift 28 Oct 2026 — size order, the size guide, the deposit, suppliers
+
+Branch `night/2026-10-28`. The full record is `NIGHT-REPORT-2026-10-28.md`. Local migrations
+**077, 078, 079**; cloud files **044, 045, 046** (the owner ran 044 and 045 on 28 Oct). **The
+next local migration is `080`; the next cloud file is `047`.**
+
+### Sizes are listed in the order a person reads them — `js/sizeorder.js`
+
+Every clothing product listed L, M, S, XL, XXL: the catalogue said `ORDER BY v.size`, a text
+sort, and two screens had private sorts that disagreed. **`SizeOrder` is the one rule**, a plain
+script (global `SizeOrder`) loaded by `index.html` and imported by the server for its side effect,
+like `js/offermath.js`:
+
+1. the type's own size set (`DB.sizeSets` / the category);
+2. numbers by value;
+3. clothing letters (XXS … XXL, 3XL; 2XL = XXL);
+4. text.
+
+Several colours are grouped by colour (in their own order), then size.
+
+- It is applied in `Cat.list` (the bundle), `Cat.byId`, `shelves.js` and `DB.hydrate`, so every
+  `DB.variantsOf()` is already in order.
+- **The website feed is NOT sorted by it**: `webRow` must equal the cloud's `web.product_row`
+  (037/040/041/043, `ORDER BY size collate "C"`) field for field (`usd-prices/parity` goes red
+  otherwise). Changing both is a cloud file of its own — open question.
+
+### Print labels, and buttons that wait on the server
+
+- **The table**: seven columns, with the three codes stacked in one cell. It opts out of the
+  phone cards (`lb-tbl` in `labelWideTables`) and draws its own compact list under 720px.
+- **Keeps its place**: opening a product keeps the scroll — `render()`'s `same` now covers
+  `labels` as well as `settings`.
+- **`busyButton(el)` / `pressedButton()`** (`js/app-util.js`): the money dialogs' spinner on any
+  button that waits on the server; a second press while it waits is a no-op. Every door into
+  `Labels.openPreviewModal` goes busy at once; a second press while the preview is on the line
+  says "Still getting the labels ready".
+- **Print now** reuses the preview on screen (`lastPreview` for `activeLines`) instead of asking
+  for it a second time.
+- **The ~15 s boot over the public address**: three waves of six requests, and every
+  `Shop.write` reloads the whole shop. The suggestions are in the night report; not built.
+
+### The size guide, in centimetres (077, cloud 044) — `lib/sizeguide.js`, `js/sizeguide.js`
+
+- **`size_charts`** (reusable, never deleted, only hidden) and **`product_size_guides`** (one per
+  product). Both are cursor shape and mirrored behind their own guard.
+- **A product's guide stores its rows RESOLVED** — its own sizes, in `SizeOrder`, with the
+  numbers — even when it `follows` a chart. Saving a chart rewrites every follower in the same
+  transaction; adding a size or colour adds its row (`refreshProduct`). That is why the cloud can
+  answer the website with no chart logic and no sorting.
+- **Measurements:** chest/length/shoulder/sleeve, waist/hip/length/inseam, foot/EU/US/UK. KEEP
+  IN STEP: `MEASURES` in both files and `web.size_measure()` in 044.
+- **Figures:** cm > 0 and ≤ 300, shoe sizes ≤ 60, one decimal; "52,5" is 52.5 and Arabic digits
+  are read.
+- **Required:** a NEW product of a type in config `sizeguide.clothes_types` is refused
+  (`sg_required`, `sg_incomplete` naming the empty cells) before its transaction. Existing
+  products are not blocked; the Products filter "No size guide" finds them.
+- **Where it shows:**
+  - the Add-product card (its rows follow the quantities, `ColourForm.sizesInUse`);
+  - the editor's fold;
+  - Settings → Size charts;
+  - the drawer card with **Send size guide** (a canvas PNG, the share sheet or a download plus
+    `WA.both`);
+  - the till's size picker → a sheet on **its own layer `#sgRoot`** (never `openModal` — the
+    picker and the basket stay).
+- **The grid:** Enter walks it; a column pasted from Excel fills down; "↑" copies the row above.
+- **The website** reads `GET /api/ext/products/:id/size-guide` / cloud
+  `public.web_size_guide`. It is a door of its own, not a product field — the
+  `web.product_row` parity again. `_nightshift/n1028/s2-parity.mjs` holds laptop = cloud.
+
+### The deposit (عربون) (078, cloud 045) — `lib/reserve.js`, `js/reserve.js`
+
+- **A till reservation IS A PICKUP ORDER PAID BY DEPOSIT** (`Orders.create`, method `pickup`,
+  plan `deposit`) plus a `reservations` row (sale id, `hold_until`, `deposit_min`, who agreed a
+  smaller one). Everything else is the order's:
+  - the pieces leave stock with the sale — held, not sellable, not `inStock` on the website;
+  - the deposit is an opId'd order payment (cash into the drawer);
+  - what is owed is `Orders.money`;
+  - collecting is `Orders.pay` + `Deliveries.update(delivered)`;
+  - releasing is `Orders.takeBack` with outcome `credit` (the `customer_credit` ledger, no cash
+    moves) or `refund`.
+- **The status (held / collected / released / expired) is derived, never stored.**
+  `Orders.create` takes a `within(d, result)` hook so the minimum is checked inside the
+  transaction. A reservation also shows on the Deliveries board as a waiting pickup.
+- **Permissions:**
+  - `sell` takes, collects and extends;
+  - `discount.unlimited` agrees a smaller deposit;
+  - `void` releases;
+  - `void` + `money.move` refunds.
+- **Config:** `deposit.till_pct` / `online_pct` / `hold_days` / `chase_days`, in Settings → Money
+  and prices → Deposit.
+- **Bell** (`alerts.js`): `res_ends`, `res_expired`, `web_chase`. **The bell only — no Telegram.**
+- **The till:** "Reserve with a deposit" and "Reservations · N" under Complete sale. A scanned
+  slip (its invoice number, digits matched) opens the reservation from any screen
+  (`handleScan`). The slip prints **HELD UNTIL · محجوز لحد**. The product drawer lists what is
+  held (`DB.held`, from `/api/catalogue`'s `held`).
+- **Website orders:** `web_orders.deposit_*` (local). Each new order's card has "Deposit needed"
+  (`POST /api/web-orders/:ref/deposit`). The website reads
+  `GET /api/ext/web-orders/:ref/deposit` and `GET /api/ext/deposit` — from the VPS, not the cloud.
+- **THE `rv_` PREFIX BELONGS TO THE REVIEWS PAGE.** The deposit's strings are `rs_*`. The first
+  draft used `rv_*`, and its later block silently overwrote Reviews' `rv_title` — the
+  `firstName()` / `.pos` collision again, in I18N.
+- **On a phone, `body[data-overlay] .pos-right` is hidden**: the till's cart sheet sat above any
+  dialog opened from it and covered its buttons.
+
+### Suppliers and Money, simpler (079, cloud 046)
+
+- **Money is five places**: Where it is · Close the day · **Suppliers** (one tap) · Expenses &
+  wages · Books. On a phone the bar wraps rather than slides.
+- **Supplier rows:** one row each — name and phone, what we owe big, due, last paid, **Pay only
+  when owed**. The row opens **the supplier's page** (owed, why it is more than bought — the
+  opening balance — Pay, Edit, WhatsApp and Call, notes, purchase orders, history).
+  `suppliers.phone` / `notes` are new (079; `mirror-lag.js` until 046 is run).
+- **Pay** starts EMPTY with All / Half chips. "From" is `Cashbook.bestPlace` (the place that
+  holds enough), and `Cashbook.holdLine` says what the place would hold.
+- **`Cashbook.belowZero(el, place, cur, amt)`** is on supplier pay, expenses, wages and move:
+  the first press of a payment that takes a place below zero writes nothing and says so in
+  amber, with "Owner puts it in first". The same press again goes. **Warn, never refuse** — a
+  negative is allowed (053).
+- **Similar supplier names** (folded) are warned about once; nothing is merged.
+- **Wording and figures:**
+  - a goods-received ledger row reads "on PO-0002 · 10,500 SYP = $73.43 (at 143)", never "paid
+    as";
+  - the Expenses month is a pair (lira + dollars);
+  - the Statement draws Takings alone when it equals Sales.
+- **Starting balances** are one place at a time (Next / Back / Skip), saved together at the end.

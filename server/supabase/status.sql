@@ -71,6 +71,10 @@ SELECT f.file, f.installed, f.what
     ('045_reservations.sql',
        to_regclass('public.reservations') IS NOT NULL,
        'till reservations paid by deposit (local 078)'),
+    ('046_supplier_phone.sql',
+       EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'suppliers' AND column_name = 'phone'),
+       'a supplier''s phone and notes (local 079)'),
     ('030_erp_access.sql',
        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'og_vps'),
        'og_vps, the VPS''s read-only login'),

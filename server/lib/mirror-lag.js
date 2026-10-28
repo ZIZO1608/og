@@ -125,6 +125,12 @@ export const MIRROR_LAG = {
   /* 055 — the day of the month a salary is due (023). `employees` goes up
      inside the partner block, which is one try: without this, one rejected
      employee would take the print jobs, the drawer and the expenses with it. */
+  /* 079 — a supplier's phone and notes (046). suppliers goes up inside the
+     partner block, which is one try: without this, one rejected supplier
+     would take the print jobs, the drawer and the expenses with it. */
+  suppliers:  { cols: ['phone', 'notes'],
+                file: 'server/supabase/046_supplier_phone.sql', retriedBy: ['sync', 'reconcile'] },
+
   employees:  { cols: ['pay_day'],
                 file: 'server/supabase/023_payables.sql', retriedBy: ['sync', 'reconcile'] },
 
