@@ -7,6 +7,41 @@ database (`server/data-night/og.db`, made with `VACUUM INTO`, gitignored) on por
 bot tokens. The server's own startup line was read before the first write:
 `database : D:\DESKTOP\OG System\server\data-night\og.db`.
 
+## How to test it on shop.ogsports1.com (about 15 minutes)
+
+Use test products and a test customer, or reverse/void what you make afterwards.
+
+**1. Print labels** (Warehouse → Print labels)
+- Open a T-shirt or jersey (▸): the sizes read **S, M, L, XL, XXL**, not L, M, S.
+- On the laptop nothing is cut off on the right; on a phone each product is one short card.
+- Press **Print all sizes**: the button spins at once. Press it again quickly: "Still getting the labels ready". Then **Print now**: it spins and finishes with a message.
+
+**2. Size guide**
+- Settings → The shop → **Size charts** → **New chart**: name "Nike tee", sizes from T-Shirts, tick Chest width and Length. Fill the boxes (type 52,5 → it becomes 52.5; Enter goes to the next box; you can paste a column from Excel). Save.
+- Warehouse → **Add product**, type T-Shirts, give S/M/L quantities. Save **without** a guide → it is refused, saying the guide is needed. Choose the chart "Nike tee" (Follow the chart) → Save works.
+- Open the product: the **Size guide** card shows the table. Press **Send size guide** → a picture (on a phone the share sheet; on the laptop it downloads and WhatsApp opens).
+- At the till, tap the product → in the size picker press **📏 Size guide** → the table opens on top; close it, and the basket is still there.
+- Products → filters → Size guide → **No size guide**: the clothes still to fill in.
+
+**3. Deposit (عربون)**
+- Till: add a product, attach a customer, press **Reserve with a deposit**. It shows the least deposit (50%). Type less → refused; type the least → **Take the deposit**. The slip prints with **HELD UNTIL**, the basket clears, and the product's stock goes down by what was held.
+- Open the product: "Held for a reservation … for (name) until (date)".
+- **Reservations** button at the till (or scan the slip's barcode) → the reservation: **Hold 7 more days**, then **Take … and hand over** → it is collected.
+- Make another one, then as the owner open it → **Release as store credit** → the pieces are back in stock and the customer has the credit.
+- Settings → Money and prices → **Deposit (عربون)**: change the % or the days.
+- Website orders: on a new order's card, **Deposit needed** → set 30% → Save.
+
+**4. Suppliers and Money**
+- Money: five places on top; press **Suppliers**. Each supplier shows what we owe, big; **Pay** shows only where something is owed.
+- Tap a supplier → its page (phone, WhatsApp, history, purchase orders).
+- **Pay**: the amount box is **empty**; press **All** → it fills. Choose "With the owner" (holding nothing) → an amber line warns; press Pay → it asks once more with **Owner puts it in first**. Cancel if this is not a real payment.
+- **+ New supplier** named like an existing one ("VACHE 2") → it warns before saving.
+- **Expenses & wages → Expenses**: a dollar expense now shows in "Spent this month" (as + $…).
+- **Books → Statement**: Sales and Takings no longer show the same numbers twice.
+- **Where it is**, if the starting-balances banner is there: **Enter starting balances** goes one place at a time.
+
+---
+
 ## For the owner, in plain words
 
 **Done:**
@@ -584,5 +619,5 @@ stops.
 
 - The server starts cleanly on the scratch copy (migrations 077, 078, 079 applied); `npm run
   preflight` passes; `cd server && npm test` 121 green; `fix05/p0-namespaces` 6.
-- The every-screen sweep (`ns03/sweep`): see the line below.
+- The every-screen sweep (`ns03/sweep`), every role, both languages, six widths: **1316 passed, 0 failed**.
 - CLAUDE.md has a section for each new feature (end of the file).
