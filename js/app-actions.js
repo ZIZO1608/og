@@ -210,6 +210,16 @@ var ACTIONS = {
     var pop = document.getElementById('notifPop'); if (pop) pop.remove();
     DB.markNotifRead(n);
     renderTopbar();
+    /* 078 — a reservation's row opens the reservation; a website deposit
+       still waiting on the rest opens its order. */
+    if ((n.kind === 'res_ends' || n.kind === 'res_expired') && n.args && n.args.sale && typeof Reserve !== 'undefined') {
+      go('pos', function () { Reserve.open(n.args.sale); });
+      return;
+    }
+    if (n.kind === 'web_chase' && n.args && n.args.sale && typeof Desk !== 'undefined' && Desk.openOrder) {
+      go('deliveries', function () { Desk.openOrder(n.args.sale); });
+      return;
+    }
     /* A partner message opens the thread it belongs to, not just the screen. */
     if (n.kind === 'partner_msg' && n.args) {
       if (n.args.invoice) { OG.pr = OG.pr || {}; OG.pr.tab = 'invoices'; go('print', function () { openPartnerInvoice(n.args.invoice); }); }
@@ -425,6 +435,15 @@ var ACTIONS = {
     DB.markNotifReadKey(key);
     renderTopbar();
     var of = a.kind === 'more' ? (a.args && a.args.of) : a.kind;
+    /* 078 — the same doors as the bell's rows. */
+    if ((a.kind === 'res_ends' || a.kind === 'res_expired') && a.args && a.args.sale && typeof Reserve !== 'undefined') {
+      go('pos', function () { Reserve.open(a.args.sale); });
+      return;
+    }
+    if (a.kind === 'web_chase' && a.args && a.args.sale && typeof Desk !== 'undefined' && Desk.openOrder) {
+      go('deliveries', function () { Desk.openOrder(a.args.sale); });
+      return;
+    }
     /* The wants list lives on the warehouse screen — it is the back room
        that answers "who was waiting for this box". */
     if (of === 'wants_back') OG.wh.tab = 'wants';

@@ -5358,3 +5358,42 @@ body:not([data-portal="yalla"]) .sg-ch-a { display: flex; flex-wrap: wrap; gap: 
   body:not([data-portal="yalla"]) .sg-ch { flex-direction: column; align-items: stretch; }
   body:not([data-portal="yalla"]) .sg-ch-a .btn { flex: 1; min-height: 44px; }
 }
+
+/* =====================================================================
+   THE DEPOSIT (078, night shift 28 Oct 2026) — js/reserve.js. The till's two
+   buttons under Complete sale, the reserve and reservation dialogs, the
+   held list, and the deposit box on a website order's card. */
+body:not([data-portal="yalla"]) .rv-till { display: flex; gap: 8px; margin-top: 8px; }
+body:not([data-portal="yalla"]) .rv-till .btn { flex: 1; min-height: 40px; }
+body:not([data-portal="yalla"]) .rv-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 14px; }
+body:not([data-portal="yalla"]) .rv-sum .lbl { display: block; margin-bottom: 2px; }
+body:not([data-portal="yalla"]) .rv-hero { color: var(--brand); font-size: 20px; }
+body:not([data-portal="yalla"]) .rv-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+body:not([data-portal="yalla"]) .rv-lines { margin: 0 0 12px; padding-inline-start: 18px; display: grid; gap: 6px; }
+body:not([data-portal="yalla"]) .rv-methods { margin: 6px 0 12px; }
+body:not([data-portal="yalla"]) .rv-why { color: var(--destructive); font-weight: 600; }
+body:not([data-portal="yalla"]) .rv-why:empty { display: none; }
+body:not([data-portal="yalla"]) .rv-list { display: grid; gap: 6px; }
+body:not([data-portal="yalla"]) .rv-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; width: 100%;
+  min-height: 52px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card);
+  color: var(--foreground); text-align: start; cursor: pointer; }
+body:not([data-portal="yalla"]) .rv-row:hover { background: var(--card-hover); }
+body:not([data-portal="yalla"]) .rv-row-r { flex: none; color: var(--muted-foreground); }
+body:not([data-portal="yalla"]) .rv-set-in { display: flex; align-items: center; gap: 8px; }
+body:not([data-portal="yalla"]) .rv-set-in .inp { width: 96px; }
+body:not([data-portal="yalla"]) .wo-dep { display: grid; gap: 6px; padding: 12px 0; border-top: 1px solid var(--border); }
+body:not([data-portal="yalla"]) .wo-dep .badge { justify-self: start; }
+body:not([data-portal="yalla"]) .wo-dep-in { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+body:not([data-portal="yalla"]) .wo-dep-in .inp { width: 110px; }
+body:not([data-portal="yalla"]) .wo-dep-in select.inp { width: 90px; }
+@media (max-width: 720px) {
+  body:not([data-portal="yalla"]) .rv-till .btn, body:not([data-portal="yalla"]) .wo-dep-in .btn { min-height: 44px; }
+  body:not([data-portal="yalla"]) .rv-row-r { font-size: 12.5px; }
+}
+/* The till's cart sheet is fixed above the page on a phone; a dialog opened
+   from it (a reservation, the size guide) must not sit under its bar. It
+   steps aside like the tab bar does while body[data-overlay] is set. */
+@media (max-width: 720px) {
+  body[data-overlay] .pos-right { visibility: hidden; }
+}
+body:not([data-portal="yalla"]) .rv-sum small[dir="ltr"] { display: block; margin-top: 2px; }

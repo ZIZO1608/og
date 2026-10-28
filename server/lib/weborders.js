@@ -40,6 +40,7 @@ import * as Partner from './partner.js';
 import * as Customers from './customers.js';
 import * as Orders from './orders.js';
 import * as Live from './live.js';
+import * as Reserve from './reserve.js';
 import * as PrintKits from './printkits.js';
 import * as WebSite from './weborder-site.js';
 
@@ -655,6 +656,9 @@ function shape(d, row, { seesCustomers, whId }) {
     shown: o.shown && typeof o.shown === 'object' ? o.shown : null,
     /* 068 / contract v1.4 — the code the customer gave; the desk checks it
        again, for real, when the order is accepted. */
+    /* 078 — the deposit this order needs (the admin's figure, or
+       deposit.online_pct), and what is paid and left once accepted. */
+    deposit: (() => { try { return Reserve.webDeposit(row, d); } catch { return null; } })(),
     coupon: typeof o.coupon === 'string' && o.coupon.trim()
       ? o.coupon.replace(/\s+/g, '').toUpperCase().slice(0, 24) : null,
     note: txt(o.note, 500)

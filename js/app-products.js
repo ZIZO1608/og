@@ -362,6 +362,8 @@ function openProductDrawer(pid) {
   body += Photos.card(p);
   /* 077 — the size guide, with "Send size guide" for WhatsApp. */
   if (typeof SizeGuide !== 'undefined') body += SizeGuide.card(p);
+  /* 078 — pieces held for a reservation: which size, for whom, until when. */
+  if (typeof Reserve !== 'undefined') body += Reserve.heldHtml(p);
   /* 070 — and what the website says about it: the description and
      "goes well with", beside the photos, because both are the website's. */
   body += webDetailsCard(p);

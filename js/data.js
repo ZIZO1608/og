@@ -2705,6 +2705,9 @@ var DB = {
 
   hydrate: function (payload) {
     var rate = Number(payload.rate) || CONFIG.EXCHANGE_RATE;
+    /* 078 — sku → [{saleId, qty, until, customer?}] held for a reservation;
+       those pieces have left stock with their sale (js/reserve.js). */
+    DB.held = payload.held || {};
     DB.priceRate = rate;
     var cfg = payload.config || {};
 

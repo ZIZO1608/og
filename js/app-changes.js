@@ -46,6 +46,8 @@ var CHANGES = {
   'prod-angles': function (el) { OG.prod.angles = el.value; render(); },
   /* 077 — which products still need a size guide. */
   'prod-sg': function (el) { OG.prod.sg = el.value; render(); },
+  /* 078 — Settings → Deposit: saves itself, never a render. */
+  'rv-set': function (el) { if (typeof Reserve !== 'undefined') Reserve.settingChanged(el); },
 
   /* The live line under the price box — never a render: the box holds a
      caret and half a number. */

@@ -442,7 +442,21 @@ var WebOrders = (function () {
         ? '<span class="muted wo-small">' + t('wo_accept_needs_desk') + '</span>'
         : '<button type="button" class="btn btn-primary" data-act="wo-accept" data-ref="' + esc(o.ref) + '"' +
             (goes ? ' disabled aria-busy="true"' : '') + '><span>' + t(goes ? 'wo_opening' : 'wo_accept') + '</span></button>';
-    return '<div class="wo-foot">' +
+    /* 078 — the deposit this order needs: deposit.online_pct, or what was
+       agreed with the customer on the call (a percentage or an amount). The
+       website reads it (GET /api/ext/web-orders/:ref/deposit). */
+    var dep = o.deposit || {};
+    var depVal = dep.amount != null ? String(dep.currency === 'USD' ? (dep.amount / 100) : dep.amount) : String(dep.pct != null ? dep.pct : (CONFIG.DEP_ONLINE_PCT || 50));
+    var depUnit = dep.amount != null ? (dep.currency || 'USD') : '%';
+    var depRow = '<div class="wo-dep"><span class="lbl">' + t('rs_wo_deposit') + '</span>' +
+      '<span class="badge ' + (dep.source === 'set' ? 'healthy' : 'neutral') + '">' + t(dep.source === 'set' ? 'rs_wo_agreed' : 'rs_wo_default') + '</span>' +
+      '<div class="wo-dep-in"><input class="inp num" id="wodA-' + esc(o.ref) + '" type="text" inputmode="decimal" dir="ltr" value="' + esc(depVal) + '" aria-label="' + esc(t('rs_wo_deposit')) + '">' +
+      '<select class="inp" id="wodU-' + esc(o.ref) + '">' + ['%', 'USD', 'SYP'].map(function (u) {
+        return '<option value="' + u + '"' + (u === depUnit ? ' selected' : '') + '>' + u + '</option>';
+      }).join('') + '</select>' +
+      '<button type="button" class="btn btn-sm" data-rv="wodep" data-ref="' + esc(o.ref) + '">' + t('save') + '</button></div>' +
+      '<small class="muted">' + t('rs_wo_deposit_sub') + '</small></div>';
+    return depRow + '<div class="wo-foot">' +
       '<button type="button" class="btn btn-ghost" data-act="wo-reject" data-ref="' + esc(o.ref) + '">' + t('wo_reject') + '</button>' +
       accept + '</div>';
   }

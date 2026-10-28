@@ -118,8 +118,12 @@ export function data(saleId) {
       const m = Orders.money(get(), saleId);
       const country = set.countries.find((c) => c && c.id === o.country) || null;
       const label = (id) => set.methods.find((x) => x && x.id === id) || null;
+      /* 078 — a reservation's slip says until when the pieces are held. */
+      let hold = null;
+      try { hold = get().prepare('SELECT hold_until FROM reservations WHERE sale_id = ?').get(saleId); } catch { /* before 078 */ }
       sale.order = {
         ...o,
+        hold_until: hold ? hold.hold_until : null,
         currency: sale.currency,
         country_en: country ? country.en : null,
         country_ar: country ? country.ar : null,

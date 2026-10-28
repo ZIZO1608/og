@@ -969,6 +969,13 @@ var Receipt = (function () {
 
     y = rowLR(ctx, y, both('rc2_paid'), fmtMoney(o.paid, R.currency, true), { size: 19 });
     y = drawTotalBand(ctx, y + 4, both('rc2_remaining'), o.remaining, R.currency, true) + 10;
+    /* 078 — a reservation: the pieces are held for the customer until this
+       date, and this slip is what they bring back. */
+    if (o.holdUntil) {
+      var hd = new Date(o.holdUntil);
+      var ds = hd.getDate() + '/' + (hd.getMonth() + 1) + '/' + hd.getFullYear();
+      y = rowLR(ctx, y, both('rc2_held_until'), ds, { size: 20, leftSize: 18 }) + 6;
+    }
 
     var note = !o.remaining ? 'rc2_paid_in_full'
       : (o.method === 'driver' || o.method === 'pickup') ? 'rc2_collect_door'
@@ -1288,6 +1295,7 @@ var Receipt = (function () {
       city: o.city || '', address: o.address || '', recipient: o.recipient || '', phone: o.phone || '',
       fee: (o.fee || 0) / div, feeMode: o.fee_mode || 'none', plan: o.plan || '',
       status: o.status || '', trackingNo: o.tracking_no || '',
+      holdUntil: o.hold_until || null,
       due: (o.due || 0) / div, paid: (o.paid || 0) / div, remaining: (o.remaining || 0) / div,
       payments: (o.payments || []).map(function (p) {
         var pdiv = Math.pow(10, MINOR_EXP[p.currency] || 0);

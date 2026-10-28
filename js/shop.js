@@ -188,6 +188,8 @@ var Shop = (function () {
         warehouses: r.config.warehouses,
         products: r.catalogue.products,
         categories: r.catalogue.categories || [],
+        /* 078 — what is held for a reservation, per SKU (js/reserve.js) */
+        held: r.catalogue.held || {},
         customers: r.customers.customers,
         sales: r.sales.sales,
         salesTotal: r.sales.salesTotal,

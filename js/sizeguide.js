@@ -397,7 +397,7 @@ var SizeGuide = (function () {
     ED['new'].sizes = sizes;
     var req = isClothes(type);
     return '<section class="sg-card" id="sgNew"><div class="sg-head"><span class="lbl">' + t('sg_title') + '</span>' +
-      '<span class="badge ' + (req ? 'warning' : 'neutral') + '">' + t(req ? 'sg_required_badge' : 'sg_optional_badge') + '</span></div>' +
+      '<span class="badge ' + (req ? 'low' : 'neutral') + '">' + t(req ? 'sg_required_badge' : 'sg_optional_badge') + '</span></div>' +
       editorHtml('new', { noSizes: 'sg_qty_first' }).replace('<div class="sg-ed"', '<div class="sg-ed" data-sg-opts=\'{"noSizes":"sg_qty_first"}\'') +
       '</section>';
   }
@@ -428,7 +428,7 @@ var SizeGuide = (function () {
     ED['edit'] = fromGuide(p.sizeGuide, productSizes(p));
     var req = isClothes(p.type);
     return '<div class="wh-fold sg-fold"><button class="wh-more-h" type="button" data-act="pe-sg">' + t('sg_title') +
-      ' <span class="badge ' + (p.sizeGuide ? 'success' : (req ? 'warning' : 'neutral')) + '">' +
+      ' <span class="badge ' + (p.sizeGuide ? 'healthy' : (req ? 'low' : 'neutral')) + '">' +
       t(p.sizeGuide ? 'sg_has' : (req ? 'sg_missing' : 'sg_optional_badge')) + '</span><span class="wh-more-x">' + (open ? '−' : '+') + '</span></button>' +
       '<div class="wh-fold-b" id="peSg"' + (open ? '' : ' hidden') + '>' + editorHtml('edit') + '</div></div>';
   }
@@ -461,7 +461,7 @@ var SizeGuide = (function () {
     g.rows.forEach(function (r) {
       var hot = opts.inStock && opts.inStock[r.size];
       h += '<tr' + (hot ? ' class="sg-hot"' : '') + '><td class="sg-sz"><b dir="ltr">' + esc(r.size) + '</b>' +
-        (opts.inStock ? (hot ? ' <span class="badge success">' + t('sg_here') + '</span>' : ' <span class="muted small">' + t('sg_not_here') + '</span>') : '') + '</td>';
+        (opts.inStock ? (hot ? ' <span class="badge healthy">' + t('sg_here') + '</span>' : ' <span class="muted small">' + t('sg_not_here') + '</span>') : '') + '</td>';
       g.measures.forEach(function (m) {
         var v = r.values ? r.values[m] : null;
         h += '<td class="num"><bdi dir="ltr">' + (typeof v === 'number' ? esc(String(v)) : '—') + '</bdi></td>';

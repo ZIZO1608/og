@@ -351,7 +351,7 @@ Until 044 is run the sync skips the two tables by name and says so; nothing else
 
 ---
 
-## Stage 3 — Deposit (عربون): server half done, screens NOT built
+## Stage 3 — Deposit (عربون)
 
 **Decision: a till reservation is a pickup order paid by deposit** (`Orders.create`, method
 `pickup`, plan `deposit`), plus one row in a new `reservations` table (`078_deposits.sql`): until
@@ -378,8 +378,9 @@ hook, so a deposit below the minimum rolls the whole order back.
 `GET /api/ext/web-orders/:ref/deposit` and `GET /api/ext/deposit` through the VPS, behind the
 website key. **Question 4:** the cloud copy doesn't carry it — should it?
 
-**Bell** (`alerts.js`): `res_ends`, `res_expired`, `web_chase`. **The words (`al_*`) are not yet in
-I18N** — the bell will show raw keys for these three until they are added.
+**Bell** (`alerts.js`): `res_ends` (ends within a day), `res_expired` (past its date — open it:
+extend, or release), `web_chase` (a website deposit paid, the rest not, past the chase days). The
+words are in both languages, and pressing a row opens that reservation (or the website order).
 
 **Settings:** `deposit.till_pct`, `deposit.online_pct`, `deposit.hold_days` and
 `deposit.chase_days` are seeded and on `CONFIG_WRITABLE` (value-checked). `CONFIG.DEP_*` is
@@ -401,17 +402,53 @@ covers:
 - release as credit (stock back, credit granted, no cash moved) and a refund;
 - the website deposit, default and set.
 
-**Not done (next steps):**
-1. `js/reserve.js` — the till's "Reserve with a deposit" button and dialog, collect/extend/release
-   dialogs, scanning the slip, and a Reservations list.
-2. The deposit slip line ("held until") in `printing.js` / `receipt.js`.
-3. Products/warehouse "held for X until Y" (the data is in `/api/catalogue` as `held`, but not
-   yet passed through `Shop.load` → `DB.hydrate`).
-4. The Settings → Deposit fold.
-5. The deposit box on the website-order card.
-6. The bell routing (open the reservation).
-7. The `al_*` strings.
-8. CLAUDE.md sections.
+**The screens (`js/reserve.js`, global `Reserve`, `data-rv`):**
+- **The till**: two buttons under Complete sale — **Reserve with a deposit** and
+  **Reservations · N**. The reserve dialog shows the customer (or says to attach one, with no
+  button), the total, the least deposit (50%) as the hero figure, held until, the deposit box
+  pre-filled with the minimum, the payment methods as chips, and — owner and manager only — an
+  "agreed deposit for this customer". Under the minimum is refused in the dialog before the
+  request. On success the basket clears and the slip prints.
+- **The deposit slip** is the order slip (total, the deposit payment, STILL OWED, the barcode)
+  with a new line **HELD UNTIL · محجوز لحد** and the date (`printing.js`, `receipt.js`).
+- **A reservation's dialog**: customer and phone, held until (or "past its date"), total, paid,
+  still to pay, the pieces; **Take X and hand over** (the rest, method chips; prints the
+  receipt), **Hold N more days**, and for `void` **Release as store credit** / **Refund the
+  deposit** — each asks once, naming the amount and the customer.
+- **Scanning the slip** (its invoice number, digits matched so the Arabic keyboard layout still
+  works) opens the reservation from any screen.
+- **Product drawer**: "Held for a reservation" — size × qty, for whom, until when, with Open.
+  The held pieces are already out of stock everywhere (the till, the website's `inStock`).
+- **Settings → Money and prices → Deposit (عربون)**: the till %, the website %, held for (days),
+  chase after (days); each saves itself.
+- **Website orders**: each new order's card has **Deposit needed** — a number and `% / USD /
+  SYP`, badged "The usual" or "Agreed", with Save.
+
+Found and fixed on the way:
+- My first strings used the `rv_` prefix, which the **Reviews page already owns** (`rv_title`,
+  `rv_none` …), and the later block was overriding Reviews' words. They are `rs_` now; Reviews
+  is back to its own words.
+- On a phone, the till's cart sheet stayed above a dialog opened from it, covering the dialog's
+  buttons. Now the reservation dialogs close the sheet first, and any dialog hides it
+  (`body[data-overlay] .pos-right`). This also fixes the size guide's sheet.
+- The size guide's badges used class names this app doesn't have; they now use
+  `healthy` / `low`.
+
+**Verified, the screens:** `_nightshift/n1028/s3-ui.mjs` — **35 green**, three runs in a row, at
+1366 English and 390 Arabic. As the cashier: no customer said; under the minimum refused; a real
+reservation read back from SQLite; the basket cleared and the slip sent; the list; open; extend
+(SQLite); no Release button; collect (delivered and paid in full, SQLite). As the owner: a
+scanned slip opens it; release as store credit (SQLite). Settings → Deposit saving itself
+(config). The bell row's words. The website order's deposit box saving 30% (SQLite). No sideways
+scroll, no console error. `s3-api` 32 green again; `npm test` 121; `fix05/p0-namespaces` 6;
+`s2-ui` still green. Screenshots `night-shots/stage3/`: `reserve-*`, `list-*`, `open-*`,
+`release-*`, `settings-*`, `weborder-*` (1366-en and 390-ar).
+
+**Not done:** the Products list has no "held" badge per row (the drawer has it; `Reserve.heldCount`
+is there for it); the warehouse's "Where is it?" doesn't name holds; the website's own screens
+(Ahmad) need the two new addresses — `GET /api/ext/web-orders/:ref/deposit`
+(`{ ref, state, deposit: { pct, amount, currency, source, setAt, order?: { total, paid,
+remaining, currency } } }`) and `GET /api/ext/deposit` (`{ onlinePct, chaseDays }`).
 
 ---
 

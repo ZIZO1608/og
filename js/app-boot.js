@@ -197,6 +197,13 @@ function openCalibration() {
    in one hand. On every other screen a scan opens the product sheet, because
    away from the till the question is "what is this?", not "sell this". */
 function handleScan(code) {
+  /* 078 — a deposit slip: the reservation it belongs to opens, from any
+     screen (js/reserve.js); the held list was loaded at boot. */
+  if (typeof Reserve !== 'undefined' && Reserve.byScan(code)) {
+    closeModal();
+    Reserve.open(Reserve.byScan(code));
+    return;
+  }
   /* Only an EXACT product code goes into the cart — the same three matchers
      labels.js trusts, and pointedly not resolveScan's cropped-label prefix
      guess: a guess picks whichever size sorts first, and a guessed size in
@@ -473,6 +480,8 @@ function start() {
        memory nobody keeps. */
     Shop.load(splash ? Splash.step : null)
       .then(function () {
+        /* 078 — the held reservations, for a scanned slip and the till's count. */
+        if (typeof Reserve !== 'undefined') Reserve.load(true);
         /* The last tick: the cloud copy's own word on itself. Never allowed
            to stop the shop opening — a mirror that will not answer is a
            quiet chip, not a fail screen. */

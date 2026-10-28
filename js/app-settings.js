@@ -1597,6 +1597,8 @@ function viewSettings() {
   /* 2 — every number that decides what something costs or is worth */
   h += setSection(t('setg_money'));
   h += rateCard();
+  /* 078 — the deposit (عربون): the till's and the website's percentage, the hold, the chase. */
+  if (typeof Reserve !== 'undefined') h += Reserve.settingsCard();
   if (typeof Cashbook !== 'undefined') h += Cashbook.settingsCard();
   h += webPrintCard();
   h += loyaltyCard();

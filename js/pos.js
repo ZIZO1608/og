@@ -873,7 +873,9 @@ var POS = (function () {
       printBoxHtml() +
 
       '<button class="btn btn-primary btn-block btn-lg" data-pos="complete"' + (S.cart.length ? '' : ' disabled') + '>' +
-        t('complete_sale') + ' · ' + money(x.total) + ' <span class="keycap">F4</span></button>';
+        t('complete_sale') + ' · ' + money(x.total) + ' <span class="keycap">F4</span></button>' +
+      /* 078 — a deposit, the pieces put aside for the customer (js/reserve.js) */
+      (typeof Reserve !== 'undefined' ? Reserve.tillButtons(S.cart.length) : '');
   }
 
   function render() {
@@ -2083,6 +2085,7 @@ var POS = (function () {
     isCouponScan: isCouponScan,
     tryCoupon: tryCoupon,
     reset: reset,
+    totals: totals,
     scanBarcode: scanBarcode,
     add: addVariant,
     saleOpen: saleOpen,
