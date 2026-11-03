@@ -118,7 +118,7 @@ var ColourForm = (function () {
         '<b dir="ltr">' + esc(s) + '</b>' +
         '<div class="cf-step">' +
           '<button data-cf="step" data-k="' + c.key + '" data-size="' + esc(s) + '" data-d="-1" aria-label="−">−</button>' +
-          '<input type="number" min="0" step="1" inputmode="numeric" dir="ltr" placeholder="0" value="' + esc(String(q)) + '" ' +
+          '<input type="text" inputmode="numeric" dir="ltr" placeholder="0" value="' + esc(String(q)) + '" ' +
             'data-cf-in="qty" data-k="' + c.key + '" data-size="' + esc(s) + '">' +
           '<button data-cf="step" data-k="' + c.key + '" data-size="' + esc(s) + '" data-d="1" aria-label="+">+</button>' +
         '</div></div>';
@@ -371,7 +371,7 @@ var ColourForm = (function () {
         var q = ADD.qty[s] === undefined ? '' : ADD.qty[s];
         h += '<div class="cf-size"><b dir="ltr">' + esc(s) + '</b><div class="cf-step">' +
           '<button data-cf="add-step" data-size="' + esc(s) + '" data-d="-1">−</button>' +
-          '<input type="number" min="0" step="1" dir="ltr" placeholder="0" value="' + esc(String(q)) + '" data-cf-add="' + esc(s) + '">' +
+          '<input type="text" inputmode="numeric" dir="ltr" placeholder="0" value="' + esc(String(q)) + '" data-cf-add="' + esc(s) + '">' +
           '<button data-cf="add-step" data-size="' + esc(s) + '" data-d="1">+</button></div></div>';
       });
       h += '</div>';
@@ -381,7 +381,7 @@ var ColourForm = (function () {
           (p.colours || []).map(function (c) { return '<option value="' + c.id + '">' + esc(DB.colourName(c)) + '</option>'; }).join('') +
         '</select></label>' +
         '<label class="field"><span>' + t('cl_size') + '</span><input class="inp" dir="ltr" id="cfsSize" maxlength="12" placeholder="46"></label>' +
-        '<label class="field"><span>' + t('cl_qty_arrives') + '</span><input class="inp num" type="number" min="0" step="1" dir="ltr" id="cfsQty" value="0"></label>' +
+        '<label class="field"><span>' + t('cl_qty_arrives') + '</span><input class="inp num" type="text" inputmode="numeric" dir="ltr" id="cfsQty" value="0"></label>' +
       '</div>';
     }
     h += '<label class="field mt"><span>' + t('wh_intake') + '</span>' + placeSelect('cfaWh') + '</label>' +

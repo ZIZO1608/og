@@ -160,7 +160,7 @@ function viewPrintLabels() {
         '<td class="num lb-tot">' + r.qty + '</td>' +
         '<td class="lb-codes">' + codes + '</td>' +
         '<td class="lb-health">' + healthBadge(r.v.qty) + '</td>' +
-        '<td class="num lb-act"><input class="inp num lb-pq" type="number" min="1" max="99" value="' +
+        '<td class="num lb-act"><input class="inp num lb-pq" type="text" inputmode="numeric" dir="ltr" value="' +
           (OG.lbQty[r.v.sku] || 1) + '" aria-label="' + esc(t('lbl_print_qty')) + '" data-change="lb-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
       '</tr>';
     });
@@ -245,7 +245,7 @@ function quickPickerBodyHTML() {
       if (!v) return;
       h += '<tr>' +
         '<td><b style="font-family:var(--font-head);font-size:14px">' + v.size + '</b></td>' +
-        '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' + quickPick.sel[sku] +
+        '<td class="num"><input class="inp num" type="text" inputmode="numeric" dir="ltr" value="' + quickPick.sel[sku] +
           '" style="width:56px" data-change="qlp-qty" data-sku="' + esc(sku) + '"></td>' +
       '</tr>';
     });

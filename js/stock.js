@@ -341,7 +341,7 @@ var Stock = (function () {
         '<td><b>' + esc(DB.variantLabel(r.v)) + '</b></td>' +
         '<td class="muted">' + esc(r.v.shelf) + '</td>' +
         '<td class="num muted">' + r.system + '</td>' +
-        '<td class="num"><input class="inp num st-in" type="number" min="0" ' +
+        '<td class="num"><input class="inp num st-in" type="text" inputmode="numeric" dir="ltr" ' +
           'value="' + (r.has ? r.counted : '') + '" placeholder="—" ' +
           'data-change="st-set" data-sku="' + esc(r.v.sku) + '"></td>' +
         '<td class="num">' + (r.has

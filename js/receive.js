@@ -189,7 +189,7 @@ var Receive = (function () {
             : '<span class="rc-owed"></span>') +
           '<span class="rc-step">' +
             '<button class="btn btn-sm" data-act="rc-minus" data-sku="' + esc(l.sku) + '">−</button>' +
-            '<input class="inp num" type="number" min="0" max="9999" ' +
+            '<input class="inp num" type="text" inputmode="numeric" dir="ltr" ' +
               'value="' + (Number(l.qty) || 0) + '" data-change="rc-qty" data-sku="' + esc(l.sku) + '">' +
             '<button class="btn btn-sm" data-act="rc-plus" data-sku="' + esc(l.sku) + '">+</button>' +
           '</span>' +

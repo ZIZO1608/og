@@ -475,7 +475,7 @@ function receiptSettingsCard() {
     h += '<label class="field"><span>' + t('rc3_host') + '</span>' +
       '<input class="inp num" dir="ltr" id="rcHost" value="' + esc(CONFIG.RECEIPT_PRINTER_HOST) + '"></label>' +
     '<label class="field"><span>' + t('rc3_port') + '</span>' +
-      '<input class="inp num" type="number" id="rcPort" value="' + CONFIG.RECEIPT_PRINTER_PORT + '"></label>';
+      '<input class="inp num" type="text" inputmode="numeric" dir="ltr" id="rcPort" value="' + CONFIG.RECEIPT_PRINTER_PORT + '"></label>';
   }
   h += '</div>';
 
@@ -512,7 +512,7 @@ function receiptSettingsCard() {
 
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_copies') + '</span>' +
-      '<input class="inp num" type="number" min="1" max="4" id="rcCopies" value="' + CONFIG.RECEIPT_COPIES + '"></label>' +
+      '<input class="inp num" type="text" inputmode="numeric" dir="ltr" id="rcCopies" value="' + CONFIG.RECEIPT_COPIES + '"></label>' +
     '<label class="field"><span>' + t('rc3_cut_mode') + '</span>' +
       '<div class="chip-row" id="rcCutMode" data-v="' + esc(CONFIG.RECEIPT_CUT_MODE) + '">' +
         '<button class="chip ' + (CONFIG.RECEIPT_CUT_MODE !== 'full' ? 'on' : '') + '"' +
@@ -577,7 +577,7 @@ function receiptSettingsCard() {
      sits beside the field instead: the hole is exactly where it belongs. */
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('rc3_gift_window') + '</span>' +
-      '<input class="inp num" type="number" min="1" max="365" id="rcGiftDays" value="' +
+      '<input class="inp num" type="text" inputmode="numeric" dir="ltr" id="rcGiftDays" value="' +
         Math.max(1, Math.round(CONFIG.RECEIPT_GIFT_EXCHANGE_HOURS / 24)) + '"></label>' +
     '<p class="set-note set-aside">' + t('rc3_gift_window_hint') + '</p>' +
   '</div>';
@@ -667,9 +667,9 @@ function thermalLabelsCard() {
   '</div>';
   h += '<div class="row2">' +
     '<label class="field"><span>' + t('lbl_density') + '</span>' +
-      '<input class="inp num" type="number" min="1" max="15" id="lblDensity" value="' + (CONFIG.LABEL_DENSITY || 8) + '"' + cdis + '></label>' +
+      '<input class="inp num" type="text" inputmode="numeric" dir="ltr" id="lblDensity" value="' + (CONFIG.LABEL_DENSITY || 8) + '"' + cdis + '></label>' +
     '<label class="field"><span>' + t('lbl_gap') + '</span>' +
-      '<input class="inp num" type="number" min="0" step="0.5" id="lblGap" value="' + (CONFIG.LABEL_GAP_MM || 2) + '"' + cdis + '></label>' +
+      '<input class="inp num" type="text" inputmode="decimal" dir="ltr" id="lblGap" value="' + (CONFIG.LABEL_GAP_MM || 2) + '"' + cdis + '></label>' +
   '</div>';
   h += '<div class="mt"><button class="btn btn-primary"' + cdis + ' data-act="lbl-save-config">' + t('lbl_save') + '</button></div>';
 
@@ -729,7 +729,7 @@ function brandingCard() {
       '</div></label>' +
     '<div class="set-two">' +
       '<label class="field"><span>' + t('phone') + savedPill('shop.phone') + '</span>' +
-        '<input class="inp" dir="ltr" id="setPhone" value="' + esc(CONFIG.SHOP_PHONE || '') + '" ' +
+        '<input class="inp" type="tel" autocomplete="tel" dir="ltr" id="setPhone" value="' + esc(CONFIG.SHOP_PHONE || '') + '" ' +
           'data-change="set-phone"></label>' +
       '<label class="field"><span>' + t('city') + savedPill('shop.city') + '</span>' +
         '<input class="inp" dir="auto" id="setCity" value="' + esc(CONFIG.SHOP_CITY || '') + '" ' +
@@ -1018,13 +1018,13 @@ function loyaltyCard() {
 
   if (DB.pointsOn()) {
     h += '<div class="row2 mt">' +
-      '<label class="field"><span>' + t('points_per') + '</span><input class="inp num" type="number" min="0" ' +
+      '<label class="field"><span>' + t('points_per') + '</span><input class="inp num" type="text" inputmode="decimal" dir="ltr" ' +
         'value="' + CONFIG.LOYALTY_POINTS_PER_1000 + '" data-change="set-pts"></label>' +
-      '<label class="field"><span>' + t('point_value') + '</span><input class="inp num" type="number" min="0" ' +
+      '<label class="field"><span>' + t('point_value') + '</span><input class="inp num" type="text" inputmode="numeric" dir="ltr" ' +
         'value="' + CONFIG.LOYALTY_POINT_VALUE + '" data-change="set-ptval"></label>' +
     '</div>' +
     '<label class="field mt"><span>' + t('ly_block') + '</span>' +
-      '<input class="inp num" type="number" min="1" value="' + block + '" data-change="set-lyblock"></label>' +
+      '<input class="inp num" type="text" inputmode="numeric" dir="ltr" value="' + block + '" data-change="set-lyblock"></label>' +
     '<div class="partner-note">' + nf(block) + ' ' + t('points') + ' = ' + money(block * CONFIG.LOYALTY_POINT_VALUE) + '</div>' +
     '<div class="mt"><div class="lbl">' + t('tier') + '</div>' +
       '<span class="badge bronze">' + t('bronze') + ' 0–' + nf(CONFIG.TIER_SILVER - 1) + '</span> ' +
@@ -1034,7 +1034,7 @@ function loyaltyCard() {
 
   if (DB.stampsOn()) {
     h += '<div class="row2 mt">' +
-      '<label class="field"><span>' + t('ly_required') + '</span><input class="inp num" type="number" min="1" max="99" ' +
+      '<label class="field"><span>' + t('ly_required') + '</span><input class="inp num" type="text" inputmode="numeric" dir="ltr" ' +
         'value="' + nf(CONFIG.STAMPS_REQUIRED) + '" data-change="set-lyreq"></label>' +
       '<label class="field"><span>' + t('ly_per') + '</span>' +
         '<select class="inp" data-change="set-lyper">' +
@@ -1059,7 +1059,7 @@ function customersCard() {
       '<span dir="ltr">' + d + '</span> ' + t('days')) +
     '<div class="card-body">' +
     '<label class="field"><span>' + t('cu_atrisk_days') + '</span>' +
-      '<input class="inp num" id="setAtRisk" type="number" min="1" max="3650" value="' + d + '" data-change="set-atrisk"></label>' +
+      '<input class="inp num" id="setAtRisk" type="text" inputmode="numeric" dir="ltr" value="' + d + '" data-change="set-atrisk"></label>' +
     '<div class="partner-note">' + t('cu_atrisk_note') + '</div>' +
     '</div>' + setFoldEnd();
 }
@@ -1087,7 +1087,7 @@ function remSwitch(id, key, isOn, sub) {
 
 function remNumField(spec) {
   return '<label class="field"><span>' + t('rem_n_' + spec[0]) + '</span>' +
-    '<input class="inp num" type="number" min="' + spec[1] + '" max="' + spec[2] + '"' +
+    '<input class="inp num" type="text" inputmode="numeric" dir="ltr" min="' + spec[1] + '" max="' + spec[2] + '"' +
     ' value="' + remNum(spec[0], '') + '" data-change="set-reminder-num" data-k="' + spec[0] + '"></label>';
 }
 

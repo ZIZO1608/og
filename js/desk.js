@@ -241,6 +241,16 @@ var Desk = (function () {
     return n;
   }
 
+  /* A FIGURE THAT MAY CARRY A FRACTION and is not money: a gap in millimetres,
+     points per thousand, a percentage. Same digits as the other two. */
+  function toDecimal(typed, opts) {
+    opts = opts || {};
+    var f = figure(typed);
+    if (!f) return opts.empty === undefined ? 0 : opts.empty;
+    var n = Number((f.whole || '0') + (f.frac ? '.' + f.frac : ''));
+    return isFinite(n) ? n : 0;
+  }
+
   function wholeOf(minor, code) {
     return (Number(minor) || 0) / Math.pow(10, expOf(code));
   }
@@ -3766,6 +3776,7 @@ var Desk = (function () {
     plain: moneyPlain,
     toMinor: toMinor,
     toCount: toCount,
+    toDecimal: toDecimal,
     foldDigits: foldDigits,
     openOrder: openOrder,
     sendTrack: sendTrack,

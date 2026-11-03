@@ -158,7 +158,17 @@ var Charts = (function () {
     return horizontal ? { x: value, y: category } : { x: category, y: value };
   }
 
-  function gridScales(fmt) { return axisPair(fmt, false); }
+  function gridScales(fmt) {
+    var s = axisPair(fmt, false);
+    /* A LINE OVER 30 DAYS ON A PHONE. Every date rotated into 300px is a
+       scribble; a handful, level, reads. The desk keeps every label. */
+    if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) {
+      s.x.ticks.autoSkip = true;
+      s.x.ticks.maxRotation = 0;
+      s.x.ticks.maxTicksLimit = 7;
+    }
+    return s;
+  }
 
   /* ------------------------------------------------------------- fallbacks */
 

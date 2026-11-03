@@ -5465,3 +5465,74 @@ body:not([data-portal="yalla"]) .cb-step-h { margin: 4px 0; font-size: 20px; }
 @media (min-width: 721px) {
   body[data-view="pos"] .toasts { inset-inline-end: calc(var(--pos-cart-w) + 17px); }
 }
+
+/* ==========================================================================
+   THE PHONE CHECK (3 Nov 2026). Measured at 360 and 390 in both languages;
+   nothing here reaches a screen wider than the phone layout.
+   ========================================================================== */
+
+@media (max-width: 720px) {
+  /* A CART LINE IS TWO ROWS. As one row the 112px price column left the name
+     about 20px, and "Size S - 30 in stock" stood six words high. */
+  body:not([data-portal="yalla"]) .cart-line {
+    display: grid; grid-template-columns: 1fr auto auto;
+    grid-template-areas: "main main del" "step total total";
+    row-gap: 8px; align-items: center;
+  }
+  body:not([data-portal="yalla"]) .cart-line .cl-main { grid-area: main; }
+  body:not([data-portal="yalla"]) .cart-line .stepper { grid-area: step; justify-self: start; }
+  body:not([data-portal="yalla"]) .cart-line .cl-total { grid-area: total; width: auto; }
+  body:not([data-portal="yalla"]) .cart-line .cl-del { grid-area: del; min-width: 44px; min-height: 44px; }
+  body:not([data-portal="yalla"]) .stepper button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+
+  /* The till's small controls. */
+  body:not([data-portal="yalla"]) .pos-right .seg button,
+  body:not([data-portal="yalla"]) .pos-right [data-pos="wh"] { min-height: 44px; min-width: 44px; }
+  body:not([data-portal="yalla"]) .cust-caret { min-width: 44px; min-height: 44px; }
+
+  /* Pay stays on the glass, but the foot's own bottom padding left a gap under
+     it, and the total scrolled past in that gap. The band runs to the sheet's end. */
+  body:not([data-portal="yalla"]) .cart-foot > [data-pos="complete"] {
+    box-shadow: 0 0 0 6px var(--subtle), 0 24px 0 6px var(--subtle), 0 -16px 16px -10px var(--subtle);
+  }
+  /* An empty till: a see-through disabled button let the total show through. */
+  body:not([data-portal="yalla"]) .cart-foot > [data-pos="complete"]:disabled {
+    opacity: 1; background: var(--muted); color: var(--muted-foreground); border-color: var(--border);
+  }
+
+  /* The empty cart's sentence was cut by the sheet's foot. */
+  body:not([data-portal="yalla"]) .cart-lines .cart-empty { padding: 10px 16px; }
+  body:not([data-portal="yalla"]) .cart-lines .cart-empty svg { width: 28px; height: 28px; margin-bottom: 4px; }
+
+  /* Roles: 259 ticks under a fingertip, and the permission's name stays in view
+     while the roles scroll sideways. */
+  body:not([data-portal="yalla"]) .perm-tbl input[type="checkbox"] { width: 28px; height: 28px; }
+  body:not([data-portal="yalla"]) .perm-tbl td { padding: 10px 8px; }
+  body:not([data-portal="yalla"]) .perm-tbl tr:not(.perm-group) td:first-child {
+    position: sticky; inset-inline-start: 0; z-index: 1; background: var(--card);
+  }
+
+  /* NOTHING A PERSON READS IS UNDER 12PX, and a face's two letters not under 11. */
+  body .tabbtn .tb-txt, body .bell-badge, body .nt-count, body .pcard-img .qty-tag,
+  body .eyebrow, body .cc-stats div .eyebrow,
+  body .badge, body .cust-row .badge,
+  body:not([data-portal="yalla"]) .badge,
+  body:not([data-portal="yalla"]) .stat .eyebrow,
+  body:not([data-portal="yalla"]) .hm-fig .eyebrow,
+  body:not([data-portal="yalla"]) .sf-p-stats .eyebrow,
+  body .rc-hero .eyebrow, body .rd-cash-sum .eyebrow,
+  body .set-sec, body:not([data-portal="yalla"]) .set-sec, body .dlb-money small, body .track-node, body .rvw-web small { font-size: 12px; }
+  body .dlp-face, body .dlb-c-via .dlp-face, body .who-face, body .who-face.sm, body .live-faces .who-face,
+  body .hc-dow, body .rd-dow, body .ab-k, body .sm-pl-rack small, body .sm-tile .sm-load, body .sm-tile .sm-pname, body .ph-mark i { font-size: 11px; }
+
+  /* Small targets on the shelf map, offers and reviews. */
+  .sm-vw { height: auto; min-height: 44px; white-space: nowrap; }
+  .sm-pl-rack { min-height: 44px; }
+  body:not([data-portal="yalla"]) .of-days .of-pill { min-height: 44px; }
+  .rvw-bar { min-height: 44px; }
+  .rvw-link { min-height: 40px; display: inline-flex; align-items: center; }
+  body:not([data-portal="yalla"]) .link { min-height: 40px; display: inline-flex; align-items: center; }
+
+  /* "Inventory value" on one line; the row already scrolls. */
+  body:not([data-portal="yalla"]) .tabs .tab { white-space: nowrap; flex: none; }
+}

@@ -7627,3 +7627,26 @@ Several colours are grouped by colour (in their own order), then size.
   - the Expenses month is a pair (lira + dollars);
   - the Statement draws Takings alone when it equals Sales.
 - **Starting balances** are one place at a time (Next / Back / Skip), saved together at the end.
+
+## The phone check (3 Nov 2026)
+
+The list measured at 360 and 390 in both languages, every item fixed. `_nightshift/mobile-fix/press.mjs`
+(36) and `look.mjs` (8) press them. The phone CSS is the `THE PHONE CHECK` block at the end of `css/og-skin.css`.
+
+- **The 50 number boxes are written as text, on top of `js/numbox.js`** (the pipeline check, same day), which
+  still dresses any box written `type="number"`, the till-return dialog's included. NumBox fixes the digits; it cannot
+  read "1,000", which a bare `Number()` makes 0. So these are `type="text"` with `inputmode` and `dir="ltr"`, and every reader goes through
+  `Desk.toCount` / `Desk.toMinor`, or **`Desk.toDecimal`** (new: a fraction that is not money). A shirt's number
+  is `Desk.foldDigits` with the non-digits taken out, so "07" stays "07". The arrow keys no longer step these 50 (NumBox's still do).
+  Only the reminder hours keep `min` / `max`, because `set-reminder-num` reads them back. Bulk price % keeps
+  `inputmode="text"`, because -10 needs a minus.
+- **A customer's Take a payment was in minor units**: 10 typed on a dollar debt was ten cents. It now sends the
+  debt's own currency (`data-cur`) through `Desk.toMinor`.
+- **`--dim` is `#8B8B94`** and the bell and message badges are `#D92D33`, at every width: real text was failing
+  contrast. `fix04/golden-desk` moves because of the grey.
+- The driver's menu is `fitFloatMenu` (the pipeline check); `press.mjs` holds it on screen in both languages.
+- The sales line thins its dates only at ≤720px (`gridScales` in `js/charts.js`); bars keep every label.
+- **Still under 12px on phones:** about 70 small classes at 11–11.5, each measured by `press.mjs`. The 12/14/16/20/24
+  type scale is not done: the list says to move to it as each screen is next touched.
+- **Red on the commit before this too**, nothing to do with it: `fix05/p7-style`'s two `offers` cards, its 401 on
+  `/api/reservations` (a polling route missing from `quietErrors`), and `fix04/till`'s golden.

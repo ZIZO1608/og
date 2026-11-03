@@ -1040,10 +1040,10 @@ var YALLA = (function () {
     h += '<h4 class="set-h mt">' + t('tgo_hours_h') + '</h4>' +
       '<div class="tgo-hours">' +
         '<label class="field"><span>' + t('tgo_quiet_from') + '</span>' +
-          '<input class="inp num" type="number" min="0" max="23" dir="ltr" value="' + o.quietFrom + '"' +
+          '<input class="inp num" type="text" inputmode="numeric" dir="ltr" value="' + o.quietFrom + '"' +
           ' data-change="set-tgo-hour" data-k="quiet_from"></label>' +
         '<label class="field"><span>' + t('tgo_quiet_to') + '</span>' +
-          '<input class="inp num" type="number" min="0" max="23" dir="ltr" value="' + o.quietTo + '"' +
+          '<input class="inp num" type="text" inputmode="numeric" dir="ltr" value="' + o.quietTo + '"' +
           ' data-change="set-tgo-hour" data-k="quiet_to"></label>' +
       '</div><div class="partner-note">' + t('tgo_quiet') + '</div>';
     return h;

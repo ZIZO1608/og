@@ -768,7 +768,7 @@ var POS = (function () {
           h += '<div class="pr-item-inputs">' +
             '<input class="inp" type="text" value="' + esc(s.name) + '" placeholder="' + esc(t('pr_name')) + '" ' +
               'data-pos-input="pr-name" data-k="' + esc(x.key) + '">' +
-            '<input class="inp num" type="number" min="0" max="999" value="' + esc(s.num) + '" placeholder="' + esc(t('pr_num')) + '" ' +
+            '<input class="inp num" type="text" inputmode="numeric" dir="ltr" value="' + esc(s.num) + '" placeholder="' + esc(t('pr_num')) + '" ' +
               'data-pos-input="pr-num" data-k="' + esc(x.key) + '">' +
           '</div>';
         }
@@ -847,7 +847,7 @@ var POS = (function () {
       '<div class="row2 mt">' +
         '<div><span class="lbl">' + t('discount') + '</span>' +
           '<div style="display:flex;gap:4px">' +
-            '<input class="inp num' + (overCap() ? ' is-bad' : '') + '" id="posDisc" type="number" min="0" placeholder="0" value="' + (S.discount.value || '') + '" data-pos-input="disc">' +
+            '<input class="inp num' + (overCap() ? ' is-bad' : '') + '" id="posDisc" type="text" inputmode="numeric" dir="ltr" placeholder="0" value="' + (S.discount.value || '') + '" data-pos-input="disc">' +
             '<span class="seg" style="flex:none">' +
               '<button data-pos="disc-mode" data-m="amount" class="' + (S.discount.mode === 'amount' ? 'on' : '') + '">#</button>' +
               '<button data-pos="disc-mode" data-m="percent" class="' + (S.discount.mode === 'percent' ? 'on' : '') + '">%</button>' +
@@ -1887,7 +1887,7 @@ var POS = (function () {
          not the row under it now, and Enter must never take a stale one. */
       if (k === 'cust') { custSel = -1; custDrop(el.value); return; }
       if (k === 'disc') {
-        S.discount.value = Math.max(0, parseInt(el.value, 10) || 0);
+        S.discount.value = Desk.toCount(el.value);
         paintTotals();
         paintDiscHint();
         return;
@@ -1901,7 +1901,7 @@ var POS = (function () {
          sit inside a panel that repaints when the cart changes. */
       if (k === 'pr-name' || k === 'pr-num') {
         var s = S.print.sel[el.getAttribute('data-k')];
-        if (s) { if (k === 'pr-name') s.name = el.value; else s.num = el.value; }
+        if (s) { if (k === 'pr-name') s.name = el.value; else s.num = Desk.foldDigits(el.value).replace(/\D/g, ''); }
         return;
       }
       if (el.id === 'prDate') S.print.deadline = el.value;

@@ -780,7 +780,7 @@ function fillDebts(cid, debts) {
       '</span></td>' +
       (allow('debt.collect')
         ? '<td><button class="btn btn-sm btn-primary" data-act="cu-pay" ' +
-            'data-sale="' + esc(dbt.id) + '" data-cid="' + cid + '">' + t('cu_take_payment') + '</button></td>'
+            'data-sale="' + esc(dbt.id) + '" data-cid="' + cid + '" data-cur="' + esc(dbt.currency || '') + '">' + t('cu_take_payment') + '</button></td>'
         : '') +
     '</tr>';
   });
@@ -1606,7 +1606,7 @@ function openReorder(pid) {
       '<td class="num muted">' + (rate > 0 ? (Math.round(rate * 10) / 10) + '/' + t('po_week') : '—') + '</td>' +
       '<td class="num ' + (cover < 14 ? 'po-urgent' : 'muted') + '">' +
         (cover === Infinity ? t('po_no_sales') : cover + t('yl_d')) + '</td>' +
-      '<td class="num"><input class="inp num po-qty" type="number" min="0" value="' + qty + '" ' +
+      '<td class="num"><input class="inp num po-qty" type="text" inputmode="numeric" dir="ltr" value="' + qty + '" ' +
         'data-po-qty="1" data-pid="' + pid + '" data-sku="' + esc(v.sku) + '" data-size="' + esc(v.size) + '"></td></tr>';
   });
 

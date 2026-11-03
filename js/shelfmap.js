@@ -1883,11 +1883,11 @@ var ShelfMap = (function () {
   function seedForm(sec) {
     return '<div class="sm-seed">' +
       '<label class="field"><span>' + t('sm_levels') + '</span>' +
-        '<input class="inp num" id="smSeedR" type="number" min="1" max="26" value="4"></label>' +
+        '<input class="inp num" id="smSeedR" type="text" inputmode="numeric" dir="ltr" value="4"></label>' +
       '<label class="field"><span>' + t('sm_bays') + '</span>' +
-        '<input class="inp num" id="smSeedC" type="number" min="1" max="99" value="6"></label>' +
+        '<input class="inp num" id="smSeedC" type="text" inputmode="numeric" dir="ltr" value="6"></label>' +
       '<label class="field"><span>' + t('sm_capacity') + '</span>' +
-        '<input class="inp num" id="smSeedCap" type="number" min="1" placeholder="' + t('sm_cap_hint') + '"></label>' +
+        '<input class="inp num" id="smSeedCap" type="text" inputmode="numeric" dir="ltr" placeholder="' + t('sm_cap_hint') + '"></label>' +
       '<button class="btn btn-primary" data-sm="seed" data-id="' + sec.id + '">' +
         t('sm_grid_setup') + '</button>' +
     '</div>';
@@ -2172,7 +2172,7 @@ var ShelfMap = (function () {
       '<label class="field"><span>' + t('sm_code') + '</span>' +
         '<input class="inp" id="smCode" type="text" value="' + esc(sh.code) + '" dir="ltr" maxlength="4"></label>' +
       '<label class="field"><span>' + t('sm_capacity') + '</span>' +
-        '<input class="inp num" id="smCap" type="number" min="1" value="' + (sh.capacity == null ? '' : sh.capacity) + '" placeholder="' + t('sm_cap_hint') + '"></label>' +
+        '<input class="inp num" id="smCap" type="text" inputmode="numeric" dir="ltr" value="' + (sh.capacity == null ? '' : sh.capacity) + '" placeholder="' + t('sm_cap_hint') + '"></label>' +
       '</div>';
 
     h += '<div class="sm-editrow">' +
@@ -2931,11 +2931,11 @@ var ShelfMap = (function () {
 
     ACT['seed'] = function (el) {
       var id = +el.getAttribute('data-id');
-      var rows = +document.getElementById('smSeedR').value;
-      var cols = +document.getElementById('smSeedC').value;
+      var rows = Desk.toCount(document.getElementById('smSeedR').value);
+      var cols = Desk.toCount(document.getElementById('smSeedC').value);
       var cap = document.getElementById('smSeedCap').value;
       API.post('/api/sections/' + id + '/grid', {
-        rows: rows, cols: cols, capacity: cap === '' ? null : +cap
+        rows: rows, cols: cols, capacity: Desk.toCount(cap, { empty: null })
       }).then(function () { reload(); })
         .catch(function (err) { toast(API.friendly(err), '', 'warn'); });
     };
@@ -2980,7 +2980,7 @@ var ShelfMap = (function () {
       var to = document.getElementById('smTo').value;
       assignFlow(id, {
         code: code,
-        capacity: cap === '' ? null : +cap,
+        capacity: Desk.toCount(cap, { empty: null }),
         productId: pid === '' ? null : +pid,
         sizeFrom: from === '' ? null : from,
         sizeTo: to === '' ? null : to
@@ -3039,14 +3039,14 @@ var ShelfMap = (function () {
       var sel = val('smRkWall');
       var free = sel === 'free';
       var wall = free ? null : (sel || null);
-      var cmOrNull = function (i) { return val(i) === '' ? null : +val(i); };
+      var cmOrNull = function (i) { return Desk.toCount(val(i), { empty: null }); };
       var body = {
         name: val('smRkName').trim(),
         gridOrigin: (document.querySelector('input[name="smRkOrigin"]:checked') || {}).value || 'left',
         roomId: val('smRkRoom') ? +val('smRkRoom') : null,
         placement: free ? 'free' : 'wall',
         wall: wall,
-        wallCm: wall ? (val('smRkPos') === '' ? 0 : +val('smRkPos')) : null,
+        wallCm: wall ? Desk.toCount(val('smRkPos')) : null,
         /* blank means the standard rack; the server stores NULL */
         bayCm: cmOrNull('smRkBay'), levelCm: cmOrNull('smRkLevel'), depthCm: cmOrNull('smRkDepth')
       };
@@ -3111,7 +3111,7 @@ var ShelfMap = (function () {
     ACT['room-save'] = function (el) {
       var id = el.getAttribute('data-id');
       var val = function (i) { var e = document.getElementById(i); return e ? e.value : ''; };
-      var cm = function (i) { return val(i) === '' ? null : +val(i); };
+      var cm = function (i) { return Desk.toCount(val(i), { empty: null }); };
       var body = { name: val('smRmName').trim(), widthCm: cm('smRmW'), depthCm: cm('smRmD'), heightCm: cm('smRmH') };
       /* A refusal for size stays IN the dialog, with the minimum the
          server named and a button that fills it in — a toast over a
@@ -3362,9 +3362,9 @@ var ShelfMap = (function () {
       '</div>' +
       '<div class="sm-dz-row">' +
         '<label class="field"><span>' + t('sm_bays') + '</span>' +
-          '<input class="inp num" id="smAddCols" type="number" min="1" max="99" value="' + sh.cols + '"></label>' +
+          '<input class="inp num" id="smAddCols" type="text" inputmode="numeric" dir="ltr" value="' + sh.cols + '"></label>' +
         '<label class="field"><span>' + t('sm_levels') + '</span>' +
-          '<input class="inp num" id="smAddRows" type="number" min="1" max="26" value="' + sh.rows + '"></label>' +
+          '<input class="inp num" id="smAddRows" type="text" inputmode="numeric" dir="ltr" value="' + sh.rows + '"></label>' +
       '</div>' +
       '<div class="sm-dz-row"><button class="btn btn-sm btn-primary" data-sm="rack-add-go">' + t('sm_add_place') + '</button></div>' +
       '<div class="muted sm-dz-note">' + t('sm_add_hint') + '</div>' +
@@ -3378,7 +3378,7 @@ var ShelfMap = (function () {
     if (!key) { toast(t('sm_add_no_letter'), '', 'warn', 6000); return false; }
     var kindEl = document.querySelector('input[name="smAddKind"]:checked');
     var num = function (id, lo, hi, d) {
-      var el = document.getElementById(id), v = el ? Math.round(+el.value) : d;
+      var el = document.getElementById(id), v = el ? Desk.toCount(el.value, { empty: d }) : d;
       return v >= lo && v <= hi ? v : d;
     };
     var sh = roomShape(room.id);
@@ -3505,14 +3505,14 @@ var ShelfMap = (function () {
         '<option value="free"' + (standsFree ? ' selected' : '') + '>' + esc(t('sm_free')) + '</option>' +
         '</select></label>' +
       '<label class="field" id="smRkPosField"' + (standsFree ? ' style="display:none"' : '') + '><span>' + t('sm_wall_cm') + '</span>' +
-        '<input class="inp num" id="smRkPos" type="number" min="0" step="5" value="' +
+        '<input class="inp num" id="smRkPos" type="text" inputmode="numeric" dir="ltr" value="' +
           (sec && sec.wall_cm != null ? sec.wall_cm : 0) + '"></label>' +
     '</div>' +
     '<div id="smRkFree"' + (standsFree ? '' : ' style="display:none"') + '><div class="row3">' +
       '<label class="field"><span>' + t('sm_free_x') + '</span>' +
-        '<input class="inp num" id="smRkX" type="number" min="0" step="5" dir="ltr" value="' + (standsFree ? sec.x_cm : '') + '"></label>' +
+        '<input class="inp num" id="smRkX" type="text" inputmode="numeric" dir="ltr" value="' + (standsFree ? sec.x_cm : '') + '"></label>' +
       '<label class="field"><span>' + t('sm_free_y') + '</span>' +
-        '<input class="inp num" id="smRkY" type="number" min="0" step="5" dir="ltr" value="' + (standsFree ? sec.y_cm : '') + '"></label>' +
+        '<input class="inp num" id="smRkY" type="text" inputmode="numeric" dir="ltr" value="' + (standsFree ? sec.y_cm : '') + '"></label>' +
       '<label class="field"><span>' + t('sm_rot') + '</span><select class="inp" id="smRkRot" dir="ltr">' +
         rots.map(function (d) {
           return '<option value="' + d + '"' + (standsFree && d === sec.rot_deg ? ' selected' : '') + '>' + d + '°</option>';
@@ -3537,7 +3537,7 @@ var ShelfMap = (function () {
     var lim = (S.limits && S.limits.rack) || { bay: [60, 300], level: [10, 200], depth: [20, 200] };
     var sizeBox = function (id, key, v, def, l) {
       return '<label class="field"><span>' + t(key) + '</span>' +
-        '<input class="inp num" id="' + id + '" type="number" min="' + l[0] + '" max="' + l[1] + '" ' +
+        '<input class="inp num" id="' + id + '" type="text" inputmode="numeric" dir="ltr" ' +
           'placeholder="' + def + '" value="' + (v == null ? '' : v) + '"></label>';
     };
     b += '<div class="field"><span>' + t('sm_rack_size') + '</span></div>' +
@@ -3574,7 +3574,7 @@ var ShelfMap = (function () {
     var max = (S.limits && S.limits.room_max_cm) || 10000;
     var cm = function (id, key, v) {
       return '<label class="field"><span>' + t(key) + '</span>' +
-             '<input class="inp num" id="' + id + '" type="number" min="1" max="' + max + '" value="' + (v == null ? '' : v) + '"></label>';
+             '<input class="inp num" id="' + id + '" type="text" inputmode="numeric" dir="ltr" value="' + (v == null ? '' : v) + '"></label>';
     };
     b += '<div class="row3">' +
       cm('smRmW', 'sm_room_w', room ? room.width_cm : null) +

@@ -556,7 +556,7 @@ var Payables = (function () {
           field(t('py_salary'), amountBox('pyESal', p ? whole(p.salary, p.currency) : '')) +
         '</div>' +
         '<div class="cb-pair">' +
-          field(t('py_pay_day'), '<input class="inp num" id="pyEDay" type="number" min="1" max="28" dir="ltr" value="' + esc(p ? (p.pay_day || p.payDay || '') : '') + '">') +
+          field(t('py_pay_day'), '<input class="inp num" id="pyEDay" type="text" inputmode="numeric" dir="ltr" value="' + esc(p ? (p.pay_day || p.payDay || '') : '') + '">') +
           field(t('py_since'), '<input class="inp" id="pyESince" type="date" dir="ltr" value="' + esc(p && p.since ? String(p.since).slice(0, 10) : '') + '">') +
         '</div>' +
         '<div class="muted small">' + t('py_pay_day_hint') + '</div>' +
@@ -741,7 +741,7 @@ var Payables = (function () {
       var body = {
         name: name, role: val('pyERole') || null, currency: cur,
         salary: Cashbook.toMinor(val('pyESal'), cur),
-        pay_day: val('pyEDay') ? Number(val('pyEDay')) : null,
+        pay_day: Desk.toCount(val('pyEDay'), { empty: null }),
         since: val('pyESince') || null, phone: val('pyEPhone') || null,
         user_id: val('pyELogin') ? Number(val('pyELogin')) : null
       };

@@ -97,7 +97,7 @@ var CHANGES = {
   'ms-qty': function (el) {
     if (!moveScan) return;
     var sku = el.getAttribute('data-sku');
-    var n = Math.max(0, Math.min(99, parseInt(el.value, 10) || 0));
+    var n = Desk.toCount(el.value, { max: 99 });
     if (!n) moveScan.lines = moveScan.lines.filter(function (l) { return l.sku !== sku; });
     else moveScan.lines.forEach(function (l) { if (l.sku === sku) l.qty = n; });
     moveScanRepaint();
@@ -105,7 +105,7 @@ var CHANGES = {
 
   'lb-qty': function (el) {
     OG.lbQty = OG.lbQty || {};
-    OG.lbQty[el.getAttribute('data-sku')] = Math.max(1, Math.min(99, parseInt(el.value, 10) || 1));
+    OG.lbQty[el.getAttribute('data-sku')] = Desk.toCount(el.value, { empty: 1, min: 1, max: 99 });
   },
 
   /* The quick label picker's per-size qty. Patches only the modal footer's
@@ -115,7 +115,7 @@ var CHANGES = {
   'qlp-qty': function (el) {
     if (!quickPick) return;
     var sku = el.getAttribute('data-sku');
-    quickPick.sel[sku] = Math.max(1, Math.min(99, parseInt(el.value, 10) || 1));
+    quickPick.sel[sku] = Desk.toCount(el.value, { empty: 1, min: 1, max: 99 });
     var foot = document.querySelector('.modal-foot');
     if (foot) foot.innerHTML = quickPickerFootHTML();
   },
@@ -218,25 +218,25 @@ var CHANGES = {
      saveConfig() is the shared debounced writer: 600ms, so "180" typed as
      1, 18, 180 is one round trip rather than three. */
   'set-pts': function (el) {
-    var v = parseFloat(el.value);
+    var v = Desk.toDecimal(el.value, { empty: NaN });
     if (!isFinite(v) || v < 0) return;
     CONFIG.LOYALTY_POINTS_PER_1000 = v;
     saveConfig('loyalty.points_per_1000', v, t('loyalty_rules'));
   },
   'set-ptval': function (el) {
-    var v = parseInt(el.value, 10);
+    var v = Desk.toCount(el.value, { empty: NaN });
     if (!isFinite(v) || v < 0) return;
     CONFIG.LOYALTY_POINT_VALUE = v;
     saveConfig('loyalty.point_value', v, t('loyalty_rules'));
   },
   'set-lyblock': function (el) {
-    var v = parseInt(el.value, 10);
+    var v = Desk.toCount(el.value, { empty: NaN });
     if (!isFinite(v) || v < 1) return;
     CONFIG.REDEEM_BLOCK = v;
     saveConfig('loyalty.redeem_block', v, t('ly_block'));
   },
   'set-lyreq': function (el) {
-    var v = parseInt(el.value, 10);
+    var v = Desk.toCount(el.value, { empty: NaN });
     if (!isFinite(v) || v < 1 || v > 99) return;
     CONFIG.STAMPS_REQUIRED = v;
     saveConfig('loyalty.stamps.required', v, t('ly_required'));
@@ -376,7 +376,7 @@ var CHANGES = {
      fire three writes. The loyalty inputs above still write to memory only —
      a known, pre-existing gap; it is not made worse here. */
   'set-atrisk': function (el) {
-    var v = parseInt(el.value, 10);
+    var v = Desk.toCount(el.value, { empty: NaN });
     if (!isFinite(v) || v < 1 || v > 3650) return;
     CONFIG.AT_RISK_DAYS = v;
     clearTimeout(ATRISK_SAVE_T);
@@ -417,7 +417,7 @@ var CHANGES = {
   'set-reminder-num': function (el) {
     var k = el.getAttribute('data-k');
     if (!k) return;
-    var v = parseInt(el.value, 10);
+    var v = Desk.toCount(el.value, { empty: NaN });
     var min = Number(el.getAttribute('min')), max = Number(el.getAttribute('max'));
     /* Out of range is a half-typed number, not a value: "1" on the way to
        "18" must not be saved and must not toast. */
@@ -499,7 +499,7 @@ var CHANGES = {
      range is a half-typed hour, not a value — the reminders' own rule. */
   'set-tgo-hour': function (el) {
     var k = el.getAttribute('data-k');
-    var v = parseInt(el.value, 10);
+    var v = Desk.toCount(el.value, { empty: NaN });
     if (!isFinite(v) || v < 0 || v > 23) return;
     var s = tgOfficeStatus();
     if (s && s.office) s.office[k === 'quiet_to' ? 'quietTo' : 'quietFrom'] = v;

@@ -373,7 +373,7 @@ tr.is-tbc { background: var(--warning-soft); }
 .nt-count {
   position: absolute; top: -5px; inset-inline-end: -5px; min-width: 17px; height: 17px;
   padding: 0 4px; border-radius: var(--radius-full); display: grid; place-items: center;
-  background: var(--destructive-solid); color: #FFFFFF;
+  background: #D92D33 /* white on it reads 4.8:1 */; color: #FFFFFF;
   font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums;
   border: 2px solid var(--app);
 }

@@ -181,7 +181,7 @@ var Labels = (function () {
   function labelPreviewHTML(line, presetObj) {
     return '<div class="lbl-line">' + stickerHTML(line, presetObj) +
       '<label class="lbl-line-qty"><span>' + t('lbl_qty') + '</span>' +
-        '<input class="inp num" type="number" min="0" max="99" value="' + line.qty +
+        '<input class="inp num" type="text" inputmode="numeric" dir="ltr" value="' + line.qty +
           '" data-change="lbl-line-qty" data-sku="' + esc(line.sku) + '"></label>' +
       '</div>';
   }
@@ -511,7 +511,7 @@ var Labels = (function () {
       CHANGES['lbl-line-qty'] = function (el) {
         if (!activeLines) return;
         var sku = el.getAttribute('data-sku');
-        var qty = Math.max(0, parseInt(el.value, 10) || 0);
+        var qty = Desk.toCount(el.value);
         var next = activeLines.map(function (l) { return l.sku === sku ? { sku: sku, qty: qty } : l; });
         openPreviewModal(next, lastChoice.preset, lastChoice.station, lastChoice.barcodeType);
       };

@@ -227,17 +227,20 @@ function pjCollect() {
   var f = OG.pj;
   var v = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
   f.customer = v('pjCustomer'); f.phone = v('pjPhone'); f.design = v('pjDesign');
-  f.qty = Math.max(0, Math.round(Number(v('pjQty')) || 0));
+  f.qty = Desk.toCount(v('pjQty'));
   f.priority = v('pjPriority') || 'normal';
   f.deadline = v('pjDeadline');
   /* Empty stays empty (no print price set, nothing typed yet); a typed price is kept. */
-  f.unitPrice = String(v('pjPrice')).trim() === '' ? null : Math.max(0, Math.round(Number(v('pjPrice')) || 0));
-  if (document.getElementById('pjCost')) f.unitCost = Math.max(0, Math.round(Number(v('pjCost')) || 0));
+  var typedPrice = Desk.toDecimal(v('pjPrice'), { empty: null });
+  f.unitPrice = typedPrice === null ? null : Math.round(typedPrice);
+  if (document.getElementById('pjCost')) f.unitCost = Math.round(Desk.toDecimal(v('pjCost')));
   f.currency = v('pjCurrency') || 'SYP';
   document.querySelectorAll('[data-pj-line]').forEach(function (el) {
     var i = +el.getAttribute('data-i'), k = el.getAttribute('data-pj-line');
     if (!f.lines[i]) return;
-    f.lines[i][k] = el.value;
+    /* A shirt's number and a quantity are figures; Arabic digits are folded here
+       so everything that reads the line later sees plain ones. */
+    f.lines[i][k] = (k === 'number' || k === 'qty') ? Desk.foldDigits(el.value).replace(/\D/g, '') : el.value;
   });
   return f;
 }
@@ -255,13 +258,13 @@ function pjLinesHtml(f) {
         }).join('') + '</select>' +
       '<input class="inp" type="text" placeholder="' + esc(t('pj_line_name_ph')) + '" value="' + esc(l.print) +
         '" data-pj-line="print" data-i="' + i + '">' +
-      '<input class="inp num" type="number" min="0" max="99" placeholder="#" value="' + esc(l.number) +
+      '<input class="inp num" type="text" inputmode="numeric" dir="ltr" placeholder="#" value="' + esc(l.number) +
         '" data-pj-line="number" data-i="' + i + '">' +
       '<select class="inp" data-pj-line="size" data-i="' + i + '">' +
         TEE_SIZES.map(function (s) {
           return '<option value="' + s + '"' + (s === l.size ? ' selected' : '') + '>' + s + '</option>';
         }).join('') + '</select>' +
-      '<input class="inp num" type="number" min="1" value="' + esc(l.qty) + '" data-pj-line="qty" data-i="' + i + '">' +
+      '<input class="inp num" type="text" inputmode="numeric" dir="ltr" value="' + esc(l.qty) + '" data-pj-line="qty" data-i="' + i + '">' +
       '<button class="btn btn-sm btn-ghost" data-act="pj-line-del" data-i="' + i + '" aria-label="' + esc(t('bk_delete')) + '">✕</button>' +
     '</div>';
   });
@@ -292,7 +295,7 @@ function pjFormHtml() {
       '<div class="muted small mb">' + t('pj_lines_hint') + '</div>' + pjLinesHtml(f) + '</div>';
   } else {
     h += '<label class="field mt"><span>' + t('pj_qty') + '</span>' +
-      '<input class="inp num" id="pjQty" type="number" min="1" value="' + esc(f.qty || 12) + '"></label>';
+      '<input class="inp num" id="pjQty" type="text" inputmode="numeric" dir="ltr" value="' + esc(f.qty || 12) + '"></label>';
   }
 
   var today = new Date();
@@ -308,14 +311,14 @@ function pjFormHtml() {
           '<option value="urgent"' + (f.priority === 'urgent' ? ' selected' : '') + '>' + t('urgent') + '</option>' +
         '</select></label>' +
       '<label class="field"><span>' + t('pj_unit_price') + '</span>' +
-        '<input class="inp num" id="pjPrice" type="number" min="0" value="' + esc(f.unitPrice == null ? '' : f.unitPrice) + '"' +
+        '<input class="inp num" id="pjPrice" type="text" inputmode="decimal" dir="ltr" value="' + esc(f.unitPrice == null ? '' : f.unitPrice) + '"' +
           (f.unitPrice == null ? ' placeholder="' + esc(t('pj_price_unset_ph')) + '"' : '') + '>' +
         (f.unitPrice0 == null
           ? '<small class="muted">' + t('pj_price_unset') + '</small>'
           : '<small class="muted">' + t('pj_price_from_setting') + '</small>') + '</label>' +
       (seesCost()
         ? '<label class="field"><span>' + t('pj_unit_cost') + '</span>' +
-            '<input class="inp num" id="pjCost" type="number" min="0" value="' + esc(f.unitCost) + '"></label>'
+            '<input class="inp num" id="pjCost" type="text" inputmode="decimal" dir="ltr" value="' + esc(f.unitCost) + '"></label>'
         : '') +
       '<label class="field"><span>' + t('pj_currency') + '</span>' +
         '<select class="inp" id="pjCurrency">' +
@@ -592,7 +595,7 @@ function openJobDrawer(id) {
         '<td><input class="inp" type="text" value="' + esc(l.print || '') +
           '" placeholder="' + esc(t('yl_to_confirm')) + '" ' +
           'data-og-line="print" data-jid="' + j.id + '" data-lid="' + l.id + '"></td>' +
-        '<td><input class="inp num" type="number" min="0" max="99" style="width:62px" value="' +
+        '<td><input class="inp num" type="text" inputmode="numeric" dir="ltr" style="width:62px" value="' +
           esc(l.number === null ? '' : l.number) + '" placeholder="—" ' +
           'data-og-line="number" data-jid="' + j.id + '" data-lid="' + l.id + '"></td>' +
         '<td><span class="yl-size"><b>' + esc(l.size) + '</b></span></td>' +

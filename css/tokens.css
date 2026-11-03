@@ -34,7 +34,7 @@
   --foreground:            #FAFAFA;
   --card-foreground:       #FAFAFA;
   --muted-foreground:      #A1A1AA;   /* zinc-400 */
-  --dim:                   #71717A;   /* zinc-500, decorative only */
+  --dim:                   #8B8B94;   /* about 6:1 on the app's black: real text uses it, the tab bar included */
 
   /* --- lines ------------------------------------------------------------- */
   --border:                #27272A;

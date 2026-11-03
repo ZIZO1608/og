@@ -252,13 +252,13 @@ var YLINV = (function () {
                       '" value="' + esc(l.club) + '" data-yi-in="clubtext" data-i="' + i + '">' : '') + '</td>' +
           '<td><input class="inp" type="text" placeholder="' + esc(t('yi_name_ph')) +
             '" value="' + esc(l.print) + '" data-yi-in="print" data-i="' + i + '"></td>' +
-          '<td><input class="inp num" type="number" min="0" max="99" placeholder="—" value="' +
+          '<td><input class="inp num" type="text" inputmode="numeric" dir="ltr" placeholder="—" value="' +
             esc(l.number) + '" data-yi-in="number" data-i="' + i + '"></td>' +
           '<td><select class="inp" data-yi-in="size" data-i="' + i + '">' +
             SIZES.map(function (s) {
               return '<option value="' + s + '"' + (l.size === s ? ' selected' : '') + '>' + s + '</option>';
             }).join('') + '</select></td>' +
-          '<td><input class="inp num" type="number" min="1" value="' + l.qty +
+          '<td><input class="inp num" type="text" inputmode="numeric" dir="ltr" value="' + l.qty +
             '" data-yi-in="qty" data-i="' + i + '"></td>' +
           '<td><select class="inp num" data-yi-in="price" data-i="' + i + '">' +
             priceOptions().map(function (p) {
@@ -605,7 +605,7 @@ var YLINV = (function () {
     'pay-save': function (el) {
       var inv = DB.invoice(el.getAttribute('data-id'));
       if (!inv) return;
-      var amt = Math.round(Number((document.getElementById('yiPayAmt') || {}).value) || 0);
+      var amt = Desk.toCount((document.getElementById('yiPayAmt') || {}).value);
       var method = (document.getElementById('yiPayMethod') || {}).value || 'cash';
       var place = (document.getElementById('yiPayPlace') || {}).value || null;
       var me = payerSide();
@@ -650,7 +650,7 @@ var YLINV = (function () {
               '<div class="val warn" style="font-size:18px">' + money(bal) + '</div></div>' +
           '</div>' +
           '<label class="field mt"><span>' + t('yi_amount') + '</span>' +
-            '<input class="inp num" id="yiPayAmt" type="number" min="1" max="' + bal + '" value="' + bal + '"></label>' +
+            '<input class="inp num" id="yiPayAmt" type="text" inputmode="numeric" dir="ltr" value="' + bal + '"></label>' +
           '<label class="field mt"><span>' + t('payment_method') + '</span>' +
             '<select class="inp" id="yiPayMethod">' +
               Object.keys(DB.paymentLabels).map(function (k) {
@@ -819,9 +819,9 @@ var YLINV = (function () {
     }
     if (f === 'clubtext') { l.club = el.value; updateTotals(); return; }
     if (f === 'print')    { l.print = el.value; return; }
-    if (f === 'number')   { l.number = el.value; return; }
+    if (f === 'number')   { l.number = Desk.foldDigits(el.value).replace(/\D/g, ''); return; }
     if (f === 'size')     { l.size = el.value; return; }
-    if (f === 'qty')      { l.qty = Math.max(1, +el.value || 1); updateTotals(); return; }
+    if (f === 'qty')      { l.qty = Desk.toCount(el.value, { empty: 1, min: 1 }); updateTotals(); return; }
     if (f === 'price')    { l.price = +el.value || 0; updateTotals(); }
   }
 

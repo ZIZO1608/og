@@ -283,7 +283,7 @@ var Bulk = (function () {
       title: t('bk_price') + ' · ' + list.length,
       size: 'narrow',
       body: '<label class="field"><span>' + t('bk_price_pct') + '</span>' +
-              '<input class="inp num" id="bkPct" type="number" value="10" step="1"></label>' +
+              '<input class="inp num" id="bkPct" type="text" inputmode="text" dir="ltr" value="10"></label>' +
             '<div class="partner-note">' + t('bk_price_hint') + '</div>' +
             '<div class="mt small muted">' + list.slice(0, 3).map(function (p) {
               return esc(p.name) + ' · ' + money(p.sellingPrice);
@@ -619,7 +619,11 @@ var Bulk = (function () {
 
     'price-apply': function () {
       var pctEl = document.getElementById('bkPct');
-      var p = Number(pctEl && pctEl.value) || 0;
+      /* The one figure in the shop that may go down: -10 lowers every price. */
+      var rawPct = String((pctEl && pctEl.value) || '').trim();
+      var down = /^[-\u2212\u2013\u2014]/.test(rawPct);
+      var p = Desk.toDecimal(rawPct.replace(/^[-\u2212\u2013\u2014]\s*/, ''));
+      if (down) p = -p;
       var list = selProducts();
       var before = list.map(function (x) { return x.sellingPrice; });
       /* A price is stored in the product's OWN currency. x.sellingPrice is the

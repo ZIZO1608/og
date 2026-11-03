@@ -487,7 +487,7 @@ function openEditCustomer(cid) {
          empty box and mean opposite things. */
       '<div class="row2 mt">' +
         '<label class="field"><span>' + t('cu_credit_limit') + '</span>' +
-          '<input class="inp num" id="cuLimit" type="number" min="0" step="1" ' +
+          '<input class="inp num" id="cuLimit" type="text" inputmode="decimal" dir="ltr" ' +
             'value="' + (c.creditLimit == null ? '' : (c.creditLimit / 100)) + '" ' +
             'placeholder="' + esc(t('cu_no_limit')) + '"></label>' +
         '<label class="field"><span>' + t('cu_no_credit') + '</span>' +
@@ -545,7 +545,7 @@ function openTransfer(pid) {
   '</div>';
 
   body += '<div class="mt"><div class="lbl">' + t('wh_qty_to_move') + '</div>' +
-    '<input class="inp" id="trQty" type="number" min="1" value="1"></div>' +
+    '<input class="inp" id="trQty" type="text" inputmode="numeric" dir="ltr" value="1"></div>' +
     '<div class="partner-note mt">' + t('wh_split_hint') + '</div>';
 
   openModal({
@@ -1208,7 +1208,7 @@ function moveScanBody() {
         '<small dir="ltr">' + esc(r.v.sku) + '</small></span></div></td>' +
       '<td><b>' + esc(DB.variantLabel(r.v)) + '</b></td>' +
       '<td class="num' + (over ? ' mv-delta mv-down' : ' muted') + '">' + r.have + '</td>' +
-      '<td class="num"><input class="inp num" type="number" min="1" max="99" value="' + r.line.qty +
+      '<td class="num"><input class="inp num" type="text" inputmode="numeric" dir="ltr" value="' + r.line.qty +
         '" style="width:64px" data-change="ms-qty" data-sku="' + esc(r.v.sku) + '"></td>' +
       '<td><button class="btn btn-sm btn-ghost" data-act="ms-drop" data-sku="' + esc(r.v.sku) + '" ' +
         'title="' + esc(t('remove')) + '">&times;</button></td>' +

@@ -46,7 +46,7 @@ function navTo(view, tab) {
    holding paper that says they are too late. */
 function giftDays(raw) {
   var s = String(raw == null ? '' : raw).trim();
-  var n = s === '' ? NaN : Number(s);
+  var n = Desk.toCount(s, { empty: NaN });
   if (!isFinite(n)) return 7;
   return Math.min(365, Math.max(1, Math.round(n)));
 }
@@ -631,12 +631,12 @@ var ACTIONS = {
     var saleId = el.getAttribute('data-sale');
     var cid = +el.getAttribute('data-cid');
     var sale = DB.sale(saleId);
-    OG.payFor = { saleId: saleId, cid: cid };
+    OG.payFor = { saleId: saleId, cid: cid, currency: el.getAttribute('data-cur') || (sale && sale.currency) || CONFIG.BASE_CURRENCY };
 
     openModal({
       title: t('cu_take_payment') + ' · ' + esc(saleId), size: 'narrow',
       body: '<label class="field"><span>' + t('amount') + '</span>' +
-          '<input class="inp num" id="cuPayAmt" type="number" min="1" inputmode="numeric"></label>' +
+          '<input class="inp num" id="cuPayAmt" type="text" inputmode="decimal" dir="ltr"></label>' +
         '<label class="field mt"><span>' + t('payment_method') + '</span>' +
           '<select class="inp" id="cuPayMethod">' +
             (DB.payMethodsFor('debt').length
@@ -661,7 +661,9 @@ var ACTIONS = {
 
   'cu-pay-do': function () {
     var ref = OG.payFor || {};
-    var amt = Math.round(Number((document.getElementById('cuPayAmt') || {}).value) || 0);
+    /* The server reads minor units, in the debt's own currency: a dollar debt
+       typed as 10 is $10, not ten cents. */
+    var amt = Desk.toMinor((document.getElementById('cuPayAmt') || {}).value, ref.currency);
     if (!(amt > 0)) {
       toast(t('cu_take_payment'), t('cu_pay_amount_needed'), 'err');
       return;
@@ -676,7 +678,7 @@ var ACTIONS = {
     Shop.write(
       function () {
         return Shop.payDebt({
-          saleId: ref.saleId, amount: amt, method: method,
+          saleId: ref.saleId, amount: amt, method: method, currency: ref.currency,
           note: note || null, opId: opId
         });
       },
@@ -1012,7 +1014,7 @@ var ACTIONS = {
     var limitEl = document.getElementById('cuLimit');
     if (limitEl) {
       var raw = String(limitEl.value || '').trim();
-      fields.credit_limit = raw === '' ? null : Math.round(Number(raw) * 100);
+      fields.credit_limit = Desk.toDecimal(raw, { empty: null }) === null ? null : Desk.toMinor(raw, 'USD');
     }
     var ncEl = document.getElementById('cuNoCredit');
     if (ncEl) fields.no_credit = ncEl.value === '1' ? 1 : 0;
@@ -1153,7 +1155,7 @@ var ACTIONS = {
     var p = DB.product(pid);
     var lines = [];
     document.querySelectorAll('[data-po-qty][data-pid="' + pid + '"]').forEach(function (inp) {
-      var qty = parseInt(inp.value, 10) || 0;
+      var qty = Desk.toCount(inp.value);
       if (qty > 0) lines.push({ productId: pid, size: inp.getAttribute('data-size'), sku: inp.getAttribute('data-sku'), qty: qty, cost: p.costPrice });
     });
     if (!lines.length) { toast(t('reorder'), t('po_need_qty'), 'warn'); return; }
@@ -1354,7 +1356,7 @@ var ACTIONS = {
       'receipt.instagram':    (document.getElementById('rcInstagram') || {}).value || '',
       'receipt.telegram':     (document.getElementById('rcTelegram') || {}).value || '',
       'receipt.maps_url':     (document.getElementById('rcMapsUrl') || {}).value || '',
-      'receipt.copies':       (document.getElementById('rcCopies') || {}).value || '2',
+      'receipt.copies':       String(Desk.toCount((document.getElementById('rcCopies') || {}).value, { empty: 2 })),
       'receipt.cut_mode':     ((document.getElementById('rcCutMode') || {}).getAttribute &&
                                 document.getElementById('rcCutMode').getAttribute('data-v')) || 'partial',
       'receipt.ink':          ((document.getElementById('rcInk') || {}).getAttribute &&
@@ -1382,7 +1384,7 @@ var ACTIONS = {
       updates['receipt.printer_share'] = (document.getElementById('rcShare') || {}).value || '';
     } else {
       updates['receipt.printer_host'] = (document.getElementById('rcHost') || {}).value || '';
-      updates['receipt.printer_port'] = (document.getElementById('rcPort') || {}).value || '9100';
+      updates['receipt.printer_port'] = String(Desk.toCount((document.getElementById('rcPort') || {}).value, { empty: 9100 }));
     }
     el.disabled = true;
     API.put('/api/config', { updates: updates })
@@ -1402,8 +1404,8 @@ var ACTIONS = {
     var updates = {
       'label.transport':    (document.getElementById('lblTransport') || {}).value || 'agent',
       'label.printer_host': (document.getElementById('lblHost') || {}).value || '',
-      'label.density':      (document.getElementById('lblDensity') || {}).value || '8',
-      'label.gap_mm':       (document.getElementById('lblGap') || {}).value || '2'
+      'label.density':      String(Desk.toCount((document.getElementById('lblDensity') || {}).value, { empty: 8 })),
+      'label.gap_mm':       String(Desk.toDecimal((document.getElementById('lblGap') || {}).value, { empty: 2 }))
     };
     el.disabled = true;
     API.put('/api/config', { updates: updates })
@@ -1621,7 +1623,7 @@ var ACTIONS = {
     if (!v) return;
 
     var f = from.value, tgt = to.value;
-    var want = Math.min(parseInt(qty.value, 10) || 0, DB.stockAt(v, f));
+    var want = Math.min(Desk.toCount(qty.value), DB.stockAt(v, f));
     if (want <= 0) { toast(t('wh_transfer'), t('out_of_stock'), 'err'); return; }
 
     var p = DB.product(v.productId);
@@ -2383,7 +2385,7 @@ var ACTIONS = {
       if (!l) return;
       var f = inp.getAttribute('data-og-line');
       if (f === 'print') l.print = (inp.value || '').toUpperCase().trim() || null;
-      if (f === 'number') l.number = inp.value === '' ? null : +inp.value;
+      if (f === 'number') l.number = Desk.toCount(inp.value, { empty: null });
     });
 
     var after = DB.tbcCount(job);
