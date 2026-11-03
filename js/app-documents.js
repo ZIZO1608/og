@@ -76,9 +76,18 @@ function invoiceHtml(sale, order) {
     '<div class="inv-totals">' +
       '<div class="tr"><span>' + t('subtotal') + '</span><span>' +
         om(order ? order.sale.subtotal : 0, sale.subtotal) + '</span></div>' +
-      ((order ? order.sale.discount : sale.discount)
-        ? '<div class="tr"><span>' + t('discount') + (sale.couponCode ? ' (' + sale.couponCode + ')' : '') +
-          '</span><span>− ' + om(order ? order.sale.discount : 0, sale.discount) + '</span></div>' : '') +
+      /* One discount column on the sale holds the manual part and the coupon
+         together; coupon_uses says how much of it was the coupon. */
+      (function () {
+        var whole = order ? order.sale.discount : sale.discount;
+        if (!whole) return '';
+        var cut = sale.couponCode ? Math.min(sale.couponCut || 0, whole) : 0;
+        var row = function (label, n) {
+          return '<div class="tr"><span>' + label + '</span><span>− ' + om(n, n) + '</span></div>';
+        };
+        return (whole - cut > 0 ? row(t('discount'), whole - cut) : '') +
+          (cut > 0 ? row(t('coupon') + ' (<bdi dir="ltr">' + esc(sale.couponCode) + '</bdi>)', cut) : '');
+      })() +
       (sale.pointsUsed ? '<div class="tr"><span>' + t('loyalty') + ' (' + sale.pointsUsed + ' ' + t('points') + ')</span>' +
         '<span>− ' + money(sale.pointsUsed * CONFIG.LOYALTY_POINT_VALUE) + '</span></div>' : '') +
       /* The shipping the shop charges — or the line saying the courier takes
@@ -388,6 +397,16 @@ function openInvoice(sale, opts) {
                 ? '<button class="btn btn-ghost" data-act="sale-attach" data-id="' + esc(sale.id) + '">+ ' +
                     t('sa_attach') + '</button>'
                 : '')) +
+          /* Undoing a till sale. An order comes back through the deliveries
+             board. The server asks the same permissions again. */
+          (!opts.newSale && !sale.voided && sale.payment !== 'order' && allow('void')
+            ? (sale.payment !== 'credit' && allow('refund')
+                ? '<button class="btn btn-ghost" data-act="sale-return" data-id="' + esc(sale.id) + '">' +
+                    t('sr_btn') + '</button>'
+                : '') +
+              '<button class="btn btn-ghost bk-danger" data-act="sale-void" data-id="' + esc(sale.id) + '">' +
+                t('sv_btn') + '</button>'
+            : '') +
           '<button class="btn btn-ghost" data-act="export" data-kind="pdf">' + t('pdf') + '</button>' +
           '<button class="btn" data-act="print-doc">' + t('print') + '</button>' +
           /* One button, not "Preview" next to "Print receipt". The old pair

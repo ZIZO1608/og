@@ -267,7 +267,7 @@ var Road = (function () {
 
   function carrierOf(h) {
     if (!h) return '';
-    return h.kind === 'driver' ? (h.driver_name || t('rd_driver'))
+    return h.kind === 'driver' ? (staffName(h.driver_name) || t('rd_driver'))
                                : (h.company_name || t('rd_company'));
   }
 
@@ -502,7 +502,7 @@ var Road = (function () {
     var all = {}, curs = [];
     cash.totals.forEach(function (r) {
       var k = String(r.driverId);
-      if (!byDriver[k]) { byDriver[k] = { name: r.driverName, id: r.driverId, cur: [] }; order.push(k); }
+      if (!byDriver[k]) { byDriver[k] = { name: staffName(r.driverName), id: r.driverId, cur: [] }; order.push(k); }
       byDriver[k].cur.push(r);
       if (!(r.currency in all)) { all[r.currency] = 0; curs.push(r.currency); }
       all[r.currency] += r.amount;

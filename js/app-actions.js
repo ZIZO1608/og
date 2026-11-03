@@ -51,6 +51,75 @@ function giftDays(raw) {
   return Math.min(365, Math.max(1, Math.round(n)));
 }
 
+/* ---- a return at the till: which pieces, and what that gives back ---------
+   The sum shown is the server's own rule (Orders.takeBackTill): the goods' share
+   of what was actually paid. The server still works it out itself on the save. */
+function srPicked() {
+  var out = [];
+  [].forEach.call(document.querySelectorAll('[data-sr-sku]'), function (inp) {
+    var q = Desk.toCount(inp.value);
+    if (q > 0) out.push({ sku: inp.getAttribute('data-sr-sku'), qty: q });
+  });
+  return out;
+}
+
+function srWorth() {
+  var info = OG.sr.info;
+  var w = info.worth;
+  var shelf = 0;
+  var whole = true;
+  var picked = {};
+  srPicked().forEach(function (p) { picked[p.sku] = p.qty; });
+  info.lines.forEach(function (l) {
+    var q = Math.min(picked[l.sku] || 0, l.left);
+    if (q < l.left) whole = false;
+    var skip = l.returned;
+    var n = q;
+    l.tiers.forEach(function (tier) {
+      var s = Math.min(tier.qty, skip);
+      skip -= s;
+      var take = Math.min(tier.qty - s, n);
+      shelf += take * tier.price;
+      n -= take;
+    });
+  });
+  var share = function (v) { return w.goods ? Math.round(w.net * Math.min(1, v / w.goods)) : 0; };
+  return (whole ? w.net : share(w.before + shelf)) - share(w.before);
+}
+
+function srBody() {
+  var info = OG.sr.info;
+  var hours = info.exchangeHours;
+  var late = hours && Date.now() - new Date(info.sale.at).getTime() > hours * 3600000;
+  var h = late ? '<div class="partner-note">' + t('sr_late').replace('{n}', '<bdi dir="ltr">' + hours + '</bdi>') + '</div>' : '';
+  h += '<div class="lbl mt">' + t('sr_pieces') + '</div>';
+  info.lines.forEach(function (l) {
+    h += '<label class="field"><span>' + esc(l.name) + ' · <bdi dir="ltr">' + esc(l.size) + '</bdi>' +
+      (l.returned ? ' <small class="muted">' + t('sr_already').replace('{n}', l.returned) + '</small>' : '') + '</span>' +
+      '<input class="inp num" type="number" min="0" max="' + l.left + '" value="0"' + (l.left ? '' : ' disabled') +
+      ' data-sr-sku="' + esc(l.sku) + '" data-change="sr-qty"></label>';
+  });
+  h += '<div class="lbl mt">' + t('sr_money') + '</div><div class="row3" style="display:flex;gap:8px">' +
+    '<button type="button" class="btn on" style="flex:1" data-act="sr-outcome" data-o="refund">' + t('sr_o_refund') + '</button>' +
+    (info.sale.customerId
+      ? '<button type="button" class="btn" style="flex:1" data-act="sr-outcome" data-o="credit">' + t('sr_o_credit') + '</button>'
+      : '') + '</div>';
+  if (info.needsRef) {
+    h += '<label class="field mt"><span>' + t('txn_ref') + '</span><input class="inp" id="srRef" dir="ltr" maxlength="64"></label>';
+  }
+  h += '<label class="field mt"><span>' + t('sr_why') + '</span><input class="inp" id="srWhy" dir="auto" maxlength="200"></label>' +
+    '<div id="srSum" class="partner-note mt" role="status"></div><div id="srErr"></div>';
+  return h;
+}
+
+function srPaint() {
+  var box = document.getElementById('srSum');
+  if (!box || !OG.sr) return;
+  var sum = saleMoney(srWorth(), OG.sr.info.sale.currency);
+  box.innerHTML = t(OG.sr.outcome === 'credit' ? 'sr_sum_credit' : 'sr_sum')
+    .replace('{n}', sum).replace('{m}', esc(DB.payLabel(OG.sr.info.sale.payment)));
+}
+
 var ACTIONS = {
   /* The exchange-rate feed's two buttons (Settings → Exchange rate). "Check
      now" asks the feed and applies by the card's rules; "Use it" is the one
@@ -750,6 +819,87 @@ var ACTIONS = {
      Reuses the customer picker the till already has rather than inventing a
      second one. The rules — who may, and how long after — are the server's;
      this only asks the question. */
+  'sale-void': function (el) {
+    var sale = DB.sale(el.getAttribute('data-id'));
+    if (!sale) return;
+    openModal({
+      title: t('sv_btn') + ' ' + sale.id, size: 'narrow',
+      body: '<p style="margin-top:0">' + t('sv_ask') + '</p>' +
+        '<label class="field"><span>' + t('sv_why') + '</span>' +
+          '<input class="inp" id="svWhy" type="text" dir="auto" maxlength="200"></label>' +
+        '<div id="svErr"></div>',
+      foot: '<button class="btn" data-act="modal-close">' + t('cancel') + '</button>' +
+        '<button class="btn btn-ghost bk-danger" data-act="sale-void-go" data-id="' + esc(sale.id) + '">' + t('sv_go') + '</button>'
+    });
+  },
+
+  'sale-void-go': function (el) {
+    var id = el.getAttribute('data-id');
+    var why = String((document.getElementById('svWhy') || {}).value || '').trim();
+    var box = document.getElementById('svErr');
+    var say = function (msg) { if (box) box.innerHTML = '<div class="pk-err" role="alert">' + esc(msg) + '</div>'; };
+    if (!why) { say(t('sv_need_why')); return; }
+    el.disabled = true;
+    var began = Shop.write(function () {
+      return API.post('/api/sales/' + encodeURIComponent(id) + '/void', { reason: why });
+    }, null, function () {
+      closeModal();
+      toast(t('sv_btn'), t('sv_done').replace('{id}', id), 'ok', 5000);
+    }, function (err) {
+      el.disabled = false;
+      say(API.friendly(err));
+    });
+    if (began === false) el.disabled = false;
+  },
+
+  'sale-return': function (el) {
+    var id = el.getAttribute('data-id');
+    API.get('/api/sales/' + encodeURIComponent(id) + '/returns').then(function (info) {
+      OG.sr = { id: id, info: info, outcome: 'refund',
+                opId: 'sr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) };
+      openModal({
+        title: t('sr_btn') + ' ' + id, size: 'narrow',
+        body: srBody(), foot: '<button class="btn" data-act="modal-close">' + t('cancel') + '</button>' +
+          '<button class="btn btn-primary" data-act="sale-return-go">' + t('sr_go') + '</button>'
+      });
+      srPaint();
+    }).catch(function (err) { toast(t('sr_btn'), API.friendly(err), 'err', 6000); });
+  },
+
+  'sr-outcome': function (el) {
+    OG.sr.outcome = el.getAttribute('data-o');
+    [].forEach.call(document.querySelectorAll('[data-act="sr-outcome"]'), function (b) {
+      b.classList.toggle('on', b === el);
+    });
+    srPaint();
+  },
+
+  'sale-return-go': function (el) {
+    var box = document.getElementById('srErr');
+    var say = function (msg) { if (box) box.innerHTML = '<div class="pk-err" role="alert">' + esc(msg) + '</div>'; };
+    var picked = srPicked();
+    if (!picked.length) { say(t('sr_need_pieces')); return; }
+    var why = String((document.getElementById('srWhy') || {}).value || '').trim();
+    var ref = String((document.getElementById('srRef') || {}).value || '').trim();
+    if (OG.sr.info.needsRef && OG.sr.outcome === 'refund' && !ref) { say(t('sr_need_ref')); return; }
+    var sr = OG.sr;
+    el.disabled = true;
+    var began = Shop.write(function () {
+      return API.post('/api/sales/' + encodeURIComponent(sr.id) + '/returns', {
+        outcome: sr.outcome, reason: why, txnRef: ref,
+        lines: picked.map(function (p) { return { sku: p.sku, qty: p.qty }; }), opId: sr.opId
+      });
+    }, null, function (r) {
+      closeModal();
+      toast(t('sr_btn'), t(sr.outcome === 'credit' ? 'sr_done_credit' : 'sr_done').replace('{n}',
+        saleMoney(r.refund, r.currency)), 'ok', 6000);
+    }, function (err) {
+      el.disabled = false;
+      say(API.friendly(err));
+    });
+    if (began === false) el.disabled = false;
+  },
+
   'sale-attach': function (el) {
     var saleId = el.getAttribute('data-id');
     var sale = DB.sale(saleId);

@@ -911,7 +911,13 @@ var Deliveries = (function () {
 
   /* ------------------------------------------------------------- the moves */
 
+  /* One move per parcel at a time, until the board has been reloaded. A second
+     press used to reach the server too, and came back as a red "already out"
+     over a move that had worked. */
+  var moving = {};
   function move(id, body, okMsg) {
+    if (moving[id]) return Promise.resolve();
+    moving[id] = true;
     return API.patch('/api/deliveries/' + id, body)
       .then(function () {
         toast(t('dl_title'), okMsg || t('dl_marked'), 'ok');
@@ -921,7 +927,8 @@ var Deliveries = (function () {
         /* The server's own sentence, which names the amount still owed when
            a company parcel is held back. */
         toast(t('dl_title'), err.message || API.friendly(err), 'err', 7000);
-      });
+      })
+      .then(function () { delete moving[id]; });
   }
 
   function assignDialog(id) {
@@ -1169,7 +1176,7 @@ var Deliveries = (function () {
       var mine = el.parentNode.querySelector('.dlb-menu');
       var wasOpen = mine && mine.classList.contains('on');
       closeRowMenus();
-      if (mine && !wasOpen) mine.classList.add('on');
+      if (mine && !wasOpen) { mine.classList.add('on'); fitFloatMenu(mine); }
     };
     if (!register._menus) {
       register._menus = true;

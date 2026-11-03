@@ -1914,6 +1914,13 @@ var Desk = (function () {
       code: code, subtotal: tt.couponBase, currency: tt.currency, customerId: S.customerId || null
     }).then(function (r) {
       if (!S) return;
+      if (tt.subtotal > 0 && tt.couponBase <= 0) {
+        S.couponTyped = code;
+        saveDraft();
+        paint('sum');
+        toast((quiet ? t('dk_web_coupon') : t('coupon')) + ' ' + code, t('err_coupon_offer_items'), 'warn', 8000);
+        return;
+      }
       S.coupon = r.coupon;
       S.couponTyped = '';
       saveDraft();

@@ -121,14 +121,21 @@ function cappedCount(cap) {
   return nf(cap.shown) + (cap.capped ? '+' : '');
 }
 
+/* Lira shown as dollars, to the cent. Rounded to whole dollars, a $16.30 pair
+   read $16 at the till and a cashier collected thirty cents short. */
+function usdOfLira(syp) {
+  var a = Math.round((Number(syp) || 0) / CONFIG.EXCHANGE_RATE * 100) / 100;
+  return '$' + (a === Math.round(a) ? nf(a) : a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+}
+
 function money(syp) {
-  if (OG.currency === 'USD') return '$' + nf((Number(syp) || 0) / CONFIG.EXCHANGE_RATE);
+  if (OG.currency === 'USD') return usdOfLira(syp);
   return nf(syp) + ' ' + (OG.lang === 'ar' ? 'ل.س' : 'SYP');
 }
 
 /* Big stat cards: full separators, currency demoted so long numbers still fit. */
 function moneyStat(syp) {
-  if (OG.currency === 'USD') return '$' + nf((Number(syp) || 0) / CONFIG.EXCHANGE_RATE);
+  if (OG.currency === 'USD') return usdOfLira(syp);
   return nf(syp) + '<span class="cur">' + (OG.lang === 'ar' ? 'ل.س' : 'SYP') + '</span>';
 }
 
@@ -342,7 +349,38 @@ function tel(s) { return '<bdi dir="ltr">' + esc(s) + '</bdi>'; }
    around the punctuation. dir="auto" lets the name declare its own direction
    and isolates it from the text around it. Every customer name on screen
    goes through here. */
-function nm(s) { return '<bdi dir="auto">' + esc(s) + '</bdi>'; }
+function nm(s) { return '<bdi dir="auto">' + esc(staffName(s)) + '</bdi>'; }
+
+/* The hidden record a removed account's history points at. Its name is stored
+   in English, and on an Arabic screen it is a label, not somebody's name. */
+function staffName(s) {
+  return /^Former staff( – .*)?$/.test(String(s || '')) ? t('former_staff') : s;
+}
+
+/* A "…" menu opens from the end of its button, which on a phone can be off the
+   edge of the glass: on the driver's card the button sits at the start of the
+   row, so the menu ran out past the screen in both languages. Measured once it
+   is showing, because the row decides where the button is. Slid sideways back
+   on, and flipped upward when it would land under the phone tab bar. */
+function fitFloatMenu(menu) {
+  if (!menu) return;
+  menu.style.transform = '';
+  menu.style.top = '';
+  menu.style.bottom = '';
+  var GUTTER = 8;
+  var r = menu.getBoundingClientRect();
+  var width = document.documentElement.clientWidth;
+  var dx = r.left < GUTTER ? GUTTER - r.left
+    : r.right > width - GUTTER ? width - GUTTER - r.right : 0;
+  if (dx) menu.style.transform = 'translateX(' + Math.round(dx) + 'px)';
+  var bar = document.getElementById('tabbar');
+  var barBox = bar ? bar.getBoundingClientRect() : null;
+  var floor = barBox && barBox.height ? barBox.top : window.innerHeight;
+  if (r.bottom > floor - GUTTER && r.top - r.height > GUTTER) {
+    menu.style.top = 'auto';
+    menu.style.bottom = 'calc(100% + 4px)';
+  }
+}
 
 /* A product shows a real photo when it has one and its colour block when it
    does not. `image.src` is a data URL held in memory — the original brief said
@@ -749,7 +787,9 @@ function closeDrawer() { document.getElementById('drawer-root').innerHTML = ''; 
 
 function exCur() { return OG.currency === 'USD' ? 'USD' : 'SYP'; }
 function exMoney(v) {
-  return Math.round(OG.currency === 'USD' ? (Number(v) || 0) / CONFIG.EXCHANGE_RATE : (Number(v) || 0));
+  return OG.currency === 'USD'
+    ? Math.round((Number(v) || 0) / CONFIG.EXCHANGE_RATE * 100) / 100
+    : Math.round(Number(v) || 0);
 }
 function exCol(label) { return label + ' (' + exCur() + ')'; }
 

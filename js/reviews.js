@@ -166,7 +166,7 @@ var Reviews = (function () {
   function cardHtml(r) {
     var face = (typeof Desk !== 'undefined' && Desk.face) ? Desk.face(r.customerId || 0, r.customerName || r.showName || '?') : '';
     var tags = (r.tags || []).map(function (k) { return '<span class="rvw-tag">' + t('rv_tag_' + k) + '</span>'; }).join('');
-    var via = r.companyName ? esc(r.companyName) : r.driverName ? esc(r.driverName) : (r.method ? t('dk_m_' + r.method) : '');
+    var via = r.companyName ? esc(r.companyName) : r.driverName ? esc(staffName(r.driverName)) : (r.method ? t('dk_m_' + r.method) : '');
     var icon = (r.method && typeof Desk !== 'undefined' && Desk.methodIcon) ? '<span class="rvw-mi">' + Desk.methodIcon(r.method) + '</span>' : '';
 
     var web;
@@ -179,7 +179,7 @@ var Reviews = (function () {
           (r.onWeb ? ' checked' : '') + (off ? ' disabled' : '') + '><i></i></span>' +
         '<span><b>' + t(r.onWeb ? 'rv_web_on' : 'rv_web_off') + '</b><small>' +
           (r.onWeb && r.webAt
-            ? t('rv_web_since').replace('{d}', esc(when(r.webAt))) + (r.webByName ? ' · ' + esc(r.webByName) : '')
+            ? t('rv_web_since').replace('{d}', esc(when(r.webAt))) + (r.webByName ? ' · ' + esc(staffName(r.webByName)) : '')
             : t('rv_web_as').replace('{name}', esc(r.showName || '—'))) +
         '</small></span></label>';
     }

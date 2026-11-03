@@ -49,7 +49,20 @@ var Stock = (function () {
     if (typeof Shop !== 'undefined' && Shop.live()) {
       Shop.startCount({ whId: S.active.whId, scope: S.active.scope })
         .then(function (r) {
-          if (S.active && r && r.count) S.active.id = r.count.id;
+          if (S.active && r && r.count) {
+            S.active.id = r.count.id;
+            /* The server picked up a sheet left open today: its figures come
+               back, and anything typed while this was on the line stays. */
+            var saved = r.count.resumed ? (r.count.lines || []) : [];
+            saved.forEach(function (l) {
+              if (!Object.prototype.hasOwnProperty.call(S.active.counted, l.sku)) {
+                S.active.counted[l.sku] = l.counted;
+              }
+            });
+            if (saved.length && typeof toast === 'function') {
+              toast(r.count.id, t('st_resumed').replace('{id}', r.count.id).replace('{n}', saved.length), 'ok', 6000);
+            }
+          }
           if (typeof render === 'function') render();
         })
         .catch(function () { /* the sheet still works; only the record is lost */ });

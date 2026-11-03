@@ -718,7 +718,8 @@ export function recordIn(d, args) {
 export function recent(limit = 50) {
   const sales = get().prepare(
     `SELECT s.*, u.name AS cashier_name,
-            (SELECT cu.code FROM coupon_uses cu WHERE cu.sale_id = s.id) AS coupon_code
+            (SELECT cu.code FROM coupon_uses cu WHERE cu.sale_id = s.id) AS coupon_code,
+            (SELECT cu.discount FROM coupon_uses cu WHERE cu.sale_id = s.id) AS coupon_cut
        FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
       WHERE s.voided = 0
       ORDER BY s.at DESC LIMIT ?`
@@ -744,7 +745,8 @@ export function inRange({ from, to, limit = 5, cashierId = null } = {}) {
 
   const sales = get().prepare(
     `SELECT s.*, u.name AS cashier_name,
-            (SELECT cu.code FROM coupon_uses cu WHERE cu.sale_id = s.id) AS coupon_code
+            (SELECT cu.code FROM coupon_uses cu WHERE cu.sale_id = s.id) AS coupon_code,
+            (SELECT cu.discount FROM coupon_uses cu WHERE cu.sale_id = s.id) AS coupon_cut
        FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
       WHERE ${where.join(' AND ')}
       ORDER BY s.at DESC LIMIT ?`
@@ -889,6 +891,14 @@ export function voidSale(id, { reason, userId }) {
     const s = d.prepare('SELECT * FROM sales WHERE id = ?').get(id);
     if (!s) throw new Error('no such sale');
     if (s.voided) throw new Error('that sale is already voided');
+
+    /* A piece that came back is already on the shelf, and its points are
+       already off the card. Voiding on top would book both a second time. */
+    if (d.prepare('SELECT 1 FROM order_returns WHERE sale_id = ? LIMIT 1').get(id)) {
+      throw Object.assign(
+        new Error('pieces on that sale have already come back, so it cannot be voided as well'),
+        { code: 'has_returns' });
+    }
 
     /* A credit sale the customer has already part-paid cannot simply be
        undone. The cash is in the box; voiding would erase the debt it was

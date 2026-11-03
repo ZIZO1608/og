@@ -648,12 +648,16 @@ function blockedReason(h, line) {
   return null;
 }
 
-export function handoverList({ status = null, limit = 20 } = {}) {
+export function handoverList({ status = null, limit = 20, driverId = null } = {}) {
   const d = get();
-  const where = status && status !== 'all' ? ' WHERE h.status = ?' : '';
+  const asks = [];
+  const args = [];
+  if (status && status !== 'all') { asks.push('h.status = ?'); args.push(status); }
+  if (driverId !== null) { asks.push('h.driver_id = ?'); args.push(driverId); }
+  const where = asks.length ? ' WHERE ' + asks.join(' AND ') : '';
   const rows = d.prepare(
     `${HANDOVER_SELECT}${where} ORDER BY h.opened_at DESC LIMIT ?`
-  ).all(...(where ? [status] : []), Math.max(1, Math.min(100, Number(limit) || 20)));
+  ).all(...args, Math.max(1, Math.min(100, Number(limit) || 20)));
   return rows;
 }
 
@@ -945,7 +949,7 @@ const OUTCOMES = ['exchange', 'credit', 'refund', 'keep_fee'];
 
 /* Money out. Mirrors takePayment, and the guard is its opposite: a refund can
    never be larger than what the shop is actually holding. */
-function refundOut(d, sale, s, { amount, currency, method, txnRef, note, userId, stage }) {
+function refundOut(d, sale, s, { amount, currency, method, txnRef, note, userId, stage, held: holding = null }) {
   const m = s.methods.find((x) => x && x.id === method);
   if (!m || m.active === false) throw fail(`there is no '${method}' payment method`, 'bad_method');
 
@@ -960,7 +964,8 @@ function refundOut(d, sale, s, { amount, currency, method, txnRef, note, userId,
   if (m.ref && !ref) throw fail(`${m.en || m.id} needs its transfer reference`, 'ref_required');
 
   const outOrder = convertAt(amt, cur, sale.currency);
-  const held = money(d, sale.id).paid;
+  /* A till sale's money is not in order_payments, so its caller says what it holds. */
+  const held = holding === null ? money(d, sale.id).paid : holding;
   if (outOrder > held) {
     throw fail(`the shop is only holding ${held} on ${sale.id}`, 'refund_too_big',
                { held, currency: sale.currency });
@@ -1058,6 +1063,71 @@ export function returnsFor(saleId, d = get()) {
   return rows.map((r) => ({ ...r, lines: lines.all(r.id) }));
 }
 
+/* What the asked-for pieces are, checked against what can still come back. */
+function takeLines(saleId, lines, left) {
+  const back = [];
+  let goods = 0;
+  for (const l of lines) {
+    const sku = String(l && l.sku || '');
+    const qty = Math.round(Number(l && l.qty));
+    const row = left[sku];
+    if (!row) throw fail(`${sku} was not on ${saleId}`, 'not_on_order');
+    if (!Number.isInteger(qty) || qty <= 0) throw fail(`how many of ${sku}?`, 'bad_qty');
+    if (qty > row.left) {
+      throw fail(row.left
+        ? `only ${row.left} of ${sku} can still come back`
+        : `every ${sku} on ${saleId} has already come back`, 'too_many', { left: row.left });
+    }
+    /* Cheapest pieces first, after whatever already came back (076). */
+    const worth = refundFor(row.tiers, row.qty - row.left, qty);
+    back.push({ sku, qty, name: row.name, size: row.size, unitPrice: Math.round(worth / qty),
+               colour: row.colour, colourAr: row.colour_ar });
+    goods += worth;
+    row.left -= qty;                       /* two lines of the same sku in one return */
+  }
+  return { back, goods };
+}
+
+/* The points a returned piece earned go back with it, and the points spent on
+   it come home: the rule a void follows (sales.js), for the share of the goods
+   that came back. Worked out from everything returned so far rather than from
+   this return alone, so three partial returns land on the same figure as one
+   whole one. Clamped at zero like the void: the customer may have spent them,
+   and that must not stop the shop taking the goods back. sales.points_earned
+   stays what the sale earned; the invoice is a record of that moment. */
+function returnPoints(d, saleId, back, allBack, userId) {
+  const s = d.prepare(
+    'SELECT customer_id, points_earned, points_used FROM sales WHERE id = ?').get(saleId);
+  if (!s || !s.customer_id || (!s.points_earned && !s.points_used)) return;
+  const off = d.prepare(
+    "SELECT value FROM config WHERE key = 'loyalty.void_reverses_points'").get();
+  if (off && off.value === '0') return;
+
+  const goods = d.prepare(
+    "SELECT COALESCE(SUM(qty * unit_price), 0) AS v FROM sale_items WHERE sale_id = ? AND sku NOT LIKE 'SVC-%'"
+  ).get(saleId).v;
+  if (!goods) return;
+  const thisTime = back.reduce((n, l) => n + l.qty * l.unitPrice, 0);
+  const soFar = d.prepare(
+    `SELECT COALESCE(SUM(l.qty * l.unit_price), 0) AS v
+       FROM order_return_lines l JOIN order_returns r ON r.id = l.return_id
+      WHERE r.sale_id = ?`
+  ).get(saleId).v;           /* this return's lines are already written */
+  const share = (points, worth) => Math.round(points * Math.min(1, worth / goods));
+  const moved = (points) => (allBack ? points : share(points, soFar)) - share(points, soFar - thisTime);
+  const change = moved(s.points_used || 0) - moved(s.points_earned || 0);
+  if (!change) return;
+
+  const c = d.prepare('SELECT loyalty_points FROM customers WHERE id = ?').get(s.customer_id);
+  if (!c) return;
+  const now = Math.max(0, c.loyalty_points + change);
+  if (now === c.loyalty_points) return;
+  d.prepare('UPDATE customers SET loyalty_points = ?, updated_at = ? WHERE id = ?')
+   .run(now, nowIso(), s.customer_id);
+  logChange('customers', s.customer_id, 'update', userId,
+            `return on ${saleId}: points ${c.loyalty_points} → ${now}`);
+}
+
 export function takeBack(saleId, {
   outcome, lines = [], whId = null, reason = null, note = null,
   amount = null, currency = null, method = 'cash', txnRef = null,
@@ -1096,26 +1166,7 @@ export function takeBack(saleId, {
       throw fail('there is no such place to put them back', 'bad_warehouse');
     }
 
-    const back = [];
-    let goods = 0;
-    for (const l of lines) {
-      const sku = String(l && l.sku || '');
-      const qty = Math.round(Number(l && l.qty));
-      const row = left[sku];
-      if (!row) throw fail(`${sku} was not on ${saleId}`, 'not_on_order');
-      if (!Number.isInteger(qty) || qty <= 0) throw fail(`how many of ${sku}?`, 'bad_qty');
-      if (qty > row.left) {
-        throw fail(row.left
-          ? `only ${row.left} of ${sku} can still come back`
-          : `every ${sku} on ${saleId} has already come back`, 'too_many', { left: row.left });
-      }
-      /* Cheapest pieces first, after whatever already came back (076). */
-      const worth = refundFor(row.tiers, row.qty - row.left, qty);
-      back.push({ sku, qty, name: row.name, size: row.size, unitPrice: Math.round(worth / qty),
-                 colour: row.colour, colourAr: row.colour_ar });
-      goods += worth;
-      row.left -= qty;                       /* two lines of the same sku in one return */
-    }
+    const { back, goods } = takeLines(saleId, lines, left);
 
     /* The shipping comes off only when the whole order has come back and the
        shop is not keeping it. A courier's fee that the customer paid the
@@ -1155,6 +1206,8 @@ export function takeBack(saleId, {
         userId: user.id, refType: 'return', refId: saleId
       });
     }
+
+    returnPoints(d, saleId, back, allBack, user.id);
 
     /* ---- the money ----------------------------------------------------- */
     const after = money(d, saleId);           /* due has already dropped */
@@ -1222,6 +1275,147 @@ export function takeBack(saleId, {
       saleId, returnId, outcome, restocked: back, dueDrop,
       refunded, credited, money: settled, payment: out
     };
+    if (opId) {
+      d.prepare(
+        `INSERT INTO applied_ops (op_id, at, user_id, kind, result) VALUES (?, ?, ?, 'order_return', ?)`
+      ).run(opId, at, user.id, JSON.stringify(result));
+    }
+    return result;
+  });
+}
+
+/* ---- a return at the till ------------------------------------------------
+   A till sale was paid in full at the counter, so what it holds is its total,
+   not its order_payments: that is the one difference from takeBack above. The
+   pieces, the record and the refund row are the same ones, so the statement,
+   the drawer and the cash book read a till return exactly as they read an
+   order's.
+
+   What comes back is worth what was actually paid for it. A sale's discount,
+   coupon and points were spread over the whole basket, so the shelf price would
+   hand back more than the customer gave; the goods' share of the total is
+   refunded instead. Worked out on everything returned so far, so returns in
+   parts add up to exactly the whole. A print on the sale is a service and does
+   not come back with a shirt.
+
+   A credit sale is refused: nothing was paid, and what is owed lives in the
+   debt book, which a return here would disagree with. */
+function tillWorth(d, saleId, total) {
+  const items = d.prepare(
+    "SELECT sku, qty, unit_price FROM sale_items WHERE sale_id = ?").all(saleId);
+  const line = (it) => it.qty * it.unit_price;
+  const goods = items.filter((it) => !it.sku.startsWith('SVC-')).reduce((n, it) => n + line(it), 0);
+  const services = items.filter((it) => it.sku.startsWith('SVC-')).reduce((n, it) => n + line(it), 0);
+  const before = d.prepare(
+    `SELECT COALESCE(SUM(l.qty * l.unit_price), 0) AS v
+       FROM order_return_lines l JOIN order_returns r ON r.id = l.return_id
+      WHERE r.sale_id = ?`
+  ).get(saleId).v;
+  return { goods, net: Math.max(0, total - services), before };
+}
+
+function tillSale(d, saleId) {
+  const sale = d.prepare(
+    'SELECT id, at, total, currency, payment, voided, customer_id, wh_id FROM sales WHERE id = ?'
+  ).get(saleId);
+  if (!sale || sale.payment === 'order') throw fail('no such till sale', 'not_found');
+  if (sale.voided) throw fail(`${saleId} was voided`, 'voided');
+  if (sale.payment === 'credit') {
+    throw fail('that sale is on credit, so nothing was paid to give back', 'credit_sale');
+  }
+  return sale;
+}
+
+export function tillReturnInfo(saleId, d = get()) {
+  const sale = tillSale(d, saleId);
+  const m = settings(d).methods.find((x) => x && x.id === sale.payment);
+  return {
+    sale: { id: sale.id, at: sale.at, total: sale.total, currency: sale.currency,
+            payment: sale.payment, customerId: sale.customer_id },
+    lines: returnable(saleId, d),
+    returns: returnsFor(saleId, d),
+    worth: tillWorth(d, saleId, sale.total),
+    needsRef: !!(m && m.ref),
+    exchangeHours: Number(cfg(d, 'receipt.exchange_hours')) || 0
+  };
+}
+
+export function takeBackTill(saleId, {
+  outcome = 'refund', lines = [], reason = null, note = null, txnRef = null, opId = null
+}, user) {
+  if (outcome !== 'refund' && outcome !== 'credit') {
+    throw fail('give the money back, or keep it as credit', 'bad_outcome');
+  }
+  if (!Array.isArray(lines) || !lines.length) throw fail('which pieces came back?', 'no_lines');
+
+  return tx((d) => {
+    if (opId) {
+      const seen = d.prepare('SELECT result FROM applied_ops WHERE op_id = ?').get(opId);
+      if (seen) return { ...JSON.parse(seen.result), replayed: true };
+    }
+
+    const sale = tillSale(d, saleId);
+    const s = settings(d);
+    if (outcome === 'credit' && !sale.customer_id) {
+      throw fail('there is no customer to hold the credit for', 'needs_customer');
+    }
+    const place = String(sale.wh_id || s.wh);
+    const left = {};
+    for (const r of returnable(saleId, d)) left[r.sku] = r;
+    const { back, goods: shelf } = takeLines(saleId, lines, left);
+    const allBack = Object.values(left).every((r) => r.left === 0);
+
+    const w = tillWorth(d, saleId, sale.total);
+    const share = (worth) => (w.goods ? Math.round(w.net * Math.min(1, worth / w.goods)) : 0);
+    const refund = (allBack ? w.net : share(w.before + shelf)) - share(w.before);
+
+    const at = nowIso();
+    const returnId = Number(d.prepare(
+      `INSERT INTO order_returns
+         (sale_id, delivery_id, at, outcome, reason, restocked, wh_id,
+          due_minor, refund_minor, kept_minor, credit_minor, new_sale_id, user_id, note)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, ?, ?)`
+    ).run(saleId, at, outcome, reason ? String(reason).slice(0, 200) : null,
+          back.reduce((n, l) => n + l.qty, 0), place, refund,
+          user.id, note ? String(note).slice(0, 300) : null).lastInsertRowid);
+
+    const line = d.prepare(
+      `INSERT INTO order_return_lines (return_id, sku, name, size, qty, unit_price, colour, colour_ar)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    for (const l of back) {
+      const lid = Number(line.run(returnId, l.sku, l.name, l.size, l.qty, l.unitPrice,
+                                  l.colour ?? null, l.colourAr ?? null).lastInsertRowid);
+      logChange('order_return_lines', lid, 'insert', user.id, null);
+      Stock.apply(d, {
+        sku: l.sku, whId: place, delta: l.qty, type: 'returned',
+        note: `returned from ${saleId}${reason ? ': ' + reason : ''}`,
+        userId: user.id, refType: 'return', refId: saleId
+      });
+    }
+
+    returnPoints(d, saleId, back, allBack, user.id);
+
+    let payment = null;
+    if (refund > 0) {
+      payment = refundOut(d, sale, s, {
+        amount: refund, currency: sale.currency, held: refund, txnRef,
+        method: outcome === 'credit' ? STORE_CREDIT.id : sale.payment,
+        note: outcome === 'credit' ? `kept as credit from ${saleId}` : `returned at the till: ${saleId}`,
+        userId: user.id, stage: 'return'
+      });
+      if (outcome === 'credit') {
+        creditRow(d, {
+          customerId: sale.customer_id, kind: 'grant', amount: payment.amountOrder,
+          currency: sale.currency, saleId, note: `return on ${saleId}`, userId: user.id
+        });
+      }
+    }
+    d.prepare('UPDATE order_returns SET refund_minor = ?, credit_minor = ? WHERE id = ?')
+     .run(outcome === 'refund' ? refund : 0, outcome === 'credit' ? refund : 0, returnId);
+    logChange('order_returns', returnId, 'insert', user.id, `${outcome} on ${saleId}`);
+
+    const result = { saleId, returnId, outcome, restocked: back, refund, currency: sale.currency, payment };
     if (opId) {
       d.prepare(
         `INSERT INTO applied_ops (op_id, at, user_id, kind, result) VALUES (?, ?, ?, 'order_return', ?)`

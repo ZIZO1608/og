@@ -1953,11 +1953,42 @@ router.add('POST /api/sales/:id/void', requirePerm('void', async (ctx) => {
   } catch (e) {
     /* Both are the world, not the request: money has been taken against the
        sale, or the order has already left the shop. */
-    if (e.code === 'has_payments' || e.code === 'on_road') {
+    if (e.code === 'has_payments' || e.code === 'on_road' || e.code === 'has_returns') {
       return sendError(ctx.res, 409, e.code, e.message);
     }
     sendError(ctx.res, 400, 'invalid', e.message);
   }
+}));
+
+/* A return at the till puts money back into somebody's hand. The cashier role
+   has held `refund` since 003 with nothing behind it, so wiring it alone would
+   have given every till a new way to take cash out of the drawer overnight. It
+   needs `void` as well: the manager's rule for correcting a sale already made. */
+function tillReturnGate(handler) {
+  return requirePerm('void', requirePerm('refund', handler));
+}
+
+function tillReturnFail(res, e) {
+  if (e.code === 'not_found') return sendError(res, 404, 'not_found', e.message);
+  if (typeof e.code === 'string') return sendError(res, 409, e.code, e.message);
+  throw e;
+}
+
+router.add('GET /api/sales/:id/returns', tillReturnGate((ctx) => {
+  try { sendOk(ctx.res, Orders.tillReturnInfo(ctx.params.id)); }
+  catch (e) { tillReturnFail(ctx.res, e); }
+}));
+
+router.add('POST /api/sales/:id/returns', tillReturnGate(async (ctx) => {
+  const b = await readJson(ctx.req);
+  const str = (v) => (typeof v === 'string' && v ? v : null);
+  try {
+    const out = Orders.takeBackTill(ctx.params.id, {
+      outcome: b.outcome, lines: Array.isArray(b.lines) ? b.lines : [],
+      reason: str(b.reason), note: str(b.note), txnRef: str(b.txnRef), opId: str(b.opId)
+    }, ctx.user);
+    sendOk(ctx.res, out);
+  } catch (e) { tillReturnFail(ctx.res, e); }
 }));
 
 /* --- the 80mm thermal receipt -----------------------------------------------
@@ -2499,14 +2530,19 @@ router.add('GET /api/handovers', requirePerm(['delivery.desk', 'delivery.write',
   sendOk(ctx.res, {
     handovers: Orders.handoverList({
       status: u.searchParams.get('status'),
-      limit: Number(u.searchParams.get('limit')) || 20
+      limit: Number(u.searchParams.get('limit')) || 20,
+      /* A driver sees his own sheets, whatever the request asks for. */
+      driverId: ctx.user.role === 'delivery' ? ctx.user.id : null
     })
   });
 }));
 
 router.add('GET /api/handovers/:id', requirePerm(['delivery.desk', 'delivery.write', 'delivery.read'], (ctx) => {
   const h = Orders.handover(ctx.params.id);
-  if (!h) return sendError(ctx.res, 404, 'not_found', 'No such handover.');
+  /* Somebody else's sheet is 404, not 403: the same rule as his parcels. */
+  if (!h || (ctx.user.role === 'delivery' && h.driver_id !== ctx.user.id)) {
+    return sendError(ctx.res, 404, 'not_found', 'No such handover.');
+  }
   sendOk(ctx.res, { handover: h });
 }));
 
@@ -2608,6 +2644,12 @@ router.add('POST /api/driver-cash/handin', requirePerm(['delivery.desk', 'debt.c
 
 /* ------------------------------------------------------------- the returns */
 router.add('GET /api/orders/:id/returns', requirePerm(['delivery.desk', 'delivery.read'], (ctx) => {
+  /* This answer names the shelf price of every line of any invoice. A driver
+     is never sent a price (Deliveries.bySale strips it) and returns are the
+     office's job, so to him there is no such thing. */
+  if (ctx.user.role === 'delivery') {
+    return sendError(ctx.res, 404, 'not_found', 'No such order.');
+  }
   sendOk(ctx.res, {
     lines: Orders.returnable(ctx.params.id),
     returns: Orders.returnsFor(ctx.params.id)
@@ -3139,12 +3181,20 @@ router.add('GET /api/purchase-orders', requirePerm('stock.read', (ctx) => {
     purchaseOrders: Purchasing.list({
       status: ctx.url.searchParams.get('status') || null,
       limit: Number(ctx.url.searchParams.get('limit')) || 100
-    }).map((o) => ({
-      ...scrubCost(o, ctx.user),
-      lines: o.lines.map((l) => scrubCost(l, ctx.user))
-    }))
+    }).map((o) => scrubPO(o, ctx.user))
   });
 }));
+
+/* An order's `total` is qty × unit_cost, so taking unit_cost off the lines and
+   leaving the total is cost per piece, one division away. `total` cannot go in
+   COST_KEYS: on a sale it is what the customer paid. */
+function scrubPO(po, user) {
+  if (Auth.can(user, 'cost.read')) return po;
+  const out = stripCost(po);
+  delete out.total;
+  out.lines = (po.lines || []).map(stripCost);
+  return out;
+}
 
 function poFail(res, e) {
   const status = e.code === 'not_found' ? 404 : e.code === 'bad_status' ? 409 : 400;
@@ -3159,12 +3209,12 @@ router.add('POST /api/purchase-orders', requirePerm('cost.read', async (ctx) => 
     return sendError(ctx.res, 403, 'forbidden', 'Your account does not have access to this.');
   }
   const b = await readJson(ctx.req);
-  try { sendOk(ctx.res, { po: Purchasing.create({ ...b, userId: ctx.user.id }) }); }
+  try { sendOk(ctx.res, { po: scrubPO(Purchasing.create({ ...b, userId: ctx.user.id }), ctx.user) }); }
   catch (e) { poFail(ctx.res, e); }
 }));
 
 router.add('POST /api/purchase-orders/:id/send', requirePerm('stock.move', async (ctx) => {
-  try { sendOk(ctx.res, { po: Purchasing.send(ctx.params.id, ctx.user.id) }); }
+  try { sendOk(ctx.res, { po: scrubPO(Purchasing.send(ctx.params.id, ctx.user.id), ctx.user) }); }
   catch (e) { poFail(ctx.res, e); }
 }));
 
@@ -3174,15 +3224,15 @@ router.add('POST /api/purchase-orders/:id/receive', requirePerm('stock.move', as
   const b = await readJson(ctx.req);
   try {
     sendOk(ctx.res, {
-      po: Purchasing.receive(ctx.params.id,
-                             Array.isArray(b.received) ? b.received : null,
-                             ctx.user.id)
+      po: scrubPO(Purchasing.receive(ctx.params.id,
+                                     Array.isArray(b.received) ? b.received : null,
+                                     ctx.user.id), ctx.user)
     });
   } catch (e) { poFail(ctx.res, e); }
 }));
 
 router.add('POST /api/purchase-orders/:id/cancel', requirePerm('stock.move', async (ctx) => {
-  try { sendOk(ctx.res, { po: Purchasing.cancel(ctx.params.id, ctx.user.id) }); }
+  try { sendOk(ctx.res, { po: scrubPO(Purchasing.cancel(ctx.params.id, ctx.user.id), ctx.user) }); }
   catch (e) { poFail(ctx.res, e); }
 }));
 

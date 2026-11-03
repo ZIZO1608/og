@@ -602,7 +602,7 @@ var POS = (function () {
     if (x.couponCut) h += '<div class="tr disc"><span>' + t('coupon') + ' <bdi dir="ltr">' + esc(S.coupon.code) + '</bdi></span><span>− ' + money(x.couponCut) + '</span></div>';
     if (x.pointsValue) h += '<div class="tr disc"><span>' + t('loyalty') + '</span><span>− ' + money(x.pointsValue) + '</span></div>';
     h += '<div class="tr grand"><span>' + t('total') + '</span><span>' + money(x.total) + '</span></div>';
-    if (OG.currency === 'SYP') h += '<div class="sub-usd">≈ $' + nf(x.total / CONFIG.EXCHANGE_RATE) + '</div>';
+    if (OG.currency === 'SYP') h += '<div class="sub-usd">≈ ' + usdOfLira(x.total) + '</div>';
     h += '</div>';
     return h;
   }
@@ -860,7 +860,11 @@ var POS = (function () {
                 '<button class="btn btn-sm btn-ghost" data-pos="coupon-clear">' + t('remove') + '</button></div>' +
                 (couponShort()
                   ? '<small class="warn">' + t('cp_pos_short').replace('{n}', '<bdi dir="ltr">' + usdText(S.coupon.minBasket) + '</bdi>') + '</small>'
-                  : '')
+                  : '') +
+                (couponCannotApply()
+                  ? '<small class="warn">' + t('err_coupon_offer_items') + '</small>'
+                  : (totals().couponBase < totals().subtotal
+                      ? '<small class="muted">' + t('cp_pos_part') + '</small>' : ''))
             : '<div style="display:flex;gap:4px">' +
                 '<input class="inp" id="posCoupon" type="text" autocomplete="off" autocapitalize="characters" dir="ltr" placeholder="' + esc(t('cp_pos_ph')) + '">' +
                 '<button class="btn btn-sm" style="flex:none" data-pos="coupon">' + t('apply') + '</button></div>') +
@@ -1563,6 +1567,11 @@ var POS = (function () {
       API.post('/api/coupon-check', {
         code: code, subtotal: totals().couponBase, customerId: S.customerId || null
       }).then(function (r) {
+        if (couponCannotApply()) {
+          if (el) el.disabled = false;
+          toast(t('coupon') + ' ' + code, t('err_coupon_offer_items'), 'warn', 6000);
+          return;
+        }
         S.coupon = r.coupon;
         toast(t('coupon'), r.coupon.code + ' · ' + couponWorth(r.coupon), 'ok');
         paintFoot();
@@ -2062,11 +2071,24 @@ var POS = (function () {
     var s = String(raw || '').trim();
     return COUPON_LINK.test(s) || COUPON_DIGITS.test(s);
   }
+  /* Everything in the basket is on an offer that does not take a coupon. The
+     code is good and the server would refuse the sale, so it is said now, not
+     shown as "−10%" over a total that does not move. */
+  function couponCannotApply() {
+    var x = totals();
+    return x.subtotal > 0 && x.couponBase <= 0;
+  }
+
   function tryCoupon(raw, loose, orElse) {
     var s = String(raw || '').trim();
     API.post('/api/coupon-check', {
       code: s, subtotal: totals().couponBase, customerId: S.customerId || null
     }).then(function (r) {
+      if (couponCannotApply()) {
+        pulseScan(false);
+        toast(t('coupon') + ' ' + s, t('err_coupon_offer_items'), 'warn', 6000);
+        return;
+      }
       S.coupon = r.coupon;
       pulseScan(true);
       toast(t('coupon'), r.coupon.code + ' · ' + couponWorth(r.coupon), 'ok');

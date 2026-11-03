@@ -2339,8 +2339,10 @@ var YALLA = (function () {
       });
     },
 
-    /* A printable partner invoice — and the natural home for the full
-       Yalla Wear lockup, which is too detailed for the 48px sidebar mark. */
+    /* A printable statement of finished work — and the natural home for the
+       full Yalla Wear lockup, which is too detailed for the 48px sidebar mark.
+       It reaches nobody by itself. Its main button opens the real invoice from
+       the work; it used to be a Send that only said "invoice sent". */
     invoice: function () {
       var done = jobs(true).filter(function (j) { return j.stage === 'done'; });
       var total = done.reduce(function (a, j) { return a + j.payout; }, 0);
@@ -2373,13 +2375,8 @@ var YALLA = (function () {
         title: t('yl_invoice_og'), size: 'wide', body: body,
         foot: '<button class="btn btn-ghost" data-act="modal-close">' + t('close') + '</button>' +
               '<button class="btn" data-act="print-doc">' + t('print') + '</button>' +
-              '<button class="btn btn-primary" data-yl="invoice-send">' + t('send') + '</button>'
+              '<button class="btn btn-primary" data-yi="new-from-work">' + t('yi_from_work') + '</button>'
       });
-    },
-
-    'invoice-send': function () {
-      closeModal();
-      toast(t('yl_invoice_og'), t('yl_invoice_sent'), 'ok', 3500);
     }
   };
 

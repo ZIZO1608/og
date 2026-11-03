@@ -60,10 +60,31 @@ export function get(id) {
   return shape(c, d.prepare('SELECT * FROM stock_count_lines WHERE count_id = ? ORDER BY id').all(id));
 }
 
+/* How long a sheet left open is still the same walk round the shelves. Figures
+   from longer ago than this are not a count of what is there today, and posting
+   them would correct the stock to an old number. */
+const RESUME_MS = 24 * 60 * 60 * 1000;
+
 export function start({ whId, scope = 'all', userId = null, userName = null }) {
   if (!whId) throw fail('a count needs a place to count', 'bad_request');
   return DB.tx(() => {
     const d = DB.get();
+
+    /* Starting used to open a new sheet every time, so leaving the screen left
+       the last one open for ever. A recent sheet for this place is picked up;
+       any other open one for it is closed. */
+    let resume = null;
+    const open = d.prepare(
+      `SELECT id, started_at FROM stock_counts
+        WHERE status = 'open' AND wh_id = ? AND scope = ? ORDER BY started_at DESC, id DESC`
+    ).all(whId, scope);
+    for (const c of open) {
+      if (!resume && Date.now() - Date.parse(c.started_at) < RESUME_MS) { resume = c.id; continue; }
+      d.prepare("UPDATE stock_counts SET status = 'cancelled' WHERE id = ?").run(c.id);
+      DB.logChange('stock_counts', c.id, 'update', userId, 'left open, replaced by a new count');
+    }
+    if (resume) return { ...get(resume), resumed: true };
+
     const id = nextId(d);
     d.prepare(
       `INSERT INTO stock_counts (id, wh_id, scope, status, started_at, user_id, user_name)

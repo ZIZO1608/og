@@ -313,7 +313,7 @@ var EXTRA_EN = {
   yl_all_clear_sub: 'Every job in this filter is finished', yl_job: 'Job',
   yl_progress: 'Progress', yl_size_breakdown: 'Sizes to print', yl_payout: 'You get paid',
   yl_piece: 'piece', yl_move_to: 'Move to', yl_moved_to: 'moved to',
-  yl_invoice_og: 'Invoice OG System', yl_invoice_sent: 'invoice sent',
+  yl_invoice_og: 'Invoice OG System', former_staff: 'Former staff', st_resumed: 'Carrying on with count {id}: {n} sizes already counted',
   yl_unpaid: 'On open jobs', yl_on_open_jobs: 'not invoiced yet', yl_lifetime: 'All time',
   yl_per_piece: 'Average per piece', yl_monthly: 'Earnings by month',
   yl_partner_of: 'Printing partner of ',
@@ -744,7 +744,7 @@ var EXTRA_AR = {
   yl_all_clear_sub: 'كل الطلبات في هذا الفلتر منجزة', yl_job: 'الطلب',
   yl_progress: 'مراحل التنفيذ', yl_size_breakdown: 'القياسات المطلوبة', yl_payout: 'مستحقاتك',
   yl_piece: 'قطعة', yl_move_to: 'نقل إلى', yl_moved_to: 'انتقل إلى',
-  yl_invoice_og: 'إرسال فاتورة إلى OG', yl_invoice_sent: 'أُرسلت الفاتورة',
+  yl_invoice_og: 'فاتورة إلى OG', former_staff: 'موظف سابق', st_resumed: 'رجعنا على الجرد {id}: {n} مقاسات انجردت قبل',
   yl_unpaid: 'على الطلبات المفتوحة', yl_on_open_jobs: 'لم تُفوتر بعد', yl_lifetime: 'الإجمالي الكلي',
   yl_per_piece: 'متوسط سعر القطعة', yl_monthly: 'الأرباح حسب الشهر',
   yl_partner_of: 'شريك الطباعة لـ ',
@@ -6138,3 +6138,57 @@ var OFFERS_AR = {
 };
 Object.keys(OFFERS_EN).forEach(function (k) { I18N.en[k] = OFFERS_EN[k]; });
 Object.keys(OFFERS_AR).forEach(function (k) { I18N.ar[k] = OFFERS_AR[k]; });
+
+/* Undoing a till sale, and the words the check of Nov 2026 found missing. */
+var TILL_UNDO_EN = {
+  sv_btn: 'Void sale', sv_go: 'Void this sale',
+  sv_ask: 'The pieces go back on the shelf, the money comes out of where it went, and the points go back. The sale stays on record, marked voided.',
+  sv_why: 'Why is it being voided?', sv_need_why: 'Say why first. It stays on the record.',
+  sv_done: '{id} was voided.',
+  sr_btn: 'Return pieces', sr_go: 'Take them back', sr_pieces: 'What came back',
+  sr_already: '{n} already back', sr_money: 'The money', sr_o_refund: 'Give it back', sr_o_credit: 'Keep as credit',
+  sr_why: 'Why did it come back? (optional)', sr_need_pieces: 'How many came back? Fill in at least one.',
+  sr_need_ref: 'This method needs the transfer reference.',
+  sr_late: 'This sale is past the {n}-hour exchange window on the receipt. You can still take it back.',
+  sr_sum: '{n} goes back through {m}, and the pieces go on the shelf.',
+  sr_sum_credit: '{n} stays with the customer as shop credit, and the pieces go on the shelf.',
+  sr_done: '{n} given back. The pieces are on the shelf.',
+  sr_done_credit: '{n} kept as credit. The pieces are on the shelf.',
+  err_has_payments: 'That sale has payments on it. Refund them before voiding it.',
+  err_has_returns: 'Pieces on that sale have already come back, so it cannot be voided as well.',
+  err_on_road: 'That order has left the shop. It has to come back first.',
+  err_credit_sale: 'That sale is on credit, so nothing was paid to give back. Void it instead.',
+  err_needs_customer: 'There is no customer to hold the credit for.',
+  err_too_many: 'That is more pieces than can still come back.',
+  cp_pos_part: 'Comes off the pieces not on an offer.',
+  ym_order_sent: 'Order sent', ym_order_accepted: 'Order accepted', ym_order_declined: 'Order declined',
+  ym_names_in: 'All names in', ym_pay_recorded: 'Payment recorded', ym_pay_confirmed: 'Payment confirmed',
+  ym_invoice: 'Invoice'
+};
+var TILL_UNDO_AR = {
+  sv_btn: 'إلغاء البيعة', sv_go: 'ألغِ هالبيعة',
+  sv_ask: 'القطع بترجع عالرف، والمصاري بتطلع من المكان اللي دخلت عليه، والنقاط بترجع. البيعة بتضل مسجلة ومكتوب عليها ملغاة.',
+  sv_why: 'ليش عم تنلغى؟', sv_need_why: 'اكتب السبب أول. بيضل بالسجل.',
+  sv_done: 'انلغت {id}.',
+  sr_btn: 'إرجاع قطع', sr_go: 'رجّعها', sr_pieces: 'شو رجع',
+  sr_already: 'رجع منها {n}', sr_money: 'المصاري', sr_o_refund: 'رجّعها للزبون', sr_o_credit: 'خليها رصيد',
+  sr_why: 'ليش رجعت؟ (اختياري)', sr_need_pieces: 'قديش رجع؟ عبّي قطعة وحدة عالأقل.',
+  sr_need_ref: 'هالطريقة بدها رقم الحوالة.',
+  sr_late: 'هالبيعة تجاوزت مدة التبديل المكتوبة عالفاتورة ({n} ساعة). فيك ترجّعها مع هيك.',
+  sr_sum: '{n} بترجع عن طريق {m}، والقطع بترجع عالرف.',
+  sr_sum_credit: '{n} بتضل رصيد للزبون بالمحل، والقطع بترجع عالرف.',
+  sr_done: 'رجعت {n}. القطع صارت عالرف.',
+  sr_done_credit: 'انحفظت {n} رصيد. القطع صارت عالرف.',
+  err_has_payments: 'هالبيعة عليها دفعات. رجّع الدفعات قبل ما تلغيها.',
+  err_has_returns: 'رجع قطع من هالبيعة قبل، فما فيك تلغيها كمان.',
+  err_on_road: 'هالطلب طلع من المحل. لازم يرجع أول.',
+  err_credit_sale: 'هالبيعة بالدين، يعني ما اندفع شي لترجّعه. ألغيها بدل هيك.',
+  err_needs_customer: 'ما في زبون ينحفظ الرصيد باسمه.',
+  err_too_many: 'هاد أكتر من القطع اللي لسا فيها ترجع.',
+  cp_pos_part: 'بينزل بس عن القطع اللي مو عليها عرض.',
+  ym_order_sent: 'انبعت الطلب', ym_order_accepted: 'انقبل الطلب', ym_order_declined: 'انرفض الطلب',
+  ym_names_in: 'كل الأسماء وصلت', ym_pay_recorded: 'انسجلت دفعة', ym_pay_confirmed: 'تأكدت الدفعة',
+  ym_invoice: 'فاتورة'
+};
+Object.keys(TILL_UNDO_EN).forEach(function (k) { I18N.en[k] = TILL_UNDO_EN[k]; });
+Object.keys(TILL_UNDO_AR).forEach(function (k) { I18N.ar[k] = TILL_UNDO_AR[k]; });

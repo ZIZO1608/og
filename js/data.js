@@ -737,7 +737,7 @@ var DB = {
       amount: amount, err: a.err ? ' — ' + a.err : '',
       behind: a.behind,
       /* partner_msg: what Yalla Wear said, and what kind of line it was */
-      text: a.text || '',
+      text: DB.msgText(a.text || ''),
       kind: a.kind ? t('yl_msg_' + String(a.kind).replace(/-/g, '_')) : ''
     };
     return s.replace(/\{(\w+)\}/g, function (m, k) {
@@ -2326,6 +2326,29 @@ var DB = {
   /* ---- purchase orders --------------------------------------------------- */
 
   purchaseOrders: purchaseOrders,
+
+  /* The lines the server writes by itself in the thread with Yalla Wear are
+     stored in one language, because both companies read the same row. On an
+     Arabic screen their words are put into Arabic, and anything a person typed
+     passes through untouched: only these fixed openings can match. */
+  msgText: function (body) {
+    var s = String(body == null ? '' : body);
+    if (OG.lang !== 'ar') return s;
+    var WORDS = [
+      ['Order sent', 'ym_order_sent'], ['Order accepted', 'ym_order_accepted'],
+      ['Order declined', 'ym_order_declined'], ['All names in', 'ym_names_in'],
+      ['Payment recorded', 'ym_pay_recorded'], ['Payment confirmed', 'ym_pay_confirmed'],
+      ['Sent to print', 'print_sent'], ['Printing', 'print_printing'],
+      ['Delivery', 'print_delivery'], ['Design', 'print_design'], ['Done', 'print_done']
+    ];
+    for (var i = 0; i < WORDS.length; i++) {
+      if (s.indexOf(WORDS[i][0] + ' — ') === 0) {
+        return t(WORDS[i][1]) + s.slice(WORDS[i][0].length).replace(/(\d) pcs\b/, '$1 ' + t('pieces'));
+      }
+    }
+    var inv = /^Invoice (\S+) — /.exec(s);
+    return inv ? t('ym_invoice') + s.slice('Invoice'.length) : s;
+  },
   stockCounts: stockCounts,
   shifts: shifts,
   expenses: expenses,
@@ -3069,6 +3092,7 @@ var DB = {
            that, and two of them were paper. */
         pointsEarned: Number(s.points_earned) || 0,
         couponCode: s.coupon_code || null,
+        couponCut: Number(s.coupon_cut) || 0,
         total: s.total,
         payment: s.payment,
         txnRef: s.txn_ref || null,
@@ -3482,7 +3506,7 @@ function hydratePartner(p) {
       jobMessages.push({
         id: 'M' + m.id, jobId: m.job_id, invoiceId: m.invoice_id,
         from: m.from_side, kind: m.kind, reason: m.reason,
-        text: m.body, at: date(m.at),
+        text: DB.msgText(m.body), at: date(m.at),
         /* The author has been in the database since the beginning and was
            never once drawn. With two partners on the other side, "YALLA
            WEAR said" is no longer enough to answer "who do I reply to". */

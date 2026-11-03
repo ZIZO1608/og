@@ -5457,3 +5457,11 @@ body:not([data-portal="yalla"]) .cb-step-h { margin: 4px 0; font-size: 20px; }
   body:not([data-portal="yalla"]) .mn-seg .mn-seg-in { display: flex; flex-wrap: wrap; width: 100%; justify-content: center; border-radius: 18px; }
   body:not([data-portal="yalla"]) .mn-pill { padding: 0 12px; }
 }
+
+/* ---- the till's toasts stand beside the cart, not on it ----------------- */
+/* In the corner they covered the cart's Clear until they faded. Beside it they
+   sit over the shoes, which nobody is reaching for while reading one. On a phone
+   the cart is a sheet and the toast keeps its place across the top. */
+@media (min-width: 721px) {
+  body[data-view="pos"] .toasts { inset-inline-end: calc(var(--pos-cart-w) + 17px); }
+}

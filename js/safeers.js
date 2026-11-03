@@ -430,7 +430,7 @@ var Safeers = (function () {
         if (isFinite(at) && at < since) return;
       }
       out.push({ type: 'parcel', id: d.id, title: d.saleId + ' · ' + (d.customerName || ''), area: d.city || d.address || '',
-                 safeer: d.driverName, status: d.status, due: null, raw: d });
+                 safeer: staffName(d.driverName), status: d.status, due: null, raw: d });
     });
     S.errands.forEach(function (e) {
       out.push({ type: 'errand', id: e.id, title: e.title, area: areaName(e.area), safeer: e.safeerName,
@@ -528,7 +528,7 @@ var Safeers = (function () {
         ? '<label class="field"><span>' + t('sf_parcel') + '</span><select class="inp" id="sfpParcel">' +
             waiting.map(function (d) {
               return '<option value="' + d.id + '">' + esc(d.saleId + ' · ' + (d.customerName || '') + ' · ' + (d.city || d.address || '')) +
-                (d.driverName ? ' — ' + esc(d.driverName) : '') + '</option>';
+                (d.driverName ? ' — ' + esc(staffName(d.driverName)) : '') + '</option>';
             }).join('') + '</select></label>' +
           '<label class="field"><span>' + t('sf_safeer') + '</span>' + safeerSelect('sfpWho') + '</label>'
         : '<div class="cart-empty"><b>' + t('sf_no_waiting') + '</b>' + t('sf_no_waiting_sub') + '</div>'),

@@ -72,6 +72,7 @@ var CHANGES = {
      results div rather than going through render() — the modal lives outside
      #view and a full render would never touch it. */
   'sa-q': function (el) { saPaint(el.value); },
+  'sr-qty': function () { srPaint(); },
   'cu-merge-q': function (el) { mergePaint(el.value); },
   'pj-q': function (el) { pjPaint(el.value); },
   'cust-sort': function (el) { OG.cust.sort = el.value; repaintCustomers(); },

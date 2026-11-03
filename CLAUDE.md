@@ -4868,6 +4868,55 @@ only for OG, and the setup is one visit. `npm run shop-pc:kit` (`make-kit.mjs`, 
   a write `standby_read_only`. The copy was deleted. **Not yet run: `1-Install.cmd` on a real
   clean PC** — that is the visit.
 
+## The pipeline check (2–3 Nov 2026) — and undoing a till sale
+
+An outside end-to-end check found these; every fix is on `main`. **No migration, no cloud file.**
+`server/test/pipeline-check.test.js` (12, six seen red on the old code) and, in the gitignored
+`_nightshift/pipeline/`, `fixes` (44) and `fixes2` (34), pressed in a browser and read back from SQLite.
+
+- **Void and Return on a till sale** (the invoice dialog, `sale-void` / `sale-return` in
+  `js/app-actions.js`, `Orders.takeBackTill`, `GET|POST /api/sales/:id/returns`). An order still comes
+  back through the deliveries board. **A return needs `void` AND `refund`**: the cashier role has held
+  `refund` since 003 with nothing behind it, and wiring it alone would have given every till a new way
+  to take cash out of the drawer. It writes the same `order_returns`, `order_return_lines` and
+  `order_payments` refund row as an order, with `delivery_id` NULL, so the statement and the drawer read
+  it the same way. **What comes back is the goods' share of what was paid**, never the shelf price, because
+  a discount, coupon or points were spread over the basket; returns in parts add up to the whole. A
+  print on the sale does not come back. A credit sale is refused (`credit_sale`; void it instead), and past
+  `receipt.exchange_hours` the dialog says so and still allows it.
+- **A return takes its points back** (`returnPoints` in `lib/orders.js`): the void's rule, for the share of
+  the goods returned, clamped at zero, under the same `loyalty.void_reverses_points` switch.
+  `sales.points_earned` is left as the record of that moment. **Points are still given when an unpaid order
+  is saved**; that is a policy nobody has decided, and it was not changed.
+- **A sale with a return cannot be voided** (`has_returns`). It would have booked the stock and the points a
+  second time: an unpaid order that failed and came back could reach that path.
+- **A driver is scoped on `/api/handovers` and `/api/orders/:id/returns`.** Both answered him for anybody's
+  sheet or invoice. Somebody else's sheet is 404; returns are 404 to him always, since a driver is never
+  sent a price.
+- **`scrubPO`**: a purchase order's `total` is qty × unit_cost, so stripping `unit_cost` and leaving it was
+  cost per piece one division away. `total` cannot join `COST_KEYS`: on a sale it is what the customer paid.
+- **`js/numbox.js`: no `type="number"` survives in the app.** A browser drops ٣ from such a box without a
+  word. A MutationObserver turns each one into a text box as it appears (DatePick's rule) and a capture-phase
+  listener rewrites what was typed to plain digits BEFORE any handler reads it, so every reader works
+  unchanged and a box written next year is covered. **A suite that selects `input[type=number]` finds nothing.**
+- **`fitFloatMenu`** (`js/app-util.js`) measures a "…" menu once it shows: slid back onto the glass, flipped
+  up when it would land under the tab bar. `inset-inline-end: 0` from a button at the start of a row ran off
+  the screen in both languages, which hid "Couldn't deliver" from the driver.
+- **`usdOfLira`**: lira shown as dollars is to the cent. `money()` rounded a $16.30 pair to $16 at the till.
+- **A coupon that can take nothing is refused at the till and the desk**, instead of showing "−10%" over a
+  total that does not move; `cp_pos_part` says when it only reaches part of the basket.
+- **The invoice splits the discount** (`coupon_cut`, from `coupon_uses`): the manual part and the coupon are
+  one column on the sale, and the whole used to carry the coupon's name.
+- **`DB.msgText`**: the thread's automatic lines are stored in English because both companies read one row,
+  and go into Arabic on an Arabic screen by their fixed openings. What a person typed cannot match.
+- **`staffName`**: "Former staff" is a label on an Arabic screen. **A stock count is picked up**, not reopened:
+  an open sheet for that place under 24 hours old comes back with its figures, an older one is cancelled,
+  because posting old figures would correct stock to an old number. **The partner's Earnings dialog has no
+  Send** (it only said "invoice sent"); its button opens the real invoice from the work. **The till's toasts
+  stand beside the cart**, not on Clear. **A second press on a parcel's move** waits for the first.
+- **Left alone on purpose**: a coupon stacks with a manual discount above the 10% cap (the coupon is the
+  owner's rule, 068); sign-in takes about 3 s, 1.5 s of it the splash's own floor.
+
 ## The style rules
 
 Written down in fix 05, after a pass that asked every screen every role can open, in both
@@ -5065,10 +5114,9 @@ next step:
   invariant, and a decision about whether a revived parcel keeps its `closed_at` and the "could
   not be delivered" line already sent to the customer's tracking page. Question 1 in
   `docs/history/fix-04.md`.
-- **Server routes with no button.** A sale can be voided only by a hand-sent
-  `POST /api/sales/:id/void`; the staff-account routes (`POST /api/users`, `/api/users/:id/reset`,
-  `/api/users/:id/active`) have no Settings control. The permissions `refund` and `partner.read` gate
-  nothing, so their tick boxes in Settings → Roles change nothing. `receipt.show_qr` and
+- **Server routes with no button.** The staff-account routes (`POST /api/users`, `/api/users/:id/reset`,
+  `/api/users/:id/active`) have no Settings control. The permission `partner.read` gates
+  nothing, so its tick box in Settings → Roles changes nothing. `receipt.show_qr` and
   `receipt.site_url` are seeded by migrations and read by nothing (the second QR `020` describes was
   never built).
 - **An exchange return is not linked to the order that replaced it.** `order_returns.new_sale_id`
